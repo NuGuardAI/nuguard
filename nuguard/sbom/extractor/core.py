@@ -163,6 +163,7 @@ class AiSbomExtractor:
         accumulator = _NodeAccumulator()
         all_edges: list[Edge] = []
         all_deps: list[PackageDep] = []
+        all_security_findings: list[str] = []
 
         # Walk all files
         python_files: list[Path] = []
@@ -198,13 +199,22 @@ class AiSbomExtractor:
         )
         from nuguard.sbom.extractor.framework_adapters.crewai import CrewAIAdapter
         from nuguard.sbom.extractor.framework_adapters.autogen import AutoGenAdapter
+        from nuguard.sbom.extractor.framework_adapters.mcp import McpAdapter
+        from nuguard.sbom.extractor.framework_adapters.fastapi import FastApiAdapter
+        from nuguard.sbom.extractor.framework_adapters.flask import FlaskAdapter
+        from nuguard.sbom.extractor.prompt_detector import PromptDetector
 
         adapters: list[FrameworkAdapter] = [
             LangChainAdapter(),
             OpenAIFunctionsAdapter(),
             CrewAIAdapter(),
             AutoGenAdapter(),
+            McpAdapter(),
+            FastApiAdapter(),
+            FlaskAdapter(),
         ]
+
+        prompt_detector = PromptDetector()
 
         for py_file in python_files:
             try:
@@ -221,6 +231,16 @@ class AiSbomExtractor:
                     if node.confidence >= config.min_confidence:
                         accumulator.add(node)
                 all_edges.extend(edges)
+
+            # Prompt detection
+            try:
+                prompt_nodes = prompt_detector.detect(py_file, source)
+            except Exception as exc:  # noqa: BLE001
+                _log.debug("PromptDetector failed on %s: %s", py_file, exc)
+                prompt_nodes = []
+            for node in prompt_nodes:
+                if node.confidence >= config.min_confidence:
+                    accumulator.add(node)
 
         # PII classification
         pii_files = python_files + [
@@ -263,7 +283,7 @@ class AiSbomExtractor:
         if config.include_iac:
             for iac_file in iac_files:
                 try:
-                    nodes, edges = self._scan_iac(iac_file)
+                    nodes, edges, iac_findings = self._scan_iac(iac_file)
                 except Exception as exc:  # noqa: BLE001
                     _log.debug("IaC scan failed on %s: %s", iac_file, exc)
                     continue
@@ -271,6 +291,7 @@ class AiSbomExtractor:
                     if node.confidence >= config.min_confidence:
                         accumulator.add(node)
                 all_edges.extend(edges)
+                all_security_findings.extend(iac_findings)
 
         # Dependency scanning
         if config.include_deps:
@@ -291,7 +312,42 @@ class AiSbomExtractor:
                 deduped_edges.append(edge)
 
         final_nodes = accumulator.nodes()
-        summary = self._build_summary(final_nodes, all_deps, path)
+
+        # Collect security findings from node metadata
+        node_findings = self._collect_security_findings(final_nodes)
+        all_security_findings.extend(node_findings)
+        # Deduplicate while preserving order
+        deduped_findings = list(dict.fromkeys(all_security_findings))
+
+        summary = self._build_summary(final_nodes, all_deps, path, deduped_findings)
+
+        # LLM enrichment (optional)
+        if config.enable_llm:
+            import asyncio
+            from nuguard.common.llm_client import LLMClient
+            from nuguard.sbom.extractor.llm_enricher import LLMEnricher
+
+            doc_pre = AiSbomDocument(
+                generated_at=__import__("datetime").datetime.now(__import__("datetime").timezone.utc),
+                target=str(path),
+                nodes=final_nodes,
+                edges=deduped_edges,
+                deps=all_deps,
+                summary=summary,
+            )
+            llm_client = LLMClient(model=config.llm_model)
+            enricher = LLMEnricher(llm_client=llm_client, budget_tokens=config.llm_budget_tokens)
+            try:
+                asyncio.get_event_loop().run_until_complete(enricher.enrich(doc_pre))
+            except RuntimeError:
+                # Already inside an event loop
+                import concurrent.futures
+                with concurrent.futures.ThreadPoolExecutor() as pool:
+                    future = pool.submit(asyncio.run, enricher.enrich(doc_pre))
+                    future.result()
+            except Exception as exc:  # noqa: BLE001
+                _log.debug("LLM enrichment failed: %s", exc)
+            return doc_pre
 
         return AiSbomDocument(
             generated_at=datetime.now(timezone.utc),
@@ -336,106 +392,51 @@ class AiSbomExtractor:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _scan_iac(self, path: Path) -> tuple[list[Node], list[Edge]]:
-        """Very lightweight IaC scanner: detect deployment and IAM nodes."""
-        nodes: list[Node] = []
-        edges: list[Edge] = []
-        try:
-            source = path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            return nodes, edges
-
-        name = path.stem
-        # Terraform → DEPLOYMENT
+    def _scan_iac(self, path: Path) -> tuple[list[Node], list[Edge], list[str]]:
+        """Route IaC file to the appropriate dedicated scanner."""
         if path.suffix == ".tf":
-            node_id = _stable_id(name, NodeType.DEPLOYMENT)
-            nodes.append(
-                Node(
-                    id=node_id,
-                    name=name,
-                    component_type=NodeType.DEPLOYMENT,
-                    confidence=0.8,
-                    metadata=NodeMetadata(deployment_target="terraform"),
-                    evidence=[
-                        Evidence(
-                            kind=EvidenceKind.IAC,
-                            confidence=0.8,
-                            detail="Terraform file",
-                            location=EvidenceLocation(path=str(path)),
-                        )
-                    ],
-                )
-            )
-            # Look for IAM role definitions in Terraform
-            if "aws_iam_role" in source or "google_service_account" in source:
-                iam_id = _stable_id(f"{name}-iam", NodeType.IAM)
-                nodes.append(
-                    Node(
-                        id=iam_id,
-                        name=f"{name}-iam",
-                        component_type=NodeType.IAM,
-                        confidence=0.7,
-                        evidence=[
-                            Evidence(
-                                kind=EvidenceKind.IAC,
-                                confidence=0.7,
-                                detail="IAM resource in Terraform",
-                                location=EvidenceLocation(path=str(path)),
-                            )
-                        ],
-                    )
-                )
+            from nuguard.sbom.extractor.iac_scanners.terraform import TerraformScanner
+            scanner = TerraformScanner()
+            nodes, edges, findings = scanner.scan(path)
+            return nodes, edges, findings
 
-        # Docker Compose → CONTAINER_IMAGE
-        elif path.name in ("docker-compose.yml", "docker-compose.yaml"):
-            img_re = re.compile(r"image:\s*([^\s#]+)")
-            for match in img_re.finditer(source):
-                image_ref = match.group(1).strip()
-                image_name, _, image_tag = image_ref.partition(":")
-                cid = _stable_id(image_name, NodeType.CONTAINER_IMAGE)
-                nodes.append(
-                    Node(
-                        id=cid,
-                        name=image_name,
-                        component_type=NodeType.CONTAINER_IMAGE,
-                        confidence=0.9,
-                        metadata=NodeMetadata(
-                            image_name=image_name,
-                            image_tag=image_tag or "latest",
-                        ),
-                        evidence=[
-                            Evidence(
-                                kind=EvidenceKind.IAC,
-                                confidence=0.9,
-                                detail=f"Docker Compose image: {image_ref}",
-                                location=EvidenceLocation(path=str(path)),
-                            )
-                        ],
-                    )
-                )
+        if path.name in ("docker-compose.yml", "docker-compose.yaml"):
+            from nuguard.sbom.extractor.iac_scanners.docker_compose import DockerComposeScanner
+            scanner_dc = DockerComposeScanner()
+            dc_nodes, dc_findings = scanner_dc.scan(path)
+            return dc_nodes, [], dc_findings
 
-        # GitHub Actions → DEPLOYMENT
-        elif ".github/workflows" in str(path):
-            node_id = _stable_id(name, NodeType.DEPLOYMENT)
-            nodes.append(
-                Node(
-                    id=node_id,
-                    name=name,
-                    component_type=NodeType.DEPLOYMENT,
-                    confidence=0.7,
-                    metadata=NodeMetadata(deployment_target="github_actions"),
-                    evidence=[
-                        Evidence(
-                            kind=EvidenceKind.IAC,
-                            confidence=0.7,
-                            detail="GitHub Actions workflow",
-                            location=EvidenceLocation(path=str(path)),
-                        )
-                    ],
-                )
-            )
+        if ".github/workflows" in str(path):
+            from nuguard.sbom.extractor.iac_scanners.github_actions import GitHubActionsScanner
+            scanner_gha = GitHubActionsScanner()
+            gha_nodes, gha_findings = scanner_gha.scan(path)
+            return gha_nodes, [], gha_findings
 
-        return nodes, edges
+        # Kubernetes YAML (k8s/**/*.yaml pattern)
+        if path.suffix in (".yaml", ".yml"):
+            from nuguard.sbom.extractor.iac_scanners.kubernetes import KubernetesScanner
+            scanner_k8s = KubernetesScanner()
+            k8s_nodes, k8s_edges, k8s_findings = scanner_k8s.scan(path)
+            return k8s_nodes, k8s_edges, k8s_findings
+
+        return [], [], []
+
+    def _collect_security_findings(self, nodes: list[Node]) -> list[str]:
+        """Derive security findings from node metadata."""
+        findings: list[str] = []
+        for node in nodes:
+            if node.component_type == NodeType.CONTAINER_IMAGE:
+                if node.metadata.runs_as_root:
+                    findings.append("container_runs_as_root")
+                if node.metadata.has_health_check is False:
+                    findings.append("missing_health_check")
+                if node.metadata.has_resource_limits is False:
+                    findings.append("no_resource_limits")
+            if node.component_type == NodeType.IAM:
+                perms = node.metadata.permissions
+                if any("*" in p for p in perms) or "AdministratorAccess" in str(perms):
+                    findings.append("overly_permissive_iam")
+        return findings
 
     def _scan_deps(self, path: Path) -> list[PackageDep]:
         """Extract package dependencies from pyproject.toml / requirements.txt / package.json."""
@@ -528,6 +529,7 @@ class AiSbomExtractor:
         nodes: list[Node],
         deps: list[PackageDep],
         root: Path,
+        security_findings: list[str] | None = None,
     ) -> ScanSummary:
         """Build a :class:`~nuguard.models.sbom.ScanSummary` from extracted data."""
         node_counts: dict[str, int] = defaultdict(int)
@@ -566,6 +568,7 @@ class AiSbomExtractor:
         return ScanSummary(
             frameworks=frameworks,
             node_counts=dict(node_counts),
+            security_findings=list(dict.fromkeys(security_findings or [])),
             data_classification=data_classifications,
             classified_tables=list(set(classified_tables)),
             api_endpoints=api_endpoints,

@@ -134,15 +134,25 @@ def register(
         resolve_path=True,
     ),
 ) -> None:
-    """Register FILE for use by subsequent nuguard commands.
+    """Register FILE in the local database (~/.nuguard/nuguard.db)."""
+    from nuguard.sbom.extractor.serializer import AiSbomSerializer
+    from nuguard.db.local import LocalDb
 
-    Stores the SBOM in the local database (~/.nuguard/nuguard.db).
-    """
-    # TODO: Implement local DB storage via nuguard.db.local
-    _console.print(
-        f"[yellow]Register not yet implemented.[/yellow] "
-        f"SBOM at {file} would be stored in ~/.nuguard/nuguard.db."
-    )
+    try:
+        raw = file.read_text(encoding="utf-8")
+        doc = AiSbomSerializer.from_json(raw)
+    except Exception as exc:
+        _err_console.print(f"Error reading SBOM: {exc}")
+        raise typer.Exit(code=3) from exc
+
+    try:
+        db = LocalDb()
+        sbom_id = db.save_sbom(doc)
+    except Exception as exc:
+        _err_console.print(f"Error saving SBOM: {exc}")
+        raise typer.Exit(code=3) from exc
+
+    _console.print(f"[green]SBOM registered.[/green] ID: [bold]{sbom_id}[/bold]")
 
 
 @sbom_app.command("show")
@@ -154,8 +164,107 @@ def show(
     ),
 ) -> None:
     """Display the registered SBOM with SBOM_ID."""
-    # TODO: Implement local DB retrieval via nuguard.db.local
-    _console.print(
-        f"[yellow]Show not yet implemented.[/yellow] "
-        f"Would display SBOM with ID {sbom_id!r}."
-    )
+    from nuguard.db.local import LocalDb
+    from nuguard.sbom.extractor.serializer import AiSbomSerializer
+
+    db = LocalDb()
+    doc = db.get_sbom(sbom_id)
+    if doc is None:
+        _err_console.print(f"SBOM '{sbom_id}' not found.")
+        raise typer.Exit(code=1)
+
+    _console.print(AiSbomSerializer.to_json(doc))
+
+
+@sbom_app.command("schema")
+def schema() -> None:
+    """Print the bundled aibom.schema.json to stdout."""
+    from nuguard.sbom.schema import get_schema_path
+
+    schema_path = get_schema_path()
+    if schema_path.exists():
+        import sys
+        sys.stdout.write(schema_path.read_text(encoding="utf-8"))
+    else:
+        _err_console.print(f"Schema file not found at {schema_path}")
+        raise typer.Exit(code=1)
+
+
+@sbom_app.command("plugin")
+def plugin_cmd(
+    action: str = typer.Argument(help="Action: 'run' or 'list'"),
+    plugin_name: Optional[str] = typer.Argument(None, help="Plugin name (for 'run' action)"),
+    sbom_file: Optional[Path] = typer.Option(
+        None,
+        "--sbom",
+        help="Path to the SBOM JSON file.",
+    ),
+    format: str = typer.Option(
+        "json",
+        "--format",
+        "-f",
+        help="Output format: json | markdown",
+    ),
+) -> None:
+    """Run a toolbox plugin or list available plugins.
+
+    Examples:
+        nuguard sbom plugin list
+        nuguard sbom plugin run vulnerability --sbom app.sbom.json
+        nuguard sbom plugin run markdown --sbom app.sbom.json --format markdown
+    """
+    from nuguard.sbom.toolbox.orchestrator import PluginOrchestrator
+
+    orchestrator = PluginOrchestrator()
+
+    if action == "list":
+        _console.print("[bold]Available plugins:[/bold]")
+        for name in orchestrator.list_plugins():
+            _console.print(f"  - {name}")
+        return
+
+    if action == "run":
+        if not plugin_name:
+            _err_console.print("Plugin name required for 'run' action.")
+            raise typer.Exit(code=1)
+        if not sbom_file:
+            _err_console.print("--sbom FILE required for 'run' action.")
+            raise typer.Exit(code=1)
+        if not sbom_file.exists():
+            _err_console.print(f"SBOM file not found: {sbom_file}")
+            raise typer.Exit(code=1)
+
+        from nuguard.sbom.extractor.serializer import AiSbomSerializer
+
+        try:
+            raw = sbom_file.read_text(encoding="utf-8")
+            doc = AiSbomSerializer.from_json(raw)
+        except Exception as exc:
+            _err_console.print(f"Error reading SBOM: {exc}")
+            raise typer.Exit(code=3) from exc
+
+        try:
+            result = orchestrator.run(plugin_name, doc)
+        except ValueError as exc:
+            _err_console.print(str(exc))
+            raise typer.Exit(code=1) from exc
+
+        if format == "markdown" and result.details:
+            # For markdown plugin, print the markdown content
+            md = result.details[0].get("markdown", "")
+            if md:
+                _console.print(md)
+                return
+
+        # Default: print as JSON
+        import json as _json
+        output = {
+            "status": result.status,
+            "message": result.message,
+            "details": result.details,
+        }
+        _console.print(_json.dumps(output, indent=2, default=str))
+        return
+
+    _err_console.print(f"Unknown action '{action}'. Use 'run' or 'list'.")
+    raise typer.Exit(code=1)
