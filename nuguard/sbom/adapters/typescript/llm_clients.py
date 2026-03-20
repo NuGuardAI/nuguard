@@ -238,9 +238,8 @@ class LLMClientTSAdapter(TSFrameworkAdapter):
             # resolved_arguments has variable-referenced model names expanded
             model_name = self._resolve(inst, "model", "modelName", "modelId")
 
-            # No explicit model: if base_url resolved to a known provider, emit a
-            # FRAMEWORK node so the proxied provider is visible in the SBOM
-            # (mirrors the Python adapter behaviour).
+            # No explicit model: emit a FRAMEWORK presence node so the SDK is
+            # visible in the SBOM even when the model is specified at call-site.
             if not model_name:
                 if base_url_provider:
                     raw_url = self._resolve(inst, "baseURL", "baseUrl", "base_url")
@@ -262,6 +261,29 @@ class LLMClientTSAdapter(TSFrameworkAdapter):
                             line=inst.line_start,
                             snippet=inst.source_snippet
                             or f"new {inst.class_name}({{ baseURL: {raw_url!r} }})",
+                            evidence_kind="ast_instantiation",
+                        )
+                    )
+                else:
+                    # Known non-OpenAI SDK (e.g. GoogleGenAI, Anthropic) with model
+                    # specified at call-site rather than constructor — emit a FRAMEWORK
+                    # presence node so the adapter appears in the SBOM.
+                    detected.append(
+                        ComponentDetection(
+                            component_type=ComponentType.FRAMEWORK,
+                            canonical_name=f"framework:{self.name}",
+                            display_name=self.name,
+                            adapter_name=self.name,
+                            priority=self.priority,
+                            confidence=0.85,
+                            metadata={
+                                "framework": provider,
+                                "client_class": inst.class_name,
+                                "language": "typescript",
+                            },
+                            file_path=file_path,
+                            line=inst.line_start,
+                            snippet=inst.source_snippet or f"new {inst.class_name}(...)",
                             evidence_kind="ast_instantiation",
                         )
                     )
@@ -294,12 +316,22 @@ class LLMClientTSAdapter(TSFrameworkAdapter):
             )
 
         # --- API call patterns: client.chat.completions.create({ model: "gpt-4o" }) ---
+        src_lines = content.splitlines()
         for call in result.function_calls:
             if not _MODEL_CALL_RE.search(call.function_name):
                 continue
             model_name = self._resolve(call, "model", "modelId")
             if not model_name and call.positional_args:
                 model_name = self._clean(call.positional_args[0])
+            # Fallback: scan a small window after the call line for a model: "..." pattern.
+            # Handles multi-line call objects like generateContent({ \n  model: "gemini-2.0-flash"
+            if not model_name:
+                start = max(0, call.line_start - 1)
+                end = min(len(src_lines), call.line_start + 6)
+                window = "\n".join(src_lines[start:end])
+                m = re.search(r'\bmodel\s*:\s*["\']([^"\']+)["\']', window)
+                if m:
+                    model_name = m.group(1)
             if not model_name:
                 continue
             fn = call.function_name
