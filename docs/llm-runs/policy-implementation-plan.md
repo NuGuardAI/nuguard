@@ -32,11 +32,15 @@ CLI surface: `nuguard policy validate`, `nuguard policy check`
 A **Compliance Policy** maps an AI application against an external security/regulatory framework (OWASP LLM Top 10, NIST AI RMF, EU AI Act). It is **framework-driven**, not operator-written.
 
 NuGuard's job is to:
-1. **Extract controls** from framework documents into structured `ComplianceControl` objects
+1. **Load controls** from a NuGuard-defined JSON structure (v1) or extract them from an arbitrary document via LLM (v1.5+)
 2. **Assess** whether the AI application (via its SBOM) satisfies each control
 3. **Map** findings to their framework references for reporting
 
-The reference implementation for this is `assessment_service/core/` in NuGuard-app.
+**v1 control format:** In v1, compliance controls are provided as pre-authored JSON files in a NuGuard-defined schema. The bundled framework files (`nuguard/policy/compliance/data/owasp_llm_top10.json` etc.) ship with the package and are loaded at runtime — no LLM call required to obtain the controls. Users can also supply their own JSON file conforming to the same schema.
+
+**v1.5+:** `policy_extractor.py` enables LLM-based extraction of controls from arbitrary compliance documents (PDFs, Markdown, Word docs). This is how `assessment_service` works in NuGuard-app, but is deferred from OSS v1.
+
+The reference implementation for assessment logic is `assessment_service/core/` in NuGuard-app.
 
 ---
 
@@ -64,14 +68,14 @@ All policy code in nuguard-oss is stubs (raise `NotImplementedError` or are empt
 
 The `assessment_service` in NuGuard-app is the commercial implementation of compliance assessment. These files should be ported and adapted:
 
-| Source file | What it does | Maps to |
-|---|---|---|
-| `core/policy_extractor.py` | LLM-based control extraction from policy docs | New: `nuguard/policy/extractor.py` |
-| `core/ccd_parser.py` | Compliance Control Descriptor DSL | New: `nuguard/policy/ccd_parser.py` |
-| `core/aibom_snapshot_builder.py` | Normalize SBOM nodes for assessment | New: `nuguard/policy/aibom_snapshot.py` |
-| `core/llm_synthesizer.py` | LLM evidence synthesis (COVERED/PARTIAL/GAP) | New: `nuguard/policy/synthesizer.py` |
-| `core/scoring.py` | Score/result mapping + validation | New: `nuguard/policy/scoring.py` |
-| `api/schemas.py` → compliance enums | `ComplianceResult`, `AssessmentStatus`, etc. | Extend: `nuguard/models/policy.py` |
+| Source file | What it does | Maps to | When |
+|---|---|---|---|
+| `core/ccd_parser.py` | Compliance Control Descriptor DSL | New: `nuguard/policy/ccd_parser.py` | v1 |
+| `core/aibom_snapshot_builder.py` | Normalize SBOM nodes for assessment | New: `nuguard/policy/aibom_snapshot.py` | v1 |
+| `core/scoring.py` | Score/result mapping + validation | New: `nuguard/policy/scoring.py` | v1 |
+| `api/schemas.py` → compliance enums | `ComplianceResult`, `AssessmentStatus`, etc. | Extend: `nuguard/models/policy.py` | v1 |
+| `core/llm_synthesizer.py` | LLM evidence synthesis (COVERED/PARTIAL/GAP) | New: `nuguard/policy/synthesizer.py` | v1 (optional path) |
+| `core/policy_extractor.py` | LLM-based control extraction from arbitrary docs | New: `nuguard/policy/extractor.py` | v1.5 |
 
 Key design differences between NuGuard-app and nuguard-oss:
 
@@ -457,14 +461,62 @@ async def llm_synthesize(
 #### 5.4 Built-in Control Libraries
 
 **Files:**
-- `nuguard/policy/compliance/owasp_mapper.py`
-- `nuguard/policy/compliance/nist_mapper.py`
-- `nuguard/policy/compliance/eu_ai_act_mapper.py`
+- `nuguard/policy/compliance/data/owasp_llm_top10.json` — bundled control definitions (NuGuard JSON schema)
+- `nuguard/policy/compliance/data/nist_ai_rmf.json` — bundled control definitions (v1.5)
+- `nuguard/policy/compliance/data/eu_ai_act.json` — bundled control definitions (v1.5)
+- `nuguard/policy/compliance/loader.py` — loads and validates control JSON files
+- `nuguard/policy/compliance/owasp_mapper.py` — OWASP-specific ref mapping
+- `nuguard/policy/compliance/nist_mapper.py` — NIST-specific ref mapping (v1.5)
+- `nuguard/policy/compliance/eu_ai_act_mapper.py` — EU AI Act ref mapping (v1.5)
 
-Replace the stub `map_to_*()` functions with static control libraries. Each mapper provides two things:
+**Control JSON schema** (NuGuard-defined format):
 
-1. A `CONTROLS: list[ComplianceControl]` constant — the pre-defined controls for that framework with CCDs
-2. A `map_finding_to_refs(finding) -> list[FrameworkRef]` function — maps a generic finding to framework references
+```json
+{
+  "framework": "OWASP_LLM_TOP10",
+  "version": "1.0",
+  "controls": [
+    {
+      "id": "owasp-llm01-prompt-injection",
+      "name": "LLM01: Prompt Injection",
+      "description": "...",
+      "severity": "critical",
+      "ai_sbom_assessable": true,
+      "manual_attestation_required": false,
+      "ai_sbom_basis": ["PROMPT", "GUARDRAIL"],
+      "framework_refs": [
+        {"framework": "OWASP_LLM_TOP10", "control_id": "LLM01"}
+      ],
+      "gap_diagnosis": "...",
+      "fix_guidance": "...",
+      "tags": ["injection", "input-validation"],
+      "ccd": {
+        "assertions": [
+          {
+            "type": "exists",
+            "node_type": "GUARDRAIL",
+            "filter": {"scope": "input"},
+            "severity": "high"
+          }
+        ]
+      }
+    }
+  ]
+}
+```
+
+Users can supply their own JSON file in the same schema to assess against a custom control set:
+
+```bash
+nuguard policy check --sbom ./app.sbom.json --controls ./my-controls.json
+```
+
+**`loader.py`** validates the JSON against the schema and returns `list[ComplianceControl]`. This is the single point where controls enter the assessment pipeline regardless of source (bundled file, custom file, or future LLM extraction).
+
+Each mapper module provides:
+
+1. `load() -> list[ComplianceControl]` — loads and returns controls from the bundled JSON file
+2. `map_finding_to_refs(finding) -> list[FrameworkRef]` — maps a generic finding to framework references
 
 **OWASP LLM Top 10 controls to implement (v1):**
 
@@ -525,9 +577,12 @@ nuguard policy validate --file ./cognitive-policy.md
 # Cross-check cognitive policy against SBOM
 nuguard policy check --sbom ./app.sbom.json --policy ./cognitive-policy.md
 
-# Run compliance assessment
+# Run compliance assessment using bundled framework controls
 nuguard policy check --sbom ./app.sbom.json --framework owasp-llm-top10
 nuguard policy check --sbom ./app.sbom.json --framework owasp-llm-top10 --format sarif
+
+# Run compliance assessment using a custom control JSON file
+nuguard policy check --sbom ./app.sbom.json --controls ./my-controls.json
 
 # Show a stored policy
 nuguard policy show --policy-id <id>
@@ -562,9 +617,14 @@ nuguard/
     ccd_parser.py               # NEW (WS5 — ported from assessment_service)
     extractor.py                # NEW (WS5 — ported from assessment_service, optional/LLM)
     compliance/
-      owasp_mapper.py           # IMPLEMENT (WS5 — 6 controls with CCDs)
+      loader.py                 # NEW — loads + validates control JSON files
+      owasp_mapper.py           # IMPLEMENT (WS5 — load() + map_finding_to_refs())
       nist_mapper.py            # IMPLEMENT skeleton (v1.5 TODO)
       eu_ai_act_mapper.py       # IMPLEMENT skeleton (v1.5 TODO)
+      data/
+        owasp_llm_top10.json    # NEW — 6 bundled OWASP LLM Top 10 controls with CCDs
+        nist_ai_rmf.json        # NEW — skeleton (v1.5)
+        eu_ai_act.json          # NEW — skeleton (v1.5)
   redteam/
     policy_engine/
       evaluator.py              # IMPLEMENT (WS4)
@@ -656,7 +716,7 @@ nuguard/policy/tests/
 
 ## 9. What is Explicitly Out of Scope for v1
 
-- **LLM-based policy extraction** (`extractor.py`) — implement the class but it is not called in the default CLI path. The compliance controls are pre-defined in `owasp_mapper.py`, not extracted by LLM.
+- **LLM-based policy extraction** (`extractor.py`) — deferred to v1.5. In v1, controls are loaded from bundled JSON files (`compliance/data/`) using `loader.py`. Users can supply a custom JSON file in the same NuGuard schema; arbitrary document extraction (PDF, Markdown, Word) via LLM is v1.5.
 - **NIST AI RMF and EU AI Act controls** — mapper skeletons only; full control libraries are v1.5.
 - **Redis-backed caching** — `assessment_service/core/runtime_cache.py` has no equivalent. Single-run, no caching needed.
 - **Attestation workflows** — the `AttestationStatus` pattern in `assessment_service` has no equivalent in OSS CLI.
