@@ -259,9 +259,18 @@ class _LangChainVisitor(ast.NodeVisitor):
 
     def visit_AsyncFunctionDef(self, node: ast.AsyncFunctionDef) -> None:  # type: ignore[override]
         for decorator in node.decorator_list:
-            name = ast.unparse(decorator) if hasattr(ast, "unparse") else ""
-            if "tool" in name.lower():
-                self.tools.append({"name": node.name, "line": node.lineno})
+            dec_name = ""
+            if isinstance(decorator, ast.Name):
+                dec_name = decorator.id
+            elif isinstance(decorator, ast.Attribute):
+                dec_name = decorator.attr
+            if dec_name == "tool":
+                self.tools.append({
+                    "name": node.name,
+                    "confidence": 0.9,
+                    "detail": f"@tool decorated async function '{node.name}'",
+                    "line": node.lineno,
+                })
         self.generic_visit(node)
 
     def visit_Call(self, node: ast.Call) -> None:
