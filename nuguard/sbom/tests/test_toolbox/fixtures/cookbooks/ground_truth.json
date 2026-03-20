@@ -1,0 +1,454 @@
+{
+  "schema_version": "1.1.0",
+  "generated_at": "2026-03-10T00:00:00Z",
+  "generator": "codex",
+  "target": "https://github.com/langchain-ai/cookbooks",
+  "summary": {
+    "frameworks": [
+      "langchain",
+      "langgraph"
+    ]
+  },
+  "nodes": [
+    {
+      "id": "1b67fd3f-4935-4a3c-a281-1f4fd4aa0001",
+      "name": "langchain",
+      "component_type": "FRAMEWORK",
+      "confidence": 0.98,
+      "metadata": {
+        "framework": "langchain",
+        "extras": {
+          "canonical_name": "langchain",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.98,
+          "detail": "FRAMEWORK: langchain",
+          "location": {
+            "path": "src/utils.py",
+            "line": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "30459f37-c887-47bc-a332-7a1f714c0002",
+      "name": "langgraph",
+      "component_type": "FRAMEWORK",
+      "confidence": 0.98,
+      "metadata": {
+        "framework": "langgraph",
+        "extras": {
+          "canonical_name": "langgraph",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.98,
+          "detail": "FRAMEWORK: langgraph",
+          "location": {
+            "path": "src/react_agent/graph.py",
+            "line": 6
+          }
+        }
+      ]
+    },
+    {
+      "id": "39f5200b-4be2-4b44-92f7-6bb0a4930003",
+      "name": "react_agent_graph",
+      "component_type": "AGENT",
+      "confidence": 0.94,
+      "metadata": {
+        "framework": "langgraph",
+        "extras": {
+          "canonical_name": "react_agent_graph",
+          "adapter": "gt",
+          "description": "ReAct-style LangGraph agent assembled with create_react_agent.",
+          "synonyms": [
+            "graph",
+            "react_agent"
+          ]
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.94,
+          "detail": "AGENT: react_agent_graph",
+          "location": {
+            "path": "src/react_agent/graph.py",
+            "line": 29
+          }
+        }
+      ]
+    },
+    {
+      "id": "c5928d54-2e84-4507-ad67-b667bcf10004",
+      "name": "supervisor_graph",
+      "component_type": "AGENT",
+      "confidence": 0.93,
+      "metadata": {
+        "framework": "langgraph",
+        "extras": {
+          "canonical_name": "supervisor_graph",
+          "adapter": "gt",
+          "description": "Supervisor graph coordinating the research and writing subagents."
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.93,
+          "detail": "AGENT: supervisor_graph",
+          "location": {
+            "path": "src/supervisor/supervisor_prebuilt.py",
+            "line": 19
+          }
+        }
+      ]
+    },
+    {
+      "id": "4c6cc957-c3b6-471d-aef6-808f93450005",
+      "name": "anthropic/claude-3-5-sonnet-latest",
+      "component_type": "MODEL",
+      "confidence": 0.94,
+      "metadata": {
+        "extras": {
+          "canonical_name": "anthropic/claude-3-5-sonnet-latest",
+          "adapter": "gt",
+          "description": "Default Anthropic chat model for the configurable ReAct agent.",
+          "synonyms": [
+            "claude-3-5-sonnet-latest"
+          ]
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.94,
+          "detail": "MODEL: anthropic/claude-3-5-sonnet-latest",
+          "location": {
+            "path": "src/react_agent/configuration.py",
+            "line": 19
+          }
+        }
+      ]
+    },
+    {
+      "id": "bb5cf155-b4a7-441c-a3ee-1d45ab530006",
+      "name": "openai/gpt-4.1",
+      "component_type": "MODEL",
+      "confidence": 0.92,
+      "metadata": {
+        "extras": {
+          "canonical_name": "openai/gpt-4.1",
+          "adapter": "gt",
+          "description": "Default OpenAI model used by the configurable graph builder.",
+          "synonyms": [
+            "gpt-4.1"
+          ]
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "MODEL: openai/gpt-4.1",
+          "location": {
+            "path": "src/react_agent/graph.py",
+            "line": 20
+          }
+        }
+      ]
+    },
+    {
+      "id": "f8b32848-61cf-4fa2-8d24-38b90d3b0007",
+      "name": "openai/gpt-4.1-mini",
+      "component_type": "MODEL",
+      "confidence": 0.9,
+      "metadata": {
+        "extras": {
+          "canonical_name": "openai/gpt-4.1-mini",
+          "adapter": "gt",
+          "description": "OpenAI mini model used by the no-config ReAct demo.",
+          "synonyms": [
+            "gpt-4.1-mini"
+          ]
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.9,
+          "detail": "MODEL: openai/gpt-4.1-mini",
+          "location": {
+            "path": "src/react_agent/graph_without_config.py",
+            "line": 8
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "MODEL: openai/gpt-4.1-mini",
+          "location": {
+            "path": "src/react_agent/configuration.py"
+          }
+        }
+      ]
+    },
+    {
+      "id": "bf556b42-bdc5-438c-8d98-e7b8577c0008",
+      "name": "finance_research",
+      "component_type": "TOOL",
+      "confidence": 0.95,
+      "metadata": {
+        "framework": "langchain",
+        "extras": {
+          "canonical_name": "finance_research",
+          "adapter": "gt",
+          "description": "Tool wrapper over Yahoo Finance news research."
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.95,
+          "detail": "TOOL: finance_research",
+          "location": {
+            "path": "src/react_agent/tools.py",
+            "line": 16
+          }
+        }
+      ]
+    },
+    {
+      "id": "4ad7337c-bad8-4c6c-bdf0-14d74e280009",
+      "name": "advanced_research_tool",
+      "component_type": "TOOL",
+      "confidence": 0.95,
+      "metadata": {
+        "framework": "langchain",
+        "extras": {
+          "canonical_name": "advanced_research_tool",
+          "adapter": "gt",
+          "description": "Tavily-backed deep web research tool."
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.95,
+          "detail": "TOOL: advanced_research_tool",
+          "location": {
+            "path": "src/react_agent/tools.py",
+            "line": 23
+          }
+        }
+      ]
+    },
+    {
+      "id": "436f73db-42af-45fb-8be2-a42539060010",
+      "name": "basic_research_tool",
+      "component_type": "TOOL",
+      "confidence": 0.95,
+      "metadata": {
+        "framework": "langchain",
+        "extras": {
+          "canonical_name": "basic_research_tool",
+          "adapter": "gt",
+          "description": "Lightweight Tavily-backed trend research tool."
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.95,
+          "detail": "TOOL: basic_research_tool",
+          "location": {
+            "path": "src/react_agent/tools.py",
+            "line": 39
+          }
+        }
+      ]
+    },
+    {
+      "id": "79fe1a15-0ff6-4311-8b20-22a4e63e0011",
+      "name": "get_todays_date",
+      "component_type": "TOOL",
+      "confidence": 0.94,
+      "metadata": {
+        "framework": "langchain",
+        "extras": {
+          "canonical_name": "get_todays_date",
+          "adapter": "gt",
+          "description": "Date helper tool exposed to the graph."
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.94,
+          "detail": "TOOL: get_todays_date",
+          "location": {
+            "path": "src/react_agent/tools.py",
+            "line": 56
+          }
+        }
+      ]
+    },
+    {
+      "id": "955cd5f7-50d9-474d-9bac-7b623c080012",
+      "name": "system_prompt",
+      "component_type": "PROMPT",
+      "confidence": 0.9,
+      "metadata": {
+        "framework": "langchain",
+        "extras": {
+          "canonical_name": "system_prompt",
+          "adapter": "gt",
+          "description": "Configurable system prompt for the generic ReAct agent.",
+          "synonyms": [
+            "generic"
+          ]
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.9,
+          "detail": "PROMPT: system_prompt",
+          "location": {
+            "path": "src/react_agent/configuration.py",
+            "line": 10
+          }
+        }
+      ]
+    },
+    {
+      "id": "b5ea732f-94f3-4bb9-b884-c0cdd8e90013",
+      "name": "supervisor_system_prompt",
+      "component_type": "PROMPT",
+      "confidence": 0.92,
+      "metadata": {
+        "framework": "langgraph",
+        "extras": {
+          "canonical_name": "supervisor_system_prompt",
+          "adapter": "gt",
+          "description": "Routing prompt for the content-director supervisor agent."
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "PROMPT: supervisor_system_prompt",
+          "location": {
+            "path": "src/supervisor/supervisor_configuration.py",
+            "line": 12
+          }
+        }
+      ]
+    },
+    {
+      "id": "eaf21270-ef2c-5cbf-b4ec-3512d199193b",
+      "name": "Make Graph",
+      "component_type": "PROMPT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "make_graph",
+          "adapter": "gt",
+          "description": "PROMPT detected in cookbooks"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "PROMPT: Make Graph",
+          "location": {
+            "path": "src/react_agent/graph_without_config.py",
+            "line": 10
+          }
+        }
+      ]
+    },
+    {
+      "id": "97c2c394-a560-5b69-ae40-e704757e776c",
+      "name": "wrapped",
+      "component_type": "TOOL",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "wrapped",
+          "adapter": "gt",
+          "description": "TOOL detected in cookbooks"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "TOOL: wrapped",
+          "location": {
+            "path": "src/react_agent/tools.py",
+            "line": 19
+          }
+        }
+      ]
+    },
+    {
+      "id": "79d1e882-bdc6-5b12-9c35-ba2d22e7ebb8",
+      "name": "compiled_graph",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "compiled_graph",
+          "adapter": "gt",
+          "description": "AGENT detected in cookbooks"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "AGENT: compiled_graph",
+          "location": {
+            "path": "src/supervisor/supervisor_prebuilt.py",
+            "line": 26
+          }
+        }
+      ]
+    },
+    {
+      "id": "f11b6401-a57d-498e-a097-6e91fbdb098e",
+      "name": "claude-sonnet-4-20250514",
+      "component_type": "MODEL",
+      "confidence": 0.75,
+      "metadata": {
+        "extras": {}
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.75,
+          "detail": "MODEL: claude-sonnet-4-20250514",
+          "location": {
+            "path": "src/react_agent/configuration.py",
+            "line": 1
+          }
+        }
+      ],
+      "synonyms": [],
+      "alt_file_paths": [],
+      "relationships": null
+    }
+  ],
+  "edges": []
+}

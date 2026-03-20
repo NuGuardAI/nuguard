@@ -1,0 +1,13 @@
+providers:
+  groq:
+    model: llama-3.3-70b-versatile
+    base_url: https://api.groq.com/openai/v1
+    enabled: true
+  gemini:
+    model: gemini-2.0-flash
+    base_url: https://generativelanguage.googleapis.com/v1beta/openai/
+    enabled: true
+  ollama:
+    model: llama3.2:3b
+    base_url: http://localhost:11434/v1
+    enabled: false

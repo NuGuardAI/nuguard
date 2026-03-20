@@ -1,183 +1,154 @@
-"""SarifExporterPlugin — convert VLA findings to SARIF 2.1.0."""
+"""SARIF 2.1.0 export plugin.
 
+Runs the built-in vulnerability scanner and converts its findings to
+SARIF (Static Analysis Results Interchange Format) 2.1.0, consumable
+by GitHub Code Scanning, VS Code SARIF Viewer, and other SARIF-aware tools.
+
+Severity → SARIF level mapping
+-------------------------------
+  CRITICAL / HIGH  → error
+  MEDIUM           → warning
+  LOW / INFO / *   → note
+
+Config keys
+-----------
+  provider       vela-rules | osv | grype | all  (default: vela-rules)
+  timeout        network timeout in seconds       (default: 15.0)
+  grype_timeout  grype subprocess timeout         (default: 60.0)
+  artifact_uri   URI for the scanned artifact     (default: sbom target or "sbom.json")
+"""
 from __future__ import annotations
 
-import json
+import logging
 from typing import Any
 
-from nuguard.models.sbom import AiSbomDocument
-from nuguard.sbom.toolbox.plugins._base import ToolResult
-from nuguard.sbom.toolbox.plugins.vulnerability import VulnerabilityScannerPlugin
+from xelo.toolbox.models import ToolResult
+from xelo.toolbox.plugin_base import ToolPlugin
 
-_SARIF_SCHEMA = "https://schemastore.azurewebsites.net/schemas/json/sarif-2.1.0.json"
-_NUGUARD_VERSION = "0.1.0"
+_log = logging.getLogger("toolbox.plugins.sarif")
 
-_LEVEL_MAP = {
-    "critical": "error",
-    "high": "error",
-    "medium": "warning",
-    "low": "note",
+_SARIF_SCHEMA = (
+    "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/"
+    "Schemata/sarif-schema-2.1.0.json"
+)
+_TOOL_NAME     = "xelo-toolbox"
+_TOOL_VERSION  = "0.1.2"
+_TOOL_INFO_URI = "https://nuguard.ai"
+
+_SEV_TO_LEVEL: dict[str, str] = {
+    "CRITICAL": "error",
+    "HIGH":     "error",
+    "MEDIUM":   "warning",
+    "LOW":      "note",
+    "INFO":     "note",
+    "UNKNOWN":  "note",
 }
 
 
-class SarifExporterPlugin:
-    """Export SBOM toolbox findings as SARIF 2.1.0."""
+# ── SARIF builder helpers ─────────────────────────────────────────────────────
 
-    def run(self, sbom: AiSbomDocument | dict, config: dict | None = None) -> ToolResult:
-        """Export findings from *sbom* to SARIF format.
+def _make_rule(finding: dict[str, Any]) -> dict[str, Any]:
+    rule_id = finding["rule_id"]
+    title   = finding.get("title", rule_id)
+    desc    = finding.get("description", "")
+    return {
+        "id":               rule_id,
+        "name":             rule_id,
+        "shortDescription": {"text": title},
+        "fullDescription":  {"text": desc},
+        "helpUri":          finding.get("advisory_url") or _TOOL_INFO_URI,
+        "properties": {
+            "tags":     ["security"],
+            "severity": finding.get("severity", "UNKNOWN"),
+        },
+    }
 
-        Runs VulnerabilityScannerPlugin internally, then converts findings to
-        SARIF 2.1.0.  The SARIF dict is returned in ``details[0]["sarif"]``.
 
-        Args:
-            sbom: :class:`~nuguard.models.sbom.AiSbomDocument` or plain dict.
-            config: Optional ``output_path`` to write SARIF JSON to disk.
+def _make_result(finding: dict[str, Any], artifact_uri: str) -> dict[str, Any]:
+    level    = _SEV_TO_LEVEL.get(finding.get("severity", "UNKNOWN"), "note")
+    affected = finding.get("affected") or []
+    msg      = finding.get("description", finding.get("title", finding["rule_id"]))
+    if affected:
+        msg += f" Affected: {', '.join(str(a) for a in affected)}."
 
-        Returns:
-            :class:`~nuguard.sbom.toolbox.plugins._base.ToolResult` with SARIF
-            in ``details``.
-        """
-        config = config or {}
-        if isinstance(sbom, dict):
-            from nuguard.sbom.extractor.serializer import AiSbomSerializer
-            doc = AiSbomSerializer.from_json(sbom)
-        else:
-            doc = sbom
-
-        # Run vulnerability scanner to get findings
-        vuln_plugin = VulnerabilityScannerPlugin()
-        vuln_result = vuln_plugin.run(doc, config)
-
-        sarif = self._build_sarif(vuln_result.details, doc)
-
-        # Optionally write to file
-        output_path = config.get("output_path")
-        if output_path:
-            try:
-                import pathlib
-                pathlib.Path(output_path).write_text(
-                    json.dumps(sarif, indent=2), encoding="utf-8"
-                )
-            except Exception:
-                pass
-
-        return ToolResult(
-            status=vuln_result.status,
-            message=f"SARIF export complete. {vuln_result.message}",
-            details=[{"sarif": sarif}],
-        )
-
-    def _build_sarif(
-        self, findings: list[dict[str, Any]], doc: AiSbomDocument
-    ) -> dict[str, Any]:
-        rules: list[dict] = []
-        results: list[dict] = []
-        seen_rules: set[str] = set()
-
-        for finding in findings:
-            rule_id = finding.get("rule_id", "UNKNOWN")
-            severity = finding.get("severity", "medium")
-            description = finding.get("description", "")
-            affected_nodes = finding.get("affected_nodes", [])
-            remediation = finding.get("remediation", "")
-
-            if rule_id not in seen_rules:
-                seen_rules.add(rule_id)
-                rules.append(
-                    {
-                        "id": rule_id,
-                        "name": rule_id,
-                        "shortDescription": {"text": description[:100]},
-                        "fullDescription": {"text": description},
-                        "help": {"text": remediation},
-                        "properties": {"severity": severity},
+    sarif_result: dict[str, Any] = {
+        "ruleId": finding["rule_id"],
+        "level":  level,
+        "message": {"text": msg},
+        "locations": [
+            {
+                "physicalLocation": {
+                    "artifactLocation": {
+                        "uri":       artifact_uri,
+                        "uriBaseId": "%SRCROOT%",
                     }
-                )
-
-            # Build locations from affected nodes
-            locations = self._build_locations(affected_nodes, doc)
-
-            results.append(
-                {
-                    "ruleId": rule_id,
-                    "level": _LEVEL_MAP.get(severity, "warning"),
-                    "message": {"text": description},
-                    "locations": locations,
-                    "properties": {
-                        "severity": severity,
-                        "affected_nodes": affected_nodes,
-                        "remediation": remediation,
-                    },
                 }
-            )
+            }
+        ],
+    }
+    if finding.get("remediation"):
+        sarif_result["fixes"] = [{"description": {"text": finding["remediation"]}}]
+    return sarif_result
+
+
+# ── Plugin ────────────────────────────────────────────────────────────────────
+
+class SarifExporterPlugin(ToolPlugin):
+    name = "sarif_export"
+
+    def run(self, sbom: dict[str, Any], config: dict[str, Any]) -> ToolResult:
+        from xelo.toolbox.plugins.vulnerability import VulnerabilityScannerPlugin
+
+        artifact_uri = (
+            config.get("artifact_uri")
+            or sbom.get("target")
+            or "sbom.json"
+        )
+        vuln_config: dict[str, Any] = {
+            "provider":      config.get("provider", "vela-rules"),
+            "timeout":       float(config.get("timeout", 15.0)),
+            "grype_timeout": float(config.get("grype_timeout", 60.0)),
+        }
+
+        _log.info(
+            "running vuln scan for SARIF export (provider=%s)", vuln_config["provider"]
+        )
+        vuln_result = VulnerabilityScannerPlugin().run(sbom, vuln_config)
+        findings: list[dict[str, Any]] = vuln_result.details.get("findings") or []
+        _log.info("building SARIF 2.1.0 document from %d finding(s)", len(findings))
+
+        # Deduplicate rules by rule_id (preserve first-seen order)
+        seen_rule_ids: set[str] = set()
+        rules: list[dict[str, Any]] = []
+        for f in findings:
+            rid = f["rule_id"]
+            if rid not in seen_rule_ids:
+                seen_rule_ids.add(rid)
+                rules.append(_make_rule(f))
+
+        results = [_make_result(f, artifact_uri) for f in findings]
 
         sarif: dict[str, Any] = {
-            "version": "2.1.0",
             "$schema": _SARIF_SCHEMA,
+            "version": "2.1.0",
             "runs": [
                 {
                     "tool": {
                         "driver": {
-                            "name": "nuguard",
-                            "version": _NUGUARD_VERSION,
-                            "informationUri": "https://github.com/NuGuardAI/nuguard-oss",
-                            "rules": rules,
+                            "name":           _TOOL_NAME,
+                            "version":        _TOOL_VERSION,
+                            "informationUri": _TOOL_INFO_URI,
+                            "rules":          rules,
                         }
                     },
                     "results": results,
-                    "artifacts": [
-                        {
-                            "location": {"uri": doc.target},
-                            "description": {"text": f"AI-SBOM for {doc.target}"},
-                        }
-                    ],
                 }
             ],
         }
-        return sarif
 
-    def _build_locations(
-        self, node_ids: list[str], doc: AiSbomDocument
-    ) -> list[dict]:
-        locations: list[dict] = []
-        node_map = {n.id: n for n in doc.nodes}
-        for nid in node_ids[:3]:  # cap at 3 locations per result
-            node = node_map.get(nid)
-            if not node:
-                continue
-            # Get file path from evidence if available
-            ev_path = None
-            if node.evidence:
-                ev = node.evidence[0]
-                if ev.location:
-                    ev_path = ev.location.path
-
-            uri = ev_path or doc.target
-            locations.append(
-                {
-                    "physicalLocation": {
-                        "artifactLocation": {"uri": uri},
-                        "region": {
-                            "startLine": (
-                                node.evidence[0].location.line
-                                if node.evidence and node.evidence[0].location and node.evidence[0].location.line
-                                else 1
-                            )
-                        },
-                    },
-                    "logicalLocations": [
-                        {
-                            "name": node.name,
-                            "kind": node.component_type.value,
-                        }
-                    ],
-                }
-            )
-        return locations or [
-            {
-                "physicalLocation": {
-                    "artifactLocation": {"uri": doc.target},
-                    "region": {"startLine": 1},
-                }
-            }
-        ]
+        return ToolResult(
+            status=vuln_result.status,
+            tool=self.name,
+            message=f"SARIF 2.1.0 export generated with {len(findings)} finding(s)",
+            details=sarif,
+        )

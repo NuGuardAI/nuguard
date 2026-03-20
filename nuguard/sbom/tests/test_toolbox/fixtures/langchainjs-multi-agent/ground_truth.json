@@ -1,0 +1,651 @@
+{
+  "schema_version": "1.1.0",
+  "generated_at": "2026-03-10T00:00:00Z",
+  "generator": "codex",
+  "target": "https://github.com/langchain-ai/langchainjs",
+  "summary": {
+    "frameworks": [
+      "langchain",
+      "langgraph"
+    ]
+  },
+  "nodes": [
+    {
+      "id": "1",
+      "name": "langgraph",
+      "component_type": "FRAMEWORK",
+      "confidence": 0.98,
+      "metadata": {
+        "framework": "langgraph",
+        "extras": {
+          "canonical_name": "langgraph",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.98,
+          "detail": "FRAMEWORK: langgraph",
+          "location": {
+            "path": "multi-agent/handoffs.ts",
+            "line": 7
+          }
+        }
+      ]
+    },
+    {
+      "id": "2",
+      "name": "salesAgent",
+      "component_type": "AGENT",
+      "confidence": 0.94,
+      "metadata": {
+        "framework": "langchain",
+        "extras": {
+          "canonical_name": "salesAgent",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.94,
+          "detail": "AGENT: salesAgent",
+          "location": {
+            "path": "multi-agent/handoffs.ts",
+            "line": 72
+          }
+        }
+      ]
+    },
+    {
+      "id": "3",
+      "name": "supportAgent",
+      "component_type": "AGENT",
+      "confidence": 0.94,
+      "metadata": {
+        "framework": "langchain",
+        "extras": {
+          "canonical_name": "supportAgent",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.94,
+          "detail": "AGENT: supportAgent",
+          "location": {
+            "path": "multi-agent/handoffs.ts",
+            "line": 79
+          }
+        }
+      ]
+    },
+    {
+      "id": "4",
+      "name": "handoffs_graph",
+      "component_type": "AGENT",
+      "confidence": 0.94,
+      "metadata": {
+        "framework": "langgraph",
+        "extras": {
+          "canonical_name": "handoffs_graph",
+          "adapter": "gt",
+          "synonyms": [
+            "builder",
+            "graph"
+          ]
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.94,
+          "detail": "AGENT: handoffs_graph",
+          "location": {
+            "path": "multi-agent/handoffs.ts",
+            "line": 153
+          }
+        }
+      ]
+    },
+    {
+      "id": "5",
+      "name": "workflow",
+      "component_type": "AGENT",
+      "confidence": 0.94,
+      "metadata": {
+        "framework": "langgraph",
+        "extras": {
+          "canonical_name": "workflow",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.94,
+          "detail": "AGENT: workflow",
+          "location": {
+            "path": "multi-agent/router-knowledge-base.ts",
+            "line": 274
+          }
+        }
+      ]
+    },
+    {
+      "id": "6",
+      "name": "transfer_to_sales",
+      "component_type": "TOOL",
+      "confidence": 0.95,
+      "metadata": {
+        "framework": "langchain",
+        "extras": {
+          "canonical_name": "transfer_to_sales",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.95,
+          "detail": "TOOL: transfer_to_sales",
+          "location": {
+            "path": "multi-agent/handoffs.ts",
+            "line": 19
+          }
+        }
+      ]
+    },
+    {
+      "id": "7",
+      "name": "transfer_to_support",
+      "component_type": "TOOL",
+      "confidence": 0.95,
+      "metadata": {
+        "framework": "langchain",
+        "extras": {
+          "canonical_name": "transfer_to_support",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.95,
+          "detail": "TOOL: transfer_to_support",
+          "location": {
+            "path": "multi-agent/handoffs.ts",
+            "line": 45
+          }
+        }
+      ]
+    },
+    {
+      "id": "8",
+      "name": "search_knowledge_base",
+      "component_type": "TOOL",
+      "confidence": 0.95,
+      "metadata": {
+        "framework": "langchain",
+        "extras": {
+          "canonical_name": "search_knowledge_base",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.95,
+          "detail": "TOOL: search_knowledge_base",
+          "location": {
+            "path": "multi-agent/router-knowledge-base.ts",
+            "line": 304
+          }
+        }
+      ]
+    },
+    {
+      "id": "9",
+      "name": "anthropic:claude-sonnet-4-20250514",
+      "component_type": "MODEL",
+      "confidence": 0.94,
+      "metadata": {
+        "extras": {
+          "canonical_name": "anthropic:claude-sonnet-4-20250514",
+          "adapter": "gt",
+          "synonyms": [
+            "claude-sonnet-4-20250514"
+          ]
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.94,
+          "detail": "MODEL: anthropic:claude-sonnet-4-20250514",
+          "location": {
+            "path": "multi-agent/handoffs.ts",
+            "line": 73
+          }
+        }
+      ]
+    },
+    {
+      "id": "10",
+      "name": "gpt-4o-mini",
+      "component_type": "MODEL",
+      "confidence": 0.94,
+      "metadata": {
+        "extras": {
+          "canonical_name": "gpt-4o-mini",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.94,
+          "detail": "MODEL: gpt-4o-mini",
+          "location": {
+            "path": "multi-agent/router-knowledge-base.ts",
+            "line": 169
+          }
+        }
+      ]
+    },
+    {
+      "id": "11",
+      "name": "sales_agent_system_prompt",
+      "component_type": "PROMPT",
+      "confidence": 0.92,
+      "metadata": {
+        "framework": "langchain",
+        "extras": {
+          "canonical_name": "sales_agent_system_prompt",
+          "adapter": "gt",
+          "synonyms": [
+            "System Prompt"
+          ]
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "PROMPT: sales_agent_system_prompt",
+          "location": {
+            "path": "multi-agent/handoffs.ts",
+            "line": 75
+          }
+        }
+      ]
+    },
+    {
+      "id": "12",
+      "name": "support_agent_system_prompt",
+      "component_type": "PROMPT",
+      "confidence": 0.92,
+      "metadata": {
+        "framework": "langchain",
+        "extras": {
+          "canonical_name": "support_agent_system_prompt",
+          "adapter": "gt",
+          "synonyms": [
+            "System Prompt",
+            "systemPrompt",
+            "generic",
+            "system_prompt"
+          ]
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "PROMPT: support_agent_system_prompt",
+          "location": {
+            "path": "multi-agent/handoffs.ts",
+            "line": 82
+          }
+        }
+      ]
+    },
+    {
+      "id": "d9ecde94-7ad9-5831-bacf-35704cb8829a",
+      "name": "classify",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "classify",
+          "adapter": "gt",
+          "description": "AGENT detected in langchainjs-multi-agent"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "AGENT: classify",
+          "location": {
+            "path": "multi-agent/router-knowledge-base.ts",
+            "line": 274
+          }
+        }
+      ]
+    },
+    {
+      "id": "5e503d72-2e6f-5b39-a566-e82f0efbe342",
+      "name": "conversationalAgent",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "conversationalagent",
+          "adapter": "gt",
+          "description": "AGENT detected in langchainjs-multi-agent"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "AGENT: conversationalAgent",
+          "location": {
+            "path": "multi-agent/router-knowledge-base.ts",
+            "line": 319
+          }
+        }
+      ]
+    },
+    {
+      "id": "b5346e65-80fd-57a0-bb20-d2d047d03649",
+      "name": "githubAgent",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "githubagent",
+          "adapter": "gt",
+          "description": "AGENT detected in langchainjs-multi-agent"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "AGENT: githubAgent",
+          "location": {
+            "path": "multi-agent/router-knowledge-base.ts",
+            "line": 139
+          }
+        }
+      ]
+    },
+    {
+      "id": "f1f36418-b821-52d2-b423-8230abf12d7e",
+      "name": "notionAgent",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "notionagent",
+          "adapter": "gt",
+          "description": "AGENT detected in langchainjs-multi-agent"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "AGENT: notionAgent",
+          "location": {
+            "path": "multi-agent/router-knowledge-base.ts",
+            "line": 149
+          }
+        }
+      ]
+    },
+    {
+      "id": "507e9a16-9f0b-532c-aef6-68aefe05101e",
+      "name": "slackAgent",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "slackagent",
+          "adapter": "gt",
+          "description": "AGENT detected in langchainjs-multi-agent"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "AGENT: slackAgent",
+          "location": {
+            "path": "multi-agent/router-knowledge-base.ts",
+            "line": 159
+          }
+        }
+      ]
+    },
+    {
+      "id": "5cc9a02f-3bdd-5631-84b9-2a43b5696e89",
+      "name": "synthesize",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "synthesize",
+          "adapter": "gt",
+          "description": "AGENT detected in langchainjs-multi-agent"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "AGENT: synthesize",
+          "location": {
+            "path": "multi-agent/router-knowledge-base.ts",
+            "line": 274
+          }
+        }
+      ]
+    },
+    {
+      "id": "1f557cf4-3442-577f-abfc-c0e212d6db20",
+      "name": "get_page",
+      "component_type": "TOOL",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "get_page",
+          "adapter": "gt",
+          "description": "TOOL detected in langchainjs-multi-agent"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "TOOL: get_page",
+          "location": {
+            "path": "multi-agent/router-knowledge-base.ts",
+            "line": 95
+          }
+        }
+      ]
+    },
+    {
+      "id": "ae26a81d-f974-538c-8c96-b094208790ec",
+      "name": "get_thread",
+      "component_type": "TOOL",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "get_thread",
+          "adapter": "gt",
+          "description": "TOOL detected in langchainjs-multi-agent"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "TOOL: get_thread",
+          "location": {
+            "path": "multi-agent/router-knowledge-base.ts",
+            "line": 121
+          }
+        }
+      ]
+    },
+    {
+      "id": "a485a2d6-8d17-50e4-a516-fc82c5fdac7c",
+      "name": "search_code",
+      "component_type": "TOOL",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "search_code",
+          "adapter": "gt",
+          "description": "TOOL detected in langchainjs-multi-agent"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "TOOL: search_code",
+          "location": {
+            "path": "multi-agent/router-knowledge-base.ts",
+            "line": 42
+          }
+        }
+      ]
+    },
+    {
+      "id": "c301d1b7-dbcd-513c-8e56-25303a6242e3",
+      "name": "search_issues",
+      "component_type": "TOOL",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "search_issues",
+          "adapter": "gt",
+          "description": "TOOL detected in langchainjs-multi-agent"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "TOOL: search_issues",
+          "location": {
+            "path": "multi-agent/router-knowledge-base.ts",
+            "line": 56
+          }
+        }
+      ]
+    },
+    {
+      "id": "7c85b899-8f7f-5187-9b68-e885ca06375b",
+      "name": "search_notion",
+      "component_type": "TOOL",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "search_notion",
+          "adapter": "gt",
+          "description": "TOOL detected in langchainjs-multi-agent"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "TOOL: search_notion",
+          "location": {
+            "path": "multi-agent/router-knowledge-base.ts",
+            "line": 82
+          }
+        }
+      ]
+    },
+    {
+      "id": "8daa9fb4-c453-553e-81bd-42c070e43295",
+      "name": "search_prs",
+      "component_type": "TOOL",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "search_prs",
+          "adapter": "gt",
+          "description": "TOOL detected in langchainjs-multi-agent"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "TOOL: search_prs",
+          "location": {
+            "path": "multi-agent/router-knowledge-base.ts",
+            "line": 69
+          }
+        }
+      ]
+    },
+    {
+      "id": "4d958545-232b-5084-8321-3b6de642561e",
+      "name": "search_slack",
+      "component_type": "TOOL",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "search_slack",
+          "adapter": "gt",
+          "description": "TOOL detected in langchainjs-multi-agent"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "TOOL: search_slack",
+          "location": {
+            "path": "multi-agent/router-knowledge-base.ts",
+            "line": 108
+          }
+        }
+      ]
+    },
+    {
+      "id": "7c7bfeca-9d4f-403c-ba50-e4bf9ee92618",
+      "name": "generic",
+      "component_type": "AUTH",
+      "confidence": 0.6,
+      "metadata": {
+        "extras": {
+          "canonical_name": "generic",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.6,
+          "detail": "AUTH: generic",
+          "location": {
+            "path": "multi-agent/router-knowledge-base.ts"
+          }
+        }
+      ]
+    }
+  ],
+  "edges": []
+}

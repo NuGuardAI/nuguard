@@ -1,0 +1,524 @@
+{
+  "schema_version": "1.1.0",
+  "generated_at": "2026-03-10T00:00:00Z",
+  "generator": "codex",
+  "target": "https://github.com/Uma-Ramanathan-1/rag-chatbot-demo",
+  "summary": {
+    "frameworks": [
+      "langchain",
+      "fastapi",
+      "streamlit"
+    ]
+  },
+  "nodes": [
+    {
+      "id": "d0ea3056-d4ac-4d9d-91d4-a65a2d331111",
+      "name": "langchain",
+      "component_type": "FRAMEWORK",
+      "confidence": 0.98,
+      "metadata": {
+        "framework": "langchain",
+        "extras": {
+          "canonical_name": "langchain",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.98,
+          "detail": "FRAMEWORK: langchain",
+          "location": {
+            "path": "backend/app/main.py",
+            "line": 24
+          }
+        }
+      ]
+    },
+    {
+      "id": "44c82f8b-174d-4550-b95a-8a7a4d0f2222",
+      "name": "generic",
+      "component_type": "AUTH",
+      "confidence": 0.92,
+      "metadata": {
+        "extras": {
+          "canonical_name": "auth_generic",
+          "adapter": "gt",
+          "description": "Backend requires an OPENAI_API_KEY at startup."
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "AUTH: OPENAI_API_KEY",
+          "location": {
+            "path": "backend/app/config.py",
+            "line": 60
+          }
+        }
+      ]
+    },
+    {
+      "id": "7373d3bf-0307-42a8-8f65-bbb0fbc63333",
+      "name": "ChatOpenAI",
+      "component_type": "MODEL",
+      "confidence": 0.96,
+      "metadata": {
+        "framework": "langchain",
+        "extras": {
+          "canonical_name": "ChatOpenAI",
+          "adapter": "gt",
+          "description": "Primary chat model provider used by the FastAPI application."
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.96,
+          "detail": "MODEL: ChatOpenAI",
+          "location": {
+            "path": "backend/app/main.py",
+            "line": 119
+          }
+        }
+      ]
+    },
+    {
+      "id": "38c2a822-0c13-4c54-ad8c-d29860de4444",
+      "name": "gpt-4",
+      "component_type": "MODEL",
+      "confidence": 0.9,
+      "metadata": {
+        "extras": {
+          "canonical_name": "gpt-4",
+          "adapter": "gt",
+          "description": "Default LLM model configured for ChatOpenAI."
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.9,
+          "detail": "MODEL: gpt-4",
+          "location": {
+            "path": "backend/app/config.py",
+            "line": 53
+          }
+        }
+      ]
+    },
+    {
+      "id": "db5830a3-4bc2-45ad-ae38-866186035555",
+      "name": "sentence-transformers/all-MiniLM-L6-v2",
+      "component_type": "MODEL",
+      "confidence": 0.94,
+      "metadata": {
+        "extras": {
+          "canonical_name": "sentence-transformers/all-MiniLM-L6-v2",
+          "adapter": "gt",
+          "description": "Embedding model used to build and query the FAISS indexes.",
+          "synonyms": [
+            "all-MiniLM-L6-v2",
+            "sentence-transformers/all-minilm-l6-v2"
+          ]
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.94,
+          "detail": "MODEL: sentence-transformers/all-MiniLM-L6-v2",
+          "location": {
+            "path": "backend/scripts/index_utils.py",
+            "line": 39
+          }
+        }
+      ]
+    },
+    {
+      "id": "10a0fc1e-17cb-4013-af8c-7593de686666",
+      "name": "docs_index",
+      "component_type": "DATASTORE",
+      "confidence": 0.9,
+      "metadata": {
+        "framework": "langchain",
+        "extras": {
+          "canonical_name": "docs_index",
+          "adapter": "gt",
+          "description": "FAISS vector index for documentation retrieval.",
+          "synonyms": [
+            "docs"
+          ]
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.9,
+          "detail": "DATASTORE: docs_index",
+          "location": {
+            "path": "backend/app/main.py",
+            "line": 72
+          }
+        },
+        {
+          "kind": "gt",
+          "confidence": 0.75,
+          "detail": "DATASTORE: docs_index (via FAISS.load_local loop in chains.py)",
+          "location": {
+            "path": "backend/app/chains.py",
+            "line": 64
+          }
+        },
+        {
+          "kind": "gt",
+          "confidence": 0.65,
+          "detail": "DATASTORE: docs_index (import of DOCS_INDEX_PATH constant)",
+          "location": {
+            "path": "backend/app/chains.py",
+            "line": 30
+          }
+        }
+      ]
+    },
+    {
+      "id": "85cbc3dc-4a78-4f5d-b4fe-b563e0da7777",
+      "name": "tickets_index",
+      "component_type": "DATASTORE",
+      "confidence": 0.9,
+      "metadata": {
+        "framework": "langchain",
+        "extras": {
+          "canonical_name": "tickets_index",
+          "adapter": "gt",
+          "description": "FAISS vector index for support ticket retrieval.",
+          "synonyms": [
+            "tickets"
+          ]
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.9,
+          "detail": "DATASTORE: tickets_index",
+          "location": {
+            "path": "backend/app/main.py",
+            "line": 81
+          }
+        },
+        {
+          "kind": "gt",
+          "confidence": 0.75,
+          "detail": "DATASTORE: tickets_index (via FAISS.load_local loop in chains.py)",
+          "location": {
+            "path": "backend/app/chains.py",
+            "line": 64
+          }
+        },
+        {
+          "kind": "gt",
+          "confidence": 0.65,
+          "detail": "DATASTORE: tickets_index (import of TICKETS_INDEX_PATH constant)",
+          "location": {
+            "path": "backend/app/chains.py",
+            "line": 31
+          }
+        }
+      ]
+    },
+    {
+      "id": "1f8c550a-eeb3-4e4e-8528-b8af8e878888",
+      "name": "configs_index",
+      "component_type": "DATASTORE",
+      "confidence": 0.9,
+      "metadata": {
+        "framework": "langchain",
+        "extras": {
+          "canonical_name": "configs_index",
+          "adapter": "gt",
+          "description": "FAISS vector index for configuration retrieval.",
+          "synonyms": [
+            "configs"
+          ]
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.9,
+          "detail": "DATASTORE: configs_index",
+          "location": {
+            "path": "backend/app/main.py",
+            "line": 90
+          }
+        },
+        {
+          "kind": "gt",
+          "confidence": 0.75,
+          "detail": "DATASTORE: configs_index (via FAISS.load_local loop in chains.py)",
+          "location": {
+            "path": "backend/app/chains.py",
+            "line": 64
+          }
+        },
+        {
+          "kind": "gt",
+          "confidence": 0.65,
+          "detail": "DATASTORE: configs_index (import of CONFIGS_INDEX_PATH constant)",
+          "location": {
+            "path": "backend/app/chains.py",
+            "line": 32
+          }
+        }
+      ]
+    },
+    {
+      "id": "1f3e2c2f-8e4b-4fff-97ff-0c119cb69999",
+      "name": "chat_history_index",
+      "component_type": "DATASTORE",
+      "confidence": 0.92,
+      "metadata": {
+        "framework": "langchain",
+        "extras": {
+          "canonical_name": "chat_history_index",
+          "adapter": "gt",
+          "description": "FAISS vector index used as semantic chat memory.",
+          "synonyms": [
+            "chat_vectorstore",
+            "chat"
+          ]
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "DATASTORE: chat_history_index",
+          "location": {
+            "path": "backend/app/chat_history.py",
+            "line": 24
+          }
+        },
+        {
+          "kind": "gt",
+          "confidence": 0.85,
+          "detail": "DATASTORE: chat_history_index (FAISS.load_local in main.py startup)",
+          "location": {
+            "path": "backend/app/main.py",
+            "line": 99
+          }
+        },
+        {
+          "kind": "gt",
+          "confidence": 0.65,
+          "detail": "DATASTORE: chat_history_index (import of CHAT_HISTORY_INDEX_PATH constant)",
+          "location": {
+            "path": "backend/app/chat_history.py",
+            "line": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": "0b43de9f-b541-41f8-894a-f11987f2aaaa",
+      "name": "retrieval_prompt",
+      "component_type": "PROMPT",
+      "confidence": 0.93,
+      "metadata": {
+        "framework": "langchain",
+        "extras": {
+          "canonical_name": "retrieval_prompt",
+          "adapter": "gt",
+          "description": "System and user prompt used for grounded retrieval responses."
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.93,
+          "detail": "PROMPT: retrieval_prompt",
+          "location": {
+            "path": "backend/app/main.py",
+            "line": 144
+          }
+        }
+      ]
+    },
+    {
+      "id": "ce56cb87-f763-4f5b-a4b7-4e58c8eabbbb",
+      "name": "fallback_prompt",
+      "component_type": "PROMPT",
+      "confidence": 0.9,
+      "metadata": {
+        "framework": "langchain",
+        "extras": {
+          "canonical_name": "fallback_prompt",
+          "adapter": "gt",
+          "description": "Fallback prompt used by the default chain when retrieval routing falls through."
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.9,
+          "detail": "PROMPT: fallback_prompt",
+          "location": {
+            "path": "backend/app/main.py",
+            "line": 163
+          }
+        }
+      ]
+    },
+    {
+      "id": "c9e55c0c-5f7a-4480-8658-06730845cccc",
+      "name": "persona_chat_prompt",
+      "component_type": "PROMPT",
+      "confidence": 0.88,
+      "metadata": {
+        "framework": "langchain",
+        "extras": {
+          "canonical_name": "persona_chat_prompt",
+          "adapter": "gt",
+          "description": "Persona-aware conversational prompt assembled in chains.py.",
+          "synonyms": [
+            "prompt"
+          ]
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.88,
+          "detail": "PROMPT: persona_chat_prompt",
+          "location": {
+            "path": "backend/app/chains.py",
+            "line": 95
+          }
+        }
+      ]
+    },
+    {
+      "id": "11f9c3d3-4f82-5fa1-b365-3d0fe2923ab8",
+      "name": "faiss",
+      "component_type": "DATASTORE",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "faiss",
+          "adapter": "gt",
+          "description": "DATASTORE detected in rag-chatbot-demo"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "DATASTORE: faiss",
+          "location": {
+            "path": "backend/scripts/index_utils.py",
+            "line": 43
+          }
+        }
+      ]
+    },
+    {
+      "id": "605f2ca5-71b0-5060-8009-b807bc08d2d0",
+      "name": "code_execution",
+      "component_type": "PRIVILEGE",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "code_execution",
+          "adapter": "gt",
+          "description": "PRIVILEGE detected in rag-chatbot-demo"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "PRIVILEGE: code_execution",
+          "location": {
+            "path": "frontend/streamlit_app.py",
+            "line": 59
+          }
+        }
+      ]
+    },
+    {
+      "id": "4ed0d620-8aa4-5e2a-b5d4-19acfe460ebc",
+      "name": "filesystem_write",
+      "component_type": "PRIVILEGE",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "filesystem_write",
+          "adapter": "gt",
+          "description": "PRIVILEGE detected in rag-chatbot-demo"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "PRIVILEGE: filesystem_write",
+          "location": {
+            "path": "frontend/streamlit_app.py",
+            "line": 380
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ee9568e-52d9-5786-833e-49ed2616758e",
+      "name": "network_out",
+      "component_type": "PRIVILEGE",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "network_out",
+          "adapter": "gt",
+          "description": "PRIVILEGE detected in rag-chatbot-demo"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "PRIVILEGE: network_out",
+          "location": {
+            "path": "frontend/streamlit_app.py",
+            "line": 267
+          }
+        }
+      ]
+    },
+    {
+      "id": "12afe25f-d440-51d0-a37c-cfd311550a48",
+      "name": "System Prompt",
+      "component_type": "PROMPT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "system_prompt",
+          "adapter": "gt",
+          "description": "PROMPT detected in rag-chatbot-demo"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "PROMPT: System Prompt",
+          "location": {
+            "path": "backend/app/main.py",
+            "line": 149
+          }
+        }
+      ]
+    }
+  ],
+  "edges": []
+}

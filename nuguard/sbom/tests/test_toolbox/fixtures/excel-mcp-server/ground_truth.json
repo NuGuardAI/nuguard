@@ -1,0 +1,822 @@
+{
+  "schema_version": "1.1.0",
+  "generated_at": "2026-03-06T00:00:00Z",
+  "generator": "github_copilot",
+  "target": "local://excel-mcp-server",
+  "notes": "Updated 2026-03-06: FRAMEWORK name corrected to 'excel-mcp' (real FastMCP server name); added API_ENDPOINT nodes (sse + streamable-http transports, default port 8017 from FASTMCP_HOST/FASTMCP_PORT env vars); added filesystem_write PRIVILEGE (openpyxl wb.save() in calculations.py/workbook.py, os.makedirs in server.py); added FRAMEWORK->TOOL CALLS edges and FRAMEWORK->API_ENDPOINT USES edges. Note: primary GT path is calculations.py (first cache occurrence of wb.save), which is what the extractor reports after dedup.",
+  "nodes": [
+    {
+      "id": "8d342498-d54b-410f-91ed-bf05d1fbc661",
+      "name": "excel-mcp",
+      "component_type": "FRAMEWORK",
+      "confidence": 0.95,
+      "metadata": {
+        "extras": {
+          "canonical_name": "excel-mcp",
+          "adapter": "gt",
+          "synonyms": [
+            "framework:mcp_server"
+          ]
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.95,
+          "detail": "MCP server \"excel-mcp\" (FastMCP); 25 tools for Excel file manipulation; transports: sse (port 8017), streamable-http (port 8017)",
+          "location": {
+            "path": "src/excel_mcp/server.py",
+            "line": 68
+          }
+        }
+      ]
+    },
+    {
+      "id": "7f4848a8-e329-4992-8622-ed5a26c8dc7b",
+      "name": "apply_formula",
+      "component_type": "TOOL",
+      "confidence": 0.92,
+      "metadata": {
+        "extras": {
+          "canonical_name": "apply_formula",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "TOOL: apply_formula",
+          "location": {
+            "path": "src/excel_mcp/server.py",
+            "line": 96
+          }
+        }
+      ]
+    },
+    {
+      "id": "46d56564-7695-4301-b0d0-46bbfeba169a",
+      "name": "copy_range",
+      "component_type": "TOOL",
+      "confidence": 0.92,
+      "metadata": {
+        "extras": {
+          "canonical_name": "copy_range",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "TOOL: copy_range",
+          "location": {
+            "path": "src/excel_mcp/server.py",
+            "line": 568
+          }
+        }
+      ]
+    },
+    {
+      "id": "8c25da55-3066-4a7e-b4e1-78178453e40e",
+      "name": "copy_worksheet",
+      "component_type": "TOOL",
+      "confidence": 0.92,
+      "metadata": {
+        "extras": {
+          "canonical_name": "copy_worksheet",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "TOOL: copy_worksheet",
+          "location": {
+            "path": "src/excel_mcp/server.py",
+            "line": 429
+          }
+        }
+      ]
+    },
+    {
+      "id": "876fec62-dea0-4740-bfc6-19a7f4a412e5",
+      "name": "create_chart",
+      "component_type": "TOOL",
+      "confidence": 0.92,
+      "metadata": {
+        "extras": {
+          "canonical_name": "create_chart",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "TOOL: create_chart",
+          "location": {
+            "path": "src/excel_mcp/server.py",
+            "line": 329
+          }
+        }
+      ]
+    },
+    {
+      "id": "0bfe70a7-2243-481a-b36f-571a94f623ac",
+      "name": "create_pivot_table",
+      "component_type": "TOOL",
+      "confidence": 0.92,
+      "metadata": {
+        "extras": {
+          "canonical_name": "create_pivot_table",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "TOOL: create_pivot_table",
+          "location": {
+            "path": "src/excel_mcp/server.py",
+            "line": 365
+          }
+        }
+      ]
+    },
+    {
+      "id": "8a4caf39-989d-426d-90ab-8f9b0ae63c22",
+      "name": "create_table",
+      "component_type": "TOOL",
+      "confidence": 0.92,
+      "metadata": {
+        "extras": {
+          "canonical_name": "create_table",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "TOOL: create_table",
+          "location": {
+            "path": "src/excel_mcp/server.py",
+            "line": 399
+          }
+        }
+      ]
+    },
+    {
+      "id": "2f541ea8-ff90-42bc-982e-9f16c12a67c3",
+      "name": "create_workbook",
+      "component_type": "TOOL",
+      "confidence": 0.92,
+      "metadata": {
+        "extras": {
+          "canonical_name": "create_workbook",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "TOOL: create_workbook",
+          "location": {
+            "path": "src/excel_mcp/server.py",
+            "line": 291
+          }
+        }
+      ]
+    },
+    {
+      "id": "d2f15c03-566b-4829-ad68-c28a4ec2f871",
+      "name": "create_worksheet",
+      "component_type": "TOOL",
+      "confidence": 0.92,
+      "metadata": {
+        "extras": {
+          "canonical_name": "create_worksheet",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "TOOL: create_worksheet",
+          "location": {
+            "path": "src/excel_mcp/server.py",
+            "line": 310
+          }
+        }
+      ]
+    },
+    {
+      "id": "42671aab-357d-482a-ab71-a08939642e9b",
+      "name": "delete_range",
+      "component_type": "TOOL",
+      "confidence": 0.92,
+      "metadata": {
+        "extras": {
+          "canonical_name": "delete_range",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "TOOL: delete_range",
+          "location": {
+            "path": "src/excel_mcp/server.py",
+            "line": 601
+          }
+        }
+      ]
+    },
+    {
+      "id": "b31f32a9-1788-441b-a3a8-cc0c93bbc1c1",
+      "name": "delete_sheet_columns",
+      "component_type": "TOOL",
+      "confidence": 0.92,
+      "metadata": {
+        "extras": {
+          "canonical_name": "delete_sheet_columns",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "TOOL: delete_sheet_columns",
+          "location": {
+            "path": "src/excel_mcp/server.py",
+            "line": 774
+          }
+        }
+      ]
+    },
+    {
+      "id": "ea3a4aa0-ce74-4a2d-9efa-d681803dc4bf",
+      "name": "delete_sheet_rows",
+      "component_type": "TOOL",
+      "confidence": 0.92,
+      "metadata": {
+        "extras": {
+          "canonical_name": "delete_sheet_rows",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "TOOL: delete_sheet_rows",
+          "location": {
+            "path": "src/excel_mcp/server.py",
+            "line": 751
+          }
+        }
+      ]
+    },
+    {
+      "id": "9cff10b4-9470-4523-8bc4-d507cba988ec",
+      "name": "delete_worksheet",
+      "component_type": "TOOL",
+      "confidence": 0.92,
+      "metadata": {
+        "extras": {
+          "canonical_name": "delete_worksheet",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "TOOL: delete_worksheet",
+          "location": {
+            "path": "src/excel_mcp/server.py",
+            "line": 451
+          }
+        }
+      ]
+    },
+    {
+      "id": "04602979-889b-4c31-9c14-0d0acbb0b266",
+      "name": "format_range",
+      "component_type": "TOOL",
+      "confidence": 0.92,
+      "metadata": {
+        "extras": {
+          "canonical_name": "format_range",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "TOOL: format_range",
+          "location": {
+            "path": "src/excel_mcp/server.py",
+            "line": 152
+          }
+        }
+      ]
+    },
+    {
+      "id": "1e200c84-4694-403c-bc63-eee3210de195",
+      "name": "get_data_validation_info",
+      "component_type": "TOOL",
+      "confidence": 0.92,
+      "metadata": {
+        "extras": {
+          "canonical_name": "get_data_validation_info",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "TOOL: get_data_validation_info",
+          "location": {
+            "path": "src/excel_mcp/server.py",
+            "line": 656
+          }
+        }
+      ]
+    },
+    {
+      "id": "4ff7fb78-1b8d-4edb-b25e-dc11516cead1",
+      "name": "get_merged_cells",
+      "component_type": "TOOL",
+      "confidence": 0.92,
+      "metadata": {
+        "extras": {
+          "canonical_name": "get_merged_cells",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "TOOL: get_merged_cells",
+          "location": {
+            "path": "src/excel_mcp/server.py",
+            "line": 551
+          }
+        }
+      ]
+    },
+    {
+      "id": "9a6b91a7-11be-43e0-b668-6bb1f88bfead",
+      "name": "get_workbook_metadata",
+      "component_type": "TOOL",
+      "confidence": 0.92,
+      "metadata": {
+        "extras": {
+          "canonical_name": "get_workbook_metadata",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "TOOL: get_workbook_metadata",
+          "location": {
+            "path": "src/excel_mcp/server.py",
+            "line": 494
+          }
+        }
+      ]
+    },
+    {
+      "id": "1b20be33-91c2-40de-98b5-3872b32c847e",
+      "name": "insert_columns",
+      "component_type": "TOOL",
+      "confidence": 0.92,
+      "metadata": {
+        "extras": {
+          "canonical_name": "insert_columns",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "TOOL: insert_columns",
+          "location": {
+            "path": "src/excel_mcp/server.py",
+            "line": 728
+          }
+        }
+      ]
+    },
+    {
+      "id": "bfd3846a-8292-472d-afa0-af8b4c46827e",
+      "name": "insert_rows",
+      "component_type": "TOOL",
+      "confidence": 0.92,
+      "metadata": {
+        "extras": {
+          "canonical_name": "insert_rows",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "TOOL: insert_rows",
+          "location": {
+            "path": "src/excel_mcp/server.py",
+            "line": 705
+          }
+        }
+      ]
+    },
+    {
+      "id": "e35dfe88-7306-40d9-b4a7-51175569c3a7",
+      "name": "merge_cells",
+      "component_type": "TOOL",
+      "confidence": 0.92,
+      "metadata": {
+        "extras": {
+          "canonical_name": "merge_cells",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "TOOL: merge_cells",
+          "location": {
+            "path": "src/excel_mcp/server.py",
+            "line": 515
+          }
+        }
+      ]
+    },
+    {
+      "id": "33b2a3f7-9fe6-46e0-81a1-0fb124ed40bd",
+      "name": "read_data_from_excel",
+      "component_type": "TOOL",
+      "confidence": 0.92,
+      "metadata": {
+        "extras": {
+          "canonical_name": "read_data_from_excel",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "TOOL: read_data_from_excel",
+          "location": {
+            "path": "src/excel_mcp/server.py",
+            "line": 211
+          }
+        }
+      ]
+    },
+    {
+      "id": "0d04786d-bb29-4978-b840-5e8035c59b38",
+      "name": "rename_worksheet",
+      "component_type": "TOOL",
+      "confidence": 0.92,
+      "metadata": {
+        "extras": {
+          "canonical_name": "rename_worksheet",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "TOOL: rename_worksheet",
+          "location": {
+            "path": "src/excel_mcp/server.py",
+            "line": 472
+          }
+        }
+      ]
+    },
+    {
+      "id": "5beac336-4ccd-4fbe-a233-3d3d5b326878",
+      "name": "unmerge_cells",
+      "component_type": "TOOL",
+      "confidence": 0.92,
+      "metadata": {
+        "extras": {
+          "canonical_name": "unmerge_cells",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "TOOL: unmerge_cells",
+          "location": {
+            "path": "src/excel_mcp/server.py",
+            "line": 533
+          }
+        }
+      ]
+    },
+    {
+      "id": "71e503dc-caa3-402f-9e91-7ba1ce0ed2d4",
+      "name": "validate_excel_range",
+      "component_type": "TOOL",
+      "confidence": 0.92,
+      "metadata": {
+        "extras": {
+          "canonical_name": "validate_excel_range",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "TOOL: validate_excel_range",
+          "location": {
+            "path": "src/excel_mcp/server.py",
+            "line": 632
+          }
+        }
+      ]
+    },
+    {
+      "id": "7aace6b5-e858-497e-b3d0-1972ed4f8fc4",
+      "name": "validate_formula_syntax",
+      "component_type": "TOOL",
+      "confidence": 0.92,
+      "metadata": {
+        "extras": {
+          "canonical_name": "validate_formula_syntax",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "TOOL: validate_formula_syntax",
+          "location": {
+            "path": "src/excel_mcp/server.py",
+            "line": 129
+          }
+        }
+      ]
+    },
+    {
+      "id": "512f8241-f6ba-4ad5-9a59-58a955fc1ff7",
+      "name": "write_data_to_excel",
+      "component_type": "TOOL",
+      "confidence": 0.92,
+      "metadata": {
+        "extras": {
+          "canonical_name": "write_data_to_excel",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "TOOL: write_data_to_excel",
+          "location": {
+            "path": "src/excel_mcp/server.py",
+            "line": 258
+          }
+        }
+      ]
+    },
+    {
+      "id": "e7f4f43c-cdd6-43f7-a27b-d1a1f5bf4777",
+      "name": "0.0.0.0:8017 (sse)",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.88,
+      "metadata": {
+        "extras": {
+          "canonical_name": "0.0.0.0:8017 (sse)",
+          "adapter": "gt",
+          "synonyms": [
+            "0.0.0.0:8080 (sse)"
+          ]
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.88,
+          "detail": "MCP server SSE transport endpoint; host 0.0.0.0, default port 8017 (FASTMCP_PORT env var)",
+          "location": {
+            "path": "src/excel_mcp/server.py",
+            "line": 807
+          }
+        }
+      ]
+    },
+    {
+      "id": "97658d9d-fce6-48b6-8977-f42dac1786a1",
+      "name": "0.0.0.0:8017 (streamable-http)",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.88,
+      "metadata": {
+        "extras": {
+          "canonical_name": "0.0.0.0:8017 (streamable-http)",
+          "adapter": "gt",
+          "synonyms": [
+            "0.0.0.0:8000 (streamable-http)"
+          ]
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.88,
+          "detail": "MCP server streamable-HTTP transport endpoint; host 0.0.0.0, default port 8017 (FASTMCP_PORT env var)",
+          "location": {
+            "path": "src/excel_mcp/server.py",
+            "line": 826
+          }
+        }
+      ]
+    },
+    {
+      "id": "342f3468-275c-403a-a9bb-c2c92b9183b8",
+      "name": "filesystem_write",
+      "component_type": "PRIVILEGE",
+      "confidence": 0.9,
+      "metadata": {
+        "extras": {
+          "canonical_name": "filesystem_write",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.9,
+          "detail": "Excel files written/modified via openpyxl wb.save() in calculations.py (and workbook.py); extractor deduplicates to first cache occurrence (calculations.py:45); privilege_scope=filesystem_write",
+          "location": {
+            "path": "src/excel_mcp/calculations.py",
+            "line": 45
+          }
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "source": "8d342498-d54b-410f-91ed-bf05d1fbc661",
+      "target": "7f4848a8-e329-4992-8622-ed5a26c8dc7b",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "8d342498-d54b-410f-91ed-bf05d1fbc661",
+      "target": "46d56564-7695-4301-b0d0-46bbfeba169a",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "8d342498-d54b-410f-91ed-bf05d1fbc661",
+      "target": "8c25da55-3066-4a7e-b4e1-78178453e40e",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "8d342498-d54b-410f-91ed-bf05d1fbc661",
+      "target": "876fec62-dea0-4740-bfc6-19a7f4a412e5",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "8d342498-d54b-410f-91ed-bf05d1fbc661",
+      "target": "0bfe70a7-2243-481a-b36f-571a94f623ac",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "8d342498-d54b-410f-91ed-bf05d1fbc661",
+      "target": "8a4caf39-989d-426d-90ab-8f9b0ae63c22",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "8d342498-d54b-410f-91ed-bf05d1fbc661",
+      "target": "2f541ea8-ff90-42bc-982e-9f16c12a67c3",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "8d342498-d54b-410f-91ed-bf05d1fbc661",
+      "target": "d2f15c03-566b-4829-ad68-c28a4ec2f871",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "8d342498-d54b-410f-91ed-bf05d1fbc661",
+      "target": "42671aab-357d-482a-ab71-a08939642e9b",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "8d342498-d54b-410f-91ed-bf05d1fbc661",
+      "target": "b31f32a9-1788-441b-a3a8-cc0c93bbc1c1",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "8d342498-d54b-410f-91ed-bf05d1fbc661",
+      "target": "ea3a4aa0-ce74-4a2d-9efa-d681803dc4bf",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "8d342498-d54b-410f-91ed-bf05d1fbc661",
+      "target": "9cff10b4-9470-4523-8bc4-d507cba988ec",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "8d342498-d54b-410f-91ed-bf05d1fbc661",
+      "target": "04602979-889b-4c31-9c14-0d0acbb0b266",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "8d342498-d54b-410f-91ed-bf05d1fbc661",
+      "target": "1e200c84-4694-403c-bc63-eee3210de195",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "8d342498-d54b-410f-91ed-bf05d1fbc661",
+      "target": "4ff7fb78-1b8d-4edb-b25e-dc11516cead1",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "8d342498-d54b-410f-91ed-bf05d1fbc661",
+      "target": "9a6b91a7-11be-43e0-b668-6bb1f88bfead",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "8d342498-d54b-410f-91ed-bf05d1fbc661",
+      "target": "1b20be33-91c2-40de-98b5-3872b32c847e",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "8d342498-d54b-410f-91ed-bf05d1fbc661",
+      "target": "bfd3846a-8292-472d-afa0-af8b4c46827e",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "8d342498-d54b-410f-91ed-bf05d1fbc661",
+      "target": "e35dfe88-7306-40d9-b4a7-51175569c3a7",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "8d342498-d54b-410f-91ed-bf05d1fbc661",
+      "target": "33b2a3f7-9fe6-46e0-81a1-0fb124ed40bd",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "8d342498-d54b-410f-91ed-bf05d1fbc661",
+      "target": "0d04786d-bb29-4978-b840-5e8035c59b38",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "8d342498-d54b-410f-91ed-bf05d1fbc661",
+      "target": "5beac336-4ccd-4fbe-a233-3d3d5b326878",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "8d342498-d54b-410f-91ed-bf05d1fbc661",
+      "target": "71e503dc-caa3-402f-9e91-7ba1ce0ed2d4",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "8d342498-d54b-410f-91ed-bf05d1fbc661",
+      "target": "7aace6b5-e858-497e-b3d0-1972ed4f8fc4",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "8d342498-d54b-410f-91ed-bf05d1fbc661",
+      "target": "512f8241-f6ba-4ad5-9a59-58a955fc1ff7",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "8d342498-d54b-410f-91ed-bf05d1fbc661",
+      "target": "e7f4f43c-cdd6-43f7-a27b-d1a1f5bf4777",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "8d342498-d54b-410f-91ed-bf05d1fbc661",
+      "target": "97658d9d-fce6-48b6-8977-f42dac1786a1",
+      "relationship_type": "USES"
+    }
+  ]
+}

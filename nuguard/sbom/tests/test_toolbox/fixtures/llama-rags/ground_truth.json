@@ -1,0 +1,404 @@
+{
+  "schema_version": "1.1.0",
+  "generated_at": "2026-03-02T00:00:00Z",
+  "generator": "github_copilot",
+  "target": "local://llama-rags",
+  "nodes": [
+    {
+      "id": "f3d9d25e-654c-416b-832f-0e56af018e3d",
+      "name": "agent",
+      "component_type": "AGENT",
+      "confidence": 0.82,
+      "metadata": {
+        "extras": {
+          "canonical_name": "agent",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.82,
+          "detail": "AGENT: agent",
+          "location": {
+            "path": "core/utils.py",
+            "line": 159
+          }
+        }
+      ]
+    },
+    {
+      "id": "4dccd763-deb0-4c2c-907e-46f719f51765",
+      "name": "web_agent",
+      "component_type": "AGENT",
+      "confidence": 0.82,
+      "metadata": {
+        "extras": {
+          "canonical_name": "web_agent",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.82,
+          "detail": "AGENT: web_agent",
+          "location": {
+            "path": "core/utils.py",
+            "line": 322
+          }
+        }
+      ]
+    },
+    {
+      "id": "d875638f-f021-4c91-b715-980cdb78f56d",
+      "name": "generic",
+      "component_type": "AUTH",
+      "confidence": 0.55,
+      "metadata": {
+        "extras": {
+          "canonical_name": "generic",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.55,
+          "detail": "AUTH: generic",
+          "location": {
+            "path": "core/utils.py",
+            "line": 308
+          }
+        }
+      ]
+    },
+    {
+      "id": "12463d54-d00d-489e-8d34-17a988c6fe4a",
+      "name": "mm_vector_index",
+      "component_type": "DATASTORE",
+      "confidence": 0.8,
+      "metadata": {
+        "extras": {
+          "canonical_name": "mm_vector_index",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.8,
+          "detail": "DATASTORE: mm_vector_index",
+          "location": {
+            "path": "core/utils.py",
+            "line": 450
+          }
+        }
+      ]
+    },
+    {
+      "id": "5820783d-f27e-4401-81c3-8ea8ea28d985",
+      "name": "summary_index",
+      "component_type": "DATASTORE",
+      "confidence": 0.8,
+      "metadata": {
+        "extras": {
+          "canonical_name": "summary_index",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.8,
+          "detail": "DATASTORE: summary_index",
+          "location": {
+            "path": "core/utils.py",
+            "line": 265
+          }
+        }
+      ]
+    },
+    {
+      "id": "5c9ab7dc-2256-403e-86ea-4e4ac25c457d",
+      "name": "vector_index",
+      "component_type": "DATASTORE",
+      "confidence": 0.8,
+      "metadata": {
+        "extras": {
+          "canonical_name": "vector_index",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.8,
+          "detail": "DATASTORE: vector_index",
+          "location": {
+            "path": "core/utils.py",
+            "line": 244
+          }
+        }
+      ]
+    },
+    {
+      "id": "f26d8667-eb5e-4825-a3f3-7659d339aaa0",
+      "name": "llamaindex",
+      "component_type": "FRAMEWORK",
+      "confidence": 0.95,
+      "metadata": {
+        "extras": {
+          "canonical_name": "llamaindex",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.95,
+          "detail": "FRAMEWORK: llamaindex",
+          "location": {
+            "path": "1_\ud83c\udfe0_Home.py",
+            "line": 18
+          }
+        }
+      ]
+    },
+    {
+      "id": "531316cc-ccff-47fd-819f-a74fb095bab0",
+      "name": "openai_agents",
+      "component_type": "FRAMEWORK",
+      "confidence": 0.8,
+      "metadata": {
+        "extras": {
+          "canonical_name": "openai_agents",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.8,
+          "detail": "FRAMEWORK: openai_agents",
+          "location": {
+            "path": "core/utils.py",
+            "line": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": "1ca3c6a4-60f8-4d6c-9d1c-f000ab333140",
+      "name": "Anthropic",
+      "component_type": "MODEL",
+      "confidence": 0.9,
+      "metadata": {
+        "extras": {
+          "canonical_name": "Anthropic",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.9,
+          "detail": "MODEL: Anthropic",
+          "location": {
+            "path": "core/utils.py",
+            "line": 92
+          }
+        }
+      ]
+    },
+    {
+      "id": "2e8b849b-a76e-411e-a331-e2bc50b6b35a",
+      "name": "gpt-4",
+      "component_type": "MODEL",
+      "confidence": 0.65,
+      "metadata": {
+        "extras": {
+          "canonical_name": "gpt-4",
+          "adapter": "gt",
+          "synonyms": [
+            "gpt-4-vision-preview"
+          ]
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.65,
+          "detail": "MODEL: gpt-4",
+          "location": {
+            "path": "core/utils.py",
+            "line": 60
+          }
+        }
+      ]
+    },
+    {
+      "id": "205c3491-769a-4513-b4ec-a42190ae2a84",
+      "name": "gpt-4-1106-preview",
+      "component_type": "MODEL",
+      "confidence": 0.9,
+      "metadata": {
+        "extras": {
+          "canonical_name": "gpt-4-1106-preview",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.9,
+          "detail": "MODEL: gpt-4-1106-preview",
+          "location": {
+            "path": "core/builder_config.py",
+            "line": 14
+          }
+        }
+      ]
+    },
+    {
+      "id": "ca8ab6db-473b-42d3-b910-588b0f3056f4",
+      "name": "OpenAI",
+      "component_type": "MODEL",
+      "confidence": 0.9,
+      "metadata": {
+        "extras": {
+          "canonical_name": "OpenAI",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.9,
+          "detail": "MODEL: OpenAI",
+          "location": {
+            "path": "core/utils.py",
+            "line": 84
+          }
+        }
+      ]
+    },
+    {
+      "id": "b2721e82-04a5-4adb-9a2c-f435da439344",
+      "name": "generic",
+      "component_type": "PROMPT",
+      "confidence": 0.95,
+      "metadata": {
+        "extras": {
+          "canonical_name": "generic",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.95,
+          "detail": "PROMPT: generic",
+          "location": {
+            "path": "core/agent_builder/base.py",
+            "line": 21
+          }
+        }
+      ]
+    },
+    {
+      "id": "0e86ca91-232c-48e4-bcd9-0323e8885a3c",
+      "name": "summary_tool",
+      "component_type": "TOOL",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "summary_tool",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.85,
+          "detail": "TOOL: summary_tool",
+          "location": {
+            "path": "core/utils.py",
+            "line": 271
+          }
+        }
+      ]
+    },
+    {
+      "id": "ad31f8d7-da5d-4c52-8df7-35b15e7d7dba",
+      "name": "vector_tool",
+      "component_type": "TOOL",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "vector_tool",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.85,
+          "detail": "TOOL: vector_tool",
+          "location": {
+            "path": "core/utils.py",
+            "line": 258
+          }
+        }
+      ]
+    },
+    {
+      "id": "6d089a2a-d233-420c-bc80-241cacefe044",
+      "name": "web_agent_tool",
+      "component_type": "TOOL",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "web_agent_tool",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.85,
+          "detail": "TOOL: web_agent_tool",
+          "location": {
+            "path": "core/utils.py",
+            "line": 331
+          }
+        }
+      ]
+    },
+    {
+      "id": "88b36017-8866-5d67-ab36-a6b41523b84b",
+      "name": "filesystem_write",
+      "component_type": "PRIVILEGE",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "filesystem_write",
+          "adapter": "gt",
+          "description": "PRIVILEGE detected in llama-rags"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "PRIVILEGE: filesystem_write",
+          "location": {
+            "path": "core/agent_builder/registry.py",
+            "line": 27
+          }
+        }
+      ]
+    }
+  ],
+  "edges": []
+}

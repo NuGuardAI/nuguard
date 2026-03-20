@@ -1,0 +1,925 @@
+{
+  "schema_version": "1.0.0",
+  "generated_at": "2026-02-23T06:29:36.397807Z",
+  "generator": "xelo",
+  "target": "/tmp/ai_sbom_dklabd7k/repo",
+  "nodes": [
+    {
+      "id": "18aff154-c1a2-4c0f-8963-afd736cd0310",
+      "name": "generic",
+      "component_type": "AGENT",
+      "confidence": 0.95,
+      "metadata": {
+        "framework": null,
+        "model_name": null,
+        "datastore_type": null,
+        "auth_type": null,
+        "privilege_scope": null,
+        "endpoint": null,
+        "method": null,
+        "deployment_target": null,
+        "extras": {
+          "canonical_name": "agent_generic",
+          "adapter": "agent_generic",
+          "evidence_count": 10
+        }
+      }
+    },
+    {
+      "id": "a5ff576a-75c8-4184-8468-69bb3d390b92",
+      "name": "builder",
+      "component_type": "AGENT",
+      "confidence": 0.9,
+      "metadata": {
+        "framework": "langgraph",
+        "model_name": null,
+        "datastore_type": null,
+        "auth_type": null,
+        "privilege_scope": null,
+        "endpoint": null,
+        "method": null,
+        "deployment_target": null,
+        "extras": {
+          "canonical_name": "langgraph_builder",
+          "adapter": "langgraph",
+          "evidence_count": 1,
+          "graph_type": "StateGraph",
+          "is_agent_graph": true,
+          "framework": "langgraph"
+        }
+      }
+    },
+    {
+      "id": "e89ee8e8-a8b1-4323-88a1-0d0967730162",
+      "name": "fetch_doctor_details_agent",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "langgraph",
+        "model_name": null,
+        "datastore_type": null,
+        "auth_type": null,
+        "privilege_scope": null,
+        "endpoint": null,
+        "method": null,
+        "deployment_target": null,
+        "extras": {
+          "canonical_name": "langgraph_fetch_doctor_details_agent",
+          "adapter": "langgraph",
+          "evidence_count": 1,
+          "registration_method": "add_node",
+          "framework": "langgraph"
+        }
+      }
+    },
+    {
+      "id": "5f3e9fef-c811-416c-851d-f29a514baf6b",
+      "name": "normalize_agent",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "langgraph",
+        "model_name": null,
+        "datastore_type": null,
+        "auth_type": null,
+        "privilege_scope": null,
+        "endpoint": null,
+        "method": null,
+        "deployment_target": null,
+        "extras": {
+          "canonical_name": "langgraph_normalize_agent",
+          "adapter": "langgraph",
+          "evidence_count": 1,
+          "registration_method": "add_node",
+          "framework": "langgraph"
+        }
+      }
+    },
+    {
+      "id": "1a42fe23-05ef-4578-b4c9-087ce51ee24f",
+      "name": "prognosis_search_agent",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "langgraph",
+        "model_name": null,
+        "datastore_type": null,
+        "auth_type": null,
+        "privilege_scope": null,
+        "endpoint": null,
+        "method": null,
+        "deployment_target": null,
+        "extras": {
+          "canonical_name": "langgraph_prognosis_search_agent",
+          "adapter": "langgraph",
+          "evidence_count": 1,
+          "registration_method": "add_node",
+          "framework": "langgraph"
+        }
+      }
+    },
+    {
+      "id": "31f1f200-a5e8-471c-8de7-ee5d0d4dedab",
+      "name": "recommend_specialists_agent",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "langgraph",
+        "model_name": null,
+        "datastore_type": null,
+        "auth_type": null,
+        "privilege_scope": null,
+        "endpoint": null,
+        "method": null,
+        "deployment_target": null,
+        "extras": {
+          "canonical_name": "langgraph_recommend_specialists_agent",
+          "adapter": "langgraph",
+          "evidence_count": 1,
+          "registration_method": "add_node",
+          "framework": "langgraph"
+        }
+      }
+    },
+    {
+      "id": "3c5cc0e4-110c-489f-aabf-9dfd2656b544",
+      "name": "specialist_lookup_agent",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "langgraph",
+        "model_name": null,
+        "datastore_type": null,
+        "auth_type": null,
+        "privilege_scope": null,
+        "endpoint": null,
+        "method": null,
+        "deployment_target": null,
+        "extras": {
+          "canonical_name": "langgraph_specialist_lookup_agent",
+          "adapter": "langgraph",
+          "evidence_count": 1,
+          "registration_method": "add_node",
+          "framework": "langgraph"
+        }
+      }
+    },
+    {
+      "id": "bb387b22-bc37-4883-bb3a-cfe7db567308",
+      "name": "generic",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.9,
+      "metadata": {
+        "framework": null,
+        "model_name": null,
+        "datastore_type": null,
+        "auth_type": null,
+        "privilege_scope": null,
+        "endpoint": null,
+        "method": null,
+        "deployment_target": null,
+        "extras": {
+          "canonical_name": "api_endpoint_generic",
+          "adapter": "api_endpoint_generic",
+          "evidence_count": 1
+        }
+      }
+    },
+    {
+      "id": "dcff97e3-c0f7-403e-b5f7-5b18e001a5f5",
+      "name": "generic",
+      "component_type": "AUTH",
+      "confidence": 0.7,
+      "metadata": {
+        "framework": null,
+        "model_name": null,
+        "datastore_type": null,
+        "auth_type": null,
+        "privilege_scope": null,
+        "endpoint": null,
+        "method": null,
+        "deployment_target": null,
+        "extras": {
+          "canonical_name": "auth_generic",
+          "adapter": "auth_generic",
+          "evidence_count": 3
+        }
+      }
+    },
+    {
+      "id": "0cb26354-e0e0-4016-af36-683c0d492c37",
+      "name": "postgres",
+      "component_type": "DATASTORE",
+      "confidence": 0.55,
+      "metadata": {
+        "framework": null,
+        "model_name": null,
+        "datastore_type": null,
+        "auth_type": null,
+        "privilege_scope": null,
+        "endpoint": null,
+        "method": null,
+        "deployment_target": null,
+        "extras": {
+          "canonical_name": "postgres",
+          "adapter": "datastore_generic",
+          "evidence_count": 1,
+          "normalizer": "datastore"
+        }
+      }
+    },
+    {
+      "id": "47d7638f-aef6-4dbf-b073-3cd2973c9938",
+      "name": "generic",
+      "component_type": "DEPLOYMENT",
+      "confidence": 0.95,
+      "metadata": {
+        "framework": null,
+        "model_name": null,
+        "datastore_type": null,
+        "auth_type": null,
+        "privilege_scope": null,
+        "endpoint": null,
+        "method": null,
+        "deployment_target": null,
+        "extras": {
+          "canonical_name": "deployment_generic",
+          "adapter": "deployment_generic",
+          "evidence_count": 3
+        }
+      }
+    },
+    {
+      "id": "094d4111-7dbb-4ed1-a34d-15de57a20f5b",
+      "name": "langgraph",
+      "component_type": "FRAMEWORK",
+      "confidence": 0.95,
+      "metadata": {
+        "framework": "langgraph",
+        "model_name": null,
+        "datastore_type": null,
+        "auth_type": null,
+        "privilege_scope": null,
+        "endpoint": null,
+        "method": null,
+        "deployment_target": null,
+        "extras": {
+          "canonical_name": "framework_langgraph",
+          "adapter": "langgraph",
+          "evidence_count": 6,
+          "framework": "langgraph",
+          "implementation": "vela_builtin"
+        }
+      }
+    },
+    {
+      "id": "3bda78af-7555-474f-82c6-918004f379e5",
+      "name": "gemini-2.0",
+      "component_type": "MODEL",
+      "confidence": 0.55,
+      "metadata": {
+        "framework": null,
+        "model_name": null,
+        "datastore_type": null,
+        "auth_type": null,
+        "privilege_scope": null,
+        "endpoint": null,
+        "method": null,
+        "deployment_target": null,
+        "extras": {
+          "canonical_name": "gemini_2_0",
+          "adapter": "model_generic",
+          "evidence_count": 1,
+          "normalizer": "model-name"
+        }
+      }
+    },
+    {
+      "id": "93b36b04-b5a0-4739-a1a9-111c41b3a296",
+      "name": "gpt-4",
+      "component_type": "MODEL",
+      "confidence": 0.9,
+      "metadata": {
+        "framework": null,
+        "model_name": null,
+        "datastore_type": null,
+        "auth_type": null,
+        "privilege_scope": null,
+        "endpoint": null,
+        "method": null,
+        "deployment_target": null,
+        "extras": {
+          "canonical_name": "gpt_4",
+          "adapter": "langgraph",
+          "evidence_count": 4,
+          "normalizer": "model-name",
+          "class_name": "ChatOpenAI",
+          "provider": "openai",
+          "version": "4",
+          "api_endpoint": "https://api.openai.com/v1",
+          "model_card_url": "https://platform.openai.com/docs/models/gpt-4",
+          "model_family": "gpt"
+        }
+      }
+    },
+    {
+      "id": "34f6540d-77ed-4d48-849f-abe7fe890b55",
+      "name": "o37qlnifitdp",
+      "component_type": "MODEL",
+      "confidence": 0.55,
+      "metadata": {
+        "framework": null,
+        "model_name": null,
+        "datastore_type": null,
+        "auth_type": null,
+        "privilege_scope": null,
+        "endpoint": null,
+        "method": null,
+        "deployment_target": null,
+        "extras": {
+          "canonical_name": "o37qlnifitdp",
+          "adapter": "model_generic",
+          "evidence_count": 1,
+          "normalizer": "model-name"
+        }
+      }
+    },
+    {
+      "id": "64e50f21-399d-49c1-986d-c8d3577bf4fa",
+      "name": "generic",
+      "component_type": "PRIVILEGE",
+      "confidence": 0.7,
+      "metadata": {
+        "framework": null,
+        "model_name": null,
+        "datastore_type": null,
+        "auth_type": null,
+        "privilege_scope": null,
+        "endpoint": null,
+        "method": null,
+        "deployment_target": null,
+        "extras": {
+          "canonical_name": "privilege_generic",
+          "adapter": "privilege_generic",
+          "evidence_count": 1
+        }
+      }
+    },
+    {
+      "id": "64e05a0c-5376-4679-a733-2adf090a4f04",
+      "name": "prompt_50",
+      "component_type": "PROMPT",
+      "confidence": 0.6,
+      "metadata": {
+        "framework": null,
+        "model_name": null,
+        "datastore_type": null,
+        "auth_type": null,
+        "privilege_scope": null,
+        "endpoint": null,
+        "method": null,
+        "deployment_target": null,
+        "extras": {
+          "canonical_name": "langchain_prompt_str_50",
+          "adapter": "langgraph",
+          "evidence_count": 1,
+          "role": "system",
+          "content_preview": "You are a medical assistant. Normalize the following patient symptom phrases into a list of clinical symptom terms. Only output comma-separated clinical terms.\nPatient phrases: ",
+          "char_count": 177,
+          "is_template": false,
+          "template_variables": []
+        }
+      }
+    },
+    {
+      "id": "67024a45-96a4-4a88-92dd-c926c97a9863",
+      "name": "generic",
+      "component_type": "PROMPT",
+      "confidence": 0.55,
+      "metadata": {
+        "framework": null,
+        "model_name": null,
+        "datastore_type": null,
+        "auth_type": null,
+        "privilege_scope": null,
+        "endpoint": null,
+        "method": null,
+        "deployment_target": null,
+        "extras": {
+          "canonical_name": "prompt_generic",
+          "adapter": "prompt_generic",
+          "evidence_count": 1
+        }
+      }
+    },
+    {
+      "id": "b7a09dd4-dbbc-4911-9a58-06ed82ad8154",
+      "name": "generic",
+      "component_type": "TOOL",
+      "confidence": 0.6,
+      "metadata": {
+        "framework": null,
+        "model_name": null,
+        "datastore_type": null,
+        "auth_type": null,
+        "privilege_scope": null,
+        "endpoint": null,
+        "method": null,
+        "deployment_target": null,
+        "extras": {
+          "canonical_name": "tool_generic",
+          "adapter": "tool_generic",
+          "evidence_count": 1
+        }
+      }
+    }
+  ],
+  "edges": [
+    {
+      "id": "9dd45f64-8736-46b6-936f-af1f7fa10314",
+      "source": "a5ff576a-75c8-4184-8468-69bb3d390b92",
+      "target": "93b36b04-b5a0-4739-a1a9-111c41b3a296",
+      "relationship_type": "USES"
+    },
+    {
+      "id": "1beff9c5-1fa7-4122-a17f-4013d2cbbaf3",
+      "source": "5f3e9fef-c811-416c-851d-f29a514baf6b",
+      "target": "93b36b04-b5a0-4739-a1a9-111c41b3a296",
+      "relationship_type": "USES"
+    },
+    {
+      "id": "ded7c175-1d6e-40da-843f-d97bb86c9198",
+      "source": "1a42fe23-05ef-4578-b4c9-087ce51ee24f",
+      "target": "93b36b04-b5a0-4739-a1a9-111c41b3a296",
+      "relationship_type": "USES"
+    },
+    {
+      "id": "c17649bf-25da-4e92-bce8-9685c75c904e",
+      "source": "3c5cc0e4-110c-489f-aabf-9dfd2656b544",
+      "target": "93b36b04-b5a0-4739-a1a9-111c41b3a296",
+      "relationship_type": "USES"
+    },
+    {
+      "id": "d54227f6-317d-42e8-a997-d8a1bedaf11f",
+      "source": "31f1f200-a5e8-471c-8de7-ee5d0d4dedab",
+      "target": "93b36b04-b5a0-4739-a1a9-111c41b3a296",
+      "relationship_type": "USES"
+    },
+    {
+      "id": "7a011a77-9dfa-40ba-9be1-72966bc2f31c",
+      "source": "e89ee8e8-a8b1-4323-88a1-0d0967730162",
+      "target": "93b36b04-b5a0-4739-a1a9-111c41b3a296",
+      "relationship_type": "USES"
+    },
+    {
+      "id": "ac9a04c2-16b9-4751-b742-40329b5c7ce5",
+      "source": "5f3e9fef-c811-416c-851d-f29a514baf6b",
+      "target": "1a42fe23-05ef-4578-b4c9-087ce51ee24f",
+      "relationship_type": "CALLS"
+    },
+    {
+      "id": "34320206-036a-4ea3-944f-dc7336b40583",
+      "source": "1a42fe23-05ef-4578-b4c9-087ce51ee24f",
+      "target": "3c5cc0e4-110c-489f-aabf-9dfd2656b544",
+      "relationship_type": "CALLS"
+    },
+    {
+      "id": "f71a3731-55b5-466e-bc0b-620aac08ad32",
+      "source": "3c5cc0e4-110c-489f-aabf-9dfd2656b544",
+      "target": "31f1f200-a5e8-471c-8de7-ee5d0d4dedab",
+      "relationship_type": "CALLS"
+    },
+    {
+      "id": "954a5013-6b15-434f-9369-29062151fcdf",
+      "source": "31f1f200-a5e8-471c-8de7-ee5d0d4dedab",
+      "target": "e89ee8e8-a8b1-4323-88a1-0d0967730162",
+      "relationship_type": "CALLS"
+    },
+    {
+      "id": "89eb54c3-3a69-4eb0-8780-819768279ce0",
+      "source": "18aff154-c1a2-4c0f-8963-afd736cd0310",
+      "target": "b7a09dd4-dbbc-4911-9a58-06ed82ad8154",
+      "relationship_type": "CALLS"
+    },
+    {
+      "id": "abe7acc4-efd3-4973-8f04-f2bf6c398cf7",
+      "source": "18aff154-c1a2-4c0f-8963-afd736cd0310",
+      "target": "3bda78af-7555-474f-82c6-918004f379e5",
+      "relationship_type": "USES"
+    },
+    {
+      "id": "e40f3d1c-675f-4f46-ae7d-0c455e356358",
+      "source": "18aff154-c1a2-4c0f-8963-afd736cd0310",
+      "target": "93b36b04-b5a0-4739-a1a9-111c41b3a296",
+      "relationship_type": "USES"
+    },
+    {
+      "id": "fbb05642-d858-4370-a9a9-06de704a1878",
+      "source": "18aff154-c1a2-4c0f-8963-afd736cd0310",
+      "target": "34f6540d-77ed-4d48-849f-abe7fe890b55",
+      "relationship_type": "USES"
+    }
+  ],
+  "evidence": [
+    {
+      "id": "1b66019c-a8cd-4051-b2b9-f0cfc3d2081d",
+      "kind": "regex",
+      "confidence": 0.7,
+      "detail": "agent_generic: Agent",
+      "location": {
+        "path": ".github/copilot-instructions.md",
+        "line": 1
+      }
+    },
+    {
+      "id": "76224cdb-ab07-4a45-bc3c-b0557663f192",
+      "kind": "regex",
+      "confidence": 0.8,
+      "detail": "agent_generic: Assistant",
+      "location": {
+        "path": "README.md",
+        "line": 1
+      }
+    },
+    {
+      "id": "a8f94360-42f9-40c0-9ba2-1e7dada18f7a",
+      "kind": "regex",
+      "confidence": 0.95,
+      "detail": "agent_generic: Agent",
+      "location": {
+        "path": "SAFETY_GUIDELINES.md",
+        "line": 1
+      }
+    },
+    {
+      "id": "e0e21821-2c32-491a-8cd5-da7bd6dfbf80",
+      "kind": "regex",
+      "confidence": 0.95,
+      "detail": "agent_generic: Agent",
+      "location": {
+        "path": "backend/langgraph_llm_agents.py",
+        "line": 41
+      }
+    },
+    {
+      "id": "e0cac4bf-f663-4779-b155-ce562628d842",
+      "kind": "regex",
+      "confidence": 0.55,
+      "detail": "agent_generic: agent",
+      "location": {
+        "path": "backend/queries.py",
+        "line": 1
+      }
+    },
+    {
+      "id": "81f4e236-1d44-454e-a454-f76eccd774a3",
+      "kind": "regex",
+      "confidence": 0.95,
+      "detail": "agent_generic: agent",
+      "location": {
+        "path": "package-lock.json",
+        "line": 2
+      }
+    },
+    {
+      "id": "333f2881-3636-4044-aabc-72586fc45bb1",
+      "kind": "regex",
+      "confidence": 0.55,
+      "detail": "agent_generic: agent",
+      "location": {
+        "path": "package.json",
+        "line": 2
+      }
+    },
+    {
+      "id": "05245ac9-44c3-4cd8-a139-60c97947ee3e",
+      "kind": "regex",
+      "confidence": 0.55,
+      "detail": "agent_generic: agent",
+      "location": {
+        "path": "run_sql.py",
+        "line": 24
+      }
+    },
+    {
+      "id": "15e284d9-8014-4bd8-bbb9-2aea2279fb93",
+      "kind": "regex",
+      "confidence": 0.65,
+      "detail": "agent_generic: Assistant",
+      "location": {
+        "path": "src/gemini.js",
+        "line": 19
+      }
+    },
+    {
+      "id": "4cfc0466-94c7-43b9-b073-111bfb617eee",
+      "kind": "regex",
+      "confidence": 0.7,
+      "detail": "agent_generic: Agent",
+      "location": {
+        "path": "tests/voice-agent.spec.js",
+        "line": 3
+      }
+    },
+    {
+      "id": "e734ee35-6319-4d87-aea8-7e34c1ffc1ed",
+      "kind": "ast_instantiation",
+      "confidence": 0.9,
+      "detail": "langgraph: StateGraph(...)",
+      "location": {
+        "path": "backend/langgraph_llm_agents.py",
+        "line": 206
+      }
+    },
+    {
+      "id": "a3fc2307-cff9-4f10-be5d-3b3876b0b32e",
+      "kind": "ast_call",
+      "confidence": 0.85,
+      "detail": "langgraph: add_node('fetch_doctor_details_agent', ...)",
+      "location": {
+        "path": "backend/langgraph_llm_agents.py",
+        "line": 211
+      }
+    },
+    {
+      "id": "a9efbef3-a831-452d-8657-7931e6f701b3",
+      "kind": "ast_call",
+      "confidence": 0.85,
+      "detail": "langgraph: add_node('normalize_agent', ...)",
+      "location": {
+        "path": "backend/langgraph_llm_agents.py",
+        "line": 207
+      }
+    },
+    {
+      "id": "8b2430b5-55cf-4fdb-a15d-532470accfef",
+      "kind": "ast_call",
+      "confidence": 0.85,
+      "detail": "langgraph: add_node('prognosis_search_agent', ...)",
+      "location": {
+        "path": "backend/langgraph_llm_agents.py",
+        "line": 208
+      }
+    },
+    {
+      "id": "fc72ac84-cba5-4d82-9e80-bd0ce8afb7a4",
+      "kind": "ast_call",
+      "confidence": 0.85,
+      "detail": "langgraph: add_node('recommend_specialists_agent', ...)",
+      "location": {
+        "path": "backend/langgraph_llm_agents.py",
+        "line": 210
+      }
+    },
+    {
+      "id": "9de67ad0-5695-4005-a8e0-15d96d481fdb",
+      "kind": "ast_call",
+      "confidence": 0.85,
+      "detail": "langgraph: add_node('specialist_lookup_agent', ...)",
+      "location": {
+        "path": "backend/langgraph_llm_agents.py",
+        "line": 209
+      }
+    },
+    {
+      "id": "14a8dc28-93bf-48c9-9858-ad77b1245cca",
+      "kind": "regex",
+      "confidence": 0.9,
+      "detail": "api_endpoint_generic: @app.get(",
+      "location": {
+        "path": "backend/main.py",
+        "line": 50
+      }
+    },
+    {
+      "id": "37969086-1085-4882-982a-7b431539aa35",
+      "kind": "regex",
+      "confidence": 0.6,
+      "detail": "auth_generic: JWT",
+      "location": {
+        "path": "README.md",
+        "line": 32
+      }
+    },
+    {
+      "id": "f3c07379-3681-4f6d-bc87-dd520cc1a4d3",
+      "kind": "regex",
+      "confidence": 0.7,
+      "detail": "auth_generic: auth",
+      "location": {
+        "path": "package-lock.json",
+        "line": 925
+      }
+    },
+    {
+      "id": "828d7778-8e1c-439f-a388-93900910160c",
+      "kind": "regex",
+      "confidence": 0.55,
+      "detail": "auth_generic: apiKey",
+      "location": {
+        "path": "src/gemini.js",
+        "line": 4
+      }
+    },
+    {
+      "id": "ebe59d2a-1812-41f4-833e-6f3793494e22",
+      "kind": "regex",
+      "confidence": 0.55,
+      "detail": "datastore_generic: postgres",
+      "location": {
+        "path": "docker-compose.yml",
+        "line": 3
+      }
+    },
+    {
+      "id": "6adb5bf7-b75a-438e-9362-d8e698bc53b7",
+      "kind": "regex",
+      "confidence": 0.65,
+      "detail": "deployment_generic: Docker",
+      "location": {
+        "path": ".github/copilot-instructions.md",
+        "line": 10
+      }
+    },
+    {
+      "id": "cc94f763-c639-4368-b659-54092c6710b6",
+      "kind": "regex",
+      "confidence": 0.95,
+      "detail": "deployment_generic: Deployment",
+      "location": {
+        "path": "README.md",
+        "line": 109
+      }
+    },
+    {
+      "id": "b2d3904f-f05d-432d-aaae-10b8fdcc0d05",
+      "kind": "regex",
+      "confidence": 0.6,
+      "detail": "deployment_generic: docker",
+      "location": {
+        "path": "docker-compose.yml",
+        "line": 11
+      }
+    },
+    {
+      "id": "e62c4677-04ad-436b-8d9e-41958f3b1a60",
+      "kind": "regex",
+      "confidence": 0.6,
+      "detail": "langgraph: LangGraph",
+      "location": {
+        "path": ".github/copilot-instructions.md",
+        "line": 9
+      }
+    },
+    {
+      "id": "23fc4f8e-4ba7-4515-aaff-a36f9203afbc",
+      "kind": "regex",
+      "confidence": 0.7,
+      "detail": "langgraph: LangGraph",
+      "location": {
+        "path": "README.md",
+        "line": 37
+      }
+    },
+    {
+      "id": "feea3f75-5b1e-493f-a234-29ca69d79663",
+      "kind": "regex",
+      "confidence": 0.55,
+      "detail": "langgraph: LangGraph",
+      "location": {
+        "path": "SAFETY_GUIDELINES.md",
+        "line": 44
+      }
+    },
+    {
+      "id": "2685ace8-224b-497c-9b84-b92df196787d",
+      "kind": "ast_import",
+      "confidence": 0.95,
+      "detail": "langgraph: import langgraph",
+      "location": {
+        "path": "backend/langgraph_llm_agents.py",
+        "line": null
+      }
+    },
+    {
+      "id": "5cc9a28b-e0da-4b46-a2ff-08294ea72cd6",
+      "kind": "regex",
+      "confidence": 0.65,
+      "detail": "langgraph: langgraph",
+      "location": {
+        "path": "backend/langgraph_llm_agents.py",
+        "line": 9
+      }
+    },
+    {
+      "id": "bcd66ff9-8cd3-4a5f-beed-577caead16c8",
+      "kind": "regex",
+      "confidence": 0.7,
+      "detail": "langgraph: LangGraph",
+      "location": {
+        "path": "backend/main.py",
+        "line": 163
+      }
+    },
+    {
+      "id": "e9f53347-57c7-4ba1-a2ab-0559643a7db7",
+      "kind": "regex",
+      "confidence": 0.55,
+      "detail": "model_generic: gemini-2.0",
+      "location": {
+        "path": "src/gemini.js",
+        "line": 16
+      }
+    },
+    {
+      "id": "e7333f66-4560-452f-8108-55a7f8e01a3a",
+      "kind": "regex",
+      "confidence": 0.6,
+      "detail": "model_generic: GPT-4",
+      "location": {
+        "path": ".github/copilot-instructions.md",
+        "line": 9
+      }
+    },
+    {
+      "id": "92464d5e-8eb5-45d3-ad29-36c92fb41668",
+      "kind": "regex",
+      "confidence": 0.65,
+      "detail": "model_generic: GPT-4",
+      "location": {
+        "path": "README.md",
+        "line": 42
+      }
+    },
+    {
+      "id": "9931295e-3cc9-4e2a-985a-70cd287218bb",
+      "kind": "ast_instantiation",
+      "confidence": 0.9,
+      "detail": "langgraph: ChatOpenAI(...)",
+      "location": {
+        "path": "backend/langgraph_llm_agents.py",
+        "line": 34
+      }
+    },
+    {
+      "id": "e7c2be19-33e0-415b-a398-12504ff0c855",
+      "kind": "regex",
+      "confidence": 0.75,
+      "detail": "model_generic: GPT-4",
+      "location": {
+        "path": "backend/langgraph_llm_agents.py",
+        "line": 29
+      }
+    },
+    {
+      "id": "2a65dac8-bb42-4dce-937a-7b8306c642fc",
+      "kind": "regex",
+      "confidence": 0.55,
+      "detail": "model_generic: O37qlnifitDP",
+      "location": {
+        "path": "backend/package-lock.json",
+        "line": 602
+      }
+    },
+    {
+      "id": "fb294aea-782b-4a2a-9045-77ae65a6b5cf",
+      "kind": "regex",
+      "confidence": 0.7,
+      "detail": "privilege_generic: scope",
+      "location": {
+        "path": "package-lock.json",
+        "line": 2021
+      }
+    },
+    {
+      "id": "f944babb-4e31-4a7b-832c-120d08061569",
+      "kind": "ast_call",
+      "confidence": 0.6,
+      "detail": "langgraph: You are a medical assistant. Normalize the following patient symptom phrases int...",
+      "location": {
+        "path": "backend/langgraph_llm_agents.py",
+        "line": 50
+      }
+    },
+    {
+      "id": "86444ffb-696d-4017-b676-8968351259f6",
+      "kind": "regex",
+      "confidence": 0.55,
+      "detail": "prompt_generic: Instructions",
+      "location": {
+        "path": ".github/copilot-instructions.md",
+        "line": 1
+      }
+    },
+    {
+      "id": "27b93699-d199-41a8-8d4c-052e65cafb6c",
+      "kind": "regex",
+      "confidence": 0.6,
+      "detail": "tool_generic: tool",
+      "location": {
+        "path": "SAFETY_GUIDELINES.md",
+        "line": 3
+      }
+    }
+  ]
+}

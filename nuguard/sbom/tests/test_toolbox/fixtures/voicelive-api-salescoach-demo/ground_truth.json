@@ -1,0 +1,363 @@
+{
+  "schema_version": "1.1.0",
+  "generated_at": "2026-03-03T00:00:00Z",
+  "generator": "github_copilot",
+  "target": "local://voicelive-api-salescoach-demo",
+  "nodes": [
+    {
+      "id": "035a7fbc-c9b2-46ec-ba99-5eff38ee3a68",
+      "name": "agent",
+      "component_type": "AGENT",
+      "confidence": 0.82,
+      "metadata": {
+        "extras": {
+          "canonical_name": "agent",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.82,
+          "detail": "AGENT: agent",
+          "location": {
+            "path": "backend/src/services/managers.py",
+            "line": 249
+          }
+        }
+      ]
+    },
+    {
+      "id": "76ea359e-b958-4321-ba0c-aa72715710f3",
+      "name": "generic",
+      "component_type": "AUTH",
+      "confidence": 0.98,
+      "metadata": {
+        "extras": {
+          "canonical_name": "generic",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.98,
+          "detail": "AUTH: generic",
+          "location": {
+            "path": "backend/src/services/analyzers.py",
+            "line": 115
+          }
+        },
+        {
+          "kind": "gt",
+          "confidence": 0.6,
+          "detail": "AUTH: generic (api key pattern)",
+          "location": {
+            "path": "backend/src/config.py"
+          }
+        }
+      ]
+    },
+    {
+      "id": "e7ab25a4-432c-4e8f-beaf-f65edb411504",
+      "name": "DefaultAzureCredential",
+      "component_type": "AUTH",
+      "confidence": 0.88,
+      "metadata": {
+        "extras": {
+          "canonical_name": "DefaultAzureCredential",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.88,
+          "detail": "AUTH: DefaultAzureCredential",
+          "location": {
+            "path": "backend/src/services/managers.py",
+            "line": 166
+          }
+        }
+      ]
+    },
+    {
+      "id": "66e70730-f3cf-4980-93bc-4a7608e4a36d",
+      "name": "node:20-alpine",
+      "component_type": "CONTAINER_IMAGE",
+      "confidence": 0.99,
+      "metadata": {
+        "extras": {
+          "canonical_name": "node:20-alpine",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.99,
+          "detail": "CONTAINER_IMAGE: node:20-alpine",
+          "location": {
+            "path": "backend/Dockerfile",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "145fe488-8500-49c4-a2ce-c9138e9d8f8d",
+      "name": "python:3.11-slim-bullseye",
+      "component_type": "CONTAINER_IMAGE",
+      "confidence": 0.99,
+      "metadata": {
+        "extras": {
+          "canonical_name": "python:3.11-slim-bullseye",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.99,
+          "detail": "CONTAINER_IMAGE: python:3.11-slim-bullseye",
+          "location": {
+            "path": "backend/Dockerfile",
+            "line": 23
+          }
+        }
+      ]
+    },
+    {
+      "id": "ffbb24d1-36e4-4895-902f-38c583dd5888",
+      "name": "redis",
+      "component_type": "DATASTORE",
+      "confidence": 0.6,
+      "metadata": {
+        "extras": {
+          "canonical_name": "redis",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.6,
+          "detail": "DATASTORE: redis",
+          "location": {
+            "path": "infra/abbreviations.json",
+            "line": 11
+          }
+        }
+      ]
+    },
+    {
+      "id": "6f1a5f26-44c0-46c0-b3a0-63c98818053c",
+      "name": "generic",
+      "component_type": "DEPLOYMENT",
+      "confidence": 0.6,
+      "metadata": {
+        "extras": {
+          "canonical_name": "generic",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.6,
+          "detail": "DEPLOYMENT: generic",
+          "location": {
+            "path": ".devcontainer/devcontainer.json",
+            "line": 7
+          }
+        }
+      ]
+    },
+    {
+      "id": "5dd764e2-2b6b-49f5-b391-7059ea9b3a61",
+      "name": "framework:azure_ai_agent_service",
+      "component_type": "FRAMEWORK",
+      "confidence": 0.95,
+      "metadata": {
+        "extras": {
+          "canonical_name": "framework:azure_ai_agent_service",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.95,
+          "detail": "FRAMEWORK: framework:azure_ai_agent_service",
+          "location": {
+            "path": "backend/src/services/managers.py",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "e080d21b-6785-415a-96f3-4e3b59c1a698",
+      "name": "framework:llm_clients",
+      "component_type": "FRAMEWORK",
+      "confidence": 0.95,
+      "metadata": {
+        "extras": {
+          "canonical_name": "framework:llm_clients",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.95,
+          "detail": "FRAMEWORK: framework:llm_clients",
+          "location": {
+            "path": "backend/src/services/analyzers.py",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "4c0e5cfa-0f42-4345-a8cb-4721289c4f17",
+      "name": "gpt-4o",
+      "component_type": "MODEL",
+      "confidence": 0.63,
+      "metadata": {
+        "extras": {
+          "canonical_name": "gpt-4o",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.63,
+          "detail": "MODEL: gpt-4o",
+          "location": {
+            "path": "backend/src/config.py",
+            "line": 19
+          }
+        }
+      ]
+    },
+    {
+      "id": "d8a8509e-fc9c-484a-8e3b-570dc91f2fe6",
+      "name": "o0",
+      "component_type": "MODEL",
+      "confidence": 0.95,
+      "metadata": {
+        "extras": {
+          "canonical_name": "o0",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.95,
+          "detail": "MODEL: o0",
+          "location": {
+            "path": "static/js/index.js",
+            "line": 40
+          }
+        }
+      ]
+    },
+    {
+      "id": "7076524b-ad0d-4a00-8987-4f01a108817f",
+      "name": "Get Default System Prompt",
+      "component_type": "PROMPT",
+      "confidence": 0.65,
+      "metadata": {
+        "extras": {
+          "canonical_name": "Get Default System Prompt",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.65,
+          "detail": "PROMPT: Get Default System Prompt",
+          "location": {
+            "path": "frontend/src/services/customScenarios.ts",
+            "line": 114
+          }
+        }
+      ]
+    },
+    {
+      "id": "0d35b5b1-7690-4c91-8e4c-5729c1074deb",
+      "name": "generic",
+      "component_type": "PROMPT",
+      "confidence": 0.65,
+      "metadata": {
+        "extras": {
+          "canonical_name": "generic",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.65,
+          "detail": "PROMPT: generic",
+          "location": {
+            "path": "frontend/src/components/CustomScenarioEditor.tsx",
+            "line": 110
+          }
+        }
+      ]
+    },
+    {
+      "id": "3b3f42e4-c35a-532e-a9ef-288cbd7d6a34",
+      "name": "filesystem_write",
+      "component_type": "PRIVILEGE",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "filesystem_write",
+          "adapter": "gt",
+          "description": "PRIVILEGE detected in voicelive-api-salescoach-demo"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "PRIVILEGE: filesystem_write",
+          "location": {
+            "path": "backend/src/services/analyzers.py",
+            "line": 332
+          }
+        }
+      ]
+    },
+    {
+      "id": "81227c32-54a4-4488-9985-98490e47cd9b",
+      "name": "o2",
+      "component_type": "MODEL",
+      "confidence": 0.65,
+      "metadata": {
+        "extras": {}
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "MODEL: o2",
+          "location": {
+            "path": "static/js/index.js",
+            "line": 1
+          }
+        }
+      ],
+      "synonyms": [],
+      "alt_file_paths": [],
+      "relationships": null
+    }
+  ],
+  "edges": []
+}

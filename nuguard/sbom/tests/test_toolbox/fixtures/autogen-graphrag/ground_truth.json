@@ -1,0 +1,225 @@
+{
+  "schema_version": "1.1.0",
+  "generated_at": "2026-03-02T00:00:00Z",
+  "generator": "github_copilot",
+  "target": "local://autogen-graphrag",
+  "nodes": [
+    {
+      "id": "92478a4e-7b89-47c0-85cf-318bed8df4ab",
+      "name": "groupchat",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "groupchat",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.85,
+          "detail": "AGENT: groupchat",
+          "location": {
+            "path": "appUI.py",
+            "line": 150
+          }
+        }
+      ]
+    },
+    {
+      "id": "aebe225c-4327-42fb-90cb-229e43fe7395",
+      "name": "manager",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "manager",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.85,
+          "detail": "AGENT: manager",
+          "location": {
+            "path": "appUI.py",
+            "line": 157
+          }
+        }
+      ]
+    },
+    {
+      "id": "f3eb659b-2043-44a1-a2cb-653cd68c4324",
+      "name": "Retriever",
+      "component_type": "AGENT",
+      "confidence": 0.9,
+      "metadata": {
+        "extras": {
+          "canonical_name": "Retriever",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.9,
+          "detail": "AGENT: Retriever",
+          "location": {
+            "path": "appUI.py",
+            "line": 54
+          }
+        }
+      ]
+    },
+    {
+      "id": "f4751144-d5c4-40e2-b218-63bdc186a832",
+      "name": "generic",
+      "component_type": "AUTH",
+      "confidence": 0.68,
+      "metadata": {
+        "extras": {
+          "canonical_name": "generic",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.68,
+          "detail": "AUTH: generic",
+          "location": {
+            "path": "appUI.py",
+            "line": 17
+          }
+        }
+      ]
+    },
+    {
+      "id": "c31a50dc-39cd-4410-9de8-929943a7b468",
+      "name": "framework:autogen",
+      "component_type": "FRAMEWORK",
+      "confidence": 0.95,
+      "metadata": {
+        "extras": {
+          "canonical_name": "framework:autogen",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.95,
+          "detail": "FRAMEWORK: framework:autogen",
+          "location": {
+            "path": "appUI.py",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "b430bb58-09d5-4e9e-87c5-77765e1b1fb9",
+      "name": "framework:llm_clients",
+      "component_type": "FRAMEWORK",
+      "confidence": 0.95,
+      "metadata": {
+        "extras": {
+          "canonical_name": "framework:llm_clients",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.95,
+          "detail": "FRAMEWORK: framework:llm_clients",
+          "location": {
+            "path": "utils/embedding.py",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "859e5731-ab72-4e9b-b773-abf9ea0286e1",
+      "name": "nomic-embed-text",
+      "component_type": "MODEL",
+      "confidence": 0.95,
+      "metadata": {
+        "extras": {
+          "canonical_name": "nomic-embed-text",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.95,
+          "detail": "MODEL: nomic-embed-text",
+          "location": {
+            "path": "utils/openai_embeddings_llm.py",
+            "line": 38
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.8,
+          "detail": "MODEL: nomic-embed-text (alt path)",
+          "location": {
+            "path": "utils/embedding.py",
+            "line": 70
+          }
+        }
+      ]
+    },
+    {
+      "id": "ffbe2e4f-55f8-4818-a8c2-f14582ccd6e4",
+      "name": "Retriever System Message",
+      "component_type": "PROMPT",
+      "confidence": 0.9,
+      "metadata": {
+        "extras": {
+          "canonical_name": "Retriever System Message",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.9,
+          "detail": "PROMPT: Retriever System Message",
+          "location": {
+            "path": "appUI.py",
+            "line": 54
+          }
+        }
+      ]
+    },
+    {
+      "id": "fa205a4d-f2ba-5a28-9c1a-28ad38e19124",
+      "name": "filesystem_write",
+      "component_type": "PRIVILEGE",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "filesystem_write",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "PRIVILEGE: filesystem_write",
+          "location": {
+            "path": "utils/pdf_to_markdown.py",
+            "line": 75
+          }
+        }
+      ]
+    }
+  ],
+  "edges": []
+}

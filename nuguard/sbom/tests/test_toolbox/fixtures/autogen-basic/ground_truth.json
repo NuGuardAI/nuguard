@@ -1,0 +1,754 @@
+{
+  "schema_version": "1.1.0",
+  "generated_at": "2025-07-30T00:00:00Z",
+  "generator": "github_copilot",
+  "target": "local://autogen-basic",
+  "nodes": [
+    {
+      "id": "12886b2c-91dc-5666-b11e-c96e1ffba8e4",
+      "name": "ai_player",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "aiplayer",
+          "adapter": "autogen"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.85,
+          "detail": "AGENT: ai_player",
+          "location": {
+            "path": "",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "7ac5193a-5ccc-5264-915f-9ab4e4b928b8",
+      "name": "assistant",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "assistant",
+          "adapter": "autogen"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.85,
+          "detail": "AGENT: assistant",
+          "location": {
+            "path": "",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "7d4a7358-bc61-5ef8-8734-085aa5b1e105",
+      "name": "editor_agent",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "editoragent",
+          "adapter": "autogen"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.85,
+          "detail": "AGENT: editor_agent",
+          "location": {
+            "path": "",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "b0cddc97-4ff4-5802-958e-3e657ae5b9cc",
+      "name": "search_assistant",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "searchassistant",
+          "adapter": "autogen"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.85,
+          "detail": "AGENT: search_assistant",
+          "location": {
+            "path": "",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ebe45868-7292-5094-98a2-02c338f78383",
+      "name": "teachable_agent",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "teachableagent",
+          "adapter": "autogen"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.85,
+          "detail": "AGENT: teachable_agent",
+          "location": {
+            "path": "",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "a06b8b9d-bd53-5857-bca8-b12fd2761709",
+      "name": "writer_agent",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "writeragent",
+          "adapter": "autogen"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.85,
+          "detail": "AGENT: writer_agent",
+          "location": {
+            "path": "",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "82b4ac3a-c80d-5d7e-8152-288b2ca9d6ba",
+      "name": "generic",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "generic",
+          "adapter": "autogen"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.85,
+          "detail": "API_ENDPOINT: generic",
+          "location": {
+            "path": "",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "a0d15161-0154-5f03-9dca-ca2ec413cfb9",
+      "name": "generic",
+      "component_type": "AUTH",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "generic",
+          "adapter": "autogen"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.85,
+          "detail": "AUTH: generic",
+          "location": {
+            "path": "",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ea13bf39-5876-5049-a904-85f96c1a34ef",
+      "name": "redis",
+      "component_type": "DATASTORE",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "redis",
+          "adapter": "autogen"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.85,
+          "detail": "DATASTORE: redis",
+          "location": {
+            "path": "python/samples/core_streaming_handoffs_fastapi/app.py",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "b772a8a2-1b92-5f3c-8f67-0ccc13b29d47",
+      "name": "generic",
+      "component_type": "DEPLOYMENT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "generic",
+          "adapter": "autogen"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.85,
+          "detail": "DEPLOYMENT: generic",
+          "location": {
+            "path": "",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "883c86e2-7460-5e8a-851c-b2b9aff63f8b",
+      "name": "framework:autogen",
+      "component_type": "FRAMEWORK",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "frameworkautogen",
+          "adapter": "autogen"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.85,
+          "detail": "FRAMEWORK: framework:autogen",
+          "location": {
+            "path": "",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "f8f81ca5-1791-5379-9c6d-2368cce933d3",
+      "name": "framework:mcp_server",
+      "component_type": "FRAMEWORK",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "frameworkmcpserver",
+          "adapter": "autogen"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.85,
+          "detail": "FRAMEWORK: framework:mcp_server",
+          "location": {
+            "path": "",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "dae9776c-74db-549e-a28d-da1e6f33367a",
+      "name": "openai_agents",
+      "component_type": "FRAMEWORK",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "openaiagents",
+          "adapter": "autogen"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.85,
+          "detail": "FRAMEWORK: openai_agents",
+          "location": {
+            "path": "",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "3a7e77a1-26b1-53aa-8822-fffee59c4dc5",
+      "name": "gpt-4o",
+      "component_type": "MODEL",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "gpt4o",
+          "adapter": "autogen"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.85,
+          "detail": "MODEL: gpt-4o",
+          "location": {
+            "path": "",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "0242411b-d274-5316-96b4-ff6992621d0b",
+      "name": "gpt-4o-2024-08-06",
+      "component_type": "MODEL",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "gpt4o20240806",
+          "adapter": "autogen"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.85,
+          "detail": "MODEL: gpt-4o-2024-08-06",
+          "location": {
+            "path": "",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "27bbd568-39f8-52a5-a4e1-64fd572598ed",
+      "name": "gpt-4o-mini",
+      "component_type": "MODEL",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "gpt4omini",
+          "adapter": "autogen"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.85,
+          "detail": "MODEL: gpt-4o-mini",
+          "location": {
+            "path": "",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "71fc9f34-8b17-536f-a7e2-2352c1e32b52",
+      "name": "o1",
+      "component_type": "MODEL",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "o1",
+          "adapter": "autogen"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.85,
+          "detail": "MODEL: o1",
+          "location": {
+            "path": "",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "8bbf53c3-993c-5002-b492-3217e466927b",
+      "name": "Render Prompt Result",
+      "component_type": "PROMPT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "renderpromptresult",
+          "adapter": "autogen"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.85,
+          "detail": "PROMPT: Render Prompt Result",
+          "location": {
+            "path": "",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "f8014af4-ccff-595b-bef6-e34af0e8fceb",
+      "name": "assistant System Message",
+      "component_type": "PROMPT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "assistantsystemmessage",
+          "adapter": "autogen"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.85,
+          "detail": "PROMPT: assistant System Message",
+          "location": {
+            "path": "",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "0f1cbe0c-69be-567b-9d62-0f6c5d99f9cc",
+      "name": "search_assistant System Message",
+      "component_type": "PROMPT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "searchassistantsystemmessage",
+          "adapter": "autogen"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.85,
+          "detail": "PROMPT: search_assistant System Message",
+          "location": {
+            "path": "",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "274cf417-8a8c-55d0-8e97-610dc702dd50",
+      "name": "teachable_agent System Message",
+      "component_type": "PROMPT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "teachableagentsystemmessage",
+          "adapter": "autogen"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.85,
+          "detail": "PROMPT: teachable_agent System Message",
+          "location": {
+            "path": "",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "6c95555b-9704-5f0a-ac4a-aa08a4191067",
+      "name": "ORCHESTRATOR_TASK_LEDGER_FACTS_PROMPT",
+      "component_type": "PROMPT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "orchestratortaskledgerfactsprompt",
+          "adapter": "python_prompt_const",
+          "description": "MagenticOne orchestrator prompt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_constant",
+          "confidence": 0.85,
+          "detail": "PROMPT: ORCHESTRATOR_TASK_LEDGER_FACTS_PROMPT",
+          "location": {
+            "path": "python/packages/autogen-agentchat/src/autogen_agentchat/teams/_group_chat/_magentic_one/_prompts.py",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "55594d19-083c-5802-9f5e-73e669ced697",
+      "name": "ORCHESTRATOR_TASK_LEDGER_PLAN_PROMPT",
+      "component_type": "PROMPT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "orchestratortaskledgerplanprompt",
+          "adapter": "python_prompt_const",
+          "description": "MagenticOne orchestrator prompt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_constant",
+          "confidence": 0.85,
+          "detail": "PROMPT: ORCHESTRATOR_TASK_LEDGER_PLAN_PROMPT",
+          "location": {
+            "path": "python/packages/autogen-agentchat/src/autogen_agentchat/teams/_group_chat/_magentic_one/_prompts.py",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "827bfaf1-6f27-533b-8794-f97951c93304",
+      "name": "ORCHESTRATOR_TASK_LEDGER_FULL_PROMPT",
+      "component_type": "PROMPT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "orchestratortaskledgerfullprompt",
+          "adapter": "python_prompt_const",
+          "description": "MagenticOne orchestrator prompt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_constant",
+          "confidence": 0.85,
+          "detail": "PROMPT: ORCHESTRATOR_TASK_LEDGER_FULL_PROMPT",
+          "location": {
+            "path": "python/packages/autogen-agentchat/src/autogen_agentchat/teams/_group_chat/_magentic_one/_prompts.py",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "8f48b1a2-acaf-5d5b-81da-46b5b8b872dd",
+      "name": "ORCHESTRATOR_PROGRESS_LEDGER_PROMPT",
+      "component_type": "PROMPT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "orchestratorprogressledgerprompt",
+          "adapter": "python_prompt_const",
+          "description": "MagenticOne orchestrator prompt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_constant",
+          "confidence": 0.85,
+          "detail": "PROMPT: ORCHESTRATOR_PROGRESS_LEDGER_PROMPT",
+          "location": {
+            "path": "python/packages/autogen-agentchat/src/autogen_agentchat/teams/_group_chat/_magentic_one/_prompts.py",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "3c8f5bd3-6e93-518a-9222-a7206cf04f46",
+      "name": "ORCHESTRATOR_TASK_LEDGER_FACTS_UPDATE_PROMPT",
+      "component_type": "PROMPT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "orchestratortaskledgerfactsupdateprompt",
+          "adapter": "python_prompt_const",
+          "description": "MagenticOne orchestrator prompt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_constant",
+          "confidence": 0.85,
+          "detail": "PROMPT: ORCHESTRATOR_TASK_LEDGER_FACTS_UPDATE_PROMPT",
+          "location": {
+            "path": "python/packages/autogen-agentchat/src/autogen_agentchat/teams/_group_chat/_magentic_one/_prompts.py",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "9057b7d3-07a7-5afe-995c-fe60b92ba219",
+      "name": "ORCHESTRATOR_TASK_LEDGER_PLAN_UPDATE_PROMPT",
+      "component_type": "PROMPT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "orchestratortaskledgerplanupdateprompt",
+          "adapter": "python_prompt_const",
+          "description": "MagenticOne orchestrator prompt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_constant",
+          "confidence": 0.85,
+          "detail": "PROMPT: ORCHESTRATOR_TASK_LEDGER_PLAN_UPDATE_PROMPT",
+          "location": {
+            "path": "python/packages/autogen-agentchat/src/autogen_agentchat/teams/_group_chat/_magentic_one/_prompts.py",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "f3d4bbac-508f-5a24-8723-f64089e06e24",
+      "name": "ORCHESTRATOR_FINAL_ANSWER_PROMPT",
+      "component_type": "PROMPT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "orchestratorfinalanswerprompt",
+          "adapter": "python_prompt_const",
+          "description": "MagenticOne orchestrator prompt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_constant",
+          "confidence": 0.85,
+          "detail": "PROMPT: ORCHESTRATOR_FINAL_ANSWER_PROMPT",
+          "location": {
+            "path": "python/packages/autogen-agentchat/src/autogen_agentchat/teams/_group_chat/_magentic_one/_prompts.py",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "118d14d6-95d6-5082-88d4-d246dd620982",
+      "name": "sqlite",
+      "component_type": "DATASTORE",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "sqlite",
+          "adapter": "gt",
+          "description": "DATASTORE detected in autogen-basic"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "DATASTORE: sqlite",
+          "location": {
+            "path": "python/packages/autogen-studio/autogenstudio/web/config.py",
+            "line": 7
+          }
+        }
+      ]
+    },
+    {
+      "id": "c196017c-5bb6-575b-ae6b-a0fc32e145f8",
+      "name": "code_execution",
+      "component_type": "PRIVILEGE",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "code_execution",
+          "adapter": "gt",
+          "description": "PRIVILEGE detected in autogen-basic"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "PRIVILEGE: code_execution",
+          "location": {
+            "path": "python/samples/gitty/src/gitty/_config.py",
+            "line": 21
+          }
+        }
+      ]
+    },
+    {
+      "id": "ba1f7409-5735-53d4-aadd-20a2bb3c7af9",
+      "name": "filesystem_write",
+      "component_type": "PRIVILEGE",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "filesystem_write",
+          "adapter": "gt",
+          "description": "PRIVILEGE detected in autogen-basic"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "PRIVILEGE: filesystem_write",
+          "location": {
+            "path": "python/samples/agentchat_graphrag/app.py",
+            "line": 44
+          }
+        }
+      ]
+    },
+    {
+      "id": "fd5af702-358d-4229-b2d1-8531f0c69ea9",
+      "name": "deepseek-r1",
+      "component_type": "MODEL",
+      "confidence": 0.7,
+      "metadata": {
+        "extras": {}
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.7,
+          "detail": "MODEL: deepseek-r1",
+          "location": {
+            "path": "python/packages/agbench/benchmarks/GAIA/config.yaml",
+            "line": 1
+          }
+        }
+      ],
+      "synonyms": [],
+      "alt_file_paths": [],
+      "relationships": null
+    }
+  ]
+}

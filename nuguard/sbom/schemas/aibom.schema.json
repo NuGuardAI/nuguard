@@ -1,0 +1,900 @@
+{
+  "$defs": {
+    "ComponentType": {
+      "enum": [
+        "AGENT",
+        "GUARDRAIL",
+        "FRAMEWORK",
+        "MODEL",
+        "TOOL",
+        "DATASTORE",
+        "AUTH",
+        "PRIVILEGE",
+        "API_ENDPOINT",
+        "DEPLOYMENT",
+        "PROMPT",
+        "CONTAINER_IMAGE",
+        "IAM"
+      ],
+      "title": "ComponentType",
+      "type": "string"
+    },
+    "Edge": {
+      "description": "A directed relationship between two Nodes.",
+      "properties": {
+        "source": {
+          "description": "ID of the source Node",
+          "format": "uuid",
+          "title": "Source",
+          "type": "string"
+        },
+        "target": {
+          "description": "ID of the target Node",
+          "format": "uuid",
+          "title": "Target",
+          "type": "string"
+        },
+        "relationship_type": {
+          "$ref": "#/$defs/RelationshipType"
+        }
+      },
+      "required": [
+        "source",
+        "target",
+        "relationship_type"
+      ],
+      "title": "Edge",
+      "type": "object"
+    },
+    "Evidence": {
+      "description": "A single piece of detection evidence supporting a Node.",
+      "properties": {
+        "kind": {
+          "description": "Detection method: 'ast', 'regex', 'config', 'iac', 'inferred'",
+          "title": "Kind",
+          "type": "string"
+        },
+        "confidence": {
+          "description": "Evidence-level confidence [0, 1]",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "detail": {
+          "description": "Detection description: '<adapter>: <evidence_kind>' for PROMPT nodes (full content is in metadata.extras.content); '<adapter>: <snippet>' (up to 500 chars) for all other node types.",
+          "title": "Detail",
+          "type": "string"
+        },
+        "location": {
+          "$ref": "#/$defs/SourceLocation"
+        }
+      },
+      "required": [
+        "kind",
+        "confidence",
+        "detail",
+        "location"
+      ],
+      "title": "Evidence",
+      "type": "object"
+    },
+    "Node": {
+      "description": "A detected AI component (agent, model, tool, prompt, datastore, etc.).",
+      "properties": {
+        "id": {
+          "description": "Stable UUID for edge references",
+          "format": "uuid",
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "description": "Display name of the component",
+          "title": "Name",
+          "type": "string"
+        },
+        "component_type": {
+          "$ref": "#/$defs/ComponentType"
+        },
+        "confidence": {
+          "description": "Extraction confidence [0, 1]",
+          "maximum": 1.0,
+          "minimum": 0.0,
+          "title": "Confidence",
+          "type": "number"
+        },
+        "metadata": {
+          "$ref": "#/$defs/NodeMetadata"
+        },
+        "evidence": {
+          "description": "Detection evidence supporting this node",
+          "items": {
+            "$ref": "#/$defs/Evidence"
+          },
+          "title": "Evidence",
+          "type": "array"
+        }
+      },
+      "required": [
+        "name",
+        "component_type",
+        "confidence"
+      ],
+      "title": "Node",
+      "type": "object"
+    },
+    "NodeMetadata": {
+      "description": "Typed + open-ended metadata attached to a Node.",
+      "properties": {
+        "framework": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Agentic framework (e.g. 'langgraph', 'crewai', 'mcp-server')",
+          "title": "Framework"
+        },
+        "model_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "LLM / embedding model name if applicable",
+          "title": "Model Name"
+        },
+        "datastore_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Datastore technology, e.g. 'redis', 'postgres', 'pinecone'",
+          "title": "Datastore Type"
+        },
+        "auth_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Authentication mechanism, e.g. 'oauth2', 'bearer', 'api_key', 'jwt'",
+          "title": "Auth Type"
+        },
+        "auth_class": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Auth provider class name, e.g. 'BearerAuthProvider', 'OAuth2ClientCredentialsProvider'",
+          "title": "Auth Class"
+        },
+        "privilege_scope": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Privilege or permission scope label, e.g. 'db_write', 'filesystem_read'",
+          "title": "Privilege Scope"
+        },
+        "endpoint": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "API endpoint address, e.g. '0.0.0.0:8080 (sse)' for MCP or '/chat' for REST",
+          "title": "Endpoint"
+        },
+        "method": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "HTTP method, e.g. 'GET', 'POST'",
+          "title": "Method"
+        },
+        "transport": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Transport protocol for API/MCP nodes, e.g. 'sse', 'streamable-http', 'stdio'",
+          "title": "Transport"
+        },
+        "server_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Server display name (MCP FastMCP name kwarg, or inferred service name)",
+          "title": "Server Name"
+        },
+        "deployment_target": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Cloud or container deployment target, e.g. 'aws', 'gcp', 'kubernetes'",
+          "title": "Deployment Target"
+        },
+        "data_classification": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "PII/PHI classification labels detected in schemas stored in this datastore, e.g. ['PHI', 'PII'].  Null when no classified fields were found.",
+          "title": "Data Classification"
+        },
+        "classified_tables": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "SQL table or Python model names within this datastore that carry PII/PHI fields.",
+          "title": "Classified Tables"
+        },
+        "classified_fields": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Per-table/-model mapping of sensitive field names to their classification labels, e.g. {'patients': ['name', 'dob'], 'users': ['email', 'password']}.",
+          "title": "Classified Fields"
+        },
+        "image_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Container image name, e.g. 'python'",
+          "title": "Image Name"
+        },
+        "image_tag": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Image tag, e.g. '3.12-slim'",
+          "title": "Image Tag"
+        },
+        "image_digest": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Image digest, e.g. 'sha256:abc\u2026'",
+          "title": "Image Digest"
+        },
+        "registry": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Registry host, e.g. 'docker.io', 'gcr.io'",
+          "title": "Registry"
+        },
+        "base_image": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Full base image reference, e.g. 'python:3.12-slim'",
+          "title": "Base Image"
+        },
+        "cloud_region": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Cloud region, e.g. 'us-east-1', 'eastus', 'us-central1'",
+          "title": "Cloud Region"
+        },
+        "availability_zones": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Availability zones configured, e.g. ['us-east-1a', 'us-east-1b']",
+          "title": "Availability Zones"
+        },
+        "secret_store": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Secret management service in use, e.g. 'aws_secrets_manager', 'azure_key_vault', 'gcp_secret_manager', 'hashicorp_vault', 'k8s_secret'",
+          "title": "Secret Store"
+        },
+        "encryption_at_rest": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when encryption-at-rest is explicitly configured in IaC",
+          "title": "Encryption At Rest"
+        },
+        "encryption_key_ref": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "KMS key ARN, Key Vault URI, or CMEK resource reference",
+          "title": "Encryption Key Ref"
+        },
+        "runs_as_root": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when the container is configured to run as root (UID 0); False = non-root",
+          "title": "Runs As Root"
+        },
+        "has_health_check": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when a HEALTHCHECK instruction (Dockerfile) or liveness/readiness probe (K8s) is present",
+          "title": "Has Health Check"
+        },
+        "has_resource_limits": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when Kubernetes resource limits are defined for the workload container",
+          "title": "Has Resource Limits"
+        },
+        "ha_mode": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "High-availability topology: 'multi-az', 'replicated', or 'single'",
+          "title": "Ha Mode"
+        },
+        "iam_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "IAM entity kind: 'role', 'policy', 'service_account', 'managed_identity', 'role_binding'",
+          "title": "Iam Type"
+        },
+        "principal": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "ARN, email, or object ID of the IAM principal",
+          "title": "Principal"
+        },
+        "permissions": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Actions or scopes granted by this IAM entity (up to 20 entries)",
+          "title": "Permissions"
+        },
+        "iam_scope": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Scope of the IAM binding: 'project', 'subscription', 'cluster', 'namespace', 'resource'",
+          "title": "Iam Scope"
+        },
+        "trust_principals": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Principals trusted to assume this role (AWS trust policy subjects, K8s binding subjects)",
+          "title": "Trust Principals"
+        },
+        "extras": {
+          "additionalProperties": true,
+          "description": "Adapter-specific key/value pairs (provider, model_family, version, \u2026)",
+          "title": "Extras",
+          "type": "object"
+        }
+      },
+      "title": "NodeMetadata",
+      "type": "object"
+    },
+    "PackageDep": {
+      "description": "A single declared package dependency (Python or JavaScript).",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "version_spec": {
+          "title": "Version Spec",
+          "type": "string"
+        },
+        "purl": {
+          "title": "Purl",
+          "type": "string"
+        },
+        "group": {
+          "title": "Group",
+          "type": "string"
+        },
+        "source_file": {
+          "title": "Source File",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "version_spec",
+        "purl",
+        "group",
+        "source_file"
+      ],
+      "title": "PackageDep",
+      "type": "object"
+    },
+    "RelationshipType": {
+      "enum": [
+        "USES",
+        "CALLS",
+        "ACCESSES",
+        "PROTECTS",
+        "DEPLOYS"
+      ],
+      "title": "RelationshipType",
+      "type": "string"
+    },
+    "ScanSummary": {
+      "description": "Deterministic scan-level summary populated on every extraction.",
+      "properties": {
+        "use_case": {
+          "default": "",
+          "description": "Human-readable description of the application's AI use cases",
+          "title": "Use Case",
+          "type": "string"
+        },
+        "frameworks": {
+          "description": "Agentic framework names detected (e.g. ['langgraph', 'crewai'])",
+          "items": {
+            "type": "string"
+          },
+          "title": "Frameworks",
+          "type": "array"
+        },
+        "modalities": {
+          "description": "Supported I/O modalities in upper-case (e.g. ['TEXT', 'VOICE'])",
+          "items": {
+            "type": "string"
+          },
+          "title": "Modalities",
+          "type": "array"
+        },
+        "modality_support": {
+          "additionalProperties": {
+            "type": "boolean"
+          },
+          "description": "Detailed modality flags, e.g. {'text': true, 'voice': false}",
+          "title": "Modality Support",
+          "type": "object"
+        },
+        "api_endpoints": {
+          "description": "API route paths extracted from source (e.g. ['/chat', '/health'])",
+          "items": {
+            "type": "string"
+          },
+          "title": "Api Endpoints",
+          "type": "array"
+        },
+        "deployment_platforms": {
+          "description": "Cloud/CI platforms inferred from IaC files (e.g. ['AWS', 'GCP'])",
+          "items": {
+            "type": "string"
+          },
+          "title": "Deployment Platforms",
+          "type": "array"
+        },
+        "regions": {
+          "description": "Cloud regions referenced in IaC/config (e.g. ['us-east-1'])",
+          "items": {
+            "type": "string"
+          },
+          "title": "Regions",
+          "type": "array"
+        },
+        "environments": {
+          "description": "Deployment environments inferred from config (e.g. ['prod', 'staging'])",
+          "items": {
+            "type": "string"
+          },
+          "title": "Environments",
+          "type": "array"
+        },
+        "deployment_urls": {
+          "description": "Canonical deployment URLs found in IaC/workflow files",
+          "items": {
+            "type": "string"
+          },
+          "title": "Deployment Urls",
+          "type": "array"
+        },
+        "iac_accounts": {
+          "description": "Cloud account IDs / subscription IDs / project IDs found in IaC",
+          "items": {
+            "type": "string"
+          },
+          "title": "Iac Accounts",
+          "type": "array"
+        },
+        "node_counts": {
+          "additionalProperties": {
+            "type": "integer"
+          },
+          "description": "Count of nodes per ComponentType, e.g. {'AGENT': 3, 'MODEL': 2}",
+          "title": "Node Counts",
+          "type": "object"
+        },
+        "secret_stores": {
+          "description": "Deduped secret management services referenced across all IaC files",
+          "items": {
+            "type": "string"
+          },
+          "title": "Secret Stores",
+          "type": "array"
+        },
+        "availability_zones": {
+          "description": "All cloud availability zones referenced in IaC files",
+          "items": {
+            "type": "string"
+          },
+          "title": "Availability Zones",
+          "type": "array"
+        },
+        "encryption_at_rest_coverage": {
+          "default": false,
+          "description": "True when at least one IaC resource has encryption-at-rest configured",
+          "title": "Encryption At Rest Coverage",
+          "type": "boolean"
+        },
+        "security_findings": {
+          "description": "Notable security / resilience findings across IaC and container config, e.g. ['container_runs_as_root', 'missing_health_check', 'no_resource_limits', 'secrets_in_env_vars', 'overly_permissive_iam']",
+          "items": {
+            "type": "string"
+          },
+          "title": "Security Findings",
+          "type": "array"
+        },
+        "iam_principals": {
+          "description": "IAM role ARNs, GCP service account emails, and Azure managed identity names",
+          "items": {
+            "type": "string"
+          },
+          "title": "Iam Principals",
+          "type": "array"
+        },
+        "service_accounts": {
+          "description": "K8s ServiceAccount names and GCP/Azure service account identifiers",
+          "items": {
+            "type": "string"
+          },
+          "title": "Service Accounts",
+          "type": "array"
+        },
+        "iac_security_summary": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "LLM-generated security briefing for practitioners covering deployment posture, IAM configuration, secret management, encryption, HA, and CI/CD risks across all detected IaC and GitHub Actions workflows.",
+          "title": "Iac Security Summary"
+        },
+        "data_classification": {
+          "description": "Union of all data classification labels detected across the repository, e.g. ['PHI', 'PII'].  Empty list when no classified fields are found.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Data Classification",
+          "type": "array"
+        },
+        "classified_tables": {
+          "description": "Names of SQL tables or Python models that contain classified data fields (PII or PHI).  Sorted alphabetically.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Classified Tables",
+          "type": "array"
+        }
+      },
+      "title": "ScanSummary",
+      "type": "object"
+    },
+    "SourceLocation": {
+      "description": "File/line pointer for a piece of evidence.",
+      "properties": {
+        "path": {
+          "description": "Relative path to the source file",
+          "title": "Path",
+          "type": "string"
+        },
+        "line": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "1-based line number, if known",
+          "title": "Line"
+        }
+      },
+      "required": [
+        "path"
+      ],
+      "title": "SourceLocation",
+      "type": "object"
+    }
+  },
+  "$id": "https://nuguard.ai/schemas/aibom/1.3.0/aibom.schema.json",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "AI Bill of Materials document produced by Xelo.\n\nThis is the canonical output format.  Use ``AiSbomSerializer.to_json()``\nto serialise and ``AiSbomDocument.model_validate()`` to parse and validate.",
+  "properties": {
+    "schema_version": {
+      "default": "1.3.0",
+      "description": "AIBOM schema version (semver); bump when format changes",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "generated_at": {
+      "description": "ISO 8601 UTC timestamp when this document was generated",
+      "format": "date-time",
+      "title": "Generated At",
+      "type": "string"
+    },
+    "generator": {
+      "default": "xelo",
+      "description": "Tool that produced this document",
+      "title": "Generator",
+      "type": "string"
+    },
+    "target": {
+      "description": "Repository URL or local path that was scanned",
+      "title": "Target",
+      "type": "string"
+    },
+    "nodes": {
+      "description": "Detected AI components",
+      "items": {
+        "$ref": "#/$defs/Node"
+      },
+      "title": "Nodes",
+      "type": "array"
+    },
+    "edges": {
+      "description": "Directed relationships between components",
+      "items": {
+        "$ref": "#/$defs/Edge"
+      },
+      "title": "Edges",
+      "type": "array"
+    },
+    "deps": {
+      "description": "Package dependencies from manifests (pyproject.toml, requirements*.txt, package.json, \u2026)",
+      "items": {
+        "$ref": "#/$defs/PackageDep"
+      },
+      "title": "Deps",
+      "type": "array"
+    },
+    "summary": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ScanSummary"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Scan-level metadata: use-case summary, frameworks, modalities, API endpoints, and IaC/deployment context"
+    }
+  },
+  "required": [
+    "target"
+  ],
+  "title": "AiSbomDocument",
+  "type": "object"
+}
