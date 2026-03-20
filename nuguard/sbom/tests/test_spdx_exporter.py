@@ -25,16 +25,16 @@ from typing import Any
 
 import pytest
 
-from xelo.deps import PackageDep
-from xelo.models import (
+from nuguard.sbom.deps import PackageDep
+from nuguard.sbom.models import (
     AiSbomDocument,
     Edge,
     Node,
     NodeMetadata,
     ScanSummary,
 )
-from xelo.toolbox.plugins.spdx_exporter import SpdxExporter, _to_spdx3
-from xelo.types import ComponentType, RelationshipType
+from nuguard.sbom.toolbox.plugins.spdx_exporter import SpdxExporter, _to_spdx3
+from nuguard.sbom.types import ComponentType, RelationshipType
 
 # ── helpers ────────────────────────────────────────────────────────────────────
 

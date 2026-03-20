@@ -10,9 +10,9 @@ from __future__ import annotations
 
 import pytest
 
-from xelo.adapters.privilege import privilege_adapters
-from xelo.adapters.registry import default_registry
-from xelo.types import ComponentType
+from nuguard.sbom.adapters.privilege import privilege_adapters
+from nuguard.sbom.adapters.registry import default_registry
+from nuguard.sbom.types import ComponentType
 
 
 # ---------------------------------------------------------------------------

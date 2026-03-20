@@ -16,12 +16,12 @@ from typing import Any
 
 import pytest
 
-from xelo.config import AiSbomConfig
-from xelo.deps import DependencyScanner, PackageDep
-from xelo.extractor import AiSbomExtractor
-from xelo.models import AiSbomDocument
-from xelo.serializer import AiSbomSerializer
-from xelo.types import ComponentType
+from nuguard.sbom.config import AiSbomConfig
+from nuguard.sbom.deps import DependencyScanner, PackageDep
+from nuguard.sbom.extractor import AiSbomExtractor
+from nuguard.sbom.models import AiSbomDocument
+from nuguard.sbom.serializer import AiSbomSerializer
+from nuguard.sbom.types import ComponentType
 
 _APPS = Path(__file__).parent / "fixtures" / "apps"
 _PY_ONLY = AiSbomConfig(include_extensions={".py"}, enable_llm=False)

@@ -17,7 +17,7 @@ from pathlib import Path
 
 import pytest
 
-from xelo.deps import DependencyScanner, PackageDep, _normalise, _to_npm_purl, _to_purl
+from nuguard.sbom.deps import DependencyScanner, PackageDep, _normalise, _to_npm_purl, _to_purl
 
 _APPS = Path(__file__).parent / "fixtures" / "apps"
 

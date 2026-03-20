@@ -30,15 +30,25 @@ sbom_app = typer.Typer(
 
 @sbom_app.command("generate")
 def generate(
-    source: Path = typer.Option(
-        ...,
+    source: Optional[Path] = typer.Option(
+        None,
         "--source",
         "-s",
         help="Path to application source directory.",
-        exists=True,
+        exists=False,
         file_okay=False,
         dir_okay=True,
         resolve_path=True,
+    ),
+    from_repo: Optional[str] = typer.Option(
+        None,
+        "--from-repo",
+        help="Git repository URL to clone and scan (e.g. https://github.com/org/repo).",
+    ),
+    ref: str = typer.Option(
+        "main",
+        "--ref",
+        help="Branch, tag, or commit to check out when using --from-repo.",
     ),
     output: Path = typer.Option(
         Path("app.sbom.json"),
@@ -58,13 +68,24 @@ def generate(
         help="Output format: json | cyclonedx.",
     ),
 ) -> None:
-    """Generate an AI-SBOM by scanning SOURCE."""
+    """Generate an AI-SBOM by scanning SOURCE or cloning --from-repo."""
+    if source is None and from_repo is None:
+        _err_console.print("Provide --source <dir> or --from-repo <url>.")
+        raise typer.Exit(code=1)
+
     config = AiSbomConfig(enable_llm=llm)
     gen = SbomGenerator(config=config)
 
-    _console.print(f"[bold]Scanning[/bold] {source} …")
     try:
-        doc = gen.from_path(source, output=None)
+        if from_repo:
+            _console.print(f"[bold]Cloning[/bold] {from_repo} ({ref}) …")
+            doc = gen.from_repo(from_repo, ref=ref, output=None)
+        else:
+            if not source.exists():
+                _err_console.print(f"Directory not found: {source}")
+                raise typer.Exit(code=1)
+            _console.print(f"[bold]Scanning[/bold] {source} …")
+            doc = gen.from_path(source, output=None)
     except SbomError as exc:
         _err_console.print(f"Error: {exc}")
         raise typer.Exit(code=3) from exc

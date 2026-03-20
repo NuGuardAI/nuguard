@@ -7,12 +7,12 @@ from pathlib import Path
 
 import pytest
 
-from xelo.extractor import AiSbomExtractor
-from xelo.models import AiSbomDocument
-from xelo.serializer import AiSbomSerializer
+from nuguard.sbom.extractor import AiSbomExtractor
+from nuguard.sbom.models import AiSbomDocument
+from nuguard.sbom.serializer import AiSbomSerializer
 from conftest import APPS, PY_ONLY
 
-_SCHEMA_FILE = Path(__file__).parent.parent / "src" / "xelo" / "schemas" / "aibom.schema.json"
+_SCHEMA_FILE = Path(__file__).parent.parent / "schemas" / "aibom.schema.json"
 
 
 # ---------------------------------------------------------------------------
@@ -26,7 +26,7 @@ def test_committed_schema_matches_models() -> None:
     If this test fails, run from the oss/Xelo directory::
 
         python -c "
-        from xelo.models import AiSbomDocument; import json
+        from nuguard.sbom.models import AiSbomDocument; import json
         open('src/xelo/schemas/aibom.schema.json', 'w').write(
             json.dumps(AiSbomDocument.model_json_schema(), indent=2) + '\\n'
         )"
@@ -36,7 +36,7 @@ def test_committed_schema_matches_models() -> None:
     live = AiSbomDocument.model_json_schema()
     assert committed == live, (
         "aibom.schema.json is out of sync with AiSbomDocument Pydantic models. "
-        'Regenerate it with: python -c "from xelo.models import AiSbomDocument; '
+        'Regenerate it with: python -c "from nuguard.sbom.models import AiSbomDocument; '
         "import json; open('src/xelo/schemas/aibom.schema.json', 'w')"
         ".write(json.dumps(AiSbomDocument.model_json_schema(), indent=2) + '\\n')\""
     )

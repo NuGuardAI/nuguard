@@ -1,0 +1,23 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nuguard.ai/schemas/test-summary.schema.json",
+  "title": "Test Summary",
+  "description": "Finding counts by severity for a completed red-team test. Stored as JSONB in redteam_tests.summary. Null until test status = complete.",
+  "type": "object",
+  "required": ["critical", "high", "medium", "low", "info"],
+  "properties": {
+    "critical": { "type": "integer", "minimum": 0 },
+    "high":     { "type": "integer", "minimum": 0 },
+    "medium":   { "type": "integer", "minimum": 0 },
+    "low":      { "type": "integer", "minimum": 0 },
+    "info":     { "type": "integer", "minimum": 0 }
+  },
+  "additionalProperties": false,
+  "example": {
+    "critical": 1,
+    "high": 3,
+    "medium": 5,
+    "low": 2,
+    "info": 0
+  }
+}

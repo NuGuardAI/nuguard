@@ -1,0 +1,59 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nuguard.ai/schemas/test-config.schema.json",
+  "title": "Test Config",
+  "description": "Configuration for a red-team test run. Stored as JSONB in redteam_tests.config. Identity and reference fields (id, test_name, sbom_id, policy_id) are promoted Postgres columns on redteam_tests and are NOT repeated here.",
+  "type": "object",
+  "required": ["profile", "mode"],
+  "properties": {
+    "profile": {
+      "type": "string",
+      "enum": ["ci", "full"],
+      "default": "ci",
+      "description": "'ci' disables PersistenceAgent, simulation mode, 10-min timeout. 'full' enables all 5 agents."
+    },
+    "mode": {
+      "type": "string",
+      "enum": ["simulation", "real"],
+      "default": "simulation",
+      "description": "'real' requires Docker isolation and confirm=true."
+    },
+    "confirm": {
+      "type": "boolean",
+      "default": false,
+      "description": "Must be true when mode='real'. Prevents accidental real execution."
+    },
+    "scenarios": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "enum": ["prompt_injection", "tool_abuse", "privilege_escalation"]
+      },
+      "uniqueItems": true,
+      "description": "Restrict to specific scenario types. Empty array means all types are run."
+    },
+    "min_impact_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 10,
+      "default": 0,
+      "description": "Only execute scenarios with pre-score >= this value."
+    },
+    "timeout_seconds": {
+      "type": "integer",
+      "minimum": 60,
+      "maximum": 3600,
+      "default": 600,
+      "description": "Maximum wall-clock time for the test. Default 600s (10 min) for CI profile."
+    }
+  },
+  "if": {
+    "properties": { "mode": { "const": "real" } }
+  },
+  "then": {
+    "required": ["confirm"],
+    "properties": {
+      "confirm": { "const": true }
+    }
+  }
+}

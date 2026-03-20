@@ -708,8 +708,8 @@ async def run_discovery_pipeline(
         use_llm: When True, enables LLM enrichment (reads model/key config from env).
     """
     del detected_frameworks
-    from xelo.extractor import AiSbomExtractor
-    from xelo.config import AiSbomConfig
+    from nuguard.sbom.extractor import AiSbomExtractor
+    from nuguard.sbom.config import AiSbomConfig
 
     if use_llm:
         logger.info("  LLM enrichment enabled for this scan")
@@ -896,8 +896,8 @@ def _run_local_folder_discovery(
     Returns:
         Tuple of (discovered assets, full SBOM dict for toolbox plugins).
     """
-    from xelo.extractor import AiSbomExtractor
-    from xelo.config import AiSbomConfig
+    from nuguard.sbom.extractor import AiSbomExtractor
+    from nuguard.sbom.config import AiSbomConfig
 
     extractor = AiSbomExtractor()
     config = AiSbomConfig(enable_llm=use_llm)
@@ -1321,7 +1321,7 @@ def run_bench_plugins(
       - ``markdown_saved``  (bool)
       - ``issues``          (list of issue dicts)
     """
-    from xelo.toolbox.plugins.markdown_exporter import MarkdownExporterPlugin
+    from nuguard.sbom.toolbox.plugins.markdown_exporter import MarkdownExporterPlugin
 
     issues: List[Dict[str, Any]] = []
 

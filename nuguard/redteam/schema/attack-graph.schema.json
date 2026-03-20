@@ -1,0 +1,140 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nuguard.ai/schemas/attack-graph.schema.json",
+  "title": "NuGuard Attack Surface Graph",
+  "description": "Enriched Attack Surface Graph derived from a Xelo AI-SBOM. Stored as JSONB in attack_graphs.graph using networkx node_link_data serialization. Identity fields (id, test_id, test_name, created_at) are promoted Postgres columns on attack_graphs and are NOT repeated here.",
+  "type": "object",
+  "required": ["nodes", "edges"],
+  "properties": {
+    "nodes": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/Node" }
+    },
+
+    "edges": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/Edge" }
+    },
+
+    "metadata": {
+      "type": "object",
+      "properties": {
+        "application_name": { "type": "string" },
+        "environment": { "type": "string" },
+        "sbom_id": { "type": "string", "format": "uuid" }
+      }
+    }
+  },
+
+  "definitions": {
+    "BaseNodeAttributes": {
+      "type": "object",
+      "properties": {
+        "risk_attributes": {
+          "type": "array",
+          "items": { "$ref": "shared-types.schema.json#/definitions/RiskAttribute" },
+          "uniqueItems": true
+        }
+      }
+    },
+
+    "AgentAttributes": {
+      "allOf": [{ "$ref": "#/definitions/BaseNodeAttributes" }],
+      "properties": {
+        "prompt_accessible": { "type": "boolean" },
+        "tool_caller": { "type": "boolean" },
+        "memory_access": { "type": "boolean" }
+      }
+    },
+
+    "ToolAttributes": {
+      "allOf": [{ "$ref": "#/definitions/BaseNodeAttributes" }],
+      "properties": {
+        "capability_flags": { "type": "array", "items": { "type": "string" } },
+        "auth_required": { "$ref": "shared-types.schema.json#/definitions/AuthType" },
+        "scope": { "type": "string" }
+      }
+    },
+
+    "APIAttributes": {
+      "allOf": [{ "$ref": "#/definitions/BaseNodeAttributes" }],
+      "properties": {
+        "auth_type": { "$ref": "shared-types.schema.json#/definitions/AuthType" },
+        "methods": { "type": "array", "items": { "$ref": "shared-types.schema.json#/definitions/HttpMethod" } },
+        "data_returned": { "type": "string" }
+      }
+    },
+
+    "APIEndpointAttributes": {
+      "allOf": [{ "$ref": "#/definitions/BaseNodeAttributes" }],
+      "required": ["method", "path", "auth_required"],
+      "properties": {
+        "method": { "$ref": "shared-types.schema.json#/definitions/HttpMethod" },
+        "path": { "type": "string" },
+        "path_parameters": { "type": "array", "items": { "type": "string" } },
+        "query_parameters": { "type": "array", "items": { "type": "string" } },
+        "request_body_schema": { "type": "object" },
+        "auth_required": { "$ref": "shared-types.schema.json#/definitions/AuthType" },
+        "auth_scope": { "type": "string" },
+        "returns_sensitive_data": { "type": "boolean" },
+        "accepts_user_input": { "type": "boolean" },
+        "rate_limited": { "type": "boolean" }
+      }
+    },
+
+    "DatabaseAttributes": {
+      "allOf": [{ "$ref": "#/definitions/BaseNodeAttributes" }],
+      "properties": {
+        "data_sensitivity": { "$ref": "shared-types.schema.json#/definitions/DataSensitivity" },
+        "write_access": { "type": "boolean" },
+        "schema_exposed": { "type": "boolean" }
+      }
+    },
+
+    "VectorstoreAttributes": {
+      "allOf": [{ "$ref": "#/definitions/BaseNodeAttributes" }],
+      "properties": {
+        "embedding_model": { "type": "string" },
+        "data_sensitivity": { "$ref": "shared-types.schema.json#/definitions/DataSensitivity" }
+      }
+    },
+
+    "PromptAttributes": {
+      "allOf": [{ "$ref": "#/definitions/BaseNodeAttributes" }],
+      "properties": {
+        "injectable": { "type": "boolean" },
+        "leakable": { "type": "boolean" },
+        "privilege_level": { "type": "string", "enum": ["system", "user", "assistant"] }
+      }
+    },
+
+    "Node": {
+      "type": "object",
+      "required": ["id", "type", "name"],
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "$ref": "shared-types.schema.json#/definitions/NodeType" },
+        "name": { "type": "string" },
+        "attributes": { "$ref": "#/definitions/BaseNodeAttributes" }
+      }
+    },
+
+    "Edge": {
+      "type": "object",
+      "required": ["id", "source", "target", "type"],
+      "properties": {
+        "id": { "type": "string" },
+        "source": { "type": "string", "description": "Source node id" },
+        "target": { "type": "string", "description": "Target node id" },
+        "type": { "$ref": "shared-types.schema.json#/definitions/EdgeType" },
+        "conditions": {
+          "type": "object",
+          "properties": {
+            "requires_auth": { "type": "boolean" },
+            "role_required": { "type": "string" }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,133 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nuguard.ai/schemas/shared-types.schema.json",
+  "title": "NuGuard Shared Type Definitions",
+  "description": "Canonical definitions for types reused across multiple NuGuard schemas. Import via $ref: 'shared-types.schema.json#/definitions/<Type>'.",
+  "definitions": {
+    "PolicyViolationType": {
+      "type": "string",
+      "enum": [
+        "topic_boundary_breach",
+        "restricted_action_executed",
+        "HITL_bypassed",
+        "data_leak",
+        "unauthorized_tool_call",
+        "rate_limit_exceeded",
+        "privilege_escalation",
+        "memory_poisoning"
+      ],
+      "description": "Enumerated set of cognitive policy violation types detected by the policy engine. v1 implements: topic_boundary_breach, restricted_action_executed, HITL_bypassed. v2 adds: data_leak (any sensitive data exposed beyond data_classification boundaries), unauthorized_tool_call, rate_limit_exceeded. v2+ adds: privilege_escalation (access beyond SBOM-granted permissions), memory_poisoning (long-term context/memory corrupted by persistence agent)."
+    },
+
+    "ComplianceFramework": {
+      "type": "string",
+      "enum": [
+        "owasp_llm_top10",
+        "nist_ai_rmf",
+        "mitre_atlas",
+        "eu_ai_act",
+        "iso_42001",
+        "nist_csf"
+      ],
+      "description": "Supported compliance/policy frameworks. v1 maps to owasp_llm_top10 only. Additional frameworks are v2+ optional steps in the test pipeline."
+    },
+
+    "ComplianceRef": {
+      "type": "object",
+      "required": ["framework", "ref_id"],
+      "additionalProperties": false,
+      "properties": {
+        "framework": { "$ref": "#/definitions/ComplianceFramework" },
+        "ref_id": {
+          "type": "string",
+          "description": "Framework-specific identifier, e.g. 'LLM01', 'AML.T0051', 'GOVERN-1.1', 'Article 9'."
+        },
+        "ref_name": {
+          "type": "string",
+          "description": "Human-readable name for the control or category, e.g. 'Prompt Injection'."
+        }
+      }
+    },
+
+    "Severity": {
+      "type": "string",
+      "enum": ["critical", "high", "medium", "low", "info"],
+      "description": "Finding severity level."
+    },
+
+    "DataSensitivity": {
+      "type": "string",
+      "enum": ["public", "internal", "confidential", "high"],
+      "description": "Data sensitivity classification level."
+    },
+
+    "AuthType": {
+      "type": "string",
+      "enum": ["none", "bearer", "api_key", "oauth2"],
+      "description": "Authentication mechanism."
+    },
+
+    "ComponentType": {
+      "type": "string",
+      "enum": ["AGENT", "MODEL", "TOOL", "PROMPT", "DATASTORE", "GUARDRAIL", "AUTH", "PRIVILEGE", "CONTAINER_IMAGE", "DEPLOYMENT", "IAM", "FRAMEWORK", "API_ENDPOINT"],
+      "description": "Xelo AI-SBOM component_type values (SCREAMING_SNAKE_CASE). Used in sbom.schema.json. Maps to NuGuard NodeType via the attack graph mapper — see mapping/mapping-rules.json."
+    },
+
+    "NodeType": {
+      "type": "string",
+      "enum": ["agent", "model", "tool", "api", "api_endpoint", "database", "vectorstore", "prompt", "knowledge_base", "guardrail", "identity", "iam", "privilege"],
+      "description": "NuGuard Attack Surface Graph node type (lowercase). Produced by the SBOM mapper from Xelo ComponentType. See mapping/mapping-rules.json for ComponentType → NodeType mapping."
+    },
+
+    "RiskAttribute": {
+      "type": "string",
+      "enum": ["SSRF-possible", "SQL-injectable", "PII-stores", "no-auth-required", "IDOR-surface", "high-privilege", "no-rate-limit", "HITL-bypass-risk"],
+      "description": "Risk label assigned by the enricher to attack graph nodes."
+    },
+
+    "EdgeType": {
+      "type": "string",
+      "enum": ["INVOKES", "READS", "WRITES", "CALLS", "CALLS_ENDPOINT", "EXECUTES", "OWNS", "GUARDS"],
+      "description": "NuGuard Attack Surface Graph edge type (SCREAMING_SNAKE_CASE). Stored as an edge attribute in networkx. GUARDS is produced from Xelo's PROTECTS relationship."
+    },
+
+    "RelationshipType": {
+      "type": "string",
+      "enum": ["USES", "CALLS", "ACCESSES", "PROTECTS", "DEPLOYS"],
+      "description": "Xelo AI-SBOM edge relationship_type (SCREAMING_SNAKE_CASE). Maps to NuGuard EdgeType during attack graph construction: USES/CALLS → INVOKES, ACCESSES → READS/WRITES, PROTECTS → GUARDS, DEPLOYS → skipped (v1)."
+    },
+
+    "HttpMethod": {
+      "type": "string",
+      "enum": ["GET", "POST", "PUT", "PATCH", "DELETE"],
+      "description": "HTTP method."
+    },
+
+    "PrivilegeLevel": {
+      "type": "string",
+      "enum": ["system", "user", "assistant"],
+      "description": "LLM conversation role / privilege level for prompt components."
+    },
+
+    "RemediationItem": {
+      "type": "object",
+      "required": ["text"],
+      "additionalProperties": false,
+      "description": "A single targeted fix suggestion. Multiple items may be present when a finding spans several node types or exploit techniques.",
+      "properties": {
+        "text": {
+          "type": "string",
+          "description": "Concrete fix suggestion, e.g. 'Parameterize the SQL query in search_tool.py:47 before passing agent-supplied values to the database cursor.'"
+        },
+        "node_type": {
+          "$ref": "#/definitions/NodeType",
+          "description": "The node type this fix applies to. Omit when the fix is not node-type-specific."
+        },
+        "exploit_technique": {
+          "type": "string",
+          "description": "The attack technique this fix addresses, e.g. 'SQL-injectable', 'prompt_injection'. Omit when the fix applies to all techniques."
+        }
+      }
+    }
+  }
+}

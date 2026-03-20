@@ -9,10 +9,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from xelo.config import AiSbomConfig
-from xelo.extractor import AiSbomExtractor
-from xelo.models import AiSbomDocument
-from xelo.types import ComponentType
+from nuguard.sbom.config import AiSbomConfig
+from nuguard.sbom.extractor import AiSbomExtractor
+from nuguard.sbom.models import AiSbomDocument
+from nuguard.sbom.types import ComponentType
 
 # ---------------------------------------------------------------------------
 # Canonical fixture roots

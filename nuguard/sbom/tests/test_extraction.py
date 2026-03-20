@@ -23,10 +23,10 @@ from pathlib import Path
 
 import pytest
 
-from xelo.adapters.registry import default_framework_adapters
-from xelo.extractor import AiSbomExtractor
-from xelo.models import AiSbomDocument
-from xelo.types import ComponentType, RelationshipType
+from nuguard.sbom.adapters.registry import default_framework_adapters
+from nuguard.sbom.extractor import AiSbomExtractor
+from nuguard.sbom.models import AiSbomDocument
+from nuguard.sbom.types import ComponentType, RelationshipType
 from conftest import APPS, FIXTURES, PY_ONLY, adapters, extract, names, nodes
 
 

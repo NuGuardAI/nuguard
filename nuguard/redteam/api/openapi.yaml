@@ -1,0 +1,974 @@
+openapi: 3.0.0
+info:
+  title: NuGuard Red-Teaming API
+  version: "1.0.0"
+  description: |
+    Agentic AI penetration testing platform. Ingest an AI-SBOM, build an Attack
+    Surface Graph, execute multi-agent exploit chains, validate against a Cognitive
+    Policy, and receive an audit-ready risk report with CI/CD gating via SARIF.
+
+    **Authentication:** All endpoints require `Authorization: Bearer <NUGUARD_API_KEY>`.
+
+servers:
+  - url: http://localhost:8000
+    description: Local development
+
+security:
+  - ApiKeyAuth: []
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: http
+      scheme: bearer
+      description: Static API key set via `NUGUARD_API_KEY_SECRET` env var.
+
+  parameters:
+    test_id:
+      name: test_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    sbom_id:
+      name: sbom_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+    policy_id:
+      name: policy_id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid `Authorization` header.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: unauthorized
+            message: "Authorization header missing or invalid."
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            error: not_found
+            message: "Resource not found."
+    ValidationError:
+      description: Request body failed schema validation.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+  schemas:
+    # ------------------------------------------------------------------ #
+    # Common                                                               #
+    # ------------------------------------------------------------------ #
+    Error:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          example: not_found
+        message:
+          type: string
+          example: Test not found.
+        detail:
+          type: array
+          items:
+            type: object
+          description: Field-level validation errors (422 responses).
+
+    # ------------------------------------------------------------------ #
+    # SBOM                                                                 #
+    # ------------------------------------------------------------------ #
+    SBOMUploadRequest:
+      type: object
+      required: [test_name, sbom]
+      properties:
+        test_name:
+          type: string
+          pattern: '^[a-z0-9]+(-[a-z0-9]+)*$'
+          description: Lowercase slug identifying the test suite, e.g. `customer-support-chatbot`.
+          example: customer-support-chatbot
+        sbom:
+          type: object
+          description: Xelo AI-SBOM JSON object (pinned schema version required).
+
+    SBOMUploadResponse:
+      type: object
+      required: [sbom_id, test_name, component_count]
+      properties:
+        sbom_id:
+          type: string
+          format: uuid
+        test_name:
+          type: string
+        component_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+
+    SBOM:
+      type: object
+      required: [id, test_name, sbom, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        test_name:
+          type: string
+        sbom:
+          type: object
+        graph_id:
+          type: string
+          format: uuid
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    # ------------------------------------------------------------------ #
+    # Cognitive Policy                                                     #
+    # ------------------------------------------------------------------ #
+    PolicyUploadRequest:
+      type: object
+      required: [test_name, policy_md]
+      properties:
+        test_name:
+          type: string
+          pattern: '^[a-z0-9]+(-[a-z0-9]+)*$'
+          example: customer-support-chatbot
+        policy_md:
+          type: string
+          description: Structured Markdown with sections — allowed_topics, restricted_topics, restricted_actions, HITL_triggers, data_classification, rate_limits.
+
+    PolicyUploadResponse:
+      type: object
+      required: [policy_id, test_name, sections_parsed]
+      properties:
+        policy_id:
+          type: string
+          format: uuid
+        test_name:
+          type: string
+        sections_parsed:
+          type: array
+          items:
+            type: string
+          example: [allowed_topics, restricted_topics, restricted_actions, HITL_triggers, data_classification, rate_limits]
+        warnings:
+          type: array
+          items:
+            type: string
+          description: Missing optional sections.
+        created_at:
+          type: string
+          format: date-time
+
+    CognitivePolicy:
+      type: object
+      required: [id, test_name, policy_md, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        test_name:
+          type: string
+        policy_md:
+          type: string
+        policy_parsed:
+          type: object
+          nullable: true
+          properties:
+            allowed_topics:
+              type: array
+              items:
+                type: string
+            restricted_topics:
+              type: array
+              items:
+                type: string
+              description: Topics the agent must never discuss. Empty array if not configured.
+            restricted_actions:
+              type: array
+              items:
+                type: string
+            hitl_triggers:
+              type: array
+              items:
+                type: string
+            data_classification:
+              type: array
+              items:
+                type: string
+            rate_limits:
+              type: array
+              items:
+                type: string
+        created_at:
+          type: string
+          format: date-time
+
+    # ------------------------------------------------------------------ #
+    # Attack Graph                                                         #
+    # ------------------------------------------------------------------ #
+    AttackGraph:
+      type: object
+      required: [id, test_name, graph, node_count, edge_count, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        test_id:
+          type: string
+          format: uuid
+          nullable: true
+        test_name:
+          type: string
+        graph:
+          type: object
+          description: networkx node_link_data serialization of the Attack Surface Graph.
+        node_count:
+          type: integer
+        edge_count:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+
+    # ------------------------------------------------------------------ #
+    # Redteam Test                                                         #
+    # ------------------------------------------------------------------ #
+    TestConfig:
+      type: object
+      required: [sbom_id, policy_id, test_name]
+      properties:
+        sbom_id:
+          type: string
+          format: uuid
+        policy_id:
+          type: string
+          format: uuid
+        test_name:
+          type: string
+          pattern: '^[a-z0-9]+(-[a-z0-9]+)*$'
+          example: customer-support-chatbot
+        profile:
+          type: string
+          enum: [ci, full]
+          default: ci
+          description: "`ci` disables PersistenceAgent, uses simulation mode, 10-min timeout. `full` enables all agents."
+        mode:
+          type: string
+          enum: [simulation, real]
+          default: simulation
+          description: "`real` requires Docker isolation and `confirm: true`."
+        confirm:
+          type: boolean
+          default: false
+          description: Required to be `true` when `mode` is `real`.
+        scenarios:
+          type: array
+          items:
+            type: string
+            enum: [prompt_injection, tool_abuse, privilege_escalation]
+          description: Restrict to specific scenario types. Empty = all types.
+        min_impact_score:
+          type: number
+          format: float
+          minimum: 0
+          maximum: 10
+          description: Only generate scenarios with pre-score ≥ this value.
+
+    TestSummary:
+      type: object
+      properties:
+        critical:
+          type: integer
+          default: 0
+        high:
+          type: integer
+          default: 0
+        medium:
+          type: integer
+          default: 0
+        low:
+          type: integer
+          default: 0
+        info:
+          type: integer
+          default: 0
+
+    Test:
+      type: object
+      required: [id, test_name, status, config, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        test_name:
+          type: string
+        sbom_id:
+          type: string
+          format: uuid
+        policy_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending, running, complete, failed]
+        config:
+          $ref: '#/components/schemas/TestConfig'
+        risk_score:
+          type: number
+          format: float
+          nullable: true
+          description: Aggregate risk score (0–100). Null until complete.
+        summary:
+          $ref: '#/components/schemas/TestSummary'
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    TestCreateResponse:
+      type: object
+      required: [test_id, status]
+      properties:
+        test_id:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [pending]
+        message:
+          type: string
+          example: "Test enqueued. Poll GET /v1/redteam/{test_id} for status."
+
+    # ------------------------------------------------------------------ #
+    # Findings                                                             #
+    # ------------------------------------------------------------------ #
+    Finding:
+      type: object
+      required: [id, test_id, severity, title, remediations, details]
+      properties:
+        id:
+          type: string
+          format: uuid
+        test_id:
+          type: string
+          format: uuid
+        severity:
+          type: string
+          enum: [critical, high, medium, low, info]
+        title:
+          type: string
+        exploit_chain_id:
+          type: string
+          format: uuid
+          nullable: true
+        policy_violation_type:
+          type: string
+          enum: [topic_boundary_breach, restricted_action_executed, HITL_bypassed, data_leak, unauthorized_tool_call, rate_limit_exceeded, privilege_escalation, memory_poisoning]
+          nullable: true
+        compliance_refs:
+          type: array
+          nullable: true
+          description: "Compliance framework mappings. v1: owasp_llm_top10 refs added by ComplianceMapper. v2+: nist_ai_rmf, mitre_atlas, eu_ai_act etc. are optional test steps."
+          items:
+            type: object
+            required: [framework, ref_id]
+            properties:
+              framework:
+                type: string
+                enum: [owasp_llm_top10, nist_ai_rmf, mitre_atlas, eu_ai_act, iso_42001, nist_csf]
+              ref_id:
+                type: string
+                example: LLM01
+              ref_name:
+                type: string
+                example: Prompt Injection
+        evidence_trace_hash:
+          type: string
+          description: SHA-256 hash of the trace entry proving this finding.
+          nullable: true
+        remediations:
+          type: array
+          minItems: 1
+          description: "One or more targeted fix suggestions, each scoped to a node_type and/or exploit_technique where relevant."
+          items:
+            type: object
+            required: [text]
+            properties:
+              text:
+                type: string
+              node_type:
+                type: string
+                enum: [agent, tool, api, api_endpoint, database, vectorstore, prompt, knowledge_base, identity]
+                nullable: true
+              exploit_technique:
+                type: string
+                nullable: true
+        log_correlation:
+          type: object
+          nullable: true
+        details:
+          type: object
+          description: Full finding payload including compliance refs, remediations, and exploit chain step detail.
+
+    # ------------------------------------------------------------------ #
+    # Exploit Chains                                                       #
+    # ------------------------------------------------------------------ #
+    ExploitStep:
+      type: object
+      required: [step_id, action, target_node_id, agent_id, timestamp_utc, sha256_hash]
+      properties:
+        step_id:
+          type: string
+        action:
+          type: string
+        target_node_id:
+          type: string
+        input:
+          type: string
+          nullable: true
+        result:
+          type: string
+          nullable: true
+        success:
+          type: boolean
+        timestamp_utc:
+          type: string
+          format: date-time
+        agent_id:
+          type: string
+        sha256_hash:
+          type: string
+          description: SHA-256 of this step chained with previous step hash.
+
+    ExploitChain:
+      type: object
+      required: [id, test_id, graph_id, steps, exploit_risk, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        test_id:
+          type: string
+          format: uuid
+        graph_id:
+          type: string
+          format: uuid
+        steps:
+          type: array
+          items:
+            $ref: '#/components/schemas/ExploitStep'
+        exploit_risk:
+          type: number
+          format: float
+          minimum: 0.0
+          maximum: 10.0
+          description: "Σ(severity_weight × exploitability × blast_radius) / n_steps, normalised to 0.0–10.0"
+        step_count:
+          type: integer
+        compliance_refs:
+          type: array
+          nullable: true
+          items:
+            type: object
+            required: [framework, ref_id]
+            properties:
+              framework:
+                type: string
+                enum: [owasp_llm_top10, nist_ai_rmf, mitre_atlas, eu_ai_act, iso_42001, nist_csf]
+              ref_id:
+                type: string
+              ref_name:
+                type: string
+        policy_violation_type:
+          type: string
+          enum: [topic_boundary_breach, restricted_action_executed, HITL_bypassed, data_leak, unauthorized_tool_call, rate_limit_exceeded, privilege_escalation, memory_poisoning]
+          nullable: true
+        log_correlation_status:
+          type: string
+          enum: [correlated, uncorrelated, pending]
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+
+    # ------------------------------------------------------------------ #
+    # Trace                                                                #
+    # ------------------------------------------------------------------ #
+    TraceEntry:
+      type: object
+      required: [entry_id, test_id, timestamp_utc, event_type, payload, entry_hash]
+      properties:
+        entry_id:
+          type: string
+        test_id:
+          type: string
+          format: uuid
+        timestamp_utc:
+          type: string
+          format: date-time
+        event_type:
+          type: string
+          enum: [agent_action, tool_call, llm_call, policy_check, sandbox_result, orchestrator_event]
+        agent_id:
+          type: string
+          nullable: true
+        payload:
+          type: object
+        entry_hash:
+          type: string
+          description: "SHA-256: sha256(canonical_json_bytes + prior_entry_hash)"
+        prior_entry_hash:
+          type: string
+          nullable: true
+
+paths:
+  # ================================================================== #
+  # SBOM                                                                #
+  # ================================================================== #
+  /v1/redteam/sbom:
+    post:
+      summary: Upload an AI-SBOM
+      operationId: uploadSBOM
+      tags: [SBOM]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SBOMUploadRequest'
+      responses:
+        '200':
+          description: SBOM stored successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SBOMUploadResponse'
+        '400':
+          description: Malformed JSON or SBOM validation failure.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /v1/redteam/sbom/{sbom_id}:
+    get:
+      summary: Get a stored SBOM
+      operationId: getSBOM
+      tags: [SBOM]
+      parameters:
+        - $ref: '#/components/parameters/sbom_id'
+      responses:
+        '200':
+          description: SBOM record.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SBOM'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/redteam/sbom/{sbom_id}/graph:
+    get:
+      summary: Get the Attack Surface Graph derived from an SBOM
+      operationId: getAttackGraph
+      tags: [SBOM]
+      parameters:
+        - $ref: '#/components/parameters/sbom_id'
+      responses:
+        '200':
+          description: Enriched Attack Surface Graph.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttackGraph'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ================================================================== #
+  # Cognitive Policies                                                  #
+  # ================================================================== #
+  /v1/cognitive-policies:
+    post:
+      summary: Upload a Cognitive Policy
+      operationId: uploadPolicy
+      tags: [Policies]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PolicyUploadRequest'
+      responses:
+        '200':
+          description: Policy stored and parsed successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PolicyUploadResponse'
+        '400':
+          description: Policy Markdown failed validation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+  /v1/cognitive-policies/{policy_id}:
+    get:
+      summary: Get a stored Cognitive Policy
+      operationId: getPolicy
+      tags: [Policies]
+      parameters:
+        - $ref: '#/components/parameters/policy_id'
+      responses:
+        '200':
+          description: Cognitive Policy record.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CognitivePolicy'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  # ================================================================== #
+  # Red-Team Tests                                                      #
+  # ================================================================== #
+  /v1/redteam:
+    post:
+      summary: Create and enqueue a red-team test
+      operationId: createTest
+      tags: [Tests]
+      description: |
+        Returns `202 Accepted` immediately with a `test_id`.
+        The test runs as a background task. Poll `GET /v1/redteam/{test_id}` until
+        `status` is `complete` or `failed`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TestConfig'
+      responses:
+        '202':
+          description: Test accepted and enqueued.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TestCreateResponse'
+        '400':
+          description: Invalid configuration (e.g. `mode=real` without `confirm=true`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: Referenced `sbom_id` or `policy_id` not found.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+
+    get:
+      summary: List tests, optionally filtered by test_name slug
+      operationId: listTests
+      tags: [Tests]
+      parameters:
+        - name: test_name
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter by test suite slug. Returns history ordered by `created_at` descending.
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+        - name: offset
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 0
+      responses:
+        '200':
+          description: List of tests.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Test'
+                  total:
+                    type: integer
+                  limit:
+                    type: integer
+                  offset:
+                    type: integer
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /v1/redteam/{test_id}:
+    get:
+      summary: Get test status and metadata
+      operationId: getTest
+      tags: [Tests]
+      parameters:
+        - $ref: '#/components/parameters/test_id'
+      responses:
+        '200':
+          description: Test record with current status.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Test'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    delete:
+      summary: Delete a test and all associated findings (hard delete)
+      operationId: deleteTest
+      tags: [Tests]
+      parameters:
+        - $ref: '#/components/parameters/test_id'
+      responses:
+        '204':
+          description: Deleted successfully.
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/redteam/{test_id}/results:
+    get:
+      summary: Get findings for a test
+      operationId: getResults
+      tags: [Tests]
+      parameters:
+        - $ref: '#/components/parameters/test_id'
+        - name: severity
+          in: query
+          required: false
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [critical, high, medium, low, info]
+          style: form
+          explode: false
+          description: Filter by one or more severity levels.
+      responses:
+        '200':
+          description: List of findings.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [test_id, status, risk_score, summary, findings]
+                properties:
+                  test_id:
+                    type: string
+                    format: uuid
+                  status:
+                    type: string
+                    enum: [pending, running, complete, failed]
+                  risk_score:
+                    type: number
+                    format: float
+                    nullable: true
+                  summary:
+                    $ref: '#/components/schemas/TestSummary'
+                  findings:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Finding'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/redteam/{test_id}/report:
+    get:
+      summary: Generate and return a report
+      operationId: getReport
+      tags: [Tests]
+      parameters:
+        - $ref: '#/components/parameters/test_id'
+        - name: format
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [sarif, markdown, json]
+            default: sarif
+      responses:
+        '200':
+          description: Report in the requested format.
+          content:
+            application/json:
+              schema:
+                type: object
+                description: SARIF 2.1.0 document (when format=sarif) or JSON findings report.
+            text/markdown:
+              schema:
+                type: string
+                description: Markdown report (when format=markdown).
+        '400':
+          description: Test not yet complete.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/redteam/{test_id}/traces:
+    get:
+      summary: Return raw signed JSONL trace entries for a test
+      operationId: getTraces
+      tags: [Tests]
+      parameters:
+        - $ref: '#/components/parameters/test_id'
+      responses:
+        '200':
+          description: Array of SHA-256 chained trace entries.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  test_id:
+                    type: string
+                    format: uuid
+                  entries:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TraceEntry'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/redteam/{test_id}/chains:
+    get:
+      summary: Return exploit chains generated during a test
+      operationId: getChains
+      tags: [Tests]
+      parameters:
+        - $ref: '#/components/parameters/test_id'
+      responses:
+        '200':
+          description: List of exploit chains.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  test_id:
+                    type: string
+                    format: uuid
+                  chains:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ExploitChain'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /v1/redteam/{test_id}/logs:
+    post:
+      summary: Upload application logs for correlation (v1.5 — stub)
+      operationId: uploadLogs
+      tags: [Tests]
+      parameters:
+        - $ref: '#/components/parameters/test_id'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                log_format:
+                  type: string
+                  enum: [json, text]
+                logs:
+                  type: string
+      responses:
+        '501':
+          description: Not implemented in v1. Planned for v1.5.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  # ================================================================== #
+  # Shared Reusable Parameters and Responses                            #
+  # ================================================================== #
+
+  # NOTE: parameters and responses blocks are siblings of paths/components
+  # They are declared in components below.
+
+tags:
+  - name: SBOM
+    description: Upload and retrieve Xelo AI-SBOM files and derived Attack Surface Graphs.
+  - name: Policies
+    description: Upload and retrieve Cognitive Policy Markdown files.
+  - name: Tests
+    description: Create, monitor, and retrieve results from red-team tests.
+
+

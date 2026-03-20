@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from argparse import Namespace
 
-from xelo.cli import _build_extraction_config
-from xelo.config import AiSbomConfig
+from nuguard.sbom.cli import _build_extraction_config
+from nuguard.sbom.config import AiSbomConfig
 
 
 def _scan_args(

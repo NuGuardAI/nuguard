@@ -1,0 +1,7 @@
+{
+  "nodes": [
+    {"id": "agent1", "type": "agent"},
+    {"id": "db1", "type": "database"}
+  ],
+  "edges": []
+}

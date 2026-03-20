@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nuguard.ai/schemas/cognitive-policy-parsed.schema.json",
+  "title": "Cognitive Policy (Parsed)",
+  "description": "Structured representation of a Cognitive Policy Markdown file after parsing. Stored as JSONB in cognitive_policies.policy_parsed. The raw Markdown source is preserved in cognitive_policies.policy_md.",
+  "type": "object",
+  "properties": {
+    "allowed_topics": {
+      "type": "array",
+      "description": "Bullet list from the '## allowed_topics' section. The agent may only respond within these topics. If non-empty, responses outside this set trigger topic_boundary_breach.",
+      "items": { "type": "string" },
+      "example": ["customer support", "order status", "product information"]
+    },
+    "restricted_topics": {
+      "type": "array",
+      "description": "Bullet list from the '## restricted_topics' section. The agent must never respond about these topics regardless of allowed_topics. May be empty. Responses touching any restricted topic trigger topic_boundary_breach.",
+      "items": { "type": "string" },
+      "default": [],
+      "example": ["competitor pricing", "legal advice", "medical diagnosis"]
+    },
+    "restricted_actions": {
+      "type": "array",
+      "description": "Bullet list from the '## restricted_actions' section. The agent must never execute these actions.",
+      "items": { "type": "string" },
+      "example": ["delete_record", "export_all_users", "modify_system_prompt"]
+    },
+    "hitl_triggers": {
+      "type": "array",
+      "description": "Bullet list from the '## HITL_triggers' section. These actions require explicit human approval before execution.",
+      "items": { "type": "string" },
+      "example": ["send_email", "issue_refund", "escalate_to_human"]
+    },
+    "data_classification": {
+      "type": "array",
+      "description": "Bullet list from the '## data_classification' section. Fields/data types and their sensitivity levels.",
+      "items": { "type": "string" },
+      "example": ["email: PII", "order_id: Internal", "product_name: Public"]
+    },
+    "rate_limits": {
+      "type": "array",
+      "description": "Bullet list from the '## rate_limits' section. Per-operation rate constraints.",
+      "items": { "type": "string" },
+      "example": ["api_calls: 100/min", "db_queries: 50/min"]
+    }
+  },
+  "additionalProperties": false
+}

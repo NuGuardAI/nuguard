@@ -1,0 +1,47 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nuguard.ai/schemas/log-correlation.schema.json",
+  "title": "LogCorrelation",
+  "description": "Result of correlating a redteam finding against application log streams. Stored as JSONB in redteam_findings.log_correlation. v1.5 feature — will be null in v1.",
+  "type": ["object", "null"],
+  "required": ["status"],
+  "additionalProperties": false,
+  "properties": {
+    "status": {
+      "type": "string",
+      "enum": ["correlated", "uncorrelated", "pending"],
+      "description": "Whether matching log entries were found for this finding."
+    },
+    "correlation_method": {
+      "type": "string",
+      "description": "Algorithm used to match the finding to log entries, e.g. 'trace_hash_exact', 'timestamp_window'."
+    },
+    "confidence_score": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "description": "How confident the correlator is in the match (0–1)."
+    },
+    "matched_log_entries": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["timestamp_utc", "level", "message"],
+        "additionalProperties": false,
+        "properties": {
+          "timestamp_utc": { "type": "string", "format": "date-time" },
+          "level": { "type": "string" },
+          "message": { "type": "string" },
+          "source": {
+            "type": "string",
+            "description": "Log origin, e.g. container name or service identifier."
+          },
+          "trace_id": {
+            "type": "string",
+            "description": "Distributed trace identifier if present."
+          }
+        }
+      }
+    }
+  }
+}

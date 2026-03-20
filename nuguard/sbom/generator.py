@@ -24,3 +24,11 @@ class SbomGenerator:
             from .serializer import AiSbomSerializer
             output.write_text(AiSbomSerializer.to_json(doc), encoding="utf-8")
         return doc
+
+    def from_repo(self, url: str, ref: str = "main", output: Path | None = None) -> AiSbomDocument:
+        """Clone *url* at *ref* and return an AiSbomDocument."""
+        doc = self._extractor.extract_from_repo(url, ref, self.config)
+        if output is not None:
+            from .serializer import AiSbomSerializer
+            output.write_text(AiSbomSerializer.to_json(doc), encoding="utf-8")
+        return doc

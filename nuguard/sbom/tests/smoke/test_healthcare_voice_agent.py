@@ -31,10 +31,10 @@ import os
 
 import pytest
 
-from xelo.config import AiSbomConfig
-from xelo.extractor import AiSbomExtractor
-from xelo.models import AiSbomDocument
-from xelo.types import ComponentType
+from nuguard.sbom.config import AiSbomConfig
+from nuguard.sbom.extractor import AiSbomExtractor
+from nuguard.sbom.models import AiSbomDocument
+from nuguard.sbom.types import ComponentType
 
 # ---------------------------------------------------------------------------
 # Markers / skip conditions
@@ -305,7 +305,7 @@ class TestDocumentQuality:
 
     @skip_if_offline
     def test_json_serializable(self, doc: AiSbomDocument) -> None:
-        from xelo.serializer import AiSbomSerializer
+        from nuguard.sbom.serializer import AiSbomSerializer
 
         json_str = AiSbomSerializer().to_json(doc)
         assert '"schema_version"' in json_str
@@ -313,7 +313,7 @@ class TestDocumentQuality:
 
     @skip_if_offline
     def test_cyclonedx_output(self, doc: AiSbomDocument) -> None:
-        from xelo.serializer import AiSbomSerializer
+        from nuguard.sbom.serializer import AiSbomSerializer
 
         cdx = AiSbomSerializer().to_cyclonedx(doc)
         assert cdx.get("bomFormat") == "CycloneDX"

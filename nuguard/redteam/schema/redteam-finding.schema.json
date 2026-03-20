@@ -1,0 +1,56 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nuguard.ai/schemas/redteam-finding.schema.json",
+  "title": "Finding",
+  "description": "A security finding produced by the policy engine and risk engine after an exploit chain execution. Stored as JSONB in redteam_findings.details. Identity and promoted fields (id, test_id, severity, title, exploit_chain_id, policy_violation_type, primary_compliance_ref, evidence_trace_hash) are Postgres columns on redteam_findings and are NOT repeated here.",
+  "type": "object",
+  "required": ["remediations"],
+  "properties": {
+    "compliance_refs": {
+      "type": "array",
+      "items": { "$ref": "shared-types.schema.json#/definitions/ComplianceRef" },
+      "uniqueItems": true,
+      "description": "Zero or more compliance framework mappings for this finding. v1: populated by ComplianceMapper with owasp_llm_top10 refs. v2+: additional frameworks (nist_ai_rmf, mitre_atlas, eu_ai_act, etc.) are optional steps in the test pipeline."
+    },
+    "remediations": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "shared-types.schema.json#/definitions/RemediationItem" },
+      "description": "One or more targeted fix suggestions. Multiple items are generated when a finding spans node types or exploit techniques — e.g. one fix for the database node, another for the tool calling it."
+    },
+    "log_correlation": {
+      "$ref": "log-correlation.schema.json",
+      "description": "Correlated application log data (v1.5 feature). Null in v1."
+    },
+    "attack_details": {
+      "type": "object",
+      "description": "Structured detail about the attack that produced this finding.",
+      "properties": {
+        "attack_technique": {
+          "type": "string",
+          "description": "e.g. 'prompt_injection', 'SQL-injectable', 'IDOR-surface'"
+        },
+        "target_node_id": { "type": "string" },
+        "target_node_type": { "type": "string" },
+        "payload_used": { "type": "string" },
+        "exploit_path": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Ordered list of node IDs traversed during the exploit chain."
+        },
+        "exploitability": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Probability that this exploit would succeed against the live system (0–1)."
+        },
+        "blast_radius": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Fraction of system affected if exploit succeeds (0–1)."
+        }
+      }
+    }
+  }
+}

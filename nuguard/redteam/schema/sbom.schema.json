@@ -1,0 +1,282 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nuguard.ai/schemas/sbom.schema.json",
+  "title": "Xelo AI-SBOM",
+  "description": "Xelo AI Software Bill of Materials ingested by NuGuard. Stored as JSONB in redteam_sboms.sbom. Schema aligned with Xelo aibom.schema.json v1.3.0 — https://github.com/NuGuardAI/xelo/blob/main/docs/aibom-schema.md.",
+  "type": "object",
+  "required": ["schema_version", "nodes"],
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "description": "Xelo SBOM schema semver, e.g. '1.3.0'."
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "UTC timestamp when Xelo produced this document."
+    },
+    "generator": {
+      "type": "string",
+      "description": "Always 'xelo'."
+    },
+    "target": {
+      "type": "string",
+      "description": "Repository URL or local path that was scanned."
+    },
+    "nodes": {
+      "type": "array",
+      "minItems": 1,
+      "description": "Detected AI components. At least one required. Any mix of component_type is valid — AGENT is optional; supports non-agentic systems (RAG, embedding, API-only).",
+      "items": { "$ref": "#/definitions/Node" }
+    },
+    "edges": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/Edge" },
+      "description": "Directed relationships between nodes derived from AST analysis. May include inferred fallback edges."
+    },
+    "deps": {
+      "type": "array",
+      "items": { "$ref": "#/definitions/PackageDep" },
+      "description": "Package manifest dependencies scanned recursively at any depth."
+    },
+    "summary": { "$ref": "#/definitions/ScanSummary" }
+  },
+
+  "definitions": {
+    "Node": {
+      "type": "object",
+      "required": ["id", "name", "component_type"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Stable UUID for this node within the SBOM."
+        },
+        "name": { "type": "string" },
+        "component_type": {
+          "$ref": "shared-types.schema.json#/definitions/ComponentType",
+          "description": "Xelo component classification. Maps to NuGuard NodeType via mapping/mapping-rules.json."
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "> 0.85 = AST-derived; 0.5–0.85 = regex; < 0.5 = inferred."
+        },
+        "metadata": { "$ref": "#/definitions/NodeMetadata" },
+        "evidence": {
+          "type": "array",
+          "items": { "$ref": "#/definitions/Evidence" },
+          "description": "One or more detection evidence items explaining why Xelo identified this node."
+        }
+      }
+    },
+
+    "NodeMetadata": {
+      "type": "object",
+      "description": "Unified metadata for all node types. All fields are optional — present only when relevant to the component_type.",
+      "properties": {
+        "model_name": {
+          "type": "string",
+          "description": "MODEL: LLM or embedding model identifier, e.g. 'gpt-4o-mini'."
+        },
+        "framework": {
+          "type": "string",
+          "description": "MODEL/FRAMEWORK: Framework the model is used through, e.g. 'openai_agents', 'langgraph'."
+        },
+        "datastore_type": {
+          "type": "string",
+          "description": "DATASTORE: Technology slug — 'chromavector', 'pinecone', 'postgres', 'redis', 'mongodb', etc. Used by the mapper to choose 'vectorstore' vs 'database' NodeType."
+        },
+        "data_classification": {
+          "type": "array",
+          "items": { "type": "string", "enum": ["PII", "PHI"] },
+          "description": "DATASTORE: Classification labels present in this store."
+        },
+        "classified_tables": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "DATASTORE: SQL table or Python model names carrying PII/PHI fields."
+        },
+        "classified_fields": {
+          "type": "object",
+          "description": "DATASTORE: Per-table mapping of field names to labels, e.g. {\"patients\": [\"name\", \"dob\"]}."
+        },
+        "auth_type": {
+          "$ref": "shared-types.schema.json#/definitions/AuthType",
+          "description": "AUTH/API_ENDPOINT: Authentication mechanism."
+        },
+        "auth_class": {
+          "type": "string",
+          "description": "AUTH: Provider class name, e.g. 'BearerAuthProvider'."
+        },
+        "transport": {
+          "type": "string",
+          "enum": ["sse", "streamable-http", "stdio"],
+          "description": "AUTH/API_ENDPOINT: MCP transport protocol."
+        },
+        "server_name": {
+          "type": "string",
+          "description": "AUTH/API_ENDPOINT: MCP server display name."
+        },
+        "endpoint": {
+          "type": "string",
+          "description": "API_ENDPOINT: Address, e.g. '0.0.0.0:8080 (sse)', '/chat'."
+        },
+        "method": {
+          "$ref": "shared-types.schema.json#/definitions/HttpMethod",
+          "description": "API_ENDPOINT: HTTP method."
+        },
+        "privilege_scope": {
+          "type": "string",
+          "description": "PRIVILEGE: Capability label — 'db_write', 'filesystem_write', 'code_execution', 'network_out', 'email_out', 'social_media_out', 'admin', 'rbac'."
+        },
+        "iam_type": {
+          "type": "string",
+          "enum": ["role", "policy", "service_account", "managed_identity", "role_binding"],
+          "description": "IAM: Entity kind."
+        },
+        "principal": {
+          "type": "string",
+          "description": "IAM: ARN, email, or object ID of the IAM principal."
+        },
+        "permissions": {
+          "type": "array",
+          "items": { "type": "string" },
+          "maxItems": 20,
+          "description": "IAM: Actions or scopes granted, e.g. ['s3:GetObject', 's3:PutObject']."
+        },
+        "iam_scope": {
+          "type": "string",
+          "description": "IAM: Scope of the binding — 'project', 'subscription', 'cluster', 'namespace', 'resource'."
+        },
+        "deployment_target": {
+          "type": "string",
+          "description": "All types: Cloud target — 'aws', 'gcp', 'kubernetes'."
+        },
+        "extras": {
+          "type": "object",
+          "description": "Adapter-specific key/value pairs not covered by the typed fields above.",
+          "properties": {
+            "content": {
+              "type": "string",
+              "description": "PROMPT: Full prompt text (may contain {variable} placeholders)."
+            },
+            "role": {
+              "type": "string",
+              "enum": ["system", "user", "assistant", "unspecified"],
+              "description": "PROMPT: Detected conversation role."
+            },
+            "is_template": {
+              "type": "boolean",
+              "description": "PROMPT: true when {variable} placeholders are present."
+            },
+            "template_variables": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "PROMPT: Variable names found in the template, e.g. ['query', 'context']."
+            },
+            "injection_risk_score": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "PROMPT: Float 0–1 estimating prompt-injection risk (TypeScript adapter)."
+            },
+            "provider": {
+              "type": "string",
+              "description": "MODEL: Cloud/API provider — 'openai', 'anthropic', 'google', 'bedrock'."
+            },
+            "model_family": {
+              "type": "string",
+              "description": "MODEL: Normalised family — 'gpt-4', 'claude-3', 'gemini'."
+            },
+            "llm_verified": {
+              "type": "boolean",
+              "description": "All types (--llm): true when LLM verification pass confirmed the detection."
+            },
+            "llm_confidence": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1,
+              "description": "All types (--llm): LLM-assigned confidence score."
+            }
+          }
+        }
+      }
+    },
+
+    "Evidence": {
+      "type": "object",
+      "required": ["kind", "confidence"],
+      "description": "Detection evidence item explaining how Xelo found this node.",
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["ast", "ast_instantiation", "regex", "config", "iac", "inferred"]
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "detail": {
+          "type": "string",
+          "description": "'<adapter>: <snippet>' (up to 500 chars). PROMPT nodes: '<adapter>: <evidence_kind>' (full content is in metadata.extras.content)."
+        },
+        "location": {
+          "type": "object",
+          "properties": {
+            "path": { "type": "string", "description": "Repo-relative file path." },
+            "line": { "type": "integer", "minimum": 1, "description": "1-based line number." }
+          }
+        }
+      }
+    },
+
+    "Edge": {
+      "type": "object",
+      "required": ["source", "target", "relationship_type"],
+      "description": "Directed relationship between two nodes. Explicit edges come from AST analysis; inferred fallback edges may be added when no explicit edges are found.",
+      "properties": {
+        "source": { "type": "string", "description": "Source node id." },
+        "target": { "type": "string", "description": "Target node id." },
+        "relationship_type": {
+          "$ref": "shared-types.schema.json#/definitions/RelationshipType"
+        }
+      }
+    },
+
+    "PackageDep": {
+      "type": "object",
+      "required": ["name"],
+      "description": "Standard package manifest entry.",
+      "properties": {
+        "name": { "type": "string" },
+        "version_spec": { "type": "string", "description": "e.g. '>=0.3.0'." },
+        "purl": { "type": "string", "description": "Package URL, e.g. 'pkg:pypi/langchain-core@0.3.51'." },
+        "source_file": { "type": "string", "description": "e.g. 'pyproject.toml'." },
+        "ecosystem": { "type": "string", "description": "e.g. 'pypi', 'npm'." }
+      }
+    },
+
+    "ScanSummary": {
+      "type": "object",
+      "description": "Xelo scan-level roll-up metadata.",
+      "properties": {
+        "use_case": { "type": "string", "description": "Natural-language description of what the app does." },
+        "frameworks": { "type": "array", "items": { "type": "string" }, "description": "Detected framework names, e.g. ['langgraph', 'openai_agents']." },
+        "modalities": { "type": "array", "items": { "type": "string" }, "description": "I/O modalities in upper-case, e.g. ['TEXT', 'VOICE']." },
+        "api_endpoints": { "type": "array", "items": { "type": "string" }, "description": "API route paths, e.g. ['/chat', '/health']." },
+        "deployment_platforms": { "type": "array", "items": { "type": "string" } },
+        "data_classification": { "type": "array", "items": { "type": "string" } },
+        "classified_tables": { "type": "array", "items": { "type": "string" } },
+        "node_counts": { "type": "object", "description": "Count per component_type, e.g. {\"AGENT\": 3, \"MODEL\": 2}." },
+        "security_findings": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "IaC/container security issues, e.g. ['container_runs_as_root', 'secrets_in_env_vars']."
+        }
+      }
+    }
+  }
+}
+

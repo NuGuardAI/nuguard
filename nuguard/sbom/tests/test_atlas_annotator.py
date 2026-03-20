@@ -12,7 +12,7 @@ from __future__ import annotations
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from xelo.toolbox.plugins.atlas_annotator import AtlasAnnotatorPlugin
+from nuguard.sbom.toolbox.plugins.atlas_annotator import AtlasAnnotatorPlugin
 
 # ---------------------------------------------------------------------------
 # Shared fixtures
@@ -225,7 +225,7 @@ class TestLlmEnrichment:
     def test_osv_failure_does_not_crash(self) -> None:
         """OSV network errors inside _run_osv_pass are swallowed; returns empty list."""
         plugin = AtlasAnnotatorPlugin()
-        with patch("xelo.toolbox.plugins.vulnerability.VulnerabilityScannerPlugin") as MockScanner:
+        with patch("nuguard.sbom.toolbox.plugins.vulnerability.VulnerabilityScannerPlugin") as MockScanner:
             MockScanner.return_value.run.side_effect = Exception("network error")
             cve = plugin._run_osv_pass(_MINIMAL_SBOM)
 
@@ -234,7 +234,7 @@ class TestLlmEnrichment:
     def test_grype_failure_does_not_crash(self) -> None:
         """Grype errors inside _run_grype_pass are swallowed; returns empty list."""
         plugin = AtlasAnnotatorPlugin()
-        with patch("xelo.toolbox.plugins.vulnerability.VulnerabilityScannerPlugin") as MockScanner:
+        with patch("nuguard.sbom.toolbox.plugins.vulnerability.VulnerabilityScannerPlugin") as MockScanner:
             MockScanner.return_value.run.side_effect = Exception("grype not found")
             grype = plugin._run_grype_pass(_MINIMAL_SBOM)
 

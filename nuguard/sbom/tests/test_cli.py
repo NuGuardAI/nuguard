@@ -10,7 +10,7 @@ def _parse(argv: list[str]) -> object:
     import argparse
 
     # Build the same parser that main() builds, then parse
-    from xelo.cli import _add_llm_args
+    from nuguard.sbom.cli import _add_llm_args
 
     parser = argparse.ArgumentParser(prog="xelo")
     parser.add_argument("--verbose", "-v", action="store_true")
@@ -102,14 +102,14 @@ def test_scan_token_defaults_to_none() -> None:
 
 
 def test_inject_token_https() -> None:
-    from xelo.cli import _inject_token
+    from nuguard.sbom.cli import _inject_token
 
     result = _inject_token("https://github.com/org/repo.git", "ghp_abc")
     assert result == "https://ghp_abc@github.com/org/repo.git"
 
 
 def test_inject_token_preserves_non_https() -> None:
-    from xelo.cli import _inject_token
+    from nuguard.sbom.cli import _inject_token
 
     # SSH URLs should not be modified
     url = "git@github.com:org/repo.git"
@@ -117,7 +117,7 @@ def test_inject_token_preserves_non_https() -> None:
 
 
 def test_inject_token_preserves_port() -> None:
-    from xelo.cli import _inject_token
+    from nuguard.sbom.cli import _inject_token
 
     result = _inject_token("https://git.example.com:8443/org/repo.git", "tok")
     assert result == "https://tok@git.example.com:8443/org/repo.git"
@@ -126,7 +126,7 @@ def test_inject_token_preserves_port() -> None:
 def test_resolve_token_prefers_flag(monkeypatch: pytest.MonkeyPatch) -> None:
     from argparse import Namespace
 
-    from xelo.cli import _resolve_token
+    from nuguard.sbom.cli import _resolve_token
 
     monkeypatch.setenv("GH_TOKEN", "env_token")
     args = Namespace(token="flag_token")
@@ -136,7 +136,7 @@ def test_resolve_token_prefers_flag(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_resolve_token_falls_back_to_gh_token(monkeypatch: pytest.MonkeyPatch) -> None:
     from argparse import Namespace
 
-    from xelo.cli import _resolve_token
+    from nuguard.sbom.cli import _resolve_token
 
     monkeypatch.setenv("GH_TOKEN", "env_token")
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
@@ -147,7 +147,7 @@ def test_resolve_token_falls_back_to_gh_token(monkeypatch: pytest.MonkeyPatch) -
 def test_resolve_token_falls_back_to_github_token(monkeypatch: pytest.MonkeyPatch) -> None:
     from argparse import Namespace
 
-    from xelo.cli import _resolve_token
+    from nuguard.sbom.cli import _resolve_token
 
     monkeypatch.delenv("GH_TOKEN", raising=False)
     monkeypatch.setenv("GITHUB_TOKEN", "gh_env")
@@ -158,7 +158,7 @@ def test_resolve_token_falls_back_to_github_token(monkeypatch: pytest.MonkeyPatc
 def test_resolve_token_returns_none_when_absent(monkeypatch: pytest.MonkeyPatch) -> None:
     from argparse import Namespace
 
-    from xelo.cli import _resolve_token
+    from nuguard.sbom.cli import _resolve_token
 
     monkeypatch.delenv("GH_TOKEN", raising=False)
     monkeypatch.delenv("GITHUB_TOKEN", raising=False)
