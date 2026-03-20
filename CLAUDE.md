@@ -34,7 +34,7 @@ Or use the Makefile shortcuts: `make dev`, `make test`, `make lint`, `make fmt`.
 
 ## Architecture
 
-NuGuard is an AI application security CLI. The four capabilities are:
+NuGuard is an AI application security package. The four capabilities are:
 
 1. **sbom** — Generate an AI-SBOM (AI Bill of Materials) by statically scanning Python/TypeScript source
 2. **analyze** — Static analysis of an AI-SBOM to detect security issues
@@ -98,3 +98,19 @@ LLM calls are optional everywhere. Pass `--llm` to `nuguard sbom generate` or se
 - Risk attribute tags: hyphenated lowercase (e.g. `SQL-injectable`, `no-auth-required`)
 - Pydantic fields and file names: `snake_case`
 - `ACCESSES` edges carry `access_type: read | write | readwrite`
+
+### Coding style
+- Follow PEP8 and Black formatting
+- Being a security tool, prioritize secure coding practices (e.g. validate all inputs, handle exceptions, avoid shelling out when possible)
+- Type hint all functions and methods
+- Use `logging` for debug/info/warning messages; avoid print statements
+- Write modular, single-responsibility functions and classes
+- Use docstrings to explain complex logic and public APIs
+- Write unit tests for all new code and aim for high coverage
+- Use `uv run` to execute commands in the virtual environment
+- For CLI commands, provide helpful messages and error handling
+- For LLM calls, handle rate limits and errors gracefully; provide fallback behavior if the LLM is unavailable
+- When in doubt, prioritize code readability and maintainability over cleverness
+- Use GitHub Issues and Pull Requests to track work and code changes; provide clear descriptions and context in PRs
+- Regularly update this CLAUDE.md file as the codebase evolves to keep guidance accurate and relevant
+
