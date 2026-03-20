@@ -1,0 +1,7 @@
+{
+  "_comment": "NIST AI Risk Management Framework (AI RMF 1.0) control definitions. Version 1.5 of this file will include full AI-SBOM-assessable controls mapped to GOVERN, MAP, MEASURE, and MANAGE functions. Currently a skeleton — contribute controls via pull request.",
+  "framework": "NIST_AI_RMF",
+  "version": "1.0",
+  "source": "https://www.nist.gov/artificial-intelligence/ai-risk-management-framework",
+  "controls": []
+}

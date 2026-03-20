@@ -1,0 +1,7 @@
+{
+  "_comment": "EU AI Act compliance control definitions. Version 1.5 of this file will include controls mapped to Chapters III and IV covering high-risk AI system obligations: transparency, human oversight, accuracy, robustness, and data governance. Currently a skeleton — contribute controls via pull request.",
+  "framework": "EU_AI_ACT",
+  "version": "1.0",
+  "source": "https://artificialintelligenceact.eu/",
+  "controls": []
+}

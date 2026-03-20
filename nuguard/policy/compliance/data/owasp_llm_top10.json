@@ -1,0 +1,246 @@
+{
+  "framework": "OWASP_LLM_TOP10",
+  "version": "1.0",
+  "controls": [
+    {
+      "id": "owasp-llm01-prompt-injection",
+      "name": "LLM01: Prompt Injection",
+      "description": "Attackers manipulate LLMs via crafted inputs causing unintended actions or data disclosure. Prompt injection occurs when user-supplied data alters the intended instruction context.",
+      "framework": "OWASP_LLM_TOP10",
+      "severity": "critical",
+      "ai_sbom_assessable": true,
+      "manual_attestation_required": false,
+      "ai_sbom_basis": ["PROMPT", "GUARDRAIL"],
+      "framework_refs": [
+        {
+          "framework": "OWASP_LLM_TOP10",
+          "control_id": "LLM01",
+          "url": "https://owasp.org/www-project-top-10-for-large-language-model-applications/#llm01"
+        }
+      ],
+      "gap_diagnosis": "No input guardrail is present to protect prompt nodes with injection risk.",
+      "fix_guidance": "Add an input validation guardrail covering all external prompt sources. Consider using a dedicated prompt injection detection library or LLM guard.",
+      "tags": ["injection", "input-validation", "prompt-security"],
+      "ccd": {
+        "control_id": "owasp-llm01-prompt-injection",
+        "assertions": [
+          {
+            "type": "exists",
+            "node_type": "GUARDRAIL",
+            "filter": {},
+            "severity": "CRITICAL",
+            "description": "At least one GUARDRAIL node must exist to intercept injected inputs",
+            "weight": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "id": "owasp-llm02-insecure-output-handling",
+      "name": "LLM02: Insecure Output Handling",
+      "description": "Downstream components blindly trust LLM output, enabling XSS, SSRF, privilege escalation, or remote code execution when output is passed to interpreters without sanitisation.",
+      "framework": "OWASP_LLM_TOP10",
+      "severity": "high",
+      "ai_sbom_assessable": true,
+      "manual_attestation_required": false,
+      "ai_sbom_basis": ["TOOL", "GUARDRAIL"],
+      "framework_refs": [
+        {
+          "framework": "OWASP_LLM_TOP10",
+          "control_id": "LLM02",
+          "url": "https://owasp.org/www-project-top-10-for-large-language-model-applications/#llm02"
+        }
+      ],
+      "gap_diagnosis": "TOOL nodes are present but no output-validation GUARDRAIL was detected.",
+      "fix_guidance": "Implement an output validation guardrail that sanitises LLM responses before they are passed to downstream tools, interpreters, or APIs.",
+      "tags": ["output-handling", "sanitisation", "xss"],
+      "ccd": {
+        "control_id": "owasp-llm02-insecure-output-handling",
+        "assertions": [
+          {
+            "type": "exists",
+            "node_type": "TOOL",
+            "filter": {},
+            "severity": "HIGH",
+            "description": "TOOL nodes exist (output is acted upon)",
+            "weight": 0.5
+          },
+          {
+            "type": "exists",
+            "node_type": "GUARDRAIL",
+            "filter": {},
+            "severity": "HIGH",
+            "description": "A GUARDRAIL must cover output before it reaches downstream tools",
+            "weight": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "id": "owasp-llm06-sensitive-information-disclosure",
+      "name": "LLM06: Sensitive Information Disclosure",
+      "description": "Insufficient safeguards allow LLMs to reveal confidential data, PII, PHI, trade secrets, or system credentials through direct inclusion in responses.",
+      "framework": "OWASP_LLM_TOP10",
+      "severity": "high",
+      "ai_sbom_assessable": true,
+      "manual_attestation_required": false,
+      "ai_sbom_basis": ["DATASTORE", "AUTH", "GUARDRAIL"],
+      "framework_refs": [
+        {
+          "framework": "OWASP_LLM_TOP10",
+          "control_id": "LLM06",
+          "url": "https://owasp.org/www-project-top-10-for-large-language-model-applications/#llm06"
+        }
+      ],
+      "gap_diagnosis": "A DATASTORE with PII/PHI classification exists but no AUTH node protects access to it.",
+      "fix_guidance": "Add authentication controls on all datastores that contain classified data. Implement output filtering to redact sensitive fields before they reach the LLM context.",
+      "tags": ["pii", "data-leakage", "auth"],
+      "ccd": {
+        "control_id": "owasp-llm06-sensitive-information-disclosure",
+        "assertions": [
+          {
+            "type": "exists",
+            "node_type": "AUTH",
+            "filter": {},
+            "severity": "HIGH",
+            "description": "AUTH node must exist to gate access to datastores holding classified data",
+            "weight": 1.0
+          },
+          {
+            "type": "exists",
+            "node_type": "GUARDRAIL",
+            "filter": {},
+            "severity": "MEDIUM",
+            "description": "A GUARDRAIL for output filtering is recommended",
+            "weight": 0.5
+          }
+        ]
+      }
+    },
+    {
+      "id": "owasp-llm08-excessive-agency",
+      "name": "LLM08: Excessive Agency",
+      "description": "LLM-based agents are granted excessive permissions (file-write, code-execution, admin API calls) without adequate oversight, enabling broad impact from prompt injection or hallucination.",
+      "framework": "OWASP_LLM_TOP10",
+      "severity": "critical",
+      "ai_sbom_assessable": true,
+      "manual_attestation_required": false,
+      "ai_sbom_basis": ["PRIVILEGE", "GUARDRAIL", "TOOL"],
+      "framework_refs": [
+        {
+          "framework": "OWASP_LLM_TOP10",
+          "control_id": "LLM08",
+          "url": "https://owasp.org/www-project-top-10-for-large-language-model-applications/#llm08"
+        }
+      ],
+      "gap_diagnosis": "PRIVILEGE or TOOL nodes with high-risk scopes (db_write, code_execution) are present without a GUARDRAIL covering them.",
+      "fix_guidance": "Apply the principle of least privilege. Add guardrails for any action with write, execute, or destructive scope. Require HITL approval for high-risk operations.",
+      "tags": ["privilege", "least-privilege", "agency"],
+      "ccd": {
+        "control_id": "owasp-llm08-excessive-agency",
+        "assertions": [
+          {
+            "type": "exists",
+            "node_type": "GUARDRAIL",
+            "filter": {},
+            "severity": "CRITICAL",
+            "description": "A GUARDRAIL must exist to constrain high-privilege tool and agent actions",
+            "weight": 1.0
+          },
+          {
+            "type": "count",
+            "node_type": "PRIVILEGE",
+            "filter": {},
+            "operator": "lte",
+            "value": 10,
+            "severity": "HIGH",
+            "description": "Excessive PRIVILEGE nodes indicate over-permissioning",
+            "weight": 0.5
+          }
+        ]
+      }
+    },
+    {
+      "id": "owasp-llm09-overreliance",
+      "name": "LLM09: Overreliance",
+      "description": "Systems or people rely too heavily on LLM outputs without adequate verification, leading to security vulnerabilities, misinformation, and undetected hallucinations.",
+      "framework": "OWASP_LLM_TOP10",
+      "severity": "medium",
+      "ai_sbom_assessable": true,
+      "manual_attestation_required": false,
+      "ai_sbom_basis": ["MODEL", "GUARDRAIL"],
+      "framework_refs": [
+        {
+          "framework": "OWASP_LLM_TOP10",
+          "control_id": "LLM09",
+          "url": "https://owasp.org/www-project-top-10-for-large-language-model-applications/#llm09"
+        }
+      ],
+      "gap_diagnosis": "MODEL node is present but no GUARDRAIL for hallucination detection or output verification was found.",
+      "fix_guidance": "Implement retrieval-augmented generation (RAG) or a fact-checking guardrail. Add human review workflows for high-stakes outputs. Monitor model outputs for anomalies.",
+      "tags": ["hallucination", "overreliance", "verification"],
+      "ccd": {
+        "control_id": "owasp-llm09-overreliance",
+        "assertions": [
+          {
+            "type": "exists",
+            "node_type": "MODEL",
+            "filter": {},
+            "severity": "MEDIUM",
+            "description": "MODEL node must exist (control only applies when a model is in use)",
+            "weight": 0.3
+          },
+          {
+            "type": "exists",
+            "node_type": "GUARDRAIL",
+            "filter": {},
+            "severity": "MEDIUM",
+            "description": "A GUARDRAIL for output validation or hallucination mitigation must exist",
+            "weight": 1.0
+          }
+        ]
+      }
+    },
+    {
+      "id": "owasp-llm10-model-theft",
+      "name": "LLM10: Model Theft",
+      "description": "Attackers gain unauthorised access to proprietary LLMs through excessive API access, side-channel attacks, or direct exfiltration of model weights or fine-tuning data.",
+      "framework": "OWASP_LLM_TOP10",
+      "severity": "high",
+      "ai_sbom_assessable": true,
+      "manual_attestation_required": false,
+      "ai_sbom_basis": ["MODEL", "AUTH"],
+      "framework_refs": [
+        {
+          "framework": "OWASP_LLM_TOP10",
+          "control_id": "LLM10",
+          "url": "https://owasp.org/www-project-top-10-for-large-language-model-applications/#llm10"
+        }
+      ],
+      "gap_diagnosis": "MODEL node is present but no AUTH node was found to protect access.",
+      "fix_guidance": "Restrict model API access using authentication and authorisation controls. Implement rate limiting on model endpoints. Monitor for unusual query volumes or adversarial probing patterns.",
+      "tags": ["model-theft", "auth", "access-control"],
+      "ccd": {
+        "control_id": "owasp-llm10-model-theft",
+        "assertions": [
+          {
+            "type": "exists",
+            "node_type": "MODEL",
+            "filter": {},
+            "severity": "HIGH",
+            "description": "MODEL node must exist (control only applies when a model is in use)",
+            "weight": 0.3
+          },
+          {
+            "type": "exists",
+            "node_type": "AUTH",
+            "filter": {},
+            "severity": "HIGH",
+            "description": "AUTH node must exist to protect model API access",
+            "weight": 1.0
+          }
+        ]
+      }
+    }
+  ]
+}

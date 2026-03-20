@@ -101,6 +101,7 @@ LLM calls are optional everywhere. Pass `--llm` to `nuguard sbom generate` or se
 
 ### Coding style
 - Follow PEP8 and Black formatting
+- use the tmp folder for scratch code and scripts instead of streaming the command in the terminal and to resue
 - Being a security tool, prioritize secure coding practices (e.g. validate all inputs, handle exceptions, avoid shelling out when possible)
 - Type hint all functions and methods
 - Use `logging` for debug/info/warning messages; avoid print statements
