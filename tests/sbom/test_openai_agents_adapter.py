@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from nuguard.models.sbom import EdgeRelationshipType, NodeType
-from nuguard.sbom.extractor.framework_adapters.openai_agents import OpenAIAgentsAdapter
+from nuguard.sbom.adapters.python.openai_agents import OpenAIAgentsAdapter
 
 
 @pytest.fixture

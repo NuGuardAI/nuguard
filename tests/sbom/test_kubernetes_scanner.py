@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from nuguard.models.sbom import NodeType
-from nuguard.sbom.extractor.iac_scanners.kubernetes import KubernetesScanner
+from nuguard.sbom.adapters.iac import K8sAdapter as KubernetesScanner
 
 K8S_DEPLOYMENT_YAML = """
 apiVersion: apps/v1

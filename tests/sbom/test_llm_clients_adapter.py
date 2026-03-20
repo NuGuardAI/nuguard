@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from nuguard.models.sbom import NodeType
-from nuguard.sbom.extractor.framework_adapters.llm_clients import LLMClientsAdapter
+from nuguard.sbom.adapters.python.llm_clients import LLMClientsAdapter
 
 
 @pytest.fixture

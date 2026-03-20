@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from nuguard.models.sbom import EdgeRelationshipType, NodeType
-from nuguard.sbom.extractor.framework_adapters.mcp import McpAdapter
+from nuguard.sbom.adapters.python.mcp_server import MCPServerAdapter as McpAdapter
 
 
 @pytest.fixture

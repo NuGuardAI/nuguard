@@ -25,6 +25,11 @@ _DEFAULT_PLUGINS: list[type[ToolPlugin]] = [
     VulnerabilityScannerPlugin,
 ]
 
+# Public registry: maps canonical plugin name → plugin class
+PLUGIN_REGISTRY: dict[str, type[ToolPlugin]] = {
+    cls().name: cls for cls in _DEFAULT_PLUGINS  # type: ignore[abstract]
+}
+
 
 class PluginOrchestrator:
     """Thin registry that maps plugin names to plugin instances."""
@@ -45,7 +50,11 @@ class PluginOrchestrator:
         plugin = self._plugins.get(plugin_name)
         if plugin is None:
             supported = ", ".join(sorted(self._plugins))
-            raise ValueError(f"unknown plugin '{plugin_name}'. Available: {supported}")
+            raise ValueError(f"Unknown plugin '{plugin_name}'. Available: {supported}")
         from ..serializer import AiSbomSerializer
         raw = AiSbomSerializer.to_dict(doc)
         return plugin.run(raw, config or {})
+
+    def run_all(self, doc: Any, config: dict[str, Any] | None = None) -> dict[str, ToolResult]:
+        """Run all registered plugins and return a name → result mapping."""
+        return {name: self.run(name, doc, config) for name in self._plugins}

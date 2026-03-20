@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from nuguard.models.sbom import EdgeRelationshipType, NodeType
-from nuguard.sbom.extractor.framework_adapters.langgraph import LangGraphAdapter
+from nuguard.sbom.adapters.python.langgraph import LangGraphAdapter
 
 
 @pytest.fixture

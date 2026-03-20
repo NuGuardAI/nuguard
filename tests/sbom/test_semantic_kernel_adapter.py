@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from nuguard.models.sbom import EdgeRelationshipType, NodeType
-from nuguard.sbom.extractor.framework_adapters.semantic_kernel import SemanticKernelAdapter
+from nuguard.sbom.adapters.python.semantic_kernel import SemanticKernelAdapter
 
 
 @pytest.fixture

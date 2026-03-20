@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 
 from nuguard.models.sbom import NodeType
-from nuguard.sbom.extractor.iac_scanners.terraform import TerraformScanner
+from nuguard.sbom.adapters.iac import TerraformAdapter as TerraformScanner
 
 TF_IAM_ROLE = """
 resource "aws_iam_role" "lambda_role" {

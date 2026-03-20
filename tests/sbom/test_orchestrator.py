@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 import pytest
 
 from nuguard.models.sbom import AiSbomDocument, Node, NodeMetadata, NodeType, ScanSummary
-from nuguard.sbom.toolbox.orchestrator import PLUGIN_REGISTRY, PluginOrchestrator
+from nuguard.sbom.toolbox.orchestrator import PLUGIN_REGISTRY, PluginOrchestrator  # noqa: F401
 
 
 def _empty_doc() -> AiSbomDocument:

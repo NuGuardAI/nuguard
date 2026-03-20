@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from nuguard.models.sbom import NodeType
-from nuguard.sbom.extractor.framework_adapters.guardrails_ai import GuardrailsAIAdapter
+from nuguard.sbom.adapters.python.guardrails_ai import GuardrailsAIAdapter
 
 
 @pytest.fixture

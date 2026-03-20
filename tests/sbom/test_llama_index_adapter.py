@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 
 from nuguard.models.sbom import DatastoreType, EdgeRelationshipType, NodeType
-from nuguard.sbom.extractor.framework_adapters.llama_index import LlamaIndexAdapter
+from nuguard.sbom.adapters.python.llamaindex import LlamaIndexAdapter
 
 
 @pytest.fixture
