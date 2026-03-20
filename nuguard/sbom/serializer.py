@@ -56,8 +56,18 @@ _AI_TYPE_MAP: dict[ComponentType, str] = {
 class AiSbomSerializer:
     @staticmethod
     def to_json(doc: AiSbomDocument) -> str:
-        """Serialise to Xelo-native JSON (Pydantic schema)."""
+        """Serialise to native JSON (Pydantic schema)."""
         return doc.model_dump_json(indent=2, exclude_none=True)
+
+    @staticmethod
+    def to_dict(doc: AiSbomDocument) -> dict[str, Any]:
+        """Serialise to a plain dict."""
+        return json.loads(doc.model_dump_json(exclude_none=True))
+
+    @staticmethod
+    def from_json(raw: str) -> AiSbomDocument:
+        """Deserialise from a JSON string."""
+        return AiSbomDocument.model_validate_json(raw)
 
     @staticmethod
     def to_cyclonedx(

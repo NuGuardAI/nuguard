@@ -34,24 +34,24 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .adapters.base import (
+from ..adapters.base import (
     AdapterMatch,
     ComponentDetection,
     DetectionAdapter,
     FrameworkAdapter,
     RelationshipHint,
 )
-from .adapters.data_classification import DataClassificationSQLAdapter
-from .adapters.dockerfile import DockerfileAdapter
-from .adapters.registry import default_framework_adapters, default_registry
-from .adapters.nginx import NginxAdapter, is_nginx_file
-from .adapters.yaml_adapters import (
+from ..adapters.data_classification import DataClassificationSQLAdapter
+from ..adapters.dockerfile import DockerfileAdapter
+from ..adapters.registry import default_framework_adapters, default_registry
+from ..adapters.nginx import NginxAdapter, is_nginx_file
+from ..adapters.yaml_adapters import (
     AutoGenYAMLAdapter,
     CrewAIYAMLAdapter,
     LLMYAMLConfigAdapter,
     PromptFileAdapter,
 )
-from .adapters.iac import (
+from ..adapters.iac import (
     BicepAdapter,
     CloudFormationAdapter,
     GcpDeploymentManagerAdapter,
@@ -59,14 +59,14 @@ from .adapters.iac import (
     K8sAdapter,
     TerraformAdapter,
 )
-from .adapters.typescript._ts_regex import TSFrameworkAdapter
-from .config import AiSbomConfig
-from .core.application_summary import build_scan_summary
-from .core.ts_parser import TSParseResult, parse_typescript as _parse_ts_impl
-from .deps import DependencyScanner
-from .models import AiSbomDocument, Edge, Evidence, Node, ScanSummary, SourceLocation
-from .normalization import canonicalize_text
-from .types import ComponentType, RelationshipType
+from ..adapters.typescript._ts_regex import TSFrameworkAdapter
+from ..config import AiSbomConfig
+from ..core.application_summary import build_scan_summary
+from ..core.ts_parser import TSParseResult, parse_typescript as _parse_ts_impl
+from ..deps import DependencyScanner
+from ..models import AiSbomDocument, Edge, Evidence, Node, ScanSummary, SourceLocation
+from ..normalization import canonicalize_text
+from ..types import ComponentType, RelationshipType
 
 _log = logging.getLogger(__name__)
 
@@ -159,9 +159,9 @@ def _extract_python_prompt_constants(
     ``_PROMPT_VAR_NAME_RE`` pattern and whose length exceeds
     ``_MIN_PROMPT_CONST_LENGTH``.
     """
-    from .adapters.base import ComponentDetection
-    from .normalization import canonicalize_text
-    from .types import ComponentType
+    from ..adapters.base import ComponentDetection
+    from ..normalization import canonicalize_text
+    from ..types import ComponentType
 
     detections: list[ComponentDetection] = []
     for lit in parse_result.string_literals:
@@ -333,7 +333,7 @@ class AiSbomExtractor:
         iac_adapters: tuple[Any, ...] | None = None,
         load_plugins: bool = False,
     ) -> None:
-        from .plugins import load_plugins as _load_plugins
+        from ..plugins import load_plugins as _load_plugins
 
         base_adapters = (
             framework_adapters if framework_adapters is not None else default_framework_adapters()
@@ -967,7 +967,7 @@ class AiSbomExtractor:
     def _parse_python(content: str) -> Any | None:
         """Run the AST parser; return None on parse failure."""
         try:
-            from .ast_parser import parse
+            from ..ast_parser import parse
 
             result = parse(content)
             return result
@@ -1303,11 +1303,11 @@ class AiSbomExtractor:
         2.5. Annotate MCP FRAMEWORK nodes with a short LLM description
         3. Enrich the scan-level use-case summary
         """
-        from .llm_client import LLMClient
-        from .core.application_summary import maybe_refine_use_case_summary_with_llm
-        from .core.confidence import aggregate_node_confidence
-        from .core.gap_fill import apply_discovery_results, discover_missing_nodes
-        from .core.verification import apply_verification_results, verify_uncertain_nodes
+        from ..llm_client import LLMClient
+        from ..core.application_summary import maybe_refine_use_case_summary_with_llm
+        from ..core.confidence import aggregate_node_confidence
+        from ..core.gap_fill import apply_discovery_results, discover_missing_nodes
+        from ..core.verification import apply_verification_results, verify_uncertain_nodes
 
         client = LLMClient(
             model=config.llm_model,

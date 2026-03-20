@@ -22,7 +22,7 @@ import os
 from dataclasses import dataclass, field
 from typing import Any
 
-from xelo.models import Node
+from ..models import Node
 
 # ---------------------------------------------------------------------------
 # Environment configuration

@@ -4,7 +4,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
-from xelo.types import ComponentType
+from ..types import ComponentType
 
 
 # ---------------------------------------------------------------------------
@@ -184,7 +184,7 @@ class FrameworkAdapter:
         ``can_handle()`` returned True, to guarantee a FRAMEWORK node is always
         emitted even if no higher-level components are detected.
         """
-        from xelo.types import ComponentType as _CT
+        from ..types import ComponentType as _CT
 
         return ComponentDetection(
             component_type=_CT.FRAMEWORK,

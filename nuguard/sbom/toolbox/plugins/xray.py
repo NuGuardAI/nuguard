@@ -25,10 +25,10 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from xelo.toolbox.integration_contracts import XrayConfig
-from xelo.toolbox.http_utils import post_json
-from xelo.toolbox.models import ToolResult
-from xelo.toolbox.plugin_base import ToolPlugin
+from ..integration_contracts import XrayConfig
+from ..http_utils import post_json
+from ..models import ToolResult
+from ..plugin_base import ToolPlugin
 
 _log = logging.getLogger("toolbox.plugins.xray")
 

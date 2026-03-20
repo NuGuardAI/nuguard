@@ -15,7 +15,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Any
 
-from xelo.adapters.base import ComponentDetection, FrameworkAdapter
+from ..adapters.base import ComponentDetection, FrameworkAdapter
 
 
 class PluginAdapter(FrameworkAdapter, ABC):

@@ -27,8 +27,8 @@ import logging
 from collections import Counter
 from typing import Any
 
-from xelo.toolbox.models import ToolResult
-from xelo.toolbox.plugin_base import ToolPlugin
+from ..models import ToolResult
+from ..plugin_base import ToolPlugin
 
 _log = logging.getLogger("toolbox.plugins.dependency")
 

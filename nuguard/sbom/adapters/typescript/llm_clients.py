@@ -20,11 +20,11 @@ import logging
 import re
 from typing import Any
 
-from xelo.adapters.base import ComponentDetection
-from xelo.adapters.typescript._ts_regex import TSFrameworkAdapter
-from xelo.core.ts_parser import TSParseResult, parse_typescript
-from xelo.normalization import canonicalize_text
-from xelo.types import ComponentType
+from ..base import ComponentDetection
+from ._ts_regex import TSFrameworkAdapter
+from ...core.ts_parser import TSParseResult, parse_typescript
+from ...normalization import canonicalize_text
+from ...types import ComponentType
 
 _log = logging.getLogger(__name__)
 

@@ -12,15 +12,15 @@ Supports detection of AI frameworks in TypeScript and JavaScript code:
 - Azure AI Agent Service (@azure/ai-agents, @azure/ai-projects)
 """
 
-from xelo.adapters.typescript.agno import AgnoTSAdapter
-from xelo.adapters.typescript.azure_ai_agents import AzureAIAgentsTSAdapter
-from xelo.adapters.typescript.bedrock_agents import BedrockAgentsTSAdapter
-from xelo.adapters.typescript.datastores import DatastoreTSAdapter
-from xelo.adapters.typescript.google_adk import GoogleADKAdapter
-from xelo.adapters.typescript.langgraph import LangGraphTSAdapter
-from xelo.adapters.typescript.llm_clients import LLMClientTSAdapter
-from xelo.adapters.typescript.openai_agents import OpenAIAgentsTSAdapter
-from xelo.adapters.typescript.prompts import PromptTSAdapter
+from .agno import AgnoTSAdapter
+from .azure_ai_agents import AzureAIAgentsTSAdapter
+from .bedrock_agents import BedrockAgentsTSAdapter
+from .datastores import DatastoreTSAdapter
+from .google_adk import GoogleADKAdapter
+from .langgraph import LangGraphTSAdapter
+from .llm_clients import LLMClientTSAdapter
+from .openai_agents import OpenAIAgentsTSAdapter
+from .prompts import PromptTSAdapter
 
 __all__ = [
     "AgnoTSAdapter",

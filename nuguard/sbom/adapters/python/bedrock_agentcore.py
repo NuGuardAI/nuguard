@@ -12,9 +12,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from xelo.adapters.base import ComponentDetection, FrameworkAdapter
-from xelo.normalization import canonicalize_text
-from xelo.types import ComponentType
+from ..base import ComponentDetection, FrameworkAdapter
+from ...normalization import canonicalize_text
+from ...types import ComponentType
 
 # Decorator names that mark the primary invocable handler → AGENT
 _ENTRYPOINT_DECORATORS = {"entrypoint", "route", "stream", "websocket"}

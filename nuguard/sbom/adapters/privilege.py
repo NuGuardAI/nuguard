@@ -44,8 +44,8 @@ from __future__ import annotations
 
 import re
 
-from xelo.adapters.base import RegexAdapter
-from xelo.types import ComponentType
+from .base import RegexAdapter
+from ..types import ComponentType
 
 _CT = ComponentType.PRIVILEGE
 _PRI = 150  # same priority bucket as the old generic adapter

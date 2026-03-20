@@ -17,13 +17,13 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from xelo.adapters.base import ComponentDetection, FrameworkAdapter, RelationshipHint
-from xelo.adapters.models_kb import (
+from ..base import ComponentDetection, FrameworkAdapter, RelationshipHint
+from ..models_kb import (
     LANGCHAIN_LLM_CLASS_PROVIDERS,
     get_model_details,
 )
-from xelo.normalization import canonicalize_text
-from xelo.types import ComponentType
+from ...normalization import canonicalize_text
+from ...types import ComponentType
 
 # ---------------------------------------------------------------------------
 # LangGraph-specific constants
@@ -145,7 +145,7 @@ class LangGraphAdapter(FrameworkAdapter):
             framework_det = self._framework_node(file_path)
         else:
             # Only langchain imported — emit framework:langchain, not framework:langgraph
-            from xelo.types import ComponentType as _CT
+            from ...types import ComponentType as _CT
 
             framework_det = ComponentDetection(
                 component_type=_CT.FRAMEWORK,

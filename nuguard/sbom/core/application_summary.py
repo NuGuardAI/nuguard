@@ -17,10 +17,10 @@ from collections.abc import Iterable, Sequence
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse, urlunparse
 
-from xelo.models import Node
+from ..models import Node
 
 if TYPE_CHECKING:
-    from xelo.llm_client import LLMClient
+    from ..llm_client import LLMClient
 
 # ---------------------------------------------------------------------------
 # Pattern constants

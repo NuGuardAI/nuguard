@@ -1,1 +1,0 @@
-"""SBOM analysis toolbox plugins."""

@@ -107,9 +107,9 @@ import asyncio
 import logging
 from typing import Any, cast
 
-from xelo.toolbox.models import ToolResult
-from xelo.toolbox.plugin_base import ToolPlugin
-from xelo.toolbox.plugins._atlas_data import (
+from ..models import ToolResult
+from ..plugin_base import ToolPlugin
+from ._atlas_data import (
     ATLAS_VERSION,
     MITIGATIONS,
     NATIVE_CHECKS,
@@ -235,7 +235,7 @@ class AtlasAnnotatorPlugin(ToolPlugin):
     def _run_vla_pass(self, sbom: dict[str, Any]) -> list[dict[str, Any]]:
         """Run structural VLA rules then annotate each finding with ATLAS techniques."""
         # Lazy import to avoid circular dependency at module level
-        from xelo.toolbox.plugins.vulnerability import VulnerabilityScannerPlugin  # noqa: PLC0415
+        from .vulnerability import VulnerabilityScannerPlugin  # noqa: PLC0415
 
         scanner = VulnerabilityScannerPlugin()
         result = scanner.run(sbom, {"provider": "xelo-rules"})
@@ -266,7 +266,7 @@ class AtlasAnnotatorPlugin(ToolPlugin):
 
     def _run_osv_pass(self, sbom: dict[str, Any]) -> list[dict[str, Any]]:
         """Run OSV dependency CVE scan; return findings (empty list on network error)."""
-        from xelo.toolbox.plugins.vulnerability import VulnerabilityScannerPlugin  # noqa: PLC0415
+        from .vulnerability import VulnerabilityScannerPlugin  # noqa: PLC0415
 
         try:
             result = VulnerabilityScannerPlugin().run(sbom, {"provider": "osv"})
@@ -277,7 +277,7 @@ class AtlasAnnotatorPlugin(ToolPlugin):
 
     def _run_grype_pass(self, sbom: dict[str, Any]) -> list[dict[str, Any]]:
         """Run Grype CVE scan; return findings (empty list when grype is not on PATH)."""
-        from xelo.toolbox.plugins.vulnerability import VulnerabilityScannerPlugin  # noqa: PLC0415
+        from .vulnerability import VulnerabilityScannerPlugin  # noqa: PLC0415
 
         try:
             result = VulnerabilityScannerPlugin().run(sbom, {"provider": "grype"})
@@ -334,7 +334,7 @@ class AtlasAnnotatorPlugin(ToolPlugin):
         """Build per-finding llm_summary + overall executive summary."""
         import os  # noqa: PLC0415
 
-        from xelo.llm_client import LLMClient  # noqa: PLC0415
+        from ...llm_client import LLMClient  # noqa: PLC0415
 
         model = config.get("llm_model") or "gpt-4o-mini"
         # For vertex_ai/* models the LLMClient uses a dedicated google_api_key

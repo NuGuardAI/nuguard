@@ -10,3 +10,6 @@ __pycache__/
 *.egg
 build/
 .eggs/
+tmp/
+*.log
+*.bak

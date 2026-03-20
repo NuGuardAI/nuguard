@@ -3,8 +3,8 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from xelo.adapters.base import DetectionAdapter, RegexAdapter
-from xelo.types import ComponentType
+from .base import DetectionAdapter, RegexAdapter
+from ..types import ComponentType
 
 
 @dataclass(frozen=True)

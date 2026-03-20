@@ -23,7 +23,7 @@ from functools import lru_cache
 from typing import Any
 from uuid import UUID
 
-from xelo.models import Evidence, Node
+from ..models import Evidence, Node
 
 _log = logging.getLogger(__name__)
 

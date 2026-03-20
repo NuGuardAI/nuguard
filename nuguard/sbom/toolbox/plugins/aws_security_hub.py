@@ -33,9 +33,9 @@ import logging
 from datetime import datetime, timezone
 from typing import Any, cast
 
-from xelo.toolbox.integration_contracts import AwsSecurityHubConfig
-from xelo.toolbox.models import ToolResult
-from xelo.toolbox.plugin_base import ToolPlugin
+from ..integration_contracts import AwsSecurityHubConfig
+from ..models import ToolResult
+from ..plugin_base import ToolPlugin
 
 _log = logging.getLogger("toolbox.plugins.aws_security_hub")
 
@@ -230,7 +230,7 @@ class AwsSecurityHubPlugin(ToolPlugin):
         config: dict[str, Any],
     ) -> list[dict[str, Any]]:
         """Run the vulnerability scanner and return its raw findings list."""
-        from xelo.toolbox.plugins.vulnerability import VulnerabilityScannerPlugin  # lazy
+        from .vulnerability import VulnerabilityScannerPlugin  # lazy
 
         scan_config: dict[str, Any] = {
             "provider": provider,

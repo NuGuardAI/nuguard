@@ -13,11 +13,11 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from xelo.models import AiSbomDocument
-from xelo.serializer import AiSbomSerializer
+from ...models import AiSbomDocument
+from ...serializer import AiSbomSerializer
 
-from xelo.toolbox.models import ToolResult
-from xelo.toolbox.plugin_base import ToolPlugin
+from ..models import ToolResult
+from ..plugin_base import ToolPlugin
 
 _log = logging.getLogger("toolbox.plugins.cyclonedx")
 
@@ -60,7 +60,7 @@ class CycloneDxExporter(ToolPlugin):
 def _build_vex(deps: list[dict[str, Any]], timeout: float) -> list[dict[str, Any]]:
     """Query OSV and return a CycloneDX-shaped vulnerabilities list."""
     try:
-        from xelo.toolbox.osv_client import query_osv
+        from ..osv_client import query_osv
     except ImportError:
         return []
 

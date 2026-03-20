@@ -3,11 +3,11 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from xelo.adapters.base import DetectionAdapter, FrameworkAdapter, RegexAdapter
-from xelo.adapters.frameworks import builtin_framework_specs
-from xelo.adapters.privilege import privilege_adapters
-from xelo.normalization import canonicalize_text
-from xelo.types import ComponentType
+from .base import DetectionAdapter, FrameworkAdapter, RegexAdapter
+from .frameworks import builtin_framework_specs
+from .privilege import privilege_adapters
+from ..normalization import canonicalize_text
+from ..types import ComponentType
 
 
 @dataclass(frozen=True)
@@ -39,8 +39,8 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
     and TypeScript adapters (run against ``.ts``, ``.tsx``, ``.js``, ``.jsx``
     files).
     """
-    from xelo.adapters.data_classification import DataClassificationPythonAdapter
-    from xelo.adapters.python import (
+    from .data_classification import DataClassificationPythonAdapter
+    from .python import (
         AgnoAdapter,
         AutoGenAdapter,
         AzureAIAgentsAdapter,
@@ -55,7 +55,7 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         OpenAIAgentsAdapter,
         SemanticKernelAdapter,
     )
-    from xelo.adapters.typescript import (
+    from .typescript import (
         AgnoTSAdapter,
         AzureAIAgentsTSAdapter,
         BedrockAgentsTSAdapter,
@@ -105,7 +105,7 @@ def default_registry() -> tuple[DetectionAdapter, ...]:
     types and serve as a lightweight fallback for non-Python files (YAML, Terraform,
     Dockerfiles, etc.) and as a text-based signal for Python comments/configs.
     """
-    from xelo.adapters.frameworks import builtin_framework_adapters
+    from .frameworks import builtin_framework_adapters
 
     adapters: list[DetectionAdapter] = list(builtin_framework_adapters())
 

@@ -1,14 +1,14 @@
-"""xelo plugin discovery and loading.
+"""nuguard.sbom plugin discovery and loading.
 
 Usage::
 
-    from xelo.plugins import load_plugins
+    from nuguard.sbom.plugins import load_plugins
 
     plugins = load_plugins()
 
 Or pass ``load_plugins=True`` when constructing ``AiSbomExtractor``::
 
-    from xelo import AiSbomExtractor, AiSbomConfig
+    from nuguard.sbom import AiSbomExtractor, AiSbomConfig
     extractor = AiSbomExtractor(AiSbomConfig(), load_plugins=True)
 """
 
@@ -19,8 +19,8 @@ import importlib.metadata
 import logging
 import pkgutil
 
-from xelo.adapters.base import FrameworkAdapter
-from xelo.plugins.base import PluginAdapter
+from ..adapters.base import FrameworkAdapter
+from .base import PluginAdapter
 
 __all__ = ["PluginAdapter", "load_plugins"]
 

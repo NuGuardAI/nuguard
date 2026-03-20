@@ -155,8 +155,8 @@ def query_grype_sbom(
 
     # Build CycloneDX JSON from the SBOM
     try:
-        from xelo.models import AiSbomDocument
-        from xelo.serializer import AiSbomSerializer
+        from ..models import AiSbomDocument
+        from ..serializer import AiSbomSerializer
         doc     = AiSbomDocument.model_validate(sbom_dict)
         cdx     = AiSbomSerializer.to_cyclonedx(doc)
         cdx_str = json.dumps(cdx)

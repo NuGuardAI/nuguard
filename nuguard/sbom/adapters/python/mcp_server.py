@@ -20,9 +20,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from xelo.adapters.base import ComponentDetection, FrameworkAdapter
-from xelo.normalization import canonicalize_text
-from xelo.types import ComponentType
+from ..base import ComponentDetection, FrameworkAdapter
+from ...normalization import canonicalize_text
+from ...types import ComponentType
 
 # FastMCP package entrypoints
 _MCP_SERVER_CLASSES = {"FastMCP", "Server", "MCPServer"}
@@ -69,7 +69,7 @@ class MCPServerAdapter(FrameworkAdapter):
         if parse_result is None:
             return []
 
-        from xelo.adapters.base import RelationshipHint
+        from ..base import RelationshipHint
 
         # Track variable names bound to FastMCP / Server instances
         # e.g. ``mcp = FastMCP("excel-mcp")`` → mcp_vars = {"mcp"}

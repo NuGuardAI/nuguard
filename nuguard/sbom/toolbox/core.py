@@ -3,18 +3,18 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from xelo.toolbox.models import ToolResult
-from xelo.toolbox.plugin_base import ToolPlugin
-from xelo.toolbox.plugins.cyclonedx_exporter import CycloneDxExporter
-from xelo.toolbox.plugins.dependency import DependencyAnalyzerPlugin
-from xelo.toolbox.plugins.license_checker import LicenseCheckerPlugin
-from xelo.toolbox.plugins.markdown_exporter import MarkdownExporterPlugin
-from xelo.toolbox.plugins.sarif_exporter import SarifExporterPlugin
-from xelo.toolbox.plugins.vulnerability import VulnerabilityScannerPlugin
-from xelo.toolbox.plugins.atlas_annotator import AtlasAnnotatorPlugin
-from xelo.toolbox.plugins.aws_security_hub import AwsSecurityHubPlugin
-from xelo.toolbox.plugins.ghas_uploader import GhasUploaderPlugin
-from xelo.toolbox.plugins.xray import XrayPlugin
+from .models import ToolResult
+from .plugin_base import ToolPlugin
+from .plugins.cyclonedx_exporter import CycloneDxExporter
+from .plugins.dependency import DependencyAnalyzerPlugin
+from .plugins.license_checker import LicenseCheckerPlugin
+from .plugins.markdown_exporter import MarkdownExporterPlugin
+from .plugins.sarif_exporter import SarifExporterPlugin
+from .plugins.vulnerability import VulnerabilityScannerPlugin
+from .plugins.atlas_annotator import AtlasAnnotatorPlugin
+from .plugins.aws_security_hub import AwsSecurityHubPlugin
+from .plugins.ghas_uploader import GhasUploaderPlugin
+from .plugins.xray import XrayPlugin
 
 _log = logging.getLogger("toolbox.core")
 

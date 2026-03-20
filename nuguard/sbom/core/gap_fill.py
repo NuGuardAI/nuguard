@@ -39,9 +39,9 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from xelo.models import AiSbomDocument, Evidence, Node, NodeMetadata
-from xelo.models import SourceLocation
-from xelo.types import ComponentType
+from ..models import AiSbomDocument, Evidence, Node, NodeMetadata
+from ..models import SourceLocation
+from ..types import ComponentType
 
 _log = logging.getLogger(__name__)
 

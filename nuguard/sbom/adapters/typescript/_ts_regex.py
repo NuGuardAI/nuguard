@@ -12,8 +12,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from xelo.adapters.base import ComponentDetection, FrameworkAdapter
-from xelo.types import ComponentType
+from ..base import ComponentDetection, FrameworkAdapter
+from ...types import ComponentType
 
 
 class TSFrameworkAdapter(FrameworkAdapter):

@@ -21,8 +21,8 @@ import logging
 import re
 from typing import Any
 
-from xelo.adapters.base import ComponentDetection
-from xelo.types import ComponentType
+from .base import ComponentDetection
+from ..types import ComponentType
 
 _log = logging.getLogger(__name__)
 

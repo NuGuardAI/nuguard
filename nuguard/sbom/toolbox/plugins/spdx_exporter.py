@@ -23,10 +23,10 @@ from importlib import resources
 from pathlib import Path
 from typing import Any
 
-from xelo.models import AiSbomDocument, Node
-from xelo.toolbox.models import ToolResult
-from xelo.toolbox.plugin_base import ToolPlugin
-from xelo.types import ComponentType, RelationshipType
+from ...models import AiSbomDocument, Node
+from ..models import ToolResult
+from ..plugin_base import ToolPlugin
+from ...types import ComponentType, RelationshipType
 
 _log = logging.getLogger("toolbox.plugins.spdx")
 

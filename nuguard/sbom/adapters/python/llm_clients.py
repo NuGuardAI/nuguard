@@ -15,16 +15,16 @@ import logging
 import re
 from typing import Any
 
-from xelo.adapters.base import ComponentDetection, FrameworkAdapter
-from xelo.adapters.models_kb import (
+from ..base import ComponentDetection, FrameworkAdapter
+from ..models_kb import (
     ALL_LLM_CLASSES,
     LANGCHAIN_LLM_CLASS_PROVIDERS,
     LLM_CLIENT_PATTERNS,
     get_model_details,
     infer_provider,
 )
-from xelo.normalization import canonicalize_text
-from xelo.types import ComponentType
+from ...normalization import canonicalize_text
+from ...types import ComponentType
 
 _log = logging.getLogger(__name__)
 
@@ -387,7 +387,7 @@ class LLMClientsAdapter(FrameworkAdapter):
 
     @staticmethod
     def _resolve_provider(class_name: str, detected: set[str], parse_result: Any) -> str:
-        from xelo.adapters.models_kb import _CLASS_TO_PROVIDERS
+        from ..models_kb import _CLASS_TO_PROVIDERS
 
         candidates = _CLASS_TO_PROVIDERS.get(class_name, [])
         if not candidates:

@@ -29,9 +29,9 @@ import re
 from pathlib import Path
 from typing import Any
 
-from xelo.adapters.base import ComponentDetection, RelationshipHint
-from xelo.normalization import canonicalize_text
-from xelo.types import ComponentType
+from .base import ComponentDetection, RelationshipHint
+from ..normalization import canonicalize_text
+from ..types import ComponentType
 
 _log = logging.getLogger(__name__)
 
