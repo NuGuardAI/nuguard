@@ -1,0 +1,1 @@
+"""Static SBOM analysis pipeline."""

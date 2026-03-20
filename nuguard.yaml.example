@@ -1,0 +1,35 @@
+# nuguard.yaml
+# Project-level config file. Commit this alongside your SBOM and cognitive policy.
+# Secrets are never stored here — use ${ENV_VAR} interpolation instead.
+
+sbom: ./app.sbom.json               # path to AI-SBOM (or use `source` to generate)
+source: ./                          # generate SBOM from source (alternative to sbom)
+policy: ./cognitive-policy.md
+
+llm:
+  model: gemini/gemini-2.0-flash    # any LiteLLM model string
+  # api_key: loaded from LITELLM_API_KEY env var — never put keys in this file
+
+database:
+  # url: loaded from DATABASE_URL env var
+  # omit for SQLite default at ~/.nuguard/nuguard.db
+
+redteam:
+  target: http://localhost:3000
+  target_endpoint: /api/chat        # agent endpoint path (default: / or from SBOM)
+  auth_header: Authorization: Bearer ${TARGET_TOKEN}   # ${VAR} expands env vars
+  canary: ./canary.json
+  profile: ci                       # ci | full
+  scenarios:                        # omit to run all
+    - prompt-injection
+    - tool-abuse
+    - privilege-escalation
+  min_impact_score: 0.0
+
+analyze:
+  min_severity: medium              # critical | high | medium | low
+
+output:
+  format: markdown                  # markdown | sarif | json
+  fail_on: high                     # severity threshold for non-zero exit
+  sarif_file: ./nuguard-results.sarif

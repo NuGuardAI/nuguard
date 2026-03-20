@@ -1,0 +1,2 @@
+-- NuGuard initial schema migration
+-- TODO: Implement tables for projects, sboms, policies, scans, findings, attack_graphs, exploit_chains

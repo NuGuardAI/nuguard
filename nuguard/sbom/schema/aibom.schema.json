@@ -1,0 +1,223 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://nuguardai.github.io/nuguard-oss/schemas/aibom.schema.json",
+  "title": "AI Software Bill of Materials",
+  "description": "NuGuard / Xelo AI-SBOM document schema v1.3.0",
+  "type": "object",
+  "required": ["schema_version", "generated_at", "target", "nodes", "edges"],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "description": "Schema version string, e.g. '1.3.0'"
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 datetime when the SBOM was generated"
+    },
+    "generator": {
+      "type": "string",
+      "description": "Tool that generated this SBOM"
+    },
+    "target": {
+      "type": "string",
+      "description": "Human-readable name or path of the scanned target"
+    },
+    "nodes": {
+      "type": "array",
+      "description": "All AI component nodes discovered in the target",
+      "items": {
+        "$ref": "#/definitions/Node"
+      }
+    },
+    "edges": {
+      "type": "array",
+      "description": "Directed relationships between nodes",
+      "items": {
+        "$ref": "#/definitions/Edge"
+      }
+    },
+    "deps": {
+      "type": "array",
+      "description": "Package dependencies discovered during scanning",
+      "items": {
+        "$ref": "#/definitions/PackageDep"
+      }
+    },
+    "summary": {
+      "$ref": "#/definitions/ScanSummary"
+    }
+  },
+  "definitions": {
+    "NodeType": {
+      "type": "string",
+      "enum": [
+        "AGENT",
+        "MODEL",
+        "TOOL",
+        "PROMPT",
+        "DATASTORE",
+        "GUARDRAIL",
+        "AUTH",
+        "PRIVILEGE",
+        "CONTAINER_IMAGE",
+        "DEPLOYMENT",
+        "IAM",
+        "FRAMEWORK",
+        "API_ENDPOINT"
+      ]
+    },
+    "EdgeRelationshipType": {
+      "type": "string",
+      "enum": ["USES", "CALLS", "ACCESSES", "PROTECTS", "DEPLOYS"]
+    },
+    "AccessType": {
+      "type": "string",
+      "enum": ["read", "write", "readwrite"]
+    },
+    "DatastoreType": {
+      "type": "string",
+      "enum": ["vector", "relational", "kv", "knowledge_base"]
+    },
+    "PrivilegeScope": {
+      "type": "string",
+      "enum": [
+        "db_write",
+        "filesystem_write",
+        "code_execution",
+        "network_out",
+        "email_out",
+        "social_media_out",
+        "admin",
+        "rbac"
+      ]
+    },
+    "DataClassification": {
+      "type": "string",
+      "enum": ["PII", "PHI", "INTERNAL", "PUBLIC"]
+    },
+    "EvidenceKind": {
+      "type": "string",
+      "enum": ["ast", "ast_instantiation", "regex", "config", "iac", "inferred"]
+    },
+    "EvidenceLocation": {
+      "type": "object",
+      "required": ["path"],
+      "properties": {
+        "path": {"type": "string"},
+        "line": {"type": ["integer", "null"]}
+      }
+    },
+    "Evidence": {
+      "type": "object",
+      "required": ["kind", "confidence", "detail"],
+      "properties": {
+        "kind": {"$ref": "#/definitions/EvidenceKind"},
+        "confidence": {"type": "number", "minimum": 0.0, "maximum": 1.0},
+        "detail": {"type": "string"},
+        "location": {
+          "oneOf": [
+            {"$ref": "#/definitions/EvidenceLocation"},
+            {"type": "null"}
+          ]
+        }
+      }
+    },
+    "NodeMetadata": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "datastore_type": {
+          "oneOf": [{"$ref": "#/definitions/DatastoreType"}, {"type": "null"}]
+        },
+        "data_classification": {
+          "type": "array",
+          "items": {"$ref": "#/definitions/DataClassification"}
+        },
+        "classified_tables": {"type": "array", "items": {"type": "string"}},
+        "classified_fields": {"type": "array", "items": {"type": "string"}},
+        "auth_type": {"type": ["string", "null"]},
+        "auth_class": {"type": ["string", "null"]},
+        "transport": {"type": ["string", "null"]},
+        "endpoint": {"type": ["string", "null"]},
+        "method": {"type": ["string", "null"]},
+        "privilege_scope": {
+          "oneOf": [{"$ref": "#/definitions/PrivilegeScope"}, {"type": "null"}]
+        },
+        "model_name": {"type": ["string", "null"]},
+        "framework": {"type": ["string", "null"]},
+        "image_name": {"type": ["string", "null"]},
+        "image_tag": {"type": ["string", "null"]},
+        "runs_as_root": {"type": ["boolean", "null"]},
+        "has_health_check": {"type": ["boolean", "null"]},
+        "has_resource_limits": {"type": ["boolean", "null"]},
+        "iam_type": {"type": ["string", "null"]},
+        "principal": {"type": ["string", "null"]},
+        "permissions": {"type": "array", "items": {"type": "string"}},
+        "deployment_target": {"type": ["string", "null"]},
+        "extras": {"type": "object"}
+      }
+    },
+    "Node": {
+      "type": "object",
+      "required": ["id", "name", "component_type"],
+      "properties": {
+        "id": {"type": "string", "minLength": 1},
+        "name": {"type": "string", "minLength": 1},
+        "component_type": {"$ref": "#/definitions/NodeType"},
+        "confidence": {
+          "type": "number",
+          "minimum": 0.0,
+          "maximum": 1.0,
+          "default": 1.0
+        },
+        "metadata": {"$ref": "#/definitions/NodeMetadata"},
+        "evidence": {
+          "type": "array",
+          "items": {"$ref": "#/definitions/Evidence"}
+        }
+      }
+    },
+    "Edge": {
+      "type": "object",
+      "required": ["source", "target", "relationship_type"],
+      "properties": {
+        "source": {"type": "string", "minLength": 1},
+        "target": {"type": "string", "minLength": 1},
+        "relationship_type": {"$ref": "#/definitions/EdgeRelationshipType"},
+        "access_type": {
+          "oneOf": [{"$ref": "#/definitions/AccessType"}, {"type": "null"}]
+        }
+      }
+    },
+    "PackageDep": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {
+        "name": {"type": "string"},
+        "version_spec": {"type": ["string", "null"]},
+        "purl": {"type": ["string", "null"]},
+        "source_file": {"type": ["string", "null"]},
+        "ecosystem": {"type": ["string", "null"]}
+      }
+    },
+    "ScanSummary": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "use_case": {"type": ["string", "null"]},
+        "frameworks": {"type": "array", "items": {"type": "string"}},
+        "modalities": {"type": "array", "items": {"type": "string"}},
+        "node_counts": {"type": "object"},
+        "security_findings": {"type": "array", "items": {"type": "string"}},
+        "data_classification": {"type": "array", "items": {"type": "string"}},
+        "classified_tables": {"type": "array", "items": {"type": "string"}},
+        "api_endpoints": {"type": "array", "items": {"type": "string"}},
+        "deployment_platforms": {"type": "array", "items": {"type": "string"}},
+        "iac_accounts": {"type": "array", "items": {"type": "string"}},
+        "iac_security_summary": {"type": ["string", "null"]}
+      }
+    }
+  }
+}
