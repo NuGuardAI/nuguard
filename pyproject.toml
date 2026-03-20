@@ -15,10 +15,16 @@ dependencies = [
     "aiosqlite>=0.20",
     "asyncpg>=0.29",
     "rich>=13.0",
+    "structlog>=25.5.0",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "pytest-asyncio>=0.23", "ruff>=0.4", "mypy>=1.10"]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.4",
+    "mypy>=1.10",
+]
 
 [project.scripts]
 nuguard = "nuguard.cli.main:app"
