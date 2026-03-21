@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from nuguard.common.errors import ConfigError
@@ -95,6 +95,20 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_app_env"] = {
             str(k): str(v) for k, v in redteam["app_env"].items()
         }
+
+    # Redteam LLM section
+    redteam_llm = redteam.get("llm", {}) or {}
+    if "model" in redteam_llm:
+        flat["redteam_llm_model"] = redteam_llm["model"]
+    if "api_key" in redteam_llm:
+        flat["redteam_llm_api_key"] = redteam_llm["api_key"]
+
+    # Eval LLM section
+    redteam_eval_llm = redteam.get("eval_llm", {}) or {}
+    if "model" in redteam_eval_llm:
+        flat["redteam_eval_llm_model"] = redteam_eval_llm["model"]
+    if "api_key" in redteam_eval_llm:
+        flat["redteam_eval_llm_api_key"] = redteam_eval_llm["api_key"]
 
     # Analyze section
     analyze = data.get("analyze", {}) or {}
@@ -226,6 +240,37 @@ class NuGuardConfig(BaseSettings):
             "Extra environment variables injected into the fixture app subprocess "
             "during E2E redteam tests (yaml: redteam.app_env). "
             r"Use ${VAR} interpolation to avoid storing secrets in the file."
+        ),
+    )
+    redteam_llm_model: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("NUGUARD_REDTEAM_LLM_MODEL", "redteam_llm_model"),
+        description=(
+            "LiteLLM model string for attack-payload generation. "
+            "Must be an uncensored model (yaml: redteam.llm.model, "
+            "env: NUGUARD_REDTEAM_LLM_MODEL)."
+        ),
+    )
+    redteam_llm_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("NUGUARD_REDTEAM_LLM_API_KEY", "redteam_llm_api_key"),
+        description="API key for the redteam LLM (yaml: redteam.llm.api_key, env: NUGUARD_REDTEAM_LLM_API_KEY).",
+    )
+    redteam_eval_llm_model: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("NUGUARD_REDTEAM_EVAL_LLM_MODEL", "redteam_eval_llm_model"),
+        description=(
+            "LiteLLM model for response evaluation and summary generation. "
+            "Defaults to top-level litellm_model (yaml: redteam.eval_llm.model, "
+            "env: NUGUARD_REDTEAM_EVAL_LLM_MODEL)."
+        ),
+    )
+    redteam_eval_llm_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("NUGUARD_REDTEAM_EVAL_LLM_API_KEY", "redteam_eval_llm_api_key"),
+        description=(
+            "API key for the eval LLM. Defaults to litellm_api_key "
+            r"(yaml: redteam.eval_llm.api_key, env: NUGUARD_REDTEAM_EVAL_LLM_API_KEY)."
         ),
     )
 

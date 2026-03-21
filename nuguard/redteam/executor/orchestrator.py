@@ -6,6 +6,10 @@ import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from nuguard.common.llm_client import LLMClient
 
 from nuguard.models.exploit_chain import GoalType
 from nuguard.models.finding import Finding
@@ -102,6 +106,9 @@ class RedteamOrchestrator:
         chat_payload_list: bool = False,
         concurrency: int = DEFAULT_CONCURRENCY,
         request_timeout: float = 120.0,
+        redteam_llm: "LLMClient | None" = None,
+        eval_llm: "LLMClient | None" = None,
+        prompt_cache_dir: "Path | None" = None,
     ) -> None:
         self._sbom = sbom
         self._target_url = target_url
@@ -112,6 +119,9 @@ class RedteamOrchestrator:
         self._log_path = log_path
         self._request_timeout = request_timeout
         self._concurrency = max(1, concurrency)
+        self._redteam_llm = redteam_llm
+        self._eval_llm = eval_llm
+        self._prompt_cache_dir = prompt_cache_dir
         # Auto-discover from SBOM; fall back to provided values
         self._chat_path, self._chat_payload_key, self._chat_payload_list = (
             _discover_chat_config(sbom, chat_path, chat_payload_key, chat_payload_list)
@@ -128,6 +138,11 @@ class RedteamOrchestrator:
             for node in sbom.nodes
             if node.id
         }
+        # LLM output attributes — populated by run()
+        self.llm_executive_summary: str | None = None
+        self.llm_remediations: dict[str, str] = {}
+        self.llm_coding_brief: str | None = None
+        self.prompt_cache_path: Path | None = None
 
     async def run(self) -> list[Finding]:
         """Run the full scan and return a list of findings."""
@@ -140,6 +155,22 @@ class RedteamOrchestrator:
         # 1. Generate scenarios from SBOM + policy
         generator = ScenarioGenerator(self._sbom, self._policy)
         all_scenarios = generator.generate()
+
+        # 2. LLM payload enrichment (opt-in — only when redteam_llm is configured)
+        if self._redteam_llm and all_scenarios:
+            from nuguard.redteam.llm_engine.prompt_cache import PromptCache
+            from nuguard.redteam.llm_engine.prompt_generator import (
+                LLMPromptGenerator,
+                _inject_llm_payloads,
+            )
+            _cache_dir = self._prompt_cache_dir or Path("tests/output")
+            _cache = PromptCache(_cache_dir)
+            _cache_key = _cache.cache_key(self._sbom, self._policy)
+            _llm_payloads = await LLMPromptGenerator(
+                self._redteam_llm, self._sbom, self._policy
+            ).enrich_all(all_scenarios, _cache, _cache_key)
+            self.prompt_cache_path = _cache.path_for(_cache_key)
+            all_scenarios = _inject_llm_payloads(all_scenarios, _llm_payloads)
 
         # Filter by profile and impact score
         if self._profile == "ci":
@@ -211,6 +242,33 @@ class RedteamOrchestrator:
                     self.scenario_records.extend(escalation_records)
 
         _log.info("Scan complete: %d findings", len(findings))
+
+        # LLM evaluation + summary (opt-in — only when eval_llm is configured)
+        if self._eval_llm and findings:
+            from nuguard.redteam.llm_engine.summary_generator import LLMSummaryGenerator
+            frameworks: list[str] = []
+            if self._sbom.summary:
+                frameworks = list(getattr(self._sbom.summary, "frameworks_detected", None) or [])
+            node_by_id: dict[str, object] = {
+                str(node.id): node for node in self._sbom.nodes if node.id
+            }
+            summary_gen = LLMSummaryGenerator(self._eval_llm)
+            self.llm_executive_summary = await summary_gen.executive_summary(
+                target_url=self._target_url,
+                scenarios_run=self.scenarios_run,
+                findings=findings,
+                frameworks=frameworks,
+                duration_s=0.0,  # duration not tracked here; report layer has it
+            )
+            for f in findings:
+                rem = await summary_gen.remediation(f, node_by_id)
+                if rem:
+                    self.llm_remediations[f.finding_id] = rem
+            if self.llm_remediations:
+                self.llm_coding_brief = await summary_gen.coding_agent_brief(
+                    findings, self.llm_remediations
+                )
+
         return findings
 
     async def _run_scenarios(

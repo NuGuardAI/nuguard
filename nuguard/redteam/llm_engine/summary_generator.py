@@ -1,0 +1,199 @@
+"""LLM-powered executive summary and remediation brief generator."""
+from __future__ import annotations
+
+import logging
+from typing import TYPE_CHECKING
+
+from nuguard.common.llm_client import LLMClient
+from nuguard.models.finding import Finding
+
+if TYPE_CHECKING:
+    pass
+
+_log = logging.getLogger(__name__)
+
+_EXEC_SUMMARY_SYSTEM = (
+    "You are a security engineer summarising an AI red-team scan report. "
+    "Write concise, technical prose. Do NOT use bullet lists or headers."
+)
+
+_REMEDIATION_SYSTEM = (
+    "You are a security engineer writing remediation steps for a developer. "
+    "Use imperative sentences. Be concrete. Max 5 steps."
+)
+
+_CODING_BRIEF_SYSTEM = (
+    "You are a lead security engineer producing a remediation task list for a coding agent. "
+    "The agent has access to the source code but needs precise, unambiguous instructions."
+)
+
+
+def _sev_counts(findings: list[Finding]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for f in findings:
+        counts[str(f.severity)] = counts.get(str(f.severity), 0) + 1
+    return counts
+
+
+class LLMSummaryGenerator:
+    """Generates executive summary and per-finding remediations using the eval LLM."""
+
+    def __init__(self, llm: LLMClient) -> None:
+        self._llm = llm
+
+    async def executive_summary(
+        self,
+        target_url: str,
+        scenarios_run: int,
+        findings: list[Finding],
+        frameworks: list[str],
+        duration_s: float,
+    ) -> str:
+        """Return a 2–4 sentence executive summary string."""
+        counts = _sev_counts(findings)
+        critical = counts.get("critical", 0)
+        high = counts.get("high", 0)
+        medium = counts.get("medium", 0)
+        low = counts.get("low", 0)
+
+        finding_lines = []
+        for f in findings[:10]:
+            finding_lines.append(
+                f"- [{f.severity}] {f.title}: {f.affected_component or 'unknown component'} — "
+                f"{(f.evidence or f.description or '')[:200]}"
+            )
+
+        prompt = (
+            f"Scan statistics:\n"
+            f"- Target: {target_url}\n"
+            f"- Scenarios run: {scenarios_run}\n"
+            f"- Findings: {len(findings)} "
+            f"({critical} critical, {high} high, {medium} medium, {low} low)\n"
+            f"- Frameworks detected: {', '.join(frameworks) or 'unknown'}\n"
+            f"- Scan duration: {duration_s:.0f}s\n"
+            f"\nFindings:\n" + "\n".join(finding_lines) + "\n\n"
+            "Write a 2–4 sentence executive summary for a technical audience. "
+            "Focus on: what was found, what the risk is, and the urgency of remediation. "
+            "Do NOT repeat finding titles verbatim — synthesise."
+        )
+        try:
+            result = await self._llm.complete(prompt, system=_EXEC_SUMMARY_SYSTEM)
+            if result.startswith("[NUGUARD_CANNED_RESPONSE]"):
+                return ""
+            return result.strip()
+        except Exception as exc:
+            _log.warning("Executive summary generation failed: %s", exc)
+            return ""
+
+    async def remediation(
+        self,
+        finding: Finding,
+        sbom_nodes: dict[str, object],
+    ) -> str:
+        """
+        Return LLM-generated remediation for a single finding.
+        Includes filepath only when finding.sbom_path has exactly one node
+        with a known source_file metadata field.
+        """
+        # Resolve SBOM node details
+        sbom_path_descriptions = finding.sbom_path_descriptions or []
+        source_file: str | None = None
+
+        if len(finding.sbom_path) == 1:
+            node = sbom_nodes.get(finding.sbom_path[0])
+            if node is not None:
+                meta = getattr(node, "metadata", None)
+                if meta:
+                    source_file = getattr(meta, "source_file", None)
+
+        # Build attack steps summary
+        step_lines = []
+        for i, step in enumerate(finding.attack_steps[:5], 1):
+            step_type = step.get("step_type", "?")
+            ok = "succeeded" if step.get("succeeded") else "failed"
+            resp = (step.get("response") or "")[:150].replace("\n", " ")
+            step_lines.append(f"  Step {i} ({step_type}, {ok}): {resp}")
+
+        prompt_lines = [
+            f"Finding: {finding.title}",
+            f"Severity: {finding.severity}",
+            f"Attack goal: {finding.goal_type or 'unknown'}",
+            f"Affected component: {finding.affected_component or 'unknown'}",
+            f"Evidence: {(finding.evidence or finding.description or '')[:300]}",
+        ]
+        if sbom_path_descriptions:
+            prompt_lines.append(f"SBOM path: {' \u2192 '.join(sbom_path_descriptions)}")
+        if source_file:
+            prompt_lines.append(f"Source file: {source_file}")
+        if step_lines:
+            prompt_lines.append("Attack steps that succeeded:")
+            prompt_lines.extend(step_lines)
+
+        prompt_lines.append("")
+        if source_file:
+            prompt_lines.append(
+                "Write a specific, actionable remediation. Reference the source file path."
+            )
+        else:
+            prompt_lines.append(
+                "Write a specific, actionable remediation. "
+                "Do NOT reference specific filenames — this component appears in multiple locations."
+            )
+        prompt_lines += [
+            "Rules:",
+            '- Use imperative sentences ("Add a guard\u2026", "Replace X with Y\u2026")',
+            "- Be concrete enough that a coding agent can implement without asking questions",
+            "- Max 5 steps; shorter is better",
+            "- Do not restate what the attack did — only what to fix",
+        ]
+
+        try:
+            result = await self._llm.complete(
+                "\n".join(prompt_lines), system=_REMEDIATION_SYSTEM
+            )
+            if result.startswith("[NUGUARD_CANNED_RESPONSE]"):
+                return ""
+            return result.strip()
+        except Exception as exc:
+            _log.warning("Remediation generation failed for %s: %s", finding.finding_id, exc)
+            return ""
+
+    async def coding_agent_brief(
+        self,
+        findings: list[Finding],
+        remediations: dict[str, str],
+    ) -> str:
+        """Return the full coding-agent brief as a Markdown string."""
+        if not findings:
+            return ""
+
+        findings_text = []
+        for f in findings:
+            rem = remediations.get(f.finding_id, f.remediation or "")
+            findings_text.append(
+                f"**[{f.severity}] {f.title}**\n"
+                f"Component: {f.affected_component or 'unknown'}\n"
+                f"Remediation: {rem[:400]}"
+            )
+
+        prompt = (
+            "Below are the findings from an AI red-team scan:\n\n"
+            + "\n\n".join(findings_text)
+            + "\n\nProduce a numbered list of remediation tasks. Each task must:\n"
+            "1. State the file to edit (only if a single source file is implicated; "
+            "otherwise name the component).\n"
+            "2. Describe the exact code change in one or two sentences.\n"
+            "3. Reference the relevant OWASP control.\n\n"
+            "Do not include explanatory prose between tasks. Format:\n\n"
+            "## Remediation Tasks\n\n"
+            "1. **[{severity}] {component}** \u2014 {precise action}.  ({OWASP ref})\n"
+            "2. ..."
+        )
+        try:
+            result = await self._llm.complete(prompt, system=_CODING_BRIEF_SYSTEM)
+            if result.startswith("[NUGUARD_CANNED_RESPONSE]"):
+                return ""
+            return result.strip()
+        except Exception as exc:
+            _log.warning("Coding agent brief generation failed: %s", exc)
+            return ""

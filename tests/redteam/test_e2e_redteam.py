@@ -18,8 +18,13 @@ import logging
 import os
 import time
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
+
+if TYPE_CHECKING:
+    from nuguard.common.llm_client import LLMClient
+    from nuguard.config import NuGuardConfig
 
 from nuguard.config import load_config
 from nuguard.models.policy import CognitivePolicy
@@ -43,6 +48,38 @@ _USE_LLM = bool(os.getenv("GEMINI_API_KEY") or os.getenv("LITELLM_API_KEY"))
 # nuguard.yaml redteam.verbose takes precedence; env var NUGUARD_REDTEAM_VERBOSE
 # acts as a fallback so users can opt in without editing the config file.
 _VERBOSE = _cfg.redteam_verbose or bool(os.getenv("NUGUARD_REDTEAM_VERBOSE"))
+
+# LLM clients for optional augmentation
+# redteam_llm: uncensored LLM for attack payload generation
+_redteam_llm: "LLMClient | None" = None
+_eval_llm: "LLMClient | None" = None
+
+
+def _build_llm_clients(app_cfg: "NuGuardConfig") -> "tuple[LLMClient | None, LLMClient | None]":  # type: ignore[name-defined]
+    """Build redteam and eval LLM clients from config. Both are optional."""
+    from nuguard.common.llm_client import LLMClient
+    redteam_llm = None
+    if app_cfg.redteam_llm_model or os.getenv("NUGUARD_REDTEAM_LLM_MODEL"):
+        redteam_llm = LLMClient(
+            model=app_cfg.redteam_llm_model or os.getenv("NUGUARD_REDTEAM_LLM_MODEL"),
+            api_key=app_cfg.redteam_llm_api_key or os.getenv("NUGUARD_REDTEAM_LLM_API_KEY"),
+        )
+    eval_llm = None
+    eval_model = (
+        app_cfg.redteam_eval_llm_model
+        or os.getenv("NUGUARD_REDTEAM_EVAL_LLM_MODEL")
+        or app_cfg.litellm_model
+    )
+    eval_key = (
+        app_cfg.redteam_eval_llm_api_key
+        or os.getenv("NUGUARD_REDTEAM_EVAL_LLM_API_KEY")
+        or app_cfg.litellm_api_key
+        or os.getenv("LITELLM_API_KEY")
+        or os.getenv("GEMINI_API_KEY")
+    )
+    if eval_key:
+        eval_llm = LLMClient(model=eval_model, api_key=eval_key)
+    return redteam_llm, eval_llm
 
 
 # ---------------------------------------------------------------------------
@@ -178,6 +215,7 @@ def _run_redteam(app_name: str) -> None:
     """
     config = APP_CONFIGS[app_name]
     app_cfg = _load_fixture_config(config)
+    redteam_llm, eval_llm = _build_llm_clients(app_cfg)
     runner = AppRunner(config, extra_env=app_cfg.redteam_app_env)
     start_time = time.monotonic()
 
@@ -187,8 +225,15 @@ def _run_redteam(app_name: str) -> None:
     except Exception as exc:
         _log.error("[%s] Failed to materialize fixture: %s", app_name, exc)
         runner.start_error = str(exc)
-        _write_report(config, runner, {}, 0, [], time.monotonic() - start_time, None,
-                      verbose=app_cfg.redteam_verbose or _VERBOSE)
+        _write_report(
+            config, runner, {}, 0, [], time.monotonic() - start_time, None,
+            verbose=app_cfg.redteam_verbose or _VERBOSE,
+            llm_executive_summary=None,
+            llm_remediations=None,
+            llm_coding_brief=None,
+            prompt_cache_path=None,
+            eval_llm_model=None,
+        )
         return
 
     try:
@@ -225,6 +270,7 @@ def _run_redteam(app_name: str) -> None:
         scenarios_generated = 0
         scenarios_executed: list[tuple[str, str, bool]] = []
         scenario_records: list[ScenarioRecord] = []
+        orchestrator: RedteamOrchestrator | None = None
         if runner.started and sbom is not None:
             try:
                 orchestrator = RedteamOrchestrator(
@@ -236,6 +282,9 @@ def _run_redteam(app_name: str) -> None:
                     chat_payload_key=config.chat_payload_key,
                     chat_payload_list=config.chat_payload_list,
                     request_timeout=app_cfg.redteam_request_timeout,
+                    redteam_llm=redteam_llm,
+                    eval_llm=eval_llm,
+                    prompt_cache_dir=OUTPUT_DIR,
                 )
                 findings = asyncio.run(orchestrator.run())
                 scenarios_generated = orchestrator.scenarios_run
@@ -249,13 +298,34 @@ def _run_redteam(app_name: str) -> None:
             time.monotonic() - start_time, policy_file, scenarios_executed,
             scenario_records=scenario_records,
             verbose=app_cfg.redteam_verbose or _VERBOSE,
+            llm_executive_summary=orchestrator.llm_executive_summary if orchestrator else None,
+            llm_remediations=orchestrator.llm_remediations if orchestrator else None,
+            llm_coding_brief=orchestrator.llm_coding_brief if orchestrator else None,
+            prompt_cache_path=orchestrator.prompt_cache_path if orchestrator else None,
+            eval_llm_model=eval_llm.model if eval_llm else None,
         )
 
     finally:
         runner.teardown()
 
 
-def _write_report(config, runner, sbom_summary, scenarios_generated, findings, scan_duration, policy_file, scenarios_executed=None, scenario_records=None, verbose: bool = False):  # type: ignore[no-untyped-def]
+def _write_report(  # type: ignore[no-untyped-def]
+    config,
+    runner,
+    sbom_summary,
+    scenarios_generated,
+    findings,
+    scan_duration,
+    policy_file,
+    scenarios_executed=None,
+    scenario_records=None,
+    verbose: bool = False,
+    llm_executive_summary: str | None = None,
+    llm_remediations: "dict[str, str] | None" = None,
+    llm_coding_brief: str | None = None,
+    prompt_cache_path: "Path | None" = None,
+    eval_llm_model: str | None = None,
+) -> None:
     report_path = write_redteam_report(
         app_name=config.name,
         app_url=runner.base_url,
@@ -271,6 +341,11 @@ def _write_report(config, runner, sbom_summary, scenarios_generated, findings, s
         scenarios_executed=scenarios_executed,
         verbose=verbose,
         scenario_records=scenario_records,
+        llm_executive_summary=llm_executive_summary,
+        llm_remediations=llm_remediations,
+        llm_coding_brief=llm_coding_brief,
+        prompt_cache_path=prompt_cache_path,
+        eval_llm_model=eval_llm_model,
     )
     _log.info("[%s] Report written to %s", config.name, report_path)
     assert report_path.exists(), f"Report was not written to {report_path}"
