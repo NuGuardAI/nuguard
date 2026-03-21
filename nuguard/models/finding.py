@@ -1,11 +1,9 @@
-"""Finding data models.
-
-TODO: Implement Finding, Severity, and PolicyViolationType Pydantic models.
-"""
+"""Finding model for static analysis and redteam results."""
+from __future__ import annotations
 
 from enum import Enum
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class Severity(str, Enum):
@@ -17,12 +15,21 @@ class Severity(str, Enum):
 
 
 class Finding(BaseModel):
-    """A security finding produced by static analysis or red-team testing."""
-
     finding_id: str
     title: str
     severity: Severity
     description: str
     affected_component: str | None = None
     remediation: str | None = None
-    references: list[str] = []
+    references: list[str] = Field(default_factory=list)
+    # Redteam-specific fields
+    goal_type: str | None = None
+    sbom_path: list[str] = Field(default_factory=list)
+    sbom_path_descriptions: list[str] = Field(default_factory=list)
+    policy_clauses_violated: list[str] = Field(default_factory=list)
+    chain_id: str | None = None
+    owasp_asi_ref: str | None = None
+    owasp_llm_ref: str | None = None
+    mitre_atlas_technique: str | None = None
+    evidence: str | None = None
+    log_correlation_status: str | None = None
