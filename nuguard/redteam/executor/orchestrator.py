@@ -83,7 +83,13 @@ class RedteamOrchestrator:
         )
         # Populated by run() — scenarios executed and their titles
         self.scenarios_run: int = 0
-        self.scenarios_executed: list[tuple[str, str, float]] = []  # (title, goal_type, impact)
+        self.scenarios_executed: list[tuple[str, str, bool]] = []  # (title, goal_type, had_finding)
+        # Node lookup: id → "name (TYPE)" built lazily on first use
+        self._node_label: dict[str, str] = {
+            node.id: f"{node.name} ({node.component_type.value})"
+            for node in sbom.nodes
+            if node.id
+        }
 
     async def run(self) -> list[Finding]:
         """Run the full scan and return a list of findings."""
@@ -111,9 +117,6 @@ class RedteamOrchestrator:
             ]
 
         self.scenarios_run = len(scenarios)
-        self.scenarios_executed = [
-            (s.title, s.goal_type.value, s.impact_score) for s in scenarios
-        ]
         _log.info("Running %d scenarios", self.scenarios_run)
 
         if not scenarios:
@@ -144,7 +147,8 @@ class RedteamOrchestrator:
                 canary=canary_scanner,
                 logger=logger,
             )
-            findings = await self._run_scenarios(scenarios, executor)
+            findings, executed = await self._run_scenarios(scenarios, executor)
+            self.scenarios_executed.extend(executed)
 
             # 5. Escalation pass: if no findings, run lower-scored scenarios that
             #    were filtered out in the CI pass (minimum impact lowered to 3.0)
@@ -160,11 +164,10 @@ class RedteamOrchestrator:
                         len(escalation_scenarios),
                     )
                     self.scenarios_run += len(escalation_scenarios)
-                    self.scenarios_executed += [
-                        (s.title, s.goal_type.value, s.impact_score)
-                        for s in escalation_scenarios
-                    ]
-                    findings = await self._run_scenarios(escalation_scenarios, executor)
+                    findings, escalation_executed = await self._run_scenarios(
+                        escalation_scenarios, executor
+                    )
+                    self.scenarios_executed.extend(escalation_executed)
 
         _log.info("Scan complete: %d findings", len(findings))
         return findings
@@ -173,9 +176,13 @@ class RedteamOrchestrator:
         self,
         scenarios: list[AttackScenario],
         executor: AttackExecutor,
-    ) -> list[Finding]:
-        """Execute a list of scenarios and return all findings."""
+    ) -> tuple[list[Finding], list[tuple[str, str, bool]]]:
+        """Execute a list of scenarios and return (findings, executed_records).
+
+        Each executed_record is (title, goal_type, had_finding).
+        """
         findings: list[Finding] = []
+        executed: list[tuple[str, str, bool]] = []
         for scenario in scenarios:
             if scenario.chain is None:
                 continue
@@ -183,11 +190,13 @@ class RedteamOrchestrator:
                 chain, step_results = await executor.run(scenario.chain)
                 new_findings = self._build_findings(scenario, chain, step_results)
                 findings.extend(new_findings)
+                executed.append((scenario.title, scenario.goal_type.value, bool(new_findings)))
             except Exception as exc:
                 _log.warning(
                     "Scenario %s failed: %s", scenario.scenario_id, exc
                 )
-        return findings
+                executed.append((scenario.title, scenario.goal_type.value, False))
+        return findings, executed
 
     def _build_findings(
         self,
@@ -205,6 +214,11 @@ class RedteamOrchestrator:
             all_violations.extend(sr.policy_violations)
             canary_hits.extend(sr.canary_hits)
 
+        # Resolve human-readable component labels for this scenario's target nodes
+        affected = ", ".join(
+            self._node_label.get(nid, nid) for nid in scenario.target_node_ids[:2]
+        )
+
         # Canary-based finding
         if canary_hits:
             sev = severity_scorer.score_finding(
@@ -221,7 +235,7 @@ class RedteamOrchestrator:
                         f"Canary value(s) {canary_hits[:3]} were found in the agent response, "
                         f"confirming data exfiltration via scenario: {scenario.title}"
                     ),
-                    affected_component=", ".join(scenario.target_node_ids[:2]),
+                    affected_component=affected,
                     remediation=remediation_generator.generate(
                         scenario.goal_type, scenario.title
                     ),
@@ -244,7 +258,7 @@ class RedteamOrchestrator:
                     title=f"{violation.type.replace('_', ' ').title()} — {scenario.title}",
                     severity=sev,
                     description=violation.evidence,
-                    affected_component=", ".join(scenario.target_node_ids[:2]),
+                    affected_component=affected,
                     remediation=remediation_generator.generate(
                         scenario.goal_type, scenario.title
                     ),
@@ -279,7 +293,7 @@ class RedteamOrchestrator:
                             f"Attack scenario '{scenario.title}' succeeded: "
                             f"success signals detected in {len(critical_hits)} step(s)."
                         ),
-                        affected_component=", ".join(scenario.target_node_ids[:2]),
+                        affected_component=affected,
                         remediation=remediation_generator.generate(
                             scenario.goal_type, scenario.title
                         ),

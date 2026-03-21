@@ -130,7 +130,7 @@ def _run_redteam(app_name: str) -> None:
         # Step 4: run redteam scenarios using the SBOM
         findings = []
         scenarios_generated = 0
-        scenarios_executed: list[tuple[str, str, float]] = []
+        scenarios_executed: list[tuple[str, str, bool]] = []
         if runner.started and sbom is not None:
             try:
                 orchestrator = RedteamOrchestrator(
