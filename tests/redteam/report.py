@@ -1,0 +1,158 @@
+"""Writes E2E redteam scan results as a Markdown report to tests/output/."""
+from __future__ import annotations
+
+import time
+from datetime import UTC, datetime
+from pathlib import Path
+from typing import Any
+
+from nuguard.models.finding import Finding, Severity
+
+OUTPUT_DIR = Path(__file__).resolve().parents[2] / "tests" / "output"
+
+_SEV_BADGE = {
+    Severity.CRITICAL: "🔴 CRITICAL",
+    Severity.HIGH:     "🟠 HIGH",
+    Severity.MEDIUM:   "🟡 MEDIUM",
+    Severity.LOW:      "🔵 LOW",
+    Severity.INFO:     "⚪ INFO",
+}
+
+
+def write_redteam_report(
+    app_name: str,
+    app_url: str,
+    chat_path: str,
+    sbom_summary: dict[str, Any],
+    scenarios_generated: int,
+    findings: list[Finding],
+    scan_duration_s: float,
+    app_started: bool,
+    app_start_error: str | None,
+    notes: str = "",
+    policy_file: str | None = None,
+) -> Path:
+    """Render a Markdown report and write it to tests/output/; return the path."""
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    slug = app_name.replace(" ", "_").replace("/", "-")
+    out_path = OUTPUT_DIR / f"redteam_{slug}_{ts}.md"
+
+    lines: list[str] = []
+    _h = lines.append
+
+    # --- Header ----------------------------------------------------------
+    _h(f"# NuGuard Redteam E2E Report: {app_name}")
+    _h(f"")
+    _h(f"**Generated:** {datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S UTC')}  ")
+    _h(f"**Target URL:** `{app_url}`  ")
+    _h(f"**Chat / Primary Endpoint:** `{chat_path}`  ")
+    _h(f"")
+
+    if notes:
+        _h(f"> **Note:** {notes}")
+        _h(f"")
+
+    # --- App Status ------------------------------------------------------
+    _h(f"## App Status")
+    _h(f"")
+    if app_started:
+        _h(f"✅ **Started successfully** — app responded to health check")
+    else:
+        _h(f"❌ **Failed to start**")
+        if app_start_error:
+            _h(f"")
+            _h(f"```")
+            _h(app_start_error[:1500])
+            _h(f"```")
+    _h(f"")
+
+    # --- SBOM Summary ----------------------------------------------------
+    _h(f"## SBOM Summary")
+    _h(f"")
+    node_counts: dict[str, int] = sbom_summary.get("node_counts", {})
+    if node_counts:
+        _h(f"| Component Type | Count |")
+        _h(f"|----------------|-------|")
+        for ctype, count in sorted(node_counts.items()):
+            _h(f"| {ctype} | {count} |")
+    else:
+        _h(f"_No nodes discovered (SBOM generation failed or source was empty)_")
+    _h(f"")
+    if frameworks := sbom_summary.get("frameworks", []):
+        _h(f"**Frameworks detected:** {', '.join(frameworks)}")
+        _h(f"")
+    if use_case := sbom_summary.get("use_case"):
+        _h(f"**Use case:** {use_case}")
+        _h(f"")
+    if policy_file:
+        _h(f"**Policy file:** `{policy_file}`")
+        _h(f"")
+
+    # --- Scan Statistics -------------------------------------------------
+    _h(f"## Scan Statistics")
+    _h(f"")
+    sev_counts: dict[str, int] = {}
+    for f in findings:
+        sev_counts[f.severity] = sev_counts.get(f.severity, 0) + 1
+
+    _h(f"| Metric | Value |")
+    _h(f"|--------|-------|")
+    _h(f"| Scenarios generated | {scenarios_generated} |")
+    _h(f"| Total findings | {len(findings)} |")
+    for sev in [Severity.CRITICAL, Severity.HIGH, Severity.MEDIUM, Severity.LOW, Severity.INFO]:
+        cnt = sev_counts.get(sev, 0)
+        if cnt:
+            _h(f"| {_SEV_BADGE[sev]} findings | {cnt} |")
+    _h(f"| Scan duration | {scan_duration_s:.1f}s |")
+    _h(f"")
+
+    # --- Findings --------------------------------------------------------
+    if findings:
+        sorted_findings = sorted(
+            findings,
+            key=lambda x: list(Severity).index(x.severity),
+        )
+        _h(f"## Findings ({len(findings)})")
+        _h(f"")
+        for i, finding in enumerate(sorted_findings, 1):
+            badge = _SEV_BADGE.get(finding.severity, str(finding.severity))
+            _h(f"### {i}. {badge} — {finding.title}")
+            _h(f"")
+            if finding.affected_component:
+                _h(f"**Affected component:** `{finding.affected_component}`")
+                _h(f"")
+            _h(f"{finding.description}")
+            _h(f"")
+            if finding.evidence:
+                _h(f"**Evidence:** {finding.evidence}")
+                _h(f"")
+            if finding.remediation:
+                _h(f"**Remediation:** {finding.remediation}")
+                _h(f"")
+            refs: list[str] = []
+            if finding.owasp_asi_ref:
+                refs.append(f"OWASP ASI: {finding.owasp_asi_ref}")
+            if finding.owasp_llm_ref:
+                refs.append(f"OWASP LLM: {finding.owasp_llm_ref}")
+            if refs:
+                _h(f"**References:** {' | '.join(refs)}")
+                _h(f"")
+            _h("---")
+            _h(f"")
+    else:
+        _h(f"## Findings")
+        _h(f"")
+        if not app_started:
+            _h(f"_No findings — app did not start successfully._")
+        else:
+            _h(f"_No findings detected in this scan run._")
+        _h(f"")
+
+    # --- Footer ----------------------------------------------------------
+    _h(f"---")
+    _h(f"")
+    _h(f"*Report generated by NuGuard redteam E2E test harness.*")
+
+    out_path.write_text("\n".join(lines), encoding="utf-8")
+    return out_path

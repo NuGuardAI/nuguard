@@ -849,6 +849,23 @@ class AiSbomExtractor:
                 _pp = acc.metadata.get("path_params")
                 if isinstance(_pp, list) and _pp:
                     node.metadata.path_params = [str(p) for p in _pp]
+                # Schema discovery fields (populated by FastAPI/Flask AST adapters)
+                if acc.metadata.get("endpoint") and not node.metadata.endpoint:
+                    node.metadata.endpoint = str(acc.metadata["endpoint"])
+                _cpk = acc.metadata.get("chat_payload_key")
+                if _cpk:
+                    node.metadata.chat_payload_key = str(_cpk)
+                _cpl = acc.metadata.get("chat_payload_list")
+                if _cpl is not None:
+                    node.metadata.chat_payload_list = bool(_cpl)
+                _rtk = acc.metadata.get("response_text_key")
+                if _rtk:
+                    node.metadata.response_text_key = str(_rtk)
+                _rbs = acc.metadata.get("request_body_schema")
+                if isinstance(_rbs, dict) and _rbs:
+                    node.metadata.request_body_schema = {
+                        str(k): str(v) for k, v in _rbs.items()
+                    }
             # server_name for all MCP FRAMEWORK/TOOL nodes
             if acc.metadata.get("framework") == "mcp-server":
                 if acc.metadata.get("server_name"):

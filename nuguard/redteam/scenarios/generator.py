@@ -487,7 +487,7 @@ class ScenarioGenerator:
 
             if meta.idor_surface or any(
                 p.lower() in ("id", "user_id", "tenant_id", "account_id", "customer_id", "org_id")
-                for p in meta.path_params
+                for p in (meta.path_params or [])
             ):
                 scenario = build_idor(
                     endpoint_id=endpoint_id,

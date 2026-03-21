@@ -8,6 +8,7 @@ from pathlib import Path
 from nuguard.models.exploit_chain import GoalType
 from nuguard.models.finding import Finding
 from nuguard.models.policy import CognitivePolicy
+from nuguard.models.sbom import NodeType
 from nuguard.redteam.risk_engine import compliance_mapper, remediation_generator, severity_scorer
 from nuguard.redteam.scenarios.generator import ScenarioGenerator
 from nuguard.redteam.scenarios.scenario_types import AttackScenario
@@ -19,6 +20,38 @@ from nuguard.sbom.models import AiSbomDocument
 from .executor import AttackExecutor, StepResult
 
 _log = logging.getLogger(__name__)
+
+
+def _discover_chat_config(
+    sbom: AiSbomDocument,
+    chat_path: str,
+    chat_payload_key: str,
+    chat_payload_list: bool,
+) -> tuple[str, str, bool]:
+    """Auto-discover chat endpoint config from SBOM API_ENDPOINT nodes.
+
+    Looks for a POST endpoint whose metadata has ``chat_payload_key`` set.
+    Falls back to the provided defaults if nothing is found.
+
+    Returns ``(chat_path, chat_payload_key, chat_payload_list)``.
+    """
+    for node in sbom.nodes:
+        if node.component_type != NodeType.API_ENDPOINT:
+            continue
+        meta = node.metadata
+        if not meta:
+            continue
+        if meta.method and meta.method.upper() != "POST":
+            continue
+        if not meta.chat_payload_key:
+            continue
+        discovered_path = meta.endpoint or chat_path
+        _log.info(
+            "SBOM auto-discovered chat config: path=%s key=%s list=%s (node=%s)",
+            discovered_path, meta.chat_payload_key, meta.chat_payload_list, node.name,
+        )
+        return discovered_path, meta.chat_payload_key, meta.chat_payload_list
+    return chat_path, chat_payload_key, chat_payload_list
 
 
 class RedteamOrchestrator:
@@ -33,6 +66,9 @@ class RedteamOrchestrator:
         profile: str = "ci",
         min_impact_score: float = 0.0,
         log_path: Path | None = None,
+        chat_path: str = "/chat",
+        chat_payload_key: str = "message",
+        chat_payload_list: bool = False,
     ) -> None:
         self._sbom = sbom
         self._target_url = target_url
@@ -41,6 +77,10 @@ class RedteamOrchestrator:
         self._profile = profile
         self._min_impact = min_impact_score
         self._log_path = log_path
+        # Auto-discover from SBOM; fall back to provided values
+        self._chat_path, self._chat_payload_key, self._chat_payload_list = (
+            _discover_chat_config(sbom, chat_path, chat_payload_key, chat_payload_list)
+        )
 
     async def run(self) -> list[Finding]:
         """Run the full scan and return a list of findings."""
@@ -85,7 +125,12 @@ class RedteamOrchestrator:
 
         # 4. Execute scenarios
         findings: list[Finding] = []
-        async with TargetAppClient(self._target_url) as client:
+        async with TargetAppClient(
+            self._target_url,
+            chat_path=self._chat_path,
+            chat_payload_key=self._chat_payload_key,
+            chat_payload_list=self._chat_payload_list,
+        ) as client:
             executor = AttackExecutor(
                 client=client,
                 policy=self._policy,

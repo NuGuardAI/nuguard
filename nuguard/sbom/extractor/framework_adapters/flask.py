@@ -1,7 +1,8 @@
 """Flask framework adapter for nuguard SBOM extraction.
 
 Detects Flask applications, blueprints, route endpoints, and auth decorators
-using Python's AST module.
+using Python's AST module.  Also discovers request body payload keys from
+``request.json.get("key")`` / ``data.get("key")`` patterns in route handlers.
 """
 
 from __future__ import annotations
@@ -25,10 +26,64 @@ _AUTH_DECORATORS = {
     "auth_required": "auth",
 }
 
+# Field names that are strong indicators of the primary user prompt
+_PROMPT_FIELD_NAMES = {
+    "message", "query", "prompt", "input", "text",
+    "user_query", "user_input", "user_message",
+    "transcript", "question", "content", "msg",
+}
+
 
 def _stable_id(key: str) -> str:
     """Generate a stable UUID5 from a canonical key string."""
     return str(uuid.uuid5(uuid.NAMESPACE_URL, key))
+
+
+def _infer_chat_payload_key(
+    func_def: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> str | None:
+    """Scan the function body for request.json.get("key") / data.get("key") patterns.
+
+    Returns the first key that matches a known prompt field name, or the first
+    key found if none match the known set.
+    """
+    candidates: list[str] = []
+
+    for node in ast.walk(func_def):
+        # Match: <something>.get("key") or <something>.get("key", default)
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if not isinstance(func, ast.Attribute) or func.attr != "get":
+            continue
+        # Must have at least one string argument
+        if not node.args:
+            continue
+        first_arg = node.args[0]
+        if not isinstance(first_arg, ast.Constant) or not isinstance(first_arg.value, str):
+            continue
+        key = first_arg.value
+        if not key:
+            continue
+
+        # Heuristic: receiver should look like request.json, data, payload, body, json_data
+        receiver = func.value
+        receiver_name = ""
+        if isinstance(receiver, ast.Name):
+            receiver_name = receiver.id
+        elif isinstance(receiver, ast.Attribute):
+            # request.json → attr = "json"
+            receiver_name = receiver.attr
+
+        if receiver_name in ("json", "data", "payload", "body", "json_data", "request_data"):
+            candidates.append(key)
+
+    # Prefer a known prompt field name
+    for key in candidates:
+        if key in _PROMPT_FIELD_NAMES:
+            return key
+    # Fallback: first candidate
+    return candidates[0] if candidates else None
 
 
 class FlaskAdapter:
@@ -143,6 +198,11 @@ class FlaskAdapter:
                 key = f"flask:endpoint:{path}:{func_name}"
                 node_id = _stable_id(key)
 
+                # Discover request body payload key from function body
+                chat_key: str | None = None
+                if "POST" in [m.upper() for m in methods]:
+                    chat_key = _infer_chat_payload_key(node)
+
                 ep_node = Node(
                     id=node_id,
                     name=func_name,
@@ -152,6 +212,7 @@ class FlaskAdapter:
                         framework="flask",
                         endpoint=path_str,
                         method=method,
+                        chat_payload_key=chat_key,
                     ),
                 )
                 nodes.append(ep_node)

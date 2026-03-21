@@ -17,8 +17,18 @@ DEFAULT_TIMEOUT = 30.0
 class TargetAppClient:
     """Thin httpx wrapper for sending chat/completion requests to the target."""
 
-    def __init__(self, base_url: str, timeout: float = DEFAULT_TIMEOUT) -> None:
+    def __init__(
+        self,
+        base_url: str,
+        chat_path: str = "/chat",
+        chat_payload_key: str = "message",
+        chat_payload_list: bool = False,
+        timeout: float = DEFAULT_TIMEOUT,
+    ) -> None:
         self.base_url = base_url.rstrip("/")
+        self._chat_path = chat_path
+        self._chat_payload_key = chat_payload_key
+        self._chat_payload_list = chat_payload_list
         self._client = httpx.AsyncClient(
             base_url=self.base_url,
             timeout=httpx.Timeout(timeout),
@@ -28,17 +38,11 @@ class TargetAppClient:
 
     async def send(self, payload: str, session: AttackSession) -> tuple[str, list[dict]]:
         """Send a prompt payload to the target and return (response_text, tool_calls)."""
-        # Build conversation history from session turns
-        messages = []
-        for turn in session.turns:
-            messages.append({"role": "user", "content": turn.prompt})
-            messages.append({"role": "assistant", "content": turn.response})
-        messages.append({"role": "user", "content": payload})
-
-        body: dict[str, Any] = {"messages": messages}
+        value: Any = [payload] if self._chat_payload_list else payload
+        body: dict[str, Any] = {self._chat_payload_key: value}
 
         try:
-            resp = await self._client.post("/chat", json=body)
+            resp = await self._client.post(self._chat_path, json=body)
             resp.raise_for_status()
             data = resp.json()
         except httpx.HTTPStatusError as exc:
@@ -48,13 +52,18 @@ class TargetAppClient:
             _log.warning("Target request failed: %s", exc)
             return f"[REQUEST_ERROR: {exc}]", []
 
-        # Extract response text
+        # Extract response text — try common response shapes
         text = (
             data.get("response")
             or data.get("content")
             or data.get("message", {}).get("content", "")
             or ""
         )
+        # Handle list-of-messages response (e.g. openai-cs-agents-demo)
+        if not text and isinstance(data.get("messages"), list):
+            msgs = data["messages"]
+            if msgs and isinstance(msgs[-1], dict):
+                text = msgs[-1].get("content") or msgs[-1].get("text") or ""
         if not text and isinstance(data, str):
             text = data
 

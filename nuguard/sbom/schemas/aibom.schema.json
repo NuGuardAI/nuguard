@@ -889,6 +889,46 @@
           "description": "Path parameter names extracted from the endpoint URL template, e.g. ['user_id', 'tenant_id']",
           "title": "Path Params"
         },
+        "request_body_schema": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "description": "Pydantic/dataclass field map for the request body: {field_name: type_string}",
+          "title": "Request Body Schema",
+          "type": "object"
+        },
+        "chat_payload_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Inferred primary prompt field in the request body (e.g. 'message', 'query')",
+          "title": "Chat Payload Key"
+        },
+        "chat_payload_list": {
+          "default": false,
+          "description": "True when the chat payload key is typed as a list (e.g. list[str])",
+          "title": "Chat Payload List",
+          "type": "boolean"
+        },
+        "response_text_key": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Inferred primary response text field in the response body",
+          "title": "Response Text Key"
+        },
         "pii_fields": {
           "anyOf": [
             {

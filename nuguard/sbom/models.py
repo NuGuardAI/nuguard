@@ -328,6 +328,23 @@ class NodeMetadata(BaseModel):
             "e.g. ['user_id', 'tenant_id']"
         ),
     )
+    # Discovered request/response schema (populated by framework adapters)
+    request_body_schema: dict[str, str] = Field(
+        default_factory=dict,
+        description="Pydantic/dataclass field map for the request body: {field_name: type_string}",
+    )
+    chat_payload_key: str | None = Field(
+        default=None,
+        description="Inferred primary prompt field in the request body (e.g. 'message', 'query')",
+    )
+    chat_payload_list: bool = Field(
+        default=False,
+        description="True when the chat payload key is typed as a list (e.g. list[str])",
+    )
+    response_text_key: str | None = Field(
+        default=None,
+        description="Inferred primary response text field in the response body",
+    )
     # Datastore risk attributes (complement classified_fields for flat redteam lookups)
     pii_fields: list[str] | None = Field(
         default=None,

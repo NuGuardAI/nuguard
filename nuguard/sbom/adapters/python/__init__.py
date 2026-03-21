@@ -5,6 +5,8 @@ from .autogen import AutoGenAdapter
 from .azure_ai_agents import AzureAIAgentsAdapter
 from .bedrock_agentcore import BedrockAgentCoreAdapter
 from .crewai import CrewAIAdapter
+from .fastapi_adapter import FastAPIAdapter
+from .flask_adapter import FlaskAdapter
 from .google_adk import GoogleADKPythonAdapter
 from .guardrails_ai import GuardrailsAIAdapter
 from .langgraph import LangGraphAdapter
@@ -20,6 +22,8 @@ __all__ = [
     "AzureAIAgentsAdapter",
     "BedrockAgentCoreAdapter",
     "CrewAIAdapter",
+    "FastAPIAdapter",
+    "FlaskAdapter",
     "GoogleADKPythonAdapter",
     "GuardrailsAIAdapter",
     "LangGraphAdapter",

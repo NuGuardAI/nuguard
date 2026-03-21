@@ -161,6 +161,11 @@ class NodeMetadata(BaseModel):
     rate_limited: bool | None = None
     idor_surface: bool | None = None  # path contains {user_id} / {tenant_id}
     path_params: list[str] = []  # extracted path parameter names
+    # Discovered request/response schema (populated by framework adapters)
+    request_body_schema: dict[str, str] = {}  # field_name -> type string
+    chat_payload_key: str | None = None        # inferred primary prompt field
+    chat_payload_list: bool = False            # True if field is typed as list[str]
+    response_text_key: str | None = None       # inferred primary response field
 
     # PRIVILEGE
     privilege_scope: PrivilegeScope | None = None

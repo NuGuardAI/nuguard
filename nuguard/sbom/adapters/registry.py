@@ -46,6 +46,8 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         AzureAIAgentsAdapter,
         BedrockAgentCoreAdapter,
         CrewAIAdapter,
+        FastAPIAdapter,
+        FlaskAdapter,
         GoogleADKPythonAdapter,
         GuardrailsAIAdapter,
         LangGraphAdapter,
@@ -84,6 +86,8 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         BedrockAgentCoreAdapter(),
         GoogleADKPythonAdapter(),
         MCPServerAdapter(),
+        FastAPIAdapter(),
+        FlaskAdapter(),
         # TypeScript / JavaScript adapters
         LangGraphTSAdapter(),
         OpenAIAgentsTSAdapter(),
