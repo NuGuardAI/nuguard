@@ -31,6 +31,7 @@ def write_redteam_report(
     app_start_error: str | None,
     notes: str = "",
     policy_file: str | None = None,
+    scenarios_executed: list[tuple[str, str, float]] | None = None,
 ) -> Path:
     """Render a Markdown report and write it to tests/output/; return the path."""
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -106,6 +107,17 @@ def write_redteam_report(
             _h(f"| {_SEV_BADGE[sev]} findings | {cnt} |")
     _h(f"| Scan duration | {scan_duration_s:.1f}s |")
     _h(f"")
+
+    # --- Scenarios Executed ----------------------------------------------
+    if scenarios_executed:
+        _h(f"## Scenarios Executed ({len(scenarios_executed)})")
+        _h(f"")
+        _h(f"| # | Title | Goal Type | Impact |")
+        _h(f"|---|-------|-----------|--------|")
+        for i, (title, goal, score) in enumerate(scenarios_executed, 1):
+            goal_label = goal.replace("_", " ").title()
+            _h(f"| {i} | {title} | {goal_label} | {score:.1f} |")
+        _h(f"")
 
     # --- Findings --------------------------------------------------------
     if findings:

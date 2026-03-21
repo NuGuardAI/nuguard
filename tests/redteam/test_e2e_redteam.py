@@ -130,6 +130,7 @@ def _run_redteam(app_name: str) -> None:
         # Step 4: run redteam scenarios using the SBOM
         findings = []
         scenarios_generated = 0
+        scenarios_executed: list[tuple[str, str, float]] = []
         if runner.started and sbom is not None:
             try:
                 orchestrator = RedteamOrchestrator(
@@ -142,6 +143,7 @@ def _run_redteam(app_name: str) -> None:
                 )
                 findings = asyncio.run(orchestrator.run())
                 scenarios_generated = orchestrator.scenarios_run
+                scenarios_executed = orchestrator.scenarios_executed
             except Exception as exc:
                 _log.warning("[%s] Redteam scan failed: %s", app_name, exc)
 
@@ -154,14 +156,14 @@ def _run_redteam(app_name: str) -> None:
 
         _write_report(
             config, runner, sbom_summary, scenarios_generated, findings,
-            time.monotonic() - start_time, policy_file,
+            time.monotonic() - start_time, policy_file, scenarios_executed,
         )
 
     finally:
         runner.teardown()
 
 
-def _write_report(config, runner, sbom_summary, scenarios_generated, findings, scan_duration, policy_file):  # type: ignore[no-untyped-def]
+def _write_report(config, runner, sbom_summary, scenarios_generated, findings, scan_duration, policy_file, scenarios_executed=None):  # type: ignore[no-untyped-def]
     report_path = write_redteam_report(
         app_name=config.name,
         app_url=runner.base_url,
@@ -174,6 +176,7 @@ def _write_report(config, runner, sbom_summary, scenarios_generated, findings, s
         app_start_error=runner.start_error,
         notes=config.notes,
         policy_file=policy_file,
+        scenarios_executed=scenarios_executed,
     )
     _log.info("[%s] Report written to %s", config.name, report_path)
     assert report_path.exists(), f"Report was not written to {report_path}"

@@ -81,8 +81,9 @@ class RedteamOrchestrator:
         self._chat_path, self._chat_payload_key, self._chat_payload_list = (
             _discover_chat_config(sbom, chat_path, chat_payload_key, chat_payload_list)
         )
-        # Populated by run() — number of scenarios actually executed
+        # Populated by run() — scenarios executed and their titles
         self.scenarios_run: int = 0
+        self.scenarios_executed: list[tuple[str, str, float]] = []  # (title, goal_type, impact)
 
     async def run(self) -> list[Finding]:
         """Run the full scan and return a list of findings."""
@@ -94,22 +95,25 @@ class RedteamOrchestrator:
 
         # 1. Generate scenarios from SBOM + policy
         generator = ScenarioGenerator(self._sbom, self._policy)
-        scenarios = generator.generate()
+        all_scenarios = generator.generate()
 
         # Filter by profile and impact score
         if self._profile == "ci":
-            # ci profile: skip persistence tests, cap at 20 scenarios
+            # ci profile: only high-impact scenarios; cap at 20
             scenarios = [
                 s
-                for s in scenarios
+                for s in all_scenarios
                 if s.impact_score >= max(self._min_impact, 5.0)
             ][:20]
         else:
             scenarios = [
-                s for s in scenarios if s.impact_score >= self._min_impact
+                s for s in all_scenarios if s.impact_score >= self._min_impact
             ]
 
         self.scenarios_run = len(scenarios)
+        self.scenarios_executed = [
+            (s.title, s.goal_type.value, s.impact_score) for s in scenarios
+        ]
         _log.info("Running %d scenarios", self.scenarios_run)
 
         if not scenarios:
@@ -140,19 +144,49 @@ class RedteamOrchestrator:
                 canary=canary_scanner,
                 logger=logger,
             )
-            for scenario in scenarios:
-                if scenario.chain is None:
-                    continue
-                try:
-                    chain, step_results = await executor.run(scenario.chain)
-                    new_findings = self._build_findings(scenario, chain, step_results)
-                    findings.extend(new_findings)
-                except Exception as exc:
-                    _log.warning(
-                        "Scenario %s failed: %s", scenario.scenario_id, exc
+            findings = await self._run_scenarios(scenarios, executor)
+
+            # 5. Escalation pass: if no findings, run lower-scored scenarios that
+            #    were filtered out in the CI pass (minimum impact lowered to 3.0)
+            if not findings and self._profile == "ci":
+                run_ids = {s.scenario_id for s in scenarios}
+                escalation_scenarios = [
+                    s for s in all_scenarios
+                    if s.impact_score >= 3.0 and s.scenario_id not in run_ids
+                ][:10]
+                if escalation_scenarios:
+                    _log.info(
+                        "0 findings — escalating with %d lower-scored scenarios",
+                        len(escalation_scenarios),
                     )
+                    self.scenarios_run += len(escalation_scenarios)
+                    self.scenarios_executed += [
+                        (s.title, s.goal_type.value, s.impact_score)
+                        for s in escalation_scenarios
+                    ]
+                    findings = await self._run_scenarios(escalation_scenarios, executor)
 
         _log.info("Scan complete: %d findings", len(findings))
+        return findings
+
+    async def _run_scenarios(
+        self,
+        scenarios: list[AttackScenario],
+        executor: AttackExecutor,
+    ) -> list[Finding]:
+        """Execute a list of scenarios and return all findings."""
+        findings: list[Finding] = []
+        for scenario in scenarios:
+            if scenario.chain is None:
+                continue
+            try:
+                chain, step_results = await executor.run(scenario.chain)
+                new_findings = self._build_findings(scenario, chain, step_results)
+                findings.extend(new_findings)
+            except Exception as exc:
+                _log.warning(
+                    "Scenario %s failed: %s", scenario.scenario_id, exc
+                )
         return findings
 
     def _build_findings(
