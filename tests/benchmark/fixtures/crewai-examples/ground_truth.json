@@ -1,0 +1,1497 @@
+{
+  "schema_version": "1.1.0",
+  "generated_at": "2025-07-30T00:00:00Z",
+  "generator": "github_copilot",
+  "target": "local://crewai-examples",
+  "nodes": [
+    {
+      "id": "585dfd43-34bd-561d-8f37-0e7ce0484bd3",
+      "name": "Requirements_Manager",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "requirementsmanager",
+          "adapter": "crewai_yaml"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.85,
+          "detail": "AGENT: Requirements_Manager",
+          "location": {
+            "path": "crews/markdown_validator/src/markdown_validator/config/agents.yaml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "0a1a8c24-a06a-5596-9b80-dfe5ddc12fa2",
+      "name": "analyst",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "analyst",
+          "adapter": "crewai_yaml"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.85,
+          "detail": "AGENT: analyst",
+          "location": {
+            "path": "crews/screenplay_writer/config/agents.yaml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "9deefe16-602f-5231-98bd-83e4f8e683df",
+      "name": "chief_creative_director",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "chiefcreativedirector",
+          "adapter": "crewai_yaml"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.85,
+          "detail": "AGENT: chief_creative_director",
+          "location": {
+            "path": "crews/marketing_strategy/src/marketing_posts/config/agents.yaml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ba7f5db1-d21f-5b9b-9a35-cdad21d8945c",
+      "name": "chief_marketing_strategist",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "chiefmarketingstrategist",
+          "adapter": "crewai_yaml"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.85,
+          "detail": "AGENT: chief_marketing_strategist",
+          "location": {
+            "path": "crews/marketing_strategy/src/marketing_posts/config/agents.yaml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "52715bdd-d192-5905-8a15-a6d78c758af8",
+      "name": "chief_qa_engineer_agent",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "chiefqaengineeragent",
+          "adapter": "crewai_yaml"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.85,
+          "detail": "AGENT: chief_qa_engineer_agent",
+          "location": {
+            "path": "crews/game-builder-crew/src/game_builder_crew/config/agents.yaml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "9423fe7e-70b4-5874-aacc-7b06662f3ccd",
+      "name": "communicator",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "communicator",
+          "adapter": "crewai_yaml"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.85,
+          "detail": "AGENT: communicator",
+          "location": {
+            "path": "crews/recruitment/src/recruitment/config/agents.yaml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "0e2e6a70-0450-5aef-9e8f-9b8f79529290",
+      "name": "creative_content_creator",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "creativecontentcreator",
+          "adapter": "crewai_yaml"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.85,
+          "detail": "AGENT: creative_content_creator",
+          "location": {
+            "path": "crews/marketing_strategy/src/marketing_posts/config/agents.yaml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "de6cdfc7-08fa-5ef7-a6db-2726ae186263",
+      "name": "cv_reader",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "cvreader",
+          "adapter": "crewai_yaml"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.85,
+          "detail": "AGENT: cv_reader",
+          "location": {
+            "path": "crews/match_profile_to_positions/src/match_to_proposal/config/agents.yaml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "dc69c986-8e73-5b3c-8ff9-d8bc610eee7d",
+      "name": "email_followup_agent",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "emailfollowupagent",
+          "adapter": "crewai_yaml"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.85,
+          "detail": "AGENT: email_followup_agent",
+          "location": {
+            "path": "flows/email_auto_responder_flow/src/email_auto_responder_flow/crews/email_filter_crew/config/agents.yaml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "776f3c10-b5fe-5051-ac43-53b445eb4fe0",
+      "name": "financial_analyst",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "financialanalyst",
+          "adapter": "crewai_yaml"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.85,
+          "detail": "AGENT: financial_analyst",
+          "location": {
+            "path": "crews/stock_analysis/src/stock_analysis/config/agents.yaml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "00f16479-b166-57ba-b6ad-eb45bc4f26a5",
+      "name": "formatter",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "formatter",
+          "adapter": "crewai_yaml"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.85,
+          "detail": "AGENT: formatter",
+          "location": {
+            "path": "crews/screenplay_writer/config/agents.yaml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "93a38bd2-ef29-5e1d-9036-c7403890b179",
+      "name": "hr_evaluation_agent",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "hrevaluationagent",
+          "adapter": "crewai_yaml"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.85,
+          "detail": "AGENT: hr_evaluation_agent",
+          "location": {
+            "path": "flows/lead-score-flow/src/lead_score_flow/crews/lead_score_crew/config/agents.yaml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "350e4dd9-fd5b-5303-8c1a-1b7fc6d196a1",
+      "name": "investment_advisor",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "investmentadvisor",
+          "adapter": "crewai_yaml"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.85,
+          "detail": "AGENT: investment_advisor",
+          "location": {
+            "path": "crews/stock_analysis/src/stock_analysis/config/agents.yaml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "3138c483-f5d6-5b81-ac63-61c07f9263e0",
+      "name": "itinerary_compiler",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "itinerarycompiler",
+          "adapter": "crewai_yaml"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.85,
+          "detail": "AGENT: itinerary_compiler",
+          "location": {
+            "path": "crews/surprise_trip/src/surprise_travel/config/agents.yaml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "7217652e-8ab5-5a6c-8315-8df7af833795",
+      "name": "job_opportunities_parser",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "jobopportunitiesparser",
+          "adapter": "crewai_yaml"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.85,
+          "detail": "AGENT: job_opportunities_parser",
+          "location": {
+            "path": "crews/match_profile_to_positions/src/match_to_proposal/config/agents.yaml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "fffdc3a0-0c60-5059-806f-ebde42bc7a13",
+      "name": "lead_market_analyst",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "leadmarketanalyst",
+          "adapter": "crewai_yaml"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.85,
+          "detail": "AGENT: lead_market_analyst",
+          "location": {
+            "path": "crews/marketing_strategy/src/marketing_posts/config/agents.yaml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "95e5d5af-67e4-5151-8954-46af00089fd3",
+      "name": "matcher",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "matcher",
+          "adapter": "crewai_yaml"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.85,
+          "detail": "AGENT: matcher",
+          "location": {
+            "path": "crews/match_profile_to_positions/src/match_to_proposal/config/agents.yaml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "b5545b80-e77d-58bb-9ae4-a7c4fd89c7e8",
+      "name": "meeting_analyzer",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "meetinganalyzer",
+          "adapter": "crewai_yaml"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.85,
+          "detail": "AGENT: meeting_analyzer",
+          "location": {
+            "path": "flows/meeting_assistant_flow/src/meeting_assistant_flow/crews/meeting_assistant_crew/config/agents.yaml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "09ef71bb-7379-579f-b925-f1c1b23ec64f",
+      "name": "meta_quest_expert",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "metaquestexpert",
+          "adapter": "crewai_yaml"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.85,
+          "detail": "AGENT: meta_quest_expert",
+          "location": {
+            "path": "crews/meta_quest_knowledge/src/meta_quest_knowledge/config/agents.yaml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "c2b4aaab-3bd1-506f-8455-273866836f2b",
+      "name": "outliner",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "outliner",
+          "adapter": "crewai_yaml"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.85,
+          "detail": "AGENT: outliner",
+          "location": {
+            "path": "flows/write_a_book_with_flows/src/write_a_book_with_flows/crews/outline_book_crew/config/agents.yaml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "6a5897d8-e7f2-5dbc-8ebd-34f69a85a1b1",
+      "name": "personalized_activity_planner",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "personalizedactivityplanner",
+          "adapter": "crewai_yaml"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.85,
+          "detail": "AGENT: personalized_activity_planner",
+          "location": {
+            "path": "crews/surprise_trip/src/surprise_travel/config/agents.yaml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "9b070e66-9b85-5a5c-a37a-c90592849a48",
+      "name": "qa_engineer_agent",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "qaengineeragent",
+          "adapter": "crewai_yaml"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.85,
+          "detail": "AGENT: qa_engineer_agent",
+          "location": {
+            "path": "crews/game-builder-crew/src/game_builder_crew/config/agents.yaml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "dd845851-a503-5a2b-941a-d375a5d42c4b",
+      "name": "reporter",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "reporter",
+          "adapter": "crewai_yaml"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.85,
+          "detail": "AGENT: reporter",
+          "location": {
+            "path": "crews/recruitment/src/recruitment/config/agents.yaml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "bb29067e-15fa-5cef-949e-b12bdfe8697f",
+      "name": "research_agent",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "researchagent",
+          "adapter": "crewai_yaml"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.85,
+          "detail": "AGENT: research_agent",
+          "location": {
+            "path": "crews/job-posting/src/job_posting/config/agents.yaml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "5bf68f9b-1ff5-5ae1-aa0b-12ca6dff9596",
+      "name": "research_analyst",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "researchanalyst",
+          "adapter": "crewai_yaml"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.85,
+          "detail": "AGENT: research_analyst",
+          "location": {
+            "path": "crews/stock_analysis/src/stock_analysis/config/agents.yaml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "b1864ca1-6649-5613-ab10-f0aca642d3f4",
+      "name": "researcher",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "researcher",
+          "adapter": "crewai"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.85,
+          "detail": "AGENT: researcher",
+          "location": {
+            "path": "integrations/azure_model/main.py",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "13901b3f-03ab-5ca7-9023-80ea80a59214",
+      "name": "researcher",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "researcher",
+          "adapter": "crewai_yaml"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.85,
+          "detail": "AGENT: researcher",
+          "location": {
+            "path": "crews/recruitment/src/recruitment/config/agents.yaml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "e03c7c7b-5b80-5057-92a8-10c3ce2534af",
+      "name": "restaurant_scout",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "restaurantscout",
+          "adapter": "crewai_yaml"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.85,
+          "detail": "AGENT: restaurant_scout",
+          "location": {
+            "path": "crews/surprise_trip/src/surprise_travel/config/agents.yaml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "370a575e-17af-5483-8c89-d9468e714b8a",
+      "name": "review_agent",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "reviewagent",
+          "adapter": "crewai_yaml"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.85,
+          "detail": "AGENT: review_agent",
+          "location": {
+            "path": "crews/job-posting/src/job_posting/config/agents.yaml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "18396371-c32b-5c9a-9941-92f0227eb7f1",
+      "name": "scorer",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "scorer",
+          "adapter": "crewai_yaml"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.85,
+          "detail": "AGENT: scorer",
+          "location": {
+            "path": "crews/screenplay_writer/config/agents.yaml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "4ae6ae9d-d306-58cd-b971-f7a02791ab04",
+      "name": "scriptwriter",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "scriptwriter",
+          "adapter": "crewai_yaml"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.85,
+          "detail": "AGENT: scriptwriter",
+          "location": {
+            "path": "crews/screenplay_writer/config/agents.yaml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "f6cd7a0b-0821-5de3-8b47-d24dda35df1c",
+      "name": "senior_content_editor",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "seniorcontenteditor",
+          "adapter": "crewai_yaml"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.85,
+          "detail": "AGENT: senior_content_editor",
+          "location": {
+            "path": "crews/landing_page_generator/src/landing_page_generator/config/agents.yaml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "7ae0dccd-96ce-5a83-9801-be11442b6c77",
+      "name": "senior_engineer_agent",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "seniorengineeragent",
+          "adapter": "crewai_yaml"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.85,
+          "detail": "AGENT: senior_engineer_agent",
+          "location": {
+            "path": "crews/game-builder-crew/src/game_builder_crew/config/agents.yaml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "5edbdbf4-b876-5d9e-a00e-cd24348a021f",
+      "name": "senior_idea_analyst",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "seniorideaanalyst",
+          "adapter": "crewai_yaml"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.85,
+          "detail": "AGENT: senior_idea_analyst",
+          "location": {
+            "path": "crews/landing_page_generator/src/landing_page_generator/config/agents.yaml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "d405b06d-59e2-5dc7-960d-8c3c5ca8ade7",
+      "name": "senior_react_engineer",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "seniorreactengineer",
+          "adapter": "crewai_yaml"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.85,
+          "detail": "AGENT: senior_react_engineer",
+          "location": {
+            "path": "crews/landing_page_generator/src/landing_page_generator/config/agents.yaml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "f273b939-0b1b-5e39-9382-d2ede1e31f26",
+      "name": "senior_strategist",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "seniorstrategist",
+          "adapter": "crewai_yaml"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.85,
+          "detail": "AGENT: senior_strategist",
+          "location": {
+            "path": "crews/landing_page_generator/src/landing_page_generator/config/agents.yaml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "95951305-5b30-521a-bd30-e0c8dc390ef0",
+      "name": "shakespearean_bard",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "shakespeareanbard",
+          "adapter": "crewai_yaml"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.85,
+          "detail": "AGENT: shakespearean_bard",
+          "location": {
+            "path": "flows/self_evaluation_loop_flow/src/self_evaluation_loop_flow/crews/shakespeare_crew/config/agents.yaml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "5801946c-518e-5264-a6ac-69b7e676f885",
+      "name": "spamfilter",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "spamfilter",
+          "adapter": "crewai_yaml"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.85,
+          "detail": "AGENT: spamfilter",
+          "location": {
+            "path": "crews/screenplay_writer/config/agents.yaml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "fe6b594c-153f-5f79-8692-e6a81ee37a50",
+      "name": "writer",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "writer",
+          "adapter": "crewai_yaml"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.85,
+          "detail": "AGENT: writer",
+          "location": {
+            "path": "flows/write_a_book_with_flows/src/write_a_book_with_flows/crews/write_book_chapter_crew/config/agents.yaml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "98cbe585-6cd8-5d69-b0b8-99c540da6f70",
+      "name": "writer_agent",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "writeragent",
+          "adapter": "crewai_yaml"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.85,
+          "detail": "AGENT: writer_agent",
+          "location": {
+            "path": "crews/job-posting/src/job_posting/config/agents.yaml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "645bf4fc-7923-503a-94f7-7416e01b4c17",
+      "name": "x_post_verifier",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "xpostverifier",
+          "adapter": "crewai_yaml"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.85,
+          "detail": "AGENT: x_post_verifier",
+          "location": {
+            "path": "flows/self_evaluation_loop_flow/src/self_evaluation_loop_flow/crews/x_post_review_crew/config/agents.yaml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ba24f402-3960-5a89-b14a-ed9918b3cfcc",
+      "name": "check_new_emails",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "checknewemails",
+          "adapter": "crewai"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.85,
+          "detail": "AGENT: check_new_emails",
+          "location": {
+            "path": "integrations/CrewAI-LangGraph/src/graph.py",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "332b6e17-eff7-59f4-a097-f2bed5eb9868",
+      "name": "draft_responses",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "draftresponses",
+          "adapter": "crewai"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.85,
+          "detail": "AGENT: draft_responses",
+          "location": {
+            "path": "integrations/CrewAI-LangGraph/src/graph.py",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "64bf9fb8-dddd-5200-b06b-54e2ac46d58b",
+      "name": "wait_next_run",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "waitnextrun",
+          "adapter": "crewai"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.85,
+          "detail": "AGENT: wait_next_run",
+          "location": {
+            "path": "integrations/CrewAI-LangGraph/src/graph.py",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "ead18c40-b6a7-5dbe-ac8f-dcd64819702d",
+      "name": "crewai",
+      "component_type": "FRAMEWORK",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "crewai",
+          "adapter": "crewai"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.85,
+          "detail": "FRAMEWORK: crewai",
+          "location": {
+            "path": "integrations/azure_model/main.py",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "1209fe57-3a79-5b5e-9b3c-dd8083aa3e77",
+      "name": "gpt-3.5-turbo",
+      "component_type": "MODEL",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "gpt3.5turbo",
+          "adapter": "crewai"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.85,
+          "detail": "MODEL: gpt-3.5-turbo",
+          "location": {
+            "path": "crews/starter_template/agents.py",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "888bbedb-84ec-54b4-936e-f8fe03a57d02",
+      "name": "gpt-4",
+      "component_type": "MODEL",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "gpt4",
+          "adapter": "crewai"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.85,
+          "detail": "MODEL: gpt-4",
+          "location": {
+            "path": "crews/landing_page_generator/src/landing_page_generator/main.py",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "9a9dea0e-f185-5fba-90d4-39914531119e",
+      "name": "gpt-4o",
+      "component_type": "MODEL",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "gpt4o",
+          "adapter": "crewai"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.85,
+          "detail": "MODEL: gpt-4o",
+          "location": {
+            "path": "flows/email_auto_responder_flow/src/email_auto_responder_flow/crews/email_filter_crew/email_filter_crew.py",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "a2f5b24c-7932-52d0-84e1-f7efd60b9f6b",
+      "name": "gpt-4o-mini",
+      "component_type": "MODEL",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "gpt4omini",
+          "adapter": "crewai"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.85,
+          "detail": "MODEL: gpt-4o-mini",
+          "location": {
+            "path": "crews/markdown_validator/src/markdown_validator/main.py",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "8087fc52-59ad-561e-9348-d5a386c387e9",
+      "name": "llama-3.1-8b-instruct",
+      "component_type": "MODEL",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "llama3.18binstruct",
+          "adapter": "crewai"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.85,
+          "detail": "MODEL: llama-3.1-8b-instruct",
+          "location": {
+            "path": "integrations/nvidia_models/intro/main.py",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "dea3f83d-dd87-551e-a8af-6feab6a69816",
+      "name": "generic",
+      "component_type": "AUTH",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "generic",
+          "adapter": "crewai"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.85,
+          "detail": "AUTH: generic",
+          "location": {
+            "path": "integrations/azure_model/main.py",
+            "line": 1
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "AUTH: generic",
+          "location": {
+            "path": "crews/instagram_post/main.py"
+          }
+        }
+      ]
+    },
+    {
+      "id": "ce2fcac4-2074-5f34-8e06-3e5c3eabaf25",
+      "name": "research_task",
+      "component_type": "TOOL",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "crewai",
+        "extras": {
+          "canonical_name": "researchtask",
+          "adapter": "crewai"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.85,
+          "detail": "TOOL: research_task",
+          "location": {
+            "path": "integrations/azure_model/main.py",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "b5661d9d-90d1-5172-921a-b7f750b4d75c",
+      "name": "Email Response Writer",
+      "component_type": "PROMPT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "email response writer",
+          "adapter": "crewai"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.85,
+          "detail": "PROMPT: Email Response Writer",
+          "location": {
+            "path": "integrations/CrewAI-LangGraph/src/crew/agents.py",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "2ddca45d-cccf-5e0d-8d31-69ddec2d2711",
+      "name": "create_draft",
+      "component_type": "TOOL",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "create_draft",
+          "adapter": "gt",
+          "description": "TOOL detected in crewai-examples"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "TOOL: create_draft",
+          "location": {
+            "path": "flows/email_auto_responder_flow/src/email_auto_responder_flow/tools/create_draft.py",
+            "line": 7
+          }
+        }
+      ]
+    },
+    {
+      "id": "9cbbbd2c-db6c-54fb-bb24-157f6b5106b8",
+      "name": "draft",
+      "component_type": "TOOL",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "draft",
+          "adapter": "gt",
+          "description": "TOOL detected in crewai-examples"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "TOOL: draft",
+          "location": {
+            "path": "flows/email_auto_responder_flow/src/email_auto_responder_flow/tools/create_draft.py",
+            "line": 18
+          }
+        }
+      ]
+    },
+    {
+      "id": "4bc0429a-dd73-5a5b-b3db-4bf8c33909a2",
+      "name": "gmail",
+      "component_type": "TOOL",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "gmail",
+          "adapter": "gt",
+          "description": "TOOL detected in crewai-examples"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "TOOL: gmail",
+          "location": {
+            "path": "flows/email_auto_responder_flow/src/email_auto_responder_flow/crews/email_filter_crew/email_filter_crew.py",
+            "line": 32
+          }
+        }
+      ]
+    },
+    {
+      "id": "7827982a-972d-5cbd-bb64-9bc1ed4d583b",
+      "name": "search",
+      "component_type": "TOOL",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "search",
+          "adapter": "gt",
+          "description": "TOOL detected in crewai-examples"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "TOOL: search",
+          "location": {
+            "path": "flows/email_auto_responder_flow/src/email_auto_responder_flow/utils/emails.py",
+            "line": 15
+          }
+        }
+      ]
+    },
+    {
+      "id": "35b8e7de-d990-500a-8855-aa3dd449297f",
+      "name": "filesystem_write",
+      "component_type": "PRIVILEGE",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "filesystem_write",
+          "adapter": "gt",
+          "description": "PRIVILEGE detected in crewai-examples"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "PRIVILEGE: filesystem_write",
+          "location": {
+            "path": "crews/landing_page_generator/src/landing_page_generator/main.py",
+            "line": 23
+          }
+        }
+      ]
+    },
+    {
+      "id": "1075537e-7208-4d8f-8ce9-022ff04f4264",
+      "name": "app",
+      "component_type": "AGENT",
+      "confidence": 0.7,
+      "metadata": {
+        "extras": {
+          "canonical_name": "app",
+          "adapter": "gt"
+        },
+        "framework": "langgraph"
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.7,
+          "detail": "AGENT: app",
+          "location": {
+            "path": "integrations/CrewAI-LangGraph/src/graph.py"
+          }
+        }
+      ]
+    },
+    {
+      "id": "7339b2bd-fdcd-4dc2-a3e8-290c2241446e",
+      "name": "AzureChatOpenAI",
+      "component_type": "MODEL",
+      "confidence": 0.7,
+      "metadata": {
+        "extras": {
+          "canonical_name": "AzureChatOpenAI",
+          "adapter": "gt",
+          "synonyms": [
+            "azure_chat_openai",
+            "AzureChatOpenAI"
+          ]
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.7,
+          "detail": "MODEL: AzureChatOpenAI",
+          "location": {
+            "path": "integrations/azure_model/main.py"
+          }
+        }
+      ]
+    },
+    {
+      "id": "13dadaf0-402d-406a-9563-8be096b7a9ce",
+      "name": "ChatOpenAI",
+      "component_type": "MODEL",
+      "confidence": 0.7,
+      "metadata": {
+        "extras": {
+          "canonical_name": "ChatOpenAI",
+          "adapter": "gt",
+          "synonyms": [
+            "chat_openai",
+            "ChatOpenAI"
+          ]
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.7,
+          "detail": "MODEL: ChatOpenAI",
+          "location": {
+            "path": "crews/markdown_validator/src/markdown_validator/main.py"
+          }
+        }
+      ]
+    },
+    {
+      "id": "06a2924c-76cf-4fb8-b78e-31eb22234446",
+      "name": "search_tool",
+      "component_type": "TOOL",
+      "confidence": 0.7,
+      "metadata": {
+        "extras": {
+          "canonical_name": "search_tool",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.7,
+          "detail": "TOOL: search_tool",
+          "location": {
+            "path": "crews/starter_template/main.py"
+          }
+        }
+      ]
+    }
+  ]
+}

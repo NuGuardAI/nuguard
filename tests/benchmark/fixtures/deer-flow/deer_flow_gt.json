@@ -1,0 +1,457 @@
+{
+  "repo_name": "deer-flow",
+  "repo_url": "https://github.com/bytedance/deer-flow",
+  "branch": "main",
+  "commit_sha": "ec4693738497dd17bcb84e8bc506d3572260b1ec",
+  "subfolder": "src",
+  "annotated_at": "2026-02-07",
+  "annotator": "nuguard-team",
+  "frameworks": [
+    "langchain",
+    "langgraph"
+  ],
+  "notes": "Auto-generated from regex detection. 33 assets discovered. DeerFlow is a ByteDance deep research framework combining LangChain and LangGraph. 19,631 stars. Only includes regex-detectable assets. LangGraph StateGraph, class-based agents, PromptTemplate, and string-based tools are not detectable by regex patterns.",
+  "assets": [
+    {
+      "asset_type": "AGENT",
+      "name": "DynamicPromptMiddleware",
+      "file_path": "src/agents/agents.py",
+      "line_start": 21,
+      "line_end": 21,
+      "description": "Custom agent class",
+      "framework": "langchain",
+      "evidence": [
+        "DynamicPromptMiddleware"
+      ],
+      "synonyms": []
+    },
+    {
+      "asset_type": "AGENT",
+      "name": "PreModelHookMiddleware",
+      "file_path": "src/agents/agents.py",
+      "line_start": 57,
+      "line_end": 57,
+      "description": "Custom agent class",
+      "framework": "langchain",
+      "evidence": [
+        "PreModelHookMiddleware"
+      ],
+      "synonyms": []
+    },
+    {
+      "asset_type": "PROMPT",
+      "name": "SYSTEM_PROMPT",
+      "file_path": "src/eval/llm_judge.py",
+      "line_start": 51,
+      "line_end": 51,
+      "description": "System prompt definition",
+      "framework": "langchain",
+      "evidence": [
+        "SYSTEM_PROMPT"
+      ],
+      "synonyms": []
+    },
+    {
+      "asset_type": "PROMPT",
+      "name": "SystemMessage",
+      "file_path": "src/eval/llm_judge.py",
+      "line_start": 198,
+      "line_end": 198,
+      "description": "LangChain system message",
+      "framework": "langchain",
+      "evidence": [
+        "SystemMessage"
+      ],
+      "synonyms": []
+    },
+    {
+      "asset_type": "AGENT",
+      "name": "background_investigator",
+      "file_path": "src/graph/builder.py",
+      "line_start": 55,
+      "line_end": 55,
+      "description": "LangGraph graph node",
+      "framework": "langgraph",
+      "evidence": [
+        "background_investigator"
+      ],
+      "synonyms": []
+    },
+    {
+      "asset_type": "AGENT",
+      "name": "planner",
+      "file_path": "src/graph/builder.py",
+      "line_start": 56,
+      "line_end": 56,
+      "description": "LangGraph graph node",
+      "framework": "langgraph",
+      "evidence": [
+        "planner"
+      ],
+      "synonyms": []
+    },
+    {
+      "asset_type": "AGENT",
+      "name": "reporter",
+      "file_path": "src/graph/builder.py",
+      "line_start": 57,
+      "line_end": 57,
+      "description": "LangGraph graph node",
+      "framework": "langgraph",
+      "evidence": [
+        "reporter"
+      ],
+      "synonyms": []
+    },
+    {
+      "asset_type": "AGENT",
+      "name": "research_team",
+      "file_path": "src/graph/builder.py",
+      "line_start": 58,
+      "line_end": 58,
+      "description": "LangGraph graph node",
+      "framework": "langgraph",
+      "evidence": [
+        "research_team"
+      ],
+      "synonyms": []
+    },
+    {
+      "asset_type": "AGENT",
+      "name": "researcher",
+      "file_path": "src/graph/builder.py",
+      "line_start": 59,
+      "line_end": 59,
+      "description": "LangGraph graph node",
+      "framework": "langgraph",
+      "evidence": [
+        "researcher"
+      ],
+      "synonyms": []
+    },
+    {
+      "asset_type": "AGENT",
+      "name": "analyst",
+      "file_path": "src/graph/builder.py",
+      "line_start": 60,
+      "line_end": 60,
+      "description": "LangGraph graph node",
+      "framework": "langgraph",
+      "evidence": [
+        "analyst"
+      ],
+      "synonyms": []
+    },
+    {
+      "asset_type": "AGENT",
+      "name": "coder",
+      "file_path": "src/graph/builder.py",
+      "line_start": 61,
+      "line_end": 61,
+      "description": "LangGraph graph node",
+      "framework": "langgraph",
+      "evidence": [
+        "coder"
+      ],
+      "synonyms": []
+    },
+    {
+      "asset_type": "AGENT",
+      "name": "human_feedback",
+      "file_path": "src/graph/builder.py",
+      "line_start": 62,
+      "line_end": 62,
+      "description": "LangGraph graph node",
+      "framework": "langgraph",
+      "evidence": [
+        "human_feedback"
+      ],
+      "synonyms": []
+    },
+    {
+      "asset_type": "AGENT",
+      "name": "background_investigation_node",
+      "file_path": "src/graph/nodes.py",
+      "line_start": 201,
+      "line_end": 201,
+      "description": "LangGraph node function",
+      "framework": "langgraph",
+      "evidence": [
+        "background_investigation_node"
+      ],
+      "synonyms": []
+    },
+    {
+      "asset_type": "TOOL",
+      "name": "handoff_to_planner",
+      "file_path": "src/graph/nodes.py",
+      "line_start": 46,
+      "line_end": 47,
+      "description": "LangChain tool function",
+      "framework": "langchain",
+      "evidence": [
+        "handoff_to_planner"
+      ],
+      "synonyms": []
+    },
+    {
+      "asset_type": "TOOL",
+      "name": "handoff_after_clarification",
+      "file_path": "src/graph/nodes.py",
+      "line_start": 57,
+      "line_end": 58,
+      "description": "LangChain tool function",
+      "framework": "langchain",
+      "evidence": [
+        "handoff_after_clarification"
+      ],
+      "synonyms": []
+    },
+    {
+      "asset_type": "TOOL",
+      "name": "direct_response",
+      "file_path": "src/graph/nodes.py",
+      "line_start": 68,
+      "line_end": 69,
+      "description": "LangChain tool function",
+      "framework": "langchain",
+      "evidence": [
+        "direct_response"
+      ],
+      "synonyms": []
+    },
+    {
+      "asset_type": "AGENT",
+      "name": "script_writer",
+      "file_path": "src/podcast/graph/builder.py",
+      "line_start": 16,
+      "line_end": 16,
+      "description": "LangGraph graph node",
+      "framework": "langgraph",
+      "evidence": [
+        "script_writer"
+      ],
+      "synonyms": []
+    },
+    {
+      "asset_type": "AGENT",
+      "name": "tts",
+      "file_path": "src/podcast/graph/builder.py",
+      "line_start": 17,
+      "line_end": 17,
+      "description": "LangGraph graph node",
+      "framework": "langgraph",
+      "evidence": [
+        "tts"
+      ],
+      "synonyms": []
+    },
+    {
+      "asset_type": "AGENT",
+      "name": "audio_mixer",
+      "file_path": "src/podcast/graph/builder.py",
+      "line_start": 18,
+      "line_end": 18,
+      "description": "LangGraph graph node",
+      "framework": "langgraph",
+      "evidence": [
+        "audio_mixer"
+      ],
+      "synonyms": []
+    },
+    {
+      "asset_type": "AGENT",
+      "name": "ppt_composer",
+      "file_path": "src/ppt/graph/builder.py",
+      "line_start": 15,
+      "line_end": 15,
+      "description": "LangGraph graph node",
+      "framework": "langgraph",
+      "evidence": [
+        "ppt_composer"
+      ],
+      "synonyms": []
+    },
+    {
+      "asset_type": "AGENT",
+      "name": "ppt_generator",
+      "file_path": "src/ppt/graph/builder.py",
+      "line_start": 16,
+      "line_end": 16,
+      "description": "LangGraph graph node",
+      "framework": "langgraph",
+      "evidence": [
+        "ppt_generator"
+      ],
+      "synonyms": []
+    },
+    {
+      "asset_type": "AGENT",
+      "name": "enhancer",
+      "file_path": "src/prompt_enhancer/graph/builder.py",
+      "line_start": 16,
+      "line_end": 16,
+      "description": "LangGraph graph node",
+      "framework": "langgraph",
+      "evidence": [
+        "enhancer"
+      ],
+      "synonyms": []
+    },
+    {
+      "asset_type": "AGENT",
+      "name": "prompt_enhancer_node",
+      "file_path": "src/prompt_enhancer/graph/enhancer_node.py",
+      "line_start": 17,
+      "line_end": 17,
+      "description": "LangGraph node function",
+      "framework": "langgraph",
+      "evidence": [
+        "prompt_enhancer_node"
+      ],
+      "synonyms": []
+    },
+    {
+      "asset_type": "AGENT",
+      "name": "optional_node",
+      "file_path": "src/prose/graph/builder.py",
+      "line_start": 18,
+      "line_end": 18,
+      "description": "LangGraph node function",
+      "framework": "langgraph",
+      "evidence": [
+        "optional_node"
+      ],
+      "synonyms": []
+    },
+    {
+      "asset_type": "AGENT",
+      "name": "prose_continue",
+      "file_path": "src/prose/graph/builder.py",
+      "line_start": 26,
+      "line_end": 26,
+      "description": "LangGraph graph node",
+      "framework": "langgraph",
+      "evidence": [
+        "prose_continue"
+      ],
+      "synonyms": []
+    },
+    {
+      "asset_type": "AGENT",
+      "name": "prose_improve",
+      "file_path": "src/prose/graph/builder.py",
+      "line_start": 27,
+      "line_end": 27,
+      "description": "LangGraph graph node",
+      "framework": "langgraph",
+      "evidence": [
+        "prose_improve"
+      ],
+      "synonyms": []
+    },
+    {
+      "asset_type": "AGENT",
+      "name": "prose_shorter",
+      "file_path": "src/prose/graph/builder.py",
+      "line_start": 28,
+      "line_end": 28,
+      "description": "LangGraph graph node",
+      "framework": "langgraph",
+      "evidence": [
+        "prose_shorter"
+      ],
+      "synonyms": []
+    },
+    {
+      "asset_type": "AGENT",
+      "name": "prose_longer",
+      "file_path": "src/prose/graph/builder.py",
+      "line_start": 29,
+      "line_end": 29,
+      "description": "LangGraph graph node",
+      "framework": "langgraph",
+      "evidence": [
+        "prose_longer"
+      ],
+      "synonyms": []
+    },
+    {
+      "asset_type": "AGENT",
+      "name": "prose_fix",
+      "file_path": "src/prose/graph/builder.py",
+      "line_start": 30,
+      "line_end": 30,
+      "description": "LangGraph graph node",
+      "framework": "langgraph",
+      "evidence": [
+        "prose_fix"
+      ],
+      "synonyms": []
+    },
+    {
+      "asset_type": "AGENT",
+      "name": "prose_zap",
+      "file_path": "src/prose/graph/builder.py",
+      "line_start": 31,
+      "line_end": 31,
+      "description": "LangGraph graph node",
+      "framework": "langgraph",
+      "evidence": [
+        "prose_zap"
+      ],
+      "synonyms": []
+    },
+    {
+      "asset_type": "AUTH",
+      "name": "api_key",
+      "file_path": "src/rag/dify.py",
+      "line_start": 27,
+      "line_end": 27,
+      "description": "API key configuration",
+      "framework": "langchain",
+      "evidence": [
+        "api_key"
+      ],
+      "synonyms": []
+    },
+    {
+      "asset_type": "MODEL",
+      "name": "OpenAI",
+      "file_path": "src/rag/milvus.py",
+      "line_start": 27,
+      "line_end": 27,
+      "description": "OpenAI client",
+      "framework": "openai",
+      "evidence": [
+        "OpenAI"
+      ],
+      "synonyms": []
+    },
+    {
+      "asset_type": "AGENT",
+      "name": "coordinator",
+      "file_path": "src/graph/builder.py",
+      "line_start": 1,
+      "line_end": 50,
+      "description": "Coordinator agent orchestrating the multi-agent workflow",
+      "framework": "langgraph",
+      "evidence": [
+        "coordinator",
+        "Agent"
+      ],
+      "synonyms": []
+    }
+  ],
+  "expected_counts": {
+    "AGENT": 26,
+    "MODEL": 1,
+    "TOOL": 3,
+    "PROMPT": 2,
+    "DATASTORE": 0,
+    "GUARDRAIL": 0,
+    "AUTH": 1,
+    "PRIVILEGE": 0,
+    "EVAL_SYSTEM": 0,
+    "MCP_PROVIDER": 0
+  }

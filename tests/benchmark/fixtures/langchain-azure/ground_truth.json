@@ -1,0 +1,227 @@
+{
+  "schema_version": "1.1.0",
+  "generated_at": "2026-03-10T00:00:00Z",
+  "generator": "codex",
+  "target": "https://github.com/langchain-ai/langchain-azure",
+  "summary": {
+    "frameworks": [
+      "langchain",
+      "langgraph"
+    ]
+  },
+  "nodes": [
+    {
+      "id": "a6683014-703f-4bb4-b880-001f0b7e1001",
+      "name": "langgraph",
+      "component_type": "FRAMEWORK",
+      "confidence": 0.98,
+      "metadata": {
+        "framework": "langgraph",
+        "extras": {
+          "canonical_name": "langgraph",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.98,
+          "detail": "FRAMEWORK: langgraph",
+          "location": {
+            "path": "src/react_agent/graph.py",
+            "line": 18
+          }
+        }
+      ]
+    },
+    {
+      "id": "6200b8ff-f3d8-4640-b6c2-e0ec76b91002",
+      "name": "document_parser_agent",
+      "component_type": "AGENT",
+      "confidence": 0.94,
+      "metadata": {
+        "framework": "langgraph",
+        "extras": {
+          "canonical_name": "document_parser_agent",
+          "adapter": "gt",
+          "description": "Azure Foundry prompt agent node that parses incoming documents.",
+          "synonyms": [
+            "parser",
+            "parser_node",
+            "document-parser"
+          ]
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.94,
+          "detail": "AGENT: document_parser_agent",
+          "location": {
+            "path": "src/react_agent/graph.py",
+            "line": 35
+          }
+        }
+      ]
+    },
+    {
+      "id": "6e0c5a2f-6f4f-46ba-bfcb-6b996ea61003",
+      "name": "document_analyst_agent",
+      "component_type": "AGENT",
+      "confidence": 0.94,
+      "metadata": {
+        "framework": "langgraph",
+        "extras": {
+          "canonical_name": "document_analyst_agent",
+          "adapter": "gt",
+          "description": "Azure Foundry prompt agent node that analyzes extracted document content.",
+          "synonyms": [
+            "analyst",
+            "analyst_node",
+            "document-analyst"
+          ]
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.94,
+          "detail": "AGENT: document_analyst_agent",
+          "location": {
+            "path": "src/react_agent/graph.py",
+            "line": 43
+          }
+        }
+      ]
+    },
+    {
+      "id": "418f745b-5d3f-4e0f-9e12-5daf4cbf1004",
+      "name": "document_intake_graph",
+      "component_type": "AGENT",
+      "confidence": 0.95,
+      "metadata": {
+        "framework": "langgraph",
+        "extras": {
+          "canonical_name": "document_intake_graph",
+          "adapter": "gt",
+          "description": "Compiled multi-agent LangGraph pipeline for document intake and analysis.",
+          "synonyms": [
+            "graph",
+            "document-intake-agent"
+          ]
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.95,
+          "detail": "AGENT: document_intake_graph",
+          "location": {
+            "path": "src/react_agent/graph.py",
+            "line": 101
+          }
+        }
+      ]
+    },
+    {
+      "id": "9221d195-7c58-48d8-a2d1-47e7c2f81005",
+      "name": "gpt-4.1",
+      "component_type": "MODEL",
+      "confidence": 0.94,
+      "metadata": {
+        "extras": {
+          "canonical_name": "gpt-4.1",
+          "adapter": "gt",
+          "description": "Azure OpenAI / Foundry model used by both prompt agent nodes."
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.94,
+          "detail": "MODEL: gpt-4.1",
+          "location": {
+            "path": "src/react_agent/graph.py",
+            "line": 38
+          }
+        }
+      ]
+    },
+    {
+      "id": "f373fd90-3945-4c68-95c2-ac57f72e1006",
+      "name": "AzureAIDocumentIntelligenceTool",
+      "component_type": "TOOL",
+      "confidence": 0.96,
+      "metadata": {
+        "framework": "langchain",
+        "extras": {
+          "canonical_name": "AzureAIDocumentIntelligenceTool",
+          "adapter": "gt",
+          "description": "Azure AI Document Intelligence tool exposed to the parser agent."
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.96,
+          "detail": "TOOL: AzureAIDocumentIntelligenceTool",
+          "location": {
+            "path": "src/react_agent/graph.py",
+            "line": 24
+          }
+        }
+      ]
+    },
+    {
+      "id": "8f746f3b-5111-45e6-af14-4c11dca11007",
+      "name": "PARSER_PROMPT",
+      "component_type": "PROMPT",
+      "confidence": 0.93,
+      "metadata": {
+        "framework": "langchain",
+        "extras": {
+          "canonical_name": "PARSER_PROMPT",
+          "adapter": "gt",
+          "description": "Prompt instructing the parser agent to faithfully extract document content."
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.93,
+          "detail": "PROMPT: PARSER_PROMPT",
+          "location": {
+            "path": "src/react_agent/prompts.py",
+            "line": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "690cff27-58d2-4ad3-b85d-91f4bf281008",
+      "name": "ANALYST_PROMPT",
+      "component_type": "PROMPT",
+      "confidence": 0.93,
+      "metadata": {
+        "framework": "langchain",
+        "extras": {
+          "canonical_name": "ANALYST_PROMPT",
+          "adapter": "gt",
+          "description": "Prompt instructing the analyst agent to produce a structured document report."
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.93,
+          "detail": "PROMPT: ANALYST_PROMPT",
+          "location": {
+            "path": "src/react_agent/prompts.py",
+            "line": 14
+          }
+        }
+      ]
+    }
+  ],
+  "edges": []
+}

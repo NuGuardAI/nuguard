@@ -1,0 +1,100 @@
+{
+  "repo_name": "openai-swarm",
+  "repo_url": "https://github.com/openai/swarm",
+  "branch": "main",
+  "commit_sha": "0c82d7d868bb8e2d380dfd2a319b5c3a1f4c0cb9",
+  "subfolder": "examples/triage_agent",
+  "annotated_at": "2026-02-06",
+  "annotator": "nuguard-team",
+
+  "policies_evaluated": ["OWASP AI Top 10"],
+
+  "expected_findings": [
+    {
+      "title": "No Input Validation in Customer Messages",
+      "severity": "HIGH",
+      "gap_type": "SECURITY",
+      "control_id": "OWASP-A01",
+      "control_name": "Prompt Injection",
+      "policy_name": "OWASP AI Top 10",
+      "affected_file": "examples/triage_agent/agents.py",
+      "remediation_keywords": ["input validation", "sanitize", "filter"],
+      "evidence_keywords": ["messages", "user input", "no validation"],
+      "confidence_min": 60,
+      "match_flexibility": "SEMANTIC"
+    },
+    {
+      "title": "Unvalidated Agent Handoffs",
+      "severity": "MEDIUM",
+      "gap_type": "SECURITY",
+      "control_id": "OWASP-A08",
+      "control_name": "Excessive Agency",
+      "policy_name": "OWASP AI Top 10",
+      "affected_file": "examples/triage_agent/agents.py",
+      "remediation_keywords": ["validate handoff", "authorization", "approval"],
+      "evidence_keywords": ["transfer_to_sales", "transfer_to_refunds", "no validation"],
+      "confidence_min": 50,
+      "match_flexibility": "SEMANTIC"
+    },
+    {
+      "title": "No Output Validation for Agent Responses",
+      "severity": "MEDIUM",
+      "gap_type": "SECURITY",
+      "control_id": "OWASP-A02",
+      "control_name": "Insecure Output Handling",
+      "policy_name": "OWASP AI Top 10",
+      "affected_file": "examples/triage_agent/agents.py",
+      "remediation_keywords": ["validate output", "filter response", "sanitize"],
+      "evidence_keywords": ["response", "output", "no filter"],
+      "confidence_min": 50,
+      "match_flexibility": "SEMANTIC"
+    },
+    {
+      "title": "Missing Logging and Audit Trail",
+      "severity": "LOW",
+      "gap_type": "COMPLIANCE",
+      "control_id": "OWASP-A09",
+      "control_name": "Inadequate AI Failure Modes",
+      "policy_name": "OWASP AI Top 10",
+      "remediation_keywords": ["logging", "audit", "trace"],
+      "evidence_keywords": ["no logging", "debug", "trace"],
+      "confidence_min": 40,
+      "match_flexibility": "TYPE_ONLY"
+    }
+  ],
+
+  "expected_covered_controls": [],
+
+  "expected_risk_score": {
+    "score": 45,
+    "band": "MEDIUM",
+    "tolerance": 15
+  },
+
+  "expected_risk_summary": {
+    "critical_count": 0,
+    "high_count": 1,
+    "medium_count": 2,
+    "low_count": 1,
+    "count_tolerance": 2
+  },
+
+  "expected_red_team_attacks": {
+    "min_count": 2,
+    "expected_types": ["PROMPT_INJECTION", "JAILBREAK"],
+    "attacks": [
+      {
+        "type": "PROMPT_INJECTION",
+        "target_description": "Inject malicious instructions via customer message to triage agent",
+        "match_flexibility": "TYPE_ONLY"
+      },
+      {
+        "type": "JAILBREAK",
+        "target_description": "Bypass agent routing to access unauthorized functionality",
+        "match_flexibility": "TYPE_ONLY"
+      }
+    ]
+  },
+
+  "notes": "Educational multi-agent triage example from official OpenAI Swarm repo. Simple structure with minimal security controls - expected in demo code. No guardrails, no input/output validation, basic handoff patterns. Lower risk score due to demo nature."
+}

@@ -1,0 +1,634 @@
+{
+  "schema_version": "1.1.0",
+  "generated_at": "2026-03-10T00:00:00Z",
+  "generator": "codex",
+  "target": "https://github.com/GoogleCloudPlatform/generative-ai/tree/main/workshops",
+  "summary": {
+    "frameworks": [
+      "langchain",
+      "langgraph"
+    ]
+  },
+  "nodes": [
+    {
+      "id": "8b5ec433-063e-4b4c-8582-bd57b013f279",
+      "name": "generic",
+      "component_type": "AUTH",
+      "confidence": 0.9,
+      "metadata": {
+        "extras": {
+          "canonical_name": "generic",
+          "adapter": "gt",
+          "description": "Notebook requires GOOGLE_API_KEY, TAVILY_API_KEY, and optionally GOOGLE_CLOUD_PROJECT / GOOGLE_CLOUD_REGION."
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.9,
+          "detail": "AUTH: generic",
+          "location": {
+            "path": "workshops/ai-agents/ai_agents_for_engineers.ipynb",
+            "line": 18
+          }
+        }
+      ]
+    },
+    {
+      "id": "8fb36dbb-c7d4-4e40-9384-d88082647f76",
+      "name": "langchain",
+      "component_type": "FRAMEWORK",
+      "confidence": 0.98,
+      "metadata": {
+        "extras": {
+          "canonical_name": "langchain",
+          "adapter": "gt"
+        },
+        "framework": "langchain"
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.98,
+          "detail": "FRAMEWORK: langchain",
+          "location": {
+            "path": "workshops/ai-agents/ai_agents_for_engineers.ipynb",
+            "line": 35
+          }
+        }
+      ]
+    },
+    {
+      "id": "6462ba59-6223-4c54-a637-d628120ed532",
+      "name": "langgraph",
+      "component_type": "FRAMEWORK",
+      "confidence": 0.98,
+      "metadata": {
+        "extras": {
+          "canonical_name": "langgraph",
+          "adapter": "gt"
+        },
+        "framework": "langgraph"
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.98,
+          "detail": "FRAMEWORK: langgraph",
+          "location": {
+            "path": "workshops/ai-agents/ai_agents_for_engineers.ipynb",
+            "line": 46
+          }
+        }
+      ]
+    },
+    {
+      "id": "53b5f8a9-4f37-43c5-a339-b0cb9fbfcb78",
+      "name": "essay_workflow_graph",
+      "component_type": "AGENT",
+      "confidence": 0.94,
+      "metadata": {
+        "extras": {
+          "canonical_name": "essay_workflow_graph",
+          "adapter": "gt",
+          "description": "Compiled LangGraph essay-generation workflow built from StateGraph.",
+          "synonyms": [
+            "graph"
+          ]
+        },
+        "framework": "langgraph"
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.94,
+          "detail": "AGENT: essay_workflow_graph",
+          "location": {
+            "path": "workshops/ai-agents/ai_agents_for_engineers.ipynb",
+            "line": 56
+          }
+        }
+      ]
+    },
+    {
+      "id": "f2ccc6b6-f532-4e2c-83b1-0ef678e488d1",
+      "name": "gemini-3-flash-preview",
+      "component_type": "MODEL",
+      "confidence": 0.94,
+      "metadata": {
+        "extras": {
+          "canonical_name": "gemini-3-flash-preview",
+          "adapter": "gt",
+          "description": "Primary Gemini model used in the workshop notebook.",
+          "synonyms": [
+            "gemini-3"
+          ]
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.94,
+          "detail": "MODEL: gemini-3-flash-preview",
+          "location": {
+            "path": "workshops/ai-agents/ai_agents_for_engineers.ipynb",
+            "line": 27
+          }
+        }
+      ]
+    },
+    {
+      "id": "b1f5d7c9-4f6a-435e-8a90-a08a0d991039",
+      "name": "gemini-2.0-flash",
+      "component_type": "MODEL",
+      "confidence": 0.94,
+      "metadata": {
+        "extras": {
+          "canonical_name": "gemini-2.0-flash",
+          "adapter": "gt",
+          "description": "Gemini model used across the RAG workshops."
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.94,
+          "detail": "MODEL: gemini-2.0-flash",
+          "location": {
+            "path": "workshops/rag-ops/1_prototyping_gemini.ipynb",
+            "line": 16
+          }
+        }
+      ]
+    },
+    {
+      "id": "5d2a735d-299d-4d71-9827-3e037f88b236",
+      "name": "text-embedding-005",
+      "component_type": "MODEL",
+      "confidence": 0.94,
+      "metadata": {
+        "extras": {
+          "canonical_name": "text-embedding-005",
+          "adapter": "gt",
+          "description": "Vertex AI embedding model used to generate retrieval embeddings."
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.94,
+          "detail": "MODEL: text-embedding-005",
+          "location": {
+            "path": "workshops/rag-ops/2.2_mvp_chunk_embeddings.ipynb",
+            "line": 36
+          }
+        }
+      ]
+    },
+    {
+      "id": "4924f3bb-6da5-4113-88a8-4968e2b51618",
+      "name": "tavily_tool",
+      "component_type": "TOOL",
+      "confidence": 0.92,
+      "metadata": {
+        "extras": {
+          "canonical_name": "tavily_tool",
+          "adapter": "gt",
+          "description": "Tavily web-search tool used by the essay workflow.",
+          "synonyms": [
+            "TavilySearchResults"
+          ]
+        },
+        "framework": "langchain"
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "TOOL: tavily_tool",
+          "location": {
+            "path": "workshops/ai-agents/ai_agents_for_engineers.ipynb",
+            "line": 37
+          }
+        }
+      ]
+    },
+    {
+      "id": "5d51b287-8546-470a-9069-5e3e45b1eaaa",
+      "name": "mlops-for-genai",
+      "component_type": "DATASTORE",
+      "confidence": 0.9,
+      "metadata": {
+        "extras": {
+          "canonical_name": "mlops-for-genai",
+          "adapter": "gt",
+          "description": "Cloud Storage bucket backing the workshop data pipeline.",
+          "synonyms": [
+            "bucket"
+          ]
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.9,
+          "detail": "DATASTORE: mlops-for-genai",
+          "location": {
+            "path": "workshops/rag-ops/2.3_mvp_rag.ipynb",
+            "line": 12
+          }
+        },
+        {
+          "kind": "gt",
+          "confidence": 0.7,
+          "detail": "DATASTORE: mlops-for-genai",
+          "location": {
+            "path": "workshops/rag-ops/2.2_mvp_chunk_embeddings.ipynb"
+          }
+        }
+      ]
+    },
+    {
+      "id": "36112cc5-134f-40d6-b2a8-c85b5b74d9d6",
+      "name": "outline_template",
+      "component_type": "PROMPT",
+      "confidence": 0.9,
+      "metadata": {
+        "extras": {
+          "canonical_name": "outline_template",
+          "adapter": "gt",
+          "description": "Prompt template for generating essay outlines."
+        },
+        "framework": "langchain"
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.9,
+          "detail": "PROMPT: outline_template",
+          "location": {
+            "path": "workshops/ai-agents/ai_agents_for_engineers.ipynb",
+            "line": 39
+          }
+        }
+      ]
+    },
+    {
+      "id": "262a9388-ff90-4e35-b949-3670389faa1f",
+      "name": "writing_template",
+      "component_type": "PROMPT",
+      "confidence": 0.9,
+      "metadata": {
+        "extras": {
+          "canonical_name": "writing_template",
+          "adapter": "gt",
+          "description": "Prompt template for drafting the final essay from outline and research."
+        },
+        "framework": "langchain"
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.9,
+          "detail": "PROMPT: writing_template",
+          "location": {
+            "path": "workshops/ai-agents/ai_agents_for_engineers.ipynb",
+            "line": 39
+          }
+        }
+      ]
+    },
+    {
+      "id": "8c49eef2-2d88-43d7-bffc-bdd7b0df0a35",
+      "name": "get_context_precision_prompt",
+      "component_type": "PROMPT",
+      "confidence": 0.9,
+      "metadata": {
+        "extras": {
+          "canonical_name": "get_context_precision_prompt",
+          "adapter": "gt",
+          "description": "Evaluation prompt for scoring answer attribution against context."
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.9,
+          "detail": "PROMPT: get_context_precision_prompt",
+          "location": {
+            "path": "workshops/rag-ops/2.4_mvp_evaluation.ipynb",
+            "line": 28
+          }
+        }
+      ]
+    },
+    {
+      "id": "6bcbe034-0a14-5893-8714-466e9b49d437",
+      "name": "generate",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "generate",
+          "adapter": "gt",
+          "description": "AGENT detected in google-generative-ai-workshops"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "AGENT: generate",
+          "location": {
+            "path": "workshops/ai-agents/ai_agents_for_engineers.ipynb",
+            "line": 297
+          }
+        }
+      ]
+    },
+    {
+      "id": "f99c8302-c090-52c3-92d8-110bdf071591",
+      "name": "planner",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "planner",
+          "adapter": "gt",
+          "description": "AGENT detected in google-generative-ai-workshops"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "AGENT: planner",
+          "location": {
+            "path": "workshops/ai-agents/ai_agents_for_engineers.ipynb",
+            "line": 296
+          }
+        }
+      ]
+    },
+    {
+      "id": "7719b7fa-84dc-5ee8-8c8b-da43baf4213a",
+      "name": "reflect",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "reflect",
+          "adapter": "gt",
+          "description": "AGENT detected in google-generative-ai-workshops"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "AGENT: reflect",
+          "location": {
+            "path": "workshops/ai-agents/ai_agents_for_engineers.ipynb",
+            "line": 298
+          }
+        }
+      ]
+    },
+    {
+      "id": "8a2e6f76-3f56-5dda-a1cc-3f2d5271b4ea",
+      "name": "research_critique",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "research_critique",
+          "adapter": "gt",
+          "description": "AGENT detected in google-generative-ai-workshops"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "AGENT: research_critique",
+          "location": {
+            "path": "workshops/ai-agents/ai_agents_for_engineers.ipynb",
+            "line": 300
+          }
+        }
+      ]
+    },
+    {
+      "id": "384aff6f-25dd-5e4f-968f-3d338f7cb3b9",
+      "name": "research_plan",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "research_plan",
+          "adapter": "gt",
+          "description": "AGENT detected in google-generative-ai-workshops"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "AGENT: research_plan",
+          "location": {
+            "path": "workshops/ai-agents/ai_agents_for_engineers.ipynb",
+            "line": 299
+          }
+        }
+      ]
+    },
+    {
+      "id": "8bbfaa60-831a-5252-bbe5-3d22f33d7c40",
+      "name": "code_execution",
+      "component_type": "PRIVILEGE",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "code_execution",
+          "adapter": "gt",
+          "description": "PRIVILEGE detected in google-generative-ai-workshops"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "PRIVILEGE: code_execution",
+          "location": {
+            "path": "workshops/rag-ops/2.4_mvp_evaluation.ipynb",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "b8cd4077-83bb-5187-8565-bd7859fb6792",
+      "name": "Writer Prompt",
+      "component_type": "PROMPT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "writer_prompt",
+          "adapter": "gt",
+          "description": "PROMPT detected in google-generative-ai-workshops"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "PROMPT: Writer Prompt",
+          "location": {
+            "path": "workshops/ai-agents/ai_agents_for_engineers.ipynb",
+            "line": 196
+          }
+        }
+      ]
+    },
+    {
+      "id": "79373692-9fdb-5bc4-bf79-cc273fcac684",
+      "name": "Research Plan Prompt",
+      "component_type": "PROMPT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "research_plan_prompt",
+          "adapter": "gt",
+          "description": "PROMPT detected in google-generative-ai-workshops"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "PROMPT: Research Plan Prompt",
+          "location": {
+            "path": "workshops/ai-agents/ai_agents_for_engineers.ipynb",
+            "line": 208
+          }
+        }
+      ]
+    },
+    {
+      "id": "a438ac5d-a796-54cd-9bb4-c42493bb9d63",
+      "name": "Research Critique Prompt",
+      "component_type": "PROMPT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "research_critique_prompt",
+          "adapter": "gt",
+          "description": "PROMPT detected in google-generative-ai-workshops"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "PROMPT: Research Critique Prompt",
+          "location": {
+            "path": "workshops/ai-agents/ai_agents_for_engineers.ipynb",
+            "line": 212
+          }
+        }
+      ]
+    },
+    {
+      "id": "ef1ec003-4a02-5d99-bfb9-15688ec4eabb",
+      "name": "PLAN_PROMPT",
+      "component_type": "PROMPT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "plan_prompt",
+          "adapter": "gt",
+          "description": "PROMPT detected in google-generative-ai-workshops"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "PROMPT: PLAN_PROMPT",
+          "location": {
+            "path": "workshops/ai-agents/ai_agents_for_engineers.ipynb",
+            "line": 192
+          }
+        }
+      ]
+    },
+    {
+      "id": "2f1e927a-7344-56aa-ab23-1c8326a80859",
+      "name": "REFLECTION_PROMPT",
+      "component_type": "PROMPT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "reflection_prompt",
+          "adapter": "gt",
+          "description": "PROMPT detected in google-generative-ai-workshops"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "PROMPT: REFLECTION_PROMPT",
+          "location": {
+            "path": "workshops/ai-agents/ai_agents_for_engineers.ipynb",
+            "line": 204
+          }
+        }
+      ]
+    },
+    {
+      "id": "53442dea-50c2-4257-b5a9-db8deae202f1",
+      "name": "generic",
+      "component_type": "PROMPT",
+      "confidence": 0.6,
+      "metadata": {
+        "extras": {
+          "canonical_name": "generic",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.6,
+          "detail": "PROMPT: generic",
+          "location": {
+            "path": "workshops/rag-ops/2.3_mvp_rag.ipynb"
+          }
+        }
+      ]
+    },
+    {
+      "id": "3eaa707f-582a-4150-b95d-c903153a3c19",
+      "name": "prompt",
+      "component_type": "PROMPT",
+      "confidence": 0.6,
+      "metadata": {
+        "extras": {
+          "canonical_name": "prompt",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.6,
+          "detail": "PROMPT: prompt",
+          "location": {
+            "path": "workshops/ai-agents/ai_agents_for_engineers.ipynb"
+          }
+        }
+      ]
+    }
+  ]
+}

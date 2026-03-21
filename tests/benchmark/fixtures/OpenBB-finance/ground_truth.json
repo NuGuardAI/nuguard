@@ -1,0 +1,610 @@
+{
+  "schema_version": "1.1.0",
+  "generated_at": "2026-03-02T00:00:00Z",
+  "generator": "github_copilot",
+  "target": "local://OpenBB-finance",
+  "nodes": [
+    {
+      "id": "6a81f271-5ffa-452a-9ab3-bf709458a0f3",
+      "name": "/coverage/command_model",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.8,
+      "metadata": {
+        "extras": {
+          "canonical_name": "/coverage/command_model",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.8,
+          "detail": "API_ENDPOINT: GET /coverage/command_model \u2014 FastAPI router returns command-to-provider model mapping",
+          "location": {
+            "path": "openbb_platform/core/openbb_core/api/router/coverage.py",
+            "line": 14
+          }
+        }
+      ]
+    },
+    {
+      "id": "d0aa5360-e9a0-4bf5-b65d-6e453ea62a33",
+      "name": "generic",
+      "component_type": "AUTH",
+      "confidence": 0.98,
+      "metadata": {
+        "extras": {
+          "canonical_name": "generic",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.98,
+          "detail": "AUTH: api_key credential \u2014 provider template defines credentials=[\"api_key\"] for third-party data provider authentication",
+          "location": {
+            "path": "cookiecutter/openbb_cookiecutter/template/{{cookiecutter.project_tag}}/{{cookiecutter.package_name}}/providers/{{cookiecutter.provider_name}}/__init__.py",
+            "line": 14
+          }
+        },
+        {
+          "kind": "gt",
+          "confidence": 0.6,
+          "detail": "AUTH: generic",
+          "location": {
+            "path": "cookiecutter/openbb_cookiecutter/template/{{cookiecutter.project_tag}}/{{cookiecutter.package_name}}/providers/{{cookiecutter.provider_name}}/models/example.py"
+          }
+        }
+      ]
+    },
+    {
+      "id": "a93ffc42-6f6c-40e7-8ccb-aae061b3e8a4",
+      "name": "framework:langgraph",
+      "component_type": "FRAMEWORK",
+      "confidence": 0.95,
+      "metadata": {
+        "extras": {
+          "canonical_name": "framework:langgraph",
+          "adapter": "gt"
+        },
+        "framework": "langgraph"
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.95,
+          "detail": "FRAMEWORK: framework:langgraph",
+          "location": {
+            "path": "examples/openbb_vs_langchain.ipynb",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "8b517fe8-d649-469d-818f-0ba916b3b13a",
+      "name": "gpt-4.1",
+      "component_type": "MODEL",
+      "confidence": 0.9,
+      "metadata": {
+        "extras": {
+          "canonical_name": "gpt-4.1",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.9,
+          "detail": "MODEL: gpt-4.1 \u2014 used in LangChain/LangGraph agent notebook",
+          "location": {
+            "path": "examples/openbb_vs_langchain.ipynb",
+            "line": 11
+          }
+        }
+      ]
+    },
+    {
+      "id": "0ab50ad4-bacd-4016-b4fc-476d032bd857",
+      "name": "generic",
+      "component_type": "PROMPT",
+      "confidence": 0.95,
+      "metadata": {
+        "extras": {
+          "canonical_name": "generic",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.95,
+          "detail": "PROMPT: ChatPromptTemplate with MessagesPlaceholder (chat_history); chain-of-thought user query finds best-performing industry, extracts valuation metrics (P/E, P/B, EV/EBITDA), and fetches analyst consensus",
+          "location": {
+            "path": "examples/openbb_vs_langchain.ipynb",
+            "line": 223
+          }
+        }
+      ]
+    },
+    {
+      "id": "ff60a3c8-aab2-4e3c-9c70-11bf4d04c6e7",
+      "name": "activate_tools",
+      "component_type": "TOOL",
+      "confidence": 0.92,
+      "metadata": {
+        "extras": {
+          "canonical_name": "activate_tools",
+          "adapter": "gt"
+        },
+        "framework": "mcp-server"
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "TOOL: activate_tools \u2014 MCP tool that enables named OpenBB tools for use in the session",
+          "location": {
+            "path": "openbb_platform/extensions/mcp_server/openbb_mcp_server/app/app.py",
+            "line": 535
+          }
+        }
+      ]
+    },
+    {
+      "id": "11b97e8b-5e84-4af9-b22f-00d5d20cd4d6",
+      "name": "available_categories",
+      "component_type": "TOOL",
+      "confidence": 0.92,
+      "metadata": {
+        "extras": {
+          "canonical_name": "available_categories",
+          "adapter": "gt"
+        },
+        "framework": "mcp-server"
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "TOOL: available_categories \u2014 MCP tool that lists available OpenBB data categories",
+          "location": {
+            "path": "openbb_platform/extensions/mcp_server/openbb_mcp_server/app/app.py",
+            "line": 468
+          }
+        }
+      ]
+    },
+    {
+      "id": "de90e45d-42e8-4ffa-a302-70d296cb8cdc",
+      "name": "available_tools",
+      "component_type": "TOOL",
+      "confidence": 0.92,
+      "metadata": {
+        "extras": {
+          "canonical_name": "available_tools",
+          "adapter": "gt"
+        },
+        "framework": "mcp-server"
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "TOOL: available_tools \u2014 MCP tool that lists available OpenBB tools by category",
+          "location": {
+            "path": "openbb_platform/extensions/mcp_server/openbb_mcp_server/app/app.py",
+            "line": 483
+          }
+        }
+      ]
+    },
+    {
+      "id": "cca989f4-4060-4932-b053-37dde1da67a2",
+      "name": "deactivate_tools",
+      "component_type": "TOOL",
+      "confidence": 0.92,
+      "metadata": {
+        "extras": {
+          "canonical_name": "deactivate_tools",
+          "adapter": "gt"
+        },
+        "framework": "mcp-server"
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "TOOL: deactivate_tools \u2014 MCP tool that disables named OpenBB tools from the session",
+          "location": {
+            "path": "openbb_platform/extensions/mcp_server/openbb_mcp_server/app/app.py",
+            "line": 544
+          }
+        }
+      ]
+    },
+    {
+      "id": "ed914bf3-2fc8-44d3-b7e6-4638e4303a2f",
+      "name": "execute_prompt",
+      "component_type": "TOOL",
+      "confidence": 0.92,
+      "metadata": {
+        "extras": {
+          "canonical_name": "execute_prompt",
+          "adapter": "gt"
+        },
+        "framework": "mcp-server"
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "TOOL: execute_prompt \u2014 MCP tool that executes a named OpenBB prompt by name with arguments",
+          "location": {
+            "path": "openbb_platform/extensions/mcp_server/openbb_mcp_server/app/app.py",
+            "line": 565
+          }
+        }
+      ]
+    },
+    {
+      "id": "f52eebca-f863-4a20-b873-46432d761b48",
+      "name": "list_prompts",
+      "component_type": "TOOL",
+      "confidence": 0.92,
+      "metadata": {
+        "extras": {
+          "canonical_name": "list_prompts",
+          "adapter": "gt"
+        },
+        "framework": "mcp-server"
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "TOOL: list_prompts \u2014 MCP tool that lists all available OpenBB prompts with their arguments",
+          "location": {
+            "path": "openbb_platform/extensions/mcp_server/openbb_mcp_server/app/app.py",
+            "line": 555
+          }
+        }
+      ]
+    },
+    {
+      "id": "c6d780ed-1649-44c7-8881-506ad18e9d26",
+      "name": "fastmcp",
+      "component_type": "TOOL",
+      "confidence": 0.92,
+      "metadata": {
+        "extras": {
+          "canonical_name": "fastmcp",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "TOOL: FastMCP \u2014 Python library for building MCP (Model Context Protocol) servers; registers and exposes OpenBB financial data tools to AI assistants",
+          "location": {
+            "path": "openbb_platform/extensions/mcp_server/openbb_mcp_server/app/app.py",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "09240c2e-70df-5ce1-923a-628335a6aa67",
+      "name": "get_best_stock_performers_for_industry",
+      "component_type": "TOOL",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "get_best_stock_performers_for_industry",
+          "adapter": "gt",
+          "description": "TOOL detected in OpenBB-finance"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "TOOL: get_best_stock_performers_for_industry",
+          "location": {
+            "path": "examples/openbb_vs_langchain.ipynb",
+            "line": 37
+          }
+        }
+      ]
+    },
+    {
+      "id": "2d1d30a9-66f6-5ddb-b7ef-f74d7bd0a936",
+      "name": "get_best_stock_performers_for_sector",
+      "component_type": "TOOL",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "get_best_stock_performers_for_sector",
+          "adapter": "gt",
+          "description": "TOOL detected in OpenBB-finance"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "TOOL: get_best_stock_performers_for_sector",
+          "location": {
+            "path": "examples/openbb_vs_langchain.ipynb",
+            "line": 31
+          }
+        }
+      ]
+    },
+    {
+      "id": "3f86287a-8a06-5219-abdc-6e4268025b2b",
+      "name": "get_candidate_stocks_to_invest_relaxed",
+      "component_type": "TOOL",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "get_candidate_stocks_to_invest_relaxed",
+          "adapter": "gt",
+          "description": "TOOL detected in OpenBB-finance"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "TOOL: get_candidate_stocks_to_invest_relaxed",
+          "location": {
+            "path": "examples/openbb_vs_langchain.ipynb",
+            "line": 43
+          }
+        }
+      ]
+    },
+    {
+      "id": "476aa1c2-5dfa-5f16-90c2-f394a80b7d6f",
+      "name": "get_consensus",
+      "component_type": "TOOL",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "get_consensus",
+          "adapter": "gt",
+          "description": "TOOL detected in OpenBB-finance"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "TOOL: get_consensus",
+          "location": {
+            "path": "examples/openbb_vs_langchain.ipynb",
+            "line": 80
+          }
+        }
+      ]
+    },
+    {
+      "id": "40df6eed-fa65-5a18-b106-e3ea06f92dda",
+      "name": "get_industry_performance",
+      "component_type": "TOOL",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "get_industry_performance",
+          "adapter": "gt",
+          "description": "TOOL detected in OpenBB-finance"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "TOOL: get_industry_performance",
+          "location": {
+            "path": "examples/openbb_vs_langchain.ipynb",
+            "line": 13
+          }
+        }
+      ]
+    },
+    {
+      "id": "3b4e5cec-f0a3-5649-a263-fbc03811b61e",
+      "name": "get_strong_buy_for_industry",
+      "component_type": "TOOL",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "get_strong_buy_for_industry",
+          "adapter": "gt",
+          "description": "TOOL detected in OpenBB-finance"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "TOOL: get_strong_buy_for_industry",
+          "location": {
+            "path": "examples/openbb_vs_langchain.ipynb",
+            "line": 25
+          }
+        }
+      ]
+    },
+    {
+      "id": "bcd5acb9-074a-5dc2-a920-dbd3465e9406",
+      "name": "get_strong_buy_for_sector",
+      "component_type": "TOOL",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "get_strong_buy_for_sector",
+          "adapter": "gt",
+          "description": "TOOL detected in OpenBB-finance"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "TOOL: get_strong_buy_for_sector",
+          "location": {
+            "path": "examples/openbb_vs_langchain.ipynb",
+            "line": 18
+          }
+        }
+      ]
+    },
+    {
+      "id": "bbf7ecab-3914-5b4f-ac1c-36ad50986734",
+      "name": "get_valuation_for_industries",
+      "component_type": "TOOL",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "get_valuation_for_industries",
+          "adapter": "gt",
+          "description": "TOOL detected in OpenBB-finance"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "TOOL: get_valuation_for_industries",
+          "location": {
+            "path": "examples/openbb_vs_langchain.ipynb",
+            "line": 69
+          }
+        }
+      ]
+    },
+    {
+      "id": "2a71cf28-0a6d-5469-9d07-e6fc9d388cba",
+      "name": "admin",
+      "component_type": "PRIVILEGE",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "admin",
+          "adapter": "gt",
+          "description": "PRIVILEGE detected in OpenBB-finance"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "PRIVILEGE: admin",
+          "location": {
+            "path": "frontend-components/tables/src/data/mockup.ts",
+            "line": 10836
+          }
+        }
+      ]
+    },
+    {
+      "id": "5ccc34c3-f315-5459-bbcc-06dc24000157",
+      "name": "code_execution",
+      "component_type": "PRIVILEGE",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "code_execution",
+          "adapter": "gt",
+          "description": "PRIVILEGE detected in OpenBB-finance"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "PRIVILEGE: code_execution",
+          "location": {
+            "path": "cli/openbb_cli/controllers/utils.py",
+            "line": 80
+          }
+        }
+      ]
+    },
+    {
+      "id": "276ff6f4-7973-5589-9b55-691b649febd6",
+      "name": "filesystem_write",
+      "component_type": "PRIVILEGE",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "filesystem_write",
+          "adapter": "gt",
+          "description": "PRIVILEGE detected in OpenBB-finance"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "PRIVILEGE: filesystem_write",
+          "location": {
+            "path": "cli/openbb_cli/controllers/base_controller.py",
+            "line": 476
+          }
+        }
+      ]
+    },
+    {
+      "id": "2301e666-5bb8-5ec1-ae2e-6d1698703a6b",
+      "name": "network_out",
+      "component_type": "PRIVILEGE",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "network_out",
+          "adapter": "gt",
+          "description": "PRIVILEGE detected in OpenBB-finance"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "PRIVILEGE: network_out",
+          "location": {
+            "path": "openbb_platform/extensions/commodity/integration/test_commodity_api.py",
+            "line": 158
+          }
+        }
+      ]
+    },
+    {
+      "id": "1d14da34-338d-4078-9898-e59e03bb146d",
+      "name": "prompt",
+      "component_type": "PROMPT",
+      "confidence": 0.55,
+      "metadata": {
+        "extras": {
+          "canonical_name": "prompt",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.55,
+          "detail": "PROMPT: prompt",
+          "location": {
+            "path": "examples/openbb_vs_langchain.ipynb"
+          }
+        }
+      ]
+    }
+  ],
+  "edges": []
+}

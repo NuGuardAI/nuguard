@@ -1,0 +1,48 @@
+{
+  "files": [
+    {
+      "path": "requirements.txt",
+      "content": "langchain>=0.1.0\nlangchain-openai>=0.0.5\nlangchain-community\nopenai>=1.0.0\npinecone-client\npython-dotenv\nfastapi\nuvicorn\n"
+    },
+    {
+      "path": "src/agents/support.py",
+      "content": "\"\"\"Customer support agent with LangChain.\"\"\"\nfrom langchain_openai import ChatOpenAI\nfrom langchain.agents import create_react_agent, AgentExecutor\nfrom langchain.prompts import ChatPromptTemplate\nfrom src.tools.search import search_knowledge_base\nfrom src.tools.ticketing import create_ticket\n\n# Initialize the LLM\nllm = ChatOpenAI(\n    model=\"gpt-4\",\n    temperature=0.7\n)\n\n# Create the agent\nsupport_agent = create_react_agent(\n    llm=llm,\n    tools=[search_knowledge_base, create_ticket],\n    prompt=ChatPromptTemplate.from_messages([\n        (\"system\", \"You are a helpful customer support agent.\"),\n        (\"human\", \"{input}\")\n    ])\n)\n\n# Create executor\nexecutor = AgentExecutor(\n    agent=support_agent,\n    tools=[search_knowledge_base, create_ticket],\n    verbose=True\n)\n\ndef handle_query(query: str) -> str:\n    return executor.invoke({\"input\": query})\n"
+    },
+    {
+      "path": "src/tools/search.py",
+      "content": "\"\"\"Knowledge base search tool.\"\"\"\nfrom langchain.tools import tool\nfrom src.vectorstore.index import query_vectorstore\n\n@tool\ndef search_knowledge_base(query: str) -> str:\n    \"\"\"Search the internal knowledge base for relevant information.\n    \n    Args:\n        query: The search query\n    \n    Returns:\n        Relevant information from the knowledge base\n    \"\"\"\n    results = query_vectorstore(query)\n    return \"\\n\".join([doc.page_content for doc in results])\n"
+    },
+    {
+      "path": "src/tools/ticketing.py",
+      "content": "\"\"\"Support ticketing tool.\"\"\"\nfrom langchain.tools import tool\nimport uuid\n\n@tool\ndef create_ticket(title: str, description: str, priority: str = \"medium\") -> str:\n    \"\"\"Create a new support ticket.\n    \n    Args:\n        title: Ticket title\n        description: Detailed description of the issue\n        priority: Priority level (low, medium, high)\n    \n    Returns:\n        Ticket ID\n    \"\"\"\n    ticket_id = str(uuid.uuid4())[:8]\n    # In production, this would create a ticket in the system\n    return f\"Ticket created: {ticket_id}\"\n"
+    },
+    {
+      "path": "src/prompts/system.py",
+      "content": "\"\"\"System prompts for agents.\"\"\"\nfrom langchain.prompts import SystemMessagePromptTemplate\n\nsupport_system_prompt = SystemMessagePromptTemplate.from_template(\n    \"\"\"You are a helpful customer support agent for TechCorp.\n\nYour responsibilities:\n1. Answer customer questions accurately\n2. Search the knowledge base for information\n3. Create support tickets when needed\n4. Escalate complex issues to human agents\n\nBe polite, professional, and helpful.\nAlways verify information before providing it.\nIf unsure, offer to create a ticket for follow-up.\n\"\"\"\n)\n\nescalation_prompt = \"\"\"This issue requires human attention.\nPlease create a ticket and inform the customer that a specialist will follow up.\n\"\"\"\n"
+    },
+    {
+      "path": "src/vectorstore/index.py",
+      "content": "\"\"\"Vector store configuration for knowledge base.\"\"\"\nimport os\nfrom langchain_pinecone import Pinecone\nfrom langchain_openai import OpenAIEmbeddings\n\n# Initialize embeddings\nembeddings = OpenAIEmbeddings(\n    model=\"text-embedding-3-small\"\n)\n\n# Initialize Pinecone\npinecone_index = Pinecone(\n    index_name=os.getenv(\"PINECONE_INDEX\", \"knowledge-base\"),\n    embedding=embeddings\n)\n\ndef query_vectorstore(query: str, k: int = 5):\n    \"\"\"Query the vector store for similar documents.\"\"\"\n    return pinecone_index.similarity_search(query, k=k)\n\ndef add_documents(documents):\n    \"\"\"Add documents to the vector store.\"\"\"\n    return pinecone_index.add_documents(documents)\n"
+    },
+    {
+      "path": "src/__init__.py",
+      "content": "\"\"\"Support agent package.\"\"\"\n"
+    },
+    {
+      "path": "src/agents/__init__.py",
+      "content": "\"\"\"Agents package.\"\"\"\nfrom .support import executor, handle_query\n"
+    },
+    {
+      "path": "src/tools/__init__.py",
+      "content": "\"\"\"Tools package.\"\"\"\nfrom .search import search_knowledge_base\nfrom .ticketing import create_ticket\n"
+    },
+    {
+      "path": "src/prompts/__init__.py",
+      "content": "\"\"\"Prompts package.\"\"\"\nfrom .system import support_system_prompt\n"
+    },
+    {
+      "path": "src/vectorstore/__init__.py",
+      "content": "\"\"\"Vectorstore package.\"\"\"\nfrom .index import pinecone_index, query_vectorstore\n"
+    }
+  ]
+}

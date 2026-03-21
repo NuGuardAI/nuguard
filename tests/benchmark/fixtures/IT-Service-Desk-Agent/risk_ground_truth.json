@@ -1,0 +1,242 @@
+{
+  "repo_name": "IT-Service-Desk-Agent",
+  "repo_url": "https://github.com/NuGuardAI/IT-Service-Desk-Agent",
+  "branch": "main",
+  "commit_sha": "latest",
+  "annotated_at": "2026-02-08",
+  "annotator": "nuguard-team",
+
+  "policies_evaluated": ["OWASP AI Top 10", "Azure Security Baseline", "SOC 2"],
+
+  "expected_findings": [
+    {
+      "title": "Overly Permissive Azure Role Assignment",
+      "severity": "HIGH",
+      "gap_type": "SECURITY",
+      "control_id": "AZURE-IAM-001",
+      "control_name": "Least Privilege Access",
+      "policy_name": "Azure Security Baseline",
+      "affected_file": "infra/azure-deployment/deploy.sh",
+      "remediation_keywords": ["least privilege", "custom role", "specific permissions"],
+      "evidence_keywords": ["Contributor", "broad access", "resource group scope"],
+      "confidence_min": 70,
+      "match_flexibility": "SEMANTIC"
+    },
+    {
+      "title": "Environment File Included in Deployment Package",
+      "severity": "HIGH",
+      "gap_type": "SECURITY",
+      "control_id": "SOC2-CC6.1",
+      "control_name": "Sensitive Data Protection",
+      "policy_name": "SOC 2",
+      "affected_file": "infra/azure-deployment/deploy.sh",
+      "remediation_keywords": ["exclude .env", "app settings", "key vault"],
+      "evidence_keywords": [".env", "zip", "deployment", "API keys"],
+      "confidence_min": 80,
+      "match_flexibility": "SEMANTIC"
+    },
+    {
+      "title": "CORS Wildcard Allows Any Origin",
+      "severity": "HIGH",
+      "gap_type": "SECURITY",
+      "control_id": "OWASP-A05",
+      "control_name": "Security Misconfiguration",
+      "policy_name": "OWASP AI Top 10",
+      "affected_file": "infra/azure-deployment/main.py",
+      "remediation_keywords": ["restrict origins", "allowlist", "specific domains"],
+      "evidence_keywords": ["allow_origins=[\"*\"]", "CORS", "wildcard"],
+      "confidence_min": 80,
+      "match_flexibility": "EXACT"
+    },
+    {
+      "title": "Missing Input Validation for User Queries",
+      "severity": "HIGH",
+      "gap_type": "SECURITY",
+      "control_id": "OWASP-A01",
+      "control_name": "Prompt Injection",
+      "policy_name": "OWASP AI Top 10",
+      "affected_file": "infra/azure-deployment/main.py",
+      "remediation_keywords": ["input validation", "sanitize", "filter prompts"],
+      "evidence_keywords": ["user_message", "no validation", "direct input"],
+      "confidence_min": 70,
+      "match_flexibility": "SEMANTIC"
+    },
+    {
+      "title": "Excessive Agency - Agent Can Send Emails Autonomously",
+      "severity": "HIGH",
+      "gap_type": "AI_SAFETY",
+      "control_id": "OWASP-A08",
+      "control_name": "Excessive Agency",
+      "policy_name": "OWASP AI Top 10",
+      "affected_file": "infra/azure-deployment/enterprise_functions.py",
+      "remediation_keywords": ["human approval", "confirmation", "review before sending"],
+      "evidence_keywords": ["send_email", "autonomous", "no approval"],
+      "confidence_min": 75,
+      "match_flexibility": "SEMANTIC"
+    },
+    {
+      "title": "No Output Validation for AI Responses",
+      "severity": "MEDIUM",
+      "gap_type": "SECURITY",
+      "control_id": "OWASP-A02",
+      "control_name": "Insecure Output Handling",
+      "policy_name": "OWASP AI Top 10",
+      "affected_file": "infra/azure-deployment/main.py",
+      "remediation_keywords": ["validate output", "filter response", "content moderation"],
+      "evidence_keywords": ["streaming output", "no validation", "direct display"],
+      "confidence_min": 65,
+      "match_flexibility": "SEMANTIC"
+    },
+    {
+      "title": "External API Keys in Environment Variables",
+      "severity": "MEDIUM",
+      "gap_type": "SECURITY",
+      "control_id": "AZURE-KV-001",
+      "control_name": "Secrets Management",
+      "policy_name": "Azure Security Baseline",
+      "affected_file": "infra/azure-deployment/enterprise_functions.py",
+      "remediation_keywords": ["Key Vault", "managed secrets", "secure storage"],
+      "evidence_keywords": ["OPENWEATHER_API_KEY", "os.environ", "environment variable"],
+      "confidence_min": 70,
+      "match_flexibility": "SEMANTIC"
+    },
+    {
+      "title": "Indirect Prompt Injection via External Search",
+      "severity": "MEDIUM",
+      "gap_type": "SECURITY",
+      "control_id": "OWASP-A01",
+      "control_name": "Prompt Injection",
+      "policy_name": "OWASP AI Top 10",
+      "affected_file": "infra/azure-deployment/main.py",
+      "remediation_keywords": ["sanitize external", "validate response", "filter content"],
+      "evidence_keywords": ["BingGroundingTool", "external search", "web content"],
+      "confidence_min": 60,
+      "match_flexibility": "SEMANTIC"
+    },
+    {
+      "title": "Missing Rate Limiting on API Endpoints",
+      "severity": "MEDIUM",
+      "gap_type": "SECURITY",
+      "control_id": "SOC2-CC6.6",
+      "control_name": "Rate Limiting",
+      "policy_name": "SOC 2",
+      "affected_file": "infra/azure-deployment/main.py",
+      "remediation_keywords": ["rate limit", "throttle", "request limiting"],
+      "evidence_keywords": ["no rate limiting", "FastAPI", "unlimited requests"],
+      "confidence_min": 60,
+      "match_flexibility": "SEMANTIC"
+    },
+    {
+      "title": "Missing Audit Logging for Agent Actions",
+      "severity": "MEDIUM",
+      "gap_type": "COMPLIANCE",
+      "control_id": "SOC2-CC7.2",
+      "control_name": "Audit Logging",
+      "policy_name": "SOC 2",
+      "affected_file": "infra/azure-deployment/main.py",
+      "remediation_keywords": ["audit log", "action logging", "track usage"],
+      "evidence_keywords": ["no logging", "tool calls", "email sending"],
+      "confidence_min": 65,
+      "match_flexibility": "SEMANTIC"
+    },
+    {
+      "title": "Third-Party Dependency Risk - yfinance",
+      "severity": "LOW",
+      "gap_type": "SUPPLY_CHAIN",
+      "control_id": "OWASP-A06",
+      "control_name": "Vulnerable and Outdated Components",
+      "policy_name": "OWASP AI Top 10",
+      "affected_file": "infra/azure-deployment/enterprise_functions.py",
+      "remediation_keywords": ["pin versions", "vulnerability scan", "dependency review"],
+      "evidence_keywords": ["yfinance", "import", "third-party"],
+      "confidence_min": 50,
+      "match_flexibility": "SEMANTIC"
+    },
+    {
+      "title": "Financial Data Access Without Controls",
+      "severity": "MEDIUM",
+      "gap_type": "COMPLIANCE",
+      "control_id": "SOC2-CC6.1",
+      "control_name": "Data Access Controls",
+      "policy_name": "SOC 2",
+      "affected_file": "infra/azure-deployment/enterprise_functions.py",
+      "remediation_keywords": ["access control", "authorization", "data classification"],
+      "evidence_keywords": ["fetch_stock_price", "financial data", "no authorization"],
+      "confidence_min": 55,
+      "match_flexibility": "SEMANTIC"
+    }
+  ],
+
+  "expected_covered_controls": [
+    {
+      "control_id": "AZURE-AUTH-001",
+      "control_name": "Managed Identity Authentication",
+      "policy_name": "Azure Security Baseline",
+      "evidence_type": "CODE",
+      "evidence_keywords": ["DefaultAzureCredential", "managed identity", "webapp identity assign"],
+      "confidence_min": 80,
+      "match_flexibility": "EXACT_CONTROL"
+    },
+    {
+      "control_id": "AZURE-TLS-001",
+      "control_name": "Transport Layer Security",
+      "policy_name": "Azure Security Baseline",
+      "evidence_type": "ARCHITECTURE",
+      "evidence_keywords": ["https", "azurewebsites.net", "TLS"],
+      "confidence_min": 75,
+      "match_flexibility": "EXACT_CONTROL"
+    },
+    {
+      "control_id": "AZURE-DEPLOY-001",
+      "control_name": "Infrastructure as Code",
+      "policy_name": "Azure Security Baseline",
+      "evidence_type": "CODE",
+      "evidence_keywords": ["deploy.sh", "az webapp", "automated deployment"],
+      "confidence_min": 70,
+      "match_flexibility": "EXACT_CONTROL"
+    }
+  ],
+
+  "expected_risk_score": {
+    "score": 72,
+    "band": "HIGH",
+    "tolerance": 15
+  },
+
+  "expected_risk_summary": {
+    "critical_count": 0,
+    "high_count": 5,
+    "medium_count": 6,
+    "low_count": 1,
+    "count_tolerance": 2
+  },
+
+  "expected_red_team_attacks": {
+    "min_count": 4,
+    "expected_types": ["PROMPT_INJECTION", "PRIVILEGE_ESCALATION", "DATA_EXFILTRATION"],
+    "attacks": [
+      {
+        "type": "PROMPT_INJECTION",
+        "target_description": "Inject malicious instructions via chat input to manipulate agent behavior",
+        "match_flexibility": "TYPE_ONLY"
+      },
+      {
+        "type": "PROMPT_INJECTION",
+        "target_description": "Indirect injection via crafted web content returned by Bing search",
+        "match_flexibility": "TYPE_ONLY"
+      },
+      {
+        "type": "PRIVILEGE_ESCALATION",
+        "target_description": "Abuse send_email function to send unauthorized communications",
+        "match_flexibility": "TYPE_ONLY"
+      },
+      {
+        "type": "DATA_EXFILTRATION",
+        "target_description": "Extract sensitive HR policy information from vector store via crafted queries",
+        "match_flexibility": "TYPE_ONLY"
+      }
+    ]
+  },
+
+  "notes": "Azure AI Agent Service enterprise demo with IT service desk use case. Deployed on Azure App Service with managed identity. Key concerns: overly permissive RBAC roles, .env in deployment package, CORS wildcard, and excessive agency with email sending capability. Uses GPT-4o via Azure AI Foundry with Bing grounding and vector store RAG."
+}

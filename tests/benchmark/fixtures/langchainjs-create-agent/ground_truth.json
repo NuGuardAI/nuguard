@@ -1,0 +1,332 @@
+{
+  "schema_version": "1.1.0",
+  "generated_at": "2026-03-10T00:00:00Z",
+  "generator": "codex",
+  "target": "https://github.com/langchain-ai/langchainjs",
+  "summary": {
+    "frameworks": [
+      "langchain",
+      "langgraph"
+    ]
+  },
+  "nodes": [
+    {
+      "id": "1",
+      "name": "langgraph",
+      "component_type": "FRAMEWORK",
+      "confidence": 0.98,
+      "metadata": {
+        "framework": "langgraph",
+        "extras": {
+          "canonical_name": "langgraph",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.98,
+          "detail": "FRAMEWORK: langgraph",
+          "location": {
+            "path": "createAgent/tools.ts",
+            "line": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "2",
+      "name": "user_info_agent",
+      "component_type": "AGENT",
+      "confidence": 0.94,
+      "metadata": {
+        "framework": "langchain",
+        "extras": {
+          "canonical_name": "user_info_agent",
+          "adapter": "gt",
+          "synonyms": [
+            "agent"
+          ]
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.94,
+          "detail": "AGENT: user_info_agent",
+          "location": {
+            "path": "createAgent/tools.ts",
+            "line": 36
+          }
+        }
+      ]
+    },
+    {
+      "id": "3",
+      "name": "customerServiceAgent",
+      "component_type": "AGENT",
+      "confidence": 0.94,
+      "metadata": {
+        "framework": "langchain",
+        "extras": {
+          "canonical_name": "customerServiceAgent",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.94,
+          "detail": "AGENT: customerServiceAgent",
+          "location": {
+            "path": "createAgent/customSystemPrompts.ts",
+            "line": 54
+          }
+        }
+      ]
+    },
+    {
+      "id": "4",
+      "name": "contextAwareAgent",
+      "component_type": "AGENT",
+      "confidence": 0.94,
+      "metadata": {
+        "framework": "langchain",
+        "extras": {
+          "canonical_name": "contextAwareAgent",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.94,
+          "detail": "AGENT: contextAwareAgent",
+          "location": {
+            "path": "createAgent/customSystemPrompts.ts",
+            "line": 77
+          }
+        }
+      ]
+    },
+    {
+      "id": "5",
+      "name": "get_user_info",
+      "component_type": "TOOL",
+      "confidence": 0.95,
+      "metadata": {
+        "framework": "langchain",
+        "extras": {
+          "canonical_name": "get_user_info",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.95,
+          "detail": "TOOL: get_user_info",
+          "location": {
+            "path": "createAgent/tools.ts",
+            "line": 6
+          }
+        }
+      ]
+    },
+    {
+      "id": "6",
+      "name": "save_user_info",
+      "component_type": "TOOL",
+      "confidence": 0.95,
+      "metadata": {
+        "framework": "langchain",
+        "extras": {
+          "canonical_name": "save_user_info",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.95,
+          "detail": "TOOL: save_user_info",
+          "location": {
+            "path": "createAgent/tools.ts",
+            "line": 19
+          }
+        }
+      ]
+    },
+    {
+      "id": "7",
+      "name": "check_account",
+      "component_type": "TOOL",
+      "confidence": 0.95,
+      "metadata": {
+        "framework": "langchain",
+        "extras": {
+          "canonical_name": "check_account",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.95,
+          "detail": "TOOL: check_account",
+          "location": {
+            "path": "createAgent/customSystemPrompts.ts",
+            "line": 37
+          }
+        }
+      ]
+    },
+    {
+      "id": "8",
+      "name": "InMemoryStore",
+      "component_type": "DATASTORE",
+      "confidence": 0.9,
+      "metadata": {
+        "framework": "langgraph",
+        "extras": {
+          "canonical_name": "InMemoryStore",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.9,
+          "detail": "DATASTORE: InMemoryStore",
+          "location": {
+            "path": "createAgent/tools.ts",
+            "line": 39
+          }
+        }
+      ]
+    },
+    {
+      "id": "9",
+      "name": "gpt-4o",
+      "component_type": "MODEL",
+      "confidence": 0.94,
+      "metadata": {
+        "extras": {
+          "canonical_name": "gpt-4o",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.94,
+          "detail": "MODEL: gpt-4o",
+          "location": {
+            "path": "createAgent/tools.ts",
+            "line": 37
+          }
+        }
+      ]
+    },
+    {
+      "id": "10",
+      "name": "gpt-4",
+      "component_type": "MODEL",
+      "confidence": 0.94,
+      "metadata": {
+        "extras": {
+          "canonical_name": "gpt-4",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.94,
+          "detail": "MODEL: gpt-4",
+          "location": {
+            "path": "createAgent/customSystemPrompts.ts",
+            "line": 55
+          }
+        }
+      ]
+    },
+    {
+      "id": "11",
+      "name": "customer_service_system_prompt",
+      "component_type": "PROMPT",
+      "confidence": 0.92,
+      "metadata": {
+        "framework": "langchain",
+        "extras": {
+          "canonical_name": "customer_service_system_prompt",
+          "adapter": "gt",
+          "synonyms": [
+            "System Prompt"
+          ]
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "PROMPT: customer_service_system_prompt",
+          "location": {
+            "path": "createAgent/customSystemPrompts.ts",
+            "line": 57
+          }
+        }
+      ]
+    },
+    {
+      "id": "12",
+      "name": "context_aware_system_prompt",
+      "component_type": "PROMPT",
+      "confidence": 0.92,
+      "metadata": {
+        "framework": "langchain",
+        "extras": {
+          "canonical_name": "context_aware_system_prompt",
+          "adapter": "gt",
+          "synonyms": [
+            "Middleware"
+          ]
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "PROMPT: context_aware_system_prompt",
+          "location": {
+            "path": "createAgent/customSystemPrompts.ts",
+            "line": 87
+          }
+        }
+      ]
+    },
+    {
+      "id": "5b1df69a-d52b-48c5-a5ac-888e684ee19d",
+      "name": "Messages",
+      "component_type": "PROMPT",
+      "confidence": 0.65,
+      "metadata": {
+        "extras": {
+          "canonical_name": "Messages",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.65,
+          "detail": "PROMPT: Messages",
+          "location": {
+            "path": "createAgent/tools.ts"
+          }
+        }
+      ]
+    }
+  ],
+  "edges": []
+}

@@ -1,0 +1,338 @@
+{
+  "schema_version": "1.1.0",
+  "generated_at": "2026-03-02T00:00:00Z",
+  "generator": "github_copilot",
+  "target": "https://github.com/sokart/adk-walkthrough",
+  "nodes": [
+    {
+      "id": "f93c4571-d2dd-4fe0-ac74-6701aafd14d8",
+      "name": "agent_basic",
+      "component_type": "AGENT",
+      "confidence": 0.92,
+      "metadata": {
+        "extras": {
+          "canonical_name": "agent_basic",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "AGENT: agent_basic",
+          "location": {
+            "path": "chapter1_main_basic.py",
+            "line": 82
+          }
+        }
+      ]
+    },
+    {
+      "id": "749b8b90-7b99-47bd-9908-5e5a3e4e8625",
+      "name": "agent_grammar",
+      "component_type": "AGENT",
+      "confidence": 0.92,
+      "metadata": {
+        "extras": {
+          "canonical_name": "agent_grammar",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "AGENT: agent_grammar",
+          "location": {
+            "path": "agent_grammar/agent.py",
+            "line": 171
+          }
+        }
+      ]
+    },
+    {
+      "id": "b6f054b2-f6d8-4fcc-a5ba-65b3a0a4fd5b",
+      "name": "agent_math",
+      "component_type": "AGENT",
+      "confidence": 0.92,
+      "metadata": {
+        "extras": {
+          "canonical_name": "agent_math",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "AGENT: agent_math",
+          "location": {
+            "path": "agent_maths/agent.py",
+            "line": 113
+          }
+        }
+      ]
+    },
+    {
+      "id": "79038196-44fe-4cd2-8db3-327f79a6b61d",
+      "name": "agent_summary",
+      "component_type": "AGENT",
+      "confidence": 0.92,
+      "metadata": {
+        "extras": {
+          "canonical_name": "agent_summary",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "AGENT: agent_summary",
+          "location": {
+            "path": "agent_summary/agent.py",
+            "line": 65
+          }
+        }
+      ]
+    },
+    {
+      "id": "87081c71-d6ab-45b9-93cd-dfe40e4c3448",
+      "name": "agent_teaching_assistant",
+      "component_type": "AGENT",
+      "confidence": 0.92,
+      "metadata": {
+        "extras": {
+          "canonical_name": "agent_teaching_assistant",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.92,
+          "detail": "AGENT: agent_teaching_assistant",
+          "location": {
+            "path": "chapter3_main_multi_agent.py",
+            "line": 105
+          }
+        }
+      ]
+    },
+    {
+      "id": "f0c65447-cdae-4f46-9385-4038fa6d175a",
+      "name": "framework:google_adk",
+      "component_type": "FRAMEWORK",
+      "confidence": 0.95,
+      "metadata": {
+        "extras": {
+          "canonical_name": "framework:google_adk",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.95,
+          "detail": "FRAMEWORK: framework:google_adk",
+          "location": {
+            "path": "agent_grammar/agent.py",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "7fc26c6f-bdaa-4adb-aa2a-ba68d220402d",
+      "name": "add",
+      "component_type": "TOOL",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "add",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.85,
+          "detail": "TOOL: add",
+          "location": {
+            "path": "agent_maths/agent.py",
+            "line": 113
+          }
+        }
+      ]
+    },
+    {
+      "id": "dd3a7730-4550-4037-a975-0b43203c5637",
+      "name": "check_grammar",
+      "component_type": "TOOL",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "check_grammar",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.85,
+          "detail": "TOOL: check_grammar",
+          "location": {
+            "path": "agent_grammar/agent.py",
+            "line": 171
+          }
+        }
+      ]
+    },
+    {
+      "id": "d5c59cf7-51e7-5696-a40a-4cbf39baa240",
+      "name": "gemini-2.0-flash-001",
+      "component_type": "MODEL",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "gemini-2.0-flash-001",
+          "adapter": "gt",
+          "description": "MODEL detected in google-adk-walkthrough",
+          "synonyms": [
+            "gemini-2.0"
+          ]
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "MODEL: gemini-2.0-flash-001",
+          "location": {
+            "path": "agent_grammar/agent.py",
+            "line": 171
+          }
+        }
+      ]
+    },
+    {
+      "id": "b9955e79-89ef-5d28-a885-dcdc891c1652",
+      "name": "summary_instruction_prompt",
+      "component_type": "PROMPT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "summary_instruction_prompt",
+          "adapter": "gt",
+          "description": "PROMPT detected in google-adk-walkthrough"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "PROMPT: summary_instruction_prompt",
+          "location": {
+            "path": "agent_summary/agent.py",
+            "line": 6
+          }
+        }
+      ]
+    },
+    {
+      "id": "384d9b55-8ede-526b-8fab-aa63e9083ab7",
+      "name": "divide",
+      "component_type": "TOOL",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "divide",
+          "adapter": "gt",
+          "description": "TOOL detected in google-adk-walkthrough"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "TOOL: divide",
+          "location": {
+            "path": "agent_maths/agent.py",
+            "line": 113
+          }
+        }
+      ]
+    },
+    {
+      "id": "0d295f44-ea0f-5afb-a470-28df5735c20a",
+      "name": "multiply",
+      "component_type": "TOOL",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "multiply",
+          "adapter": "gt",
+          "description": "TOOL detected in google-adk-walkthrough"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "TOOL: multiply",
+          "location": {
+            "path": "agent_maths/agent.py",
+            "line": 113
+          }
+        }
+      ]
+    },
+    {
+      "id": "f0c81887-d53f-5b64-a61c-d552bbdcec6b",
+      "name": "subtract",
+      "component_type": "TOOL",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "subtract",
+          "adapter": "gt",
+          "description": "TOOL detected in google-adk-walkthrough"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "TOOL: subtract",
+          "location": {
+            "path": "agent_maths/agent.py",
+            "line": 113
+          }
+        }
+      ]
+    },
+    {
+      "id": "4f466836-4b6e-4253-ad61-6a201c727c4e",
+      "name": "generic",
+      "component_type": "AUTH",
+      "confidence": 0.65,
+      "metadata": {
+        "extras": {
+          "canonical_name": "generic",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.65,
+          "detail": "AUTH: generic",
+          "location": {
+            "path": "agent_grammar/agent.py"
+          }
+        }
+      ]
+    }
+  ],
+  "edges": []
+}

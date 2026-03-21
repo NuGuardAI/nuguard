@@ -1,0 +1,216 @@
+{
+  "schema_version": "1.1.0",
+  "generated_at": "2025-07-30T00:00:00Z",
+  "generator": "github_copilot",
+  "target": "local://real-estate-agent",
+  "nodes": [
+    {
+      "id": "ac045de2-b74d-5f44-9f9f-e31e7463a91f",
+      "name": "agno",
+      "component_type": "FRAMEWORK",
+      "confidence": 0.95,
+      "metadata": {
+        "extras": {
+          "canonical_name": "agno",
+          "adapter": "framework"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_import",
+          "confidence": 0.95,
+          "detail": "from agno.agent import Agent",
+          "location": {
+            "path": "agent.py",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "605e4134-9d55-54be-a7d7-d9a5740f6b14",
+      "name": "property_search_agent",
+      "component_type": "AGENT",
+      "confidence": 0.9,
+      "metadata": {
+        "extras": {
+          "canonical_name": "property_search_agent",
+          "adapter": "agno"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_assignment",
+          "confidence": 0.9,
+          "detail": "DirectFirecrawlAgent class - property search specialist",
+          "location": {
+            "path": "agent.py",
+            "line": 10
+          }
+        }
+      ]
+    },
+    {
+      "id": "48270c1e-8714-5d96-b794-c8bea0a55c63",
+      "name": "market_analysis_agent",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "market_analysis_agent",
+          "adapter": "agno"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_assignment",
+          "confidence": 0.85,
+          "detail": "Market analysis specialist agent",
+          "location": {
+            "path": "agent.py",
+            "line": 30
+          }
+        }
+      ]
+    },
+    {
+      "id": "225e9e0d-78d8-5f52-88a9-e39dffe3fa3d",
+      "name": "property_valuation_agent",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "property_valuation_agent",
+          "adapter": "agno"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_assignment",
+          "confidence": 0.85,
+          "detail": "Property valuation specialist agent",
+          "location": {
+            "path": "agent.py",
+            "line": 50
+          }
+        }
+      ]
+    },
+    {
+      "id": "5275ec83-0247-571e-848f-b23468c3b443",
+      "name": "gpt-4o",
+      "component_type": "MODEL",
+      "confidence": 0.9,
+      "metadata": {
+        "extras": {
+          "canonical_name": "gpt-4o",
+          "adapter": "ast"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_assignment",
+          "confidence": 0.9,
+          "detail": "model_id: str = 'gpt-4o' default in DirectFirecrawlAgent",
+          "location": {
+            "path": "agent.py",
+            "line": 12
+          }
+        }
+      ]
+    },
+    {
+      "id": "462a71bb-91f3-5439-b787-f4b89e1506f5",
+      "name": "FirecrawlApp",
+      "component_type": "TOOL",
+      "confidence": 0.9,
+      "metadata": {
+        "extras": {
+          "canonical_name": "FirecrawlApp",
+          "adapter": "ast"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_import",
+          "confidence": 0.9,
+          "detail": "from firecrawl import FirecrawlApp",
+          "location": {
+            "path": "agent.py",
+            "line": 5
+          }
+        }
+      ]
+    },
+    {
+      "id": "89a83470-593f-545f-986c-eab231e1b694",
+      "name": "generic",
+      "component_type": "AUTH",
+      "confidence": 0.9,
+      "metadata": {
+        "extras": {
+          "canonical_name": "generic",
+          "adapter": "regex"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "env_var",
+          "confidence": 0.9,
+          "detail": "OPENAI_API_KEY and FIRECRAWL_API_KEY environment variables",
+          "location": {
+            "path": "agent.py",
+            "line": 6
+          }
+        }
+      ]
+    },
+    {
+      "id": "879e8d91-dcfb-573f-9682-889a99ab1446",
+      "name": "generic",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "generic",
+          "adapter": "ast"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_import",
+          "confidence": 0.85,
+          "detail": "FastAPI with /analyze endpoint",
+          "location": {
+            "path": "api.py",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "a99e2eec-0ac3-55b6-8664-cfc34656a3e7",
+      "name": "agent",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "agent",
+          "adapter": "gt",
+          "description": "AGENT detected in real-estate-agent"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "AGENT: agent",
+          "location": {
+            "path": "agent.py",
+            "line": 45
+          }
+        }
+      ]
+    }
+  ]
+}

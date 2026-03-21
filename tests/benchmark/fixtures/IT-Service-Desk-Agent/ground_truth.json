@@ -1,0 +1,196 @@
+{
+  "schema_version": "1.1.0",
+  "generated_at": "2026-03-02T00:00:00Z",
+  "generator": "github_copilot",
+  "target": "local://IT-Service-Desk-Agent",
+  "nodes": [
+    {
+      "id": "3669e38a-7ef0-4ad6-880a-043bab785852",
+      "name": "DefaultAzureCredential",
+      "component_type": "AUTH",
+      "confidence": 0.88,
+      "metadata": {
+        "extras": {
+          "canonical_name": "DefaultAzureCredential",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.88,
+          "detail": "AUTH: DefaultAzureCredential",
+          "location": {
+            "path": "infra/azure-deployment/main.py",
+            "line": 46
+          }
+        }
+      ]
+    },
+    {
+      "id": "f1fcc655-68fc-4e88-9e9a-d9d051530045",
+      "name": "framework:azure_ai_agent_service",
+      "component_type": "FRAMEWORK",
+      "confidence": 0.95,
+      "metadata": {
+        "extras": {
+          "canonical_name": "framework:azure_ai_agent_service",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.95,
+          "detail": "FRAMEWORK: framework:azure_ai_agent_service",
+          "location": {
+            "path": "infra/azure-deployment/main.py",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "5b07e3cf-3363-4a3a-aa0b-6e3960c42fe7",
+      "name": "BingGroundingTool",
+      "component_type": "TOOL",
+      "confidence": 0.9,
+      "metadata": {
+        "extras": {
+          "canonical_name": "BingGroundingTool",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.9,
+          "detail": "TOOL: BingGroundingTool",
+          "location": {
+            "path": "infra/azure-deployment/main.py",
+            "line": 80
+          }
+        }
+      ]
+    },
+    {
+      "id": "5fa87f6e-f3ac-4991-a534-936f370170df",
+      "name": "FileSearchTool",
+      "component_type": "TOOL",
+      "confidence": 0.9,
+      "metadata": {
+        "extras": {
+          "canonical_name": "FileSearchTool",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.9,
+          "detail": "TOOL: FileSearchTool",
+          "location": {
+            "path": "infra/azure-deployment/main.py",
+            "line": 100
+          }
+        }
+      ]
+    },
+    {
+      "id": "db84051a-05ee-4e61-b4dd-4c9516884a38",
+      "name": "FunctionTool",
+      "component_type": "TOOL",
+      "confidence": 0.9,
+      "metadata": {
+        "extras": {
+          "canonical_name": "FunctionTool",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.9,
+          "detail": "TOOL: FunctionTool",
+          "location": {
+            "path": "infra/azure-deployment/main.py",
+            "line": 116
+          }
+        }
+      ]
+    },
+    {
+      "id": "b02b35f2-195c-4ebb-b75a-a49a93a96f65",
+      "name": "email_out",
+      "component_type": "PRIVILEGE",
+      "confidence": 0.88,
+      "metadata": {
+        "privilege_scope": "email_out",
+        "extras": {
+          "canonical_name": "privilege:email_out",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.88,
+          "detail": "PRIVILEGE: email_out \u2014 send_email() tool that POSTs to Azure Logic App to dispatch outbound email to user-specified address",
+          "location": {
+            "path": "enterprise_functions.py",
+            "line": 252
+          }
+        }
+      ]
+    },
+    {
+      "id": "063c96a8-0d7f-4674-9e83-783491d8797d",
+      "name": "network_out",
+      "component_type": "PRIVILEGE",
+      "confidence": 0.85,
+      "metadata": {
+        "privilege_scope": "network_out",
+        "extras": {
+          "canonical_name": "privilege:network_out",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "gt",
+          "confidence": 0.85,
+          "detail": "PRIVILEGE: network_out \u2014 requests.post() in send_email() and requests.get() calls to OpenWeatherMap API",
+          "location": {
+            "path": "enterprise_functions.py",
+            "line": 277
+          }
+        }
+      ]
+    },
+    {
+      "id": "4a5212ff-08c9-5917-abc7-6c66ab9deb47",
+      "name": "generic",
+      "component_type": "AUTH",
+      "confidence": 0.85,
+      "metadata": {
+        "extras": {
+          "canonical_name": "generic",
+          "adapter": "gt"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "AUTH: generic",
+          "location": {
+            "path": "enterprise_functions.py",
+            "line": 67
+          }
+        }
+      ]
+    }
+  ],
+  "edges": [],
+  "notes": "Updated 2026-03-07: added email_out and network_out PRIVILEGE nodes (enterprise_functions.py \u2014 send_email tool and weather API calls)."
+}
