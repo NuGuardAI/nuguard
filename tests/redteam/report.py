@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -51,7 +51,8 @@ def write_redteam_report(
 ) -> Path:
     """Render a Markdown report and write it to tests/output/; return the path."""
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-    ts = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    _now_local = datetime.now(timezone.utc).astimezone()
+    ts = _now_local.strftime("%Y%m%dT%H%M%SZ")
     slug = app_name.replace(" ", "_").replace("/", "-")
     out_path = OUTPUT_DIR / f"redteam_{slug}_{ts}.md"
 
@@ -61,7 +62,7 @@ def write_redteam_report(
     # --- Header ----------------------------------------------------------
     _h(f"# NuGuard Redteam E2E Report: {app_name}")
     _h(f"")
-    _h(f"**Generated:** {datetime.now(UTC).strftime('%Y-%m-%d %H:%M:%S UTC')}  ")
+    _h(f"**Generated:** {_now_local.strftime('%Y-%m-%d %H:%M:%S %Z')}  ")
     _h(f"**Target URL:** `{app_url}`  ")
     _h(f"**Chat / Primary Endpoint:** `{chat_path}`  ")
     _h(f"")
