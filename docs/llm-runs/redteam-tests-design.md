@@ -73,7 +73,7 @@ AGENT node → {
   connected_tools: [tool_ids],
   connected_datastores: [ds_ids],
   guardrail_ids: [guardrail_ids], # empty = unguarded
-  injection_risk_score: float,    # from Xelo SBOM
+  injection_risk_score: float,    # from SBOM
   framework: str,                 # langchain, crewai, openai_agents, etc.
 }
 
