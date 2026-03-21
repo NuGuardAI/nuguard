@@ -70,10 +70,39 @@ def _sbom_summary(sbom: object) -> dict:
     return {"node_counts": node_counts, "frameworks": frameworks, "use_case": use_case}
 
 
-def _generate_sbom(source_dir: Path, app_name: str):  # type: ignore[return]
-    """Generate SBOM synchronously and save to tests/output/sbom_{app_name}.json."""
+def _fixture_source_hash(fixture_dir: str) -> str:
+    """SHA-1 of the fixture's cached_files.json — used as a cache key for the SBOM.
+
+    Returns an empty string if the file cannot be read (disables caching).
+    """
+    import hashlib
+    cache_path = FIXTURES_DIR / fixture_dir / "cached_files.json"
+    try:
+        return hashlib.sha1(cache_path.read_bytes()).hexdigest()[:16]  # noqa: S324
+    except Exception:
+        return ""
+
+
+def _generate_sbom(source_dir: Path, app_name: str, fixture_dir: str = ""):  # type: ignore[return]
+    """Generate SBOM synchronously and save to tests/output/sbom_{app_name}.json.
+
+    If the fixture source (cached_files.json) has not changed since the last
+    run, the existing SBOM is reloaded from disk to avoid re-scanning.
+    Delete tests/output/sbom_{app_name}.json to force a full regeneration.
+    """
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
     sbom_path = OUTPUT_DIR / f"sbom_{app_name}.json"
+    hash_path = OUTPUT_DIR / f"sbom_{app_name}.hash"
+
+    # Cache hit: source unchanged and SBOM file exists
+    if fixture_dir and sbom_path.exists() and hash_path.exists():
+        current_hash = _fixture_source_hash(fixture_dir)
+        if current_hash and hash_path.read_text().strip() == current_hash:
+            _log.info(
+                "[%s] Source unchanged — reusing cached SBOM from %s", app_name, sbom_path
+            )
+            sbom = AiSbomSerializer.from_json(sbom_path.read_text(encoding="utf-8"))
+            return sbom, sbom_path
 
     _log.info("[%s] Generating SBOM from %s …", app_name, source_dir)
     extractor = AiSbomExtractor()
@@ -81,6 +110,12 @@ def _generate_sbom(source_dir: Path, app_name: str):  # type: ignore[return]
     sbom = extractor.extract_from_path(source_dir, sbom_config)
 
     sbom_path.write_text(AiSbomSerializer.to_json(sbom), encoding="utf-8")
+    # Write the hash so the next run can detect unchanged source
+    if fixture_dir:
+        current_hash = _fixture_source_hash(fixture_dir)
+        if current_hash:
+            hash_path.write_text(current_hash, encoding="utf-8")
+
     _log.info(
         "[%s] SBOM saved to %s (%d nodes)",
         app_name,
@@ -167,7 +202,7 @@ def _run_redteam(app_name: str) -> None:
         sbom = None
         sbom_summary: dict = {"node_counts": {}, "frameworks": [], "use_case": None}
         try:
-            sbom, sbom_path = _generate_sbom(runner.source_dir, app_name)
+            sbom, sbom_path = _generate_sbom(runner.source_dir, app_name, config.fixture_dir)
             sbom_summary = _sbom_summary(sbom)
             assert sbom_path.exists(), f"SBOM file not written: {sbom_path}"
         except Exception as exc:
