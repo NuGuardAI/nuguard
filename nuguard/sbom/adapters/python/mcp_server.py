@@ -245,6 +245,18 @@ class MCPServerAdapter(FrameworkAdapter):
             tool_name = _clean(call.args.get("name")) or call.assigned_to or f"tool_{call.line}"
             canon = canonicalize_text(f"mcp:tool:{tool_name}")
 
+            tool_meta: dict[str, Any] = {
+                "framework": "mcp-server",
+                "server_name": server_name or "unknown",
+                "decorator": f"@{call.receiver or 'server'}.tool()",
+                # No auth detected yet for this server → flag as no_auth_required
+                # (will be corrected to False by enricher if an AUTH node is present)
+                "no_auth_required": not bool(server_auth_kwarg),
+            }
+            # If the server has a configured host/port, record the MCP server URL
+            _srv_url = _build_server_url(server_host, server_port)
+            if _srv_url:
+                tool_meta["mcp_server_url"] = _srv_url
             tool_detections.append(
                 ComponentDetection(
                     component_type=ComponentType.TOOL,
@@ -253,11 +265,7 @@ class MCPServerAdapter(FrameworkAdapter):
                     adapter_name=self.name,
                     priority=self.priority,
                     confidence=0.92,
-                    metadata={
-                        "framework": "mcp-server",
-                        "server_name": server_name or "unknown",
-                        "decorator": f"@{call.receiver or 'server'}.tool()",
-                    },
+                    metadata=tool_meta,
                     file_path=file_path,
                     line=call.line,
                     snippet=f"@{call.receiver or 'server'}.tool()\ndef {tool_name}(...)",
@@ -334,6 +342,15 @@ class MCPServerAdapter(FrameworkAdapter):
         )
 
         return [fw_node, *tool_detections, *auth_detections, *endpoint_detections]
+
+
+def _build_server_url(host: str, port: str) -> str | None:
+    """Build an HTTP URL from host and port if at least one is non-empty."""
+    if host or port:
+        h = host or "localhost"
+        p = port or "8080"
+        return f"http://{h}:{p}"
+    return None
 
 
 def _clean(value: Any) -> str:

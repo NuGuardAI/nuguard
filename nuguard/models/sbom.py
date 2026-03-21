@@ -120,13 +120,47 @@ class NodeMetadata(BaseModel):
     data_classification: list[DataClassification] = []
     classified_tables: list[str] = []
     classified_fields: list[str] = []
+    # Typed sensitive-field lists for red-team pre-scoring and exfiltration tests.
+    # PII examples: name, email, ssn, credit_card_number, bank_account_number,
+    #               phone_number, date_of_birth, address, passport_number, ip_address
+    pii_fields: list[str] = []
+    # PHI examples: medical_record_number, diagnosis, prescription, lab_result,
+    #               treatment_date, insurance_member_id, provider_npi, icd_code
+    phi_fields: list[str] = []
+
+    # TOOL (risk attributes set by the graph enricher)
+    mcp_server_url: str | None = None
+    trust_level: str | None = None  # "trusted" | "untrusted" | "n/a"
+    no_auth_required: bool | None = None
+    high_privilege: bool | None = None
+    sql_injectable: bool | None = None
+    ssrf_possible: bool | None = None
+    accepts_external_url: bool | None = None  # tool accepts a URL parameter
+    reads_external_content: bool | None = None  # tool fetches remote content
+
+    # AGENT
+    system_prompt_excerpt: str | None = None
+    injection_risk_score: float | None = None
+
+    # GUARDRAIL
+    rules_excerpt: str | None = None
+    blocked_topics: list[str] = []
+    blocked_actions: list[str] = []
+    refusal_style: str | None = None
 
     # AUTH / API_ENDPOINT
     auth_type: str | None = None
     auth_class: str | None = None
+    auth_required: bool | None = None
+    auth_scope: str | None = None  # "user" | "admin" | "none"
     transport: str | None = None
     endpoint: str | None = None
     method: str | None = None
+    accepts_user_input: bool | None = None
+    returns_sensitive_data: bool | None = None
+    rate_limited: bool | None = None
+    idor_surface: bool | None = None  # path contains {user_id} / {tenant_id}
+    path_params: list[str] = []  # extracted path parameter names
 
     # PRIVILEGE
     privilege_scope: PrivilegeScope | None = None

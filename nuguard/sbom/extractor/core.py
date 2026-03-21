@@ -754,6 +754,58 @@ class AiSbomExtractor:
                 node.metadata.extras["model_card_url"] = acc.metadata["model_card_url"]
             if "api_endpoint" in acc.metadata and acc.metadata["api_endpoint"]:
                 node.metadata.extras["api_endpoint"] = acc.metadata["api_endpoint"]
+            # AGENT node typed fields
+            if acc.component_type == ComponentType.AGENT:
+                _spe = (
+                    acc.metadata.get("instructions_preview")   # openai_agents
+                    or acc.metadata.get("backstory_preview")   # crewai
+                    or acc.metadata.get("goal_preview")        # crewai fallback
+                    or acc.metadata.get("system_prompt_preview")
+                )
+                if _spe:
+                    node.metadata.system_prompt_excerpt = str(_spe)[:500]
+                _irs = acc.metadata.get("injection_risk_score")
+                if _irs is not None:
+                    node.metadata.injection_risk_score = float(_irs)
+            # GUARDRAIL node typed fields
+            if acc.component_type == ComponentType.GUARDRAIL:
+                if acc.metadata.get("rules_excerpt"):
+                    node.metadata.rules_excerpt = str(acc.metadata["rules_excerpt"])
+                _bt = acc.metadata.get("blocked_topics")
+                if isinstance(_bt, list) and _bt:
+                    node.metadata.blocked_topics = [str(t) for t in _bt]
+                _ba = acc.metadata.get("blocked_actions")
+                if isinstance(_ba, list) and _ba:
+                    node.metadata.blocked_actions = [str(a) for a in _ba]
+                if acc.metadata.get("refusal_style"):
+                    node.metadata.refusal_style = str(acc.metadata["refusal_style"])
+                # Derive rules_excerpt from known guardrail metadata when not explicitly provided
+                if not node.metadata.rules_excerpt:
+                    vc = acc.metadata.get("validator_class")
+                    guard_type = acc.metadata.get("guard_type") or acc.metadata.get(
+                        "guardrail_type"
+                    )
+                    if vc:
+                        node.metadata.rules_excerpt = f"Hub validator: {vc}"
+                    elif guard_type:
+                        node.metadata.rules_excerpt = f"Guard type: {guard_type}"
+            # TOOL node typed fields
+            if acc.component_type == ComponentType.TOOL:
+                if acc.metadata.get("mcp_server_url"):
+                    node.metadata.mcp_server_url = str(acc.metadata["mcp_server_url"])
+                if acc.metadata.get("trust_level"):
+                    node.metadata.trust_level = str(acc.metadata["trust_level"])
+                for _bool_field in (
+                    "no_auth_required",
+                    "high_privilege",
+                    "sql_injectable",
+                    "ssrf_possible",
+                    "accepts_external_url",
+                    "reads_external_content",
+                ):
+                    _v = acc.metadata.get(_bool_field)
+                    if _v is not None:
+                        setattr(node.metadata, _bool_field, bool(_v))
             # AUTH node typed fields
             if acc.component_type == ComponentType.AUTH:
                 if acc.metadata.get("auth_type"):
@@ -777,6 +829,26 @@ class AiSbomExtractor:
                     node.metadata.server_name = str(acc.metadata["server_name"])
                 if acc.metadata.get("method"):
                     node.metadata.method = str(acc.metadata["method"])
+                _ar = acc.metadata.get("auth_required")
+                if _ar is not None:
+                    node.metadata.auth_required = bool(_ar)
+                if acc.metadata.get("auth_scope"):
+                    node.metadata.auth_scope = str(acc.metadata["auth_scope"])
+                _aui = acc.metadata.get("accepts_user_input")
+                if _aui is not None:
+                    node.metadata.accepts_user_input = bool(_aui)
+                _rsd = acc.metadata.get("returns_sensitive_data")
+                if _rsd is not None:
+                    node.metadata.returns_sensitive_data = bool(_rsd)
+                _rl = acc.metadata.get("rate_limited")
+                if _rl is not None:
+                    node.metadata.rate_limited = bool(_rl)
+                _ids = acc.metadata.get("idor_surface")
+                if _ids is not None:
+                    node.metadata.idor_surface = bool(_ids)
+                _pp = acc.metadata.get("path_params")
+                if isinstance(_pp, list) and _pp:
+                    node.metadata.path_params = [str(p) for p in _pp]
             # server_name for all MCP FRAMEWORK/TOOL nodes
             if acc.metadata.get("framework") == "mcp-server":
                 if acc.metadata.get("server_name"):
@@ -791,6 +863,15 @@ class AiSbomExtractor:
                     node.metadata.classified_tables = acc.metadata["classified_tables"]
                 if acc.metadata.get("classified_fields"):
                     node.metadata.classified_fields = acc.metadata["classified_fields"]
+                    # Derive typed PII/PHI field lists for red-team pre-scoring
+                    cf = acc.metadata["classified_fields"]
+                    if isinstance(cf, dict):
+                        pii = [k for k, lbls in cf.items() if "PII" in lbls]
+                        phi = [k for k, lbls in cf.items() if "PHI" in lbls]
+                        if pii:
+                            node.metadata.pii_fields = pii
+                        if phi:
+                            node.metadata.phi_fields = phi
             # PRIVILEGE node typed fields
             if acc.component_type == ComponentType.PRIVILEGE:
                 if acc.metadata.get("privilege_scope"):
@@ -862,6 +943,10 @@ class AiSbomExtractor:
             doc.nodes.append(node)
 
         self._resolve_edges(doc, node_map)
+
+        # Post-extraction enrichment: derive risk attributes from graph topology
+        from ..enricher import enrich as _enrich_sbom
+        _enrich_sbom(doc)
 
         # Scan package manifest dependencies (pyproject.toml, requirements*.txt, package.json, …)
         doc.deps = DependencyScanner().scan(root)

@@ -260,6 +260,39 @@ class NodeMetadata(BaseModel):
         default=None,
         description="True when the tool accepts URL parameters that are fetched server-side (SSRF surface)",
     )
+    accepts_external_url: bool | None = Field(
+        default=None,
+        description="True when the tool has a URL/endpoint parameter that is passed to an outbound request",
+    )
+    reads_external_content: bool | None = Field(
+        default=None,
+        description="True when the tool fetches or reads content from an external source (web, email, GitHub, etc.)",
+    )
+    # AGENT node attributes (populated by agent adapters)
+    system_prompt_excerpt: str | None = Field(
+        default=None,
+        description=(
+            "First 500 characters of the agent's system prompt / instructions / backstory. "
+            "Used by the red-team scenario generator to craft context-authentic payloads."
+        ),
+    )
+    # GUARDRAIL node attributes (populated by guardrail adapters / enricher)
+    rules_excerpt: str | None = Field(
+        default=None,
+        description="Short description of the guardrail's rules, validator class, or blocking logic",
+    )
+    blocked_topics: list[str] | None = Field(
+        default=None,
+        description="Topics this guardrail is known to block (extracted by enricher or adapter)",
+    )
+    blocked_actions: list[str] | None = Field(
+        default=None,
+        description="Actions this guardrail is known to block (extracted by enricher or adapter)",
+    )
+    refusal_style: str | None = Field(
+        default=None,
+        description="How this guardrail normally refuses: 'hard_block', 'redirect', 'warn', etc.",
+    )
     # API_ENDPOINT node attributes (populated by HTTP/API adapters)
     auth_required: bool | None = Field(
         default=None,

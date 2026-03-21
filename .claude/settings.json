@@ -2,14 +2,11 @@
   "permissions": {
     "allow": [
       "Bash(*:*)",
-      "Bash(uv run *)",
-      "Bash(git *)",
-      "Bash(make *)",
       "Read",
       "Edit"
     ],
     "deny": [
-      "Bash(rm *)"
+      "Bash(rm:*)"
     ]
   }
 }
