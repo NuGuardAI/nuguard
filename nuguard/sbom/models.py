@@ -43,6 +43,29 @@ class Evidence(BaseModel):
     location: SourceLocation
 
 
+class ToolParameter(BaseModel):
+    """Schema for a single parameter accepted by a TOOL node.
+
+    Captured from function signatures and docstrings by the SBOM extractor.
+    Used by the redteam test generator to craft parameter-injection payloads
+    for TOOL_ABUSE scenarios.
+    """
+
+    name: str = Field(description="Parameter name as it appears in the function signature")
+    type: str | None = Field(
+        default=None,
+        description="Python/TypeScript type annotation string, e.g. 'str', 'int', 'dict'",
+    )
+    description: str | None = Field(
+        default=None,
+        description="Parameter description extracted from the function docstring",
+    )
+    required: bool = Field(
+        default=True,
+        description="True when the parameter has no default value",
+    )
+
+
 class NodeMetadata(BaseModel):
     """Typed + open-ended metadata attached to a Node."""
 
@@ -175,6 +198,36 @@ class NodeMetadata(BaseModel):
     trust_principals: list[str] | None = Field(
         default=None,
         description="Principals trusted to assume this role (AWS trust policy subjects, K8s binding subjects)",
+    )
+    # Redteam test generation fields
+    description: str | None = Field(
+        default=None,
+        description=(
+            "Human-readable description of this component. "
+            "For TOOL nodes: extracted from function docstring; used by the redteam "
+            "test generator to craft context-authentic parameter injection payloads. "
+            "For AGENT nodes: extracted from the agent's purpose/role description."
+        ),
+    )
+    parameters: list[ToolParameter] | None = Field(
+        default=None,
+        description=(
+            "For TOOL nodes: list of parameters accepted by this tool, extracted from "
+            "the function signature and docstring. Used by TOOL_ABUSE test scenarios "
+            "to craft parameter-injection payloads targeting each parameter."
+        ),
+    )
+    injection_risk_score: float | None = Field(
+        default=None,
+        ge=0.0,
+        le=1.0,
+        description=(
+            "For AGENT nodes: pre-computed injection risk score in [0, 1] set by the "
+            "graph enricher. Derived from: number of tools with no_auth_required or "
+            "high_privilege, presence of unguarded paths, reachable PII datastores, "
+            "and unguarded HITL triggers. Used by ScenarioGenerator to sort generated "
+            "test scenarios by expected impact."
+        ),
     )
     # MCP tool identification (populated by MCP adapters)
     mcp_server_url: str | None = Field(
@@ -405,12 +458,12 @@ class AiSbomDocument(BaseModel):
     model_config = ConfigDict(
         json_schema_extra={
             "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "$id": "https://nuguard.ai/schemas/aibom/1.3.0/aibom.schema.json",
+            "$id": "https://nuguard.ai/schemas/aibom/1.4.0/aibom.schema.json",
         }
     )
 
     schema_version: str = Field(
-        default="1.3.0",
+        default="1.4.0",
         description="AIBOM schema version (semver); bump when format changes",
     )
     generated_at: datetime = Field(
