@@ -51,6 +51,11 @@ redteam:
   # Use 5.0 with profile: ci for highest-signal scenarios only
   min_impact_score: 0.0
 
+  # Verbose report: include full per-scenario traces (inputs, outputs, selection
+  # rationale, risk scores) for troubleshooting. Also enabled by setting the
+  # NUGUARD_REDTEAM_VERBOSE=1 environment variable.
+  verbose: false
+
   # MCP server hostnames treated as trusted.
   # Servers absent from this list are classified 'untrusted' and eligible
   # as toxic-flow attack sources.

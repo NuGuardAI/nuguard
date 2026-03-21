@@ -2,14 +2,27 @@
 from __future__ import annotations
 
 import json
-import time
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from nuguard.models.finding import Finding, Severity
 
+if TYPE_CHECKING:
+    from nuguard.redteam.executor.orchestrator import ScenarioRecord
+
 OUTPUT_DIR = Path(__file__).resolve().parents[2] / "tests" / "output"
+
+def _format_response(raw: str) -> str:
+    """Try to pretty-print JSON; return the original string if it is not JSON."""
+    stripped = raw.strip()
+    if stripped.startswith(("{", "[")):
+        try:
+            return json.dumps(json.loads(stripped), indent=2)
+        except (json.JSONDecodeError, ValueError):
+            pass
+    return raw
+
 
 _SEV_BADGE = {
     Severity.CRITICAL: "🔴 CRITICAL",
@@ -33,6 +46,8 @@ def write_redteam_report(
     notes: str = "",
     policy_file: str | None = None,
     scenarios_executed: list[tuple[str, str, bool]] | None = None,
+    verbose: bool = False,
+    scenario_records: list["ScenarioRecord"] | None = None,
 ) -> Path:
     """Render a Markdown report and write it to tests/output/; return the path."""
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -191,9 +206,11 @@ def write_redteam_report(
                     # Response
                     response = step.get("response", "")
                     if response:
-                        _h(f"*Response (first 600 chars):*")
-                        _h(f"```")
-                        _h(response)
+                        formatted = _format_response(response)
+                        lang = "json" if formatted != response else ""
+                        _h(f"*Response:*")
+                        _h(f"```{lang}")
+                        _h(formatted)
                         _h(f"```")
                     _h(f"")
             _h("---")
@@ -206,6 +223,84 @@ def write_redteam_report(
         else:
             _h(f"_No findings detected in this scan run._")
         _h(f"")
+
+    # --- Verbose Scenario Details ----------------------------------------
+    if verbose and scenario_records:
+        _h(f"## Scenario Details (Verbose)")
+        _h(f"")
+        _h(
+            f"> Full input/output traces for all {len(scenario_records)} executed scenarios. "
+            f"Use this section to troubleshoot scenario selection, payloads, and responses."
+        )
+        _h(f"")
+        for i, rec in enumerate(scenario_records, 1):
+            rec_icon = (
+                "🔴" if rec.had_finding
+                else ("⚠️" if rec.chain_status == "aborted" else "✅")
+            )
+            _h(f"### {i}. {rec_icon} {rec.title}")
+            _h(f"")
+            _h(f"| Field | Value |")
+            _h(f"|-------|-------|")
+            _h(f"| **Goal type** | {rec.goal_type.replace('_', ' ').title()} |")
+            _h(f"| **Scenario type** | {rec.scenario_type.replace('_', ' ').title()} |")
+            _h(f"| **Impact score** | {rec.impact_score:.1f} / 10 |")
+            _h(f"| **Affected** | {rec.affected or '—'} |")
+            _h(f"| **Chain status** | {rec.chain_status} |")
+            _h(f"| **Finding raised** | {'Yes' if rec.had_finding else 'No'} |")
+            _h(f"")
+            _h(f"**Why this scenario was selected:** {rec.description}")
+            _h(f"")
+            if rec.steps:
+                _h(f"**Steps ({len(rec.steps)})**")
+                _h(f"")
+                for j, step in enumerate(rec.steps, 1):
+                    step_type = step.get("step_type", "?")
+                    description = step.get("description", "")
+                    succeeded = step.get("succeeded", False)
+                    status_icon_s = "✅" if succeeded else "❌"
+                    _h(f"**Step {j} — {status_icon_s} `{step_type}`** {description}")
+                    _h(f"")
+                    # Input
+                    if step.get("target_path"):
+                        method = step.get("method", "POST")
+                        path = step["target_path"]
+                        _h(f"*Input:* `{method} {path}`")
+                        if step.get("params"):
+                            _h(f"```json")
+                            _h(json.dumps(step["params"], indent=2))
+                            _h(f"```")
+                        if step.get("request_body"):
+                            _h(f"```json")
+                            _h(json.dumps(step["request_body"], indent=2))
+                            _h(f"```")
+                        if step.get("status_code") is not None:
+                            _h(f"*HTTP status:* `{step['status_code']}`")
+                    else:
+                        payload = step.get("payload", "")
+                        if payload:
+                            _h(f"*Input payload:*")
+                            _h(f"```")
+                            _h(payload)
+                            _h(f"```")
+                    # Tool calls
+                    if step.get("tool_calls"):
+                        _h(f"*Tool calls:* `{', '.join(step['tool_calls'])}`")
+                    # Output
+                    response = step.get("response", "")
+                    if response:
+                        formatted = _format_response(response)
+                        lang = "json" if formatted != response else ""
+                        _h(f"*Output:*")
+                        _h(f"```{lang}")
+                        _h(formatted)
+                        _h(f"```")
+                    _h(f"")
+            else:
+                _h(f"_No steps executed (scenario errored before execution)._")
+                _h(f"")
+            _h(f"---")
+            _h(f"")
 
     # --- Footer ----------------------------------------------------------
     _h(f"---")

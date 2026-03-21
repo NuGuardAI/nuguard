@@ -2,14 +2,19 @@
 from __future__ import annotations
 
 import logging
-import uuid
+import re
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from nuguard.models.exploit_chain import GoalType
 from nuguard.models.finding import Finding
 from nuguard.models.policy import CognitivePolicy
 from nuguard.models.sbom import NodeType
-from nuguard.redteam.risk_engine import compliance_mapper, remediation_generator, severity_scorer
+from nuguard.redteam.risk_engine import (
+    compliance_mapper,
+    remediation_generator,
+    severity_scorer,
+)
 from nuguard.redteam.scenarios.generator import ScenarioGenerator
 from nuguard.redteam.scenarios.scenario_types import AttackScenario
 from nuguard.redteam.target.action_logger import ActionLogger
@@ -20,6 +25,27 @@ from nuguard.sbom.models import AiSbomDocument
 from .executor import AttackExecutor, StepResult
 
 _log = logging.getLogger(__name__)
+
+
+@dataclass
+class ScenarioRecord:
+    """Verbose per-scenario execution record for troubleshooting reports."""
+
+    title: str
+    goal_type: str
+    scenario_type: str
+    description: str  # why the scenario was generated (derived from SBOM signals)
+    impact_score: float
+    affected: str  # resolved "Name (TYPE)" labels for target nodes
+    chain_status: str  # completed | aborted | failed
+    had_finding: bool
+    steps: list[dict] = field(default_factory=list)  # per-step input/output dicts
+
+
+def _finding_id(title: str) -> str:
+    """Return a slug-based finding ID derived from the title."""
+    slug = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-")
+    return slug[:80]
 
 
 def _discover_chat_config(
@@ -84,9 +110,12 @@ class RedteamOrchestrator:
         # Populated by run() — scenarios executed and their titles
         self.scenarios_run: int = 0
         self.scenarios_executed: list[tuple[str, str, bool]] = []  # (title, goal_type, had_finding)
-        # Node lookup: id → "name (TYPE)" built lazily on first use
+        # Verbose per-scenario records — populated regardless of whether a finding was raised
+        self.scenario_records: list[ScenarioRecord] = []
+        # Node lookup: str(id) → "name (TYPE)" — use str() so UUID objects and
+        # string IDs both resolve correctly against scenario.target_node_ids
         self._node_label: dict[str, str] = {
-            node.id: f"{node.name} ({node.component_type.value})"
+            str(node.id): f"{node.name} ({node.component_type.value})"
             for node in sbom.nodes
             if node.id
         }
@@ -147,8 +176,9 @@ class RedteamOrchestrator:
                 canary=canary_scanner,
                 logger=logger,
             )
-            findings, executed = await self._run_scenarios(scenarios, executor)
+            findings, executed, records = await self._run_scenarios(scenarios, executor)
             self.scenarios_executed.extend(executed)
+            self.scenario_records.extend(records)
 
             # 5. Escalation pass: if no findings, run lower-scored scenarios that
             #    were filtered out in the CI pass (minimum impact lowered to 3.0)
@@ -164,10 +194,11 @@ class RedteamOrchestrator:
                         len(escalation_scenarios),
                     )
                     self.scenarios_run += len(escalation_scenarios)
-                    findings, escalation_executed = await self._run_scenarios(
+                    findings, escalation_executed, escalation_records = await self._run_scenarios(
                         escalation_scenarios, executor
                     )
                     self.scenarios_executed.extend(escalation_executed)
+                    self.scenario_records.extend(escalation_records)
 
         _log.info("Scan complete: %d findings", len(findings))
         return findings
@@ -176,44 +207,69 @@ class RedteamOrchestrator:
         self,
         scenarios: list[AttackScenario],
         executor: AttackExecutor,
-    ) -> tuple[list[Finding], list[tuple[str, str, bool]]]:
-        """Execute a list of scenarios and return (findings, executed_records).
+    ) -> tuple[list[Finding], list[tuple[str, str, bool]], list[ScenarioRecord]]:
+        """Execute a list of scenarios and return (findings, executed_records, scenario_records).
 
         Each executed_record is (title, goal_type, had_finding).
+        ScenarioRecord captures verbose per-scenario data for troubleshooting.
         """
         findings: list[Finding] = []
         executed: list[tuple[str, str, bool]] = []
+        records: list[ScenarioRecord] = []
         for scenario in scenarios:
             if scenario.chain is None:
                 continue
+            affected = ", ".join(
+                self._node_label.get(nid, nid) for nid in scenario.target_node_ids[:2]
+            )
             try:
                 chain, step_results = await executor.run(scenario.chain)
-                new_findings = self._build_findings(scenario, chain, step_results)
+                step_details = self._build_step_details(step_results)
+                new_findings = self._build_findings(scenario, chain, step_results, step_details)
+                had_finding = bool(new_findings)
                 findings.extend(new_findings)
-                executed.append((scenario.title, scenario.goal_type.value, bool(new_findings)))
+                executed.append((scenario.title, scenario.goal_type.value, had_finding))
+                records.append(
+                    ScenarioRecord(
+                        title=scenario.title,
+                        goal_type=scenario.goal_type.value,
+                        scenario_type=scenario.scenario_type.value,
+                        description=scenario.description,
+                        impact_score=scenario.impact_score,
+                        affected=affected,
+                        chain_status=chain.status,
+                        had_finding=had_finding,
+                        steps=step_details,
+                    )
+                )
             except Exception as exc:
                 _log.warning(
                     "Scenario %s failed: %s", scenario.scenario_id, exc
                 )
                 executed.append((scenario.title, scenario.goal_type.value, False))
-        return findings, executed
+                records.append(
+                    ScenarioRecord(
+                        title=scenario.title,
+                        goal_type=scenario.goal_type.value,
+                        scenario_type=scenario.scenario_type.value,
+                        description=scenario.description,
+                        impact_score=scenario.impact_score,
+                        affected=affected,
+                        chain_status="failed",
+                        had_finding=False,
+                        steps=[],
+                    )
+                )
+        return findings, executed, records
 
-    def _build_findings(
-        self,
-        scenario: AttackScenario,
-        chain: object,
-        step_results: list[StepResult],
-    ) -> list[Finding]:
-        """Convert scenario execution results into Finding objects."""
-        findings: list[Finding] = []
+    def _build_step_details(self, step_results: list[StepResult]) -> list[dict]:
+        """Build a list of per-step detail dicts from executor results.
 
-        # Collect violations from all steps and build per-step detail records
-        all_violations = []
-        canary_hits: list[str] = []
-        step_details: list[dict] = []
+        Each dict contains the step input (payload or HTTP request) and output
+        (response, status code, tool calls) plus a success flag.
+        """
+        details: list[dict] = []
         for sr in step_results:
-            all_violations.extend(sr.policy_violations)
-            canary_hits.extend(sr.canary_hits)
             step = sr.step
             detail: dict = {
                 "step_type": step.step_type,
@@ -236,7 +292,24 @@ class RedteamOrchestrator:
                 detail["tool_calls"] = [
                     tc.get("name", tc.get("type", str(tc))) for tc in sr.tool_calls
                 ]
-            step_details.append(detail)
+            details.append(detail)
+        return details
+
+    def _build_findings(
+        self,
+        scenario: AttackScenario,
+        chain: object,
+        step_results: list[StepResult],
+        step_details: list[dict],
+    ) -> list[Finding]:
+        """Convert scenario execution results into Finding objects."""
+        findings: list[Finding] = []
+
+        all_violations = []
+        canary_hits: list[str] = []
+        for sr in step_results:
+            all_violations.extend(sr.policy_violations)
+            canary_hits.extend(sr.canary_hits)
 
         # Resolve human-readable component labels for this scenario's target nodes
         affected = ", ".join(
@@ -250,10 +323,11 @@ class RedteamOrchestrator:
                 canary_verbatim=True,
                 phi_exposed=scenario.goal_type == GoalType.DATA_EXFILTRATION,
             )
+            canary_title = f"Canary Value Exfiltrated — {scenario.title}"
             findings.append(
                 Finding(
-                    finding_id=str(uuid.uuid4()),
-                    title=f"Canary Value Exfiltrated — {scenario.title}",
+                    finding_id=_finding_id(canary_title),
+                    title=canary_title,
                     severity=sev,
                     description=(
                         f"Canary value(s) {canary_hits[:3]} were found in the agent response, "
@@ -277,10 +351,11 @@ class RedteamOrchestrator:
         # Policy violation findings
         for violation in all_violations:
             sev = severity_scorer.score_finding(scenario.goal_type)
+            violation_title = f"{violation.type.replace('_', ' ').title()} — {scenario.title}"
             findings.append(
                 Finding(
-                    finding_id=str(uuid.uuid4()),
-                    title=f"{violation.type.replace('_', ' ').title()} — {scenario.title}",
+                    finding_id=_finding_id(violation_title),
+                    title=violation_title,
                     severity=sev,
                     description=violation.evidence,
                     affected_component=affected,
@@ -312,7 +387,7 @@ class RedteamOrchestrator:
                 sev = severity_scorer.score_finding(scenario.goal_type)
                 findings.append(
                     Finding(
-                        finding_id=str(uuid.uuid4()),
+                        finding_id=_finding_id(scenario.title),
                         title=scenario.title,
                         severity=sev,
                         description=(

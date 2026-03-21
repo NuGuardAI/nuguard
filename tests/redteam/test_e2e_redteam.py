@@ -21,9 +21,10 @@ from pathlib import Path
 
 import pytest
 
+from nuguard.config import load_config
 from nuguard.models.policy import CognitivePolicy
 from nuguard.policy.parser import parse_policy
-from nuguard.redteam.executor.orchestrator import RedteamOrchestrator
+from nuguard.redteam.executor.orchestrator import RedteamOrchestrator, ScenarioRecord
 from nuguard.sbom.extractor.core import AiSbomExtractor
 from nuguard.sbom.extractor.config import AiSbomConfig
 from nuguard.sbom.serializer import AiSbomSerializer
@@ -35,8 +36,13 @@ _log = logging.getLogger(__name__)
 
 OUTPUT_DIR = Path(__file__).resolve().parents[2] / "tests" / "output"
 
-REDTEAM_PROFILE = os.getenv("NUGUARD_REDTEAM_PROFILE", "ci")
+_cfg = load_config()
+
+REDTEAM_PROFILE = os.getenv("NUGUARD_REDTEAM_PROFILE", _cfg.redteam_profile)
 _USE_LLM = bool(os.getenv("GEMINI_API_KEY") or os.getenv("LITELLM_API_KEY"))
+# nuguard.yaml redteam.verbose takes precedence; env var NUGUARD_REDTEAM_VERBOSE
+# acts as a fallback so users can opt in without editing the config file.
+_VERBOSE = _cfg.redteam_verbose or bool(os.getenv("NUGUARD_REDTEAM_VERBOSE"))
 
 
 # ---------------------------------------------------------------------------
@@ -50,7 +56,8 @@ def _missing_env_vars(names: list[str]) -> list[str]:
 def _sbom_summary(sbom: object) -> dict:
     node_counts: dict[str, int] = {}
     for node in getattr(sbom, "nodes", []):
-        ctype = str(getattr(node, "component_type", "UNKNOWN"))
+        ct = getattr(node, "component_type", None)
+        ctype = ct.value if hasattr(ct, "value") else str(ct or "UNKNOWN")
         node_counts[ctype] = node_counts.get(ctype, 0) + 1
 
     summary = getattr(sbom, "summary", None)
@@ -165,6 +172,7 @@ def _run_redteam(app_name: str) -> None:
         findings = []
         scenarios_generated = 0
         scenarios_executed: list[tuple[str, str, bool]] = []
+        scenario_records: list[ScenarioRecord] = []
         if runner.started and sbom is not None:
             try:
                 orchestrator = RedteamOrchestrator(
@@ -179,19 +187,21 @@ def _run_redteam(app_name: str) -> None:
                 findings = asyncio.run(orchestrator.run())
                 scenarios_generated = orchestrator.scenarios_run
                 scenarios_executed = orchestrator.scenarios_executed
+                scenario_records = orchestrator.scenario_records
             except Exception as exc:
                 _log.warning("[%s] Redteam scan failed: %s", app_name, exc)
 
         _write_report(
             config, runner, sbom_summary, scenarios_generated, findings,
             time.monotonic() - start_time, policy_file, scenarios_executed,
+            scenario_records=scenario_records,
         )
 
     finally:
         runner.teardown()
 
 
-def _write_report(config, runner, sbom_summary, scenarios_generated, findings, scan_duration, policy_file, scenarios_executed=None):  # type: ignore[no-untyped-def]
+def _write_report(config, runner, sbom_summary, scenarios_generated, findings, scan_duration, policy_file, scenarios_executed=None, scenario_records=None):  # type: ignore[no-untyped-def]
     report_path = write_redteam_report(
         app_name=config.name,
         app_url=runner.base_url,
@@ -205,6 +215,8 @@ def _write_report(config, runner, sbom_summary, scenarios_generated, findings, s
         notes=config.notes,
         policy_file=policy_file,
         scenarios_executed=scenarios_executed,
+        verbose=_VERBOSE,
+        scenario_records=scenario_records,
     )
     _log.info("[%s] Report written to %s", config.name, report_path)
     assert report_path.exists(), f"Report was not written to {report_path}"

@@ -87,6 +87,8 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_scenarios"] = redteam["scenarios"]
     if "mcp_trusted_servers" in redteam:
         flat["mcp_trusted_servers"] = redteam["mcp_trusted_servers"]
+    if "verbose" in redteam:
+        flat["redteam_verbose"] = bool(redteam["verbose"])
 
     # Analyze section
     analyze = data.get("analyze", {}) or {}
@@ -194,6 +196,14 @@ class NuGuardConfig(BaseSettings):
             "MCP server hostnames treated as trusted. "
             "Servers absent from this list are classified 'untrusted' "
             "and eligible as toxic-flow sources (yaml: redteam.mcp_trusted_servers)."
+        ),
+    )
+    redteam_verbose: bool = Field(
+        default=False,
+        description=(
+            "Include full per-scenario traces (inputs, outputs, selection rationale, "
+            "risk scores) in the redteam report (yaml: redteam.verbose). "
+            "Also enabled by NUGUARD_REDTEAM_VERBOSE=1 env var."
         ),
     )
 
