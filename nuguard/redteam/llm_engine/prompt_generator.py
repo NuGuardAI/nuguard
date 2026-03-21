@@ -134,17 +134,26 @@ class LLMPromptGenerator:
     async def enrich_scenario(self, scenario: "AttackScenario") -> list[str]:
         """Return LLM-generated payload variants for the scenario's primary INJECT step."""
         prompt = _build_user_prompt(scenario, self._sbom, self._policy, self._n_variants)
+        label = (
+            f"payload-gen | scenario={scenario.title!r} "
+            f"goal={scenario.goal_type.value} type={scenario.scenario_type.value}"
+        )
+        _log.debug("Generating %d LLM payloads for scenario %r", self._n_variants, scenario.title)
         try:
-            raw = await self._llm.complete(prompt, system=_SYSTEM_PROMPT)
+            raw = await self._llm.complete(prompt, system=_SYSTEM_PROMPT, label=label)
             if raw.startswith("[NUGUARD_CANNED_RESPONSE]"):
                 return []
             payloads = _parse_payloads(raw)
             _log.debug(
-                "Generated %d payloads for scenario %s", len(payloads), scenario.scenario_id
+                "payload-gen done | scenario=%r → %d payloads generated",
+                scenario.title,
+                len(payloads),
             )
             return payloads[: self._n_variants]
         except Exception as exc:
-            _log.warning("LLM payload generation failed for %s: %s", scenario.scenario_id, exc)
+            _log.warning(
+                "payload-gen failed | scenario=%r: %s", scenario.title, exc
+            )
             return []
 
     async def enrich_all(

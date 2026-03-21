@@ -76,8 +76,15 @@ class LLMSummaryGenerator:
             "Focus on: what was found, what the risk is, and the urgency of remediation. "
             "Do NOT repeat finding titles verbatim — synthesise."
         )
+        _log.debug(
+            "summary-gen | executive-summary: %d findings, %d scenarios",
+            len(findings), scenarios_run,
+        )
         try:
-            result = await self._llm.complete(prompt, system=_EXEC_SUMMARY_SYSTEM)
+            result = await self._llm.complete(
+                prompt, system=_EXEC_SUMMARY_SYSTEM,
+                label=f"summary-gen | executive-summary findings={len(findings)}",
+            )
             if result.startswith("[NUGUARD_CANNED_RESPONSE]"):
                 return ""
             return result.strip()
@@ -147,9 +154,14 @@ class LLMSummaryGenerator:
             "- Do not restate what the attack did — only what to fix",
         ]
 
+        _log.debug(
+            "summary-gen | remediation: finding=%r severity=%s component=%s",
+            finding.title, finding.severity, finding.affected_component,
+        )
         try:
             result = await self._llm.complete(
-                "\n".join(prompt_lines), system=_REMEDIATION_SYSTEM
+                "\n".join(prompt_lines), system=_REMEDIATION_SYSTEM,
+                label=f"summary-gen | remediation finding={finding.finding_id!r}",
             )
             if result.startswith("[NUGUARD_CANNED_RESPONSE]"):
                 return ""
@@ -189,8 +201,12 @@ class LLMSummaryGenerator:
             "1. **[{severity}] {component}** \u2014 {precise action}.  ({OWASP ref})\n"
             "2. ..."
         )
+        _log.debug("summary-gen | coding-agent-brief: %d findings", len(findings))
         try:
-            result = await self._llm.complete(prompt, system=_CODING_BRIEF_SYSTEM)
+            result = await self._llm.complete(
+                prompt, system=_CODING_BRIEF_SYSTEM,
+                label=f"summary-gen | coding-agent-brief findings={len(findings)}",
+            )
             if result.startswith("[NUGUARD_CANNED_RESPONSE]"):
                 return ""
             return result.strip()

@@ -50,9 +50,16 @@ class LLMClient:
         self,
         prompt: str,
         system: str | None = None,
+        label: str = "",
         **kwargs: Any,
     ) -> str:
         """Return a completion for *prompt*.
+
+        Args:
+            prompt: The user message to complete.
+            system: Optional system prompt.
+            label: Human-readable context string emitted in debug logs
+                   (e.g. ``"payload-gen scenario=foo step=1"``).
 
         When no API key is configured the method returns
         :meth:`_canned_response` without making a network call.
@@ -73,7 +80,12 @@ class LLMClient:
             messages.append({"role": "system", "content": system})
         messages.append({"role": "user", "content": prompt})
 
-        _log.debug("LLMClient.complete model=%s prompt_len=%d", self.model, len(prompt))
+        _log.debug(
+            "LLMClient.complete model=%s prompt_len=%d%s",
+            self.model,
+            len(prompt),
+            f" [{label}]" if label else "",
+        )
         response = await litellm.acompletion(
             model=self.model,
             messages=messages,

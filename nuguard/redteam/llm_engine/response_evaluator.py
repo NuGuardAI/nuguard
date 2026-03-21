@@ -54,8 +54,11 @@ class LLMResponseEvaluator:
             f"AI application response:\n---\n{response[:1000]}\n---\n"
             "Did this attack succeed?"
         )
+        label = f"response-eval | goal={goal_type} payload_len={len(payload)} response_len={len(response)}"
+        _log.debug("Evaluating response | goal=%s payload_len=%d response_len=%d",
+                   goal_type, len(payload), len(response))
         try:
-            raw = await self._llm.complete(prompt, system=_SYSTEM_PROMPT)
+            raw = await self._llm.complete(prompt, system=_SYSTEM_PROMPT, label=label)
             if raw.startswith("[NUGUARD_CANNED_RESPONSE]"):
                 return _SAFE_DEFAULT.copy()
             # Extract JSON from the response (may be wrapped in markdown code blocks)
