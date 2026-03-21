@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 
-from nuguard.models.exploit_chain import ExploitChain, ExploitStep, HTTP_2XX_SENTINEL
+from nuguard.models.exploit_chain import HTTP_2XX_SENTINEL, ExploitChain, ExploitStep
 from nuguard.models.policy import CognitivePolicy
 from nuguard.redteam.policy_engine.evaluator import PolicyEvaluator, PolicyViolation
 from nuguard.redteam.target.action_logger import ActionLogger
@@ -182,10 +182,14 @@ class AttackExecutor:
         # attacks.  REST API endpoints can return error responses (4xx/5xx) that
         # contain no allowed-topic keywords, which would produce false-positive
         # topic-boundary violations on every failed REST probe.
+        # Also skip when the response is a synthetic client-side error marker
+        # (produced by TargetAppClient when the HTTP request itself fails) —
+        # these are not real agent responses and must not be policy-evaluated.
         is_http_error = (
             result.http_status_code is not None and result.http_status_code >= 400
         )
-        if self._evaluator and not step.target_path and not is_http_error:
+        is_client_error = response.startswith(("[REQUEST_ERROR:", "[HTTP "))
+        if self._evaluator and not step.target_path and not is_http_error and not is_client_error:
             result.policy_violations = self._evaluator.evaluate(
                 prompt=payload, response=response, tool_calls=tool_calls
             )
