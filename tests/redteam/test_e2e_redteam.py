@@ -21,12 +21,14 @@ from pathlib import Path
 
 import pytest
 
+from nuguard.models.policy import CognitivePolicy
+from nuguard.policy.parser import parse_policy
 from nuguard.redteam.executor.orchestrator import RedteamOrchestrator
 from nuguard.sbom.extractor.core import AiSbomExtractor
 from nuguard.sbom.extractor.config import AiSbomConfig
 from nuguard.sbom.serializer import AiSbomSerializer
 
-from .app_runner import APP_CONFIGS, AppRunner
+from .app_runner import APP_CONFIGS, FIXTURES_DIR, AppRunner
 from .report import write_redteam_report
 
 _log = logging.getLogger(__name__)
@@ -81,15 +83,41 @@ def _generate_sbom(source_dir: Path, app_name: str):  # type: ignore[return]
     return sbom, sbom_path
 
 
+def _load_policy(config: "AppConfig") -> CognitivePolicy | None:  # type: ignore[name-defined]
+    """Load and parse a CognitivePolicy from the fixture's static directory.
+
+    Checks (in order):
+      1. config.policy_file relative to the fixture dir (explicitly configured)
+      2. cognitive_policy.md at the fixture dir root (auto-detect fallback)
+    Returns None if no policy file is found.
+    """
+    candidates = []
+    if config.policy_file:
+        candidates.append(FIXTURES_DIR / config.fixture_dir / config.policy_file)
+    # Always try the canonical name as a fallback
+    candidates.append(FIXTURES_DIR / config.fixture_dir / "cognitive_policy.md")
+
+    for path in candidates:
+        if path.exists():
+            try:
+                policy = parse_policy(path.read_text(encoding="utf-8"))
+                _log.info("[%s] Loaded cognitive policy from %s", config.name, path)
+                return policy
+            except Exception as exc:
+                _log.warning("[%s] Failed to parse policy %s: %s", config.name, path, exc)
+    return None
+
+
 def _run_redteam(app_name: str) -> None:
     """Core E2E logic shared by all per-app tests.
 
     Order of operations:
       1. Materialize fixture source into a temp dir
-      2. Generate SBOM from full source root → save to tests/output/sbom_{app}.json
-      3. Start the app subprocess and wait for health
-      4. Run RedteamOrchestrator with the saved SBOM against the live endpoint
-      5. Write Markdown report to tests/output/
+      2. Load cognitive policy from fixture dir (if present)
+      3. Generate SBOM from full source root → save to tests/output/sbom_{app}.json
+      4. Start the app subprocess and wait for health
+      5. Run RedteamOrchestrator (with SBOM + policy) against the live endpoint
+      6. Write Markdown report to tests/output/
     """
     config = APP_CONFIGS[app_name]
     runner = AppRunner(config)
@@ -105,7 +133,13 @@ def _run_redteam(app_name: str) -> None:
         return
 
     try:
-        # Step 2: generate SBOM from the full repo root and persist it
+        # Step 2: load cognitive policy from the static fixture directory
+        policy: CognitivePolicy | None = _load_policy(config)
+        policy_file: str | None = (
+            config.policy_file or ("cognitive_policy.md" if policy else None)
+        )
+
+        # Step 3: generate SBOM from the full repo root and persist it
         sbom = None
         sbom_summary: dict = {"node_counts": {}, "frameworks": [], "use_case": None}
         try:
@@ -115,7 +149,7 @@ def _run_redteam(app_name: str) -> None:
         except Exception as exc:
             _log.warning("[%s] SBOM generation failed: %s", app_name, exc)
 
-        # Step 3: start the app
+        # Step 4: start the app
         try:
             runner._ensure_venv()
             runner._start_process()
@@ -127,7 +161,7 @@ def _run_redteam(app_name: str) -> None:
             _log.warning("[%s] App failed to start: %s", app_name, exc)
             runner._kill_process()
 
-        # Step 4: run redteam scenarios using the SBOM
+        # Step 5: run redteam scenarios using the SBOM + cognitive policy
         findings = []
         scenarios_generated = 0
         scenarios_executed: list[tuple[str, str, bool]] = []
@@ -136,6 +170,7 @@ def _run_redteam(app_name: str) -> None:
                 orchestrator = RedteamOrchestrator(
                     sbom=sbom,
                     target_url=runner.base_url,
+                    policy=policy,
                     profile=REDTEAM_PROFILE,
                     chat_path=config.chat_path,
                     chat_payload_key=config.chat_payload_key,
@@ -146,13 +181,6 @@ def _run_redteam(app_name: str) -> None:
                 scenarios_executed = orchestrator.scenarios_executed
             except Exception as exc:
                 _log.warning("[%s] Redteam scan failed: %s", app_name, exc)
-
-        # Step 5: write report
-        policy_file: str | None = None
-        if config.policy_file and runner.started:
-            policy_path = runner.source_dir / config.policy_file
-            if policy_path.exists():
-                policy_file = config.policy_file
 
         _write_report(
             config, runner, sbom_summary, scenarios_generated, findings,
