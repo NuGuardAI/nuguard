@@ -15,22 +15,27 @@ redteam:
   # prognosis_search via DuckDuckGo → specialist_lookup → recommend →
   # fetch_doctor_details), each making GPT-4 calls. The default 30 s timeout
   # fires before the chain completes; 180 s gives enough headroom.
-  request_timeout: 180
+  request_timeout: 240
 
   # Environment variables injected into the healthcare app subprocess.
-  # DATABASE_URL is required to exercise the DB-backed endpoints:
+  # The app uses psycopg2 with individual DB_* vars (not DATABASE_URL).
+  # Credentials match the docker-compose.yml defaults for the bundled Postgres image.
+  #
+  # DB-backed endpoints that require a running Postgres instance:
   #   POST /login
   #   GET  /patient-details/{user_id}
   #   GET  /medical-history/{user_id}
   #   POST /appointments
   #
-  # Provide a PostgreSQL URL via env var to keep credentials out of this file:
-  #   export DATABASE_URL="postgresql://user:password@localhost:5432/healthcare"
-  #
-  # For local development a pre-seeded test database is recommended.
-  # Schema is auto-created by SQLAlchemy on startup when DATABASE_URL is set.
+  # To start the database locally:
+  #   docker-compose up -d db
+  #   (from the Healthcare-voice-agent repo root)
   app_env:
-    DATABASE_URL: ${DATABASE_URL}
+    DB_HOST: localhost
+    DB_PORT: "5432"
+    DB_NAME: healthcare
+    DB_USER: fastapi_user
+    DB_PASSWORD: yourpassword
 
     # Optional: suppress verbose LangGraph/LangChain startup logs from the app
     LOG_LEVEL: warning

@@ -182,13 +182,12 @@ APP_CONFIGS: dict[str, AppConfig] = {
         health_path="/api/health",
         chat_path="/run_langgraph",
         required_env_vars=["OPENAI_API_KEY"],
-        optional_env_vars={
-            "DATABASE_URL": "PostgreSQL for patient data (app starts without it; DB calls fail)",
-        },
+        optional_env_vars={},
         policy_file="cognitive_policy.md",
         notes=(
             "Healthcare LangGraph voice agent. "
-            "DB-backed endpoints (/patient-details, /triage) need DATABASE_URL."
+            "DB-backed endpoints (/patient-details, /triage) need Postgres — "
+            "run 'docker-compose up -d db' from the fixture repo."
         ),
         chat_payload_key="phrases",       # POST /run_langgraph {"phrases": ["..."]}
         chat_payload_list=True,
