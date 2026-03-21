@@ -576,6 +576,223 @@
           "description": "Principals trusted to assume this role (AWS trust policy subjects, K8s binding subjects)",
           "title": "Trust Principals"
         },
+        "mcp_server_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "URL of the MCP server this tool belongs to, e.g. 'http://mcp.example.com'",
+          "title": "Mcp Server Url"
+        },
+        "trust_level": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "MCP server trust classification set by the graph enricher: 'trusted' | 'untrusted' | 'n/a'. All external MCP servers are 'untrusted' unless listed in redteam.mcp_trusted_servers in nuguard.yaml.",
+          "title": "Trust Level"
+        },
+        "no_auth_required": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when the tool or endpoint is invocable without authentication",
+          "title": "No Auth Required"
+        },
+        "high_privilege": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when the tool has access to administrative or cross-tenant resources",
+          "title": "High Privilege"
+        },
+        "sql_injectable": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when the tool constructs SQL queries from agent-provided string parameters",
+          "title": "Sql Injectable"
+        },
+        "ssrf_possible": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when the tool accepts URL parameters that are fetched server-side (SSRF surface)",
+          "title": "Ssrf Possible"
+        },
+        "auth_required": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when this API endpoint requires authentication",
+          "title": "Auth Required"
+        },
+        "auth_scope": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "OAuth2 scope or role required to call this endpoint: 'user' | 'admin' | 'none'",
+          "title": "Auth Scope"
+        },
+        "accepts_user_input": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when this endpoint accepts user-controlled input in body or query params",
+          "title": "Accepts User Input"
+        },
+        "returns_sensitive_data": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when this endpoint returns PII, PHI, or other sensitive data",
+          "title": "Returns Sensitive Data"
+        },
+        "rate_limited": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when rate limiting is configured for this endpoint",
+          "title": "Rate Limited"
+        },
+        "idor_surface": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when this endpoint has user- or tenant-scoped path parameters such as {user_id} or {tenant_id}",
+          "title": "Idor Surface"
+        },
+        "path_params": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Path parameter names extracted from the endpoint URL template, e.g. ['user_id', 'tenant_id']",
+          "title": "Path Params"
+        },
+        "pii_fields": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Flat list of PII field names in this datastore, e.g. ['name', 'email', 'ssn']. Derived from classified_fields by the graph enricher.",
+          "title": "Pii Fields"
+        },
+        "phi_fields": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Flat list of PHI field names in this datastore, e.g. ['diagnosis', 'medication', 'lab_result']. Derived from classified_fields by the graph enricher.",
+          "title": "Phi Fields"
+        },
+        "access_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Datastore access mode inferred from ACCESSES edge: 'read' | 'write' | 'readwrite'",
+          "title": "Access Type"
+        },
         "extras": {
           "additionalProperties": true,
           "description": "Adapter-specific key/value pairs (provider, model_family, version, \u2026)",

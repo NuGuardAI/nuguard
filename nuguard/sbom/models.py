@@ -176,6 +176,93 @@ class NodeMetadata(BaseModel):
         default=None,
         description="Principals trusted to assume this role (AWS trust policy subjects, K8s binding subjects)",
     )
+    # MCP tool identification (populated by MCP adapters)
+    mcp_server_url: str | None = Field(
+        default=None,
+        description="URL of the MCP server this tool belongs to, e.g. 'http://mcp.example.com'",
+    )
+    trust_level: str | None = Field(
+        default=None,
+        description=(
+            "MCP server trust classification set by the graph enricher: "
+            "'trusted' | 'untrusted' | 'n/a'. "
+            "All external MCP servers are 'untrusted' unless listed in "
+            "redteam.mcp_trusted_servers in nuguard.yaml."
+        ),
+    )
+    # Tool risk attributes (set by the graph enricher from SBOM metadata)
+    no_auth_required: bool | None = Field(
+        default=None,
+        description="True when the tool or endpoint is invocable without authentication",
+    )
+    high_privilege: bool | None = Field(
+        default=None,
+        description="True when the tool has access to administrative or cross-tenant resources",
+    )
+    sql_injectable: bool | None = Field(
+        default=None,
+        description="True when the tool constructs SQL queries from agent-provided string parameters",
+    )
+    ssrf_possible: bool | None = Field(
+        default=None,
+        description="True when the tool accepts URL parameters that are fetched server-side (SSRF surface)",
+    )
+    # API_ENDPOINT node attributes (populated by HTTP/API adapters)
+    auth_required: bool | None = Field(
+        default=None,
+        description="True when this API endpoint requires authentication",
+    )
+    auth_scope: str | None = Field(
+        default=None,
+        description="OAuth2 scope or role required to call this endpoint: 'user' | 'admin' | 'none'",
+    )
+    accepts_user_input: bool | None = Field(
+        default=None,
+        description="True when this endpoint accepts user-controlled input in body or query params",
+    )
+    returns_sensitive_data: bool | None = Field(
+        default=None,
+        description="True when this endpoint returns PII, PHI, or other sensitive data",
+    )
+    rate_limited: bool | None = Field(
+        default=None,
+        description="True when rate limiting is configured for this endpoint",
+    )
+    idor_surface: bool | None = Field(
+        default=None,
+        description=(
+            "True when this endpoint has user- or tenant-scoped path parameters "
+            "such as {user_id} or {tenant_id}"
+        ),
+    )
+    path_params: list[str] | None = Field(
+        default=None,
+        description=(
+            "Path parameter names extracted from the endpoint URL template, "
+            "e.g. ['user_id', 'tenant_id']"
+        ),
+    )
+    # Datastore risk attributes (complement classified_fields for flat redteam lookups)
+    pii_fields: list[str] | None = Field(
+        default=None,
+        description=(
+            "Flat list of PII field names in this datastore, "
+            "e.g. ['name', 'email', 'ssn']. "
+            "Derived from classified_fields by the graph enricher."
+        ),
+    )
+    phi_fields: list[str] | None = Field(
+        default=None,
+        description=(
+            "Flat list of PHI field names in this datastore, "
+            "e.g. ['diagnosis', 'medication', 'lab_result']. "
+            "Derived from classified_fields by the graph enricher."
+        ),
+    )
+    access_type: str | None = Field(
+        default=None,
+        description="Datastore access mode inferred from ACCESSES edge: 'read' | 'write' | 'readwrite'",
+    )
     extras: dict[str, Any] = Field(
         default_factory=dict,
         description="Adapter-specific key/value pairs (provider, model_family, version, …)",

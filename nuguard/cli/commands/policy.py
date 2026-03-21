@@ -87,10 +87,10 @@ def validate(
 
 @policy_app.command("check")
 def check(
-    file: Optional[Path] = typer.Option(
+    policy: Optional[Path] = typer.Option(
         None,
-        "--file",
-        "-f",
+        "--policy",
+        "-p",
         help="Path to the cognitive policy Markdown file.",
         exists=False,
         file_okay=True,
@@ -101,6 +101,12 @@ def check(
         None,
         "--sbom",
         help="Path to the AI-SBOM JSON file to cross-check against.",
+        exists=False,
+    ),
+    config_file: Optional[Path] = typer.Option(
+        None,
+        "--config",
+        help="Path to nuguard.yaml (default: ./nuguard.yaml).",
         exists=False,
     ),
     framework: Optional[str] = typer.Option(
@@ -131,7 +137,7 @@ def check(
 
     \b
       # Policy vs SBOM gap check
-      nuguard policy check --file policy.md --sbom app.sbom.json
+      nuguard policy check --policy policy.md --sbom app.sbom.json
 
     \b
       # Compliance framework assessment
@@ -139,12 +145,24 @@ def check(
 
     \b
       # Both at once, with LLM enrichment
-      nuguard policy check --file policy.md --sbom app.sbom.json --framework owasp-llm-top10 --llm
+      nuguard policy check --policy policy.md --sbom app.sbom.json --framework owasp-llm-top10 --llm
+
+    \b
+      # Read paths from nuguard.yaml
+      nuguard policy check
     """
+    from nuguard.config import load_config
     from nuguard.sbom.extractor.serializer import AiSbomSerializer
 
-    if not sbom and not file:
-        _err_console.print("Provide at least --sbom or --file.")
+    # Fall back to nuguard.yaml for --sbom and --policy when not provided on CLI
+    cfg = load_config(config_file)
+    if sbom is None and cfg.sbom_path:
+        sbom = Path(cfg.sbom_path)
+    if policy is None and cfg.policy_path:
+        policy = Path(cfg.policy_path)
+
+    if not sbom and not policy:
+        _err_console.print("Provide --policy and/or --sbom (or set them in nuguard.yaml).")
         raise typer.Exit(code=_EXIT_ERROR)
 
     # Load SBOM
@@ -162,14 +180,14 @@ def check(
 
     # Load policy
     policy_obj = None
-    if file:
-        if not file.exists():
-            _err_console.print(f"Policy file not found: {file}")
+    if policy:
+        if not policy.exists():
+            _err_console.print(f"Policy file not found: {policy}")
             raise typer.Exit(code=_EXIT_ERROR)
         try:
             from nuguard.policy.parser import parse_policy
 
-            policy_obj = parse_policy(file.read_text(encoding="utf-8"))
+            policy_obj = parse_policy(policy.read_text(encoding="utf-8"))
         except Exception as exc:
             _err_console.print(f"Error reading policy: {exc}")
             raise typer.Exit(code=_EXIT_ERROR) from exc

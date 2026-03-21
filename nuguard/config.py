@@ -47,7 +47,7 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
     """
     flat: dict[str, Any] = {}
 
-    # Top-level scalar-ish keys
+    # Top-level file-path keys — kept as their YAML names (matched via field aliases)
     for key in ("sbom", "source", "policy"):
         if key in data:
             flat[key] = data[key]
@@ -65,6 +65,8 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
     redteam = data.get("redteam", {}) or {}
     if "target" in redteam:
         flat["target_url"] = redteam["target"]
+    if "mcp_trusted_servers" in redteam:
+        flat["mcp_trusted_servers"] = redteam["mcp_trusted_servers"]
 
     return flat
 
@@ -92,15 +94,41 @@ class NuGuardConfig(BaseSettings):
         description="SQLAlchemy async database URL. None = SQLite default.",
     )
 
+    # Project-level file paths (from nuguard.yaml top-level keys)
+    sbom_path: str | None = Field(
+        default=None,
+        alias="sbom",
+        description="Default path to the AI-SBOM JSON file.",
+    )
+    source_path: str | None = Field(
+        default=None,
+        alias="source",
+        description="Default path to the application source for SBOM generation.",
+    )
+    policy_path: str | None = Field(
+        default=None,
+        alias="policy",
+        description="Default path to the cognitive policy Markdown file.",
+    )
+
     # Redteam
     target_url: str | None = Field(
         default=None,
         description="URL of the running AI application under test.",
     )
+    mcp_trusted_servers: list[str] = Field(
+        default_factory=list,
+        description=(
+            "MCP server hostnames or domains that are trusted. "
+            "All external MCP servers not in this list are classified as 'untrusted' "
+            "and are eligible as toxic-flow sources in red-team tests."
+        ),
+    )
 
     model_config = SettingsConfigDict(
         env_file=".nuguard.env",
         extra="ignore",
+        populate_by_name=True,
     )
 
 

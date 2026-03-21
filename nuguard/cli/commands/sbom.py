@@ -67,10 +67,24 @@ def generate(
         "-f",
         help="Output format: json | cyclonedx.",
     ),
+    config_file: Optional[Path] = typer.Option(
+        None,
+        "--config",
+        help="Path to nuguard.yaml (default: ./nuguard.yaml).",
+        exists=False,
+    ),
 ) -> None:
     """Generate an AI-SBOM by scanning SOURCE or cloning --from-repo."""
+    # Fall back to nuguard.yaml's source field when --source is not provided
     if source is None and from_repo is None:
-        _err_console.print("Provide --source <dir> or --from-repo <url>.")
+        from nuguard.config import load_config
+
+        cfg = load_config(config_file)
+        if cfg.source_path:
+            source = Path(cfg.source_path)
+
+    if source is None and from_repo is None:
+        _err_console.print("Provide --source <dir> or --from-repo <url> (or set source: in nuguard.yaml).")
         raise typer.Exit(code=1)
 
     config = AiSbomConfig(enable_llm=llm)
