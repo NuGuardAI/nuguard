@@ -71,6 +71,36 @@ class TargetAppClient:
 
         return str(text), tool_calls
 
+    async def invoke_endpoint(
+        self,
+        path: str,
+        method: str = "POST",
+        body: dict | None = None,
+        params: dict[str, str] | None = None,
+        extra_headers: dict[str, str] | None = None,
+    ) -> tuple[int, str, dict]:
+        """Send a direct HTTP request to a specific path.
+
+        Returns (status_code, response_text, response_json).  Does NOT raise on
+        4xx/5xx — callers inspect the status code to determine attack success.
+        """
+        try:
+            resp = await self._client.request(
+                method=method.upper(),
+                url=path,
+                json=body,
+                params=params,
+                headers=extra_headers or {},
+            )
+            try:
+                json_body: dict = resp.json()
+            except Exception:
+                json_body = {}
+            return resp.status_code, resp.text, json_body
+        except Exception as exc:
+            _log.warning("Direct request %s %s failed: %s", method, path, exc)
+            return 0, f"[REQUEST_ERROR: {exc}]", {}
+
     async def send_raw(self, path: str, body: dict) -> dict:
         """Send a raw POST to any path; returns parsed JSON response."""
         try:

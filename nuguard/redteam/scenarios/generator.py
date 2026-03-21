@@ -9,6 +9,7 @@ from nuguard.models.policy import CognitivePolicy
 from nuguard.sbom.models import AiSbomDocument
 from nuguard.sbom.types import ComponentType, RelationshipType
 
+from .api_attacks import build_auth_bypass, build_idor, build_mass_assignment
 from .pre_scorer import pre_score
 from .privilege_escalation import build_privilege_chain
 from .prompt_injection import (
@@ -61,6 +62,9 @@ class ScenarioGenerator:
 
         # Goal 5: MCP Toxic Flow
         scenarios.extend(self._mcp_toxic_flow_scenarios())
+
+        # Goal 6: Direct API Attacks (auth bypass, mass assignment, IDOR)
+        scenarios.extend(self._api_attack_scenarios())
 
         # Sort by impact score descending
         scenarios.sort(key=lambda s: s.impact_score, reverse=True)
@@ -437,4 +441,61 @@ class ScenarioGenerator:
                         chain=chain,
                     )
                 )
+        return out
+
+    # ------------------------------------------------------------------ #
+    # Goal 6: Direct API Attacks
+    # ------------------------------------------------------------------ #
+
+    def _api_attack_scenarios(self) -> list[AttackScenario]:
+        """Generate direct HTTP attack scenarios from API_ENDPOINT SBOM nodes.
+
+        For each discovered endpoint:
+        - AUTH_BYPASS   — when auth_required=True, probe without credentials
+        - MASS_ASSIGNMENT — for write methods (POST/PUT/PATCH), send privilege fields
+        - IDOR          — for endpoints with ID-like path parameters
+        """
+        out: list[AttackScenario] = []
+        for node in self._sbom.nodes:
+            if node.component_type != ComponentType.API_ENDPOINT:
+                continue
+            meta = node.metadata
+            endpoint_id = str(node.id)
+            # Fall back to a slugified name if endpoint path was not captured
+            path = meta.endpoint or f"/{node.name.lower().replace(' ', '-')}"
+            method = (meta.method or "GET").upper()
+
+            if meta.auth_required:
+                out.append(
+                    build_auth_bypass(
+                        endpoint_id=endpoint_id,
+                        endpoint_name=node.name,
+                        path=path,
+                        method=method,
+                    )
+                )
+
+            if method in ("POST", "PUT", "PATCH"):
+                out.append(
+                    build_mass_assignment(
+                        endpoint_id=endpoint_id,
+                        endpoint_name=node.name,
+                        path=path,
+                        method=method,
+                    )
+                )
+
+            if meta.idor_surface or any(
+                p.lower() in ("id", "user_id", "tenant_id", "account_id", "customer_id", "org_id")
+                for p in meta.path_params
+            ):
+                scenario = build_idor(
+                    endpoint_id=endpoint_id,
+                    endpoint_name=node.name,
+                    path=path,
+                    path_params=meta.path_params,
+                )
+                if scenario is not None:
+                    out.append(scenario)
+
         return out

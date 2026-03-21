@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import logging
 
-from nuguard.models.exploit_chain import ExploitChain, ExploitStep
+from nuguard.models.exploit_chain import ExploitChain, ExploitStep, HTTP_2XX_SENTINEL
 from nuguard.models.policy import CognitivePolicy
 from nuguard.redteam.policy_engine.evaluator import PolicyEvaluator, PolicyViolation
 from nuguard.redteam.target.action_logger import ActionLogger
@@ -20,14 +20,26 @@ class StepResult:
     """Holds the outcome of executing a single ExploitStep."""
 
     def __init__(
-        self, step: ExploitStep, response: str, tool_calls: list[dict]
+        self,
+        step: ExploitStep,
+        response: str,
+        tool_calls: list[dict],
+        http_status_code: int | None = None,
     ) -> None:
         self.step = step
         self.response = response
         self.tool_calls = tool_calls
-        self.success_signal_found: bool = bool(
-            step.success_signal and step.success_signal.lower() in response.lower()
-        )
+        self.http_status_code = http_status_code
+        # HTTP_2XX_SENTINEL: success when the server returns any 2xx status code
+        # (used for auth-bypass and IDOR steps to detect missing access controls).
+        if step.success_signal == HTTP_2XX_SENTINEL:
+            self.success_signal_found = (
+                http_status_code is not None and 200 <= http_status_code < 300
+            )
+        else:
+            self.success_signal_found = bool(
+                step.success_signal and step.success_signal.lower() in response.lower()
+            )
         self.canary_hits: list[str] = []
         self.policy_violations: list[PolicyViolation] = []
 
@@ -110,10 +122,31 @@ class AttackExecutor:
         session: AttackSession,
         chain: ExploitChain,
     ) -> StepResult:
-        response, tool_calls = await self._client.send(payload, session)
-        session.add_turn(payload, response, tool_calls)
-
-        result = StepResult(step=step, response=response, tool_calls=tool_calls)
+        if step.target_path:
+            # Direct HTTP attack — bypass the chat endpoint entirely
+            status_code, response, _ = await self._client.invoke_endpoint(
+                path=step.target_path,
+                method=step.http_method,
+                body=step.http_body,
+                params=step.http_params or None,
+            )
+            tool_calls: list[dict] = []
+            # Log the request path as the prompt for session continuity / audit
+            session.add_turn(
+                prompt=f"{step.http_method} {step.target_path}",
+                response=response,
+                tool_calls=[],
+            )
+            result = StepResult(
+                step=step,
+                response=response,
+                tool_calls=tool_calls,
+                http_status_code=status_code,
+            )
+        else:
+            response, tool_calls = await self._client.send(payload, session)
+            session.add_turn(payload, response, tool_calls)
+            result = StepResult(step=step, response=response, tool_calls=tool_calls)
 
         # Canary scan
         if self._canary:

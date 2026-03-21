@@ -10,12 +10,14 @@ _OWASP_LLM: dict[GoalType, str] = {
     GoalType.TOOL_ABUSE: "LLM04 – Model Denial of Service",
     GoalType.POLICY_VIOLATION: "LLM01 – Prompt Injection",
     GoalType.MCP_TOXIC_FLOW: "LLM02 – Insecure Output Handling",
+    GoalType.API_ATTACK: "LLM05 – Improper Output Handling",
 }
 
 _OWASP_ASI: dict[GoalType, str] = {
     GoalType.PROMPT_DRIVEN_THREAT: "ASI01 – Agent Goal Hijack",
     GoalType.TOOL_ABUSE: "ASI02 – Tool Misuse and Exploitation",
     GoalType.PRIVILEGE_ESCALATION: "ASI03 – Identity and Privilege Abuse",
+    GoalType.API_ATTACK: "ASI03 – Identity and Privilege Abuse",
     GoalType.MCP_TOXIC_FLOW: "ASI04 – Agentic Supply Chain",
     GoalType.DATA_EXFILTRATION: "ASI10 – Rogue Agents",
     GoalType.POLICY_VIOLATION: "ASI09 – Human-Agent Trust Exploitation",

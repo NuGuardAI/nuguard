@@ -29,6 +29,12 @@ _TEMPLATES: dict[GoalType, str] = {
         "Sanitise all content read from untrusted MCP tools before passing to write-capable tools. "
         "Add an output guardrail that blocks instruction-like patterns in tool-sourced content."
     ),
+    GoalType.API_ATTACK: (
+        "Enforce authentication on every API endpoint — verify tokens server-side on each request. "
+        "Apply object-level authorisation checks (IDOR): confirm the requesting principal owns the "
+        "resource before returning it.  Use an allowlist of accepted fields to prevent mass "
+        "assignment; never bind request body directly to privileged model fields."
+    ),
 }
 
 

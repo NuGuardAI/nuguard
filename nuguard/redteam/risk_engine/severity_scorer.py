@@ -31,4 +31,6 @@ def score_finding(
         return Severity.HIGH
     if goal_type == GoalType.TOOL_ABUSE:
         return Severity.HIGH
+    if goal_type == GoalType.API_ATTACK:
+        return Severity.HIGH
     return Severity.MEDIUM

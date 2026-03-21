@@ -8,6 +8,7 @@ _BASE_SCORES: dict[GoalType, float] = {
     GoalType.DATA_EXFILTRATION: 9.0,
     GoalType.PRIVILEGE_ESCALATION: 8.5,
     GoalType.MCP_TOXIC_FLOW: 8.0,
+    GoalType.API_ATTACK: 8.0,
     GoalType.PROMPT_DRIVEN_THREAT: 7.5,
     GoalType.POLICY_VIOLATION: 7.0,
     GoalType.TOOL_ABUSE: 6.5,
