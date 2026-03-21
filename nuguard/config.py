@@ -215,7 +215,7 @@ class NuGuardConfig(BaseSettings):
         description=(
             "Extra environment variables injected into the fixture app subprocess "
             "during E2E redteam tests (yaml: redteam.app_env). "
-            "Use \${VAR} interpolation to avoid storing secrets in the file."
+            r"Use ${VAR} interpolation to avoid storing secrets in the file."
         ),
     )
 
