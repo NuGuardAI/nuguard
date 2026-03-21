@@ -12,14 +12,17 @@ NuGuard OSS is an **open-source AI application security CLI** that gives develop
 
 It **subsumes Xelo** (the AI-SBOM generation tool), bundling SBOM generation directly into the `nuguard sbom` command. Xelo is retired as an independent entity. All Xelo SBOM generation, validation, and schema capabilities are now part of NuGuard OSS.
 
-Four capabilities in a single `nuguard` command:
+Five commands in a single `nuguard` CLI:
 
 ```
 nuguard sbom      → generate, validate, and register AI-SBOMs (subsumes Xelo)
 nuguard analyze   → static risk findings from the AI-SBOM alone (no app needed)
 nuguard policy    → cognitive policy validation and compliance framework checking
 nuguard redteam   → dynamic adversarial testing against the running application
+nuguard scan      → meta-command: runs sbom → analyze → policy → redteam in sequence
 ```
+
+`nuguard scan` is the recommended entry point for CI pipelines and first-time users. The four individual commands remain unchanged for users who need granular control.
 
 **Design principles for OSS:**
 - **Zero infrastructure to start**: SQLite by default, Postgres optional. No Redis, no Neo4j.
@@ -27,6 +30,7 @@ nuguard redteam   → dynamic adversarial testing against the running applicatio
 - **Single container**: `docker run ghcr.io/nuguardai/nuguard` runs everything.
 - **CI-first**: all capabilities produce SARIF output and CI-compatible exit codes.
 - **No mandatory LLM API key**: template-based payloads work without one; LLM improves payload quality when available.
+- **File-based composition**: `nuguard.yaml` is the "pipe" between commands — each command reads the SBOM path, policy path, and target URL from it automatically. Individual commands can also be chained with `&&` for scripting.
 
 **Commercial boundary:** The NuGuard commercial product (`nuguard-app`) adds: web dashboard, hosted service, multi-tenant org management, enterprise SSO, portfolio risk visibility, ServiceNow and Azure DevOps integrations, and advanced static analysis and red-team capabilities (future). Everything in this repo is open-source.
 
@@ -146,6 +150,65 @@ nuguard findings --test-id <id> --severity critical,high
 nuguard replay --test-id <id> --target http://localhost:3000
 ```
 
+### 2.5 `nuguard scan` — Pipeline Meta-Command
+
+Run the full security pipeline with a single command. `nuguard scan` is a thin orchestrator — it calls the same `SbomGenerator`, `StaticAnalyzer`, `PolicyChecker`, and `RedteamOrchestrator` that the individual commands call. No new business logic, no duplication.
+
+**`nuguard.yaml` is the pipe.** The SBOM produced by step 1 is written to disk; steps 2–4 read it from the path configured in `nuguard.yaml` (or `--output-dir`). Each step writes its artifacts so intermediate results are always inspectable.
+
+```bash
+# First-time: generate SBOM, run static analysis and policy check
+nuguard scan --source . --policy ./policy.md
+
+# CI: static-only gate (no live app required)
+nuguard scan --steps sbom,analyze,policy --fail-on high --output-dir ./reports
+
+# Full pipeline including redteam against a staging URL
+nuguard scan --target https://staging.myapp.com --profile ci
+
+# With nuguard.yaml configured, all paths are picked up automatically
+nuguard scan
+```
+
+**Execution order (always sequential, earlier failures stop the chain):**
+
+```
+nuguard scan
+│
+├─ Step 1: sbom      nuguard sbom generate  → output-dir/sbom.json
+├─ Step 2: analyze   nuguard analyze        → output-dir/findings.json
+│                                              output-dir/findings.sarif
+│                                              output-dir/report.md
+├─ Step 3: policy    nuguard policy check   → output-dir/policy-report.md
+└─ Step 4: redteam   nuguard redteam        → output-dir/redteam-report.md
+                     (skipped if --target not set and not in nuguard.yaml)
+```
+
+**CLI flags:**
+
+| Flag | Purpose | Default |
+|---|---|---|
+| `--source` | Source path for SBOM generation | `.` |
+| `--policy` | Path to cognitive policy file | from `nuguard.yaml` |
+| `--target` | Live app URL for redteam step | from `nuguard.yaml` |
+| `--steps` | Comma-separated subset: `sbom,analyze,policy,redteam` | all except `redteam` when no target |
+| `--output-dir` | Directory for all artifacts | `./nuguard-reports` |
+| `--fail-on` | Severity threshold for non-zero exit | `high` |
+| `--profile` | Redteam profile: `ci` or `full` | `ci` |
+| `--from-sbom` | Use existing SBOM, skip generation | None |
+
+**When to use `nuguard scan` vs individual commands:**
+
+| User | Command |
+|---|---|
+| First time, just explore | `nuguard scan --source .` |
+| CI, static-only gate | `nuguard scan --steps sbom,analyze,policy --fail-on high` |
+| CI, full pipeline | `nuguard scan --target https://staging.myapp.com` |
+| Debug a specific step | `nuguard analyze --sbom ./sbom.json --format sarif` |
+| Script with `&&` | `nuguard sbom generate && nuguard analyze` |
+
+**Why not Unix stdin/stdout piping** (`nuguard sbom generate | nuguard analyze`): The SBOM JSON is large, intermediate artifacts should be inspectable, and `redteam` requires flags (`--target`, `--policy`) that cannot come from stdin. File-based handoff via `nuguard.yaml` and `--output-dir` is the correct composition model.
+
 ---
 
 ## 3. Architecture
@@ -161,6 +224,7 @@ nuguard/                          # PyPI package: "nuguard"
       analyze.py                  # nuguard analyze
       policy.py                   # nuguard policy validate|check|show
       redteam.py                  # nuguard redteam
+      scan.py                     # nuguard scan (meta-command: orchestrates sbom→analyze→policy→redteam)
       seed.py                     # nuguard seed
       report.py                   # nuguard report
       findings.py                 # nuguard findings
@@ -331,15 +395,26 @@ This replaces the previous NuGuard-specific edge set (`INVOKES`, `READS`, `WRITE
 
 ### 3.4 Data Flow
 
+Commands can be run individually (for granular control) or via `nuguard scan` (which orchestrates them in sequence). `nuguard.yaml` is the handoff artifact between steps — each command reads the SBOM path, policy path, and target URL from it automatically.
+
 ```
+                    ┌─────────────────────────────────────┐
+                    │         nuguard scan                 │
+                    │  (orchestrates steps 1–4 in order;  │
+                    │   each step writes to --output-dir)  │
+                    └──┬──────────┬──────────┬────────────┘
+                       │ step 1   │ step 2   │ step 3/4
+                       ▼          ▼          ▼
+             (individual commands below can also be run directly)
+
 Source Code / Running App
         │
         ▼
 ┌───────────────────┐
-│   SBOM Generator  │  nuguard sbom generate
-│  (Xelo bundled)   │
+│   SBOM Generator  │  nuguard sbom generate  →  sbom.json
+│  (Xelo bundled)   │                              (file handoff)
 └────────┬──────────┘
-         │
+         │ nuguard.yaml picks up sbom path automatically
          ▼
    AI-SBOM JSON + Cognitive Policy
          │
@@ -362,6 +437,7 @@ Source Code / Running App
          ▼                          ▼        ▼
 ┌────────────────────┐    ┌────────────────────────────┐
 │  Static Analyzer   │    │   Redteam Executor          │
+│  nuguard analyze   │    │   nuguard redteam           │
 │  (no app needed)   │    │   → TargetAppClient         │
 │                    │    │   → Policy Evaluator         │
 └────────┬───────────┘    └──────────────┬─────────────┘
@@ -523,12 +599,21 @@ jobs:
           policy: ./cognitive-policy.md
           target: http://localhost:3000
           canary: /tmp/canary-result.json
-          capabilities: analyze,policy,redteam
+          capabilities: analyze,policy,redteam   # maps to nuguard scan --steps
           profile: ci
           fail-on: high
           sarif-output: true
         env:
           LITELLM_API_KEY: ${{ secrets.LITELLM_API_KEY }}   # optional
+
+      # Equivalent direct CLI invocation (when not using the Action):
+      # nuguard scan \
+      #   --from-sbom ./app.sbom.json \
+      #   --policy ./cognitive-policy.md \
+      #   --target http://localhost:3000 \
+      #   --steps analyze,policy,redteam \
+      #   --fail-on high \
+      #   --output-dir ./nuguard-reports
 ```
 
 ### 4.3 SARIF Upload
@@ -590,6 +675,7 @@ Consistent across all capabilities:
 | Capability | Component | v1 (OSS launch) | v1.5 | v2 |
 |---|---|---|---|---|
 | `nuguard.yaml` project config file | `config.py` | ✅ | | |
+| Pipeline meta-command | `nuguard scan` | ✅ | | |
 | SBOM generation (Xelo bundled) | `nuguard sbom generate` | ✅ | | |
 | SBOM validation + registration | `nuguard sbom validate/register` | ✅ | | |
 | Attack graph builder | `nuguard/graph/` | ✅ | | Neo4j backend |
@@ -644,7 +730,7 @@ Consistent across all capabilities:
 
 ## 10. What This Enables End-to-End
 
-Projects commit a `nuguard.yaml` alongside their SBOM and cognitive policy. All subsequent commands pick it up automatically.
+Projects commit a `nuguard.yaml` alongside their SBOM and cognitive policy. `nuguard.yaml` is the "pipe" — each command reads the SBOM path, policy path, and target URL from it automatically. This means `nuguard scan` and the individual commands all share the same config without flag repetition.
 
 ```yaml
 # nuguard.yaml  (committed to repo)
@@ -662,11 +748,38 @@ output:
   fail_on: high
 ```
 
+### Quick start (first-time users and CI)
+
+```bash
+# One command: generates SBOM, runs static analysis, policy check, redteam
+# All config (sbom path, policy, target) is read from nuguard.yaml
+nuguard scan
+
+# Static-only (no live app needed)
+nuguard scan --steps sbom,analyze,policy
+
+# Against a staging URL (overrides nuguard.yaml target)
+nuguard scan --target https://staging.myapp.com --profile full
+```
+
+All output artifacts land in `./nuguard-reports/` (or `--output-dir`):
+
+```
+nuguard-reports/
+├── sbom.json           # AI-SBOM
+├── findings.json       # Static analysis findings (NuGuard format)
+├── findings.sarif      # Consolidated SARIF (GitHub Code Scanning)
+├── report.md           # Human-readable full report
+└── policy-report.md    # Policy compliance report
+```
+
+### Granular control (advanced users and debugging)
+
 ```bash
 # 1. Generate SBOM (one-time or on schema change)
 nuguard sbom generate --source . --output ./app.sbom.json
 
-# 2. Static analysis — reads sbom and policy from nuguard.yaml
+# 2. Static analysis — reads sbom from nuguard.yaml
 nuguard analyze
 
 # 3. Policy lint and compliance check
@@ -685,6 +798,12 @@ nuguard redteam
 # 7. Review findings
 nuguard report --test-id <id> --format markdown
 nuguard findings --test-id <id> --severity critical,high
+```
+
+Individual commands can also be chained with `&&` for scripting — earlier failures stop the chain via exit codes:
+
+```bash
+nuguard sbom generate && nuguard analyze && nuguard policy check
 ```
 
 CLI flags override any value in `nuguard.yaml` — useful for CI to point at a staging URL without modifying the file:
