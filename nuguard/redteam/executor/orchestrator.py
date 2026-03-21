@@ -81,6 +81,8 @@ class RedteamOrchestrator:
         self._chat_path, self._chat_payload_key, self._chat_payload_list = (
             _discover_chat_config(sbom, chat_path, chat_payload_key, chat_payload_list)
         )
+        # Populated by run() — number of scenarios actually executed
+        self.scenarios_run: int = 0
 
     async def run(self) -> list[Finding]:
         """Run the full scan and return a list of findings."""
@@ -107,7 +109,8 @@ class RedteamOrchestrator:
                 s for s in scenarios if s.impact_score >= self._min_impact
             ]
 
-        _log.info("Running %d scenarios", len(scenarios))
+        self.scenarios_run = len(scenarios)
+        _log.info("Running %d scenarios", self.scenarios_run)
 
         if not scenarios:
             _log.info(

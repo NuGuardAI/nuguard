@@ -141,7 +141,7 @@ def _run_redteam(app_name: str) -> None:
                     chat_payload_list=config.chat_payload_list,
                 )
                 findings = asyncio.run(orchestrator.run())
-                scenarios_generated = len(findings)
+                scenarios_generated = orchestrator.scenarios_run
             except Exception as exc:
                 _log.warning("[%s] Redteam scan failed: %s", app_name, exc)
 
