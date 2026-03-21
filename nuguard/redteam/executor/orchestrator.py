@@ -302,7 +302,7 @@ class RedteamOrchestrator:
             }
             if step.target_path:
                 detail["method"] = step.http_method
-                detail["path"] = step.target_path
+                detail["target_path"] = step.target_path
                 if step.http_body:
                     detail["request_body"] = step.http_body
                 if step.http_params:
@@ -330,16 +330,20 @@ class RedteamOrchestrator:
         for i, step in enumerate(step_details, 1):
             stype = step.get("step_type", "?")
             ok = "✅" if step.get("succeeded") else "❌"
+            target = step.get("target_path")
+            method = step.get("method", "POST")
             resp = (step.get("response") or "").strip()
+            prefix = f"{method} {target}" if target else ""
             if resp:
                 snippet = resp[:120].replace("\n", " ")
                 if len(resp) > 120:
                     snippet += "…"
-                parts.append(f"Step {i} ({stype} {ok}): {snippet!r}")
+                label = f"{prefix}: {snippet!r}" if prefix else snippet[:120 + len(prefix)]
+                parts.append(f"Step {i} ({stype} {ok}): {label}")
             else:
                 status = step.get("status_code")
-                suffix = f" HTTP {status}" if status is not None else " no response"
-                parts.append(f"Step {i} ({stype} {ok}):{suffix}")
+                status_str = f" → HTTP {status}" if status is not None else " → no response"
+                parts.append(f"Step {i} ({stype} {ok}): {prefix}{status_str}" if prefix else f"Step {i} ({stype} {ok}){status_str}")
         return "; ".join(parts) if parts else "no steps executed"
 
     def _build_findings(
@@ -441,6 +445,7 @@ class RedteamOrchestrator:
             ]
             if critical_hits:
                 sev = severity_scorer.score_finding(scenario.goal_type)
+                step_summary = self._step_evidence_summary(step_details)
                 findings.append(
                     Finding(
                         finding_id=_finding_id(scenario.title),
@@ -459,6 +464,7 @@ class RedteamOrchestrator:
                         sbom_path=chain.sbom_path,
                         owasp_asi_ref=compliance_mapper.owasp_asi_ref(scenario.goal_type),
                         owasp_llm_ref=compliance_mapper.owasp_llm_ref(scenario.goal_type),
+                        evidence=f"Attack steps: {step_summary}",
                         attack_steps=step_details,
                     )
                 )
