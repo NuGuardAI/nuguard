@@ -178,8 +178,14 @@ class AttackExecutor:
                 self._canary.scan(response) + self._canary.scan_decoded(response)
             )
 
-        # Policy evaluation
-        if self._evaluator:
+        # Policy evaluation — only for chat/agent interactions, not direct HTTP
+        # attacks.  REST API endpoints can return error responses (4xx/5xx) that
+        # contain no allowed-topic keywords, which would produce false-positive
+        # topic-boundary violations on every failed REST probe.
+        is_http_error = (
+            result.http_status_code is not None and result.http_status_code >= 400
+        )
+        if self._evaluator and not step.target_path and not is_http_error:
             result.policy_violations = self._evaluator.evaluate(
                 prompt=payload, response=response, tool_calls=tool_calls
             )

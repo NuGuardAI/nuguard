@@ -16,10 +16,12 @@ from __future__ import annotations
 import json
 import logging
 import os
+import queue
 import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -36,6 +38,28 @@ VENV_CACHE_DIR = Path(tempfile.gettempdir()) / "nuguard_redteam_venvs"
 PIP_INSTALL_TIMEOUT = 300
 APP_STARTUP_TIMEOUT = 60
 HEALTH_POLL_INTERVAL = 1.0
+
+# Stderr error patterns that indicate a fatal startup failure (no need to keep waiting)
+_FATAL_STDERR_PATTERNS = (
+    "Traceback (most recent call last)",
+    "ModuleNotFoundError",
+    "ImportError",
+    "SystemExit",
+    "RuntimeError",
+    "Address already in use",
+    "error: [Errno",
+)
+
+
+def _stderr_reader(stream: Any, buf: queue.Queue) -> None:  # type: ignore[type-arg]
+    """Background thread: read lines from *stream* and push them onto *buf*."""
+    try:
+        for line in iter(stream.readline, b""):
+            buf.put(line)
+    except Exception:
+        pass
+    finally:
+        buf.put(None)  # sentinel
 
 
 @dataclass
@@ -165,6 +189,9 @@ class AppRunner:
         self._source_dir: Path | None = None
         self._venv_dir: Path = VENV_CACHE_DIR / config.name
         self._process: subprocess.Popen | None = None  # type: ignore[type-arg]
+        self._stderr_queue: queue.Queue = queue.Queue()  # type: ignore[type-arg]
+        self._stderr_thread: threading.Thread | None = None
+        self._stderr_lines: list[str] = []  # accumulated stderr for error reporting
         self.started: bool = False
         self.start_error: str | None = None
         self.base_url: str = f"http://127.0.0.1:{config.port}"
@@ -316,21 +343,77 @@ class AppRunner:
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
         )
+        # Drain stderr in a background thread so the pipe never fills and blocks
+        # the subprocess, and so we can detect fatal errors early.
+        self._stderr_lines = []
+        self._stderr_queue = queue.Queue()
+        self._stderr_thread = threading.Thread(
+            target=_stderr_reader,
+            args=(self._process.stderr, self._stderr_queue),
+            daemon=True,
+        )
+        self._stderr_thread.start()
+
+    def _drain_stderr(self) -> None:
+        """Pull any available lines from the stderr queue into _stderr_lines."""
+        while True:
+            try:
+                line = self._stderr_queue.get_nowait()
+            except queue.Empty:
+                break
+            if line is None:
+                break
+            decoded = line.decode(errors="replace").rstrip()
+            if decoded:
+                self._stderr_lines.append(decoded)
+                _log.debug("[%s] stderr: %s", self.config.name, decoded)
+
+    def _check_fatal_stderr(self) -> str | None:
+        """Return a joined error string if stderr contains a fatal pattern, else None."""
+        text = "\n".join(self._stderr_lines)
+        for pat in _FATAL_STDERR_PATTERNS:
+            if pat in text:
+                return text
+        return None
 
     def _wait_for_health(self) -> None:
-        """Poll the health endpoint until the app is ready or the timeout expires."""
+        """Poll the health endpoint until the app is ready or the timeout expires.
+
+        Fails immediately when:
+        - The subprocess exits (any return code).
+        - A fatal error pattern appears in stderr after a short grace period
+          (``HEALTH_POLL_INTERVAL * 3`` seconds) — no need to wait the full timeout.
+        """
         url = f"{self.base_url}{self.config.health_path}"
         deadline = time.monotonic() + APP_STARTUP_TIMEOUT
+        # Allow this many seconds before treating stderr errors as fatal, so
+        # normal startup warnings (deprecation notices, etc.) don't abort early.
+        fatal_stderr_grace_until = time.monotonic() + HEALTH_POLL_INTERVAL * 3
         last_error: Exception | None = None
 
         while time.monotonic() < deadline:
-            # Check if process died already
+            # Drain stderr so the pipe never fills and blocks the subprocess
+            self._drain_stderr()
+
+            # Check if process exited
             if self._process and self._process.poll() is not None:
-                stderr = self._process.stderr.read().decode(errors="replace") if self._process.stderr else ""
+                self._drain_stderr()  # pick up any final output
+                stderr_text = "\n".join(self._stderr_lines[-50:])
                 raise RuntimeError(
                     f"App process exited (rc={self._process.returncode}) before health check passed.\n"
-                    f"stderr:\n{stderr[-2000:]}"
+                    f"stderr (last 50 lines):\n{stderr_text}"
                 )
+
+            # After grace period: fail fast if stderr contains a known fatal pattern
+            if time.monotonic() > fatal_stderr_grace_until:
+                fatal = self._check_fatal_stderr()
+                if fatal:
+                    self._kill_process()
+                    raise RuntimeError(
+                        f"Fatal error detected in app stderr — aborting early.\n"
+                        f"stderr:\n{fatal[-2000:]}"
+                    )
+
             try:
                 resp = httpx.get(url, timeout=3.0)
                 if resp.status_code < 500:
@@ -339,9 +422,12 @@ class AppRunner:
                 last_error = exc
             time.sleep(HEALTH_POLL_INTERVAL)
 
+        self._drain_stderr()
+        stderr_summary = "\n".join(self._stderr_lines[-30:]) if self._stderr_lines else ""
         raise TimeoutError(
             f"App did not become healthy at {url} within {APP_STARTUP_TIMEOUT}s. "
             f"Last error: {last_error}"
+            + (f"\nstderr (last 30 lines):\n{stderr_summary}" if stderr_summary else "")
         )
 
     def _kill_process(self) -> None:
@@ -351,4 +437,6 @@ class AppRunner:
                 self._process.wait(timeout=5)
             except subprocess.TimeoutExpired:
                 self._process.kill()
+        if self._stderr_thread and self._stderr_thread.is_alive():
+            self._stderr_thread.join(timeout=2)
         self._process = None

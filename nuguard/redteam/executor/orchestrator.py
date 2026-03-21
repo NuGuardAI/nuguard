@@ -287,7 +287,11 @@ class RedteamOrchestrator:
                     detail["status_code"] = sr.http_status_code
             else:
                 detail["payload"] = step.payload
-            detail["response"] = sr.response[:600] if sr.response else ""
+            if sr.response:
+                raw = sr.response
+                detail["response"] = raw[:2000] + (" …[truncated]" if len(raw) > 2000 else "")
+            else:
+                detail["response"] = ""
             if sr.tool_calls:
                 detail["tool_calls"] = [
                     tc.get("name", tc.get("type", str(tc))) for tc in sr.tool_calls
@@ -360,7 +364,9 @@ class RedteamOrchestrator:
                     description=violation.evidence,
                     affected_component=affected,
                     remediation=remediation_generator.generate(
-                        scenario.goal_type, scenario.title
+                        scenario.goal_type,
+                        scenario.title,
+                        violation_type=violation.type,
                     ),
                     goal_type=scenario.goal_type,
                     chain_id=chain.chain_id,

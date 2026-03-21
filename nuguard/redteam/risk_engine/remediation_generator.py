@@ -3,6 +3,27 @@ from __future__ import annotations
 
 from nuguard.models.exploit_chain import GoalType, ScenarioType
 
+# Per-violation-type remediations used when a policy violation is detected
+# against a scenario that has a different primary goal type (e.g. a TOPIC_BOUNDARY
+# violation surfaced during an API_ATTACK scenario).
+_VIOLATION_TYPE_TEMPLATES: dict[str, str] = {
+    "topic_boundary": (
+        "Add an output guardrail that restricts agent responses to the defined "
+        "allowed_topics list. Responses that do not relate to permitted topics should "
+        "be blocked or rewritten before being returned to the caller."
+    ),
+    "restricted_action": (
+        "Enforce restricted actions at the guardrail layer — the system prompt alone "
+        "is insufficient. Add an explicit check that intercepts and blocks any attempt "
+        "to execute the restricted action before it reaches a tool or downstream service."
+    ),
+    "hitl_bypass": (
+        "Add a mandatory human-in-the-loop enforcement node on every action path that "
+        "matches a HITL trigger. Verbal or implicit approval must not substitute for an "
+        "explicit out-of-band confirmation step."
+    ),
+}
+
 _TEMPLATES: dict[GoalType, str] = {
     GoalType.PROMPT_DRIVEN_THREAT: (
         "Add an output guardrail that blocks responses containing system-prompt text. "
@@ -38,12 +59,28 @@ _TEMPLATES: dict[GoalType, str] = {
 }
 
 
-def generate(goal_type: GoalType, affected_component: str = "") -> str:
-    """Return remediation guidance for the given goal type and affected component."""
-    base = _TEMPLATES.get(
-        goal_type,
-        "Review the affected component and add appropriate guardrails.",
-    )
+def generate(
+    goal_type: GoalType,
+    affected_component: str = "",
+    violation_type: str | None = None,
+) -> str:
+    """Return remediation guidance for the given goal type and affected component.
+
+    When *violation_type* is provided (e.g. ``"topic_boundary"``), the
+    violation-specific template takes precedence over the goal-type template so
+    that policy-violation findings surfaced during non-policy-goal scenarios
+    receive accurate remediation advice.
+    """
+    if violation_type:
+        base = _VIOLATION_TYPE_TEMPLATES.get(violation_type) or _TEMPLATES.get(
+            goal_type,
+            "Review the affected component and add appropriate guardrails.",
+        )
+    else:
+        base = _TEMPLATES.get(
+            goal_type,
+            "Review the affected component and add appropriate guardrails.",
+        )
     if affected_component:
         return f"For {affected_component}: {base}"
     return base
