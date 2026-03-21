@@ -1,35 +1,75 @@
 # nuguard.yaml
 # Project-level config file. Commit this alongside your SBOM and cognitive policy.
 # Secrets are never stored here — use ${ENV_VAR} interpolation instead.
+#
+# Priority order (highest wins): CLI flags > nuguard.yaml > env vars > built-in defaults
 
-sbom: ./app.sbom.json               # path to AI-SBOM (or use `source` to generate)
-source: ./                          # generate SBOM from source (alternative to sbom)
-policy: ./cognitive-policy.md
+# ─── Project file paths ───────────────────────────────────────────────────────
+sbom: ./app.sbom.json               # path to pre-generated AI-SBOM JSON
+source: ./                          # generate SBOM from source dir (alternative to sbom:)
+policy: ./cognitive-policy.md       # Cognitive Policy Markdown to enforce during redteam
 
+# ─── LLM settings ─────────────────────────────────────────────────────────────
 llm:
-  model: gemini/gemini-2.0-flash    # any LiteLLM model string
-  # api_key: loaded from LITELLM_API_KEY env var — never put keys in this file
+  model: gemini/gemini-2.0-flash    # any LiteLLM model string (openai/gpt-4o, etc.)
+  # api_key: ${LITELLM_API_KEY}     # never put keys here; use env var interpolation
 
-database:
-  # url: loaded from DATABASE_URL env var
-  # omit for SQLite default at ~/.nuguard/nuguard.db
+# ─── SBOM generation ──────────────────────────────────────────────────────────
+sbom_generation:
+  llm: false                        # set true to enrich SBOM nodes with LLM descriptions
+                                    # requires llm.api_key / LITELLM_API_KEY to be set
 
+# ─── Red-team ─────────────────────────────────────────────────────────────────
 redteam:
+  # Required: URL of the running AI application under test
   target: http://localhost:3000
-  target_endpoint: /api/chat        # agent endpoint path (default: / or from SBOM)
-  auth_header: Authorization: Bearer ${TARGET_TOKEN}   # ${VAR} expands env vars
+
+  # Path of the chat/agent endpoint on the target (default: /chat)
+  target_endpoint: /chat
+
+  # HTTP header to send with every red-team request — use ${VAR} for secrets
+  auth_header: "Authorization: Bearer ${TARGET_TOKEN}"
+
+  # Canary JSON file — seeded values the scanner watches for in responses
   canary: ./canary.json
-  profile: ci                       # ci | full
-  scenarios:                        # omit to run all
+
+  # Scan profile
+  #   ci   — fast, runs only scenarios with pre-impact score ≥ 5  (default)
+  #   full — all scenarios regardless of score
+  profile: ci
+
+  # Only run these scenario goal types (omit section to run all)
+  scenarios:
     - prompt-injection
     - tool-abuse
     - privilege-escalation
+    - data-exfiltration
+    - policy-violation
+    - mcp-toxic-flow
+
+  # Minimum pre-impact score [0–10] for a scenario to be included (default: 0.0)
+  # Use 5.0 with profile: ci for highest-signal scenarios only
   min_impact_score: 0.0
 
+  # MCP server hostnames treated as trusted.
+  # Servers absent from this list are classified 'untrusted' and eligible
+  # as toxic-flow attack sources.
+  mcp_trusted_servers:
+    - internal-tools.example.com
+    - docs-mcp.example.com
+
+# ─── Static analysis ──────────────────────────────────────────────────────────
 analyze:
   min_severity: medium              # critical | high | medium | low
 
+# ─── Database ─────────────────────────────────────────────────────────────────
+database:
+  # url: ${DATABASE_URL}            # SQLAlchemy async URL (postgresql+asyncpg://...)
+  # omit for SQLite default at ~/.nuguard/nuguard.db
+
+# ─── Output ───────────────────────────────────────────────────────────────────
 output:
-  format: markdown                  # markdown | sarif | json
-  fail_on: high                     # severity threshold for non-zero exit
-  sarif_file: ./nuguard-results.sarif
+  format: text                      # text | json | markdown | sarif
+  fail_on: high                     # exit non-zero when any finding meets this severity
+                                    # values: critical | high | medium | low
+  sarif_file: ./nuguard-results.sarif   # only written when format: sarif

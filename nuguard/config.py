@@ -52,21 +52,55 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         if key in data:
             flat[key] = data[key]
 
+    # LLM section
     llm = data.get("llm", {}) or {}
     if "model" in llm:
         flat["litellm_model"] = llm["model"]
     if "api_key" in llm:
         flat["litellm_api_key"] = llm["api_key"]
 
+    # Database section
     db = data.get("database", {}) or {}
     if "url" in db:
         flat["database_url"] = db["url"]
 
+    # SBOM generation section
+    sbom_gen = data.get("sbom_generation", {}) or {}
+    if "llm" in sbom_gen:
+        flat["sbom_llm_enabled"] = bool(sbom_gen["llm"])
+
+    # Redteam section
     redteam = data.get("redteam", {}) or {}
     if "target" in redteam:
         flat["target_url"] = redteam["target"]
+    if "target_endpoint" in redteam:
+        flat["target_endpoint"] = redteam["target_endpoint"]
+    if "auth_header" in redteam:
+        flat["redteam_auth_header"] = redteam["auth_header"]
+    if "canary" in redteam:
+        flat["canary_path"] = redteam["canary"]
+    if "profile" in redteam:
+        flat["redteam_profile"] = redteam["profile"]
+    if "min_impact_score" in redteam:
+        flat["min_impact_score"] = float(redteam["min_impact_score"])
+    if "scenarios" in redteam:
+        flat["redteam_scenarios"] = redteam["scenarios"]
     if "mcp_trusted_servers" in redteam:
         flat["mcp_trusted_servers"] = redteam["mcp_trusted_servers"]
+
+    # Analyze section
+    analyze = data.get("analyze", {}) or {}
+    if "min_severity" in analyze:
+        flat["analyze_min_severity"] = analyze["min_severity"]
+
+    # Output section
+    output = data.get("output", {}) or {}
+    if "format" in output:
+        flat["output_format"] = output["format"]
+    if "fail_on" in output:
+        flat["fail_on"] = output["fail_on"]
+    if "sarif_file" in output:
+        flat["sarif_output_path"] = output["sarif_file"]
 
     return flat
 
@@ -78,51 +112,115 @@ class NuGuardConfig(BaseSettings):
     via :func:`load_config`.
     """
 
-    # LLM settings
+    # ------------------------------------------------------------------ LLM
     litellm_model: str = Field(
         default="gemini/gemini-2.0-flash",
-        description="LiteLLM model string.",
+        description="LiteLLM model string (yaml: llm.model).",
     )
     litellm_api_key: str | None = Field(
         default=None,
-        description="API key for the configured model provider.",
+        description="API key for the model provider (yaml: llm.api_key or LITELLM_API_KEY env).",
     )
 
-    # Database
+    # ------------------------------------------------------------ Database
     database_url: str | None = Field(
         default=None,
-        description="SQLAlchemy async database URL. None = SQLite default.",
+        description="SQLAlchemy async database URL (yaml: database.url). None = SQLite default.",
     )
 
-    # Project-level file paths (from nuguard.yaml top-level keys)
+    # ------------------------------------------------- Project file paths
     sbom_path: str | None = Field(
         default=None,
         alias="sbom",
-        description="Default path to the AI-SBOM JSON file.",
+        description="Default AI-SBOM JSON path (yaml: sbom).",
     )
     source_path: str | None = Field(
         default=None,
         alias="source",
-        description="Default path to the application source for SBOM generation.",
+        description="Default application source path for SBOM generation (yaml: source).",
     )
     policy_path: str | None = Field(
         default=None,
         alias="policy",
-        description="Default path to the cognitive policy Markdown file.",
+        description="Default cognitive policy Markdown path (yaml: policy).",
     )
 
-    # Redteam
+    # ------------------------------------------------- SBOM generation
+    sbom_llm_enabled: bool = Field(
+        default=False,
+        description="Enable LLM enrichment during SBOM generation (yaml: sbom_generation.llm).",
+    )
+
+    # ------------------------------------------------------- Redteam
     target_url: str | None = Field(
         default=None,
-        description="URL of the running AI application under test.",
+        description="URL of the running AI application under test (yaml: redteam.target).",
+    )
+    target_endpoint: str = Field(
+        default="/chat",
+        description="Agent chat endpoint path on the target (yaml: redteam.target_endpoint).",
+    )
+    redteam_auth_header: str | None = Field(
+        default=None,
+        description=(
+            "Authorization header to include with each redteam request, "
+            "e.g. 'Authorization: Bearer ${TOKEN}' (yaml: redteam.auth_header)."
+        ),
+    )
+    canary_path: str | None = Field(
+        default=None,
+        description="Path to canary JSON file (yaml: redteam.canary).",
+    )
+    redteam_profile: str = Field(
+        default="ci",
+        description="Scan profile: 'ci' (fast, ≥5 impact) or 'full' (all scenarios) (yaml: redteam.profile).",
+    )
+    min_impact_score: float = Field(
+        default=0.0,
+        description="Minimum pre-score [0–10] for scenario inclusion (yaml: redteam.min_impact_score).",
+    )
+    redteam_scenarios: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Scenario types to run; empty = all. "
+            "Values: prompt-injection, tool-abuse, privilege-escalation, "
+            "data-exfiltration, policy-violation, mcp-toxic-flow "
+            "(yaml: redteam.scenarios)."
+        ),
     )
     mcp_trusted_servers: list[str] = Field(
         default_factory=list,
         description=(
-            "MCP server hostnames or domains that are trusted. "
-            "All external MCP servers not in this list are classified as 'untrusted' "
-            "and are eligible as toxic-flow sources in red-team tests."
+            "MCP server hostnames treated as trusted. "
+            "Servers absent from this list are classified 'untrusted' "
+            "and eligible as toxic-flow sources (yaml: redteam.mcp_trusted_servers)."
         ),
+    )
+
+    # ------------------------------------------------------- Analyze
+    analyze_min_severity: str = Field(
+        default="medium",
+        description=(
+            "Minimum severity for analysis findings: critical|high|medium|low "
+            "(yaml: analyze.min_severity)."
+        ),
+    )
+
+    # ------------------------------------------------------- Output
+    output_format: str = Field(
+        default="text",
+        description="Default output format: text|json|markdown|sarif (yaml: output.format).",
+    )
+    fail_on: str = Field(
+        default="high",
+        description=(
+            "Exit non-zero when any finding meets this severity: "
+            "critical|high|medium|low (yaml: output.fail_on)."
+        ),
+    )
+    sarif_output_path: str | None = Field(
+        default=None,
+        description="Path to write SARIF output (yaml: output.sarif_file).",
     )
 
     model_config = SettingsConfigDict(

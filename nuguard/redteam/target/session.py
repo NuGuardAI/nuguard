@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 
 
 @dataclass
@@ -11,7 +11,7 @@ class TurnRecord:
     prompt: str
     response: str
     tool_calls: list[dict]
-    timestamp: datetime = field(default_factory=datetime.utcnow)
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 @dataclass
@@ -23,7 +23,7 @@ class AttackSession:
     chain_id: str
     turns: list[TurnRecord] = field(default_factory=list)
     evidence: dict[str, str] = field(default_factory=dict)  # step_id → response text
-    started_at: datetime = field(default_factory=datetime.utcnow)
+    started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def add_turn(
         self, prompt: str, response: str, tool_calls: list[dict] | None = None

@@ -66,8 +66,20 @@ def redteam(
 
     cfg = load_config(None)
     sbom_path = sbom or (Path(cfg.sbom_path) if cfg.sbom_path else None)
-    policy_path = policy
+    policy_path = policy or (Path(cfg.policy_path) if cfg.policy_path else None)
     target_url = target or cfg.target_url
+    canary_path = canary or (Path(cfg.canary_path) if cfg.canary_path else None)
+    # CLI flag takes precedence; fall back to config default
+    effective_profile = profile if profile != "ci" else cfg.redteam_profile
+    effective_min_impact = (
+        min_impact_score if min_impact_score != 0.0 else cfg.min_impact_score
+    )
+    effective_format = format if format != "text" else cfg.output_format
+    effective_fail_on = fail_on if fail_on != "high" else cfg.fail_on
+    effective_scenarios = (
+        [s.strip() for s in scenarios.split(",")] if scenarios
+        else cfg.redteam_scenarios or []
+    )
 
     # Validate required inputs
     if not sbom_path or not sbom_path.exists():
@@ -77,7 +89,7 @@ def redteam(
         raise typer.Exit(code=1)
     if not target_url:
         typer.echo(
-            "Error: --target is required (or set target_url: in nuguard.yaml)",
+            "Error: --target is required (or set redteam.target: in nuguard.yaml)",
             err=True,
         )
         raise typer.Exit(code=1)
@@ -87,14 +99,16 @@ def redteam(
             sbom_path=sbom_path,
             policy_path=policy_path,
             target_url=target_url,
-            canary_path=canary,
-            profile=profile,
-            min_impact_score=min_impact_score,
+            canary_path=canary_path,
+            profile=effective_profile,
+            min_impact_score=effective_min_impact,
+            scenario_filter=effective_scenarios,
+            auth_header=cfg.redteam_auth_header,
         )
     )
 
     # Output
-    _print_findings(findings, format)
+    _print_findings(findings, effective_format)
     if output:
         output.write_text(
             json.dumps([f.model_dump() for f in findings], indent=2, default=str)
@@ -102,7 +116,7 @@ def redteam(
         typer.echo(f"Findings written to {output}")
 
     # Exit code
-    _fail_on_severity(findings, fail_on)
+    _fail_on_severity(findings, effective_fail_on)
 
 
 async def _run_redteam(
@@ -112,6 +126,8 @@ async def _run_redteam(
     canary_path: Path | None,
     profile: str,
     min_impact_score: float,
+    scenario_filter: list[str] | None = None,
+    auth_header: str | None = None,
 ) -> list:
     """Async inner function to load inputs and run the orchestrator."""
     from nuguard.models.policy import CognitivePolicy
@@ -152,6 +168,13 @@ async def _run_redteam(
         except Exception as exc:
             _log.warning("Could not load canary config: %s", exc)
 
+    # Build extra headers from auth_header config (format: "Header-Name: value")
+    extra_headers: dict[str, str] = {}
+    if auth_header:
+        if ":" in auth_header:
+            hname, _, hval = auth_header.partition(":")
+            extra_headers[hname.strip()] = hval.strip()
+
     orchestrator = RedteamOrchestrator(
         sbom=sbom,
         target_url=target_url,
@@ -160,7 +183,18 @@ async def _run_redteam(
         profile=profile,
         min_impact_score=min_impact_score,
     )
-    return await orchestrator.run()
+    findings = await orchestrator.run()
+
+    # Apply scenario filter if provided
+    if scenario_filter:
+        findings = [
+            f for f in findings
+            if not f.goal_type
+            or any(s.lower().replace("-", "_") in (f.goal_type or "").lower()
+                   for s in scenario_filter)
+        ]
+
+    return findings
 
 
 def _print_findings(findings: list, format: str) -> None:

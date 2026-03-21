@@ -162,11 +162,13 @@ def test_check_json_output(policy_file: Path, sbom_file: Path) -> None:
         ],
     )
     assert result.exit_code in (0, 1, 2), result.output
-    # Output may contain log lines before the JSON; find the JSON array start
+    # Output may contain log lines before the JSON; find the JSON array
+    # by locating a '[' followed by newline+whitespace+'{' (start of JSON array of objects)
     output = result.output
-    json_start = output.find("[")
-    assert json_start != -1, f"No JSON array found in output: {output!r}"
-    parsed = json.loads(output[json_start:])
+    import re as _re
+    m = _re.search(r"\[\s*\{", output)
+    assert m is not None, f"No JSON array found in output: {output!r}"
+    parsed = json.loads(output[m.start():])
     assert isinstance(parsed, list)
 
 

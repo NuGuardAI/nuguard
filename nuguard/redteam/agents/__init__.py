@@ -1,1 +1,0 @@
-"""Red-team attack agents."""

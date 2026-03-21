@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 _log = logging.getLogger(__name__)
@@ -27,7 +27,7 @@ class ActionLogger:
     ) -> None:
         """Log a single attack step result to memory and optionally to a JSONL file."""
         record = {
-            "ts": datetime.utcnow().isoformat(),
+            "ts": datetime.now(UTC).isoformat(),
             "chain_id": chain_id,
             "step_id": step_id,
             "goal_type": goal_type,
