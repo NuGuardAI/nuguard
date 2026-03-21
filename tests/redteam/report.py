@@ -1,6 +1,7 @@
 """Writes E2E redteam scan results as a Markdown report to tests/output/."""
 from __future__ import annotations
 
+import json
 import time
 from datetime import UTC, datetime
 from pathlib import Path
@@ -151,6 +152,50 @@ def write_redteam_report(
             if refs:
                 _h(f"**References:** {' | '.join(refs)}")
                 _h(f"")
+            # --- Attack steps detail ---
+            if finding.attack_steps:
+                _h(f"**Attack Steps ({len(finding.attack_steps)})**")
+                _h(f"")
+                for j, step in enumerate(finding.attack_steps, 1):
+                    step_type = step.get("step_type", "?")
+                    description = step.get("description", "")
+                    succeeded = step.get("succeeded", False)
+                    status_icon = "✅" if succeeded else "❌"
+                    _h(f"**Step {j} — {status_icon} `{step_type}`** {description}")
+                    _h(f"")
+                    # Request
+                    if step.get("target_path"):
+                        method = step.get("method", "POST")
+                        path = step["target_path"]
+                        _h(f"*Request:* `{method} {path}`")
+                        if step.get("params"):
+                            _h(f"```json")
+                            _h(json.dumps(step["params"], indent=2))
+                            _h(f"```")
+                        if step.get("request_body"):
+                            _h(f"```json")
+                            _h(json.dumps(step["request_body"], indent=2))
+                            _h(f"```")
+                        if step.get("status_code") is not None:
+                            _h(f"*HTTP status:* `{step['status_code']}`")
+                    else:
+                        payload = step.get("payload", "")
+                        if payload:
+                            _h(f"*Payload:*")
+                            _h(f"```")
+                            _h(payload)
+                            _h(f"```")
+                    # Tool calls
+                    if step.get("tool_calls"):
+                        _h(f"*Tool calls:* `{', '.join(step['tool_calls'])}`")
+                    # Response
+                    response = step.get("response", "")
+                    if response:
+                        _h(f"*Response (first 600 chars):*")
+                        _h(f"```")
+                        _h(response)
+                        _h(f"```")
+                    _h(f"")
             _h("---")
             _h(f"")
     else:

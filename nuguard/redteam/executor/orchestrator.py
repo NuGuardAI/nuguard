@@ -207,12 +207,36 @@ class RedteamOrchestrator:
         """Convert scenario execution results into Finding objects."""
         findings: list[Finding] = []
 
-        # Collect violations from all steps
+        # Collect violations from all steps and build per-step detail records
         all_violations = []
         canary_hits: list[str] = []
+        step_details: list[dict] = []
         for sr in step_results:
             all_violations.extend(sr.policy_violations)
             canary_hits.extend(sr.canary_hits)
+            step = sr.step
+            detail: dict = {
+                "step_type": step.step_type,
+                "description": step.description,
+                "succeeded": sr.success_signal_found,
+            }
+            if step.target_path:
+                detail["method"] = step.http_method
+                detail["path"] = step.target_path
+                if step.http_body:
+                    detail["request_body"] = step.http_body
+                if step.http_params:
+                    detail["params"] = step.http_params
+                if sr.http_status_code is not None:
+                    detail["status_code"] = sr.http_status_code
+            else:
+                detail["payload"] = step.payload
+            detail["response"] = sr.response[:600] if sr.response else ""
+            if sr.tool_calls:
+                detail["tool_calls"] = [
+                    tc.get("name", tc.get("type", str(tc))) for tc in sr.tool_calls
+                ]
+            step_details.append(detail)
 
         # Resolve human-readable component labels for this scenario's target nodes
         affected = ", ".join(
@@ -246,6 +270,7 @@ class RedteamOrchestrator:
                     owasp_asi_ref=compliance_mapper.owasp_asi_ref(scenario.goal_type),
                     owasp_llm_ref=compliance_mapper.owasp_llm_ref(scenario.goal_type),
                     evidence=f"Canary values found: {canary_hits}",
+                    attack_steps=step_details,
                 )
             )
 
@@ -269,6 +294,7 @@ class RedteamOrchestrator:
                     owasp_asi_ref=compliance_mapper.owasp_asi_ref(scenario.goal_type),
                     owasp_llm_ref=compliance_mapper.owasp_llm_ref(scenario.goal_type),
                     evidence=violation.evidence,
+                    attack_steps=step_details,
                 )
             )
 
@@ -302,6 +328,7 @@ class RedteamOrchestrator:
                         sbom_path=chain.sbom_path,
                         owasp_asi_ref=compliance_mapper.owasp_asi_ref(scenario.goal_type),
                         owasp_llm_ref=compliance_mapper.owasp_llm_ref(scenario.goal_type),
+                        attack_steps=step_details,
                     )
                 )
 

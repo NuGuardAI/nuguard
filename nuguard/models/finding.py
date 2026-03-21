@@ -33,3 +33,5 @@ class Finding(BaseModel):
     mitre_atlas_technique: str | None = None
     evidence: str | None = None
     log_correlation_status: str | None = None
+    # Redteam step-level detail — each entry describes one executed attack step
+    attack_steps: list[dict] = Field(default_factory=list)
