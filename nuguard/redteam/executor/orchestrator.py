@@ -101,6 +101,7 @@ class RedteamOrchestrator:
         chat_payload_key: str = "message",
         chat_payload_list: bool = False,
         concurrency: int = DEFAULT_CONCURRENCY,
+        request_timeout: float = 120.0,
     ) -> None:
         self._sbom = sbom
         self._target_url = target_url
@@ -109,6 +110,7 @@ class RedteamOrchestrator:
         self._profile = profile
         self._min_impact = min_impact_score
         self._log_path = log_path
+        self._request_timeout = request_timeout
         self._concurrency = max(1, concurrency)
         # Auto-discover from SBOM; fall back to provided values
         self._chat_path, self._chat_payload_key, self._chat_payload_list = (
@@ -176,6 +178,7 @@ class RedteamOrchestrator:
             chat_path=self._chat_path,
             chat_payload_key=self._chat_payload_key,
             chat_payload_list=self._chat_payload_list,
+            timeout=self._request_timeout,
         ) as client:
             executor = AttackExecutor(
                 client=client,

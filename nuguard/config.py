@@ -89,6 +89,8 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["mcp_trusted_servers"] = redteam["mcp_trusted_servers"]
     if "verbose" in redteam:
         flat["redteam_verbose"] = bool(redteam["verbose"])
+    if "request_timeout" in redteam:
+        flat["redteam_request_timeout"] = float(redteam["request_timeout"])
     if "app_env" in redteam and isinstance(redteam["app_env"], dict):
         flat["redteam_app_env"] = {
             str(k): str(v) for k, v in redteam["app_env"].items()
@@ -200,6 +202,14 @@ class NuGuardConfig(BaseSettings):
             "MCP server hostnames treated as trusted. "
             "Servers absent from this list are classified 'untrusted' "
             "and eligible as toxic-flow sources (yaml: redteam.mcp_trusted_servers)."
+        ),
+    )
+    redteam_request_timeout: float = Field(
+        default=120.0,
+        description=(
+            "Per-request HTTP timeout in seconds for redteam chat/agent calls "
+            "(yaml: redteam.request_timeout). Multi-agent pipelines can take "
+            "60-120 s; increase further for very slow apps."
         ),
     )
     redteam_verbose: bool = Field(

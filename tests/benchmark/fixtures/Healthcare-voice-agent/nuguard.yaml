@@ -11,6 +11,12 @@ redteam:
   # Verbose report: include full per-scenario input/output traces.
   verbose: true
 
+  # The /run_langgraph endpoint runs a 5-agent LangGraph pipeline (normalize →
+  # prognosis_search via DuckDuckGo → specialist_lookup → recommend →
+  # fetch_doctor_details), each making GPT-4 calls. The default 30 s timeout
+  # fires before the chain completes; 180 s gives enough headroom.
+  request_timeout: 180
+
   # Environment variables injected into the healthcare app subprocess.
   # DATABASE_URL is required to exercise the DB-backed endpoints:
   #   POST /login

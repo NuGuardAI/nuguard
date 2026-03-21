@@ -51,6 +51,11 @@ redteam:
   # Use 5.0 with profile: ci for highest-signal scenarios only
   min_impact_score: 0.0
 
+  # Per-request HTTP timeout in seconds for chat/agent calls (default: 120).
+  # Multi-agent LangGraph pipelines with LLM calls can take 60-120 s per
+  # request; increase further for very slow apps.
+  request_timeout: 120
+
   # Verbose report: include full per-scenario traces (inputs, outputs, selection
   # rationale, risk scores) for troubleshooting. Also enabled by setting the
   # NUGUARD_REDTEAM_VERBOSE=1 environment variable.

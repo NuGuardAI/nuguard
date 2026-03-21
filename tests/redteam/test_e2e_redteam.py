@@ -235,6 +235,7 @@ def _run_redteam(app_name: str) -> None:
                     chat_path=config.chat_path,
                     chat_payload_key=config.chat_payload_key,
                     chat_payload_list=config.chat_payload_list,
+                    request_timeout=app_cfg.redteam_request_timeout,
                 )
                 findings = asyncio.run(orchestrator.run())
                 scenarios_generated = orchestrator.scenarios_run
