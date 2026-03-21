@@ -1,0 +1,30 @@
+# nuguard.yaml — Healthcare Voice Agent fixture
+# Per-fixture config loaded automatically by the E2E redteam test harness.
+# Place secrets in environment variables and reference them with ${VAR}.
+
+# ─── Red-team settings ────────────────────────────────────────────────────────
+redteam:
+  # Full profile exercises all scenarios regardless of impact score.
+  # Use 'ci' for fast runs (impact >= 5 only).
+  profile: full
+
+  # Verbose report: include full per-scenario input/output traces.
+  verbose: true
+
+  # Environment variables injected into the healthcare app subprocess.
+  # DATABASE_URL is required to exercise the DB-backed endpoints:
+  #   POST /login
+  #   GET  /patient-details/{user_id}
+  #   GET  /medical-history/{user_id}
+  #   POST /appointments
+  #
+  # Provide a PostgreSQL URL via env var to keep credentials out of this file:
+  #   export DATABASE_URL="postgresql://user:password@localhost:5432/healthcare"
+  #
+  # For local development a pre-seeded test database is recommended.
+  # Schema is auto-created by SQLAlchemy on startup when DATABASE_URL is set.
+  app_env:
+    DATABASE_URL: ${DATABASE_URL}
+
+    # Optional: suppress verbose LangGraph/LangChain startup logs from the app
+    LOG_LEVEL: warning

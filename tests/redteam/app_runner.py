@@ -184,8 +184,9 @@ APP_CONFIGS: dict[str, AppConfig] = {
 class AppRunner:
     """Manages the full lifecycle of a single fixture app subprocess."""
 
-    def __init__(self, config: AppConfig) -> None:
+    def __init__(self, config: AppConfig, extra_env: dict[str, str] | None = None) -> None:
         self.config = config
+        self._extra_env: dict[str, str] = extra_env or {}
         self._source_dir: Path | None = None
         self._venv_dir: Path = VENV_CACHE_DIR / config.name
         self._process: subprocess.Popen | None = None  # type: ignore[type-arg]
@@ -305,6 +306,8 @@ class AppRunner:
     def _build_startup_env(self) -> dict[str, str]:
         """Build the environment for the subprocess (inherits + fixture-specific vars)."""
         env = os.environ.copy()
+        # Inject extra env vars from nuguard.yaml redteam.app_env (highest priority)
+        env.update(self._extra_env)
         env["PYTHONPATH"] = str(self.working_dir())
         env["PORT"] = str(self.config.port)
         # Silence noisy startup logs from the target app

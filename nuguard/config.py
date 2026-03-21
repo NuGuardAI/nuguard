@@ -89,6 +89,10 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["mcp_trusted_servers"] = redteam["mcp_trusted_servers"]
     if "verbose" in redteam:
         flat["redteam_verbose"] = bool(redteam["verbose"])
+    if "app_env" in redteam and isinstance(redteam["app_env"], dict):
+        flat["redteam_app_env"] = {
+            str(k): str(v) for k, v in redteam["app_env"].items()
+        }
 
     # Analyze section
     analyze = data.get("analyze", {}) or {}
@@ -204,6 +208,14 @@ class NuGuardConfig(BaseSettings):
             "Include full per-scenario traces (inputs, outputs, selection rationale, "
             "risk scores) in the redteam report (yaml: redteam.verbose). "
             "Also enabled by NUGUARD_REDTEAM_VERBOSE=1 env var."
+        ),
+    )
+    redteam_app_env: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Extra environment variables injected into the fixture app subprocess "
+            "during E2E redteam tests (yaml: redteam.app_env). "
+            "Use \${VAR} interpolation to avoid storing secrets in the file."
         ),
     )
 

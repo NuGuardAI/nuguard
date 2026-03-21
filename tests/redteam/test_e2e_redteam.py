@@ -25,8 +25,8 @@ from nuguard.config import load_config
 from nuguard.models.policy import CognitivePolicy
 from nuguard.policy.parser import parse_policy
 from nuguard.redteam.executor.orchestrator import RedteamOrchestrator, ScenarioRecord
-from nuguard.sbom.extractor.core import AiSbomExtractor
 from nuguard.sbom.extractor.config import AiSbomConfig
+from nuguard.sbom.extractor.core import AiSbomExtractor
 from nuguard.sbom.serializer import AiSbomSerializer
 
 from .app_runner import APP_CONFIGS, FIXTURES_DIR, AppRunner
@@ -115,6 +115,21 @@ def _load_policy(config: "AppConfig") -> CognitivePolicy | None:  # type: ignore
     return None
 
 
+def _load_fixture_config(config: "AppConfig") -> "NuGuardConfig":  # type: ignore[name-defined]
+    """Load per-fixture nuguard.yaml if present, falling back to the repo-root config.
+
+    Looks for ``nuguard.yaml`` in the fixture's static directory alongside
+    ``cognitive_policy.md``.  This lets each fixture ship its own redteam
+    settings (e.g. ``redteam.app_env.DATABASE_URL``) without affecting other
+    app tests.
+    """
+    fixture_yaml = FIXTURES_DIR / config.fixture_dir / "nuguard.yaml"
+    if fixture_yaml.exists():
+        _log.info("[%s] Loading per-fixture config from %s", config.name, fixture_yaml)
+        return load_config(fixture_yaml)
+    return _cfg
+
+
 def _run_redteam(app_name: str) -> None:
     """Core E2E logic shared by all per-app tests.
 
@@ -127,7 +142,8 @@ def _run_redteam(app_name: str) -> None:
       6. Write Markdown report to tests/output/
     """
     config = APP_CONFIGS[app_name]
-    runner = AppRunner(config)
+    app_cfg = _load_fixture_config(config)
+    runner = AppRunner(config, extra_env=app_cfg.redteam_app_env)
     start_time = time.monotonic()
 
     # Step 1: materialize source
@@ -136,7 +152,8 @@ def _run_redteam(app_name: str) -> None:
     except Exception as exc:
         _log.error("[%s] Failed to materialize fixture: %s", app_name, exc)
         runner.start_error = str(exc)
-        _write_report(config, runner, {}, 0, [], time.monotonic() - start_time, None)
+        _write_report(config, runner, {}, 0, [], time.monotonic() - start_time, None,
+                      verbose=app_cfg.redteam_verbose or _VERBOSE)
         return
 
     try:
@@ -195,13 +212,14 @@ def _run_redteam(app_name: str) -> None:
             config, runner, sbom_summary, scenarios_generated, findings,
             time.monotonic() - start_time, policy_file, scenarios_executed,
             scenario_records=scenario_records,
+            verbose=app_cfg.redteam_verbose or _VERBOSE,
         )
 
     finally:
         runner.teardown()
 
 
-def _write_report(config, runner, sbom_summary, scenarios_generated, findings, scan_duration, policy_file, scenarios_executed=None, scenario_records=None):  # type: ignore[no-untyped-def]
+def _write_report(config, runner, sbom_summary, scenarios_generated, findings, scan_duration, policy_file, scenarios_executed=None, scenario_records=None, verbose: bool = False):  # type: ignore[no-untyped-def]
     report_path = write_redteam_report(
         app_name=config.name,
         app_url=runner.base_url,
@@ -215,7 +233,7 @@ def _write_report(config, runner, sbom_summary, scenarios_generated, findings, s
         notes=config.notes,
         policy_file=policy_file,
         scenarios_executed=scenarios_executed,
-        verbose=_VERBOSE,
+        verbose=verbose,
         scenario_records=scenario_records,
     )
     _log.info("[%s] Report written to %s", config.name, report_path)
