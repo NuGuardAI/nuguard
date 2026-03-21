@@ -15,7 +15,7 @@
 | Container detection | Dockerfile parsing (FROM, USER, HEALTHCHECK, ARG/ENV secrets) |
 | Database detection | SQL, NoSQL, vector, KV, object storage (14+ stores) |
 | Dependency vulns | OSV (API) + Grype (CLI) |
-| AI structural checks | VLA-001 through VLA-005 (offline VLA rules) |
+| AI structural checks | NGA-001 through NGA-005 (offline NGA rules) |
 | Output | JSON, CycloneDX, SPDX, SARIF (plugin), Markdown (plugin) |
 | CI integration | GitHub Actions adapter (parsing) + GHAS upload plugin |
 
@@ -24,7 +24,7 @@
 1. IaC misconfiguration checks (Terraform, K8s, CloudFormation, Bicep)
 2. Container image deep scanning (OS packages, secrets, misconfigs)
 3. AI-specific code security patterns (prompt injection surfaces, insecure LLM usage)
-4. Additional VLA rules covering cloud/DB/container attack surface
+4. Additional NGA rules covering cloud/DB/container attack surface
 5. Unified terminal report aggregating all findings
 6. `nuguard scan` — one command that does everything
 7. CI pipeline gate (exit codes, severity thresholds)
@@ -69,26 +69,26 @@
 - **Why Semgrep:** Language-agnostic, fast, rule-as-code (YAML), runs offline, first-class support for Python and TypeScript.
 - **Integration model:** `semgrep` toolbox plugin wraps the `semgrep` CLI, targeting the scan directory with a bundled nuguard rule pack (see new rules below) plus optionally `p/python` and `p/owasp-top-ten` from the registry.
 - **Bundled rule pack location:** `nuguard/sbom/toolbox/semgrep_rules/ai-security.yaml`
-- **Graceful degradation:** If `semgrep` binary is not found, warn and skip. Built-in VLA rules still fire.
+- **Graceful degradation:** If `semgrep` binary is not found, warn and skip. Built-in NGA rules still fire.
 
 ---
 
-## New VLA Rules (VLA-006 through VLA-015)
+## New NGA Rules (NGA-006 through NGA-015)
 
 All rules are deterministic, offline, derived from the SBOM graph — no new tool required to fire.
 
 | Rule ID | Severity | Title | Detection Logic |
 |---|---|---|---|
-| **VLA-006** | HIGH | Unencrypted datastore containing PII/PHI | DATASTORE node with PII or PHI data classification AND `encryption_at_rest=false` or no encryption metadata |
-| **VLA-007** | HIGH | Missing auth on external AI API endpoint | API_ENDPOINT nodes without an AUTH edge and no guardrail — catches unauthenticated model inference endpoints |
-| **VLA-008** | MEDIUM | Agent with internet access but no output guardrail | AGENT node with outbound API_ENDPOINT edge and no GUARDRAIL node reachable in graph |
-| **VLA-009** | HIGH | Overly permissive IAM role for AI workload | IAM node with wildcard action (`"*"`) or admin-level role attached to a DEPLOYMENT node that hosts an AGENT or MODEL |
-| **VLA-010** | MEDIUM | No network policy for AI workload in K8s | DEPLOYMENT node with `iac_format=kubernetes` and no NetworkPolicy evidence in the same namespace |
-| **VLA-011** | HIGH | LLM model weight loaded from untrusted registry | MODEL node where source URL is not `huggingface.co`, `ollama.ai`, or an allowlisted private registry — and has no checksum/digest evidence |
-| **VLA-012** | MEDIUM | Container image using `latest` tag | CONTAINER_IMAGE node where `image_tag == "latest"` or tag is absent — prevents reproducible deployments |
-| **VLA-013** | LOW | AI workload missing health check | DEPLOYMENT or CONTAINER_IMAGE node without `has_health_check=true` |
-| **VLA-014** | MEDIUM | Multiple AI agents sharing a single datastore with no access isolation | 2+ AGENT nodes with edges to the same DATASTORE and no IAM node differentiating access |
-| **VLA-015** | INFO | LLM provider not pinned to a specific model version | MODEL node where `model_name` ends in a floating alias (e.g., `gpt-4`, `claude-3-opus`) rather than a versioned/dated variant |
+| **NGA-006** | HIGH | Unencrypted datastore containing PII/PHI | DATASTORE node with PII or PHI data classification AND `encryption_at_rest=false` or no encryption metadata |
+| **NGA-007** | HIGH | Missing auth on external AI API endpoint | API_ENDPOINT nodes without an AUTH edge and no guardrail — catches unauthenticated model inference endpoints |
+| **NGA-008** | MEDIUM | Agent with internet access but no output guardrail | AGENT node with outbound API_ENDPOINT edge and no GUARDRAIL node reachable in graph |
+| **NGA-009** | HIGH | Overly permissive IAM role for AI workload | IAM node with wildcard action (`"*"`) or admin-level role attached to a DEPLOYMENT node that hosts an AGENT or MODEL |
+| **NGA-010** | MEDIUM | No network policy for AI workload in K8s | DEPLOYMENT node with `iac_format=kubernetes` and no NetworkPolicy evidence in the same namespace |
+| **NGA-011** | HIGH | LLM model weight loaded from untrusted registry | MODEL node where source URL is not `huggingface.co`, `ollama.ai`, or an allowlisted private registry — and has no checksum/digest evidence |
+| **NGA-012** | MEDIUM | Container image using `latest` tag | CONTAINER_IMAGE node where `image_tag == "latest"` or tag is absent — prevents reproducible deployments |
+| **NGA-013** | LOW | AI workload missing health check | DEPLOYMENT or CONTAINER_IMAGE node without `has_health_check=true` |
+| **NGA-014** | MEDIUM | Multiple AI agents sharing a single datastore with no access isolation | 2+ AGENT nodes with edges to the same DATASTORE and no IAM node differentiating access |
+| **NGA-015** | INFO | LLM provider not pinned to a specific model version | MODEL node where `model_name` ends in a floating alias (e.g., `gpt-4`, `claude-3-opus`) rather than a versioned/dated variant |
 
 ### Bundled Semgrep Rules (`ai-security.yaml`)
 
@@ -137,7 +137,7 @@ nuguard scan --source <path>
 ├─ Step 1: sbom      nuguard sbom generate  → output-dir/sbom.json
 │
 ├─ Step 2: analyze   nuguard analyze        → output-dir/findings.json
-│           ├─ VLA rules VLA-001..015 (offline, always)
+│           ├─ NGA rules NGA-001..015 (offline, always)
 │           ├─ Atlas graph checks (ATLAS-NC-001..004)
 │           ├─ Dependency vuln scan (OSV always, Grype if installed)
 │           ├─ IaC misconfiguration (Checkov if installed)
@@ -193,9 +193,9 @@ A new toolbox plugin that renders a structured, colored summary to stdout using 
 
 ## Updated SARIF Output
 
-The existing `sarif_generator.py` (`nuguard/output/sarif_generator.py`) exports only VLA findings. The updated version must:
+The existing `sarif_generator.py` (`nuguard/output/sarif_generator.py`) exports only NGA findings. The updated version must:
 
-- Accept a `findings` list from all tools (VLA, Checkov, Trivy, Semgrep)
+- Accept a `findings` list from all tools (NGA, Checkov, Trivy, Semgrep)
 - Map each tool to its own SARIF `run` with its own `driver` (name, version, rules)
 - Preserve `artifactLocation` (file path) and `region` (line numbers) where available
 - Emit a single `findings.sarif` consumable by GitHub Code Scanning and VS Code SARIF Viewer
@@ -206,7 +206,7 @@ The existing `sarif_generator.py` (`nuguard/output/sarif_generator.py`) exports 
 {
   "version": "2.1.0",
   "runs": [
-    { "tool": { "driver": { "name": "nuguard-vla", ... } }, "results": [...] },
+    { "tool": { "driver": { "name": "nuguard-nga", ... } }, "results": [...] },
     { "tool": { "driver": { "name": "checkov", ... } }, "results": [...] },
     { "tool": { "driver": { "name": "trivy", ... } }, "results": [...] },
     { "tool": { "driver": { "name": "semgrep", ... } }, "results": [...] }
@@ -279,7 +279,7 @@ The existing `GitHubActionsAdapter` detects OIDC configuration. In Phase 1 it ga
 - Detection of `pull_request_target` with `${{ github.event.pull_request... }}` — common PWSH injection vector
 - Detection of workflows writing to `GITHUB_ENV` from untrusted input — env injection pattern
 
-These map to new VLA rule IDs (VLA-016 through VLA-018) and fire without any external tool.
+These map to new NGA rule IDs (NGA-016 through NGA-018) and fire without any external tool.
 
 ---
 
@@ -311,18 +311,18 @@ class CheckovScannerPlugin(ToolPlugin):
 
 ---
 
-### M2 — New VLA Rules (VLA-006 through VLA-018)
+### M2 — New NGA Rules (NGA-006 through NGA-018)
 
 **Deliverables:**
-- Extend `nuguard/sbom/toolbox/plugins/vulnerability.py` with rules VLA-006 through VLA-018
+- Extend `nuguard/sbom/toolbox/plugins/vulnerability.py` with rules NGA-006 through NGA-018
 - Each rule: `rule_id`, `severity`, `title`, `description`, `remediation`, `affected_components`
 - Regression tests in `nuguard/sbom/tests/test_toolbox/test_vulnerability_rules.py` (extend existing)
 - New test fixtures where needed (minimal — prefer extending existing fixture apps)
 
 **Key implementation notes:**
-- VLA-009 (overly permissive IAM): traverse `edges` for DEPLOYMENT → IAM relationships; check IAM node `permissions` list for `"*"` or `"admin"`.
-- VLA-011 (untrusted model registry): check `NODE.metadata.source_url` against allowlist; default allowlist in config, overridable via `nuguard.yaml` `trusted_registries`.
-- VLA-014 (shared datastore, no IAM isolation): graph traversal — find all AGENT nodes with edges to the same DATASTORE node, check if distinct IAM nodes gate each path.
+- NGA-009 (overly permissive IAM): traverse `edges` for DEPLOYMENT → IAM relationships; check IAM node `permissions` list for `"*"` or `"admin"`.
+- NGA-011 (untrusted model registry): check `NODE.metadata.source_url` against allowlist; default allowlist in config, overridable via `nuguard.yaml` `trusted_registries`.
+- NGA-014 (shared datastore, no IAM isolation): graph traversal — find all AGENT nodes with edges to the same DATASTORE node, check if distinct IAM nodes gate each path.
 
 ---
 
@@ -355,23 +355,23 @@ class CheckovScannerPlugin(ToolPlugin):
 
 **Deliverables:**
 - Extend `GitHubActionsAdapter` in `nuguard/sbom/extractor/iac_scanners/github_actions.py` with 3 new security signals
-- New VLA rules VLA-016 through VLA-018 in `nuguard/sbom/toolbox/plugins/vulnerability.py`
+- New NGA rules NGA-016 through NGA-018 in `nuguard/sbom/toolbox/plugins/vulnerability.py`
 - Regression tests using fixture workflow YAML files
 
 **New detection patterns:**
 
 ```python
-# VLA-016: pull_request_target with untrusted context
+# NGA-016: pull_request_target with untrusted context
 PATTERN_PR_TARGET_INJECTION = re.compile(
     r"pull_request_target.*\$\{\{.*github\.event\.pull_request\.", re.DOTALL
 )
 
-# VLA-017: GITHUB_ENV write from untrusted input
+# NGA-017: GITHUB_ENV write from untrusted input
 PATTERN_GITHUB_ENV_INJECTION = re.compile(
     r'echo\s+.*\$\{\{.*\}\}.*>>\s*\$GITHUB_ENV'
 )
 
-# VLA-018: ACTIONS_RUNNER_DEBUG secret exposed
+# NGA-018: ACTIONS_RUNNER_DEBUG secret exposed
 PATTERN_DEBUG_SECRET = re.compile(r'ACTIONS_RUNNER_DEBUG')
 ```
 
@@ -400,7 +400,7 @@ nuguard scan --source <path>
 └───────┬────────┬────────┬────────┬────────┬─────────────┘
         │        │        │        │        │
         ▼        ▼        ▼        ▼        ▼
-  AiSbomExtractor  VLA Rules  Checkov   Trivy    Semgrep
+  AiSbomExtractor  NGA Rules  Checkov   Trivy    Semgrep
   (existing)    (extended)  (plugin) (plugin) (plugin)
         │        │        │        │        │
         └────────┴────────┴────────┴────────┘
@@ -462,7 +462,7 @@ pip install checkov semgrep          # IaC + code checks (pip)
 ## Success Criteria
 
 - `nuguard scan --source ./my-ai-app` produces terminal output, `report.md`, `findings.sarif`, and `sbom.json` from a single command.
-- All new VLA rules (VLA-006 through VLA-018) have at least one passing and one failing test case.
+- All new NGA rules (NGA-006 through NGA-018) have at least one passing and one failing test case.
 - Checkov, Trivy, and Semgrep plugins all degrade gracefully (warn + skip) when the tool binary is absent.
 - The bundled GitHub Actions template (`nuguardai/nuguard-action@v1`) runs clean on a sample AI repo with no false-positive failures.
 - Exit code behavior is correct: `0` for clean, `1` for findings at threshold, `2` for critical findings, `3` for tool error.
