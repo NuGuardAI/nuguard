@@ -6,6 +6,7 @@ import logging
 from nuguard.common.llm_client import LLMClient
 from nuguard.models.exploit_chain import HTTP_2XX_SENTINEL, ExploitChain, ExploitStep
 from nuguard.models.policy import CognitivePolicy
+from nuguard.redteam.llm_engine.adaptive_mutation import AdaptiveMutationStrategy
 from nuguard.redteam.llm_engine.response_evaluator import LLMResponseEvaluator
 from nuguard.redteam.policy_engine.evaluator import PolicyEvaluator, PolicyViolation
 from nuguard.redteam.target.action_logger import ActionLogger
@@ -19,10 +20,10 @@ _log = logging.getLogger(__name__)
 
 
 def _mutation_variants(payload: str) -> list[str]:
-    """Return progressively more adversarial rephrasing of a payload.
+    """Return static fallback mutation variants when no adaptive LLM is available.
 
-    Each variant is used in a follow-up turn when the previous attempt did not
-    trigger the expected success signal.  Ordered from least to most aggressive.
+    Used as a fallback when ``AdaptiveMutationStrategy`` is not configured.
+    Ordered from least to most aggressive.
     """
     return [
         # Turn 1: persona override — ask model to step out of role
@@ -94,12 +95,19 @@ class AttackExecutor:
         canary: CanaryScanner | None = None,
         logger: ActionLogger | None = None,
         eval_llm: LLMClient | None = None,
+        mutation_llm: LLMClient | None = None,
     ) -> None:
         self._client = client
         self._evaluator = PolicyEvaluator(policy) if policy else None
         self._canary = canary
         self._logger = logger or ActionLogger()
         self._response_evaluator = LLMResponseEvaluator(eval_llm) if eval_llm else None
+        # Adaptive mutation: uses a separate LLM (typically the redteam LLM) to
+        # generate targeted follow-up payloads based on the failure type observed.
+        # Falls back to static _mutation_variants when not configured.
+        self._adaptive_mutator = (
+            AdaptiveMutationStrategy(mutation_llm) if mutation_llm else None
+        )
 
     async def run(
         self, chain: ExploitChain
@@ -129,11 +137,25 @@ class AttackExecutor:
                 chain.status = "aborted"
                 break
             elif step.on_failure == "mutate":
-                # Multi-turn escalation: try progressively more adversarial phrasings
-                for attempt, mutation in enumerate(_mutation_variants(step.payload)):
+                # Multi-turn escalation: use adaptive LLM mutations when available,
+                # fall back to static variants.
+                last_response = result.response
+                for attempt in range(self.MAX_MUTATIONS):
+                    if self._adaptive_mutator:
+                        mutation = await self._adaptive_mutator.get_next_payload(
+                            original_payload=step.payload,
+                            response=last_response,
+                            goal_type=chain.goal_type.value,
+                            attempt=attempt,
+                        )
+                    else:
+                        static = _mutation_variants(step.payload)
+                        mutation = static[attempt % len(static)]
+
                     result = await self._execute_step_with_payload(
                         step, mutation, session, chain
                     )
+                    last_response = result.response
                     if result.success_signal_found:
                         session.add_evidence(step.step_id, result.response)
                         results.append(result)
@@ -226,7 +248,12 @@ class AttackExecutor:
         is_http_error = (
             result.http_status_code is not None and result.http_status_code >= 400
         )
-        if self._evaluator and not step.target_path and not is_http_error and not is_client_error:
+        if (
+            self._evaluator
+            and not step.target_path
+            and not is_http_error
+            and not is_client_error
+        ):
             result.policy_violations = self._evaluator.evaluate(
                 prompt=payload,
                 response=response,

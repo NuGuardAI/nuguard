@@ -227,21 +227,45 @@ class RedteamOrchestrator:
         # 3. Set up action logger
         logger = ActionLogger(self._log_path)
 
-        # 4. Execute scenarios
+        # 4. Execute scenarios (with PoisonPayloadServer for indirect injection / RAG)
         findings: list[Finding] = []
-        async with TargetAppClient(
-            self._target_url,
-            chat_path=self._chat_path,
-            chat_payload_key=self._chat_payload_key,
-            chat_payload_list=self._chat_payload_list,
-            timeout=self._request_timeout,
-        ) as client:
+        from nuguard.redteam.executor.poison_server import (
+            POISON_PAYLOAD_HOST,
+            PoisonPayloadServer,
+        )
+        app_name = ""
+        if self._sbom.summary:
+            app_name = getattr(self._sbom.summary, "application_name", "") or ""
+        async with (
+            PoisonPayloadServer(app_name=app_name or "application") as poison_server,
+            TargetAppClient(
+                self._target_url,
+                chat_path=self._chat_path,
+                chat_payload_key=self._chat_payload_key,
+                chat_payload_list=self._chat_payload_list,
+                timeout=self._request_timeout,
+            ) as client,
+        ):
+            # Substitute poison server URL into all scenario step payloads that
+            # contain the placeholder host.  This makes indirect injection and RAG
+            # poisoning scenarios point at our live server instead of a dead host.
+            poison_netloc = poison_server.netloc
+            for scenario in scenarios:
+                if scenario.chain is None:
+                    continue
+                for step in scenario.chain.steps:
+                    if POISON_PAYLOAD_HOST in step.payload:
+                        step.payload = step.payload.replace(
+                            POISON_PAYLOAD_HOST, poison_netloc
+                        )
+
             executor = AttackExecutor(
                 client=client,
                 policy=self._policy,
                 canary=canary_scanner,
                 logger=logger,
                 eval_llm=self._eval_llm,
+                mutation_llm=self._redteam_llm,
             )
             findings, executed, records = await self._run_scenarios(scenarios, executor)
             self.scenarios_executed.extend(executed)

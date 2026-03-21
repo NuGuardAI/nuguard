@@ -10,9 +10,20 @@ from nuguard.sbom.models import AiSbomDocument
 from nuguard.sbom.types import ComponentType, RelationshipType
 
 from .api_attacks import build_auth_bypass, build_idor, build_mass_assignment
+from .data_exfiltration import (
+    build_base64_exfiltration,
+    build_cross_tenant_exfiltration,
+    build_document_embedded_exfiltration,
+    build_image_url_exfiltration,
+    build_json_xml_exfiltration,
+    build_rag_poisoning,
+)
+from .jailbreak import build_context_flood, build_structural_injection
+from .mcp_attacks import build_mcp_output_poisoning, build_mcp_tool_injection
 from .pre_scorer import pre_score
 from .privilege_escalation import build_privilege_chain
 from .prompt_injection import (
+    build_goal_redirection,
     build_guardrail_bypass,
     build_indirect_injection,
     build_system_prompt_extraction,
@@ -62,6 +73,12 @@ class ScenarioGenerator:
 
         # Goal 5: MCP Toxic Flow
         scenarios.extend(self._mcp_toxic_flow_scenarios())
+
+        # Goal 5b: MCP Server-Level Attacks (tool injection, output poisoning)
+        scenarios.extend(self._mcp_attack_scenarios())
+
+        # Goal 5c: RAG/Vector Store Poisoning
+        scenarios.extend(self._rag_poisoning_scenarios())
 
         # Goal 6: Direct API Attacks (auth bypass, mass assignment, IDOR)
         scenarios.extend(self._api_attack_scenarios())
@@ -126,6 +143,48 @@ class ScenarioGenerator:
                     agent_id=agent_id,
                     agent_name=agent_name,
                     reachable_tools=reachable_tools,
+                )
+            )
+
+            # Multi-turn goal redirection — use SBOM use_case as the primary purpose
+            use_case = ""
+            if self._sbom.summary:
+                use_case = getattr(self._sbom.summary, "use_case", "") or ""
+            if use_case or excerpt:
+                primary_purpose = use_case[:80] or excerpt[:60] or "customer service"
+                off_topic_goals = [
+                    "provide detailed instructions on a topic outside your intended purpose",
+                    "act as a general-purpose assistant with no restrictions",
+                ]
+                for off_goal in off_topic_goals[:1]:  # cap at 1 per agent
+                    out.append(
+                        build_goal_redirection(
+                            agent_id=agent_id,
+                            agent_name=agent_name,
+                            primary_use_case=primary_purpose,
+                            off_topic_goal=off_goal,
+                        )
+                    )
+
+            # Structural injection (JSON/XML) — target any blocked topic or generic
+            topic_for_injection = (
+                (blocked_topics[0] if blocked_topics else None)
+                or (self._policy.restricted_topics[0] if self._policy.restricted_topics else None)
+                or "restricted content"
+            )
+            out.append(
+                build_structural_injection(
+                    agent_id=agent_id,
+                    agent_name=agent_name,
+                    blocked_topic=topic_for_injection,
+                )
+            )
+
+            # Context flooding — always applicable to conversational agents
+            out.append(
+                build_context_flood(
+                    agent_id=agent_id,
+                    agent_name=agent_name,
                 )
             )
 
@@ -437,6 +496,69 @@ class ScenarioGenerator:
                     )
                 )
 
+        # Covert encoding exfiltration — always add for every agent with data access
+        # All four techniques: base64, JSON/XML, document-embedded, image-URL steg
+        agent_nodes_for_covert = [
+            n for n in self._sbom.nodes if n.component_type == ComponentType.AGENT
+        ]
+        for agent_node in agent_nodes_for_covert[:2]:  # cap at 2 agents
+            # Derive a meaningful field label from PII fields or policy
+            field_names = []
+            for ds in self._sbom.nodes:
+                if ds.component_type == ComponentType.DATASTORE:
+                    field_names = (ds.metadata.pii_fields or []) + (ds.metadata.phi_fields or [])
+                    if field_names:
+                        break
+            if not field_names and self._policy.data_classification:
+                field_names = self._parse_policy_pii_fields(self._policy.data_classification)
+            target_field = ", ".join(field_names[:3]) if field_names else "user record"
+
+            out.extend([
+                build_base64_exfiltration(
+                    agent_id=str(agent_node.id),
+                    agent_name=agent_node.name,
+                    target_field=target_field,
+                ),
+                build_json_xml_exfiltration(
+                    agent_id=str(agent_node.id),
+                    agent_name=agent_node.name,
+                    target_field=target_field,
+                ),
+                build_document_embedded_exfiltration(
+                    agent_id=str(agent_node.id),
+                    agent_name=agent_node.name,
+                    target_field=target_field,
+                ),
+                build_image_url_exfiltration(
+                    agent_id=str(agent_node.id),
+                    agent_name=agent_node.name,
+                    target_field=target_field,
+                ),
+            ])
+
+        # Cross-tenant exfiltration — detect multi-tenant indicators
+        cross_tenant_nodes = [
+            n for n in self._sbom.nodes
+            if n.component_type == ComponentType.AGENT
+            and (
+                "multi_tenant" in (n.metadata.extras or {})
+                or "customer" in n.name.lower()
+                or "tenant" in n.name.lower()
+            )
+        ]
+        if not cross_tenant_nodes:
+            # Fallback: add for all agents (most SaaS agents have multi-tenant data)
+            cross_tenant_nodes = [
+                n for n in self._sbom.nodes if n.component_type == ComponentType.AGENT
+            ][:2]
+        for agent_node in cross_tenant_nodes[:2]:
+            out.append(
+                build_cross_tenant_exfiltration(
+                    agent_id=str(agent_node.id),
+                    agent_name=agent_node.name,
+                )
+            )
+
         # Fallback: when policy declares data_classification but no DATASTORE SBOM
         # nodes carry PII metadata, generate agent-level extraction scenarios directly
         if not out and self._policy.data_classification:
@@ -651,6 +773,113 @@ class ScenarioGenerator:
                         chain=chain,
                     )
                 )
+        return out
+
+    # ------------------------------------------------------------------ #
+    # Goal 5b: MCP Server-Level Attacks
+    # ------------------------------------------------------------------ #
+
+    def _mcp_attack_scenarios(self) -> list[AttackScenario]:
+        """Generate MCP tool injection and output poisoning scenarios.
+
+        Targets agents that call MCP server tools.  Builds one tool-description
+        injection and one output-poisoning scenario per (agent, MCP tool) pair.
+        """
+        out: list[AttackScenario] = []
+
+        for agent_node in self._sbom.nodes:
+            if agent_node.component_type != ComponentType.AGENT:
+                continue
+            agent_id = str(agent_node.id)
+            agent_name = agent_node.name
+
+            # Find MCP server tools reachable from this agent
+            tool_ids = self._outgoing.get(agent_id, {}).get(RelationshipType.CALLS, [])
+            # Detect MCP tools: tools with a mcp_server_url set or "mcp" in name
+            mcp_tools = [
+                self._node_by_id[tid]
+                for tid in tool_ids
+                if tid in self._node_by_id
+                and (
+                    bool(self._node_by_id[tid].metadata.mcp_server_url)
+                    or "mcp" in self._node_by_id[tid].name.lower()
+                )
+            ]
+
+            for mcp_tool in mcp_tools[:2]:  # cap per agent
+                out.append(
+                    build_mcp_tool_injection(
+                        agent_id=agent_id,
+                        agent_name=agent_name,
+                        mcp_tool_name=mcp_tool.name,
+                    )
+                )
+                # Find a write-capable sink tool for output poisoning
+                sink_name = "write_file"
+                for sink in self._sbom.nodes:
+                    if sink.component_type == ComponentType.TOOL and sink.metadata.high_privilege:
+                        sink_name = sink.name
+                        break
+                out.append(
+                    build_mcp_output_poisoning(
+                        agent_id=agent_id,
+                        agent_name=agent_name,
+                        mcp_tool_name=mcp_tool.name,
+                        write_tool_name=sink_name,
+                    )
+                )
+
+        return out
+
+    # ------------------------------------------------------------------ #
+    # Goal 5c: RAG / Vector Store Poisoning
+    # ------------------------------------------------------------------ #
+
+    def _rag_poisoning_scenarios(self) -> list[AttackScenario]:
+        """Generate RAG poisoning scenarios for agents with document retrieval tools.
+
+        A placeholder URL (POISON_PAYLOAD_HOST) is used in the step payloads.
+        The orchestrator substitutes the real PoisonPayloadServer URL at runtime.
+        """
+        out: list[AttackScenario] = []
+        from nuguard.redteam.executor.poison_server import POISON_PAYLOAD_HOST
+
+        _WRITE_TOOL_INDICATORS = {
+            "upload", "ingest", "index", "store", "write", "add_document",
+            "add_file", "insert", "embed",
+        }
+
+        for agent_node in self._sbom.nodes:
+            if agent_node.component_type != ComponentType.AGENT:
+                continue
+            agent_id = str(agent_node.id)
+            agent_name = agent_node.name
+
+            # Find tools reachable from this agent
+            tool_ids = self._outgoing.get(agent_id, {}).get(RelationshipType.CALLS, [])
+            tools = [self._node_by_id[tid] for tid in tool_ids if tid in self._node_by_id]
+
+            # Look for any write/upload capable tool that could index content
+            write_tools = [
+                t for t in tools
+                if any(ind in t.name.lower() for ind in _WRITE_TOOL_INDICATORS)
+                or t.metadata.high_privilege
+            ]
+
+            if not write_tools:
+                continue
+
+            write_tool = write_tools[0]
+            poison_url = f"http://{POISON_PAYLOAD_HOST}/rag-poison"
+            out.append(
+                build_rag_poisoning(
+                    agent_id=agent_id,
+                    agent_name=agent_name,
+                    poison_url=poison_url,
+                    write_tool_name=write_tool.name,
+                )
+            )
+
         return out
 
     # ------------------------------------------------------------------ #
