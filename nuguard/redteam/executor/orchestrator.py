@@ -1,6 +1,7 @@
 """RedteamOrchestrator — ties SBOM → scenarios → executor → findings together."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from dataclasses import dataclass, field
@@ -83,6 +84,10 @@ def _discover_chat_config(
 class RedteamOrchestrator:
     """Orchestrates a full red-team scan."""
 
+    # Max scenarios running concurrently against the target. Higher values speed
+    # up the scan but increase load on the target app.
+    DEFAULT_CONCURRENCY = 5
+
     def __init__(
         self,
         sbom: AiSbomDocument,
@@ -95,6 +100,7 @@ class RedteamOrchestrator:
         chat_path: str = "/chat",
         chat_payload_key: str = "message",
         chat_payload_list: bool = False,
+        concurrency: int = DEFAULT_CONCURRENCY,
     ) -> None:
         self._sbom = sbom
         self._target_url = target_url
@@ -103,6 +109,7 @@ class RedteamOrchestrator:
         self._profile = profile
         self._min_impact = min_impact_score
         self._log_path = log_path
+        self._concurrency = max(1, concurrency)
         # Auto-discover from SBOM; fall back to provided values
         self._chat_path, self._chat_payload_key, self._chat_payload_list = (
             _discover_chat_config(sbom, chat_path, chat_payload_key, chat_payload_list)
@@ -208,29 +215,29 @@ class RedteamOrchestrator:
         scenarios: list[AttackScenario],
         executor: AttackExecutor,
     ) -> tuple[list[Finding], list[tuple[str, str, bool]], list[ScenarioRecord]]:
-        """Execute a list of scenarios and return (findings, executed_records, scenario_records).
+        """Execute scenarios concurrently and return (findings, executed_records, scenario_records).
 
-        Each executed_record is (title, goal_type, had_finding).
-        ScenarioRecord captures verbose per-scenario data for troubleshooting.
+        Scenarios are independent of each other — each gets its own session —
+        so they can safely run in parallel.  A semaphore caps the number of
+        in-flight scenarios to avoid overwhelming the target app.
         """
-        findings: list[Finding] = []
-        executed: list[tuple[str, str, bool]] = []
-        records: list[ScenarioRecord] = []
-        for scenario in scenarios:
-            if scenario.chain is None:
-                continue
+        sem = asyncio.Semaphore(self._concurrency)
+
+        async def _run_one(
+            scenario: AttackScenario,
+        ) -> tuple[list[Finding], tuple[str, str, bool], ScenarioRecord]:
             affected = ", ".join(
                 self._node_label.get(nid, nid) for nid in scenario.target_node_ids[:2]
             )
-            try:
-                chain, step_results = await executor.run(scenario.chain)
-                step_details = self._build_step_details(step_results)
-                new_findings = self._build_findings(scenario, chain, step_results, step_details)
-                had_finding = bool(new_findings)
-                findings.extend(new_findings)
-                executed.append((scenario.title, scenario.goal_type.value, had_finding))
-                records.append(
-                    ScenarioRecord(
+            async with sem:
+                try:
+                    chain, step_results = await executor.run(scenario.chain)
+                    step_details = self._build_step_details(step_results)
+                    new_findings = self._build_findings(
+                        scenario, chain, step_results, step_details
+                    )
+                    had_finding = bool(new_findings)
+                    record = ScenarioRecord(
                         title=scenario.title,
                         goal_type=scenario.goal_type.value,
                         scenario_type=scenario.scenario_type.value,
@@ -241,14 +248,14 @@ class RedteamOrchestrator:
                         had_finding=had_finding,
                         steps=step_details,
                     )
-                )
-            except Exception as exc:
-                _log.warning(
-                    "Scenario %s failed: %s", scenario.scenario_id, exc
-                )
-                executed.append((scenario.title, scenario.goal_type.value, False))
-                records.append(
-                    ScenarioRecord(
+                    return (
+                        new_findings,
+                        (scenario.title, scenario.goal_type.value, had_finding),
+                        record,
+                    )
+                except Exception as exc:
+                    _log.warning("Scenario %s failed: %s", scenario.scenario_id, exc)
+                    record = ScenarioRecord(
                         title=scenario.title,
                         goal_type=scenario.goal_type.value,
                         scenario_type=scenario.scenario_type.value,
@@ -259,7 +266,24 @@ class RedteamOrchestrator:
                         had_finding=False,
                         steps=[],
                     )
-                )
+                    return [], (scenario.title, scenario.goal_type.value, False), record
+
+        active = [s for s in scenarios if s.chain is not None]
+        if not active:
+            return [], [], []
+
+        _log.info(
+            "Running %d scenarios (concurrency=%d)", len(active), self._concurrency
+        )
+        results = await asyncio.gather(*(_run_one(s) for s in active))
+
+        findings: list[Finding] = []
+        executed: list[tuple[str, str, bool]] = []
+        records: list[ScenarioRecord] = []
+        for new_findings, exec_tuple, record in results:
+            findings.extend(new_findings)
+            executed.append(exec_tuple)
+            records.append(record)
         return findings, executed, records
 
     def _build_step_details(self, step_results: list[StepResult]) -> list[dict]:

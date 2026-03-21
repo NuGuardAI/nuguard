@@ -13,16 +13,19 @@ a clean rebuild.
 """
 from __future__ import annotations
 
+import atexit
 import json
 import logging
 import os
 import queue
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
 import threading
 import time
+import weakref
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -33,6 +36,22 @@ _log = logging.getLogger(__name__)
 
 FIXTURES_DIR = Path(__file__).resolve().parents[2] / "tests" / "benchmark" / "fixtures"
 VENV_CACHE_DIR = Path(tempfile.gettempdir()) / "nuguard_redteam_venvs"
+
+# Global registry of live runners — weak references so GC can still collect them.
+# Used by the atexit handler to kill any processes left alive on exit.
+_live_runners: weakref.WeakSet["AppRunner"] = weakref.WeakSet()
+
+
+def _kill_all_runners() -> None:
+    """atexit handler: terminate every runner that was not explicitly torn down."""
+    for runner in list(_live_runners):
+        try:
+            runner._kill_process()
+        except Exception:
+            pass
+
+
+atexit.register(_kill_all_runners)
 
 # Timeouts (seconds)
 PIP_INSTALL_TIMEOUT = 300
@@ -345,7 +364,13 @@ class AppRunner:
             env=self._build_startup_env(),
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
+            # Start in its own process group so _kill_process() can kill the
+            # entire tree (uvicorn workers, etc.) with a single killpg().
+            start_new_session=True,
         )
+        # Register in global registry so atexit can clean up if teardown() is
+        # never called (e.g. pytest killed mid-run or test raises SystemExit).
+        _live_runners.add(self)
         # Drain stderr in a background thread so the pipe never fills and blocks
         # the subprocess, and so we can detect fatal errors early.
         self._stderr_lines = []
@@ -435,11 +460,21 @@ class AppRunner:
 
     def _kill_process(self) -> None:
         if self._process and self._process.poll() is None:
-            self._process.terminate()
+            # Kill the entire process group so child workers (e.g. uvicorn reloaders,
+            # gunicorn workers) are also terminated, not just the parent PID.
             try:
-                self._process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                self._process.kill()
+                pgid = os.getpgid(self._process.pid)
+                os.killpg(pgid, signal.SIGTERM)
+                try:
+                    self._process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    os.killpg(pgid, signal.SIGKILL)
+            except (ProcessLookupError, PermissionError):
+                # Process already gone or we can't get its pgid — fall back
+                try:
+                    self._process.kill()
+                except Exception:
+                    pass
         if self._stderr_thread and self._stderr_thread.is_alive():
             self._stderr_thread.join(timeout=2)
         self._process = None
