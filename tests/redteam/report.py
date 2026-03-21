@@ -53,6 +53,11 @@ def write_redteam_report(
     llm_coding_brief: str | None = None,
     prompt_cache_path: "Path | None" = None,
     eval_llm_model: str | None = None,
+    llm_enriched_scenarios: int = 0,
+    llm_enriched_executed: int = 0,
+    llm_variants_total: int = 0,
+    prompt_cache_hit: bool = False,
+    llm_scenario_variants: dict[str, int] | None = None,
 ) -> Path:
     """Render a Markdown report and write it to tests/output/; return the path."""
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -129,6 +134,15 @@ def write_redteam_report(
     _h(f"| Metric | Value |")
     _h(f"|--------|-------|")
     _h(f"| Scenarios generated | {scenarios_generated} |")
+    if llm_enriched_scenarios:
+        cache_label = "cache hit" if prompt_cache_hit else "cache miss"
+        enriched_label = (
+            f"{llm_enriched_executed} / {llm_enriched_scenarios} executed"
+            if llm_enriched_executed and llm_enriched_executed != llm_enriched_scenarios
+            else str(llm_enriched_scenarios)
+        )
+        _h(f"| LLM-enriched scenarios | {enriched_label} ({cache_label}) |")
+        _h(f"| LLM payload variants | {llm_variants_total} |")
     _h(f"| Total findings | {len(findings)} |")
     for sev in [Severity.CRITICAL, Severity.HIGH, Severity.MEDIUM, Severity.LOW, Severity.INFO]:
         cnt = sev_counts.get(sev, 0)
@@ -141,12 +155,22 @@ def write_redteam_report(
     if scenarios_executed:
         _h(f"## Scenarios Executed ({len(scenarios_executed)})")
         _h(f"")
-        _h(f"| # | Title | Goal Type | Status |")
-        _h(f"|---|-------|-----------|--------|")
+        has_variants = bool(llm_scenario_variants)
+        if has_variants:
+            _h(f"| # | Title | Goal Type | LLM Variants | Status |")
+            _h(f"|---|-------|-----------|--------------|--------|")
+        else:
+            _h(f"| # | Title | Goal Type | Status |")
+            _h(f"|---|-------|-----------|--------|")
         for i, (title, goal, had_finding) in enumerate(scenarios_executed, 1):
             goal_label = goal.replace("_", " ").title()
             status = "🔴 Finding" if had_finding else "✅ Clean"
-            _h(f"| {i} | {title} | {goal_label} | {status} |")
+            if has_variants:
+                n_variants = (llm_scenario_variants or {}).get(title, 0)
+                variant_cell = f"⚗️ +{n_variants}" if n_variants else "—"
+                _h(f"| {i} | {title} | {goal_label} | {variant_cell} | {status} |")
+            else:
+                _h(f"| {i} | {title} | {goal_label} | {status} |")
         _h(f"")
 
     # --- Findings --------------------------------------------------------
@@ -163,6 +187,10 @@ def write_redteam_report(
             _h(f"")
             if finding.affected_component:
                 _h(f"**Affected component:** `{finding.affected_component}`")
+                _h(f"")
+            if finding.sbom_path_descriptions:
+                path_str = " → ".join(finding.sbom_path_descriptions)
+                _h(f"**SBOM path:** `{path_str}`")
                 _h(f"")
             _h(f"{finding.description}")
             _h(f"")
@@ -230,6 +258,12 @@ def write_redteam_report(
                         _h(f"```{lang}")
                         _h(formatted)
                         _h(f"```")
+                    # LLM eval evidence (shown when use_llm_eval=True was used)
+                    if step.get("llm_eval_evidence"):
+                        confidence = step.get("llm_eval_confidence", "")
+                        conf_label = f" ({confidence} confidence)" if confidence else ""
+                        _h(f"*LLM Evaluation{conf_label}:* {step['llm_eval_evidence']}")
+                        _h(f"")
                     _h(f"")
             _h("---")
             _h(f"")

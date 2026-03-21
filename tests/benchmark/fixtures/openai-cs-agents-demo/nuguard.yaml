@@ -1,0 +1,14 @@
+target_url: https://openai-cs-agents-backend.azurewebsites.net
+sbom_path: tests/output/sbom_openai-cs-agents-demo-deployed.json
+policy_path: tests/benchmark/fixtures/openai-cs-agents-demo/cognitive_policy.md
+
+redteam:
+  profile: full
+  verbose: true
+  request_timeout: 60
+  llm:
+    model: ${NUGUARD_REDTEAM_LLM_MODEL}
+    api_key: ${NUGUARD_REDTEAM_LLM_API_KEY}
+  eval_llm:
+    model: ${NUGUARD_REDTEAM_EVAL_LLM_MODEL}
+    api_key: ${NUGUARD_REDTEAM_EVAL_LLM_API_KEY}

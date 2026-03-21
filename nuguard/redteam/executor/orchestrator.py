@@ -11,7 +11,7 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from nuguard.common.llm_client import LLMClient
 
-from nuguard.models.exploit_chain import GoalType
+from nuguard.models.exploit_chain import ExploitChain, GoalType
 from nuguard.models.finding import Finding
 from nuguard.models.policy import CognitivePolicy
 from nuguard.models.sbom import NodeType
@@ -143,6 +143,11 @@ class RedteamOrchestrator:
         self.llm_remediations: dict[str, str] = {}
         self.llm_coding_brief: str | None = None
         self.prompt_cache_path: Path | None = None
+        self.llm_enriched_scenarios: int = 0          # total scenarios that got LLM payloads (pre-filter)
+        self.llm_enriched_executed: int = 0           # enriched scenarios that were actually executed
+        self.llm_variants_total: int = 0              # total LLM payload variants injected
+        self.prompt_cache_hit: bool = False            # True when payloads loaded from cache
+        self.llm_scenario_variants: dict[str, int] = {}  # scenario_title → variant_count
 
     async def run(self) -> list[Finding]:
         """Run the full scan and return a list of findings."""
@@ -166,26 +171,46 @@ class RedteamOrchestrator:
             _cache_dir = self._prompt_cache_dir or Path("tests/output")
             _cache = PromptCache(_cache_dir)
             _cache_key = _cache.cache_key(self._sbom, self._policy)
+            _cache_existed = _cache.load(_cache_key) is not None
             _llm_payloads = await LLMPromptGenerator(
                 self._redteam_llm, self._sbom, self._policy
             ).enrich_all(all_scenarios, _cache, _cache_key)
             self.prompt_cache_path = _cache.path_for(_cache_key)
+            self.prompt_cache_hit = _cache_existed and bool(_llm_payloads)
+            self.llm_enriched_scenarios = len(_llm_payloads)
+            self.llm_variants_total = sum(len(v) for v in _llm_payloads.values())
+            # Build title → variant count for report display
+            self.llm_scenario_variants = {
+                s.title: len(_llm_payloads[s.scenario_id])
+                for s in all_scenarios
+                if s.scenario_id in _llm_payloads
+            }
             all_scenarios = _inject_llm_payloads(all_scenarios, _llm_payloads)
+            _log.info(
+                "LLM payload enrichment: %d/%d scenarios enriched (%d total variants, cache=%s)",
+                self.llm_enriched_scenarios, len(all_scenarios),
+                self.llm_variants_total,
+                "hit" if self.prompt_cache_hit else "miss",
+            )
 
         # Filter by profile and impact score
         if self._profile == "ci":
-            # ci profile: only high-impact scenarios; cap at 20
+            # ci profile: only high-impact scenarios (score >= 5.0)
             scenarios = [
                 s
                 for s in all_scenarios
                 if s.impact_score >= max(self._min_impact, 5.0)
-            ][:20]
+            ]
         else:
             scenarios = [
                 s for s in all_scenarios if s.impact_score >= self._min_impact
             ]
 
         self.scenarios_run = len(scenarios)
+        if self.llm_enriched_scenarios:
+            self.llm_enriched_executed = sum(
+                1 for s in scenarios if s.scenario_id in _llm_payloads  # type: ignore[possibly-undefined]
+            )
         _log.info("Running %d scenarios", self.scenarios_run)
 
         if not scenarios:
@@ -216,6 +241,7 @@ class RedteamOrchestrator:
                 policy=self._policy,
                 canary=canary_scanner,
                 logger=logger,
+                eval_llm=self._eval_llm,
             )
             findings, executed, records = await self._run_scenarios(scenarios, executor)
             self.scenarios_executed.extend(executed)
@@ -292,6 +318,18 @@ class RedteamOrchestrator:
             )
             async with sem:
                 try:
+                    if scenario.chain is None:
+                        empty_record = ScenarioRecord(
+                            title=scenario.title,
+                            goal_type=scenario.goal_type.value,
+                            scenario_type=scenario.scenario_type.value,
+                            description=scenario.description,
+                            impact_score=scenario.impact_score,
+                            affected="",
+                            chain_status="failed",
+                            had_finding=False,
+                        )
+                        return [], (scenario.title, scenario.goal_type.value, False), empty_record
                     chain, step_results = await executor.run(scenario.chain)
                     step_details = self._build_step_details(step_results)
                     new_findings = self._build_findings(
@@ -381,6 +419,9 @@ class RedteamOrchestrator:
                 detail["tool_calls"] = [
                     tc.get("name", tc.get("type", str(tc))) for tc in sr.tool_calls
                 ]
+            if sr.llm_eval_evidence:
+                detail["llm_eval_evidence"] = sr.llm_eval_evidence
+                detail["llm_eval_confidence"] = sr.llm_eval_confidence
             details.append(detail)
         return details
 
@@ -410,7 +451,7 @@ class RedteamOrchestrator:
     def _build_findings(
         self,
         scenario: AttackScenario,
-        chain: object,
+        chain: ExploitChain,
         step_results: list[StepResult],
         step_details: list[dict],
     ) -> list[Finding]:
@@ -427,6 +468,10 @@ class RedteamOrchestrator:
         affected = ", ".join(
             self._node_label.get(nid, nid) for nid in scenario.target_node_ids[:2]
         )
+        # Build human-readable sbom_path_descriptions from the chain's node IDs
+        sbom_path_descriptions = [
+            self._node_label.get(nid, nid) for nid in chain.sbom_path
+        ]
 
         # Canary-based finding
         if canary_hits:
@@ -452,6 +497,7 @@ class RedteamOrchestrator:
                     goal_type=scenario.goal_type,
                     chain_id=chain.chain_id,
                     sbom_path=chain.sbom_path,
+                    sbom_path_descriptions=sbom_path_descriptions,
                     policy_clauses_violated=chain.policy_clauses,
                     owasp_asi_ref=compliance_mapper.owasp_asi_ref(scenario.goal_type),
                     owasp_llm_ref=compliance_mapper.owasp_llm_ref(scenario.goal_type),
@@ -486,6 +532,7 @@ class RedteamOrchestrator:
                     goal_type=scenario.goal_type,
                     chain_id=chain.chain_id,
                     sbom_path=chain.sbom_path,
+                    sbom_path_descriptions=sbom_path_descriptions,
                     policy_clauses_violated=[violation.policy_clause],
                     owasp_asi_ref=compliance_mapper.owasp_asi_ref(scenario.goal_type),
                     owasp_llm_ref=compliance_mapper.owasp_llm_ref(scenario.goal_type),
@@ -523,6 +570,7 @@ class RedteamOrchestrator:
                         goal_type=scenario.goal_type,
                         chain_id=chain.chain_id,
                         sbom_path=chain.sbom_path,
+                        sbom_path_descriptions=sbom_path_descriptions,
                         owasp_asi_ref=compliance_mapper.owasp_asi_ref(scenario.goal_type),
                         owasp_llm_ref=compliance_mapper.owasp_llm_ref(scenario.goal_type),
                         evidence=f"Attack steps: {step_summary}",

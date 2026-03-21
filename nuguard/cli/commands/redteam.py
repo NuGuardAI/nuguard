@@ -22,6 +22,9 @@ redteam_app = typer.Typer(
 @redteam_app.callback(invoke_without_command=True)
 def redteam(
     ctx: typer.Context,
+    config_path: Optional[Path] = typer.Option(
+        None, "--config", help="Path to nuguard.yaml config file."
+    ),
     sbom: Optional[Path] = typer.Option(
         None, "--sbom", help="Path to AI-SBOM JSON file."
     ),
@@ -64,7 +67,7 @@ def redteam(
     # Resolve from nuguard.yaml if not provided on CLI
     from nuguard.config import load_config
 
-    cfg = load_config(None)
+    cfg = load_config(config_path)
     sbom_path = sbom or (Path(cfg.sbom_path) if cfg.sbom_path else None)
     policy_path = policy or (Path(cfg.policy_path) if cfg.policy_path else None)
     target_url = target or cfg.target_url

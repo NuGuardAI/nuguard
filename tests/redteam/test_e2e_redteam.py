@@ -63,6 +63,7 @@ def _build_llm_clients(app_cfg: "NuGuardConfig") -> "tuple[LLMClient | None, LLM
         redteam_llm = LLMClient(
             model=app_cfg.redteam_llm_model or os.getenv("NUGUARD_REDTEAM_LLM_MODEL"),
             api_key=app_cfg.redteam_llm_api_key or os.getenv("NUGUARD_REDTEAM_LLM_API_KEY"),
+            min_temperature=0.7,
         )
     eval_llm = None
     eval_model = (
@@ -303,6 +304,11 @@ def _run_redteam(app_name: str) -> None:
             llm_coding_brief=orchestrator.llm_coding_brief if orchestrator else None,
             prompt_cache_path=orchestrator.prompt_cache_path if orchestrator else None,
             eval_llm_model=eval_llm.model if eval_llm else None,
+            llm_enriched_scenarios=orchestrator.llm_enriched_scenarios if orchestrator else 0,
+            llm_enriched_executed=orchestrator.llm_enriched_executed if orchestrator else 0,
+            llm_variants_total=orchestrator.llm_variants_total if orchestrator else 0,
+            prompt_cache_hit=orchestrator.prompt_cache_hit if orchestrator else False,
+            llm_scenario_variants=orchestrator.llm_scenario_variants if orchestrator else None,
         )
 
     finally:
@@ -325,6 +331,11 @@ def _write_report(  # type: ignore[no-untyped-def]
     llm_coding_brief: str | None = None,
     prompt_cache_path: "Path | None" = None,
     eval_llm_model: str | None = None,
+    llm_enriched_scenarios: int = 0,
+    llm_enriched_executed: int = 0,
+    llm_variants_total: int = 0,
+    prompt_cache_hit: bool = False,
+    llm_scenario_variants: "dict[str, int] | None" = None,
 ) -> None:
     report_path = write_redteam_report(
         app_name=config.name,
@@ -346,6 +357,11 @@ def _write_report(  # type: ignore[no-untyped-def]
         llm_coding_brief=llm_coding_brief,
         prompt_cache_path=prompt_cache_path,
         eval_llm_model=eval_llm_model,
+        llm_enriched_scenarios=llm_enriched_scenarios,
+        llm_enriched_executed=llm_enriched_executed,
+        llm_variants_total=llm_variants_total,
+        prompt_cache_hit=prompt_cache_hit,
+        llm_scenario_variants=llm_scenario_variants,
     )
     _log.info("[%s] Report written to %s", config.name, report_path)
     assert report_path.exists(), f"Report was not written to {report_path}"

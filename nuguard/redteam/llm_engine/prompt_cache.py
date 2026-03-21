@@ -16,8 +16,6 @@ from nuguard.sbom.models import AiSbomDocument
 
 _log = logging.getLogger(__name__)
 
-
-
 def _stable_sbom_str(sbom: AiSbomDocument) -> str:
     """Return a stable JSON string of the SBOM (sorted keys, no whitespace)."""
     try:
@@ -25,7 +23,6 @@ def _stable_sbom_str(sbom: AiSbomDocument) -> str:
         return json.dumps(raw, sort_keys=True, separators=(",", ":"))
     except Exception:
         return ""
-
 
 def _stable_policy_str(policy: object | None) -> str:
     """Return a stable string representation of the policy."""

@@ -33,6 +33,7 @@ class LLMClient:
         self,
         model: str | None = None,
         api_key: str | None = None,
+        min_temperature: float | None = None,
     ) -> None:
         self.model: str = (
             model
@@ -40,6 +41,7 @@ class LLMClient:
             or _DEFAULT_MODEL
         )
         self.api_key: str | None = api_key or os.environ.get("LITELLM_API_KEY") or None
+        self.min_temperature: float | None = min_temperature
 
         if self.api_key is None:
             _log.debug(
@@ -86,6 +88,11 @@ class LLMClient:
             len(prompt),
             f" [{label}]" if label else "",
         )
+        if self.min_temperature is not None:
+            kwargs["temperature"] = max(
+                float(kwargs.get("temperature", self.min_temperature)),
+                self.min_temperature,
+            )
         response = await litellm.acompletion(
             model=self.model,
             messages=messages,
