@@ -299,6 +299,25 @@ class RedteamOrchestrator:
             details.append(detail)
         return details
 
+    @staticmethod
+    def _step_evidence_summary(step_details: list[dict]) -> str:
+        """One-line summary of attack steps and their responses for evidence fields."""
+        parts = []
+        for i, step in enumerate(step_details, 1):
+            stype = step.get("step_type", "?")
+            ok = "✅" if step.get("succeeded") else "❌"
+            resp = (step.get("response") or "").strip()
+            if resp:
+                snippet = resp[:120].replace("\n", " ")
+                if len(resp) > 120:
+                    snippet += "…"
+                parts.append(f"Step {i} ({stype} {ok}): {snippet!r}")
+            else:
+                status = step.get("status_code")
+                suffix = f" HTTP {status}" if status is not None else " no response"
+                parts.append(f"Step {i} ({stype} {ok}):{suffix}")
+        return "; ".join(parts) if parts else "no steps executed"
+
     def _build_findings(
         self,
         scenario: AttackScenario,
@@ -347,15 +366,22 @@ class RedteamOrchestrator:
                     policy_clauses_violated=chain.policy_clauses,
                     owasp_asi_ref=compliance_mapper.owasp_asi_ref(scenario.goal_type),
                     owasp_llm_ref=compliance_mapper.owasp_llm_ref(scenario.goal_type),
-                    evidence=f"Canary values found: {canary_hits}",
+                    evidence=(
+                        f"Canary values found: {canary_hits} | "
+                        f"Attack steps: {self._step_evidence_summary(step_details)}"
+                    ),
                     attack_steps=step_details,
                 )
             )
 
         # Policy violation findings
+        step_summary = self._step_evidence_summary(step_details)
         for violation in all_violations:
             sev = severity_scorer.score_finding(scenario.goal_type)
             violation_title = f"{violation.type.replace('_', ' ').title()} — {scenario.title}"
+            evidence = (
+                f"{violation.evidence} | Attack steps: {step_summary}"
+            )
             findings.append(
                 Finding(
                     finding_id=_finding_id(violation_title),
@@ -374,7 +400,7 @@ class RedteamOrchestrator:
                     policy_clauses_violated=[violation.policy_clause],
                     owasp_asi_ref=compliance_mapper.owasp_asi_ref(scenario.goal_type),
                     owasp_llm_ref=compliance_mapper.owasp_llm_ref(scenario.goal_type),
-                    evidence=violation.evidence,
+                    evidence=evidence,
                     attack_steps=step_details,
                 )
             )

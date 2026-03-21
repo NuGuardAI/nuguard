@@ -32,6 +32,12 @@ def detect_topic_violations(
         List of violation dicts (may be empty).
     """
     violations: list[dict] = []
+
+    # Don't evaluate empty or very short responses — they provide no meaningful
+    # signal and would cause Tier-2 to fire spuriously on failed/timed-out steps.
+    if len(response.strip()) < 10:
+        return violations
+
     response_lower = response.lower()
 
     # ---- Tier 1: restricted topics ----------------------------------------
