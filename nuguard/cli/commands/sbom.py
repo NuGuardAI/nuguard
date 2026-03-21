@@ -95,6 +95,7 @@ def generate(
             _console.print(f"[bold]Cloning[/bold] {from_repo} ({ref}) …")
             doc = gen.from_repo(from_repo, ref=ref, output=None)
         else:
+            assert source is not None  # guarded by the exit above
             if not source.exists():
                 _err_console.print(f"Directory not found: {source}")
                 raise typer.Exit(code=1)
@@ -120,7 +121,7 @@ def generate(
     )
 
     # Summary table
-    if doc.summary.node_counts:
+    if doc.summary and doc.summary.node_counts:
         table = Table(title="Node Summary", show_header=True)
         table.add_column("Type")
         table.add_column("Count", justify="right")
@@ -208,7 +209,7 @@ def show(
         _err_console.print(f"SBOM '{sbom_id}' not found.")
         raise typer.Exit(code=1)
 
-    _console.print(AiSbomSerializer.to_json(doc))
+    typer.echo(AiSbomSerializer.to_json(doc))
 
 
 @sbom_app.command("schema")
@@ -286,7 +287,7 @@ def plugin_cmd(
 
         if format == "markdown" and result.details:
             # For markdown plugin, print the markdown content
-            md = result.details[0].get("markdown", "")
+            md = result.details.get("markdown", "")
             if md:
                 _console.print(md)
                 return

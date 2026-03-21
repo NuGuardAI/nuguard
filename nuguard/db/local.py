@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from nuguard.models.sbom import AiSbomDocument
+from nuguard.sbom.models import AiSbomDocument
 
 DB_PATH = Path.home() / ".nuguard" / "nuguard.db"
 

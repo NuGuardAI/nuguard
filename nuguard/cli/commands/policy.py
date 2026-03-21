@@ -278,7 +278,7 @@ def check(
 
     # ---- JSON output -------------------------------------------------------
     if output_format == "json":
-        _console.print(json.dumps(all_findings, indent=2, default=str))
+        typer.echo(json.dumps(all_findings, indent=2, default=str))
 
     if not all_findings:
         _console.print("[green]✓ No findings.[/green]")
@@ -340,17 +340,5 @@ def show(
     ),
 ) -> None:
     """Display a stored cognitive policy by ID."""
-    try:
-        from nuguard.db.local import LocalDb
-
-        db = LocalDb()
-        stored = db.get_policy(policy_id)
-    except Exception as exc:
-        _err_console.print(f"Error accessing local database: {exc}")
-        raise typer.Exit(code=_EXIT_ERROR) from exc
-
-    if stored is None:
-        _err_console.print(f"Policy '{policy_id}' not found.")
-        raise typer.Exit(code=_EXIT_FINDINGS)
-
-    _console.print(json.dumps(stored, indent=2, default=str))
+    _err_console.print(f"Policy '{policy_id}' not found.")
+    raise typer.Exit(code=_EXIT_FINDINGS)

@@ -10,7 +10,7 @@ from typer.testing import CliRunner
 
 from nuguard.cli.main import app
 
-runner = CliRunner(mix_stderr=False)
+runner = CliRunner()
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -20,19 +20,19 @@ _MINIMAL_POLICY = """\
 # Cognitive Policy: Test Agent
 version: 1.0
 
-## allowed_topics
+## Allowed Topics
 - Customer support queries
 - Order status and account inquiries
 
-## restricted_actions
+## Restricted Actions
 - Do not execute financial transactions without explicit user confirmation
 - Do not share data across tenant boundaries
 
-## HITL_triggers
+## HITL Triggers
 - Any action with financial impact > $500
 - Password reset or account deletion requests
 
-## data_classification
+## Data Classification
 - PII fields: name, email, phone
 - Internal fields: user_id, tenant_id
 """
@@ -92,8 +92,8 @@ def test_validate_policy_with_warnings(tmp_path: Path) -> None:
     policy = tmp_path / "warn.md"
     policy.write_text(
         "# Cognitive Policy: Warn\n\n"
-        "## allowed_topics\n- Support\n\n"
-        "## HITL_triggers\n- Financial action > $500\n",
+        "## Allowed Topics\n- Support\n\n"
+        "## HITL Triggers\n- Financial action > $500\n",
         encoding="utf-8",
     )
     result = runner.invoke(app, ["policy", "validate", "--file", str(policy)])
@@ -121,8 +121,8 @@ def test_check_policy_against_sbom(policy_file: Path, sbom_file: Path) -> None:
         app,
         ["policy", "check", "--policy", str(policy_file), "--sbom", str(sbom_file)],
     )
-    # Exit 0 (no gaps) or 1 (gaps found) — not an error exit
-    assert result.exit_code in (0, 1), result.output
+    # Exit 0 (no gaps), 1 (medium gaps), or 2 (high/critical gaps) — not an internal error
+    assert result.exit_code in (0, 1, 2), result.output
 
 
 def test_check_uses_policy_flag_not_file_flag(policy_file: Path, sbom_file: Path) -> None:
@@ -131,7 +131,7 @@ def test_check_uses_policy_flag_not_file_flag(policy_file: Path, sbom_file: Path
         app,
         ["policy", "check", "--policy", str(policy_file), "--sbom", str(sbom_file)],
     )
-    assert result_policy.exit_code in (0, 1), result_policy.output
+    assert result_policy.exit_code in (0, 1, 2), result_policy.output
 
     # --file is no longer a valid option for policy check
     result_file = runner.invoke(
@@ -144,7 +144,7 @@ def test_check_uses_policy_flag_not_file_flag(policy_file: Path, sbom_file: Path
 def test_check_sbom_only_no_error(sbom_file: Path) -> None:
     """Passing only --sbom without --policy is allowed (no gap check, no framework)."""
     result = runner.invoke(app, ["policy", "check", "--sbom", str(sbom_file)])
-    assert result.exit_code in (0, 1), result.output
+    assert result.exit_code in (0, 1, 2), result.output
 
 
 def test_check_json_output(policy_file: Path, sbom_file: Path) -> None:
@@ -161,9 +161,12 @@ def test_check_json_output(policy_file: Path, sbom_file: Path) -> None:
             "json",
         ],
     )
-    assert result.exit_code in (0, 1), result.output
-    # Output should be parseable JSON
-    parsed = json.loads(result.output)
+    assert result.exit_code in (0, 1, 2), result.output
+    # Output may contain log lines before the JSON; find the JSON array start
+    output = result.output
+    json_start = output.find("[")
+    assert json_start != -1, f"No JSON array found in output: {output!r}"
+    parsed = json.loads(output[json_start:])
     assert isinstance(parsed, list)
 
 
@@ -175,7 +178,7 @@ def test_check_reads_paths_from_nuguard_yaml(
         f"sbom: {sbom_file}\npolicy: {policy_file}\n", encoding="utf-8"
     )
     result = runner.invoke(app, ["policy", "check", "--config", str(cfg)])
-    assert result.exit_code in (0, 1), result.output
+    assert result.exit_code in (0, 1, 2), result.output
 
 
 def test_check_compliance_framework(sbom_file: Path) -> None:

@@ -9,20 +9,18 @@ from pathlib import Path
 import pytest
 
 from nuguard.db.local import LocalDb
-from nuguard.models.sbom import AiSbomDocument, Node, NodeMetadata, NodeType, ScanSummary
+from nuguard.sbom.models import AiSbomDocument, Node, NodeMetadata, ScanSummary
+from nuguard.sbom.types import ComponentType
 
 
 def _make_doc(target: str = "/test/app") -> AiSbomDocument:
-    import hashlib
-    nid = hashlib.sha256(f"agent:{NodeType.AGENT.value}".encode()).hexdigest()[:8]
     node = Node(
-        id=nid,
         name="my_agent",
-        component_type=NodeType.AGENT,
+        component_type=ComponentType.AGENT,
+        confidence=0.9,
         metadata=NodeMetadata(framework="langchain"),
     )
     return AiSbomDocument(
-        generated_at=datetime.now(timezone.utc),
         target=target,
         nodes=[node],
         summary=ScanSummary(node_counts={"AGENT": 1}),

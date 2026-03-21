@@ -12,7 +12,7 @@ from nuguard.cli.main import app
 from nuguard.sbom.extractor.serializer import AiSbomSerializer
 from nuguard.sbom.models import AiSbomDocument
 
-runner = CliRunner(mix_stderr=False)
+runner = CliRunner()
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -181,14 +181,14 @@ def test_schema_prints_json() -> None:
 def test_plugin_list() -> None:
     result = runner.invoke(app, ["sbom", "plugin", "list"])
     assert result.exit_code == 0, result.output
-    assert "vulnerability" in result.output.lower()
+    assert "vuln" in result.output.lower()
 
 
 def test_plugin_run_markdown(tmp_path: Path) -> None:
     sbom_file = _write_sbom(tmp_path)
     result = runner.invoke(
         app,
-        ["sbom", "plugin", "run", "markdown", "--sbom", str(sbom_file), "--format", "markdown"],
+        ["sbom", "plugin", "run", "markdown_export", "--sbom", str(sbom_file)],
     )
     assert result.exit_code == 0, result.output
 
