@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-
+import pytest
 from pathlib import Path
 
 
@@ -10,7 +10,6 @@ from nuguard.models.sbom import EdgeRelationshipType, NodeType
 try:
     from nuguard.sbom.extractor.framework_adapters.fastapi import FastApiAdapter
 except ImportError:
-    import pytest
     pytest.skip("FastApiAdapter not yet ported to nuguard.sbom", allow_module_level=True)
 
 

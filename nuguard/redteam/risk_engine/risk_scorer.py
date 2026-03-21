@@ -4,7 +4,7 @@ from __future__ import annotations
 from nuguard.models.finding import Finding, Severity
 
 _WEIGHTS = {
-    Severity.CRITICAL: 10.0,
+    Severity.CRITICAL: 9.0,
     Severity.HIGH: 7.0,
     Severity.MEDIUM: 4.0,
     Severity.LOW: 1.0,

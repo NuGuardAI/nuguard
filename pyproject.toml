@@ -16,6 +16,7 @@ dependencies = [
     "asyncpg>=0.29",
     "rich>=13.0",
     "structlog>=25.5.0",
+    "cyclonedx-bom>=7.2.2",
 ]
 
 [project.optional-dependencies]

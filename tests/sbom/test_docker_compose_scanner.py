@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-
+import pytest
 import tempfile
 from pathlib import Path
 
@@ -11,7 +11,6 @@ from nuguard.models.sbom import NodeType
 try:
     from nuguard.sbom.extractor.iac_scanners.docker_compose import DockerComposeScanner
 except ImportError:
-    import pytest
     pytest.skip("DockerComposeScanner not yet ported to nuguard.sbom", allow_module_level=True)
 
 DOCKER_COMPOSE_BASIC = """
