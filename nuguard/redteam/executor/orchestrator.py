@@ -29,6 +29,7 @@ from nuguard.redteam.target.client import TargetAppClient, TargetUnavailableErro
 from nuguard.sbom.models import AiSbomDocument
 
 from .executor import AttackExecutor, StepResult
+from .guided_executor import GuidedAttackExecutor
 
 _log = logging.getLogger(__name__)
 
@@ -111,6 +112,9 @@ class RedteamOrchestrator:
         eval_llm: "LLMClient | None" = None,
         prompt_cache_dir: "Path | None" = None,
         app_log_reader: "FileLogReader | BufferLogReader | None" = None,
+        guided_conversations: bool = True,
+        guided_max_turns: int = 12,
+        guided_concurrency: int = 3,
     ) -> None:
         self._sbom = sbom
         self._target_url = target_url
@@ -125,6 +129,10 @@ class RedteamOrchestrator:
         self._eval_llm = eval_llm
         self._prompt_cache_dir = prompt_cache_dir
         self._app_log_reader = app_log_reader
+        # Guided conversation settings — only active when redteam_llm is configured
+        self._guided_conversations = guided_conversations
+        self._guided_max_turns = guided_max_turns
+        self._guided_concurrency = max(1, guided_concurrency)
         # Auto-discover from SBOM; fall back to provided values
         self._chat_path, self._chat_payload_key, self._chat_payload_list = (
             _discover_chat_config(sbom, chat_path, chat_payload_key, chat_payload_list)
@@ -160,9 +168,11 @@ class RedteamOrchestrator:
             self._profile,
         )
 
-        # 1. Generate scenarios from SBOM + policy
+        # 1. Generate scenarios from SBOM + policy.
+        # Guided conversations require an LLM — only generate when one is configured.
+        _with_guided = self._guided_conversations and bool(self._redteam_llm)
         generator = ScenarioGenerator(self._sbom, self._policy)
-        all_scenarios = generator.generate()
+        all_scenarios = generator.generate(with_guided=_with_guided)
 
         # 2. LLM payload enrichment (opt-in — only when redteam_llm is configured)
         if self._redteam_llm and all_scenarios:
@@ -271,7 +281,31 @@ class RedteamOrchestrator:
                 mutation_llm=self._redteam_llm,
                 app_log_reader=self._app_log_reader,
             )
-            findings, executed, records = await self._run_scenarios(scenarios, executor)
+
+            # Build GuidedAttackExecutor when LLM is configured and guided is enabled
+            guided_executor: GuidedAttackExecutor | None = None
+            if self._redteam_llm and self._guided_conversations:
+                from nuguard.redteam.llm_engine.conversation_director import ConversationDirector
+                # Resolve target context from SBOM summary for all guided convs
+                _target_ctx = self._build_target_context()
+                # ConversationDirector is instantiated per-scenario in _run_guided_scenario;
+                # the executor just holds the shared client/canary/logger/log_reader.
+                guided_executor = GuidedAttackExecutor(
+                    client=client,
+                    director=ConversationDirector(  # placeholder — overridden per scenario
+                        llm=self._redteam_llm,
+                        eval_llm=self._eval_llm or self._redteam_llm,
+                        goal_type=GoalType.PROMPT_DRIVEN_THREAT,
+                        goal_description="",
+                        max_turns=self._guided_max_turns,
+                        target_context=_target_ctx,
+                    ),
+                    logger=logger,
+                    canary=canary_scanner,
+                    app_log_reader=self._app_log_reader,
+                )
+
+            findings, executed, records = await self._run_scenarios(scenarios, executor, guided_executor)
             self.scenarios_executed.extend(executed)
             self.scenario_records.extend(records)
 
@@ -290,7 +324,7 @@ class RedteamOrchestrator:
                     )
                     self.scenarios_run += len(escalation_scenarios)
                     findings, escalation_executed, escalation_records = await self._run_scenarios(
-                        escalation_scenarios, executor
+                        escalation_scenarios, executor, guided_executor
                     )
                     self.scenarios_executed.extend(escalation_executed)
                     self.scenario_records.extend(escalation_records)
@@ -329,6 +363,7 @@ class RedteamOrchestrator:
         self,
         scenarios: list[AttackScenario],
         executor: AttackExecutor,
+        guided_executor: "GuidedAttackExecutor | None" = None,
     ) -> tuple[list[Finding], list[tuple[str, str, bool]], list[ScenarioRecord]]:
         """Execute scenarios concurrently and return (findings, executed_records, scenario_records).
 
@@ -374,6 +409,12 @@ class RedteamOrchestrator:
                     return [], (scenario.title, scenario.goal_type.value, False), _skipped_record("skipped")
 
                 try:
+                    # Route: guided conversation vs. static chain
+                    if scenario.guided_conversation is not None and guided_executor is not None:
+                        return await self._run_guided_scenario(
+                            scenario, guided_executor, affected
+                        )
+
                     if scenario.chain is None:
                         return [], (scenario.title, scenario.goal_type.value, False), _skipped_record("failed")
                     chain, step_results = await executor.run(scenario.chain)
@@ -419,7 +460,7 @@ class RedteamOrchestrator:
                     )
                     return [], (scenario.title, scenario.goal_type.value, False), record
 
-        active = [s for s in scenarios if s.chain is not None]
+        active = [s for s in scenarios if s.chain is not None or s.guided_conversation is not None]
         if not active:
             return [], [], []
 
@@ -436,6 +477,162 @@ class RedteamOrchestrator:
             executed.append(exec_tuple)
             records.append(record)
         return findings, executed, records
+
+    def _build_target_context(self) -> str:
+        """Build a one-paragraph context string about the target for the ConversationDirector."""
+        parts: list[str] = []
+        if self._sbom.summary:
+            s = self._sbom.summary
+            if getattr(s, "application_name", None):
+                parts.append(f"Application: {s.application_name}")
+            if getattr(s, "use_case", None):
+                parts.append(f"Purpose: {s.use_case[:120]}")
+            if getattr(s, "frameworks_detected", None):
+                parts.append(f"Frameworks: {', '.join(list(s.frameworks_detected)[:4])}")
+        agents = [n for n in self._sbom.nodes if n.component_type == NodeType.AGENT]
+        if agents:
+            names = ", ".join(n.name for n in agents[:4])
+            parts.append(f"Agents: {names}")
+        tools = [n for n in self._sbom.nodes if n.component_type == NodeType.TOOL]
+        if tools:
+            names = ", ".join(n.name for n in tools[:4])
+            parts.append(f"Tools: {names}")
+        datastores = [n for n in self._sbom.nodes if n.component_type == NodeType.DATASTORE]
+        if datastores:
+            names = ", ".join(n.name for n in datastores[:3])
+            parts.append(f"Datastores: {names}")
+        return ". ".join(parts)
+
+    async def _run_guided_scenario(
+        self,
+        scenario: AttackScenario,
+        guided_executor: GuidedAttackExecutor,
+        affected: str,
+    ) -> tuple[list[Finding], tuple[str, str, bool], ScenarioRecord]:
+        """Execute a guided conversation scenario and convert to findings + record."""
+        from nuguard.redteam.llm_engine.conversation_director import ConversationDirector
+        from nuguard.redteam.target.session import AttackSession
+
+        conv = scenario.guided_conversation
+        assert conv is not None  # guard — caller already checked
+
+        # Override the director with a scenario-specific one so goal / context are correct
+        target_context = self._build_target_context()
+        director = ConversationDirector(
+            llm=self._redteam_llm,  # type: ignore[arg-type]
+            eval_llm=self._eval_llm or self._redteam_llm,  # type: ignore[arg-type]
+            goal_type=conv.goal_type,
+            goal_description=conv.goal_description,
+            max_turns=conv.max_turns,
+            target_context=target_context,
+        )
+        guided_executor._director = director  # swap in scenario-specific director
+
+        session = AttackSession(
+            session_id=conv.conversation_id,
+            target_url=self._target_url,
+            chain_id=conv.conversation_id,
+        )
+        populated_conv = await guided_executor.run(conv, session)
+
+        had_finding = populated_conv.succeeded
+        finding_list = self._conv_to_finding(scenario, populated_conv, affected)
+        chain_status = (
+            "succeeded" if populated_conv.succeeded
+            else f"aborted:{populated_conv.abort_reason}" if populated_conv.abort_reason
+            else "completed"
+        )
+
+        # Build turn-level step details for the verbose report
+        step_details = [
+            {
+                "step_type": "GUIDED_TURN",
+                "description": f"Turn {t.turn} [{t.tactic_used}]",
+                "succeeded": t.progress_score >= director.SUCCESS_THRESHOLD,
+                "payload": t.attacker_message[:500],
+                "response": t.agent_response[:500],
+                "progress_score": t.progress_score,
+                "progress_reasoning": t.progress_reasoning,
+                "tactic_used": t.tactic_used,
+            }
+            for t in populated_conv.turns
+        ]
+
+        record = ScenarioRecord(
+            title=scenario.title,
+            goal_type=scenario.goal_type.value,
+            scenario_type=scenario.scenario_type.value,
+            description=scenario.description,
+            impact_score=scenario.impact_score,
+            affected=affected,
+            chain_status=chain_status,
+            had_finding=had_finding,
+            steps=step_details,
+        )
+        return (
+            finding_list,
+            (scenario.title, scenario.goal_type.value, had_finding),
+            record,
+        )
+
+    def _conv_to_finding(
+        self,
+        scenario: AttackScenario,
+        conv: "object",  # GuidedConversation — avoid circular import at module level
+        affected: str,
+    ) -> "list[Finding]":
+        """Convert a completed GuidedConversation into Finding objects."""
+        from nuguard.redteam.models.guided_conversation import GuidedConversation
+        assert isinstance(conv, GuidedConversation)
+
+        if not conv.succeeded:
+            return []
+
+        sev = severity_scorer.score_finding(conv.goal_type)
+        transcript = conv.format_transcript(max_chars_per_turn=300)
+        finding_id = _finding_id(f"guided-{scenario.title}")
+        sbom_path_descriptions = [
+            self._node_label.get(nid, nid) for nid in conv.sbom_path
+        ]
+
+        # Build attack_steps from turn records for the JSON report
+        attack_steps = [
+            {
+                "turn": t.turn,
+                "tactic": t.tactic_used,
+                "attacker_message": t.attacker_message[:400],
+                "agent_response": t.agent_response[:400],
+                "progress_score": t.progress_score,
+                "progress_reasoning": t.progress_reasoning,
+                "milestone_reached": t.milestone_reached,
+            }
+            for t in conv.turns
+        ]
+
+        return [
+            Finding(
+                finding_id=finding_id,
+                title=f"Guided: {scenario.title}",
+                severity=sev,
+                description=(
+                    f"Guided adversarial conversation achieved the goal: "
+                    f"{conv.goal_description}  "
+                    f"Completed in {len(conv.turns)} turns "
+                    f"(final progress={conv.final_progress:.2f})."
+                ),
+                affected_component=affected,
+                remediation=remediation_generator.generate(conv.goal_type, scenario.title),
+                goal_type=conv.goal_type.value,
+                chain_id=f"guided-{conv.conversation_id}",
+                sbom_path=conv.sbom_path,
+                sbom_path_descriptions=sbom_path_descriptions,
+                owasp_asi_ref=conv.owasp_asi_ref or compliance_mapper.owasp_asi_ref(conv.goal_type),
+                owasp_llm_ref=conv.owasp_llm_ref or compliance_mapper.owasp_llm_ref(conv.goal_type),
+                mitre_atlas_technique=conv.mitre_atlas_technique,
+                evidence=transcript,
+                attack_steps=attack_steps,
+            )
+        ]
 
     def _build_step_details(self, step_results: list[StepResult]) -> list[dict]:
         """Build a list of per-step detail dicts from executor results.

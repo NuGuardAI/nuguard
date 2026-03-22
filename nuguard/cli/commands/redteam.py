@@ -81,6 +81,20 @@ def redteam(
         "--fail-on",
         help="Exit non-zero if any finding meets this severity: critical|high|medium|low.",
     ),
+    guided: Optional[bool] = typer.Option(
+        None,
+        "--guided/--no-guided",
+        help=(
+            "Enable adaptive multi-turn guided conversations (requires redteam LLM). "
+            "Default: on when a redteam LLM is configured."
+        ),
+    ),
+    guided_max_turns: Optional[int] = typer.Option(
+        None, "--guided-max-turns", help="Max turns per guided conversation (default: 12)."
+    ),
+    guided_concurrency: Optional[int] = typer.Option(
+        None, "--guided-concurrency", help="Max parallel guided conversations (default: 3)."
+    ),
 ) -> None:
     """Run dynamic red-team testing against a live AI application.
 
@@ -111,6 +125,9 @@ def redteam(
         [s.strip() for s in scenarios.split(",")] if scenarios
         else cfg.redteam_scenarios or []
     )
+    effective_guided = guided if guided is not None else cfg.redteam_guided_conversations
+    effective_guided_max_turns = guided_max_turns if guided_max_turns is not None else cfg.redteam_guided_max_turns
+    effective_guided_concurrency = guided_concurrency if guided_concurrency is not None else cfg.redteam_guided_concurrency
 
     # Validate SBOM
     if not sbom_path or not sbom_path.exists():
@@ -155,6 +172,13 @@ def redteam(
             chat_path=cfg.target_endpoint,
             chat_payload_key=cfg.redteam_chat_payload_key,
             chat_payload_list=cfg.redteam_chat_payload_list,
+            guided_conversations=effective_guided,
+            guided_max_turns=effective_guided_max_turns,
+            guided_concurrency=effective_guided_concurrency,
+            redteam_llm_model=cfg.redteam_llm_model,
+            redteam_llm_api_key=cfg.redteam_llm_api_key,
+            eval_llm_model=cfg.redteam_eval_llm_model,
+            eval_llm_api_key=cfg.redteam_eval_llm_api_key,
         )
     )
 
@@ -203,6 +227,13 @@ async def _run_redteam(
     chat_path: str = "/chat",
     chat_payload_key: str = "message",
     chat_payload_list: bool = False,
+    guided_conversations: bool = True,
+    guided_max_turns: int = 12,
+    guided_concurrency: int = 3,
+    redteam_llm_model: str | None = None,
+    redteam_llm_api_key: str | None = None,
+    eval_llm_model: str | None = None,
+    eval_llm_api_key: str | None = None,
 ) -> list:
     """Async inner function: optionally launch the app, then run the orchestrator."""
     from nuguard.models.policy import CognitivePolicy
@@ -271,6 +302,13 @@ async def _run_redteam(
                 chat_path=chat_path,
                 chat_payload_key=chat_payload_key,
                 chat_payload_list=chat_payload_list,
+                guided_conversations=guided_conversations,
+                guided_max_turns=guided_max_turns,
+                guided_concurrency=guided_concurrency,
+                redteam_llm_model=redteam_llm_model,
+                redteam_llm_api_key=redteam_llm_api_key,
+                eval_llm_model=eval_llm_model,
+                eval_llm_api_key=eval_llm_api_key,
             )
 
     # App already running — just scan
@@ -286,6 +324,13 @@ async def _run_redteam(
         chat_path=chat_path,
         chat_payload_key=chat_payload_key,
         chat_payload_list=chat_payload_list,
+        guided_conversations=guided_conversations,
+        guided_max_turns=guided_max_turns,
+        guided_concurrency=guided_concurrency,
+        redteam_llm_model=redteam_llm_model,
+        redteam_llm_api_key=redteam_llm_api_key,
+        eval_llm_model=eval_llm_model,
+        eval_llm_api_key=eval_llm_api_key,
     )
 
 
@@ -300,8 +345,23 @@ async def _run_orchestrator(
     chat_path: str = "/chat",
     chat_payload_key: str = "message",
     chat_payload_list: bool = False,
+    guided_conversations: bool = True,
+    guided_max_turns: int = 12,
+    guided_concurrency: int = 3,
+    redteam_llm_model: str | None = None,
+    redteam_llm_api_key: str | None = None,
+    eval_llm_model: str | None = None,
+    eval_llm_api_key: str | None = None,
 ) -> list:
+    from nuguard.common.llm_client import LLMClient
     from nuguard.redteam.executor.orchestrator import RedteamOrchestrator
+
+    redteam_llm: LLMClient | None = None
+    if redteam_llm_model:
+        redteam_llm = LLMClient(model=redteam_llm_model, api_key=redteam_llm_api_key)
+    eval_llm: LLMClient | None = None
+    if eval_llm_model:
+        eval_llm = LLMClient(model=eval_llm_model, api_key=eval_llm_api_key)
 
     orchestrator = RedteamOrchestrator(
         sbom=sbom_doc,  # type: ignore[arg-type]
@@ -313,6 +373,11 @@ async def _run_orchestrator(
         chat_path=chat_path,
         chat_payload_key=chat_payload_key,
         chat_payload_list=chat_payload_list,
+        guided_conversations=guided_conversations,
+        guided_max_turns=guided_max_turns,
+        guided_concurrency=guided_concurrency,
+        redteam_llm=redteam_llm,
+        eval_llm=eval_llm,
     )
     findings = await orchestrator.run()
 

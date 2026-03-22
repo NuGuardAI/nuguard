@@ -99,6 +99,12 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_app_env"] = {
             str(k): str(v) for k, v in redteam["app_env"].items()
         }
+    if "guided_conversations" in redteam:
+        flat["redteam_guided_conversations"] = bool(redteam["guided_conversations"])
+    if "guided_max_turns" in redteam:
+        flat["redteam_guided_max_turns"] = int(redteam["guided_max_turns"])
+    if "guided_concurrency" in redteam:
+        flat["redteam_guided_concurrency"] = int(redteam["guided_concurrency"])
 
     # Redteam LLM section
     redteam_llm = redteam.get("llm", {}) or {}
@@ -258,6 +264,28 @@ class NuGuardConfig(BaseSettings):
             "Extra environment variables injected into the fixture app subprocess "
             "during E2E redteam tests (yaml: redteam.app_env). "
             r"Use ${VAR} interpolation to avoid storing secrets in the file."
+        ),
+    )
+    redteam_guided_conversations: bool = Field(
+        default=True,
+        description=(
+            "Enable adaptive multi-turn guided conversations that steer the agent "
+            "toward the attack goal based on its responses (yaml: redteam.guided_conversations). "
+            "Requires redteam_llm_model to be set."
+        ),
+    )
+    redteam_guided_max_turns: int = Field(
+        default=12,
+        description=(
+            "Maximum turns per guided conversation before aborting "
+            "(yaml: redteam.guided_max_turns)."
+        ),
+    )
+    redteam_guided_concurrency: int = Field(
+        default=3,
+        description=(
+            "Maximum number of guided conversations to run in parallel "
+            "(yaml: redteam.guided_concurrency)."
         ),
     )
     redteam_llm_model: str | None = Field(

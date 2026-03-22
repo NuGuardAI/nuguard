@@ -18,6 +18,14 @@ from .data_exfiltration import (
     build_json_xml_exfiltration,
     build_rag_poisoning,
 )
+from .guided_conversations import (
+    build_guided_data_store_probe,
+    build_guided_phi_extraction,
+    build_guided_privilege_escalation,
+    build_guided_role_override,
+    build_guided_system_prompt_leak,
+    build_guided_tool_coercion,
+)
 from .jailbreak import build_context_flood, build_structural_injection
 from .mcp_attacks import build_mcp_output_poisoning, build_mcp_tool_injection
 from .pre_scorer import pre_score
@@ -52,8 +60,16 @@ class ScenarioGenerator:
                 edge.relationship_type, []
             ).append(str(edge.target))
 
-    def generate(self) -> list[AttackScenario]:
-        """Generate all attack scenarios sorted by impact score descending."""
+    def generate(self, with_guided: bool = False) -> list[AttackScenario]:
+        """Generate all attack scenarios sorted by impact score descending.
+
+        Parameters
+        ----------
+        with_guided:
+            When True, also generate guided conversation scenarios.  These require
+            a ``redteam_llm`` to execute — the orchestrator sets this flag
+            automatically when an LLM is configured.
+        """
         scenarios: list[AttackScenario] = []
 
         # Goal 0: Prompt-Driven Threats
@@ -83,9 +99,13 @@ class ScenarioGenerator:
         # Goal 6: Direct API Attacks (auth bypass, mass assignment, IDOR)
         scenarios.extend(self._api_attack_scenarios())
 
+        # Goal 7: Guided adversarial conversations (LLM-required, opt-in)
+        if with_guided:
+            scenarios.extend(self._guided_conversation_scenarios())
+
         # Sort by impact score descending
         scenarios.sort(key=lambda s: s.impact_score, reverse=True)
-        _log.info("Generated %d attack scenarios", len(scenarios))
+        _log.info("Generated %d attack scenarios (guided=%s)", len(scenarios), with_guided)
         return scenarios
 
     # ------------------------------------------------------------------ #
@@ -936,5 +956,139 @@ class ScenarioGenerator:
                 )
                 if scenario is not None:
                     out.append(scenario)
+
+        return out
+
+    # ------------------------------------------------------------------ #
+    # Goal 7: Guided adversarial conversations (LLM-driven, opt-in)
+    # ------------------------------------------------------------------ #
+
+    def _guided_conversation_scenarios(self) -> list[AttackScenario]:
+        """Build guided conversation scenarios from SBOM agent nodes.
+
+        One guided scenario per agent node per relevant goal type.  Impact
+        scores are set high (7.0–9.0) because guided conversations are the
+        most realistic attack vector — they mirror how a skilled human
+        red-teamer operates.
+        """
+        out: list[AttackScenario] = []
+
+        # Collect all DATASTORE and TOOL node names for context injection
+        datastore_names = [
+            n.name for n in self._sbom.nodes if n.component_type == ComponentType.DATASTORE
+        ]
+        pii_datastores = [
+            n.name for n in self._sbom.nodes
+            if n.component_type == ComponentType.DATASTORE
+            and (n.metadata.pii_fields or n.metadata.phi_fields)
+        ]
+
+        for node in self._sbom.nodes:
+            if node.component_type != ComponentType.AGENT:
+                continue
+            agent_id = str(node.id)
+            agent_name = node.name
+            meta = node.metadata
+
+            # Build agent capability summary from SBOM metadata
+            caps_parts = []
+            if meta.system_prompt_excerpt:
+                caps_parts.append(meta.system_prompt_excerpt[:120])
+            if meta.extras:
+                use_case = meta.extras.get("use_case") or meta.extras.get("description", "")
+                if use_case:
+                    caps_parts.append(str(use_case)[:100])
+            agent_capabilities = "; ".join(caps_parts)
+
+            # Collect reachable tool names
+            tool_names = [
+                self._node_by_id[tid].name
+                for tid in self._outgoing.get(agent_id, {}).get(RelationshipType.CALLS, [])
+                if tid in self._node_by_id
+            ]
+
+            # PHI/PII extraction — when agent has access to PII datastores or policy signals
+            has_pii = bool(pii_datastores) or bool(meta.phi_fields) or bool(meta.pii_fields)
+            if not has_pii and self._policy.data_classification:
+                has_pii = bool(self._parse_policy_pii_fields(self._policy.data_classification))
+            if has_pii:
+                out.append(
+                    build_guided_phi_extraction(
+                        agent_node_id=agent_id,
+                        agent_name=agent_name,
+                        agent_capabilities=agent_capabilities,
+                        datastore_names=pii_datastores or datastore_names,
+                    )
+                )
+
+            # System prompt leak — always applicable to conversational agents
+            out.append(
+                build_guided_system_prompt_leak(
+                    agent_node_id=agent_id,
+                    agent_name=agent_name,
+                    refusal_style=meta.refusal_style or "",
+                )
+            )
+
+            # Role override — when policy has restricted topics or agent has guardrails
+            blocked_topics = list(meta.blocked_topics or [])
+            if not blocked_topics and self._policy.restricted_topics:
+                blocked_topics = list(self._policy.restricted_topics)
+            policy_summary = ""
+            if self._policy.data_classification or self._policy.restricted_topics:
+                parts = []
+                if self._policy.restricted_topics:
+                    parts.append(f"Restricted: {', '.join(self._policy.restricted_topics[:3])}")
+                if self._policy.data_classification:
+                    parts.append(f"Data class: {self._policy.data_classification[:80]}")
+                policy_summary = "; ".join(parts)
+            if blocked_topics or policy_summary:
+                out.append(
+                    build_guided_role_override(
+                        agent_node_id=agent_id,
+                        agent_name=agent_name,
+                        blocked_topics=blocked_topics,
+                        policy_summary=policy_summary,
+                    )
+                )
+
+            # Tool coercion — when agent has reachable tools
+            if tool_names:
+                out.append(
+                    build_guided_tool_coercion(
+                        agent_node_id=agent_id,
+                        agent_name=agent_name,
+                        tool_names=tool_names,
+                    )
+                )
+
+            # Data store probe — when datastores exist
+            if datastore_names:
+                out.append(
+                    build_guided_data_store_probe(
+                        agent_node_id=agent_id,
+                        agent_name=agent_name,
+                        datastore_names=datastore_names,
+                    )
+                )
+
+            # Privilege escalation — when agent has privileged tools or high-priv actions
+            priv_tools = [
+                n.name for n in self._sbom.nodes
+                if n.component_type == ComponentType.TOOL
+                and (n.metadata.no_auth_required or n.metadata.sql_injectable)
+            ]
+            privileged_actions = list(meta.blocked_actions or [])
+            if not privileged_actions and self._policy.restricted_actions:
+                privileged_actions = list(self._policy.restricted_actions[:3])
+            all_priv = priv_tools or privileged_actions or tool_names
+            if all_priv:
+                out.append(
+                    build_guided_privilege_escalation(
+                        agent_node_id=agent_id,
+                        agent_name=agent_name,
+                        available_tools=all_priv[:6],
+                    )
+                )
 
         return out
