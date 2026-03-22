@@ -28,7 +28,10 @@ import time
 import weakref
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from nuguard.redteam.target.log_reader import BufferLogReader
 
 import httpx
 
@@ -456,6 +459,12 @@ class AppRunner:
             f"Last error: {last_error}"
             + (f"\nstderr (last 30 lines):\n{stderr_summary}" if stderr_summary else "")
         )
+
+    @property
+    def log_reader(self) -> "BufferLogReader":
+        """Return a BufferLogReader backed by this runner's stderr capture buffer."""
+        from nuguard.redteam.target.log_reader import BufferLogReader
+        return BufferLogReader(self._stderr_lines)
 
     def _kill_process(self) -> None:
         if self._process and self._process.poll() is None:

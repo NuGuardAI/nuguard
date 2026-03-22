@@ -1789,6 +1789,14 @@ def _make_scan_summary(d: dict[str, Any]) -> ScanSummary:
         security_findings=d.get("security_findings") or [],
         iam_principals=d.get("iam_principals") or [],
         service_accounts=d.get("service_accounts") or [],
+        # App-launch discovery
+        startup_commands=d.get("startup_commands") or [],
+        env_files=d.get("env_files") or [],
+        env_var_keys=d.get("env_var_keys") or [],
+        local_url=d.get("local_url"),
+        staging_urls=d.get("staging_urls") or [],
+        production_urls=d.get("production_urls") or [],
+        log_paths=d.get("log_paths") or [],
     )
 
 

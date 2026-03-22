@@ -424,6 +424,8 @@ def build_scan_summary(
     dc_metadata: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Build scan-level summary for reporting."""
+    from .app_env_detector import detect_app_env
+
     node_types: dict[str, int] = {}
     frameworks: list[str] = []
 
@@ -439,6 +441,15 @@ def build_scan_summary(
     modality_support = infer_modalities_support(nodes, files)
     use_case_summary = build_deterministic_use_case_summary(nodes, modality_support)
     modalities = [k.upper() for k, enabled in modality_support.items() if enabled]
+
+    # App-launch discovery: startup commands, .env files, local/staging/prod URLs
+    app_env = detect_app_env(files)
+    # Merge any newly discovered deployment URLs into the IaC-detected list
+    all_deployment_urls = _uniq(
+        deployment.get("deployment_urls", [])
+        + app_env["staging_urls"]
+        + app_env["production_urls"]
+    )
 
     # Data classification: collect from typed fields on DATASTORE nodes, then fall back
     # to raw dc_metadata for repos where no DATASTORE node was detected.
@@ -470,7 +481,16 @@ def build_scan_summary(
         "modality_support": modality_support,
         "data_classification": sorted(all_labels),
         "classified_tables": sorted(classified_tables),
-        **deployment,
+        # App-launch discovery
+        "startup_commands": app_env["startup_commands"],
+        "env_files": app_env["env_files"],
+        "env_var_keys": app_env["env_var_keys"],
+        "_env_vars": app_env["env_vars"],  # underscore prefix = not in ScanSummary model
+        "local_url": app_env["local_url"],
+        "staging_urls": app_env["staging_urls"],
+        "production_urls": app_env["production_urls"],
+        "log_paths": app_env["log_paths"],
+        **{**deployment, "deployment_urls": all_deployment_urls},
         **iac_security,
     }
 

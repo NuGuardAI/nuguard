@@ -1,0 +1,17 @@
+# nuguard.yaml — rag-chatbot-demo
+# Per-fixture config for the benchmark test harness.
+# Secrets must be set as environment variables (${VAR} syntax).
+
+sbom_path: tests/output/sbom_rag-chatbot-demo.json
+target_url: http://127.0.0.1:18101
+
+redteam:
+  profile: full
+  verbose: true
+  request_timeout: 60
+  llm:
+    model: ${NUGUARD_REDTEAM_LLM_MODEL}
+    api_key: ${NUGUARD_REDTEAM_LLM_API_KEY}
+  eval_llm:
+    model: ${NUGUARD_REDTEAM_EVAL_LLM_MODEL}
+    api_key: ${NUGUARD_REDTEAM_EVAL_LLM_API_KEY}

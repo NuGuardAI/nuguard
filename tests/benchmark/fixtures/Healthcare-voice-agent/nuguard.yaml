@@ -11,6 +11,12 @@ redteam:
   # Verbose report: include full per-scenario input/output traces.
   verbose: true
 
+  # Chat endpoint — the main LangGraph pipeline.
+  # POST /run_langgraph {"phrases": ["<message>"]}
+  target_endpoint: /run_langgraph
+  chat_payload_key: phrases
+  chat_payload_list: true
+
   # The /run_langgraph endpoint runs a 5-agent LangGraph pipeline (normalize →
   # prognosis_search via DuckDuckGo → specialist_lookup → recommend →
   # fetch_doctor_details), each making GPT-4 calls. The default 30 s timeout
@@ -39,3 +45,10 @@ redteam:
 
     # Optional: suppress verbose LangGraph/LangChain startup logs from the app
     LOG_LEVEL: warning
+
+  llm:
+    model: ${NUGUARD_REDTEAM_LLM_MODEL}
+    api_key: ${NUGUARD_REDTEAM_LLM_API_KEY}
+  eval_llm:
+    model: ${NUGUARD_REDTEAM_EVAL_LLM_MODEL}
+    api_key: ${NUGUARD_REDTEAM_EVAL_LLM_API_KEY}

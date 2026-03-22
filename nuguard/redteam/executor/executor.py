@@ -2,8 +2,12 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 from nuguard.common.llm_client import LLMClient
+
+if TYPE_CHECKING:
+    from nuguard.redteam.target.log_reader import BufferLogReader, FileLogReader
 from nuguard.models.exploit_chain import HTTP_2XX_SENTINEL, ExploitChain, ExploitStep
 from nuguard.models.policy import CognitivePolicy
 from nuguard.redteam.llm_engine.adaptive_mutation import AdaptiveMutationStrategy
@@ -67,14 +71,25 @@ class StepResult:
         elif step.success_signal and "|" in step.success_signal:
             # Pipe-separated OR: any token match counts as success
             response_lower = response.lower()
-            self.success_signal_found = any(
+            keyword_found = any(
                 tok.strip().lower() in response_lower
                 for tok in step.success_signal.split("|")
                 if tok.strip()
             )
+            # success_requires_2xx: reject keyword match when the server returned a
+            # 4xx/5xx — e.g. FastAPI echoes the full request body inside 422
+            # validation errors, which would otherwise produce false positives.
+            is_2xx = http_status_code is not None and 200 <= http_status_code < 300
+            self.success_signal_found = keyword_found and (
+                not step.success_requires_2xx or is_2xx
+            )
         else:
-            self.success_signal_found = bool(
+            keyword_found = bool(
                 step.success_signal and step.success_signal.lower() in response.lower()
+            )
+            is_2xx = http_status_code is not None and 200 <= http_status_code < 300
+            self.success_signal_found = keyword_found and (
+                not step.success_requires_2xx or is_2xx
             )
         self.canary_hits: list[str] = []
         self.policy_violations: list[PolicyViolation] = []
@@ -96,6 +111,7 @@ class AttackExecutor:
         logger: ActionLogger | None = None,
         eval_llm: LLMClient | None = None,
         mutation_llm: LLMClient | None = None,
+        app_log_reader: "FileLogReader | BufferLogReader | None" = None,
     ) -> None:
         self._client = client
         self._evaluator = PolicyEvaluator(policy) if policy else None
@@ -108,6 +124,7 @@ class AttackExecutor:
         self._adaptive_mutator = (
             AdaptiveMutationStrategy(mutation_llm) if mutation_llm else None
         )
+        self._app_log_reader = app_log_reader
 
     async def run(
         self, chain: ExploitChain
@@ -205,6 +222,8 @@ class AttackExecutor:
                 http_status_code=status_code,
             )
         else:
+            if self._app_log_reader:
+                self._app_log_reader.mark()
             response, tool_calls = await self._client.send(payload, session)
             session.add_turn(payload, response, tool_calls)
             result = StepResult(step=step, response=response, tool_calls=tool_calls)
@@ -214,6 +233,13 @@ class AttackExecutor:
             result.canary_hits = (
                 self._canary.scan(response) + self._canary.scan_decoded(response)
             )
+
+        # Collect app log lines written since the mark() call (chat path only)
+        app_log_context: str | None = None
+        if self._app_log_reader and not step.target_path:
+            new_lines = self._app_log_reader.read_new()
+            if new_lines:
+                app_log_context = "\n".join(new_lines)
 
         # LLM-based success evaluation for complex steps (e.g. HITL_BYPASS) where
         # keyword matching is unreliable.  When use_llm_eval=True and the evaluator
@@ -225,6 +251,7 @@ class AttackExecutor:
                 goal_type=chain.goal_type.value,
                 payload=payload,
                 response=response,
+                app_log_context=app_log_context,
             )
             if llm_eval.get("confidence") in ("high", "medium"):
                 result.success_signal_found = bool(llm_eval.get("succeeded", False))

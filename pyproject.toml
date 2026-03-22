@@ -37,6 +37,10 @@ build-backend = "hatchling.build"
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests", "nuguard/sbom/tests"]
+markers = [
+    "redteam_e2e: E2E redteam scan against a live fixture app (opt-in: NUGUARD_REDTEAM_E2E=1)",
+    "benchmark_redteam: Full benchmark redteam CLI scan (opt-in: NUGUARD_REDTEAM_BENCHMARK=1)",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]

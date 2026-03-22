@@ -130,6 +130,48 @@ def test_mass_assignment_scenario_structure():
     assert step.http_body.get("role") == "admin"
     assert step.http_body.get("is_superuser") is True
     assert step.success_signal == "superuser"
+    # Must require 2xx to avoid false positives when frameworks echo the request
+    # body in a 422 validation error response.
+    assert step.success_requires_2xx is True
+
+
+def test_mass_assignment_no_false_positive_on_422_echo():
+    """FastAPI echoes request body in 422 validation errors — must not be flagged."""
+    from nuguard.models.exploit_chain import ExploitStep
+    # Simulate FastAPI 422: {"detail":[{"input":{"privilege_level":"superuser",...}}]}
+    response_422 = (
+        '{"detail":[{"type":"missing","loc":["body","email"],"msg":"Field required",'
+        '"input":{"role":"admin","is_admin":true,"privilege_level":"superuser",'
+        '"is_superuser":true,"permissions":["admin","write","delete"]}}]}'
+    )
+    step = ExploitStep(
+        step_id="s1",
+        step_type="INVOKE",
+        description="Send extra privilege fields",
+        payload="",
+        success_signal="superuser",
+        success_requires_2xx=True,
+    )
+    result = StepResult(step=step, response=response_422, tool_calls=[], http_status_code=422)
+    assert result.success_signal_found is False, (
+        "keyword 'superuser' in a 422 body is an echo of rejected input, not a success"
+    )
+
+
+def test_mass_assignment_true_positive_on_200():
+    """A 200 response that reflects the privileged field IS a mass assignment success."""
+    from nuguard.models.exploit_chain import ExploitStep
+    response_200 = '{"id": 42, "role": "admin", "privilege_level": "superuser", "created": true}'
+    step = ExploitStep(
+        step_id="s1",
+        step_type="INVOKE",
+        description="Send extra privilege fields",
+        payload="",
+        success_signal="superuser",
+        success_requires_2xx=True,
+    )
+    result = StepResult(step=step, response=response_200, tool_calls=[], http_status_code=200)
+    assert result.success_signal_found is True
 
 
 def test_mass_assignment_impact_score():

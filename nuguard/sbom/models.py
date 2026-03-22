@@ -496,6 +496,45 @@ class ScanSummary(BaseModel):
             "(PII or PHI).  Sorted alphabetically."
         ),
     )
+    # App-launch discovery fields (populated by app_env_detector)
+    startup_commands: list[dict[str, str]] = Field(
+        default_factory=list,
+        description=(
+            "Startup commands discovered from package.json, Makefile, Procfile, "
+            "pyproject.toml, or inferred entry points.  Each entry is "
+            "{command, source, label} where label is 'dev' or 'start'."
+        ),
+    )
+    env_files: list[str] = Field(
+        default_factory=list,
+        description="Relative paths to .env / dotenv files found in the repository.",
+    )
+    env_var_keys: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Sorted list of environment variable *keys* found across all dotenv files. "
+            "Values are intentionally omitted from the SBOM."
+        ),
+    )
+    local_url: str | None = Field(
+        default=None,
+        description=(
+            "Inferred local dev URL (e.g. 'http://localhost:8000') derived from "
+            "PORT env var or startup command hints.  None when not determinable."
+        ),
+    )
+    staging_urls: list[str] = Field(
+        default_factory=list,
+        description="Staging / QA deployment URLs discovered from env files or config.",
+    )
+    production_urls: list[str] = Field(
+        default_factory=list,
+        description="Production deployment URLs discovered from env files or config.",
+    )
+    log_paths: list[str] = Field(
+        default_factory=list,
+        description="Log file paths discovered during scanning (relative to app root).",
+    )
 
 
 class AiSbomDocument(BaseModel):

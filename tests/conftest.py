@@ -2,9 +2,33 @@
 
 from __future__ import annotations
 
+import os
 from datetime import datetime, timezone
+from pathlib import Path
 
 import pytest
+
+_ENV_FILE = Path(__file__).parent / "redteam" / ".env"
+
+
+def _load_dotenv(path: Path) -> None:
+    """Minimal .env loader — no external dependency required."""
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip().strip('"').strip("'")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+# Load tests/.env before any test collection so all tests can see the keys
+if _ENV_FILE.exists():
+    _load_dotenv(_ENV_FILE)
 
 from nuguard.models.sbom import (
     AccessType,

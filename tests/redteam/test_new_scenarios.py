@@ -478,3 +478,64 @@ def test_generator_produces_new_scenario_types() -> None:
     assert ScenarioType.CONTEXT_FLOODING in types, "Missing context flooding"
     assert ScenarioType.COVERT_ENCODING in types, "Missing covert encoding"
     assert ScenarioType.CROSS_TENANT_EXFILTRATION in types, "Missing cross-tenant"
+
+
+# ── Circuit breaker ──────────────────────────────────────────────────────────
+
+
+@pytest.mark.asyncio
+async def test_circuit_breaker_opens_after_threshold() -> None:
+    """TargetAppClient raises TargetUnavailableError after MAX_CONSECUTIVE_ERRORS failures."""
+    from nuguard.redteam.target.client import TargetAppClient, TargetUnavailableError
+    from nuguard.redteam.target.session import AttackSession
+
+    client = TargetAppClient(
+        base_url="http://localhost:9999",
+        max_consecutive_errors=3,
+    )
+    session = AttackSession(session_id="s1", target_url="http://localhost:9999", chain_id="c1")
+
+    # First two errors are tolerated — client returns error strings
+    resp1, _ = await client.send("test", session)
+    assert resp1.startswith("[REQUEST_ERROR:")
+    resp2, _ = await client.send("test", session)
+    assert resp2.startswith("[REQUEST_ERROR:")
+
+    # Third consecutive error trips the circuit breaker
+    with pytest.raises(TargetUnavailableError):
+        await client.send("test", session)
+
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_circuit_breaker_resets_on_success() -> None:
+    """Error counter resets when a successful response is received."""
+    import httpx
+    from unittest.mock import AsyncMock, patch
+    from nuguard.redteam.target.client import TargetAppClient, TargetUnavailableError
+    from nuguard.redteam.target.session import AttackSession
+
+    client = TargetAppClient(
+        base_url="http://localhost:9999",
+        max_consecutive_errors=3,
+    )
+    session = AttackSession(session_id="s1", target_url="http://localhost:9999", chain_id="c1")
+
+    # Two errors
+    await client.send("test", session)
+    await client.send("test", session)
+    assert client._consecutive_errors == 2
+
+    # Successful response resets the counter
+    mock_resp = MagicMock()
+    mock_resp.raise_for_status = MagicMock()
+    mock_resp.json = MagicMock(return_value={"response": "hello"})
+
+    with patch.object(client._client, "post", new_callable=AsyncMock, return_value=mock_resp):
+        resp, _ = await client.send("hello", session)
+
+    assert resp == "hello"
+    assert client._consecutive_errors == 0
+
+    await client.aclose()

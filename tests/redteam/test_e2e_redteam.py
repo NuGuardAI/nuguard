@@ -274,6 +274,8 @@ def _run_redteam(app_name: str) -> None:
         orchestrator: RedteamOrchestrator | None = None
         if runner.started and sbom is not None:
             try:
+                from nuguard.redteam.target.log_reader import BufferLogReader
+                app_log_reader = BufferLogReader(runner._stderr_lines)
                 orchestrator = RedteamOrchestrator(
                     sbom=sbom,
                     target_url=runner.base_url,
@@ -286,6 +288,7 @@ def _run_redteam(app_name: str) -> None:
                     redteam_llm=redteam_llm,
                     eval_llm=eval_llm,
                     prompt_cache_dir=OUTPUT_DIR,
+                    app_log_reader=app_log_reader,
                 )
                 findings = asyncio.run(orchestrator.run())
                 scenarios_generated = orchestrator.scenarios_run

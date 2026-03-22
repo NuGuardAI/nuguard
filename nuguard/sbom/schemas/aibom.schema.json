@@ -1192,6 +1192,70 @@
           },
           "title": "Classified Tables",
           "type": "array"
+        },
+        "startup_commands": {
+          "description": "Startup commands discovered from package.json, Makefile, Procfile, pyproject.toml, or inferred entry points.  Each entry is {command, source, label} where label is 'dev' or 'start'.",
+          "items": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "title": "Startup Commands",
+          "type": "array"
+        },
+        "env_files": {
+          "description": "Relative paths to .env / dotenv files found in the repository.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Env Files",
+          "type": "array"
+        },
+        "env_var_keys": {
+          "description": "Sorted list of environment variable *keys* found across all dotenv files. Values are intentionally omitted from the SBOM.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Env Var Keys",
+          "type": "array"
+        },
+        "local_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Inferred local dev URL (e.g. 'http://localhost:8000') derived from PORT env var or startup command hints.  None when not determinable.",
+          "title": "Local Url"
+        },
+        "staging_urls": {
+          "description": "Staging / QA deployment URLs discovered from env files or config.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Staging Urls",
+          "type": "array"
+        },
+        "production_urls": {
+          "description": "Production deployment URLs discovered from env files or config.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Production Urls",
+          "type": "array"
+        },
+        "log_paths": {
+          "description": "Log file paths discovered during scanning (relative to app root).",
+          "items": {
+            "type": "string"
+          },
+          "title": "Log Paths",
+          "type": "array"
         }
       },
       "title": "ScanSummary",

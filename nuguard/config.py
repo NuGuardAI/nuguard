@@ -75,6 +75,10 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["target_url"] = redteam["target"]
     if "target_endpoint" in redteam:
         flat["target_endpoint"] = redteam["target_endpoint"]
+    if "chat_payload_key" in redteam:
+        flat["redteam_chat_payload_key"] = redteam["chat_payload_key"]
+    if "chat_payload_list" in redteam:
+        flat["redteam_chat_payload_list"] = bool(redteam["chat_payload_list"])
     if "auth_header" in redteam:
         flat["redteam_auth_header"] = redteam["auth_header"]
     if "canary" in redteam:
@@ -181,6 +185,20 @@ class NuGuardConfig(BaseSettings):
     target_endpoint: str = Field(
         default="/chat",
         description="Agent chat endpoint path on the target (yaml: redteam.target_endpoint).",
+    )
+    redteam_chat_payload_key: str = Field(
+        default="message",
+        description=(
+            "JSON key for the chat message in the POST body, e.g. 'message' or 'phrases' "
+            "(yaml: redteam.chat_payload_key). Overrides SBOM auto-discovery."
+        ),
+    )
+    redteam_chat_payload_list: bool = Field(
+        default=False,
+        description=(
+            "When true, the chat message value is sent as a list rather than a plain string "
+            "(yaml: redteam.chat_payload_list)."
+        ),
     )
     redteam_auth_header: str | None = Field(
         default=None,

@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from nuguard.common.llm_client import LLMClient
+    from nuguard.redteam.target.log_reader import BufferLogReader, FileLogReader
 
 from nuguard.models.exploit_chain import ExploitChain, GoalType
 from nuguard.models.finding import Finding
@@ -24,7 +25,7 @@ from nuguard.redteam.scenarios.generator import ScenarioGenerator
 from nuguard.redteam.scenarios.scenario_types import AttackScenario
 from nuguard.redteam.target.action_logger import ActionLogger
 from nuguard.redteam.target.canary import CanaryConfig, CanaryScanner
-from nuguard.redteam.target.client import TargetAppClient
+from nuguard.redteam.target.client import TargetAppClient, TargetUnavailableError
 from nuguard.sbom.models import AiSbomDocument
 
 from .executor import AttackExecutor, StepResult
@@ -109,6 +110,7 @@ class RedteamOrchestrator:
         redteam_llm: "LLMClient | None" = None,
         eval_llm: "LLMClient | None" = None,
         prompt_cache_dir: "Path | None" = None,
+        app_log_reader: "FileLogReader | BufferLogReader | None" = None,
     ) -> None:
         self._sbom = sbom
         self._target_url = target_url
@@ -122,6 +124,7 @@ class RedteamOrchestrator:
         self._redteam_llm = redteam_llm
         self._eval_llm = eval_llm
         self._prompt_cache_dir = prompt_cache_dir
+        self._app_log_reader = app_log_reader
         # Auto-discover from SBOM; fall back to provided values
         self._chat_path, self._chat_payload_key, self._chat_payload_list = (
             _discover_chat_config(sbom, chat_path, chat_payload_key, chat_payload_list)
@@ -266,6 +269,7 @@ class RedteamOrchestrator:
                 logger=logger,
                 eval_llm=self._eval_llm,
                 mutation_llm=self._redteam_llm,
+                app_log_reader=self._app_log_reader,
             )
             findings, executed, records = await self._run_scenarios(scenarios, executor)
             self.scenarios_executed.extend(executed)
@@ -331,8 +335,14 @@ class RedteamOrchestrator:
         Scenarios are independent of each other — each gets its own session —
         so they can safely run in parallel.  A semaphore caps the number of
         in-flight scenarios to avoid overwhelming the target app.
+
+        If the target endpoint returns too many consecutive errors the circuit
+        breaker in ``TargetAppClient`` raises ``TargetUnavailableError``.  We
+        catch it, set an abort event, and skip all scenarios that have not yet
+        acquired the semaphore.
         """
         sem = asyncio.Semaphore(self._concurrency)
+        abort_event = asyncio.Event()
 
         async def _run_one(
             scenario: AttackScenario,
@@ -340,20 +350,32 @@ class RedteamOrchestrator:
             affected = ", ".join(
                 self._node_label.get(nid, nid) for nid in scenario.target_node_ids[:2]
             )
+
+            def _skipped_record(status: str) -> ScenarioRecord:
+                return ScenarioRecord(
+                    title=scenario.title,
+                    goal_type=scenario.goal_type.value,
+                    scenario_type=scenario.scenario_type.value,
+                    description=scenario.description,
+                    impact_score=scenario.impact_score,
+                    affected=affected,
+                    chain_status=status,
+                    had_finding=False,
+                )
+
+            # Skip immediately if the circuit is already open
+            if abort_event.is_set():
+                return [], (scenario.title, scenario.goal_type.value, False), _skipped_record("skipped")
+
             async with sem:
+                # Re-check after acquiring the semaphore — another coroutine may
+                # have tripped the circuit while we were waiting.
+                if abort_event.is_set():
+                    return [], (scenario.title, scenario.goal_type.value, False), _skipped_record("skipped")
+
                 try:
                     if scenario.chain is None:
-                        empty_record = ScenarioRecord(
-                            title=scenario.title,
-                            goal_type=scenario.goal_type.value,
-                            scenario_type=scenario.scenario_type.value,
-                            description=scenario.description,
-                            impact_score=scenario.impact_score,
-                            affected="",
-                            chain_status="failed",
-                            had_finding=False,
-                        )
-                        return [], (scenario.title, scenario.goal_type.value, False), empty_record
+                        return [], (scenario.title, scenario.goal_type.value, False), _skipped_record("failed")
                     chain, step_results = await executor.run(scenario.chain)
                     step_details = self._build_step_details(step_results)
                     new_findings = self._build_findings(
@@ -376,6 +398,12 @@ class RedteamOrchestrator:
                         (scenario.title, scenario.goal_type.value, had_finding),
                         record,
                     )
+                except TargetUnavailableError as exc:
+                    _log.error(
+                        "Target endpoint unavailable — aborting remaining scenarios. %s", exc
+                    )
+                    abort_event.set()
+                    return [], (scenario.title, scenario.goal_type.value, False), _skipped_record("aborted")
                 except Exception as exc:
                     _log.warning("Scenario %s failed: %s", scenario.scenario_id, exc)
                     record = ScenarioRecord(

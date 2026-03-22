@@ -134,6 +134,10 @@ def build_mass_assignment(
                 http_body=_MASS_ASSIGN_BODY,
                 target_node_id=endpoint_id,
                 success_signal="superuser",
+                # Require 2xx so that frameworks (e.g. FastAPI) echoing the request
+                # body verbatim inside a 422 validation error do not produce a false
+                # positive — "superuser" appearing in a rejection is not a success.
+                success_requires_2xx=True,
                 on_failure="abort",
             )
         ],
