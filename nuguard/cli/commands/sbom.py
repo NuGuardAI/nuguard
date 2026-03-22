@@ -1,11 +1,12 @@
-"""``nuguard sbom`` sub-commands: generate, validate, register, show."""
+"""``nuguard sbom`` sub-commands: generate (default), validate, register, show."""
 
 from __future__ import annotations
 
 import json
-import sys
+import os
 from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse, urlunparse
 
 import typer
 from rich.console import Console
@@ -15,7 +16,6 @@ from nuguard.common.errors import SbomError, ValidationError
 from nuguard.common.logging import get_logger
 from nuguard.sbom.extractor.config import AiSbomConfig
 from nuguard.sbom.generator import SbomGenerator
-from nuguard.sbom.parser import parse_sbom
 from nuguard.sbom.validator import validate_sbom
 
 _log = get_logger(__name__)
@@ -27,64 +27,80 @@ sbom_app = typer.Typer(
     no_args_is_help=True,
 )
 
+# ---------------------------------------------------------------------------
+# Shared option definitions (reused by both the callback and generate command)
+# ---------------------------------------------------------------------------
+_OPT_SOURCE = typer.Option(
+    None, "--source", "-s",
+    help="Path to application source directory.",
+    exists=False, file_okay=False, dir_okay=True, resolve_path=True,
+)
+_OPT_FROM_REPO = typer.Option(
+    None, "--from-repo",
+    help="Git repository URL to clone and scan (e.g. https://github.com/org/repo).",
+)
+_OPT_REF = typer.Option(
+    "main", "--ref",
+    help="Branch, tag, or commit to check out when using --from-repo.",
+)
+_OPT_TOKEN = typer.Option(
+    None, "--token",
+    help="GitHub personal access token for private repos (falls back to GH_TOKEN / GITHUB_TOKEN).",
+)
+_OPT_OUTPUT = typer.Option(
+    Path("app.sbom.json"), "--output", "-o",
+    help="Output path for the generated SBOM JSON.",
+)
+_OPT_LLM = typer.Option(
+    False, "--llm/--no-llm", help="Enable LLM enrichment (requires LITELLM_API_KEY).",
+)
+_OPT_FORMAT = typer.Option(
+    "json", "--format", "-f",
+    help="Additional output format: json (default, SBOM only) | cyclonedx | markdown.",
+)
+_OPT_CONFIG = typer.Option(
+    None, "--config", help="Path to nuguard.yaml (default: ./nuguard.yaml).", exists=False,
+)
 
-@sbom_app.command("generate")
-def generate(
-    source: Optional[Path] = typer.Option(
-        None,
-        "--source",
-        "-s",
-        help="Path to application source directory.",
-        exists=False,
-        file_okay=False,
-        dir_okay=True,
-        resolve_path=True,
-    ),
-    from_repo: Optional[str] = typer.Option(
-        None,
-        "--from-repo",
-        help="Git repository URL to clone and scan (e.g. https://github.com/org/repo).",
-    ),
-    ref: str = typer.Option(
-        "main",
-        "--ref",
-        help="Branch, tag, or commit to check out when using --from-repo.",
-    ),
-    output: Path = typer.Option(
-        Path("app.sbom.json"),
-        "--output",
-        "-o",
-        help="Output path for the generated SBOM JSON.",
-    ),
-    llm: bool = typer.Option(
-        False,
-        "--llm/--no-llm",
-        help="Enable LLM enrichment (requires LITELLM_API_KEY).",
-    ),
-    format: str = typer.Option(
-        "json",
-        "--format",
-        "-f",
-        help="Output format: json | cyclonedx.",
-    ),
-    config_file: Optional[Path] = typer.Option(
-        None,
-        "--config",
-        help="Path to nuguard.yaml (default: ./nuguard.yaml).",
-        exists=False,
-    ),
+
+def _inject_token(url: str, token: str) -> str:
+    """Embed *token* into an HTTPS git URL for private-repo authentication."""
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        return url
+    netloc = f"{token}@{parsed.hostname}"
+    if parsed.port:
+        netloc += f":{parsed.port}"
+    return urlunparse(parsed._replace(netloc=netloc))
+
+
+def _resolve_token(token: str | None) -> str | None:
+    """Return the first non-empty token from flag → GH_TOKEN → GITHUB_TOKEN."""
+    return token or os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN") or None
+
+
+def _do_generate(
+    source: Optional[Path],
+    from_repo: Optional[str],
+    ref: str,
+    token: Optional[str],
+    output: Path,
+    llm: bool,
+    format: str,
+    config_file: Optional[Path],
 ) -> None:
-    """Generate an AI-SBOM by scanning SOURCE or cloning --from-repo."""
+    """Core generate logic shared by the callback and the explicit subcommand."""
     # Fall back to nuguard.yaml's source field when --source is not provided
     if source is None and from_repo is None:
-        from nuguard.config import load_config
-
+        from nuguard.config import load_config  # noqa: PLC0415
         cfg = load_config(config_file)
         if cfg.source_path:
             source = Path(cfg.source_path)
 
     if source is None and from_repo is None:
-        _err_console.print("Provide --source <dir> or --from-repo <url> (or set source: in nuguard.yaml).")
+        _err_console.print(
+            "Provide --source <dir> or --from-repo <url> (or set source: in nuguard.yaml)."
+        )
         raise typer.Exit(code=1)
 
     config = AiSbomConfig(enable_llm=llm)
@@ -92,8 +108,15 @@ def generate(
 
     try:
         if from_repo:
+            resolved_token = _resolve_token(token)
+            clone_url = _inject_token(from_repo, resolved_token) if resolved_token else from_repo
             _console.print(f"[bold]Cloning[/bold] {from_repo} ({ref}) …")
-            doc = gen.from_repo(from_repo, ref=ref, output=None)
+            # Pass the original URL as source_ref to avoid leaking the token
+            from nuguard.sbom.extractor.core import AiSbomExtractor  # noqa: PLC0415
+            extractor = AiSbomExtractor()
+            doc = extractor.extract_from_repo(
+                clone_url, ref=ref, config=config, source_ref=from_repo
+            )
         else:
             assert source is not None  # guarded by the exit above
             if not source.exists():
@@ -105,22 +128,32 @@ def generate(
         _err_console.print(f"Error: {exc}")
         raise typer.Exit(code=3) from exc
 
-    if format == "cyclonedx":
-        from nuguard.sbom.extractor.serializer import AiSbomSerializer
+    from nuguard.sbom.extractor.serializer import AiSbomSerializer  # noqa: PLC0415
 
-        data = AiSbomSerializer.to_cyclonedx(doc)
-        output.write_text(json.dumps(data, indent=2), encoding="utf-8")
-    else:
-        from nuguard.sbom.extractor.serializer import AiSbomSerializer
-
-        output.write_text(AiSbomSerializer.to_json(doc), encoding="utf-8")
-
+    # JSON SBOM is always written — it is the primary artifact
+    output.write_text(AiSbomSerializer.to_json(doc), encoding="utf-8")
     _console.print(
         f"[green]SBOM written to[/green] {output} "
         f"([bold]{len(doc.nodes)}[/bold] nodes, [bold]{len(doc.edges)}[/bold] edges)"
     )
 
-    # Summary table
+    # Additional format output (alongside the JSON SBOM)
+    stem = output.stem.removesuffix(".sbom") if output.stem.endswith(".sbom") else output.stem
+    if format == "cyclonedx":
+        cdx_path = output.with_name(f"{stem}.cdx.json")
+        data = AiSbomSerializer.to_cyclonedx(doc)
+        cdx_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        _console.print(f"[green]CycloneDX written to[/green] {cdx_path}")
+    elif format == "markdown":
+        from nuguard.sbom.toolbox.plugins.markdown_exporter import (
+            MarkdownExporterPlugin,  # noqa: PLC0415
+        )
+        md_path = output.with_name(f"{stem}.sbom.md")
+        sbom_dict = json.loads(AiSbomSerializer.to_json(doc))
+        result = MarkdownExporterPlugin().run(sbom_dict, {})
+        md_path.write_text(result.details.get("markdown", ""), encoding="utf-8")
+        _console.print(f"[green]Markdown report written to[/green] {md_path}")
+
     if doc.summary and doc.summary.node_counts:
         table = Table(title="Node Summary", show_header=True)
         table.add_column("Type")
@@ -128,6 +161,42 @@ def generate(
         for node_type, count in sorted(doc.summary.node_counts.items()):
             table.add_row(node_type, str(count))
         _console.print(table)
+
+
+@sbom_app.callback(invoke_without_command=True)
+def sbom_default(
+    ctx: typer.Context,
+    source: Optional[Path] = _OPT_SOURCE,
+    from_repo: Optional[str] = _OPT_FROM_REPO,
+    ref: str = _OPT_REF,
+    token: Optional[str] = _OPT_TOKEN,
+    output: Path = _OPT_OUTPUT,
+    llm: bool = _OPT_LLM,
+    format: str = _OPT_FORMAT,
+    config_file: Optional[Path] = _OPT_CONFIG,
+) -> None:
+    """Generate an AI-SBOM (default) or run a sub-command.
+
+    When called without a sub-command, behaves identically to ``nuguard sbom generate``.
+    """
+    if ctx.invoked_subcommand is not None:
+        return
+    _do_generate(source, from_repo, ref, token, output, llm, format, config_file)
+
+
+@sbom_app.command("generate")
+def generate(
+    source: Optional[Path] = _OPT_SOURCE,
+    from_repo: Optional[str] = _OPT_FROM_REPO,
+    ref: str = _OPT_REF,
+    token: Optional[str] = _OPT_TOKEN,
+    output: Path = _OPT_OUTPUT,
+    llm: bool = _OPT_LLM,
+    format: str = _OPT_FORMAT,
+    config_file: Optional[Path] = _OPT_CONFIG,
+) -> None:
+    """Generate an AI-SBOM by scanning SOURCE or cloning --from-repo."""
+    _do_generate(source, from_repo, ref, token, output, llm, format, config_file)
 
 
 @sbom_app.command("validate")
@@ -171,8 +240,8 @@ def register(
     ),
 ) -> None:
     """Register FILE in the local database (~/.nuguard/nuguard.db)."""
-    from nuguard.sbom.extractor.serializer import AiSbomSerializer
     from nuguard.db.local import LocalDb
+    from nuguard.sbom.extractor.serializer import AiSbomSerializer
 
     try:
         raw = file.read_text(encoding="utf-8")
@@ -246,8 +315,8 @@ def plugin_cmd(
 
     Examples:
         nuguard sbom plugin list
-        nuguard sbom plugin run vulnerability --sbom app.sbom.json
         nuguard sbom plugin run markdown --sbom app.sbom.json --format markdown
+        nuguard sbom plugin run sarif --sbom app.sbom.json
     """
     from nuguard.sbom.toolbox.orchestrator import PluginOrchestrator
 

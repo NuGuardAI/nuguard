@@ -64,7 +64,8 @@ def test_generate_from_source(tmp_path: Path) -> None:
 
 
 def test_generate_cyclonedx_format(tmp_path: Path) -> None:
-    out = tmp_path / "sbom.cdx.json"
+    # --output always receives the JSON SBOM; CycloneDX is written alongside it
+    out = tmp_path / "app.sbom.json"
     result = runner.invoke(
         app,
         [
@@ -79,8 +80,14 @@ def test_generate_cyclonedx_format(tmp_path: Path) -> None:
         ],
     )
     assert result.exit_code == 0, result.output
-    data = json.loads(out.read_text())
-    assert data.get("bomFormat") == "CycloneDX"
+    # Primary output: JSON SBOM
+    sbom_data = json.loads(out.read_text())
+    assert "nodes" in sbom_data
+    # Derived output: CycloneDX alongside the SBOM
+    cdx_out = tmp_path / "app.cdx.json"
+    assert cdx_out.exists(), f"Expected CycloneDX output at {cdx_out}"
+    cdx_data = json.loads(cdx_out.read_text())
+    assert cdx_data.get("bomFormat") == "CycloneDX"
 
 
 def test_generate_reads_source_from_nuguard_yaml(tmp_path: Path) -> None:
@@ -181,7 +188,7 @@ def test_schema_prints_json() -> None:
 def test_plugin_list() -> None:
     result = runner.invoke(app, ["sbom", "plugin", "list"])
     assert result.exit_code == 0, result.output
-    assert "vuln" in result.output.lower()
+    assert "markdown" in result.output.lower()
 
 
 def test_plugin_run_markdown(tmp_path: Path) -> None:

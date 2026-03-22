@@ -8,7 +8,8 @@ xelo scan <PATH|URL>
 
     --format json          Xelo-native JSON (default)
     --format cyclonedx     Package dependencies only as CycloneDX 1.6 (AI SBOM details not included)
-    --format cyclonedx-ext Standard deps BOM + AI-BOM merged (CycloneDX 1.6, extended with AI components)
+    --format cyclonedx-ext Standard deps BOM + AI-BOM merged (CycloneDX 1.6, extended with AI
+                           components)
     --format spdx          AI components as SPDX 3.0.1 JSON-LD (optional: pip install xelo[spdx])
     --output <file>        Write to file (default: stdout)
     --llm                  Enable LLM enrichment for this run
@@ -30,8 +31,8 @@ xelo plugin list
 xelo plugin run <PLUGIN> <SBOM> [--output <file>] [--config key=value ...]
     Run a named toolbox plugin against an existing SBOM JSON file.
 
-    Available plugins: vulnerability, atlas, license, dependency,
-                       sarif, cyclonedx, spdx, markdown, ghas, aws-security-hub, xray
+    Available plugins: license, dependency, sarif, cyclonedx, spdx,
+                       markdown, ghas, aws-security-hub, xray
 
 Logging
 -------
@@ -146,18 +147,6 @@ def _add_llm_args(p: argparse.ArgumentParser) -> None:
 
 # (module_path, class_name, network_required, short_description)
 _PLUGIN_REGISTRY: dict[str, tuple[str, str, str, str]] = {
-    "vulnerability": (
-        "xelo.toolbox.plugins.vulnerability",
-        "VulnerabilityScannerPlugin",
-        "No",
-        "Structural VLA rules — missing guardrails, over-privileged agents",
-    ),
-    "atlas": (
-        "xelo.toolbox.plugins.atlas_annotator",
-        "AtlasAnnotatorPlugin",
-        "No",
-        "Map findings to MITRE ATLAS v2 techniques and mitigations",
-    ),
     "license": (
         "xelo.toolbox.plugins.license_checker",
         "LicenseCheckerPlugin",
@@ -198,7 +187,8 @@ _PLUGIN_REGISTRY: dict[str, tuple[str, str, str, str]] = {
         "xelo.toolbox.plugins.ghas_uploader",
         "GhasUploaderPlugin",
         "Yes",
-        "Upload SARIF to GitHub Advanced Security (--config token=<ghp_…> github_repo=owner/repo ref=refs/heads/main commit_sha=<sha>)",
+        "Upload SARIF to GitHub Advanced Security "
+        "(--config token=<ghp_…> github_repo=owner/repo ref=refs/heads/main commit_sha=<sha>)",
     ),
     "aws-security-hub": (
         "xelo.toolbox.plugins.aws_security_hub",
@@ -210,7 +200,8 @@ _PLUGIN_REGISTRY: dict[str, tuple[str, str, str, str]] = {
         "xelo.toolbox.plugins.xray",
         "XrayPlugin",
         "Yes",
-        "Submit SBOM to JFrog Xray (--config url=<u> project=<p> token=<t> tenant_id=<tid> application_id=<aid>)",
+        "Submit SBOM to JFrog Xray "
+        "(--config url=<u> project=<p> token=<t> tenant_id=<tid> application_id=<aid>)",
     ),
 }
 
@@ -221,8 +212,6 @@ _PLUGIN_DICT_OUTPUT: frozenset[str] = frozenset({"sarif", "cyclonedx", "spdx"})
 # For content-exporter plugins that store a raw string inside ToolResult.details.
 _PLUGIN_CONTENT_KEY: dict[str, str] = {
     "markdown": "markdown",  # str — Markdown text
-    "atlas": "markdown",  # str — Markdown text (only when --config format=markdown)
-    "vulnerability": "markdown",  # str — Markdown text (only when --config format=markdown)
 }
 
 
