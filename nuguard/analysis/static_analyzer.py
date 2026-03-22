@@ -193,21 +193,27 @@ class StaticAnalyzer:
 
         # Step 3: Grype CVEs (subprocess; skipped gracefully when absent)
         if self.enable_grype:
-            grype = self._run_grype(sbom_dict)
-            all_findings.extend(grype)
-            self.tool_status["grype"] = {
-                "status": "ok", "findings": str(len(grype)),
-            }
+            import shutil  # noqa: PLC0415
+            if shutil.which("grype"):
+                grype = self._run_grype(sbom_dict)
+                all_findings.extend(grype)
+                self.tool_status["grype"] = {"status": "ok", "findings": str(len(grype))}
+            else:
+                self.tool_status["grype"] = {
+                    "status": "skipped", "findings": "0",
+                    "reason": "grype not installed",
+                }
         else:
             self.tool_status["grype"] = {"status": "disabled", "findings": "0"}
 
         # Step 4: Checkov IaC scan
+        # _run_m1 sets tool_status to "skipped"/"error" when the plugin bails
+        # early; only overwrite with "ok" if it did not do so already.
         if self.enable_checkov:
             checkov = self._run_m1("checkov", sbom_dict, m1_config)
             all_findings.extend(checkov)
-            self.tool_status["checkov"] = {
-                "status": "ok", "findings": str(len(checkov)),
-            }
+            if self.tool_status.get("checkov", {}).get("status") not in ("skipped", "error"):
+                self.tool_status["checkov"] = {"status": "ok", "findings": str(len(checkov))}
         else:
             self.tool_status["checkov"] = {"status": "disabled", "findings": "0"}
 
@@ -215,9 +221,8 @@ class StaticAnalyzer:
         if self.enable_trivy:
             trivy = self._run_m1("trivy", sbom_dict, m1_config)
             all_findings.extend(trivy)
-            self.tool_status["trivy"] = {
-                "status": "ok", "findings": str(len(trivy)),
-            }
+            if self.tool_status.get("trivy", {}).get("status") not in ("skipped", "error"):
+                self.tool_status["trivy"] = {"status": "ok", "findings": str(len(trivy))}
         else:
             self.tool_status["trivy"] = {"status": "disabled", "findings": "0"}
 
@@ -225,9 +230,8 @@ class StaticAnalyzer:
         if self.enable_semgrep:
             semgrep = self._run_m1("semgrep", sbom_dict, m1_config)
             all_findings.extend(semgrep)
-            self.tool_status["semgrep"] = {
-                "status": "ok", "findings": str(len(semgrep)),
-            }
+            if self.tool_status.get("semgrep", {}).get("status") not in ("skipped", "error"):
+                self.tool_status["semgrep"] = {"status": "ok", "findings": str(len(semgrep))}
         else:
             self.tool_status["semgrep"] = {"status": "disabled", "findings": "0"}
 
@@ -237,9 +241,7 @@ class StaticAnalyzer:
         if self.enable_atlas:
             atlas = self._run_atlas_native(sbom_dict)
             all_findings.extend(atlas)
-            self.tool_status["atlas"] = {
-                "status": "ok", "findings": str(len(atlas)),
-            }
+            self.tool_status["atlas"] = {"status": "ok", "findings": str(len(atlas))}
         else:
             self.tool_status["atlas"] = {"status": "disabled", "findings": "0"}
 

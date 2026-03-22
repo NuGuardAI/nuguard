@@ -196,12 +196,10 @@ def _run_trivy_sbom(
     """
     # Build CycloneDX from SBOM deps
     try:
-        from nuguard.sbom.models import AiSbomDocument  # noqa: PLC0415
-        from nuguard.sbom.serializer import AiSbomSerializer  # noqa: PLC0415
-        doc = AiSbomDocument.model_validate(sbom)
-        cdx = AiSbomSerializer.to_cyclonedx(doc)
+        from nuguard.analysis._cdx import sbom_dict_to_cyclonedx  # noqa: PLC0415
+        cdx = sbom_dict_to_cyclonedx(sbom)
         if not cdx.get("components"):
-            _log.debug("trivy sbom: no components in CycloneDX BOM — nothing to scan")
+            _log.debug("trivy sbom: no package deps in SBOM — nothing to scan")
             return None
         cdx_str = json.dumps(cdx)
     except Exception as exc:
