@@ -53,5 +53,6 @@ warn_unused_ignores = false
 [dependency-groups]
 dev = [
     "mypy>=1.19.1",
+    "respx>=0.22.0",
     "types-pyyaml>=6.0.12.20250915",
 ]

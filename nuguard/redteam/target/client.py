@@ -75,8 +75,10 @@ class TargetAppClient:
         """Send a prompt payload to the target and return (response_text, tool_calls).
 
         Raises:
-            TargetUnavailableError: after MAX_CONSECUTIVE_ERRORS consecutive failures
-                on the chat endpoint (HTTP errors or network errors).
+            TargetUnavailableError: after MAX_CONSECUTIVE_ERRORS consecutive 5xx
+                or network errors on the chat endpoint.  4xx responses (validation
+                errors, auth rejections, rate limits) do not count — the target is
+                alive and responding; it simply rejected our specific payload.
         """
         value: Any = [payload] if self._chat_payload_list else payload
         body: dict[str, Any] = {self._chat_payload_key: value}
@@ -92,7 +94,14 @@ class TargetAppClient:
                 "Target HTTP %s  url=%s  body=%r",
                 status, exc.request.url, body_preview,
             )
-            self._record_chat_error(f"HTTP {status}")
+            # 4xx responses mean the target IS reachable — it actively rejected our
+            # payload (validation error, auth failure, rate limit, etc.).  Do NOT
+            # count these toward the circuit breaker; the target is functioning.
+            # Only 5xx server errors indicate genuine unavailability.
+            if status >= 500:
+                self._record_chat_error(f"HTTP {status}")
+            else:
+                self._record_chat_success()
             return f"[HTTP {status}]", []
         except Exception as exc:
             label = f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__

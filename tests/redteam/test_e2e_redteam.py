@@ -93,10 +93,14 @@ def _missing_env_vars(names: list[str]) -> list[str]:
 
 def _sbom_summary(sbom: object) -> dict:
     node_counts: dict[str, int] = {}
+    component_names: dict[str, list[str]] = {}
     for node in getattr(sbom, "nodes", []):
         ct = getattr(node, "component_type", None)
         ctype = ct.value if hasattr(ct, "value") else str(ct or "UNKNOWN")
         node_counts[ctype] = node_counts.get(ctype, 0) + 1
+        name = getattr(node, "name", None)
+        if name:
+            component_names.setdefault(ctype, []).append(name)
 
     summary = getattr(sbom, "summary", None)
     frameworks: list[str] = []
@@ -105,7 +109,12 @@ def _sbom_summary(sbom: object) -> dict:
         frameworks = list(getattr(summary, "frameworks_detected", None) or [])
         use_case = getattr(summary, "use_case", None)
 
-    return {"node_counts": node_counts, "frameworks": frameworks, "use_case": use_case}
+    return {
+        "node_counts": node_counts,
+        "component_names": component_names,
+        "frameworks": frameworks,
+        "use_case": use_case,
+    }
 
 
 def _fixture_source_hash(fixture_dir: str) -> str:
@@ -312,6 +321,8 @@ def _run_redteam(app_name: str) -> None:
             llm_variants_total=orchestrator.llm_variants_total if orchestrator else 0,
             prompt_cache_hit=orchestrator.prompt_cache_hit if orchestrator else False,
             llm_scenario_variants=orchestrator.llm_scenario_variants if orchestrator else None,
+            log_lines=runner._stderr_lines if runner.started else None,
+            component_names=sbom_summary.get("component_names"),
         )
 
     finally:
@@ -339,6 +350,8 @@ def _write_report(  # type: ignore[no-untyped-def]
     llm_variants_total: int = 0,
     prompt_cache_hit: bool = False,
     llm_scenario_variants: "dict[str, int] | None" = None,
+    log_lines: "list[str] | None" = None,
+    component_names: "dict[str, list[str]] | None" = None,
 ) -> None:
     report_path = write_redteam_report(
         app_name=config.name,
@@ -365,6 +378,8 @@ def _write_report(  # type: ignore[no-untyped-def]
         llm_variants_total=llm_variants_total,
         prompt_cache_hit=prompt_cache_hit,
         llm_scenario_variants=llm_scenario_variants,
+        log_lines=log_lines,
+        component_names=component_names,
     )
     _log.info("[%s] Report written to %s", config.name, report_path)
     assert report_path.exists(), f"Report was not written to {report_path}"

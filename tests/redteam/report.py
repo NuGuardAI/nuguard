@@ -58,6 +58,8 @@ def write_redteam_report(
     llm_variants_total: int = 0,
     prompt_cache_hit: bool = False,
     llm_scenario_variants: dict[str, int] | None = None,
+    log_lines: list[str] | None = None,
+    component_names: dict[str, list[str]] | None = None,
 ) -> Path:
     """Render a Markdown report and write it to tests/output/; return the path."""
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -150,6 +152,145 @@ def write_redteam_report(
             _h(f"| {_SEV_BADGE[sev]} findings | {cnt} |")
     _h(f"| Scan duration | {scan_duration_s:.1f}s |")
     _h(f"")
+
+    # --- Attack Goal Summary ---------------------------------------------
+    if scenario_records:
+        from collections import defaultdict
+        # Group by goal_type
+        by_goal: dict[str, list] = defaultdict(list)
+        for rec in scenario_records:
+            by_goal[rec.goal_type].append(rec)
+
+        _h(f"## Attack Goal Summary")
+        _h(f"")
+        _h(f"| Goal Type | Scenarios | Findings | Clean | Aborted | Outcome |")
+        _h(f"|-----------|-----------|----------|-------|---------|---------|")
+        for goal_type in sorted(by_goal):
+            recs = by_goal[goal_type]
+            n_total = len(recs)
+            n_finding = sum(1 for r in recs if r.had_finding)
+            n_aborted = sum(1 for r in recs if r.chain_status == "aborted" and not r.had_finding)
+            n_clean = n_total - n_finding - n_aborted
+            goal_label = goal_type.replace("_", " ").title()
+            if n_finding > 0:
+                outcome = "⚠️ Vulnerable"
+            elif n_aborted == n_total:
+                outcome = "✅ Blocked by guardrails"
+            elif n_clean == n_total:
+                outcome = "✅ Payloads rejected"
+            else:
+                outcome = f"⚠️ Partial ({n_finding} findings)"
+            _h(f"| {goal_label} | {n_total} | {n_finding} | {n_clean} | {n_aborted} | {outcome} |")
+        _h(f"")
+
+        # Per-goal narrative
+        for goal_type in sorted(by_goal):
+            recs = by_goal[goal_type]
+            goal_label = goal_type.replace("_", " ").title()
+            finding_recs = [r for r in recs if r.had_finding]
+            aborted_recs = [r for r in recs if r.chain_status == "aborted" and not r.had_finding]
+            _h(f"**{goal_label}**")
+            _h(f"")
+            if finding_recs:
+                _h(f"Attack succeeded in {len(finding_recs)} of {len(recs)} scenarios:")
+                for r in finding_recs:
+                    _h(f"- **{r.title}** — {r.description[:200]}")
+            elif aborted_recs:
+                _h(
+                    f"All {len(aborted_recs)} scenario(s) were aborted — the target's guardrails "
+                    f"or error responses halted the attack chain before a finding could be confirmed."
+                )
+            else:
+                _h(
+                    f"All {len(recs)} scenario(s) ran to completion without triggering a finding — "
+                    f"payloads were rejected or responses did not match success criteria."
+                )
+            _h(f"")
+
+    # --- SBOM Component Coverage -----------------------------------------
+    if scenario_records:
+        _h(f"## SBOM Component Coverage")
+        _h(f"")
+
+        # Targeted components (from affected field: "Name (TYPE)")
+        targeted: dict[str, set[str]] = {}
+        for rec in scenario_records:
+            if rec.affected:
+                for part in rec.affected.split(","):
+                    part = part.strip()
+                    if "(" in part and part.endswith(")"):
+                        name_part, type_part = part.rsplit("(", 1)
+                        ctype = type_part.rstrip(")")
+                        cname = name_part.strip()
+                    else:
+                        cname, ctype = part, "UNKNOWN"
+                    targeted.setdefault(ctype, set()).add(cname)
+
+        if targeted:
+            _h(f"### Components Targeted by Scenarios")
+            _h(f"")
+            _h(f"| Component Type | Names |")
+            _h(f"|----------------|-------|")
+            for ctype in sorted(targeted):
+                names = ", ".join(f"`{n}`" for n in sorted(targeted[ctype]))
+                _h(f"| {ctype} | {names} |")
+            _h(f"")
+
+        # Tools actually invoked (from step tool_calls)
+        invoked_tools: dict[str, int] = {}
+        for rec in scenario_records:
+            for step in rec.steps:
+                for tool in step.get("tool_calls", []):
+                    invoked_tools[tool] = invoked_tools.get(tool, 0) + 1
+
+        if invoked_tools:
+            _h(f"### Tools Invoked During Testing")
+            _h(f"")
+            _h(f"| Tool | Invocations |")
+            _h(f"|------|-------------|")
+            for tool, count in sorted(invoked_tools.items(), key=lambda x: -x[1]):
+                _h(f"| `{tool}` | {count} |")
+            _h(f"")
+
+        # Log-based coverage: which SBOM component names appear in app logs
+        if log_lines and component_names:
+            all_component_names: list[str] = []
+            for names in component_names.values():
+                all_component_names.extend(names)
+
+            if all_component_names:
+                log_text = "\n".join(log_lines)
+                seen: list[tuple[str, str]] = []
+                not_seen: list[tuple[str, str]] = []
+                for ctype, names in sorted(component_names.items()):
+                    for name in sorted(names):
+                        if name and name.lower() in log_text.lower():
+                            seen.append((name, ctype))
+                        else:
+                            not_seen.append((name, ctype))
+
+                _h(f"### App Log Coverage")
+                _h(f"")
+                _h(
+                    f"> Based on {len(log_lines)} lines of app stderr captured during the scan."
+                )
+                _h(f"")
+                if seen:
+                    _h(f"**Exercised** ({len(seen)} components appeared in logs):")
+                    _h(f"")
+                    _h(f"| Component | Type |")
+                    _h(f"|-----------|------|")
+                    for name, ctype in seen:
+                        _h(f"| `{name}` | {ctype} |")
+                    _h(f"")
+                if not_seen:
+                    _h(f"**Not observed in logs** ({len(not_seen)} components):")
+                    _h(f"")
+                    _h(f"| Component | Type |")
+                    _h(f"|-----------|------|")
+                    for name, ctype in not_seen:
+                        _h(f"| `{name}` | {ctype} |")
+                    _h(f"")
 
     # --- Scenarios Executed ----------------------------------------------
     if scenarios_executed:
