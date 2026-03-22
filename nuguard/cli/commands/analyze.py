@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import json
 import logging
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -60,12 +59,16 @@ def analyze(
         "medium", "--min-severity",
         help="Minimum severity to report: critical | high | medium | low | info.",
     ),
-    atlas: bool = typer.Option(True, "--atlas/--no-atlas", help="Run MITRE ATLAS native graph checks."),
+    atlas: bool = typer.Option(True, "--atlas/--no-atlas", help="Run MITRE ATLAS native graph checks."),  # noqa: E501
     osv: bool = typer.Option(True, "--osv/--no-osv", help="Run OSV dependency CVE scan."),
-    grype: bool = typer.Option(True, "--grype/--no-grype", help="Run Grype CVE scan (requires grype on PATH)."),
-    checkov: bool = typer.Option(True, "--checkov/--no-checkov", help="Run Checkov IaC scan (requires checkov on PATH)."),
-    trivy: bool = typer.Option(True, "--trivy/--no-trivy", help="Run Trivy container/fs scan (requires trivy on PATH)."),
-    semgrep: bool = typer.Option(True, "--semgrep/--no-semgrep", help="Run Semgrep AI-security rules (requires semgrep on PATH)."),
+    grype: bool = typer.Option(True, "--grype/--no-grype",
+                               help="Run Grype CVE scan (requires grype on PATH)."),
+    checkov: bool = typer.Option(True, "--checkov/--no-checkov",
+                                 help="Run Checkov IaC scan (requires checkov on PATH)."),
+    trivy: bool = typer.Option(True, "--trivy/--no-trivy",
+                               help="Run Trivy container/fs scan (requires trivy on PATH)."),
+    semgrep: bool = typer.Option(True, "--semgrep/--no-semgrep",
+                                 help="Run Semgrep AI-security rules (requires semgrep on PATH)."),
     source: str = typer.Option(
         None, "--source", "-s",
         help="Path to app source directory for Checkov/Trivy/Semgrep scans.",
@@ -101,7 +104,7 @@ def analyze(
         raise typer.Exit(code=2)
 
     try:
-        from nuguard.sbom.models import AiSbomDocument  # noqa: PLC0415
+        from nuguard.models.sbom import AiSbomDocument  # noqa: PLC0415
         doc = AiSbomDocument.model_validate(sbom_data)
     except Exception as exc:
         typer.echo(f"error: SBOM validation failed: {exc}", err=True)
@@ -155,12 +158,13 @@ def analyze(
     # Render output
     # ------------------------------------------------------------------
     fmt = format.lower()
+    tool_status = getattr(analyzer, "tool_status", {})
     if fmt == "json":
-        report_text = _render_json(visible, sbom_path)
+        report_text = _render_json(visible, sbom_path, tool_status)
     elif fmt == "sarif":
-        report_text = _render_sarif(visible, sbom_path)
+        report_text = _render_sarif(visible, sbom_path, tool_status)
     else:
-        report_text = _render_markdown(visible, sbom_path, min_severity)
+        report_text = _render_markdown(visible, sbom_path, min_severity, tool_status)
 
     if output:
         out_path = Path(output)
@@ -182,6 +186,7 @@ def _render_markdown(
     findings: list[Finding],
     sbom_path: Path,
     min_severity: str,
+    tool_status: dict[str, Any] | None = None,
 ) -> str:
     lines: list[str] = [
         "# NuGuard Static Analysis Report",
@@ -192,9 +197,28 @@ def _render_markdown(
         "",
     ]
 
+    # Tool coverage table
+    if tool_status:
+        _STATUS_ICON = {"ok": "✅", "skipped": "⏭️", "disabled": "🔕", "error": "❌"}
+        lines += [
+            "## Tool Coverage", "",
+            "| Tool | Status | Findings |",
+            "|------|--------|----------|",
+        ]
+        for tool, info in tool_status.items():
+            st = info.get("status", "?")
+            icon = _STATUS_ICON.get(st, "❓")
+            count = info.get("findings", "—")
+            reason = info.get("reason", "")
+            note = f" ({reason})" if reason and st in ("skipped", "error") else ""
+            lines.append(f"| {tool} | {icon} {st}{note} | {count} |")
+        lines.append("")
+
     if not findings:
         lines += ["_No findings at or above the requested severity threshold._", ""]
         return "\n".join(lines)
+
+    lines += ["## Findings", ""]
 
     # Group by severity
     by_sev: dict[str, list[Finding]] = {}
@@ -206,9 +230,9 @@ def _render_markdown(
         if not group:
             continue
         emoji = _SEV_EMOJI.get(sev, "")
-        lines += [f"## {emoji} {sev.upper()} ({len(group)})", ""]
+        lines += [f"### {emoji} {sev.upper()} ({len(group)})", ""]
         for f in group:
-            lines += [f"### {f.finding_id}  {f.title}", ""]
+            lines += [f"#### {f.finding_id}  {f.title}", ""]
             lines += [f.description or "", ""]
             if f.affected_component:
                 lines += [f"**Affected:** `{f.affected_component}`  ", ""]
@@ -225,17 +249,26 @@ def _render_markdown(
     return "\n".join(lines)
 
 
-def _render_json(findings: list[Finding], sbom_path: Path) -> str:
-    data = {
+def _render_json(
+    findings: list[Finding],
+    sbom_path: Path,
+    tool_status: dict[str, Any] | None = None,
+) -> str:
+    data: dict[str, Any] = {
         "sbom": str(sbom_path),
         "total": len(findings),
+        "tool_status": tool_status or {},
         "findings": [f.model_dump() for f in findings],
     }
     return json.dumps(data, indent=2, default=str)
 
 
-def _render_sarif(findings: list[Finding], sbom_path: Path) -> str:
-    """Minimal SARIF 2.1.0 output."""
+def _render_sarif(
+    findings: list[Finding],
+    sbom_path: Path,
+    tool_status: dict[str, Any] | None = None,
+) -> str:
+    """SARIF 2.1.0 output with tool coverage in the run's properties."""
     _sev_to_sarif = {
         "critical": "error",
         "high":     "error",
@@ -243,8 +276,8 @@ def _render_sarif(findings: list[Finding], sbom_path: Path) -> str:
         "low":      "note",
         "info":     "none",
     }
-    rules: list[dict] = []
-    results: list[dict] = []
+    rules: list[dict[str, Any]] = []
+    results: list[dict[str, Any]] = []
     seen_rules: set[str] = set()
 
     for f in findings:
@@ -270,7 +303,7 @@ def _render_sarif(findings: list[Finding], sbom_path: Path) -> str:
             ],
         })
 
-    sarif = {
+    sarif: dict[str, Any] = {
         "version": "2.1.0",
         "$schema": "https://schemastore.azurewebsites.net/schemas/json/sarif-2.1.0.json",
         "runs": [
@@ -281,6 +314,9 @@ def _render_sarif(findings: list[Finding], sbom_path: Path) -> str:
                         "informationUri": "https://github.com/anthropics/nuguard",
                         "rules": rules,
                     }
+                },
+                "properties": {
+                    "toolCoverage": tool_status or {},
                 },
                 "results": results,
             }

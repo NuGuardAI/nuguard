@@ -76,7 +76,7 @@ class TrivyScannerPlugin(AnalysisPlugin):
             )
 
         image_refs = _collect_image_refs(sbom)
-        fs_paths   = _collect_fs_paths(sbom)
+        fs_paths   = _collect_fs_paths(sbom, config)
 
         if not image_refs and not fs_paths:
             return AnalysisResult(
@@ -136,8 +136,13 @@ def _collect_image_refs(sbom: dict[str, Any]) -> set[str]:
     return refs
 
 
-def _collect_fs_paths(sbom: dict[str, Any]) -> set[str]:
-    """Collect filesystem paths from SBOM node metadata."""
+def _collect_fs_paths(sbom: dict[str, Any], config: dict[str, Any]) -> set[str]:
+    """Collect filesystem paths from SBOM node metadata.
+
+    Falls back to ``config["source_path"]`` when no paths are found in SBOM
+    nodes so that Trivy can scan the source directory even without explicit
+    path metadata on each node.
+    """
     paths: set[str] = set()
     for node in sbom.get("nodes") or []:
         meta = node.get("metadata") or {}
@@ -146,6 +151,12 @@ def _collect_fs_paths(sbom: dict[str, Any]) -> set[str]:
             p = meta.get(key) or extras.get(key)
             if p and Path(str(p)).exists():
                 paths.add(str(p))
+
+    # Fallback to config-supplied source path; deduplicate against node paths
+    sp = config.get("source_path")
+    if sp and Path(str(sp)).is_dir():
+        paths.add(str(sp))
+
     return paths
 
 

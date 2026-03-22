@@ -84,12 +84,27 @@ class DataClassification(str, Enum):
 class EvidenceKind(str, Enum):
     """How a piece of evidence was collected."""
 
+    # Generic AST evidence
     AST = "ast"
+    # Specific AST detection patterns used by framework adapters
     AST_INSTANTIATION = "ast_instantiation"
+    AST_IMPORT = "ast_import"
+    AST_CALL = "ast_call"
+    AST_METHOD_CALL = "ast_method_call"
+    AST_DECORATOR = "ast_decorator"
+    AST_CONSTANT = "ast_constant"
+    AST_STRING_LITERAL = "ast_string_literal"
+    # Pattern / config-based detection
     REGEX = "regex"
     CONFIG = "config"
     IAC = "iac"
+    YAML = "yaml"
+    DOCKERFILE = "dockerfile"
+    NGINX = "nginx"
+    PROMPT_FILE = "prompt_file"
+    # Inference and enrichment
     INFERRED = "inferred"
+    LLM_DISCOVERY = "llm_discovery"
 
 
 class EvidenceLocation(BaseModel):
