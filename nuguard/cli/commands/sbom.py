@@ -63,6 +63,140 @@ _OPT_CONFIG = typer.Option(
 )
 
 
+_VALID_FORMATS = {"json", "cyclonedx", "markdown"}
+
+# GitHub token prefixes (classic PAT, OAuth, fine-grained PAT, GitHub Apps)
+_GH_TOKEN_PREFIXES = ("ghp_", "gho_", "ghs_", "ghu_", "github_pat_")
+
+# Env vars that satisfy LLM key requirements (checked in order)
+_LLM_KEY_ENVS = (
+    "LITELLM_API_KEY",
+    "OPENAI_API_KEY",
+    "AZURE_API_KEY",
+    "ANTHROPIC_API_KEY",
+    "GEMINI_API_KEY",
+    "NUGUARD_REDTEAM_LLM_API_KEY",
+)
+
+
+def _err(msg: str, hint: str = "") -> None:
+    """Print a formatted error with an optional hint and exit with code 1."""
+    _err_console.print(f"[bold red]Error:[/bold red] {msg}")
+    if hint:
+        _err_console.print(f"  [dim]Hint: {hint}[/dim]")
+    raise typer.Exit(code=1)
+
+
+def _validate_inputs(
+    source: Optional[Path],
+    from_repo: Optional[str],
+    token: Optional[str],
+    output: Path,
+    llm: bool,
+    format: str,
+) -> None:
+    """Validate all inputs before any work starts; exit with a clear message on failure."""
+
+    # ── Format ────────────────────────────────────────────────────────────────
+    if format not in _VALID_FORMATS:
+        _err(
+            f"Unknown format '{format}'.",
+            f"Valid formats: {', '.join(sorted(_VALID_FORMATS))}",
+        )
+
+    # ── Output path ──────────────────────────────────────────────────────────
+    if output.is_dir():
+        _err(
+            f"Output path '{output}' is a directory.",
+            "Provide a file path, e.g. --output app.sbom.json",
+        )
+    out_parent = output.parent
+    if not out_parent.exists():
+        _err(
+            f"Output directory '{out_parent}' does not exist.",
+            "Create the directory first or choose an existing path.",
+        )
+    if out_parent.exists() and not os.access(out_parent, os.W_OK):
+        _err(
+            f"No write permission to output directory '{out_parent}'.",
+            "Check directory permissions.",
+        )
+
+    # ── Source directory ──────────────────────────────────────────────────────
+    if source is not None:
+        if not source.exists():
+            _err(
+                f"Source directory '{source}' does not exist.",
+                "Check the path or use --from-repo to clone a repository.",
+            )
+        if not source.is_dir():
+            _err(
+                f"Source path '{source}' is a file, not a directory.",
+                "Provide the root directory of the project.",
+            )
+        if not os.access(source, os.R_OK):
+            _err(
+                f"No read permission for source directory '{source}'.",
+                "Check directory permissions.",
+            )
+
+    # ── Repo URL ──────────────────────────────────────────────────────────────
+    if from_repo is not None:
+        try:
+            parsed = urlparse(from_repo)
+        except Exception:
+            parsed = None  # type: ignore[assignment]
+
+        if not parsed or not parsed.scheme or not parsed.netloc:
+            _err(
+                f"Invalid repository URL: '{from_repo}'.",
+                "Provide a full URL, e.g. https://github.com/org/repo",
+            )
+        elif parsed.scheme not in ("http", "https"):
+            _err(
+                f"Unsupported URL scheme '{parsed.scheme}' in repo URL.",
+                "Only http:// and https:// repository URLs are supported.",
+            )
+        elif parsed.password or (parsed.username and parsed.username != "git"):
+            # Credentials embedded in URL — insecure and likely a mistake
+            _err(
+                "Credentials embedded in the repository URL.",
+                "Use --token instead of embedding secrets in the URL.",
+            )
+
+    # ── GitHub token ─────────────────────────────────────────────────────────
+    resolved_token = token or os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    if resolved_token is not None:
+        if len(resolved_token) < 20:  # noqa: PLR2004
+            _err(
+                "GitHub token appears too short to be valid.",
+                "Provide a valid personal access token (ghp_…, gho_…, github_pat_…).",
+            )
+        if not any(resolved_token.startswith(p) for p in _GH_TOKEN_PREFIXES):
+            # Warn but don't block — could be a custom server token
+            _err_console.print(
+                "[yellow]Warning:[/yellow] Token does not match a known GitHub "
+                "token prefix (ghp_, gho_, github_pat_). "
+                "Proceeding — ensure it is valid for the target host."
+            )
+        if from_repo is not None:
+            parsed_repo = urlparse(from_repo)
+            if parsed_repo.netloc and "github" not in parsed_repo.netloc:
+                _err_console.print(
+                    f"[yellow]Warning:[/yellow] Token provided but repo host is "
+                    f"'{parsed_repo.netloc}' — token may not be accepted."
+                )
+
+    # ── LLM API key ──────────────────────────────────────────────────────────
+    if llm:
+        has_key = any(os.environ.get(env) for env in _LLM_KEY_ENVS)
+        if not has_key:
+            _err(
+                "--llm requested but no LLM API key found in environment.",
+                f"Set one of: {', '.join(_LLM_KEY_ENVS)}",
+            )
+
+
 def _inject_token(url: str, token: str) -> str:
     """Embed *token* into an HTTPS git URL for private-repo authentication."""
     parsed = urlparse(url)
@@ -90,6 +224,9 @@ def _do_generate(
     config_file: Optional[Path],
 ) -> None:
     """Core generate logic shared by the callback and the explicit subcommand."""
+    # Run all pre-flight checks before touching the filesystem or network
+    _validate_inputs(source, from_repo, token, output, llm, format)
+
     # Fall back to nuguard.yaml's source field when --source is not provided
     if source is None and from_repo is None:
         from nuguard.config import load_config  # noqa: PLC0415
@@ -119,9 +256,6 @@ def _do_generate(
             )
         else:
             assert source is not None  # guarded by the exit above
-            if not source.exists():
-                _err_console.print(f"Directory not found: {source}")
-                raise typer.Exit(code=1)
             _console.print(f"[bold]Scanning[/bold] {source} …")
             doc = gen.from_path(source, output=None)
     except SbomError as exc:
