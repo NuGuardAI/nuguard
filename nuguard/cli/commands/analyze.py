@@ -182,6 +182,29 @@ def analyze(
 # ---------------------------------------------------------------------------
 
 
+def _component_label(f: Finding) -> str:
+    """Return the display label for a finding's component."""
+    return f.affected_component or f.finding_id.rsplit("-", 1)[0]
+
+
+def _group_by_component(findings: list[Finding]) -> list[tuple[str, list[Finding]]]:
+    """Group findings by component, sorted by finding count (desc), then name.
+
+    Within each component group findings are sorted by severity (critical first).
+    """
+    grouped: dict[str, list[Finding]] = {}
+    for f in findings:
+        key = _component_label(f)
+        grouped.setdefault(key, []).append(f)
+
+    # Sort each component's findings by severity
+    for flist in grouped.values():
+        flist.sort(key=lambda x: _SEV_ORDER.get(x.severity.value, 99))
+
+    # Sort components: most findings first, then alphabetically
+    return sorted(grouped.items(), key=lambda kv: (-len(kv[1]), kv[0]))
+
+
 def _render_markdown(
     findings: list[Finding],
     sbom_path: Path,
@@ -197,7 +220,40 @@ def _render_markdown(
         "",
     ]
 
+    # ------------------------------------------------------------------
+    # Severity summary
+    # ------------------------------------------------------------------
+    if findings:
+        by_sev: dict[str, list[Finding]] = {}
+        for f in findings:
+            by_sev.setdefault(f.severity.value, []).append(f)
+
+        summary_parts: list[str] = []
+        for sev in ("critical", "high", "medium", "low", "info"):
+            grp = by_sev.get(sev, [])
+            if grp:
+                emoji = _SEV_EMOJI.get(sev, "")
+                comps = len({_component_label(f) for f in grp})
+                summary_parts.append(
+                    f"{emoji} **{sev.upper()}:** {len(grp)} finding(s) across {comps} component(s)"
+                )
+        lines += ["## Summary", ""] + [f"- {p}" for p in summary_parts] + [""]
+
+        # Top components by finding count
+        grouped = _group_by_component(findings)
+        top_n = grouped[:5]
+        lines += ["### Components with Most Findings", ""]
+        lines += ["| Component | Findings | Highest Severity |",
+                  "|-----------|----------|-----------------|"]
+        for comp, flist in top_n:
+            top_sev = flist[0].severity.value  # already sorted by severity
+            emoji = _SEV_EMOJI.get(top_sev, "")
+            lines.append(f"| `{comp}` | {len(flist)} | {emoji} {top_sev.upper()} |")
+        lines.append("")
+
+    # ------------------------------------------------------------------
     # Tool coverage table
+    # ------------------------------------------------------------------
     if tool_status:
         _STATUS_ICON = {"ok": "✅", "skipped": "⏭️", "disabled": "🔕", "error": "❌"}
         lines += [
@@ -218,21 +274,18 @@ def _render_markdown(
         lines += ["_No findings at or above the requested severity threshold._", ""]
         return "\n".join(lines)
 
+    # ------------------------------------------------------------------
+    # Findings grouped by component, sorted by severity within each group
+    # ------------------------------------------------------------------
     lines += ["## Findings", ""]
 
-    # Group by severity
-    by_sev: dict[str, list[Finding]] = {}
-    for f in findings:
-        by_sev.setdefault(f.severity.value, []).append(f)
-
-    for sev in ("critical", "high", "medium", "low", "info"):
-        group = by_sev.get(sev, [])
-        if not group:
-            continue
-        emoji = _SEV_EMOJI.get(sev, "")
-        lines += [f"### {emoji} {sev.upper()} ({len(group)})", ""]
-        for f in group:
-            lines += [f"#### {f.finding_id}  {f.title}", ""]
+    for comp, flist in _group_by_component(findings):
+        top_sev = flist[0].severity.value
+        emoji = _SEV_EMOJI.get(top_sev, "")
+        lines += [f"### {emoji} `{comp}` ({len(flist)} finding(s))", ""]
+        for f in flist:
+            sev_emoji = _SEV_EMOJI.get(f.severity.value, "")
+            lines += [f"#### {sev_emoji} {f.finding_id}  {f.title}", ""]
             lines += [f.description or "", ""]
             if f.affected_component:
                 lines += [f"**Affected:** `{f.affected_component}`  ", ""]
@@ -254,10 +307,22 @@ def _render_json(
     sbom_path: Path,
     tool_status: dict[str, Any] | None = None,
 ) -> str:
+    # Severity counts
+    sev_counts: dict[str, int] = {}
+    for f in findings:
+        sev_counts[f.severity.value] = sev_counts.get(f.severity.value, 0) + 1
+
+    # Findings grouped by component, sorted by severity within each group
+    by_component: dict[str, list[dict[str, Any]]] = {}
+    for comp, flist in _group_by_component(findings):
+        by_component[comp] = [f.model_dump() for f in flist]
+
     data: dict[str, Any] = {
         "sbom": str(sbom_path),
         "total": len(findings),
+        "severity_counts": sev_counts,
         "tool_status": tool_status or {},
+        "by_component": by_component,
         "findings": [f.model_dump() for f in findings],
     }
     return json.dumps(data, indent=2, default=str)
