@@ -1,0 +1,87 @@
+name: NuGuard AI Security Scan
+
+# Runs on every push to main/develop and on pull requests.
+# Uploads SARIF to GitHub Code Scanning so findings appear inline in PRs.
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+
+jobs:
+  nuguard-scan:
+    name: NuGuard Static Analysis
+    runs-on: ubuntu-latest
+    permissions:
+      security-events: write   # required for SARIF upload to Code Scanning
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── Install nuguard ──────────────────────────────────────────────────
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install nuguard
+        run: pip install nuguard
+
+      # ── Install optional scanning tools (all degrade gracefully) ─────────
+      - name: Install Checkov (IaC security)
+        run: pip install checkov
+        continue-on-error: true
+
+      - name: Install Semgrep (code patterns)
+        run: pip install semgrep
+        continue-on-error: true
+
+      - name: Install Trivy (container + filesystem)
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh \
+            | sh -s -- -b /usr/local/bin
+        continue-on-error: true
+
+      # ── Run nuguard scan ─────────────────────────────────────────────────
+      - name: Run nuguard scan
+        id: nuguard
+        run: |
+          nuguard scan \
+            --source . \
+            --output-dir nuguard-reports \
+            --fail-on high
+        env:
+          LITELLM_API_KEY: ${{ secrets.LITELLM_API_KEY }}   # optional — enables LLM enrichment
+        # Exit 0 = clean, 1 = findings at threshold, 2 = critical findings, 3 = error
+        # We want the workflow to continue so we can upload the SARIF report
+        continue-on-error: true
+
+      # ── Upload SARIF to GitHub Code Scanning ─────────────────────────────
+      - name: Upload SARIF to GitHub Code Scanning
+        if: always() && hashFiles('nuguard-reports/findings.sarif') != ''
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: nuguard-reports/findings.sarif
+          category: nuguard
+
+      # ── Upload scan artifacts ─────────────────────────────────────────────
+      - name: Upload nuguard scan artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuguard-security-reports
+          path: nuguard-reports/
+          retention-days: 30
+
+      # ── Fail the job if nuguard found HIGH/CRITICAL ───────────────────────
+      - name: Check scan result
+        if: always()
+        run: |
+          EXIT_CODE=${{ steps.nuguard.outcome == 'failure' && '1' || '0' }}
+          if [ "${{ steps.nuguard.outcome }}" = "failure" ]; then
+            echo "::error::NuGuard found security findings at or above the --fail-on threshold."
+            echo "::error::Review nuguard-reports/report.md and the Security tab for details."
+            exit 1
+          fi

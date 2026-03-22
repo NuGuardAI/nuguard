@@ -9,6 +9,7 @@ import typer
 
 from nuguard.cli.commands.sbom import sbom_app
 from nuguard.cli.commands.analyze import analyze_app
+from nuguard.cli.commands.scan import scan_app
 from nuguard.cli.commands.policy import policy_app
 from nuguard.cli.commands.redteam import redteam_app
 from nuguard.cli.commands.seed import seed_app
@@ -25,6 +26,7 @@ app = typer.Typer(
 
 app.add_typer(sbom_app, name="sbom")
 app.add_typer(analyze_app, name="analyze")
+app.add_typer(scan_app, name="scan")
 app.add_typer(policy_app, name="policy")
 app.add_typer(redteam_app, name="redteam")
 app.add_typer(seed_app, name="seed")
