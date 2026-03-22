@@ -117,8 +117,14 @@ class AtlasAnnotatorPlugin(AnalysisPlugin):
 
         # ------------------------------------------------------------------
         # Pass 1 — run structural NGA rules and annotate findings
+        # Skipped when caller passes skip_nga=True (StaticAnalyzer annotates
+        # NGA findings directly to avoid duplication).
         # ------------------------------------------------------------------
-        nga_findings = self._run_nga_pass(sbom)
+        if config.get("skip_nga"):
+            nga_findings: list[dict[str, Any]] = []
+            _log.debug("Pass 1: skipped (skip_nga=True)")
+        else:
+            nga_findings = self._run_nga_pass(sbom)
         _log.debug("Pass 1: %d NGA finding(s) produced", len(nga_findings))
 
         # ------------------------------------------------------------------
@@ -212,7 +218,7 @@ class AtlasAnnotatorPlugin(AnalysisPlugin):
         scanner = NgaRulesPlugin()
         result = scanner.run(sbom, {"provider": "nga-rules"})
 
-        raw_findings: list[dict[str, Any]] = list(result.details.get("findings", []) or [])
+        raw_findings: list[dict[str, Any]] = list(result.findings or [])
         annotated: list[dict[str, Any]] = []
 
         for finding in raw_findings:

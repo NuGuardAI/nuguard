@@ -21,3 +21,6 @@ tests/redteam/.env
 # (the .example version is intentionally tracked)
 canary.json
 canary.local.json
+
+# Test run artifacts (E2E outputs, scan reports)
+tests/output/

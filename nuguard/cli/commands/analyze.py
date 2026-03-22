@@ -60,9 +60,16 @@ def analyze(
         "medium", "--min-severity",
         help="Minimum severity to report: critical | high | medium | low | info.",
     ),
-    atlas: bool = typer.Option(True, "--atlas/--no-atlas", help="Run MITRE ATLAS annotation pass."),
+    atlas: bool = typer.Option(True, "--atlas/--no-atlas", help="Run MITRE ATLAS native graph checks."),
     osv: bool = typer.Option(True, "--osv/--no-osv", help="Run OSV dependency CVE scan."),
-    grype: bool = typer.Option(True, "--grype/--no-grype", help="Run Grype CVE scan."),
+    grype: bool = typer.Option(True, "--grype/--no-grype", help="Run Grype CVE scan (requires grype on PATH)."),
+    checkov: bool = typer.Option(True, "--checkov/--no-checkov", help="Run Checkov IaC scan (requires checkov on PATH)."),
+    trivy: bool = typer.Option(True, "--trivy/--no-trivy", help="Run Trivy container/fs scan (requires trivy on PATH)."),
+    semgrep: bool = typer.Option(True, "--semgrep/--no-semgrep", help="Run Semgrep AI-security rules (requires semgrep on PATH)."),
+    source: str = typer.Option(
+        None, "--source", "-s",
+        help="Path to app source directory for Checkov/Trivy/Semgrep scans.",
+    ),
     llm: bool = typer.Option(False, "--llm", help="Enable LLM enrichment in ATLAS pass."),
     output: str = typer.Option(
         None, "--output", "-o",
@@ -117,10 +124,15 @@ def analyze(
 
     try:
         from nuguard.analysis.static_analyzer import StaticAnalyzer  # noqa: PLC0415
+        source_path = Path(source) if source else None
         analyzer = StaticAnalyzer(
             enable_atlas=atlas,
             enable_osv=osv,
             enable_grype=grype,
+            enable_checkov=checkov,
+            enable_trivy=trivy,
+            enable_semgrep=semgrep,
+            source_path=source_path,
             atlas_config=atlas_config,
             min_severity=min_sev,
         )
