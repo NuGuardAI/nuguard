@@ -1,0 +1,172 @@
+rules:
+  # -------------------------------------------------------------------------
+  # NuGuard AI Security Semgrep Rules
+  # Detects common AI/LLM application security anti-patterns in Python code.
+  # -------------------------------------------------------------------------
+
+  - id: nuguard-llm-prompt-injection-fstring
+    patterns:
+      - pattern: |
+          $LLM.chat(..., messages=[..., {"role": "user", "content": f"...{$INPUT}..."}], ...)
+      - pattern-not: |
+          $LLM.chat(..., messages=[..., {"role": "user", "content": f"...{$INPUT}..."}], ...)
+          # allow if input is validated above — but we flag the raw pattern
+    message: >
+      Potential prompt injection: user-controlled input ($INPUT) is interpolated
+      directly into an LLM prompt via an f-string. Validate and sanitize $INPUT
+      before including it in prompts, or use a parameterised template approach.
+    languages: [python]
+    severity: WARNING
+    metadata:
+      category: security
+      technology: [llm, openai, langchain]
+      owasp: "LLM01: Prompt Injection"
+      nuguard_rule: NGA-002
+
+  - id: nuguard-llm-direct-user-input
+    pattern: |
+      $CLIENT.chat.completions.create(..., messages=[{"role": "user", "content": $REQUEST.$BODY}], ...)
+    message: >
+      Raw request body ($REQUEST.$BODY) is passed directly to the LLM without
+      sanitization. An attacker may inject instructions that override system
+      prompts or leak sensitive data. Sanitize or validate the content first.
+    languages: [python]
+    severity: WARNING
+    metadata:
+      category: security
+      technology: [openai, llm]
+      owasp: "LLM01: Prompt Injection"
+      nuguard_rule: NGA-002
+
+  - id: nuguard-hardcoded-api-key
+    patterns:
+      - pattern: $KEY = "sk-..."
+      - pattern: $KEY = "AIza..."
+      - pattern: $KEY = "ghp_..."
+      - pattern: openai.api_key = "sk-..."
+    message: >
+      Hardcoded API key detected. Store secrets in environment variables or a
+      secrets manager (e.g. AWS Secrets Manager, HashiCorp Vault). Never commit
+      API keys to source control.
+    languages: [python]
+    severity: ERROR
+    metadata:
+      category: security
+      technology: [openai, llm]
+      owasp: "A02: Cryptographic Failures"
+      nuguard_rule: NGA-003
+
+  - id: nuguard-openai-key-in-code
+    pattern: |
+      openai.api_key = $LITERAL
+    pattern-not: |
+      openai.api_key = os.environ[...]
+    pattern-not: |
+      openai.api_key = os.getenv(...)
+    message: >
+      OpenAI API key set to a literal value rather than an environment variable.
+      Use `os.environ["OPENAI_API_KEY"]` or a secrets manager.
+    languages: [python]
+    severity: ERROR
+    metadata:
+      category: security
+      technology: [openai]
+      owasp: "A02: Cryptographic Failures"
+      nuguard_rule: NGA-003
+
+  - id: nuguard-eval-on-llm-output
+    patterns:
+      - pattern: eval($LLM_OUTPUT)
+      - pattern: exec($LLM_OUTPUT)
+    message: >
+      Executing LLM output directly via eval/exec is extremely dangerous. An
+      attacker who controls the prompt can inject arbitrary Python code.
+      Never execute LLM output without strict validation.
+    languages: [python]
+    severity: ERROR
+    metadata:
+      category: security
+      technology: [llm, python]
+      owasp: "LLM02: Insecure Output Handling"
+      nuguard_rule: NGA-002
+
+  - id: nuguard-sql-injection-via-llm
+    patterns:
+      - pattern: $CURSOR.execute($LLM_CONTENT)
+      - pattern: $CURSOR.execute(f"...{$LLM}...")
+    message: >
+      Database query assembled from LLM output without parameterisation. If the
+      LLM response contains SQL, an attacker can perform SQL injection by
+      controlling the prompt. Use parameterised queries.
+    languages: [python]
+    severity: ERROR
+    metadata:
+      category: security
+      technology: [llm, sql]
+      owasp: "LLM02: Insecure Output Handling"
+      nuguard_rule: NGA-002
+
+  - id: nuguard-llm-ssrf-requests
+    patterns:
+      - pattern: requests.get($LLM_URL)
+      - pattern: requests.post($LLM_URL)
+      - pattern: httpx.get($LLM_URL)
+    message: >
+      URL derived from LLM output is used directly in an HTTP request. This
+      enables SSRF attacks — an attacker can make the server fetch internal
+      resources. Validate and allowlist URLs before fetching.
+    languages: [python]
+    severity: WARNING
+    metadata:
+      category: security
+      technology: [llm, ssrf]
+      owasp: "LLM02: Insecure Output Handling"
+      nuguard_rule: NGA-007
+
+  - id: nuguard-no-output-length-limit
+    patterns:
+      - pattern: $CLIENT.chat.completions.create(...)
+      - pattern-not: $CLIENT.chat.completions.create(..., max_tokens=..., ...)
+    message: >
+      LLM call without `max_tokens` limit. Unlimited token generation can lead
+      to denial-of-service via excessive API costs or latency. Always specify
+      `max_tokens`.
+    languages: [python]
+    severity: INFO
+    metadata:
+      category: security
+      technology: [openai, llm]
+      owasp: "LLM04: Model Denial of Service"
+      nuguard_rule: NGA-005
+
+  - id: nuguard-langchain-verbose-true
+    pattern: |
+      $CHAIN = $TYPE(..., verbose=True, ...)
+    message: >
+      LangChain chain created with `verbose=True`. In production this can leak
+      intermediate prompts, tool calls, and retrieved documents to application
+      logs. Set `verbose=False` in production deployments.
+    languages: [python]
+    severity: INFO
+    metadata:
+      category: security
+      technology: [langchain]
+      owasp: "LLM06: Sensitive Information Disclosure"
+      nuguard_rule: NGA-015
+
+  - id: nuguard-pickle-model-load
+    patterns:
+      - pattern: pickle.load($FILE)
+      - pattern: torch.load($FILE)
+      - pattern: joblib.load($FILE)
+    message: >
+      Loading a model with pickle/torch.load/joblib.load from an untrusted
+      source can execute arbitrary code. Verify model integrity (e.g. checksum
+      or signed manifest) before loading, and only load from trusted sources.
+    languages: [python]
+    severity: WARNING
+    metadata:
+      category: security
+      technology: [ml, pytorch, scikit-learn]
+      owasp: "A08: Software and Data Integrity Failures"
+      nuguard_rule: NGA-011

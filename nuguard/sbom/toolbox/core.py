@@ -10,8 +10,6 @@ from .plugins.dependency import DependencyAnalyzerPlugin
 from .plugins.license_checker import LicenseCheckerPlugin
 from .plugins.markdown_exporter import MarkdownExporterPlugin
 from .plugins.sarif_exporter import SarifExporterPlugin
-from .plugins.vulnerability import VulnerabilityScannerPlugin
-from .plugins.atlas_annotator import AtlasAnnotatorPlugin
 from .plugins.aws_security_hub import AwsSecurityHubPlugin
 from .plugins.ghas_uploader import GhasUploaderPlugin
 from .plugins.xray import XrayPlugin
@@ -22,14 +20,12 @@ _log = logging.getLogger("toolbox.core")
 class Toolbox:
     def __init__(self) -> None:
         self._plugins: dict[str, ToolPlugin] = {
-            AtlasAnnotatorPlugin.name: AtlasAnnotatorPlugin(),
             AwsSecurityHubPlugin.name: AwsSecurityHubPlugin(),
             GhasUploaderPlugin.name: GhasUploaderPlugin(),
             CycloneDxExporter.name: CycloneDxExporter(),
             MarkdownExporterPlugin.name: MarkdownExporterPlugin(),
             SarifExporterPlugin.name: SarifExporterPlugin(),
             XrayPlugin.name: XrayPlugin(),
-            VulnerabilityScannerPlugin.name: VulnerabilityScannerPlugin(),
             DependencyAnalyzerPlugin.name: DependencyAnalyzerPlugin(),
             LicenseCheckerPlugin.name: LicenseCheckerPlugin(),
         }

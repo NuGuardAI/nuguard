@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from nuguard.sbom.tests.test_toolbox.evaluate_risk import evaluate_risk_assessment
-from nuguard.sbom.toolbox.plugins.vulnerability import VulnerabilityScannerPlugin
+from nuguard.analysis.plugins.nga_rules import NgaRulesPlugin as VulnerabilityScannerPlugin
 
 from .evaluate import FIXTURES_DIR, generate_sbom_cli, generate_sbom_python, materialize_cached_fixture
 from .schemas_risk import RiskBenchmarkSuiteResult, RiskGroundTruth
