@@ -270,10 +270,6 @@ class RedteamOrchestrator:
         )
         # Populated by run() — scenarios executed and their titles
         self.scenarios_run: int = 0
-        self.scenarios_generated: int = 0
-        self.scenarios_selected: int = 0
-        self.generated_scenario_summaries: list[tuple[str, str, str, float]] = []
-        self.selected_scenario_summaries: list[tuple[str, str, str, float]] = []
         self.scenarios_executed: list[tuple[str, str, bool]] = []  # (title, goal_type, had_finding)
         # Verbose per-scenario records — populated regardless of whether a finding was raised
         self.scenario_records: list[ScenarioRecord] = []
@@ -311,16 +307,6 @@ class RedteamOrchestrator:
         _with_guided = self._guided_conversations and bool(self._redteam_llm)
         generator = ScenarioGenerator(self._sbom, self._policy)
         all_scenarios = generator.generate(with_guided=_with_guided)
-        self.scenarios_generated = len(all_scenarios)
-        self.generated_scenario_summaries = [
-            (
-                s.title,
-                s.goal_type.value,
-                s.scenario_type.value,
-                float(s.impact_score),
-            )
-            for s in all_scenarios
-        ]
 
         # 2. LLM payload enrichment (opt-in — only when redteam_llm is configured)
         if self._redteam_llm and all_scenarios:
@@ -373,16 +359,6 @@ class RedteamOrchestrator:
             ]
 
         self.scenarios_run = len(scenarios)
-        self.scenarios_selected = len(scenarios)
-        self.selected_scenario_summaries = [
-            (
-                s.title,
-                s.goal_type.value,
-                s.scenario_type.value,
-                float(s.impact_score),
-            )
-            for s in scenarios
-        ]
         if self.llm_enriched_scenarios:
             self.llm_enriched_executed = sum(
                 1 for s in scenarios if s.scenario_id in _llm_payloads  # type: ignore[possibly-undefined]
