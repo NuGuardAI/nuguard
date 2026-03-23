@@ -7,7 +7,7 @@ import tempfile
 from pathlib import Path
 
 
-from nuguard.models.sbom import NodeType
+from nuguard.sbom.models import NodeType
 try:
     from nuguard.sbom.extractor.iac_scanners.docker_compose import DockerComposeScanner
 except ImportError:

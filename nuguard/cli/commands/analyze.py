@@ -12,7 +12,6 @@ from __future__ import annotations
 
 import json
 import logging
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -60,12 +59,16 @@ def analyze(
         "medium", "--min-severity",
         help="Minimum severity to report: critical | high | medium | low | info.",
     ),
-    atlas: bool = typer.Option(True, "--atlas/--no-atlas", help="Run MITRE ATLAS native graph checks."),
+    atlas: bool = typer.Option(True, "--atlas/--no-atlas", help="Run MITRE ATLAS native graph checks."),  # noqa: E501
     osv: bool = typer.Option(True, "--osv/--no-osv", help="Run OSV dependency CVE scan."),
-    grype: bool = typer.Option(True, "--grype/--no-grype", help="Run Grype CVE scan (requires grype on PATH)."),
-    checkov: bool = typer.Option(True, "--checkov/--no-checkov", help="Run Checkov IaC scan (requires checkov on PATH)."),
-    trivy: bool = typer.Option(True, "--trivy/--no-trivy", help="Run Trivy container/fs scan (requires trivy on PATH)."),
-    semgrep: bool = typer.Option(True, "--semgrep/--no-semgrep", help="Run Semgrep AI-security rules (requires semgrep on PATH)."),
+    grype: bool = typer.Option(True, "--grype/--no-grype",
+                               help="Run Grype CVE scan (requires grype on PATH)."),
+    checkov: bool = typer.Option(True, "--checkov/--no-checkov",
+                                 help="Run Checkov IaC scan (requires checkov on PATH)."),
+    trivy: bool = typer.Option(True, "--trivy/--no-trivy",
+                               help="Run Trivy container/fs scan (requires trivy on PATH)."),
+    semgrep: bool = typer.Option(True, "--semgrep/--no-semgrep",
+                                 help="Run Semgrep AI-security rules (requires semgrep on PATH)."),
     source: str = typer.Option(
         None, "--source", "-s",
         help="Path to app source directory for Checkov/Trivy/Semgrep scans.",
@@ -155,12 +158,13 @@ def analyze(
     # Render output
     # ------------------------------------------------------------------
     fmt = format.lower()
+    tool_status = getattr(analyzer, "tool_status", {})
     if fmt == "json":
-        report_text = _render_json(visible, sbom_path)
+        report_text = _render_json(visible, sbom_path, tool_status)
     elif fmt == "sarif":
-        report_text = _render_sarif(visible, sbom_path)
+        report_text = _render_sarif(visible, sbom_path, tool_status)
     else:
-        report_text = _render_markdown(visible, sbom_path, min_severity)
+        report_text = _render_markdown(visible, sbom_path, min_severity, tool_status)
 
     if output:
         out_path = Path(output)
@@ -178,10 +182,34 @@ def analyze(
 # ---------------------------------------------------------------------------
 
 
+def _component_label(f: Finding) -> str:
+    """Return the display label for a finding's component."""
+    return f.affected_component or f.finding_id.rsplit("-", 1)[0]
+
+
+def _group_by_component(findings: list[Finding]) -> list[tuple[str, list[Finding]]]:
+    """Group findings by component, sorted by finding count (desc), then name.
+
+    Within each component group findings are sorted by severity (critical first).
+    """
+    grouped: dict[str, list[Finding]] = {}
+    for f in findings:
+        key = _component_label(f)
+        grouped.setdefault(key, []).append(f)
+
+    # Sort each component's findings by severity
+    for flist in grouped.values():
+        flist.sort(key=lambda x: _SEV_ORDER.get(x.severity.value, 99))
+
+    # Sort components: most findings first, then alphabetically
+    return sorted(grouped.items(), key=lambda kv: (-len(kv[1]), kv[0]))
+
+
 def _render_markdown(
     findings: list[Finding],
     sbom_path: Path,
     min_severity: str,
+    tool_status: dict[str, Any] | None = None,
 ) -> str:
     lines: list[str] = [
         "# NuGuard Static Analysis Report",
@@ -192,23 +220,72 @@ def _render_markdown(
         "",
     ]
 
+    # ------------------------------------------------------------------
+    # Severity summary
+    # ------------------------------------------------------------------
+    if findings:
+        by_sev: dict[str, list[Finding]] = {}
+        for f in findings:
+            by_sev.setdefault(f.severity.value, []).append(f)
+
+        summary_parts: list[str] = []
+        for sev in ("critical", "high", "medium", "low", "info"):
+            grp = by_sev.get(sev, [])
+            if grp:
+                emoji = _SEV_EMOJI.get(sev, "")
+                comps = len({_component_label(f) for f in grp})
+                summary_parts.append(
+                    f"{emoji} **{sev.upper()}:** {len(grp)} finding(s) across {comps} component(s)"
+                )
+        lines += ["## Summary", ""] + [f"- {p}" for p in summary_parts] + [""]
+
+        # Top components by finding count
+        grouped = _group_by_component(findings)
+        top_n = grouped[:5]
+        lines += ["### Components with Most Findings", ""]
+        lines += ["| Component | Findings | Highest Severity |",
+                  "|-----------|----------|-----------------|"]
+        for comp, flist in top_n:
+            top_sev = flist[0].severity.value  # already sorted by severity
+            emoji = _SEV_EMOJI.get(top_sev, "")
+            lines.append(f"| `{comp}` | {len(flist)} | {emoji} {top_sev.upper()} |")
+        lines.append("")
+
+    # ------------------------------------------------------------------
+    # Tool coverage table
+    # ------------------------------------------------------------------
+    if tool_status:
+        _STATUS_ICON = {"ok": "✅", "skipped": "⏭️", "disabled": "🔕", "error": "❌"}
+        lines += [
+            "## Tool Coverage", "",
+            "| Tool | Status | Findings |",
+            "|------|--------|----------|",
+        ]
+        for tool, info in tool_status.items():
+            st = info.get("status", "?")
+            icon = _STATUS_ICON.get(st, "❓")
+            count = info.get("findings", "—")
+            reason = info.get("reason", "")
+            note = f" ({reason})" if reason and st in ("skipped", "error") else ""
+            lines.append(f"| {tool} | {icon} {st}{note} | {count} |")
+        lines.append("")
+
     if not findings:
         lines += ["_No findings at or above the requested severity threshold._", ""]
         return "\n".join(lines)
 
-    # Group by severity
-    by_sev: dict[str, list[Finding]] = {}
-    for f in findings:
-        by_sev.setdefault(f.severity.value, []).append(f)
+    # ------------------------------------------------------------------
+    # Findings grouped by component, sorted by severity within each group
+    # ------------------------------------------------------------------
+    lines += ["## Findings", ""]
 
-    for sev in ("critical", "high", "medium", "low", "info"):
-        group = by_sev.get(sev, [])
-        if not group:
-            continue
-        emoji = _SEV_EMOJI.get(sev, "")
-        lines += [f"## {emoji} {sev.upper()} ({len(group)})", ""]
-        for f in group:
-            lines += [f"### {f.finding_id}  {f.title}", ""]
+    for comp, flist in _group_by_component(findings):
+        top_sev = flist[0].severity.value
+        emoji = _SEV_EMOJI.get(top_sev, "")
+        lines += [f"### {emoji} `{comp}` ({len(flist)} finding(s))", ""]
+        for f in flist:
+            sev_emoji = _SEV_EMOJI.get(f.severity.value, "")
+            lines += [f"#### {sev_emoji} {f.finding_id}  {f.title}", ""]
             lines += [f.description or "", ""]
             if f.affected_component:
                 lines += [f"**Affected:** `{f.affected_component}`  ", ""]
@@ -225,17 +302,38 @@ def _render_markdown(
     return "\n".join(lines)
 
 
-def _render_json(findings: list[Finding], sbom_path: Path) -> str:
-    data = {
+def _render_json(
+    findings: list[Finding],
+    sbom_path: Path,
+    tool_status: dict[str, Any] | None = None,
+) -> str:
+    # Severity counts
+    sev_counts: dict[str, int] = {}
+    for f in findings:
+        sev_counts[f.severity.value] = sev_counts.get(f.severity.value, 0) + 1
+
+    # Findings grouped by component, sorted by severity within each group
+    by_component: dict[str, list[dict[str, Any]]] = {}
+    for comp, flist in _group_by_component(findings):
+        by_component[comp] = [f.model_dump() for f in flist]
+
+    data: dict[str, Any] = {
         "sbom": str(sbom_path),
         "total": len(findings),
+        "severity_counts": sev_counts,
+        "tool_status": tool_status or {},
+        "by_component": by_component,
         "findings": [f.model_dump() for f in findings],
     }
     return json.dumps(data, indent=2, default=str)
 
 
-def _render_sarif(findings: list[Finding], sbom_path: Path) -> str:
-    """Minimal SARIF 2.1.0 output."""
+def _render_sarif(
+    findings: list[Finding],
+    sbom_path: Path,
+    tool_status: dict[str, Any] | None = None,
+) -> str:
+    """SARIF 2.1.0 output with tool coverage in the run's properties."""
     _sev_to_sarif = {
         "critical": "error",
         "high":     "error",
@@ -243,8 +341,8 @@ def _render_sarif(findings: list[Finding], sbom_path: Path) -> str:
         "low":      "note",
         "info":     "none",
     }
-    rules: list[dict] = []
-    results: list[dict] = []
+    rules: list[dict[str, Any]] = []
+    results: list[dict[str, Any]] = []
     seen_rules: set[str] = set()
 
     for f in findings:
@@ -270,7 +368,7 @@ def _render_sarif(findings: list[Finding], sbom_path: Path) -> str:
             ],
         })
 
-    sarif = {
+    sarif: dict[str, Any] = {
         "version": "2.1.0",
         "$schema": "https://schemastore.azurewebsites.net/schemas/json/sarif-2.1.0.json",
         "runs": [
@@ -281,6 +379,9 @@ def _render_sarif(findings: list[Finding], sbom_path: Path) -> str:
                         "informationUri": "https://github.com/anthropics/nuguard",
                         "rules": rules,
                     }
+                },
+                "properties": {
+                    "toolCoverage": tool_status or {},
                 },
                 "results": results,
             }

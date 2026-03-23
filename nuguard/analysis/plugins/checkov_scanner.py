@@ -71,9 +71,10 @@ class CheckovScannerPlugin(AnalysisPlugin):
                 message="checkov not installed — IaC scan skipped",
             )
 
-        iac_paths = _collect_iac_paths(sbom)
+        iac_paths = _collect_iac_paths(sbom, config)
+
         if not iac_paths:
-            _log.debug("checkov: no IaC paths found in SBOM nodes")
+            _log.debug("checkov: no IaC paths found in SBOM nodes or source_path")
             return AnalysisResult(
                 status="skipped",
                 plugin=self.name,
@@ -100,8 +101,13 @@ class CheckovScannerPlugin(AnalysisPlugin):
         )
 
 
-def _collect_iac_paths(sbom: dict[str, Any]) -> set[str]:
-    """Extract IaC source paths from SBOM nodes."""
+def _collect_iac_paths(sbom: dict[str, Any], config: dict[str, Any]) -> set[str]:
+    """Extract IaC source paths from SBOM nodes.
+
+    Falls back to ``config["source_path"]`` when no dedicated IaC nodes are
+    found — Checkov will auto-discover IaC files (Terraform, K8s, etc.) within
+    the directory.
+    """
     iac_types = {"INFRASTRUCTURE_AS_CODE", "DEPLOYMENT", "CONFIG"}
     paths: set[str] = set()
 
@@ -115,6 +121,12 @@ def _collect_iac_paths(sbom: dict[str, Any]) -> set[str]:
             p = meta.get(key) or extras.get(key)
             if p and Path(str(p)).exists():
                 paths.add(str(p))
+
+    # Fallback: scan the whole source directory when no typed IaC nodes exist
+    if not paths:
+        sp = config.get("source_path")
+        if sp and Path(str(sp)).is_dir():
+            paths.add(str(sp))
 
     return paths
 

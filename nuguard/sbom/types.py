@@ -23,3 +23,42 @@ class RelationshipType(str, Enum):
     ACCESSES = "ACCESSES"
     PROTECTS = "PROTECTS"
     DEPLOYS = "DEPLOYS"
+
+
+class AccessType(str, Enum):
+    """Access direction on ``ACCESSES`` edges."""
+
+    READ = "read"
+    WRITE = "write"
+    READWRITE = "readwrite"
+
+
+class DatastoreType(str, Enum):
+    """Sub-type of a DATASTORE node."""
+
+    VECTOR = "vector"
+    RELATIONAL = "relational"
+    KV = "kv"
+    KNOWLEDGE_BASE = "knowledge_base"
+
+
+class PrivilegeScope(str, Enum):
+    """Capability grant represented by a PRIVILEGE node."""
+
+    DB_WRITE = "db_write"
+    FILESYSTEM_WRITE = "filesystem_write"
+    CODE_EXECUTION = "code_execution"
+    NETWORK_OUT = "network_out"
+    EMAIL_OUT = "email_out"
+    SOCIAL_MEDIA_OUT = "social_media_out"
+    ADMIN = "admin"
+    RBAC = "rbac"
+
+
+class DataClassification(str, Enum):
+    """Sensitivity classification for data stored in a DATASTORE."""
+
+    PII = "PII"
+    PHI = "PHI"
+    INTERNAL = "INTERNAL"
+    PUBLIC = "PUBLIC"

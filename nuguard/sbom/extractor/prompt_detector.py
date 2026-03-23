@@ -11,7 +11,7 @@ import logging
 import uuid
 from pathlib import Path
 
-from nuguard.models.sbom import Node, NodeMetadata, NodeType
+from nuguard.sbom.models import Node, NodeMetadata, NodeType
 
 logger = logging.getLogger(__name__)
 
@@ -58,9 +58,9 @@ _HIGH_RISK_ATTRS = {
 }
 
 
-def _stable_id(key: str) -> str:
+def _stable_id(key: str) -> uuid.UUID:
     """Generate a stable UUID5 from a canonical key string."""
-    return str(uuid.uuid5(uuid.NAMESPACE_URL, key))
+    return uuid.uuid5(uuid.NAMESPACE_URL, key)
 
 
 def _is_system_prompt_var(name: str) -> bool:

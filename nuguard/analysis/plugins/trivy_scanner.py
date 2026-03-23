@@ -3,14 +3,22 @@
 Wraps the ``trivy`` CLI binary to scan:
 
 - Container images referenced in SBOM ``CONTAINER_IMAGE`` nodes
-- Filesystem paths from SBOM nodes (``--scanners vuln,secret,config``)
+- Filesystem paths from SBOM nodes (``--scanners vuln,secret,misconfig``)
+- **SBOM-based fallback**: when no fs/image targets are found, converts the
+  nuguard SBOM to CycloneDX and runs ``trivy sbom <file>`` for dependency
+  vulnerability scanning — no source code access required.
+
+Scan mode selection (in priority order):
+1. ``trivy image <ref>`` — for each CONTAINER_IMAGE node with an image ref
+2. ``trivy fs <path>`` — for each filesystem path found in node metadata
+3. ``trivy sbom <cdx.json>`` — CycloneDX fallback when no fs/image targets exist
 
 Trivy output is parsed from the JSON report format into the standard nuguard
 finding dict shape (matching the Grype client's output schema).
 
 The plugin is silently skipped (returns status ``"skipped"``) when:
 - ``trivy`` is not installed / not on PATH
-- No scannable targets are found in the SBOM
+- SBOM has no package components and no fs/image targets
 - ``trivy`` exits with an unexpected error
 
 Usage
@@ -27,6 +35,7 @@ import json
 import logging
 import shutil
 import subprocess
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -76,33 +85,47 @@ class TrivyScannerPlugin(AnalysisPlugin):
             )
 
         image_refs = _collect_image_refs(sbom)
-        fs_paths   = _collect_fs_paths(sbom)
+        fs_paths   = _collect_fs_paths(sbom, config)
+
+        timeout = float(config.get("trivy_timeout", 120.0))
+        all_findings: list[dict[str, Any]] = []
+        scan_mode = "fs"
 
         if not image_refs and not fs_paths:
-            return AnalysisResult(
-                status="skipped",
-                plugin=self.name,
-                message="no scannable targets found in SBOM — trivy scan skipped",
-            )
+            # No filesystem targets — fall back to SBOM-based vulnerability scan
+            _log.info("trivy: no fs/image targets found; falling back to SBOM-based scan")
+            sbom_findings = _run_trivy_sbom(binary, sbom, timeout)
+            if sbom_findings is None:
+                return AnalysisResult(
+                    status="skipped",
+                    plugin=self.name,
+                    message="no scannable targets found in SBOM — trivy scan skipped",
+                )
+            all_findings = sbom_findings
+            scan_mode = "sbom"
+        else:
+            for ref in sorted(image_refs):
+                _log.info("trivy: scanning image %s", ref)
+                all_findings.extend(_run_trivy(binary, ref, "image", timeout))
 
-        all_findings: list[dict[str, Any]] = []
-        timeout = float(config.get("trivy_timeout", 120.0))
-
-        for ref in sorted(image_refs):
-            _log.info("trivy: scanning image %s", ref)
-            all_findings.extend(_run_trivy(binary, ref, "image", timeout))
-
-        for path in sorted(fs_paths):
-            _log.info("trivy: scanning path %s", path)
-            all_findings.extend(_run_trivy(binary, path, "fs", timeout))
+            for path in sorted(fs_paths):
+                _log.info("trivy: scanning path %s", path)
+                all_findings.extend(_run_trivy(binary, path, "fs", timeout))
 
         status = "warning" if all_findings else "ok"
-        message = (
-            f"{len(all_findings)} finding(s) across "
-            f"{len(image_refs)} image(s) and {len(fs_paths)} path(s)"
-            if all_findings
-            else "No vulnerabilities found"
-        )
+        if scan_mode == "sbom":
+            message = (
+                f"{len(all_findings)} finding(s) from SBOM dependency scan"
+                if all_findings
+                else "No vulnerabilities found (SBOM dependency scan)"
+            )
+        else:
+            message = (
+                f"{len(all_findings)} finding(s) across "
+                f"{len(image_refs)} image(s) and {len(fs_paths)} path(s)"
+                if all_findings
+                else "No vulnerabilities found"
+            )
         _log.info("trivy: %s", message)
         return AnalysisResult(
             status=status,
@@ -111,6 +134,7 @@ class TrivyScannerPlugin(AnalysisPlugin):
             findings=all_findings,
             details={
                 "total": len(all_findings),
+                "scan_mode": scan_mode,
                 "images_scanned": sorted(image_refs),
                 "paths_scanned": sorted(fs_paths),
             },
@@ -136,8 +160,13 @@ def _collect_image_refs(sbom: dict[str, Any]) -> set[str]:
     return refs
 
 
-def _collect_fs_paths(sbom: dict[str, Any]) -> set[str]:
-    """Collect filesystem paths from SBOM node metadata."""
+def _collect_fs_paths(sbom: dict[str, Any], config: dict[str, Any]) -> set[str]:
+    """Collect filesystem paths from SBOM node metadata.
+
+    Falls back to ``config["source_path"]`` when no paths are found in SBOM
+    nodes so that Trivy can scan the source directory even without explicit
+    path metadata on each node.
+    """
     paths: set[str] = set()
     for node in sbom.get("nodes") or []:
         meta = node.get("metadata") or {}
@@ -146,7 +175,80 @@ def _collect_fs_paths(sbom: dict[str, Any]) -> set[str]:
             p = meta.get(key) or extras.get(key)
             if p and Path(str(p)).exists():
                 paths.add(str(p))
+
+    # Fallback to config-supplied source path; deduplicate against node paths
+    sp = config.get("source_path")
+    if sp and Path(str(sp)).is_dir():
+        paths.add(str(sp))
+
     return paths
+
+
+def _run_trivy_sbom(
+    binary: str,
+    sbom: dict[str, Any],
+    timeout: float,
+) -> list[dict[str, Any]] | None:
+    """Convert *sbom* to CycloneDX and run ``trivy sbom <file>``.
+
+    Returns a list of findings (possibly empty) on success, or ``None`` if the
+    SBOM has no package dependencies (nothing for Trivy to scan).
+    """
+    # Build CycloneDX from SBOM deps
+    try:
+        from nuguard.analysis._cdx import sbom_dict_to_cyclonedx  # noqa: PLC0415
+        cdx = sbom_dict_to_cyclonedx(sbom)
+        if not cdx.get("components"):
+            _log.debug("trivy sbom: no package deps in SBOM — nothing to scan")
+            return None
+        cdx_str = json.dumps(cdx)
+    except Exception as exc:
+        _log.warning("trivy sbom: failed to build CycloneDX BOM: %s", exc)
+        return None
+
+    with tempfile.NamedTemporaryFile(
+        suffix=".cdx.json", delete=False, mode="w", encoding="utf-8"
+    ) as tmp:
+        tmp.write(cdx_str)
+        tmp_path = tmp.name
+
+    try:
+        cmd = [
+            binary, "sbom",
+            "--format", "json",
+            "--quiet",
+            tmp_path,
+        ]
+        _log.debug("running: %s", " ".join(cmd))
+        try:
+            result = subprocess.run(cmd, capture_output=True, timeout=timeout)
+        except subprocess.TimeoutExpired:
+            _log.warning("trivy sbom scan timed out")
+            return []
+        except OSError as exc:
+            _log.warning("trivy sbom process error: %s", exc)
+            return []
+
+        if result.returncode not in (0, 1):
+            stderr = result.stderr.decode(errors="replace").strip()
+            _log.warning(
+                "trivy sbom exited %d%s",
+                result.returncode,
+                f": {stderr[:200]}" if stderr else "",
+            )
+            return []
+
+        try:
+            data = json.loads(result.stdout)
+        except (json.JSONDecodeError, ValueError) as exc:
+            _log.warning("trivy sbom output parse error: %s", exc)
+            return []
+
+        findings = _parse_trivy_output(data, "sbom")
+        _log.info("trivy sbom scan: %d finding(s)", len(findings))
+        return findings
+    finally:
+        Path(tmp_path).unlink(missing_ok=True)
 
 
 def _run_trivy(

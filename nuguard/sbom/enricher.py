@@ -34,9 +34,10 @@ API_ENDPOINT nodes
 from __future__ import annotations
 
 import re
+from collections.abc import Callable
 from uuid import UUID
 
-from .models import AiSbomDocument, NodeMetadata
+from .models import AiSbomDocument, Node, NodeMetadata
 from .types import ComponentType, RelationshipType
 
 # ---------------------------------------------------------------------------
@@ -91,7 +92,7 @@ def enrich(doc: AiSbomDocument) -> None:
     overwritten unless explicitly documented below.
     """
     # Build lookup indexes
-    node_by_id: dict[UUID, object] = {n.id: n for n in doc.nodes}
+    node_by_id: dict[UUID, Node] = {n.id: n for n in doc.nodes}
 
     # Edges indexed by (source_id, relationship_type) → set[target_id]
     outgoing: dict[UUID, dict[str, set[UUID]]] = {}
@@ -108,7 +109,7 @@ def enrich(doc: AiSbomDocument) -> None:
     def targets(node_id: UUID, rel: str) -> set[UUID]:
         return outgoing.get(node_id, {}).get(rel, set())
 
-    def sources_of_type(node_id: UUID, rel: str, node_type: str) -> list[object]:
+    def sources_of_type(node_id: UUID, rel: str, node_type: str) -> list[Node]:
         result = []
         for src_id, src_rel in incoming.get(node_id, []):
             if src_rel != rel:
@@ -117,11 +118,6 @@ def enrich(doc: AiSbomDocument) -> None:
             if src and src.component_type == node_type:
                 result.append(src)
         return result
-
-    # Set of AUTH node IDs that are connected via PROTECTS to some node
-    auth_node_ids: set[UUID] = {
-        n.id for n in doc.nodes if n.component_type == ComponentType.AUTH
-    }
 
     # Map: framework canonical → AUTH node IDs that protect it (via USES or PROTECTS)
     framework_auth: dict[UUID, set[UUID]] = {}
@@ -159,7 +155,7 @@ def enrich(doc: AiSbomDocument) -> None:
 
 def _enrich_api_endpoints(
     doc: AiSbomDocument,
-    targets: object,
+    targets: Callable[[UUID, str], set[UUID]],
 ) -> None:
     for node in doc.nodes:
         if node.component_type != ComponentType.API_ENDPOINT:
@@ -205,7 +201,7 @@ def _enrich_tools(
     tool_frameworks: dict[UUID, set[UUID]],
     framework_auth: dict[UUID, set[UUID]],
     privilege_node_ids: set[UUID],
-    targets: object,
+    targets: Callable[[UUID, str], set[UUID]],
 ) -> None:
     for node in doc.nodes:
         if node.component_type != ComponentType.TOOL:
@@ -318,13 +314,9 @@ def _is_ssrf_possible(desc: str, param_names: list[str]) -> bool:
 
 def _enrich_agents(
     doc: AiSbomDocument,
-    targets: object,
-    node_by_id: dict[UUID, object],
+    targets: Callable[[UUID, str], set[UUID]],
+    node_by_id: dict[UUID, Node],
 ) -> None:
-    # Build set of GUARDRAIL node IDs that PROTECT each AGENT
-    guardrail_ids: set[UUID] = {
-        n.id for n in doc.nodes if n.component_type == ComponentType.GUARDRAIL
-    }
     # DATASTORE nodes with PII or PHI
     sensitive_ds_ids: set[UUID] = {
         n.id

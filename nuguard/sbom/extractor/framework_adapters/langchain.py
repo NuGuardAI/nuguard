@@ -11,7 +11,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from nuguard.models.sbom import (
+from nuguard.sbom.models import (
     AccessType,
     Edge,
     EdgeRelationshipType,
@@ -19,13 +19,14 @@ from nuguard.models.sbom import (
     NodeMetadata,
     NodeType,
 )
+from nuguard.sbom.types import RelationshipType
 
 logger = logging.getLogger(__name__)
 
 
-def _stable_id(key: str) -> str:
+def _stable_id(key: str) -> uuid.UUID:
     """Generate a stable UUID5 from a canonical key string."""
-    return str(uuid.uuid5(uuid.NAMESPACE_URL, key))
+    return uuid.uuid5(uuid.NAMESPACE_URL, key)
 
 
 # ---------------------------------------------------------------------------
@@ -125,15 +126,15 @@ class LangChainAdapter:
         edges: list[Edge] = []
 
         # Track canonical names for relationship building
-        agent_ids: list[str] = []
-        model_ids: list[str] = []
-        tool_ids: list[str] = []
-        datastore_ids: list[str] = []
+        agent_ids: list[uuid.UUID] = []
+        model_ids: list[uuid.UUID] = []
+        tool_ids: list[uuid.UUID] = []
+        datastore_ids: list[uuid.UUID] = []
 
         # Build canonical name → node_id mapping
-        canon_to_id: dict[str, str] = {}
+        canon_to_id: dict[str, uuid.UUID] = {}
         # Build var_name → node_id mapping
-        var_to_id: dict[str, str] = {}
+        var_to_id: dict[str, uuid.UUID] = {}
 
         # -----------------------------------------------------------------
         # Pass 1: use the existing LangGraphAdapter for what it covers
@@ -151,12 +152,8 @@ class LangChainAdapter:
                 if det.component_type == ComponentType.FRAMEWORK:
                     continue
 
-                # Map ComponentType → NodeType
-                try:
-                    node_type = NodeType[det.component_type.value]
-                except KeyError:
-                    logger.debug("Unknown component type: %s", det.component_type)
-                    continue
+                # NodeType is an alias for ComponentType — use directly
+                node_type = det.component_type
 
                 node_id = _stable_id(det.canonical_name)
                 canon_to_id[det.canonical_name] = node_id
@@ -380,10 +377,10 @@ class LangChainAdapter:
                     src_id = canon_to_id.get(hint.source_canonical)
                     tgt_id = canon_to_id.get(hint.target_canonical)
                     if src_id and tgt_id and src_id != tgt_id:
-                        # Map relationship type
+                        # EdgeRelationshipType is an alias for RelationshipType — use directly
                         try:
-                            rel_type = EdgeRelationshipType[hint.relationship_type]
-                        except KeyError:
+                            rel_type = RelationshipType(hint.relationship_type)
+                        except ValueError:
                             continue
                         edge = Edge(
                             source=src_id,

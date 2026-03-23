@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import Any
 
 from nuguard.models.finding import Finding, Severity
-from nuguard.models.sbom import AiSbomDocument
+from nuguard.sbom.models import AiSbomDocument
 
 _log = logging.getLogger("analysis.static_analyzer")
 
@@ -150,6 +150,8 @@ class StaticAnalyzer:
         self.source_path    = source_path
         self.atlas_config   = atlas_config or {}
         self.min_severity   = min_severity
+        # Populated by analyze(); maps tool name → status string and optional detail
+        self.tool_status: dict[str, dict[str, str]] = {}
 
     def analyze(self, doc: AiSbomDocument) -> list[Finding]:
         """Run all detectors and return a list of ``Finding`` objects.
@@ -157,42 +159,91 @@ class StaticAnalyzer:
         The SBOM document is serialised to its dict representation so that all
         analysis plugins receive a plain ``dict`` (their common interface).
         """
+        self.tool_status = {}
         sbom_dict = doc.model_dump()
 
-        # Inject source_path into SBOM metadata so M1 plugins can find files
+        # Inject source_path into every SBOM node's metadata so M1 plugins
+        # (Checkov, Trivy, Semgrep) can discover files without requiring each
+        # SBOM node to carry an explicit source_path field.
         if self.source_path:
             sbom_dict = _inject_source_path(sbom_dict, self.source_path)
+
+        # Config dict forwarded to all M1 plugins so they can fall back to
+        # source_path even when SBOM nodes don't carry it explicitly.
+        m1_config: dict[str, Any] = {}
+        if self.source_path:
+            m1_config["source_path"] = str(self.source_path)
 
         all_findings: list[Finding] = []
 
         # Step 1: NGA structural rules (annotated with ATLAS techniques inline)
-        all_findings.extend(self._run_nga(sbom_dict))
+        nga = self._run_nga(sbom_dict)
+        all_findings.extend(nga)
+        self.tool_status["nga-rules"] = {
+            "status": "ok", "findings": str(len(nga)),
+        }
 
         # Step 2: OSV dependency CVEs
         if self.enable_osv:
-            all_findings.extend(self._run_osv(sbom_dict))
+            osv = self._run_osv(sbom_dict)
+            all_findings.extend(osv)
+            self.tool_status["osv"] = {"status": "ok", "findings": str(len(osv))}
+        else:
+            self.tool_status["osv"] = {"status": "disabled", "findings": "0"}
 
         # Step 3: Grype CVEs (subprocess; skipped gracefully when absent)
         if self.enable_grype:
-            all_findings.extend(self._run_grype(sbom_dict))
+            import shutil  # noqa: PLC0415
+            if shutil.which("grype"):
+                grype = self._run_grype(sbom_dict)
+                all_findings.extend(grype)
+                self.tool_status["grype"] = {"status": "ok", "findings": str(len(grype))}
+            else:
+                self.tool_status["grype"] = {
+                    "status": "skipped", "findings": "0",
+                    "reason": "grype not installed",
+                }
+        else:
+            self.tool_status["grype"] = {"status": "disabled", "findings": "0"}
 
         # Step 4: Checkov IaC scan
+        # _run_m1 sets tool_status to "skipped"/"error" when the plugin bails
+        # early; only overwrite with "ok" if it did not do so already.
         if self.enable_checkov:
-            all_findings.extend(self._run_m1("checkov", sbom_dict))
+            checkov = self._run_m1("checkov", sbom_dict, m1_config)
+            all_findings.extend(checkov)
+            if self.tool_status.get("checkov", {}).get("status") not in ("skipped", "error"):
+                self.tool_status["checkov"] = {"status": "ok", "findings": str(len(checkov))}
+        else:
+            self.tool_status["checkov"] = {"status": "disabled", "findings": "0"}
 
         # Step 5: Trivy container/fs scan
         if self.enable_trivy:
-            all_findings.extend(self._run_m1("trivy", sbom_dict))
+            trivy = self._run_m1("trivy", sbom_dict, m1_config)
+            all_findings.extend(trivy)
+            if self.tool_status.get("trivy", {}).get("status") not in ("skipped", "error"):
+                self.tool_status["trivy"] = {"status": "ok", "findings": str(len(trivy))}
+        else:
+            self.tool_status["trivy"] = {"status": "disabled", "findings": "0"}
 
         # Step 6: Semgrep source code scan
         if self.enable_semgrep:
-            all_findings.extend(self._run_m1("semgrep", sbom_dict))
+            semgrep = self._run_m1("semgrep", sbom_dict, m1_config)
+            all_findings.extend(semgrep)
+            if self.tool_status.get("semgrep", {}).get("status") not in ("skipped", "error"):
+                self.tool_status["semgrep"] = {"status": "ok", "findings": str(len(semgrep))}
+        else:
+            self.tool_status["semgrep"] = {"status": "disabled", "findings": "0"}
 
         # Step 7: MITRE ATLAS native graph checks (NC-001..004)
         # skip_nga=True so the annotator does not re-run NGA rules; Step 1
         # already annotated NGA findings with ATLAS techniques directly.
         if self.enable_atlas:
-            all_findings.extend(self._run_atlas_native(sbom_dict))
+            atlas = self._run_atlas_native(sbom_dict)
+            all_findings.extend(atlas)
+            self.tool_status["atlas"] = {"status": "ok", "findings": str(len(atlas))}
+        else:
+            self.tool_status["atlas"] = {"status": "disabled", "findings": "0"}
 
         # Filter by minimum severity
         sev_order = {Severity.CRITICAL: 0, Severity.HIGH: 1, Severity.MEDIUM: 2,
@@ -281,22 +332,47 @@ class StaticAnalyzer:
             _log.warning("Grype scan failed: %s", exc)
             return []
 
-    def _run_m1(self, tool: str, sbom_dict: dict[str, Any]) -> list[Finding]:
+    def _run_m1(
+        self, tool: str, sbom_dict: dict[str, Any], config: dict[str, Any] | None = None
+    ) -> list[Finding]:
         """Run a named M1 scanner plugin (checkov | trivy | semgrep)."""
+        cfg = config or {}
         try:
+            plugin: Any
             if tool == "checkov":
-                from nuguard.analysis.plugins.checkov_scanner import CheckovScannerPlugin as Cls  # noqa: PLC0415
+                from nuguard.analysis.plugins.checkov_scanner import (
+                    CheckovScannerPlugin,  # noqa: PLC0415
+                )
+                plugin = CheckovScannerPlugin()
             elif tool == "trivy":
-                from nuguard.analysis.plugins.trivy_scanner import TrivyScannerPlugin as Cls  # noqa: PLC0415
+                from nuguard.analysis.plugins.trivy_scanner import (
+                    TrivyScannerPlugin,  # noqa: PLC0415
+                )
+                plugin = TrivyScannerPlugin()
             elif tool == "semgrep":
-                from nuguard.analysis.plugins.semgrep_scanner import SemgrepScannerPlugin as Cls  # noqa: PLC0415
+                from nuguard.analysis.plugins.semgrep_scanner import (
+                    SemgrepScannerPlugin,  # noqa: PLC0415
+                )
+                plugin = SemgrepScannerPlugin()
             else:
                 return []
 
-            plugin = Cls()
-            result = plugin.run(sbom_dict, {})
+            result = plugin.run(sbom_dict, cfg)
             if result.status == "skipped":
                 _log.info("%s: skipped (%s)", tool, result.message)
+                # Update tool_status with the skip reason
+                self.tool_status[tool] = {
+                    "status": "skipped",
+                    "findings": "0",
+                    "reason": result.message or "skipped",
+                }
+                return []
+            if result.status == "error":
+                self.tool_status[tool] = {
+                    "status": "error",
+                    "findings": "0",
+                    "reason": result.message or "error",
+                }
                 return []
             raw_list = list(result.findings or [])
             findings = [_raw_to_finding(r, tool) for r in raw_list]
@@ -304,6 +380,11 @@ class StaticAnalyzer:
             return findings
         except Exception as exc:
             _log.warning("%s scan failed: %s", tool, exc)
+            self.tool_status[tool] = {
+                "status": "error",
+                "findings": "0",
+                "reason": str(exc),
+            }
             return []
 
     def _run_atlas_native(self, sbom_dict: dict[str, Any]) -> list[Finding]:
@@ -314,7 +395,9 @@ class StaticAnalyzer:
         ``_run_nga()``.
         """
         try:
-            from nuguard.analysis.plugins.atlas_annotator import AtlasAnnotatorPlugin  # noqa: PLC0415
+            from nuguard.analysis.plugins.atlas_annotator import (
+                AtlasAnnotatorPlugin,  # noqa: PLC0415
+            )
 
             plugin = AtlasAnnotatorPlugin()
             config = {**self.atlas_config, "skip_nga": True}

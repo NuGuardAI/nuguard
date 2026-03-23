@@ -6,7 +6,7 @@ import pytest
 from pathlib import Path
 
 
-from nuguard.models.sbom import EdgeRelationshipType, NodeType
+from nuguard.sbom.models import EdgeRelationshipType, NodeType
 try:
     from nuguard.sbom.extractor.framework_adapters.fastapi import FastApiAdapter
 except ImportError:

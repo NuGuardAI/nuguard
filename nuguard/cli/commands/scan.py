@@ -162,7 +162,7 @@ def scan(
         typer.echo("[2/4] Running static analysis …")
         try:
             from nuguard.analysis.static_analyzer import StaticAnalyzer  # noqa: PLC0415
-            from nuguard.models.sbom import AiSbomDocument  # noqa: PLC0415
+            from nuguard.sbom.models import AiSbomDocument  # noqa: PLC0415
 
             # Inject a user-supplied container image into the SBOM so Trivy
             # and Grype pick it up without needing it to appear in source.

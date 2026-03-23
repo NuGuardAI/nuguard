@@ -16,6 +16,7 @@ tmp/
 .env
 .env.*
 tests/redteam/.env
+tests/output/
 
 # Canary seed files contain fake-but-realistic PII — do not commit live versions
 # (the .example version is intentionally tracked)

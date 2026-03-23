@@ -14,7 +14,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from nuguard.models.sbom import Edge, EdgeRelationshipType, Node, NodeMetadata, NodeType
+from nuguard.sbom.models import Edge, EdgeRelationshipType, Node, NodeMetadata, NodeType
 
 logger = logging.getLogger(__name__)
 
@@ -47,9 +47,9 @@ _PROMPT_FIELD_NAMES = {
 }
 
 
-def _stable_id(key: str) -> str:
+def _stable_id(key: str) -> uuid.UUID:
     """Generate a stable UUID5 from a canonical key string."""
-    return str(uuid.uuid5(uuid.NAMESPACE_URL, key))
+    return uuid.uuid5(uuid.NAMESPACE_URL, key)
 
 
 def _annotation_str(node: ast.expr) -> str:
@@ -168,7 +168,7 @@ class FastApiAdapter:
         edges: list[Edge] = []
 
         # Map: variable_name -> (node_id, class_name)
-        agent_vars: dict[str, str] = {}  # var_name -> node_id
+        agent_vars: dict[str, uuid.UUID] = {}  # var_name -> node_id
         auth_vars: dict[str, str] = {}   # var_name -> auth_type
 
         # Collect Pydantic model schemas for request body inference
@@ -238,11 +238,11 @@ class FastApiAdapter:
                 node_id = _stable_id(key)
 
                 # Determine auth_type from function parameters (Depends(...))
-                auth_type = _extract_depends_auth_type(node, auth_vars)
+                endpoint_auth_type: str | None = _extract_depends_auth_type(node, auth_vars)
 
                 # Also check dependencies= in decorator kwargs
-                if auth_type is None:
-                    auth_type = _extract_security_auth_type(decorator, auth_vars)
+                if endpoint_auth_type is None:
+                    endpoint_auth_type = _extract_security_auth_type(decorator, auth_vars)
 
                 # Discover request body schema from Pydantic model parameter
                 schema, chat_key, chat_list, resp_key = _extract_endpoint_schema(
@@ -258,7 +258,7 @@ class FastApiAdapter:
                         framework="fastapi",
                         endpoint=path_str,
                         method=method.upper(),
-                        auth_type=auth_type,
+                        auth_type=endpoint_auth_type,
                         request_body_schema=schema,
                         chat_payload_key=chat_key,
                         chat_payload_list=chat_list,

@@ -37,6 +37,31 @@ nuguard = "nuguard.cli.main:app"
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
+[tool.hatch.build]
+exclude = [
+    "/.claude",
+    "/.mypy_cache",
+    "/.pytest_cache",
+    "/.ruff_cache",
+    "/dist",
+    "/tmp",
+    "/tests",
+    "/nuguard/**/tests",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["nuguard"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "/nuguard",
+    "/README.md",
+    "/pyproject.toml",
+    "/Makefile",
+    "/canary.example.json",
+    "/nuguard.yaml.example",
+]
+
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests", "nuguard/sbom/tests"]

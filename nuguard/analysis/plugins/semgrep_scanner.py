@@ -31,7 +31,6 @@ import json
 import logging
 import shutil
 import subprocess
-from importlib.resources import files
 from pathlib import Path
 from typing import Any
 
@@ -82,7 +81,7 @@ class SemgrepScannerPlugin(AnalysisPlugin):
                 message="semgrep not installed — code scan skipped",
             )
 
-        src_paths = _collect_source_paths(sbom)
+        src_paths = _collect_source_paths(sbom, config)
         if not src_paths:
             _log.debug("semgrep: no source paths found in SBOM nodes")
             return AnalysisResult(
@@ -126,8 +125,12 @@ class SemgrepScannerPlugin(AnalysisPlugin):
         )
 
 
-def _collect_source_paths(sbom: dict[str, Any]) -> set[str]:
-    """Collect source code paths from SBOM node metadata."""
+def _collect_source_paths(sbom: dict[str, Any], config: dict[str, Any]) -> set[str]:
+    """Collect source code paths from SBOM node metadata.
+
+    Falls back to ``config["source_path"]`` when no paths are found in SBOM
+    nodes so that Semgrep can still scan when path metadata is absent.
+    """
     paths: set[str] = set()
     for node in sbom.get("nodes") or []:
         meta = node.get("metadata") or {}
@@ -136,6 +139,12 @@ def _collect_source_paths(sbom: dict[str, Any]) -> set[str]:
             p = meta.get(key) or extras.get(key)
             if p and Path(str(p)).exists():
                 paths.add(str(p))
+
+    # Fallback to config-supplied source path
+    sp = config.get("source_path")
+    if sp and Path(str(sp)).is_dir():
+        paths.add(str(sp))
+
     return paths
 
 
