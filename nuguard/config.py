@@ -105,6 +105,8 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_guided_max_turns"] = int(redteam["guided_max_turns"])
     if "guided_concurrency" in redteam:
         flat["redteam_guided_concurrency"] = int(redteam["guided_concurrency"])
+    if "strict_outcome" in redteam:
+        flat["redteam_strict_outcome"] = bool(redteam["strict_outcome"])
 
     # Redteam LLM section
     redteam_llm = redteam.get("llm", {}) or {}
@@ -286,6 +288,15 @@ class NuGuardConfig(BaseSettings):
         description=(
             "Maximum number of guided conversations to run in parallel "
             "(yaml: redteam.guided_concurrency)."
+        ),
+    )
+    redteam_strict_outcome: bool = Field(
+        default=False,
+        description=(
+            "When true, a scan where ≥80 %% of transport events are server errors "
+            "is reported as 'inconclusive_target_errors' rather than 'no_findings'. "
+            "Disabled by default to preserve existing CI behaviour "
+            "(yaml: redteam.strict_outcome)."
         ),
     )
     redteam_llm_model: str | None = Field(
