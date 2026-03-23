@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import Any
 
 from nuguard.models.finding import Finding, Severity
-from nuguard.models.sbom import AiSbomDocument
+from nuguard.sbom.models import AiSbomDocument
 
 _log = logging.getLogger("analysis.static_analyzer")
 

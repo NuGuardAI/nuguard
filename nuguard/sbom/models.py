@@ -13,8 +13,46 @@ from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from enum import Enum
+
 from .deps import PackageDep
-from .types import ComponentType, RelationshipType
+from .types import (
+    AccessType,
+    ComponentType,
+    DataClassification,
+    DatastoreType,
+    PrivilegeScope,
+    RelationshipType,
+)
+
+# ---------------------------------------------------------------------------
+# Backward-compat aliases (so callers can import from either location)
+# ---------------------------------------------------------------------------
+
+NodeType = ComponentType
+EdgeRelationshipType = RelationshipType
+
+
+class EvidenceKind(str, Enum):
+    """How a piece of evidence was collected."""
+
+    AST = "ast"
+    AST_INSTANTIATION = "ast_instantiation"
+    AST_IMPORT = "ast_import"
+    AST_CALL = "ast_call"
+    AST_METHOD_CALL = "ast_method_call"
+    AST_DECORATOR = "ast_decorator"
+    AST_CONSTANT = "ast_constant"
+    AST_STRING_LITERAL = "ast_string_literal"
+    REGEX = "regex"
+    CONFIG = "config"
+    IAC = "iac"
+    YAML = "yaml"
+    DOCKERFILE = "dockerfile"
+    NGINX = "nginx"
+    PROMPT_FILE = "prompt_file"
+    INFERRED = "inferred"
+    LLM_DISCOVERY = "llm_discovery"
 
 
 class SourceLocation(BaseModel):
@@ -22,6 +60,10 @@ class SourceLocation(BaseModel):
 
     path: str = Field(description="Relative path to the source file")
     line: int | None = Field(default=None, description="1-based line number, if known")
+
+
+# Alias for backward compatibility
+EvidenceLocation = SourceLocation
 
 
 class Evidence(BaseModel):
@@ -396,6 +438,9 @@ class Edge(BaseModel):
     source: UUID = Field(description="ID of the source Node")
     target: UUID = Field(description="ID of the target Node")
     relationship_type: RelationshipType
+    access_type: AccessType | None = Field(
+        default=None, description="Access direction on ACCESSES edges: read | write | readwrite"
+    )
 
 
 class ScanSummary(BaseModel):

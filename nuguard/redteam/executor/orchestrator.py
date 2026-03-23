@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 from nuguard.models.exploit_chain import ExploitChain, GoalType
 from nuguard.models.finding import Finding
 from nuguard.models.policy import CognitivePolicy
-from nuguard.models.sbom import NodeType
+from nuguard.sbom.models import NodeType
 from nuguard.redteam.risk_engine import (
     compliance_mapper,
     remediation_generator,

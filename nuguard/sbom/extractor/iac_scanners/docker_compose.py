@@ -12,7 +12,7 @@ from typing import Any
 
 import yaml
 
-from nuguard.models.sbom import Node, NodeMetadata, NodeType
+from nuguard.sbom.models import Node, NodeMetadata, NodeType
 
 logger = logging.getLogger(__name__)
 
@@ -22,9 +22,9 @@ _CONFIDENCE = 0.90
 _SECRET_ENV_PATTERNS = {"PASSWORD", "SECRET", "KEY", "TOKEN"}
 
 
-def _stable_id(key: str) -> str:
+def _stable_id(key: str) -> uuid.UUID:
     """Generate a stable UUID5 from a canonical key string."""
-    return str(uuid.uuid5(uuid.NAMESPACE_URL, key))
+    return uuid.uuid5(uuid.NAMESPACE_URL, key)
 
 
 def _parse_image(image_str: str) -> tuple[str, str | None]:

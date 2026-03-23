@@ -11,7 +11,7 @@ import logging
 import re
 from pathlib import Path
 
-from nuguard.models.sbom import DataClassification
+from nuguard.sbom.models import DataClassification
 
 logger = logging.getLogger(__name__)
 

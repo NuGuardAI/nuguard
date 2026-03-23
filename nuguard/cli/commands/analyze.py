@@ -104,7 +104,7 @@ def analyze(
         raise typer.Exit(code=2)
 
     try:
-        from nuguard.models.sbom import AiSbomDocument  # noqa: PLC0415
+        from nuguard.sbom.models import AiSbomDocument  # noqa: PLC0415
         doc = AiSbomDocument.model_validate(sbom_data)
     except Exception as exc:
         typer.echo(f"error: SBOM validation failed: {exc}", err=True)

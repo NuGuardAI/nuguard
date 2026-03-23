@@ -199,7 +199,10 @@ class AppLauncher:
                 "Make sure all dependencies are installed."
             ) from exc
 
-        _log.info("[launcher] PID %d — waiting up to %.0fs for health check …", self._process.pid, self._startup_timeout)
+        _log.info(
+            "[launcher] PID %d — waiting up to %.0fs for health check …",
+            self._process.pid, self._startup_timeout,
+        )
         try:
             await asyncio.wait_for(self._wait_healthy(), timeout=self._startup_timeout)
         except asyncio.TimeoutError as exc:
@@ -259,8 +262,8 @@ class AppLauncher:
                         except Exception:
                             pass
                     raise AppLaunchError(
-                        f"App process exited with code {self._process.returncode} before becoming healthy.  "
-                        f"Output: {stdout[:500]!r}"
+                        f"App process exited with code {self._process.returncode} "
+                        f"before becoming healthy.  Output: {stdout[:500]!r}"
                     )
 
                 await asyncio.sleep(_DEFAULT_POLL_INTERVAL)
@@ -325,9 +328,12 @@ def _load_env_files(source_dir: Path, env_file_paths: list[str]) -> dict[str, st
 def pick_target_url(sbom: "AiSbomDocument", prefer: str = "local") -> str | None:
     """Choose the best target URL from SBOM summary without launching anything.
 
-    Preference order when ``prefer='local'``:  local_url → staging_urls[0] → production_urls[0] → deployment_urls[0].
-    Preference order when ``prefer='staging'``: staging_urls[0] → production_urls[0] → local_url → deployment_urls[0].
-    Preference order when ``prefer='production'``: production_urls[0] → staging_urls[0] → local_url → deployment_urls[0].
+    Preference order when ``prefer='local'``:
+      local_url → staging_urls[0] → production_urls[0] → deployment_urls[0].
+    Preference order when ``prefer='staging'``:
+      staging_urls[0] → production_urls[0] → local_url → deployment_urls[0].
+    Preference order when ``prefer='production'``:
+      production_urls[0] → staging_urls[0] → local_url → deployment_urls[0].
 
     Returns ``None`` when no URL can be determined.
     """

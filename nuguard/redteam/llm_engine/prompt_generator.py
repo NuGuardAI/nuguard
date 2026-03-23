@@ -48,7 +48,7 @@ def _build_user_prompt(
     n_variants: int,
 ) -> str:
     """Build the per-scenario user prompt for the redteam LLM."""
-    from nuguard.models.sbom import NodeType
+    from nuguard.sbom.models import NodeType
 
     # Collect SBOM context relevant to this scenario
     target_ids = set(scenario.target_node_ids)

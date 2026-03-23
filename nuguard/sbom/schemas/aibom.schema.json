@@ -1,5 +1,15 @@
 {
   "$defs": {
+    "AccessType": {
+      "description": "Access direction on ``ACCESSES`` edges.",
+      "enum": [
+        "read",
+        "write",
+        "readwrite"
+      ],
+      "title": "AccessType",
+      "type": "string"
+    },
     "ComponentType": {
       "enum": [
         "AGENT",
@@ -36,6 +46,18 @@
         },
         "relationship_type": {
           "$ref": "#/$defs/RelationshipType"
+        },
+        "access_type": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AccessType"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Access direction on ACCESSES edges: read | write | readwrite"
         }
       },
       "required": [

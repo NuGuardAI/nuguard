@@ -6,6 +6,8 @@ import os
 from datetime import datetime, timezone
 from pathlib import Path
 
+import uuid
+
 import pytest
 
 _ENV_FILE = Path(__file__).parent / "redteam" / ".env"
@@ -30,7 +32,7 @@ def _load_dotenv(path: Path) -> None:
 if _ENV_FILE.exists():
     _load_dotenv(_ENV_FILE)
 
-from nuguard.models.sbom import (
+from nuguard.sbom.models import (
     AccessType,
     AiSbomDocument,
     DataClassification,
@@ -47,17 +49,22 @@ from nuguard.models.sbom import (
 )
 
 
+_NS = uuid.NAMESPACE_URL
+_AGENT_ID = uuid.uuid5(_NS, "agent001")
+_TOOL_ID = uuid.uuid5(_NS, "tool001")
+_DS_ID = uuid.uuid5(_NS, "ds001")
+
+
 @pytest.fixture
 def minimal_sbom_doc() -> AiSbomDocument:
     """A minimal but valid AiSbomDocument for use across test modules."""
     return AiSbomDocument(
-        schema_version="1.3.0",
         generated_at=datetime(2026, 3, 20, 12, 0, 0, tzinfo=timezone.utc),
         generator="nuguard-test",
         target="./test-agent-app",
         nodes=[
             Node(
-                id="agent001",
+                id=_AGENT_ID,
                 name="CustomerSupportAgent",
                 component_type=NodeType.AGENT,
                 confidence=0.95,
@@ -72,7 +79,7 @@ def minimal_sbom_doc() -> AiSbomDocument:
                 ],
             ),
             Node(
-                id="tool001",
+                id=_TOOL_ID,
                 name="search_knowledge_base",
                 component_type=NodeType.TOOL,
                 confidence=0.9,
@@ -87,7 +94,7 @@ def minimal_sbom_doc() -> AiSbomDocument:
                 ],
             ),
             Node(
-                id="ds001",
+                id=_DS_ID,
                 name="CustomerDatabase",
                 component_type=NodeType.DATASTORE,
                 confidence=0.8,
@@ -100,13 +107,13 @@ def minimal_sbom_doc() -> AiSbomDocument:
         ],
         edges=[
             Edge(
-                source="agent001",
-                target="tool001",
+                source=_AGENT_ID,
+                target=_TOOL_ID,
                 relationship_type=EdgeRelationshipType.CALLS,
             ),
             Edge(
-                source="agent001",
-                target="ds001",
+                source=_AGENT_ID,
+                target=_DS_ID,
                 relationship_type=EdgeRelationshipType.ACCESSES,
                 access_type=AccessType.READWRITE,
             ),
