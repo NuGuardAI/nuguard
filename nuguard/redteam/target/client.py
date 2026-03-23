@@ -34,15 +34,21 @@ class TargetAppClient:
         chat_payload_list: bool = False,
         timeout: float = DEFAULT_TIMEOUT,
         max_consecutive_errors: int = MAX_CONSECUTIVE_ERRORS,
+        default_headers: dict[str, str] | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self._chat_path = chat_path
         self._chat_payload_key = chat_payload_key
         self._chat_payload_list = chat_payload_list
+        # Merge caller-supplied headers (e.g. auth) on top of the nuguard defaults.
+        # These apply to every request made by this client instance.
+        merged_headers: dict[str, str] = {"User-Agent": "nuguard-redteam/1.0"}
+        if default_headers:
+            merged_headers.update(default_headers)
         self._client = httpx.AsyncClient(
             base_url=self.base_url,
             timeout=httpx.Timeout(timeout),
-            headers={"User-Agent": "nuguard-redteam/1.0"},
+            headers=merged_headers,
             follow_redirects=True,
         )
         self._max_consecutive_errors = max_consecutive_errors

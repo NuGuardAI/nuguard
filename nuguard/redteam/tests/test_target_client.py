@@ -258,3 +258,95 @@ async def test_circuit_breaker_fires_exactly_at_threshold():
         # The Nth error triggers TargetUnavailableError
         with pytest.raises(TargetUnavailableError):
             await client.send("probe", _session())
+
+
+# ── 404 — resource not found, target is alive (4xx) ──────────────────────────
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_send_404_does_not_trip_circuit_breaker():
+    """404 not-found is a 4xx: target is up, circuit breaker must not advance."""
+    respx.post(f"{BASE}{CHAT}").mock(
+        return_value=httpx.Response(404, json={"detail": "Not Found"})
+    )
+    client = await _client()
+    async with client:
+        for _ in range(MAX_CONSECUTIVE_ERRORS + 2):
+            text, _ = await client.send("probe", _session())
+            assert text == "[HTTP 404]"
+    assert client._consecutive_errors == 0
+
+
+# ── 504 — gateway timeout, server-side error (5xx) ───────────────────────────
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_send_504_trips_circuit_breaker():
+    """504 gateway timeout is a 5xx: counts toward the circuit breaker."""
+    respx.post(f"{BASE}{CHAT}").mock(
+        return_value=httpx.Response(504, text="Gateway Timeout")
+    )
+    client = await _client()
+    async with client:
+        with pytest.raises(TargetUnavailableError):
+            for _ in range(MAX_CONSECUTIVE_ERRORS + 1):
+                await client.send("probe", _session())
+
+
+# ── Default headers — auth propagation ───────────────────────────────────────
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_default_headers_sent_with_send():
+    """Auth header supplied at construction is included in every send() request."""
+    route = respx.post(f"{BASE}{CHAT}").mock(
+        return_value=httpx.Response(200, json={"response": "ok"})
+    )
+    client = TargetAppClient(
+        base_url=BASE,
+        chat_path=CHAT,
+        timeout=5.0,
+        default_headers={"Authorization": "Bearer test-token"},
+    )
+    async with client:
+        text, _ = await client.send("hello", _session())
+    assert text == "ok"
+    sent_request = route.calls[0].request
+    assert sent_request.headers.get("authorization") == "Bearer test-token"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_default_headers_sent_with_invoke_endpoint():
+    """Auth header is included in invoke_endpoint() direct HTTP requests."""
+    route = respx.post(f"{BASE}/api/resource").mock(
+        return_value=httpx.Response(200, json={"id": 1})
+    )
+    client = TargetAppClient(
+        base_url=BASE,
+        chat_path=CHAT,
+        timeout=5.0,
+        default_headers={"Authorization": "Bearer test-token"},
+    )
+    async with client:
+        status, _text, _json = await client.invoke_endpoint("/api/resource", method="POST")
+    assert status == 200
+    sent_request = route.calls[0].request
+    assert sent_request.headers.get("authorization") == "Bearer test-token"
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_no_default_headers_backward_compatible():
+    """When no default_headers are supplied the client still works as before."""
+    respx.post(f"{BASE}{CHAT}").mock(
+        return_value=httpx.Response(200, json={"response": "hello"})
+    )
+    client = TargetAppClient(base_url=BASE, chat_path=CHAT, timeout=5.0)
+    async with client:
+        text, _ = await client.send("hi", _session())
+    assert text == "hello"
+    assert client._consecutive_errors == 0
