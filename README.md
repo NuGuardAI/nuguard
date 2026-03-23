@@ -190,6 +190,26 @@ Format the codebase:
 make fmt
 ```
 
+## Publishing
+
+This repo includes GitHub Actions workflows for Trusted Publishing to TestPyPI and PyPI:
+
+- [publish-testpypi.yml](/workspaces/nuguard-oss/.github/workflows/publish-testpypi.yml)
+- [publish-pypi.yml](/workspaces/nuguard-oss/.github/workflows/publish-pypi.yml)
+
+Before the workflows can publish, configure Trusted Publishers in TestPyPI and PyPI for the `nuguard` project with:
+
+- owner/org: `NuGuardAI`
+- repository: `nuguard-oss`
+- workflow file: `publish-testpypi.yml` or `publish-pypi.yml`
+- environment: `testpypi` or `pypi`
+
+Recommended release flow:
+
+1. Run the TestPyPI workflow manually from GitHub Actions.
+2. Verify the package install and CLI behavior from TestPyPI.
+3. Create a GitHub release to trigger the PyPI publish workflow.
+
 ## Repo Notes
 
 - The repository currently contains example outputs and benchmark fixtures under `tests/output/`
