@@ -63,8 +63,6 @@ redteam:
 
   # Extra environment variables injected into the fixture app subprocess during
   # E2E redteam tests. Use ${VAR} interpolation to avoid storing secrets here.
-  # Useful for supplying DB credentials, API keys, or feature flags required
-  # by DB-backed endpoints that would otherwise return 500s.
   # app_env:
   #   DATABASE_URL: ${DATABASE_URL}
   #   SOME_API_KEY: ${SOME_API_KEY}

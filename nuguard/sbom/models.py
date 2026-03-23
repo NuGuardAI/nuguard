@@ -605,7 +605,7 @@ class AiSbomDocument(BaseModel):
         description="ISO 8601 UTC timestamp when this document was generated",
     )
     generator: str = Field(
-        default="xelo",
+        default="nuguard",
         description="Tool that produced this document",
     )
     target: str = Field(description="Repository URL or local path that was scanned")
