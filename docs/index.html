@@ -1,0 +1,885 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
+    <!-- Primary SEO -->
+    <title>NuGuard OSS — AI Security Suite | Next Generation Agentic AI Security</title>
+    <meta name="description"
+        content="NuGuard OSS is an open-source AI SBOM generator for agentic and LLM-powered applications. Detect agents, models, tools, prompts, and datastores. Integrate with your security toolchain in under 2 minutes." />
+    <meta name="keywords"
+        content="AI SBOM, AI Bill of Materials, agentic AI security, LLM security, AI governance, OWASP AI Top 10, NIST AI RMF, HIPAA AI compliance, CycloneDX, SARIF, open source security, supply chain security, AI vulnerability scanning, CyberSecurity, OpenAI, Claude, AWS, Azure, Bedrock, VertexAI, GCP, open source, MCP" />
+    <meta name="author" content="NuGuard AI" />
+    <link rel="canonical" href="https://nuguard.ai/" />
+    <link rel="alternate" type="text/plain" title="LLMs.txt" href="/llms.txt" />
+
+    <!-- Open Graph (LinkedIn, Slack, Facebook) -->
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="https://nuguard.ai/" />
+    <meta property="og:title" content="NuGuard OSS — AI Security Suite" />
+    <meta property="og:description"
+        content="Scan your AI applications and produce a machine-readable AI Bill of Materials. Detect agents, models, tools, prompts, and datastores. 20+ frameworks. Fully offline." />
+    <meta property="og:image" content="https://nuguard.ai/xelo-og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:site_name" content="NuGuard OSS by NuGuard AI" />
+
+    <!-- Twitter / X Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@nuguardai" />
+    <meta name="twitter:title" content="NuGuard OSS — AI Security Suite" />
+    <meta name="twitter:description"
+        content="Open-source AI Security Suite for agentic and LLM-powered applications. 20+ frameworks. Fully offline. Apache-2.0." />
+    <meta name="twitter:image" content="https://nuguard.ai/xelo-og.png" />
+
+    <!-- Structured Data (JSON-LD) -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "SoftwareApplication",
+      "name": "NuGuard OSS",
+      "alternateName": "AI Security Suite by NuGuard AI",
+      "url": "https://nuguard.ai/",
+      "description": "Open-source AI Security Suite that scans agentic and LLM-powered applications to detect agents, models, tools, prompts, and datastores.",
+      "applicationCategory": "SecurityApplication",
+      "operatingSystem": "Linux, macOS, Windows",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD"
+      },
+      "license": "https://www.apache.org/licenses/LICENSE-2.0",
+      "codeRepository": "https://github.com/nuguard/xelo",
+      "author": {
+        "@type": "Organization",
+        "name": "NuGuard AI",
+        "url": "https://nuguard.ai/"
+      }
+    }
+    </script>
+
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet" />
+    <link rel="stylesheet" href="style.css" />
+    <link rel="icon" type="image/x-icon" href="favicon.ico" />
+    <link rel="apple-touch-icon" href="favicon-180.png" />
+</head>
+
+<body>
+
+    <!-- Navigation -->
+    <nav>
+        <a href="#" class="nav-brand">
+            <img src="xelo-logo-tr1.png" alt="Xelo" class="nav-logo" />
+        </a>
+        <ul class="nav-links">
+            <li><a href="#what">What it does</a></li>
+            <li><a href="#for-whom">Who it's for</a></li>
+            <li><a href="#quickstart">Quickstart</a></li>
+            <li><a href="#plugins">Plugins</a></li>
+            <li><a href="#frameworks">Frameworks</a></li>
+            <li><a href="doc.html?page=getting-started">Docs</a></li>
+            <li><a href="https://github.com/NuGuardAI/xelo" class="nav-icon-link" aria-label="GitHub"><svg width="20"
+                        height="20" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                        <path
+                            d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
+                    </svg></a></li>
+            <li><a href="https://discord.gg/EF99Ck7a" class="nav-icon-link" aria-label="Discord"><svg width="20"
+                        height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                        <path
+                            d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057c.002.022.015.043.03.056a19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z" />
+                    </svg></a></li>
+        </ul>
+    </nav>
+
+    <!-- Hero -->
+    <section class="hero">
+        <div class="container">
+            <div class="hero-inner">
+
+                <div class="hero-copy">
+                    <div class="hero-badge">
+                        <span class="dot"></span>
+                        AI SBOM Generator
+                    </div>
+                    <h2>
+                        Toolkit for AI stack transparency and security
+                    </h2>
+
+                    <ul class="hero-list">
+                        <li><strong class="accent">Deep Visibility</strong> agents, models, MCP tools, prompts, and more
+                        </li>
+                        <li><strong class="accent">Vulnerability Scanning</strong> PII/PHI detection, security analysis
+                        </li>
+                        <li><strong class="accent">Offline</strong> operation with optional LLM modes</li>
+                        <li><strong class="accent">Integrate</strong> with your security toolchain via plugins</li>
+                    </ul>
+
+                    <div class="hero-actions">
+                        <a href="doc.html?page=getting-started" class="btn-primary">Get started →</a>
+                        <a href="https://github.com/NuGuardAI/xelo" class="btn-secondary icon-link"><svg width="16"
+                                height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                                <path
+                                    d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
+                            </svg>Star on GitHub</a>
+                    </div>
+
+                    <div class="install-block">
+                        <span class="prompt">$</span>
+                        <span class="cmd">pip install xelo</span>
+                        <button title="Copy" onclick="navigator.clipboard.writeText('pip install xelo')">
+                            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                                <path
+                                    d="M0 6.75A.75.75 0 0 1 .75 6H2V1.75A.75.75 0 0 1 2.75 1h8.5A.75.75 0 0 1 12 1.75V6h1.25a.75.75 0 0 1 0 1.5H12v6.75a.75.75 0 0 1-.75.75h-8.5A.75.75 0 0 1 2 14.25V7.5H.75A.75.75 0 0 1 0 6.75Zm4.5 0V2.5h7V6h-7Zm-1 1.5v6h9v-6h-9Z" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </section>
+
+    <!-- Scan demo -->
+    <section class="scan-demo">
+        <div class="container">
+            <div class="scan-demo-label">See it in action</div>
+            <div class="scan-demo-terminal">
+                <div class="glow-ring"></div>
+                <div class="code-window">
+                    <div class="code-titlebar">
+                        <span style="font-family:var(--mono);font-size:0.75rem;color:var(--text-dim)">xelo-report ·
+                            openai-cs-demo.md</span>
+                        <span></span>
+                    </div>
+                    <pre style="margin:0"><span class="hl-prompt">$ </span><span class="hl-cmd">xelo scan https://github.com/NuGuardAI/openai-cs-agents-demo \
+    --output sbom.json \\
+    --plugin markdown --plugin-output report.md</span>
+  29 nodes · 28 deps · 36 edges → sbom.json
+  ok: Markdown report generated (29 node(s)) → report.md
+
+<span class="hl-prompt">$ </span><span class="hl-cmd">code report.md</span>
+<span style="color:var(--text-dim);font-style:italic"># Opening Markdown Preview...</span></pre>
+                    <div
+                        style="border:1px solid #333;border-radius:0 0 4px 4px;background:#1e1e1e;font-family:-apple-system,'Segoe UI',Helvetica,Arial,sans-serif;line-height:1.5;padding:0.8rem 1rem;color:#ccc;font-size:0.78rem">
+                        <div style="color:#888;font-size:0.72rem;margin-bottom:0.6rem"><strong
+                                style="color:#ccc">Generated:</strong> 2026-03-14T22:08:05Z<br><strong
+                                style="color:#ccc">Schema version:</strong> 1.3.0</div>
+                        <h2 style="color:#e0e0e0;font-size:1.05rem;margin:0 0 0.4rem;font-weight:600">Summary</h2>
+                        <table style="width:100%;border-collapse:collapse;font-size:0.78rem;color:#ccc">
+                            <tr style="border-bottom:1px solid #444">
+                                <th style="text-align:left;padding:5px 8px 5px 0;color:#999;font-weight:600">Field</th>
+                                <th style="text-align:left;padding:5px 0;color:#999;font-weight:600">Value</th>
+                            </tr>
+                            <tr style="border-bottom:1px solid #2d2d2d">
+                                <td style="padding:5px 8px 5px 0">AI nodes</td>
+                                <td style="padding:5px 0">29</td>
+                            </tr>
+                            <tr style="border-bottom:1px solid #2d2d2d">
+                                <td style="padding:5px 8px 5px 0">Dependencies</td>
+                                <td style="padding:5px 0">28</td>
+                            </tr>
+                            <tr style="border-bottom:1px solid #2d2d2d">
+                                <td style="padding:5px 8px 5px 0">Data classification</td>
+                                <td style="padding:5px 0">PII</td>
+                            </tr>
+                            <tr style="border-bottom:1px solid #2d2d2d">
+                                <td style="padding:5px 8px 5px 0">Classified tables</td>
+                                <td style="padding:5px 0">AirlineAgentContext, GuardrailCheck</td>
+                            </tr>
+                            <tr style="border-bottom:1px solid #2d2d2d">
+                                <td style="padding:5px 8px 5px 0;vertical-align:top">Use case</td>
+                                <td style="padding:5px 0">This application implements an agentic AI workflow with 5
+                                    agent(s), 6 tool integration(s), and 2 guardrail control(s). Detected use cases
+                                    include FAQ question answering, request triage and routing.</td>
+                            </tr>
+                            <tr style="border-bottom:1px solid #2d2d2d">
+                                <td style="padding:5px 8px 5px 0">Frameworks</td>
+                                <td style="padding:5px 0">openai_agents</td>
+                            </tr>
+                            <tr style="border-bottom:1px solid #2d2d2d">
+                                <td style="padding:5px 8px 5px 0">Modalities</td>
+                                <td style="padding:5px 0">TEXT</td>
+                            </tr>
+                        </table>
+                        <h2 style="color:#e0e0e0;font-size:1.05rem;margin:0.8rem 0 0.4rem;font-weight:600">AI Components
+                        </h2>
+                        <table style="width:100%;border-collapse:collapse;font-size:0.78rem;color:#ccc">
+                            <tr style="border-bottom:1px solid #444">
+                                <th style="text-align:left;padding:5px 8px 5px 0;color:#999;font-weight:600;width:30%">
+                                    Name</th>
+                                <th style="text-align:left;padding:5px 8px 5px 0;color:#999;font-weight:600;width:20%">
+                                    Type</th>
+                                <th style="text-align:left;padding:5px 8px 5px 0;color:#999;font-weight:600;width:12%">
+                                    Confidence</th>
+                                <th style="text-align:left;padding:5px 0;color:#999;font-weight:600">Details</th>
+                            </tr>
+                            <tr style="border-bottom:1px solid #2d2d2d">
+                                <td style="padding:5px 8px 5px 0">Cancellation Agent</td>
+                                <td style="padding:5px 8px 5px 0">AGENT</td>
+                                <td style="padding:5px 8px 5px 0">92%</td>
+                                <td style="padding:5px 0;color:#888">openai_agents</td>
+                            </tr>
+                            <tr style="border-bottom:1px solid #2d2d2d">
+                                <td style="padding:5px 8px 5px 0">FAQ Agent</td>
+                                <td style="padding:5px 8px 5px 0">AGENT</td>
+                                <td style="padding:5px 8px 5px 0">92%</td>
+                                <td style="padding:5px 0;color:#888">openai_agents</td>
+                            </tr>
+                            <tr style="border-bottom:1px solid #2d2d2d">
+                                <td style="padding:5px 8px 5px 0">Triage Agent</td>
+                                <td style="padding:5px 8px 5px 0">AGENT</td>
+                                <td style="padding:5px 8px 5px 0">92%</td>
+                                <td style="padding:5px 0;color:#888">openai_agents</td>
+                            </tr>
+                            <tr style="border-bottom:1px solid #2d2d2d">
+                                <td style="padding:5px 8px 5px 0">Deploy to Azure</td>
+                                <td style="padding:5px 8px 5px 0">DEPLOYMENT</td>
+                                <td style="padding:5px 8px 5px 0">95%</td>
+                                <td style="padding:5px 0;color:#888">github-actions</td>
+                            </tr>
+                            <tr style="border-bottom:1px solid #2d2d2d">
+                                <td style="padding:5px 8px 5px 0">Jailbreak Guardrail</td>
+                                <td style="padding:5px 8px 5px 0">GUARDRAIL</td>
+                                <td style="padding:5px 8px 5px 0">92%</td>
+                                <td style="padding:5px 0;color:#888">openai_agents</td>
+                            </tr>
+                            <tr style="border-bottom:1px solid #2d2d2d">
+                                <td style="padding:5px 8px 5px 0">Relevance Guardrail</td>
+                                <td style="padding:5px 8px 5px 0">GUARDRAIL</td>
+                                <td style="padding:5px 8px 5px 0">92%</td>
+                                <td style="padding:5px 0;color:#888">openai_agents</td>
+                            </tr>
+                            <tr style="border-bottom:1px solid #2d2d2d">
+                                <td style="padding:5px 8px 5px 0">gpt-4.1-mini</td>
+                                <td style="padding:5px 8px 5px 0">MODEL</td>
+                                <td style="padding:5px 8px 5px 0">90%</td>
+                                <td style="padding:5px 0;color:#888">openai</td>
+                            </tr>
+                            <tr style="border-bottom:1px solid #2d2d2d">
+                                <td style="padding:5px 8px 5px 0">Triage Agent Instructions</td>
+                                <td style="padding:5px 8px 5px 0">PROMPT</td>
+                                <td style="padding:5px 8px 5px 0">92%</td>
+                                <td style="padding:5px 0;color:#888">"You are a helpful triaging agent…" · role=system
+                                </td>
+                            </tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Stats -->
+    <div class="band-surface">
+        <div class="container">
+            <div class="stats-row">
+                <div class="stat">
+                    <div class="stat-value">20+</div>
+                    <div class="stat-label">Supported AI frameworks</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-value">13</div>
+                    <div class="stat-label">Component types detected</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-value">11</div>
+                    <div class="stat-label">Toolbox plugins</div>
+                </div>
+                <div class="stat">
+                    <div class="stat-value">100%</div>
+                    <div class="stat-label">Offline — no API key needed</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- What is Xelo -->
+    <section id="what">
+        <div class="container">
+            <div class="what-grid">
+                <div class="what-text">
+                    <div class="section-label">What is Xelo</div>
+                    <h2>A Bill of Materials built for AI</h2>
+                    <p class="lead">
+                        Software Bill of Materials tools were designed for packages and libraries. <br />
+                        AI applications are different — they have agents, models, prompts, tools,
+                        and datastores that package managers cannot see.
+                    </p>
+                    <p>
+                        Xelo fills that gap. It analyses your source code and configs to produce an
+                        <strong style="color: var(--text)">AI SBOM</strong> complete with evidence, confidence scores,
+                        and
+                        relationship edges.
+                    </p>
+                    <p>
+                        Export the AI SBOM output to your own tooling. Answer questions that security teams actually
+                        need to ask:
+                        <em style="color: var(--text)">Which AI agents touch PHI? Which datastores are connected with
+                            the AI agents and with what privileges?</em>
+                    </p>
+                </div>
+
+                <div>
+                    <div class="section-label" style="margin-bottom: 1.5rem;">3-phase extraction pipeline</div>
+                    <div class="pipeline-steps">
+                        <div class="pipeline-step">
+                            <div class="step-num">1</div>
+                            <div class="step-body">
+                                <h4>AST-aware adapters</h4>
+                                <p>Language-specific parsers for Python (<code
+                                        style="font-family:var(--mono);font-size:0.8rem;color:var(--accent)">ast</code>)
+                                    and TypeScript (tree-sitter) extract framework-specific components with high
+                                    precision — no generic string matching.</p>
+                            </div>
+                        </div>
+                        <div class="pipeline-step">
+                            <div class="step-num">2</div>
+                            <div class="step-body">
+                                <h4>Regex fallbacks</h4>
+                                <p>Model names, auth keywords, secret patterns, datastores, and IaC signals are caught
+                                    across all file types — SQL, YAML, Dockerfiles, Nginx configs, prompt files.</p>
+                            </div>
+                        </div>
+                        <div class="pipeline-step">
+                            <div class="step-num">3</div>
+                            <div class="step-body">
+                                <h4>LLM enrichment <span
+                                        style="color:var(--text-dim);font-weight:400;font-size:0.8rem">(optional)</span>
+                                </h4>
+                                <p>Verifies uncertain detections, enriches node descriptions, generates a use-case
+                                    summary, and produces a security briefing of all IaC findings. Token budget
+                                    controlled.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Component types -->
+    <div class="band-surface">
+        <div class="container" style="padding-top: 4rem; padding-bottom: 4rem;">
+            <div class="section-label" style="margin-bottom: 0.5rem;">What gets detected</div>
+            <h2 style="margin-bottom: 2.5rem;">Every AI component, fully mapped</h2>
+            <div class="cards-grid">
+                <div class="card">
+                    <div class="card-icon" style="background: rgba(88,196,220,0.12);">🤖</div>
+                    <h3>Agents</h3>
+                    <p>Agentic orchestrators — LangGraph, CrewAI, AutoGen, OpenAI Agents SDK, Google
+                        ADK, AWS BedrockAgentCore, Azure Semantic Kernel, and more.</p>
+                </div>
+                <div class="card">
+                    <div class="card-icon" style="background: rgba(188,140,255,0.12);">🧠</div>
+                    <h3>Models</h3>
+                    <p>LLM and embedding model references with provider, version, and whether they are external
+                        services. Flags PHI/PII flowing to third-party APIs.</p>
+                </div>
+                <div class="card">
+                    <div class="card-icon" style="background: rgba(63,185,80,0.12);">🔧</div>
+                    <h3>Tools</h3>
+                    <p>Function tools, MCP tools, and decorated callables wired to agents. Includes privilege scope —
+                        db_write, code_execution, …</p>
+                </div>
+                <div class="card">
+                    <div class="card-icon" style="background: rgba(255,166,87,0.12);">📝</div>
+                    <h3>Prompts</h3>
+                    <p>System instructions and prompt templates — full content preserved,
+                        template variables identified.</p>
+                </div>
+                <div class="card">
+                    <div class="card-icon" style="background: rgba(248,81,73,0.12);">🗄️</div>
+                    <h3>Datastores</h3>
+                    <p>Vector stores, databases, and caches with PII/PHI classification from SQL schema and Python ORM
+                        analysis. Datastore type and transport captured.</p>
+                </div>
+                <div class="card">
+                    <div class="card-icon" style="background: rgba(88,196,220,0.12);">🛡️</div>
+                    <h3>Guardrails</h3>
+                    <p>Content filters and safety validators. Used by the vulnerability scanner to identify AI
+                        components operating without any output protection.</p>
+                </div>
+                <div class="card">
+                    <div class="card-icon" style="background: rgba(188,140,255,0.12);">🔑</div>
+                    <h3>Auth &amp; Privileges</h3>
+                    <p>Authentication nodes (OAuth2, API key, Bearer, JWT, MCP providers) and capability grants.
+                        Surfaces API surface with insufficient auth coverage.</p>
+                </div>
+                <div class="card">
+                    <div class="card-icon" style="background: rgba(255,166,87,0.12);">☁️</div>
+                    <h3>Deployment &amp; IaC</h3>
+                    <p>Kubernetes manifests, Terraform, CloudFormation, GitHub Actions, Dockerfiles, Nginx configs.
+                        Cloud region, HA mode, secret stores, IAM roles.</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Vulnerability rules -->
+    <section id="vulnerability" class="vuln-section">
+        <div class="container">
+
+            <div class="vuln-header">
+                <div class="vuln-header-text">
+                    <div class="section-label">Security rules</div>
+                    <h2>AI-native vulnerability scanning</h2>
+                    <p>
+                        Five structural XELO rules fire purely on the AI SBOM with no manual attestation
+                        and no LLM call. They focus on regulated data exposure, missing output validation,
+                        insecure secret handling, root containers, and AI workloads without resource limits.
+                    </p>
+                </div>
+                <div class="vuln-meta">
+                    <span class="vuln-stat-pill"><strong>5</strong> offline structural rules</span>
+                    <span class="vuln-stat-pill"><strong style="color:var(--red)">1</strong> CRITICAL severity</span>
+                    <span class="vuln-stat-pill"><strong>2</strong> HIGH severity</span>
+                    <span class="vuln-stat-pill" style="font-family:var(--mono);font-size:0.78rem;">xelo plugin run
+                        vulnerability sbom.json</span>
+                </div>
+            </div>
+
+            <div class="rule-categories">
+                <div class="rule-cat">
+                    <div class="rule-cat-top">
+                        <span class="rule-cat-icon">🧬</span>
+                        <span class="rule-count-badge sev-critical">XELO-001</span>
+                    </div>
+                    <h4>Regulated data exposure</h4>
+                    <p>Flags PII or PHI flowing to external LLM providers outside your trust boundary.</p>
+                </div>
+                <div class="rule-cat">
+                    <div class="rule-cat-top">
+                        <span class="rule-cat-icon">🛡️</span>
+                        <span class="rule-count-badge sev-medium">XELO-002</span>
+                    </div>
+                    <h4>Output validation</h4>
+                    <p>Detects LLM models with no connected guardrail or output-validation step in the graph.</p>
+                </div>
+                <div class="rule-cat">
+                    <div class="rule-cat-top">
+                        <span class="rule-cat-icon">🔑</span>
+                        <span class="rule-count-badge sev-high">XELO-003</span>
+                    </div>
+                    <h4>Secret handling</h4>
+                    <p>Finds secrets in environment variables or deployments with no dedicated secret store.</p>
+                </div>
+                <div class="rule-cat">
+                    <div class="rule-cat-top">
+                        <span class="rule-cat-icon">🐳</span>
+                        <span class="rule-count-badge sev-high">XELO-004</span>
+                    </div>
+                    <h4>Container security</h4>
+                    <p>Reports deployment or container image nodes that run as root.</p>
+                </div>
+                <div class="rule-cat">
+                    <div class="rule-cat-top">
+                        <span class="rule-cat-icon">📈</span>
+                        <span class="rule-count-badge sev-low">XELO-005</span>
+                    </div>
+                    <h4>Resource limits</h4>
+                    <p>Highlights AI workloads that do not declare CPU or memory resource limits.</p>
+                </div>
+            </div>
+
+            <div class="vuln-framework-note">
+                <span style="font-size:1.1rem;flex-shrink:0;margin-top:0.05rem">ℹ️</span>
+                <span>
+                    <strong>Framework integrations:</strong> findings export as
+                    <strong>SARIF 2.1</strong> (GitHub Code Scanning / GHAS),
+                    <strong>AWS Security Hub</strong> (ASFF), and
+                    <strong>MITRE ATLAS v2</strong> technique mappings via the atlas plugin.
+                    See the <a href="doc.html?page=vulnerability-scanning">Vulnerability Scanning guide</a> for
+                    details, and a healthcare voice agent example.
+                </span>
+            </div>
+
+        </div>
+    </section>
+
+    <!-- For whom -->
+    <section id="for-whom">
+        <div class="container">
+            <div class="section-label">Who it's for</div>
+            <h2 style="max-width: 560px;">Built for the people securing AI</h2>
+            <p style="max-width: 700px; margin-bottom: 3rem;">
+                Xelo is for anyone who needs to answer "what is the AI behavior on our systems and data?"
+                from a security, risk or governance perspective.
+            </p>
+            <div class="personas-grid">
+                <div class="persona-card">
+                    <div class="persona-header">
+                        <span class="persona-icon">🧑‍💻</span>
+                        <h3>AI Engineers</h3>
+                    </div>
+                    <ul>
+                        <li>Reduce your workload answering security and compliance questions</li>
+                        <li>Provide meta-data and artifacts automatically through CI pipeline</li>
+                        <li>Leverage various 3rd security tools w/o giving them repo access</li>
+                    </ul>
+                </div>
+                <div class="persona-card">
+                    <div class="persona-header">
+                        <span class="persona-icon">🔍</span>
+                        <h3>AppSec Engineers</h3>
+                    </div>
+                    <ul>
+                        <li>Find unguarded models and over-privileged agents in code review</li>
+                        <li>Run 5 structural XELO rules with no network access</li>
+                        <li>Export findings into GitHub Code Scanning / GHAS</li>
+                        <li>Map detections to MITRE ATLAS techniques automatically</li>
+                    </ul>
+                </div>
+                <div class="persona-card">
+                    <div class="persona-header">
+                        <span class="persona-icon">⚙️</span>
+                        <h3>DevSecOps Engineers</h3>
+                    </div>
+                    <ul>
+                        <li>Publish AI SBOM & artifacts into various platforms</li>
+                        <li>Scan IaC for encryption, root containers, single-AZ exposures</li>
+                        <li>Push findings to AWS Security Hub, JFrog Xray, or GitHub GHAS</li>
+                    </ul>
+                </div>
+                <div class="persona-card">
+                    <div class="persona-header">
+                        <span class="persona-icon">📋</span>
+                        <h3>Compliance &amp; Risk Teams</h3>
+                    </div>
+                    <ul>
+                        <li>Self-serve compliance and risk assessments w/o needing AI Engineers time</li>
+                        <li>Generate human-readable Markdown reports for audit evidence</li>
+                        <li>Identify PII and PHI data flows to external LLM providers</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Quickstart -->
+    <section id="quickstart" class="band-surface"
+        style="border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);">
+        <div class="container">
+            <div class="qs-grid">
+                <div>
+                    <div class="section-label">Quickstart</div>
+                    <h2>From install to AI SBOM in 60 seconds</h2>
+                    <p style="margin-bottom: 1.5rem;">
+                        Xelo's first two phases are fully deterministic and require no LLM key.
+                        Xelo can be used in fully offline environments — no external API calls,
+                        no data leaves your network.
+                    </p>
+                    <p style="margin-bottom: 2rem;">
+                        JSON output can be validated with the bundled schema, exported as
+                        CycloneDX 1.6, or analysed with any built-in toolbox plugin.
+                    </p>
+                    <a href="doc.html?page=getting-started" class="btn-primary" style="display: inline-flex;">Full guide
+                        →</a>
+                    <a href="doc.html?page=example-openai-cs-agents" class="btn-secondary"
+                        style="display: inline-flex; margin-top: 0.75rem;">Live example: OpenAI CS Agents →</a>
+                </div>
+
+                <div class="code-window">
+                    <div class="code-titlebar">
+                        <div class="dots">
+                            <span class="dot-red"></span>
+                            <span class="dot-yellow"></span>
+                            <span class="dot-green"></span>
+                        </div>
+                        <div class="tabs" style="border-bottom: none; padding: 0;">
+                            <button class="tab-btn active" data-tab="cli">CLI</button>
+                            <button class="tab-btn" data-tab="python">Python</button>
+                            <button class="tab-btn" data-tab="ci">CI / GitHub Actions</button>
+                        </div>
+                        <span></span>
+                    </div>
+
+                    <div id="tab-cli" class="tab-pane active">
+                        <pre><span class="hl-comment"># Install</span>
+$ pip install xelo
+
+<span class="hl-comment"># Scan a local repository</span>
+$ xelo scan ./my-ai-app --output sbom.json
+  14 nodes, 18 edges → sbom.json
+
+<span class="hl-comment"># Scan a remote repository</span>
+$ xelo scan https://github.com/org/repo --ref main
+
+<span class="hl-comment"># Validate the output</span>
+$ xelo validate sbom.json
+  OK — document is valid
+
+<span class="hl-comment"># Run structural security rules</span>
+$ xelo plugin run vulnerability sbom.json
+
+<span class="hl-comment"># Export to CycloneDX 1.6</span>
+$ xelo scan ./my-ai-app --format cyclonedx --output bom.cdx.json</pre>
+                    </div>
+
+                    <div id="tab-python" class="tab-pane">
+                        <pre>from pathlib import Path
+from xelo import AiSbomConfig, AiSbomExtractor, AiSbomSerializer
+from xelo.toolbox.plugins.vulnerability import VulnerabilityScannerPlugin
+
+# Extract
+config = AiSbomConfig()
+doc    = AiSbomExtractor().extract_from_path(
+    path=Path("./my-ai-app"),
+    config=config,
+)
+print(f"nodes={len(doc.nodes)}, edges={len(doc.edges)}")
+
+# Serialize
+json_str = AiSbomSerializer.to_json(doc)
+
+# Vulnerability scan
+sbom   = doc.model_dump(mode="json")
+result = VulnerabilityScannerPlugin().run(sbom, {})
+print(result.status, result.message)</pre>
+                    </div>
+
+                    <div id="tab-ci" class="tab-pane">
+                        <pre># .github/workflows/sbom.yml
+name: AI SBOM scan
+on: [push, pull_request]
+
+jobs:
+  xelo:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install xelo
+        run: pip install xelo
+      - name: Scan
+        run: xelo scan . --output sbom.json
+      - name: Security check
+        run: |
+          xelo plugin run vulnerability sbom.json \
+            --output findings.json
+          python3 -c "
+          import json, sys
+          d = json.load(open('findings.json'))
+          s = d['details']['summary']
+          sys.exit(1 if s['critical']+s['high'] > 0 else 0)
+          "
+      - name: Upload SARIF
+        run: |
+          xelo plugin run sarif sbom.json --output results.sarif
+          xelo plugin run ghas  sbom.json \
+            --config token=${{ secrets.GITHUB_TOKEN }} \
+            --config github_repo=${{ github.repository }}</pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Plugins -->
+    <section id="plugins">
+        <div class="container">
+            <div class="section-label">Toolbox plugins</div>
+            <h2>Analyse, export, and integrate</h2>
+            <p style="max-width: 580px; margin-bottom: 2.5rem;">
+                Run any plugin with <code
+                    style="font-family:var(--mono);color:var(--accent)">xelo plugin run &lt;name&gt; sbom.json</code>.
+                All offline plugins work with no network access and no API key.
+            </p>
+            <div class="plugin-grid">
+                <div class="plugin-chip">
+                    <span class="plugin-name">vulnerability</span>
+                    <span class="plugin-desc">5 structural XELO rules for regulated data exposure, missing output validation,
+                        insecure secret handling, root containers, and missing resource limits. Fully offline with no
+                        CVE feed or internet access required, and works in air-gapped environments.</span>
+                    <span class="plugin-badge badge-offline">Offline</span>
+                </div>
+                <div class="plugin-chip">
+                    <span class="plugin-name">atlas</span>
+                    <span class="plugin-desc">Maps every XELO finding to MITRE ATLAS v2 techniques and recommended
+                        mitigations.</span>
+                    <span class="plugin-badge badge-offline">Offline</span>
+                </div>
+                <div class="plugin-chip">
+                    <span class="plugin-name">sarif</span>
+                    <span class="plugin-desc">Exports all findings as SARIF 2.1.0 — compatible with GitHub Code Scanning
+                        and any SARIF viewer.</span>
+                    <span class="plugin-badge badge-offline">Offline</span>
+                </div>
+                <div class="plugin-chip">
+                    <span class="plugin-name">cyclonedx</span>
+                    <span class="plugin-desc">Exports AI nodes as a standards-compliant CycloneDX 1.6 BOM for downstream
+                        supply-chain tooling.</span>
+                    <span class="plugin-badge badge-offline">Offline</span>
+                </div>
+                <div class="plugin-chip">
+                    <span class="plugin-name">markdown</span>
+                    <span class="plugin-desc">Human-readable Markdown report covering all detected components, findings,
+                        and remediation guidance.</span>
+                    <span class="plugin-badge badge-offline">Offline</span>
+                </div>
+                <div class="plugin-chip">
+                    <span class="plugin-name">license</span>
+                    <span class="plugin-desc">Checks all detected package dependencies against SPDX licence identifiers
+                        for compliance.</span>
+                    <span class="plugin-badge badge-offline">Offline</span>
+                </div>
+                <div class="plugin-chip">
+                    <span class="plugin-name">dependency</span>
+                    <span class="plugin-desc">Scores dependency freshness and flags outdated or unmaintained AI packages
+                        in the graph.</span>
+                    <span class="plugin-badge badge-offline">Offline</span>
+                </div>
+                <div class="plugin-chip">
+                    <span class="plugin-name">ghas</span>
+                    <span class="plugin-desc">Uploads SARIF findings directly to GitHub Advanced Security via the GitHub
+                        API.</span>
+                    <span class="plugin-badge badge-network">Network</span>
+                </div>
+                <div class="plugin-chip">
+                    <span class="plugin-name">aws-security-hub</span>
+                    <span class="plugin-desc">Pushes findings to AWS Security Hub as Security Finding Format (ASFF)
+                        records.</span>
+                    <span class="plugin-badge badge-network">Network</span>
+                </div>
+                <div class="plugin-chip">
+                    <span class="plugin-name">xray</span>
+                    <span class="plugin-desc">Submits the SBOM to JFrog Xray for vulnerability enrichment and policy
+                        evaluation.</span>
+                    <span class="plugin-badge badge-network">Network</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Frameworks -->
+    <section id="frameworks" class="band-surface"
+        style="border-top: 1px solid var(--border); border-bottom: 1px solid var(--border);">
+        <div class="container">
+            <div class="section-label">Supported frameworks</div>
+            <h2 style="margin-bottom: 2.5rem;">Deep support across the AI ecosystem</h2>
+
+            <div class="fw-section">
+                <h3>Python</h3>
+                <div class="fw-chips">
+                    <span class="fw-chip">LangChain</span>
+                    <span class="fw-chip">LangGraph</span>
+                    <span class="fw-chip">OpenAI Agents SDK</span>
+                    <span class="fw-chip">CrewAI (code + YAML)</span>
+                    <span class="fw-chip">AutoGen (code + YAML)</span>
+                    <span class="fw-chip">Google ADK</span>
+                    <span class="fw-chip">LlamaIndex</span>
+                    <span class="fw-chip">Agno</span>
+                    <span class="fw-chip">AWS BedrockAgentCore</span>
+                    <span class="fw-chip">Azure AI Agent Service</span>
+                    <span class="fw-chip">Guardrails AI</span>
+                    <span class="fw-chip">MCP Server (FastMCP)</span>
+                    <span class="fw-chip">MCP Server (low-level)</span>
+                    <span class="fw-chip">Azure Semantic Kernel</span>
+                </div>
+            </div>
+
+            <div class="fw-section">
+                <h3>TypeScript / JavaScript</h3>
+                <div class="fw-chips">
+                    <span class="fw-chip">LangChain.js</span>
+                    <span class="fw-chip">LangGraph.js</span>
+                    <span class="fw-chip">OpenAI Agents (TS)</span>
+                    <span class="fw-chip">Azure AI Agents (TS)</span>
+                    <span class="fw-chip">Agno (TS)</span>
+                    <span class="fw-chip">MCP Server (TS)</span>
+                </div>
+            </div>
+
+            <div class="fw-section">
+                <h3>Infrastructure &amp; Configuration</h3>
+                <div class="fw-chips">
+                    <span class="fw-chip">Terraform</span>
+                    <span class="fw-chip">CloudFormation</span>
+                    <span class="fw-chip">Azure Bicep</span>
+                    <span class="fw-chip">Kubernetes manifests</span>
+                    <span class="fw-chip">GCP Deployment Manager</span>
+                    <span class="fw-chip">GitHub Actions</span>
+                    <span class="fw-chip">Dockerfiles</span>
+                    <span class="fw-chip">Nginx configs</span>
+                </div>
+            </div>
+
+            <div class="fw-section" style="margin-bottom: 0;">
+                <h3>Data &amp; Storage</h3>
+                <div class="fw-chips">
+                    <span class="fw-chip">SQL schemas (PHI/PII classification)</span>
+                    <span class="fw-chip">SQLAlchemy models</span>
+                    <span class="fw-chip">Django models</span>
+                    <span class="fw-chip">Pydantic models</span>
+                    <span class="fw-chip">Prompt files (.txt / .md / .jinja)</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- CTA -->
+    <section class="cta-section">
+        <div class="container">
+            <div class="cta-inner">
+                <div class="section-label" style="justify-content: center;">Get started</div>
+                <h2>Start scanning your AI applications</h2>
+                <p>
+                    Install Xelo, run your first scan, and get a machine-readable picture of
+                    every AI component in your codebase — in under two minutes.
+                </p>
+                <div class="hero-actions" style="justify-content: center;">
+                    <a href="doc.html?page=getting-started" class="btn-primary">Read the docs →</a>
+                    <a href="doc.html?page=cli-reference" class="btn-secondary">CLI reference</a>
+                </div>
+                <div class="install-block" style="margin: 0 auto; display: inline-flex;">
+                    <span class="prompt">$</span>
+                    <span class="cmd">pip install xelo</span>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer>
+        <div class="footer-inner">
+            <div class="footer-brand">
+                <img src="xelo-logo-tr1.png" alt="Xelo" class="footer-logo" />
+            </div>
+            <ul class="footer-links">
+                <li><a href="doc.html?page=getting-started">Getting Started</a></li>
+                <li><a href="doc.html?page=vulnerability-scanning">Vulnerability Scanning</a></li>
+                <li><a href="doc.html?page=example-openai-cs-agents">Example: OpenAI CS Agents</a></li>
+                <li><a href="https://github.com/NuGuardAI/xelo" class="icon-link" aria-label="GitHub"><svg width="15"
+                            height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+                            <path
+                                d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
+                        </svg>GitHub</a></li>
+                <li><a href="https://discord.gg/EF99Ck7a" class="icon-link" aria-label="Discord"><svg width="15"
+                            height="15" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                            <path
+                                d="M20.317 4.37a19.791 19.791 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.21.375-.444.864-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.64 12.64 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057c.002.022.015.043.03.056a19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028 14.09 14.09 0 0 0 1.226-1.994.076.076 0 0 0-.041-.106 13.107 13.107 0 0 1-1.872-.892.077.077 0 0 1-.008-.128 10.2 10.2 0 0 0 .372-.292.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.01c.12.098.246.198.373.292a.077.077 0 0 1-.006.127 12.299 12.299 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.839 19.839 0 0 0 6.002-3.03.077.077 0 0 0 .032-.054c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.03z" />
+                        </svg>Discord</a></li>
+            </ul>
+            <span class="footer-copy"> · Built by NuGuard AI · <a href="doc.html?page=Disclaimer"
+                    style="color:inherit;opacity:0.7;">Disclaimer</a></span>
+        </div>
+    </footer>
+
+    <script>
+        document.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const tab = btn.dataset.tab;
+                btn.closest('.code-window').querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+                btn.closest('.code-window').querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+                btn.classList.add('active');
+                document.getElementById('tab-' + tab).classList.add('active');
+            });
+        });
+    </script>
+</body>
+
+</html>

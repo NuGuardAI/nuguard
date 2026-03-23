@@ -1,199 +1,337 @@
 # NuGuard CLI Reference
 
-NuGuard ships a Typer-based CLI for SBOM generation, static analysis, policy checks, and dynamic red-team testing.
+NuGuard ships a Typer-based CLI covering the full AI application security pipeline: SBOM generation, static analysis, policy compliance, and dynamic red-team testing.
 
 ## Top-Level Commands
 
 ```text
-nuguard init
-nuguard sbom
-nuguard analyze
-nuguard scan
-nuguard policy
-nuguard redteam
-nuguard seed
-nuguard report
-nuguard findings
-nuguard replay
+nuguard init        Create starter project files
+nuguard sbom        SBOM generation, validation, and management
+nuguard analyze     Static risk analysis from an AI-SBOM
+nuguard scan        Unified pipeline: SBOM → analyze → policy → redteam
+nuguard policy      Cognitive policy linting and compliance assessment
+nuguard redteam     Dynamic adversarial testing against a live AI application
+
 ```
+
+---
 
 ## `nuguard init`
 
-Creates a starter cognitive policy Markdown file with section headers only.
+Creates three starter project files in the current directory (or `--dir`).
 
-Default output:
-
-- `./cognitive_policy.md`
-- `./nuguard.yaml.example` (example config file for setting defaults)
-- `./canary.example.json` (canary template for red-team testing)
-
-Examples:
+| File | Purpose |
+|---|---|
+| `nuguard.yaml.example` | Fully annotated config template — copy to `nuguard.yaml` |
+| `canary.example.json` | Canary seed template for red-team exfiltration detection |
+| `cognitive_policy.md` | Blank Cognitive Policy with section headers |
 
 ```bash
 nuguard init
-nuguard init --path ./cognitive_policy.md
-nuguard init --force
+nuguard init --dir ./my-project
+nuguard init --force          # overwrite existing files
 ```
 
-Notable options:
+| Flag | Default | Description |
+|---|---|---|
+| `--dir`, `-d` | `.` | Directory to write files into |
+| `--force` | `false` | Overwrite files that already exist |
 
-- `--path`: custom output path for the starter policy file
-- `--force`: overwrite existing files without confirmation
+---
 
 ## `nuguard sbom`
 
 SBOM generation, validation, and management.
 
-Common usage:
+### Subcommands
+
+| Subcommand | Description |
+|---|---|
+| `generate` | Scan source or a remote repo and produce an AI-SBOM JSON |
+| `validate` | Validate a JSON file against the bundled AI-SBOM schema |
+| `register` | Register an SBOM in the local database (`~/.nuguard/nuguard.db`) |
+| `show` | Display a registered SBOM by ID |
+| `schema` | Print the bundled `aibom.schema.json` to stdout |
+| `plugin` | Run a toolbox plugin or list available plugins |
+
+### `nuguard sbom generate`
 
 ```bash
-nuguard sbom generate --source . --output app.sbom.json
-nuguard sbom generate --from-repo https://github.com/org/repo --ref main --output app.sbom.json
-nuguard sbom validate --file app.sbom.json
-nuguard sbom schema
-nuguard sbom --help
+nuguard sbom generate --source ./my-app --output app.sbom.json
+nuguard sbom generate --from-repo https://github.com/org/repo --ref main
+nuguard sbom generate --source . --llm --format cyclonedx
 ```
 
-Notable options:
+| Flag | Default | Description |
+|---|---|---|
+| `--source`, `-s` | — | Local source directory to scan |
+| `--from-repo` | — | Remote Git URL to clone and scan |
+| `--ref` | `main` | Branch, tag, or commit for `--from-repo` |
+| `--token` | `$GH_TOKEN` | GitHub token for private repos |
+| `--output`, `-o` | `app.sbom.json` | Output file |
+| `--llm` / `--no-llm` | off | Enable LLM enrichment of SBOM nodes |
+| `--format`, `-f` | `json` | `json` \| `cyclonedx` \| `cyclonedx-ext` \| `markdown` |
+| `--config` | `./nuguard.yaml` | Config file path |
 
-- `--source`: local source directory
-- `--from-repo`: remote Git repository URL
-- `--output`: generated SBOM path
-- `--format`: `json`, `cyclonedx`, or `markdown`
-- `--llm`: enable LLM enrichment
-- `--config`: read defaults from `nuguard.yaml`
-- `--token`: GitHub token for private repos or API rate limits
+### `nuguard sbom validate`
+
+```bash
+nuguard sbom validate --file app.sbom.json
+```
+
+### `nuguard sbom plugin`
+
+Run a toolbox plugin against an existing SBOM or list available plugins.
+
+```bash
+nuguard sbom plugin list
+
+# SARIF findings export
+nuguard sbom plugin run sarif_export --sbom app.sbom.json --output results.sarif
+
+# SPDX 3.0.1 JSON-LD export
+nuguard sbom plugin run spdx_export --sbom app.sbom.json --output app.spdx.json
+
+# CycloneDX 1.6 standard BOM
+nuguard sbom plugin run cyclonedx_export --sbom app.sbom.json --output app.cdx.json
+
+# CycloneDX 1.6 with AI-specific extensions
+nuguard sbom plugin run cyclonedx_ext_export --sbom app.sbom.json --output app.cdx-ext.json
+
+# Markdown report
+nuguard sbom plugin run markdown_export --sbom app.sbom.json
+```
+
+| Plugin name | Output | Description |
+|---|---|---|
+| `cyclonedx_export` | CycloneDX 1.6 JSON | Standard BOM with xelo:* properties and optional VEX vulnerabilities |
+| `cyclonedx_ext_export` | CycloneDX 1.6 JSON | Extended BOM with `modelCard`, `services`, `compositions`, and `nuguard:*` properties |
+| `spdx_export` | SPDX 3.0.1 JSON-LD | SPDX 3.0.1 export with `ai_AIPackage`, `dataset_Dataset`, and relationship graph |
+| `sarif_export` | SARIF 2.1.0 JSON | Vulnerability findings export for GitHub Code Scanning |
+| `markdown_export` | Markdown text | Human-readable SBOM report |
+| `dependency_analyze` | JSON | Dependency breakdown and freshness analysis |
+| `license_check` | JSON | Dependency licence compliance check |
+| `vulnerability` | JSON | Structural + CVE scan (providers: `vela-rules`, `osv`, `grype`, `all`) |
+
+| Flag | Default | Description |
+|---|---|---|
+| `--sbom` | **required** | SBOM JSON file to pass to the plugin |
+| `--output`, `-o` | stdout | Write plugin output to this file |
+| `--format`, `-f` | `json` | Format hint passed to the plugin (`json` \| `markdown`) |
+
+---
 
 ## `nuguard analyze`
 
-Runs static risk analysis from an existing AI-SBOM.
+Static risk analysis from an AI-SBOM — no running application required.
 
-Examples:
+Runs up to six scanners in sequence: NuGuard AI structural rules (NGA), OSV CVE lookup, Grype, Checkov (IaC), Trivy (containers), and Semgrep (source). Each scanner is silently skipped when its binary is absent or has nothing to scan.
+
+NGA rules are always on and produce findings in the "NGA" family designed to identify structural risks in the AI stack of the application.
 
 ```bash
 nuguard analyze --sbom app.sbom.json
-nuguard analyze --sbom app.sbom.json --format json
-nuguard analyze --sbom app.sbom.json --format sarif
-nuguard analyze --sbom app.sbom.json --source .
+nuguard analyze --sbom app.sbom.json --format sarif --output results.sarif
+nuguard analyze --sbom app.sbom.json --source . --llm
+nuguard analyze --sbom app.sbom.json --no-grype --no-trivy --min-severity high
 ```
 
-Notable options:
+| Flag | Default | Description |
+|---|---|---|
+| `--sbom` | **required** | Path to AI-SBOM JSON |
+| `--format`, `-f` | `markdown` | `markdown` \| `sarif` \| `json` |
+| `--min-severity` | `medium` | Minimum severity to include: `critical` \| `high` \| `medium` \| `low` \| `info` |
+| `--source`, `-s` | — | Source directory for Checkov / Trivy / Semgrep path resolution |
+| `--atlas` / `--no-atlas` | on | MITRE ATLAS native graph checks (NGA-001–019) |
+| `--osv` / `--no-osv` | on | OSV dependency CVE scan |
+| `--grype` / `--no-grype` | on | Grype CVE scan (requires `grype` on PATH) |
+| `--checkov` / `--no-checkov` | on | Checkov IaC scan (requires `checkov` on PATH) |
+| `--trivy` / `--no-trivy` | on | Trivy container/fs scan (requires `trivy` on PATH) |
+| `--semgrep` / `--no-semgrep` | on | Semgrep AI-security rules (requires `semgrep` on PATH) |
+| `--llm` | off | LLM enrichment in the ATLAS annotation pass |
+| `--output`, `-o` | stdout | Write report to this file |
 
-- `--sbom`: required SBOM JSON path
-- `--format`: `markdown`, `json`, or `sarif`
-- `--min-severity`: `critical`, `high`, `medium`, `low`, `info`
-- `--source`: source tree for Checkov, Trivy, and Semgrep
-- `--atlas`, `--osv`, `--grype`, `--checkov`, `--trivy`, `--semgrep`
-- `--llm`: enable LLM enrichment in the ATLAS pass
-- `--output`: write report to a file
+**Source path resolution for Checkov:** When `--source` is provided, IaC file paths found in SBOM nodes are resolved relative to that directory. If no IaC nodes exist, Checkov scans the entire source directory. The SBOM `target` field is used as a fallback when `--source` is not set.
+
+---
 
 ## `nuguard scan`
 
-Runs the unified static pipeline: SBOM generation, analysis, optional policy, and optional redteam.
-
-Examples:
+Unified pipeline that chains SBOM generation, static analysis, policy check, and optionally red-team into a single command.
 
 ```bash
-nuguard scan --source . --output-dir nuguard-reports
+nuguard scan --source .
 nuguard scan --source . --steps sbom,analyze
 nuguard scan --source . --policy cognitive_policy.md --target http://localhost:3000
+nuguard scan --source . --llm --output-dir reports/
 ```
 
-Notable options:
+| Flag | Default | Description |
+|---|---|---|
+| `--source`, `-s` | `.` | Application source directory |
+| `--output-dir`, `-o` | `nuguard-reports` | Directory for all output artifacts |
+| `--steps` | `sbom,analyze` | Comma-separated subset: `sbom,analyze,policy,redteam` |
+| `--policy` | — | Cognitive Policy Markdown path (required for `policy` / `redteam` steps) |
+| `--target` | — | Live app URL for the `redteam` step |
+| `--container-image` | — | Container image ref for Trivy image scan (e.g. `myapp:latest`) |
+| `--fail-on` | `high` | Exit code 1 when any finding meets this severity |
+| `--llm` | off | LLM enrichment in the ATLAS annotation pass |
+| `--no-atlas` | — | Skip ATLAS pass |
+| `--no-osv` | — | Skip OSV scan |
+| `--no-grype` | — | Skip Grype scan |
+| `--no-checkov` | — | Skip Checkov scan |
+| `--no-trivy` | — | Skip Trivy scan |
+| `--no-semgrep` | — | Skip Semgrep scan |
 
-- `--source`: application source directory
-- `--output-dir`: destination for generated artifacts
-- `--steps`: subset of `sbom,analyze,policy,redteam`
-- `--policy`: cognitive policy path
-- `--target`: live app URL for redteam
-- `--fail-on`: severity threshold for non-zero exit
+---
 
 ## `nuguard policy`
 
-Policy linting, policy-to-SBOM checks, and compliance assessment.
+Cognitive policy linting, SBOM cross-checking, and compliance assessment.
+Cognitive Policies are human-readable Markdown documents that define guardrails for AI application behavior, architecture, and components. They can be used for documentation, internal governance, or as enforceable policies in CI or runtime gates. `nuguard init` creates a `cognitive_policy.md` template with common sections.
 
-Examples:
+### `nuguard policy validate`
+
+Lint a Cognitive Policy Markdown file for completeness and common mistakes.
 
 ```bash
 nuguard policy validate --file cognitive_policy.md
-nuguard policy check --policy cognitive_policy.md --sbom app.sbom.json
-nuguard policy check --sbom app.sbom.json --framework owasp-llm-top10
-nuguard policy check --config nuguard.yaml
 ```
 
-Subcommands:
+| Flag | Default | Description |
+|---|---|---|
+| `--file`, `-f` | **required** | Cognitive Policy Markdown file |
 
-- `validate`
-- `check`
+### `nuguard policy check`
 
-Notable options for `check`:
+Cross-check policy against SBOM, run a compliance framework assessment, or both.
 
-- `--policy`
-- `--sbom`
-- `--config`
-- `--framework`
-- `--controls`
-- `--format text|json`
-- `--llm`
+```bash
+# Policy vs SBOM gap analysis
+nuguard policy check --policy policy.md --sbom app.sbom.json
+
+# Compliance framework assessment
+nuguard policy check --sbom app.sbom.json --framework owasp-llm-top10
+
+# Combined with LLM enrichment
+nuguard policy check --policy policy.md --sbom app.sbom.json \
+  --framework owasp-llm-top10 --llm
+
+# Read paths from nuguard.yaml
+nuguard policy check
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--policy`, `-p` | — | Cognitive Policy Markdown file |
+| `--sbom` | — | AI-SBOM JSON to cross-check against |
+| `--config` | `./nuguard.yaml` | Config file path |
+| `--framework` | — | `owasp-llm-top10` \| `nist-ai-rmf` \| `eu-ai-act` |
+| `--controls` | — | Custom controls JSON file |
+| `--format` | `text` | `text` \| `json` |
+| `--llm` / `--no-llm` | off | LLM fallback for controls that can't be assessed from SBOM alone |
+
+### `nuguard policy show`
+
+Display a stored cognitive policy by database ID.
+
+---
 
 ## `nuguard redteam`
 
-Runs dynamic adversarial testing against a live AI application.
+Dynamic adversarial testing against a live AI application. Reads the AI-SBOM to derive an attack surface, generates and executes scenarios, and produces structured findings with OWASP/MITRE mappings.
 
-Examples:
+See [redteam-engine.md](./redteam-engine.md) for a complete description of how the engine works.
 
 ```bash
-nuguard redteam --sbom app.sbom.json --target http://localhost:3000
-nuguard redteam --sbom app.sbom.json --target http://localhost:3000 --canary ./canary.json
-nuguard redteam --sbom app.sbom.json --target http://localhost:3000 --format json
-nuguard redteam --config nuguard.yaml
+# Basic scan (app already running)
+nuguard redteam --sbom app.sbom.json --target http://localhost:8000
+
+# Full scan with policy enforcement and canary detection
+nuguard redteam --sbom app.sbom.json --target http://localhost:8000 \
+  --policy policy.md --canary canary.json --profile full
+
+# Auto-launch the app then scan
+nuguard redteam --sbom app.sbom.json --source ./my-app --launch
+
+# Guided adaptive conversations (requires redteam LLM)
+NUGUARD_REDTEAM_LLM_MODEL=openrouter/meta-llama/llama-3.3-70b-instruct \
+NUGUARD_REDTEAM_LLM_API_KEY=sk-... \
+nuguard redteam --sbom app.sbom.json --target http://localhost:8000 \
+  --guided --guided-max-turns 15 --guided-concurrency 2
+
+# Limit to specific attack families
+nuguard redteam --sbom app.sbom.json --target http://localhost:8000 \
+  --scenarios prompt-injection,data-exfiltration
+
+# CI gate — SARIF output, fail on high+
+nuguard redteam --sbom app.sbom.json --target $APP_URL \
+  --profile ci --format sarif --output results.sarif --fail-on high
 ```
 
-Notable options:
+| Flag | Default | Description |
+|---|---|---|
+| `--sbom` | from `nuguard.yaml` | AI-SBOM JSON path |
+| `--target` | SBOM discovery | Live application URL (`http://host:port`) |
+| `--source` | — | App source directory — used for `.env` loading and `--launch` |
+| `--launch` / `--no-launch` | off | Auto-start the app from the SBOM startup command; stop it after the scan. Requires `--source` |
+| `--policy` | from `nuguard.yaml` | Cognitive Policy Markdown path |
+| `--canary` | from `nuguard.yaml` | Canary JSON file path |
+| `--profile` | `ci` | `ci` (impact ≥ 5.0 only) or `full` (all scenarios) |
+| `--scenarios` | all | Comma-separated filter: `prompt-injection`, `tool-abuse`, `privilege-escalation`, `data-exfiltration`, `policy-violation`, `mcp-toxic-flow` |
+| `--min-impact-score` | `0.0` | Exclude scenarios below this pre-score [0–10] |
+| `--guided` / `--no-guided` | on when LLM set | Adaptive multi-turn guided conversations |
+| `--guided-max-turns` | `12` | Max turns per guided conversation |
+| `--guided-concurrency` | `3` | Parallel guided conversations |
+| `--format` | `text` | `text` \| `json` \| `sarif` |
+| `--output` | — | Write findings to this file |
+| `--fail-on` | `high` | Exit code 2 if any finding meets this severity |
+| `--config` | `./nuguard.yaml` | Config file path |
 
-- `--sbom`: required unless configured in `nuguard.yaml`
-- `--target`: live application URL
-- `--source`: app source directory
-- `--policy`: cognitive policy path
-- `--canary`: canary JSON file
-- `--profile`: `ci` or `full`
-- `--scenarios`: comma-separated scenario filter
-- `--min-impact-score`
-- `--format`: `text`, `json`, or `sarif`
-- `--fail-on`
-- `--guided`
-- `--guided-max-turns`
-- `--guided-concurrency`
+**Target URL resolution order:** `--target` flag → `redteam.target` in `nuguard.yaml` → SBOM-discovered URLs (local → staging → production) → error.
 
-## Stub Commands (coming in a future release)
+**LLM configuration** (no CLI flags — use env vars or `nuguard.yaml`):
 
-These commands currently exist but are not implemented end-to-end:
+| Env var | YAML key | Description |
+|---|---|---|
+| `NUGUARD_REDTEAM_LLM_MODEL` | `redteam.llm.model` | Attack payload generation — must be an uncensored model |
+| `NUGUARD_REDTEAM_LLM_API_KEY` | `redteam.llm.api_key` | API key for the redteam LLM |
+| `NUGUARD_REDTEAM_EVAL_LLM_MODEL` | `redteam.eval_llm.model` | Response evaluation and report generation |
+| `NUGUARD_REDTEAM_EVAL_LLM_API_KEY` | `redteam.eval_llm.api_key` | API key for the eval LLM |
 
-### `nuguard seed`
+---
 
-Intended for seeding canary data into the target app before red-team runs.
+## Configuration File
 
-### `nuguard report`
+All CLI flags can be set in `nuguard.yaml`. Run `nuguard init` to create an annotated template.
 
-Intended for generating reports for completed red-team runs.
+```bash
+nuguard init            # writes nuguard.yaml.example
+cp nuguard.yaml.example nuguard.yaml
+```
 
-### `nuguard findings`
+Priority order: **CLI flags > nuguard.yaml > environment variables > built-in defaults**
 
-Intended for listing findings from completed red-team runs.
+Secrets are never stored directly — use `${ENV_VAR}` interpolation:
 
-### `nuguard replay`
+```yaml
+redteam:
+  auth_header: "Authorization: Bearer ${TARGET_TOKEN}"
+  llm:
+    api_key: ${NUGUARD_REDTEAM_LLM_API_KEY}
+```
 
-Intended for deterministic replay of completed red-team runs.
+---
 
-## Help
-
-For command-specific details:
+## Getting Help
 
 ```bash
 nuguard --help
 nuguard sbom --help
+nuguard sbom generate --help
 nuguard analyze --help
 nuguard scan --help
 nuguard policy --help
+nuguard policy check --help
 nuguard redteam --help
 ```

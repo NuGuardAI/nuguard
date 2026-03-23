@@ -251,13 +251,13 @@ Unknown adapter-specific values go in `metadata.extras`.
 To validate an SBOM file with the CLI:
 
 ```bash
-uv run nuguard sbom validate --file ./docs/sample-sbom.json
+nuguard sbom validate --file ./docs/sample-sbom.json
 ```
 
 To inspect the generated JSON schema:
 
 ```bash
-uv run nuguard sbom schema
+nuguard sbom schema
 ```
 
 ## Sample File

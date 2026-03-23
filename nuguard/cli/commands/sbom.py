@@ -56,14 +56,17 @@ _OPT_LLM = typer.Option(
 )
 _OPT_FORMAT = typer.Option(
     "json", "--format", "-f",
-    help="Additional output format: json (default, SBOM only) | cyclonedx | markdown.",
+    help=(
+        "Additional output format: json (default, SBOM only) | cyclonedx | "
+        "cyclonedx-ext (CycloneDX 1.6 with AI-specific extensions) | markdown."
+    ),
 )
 _OPT_CONFIG = typer.Option(
     None, "--config", help="Path to nuguard.yaml (default: ./nuguard.yaml).", exists=False,
 )
 
 
-_VALID_FORMATS = {"json", "cyclonedx", "markdown"}
+_VALID_FORMATS = {"json", "cyclonedx", "cyclonedx-ext", "markdown"}
 
 # GitHub token prefixes (classic PAT, OAuth, fine-grained PAT, GitHub Apps)
 _GH_TOKEN_PREFIXES = ("ghp_", "gho_", "ghs_", "ghu_", "github_pat_")
@@ -278,6 +281,11 @@ def _do_generate(
         data = AiSbomSerializer.to_cyclonedx(doc)
         cdx_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
         _console.print(f"[green]CycloneDX written to[/green] {cdx_path}")
+    elif format == "cyclonedx-ext":
+        cdx_path = output.with_name(f"{stem}.cdx-ext.json")
+        data = AiSbomSerializer.to_cyclonedx_extended(doc)
+        cdx_path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+        _console.print(f"[green]CycloneDX Extended written to[/green] {cdx_path}")
     elif format == "markdown":
         from nuguard.sbom.toolbox.plugins.markdown_exporter import (
             MarkdownExporterPlugin,  # noqa: PLC0415
@@ -438,28 +446,51 @@ def plugin_cmd(
         "--sbom",
         help="Path to the SBOM JSON file.",
     ),
+    output_file: Optional[Path] = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help="Write plugin output to this file instead of stdout.",
+    ),
     format: str = typer.Option(
         "json",
         "--format",
         "-f",
-        help="Output format: json | markdown",
+        help="Output format hint passed to the plugin: json | markdown.",
     ),
 ) -> None:
     """Run a toolbox plugin or list available plugins.
 
     Examples:
         nuguard sbom plugin list
-        nuguard sbom plugin run markdown --sbom app.sbom.json --format markdown
-        nuguard sbom plugin run sarif --sbom app.sbom.json
+        nuguard sbom plugin run markdown_export --sbom app.sbom.json
+        nuguard sbom plugin run sarif_export --sbom app.sbom.json --output results.sarif
+        nuguard sbom plugin run spdx_export --sbom app.sbom.json --output app.spdx.json
+        nuguard sbom plugin run cyclonedx_export --sbom app.sbom.json --output app.cdx.json
+        nuguard sbom plugin run cyclonedx_ext_export --sbom app.sbom.json --output app.cdx-ext.json
     """
     from nuguard.sbom.toolbox.orchestrator import PluginOrchestrator
 
     orchestrator = PluginOrchestrator()
 
     if action == "list":
-        _console.print("[bold]Available plugins:[/bold]")
+        from rich.table import Table
+        table = Table(title="Available plugins", show_header=True)
+        table.add_column("Name")
+        table.add_column("Description")
+        _PLUGIN_DESCRIPTIONS = {
+            "cyclonedx_export":     "CycloneDX 1.6 BOM (standard)",
+            "cyclonedx_ext_export": "CycloneDX 1.6 BOM with AI-specific extensions (modelCard, services, compositions)",
+            "dependency_analyze":   "Dependency breakdown and freshness analysis",
+            "license_check":        "Check dependency licence compliance",
+            "markdown_export":      "Human-readable Markdown report",
+            "sarif_export":         "SARIF 2.1.0 findings export (GitHub Code Scanning compatible)",
+            "spdx_export":          "SPDX 3.0.1 JSON-LD export",
+            "vulnerability":        "Structural + CVE vulnerability scan (providers: vela-rules, osv, grype, all)",
+        }
         for name in orchestrator.list_plugins():
-            _console.print(f"  - {name}")
+            table.add_row(name, _PLUGIN_DESCRIPTIONS.get(name, ""))
+        _console.print(table)
         return
 
     if action == "run":
@@ -483,26 +514,51 @@ def plugin_cmd(
             raise typer.Exit(code=3) from exc
 
         try:
-            result = orchestrator.run(plugin_name, doc)
+            result = orchestrator.run(plugin_name, doc, {"format": format})
         except ValueError as exc:
             _err_console.print(str(exc))
             raise typer.Exit(code=1) from exc
 
-        if format == "markdown" and result.details:
-            # For markdown plugin, print the markdown content
-            md = result.details.get("markdown", "")
-            if md:
-                _console.print(md)
-                return
+        # Determine the best output content
+        details = result.details or {}
 
-        # Default: print as JSON
-        import json as _json
-        output = {
+        # Plugins that produce structured documents write them directly
+        if plugin_name in ("sarif_export", "cyclonedx_export", "cyclonedx_ext_export",
+                           "spdx_export") and details:
+            content = json.dumps(details, indent=2, default=str)
+            if output_file:
+                output_file.write_text(content, encoding="utf-8")
+                _console.print(
+                    f"[green]{result.message}[/green] → {output_file}"
+                )
+            else:
+                import sys
+                sys.stdout.write(content + "\n")
+            return
+
+        # Markdown plugin — return the markdown text
+        if plugin_name == "markdown_export":
+            md = details.get("markdown", "")
+            if output_file:
+                output_file.write_text(md, encoding="utf-8")
+                _console.print(f"[green]{result.message}[/green] → {output_file}")
+            else:
+                _console.print(md)
+            return
+
+        # Default: structured JSON wrapper
+        wrapper = {
             "status": result.status,
             "message": result.message,
-            "details": result.details,
+            "details": details,
         }
-        _console.print(_json.dumps(output, indent=2, default=str))
+        content = json.dumps(wrapper, indent=2, default=str)
+        if output_file:
+            output_file.write_text(content, encoding="utf-8")
+            _console.print(f"[green]{result.message}[/green] → {output_file}")
+        else:
+            import sys
+            sys.stdout.write(content + "\n")
         return
 
     _err_console.print(f"Unknown action '{action}'. Use 'run' or 'list'.")

@@ -1,0 +1,463 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NuGuard OSS Docs</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet" />
+    <link rel="stylesheet" href="style.css" />
+    <link rel="icon" type="image/x-icon" href="favicon.ico" />
+    <link rel="apple-touch-icon" href="favicon-180.png" />
+    <link rel="stylesheet"
+        href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/styles/github-dark.min.css" />
+    <style>
+        /* ── Doc page layout ──────────────────────────────────────────── */
+        .doc-layout {
+            display: flex;
+            max-width: var(--max-w);
+            margin: 0 auto;
+            padding: calc(var(--nav-h) + 2rem) 1.5rem 4rem;
+            gap: 3rem;
+            min-height: calc(100vh - var(--nav-h));
+        }
+
+        /* ── Sidebar ──────────────────────────────────────────────────── */
+        .doc-sidebar {
+            width: 220px;
+            flex-shrink: 0;
+            align-self: flex-start;
+            /* don't stretch — required for sticky child */
+            position: sticky;
+            top: calc(var(--nav-h) + 1.5rem);
+        }
+
+        .doc-sidebar-inner {
+            display: block;
+            /* explicit block so nothing flex-collapses it */
+        }
+
+        .sidebar-back {
+            display: block;
+            font-size: .8rem;
+            color: var(--text-muted);
+            margin-bottom: 1.25rem;
+        }
+
+        .sidebar-back:hover {
+            color: var(--text);
+            text-decoration: none;
+        }
+
+        .sidebar-section-title {
+            display: block;
+            font-size: .7rem;
+            font-weight: 600;
+            letter-spacing: .08em;
+            text-transform: uppercase;
+            color: var(--text-dim);
+            margin-bottom: .5rem;
+        }
+
+        .sidebar-nav {
+            display: block;
+        }
+
+        .sidebar-nav ul {
+            display: block;
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .sidebar-nav li {
+            display: block;
+            margin-top: .1rem;
+        }
+
+        .sidebar-nav a {
+            display: block;
+            padding: .35rem .75rem;
+            border-radius: var(--radius-sm);
+            font-size: .875rem;
+            color: var(--text-muted);
+            transition: color .15s, background .15s;
+        }
+
+        .sidebar-nav a:hover {
+            color: var(--text);
+            background: var(--bg-card);
+            text-decoration: none;
+        }
+
+        .sidebar-nav a.active {
+            color: var(--accent);
+            background: var(--accent-glow);
+            font-weight: 500;
+        }
+
+        /* ── Main content ─────────────────────────────────────────────── */
+        .doc-main {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .doc-loading {
+            display: flex;
+            align-items: center;
+            gap: .75rem;
+            color: var(--text-muted);
+            padding: 3rem 0;
+        }
+
+        .doc-loading-spinner {
+            width: 18px;
+            height: 18px;
+            border: 2px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin .7s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* ── Markdown rendered content ────────────────────────────────── */
+        .doc-content {
+            color: var(--text);
+            line-height: 1.75;
+            font-size: 1rem;
+        }
+
+        .doc-content h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: .75rem;
+            padding-bottom: .5rem;
+            border-bottom: 1px solid var(--border);
+            color: var(--text);
+        }
+
+        .doc-content h2 {
+            font-size: 1.4rem;
+            font-weight: 600;
+            margin-top: 2.5rem;
+            margin-bottom: .75rem;
+            padding-bottom: .4rem;
+            border-bottom: 1px solid var(--border-mute);
+            color: var(--text);
+        }
+
+        .doc-content h3 {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-top: 1.75rem;
+            margin-bottom: .5rem;
+            color: var(--text);
+        }
+
+        .doc-content h4 {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-top: 1.5rem;
+            margin-bottom: .4rem;
+            color: var(--text-muted);
+        }
+
+        .doc-content p {
+            margin-bottom: 1rem;
+        }
+
+        .doc-content a {
+            color: var(--accent);
+        }
+
+        .doc-content a:hover {
+            text-decoration: underline;
+        }
+
+        .doc-content ul,
+        .doc-content ol {
+            padding-left: 1.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .doc-content li {
+            margin-bottom: .3rem;
+        }
+
+        .doc-content li>ul,
+        .doc-content li>ol {
+            margin-top: .3rem;
+            margin-bottom: 0;
+        }
+
+        .doc-content code {
+            font-family: var(--mono);
+            font-size: .875em;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            padding: .15em .4em;
+            color: var(--orange);
+        }
+
+        .doc-content pre {
+            background: var(--bg-surface);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 1.25rem;
+            overflow-x: auto;
+            margin-bottom: 1.25rem;
+        }
+
+        .doc-content pre code {
+            background: none;
+            border: none;
+            padding: 0;
+            color: inherit;
+            font-size: .875rem;
+            line-height: 1.6;
+        }
+
+        .doc-content blockquote {
+            border-left: 3px solid var(--accent);
+            padding: .5rem 1rem;
+            margin: 1rem 0 1.25rem;
+            background: var(--accent-glow);
+            border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+            color: var(--text-muted);
+        }
+
+        .doc-content blockquote p {
+            margin-bottom: 0;
+        }
+
+        .doc-content table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 1.5rem;
+            font-size: .9rem;
+        }
+
+        .doc-content th,
+        .doc-content td {
+            text-align: left;
+            padding: .6rem .9rem;
+            border: 1px solid var(--border);
+        }
+
+        .doc-content th {
+            background: var(--bg-surface);
+            font-weight: 600;
+            color: var(--text);
+        }
+
+        .doc-content td {
+            background: var(--bg-card);
+        }
+
+        .doc-content tr:nth-child(even) td {
+            background: var(--bg-card-alt);
+        }
+
+        .doc-content hr {
+            border: none;
+            border-top: 1px solid var(--border);
+            margin: 2rem 0;
+        }
+
+        .doc-content img {
+            max-width: 100%;
+            border-radius: var(--radius-sm);
+        }
+
+        /* ── highlight.js override ─────────────────────────────────────── */
+        .hljs {
+            background: transparent !important;
+        }
+
+        /* ── Responsive ────────────────────────────────────────────────── */
+        @media (max-width: 768px) {
+            .doc-layout {
+                flex-direction: column;
+                padding-top: calc(var(--nav-h) + 1rem);
+            }
+
+            .doc-sidebar {
+                width: 100%;
+                position: static;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <!-- Navigation -->
+    <nav>
+        <a href="index.html" class="nav-brand">
+            <img src="xelo-logo-tr1.png" alt="NuGuard" class="nav-logo" />
+        </a>
+        <ul class="nav-links">
+            <li><a href="index.html#what">What it does</a></li>
+            <li><a href="index.html#for-whom">Who it's for</a></li>
+            <li><a href="index.html#quickstart">Quickstart</a></li>
+            <li><a href="index.html#frameworks">Frameworks</a></li>
+            <li><a href="doc.html?page=getting-started" class="active">Docs</a></li>
+            <li><a href="https://github.com/nuguardai/nuguard-oss" class="nav-cta">GitHub ↗</a></li>
+        </ul>
+    </nav>
+
+    <div class="doc-layout">
+
+        <!-- Sidebar -->
+        <aside class="doc-sidebar">
+            <div class="doc-sidebar-inner">
+                <a href="index.html" class="sidebar-back">← Home</a>
+                <div class="sidebar-section-title">Documentation</div>
+                <div class="sidebar-nav">
+                    <ul>
+                        <li><a href="doc.html?page=getting-started" data-page="getting-started">Getting Started</a></li>
+                        <li><a href="doc.html?page=aibom-schema" data-page="aibom-schema">AI SBOM Schema</a></li>
+                        <li><a href="doc.html?page=cli-reference" data-page="cli-reference">CLI Reference</a></li>
+                        <li><a href="doc.html?page=developer-guide" data-page="developer-guide">Developer Guide</a></li>
+                        <li><a href="doc.html?page=vulnerability-scanning"
+                                data-page="vulnerability-scanning">Vulnerability Scanning</a></li>
+                        <li><a href="doc.html?page=atlas-mitre" data-page="atlas-mitre">MITRE ATLAS Annotation</a></li>
+                        <li><a href="doc.html?page=example-openai-cs-agents"
+                                data-page="example-openai-cs-agents">Example: OpenAI CS Agents</a></li>
+                        <li><a href="doc.html?page=troubleshooting" data-page="troubleshooting">Troubleshooting</a></li>
+                    </ul>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main content -->
+        <main class="doc-main">
+            <div id="doc-loading" class="doc-loading">
+                <div class="doc-loading-spinner"></div>
+                Loading…
+            </div>
+            <article id="doc-content" class="doc-content" style="display:none"></article>
+        </main>
+
+    </div>
+
+    <!-- Footer -->
+    <footer>
+        <div class="footer-inner">
+            <div class="footer-brand">
+            </div>
+            <ul class="footer-links">
+                <li><a href="doc.html?page=getting-started">Getting Started</a></li>
+                <li><a href="doc.html?page=cli-reference">CLI Reference</a></li>
+                <li><a href="doc.html?page=developer-guide">Developer Guide</a></li>
+                <li><a href="doc.html?page=vulnerability-scanning">Vulnerability Scanning</a></li>
+                <li><a href="doc.html?page=atlas-mitre">MITRE ATLAS</a></li>
+                <li><a href="doc.html?page=example-openai-cs-agents">Example: OpenAI CS Agents</a></li>
+                <li><a href="https://github.com/nuguardai/nuguard-oss">GitHub</a></li>
+                <li><a href="https://github.com/nuguardai/nuguard-oss/issues">Issues</a></li>
+            </ul>
+            <span class="footer-copy">Apache-2.0 · Built by NuGuard AI</span>
+        </div>
+    </footer>
+
+    <!-- marked.js + highlight.js from CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+
+    <script>
+        (function () {
+            // Page name → title map
+            const PAGE_TITLES = {
+                'getting-started': 'Getting Started',
+                'aibom-schema': 'AI SBOM Schema',
+                'cli-reference': 'CLI Reference',
+                'developer-guide': 'Developer Guide',
+                'vulnerability-scanning': 'Vulnerability Scanning',
+                'atlas-mitre': 'MITRE ATLAS Annotation',
+                'example-openai-cs-agents': 'Example: OpenAI CS Agents',
+                'troubleshooting': 'Troubleshooting',
+                'CHANGELOG': 'Documentation Changelog',
+                'README': 'Documentation Index',
+            };
+
+            // Resolve page from ?page= param, default to getting-started
+            const params = new URLSearchParams(window.location.search);
+            const page = params.get('page') || 'getting-started';
+
+            // Highlight active sidebar link
+            document.querySelectorAll('.sidebar-nav a[data-page]').forEach(function (a) {
+                if (a.dataset.page === page) a.classList.add('active');
+            });
+
+            // Set page title
+            const title = PAGE_TITLES[page] || page;
+            document.title = title + ' — NuGuard OSS Docs';
+
+            // Configure marked
+            marked.setOptions({
+                highlight: null, // handled by hljs after render
+                breaks: false,
+                gfm: true,
+            });
+
+            // Intercept .md links inside rendered content
+            function interceptDocLinks(container) {
+                container.querySelectorAll('a[href]').forEach(function (a) {
+                    const href = a.getAttribute('href');
+                    if (!href || href.startsWith('http') || href.startsWith('#') || href.startsWith('mailto')) return;
+                    if (href.endsWith('.md')) {
+                        a.addEventListener('click', function (e) {
+                            e.preventDefault();
+                            const pageName = href.replace(/^\.\//, '').replace(/\.md$/, '');
+                            window.location.href = 'doc.html?page=' + pageName;
+                        });
+                    }
+                });
+            }
+
+            // Fetch and render
+            fetch(page + '.md?v=' + Date.now())
+                .then(function (res) {
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    return res.text();
+                })
+                .then(function (md) {
+                    const html = marked.parse(md);
+                    const loading = document.getElementById('doc-loading');
+                    const content = document.getElementById('doc-content');
+                    loading.style.display = 'none';
+                    content.style.display = 'block';
+                    content.innerHTML = html;
+
+                    // Syntax-highlight all code blocks
+                    content.querySelectorAll('pre code').forEach(function (block) {
+                        hljs.highlightElement(block);
+                    });
+
+                    // Wire up .md links
+                    interceptDocLinks(content);
+
+                    // Update page title from first h1 if present
+                    const h1 = content.querySelector('h1');
+                    if (h1) document.title = h1.textContent + ' — NuGuard OSS Docs';
+                })
+                .catch(function (err) {
+                    const loading = document.getElementById('doc-loading');
+                    loading.innerHTML = '<p style="color:var(--red)">Failed to load <strong>' + page + '.md</strong>: ' + err.message + '</p>';
+                });
+        })();
+    </script>
+
+</body>
+
+</html>

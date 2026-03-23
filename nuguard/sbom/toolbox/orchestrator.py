@@ -7,18 +7,26 @@ from typing import Any
 
 from .models import ToolResult
 from .plugin_base import ToolPlugin
+from .plugins.cyclonedx_exporter import CycloneDxExporter
+from .plugins.cyclonedx_ext_exporter import CycloneDxExtExporter
 from .plugins.dependency import DependencyAnalyzerPlugin
 from .plugins.license_checker import LicenseCheckerPlugin
 from .plugins.markdown_exporter import MarkdownExporterPlugin
 from .plugins.sarif_exporter import SarifExporterPlugin
+from .plugins.spdx_exporter import SpdxExporter
+from .plugins.vulnerability import VulnerabilityScannerPlugin
 
 _log = logging.getLogger(__name__)
 
 _DEFAULT_PLUGINS: list[type[ToolPlugin]] = [
+    CycloneDxExporter,
+    CycloneDxExtExporter,
     DependencyAnalyzerPlugin,
     LicenseCheckerPlugin,
     MarkdownExporterPlugin,
     SarifExporterPlugin,
+    SpdxExporter,
+    VulnerabilityScannerPlugin,
 ]
 
 # Public registry: maps canonical plugin name → plugin class

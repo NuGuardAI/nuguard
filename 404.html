@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>NuGuard OSS – Page Not Found</title>
+    <script>
+        // Org-level 404 handler for nuguardai.github.io
+        (function () {
+            var path = window.location.pathname;
+            var search = window.location.search;
+            var hash = window.location.hash;
+
+            // Case-fold the repo segment for any known renames
+            var redirected = path
+                .replace(/^\/Xelo(\/|$)/, '/xelo$1');   // /Xelo/... → /xelo/...
+
+            if (redirected !== path) {
+                window.location.replace(redirected + search + hash);
+                return; // browser will navigate away
+            }
+
+            // For bare /xelo or /xelo/ send to docs
+            if (path === '/xelo' || path === '/xelo/') {
+                window.location.replace('/xelo/docs/');
+            }
+            // Otherwise fall through and show the 404 UI below
+        })();
+    </script>
+    <style>
+        *,
+        *::before,
+        *::after {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #0d1117;
+            color: #e6edf3;
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+
+        .card {
+            text-align: center;
+            max-width: 480px;
+        }
+
+        .code {
+            font-size: 6rem;
+            font-weight: 700;
+            line-height: 1;
+            color: #58a6ff;
+            letter-spacing: -4px;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin: 1rem 0 0.5rem;
+        }
+
+        p {
+            color: #8b949e;
+            line-height: 1.6;
+        }
+
+        .links {
+            margin-top: 2rem;
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        a.btn {
+            display: inline-block;
+            padding: 0.5rem 1.25rem;
+            border-radius: 6px;
+            text-decoration: none;
+            font-size: 0.9rem;
+            font-weight: 500;
+            transition: opacity .15s;
+        }
+
+        a.btn:hover {
+            opacity: 0.8;
+        }
+
+        a.btn-primary {
+            background: #238636;
+            color: #fff;
+        }
+
+        a.btn-secondary {
+            border: 1px solid #30363d;
+            color: #e6edf3;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="card">
+        <div class="code">404</div>
+        <h1>Page not found</h1>
+        <p>The page you're looking for doesn't exist or may have moved.</p>
+        <div class="links">
+            <a href="/nuguard-oss/docs/" class="btn btn-primary">NuGuard OSS docs</a>
+            <a href="https://github.com/NuGuardAI" class="btn btn-secondary">GitHub org</a>
+        </div>
+    </div>
+</body>
+
+</html>

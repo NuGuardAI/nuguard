@@ -1,0 +1,349 @@
+# NuGuard OSS — AI Application Security Suite
+
+NuGuard OSS is an end-to-end security platform for AI-powered and agentic applications.
+It covers the full security pipeline: AI Bill of Materials (AI-SBOM) generation,
+static risk analysis, cognitive policy enforcement, and dynamic adversarial red-teaming.
+The four capabilities share a single intermediate representation — the AI-SBOM — so every
+downstream step works from evidence derived directly from source code.
+
+License: Apache-2.0 · Built by NuGuard AI (https://nuguard.ai/)
+
+---
+
+## The Pipeline
+
+```
+Source code / remote repo
+        │
+        ▼
+nuguard sbom generate          AI-SBOM: structured graph of every AI component
+        │
+        ▼
+nuguard analyze                Static risk analysis (NGA rules + OSV + Grype + Checkov + Trivy + Semgrep + ATLAS)
+        │
+        ▼
+nuguard policy check           Cognitive Policy linting and compliance assessment
+        │
+        ▼
+nuguard redteam                Dynamic adversarial testing against the live application
+```
+
+Run any single step in isolation or chain all four with `nuguard scan`.
+
+---
+
+## Key Differentiators
+
+### 1. SBOM-driven attack surface — not generic fuzzing
+
+Most red-team tools (Garak, PyRIT, Promptbench) send generic payload libraries at an LLM
+endpoint. NuGuard first reads the application source, builds a semantic graph of every
+agent node, tool call, data store access, guardrail, and authentication boundary, then
+derives attack scenarios from that graph. 
+- A scenario targeting SQL injection through a database tool is only generated when the SBOM shows an agent that actually calls a SQL-injectable tool. 
+- A PHI exfiltration scenario is only generated when the SBOM contains a datastore node with PII classification. 
+- No false-start scenarios. No wasted API calls against capabilities the app does not expose.
+
+### 2. Framework-aware AST extraction — not regex scraping
+
+NuGuard uses Python `ast` and tree-sitter (TypeScript) to parse 15+ AI framework APIs
+at the syntax level: LangChain, LangGraph, OpenAI Agents SDK, CrewAI (code + YAML),
+AutoGen (code + YAML), Google ADK, LlamaIndex, Agno, AWS BedrockAgentCore, Azure AI
+Agent Service, Guardrails AI, FastMCP / MCP Server (Python + TypeScript), Azure Semantic
+Kernel, LangChain.js, LangGraph.js. Regex fallbacks catch model names, auth keywords,
+secret patterns, and IaC signals across SQL, YAML, Dockerfiles, Nginx, and prompt files.
+
+### 3. Cross-component risk reasoning — not single-file pattern matching
+
+Because the AI-SBOM is a graph (nodes + typed edges), NuGuard can reason across component
+boundaries that single-file scanners (Semgrep, CodeQL) cannot: "this agent has write
+access to a HIPAA-classified datastore via a tool that has no auth boundary and no
+guardrail node in the graph." The NGA structural rules fire on combinations of SBOM
+signals, not on individual file patterns.
+
+### 4. Cognitive Policy as code — not documentation
+
+A Cognitive Policy is a Markdown document declaring allowed/restricted topics, restricted
+actions, HITL triggers, data classification, and rate limits. NuGuard's policy engine
+parses it into a structured model, lints it for completeness (6 lint rules), cross-checks
+it against the AI-SBOM for structural gaps (5 checks: missing guardrails, unmatched tool
+names, missing datastore classification, missing auth nodes), and assesses SBOM evidence
+against compliance frameworks (OWASP LLM Top 10, NIST AI RMF, EU AI Act). 
+Policies are version-controlled Markdown files — no UI, no proprietary format.
+
+### 5. Canary-based exfiltration detection — no false negatives
+
+NuGuard supports canary seeds: unique sentinel strings planted in the target app's
+database before a red-team scan. The CanaryScanner checks every HTTP response for those
+strings. A canary hit is definitive proof of data leakage — no keyword heuristic, no LLM
+judge uncertainty. Canary hits always override other signals and elevate severity to
+CRITICAL.
+
+### 6. Guided multi-turn adaptive conversations
+
+Beyond static payload chains, NuGuard's GuidedAttackExecutor runs real-time multi-turn
+conversations with the target application using the Crescendo tactic pattern:
+rapport → normalise → bridge → escalate → inject. The ConversationDirector assesses
+progress after each turn and redirects based on the target's response. This catches
+gradual context manipulation that single-shot prompt injection tests miss.
+
+### 7. Fully offline by default
+
+Structural NGA rules, ATLAS checks, policy linting, and policy-to-SBOM cross-checks all
+run with zero network access and no API key. LLM enrichment and OSV/Grype CVE lookups are
+opt-in flags. This makes the core pipeline safe for air-gapped environments and fast
+enough for pre-commit hooks and CI gates.
+
+---
+
+## 1. AI-SBOM Generation (`nuguard sbom`)
+
+Scans Python, TypeScript/JavaScript, Jupyter notebooks, SQL schemas, Dockerfiles,
+Terraform, CloudFormation, Azure Bicep, Kubernetes manifests, and Nginx configs.
+
+**Component types detected:** AGENT, MODEL, TOOL, PROMPT, DATASTORE, GUARDRAIL,
+AUTH, DEPLOYMENT, CONTAINER_IMAGE, VECTOR_STORE, EMBEDDING, PIPELINE, CHAIN,
+API_ENDPOINT, PRIVILEGE, IAM, MCP_SERVER, INFRASTRUCTURE_AS_CODE.
+
+**Output formats:**
+- `json` — native AiSbomDocument (Pydantic v2, JSON Schema bundled at `nuguard sbom schema`)
+- `cyclonedx` — CycloneDX 1.6 BOM with `nuguard:*` properties
+- `cyclonedx-ext` — CycloneDX 1.6 with AI first-class fields: `modelCard`, `data.contents`,
+  `data.governance`, `services` section for API endpoints, `compositions` for edge graph,
+  `evidence.identity.occurrences` for source provenance
+- `markdown` — human-readable component report
+
+**Toolbox plugin exports** (via `nuguard sbom plugin run`):
+- `cyclonedx_export` — CycloneDX 1.6 standard BOM
+- `cyclonedx_ext_export` — CycloneDX 1.6 with AI-specific extensions
+- `spdx_export` — SPDX 3.0.1 JSON-LD with `ai_AIPackage`, `dataset_Dataset`, relationship graph
+- `sarif_export` — SARIF 2.1.0 for GitHub Code Scanning
+- `vulnerability` — Structural + CVE scan (providers: vela-rules, osv, grype, all)
+- `dependency_analyze` — dependency breakdown by group and type
+- `license_check` — SPDX licence compliance check
+- `markdown_export` — human-readable report
+
+**Remote repo scanning:**
+```bash
+nuguard sbom generate --from-repo https://github.com/org/repo --ref main
+```
+
+**LLM enrichment** (optional, `--llm`): verifies uncertain detections, enriches node
+descriptions, generates a use-case summary and IaC security briefing. Default model:
+`gemini/gemini-2.0-flash`. API key via `LITELLM_API_KEY`.
+
+---
+
+## 2. Static Analysis (`nuguard analyze`)
+
+Works from an existing AI-SBOM — no running application required. Runs up to seven
+scanners in sequence; each is silently skipped when its binary is absent or has nothing
+to scan.
+
+| Scanner | Built-in | What it covers |
+|---|---|---|
+| NGA structural rules | Yes | Missing guardrails, unsafe tool access, privilege paths, injection surfaces, data-handling gaps, audit-trail absence |
+| OSV | Yes | Python/JS/Go CVEs via https://api.osv.dev |
+| MITRE ATLAS | Yes | Native graph checks with ATLAS v2 technique mapping (AML.T0051–AML.T0054, etc.) |
+| Grype | Optional binary | Package + container CVEs (NVD, GHSA, distro advisories) |
+| Checkov | Optional binary | IaC misconfigurations (Terraform, CloudFormation, Bicep, K8s) |
+| Trivy | Optional binary | Container image + filesystem secrets, CVEs |
+| Semgrep | Optional binary | AI-security source patterns, code smells |
+
+All findings are normalized into a shared `Finding` model with `rule_id`, `severity`,
+`title`, `description`, `affected_nodes`, `mitre_atlas`, and `remediation` fields.
+
+Output formats: `markdown` (default), `json`, `sarif`.
+
+---
+
+## 3. Cognitive Policy (`nuguard policy`)
+
+### Policy Markdown format
+
+```markdown
+## Allowed Topics
+- Customer support
+- Order status
+
+## Restricted Topics
+- Medical advice
+
+## Restricted Actions
+- Refund without user confirmation
+
+## HITL Triggers
+- Financial changes over $500
+
+## Data Classification
+- PII: name, email, phone
+
+## Rate Limits
+- requests_per_minute: 60
+```
+
+### Policy linting rules (POLICY-001–006)
+
+Missing topic coverage, HITL without restricted actions, vague HITL trigger text,
+invalid rate limit values, all sections empty, duplicate entries.
+
+### Policy-to-SBOM cross-checks (CHECK-001–005)
+
+HITL triggers without GUARDRAIL nodes, restricted actions without matching TOOL nodes,
+data classification without datastore classification evidence, rate limits without
+API_ENDPOINT metadata, HITL triggers without AUTH nodes.
+
+### Compliance frameworks
+
+Built-in deterministic assessment against OWASP LLM Top 10, NIST AI RMF, EU AI Act.
+Each control is evaluated from SBOM evidence first; `--llm` enables fallback to an LLM
+judge for controls not assessable from the SBOM alone. Results include a weighted
+compliance score.
+
+---
+
+## 4. Red-Team Engine (`nuguard redteam`)
+
+Dynamic adversarial testing against a live AI application endpoint.
+
+### Attack scenario families
+
+| Family | SBOM signal that triggers it | Example techniques |
+|---|---|---|
+| `prompt-injection` | AGENT nodes with system_prompt or blocked_topics | System prompt extraction, guardrail bypass, context flooding, structural injection, goal redirection |
+| `data-exfiltration` | DATASTORE nodes with PII/PHI classification | Base64-encoded exfiltration, cross-tenant leakage, document-embedded exfiltration |
+| `tool-abuse` | TOOL nodes with SQL-injectable or SSRF-capable tags | SQL injection via tool parameters, SSRF via tool URLs |
+| `privilege-escalation` | AGENT→TOOL→DATASTORE privilege chains | Tool-chain escalation to admin actions |
+| `policy-violation` | Cognitive Policy (if provided) | Elicit responses that violate declared Cognitive Policy |
+| `mcp-toxic-flow` | MCP_SERVER nodes | Tool injection via untrusted MCP output, output poisoning |
+| `api-attacks` | API_ENDPOINT nodes | Auth bypass, mass assignment, IDOR |
+
+### Execution modes
+
+**Static chain execution**: each scenario is a multi-step exploit chain with step
+dependencies, `on_failure` policies (abort / skip / mutate), and per-step success
+criteria (keyword match, regex, LLM eval, canary hit).
+
+**Guided adaptive conversations** (`--guided`): the `ConversationDirector` runs the full
+Crescendo tactic pattern (rapport → normalise → bridge → escalate → inject) in real-time,
+reading each response before planning the next turn. Configurable via
+`--guided-max-turns` (default 12) and `--guided-concurrency` (default 3 parallel).
+
+### Adaptive mutation
+
+When a static payload is refused, `AdaptiveMutation` classifies the refusal type (HARD,
+SOFT, TOPIC_DRIFT, PARTIAL) and generates a targeted follow-up via the redteam LLM.
+
+### Two-LLM architecture
+
+| Role | Config | Purpose |
+|---|---|---|
+| Redteam LLM | `redteam.llm.model` / `NUGUARD_REDTEAM_LLM_MODEL` | Attack payload generation — must be an uncensored model |
+| Eval LLM | `redteam.eval_llm.model` / `NUGUARD_REDTEAM_EVAL_LLM_MODEL` | Response evaluation, LLM-judge success detection, report generation |
+
+Recommended redteam LLMs: `openrouter/meta-llama/llama-3.3-70b-instruct`,
+`openrouter/mistralai/mistral-large`, `ollama/llama3` (local, no data egress).
+
+### CI integration
+
+```bash
+# Exit code 2 when any HIGH+ finding is confirmed; SARIF for GitHub Code Scanning
+nuguard redteam --sbom app.sbom.json --target $APP_URL \
+  --profile ci --format sarif --output results.sarif --fail-on high
+```
+
+---
+
+## 5. Unified Pipeline (`nuguard scan`)
+
+```bash
+# Full pipeline: SBOM → analyze → policy → redteam
+nuguard scan --source . \
+  --policy cognitive_policy.md \
+  --target http://localhost:3000 \
+  --output-dir reports/
+
+# SBOM + analysis only (no live target required)
+nuguard scan --source . --steps sbom,analyze
+```
+
+---
+
+## Configuration
+
+All flags map to `nuguard.yaml`. Priority order:
+**CLI flags > nuguard.yaml > environment variables > built-in defaults**
+
+Secrets use `${ENV_VAR}` interpolation and are never stored directly.
+
+```bash
+nuguard init    # writes nuguard.yaml.example, canary.example.json, cognitive_policy.md
+```
+
+---
+
+## Installation
+
+```bash
+pip install nuguard
+
+# Verify
+nuguard --help
+```
+
+Optional tools for full static-analysis coverage:
+```bash
+pip install checkov semgrep
+curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin
+```
+
+---
+
+## Quickstart
+
+```bash
+# 1. Generate an AI-SBOM for a local project
+nuguard sbom generate --source ./my-ai-app --output app.sbom.json
+
+# 2. Run static analysis
+nuguard analyze --sbom app.sbom.json --format markdown
+
+# 3. Lint and cross-check a Cognitive Policy
+nuguard policy validate --file cognitive_policy.md
+nuguard policy check --policy cognitive_policy.md --sbom app.sbom.json \
+  --framework owasp-llm-top10
+
+# 4. Dynamic red-team scan (requires running app)
+nuguard redteam --sbom app.sbom.json --target http://localhost:8000 \
+  --policy cognitive_policy.md --canary canary.json --profile full
+
+# 5. Export findings as SARIF for GitHub Code Scanning
+nuguard sbom plugin run sarif_export --sbom app.sbom.json --output results.sarif
+
+# 6. All in one
+nuguard scan --source . --policy cognitive_policy.md --target http://localhost:8000 \
+  --output-dir ./nuguard-reports
+```
+
+Python API:
+```python
+from pathlib import Path
+from nuguard.sbom import AiSbomConfig, AiSbomExtractor, AiSbomSerializer
+
+doc = AiSbomExtractor().extract_from_path(
+    path=Path("./my-ai-app"),
+    config=AiSbomConfig(),
+)
+print(f"nodes={len(doc.nodes)}, edges={len(doc.edges)}")
+json_str = AiSbomSerializer.to_json(doc)
+```
+
+---
+
+## Community & Support
+
+- GitHub: https://github.com/NuGuardAI/nuguard-oss
+- Issues: https://github.com/NuGuardAI/nuguard-oss/issues
+- Discord: https://discord.gg/EF99Ck7a
+- NuGuard AI: https://nuguard.ai/

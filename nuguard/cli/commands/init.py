@@ -98,6 +98,58 @@ redteam:
     - internal-tools.example.com
     - docs-mcp.example.com
 
+  # ── Guided conversations ──────────────────────────────────────────────────
+  # Guided conversations are adaptive multi-turn attacks: each attacker turn is
+  # generated in real time by an LLM that reads the agent's previous responses
+  # and steers toward the attack goal.  They find vulnerabilities that simple
+  # one-shot probes miss.  Requires redteam.llm.model to be set.
+  guided_conversations: true    # disable to fall back to static exploit chains only
+
+  # Maximum turns per guided conversation before the run is abandoned.
+  # Increase for slow agents; lower to 6–8 for faster CI scans.
+  guided_max_turns: 12
+
+  # How many guided conversations to run concurrently.
+  # Each conversation holds one HTTP connection open; set to 1 to debug
+  # sequentially or match your app's concurrency limit.
+  guided_concurrency: 3
+
+  # ── Redteam LLM (attack-payload generation) ──────────────────────────────
+  # The redteam LLM generates adversarial prompts, plans guided-conversation
+  # milestones, and mutates failed payloads.  It MUST be an uncensored model —
+  # safety-tuned models (like GPT-4o or Gemini default) refuse to generate
+  # attack content and will cause every scenario to fall back to static payloads.
+  #
+  # Recommended choices (uncensored / pentest-grade):
+  #   openrouter/meta-llama/llama-3.3-70b-instruct   — good balance, free tier
+  #   openrouter/mistralai/mistral-large              — strong instruction follow
+  #   openrouter/anthropic/claude-opus-4              — highest quality attacks
+  #   ollama/llama3                                   — fully local, no key needed
+  #
+  # If omitted, NuGuard falls back to the top-level llm.model, which may refuse
+  # to generate attack content — set this explicitly for reliable results.
+  llm:
+    model: openrouter/meta-llama/llama-3.3-70b-instruct
+    # api_key: ${NUGUARD_REDTEAM_LLM_API_KEY}   # env: NUGUARD_REDTEAM_LLM_API_KEY
+
+  # ── Eval LLM (response evaluation and report generation) ─────────────────
+  # The eval LLM judges whether agent responses contain sensitive disclosures,
+  # policy violations, or signs of successful exploitation.  It also writes the
+  # executive summary at the end of the report.
+  #
+  # A well-aligned model (GPT-4o, Gemini, Claude) works well here — it only
+  # reads agent responses, never generates attack content.  You can use the same
+  # model as the top-level llm.model and omit this section entirely if you do
+  # not need a separate key or model for evaluation.
+  #
+  # Use a separate model here when:
+  #   - Your attack LLM is self-hosted / local (no good at evaluation)
+  #   - You want cheaper/faster evaluation (e.g. gpt-4o-mini)
+  #   - Your attack and eval keys belong to different providers
+  eval_llm:
+    model: gemini/gemini-2.0-flash    # defaults to top-level llm.model if omitted
+    # api_key: ${NUGUARD_REDTEAM_EVAL_LLM_API_KEY}   # defaults to llm.api_key if omitted
+
 # ─── Static analysis ──────────────────────────────────────────────────────────
 analyze:
   min_severity: medium              # critical | high | medium | low
