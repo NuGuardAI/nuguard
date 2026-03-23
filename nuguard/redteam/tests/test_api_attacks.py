@@ -7,7 +7,9 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from nuguard.models.exploit_chain import GoalType, HTTP_2XX_SENTINEL, ScenarioType
-from nuguard.models.sbom import (
+import uuid as _uuid
+
+from nuguard.sbom.models import (
     AiSbomDocument,
     Edge,
     EdgeRelationshipType,
@@ -50,9 +52,10 @@ def _api_node(
     path_params: list[str] | None = None,
 ) -> Node:
     return Node(
-        id=node_id,
+        id=_uuid.uuid5(_uuid.NAMESPACE_URL, node_id),
         name=name,
         component_type=NodeType.API_ENDPOINT,
+        confidence=0.9,
         metadata=NodeMetadata(
             endpoint=path,
             method=method,
@@ -215,7 +218,7 @@ def test_generator_produces_auth_bypass_for_protected_endpoint():
     scenarios = gen.generate()
     auth_bypass = [s for s in scenarios if s.scenario_type == ScenarioType.AUTH_BYPASS]
     assert len(auth_bypass) == 1
-    assert auth_bypass[0].target_node_ids == ["ep1"]
+    assert auth_bypass[0].target_node_ids == [str(_uuid.uuid5(_uuid.NAMESPACE_URL, "ep1"))]
 
 
 def test_generator_produces_mass_assignment_for_post_endpoint():
@@ -252,7 +255,11 @@ def test_generator_skips_idor_when_no_id_params():
 def test_generator_no_api_scenarios_without_api_endpoint_nodes():
     # SBOM with only AGENT nodes — no API_ENDPOINT nodes
     agent = Node(
-        id="a1", name="ChatAgent", component_type=NodeType.AGENT, metadata=NodeMetadata()
+        id=_uuid.uuid5(_uuid.NAMESPACE_URL, "a1"),
+        name="ChatAgent",
+        component_type=NodeType.AGENT,
+        confidence=0.9,
+        metadata=NodeMetadata(),
     )
     sbom = _make_sbom([agent])
     gen = ScenarioGenerator(sbom)

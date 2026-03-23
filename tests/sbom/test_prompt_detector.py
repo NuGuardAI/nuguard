@@ -6,7 +6,7 @@ import pytest
 from pathlib import Path
 
 
-from nuguard.models.sbom import NodeType
+from nuguard.sbom.models import NodeType
 try:
     from nuguard.sbom.extractor.prompt_detector import PromptDetector
 except ImportError:

@@ -6,7 +6,7 @@ import pytest
 from pathlib import Path
 
 
-from nuguard.models.sbom import DataClassification
+from nuguard.sbom.models import DataClassification
 try:
     from nuguard.sbom.extractor.pii_classifier import PiiClassifier
 except ImportError:

@@ -17,8 +17,8 @@ from __future__ import annotations
 import ast
 from typing import Any
 
-from ..base import ComponentDetection, FrameworkAdapter, RelationshipHint
 from ...types import ComponentType
+from ..base import ComponentDetection, FrameworkAdapter, RelationshipHint
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -280,9 +280,9 @@ class FastAPIAdapter(FrameworkAdapter):
                 func_name = node.name
                 canon = f"fastapi:endpoint:{file_path}:{func_name}"
 
-                auth_type = _extract_depends_auth_type(node, auth_vars)
-                if auth_type is None:
-                    auth_type = _extract_security_auth_type(decorator, auth_vars)
+                ep_auth: str | None = _extract_depends_auth_type(node, auth_vars)
+                if ep_auth is None:
+                    ep_auth = _extract_security_auth_type(decorator, auth_vars)
 
                 schema, chat_key, chat_list, resp_key = _extract_endpoint_schema(
                     node, model_schemas
@@ -294,8 +294,8 @@ class FastAPIAdapter(FrameworkAdapter):
                 }
                 if path_str:
                     metadata["endpoint"] = path_str
-                if auth_type:
-                    metadata["auth_type"] = auth_type
+                if ep_auth:
+                    metadata["auth_type"] = ep_auth
                 if schema:
                     metadata["request_body_schema"] = schema
                 if chat_key:
@@ -314,7 +314,11 @@ class FastAPIAdapter(FrameworkAdapter):
                     metadata=metadata,
                     file_path=file_path,
                     line=node.lineno,
-                    snippet=f"@{receiver}.{method}({path_str!r})" if receiver else f"@{method}({path_str!r})",
+                    snippet=(
+                        f"@{receiver}.{method}({path_str!r})"
+                        if receiver
+                        else f"@{method}({path_str!r})"
+                    ),
                     evidence_kind="ast",
                 )
                 detections.append(ep_detection)

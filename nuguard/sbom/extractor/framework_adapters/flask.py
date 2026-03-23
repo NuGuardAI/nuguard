@@ -12,7 +12,7 @@ import logging
 import uuid
 from pathlib import Path
 
-from nuguard.models.sbom import Edge, EdgeRelationshipType, Node, NodeMetadata, NodeType
+from nuguard.sbom.models import Edge, EdgeRelationshipType, Node, NodeMetadata, NodeType
 
 logger = logging.getLogger(__name__)
 
@@ -34,9 +34,9 @@ _PROMPT_FIELD_NAMES = {
 }
 
 
-def _stable_id(key: str) -> str:
+def _stable_id(key: str) -> uuid.UUID:
     """Generate a stable UUID5 from a canonical key string."""
-    return str(uuid.uuid5(uuid.NAMESPACE_URL, key))
+    return uuid.uuid5(uuid.NAMESPACE_URL, key)
 
 
 def _infer_chat_payload_key(
@@ -107,7 +107,7 @@ class FlaskAdapter:
         edges: list[Edge] = []
 
         # Map: variable_name -> node_id (for agents/blueprints)
-        agent_vars: dict[str, str] = {}
+        agent_vars: dict[str, uuid.UUID] = {}
         # Map: app/bp variable -> agent name (for display purposes)
 
         # Collected auth node canonical names to avoid duplicates

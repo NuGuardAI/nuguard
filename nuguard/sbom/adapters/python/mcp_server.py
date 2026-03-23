@@ -20,9 +20,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..base import ComponentDetection, FrameworkAdapter
 from ...normalization import canonicalize_text
 from ...types import ComponentType
+from ..base import ComponentDetection, FrameworkAdapter
 
 # FastMCP package entrypoints
 _MCP_SERVER_CLASSES = {"FastMCP", "Server", "MCPServer"}
@@ -254,7 +254,7 @@ class MCPServerAdapter(FrameworkAdapter):
                 "no_auth_required": not bool(server_auth_kwarg),
             }
             # If the server has a configured host/port, record the MCP server URL
-            _srv_url = _build_server_url(server_host, server_port)
+            _srv_url = _build_server_url(server_host or "", server_port or "")
             if _srv_url:
                 tool_meta["mcp_server_url"] = _srv_url
             tool_detections.append(

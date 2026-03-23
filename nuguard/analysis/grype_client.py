@@ -153,12 +153,13 @@ def query_grype_sbom(
     if _grype_path() is None:
         return []
 
-    # Build CycloneDX JSON from the SBOM
+    # Build CycloneDX JSON from the SBOM deps
     try:
-        from nuguard.sbom.models import AiSbomDocument
-        from nuguard.sbom.serializer import AiSbomSerializer
-        doc     = AiSbomDocument.model_validate(sbom_dict)
-        cdx     = AiSbomSerializer.to_cyclonedx(doc)
+        from nuguard.analysis._cdx import sbom_dict_to_cyclonedx  # noqa: PLC0415
+        cdx     = sbom_dict_to_cyclonedx(sbom_dict)
+        if not cdx.get("components"):
+            _log.debug("grype: no package deps in SBOM — skipping sbom scan")
+            return []
         cdx_str = json.dumps(cdx)
     except Exception as exc:
         _log.warning("grype: failed to build CycloneDX BOM: %s", exc)

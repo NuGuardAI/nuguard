@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import typer
 
+from nuguard.cli.commands.init import init_app
 from nuguard.cli.commands.sbom import sbom_app
 from nuguard.cli.commands.analyze import analyze_app
 from nuguard.cli.commands.scan import scan_app
@@ -24,6 +25,7 @@ app = typer.Typer(
     add_completion=False,
 )
 
+app.add_typer(init_app, name="init")
 app.add_typer(sbom_app, name="sbom")
 app.add_typer(analyze_app, name="analyze")
 app.add_typer(scan_app, name="scan")
