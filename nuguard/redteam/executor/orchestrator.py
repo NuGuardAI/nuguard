@@ -34,6 +34,19 @@ from .guided_executor import GuidedAttackExecutor
 _log = logging.getLogger(__name__)
 
 
+def _normalize_scenario_token(value: str) -> str:
+    return value.strip().lower().replace("-", "_")
+
+
+def _scenario_matches_filter(scenario: AttackScenario, filters: set[str]) -> bool:
+    if not filters:
+        return True
+    goal = _normalize_scenario_token(scenario.goal_type.value)
+    scenario_type = _normalize_scenario_token(scenario.scenario_type.value)
+    title = _normalize_scenario_token(scenario.title)
+    return any(token in goal or token in scenario_type or token in title for token in filters)
+
+
 @dataclass
 class ScenarioRecord:
     """Verbose per-scenario execution record for troubleshooting reports."""
@@ -222,6 +235,7 @@ class RedteamOrchestrator:
         guided_concurrency: int = 3,
         extra_headers: dict[str, str] | None = None,
         strict_outcome: bool = False,
+        scenario_filter: list[str] | None = None,
     ) -> None:
         self._sbom = sbom
         self._target_url = target_url
@@ -245,12 +259,21 @@ class RedteamOrchestrator:
         # Outcome semantics: when True, a scan with predominantly transport errors
         # is reported as inconclusive rather than no_findings.
         self._strict_outcome = strict_outcome
+        self._scenario_filter: set[str] = {
+            _normalize_scenario_token(s)
+            for s in (scenario_filter or [])
+            if s and s.strip()
+        }
         # Auto-discover from SBOM; fall back to provided values
         self._chat_path, self._chat_payload_key, self._chat_payload_list = (
             _discover_chat_config(sbom, chat_path, chat_payload_key, chat_payload_list)
         )
         # Populated by run() — scenarios executed and their titles
         self.scenarios_run: int = 0
+        self.scenarios_generated: int = 0
+        self.scenarios_selected: int = 0
+        self.generated_scenario_summaries: list[tuple[str, str, str, float]] = []
+        self.selected_scenario_summaries: list[tuple[str, str, str, float]] = []
         self.scenarios_executed: list[tuple[str, str, bool]] = []  # (title, goal_type, had_finding)
         # Verbose per-scenario records — populated regardless of whether a finding was raised
         self.scenario_records: list[ScenarioRecord] = []
@@ -288,6 +311,16 @@ class RedteamOrchestrator:
         _with_guided = self._guided_conversations and bool(self._redteam_llm)
         generator = ScenarioGenerator(self._sbom, self._policy)
         all_scenarios = generator.generate(with_guided=_with_guided)
+        self.scenarios_generated = len(all_scenarios)
+        self.generated_scenario_summaries = [
+            (
+                s.title,
+                s.goal_type.value,
+                s.scenario_type.value,
+                float(s.impact_score),
+            )
+            for s in all_scenarios
+        ]
 
         # 2. LLM payload enrichment (opt-in — only when redteam_llm is configured)
         if self._redteam_llm and all_scenarios:
@@ -334,7 +367,22 @@ class RedteamOrchestrator:
                 s for s in all_scenarios if s.impact_score >= self._min_impact
             ]
 
+        if self._scenario_filter:
+            scenarios = [
+                s for s in scenarios if _scenario_matches_filter(s, self._scenario_filter)
+            ]
+
         self.scenarios_run = len(scenarios)
+        self.scenarios_selected = len(scenarios)
+        self.selected_scenario_summaries = [
+            (
+                s.title,
+                s.goal_type.value,
+                s.scenario_type.value,
+                float(s.impact_score),
+            )
+            for s in scenarios
+        ]
         if self.llm_enriched_scenarios:
             self.llm_enriched_executed = sum(
                 1 for s in scenarios if s.scenario_id in _llm_payloads  # type: ignore[possibly-undefined]

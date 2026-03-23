@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -11,6 +12,81 @@ import typer
 from nuguard.common.logging import get_logger
 
 _log = get_logger(__name__)
+
+
+def _env_true(name: str) -> bool:
+    """Return True when an env var is set to a truthy value."""
+    val = os.getenv(name, "")
+    return val.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _print_verbose_scan_details(
+    orchestrator: object,
+    findings_before_filter: int,
+    findings_after_filter: int,
+    scenario_filter: list[str] | None,
+) -> None:
+    """Emit deterministic verbose scan details to stderr.
+
+    This output is independent of logger handlers, so users always see run
+    details when verbose mode is enabled.
+    """
+    generated = int(getattr(orchestrator, "scenarios_generated", 0))
+    selected = int(getattr(orchestrator, "scenarios_selected", 0))
+    executed = list(getattr(orchestrator, "scenarios_executed", []))
+    records = list(getattr(orchestrator, "scenario_records", []))
+    generated_summaries = list(getattr(orchestrator, "generated_scenario_summaries", []))
+    selected_summaries = list(getattr(orchestrator, "selected_scenario_summaries", []))
+    scan_outcome = str(getattr(orchestrator, "scan_outcome", "unknown"))
+
+    typer.echo("[redteam-verbose] Scenario generation", err=True)
+    typer.echo(f"[redteam-verbose]   generated_total={generated}", err=True)
+    for idx, item in enumerate(generated_summaries, 1):
+        title, goal, scenario_type, impact = item
+        typer.echo(
+            f"[redteam-verbose]   generated[{idx}] goal={goal} type={scenario_type} impact={impact:.2f} title={title}",
+            err=True,
+        )
+
+    typer.echo("[redteam-verbose] Scenario selection", err=True)
+    typer.echo(f"[redteam-verbose]   selected_total={selected}", err=True)
+    for idx, item in enumerate(selected_summaries, 1):
+        title, goal, scenario_type, impact = item
+        typer.echo(
+            f"[redteam-verbose]   selected[{idx}] goal={goal} type={scenario_type} impact={impact:.2f} title={title}",
+            err=True,
+        )
+
+    typer.echo("[redteam-verbose] Scenario execution", err=True)
+    typer.echo(f"[redteam-verbose]   executed_total={len(executed)}", err=True)
+    for idx, (title, goal, had_finding) in enumerate(executed, 1):
+        typer.echo(
+            f"[redteam-verbose]   executed[{idx}] goal={goal} had_finding={had_finding} title={title}",
+            err=True,
+        )
+    for idx, rec in enumerate(records, 1):
+        typer.echo(
+            f"[redteam-verbose]   record[{idx}] status={rec.chain_status} scenario_type={rec.scenario_type}"
+            f" http_2xx={rec.http_2xx} http_4xx={rec.http_4xx} http_5xx={rec.http_5xx}"
+            f" request_errors={rec.request_errors} timeout_errors={rec.timeout_errors}",
+            err=True,
+        )
+
+    typer.echo("[redteam-verbose] Findings", err=True)
+    typer.echo(
+        f"[redteam-verbose]   findings_before_filter={findings_before_filter}",
+        err=True,
+    )
+    typer.echo(
+        f"[redteam-verbose]   findings_after_filter={findings_after_filter}",
+        err=True,
+    )
+    if scenario_filter:
+        typer.echo(
+            f"[redteam-verbose]   scenario_filter={','.join(scenario_filter)}",
+            err=True,
+        )
+    typer.echo(f"[redteam-verbose]   scan_outcome={scan_outcome}", err=True)
 
 redteam_app = typer.Typer(
     name="redteam",
@@ -128,6 +204,7 @@ def redteam(
     effective_guided = guided if guided is not None else cfg.redteam_guided_conversations
     effective_guided_max_turns = guided_max_turns if guided_max_turns is not None else cfg.redteam_guided_max_turns
     effective_guided_concurrency = guided_concurrency if guided_concurrency is not None else cfg.redteam_guided_concurrency
+    effective_verbose = bool(cfg.redteam_verbose) or _env_true("NUGUARD_REDTEAM_VERBOSE")
 
     # Validate SBOM
     if not sbom_path or not sbom_path.exists():
@@ -180,6 +257,7 @@ def redteam(
             redteam_llm_api_key=cfg.redteam_llm_api_key,
             eval_llm_model=cfg.redteam_eval_llm_model,
             eval_llm_api_key=cfg.redteam_eval_llm_api_key,
+            verbose=effective_verbose,
         )
     )
 
@@ -236,6 +314,7 @@ async def _run_redteam(
     redteam_llm_api_key: str | None = None,
     eval_llm_model: str | None = None,
     eval_llm_api_key: str | None = None,
+    verbose: bool = False,
 ) -> list:
     """Async inner function: optionally launch the app, then run the orchestrator."""
     from nuguard.models.policy import CognitivePolicy
@@ -313,6 +392,7 @@ async def _run_redteam(
                 redteam_llm_api_key=redteam_llm_api_key,
                 eval_llm_model=eval_llm_model,
                 eval_llm_api_key=eval_llm_api_key,
+                verbose=verbose,
             )
 
     # App already running — just scan
@@ -337,6 +417,7 @@ async def _run_redteam(
         redteam_llm_api_key=redteam_llm_api_key,
         eval_llm_model=eval_llm_model,
         eval_llm_api_key=eval_llm_api_key,
+        verbose=verbose,
     )
 
 
@@ -360,6 +441,7 @@ async def _run_orchestrator(
     redteam_llm_api_key: str | None = None,
     eval_llm_model: str | None = None,
     eval_llm_api_key: str | None = None,
+    verbose: bool = False,
 ) -> list:
     from nuguard.common.llm_client import LLMClient
     from nuguard.redteam.executor.orchestrator import RedteamOrchestrator
@@ -386,10 +468,12 @@ async def _run_orchestrator(
         guided_concurrency=guided_concurrency,
         extra_headers=extra_headers,
         strict_outcome=strict_outcome,
+        scenario_filter=scenario_filter,
         redteam_llm=redteam_llm,
         eval_llm=eval_llm,
     )
     findings = await orchestrator.run()
+    findings_before_filter = len(findings)
 
     # Apply scenario filter if provided
     if scenario_filter:
@@ -401,6 +485,14 @@ async def _run_orchestrator(
                 for s in scenario_filter
             )
         ]
+
+    if verbose:
+        _print_verbose_scan_details(
+            orchestrator=orchestrator,
+            findings_before_filter=findings_before_filter,
+            findings_after_filter=len(findings),
+            scenario_filter=scenario_filter,
+        )
 
     return findings
 
