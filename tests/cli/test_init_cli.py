@@ -11,14 +11,20 @@ from nuguard.cli.main import app
 runner = CliRunner()
 
 
-def test_init_creates_cognitive_policy_template(tmp_path: Path) -> None:
-    out = tmp_path / "cognitive_policy.md"
-
-    result = runner.invoke(app, ["init", "--path", str(out)])
+def test_init_creates_starter_files(tmp_path: Path) -> None:
+    result = runner.invoke(app, ["init", "--dir", str(tmp_path)])
 
     assert result.exit_code == 0, result.output
-    assert out.exists()
-    assert out.read_text(encoding="utf-8") == (
+
+    cognitive_policy = tmp_path / "cognitive_policy.md"
+    canary = tmp_path / "canary.example.json"
+    config = tmp_path / "nuguard.yaml.example"
+
+    assert cognitive_policy.exists()
+    assert canary.exists()
+    assert config.exists()
+
+    assert cognitive_policy.read_text(encoding="utf-8") == (
         "# Cognitive Policy\n\n"
         "## Allowed Topics\n\n"
         "## Restricted Topics\n\n"
@@ -30,20 +36,23 @@ def test_init_creates_cognitive_policy_template(tmp_path: Path) -> None:
 
 
 def test_init_does_not_overwrite_without_force(tmp_path: Path) -> None:
-    out = tmp_path / "cognitive_policy.md"
-    out.write_text("existing\n", encoding="utf-8")
+    cognitive_policy = tmp_path / "cognitive_policy.md"
+    cognitive_policy.parent.mkdir(parents=True, exist_ok=True)
+    cognitive_policy.write_text("existing\n", encoding="utf-8")
 
-    result = runner.invoke(app, ["init", "--path", str(out)])
+    result = runner.invoke(app, ["init", "--dir", str(tmp_path)])
 
-    assert result.exit_code != 0
-    assert out.read_text(encoding="utf-8") == "existing\n"
+    assert result.exit_code == 0, result.output
+    assert cognitive_policy.read_text(encoding="utf-8") == "existing\n"
+    assert "skipped" in result.output
 
 
 def test_init_overwrites_with_force(tmp_path: Path) -> None:
-    out = tmp_path / "cognitive_policy.md"
-    out.write_text("existing\n", encoding="utf-8")
+    cognitive_policy = tmp_path / "cognitive_policy.md"
+    cognitive_policy.parent.mkdir(parents=True, exist_ok=True)
+    cognitive_policy.write_text("existing\n", encoding="utf-8")
 
-    result = runner.invoke(app, ["init", "--path", str(out), "--force"])
+    result = runner.invoke(app, ["init", "--dir", str(tmp_path), "--force"])
 
     assert result.exit_code == 0, result.output
-    assert "## Allowed Topics" in out.read_text(encoding="utf-8")
+    assert "## Allowed Topics" in cognitive_policy.read_text(encoding="utf-8")
