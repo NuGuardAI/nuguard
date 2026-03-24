@@ -124,23 +124,21 @@
                     </ul>
 
                     <div class="hero-actions">
-                        <a href="doc.html?page=quick-start" class="btn-primary">Get started →</a>
                         <a href="https://github.com/NuGuardAI/nuguard-oss" class="btn-secondary icon-link"><svg width="16"
                                 height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                                 <path
                                     d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
                             </svg>Star on GitHub</a>
-                    </div>
-
-                    <div class="install-block">
-                        <span class="prompt">$</span>
-                        <span class="cmd">pip install nuguard</span>
-                        <button title="Copy" onclick="navigator.clipboard.writeText('pip install nuguard')">
-                            <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
-                                <path
-                                    d="M0 6.75A.75.75 0 0 1 .75 6H2V1.75A.75.75 0 0 1 2.75 1h8.5A.75.75 0 0 1 12 1.75V6h1.25a.75.75 0 0 1 0 1.5H12v6.75a.75.75 0 0 1-.75.75h-8.5A.75.75 0 0 1 2 14.25V7.5H.75A.75.75 0 0 1 0 6.75Zm4.5 0V2.5h7V6h-7Zm-1 1.5v6h9v-6h-9Z" />
-                            </svg>
-                        </button>
+                        <div class="install-block">
+                            <span class="prompt">$</span>
+                            <span class="cmd">pip install nuguard</span>
+                            <button title="Copy" onclick="navigator.clipboard.writeText('pip install nuguard')">
+                                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor">
+                                    <path
+                                        d="M0 6.75A.75.75 0 0 1 .75 6H2V1.75A.75.75 0 0 1 2.75 1h8.5A.75.75 0 0 1 12 1.75V6h1.25a.75.75 0 0 1 0 1.5H12v6.75a.75.75 0 0 1-.75.75h-8.5A.75.75 0 0 1 2 14.25V7.5H.75A.75.75 0 0 1 0 6.75Zm4.5 0V2.5h7V6h-7Zm-1 1.5v6h9v-6h-9Z" />
+                                </svg>
+                            </button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -333,7 +331,7 @@
             <div class="stats-row">
                 <div class="stat">
                     <div class="stat-value">4</div>
-                    <div class="stat-label">Integrated security capabilities</div>
+                    <div class="stat-label">Integrated AI security capabilities</div>
                 </div>
                 <div class="stat">
                     <div class="stat-value">20+</div>
@@ -357,21 +355,14 @@
             <div class="what-grid">
                 <div class="what-text">
                     <div class="section-label">The NuGuard pipeline</div>
-                    <h2>One shared evidence graph.<br/>Four security capabilities.</h2>
+                    <h2>One shared evidence graph.<br/>Four AI security capabilities.</h2>
                     <p class="lead">
-                        Every NuGuard capability works from the same AI-SBOM — a structured graph of
-                        every agent, model, tool, prompt, datastore, guardrail, and auth boundary
-                        derived directly from your source code.
+                        Scan your source code once, and let AI-SBOM power every step of your security workflow.
                     </p>
-                    <p>
-                        That shared representation means static analysis, policy enforcement, and
-                        red-team attacks all work from the same evidence — no manual attestation,
-                        no configuration drift between tools.
-                    </p>
-                    <p>
-                        Run each step independently or chain all four with a single command:
-                        <code style="font-family:var(--mono);font-size:0.85rem;color:var(--accent)">nuguard scan --source .</code>
-                    </p>
+                    <ul class="lead" style="color:var(--text-secondary);margin-top:1rem;padding-left:1.25rem;">
+                        <li>Limit third-party tool exposure to your source code</li>
+                        <li>Use LLMs over your SBOM graph only when necessary</li>
+                    </ul>
                 </div>
 
                 <div>
@@ -381,28 +372,28 @@
                             <div class="step-num">1</div>
                             <div class="step-body">
                                 <h4>AI-SBOM Generation</h4>
-                                <p>AST-aware adapters for Python and TypeScript extract every AI component — agents, models, tools, prompts, datastores, guardrails, auth nodes, IaC. Produces a versioned, machine-readable graph.</p>
+                                <p>Extract every AI component — agents, models, tools, prompts, datastores, guardrails, auth nodes, IaC. Relationship between agents, tools, and guardrails is captured in a structured graph.</p>
                             </div>
                         </div>
                         <div class="pipeline-step">
                             <div class="step-num">2</div>
                             <div class="step-body">
-                                <h4>Static Risk Analysis</h4>
-                                <p>NGA structural rules, MITRE ATLAS graph checks, OSV CVEs, and optional Grype / Checkov / Trivy / Semgrep — all normalized into a single finding model. No running app required.</p>
+                                <h4>AI Risk Analysis</h4>
+                                <p>Deep security analysis of AI Stack against AI Security best practices and known vulnerabilities. Perfect during development.</p>
                             </div>
                         </div>
                         <div class="pipeline-step">
                             <div class="step-num">3</div>
                             <div class="step-body">
                                 <h4>Cognitive Policy</h4>
-                                <p>Define behavioral guardrails in plain Markdown. NuGuard lints the policy, cross-checks it against the SBOM for structural gaps, and scores it against OWASP LLM Top 10, NIST AI RMF, or EU AI Act.</p>
+                                <p>Define your app's AI behavior in plain English. Check between intent and implementation, and score it against OWASP LLM, NIST, etc.</p>
                             </div>
                         </div>
                         <div class="pipeline-step">
                             <div class="step-num">4</div>
                             <div class="step-body">
-                                <h4>SBOM-driven Red-Team <span style="color:var(--text-dim);font-weight:400;font-size:0.8rem">(dynamic)</span></h4>
-                                <p>Attack scenarios derived from the SBOM — not generic payloads. Prompt injection, data exfiltration, tool abuse, MCP toxic flows, privilege escalation. Guided multi-turn conversations with canary exfiltration detection.</p>
+                                <h4>Context-based Red-Team <span style="color:var(--text-dim);font-weight:400;font-size:0.8rem">(dynamic tests)</span></h4>
+                                <p>Attack scenarios derived from the SBOM — not generic payloads. Prompt injection, data exfiltration, tool abuse, MCP toxic flows, privilege escalation.</p>
                             </div>
                         </div>
                     </div>
@@ -424,43 +415,43 @@
             <div class="cards-grid">
                 <div class="card">
                     <div class="card-icon" style="background: rgba(88,196,220,0.12);">🎯</div>
-                    <h3>SBOM-driven attacks</h3>
-                    <p>Red-team scenarios are derived from your SBOM graph, not a generic payload library. SQL injection scenarios only fire when the SBOM shows a SQL-injectable tool. PHI exfiltration scenarios only fire when a PII-classified datastore exists. No false starts. No wasted calls.</p>
+                    <h3>Context-driven Red-Team Attacks</h3>
+                    <p>Red-team scenarios are derived from your SBOM graph, not a generic payload library. SQL injection scenarios only fire when the SBOM shows a SQL-injectable tool.</p>
                 </div>
                 <div class="card">
                     <div class="card-icon" style="background: rgba(188,140,255,0.12);">🔬</div>
                     <h3>Cross-component risk reasoning</h3>
-                    <p>Because the AI-SBOM is a graph, NuGuard reasons across component boundaries: <em>"this agent has write access to a HIPAA-classified datastore via a tool with no auth boundary and no guardrail in the graph."</em> Single-file scanners like Semgrep can't see this.</p>
+                    <p>NuGuard reasons across component boundaries: <em>"this agent has write access to a HIPAA-classified datastore via a tool with no auth boundary and no guardrail in the graph."</em></p>
                 </div>
                 <div class="card">
                     <div class="card-icon" style="background: rgba(63,185,80,0.12);">🧬</div>
-                    <h3>Framework-native AST extraction</h3>
-                    <p>Python <code style="font-size:0.82rem;color:var(--accent)">ast</code> and tree-sitter parse 15+ AI framework APIs at the syntax level — LangChain, LangGraph, OpenAI Agents SDK, CrewAI, AutoGen, Google ADK, MCP, and more. Not regex scraping. Not documentation parsing.</p>
+                    <h3>AI SBOM extraction</h3>
+                    <p>Supports 20+ AI framework APIs, relationship graphs, package dependencies, and more.</p>
                 </div>
                 <div class="card">
                     <div class="card-icon" style="background: rgba(255,166,87,0.12);">📋</div>
-                    <h3>Cognitive Policy as code</h3>
-                    <p>Write behavioral guardrails in plain Markdown. NuGuard parses, lints, cross-checks against the SBOM for structural gaps, and maps to OWASP LLM Top 10 / NIST AI RMF / EU AI Act. Version-controlled. No UI. No proprietary format.</p>
+                    <h3>Cognitive Policy</h3>
+                    <p>Write AI behavioral intent in plain English. NuGuard checks for implementation drifts and against other security frameworks.</p>
                 </div>
                 <div class="card">
                     <div class="card-icon" style="background: rgba(248,81,73,0.12);">🎣</div>
                     <h3>Canary exfiltration detection</h3>
-                    <p>Plant unique sentinel strings in your target app's database before a scan. The CanaryScanner checks every HTTP response for exact matches — definitive proof of data leakage, no keyword heuristics, no LLM judge uncertainty. Canary hits elevate severity to CRITICAL.</p>
+                    <p>Plant unique test data in your target app's database. The CanaryScanner checks definitive proof of data leakage, no LLM judge uncertainty.</p>
                 </div>
                 <div class="card">
                     <div class="card-icon" style="background: rgba(88,196,220,0.12);">💬</div>
                     <h3>Guided multi-turn conversations</h3>
-                    <p>Beyond single-shot prompt injection, the GuidedAttackExecutor runs Crescendo-style multi-turn conversations — rapport → normalise → bridge → escalate → inject — adapting in real-time based on each response. Catches gradual context manipulation that one-shot tests miss.</p>
+                    <p>Crescendo-style multi-turn conversations — rapport → normalise → bridge → escalate → inject — adapting in real-time based on each response.</p>
                 </div>
                 <div class="card">
                     <div class="card-icon" style="background: rgba(188,140,255,0.12);">✈️</div>
                     <h3>Fully offline core</h3>
-                    <p>Structural NGA rules, ATLAS checks, policy linting, and policy-to-SBOM cross-checks run with zero network access and no API key. Safe for air-gapped environments. Fast enough for pre-commit hooks and CI gates under 60 seconds.</p>
+                    <p>Safe for air-gapped environments. Fast enough for pre-commit hooks and CI gates.</p>
                 </div>
                 <div class="card">
                     <div class="card-icon" style="background: rgba(63,185,80,0.12);">🔗</div>
                     <h3>Standards-native output</h3>
-                    <p>CycloneDX 1.6 (standard + AI-extended), SPDX 3.0.1 JSON-LD, SARIF 2.1.0, and NuGuard's own AI-SBOM JSON with full JSON Schema. Feed into GitHub Code Scanning, AWS Security Hub, JFrog Xray, or your own toolchain.</p>
+                    <p>Wide-range of outputs supported. Feed into GitHub Code Scanning, or your own toolchain.</p>
                 </div>
             </div>
         </div>
@@ -470,142 +461,57 @@
     <section id="what">
         <div class="container" style="padding-top: 4rem; padding-bottom: 4rem;">
             <div class="section-label" style="margin-bottom: 0.5rem;">What gets detected</div>
-            <h2 style="margin-bottom: 2.5rem;">Every AI component, fully mapped</h2>
+            <h2 style="margin-bottom: 2.5rem;">Every AI component</h2>
+            <p style="max-width: 680px; color: var(--text-secondary); margin-bottom: 3rem;">
+                Filename, line no for evidence. Relationship graphs.
+            </p>
             <div class="cards-grid">
                 <div class="card">
                     <div class="card-icon" style="background: rgba(88,196,220,0.12);">🤖</div>
                     <h3>Agents</h3>
-                    <p>Agentic orchestrators across LangGraph, CrewAI, AutoGen, OpenAI Agents SDK, Google ADK, AWS BedrockAgentCore, Azure Semantic Kernel, Agno, and more. Framework, tool list, system prompt, and memory configuration captured.</p>
+                    <p>Frameworks like LangGraph, CrewAI, AutoGen, OpenAI Agents SDK, Google ADK, AWS BedrockAgentCore, Azure Semantic Kernel, Agno, and more.</p>
                 </div>
                 <div class="card">
                     <div class="card-icon" style="background: rgba(188,140,255,0.12);">🧠</div>
                     <h3>Models</h3>
-                    <p>LLM and embedding model references with provider, version, and whether they are external services. Flags regulated data (PII/PHI) flowing to third-party APIs outside your trust boundary.</p>
+                    <p>LLM and embedding model references with provider, version, and model cards.</p>
                 </div>
                 <div class="card">
                     <div class="card-icon" style="background: rgba(63,185,80,0.12);">🔧</div>
                     <h3>Tools &amp; MCP Servers</h3>
-                    <p>Function tools, MCP tools, and decorated callables wired to agents — including privilege scope (db_write, code_execution, shell) and SQL-injectable or SSRF-capable tags used by the red-team engine.</p>
+                    <p>Function tools, MCP tools, and decorated callables wired to agents — including privilege scope (db_write, code_execution, shell).</p>
                 </div>
                 <div class="card">
                     <div class="card-icon" style="background: rgba(255,166,87,0.12);">📝</div>
                     <h3>Prompts</h3>
-                    <p>System instructions and prompt templates — full content preserved, template variables identified, sensitive values redacted. Used to derive prompt injection and system prompt extraction scenarios.</p>
+                    <p>System instructions and prompt templates — full content preserved, template variables identified, sensitive values redacted.</p>
                 </div>
                 <div class="card">
                     <div class="card-icon" style="background: rgba(248,81,73,0.12);">🗄️</div>
                     <h3>Datastores</h3>
-                    <p>Vector stores, databases, and caches with PII/PHI classification from SQL schema, ORM analysis (SQLAlchemy, Django, Pydantic), and data classification patterns. Datastore type, transport, and access edges captured.</p>
+                    <p>Vector stores, databases, and caches with PII/PHI classification.</p>
                 </div>
                 <div class="card">
                     <div class="card-icon" style="background: rgba(88,196,220,0.12);">🛡️</div>
                     <h3>Guardrails</h3>
-                    <p>Content filters and safety validators. Structural rules fire when agents or models operate without a connected guardrail node in the graph — a direct OWASP LLM01 risk signal.</p>
+                    <p>Content filters and safety validators.</p>
                 </div>
                 <div class="card">
                     <div class="card-icon" style="background: rgba(188,140,255,0.12);">🔑</div>
                     <h3>Auth &amp; IAM</h3>
-                    <p>OAuth2, API key, Bearer, JWT, and MCP auth nodes. IAM roles, privilege scopes, and identity boundaries. Surfaces unauthenticated agent and tool endpoints — the most common AI-specific entry point for attacks.</p>
+                    <p>OAuth2, API key, Bearer, JWT, and MCP auth nodes. IAM roles, privilege scopes.</p>
                 </div>
                 <div class="card">
                     <div class="card-icon" style="background: rgba(255,166,87,0.12);">☁️</div>
                     <h3>Deployment &amp; IaC</h3>
-                    <p>Kubernetes manifests, Terraform, CloudFormation, Azure Bicep, GitHub Actions, Dockerfiles, Nginx configs. Cloud region, HA mode, secret stores, IAM roles, encryption settings — all fed into IaC compliance checks.</p>
+                    <p>Kubernetes manifests, Terraform, CloudFormation, Azure Bicep, etc. Cloud region, HA mode, secret stores, IAM roles, encryption settings.</p>
                 </div>
-            </div>
-        </div>
-    </section>
-
-    <!-- Analysis capabilities -->
-    <section id="vulnerability" class="vuln-section">
-        <div class="container">
-            <div class="vuln-header">
-                <div class="vuln-header-text">
-                    <div class="section-label">Static analysis</div>
-                    <h2>Seven scanners. One normalized output.</h2>
-                    <p>
-                        NuGuard's static analysis pipeline runs up to seven scanners against the AI-SBOM.
-                        Every finding is normalized into a shared <strong>Finding</strong> model with
-                        rule ID, severity, affected nodes, MITRE ATLAS mapping, and remediation guidance.
-                        Output as Markdown, JSON, or SARIF. No running application required.
-                    </p>
-                </div>
-                <div class="vuln-meta">
-                    <span class="vuln-stat-pill"><strong>3</strong> built-in scanners</span>
-                    <span class="vuln-stat-pill"><strong>4</strong> optional external tools</span>
-                    <span class="vuln-stat-pill">MITRE ATLAS v2 mapped</span>
-                    <span class="vuln-stat-pill" style="font-family:var(--mono);font-size:0.78rem;">nuguard analyze --sbom app.sbom.json</span>
-                </div>
-            </div>
-
-            <div class="rule-categories" style="grid-template-columns:repeat(3,1fr);">
-                <div class="rule-cat">
-                    <div class="rule-cat-top">
-                        <span class="rule-cat-icon">🧬</span>
-                        <span class="rule-count-badge sev-critical">Built-in</span>
-                    </div>
-                    <h4>AI Stack deep analysis</h4>
-                    <p>AI-native deterministic checks: missing guardrails, unsafe tool access, privilege paths, injection surfaces, unencrypted endpoints, unauthenticated agents. No network required.</p>
-                </div>
-                <div class="rule-cat">
-                    <div class="rule-cat-top">
-                        <span class="rule-cat-icon">🗺️</span>
-                        <span class="rule-count-badge sev-critical">Built-in</span>
-                    </div>
-                    <h4>MITRE ATLAS checks</h4>
-                    <p>Native graph checks with ATLAS v2 technique mapping — AML.T0048 through AML.T0054. Findings link directly to ATLAS mitigations and sub-techniques.</p>
-                </div>
-                <div class="rule-cat">
-                    <div class="rule-cat-top">
-                        <span class="rule-cat-icon">📦</span>
-                        <span class="rule-count-badge sev-high">Built-in</span>
-                    </div>
-                    <h4>OSV dependency CVEs</h4>
-                    <p>Queries api.osv.dev for known vulnerabilities in all Python, JS, and Go dependencies in the SBOM. Batch API, timeout configurable.</p>
-                </div>
-                <div class="rule-cat">
-                    <div class="rule-cat-top">
-                        <span class="rule-cat-icon">🐳</span>
-                        <span class="rule-count-badge sev-medium">Optional</span>
-                    </div>
-                    <h4>Grype + Trivy</h4>
-                    <p>Package, container image, and filesystem CVE scanning. Silently skipped when not on PATH — install separately for full coverage.</p>
-                </div>
-                <div class="rule-cat">
-                    <div class="rule-cat-top">
-                        <span class="rule-cat-icon">🏗️</span>
-                        <span class="rule-count-badge sev-medium">Optional</span>
-                    </div>
-                    <h4>Checkov IaC scan</h4>
-                    <p>Terraform, CloudFormation, Bicep, and Kubernetes misconfiguration checks. IaC node paths from the SBOM are resolved relative to the source directory.</p>
-                </div>
-                <div class="rule-cat">
-                    <div class="rule-cat-top">
-                        <span class="rule-cat-icon">🔍</span>
-                        <span class="rule-count-badge sev-low">Optional</span>
-                    </div>
-                    <h4>Semgrep AI rules</h4>
-                    <p>Pattern-based source scanning using bundled AI-security rules — insecure code patterns, agent application code smells, injection surfaces in AI application code.</p>
-                </div>
-            </div>
-
-            <div class="vuln-framework-note">
-                <span style="font-size:1.1rem;flex-shrink:0;margin-top:0.05rem">ℹ️</span>
-                <span>
-                    <strong>Compliance frameworks:</strong> assessment results map to
-                    <strong>OWASP LLM Top 10</strong>,
-                    <strong>NIST AI RMF</strong>, and
-                    <strong>EU AI Act</strong> controls.
-                    Findings export as <strong>SARIF 2.1</strong> (GitHub Code Scanning / GHAS),
-                    <strong>SPDX 3.0.1</strong>, and <strong>CycloneDX 1.6</strong>.
-                    See the <a href="doc.html?page=static-analysis-guide">Static Analysis Guide</a> for details.
-                </span>
             </div>
         </div>
     </section>
 
     <!-- Who it's for -->
-    <section id="for-whom">
+    <section id="for-whom" class="band-surface">
         <div class="container">
             <div class="section-label">Who it's for</div>
             <h2 style="max-width: 600px;">Built for everyone who needs to trust AI in production</h2>
@@ -669,9 +575,8 @@
             <h2 style="max-width: 660px;">Adversarial testing that knows your application</h2>
             <p style="max-width: 740px; margin-bottom: 3.5rem;">
                 Most red-team tools fire generic prompt libraries at an LLM endpoint.
-                NuGuard reads your source first — building a semantic graph of every agent, tool, datastore,
-                guardrail, and auth boundary — then derives attacks from that graph. The result is zero wasted
-                API calls and zero false-start scenarios.
+                NuGuard knows your application context and tailors attacks accordingly.
+                Attacks for a healthcare app vs a code generation tool are going to be different.
             </p>
 
             <!-- Three differentiator cards -->
@@ -688,13 +593,12 @@
                     <p style="font-size:0.9rem;color:var(--text-muted);line-height:1.7;margin:0 0 1rem;">
                         Attack scenarios are derived from the <strong style="color:var(--text);">AI-SBOM graph</strong> and your
                         <strong style="color:var(--text);">Cognitive Policy</strong> — not a generic payload library.
-                        A SQL injection scenario only fires when the SBOM shows a SQL-injectable tool.
-                        A PHI exfiltration scenario only fires when the SBOM contains a PII-classified datastore.
+                        <br> A PHI exfiltration scenario only fires when the SBOM contains a PII-classified datastore. </br>
                     </p>
                     <ul style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:0.45rem;">
-                        <li style="font-size:0.85rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.5rem;"><span style="color:#58c4dc;flex-shrink:0;margin-top:2px;">✓</span>Policy-violation scenarios from Cognitive Policy sections</li>
-                        <li style="font-size:0.85rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.5rem;"><span style="color:#58c4dc;flex-shrink:0;margin-top:2px;">✓</span>No false-start scenarios — no wasted API calls</li>
-                        <li style="font-size:0.85rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.5rem;"><span style="color:#58c4dc;flex-shrink:0;margin-top:2px;">✓</span>Canary seeds give definitive proof of data exfiltration</li>
+                        <li style="font-size:0.85rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.5rem;"><span style="color:#58c4dc;flex-shrink:0;margin-top:2px;">✓</span>Real-world scenarios</li>
+                        <li style="font-size:0.85rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.5rem;"><span style="color:#58c4dc;flex-shrink:0;margin-top:2px;">✓</span>Attack Efficiency — no wasted API calls</li>
+                        <li style="font-size:0.85rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.5rem;"><span style="color:#58c4dc;flex-shrink:0;margin-top:2px;">✓</span>Canary gives definitive proof of data exfiltration</li>
                     </ul>
                 </div>
 
@@ -707,14 +611,12 @@
                         <h3 style="margin:0;font-size:1rem;font-weight:700;color:var(--text);">Developer-Friendly</h3>
                     </div>
                     <p style="font-size:0.9rem;color:var(--text-muted);line-height:1.7;margin:0 0 1rem;">
-                        Minimal input required. Point NuGuard at your source directory — it builds the attack
-                        surface model automatically. No manual threat modelling, no payload configuration,
-                        no proprietary DSL to learn.
+                        Minimal input required. Point NuGuard at your source repo — it builds the attack model automatically.
                     </p>
                     <ul style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:0.45rem;">
-                        <li style="font-size:0.85rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.5rem;"><span style="color:#3fb950;flex-shrink:0;margin-top:2px;">✓</span>One command: <code style="font-family:var(--mono);font-size:0.8rem;color:var(--accent);">nuguard redteam --sbom app.sbom.json --target $URL</code></li>
-                        <li style="font-size:0.85rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.5rem;"><span style="color:#3fb950;flex-shrink:0;margin-top:2px;">✓</span>SARIF output for GitHub Code Scanning — drop into existing CI gates</li>
-                        <li style="font-size:0.85rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.5rem;"><span style="color:#3fb950;flex-shrink:0;margin-top:2px;">✓</span>Offline static chains — no LLM key needed for core scenarios</li>
+                        <li style="font-size:0.85rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.5rem;"><span style="color:#3fb950;flex-shrink:0;margin-top:2px;">✓</span>One command: nuguard redteam</li>
+                        <li style="font-size:0.85rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.5rem;"><span style="color:#3fb950;flex-shrink:0;margin-top:2px;">✓</span>SARIF output for GitHub Code Scanning</li>
+                        <li style="font-size:0.85rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.5rem;"><span style="color:#3fb950;flex-shrink:0;margin-top:2px;">✓</span>LLM Optional — no LLM key needed for core scenarios</li>
                     </ul>
                 </div>
 
@@ -730,72 +632,15 @@
                         Attacks traverse the full agentic stack — not just the chat endpoint.
                         NuGuard tests <strong style="color:var(--text);">sub-agents</strong>,
                         <strong style="color:var(--text);">MCP tool servers</strong>, and
-                        <strong style="color:var(--text);">guardrail nodes</strong> individually,
-                        including privilege-escalation chains that cross component boundaries.
+                        <strong style="color:var(--text);">guardrails</strong>.
                     </p>
                     <ul style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:0.45rem;">
                         <li style="font-size:0.85rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.5rem;"><span style="color:#f85149;flex-shrink:0;margin-top:2px;">✓</span>MCP toxic flow injection via untrusted tool output</li>
                         <li style="font-size:0.85rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.5rem;"><span style="color:#f85149;flex-shrink:0;margin-top:2px;">✓</span>Tool-chain privilege escalation to admin actions</li>
-                        <li style="font-size:0.85rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.5rem;"><span style="color:#f85149;flex-shrink:0;margin-top:2px;">✓</span>Guardrail bypass via guided multi-turn Crescendo conversations</li>
+                        <li style="font-size:0.85rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.5rem;"><span style="color:#f85149;flex-shrink:0;margin-top:2px;">✓</span>Guardrail bypass via multi-turn Crescendo prompts</li>
                     </ul>
                 </div>
 
-            </div>
-
-            <!-- Attack families table -->
-            <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;overflow:hidden;">
-                <div style="padding:1.25rem 1.5rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:0.75rem;">
-                    <span style="font-size:0.75rem;font-weight:700;color:var(--text-dim);letter-spacing:0.08em;text-transform:uppercase;">Attack scenario families</span>
-                    <span style="font-size:0.72rem;color:var(--text-dim);margin-left:auto;">Triggered by SBOM signal</span>
-                </div>
-                <div style="overflow-x:auto;">
-                    <table style="width:100%;border-collapse:collapse;font-size:0.85rem;">
-                        <thead>
-                            <tr style="border-bottom:1px solid var(--border);">
-                                <th style="text-align:left;padding:0.75rem 1.5rem;color:var(--text-dim);font-weight:600;font-size:0.78rem;">Family</th>
-                                <th style="text-align:left;padding:0.75rem 1rem;color:var(--text-dim);font-weight:600;font-size:0.78rem;">SBOM signal</th>
-                                <th style="text-align:left;padding:0.75rem 1rem;color:var(--text-dim);font-weight:600;font-size:0.78rem;">What gets tested</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <tr style="border-bottom:1px solid var(--border-mute);">
-                                <td style="padding:0.7rem 1.5rem;"><span style="font-family:var(--mono);font-size:0.8rem;color:#f85149;">prompt-injection</span></td>
-                                <td style="padding:0.7rem 1rem;color:var(--text-muted);">AGENT with system_prompt or blocked_topics</td>
-                                <td style="padding:0.7rem 1rem;color:var(--text-muted);">System prompt extraction, guardrail bypass, context flooding</td>
-                            </tr>
-                            <tr style="border-bottom:1px solid var(--border-mute);">
-                                <td style="padding:0.7rem 1.5rem;"><span style="font-family:var(--mono);font-size:0.8rem;color:#f85149;">data-exfiltration</span></td>
-                                <td style="padding:0.7rem 1rem;color:var(--text-muted);">DATASTORE with PII/PHI classification</td>
-                                <td style="padding:0.7rem 1rem;color:var(--text-muted);">Base64 exfil, cross-tenant leakage, document-embedded exfil</td>
-                            </tr>
-                            <tr style="border-bottom:1px solid var(--border-mute);">
-                                <td style="padding:0.7rem 1.5rem;"><span style="font-family:var(--mono);font-size:0.8rem;color:#f85149;">tool-abuse</span></td>
-                                <td style="padding:0.7rem 1rem;color:var(--text-muted);">TOOL with SQL-injectable or SSRF-capable tags</td>
-                                <td style="padding:0.7rem 1rem;color:var(--text-muted);">SQL injection, SSRF via tool parameters and URLs</td>
-                            </tr>
-                            <tr style="border-bottom:1px solid var(--border-mute);">
-                                <td style="padding:0.7rem 1.5rem;"><span style="font-family:var(--mono);font-size:0.8rem;color:#f85149;">privilege-escalation</span></td>
-                                <td style="padding:0.7rem 1rem;color:var(--text-muted);">AGENT → TOOL → DATASTORE privilege chains</td>
-                                <td style="padding:0.7rem 1rem;color:var(--text-muted);">Tool-chain escalation to admin actions across component boundaries</td>
-                            </tr>
-                            <tr style="border-bottom:1px solid var(--border-mute);">
-                                <td style="padding:0.7rem 1.5rem;"><span style="font-family:var(--mono);font-size:0.8rem;color:#bc8cff;">policy-violation</span></td>
-                                <td style="padding:0.7rem 1rem;color:var(--text-muted);">Cognitive Policy declared topics &amp; actions</td>
-                                <td style="padding:0.7rem 1rem;color:var(--text-muted);">Elicit responses that violate declared Cognitive Policy</td>
-                            </tr>
-                            <tr style="border-bottom:1px solid var(--border-mute);">
-                                <td style="padding:0.7rem 1.5rem;"><span style="font-family:var(--mono);font-size:0.8rem;color:#f85149;">mcp-toxic-flow</span></td>
-                                <td style="padding:0.7rem 1rem;color:var(--text-muted);">MCP_SERVER nodes</td>
-                                <td style="padding:0.7rem 1rem;color:var(--text-muted);">Tool injection via untrusted MCP output, output poisoning</td>
-                            </tr>
-                            <tr>
-                                <td style="padding:0.7rem 1.5rem;"><span style="font-family:var(--mono);font-size:0.8rem;color:#f85149;">api-attacks</span></td>
-                                <td style="padding:0.7rem 1rem;color:var(--text-muted);">API_ENDPOINT nodes</td>
-                                <td style="padding:0.7rem 1rem;color:var(--text-muted);">Auth bypass, mass assignment, IDOR</td>
-                            </tr>
-                        </tbody>
-                    </table>
-                </div>
             </div>
 
         </div>
@@ -825,11 +670,6 @@
 
                 <div class="code-window">
                     <div class="code-titlebar">
-                        <div class="dots">
-                            <span class="dot-red"></span>
-                            <span class="dot-yellow"></span>
-                            <span class="dot-green"></span>
-                        </div>
                         <div class="tabs" style="border-bottom: none; padding: 0;">
                             <button class="tab-btn active" data-tab="cli">CLI</button>
                             <button class="tab-btn" data-tab="python">Python API</button>
@@ -856,9 +696,7 @@ $ nuguard policy check --policy cognitive_policy.md \
 $ nuguard redteam --sbom app.sbom.json \
     --target http://localhost:8000 --profile ci
 
-<span class="hl-comment"># Everything in one command</span>
-$ nuguard scan --source . --policy cognitive_policy.md \
-    --target http://localhost:8000 --output-dir reports/</pre>
+</pre>
                     </div>
 
                     <div id="tab-python" class="tab-pane">
@@ -926,33 +764,28 @@ jobs:
             </p>
             <div class="plugin-grid">
                 <div class="plugin-chip">
-                    <span class="plugin-name">vulnerability</span>
-                    <span class="plugin-desc">Structural + CVE vulnerability scan with three providers: built-in NGA rules (offline), OSV batch API, and Grype binary. Returns a unified finding list consumed by sarif_export and other plugins.</span>
+                    <span class="plugin-name">SARIF</span>
+                    <span class="plugin-desc">Exports vulnerability findings as SARIF 2.1.0 — compatible with GitHub Code Scanning.</span>
                     <span class="plugin-badge badge-offline">Offline</span>
                 </div>
                 <div class="plugin-chip">
-                    <span class="plugin-name">sarif_export</span>
-                    <span class="plugin-desc">Exports vulnerability findings as SARIF 2.1.0 — compatible with GitHub Code Scanning, VS Code SARIF Viewer, and any SARIF-aware tool. Severity mapped to SARIF error / warning / note levels.</span>
+                    <span class="plugin-name">CycloneDX</span>
+                    <span class="plugin-desc">CycloneDX 1.6 BOM. Optionally attaches VEX vulnerabilities from OSV for a combined BOM + VEX document.</span>
                     <span class="plugin-badge badge-offline">Offline</span>
                 </div>
                 <div class="plugin-chip">
-                    <span class="plugin-name">cyclonedx_export</span>
-                    <span class="plugin-desc">Standards-compliant CycloneDX 1.6 BOM with nuguard:* properties. Optionally attaches VEX vulnerabilities from OSV for a combined BOM + VEX document.</span>
+                    <span class="plugin-name">CycloneDX Ext</span>
+                    <span class="plugin-desc">CycloneDX 1.6 with NuGuard AI SBOM.</span>
                     <span class="plugin-badge badge-offline">Offline</span>
                 </div>
                 <div class="plugin-chip">
-                    <span class="plugin-name">cyclonedx_ext_export</span>
-                    <span class="plugin-desc">CycloneDX 1.6 with AI-specific first-class fields: modelCard for ML models, data.contents / data.governance for datastores, services section for API endpoints, compositions for the full edge graph.</span>
+                    <span class="plugin-name">SPDX</span>
+                    <span class="plugin-desc">SPDX 3.0.1 JSON-LD export with NuGuard AI SBOM.</span>
                     <span class="plugin-badge badge-offline">Offline</span>
                 </div>
                 <div class="plugin-chip">
-                    <span class="plugin-name">spdx_export</span>
-                    <span class="plugin-desc">SPDX 3.0.1 JSON-LD export with ai_AIPackage, dataset_Dataset, and a full relationship graph. Compatible with SPDX tooling and software supply-chain platforms.</span>
-                    <span class="plugin-badge badge-offline">Offline</span>
-                </div>
-                <div class="plugin-chip">
-                    <span class="plugin-name">markdown_export</span>
-                    <span class="plugin-desc">Human-readable Markdown report covering all detected components, their metadata, evidence provenance, and relationship edges. Ready for audit packages or pull-request comments.</span>
+                    <span class="plugin-name">Markdown</span>
+                    <span class="plugin-desc">Human-readable Markdown report for audit evidence.</span>
                     <span class="plugin-badge badge-offline">Offline</span>
                 </div>
             </div>
