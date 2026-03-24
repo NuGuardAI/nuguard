@@ -186,6 +186,7 @@ def _discover_chat_config(
 
     Returns ``(chat_path, chat_payload_key, chat_payload_list)``.
     """
+    candidates: list[tuple[int, str, str, bool, str]] = []
     for node in sbom.nodes:
         if node.component_type != NodeType.API_ENDPOINT:
             continue
@@ -196,12 +197,33 @@ def _discover_chat_config(
             continue
         if not meta.chat_payload_key:
             continue
+
         discovered_path = meta.endpoint or chat_path
+        endpoint_l = discovered_path.lower()
+
+        # Prefer concrete messaging endpoints over generic '/chat'.
+        score = 0
+        if "/chat/message" in endpoint_l:
+            score += 4
+        elif "message" in endpoint_l:
+            score += 3
+        elif endpoint_l.endswith("/chat"):
+            score += 1
+        if meta.response_text_key:
+            score += 1
+
+        candidates.append(
+            (score, discovered_path, meta.chat_payload_key, meta.chat_payload_list, node.name)
+        )
+
+    if candidates:
+        best = max(candidates, key=lambda item: item[0])
         _log.info(
             "SBOM auto-discovered chat config: path=%s key=%s list=%s (node=%s)",
-            discovered_path, meta.chat_payload_key, meta.chat_payload_list, node.name,
+            best[1], best[2], best[3], best[4],
         )
-        return discovered_path, meta.chat_payload_key, meta.chat_payload_list
+        return best[1], best[2], best[3]
+
     return chat_path, chat_payload_key, chat_payload_list
 
 
