@@ -104,3 +104,56 @@ auto behavior and no CLI options.
 
 ## Suggested Decision
 Adopt runtime enrichment as an optional redteam pre-step, review impact on coverage and stability, then decide whether to make it default in selected environments.
+
+## Baseline SBOM vs Enriched SBOM (stateset-icommerce)
+
+This section captures the actual comparison between the baseline SBOM and the
+runtime enriched artifact produced by redteam auto-enrichment.
+
+### Artifacts
+- Baseline artifact: output/stateset-icommerce.sbom.json
+- Enriched artifact: output/stateset-icommerce.sbom.enriched.json
+
+### Structural Summary
+
+| Area | Baseline SBOM | Enriched SBOM | Delta |
+| --- | --- | --- | --- |
+| Total nodes | 66 | 70 | +4 |
+| Total edges | 67 | 70 | +3 |
+| Added nodes | 0 | 4 | +4 |
+| Updated nodes | 0 | 66 | +66 |
+| Removed nodes | 0 | 0 | 0 |
+| Added edges | 0 | 3 | +3 |
+| Removed edges | 0 | 0 | 0 |
+
+### Added Nodes
+
+| Component Type | Component Name |
+| --- | --- |
+| API_ENDPOINT | /chat API |
+| API_ENDPOINT | /chat/message API |
+| AGENT | Stateset Icommerce Assistant |
+| API_ENDPOINT | /health API |
+
+### Updated Node Distribution
+
+| Component Type | Updated Count |
+| --- | --- |
+| API_ENDPOINT | 2 |
+| AUTH | 1 |
+| CONTAINER_IMAGE | 6 |
+| DATASTORE | 3 |
+| DEPLOYMENT | 10 |
+| FRAMEWORK | 1 |
+| MODEL | 17 |
+| PRIVILEGE | 6 |
+| PROMPT | 19 |
+| TOOL | 1 |
+
+### Added Edges
+
+| Relationship | Source -> Target |
+| --- | --- |
+| ACCESSES | 1b63e25b-dfbf-4534-8392-b9fb26b643b7 -> a0f74c41-98fc-475c-b9af-e9dc047ca5ad |
+| CALLS | a0859bda-0093-4755-bedf-c0e6a0b40193 -> 1b63e25b-dfbf-4534-8392-b9fb26b643b7 |
+| USES | a0859bda-0093-4755-bedf-c0e6a0b40193 -> 1d565543-4782-43fd-99b8-baf400be65f6 |
