@@ -6,6 +6,41 @@ Improve redteam scenario quality by enriching a static SBOM with runtime observa
 ## Example Application
 - stateset-icommerce
 
+## Baseline SBOM vs Corrected SBOM (stateset-icommerce)
+
+| Area | Baseline SBOM | Corrected SBOM | Delta |
+| --- | --- | --- | --- |
+| Total nodes | 66 | 69 | +3 |
+| Total edges | 67 | 72 | +5 |
+| Added nodes | 0 | 3 | +3 |
+| Updated nodes | 0 | 4 | +4 |
+| Removed nodes | 0 | 0 | 0 |
+| Added edges | 0 | 5 | +5 |
+| Removed edges | 0 | 0 | 0 |
+
+### Node-Level Changes
+
+| Change Type | Component Type | Component Name |
+| --- | --- | --- |
+| Added | AGENT | StateSet Commerce Assistant |
+| Added | API_ENDPOINT | Orders API |
+| Added | TOOL | admin-order-write-tool |
+| Updated | API_ENDPOINT | Health API |
+| Updated | API_ENDPOINT | Webchat Message API |
+| Updated | TOOL | mcp-web-fetch-tool |
+| Updated | DATASTORE | postgres |
+
+### Summary
+- The corrected SBOM adds runtime-realistic structure (agent, endpoint, and tool) that was not represented in the baseline artifact.
+- Existing components were refined with better metadata and relationship context, especially around API/tool/datastore flows.
+- No components were removed, so the corrected artifact is additive and corrective rather than destructive.
+- Net effect: better scenario grounding for redteam (especially data-exfiltration and chained access paths) while preserving traceability to the baseline SBOM.
+
+### Evidence Source
+- Baseline artifact: `output/stateset-icommerce.sbom.json`
+- Corrected artifact: `output/stateset-icommerce.sbom.corrected.json`
+- Comparison basis: node/edge structural diff (counts plus added/updated/removed entities)
+
 ## What Enrichment Adds
 - Confirmed runtime endpoints and methods actually reachable in the app.
 - Effective chat interface details (path, payload shape, required headers).
