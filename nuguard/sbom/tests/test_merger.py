@@ -96,7 +96,7 @@ class TestMergerStructure:
 
     def test_vela_tool_added(self, merged: dict[str, Any]) -> None:
         tools = merged["metadata"]["tools"]
-        assert any(t.get("name") == "xelo" for t in tools)
+        assert any(t.get("name") == "nuguard" for t in tools)
 
     def test_original_tool_preserved(self, merged: dict[str, Any]) -> None:
         tools = merged["metadata"]["tools"]
@@ -382,7 +382,7 @@ class TestCycloneDxGeneratorFallback:
 
         props = bom.get("metadata", {}).get("properties", [])
         generators = [p["value"] for p in props if p["name"] == "cdx:generator"]
-        assert "xelo-dep-scanner" in generators
+        assert "nuguard-dep-scanner" in generators
 
 
 # ---------------------------------------------------------------------------
