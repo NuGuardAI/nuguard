@@ -1,25 +1,10 @@
-"""``nuguard init`` command.
-
-Creates starter project files for first-time NuGuard setup:
-  - nuguard.yaml.example   — annotated config template
-  - canary.example.json    — canary seed template for redteam data-exfiltration detection
-  - cognitive_policy.md    — blank Cognitive Policy with section headers
-"""
+"""Implementation for the ``nuguard init`` command."""
 
 from __future__ import annotations
 
 from pathlib import Path
 
 import typer
-
-init_app = typer.Typer(
-    help="Create starter NuGuard project files in the current directory.",
-    no_args_is_help=False,
-)
-
-# ---------------------------------------------------------------------------
-# File templates (embedded so they work after pip install, no data-file deps)
-# ---------------------------------------------------------------------------
 
 _NUGUARD_YAML_EXAMPLE = """\
 # nuguard.yaml
@@ -339,66 +324,33 @@ _COGNITIVE_POLICY_TEMPLATE = """\
 ## Rate Limits
 """
 
-# ---------------------------------------------------------------------------
-# Files written by `nuguard init`
-# ---------------------------------------------------------------------------
-
-_INIT_FILES: list[tuple[str, str, str]] = [
-    (
-        "nuguard.yaml.example",
-        _NUGUARD_YAML_EXAMPLE,
-        "NuGuard config template",
-    ),
-    (
-        "canary.example.json",
-        _CANARY_EXAMPLE_JSON,
-        "canary seed template",
-    ),
-    (
-        "cognitive_policy.md",
-        _COGNITIVE_POLICY_TEMPLATE,
-        "starter cognitive policy",
-    ),
+_INIT_FILES: list[tuple[str, str]] = [
+    ("nuguard.yaml.example", _NUGUARD_YAML_EXAMPLE),
+    ("canary.example.json", _CANARY_EXAMPLE_JSON),
+    ("cognitive_policy.md", _COGNITIVE_POLICY_TEMPLATE),
 ]
 
 
-@init_app.callback(invoke_without_command=True)
-def init(
-    ctx: typer.Context,
+def init_command(
     directory: Path = typer.Option(
         Path("."),
         "--dir",
         "-d",
-        help="Directory to write files into (default: current directory).",
+        help="Directory to write starter files into.",
     ),
     force: bool = typer.Option(
         False,
-        "--force/--no-force",
+        "--force",
         help="Overwrite files that already exist.",
     ),
 ) -> None:
-    """Create starter NuGuard project files in the current directory.
-
-    Writes three files:
-
-    \b
-      nuguard.yaml.example   — annotated configuration template
-      canary.example.json    — canary seed template for redteam exfiltration detection
-      cognitive_policy.md    — blank Cognitive Policy with section headers
-
-    Copy nuguard.yaml.example → nuguard.yaml and edit before running scans.
-    Copy canary.example.json → canary.json, seed the records into your app's
-    datastore, then pass it to `nuguard redteam --canary canary.json`.
-    """
-    if ctx.invoked_subcommand is not None:
-        return
-
+    """Create starter NuGuard project files in the target directory."""
     directory.mkdir(parents=True, exist_ok=True)
 
     created: list[str] = []
     skipped: list[str] = []
 
-    for filename, content, description in _INIT_FILES:
+    for filename, content in _INIT_FILES:
         dest = directory / filename
         if dest.exists() and not force:
             skipped.append(filename)
@@ -409,11 +361,7 @@ def init(
     for filename in created:
         typer.echo(f"  created  {directory / filename}")
     for filename in skipped:
-        typer.echo(f"  skipped  {directory / filename}  (already exists — use --force to overwrite)")
-
-    if not created and not skipped:
-        typer.echo("Nothing to do.")
-        return
+        typer.echo(f"  skipped  {directory / filename}  (already exists -- use --force to overwrite)")
 
     if created:
         typer.echo("")
