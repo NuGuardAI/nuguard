@@ -5,18 +5,17 @@ Registered as the ``nuguard`` console script via ``pyproject.toml``.
 
 from __future__ import annotations
 
-import typer
-
-from nuguard.cli.commands.init import init_app
-from nuguard.cli.commands.sbom import sbom_app
 from nuguard.cli.commands.analyze import analyze_app
-from nuguard.cli.commands.scan import scan_app
-from nuguard.cli.commands.policy import policy_app
-from nuguard.cli.commands.redteam import redteam_app
-from nuguard.cli.commands.seed import seed_app
-from nuguard.cli.commands.report import report_app
 from nuguard.cli.commands.findings import findings_app
+from nuguard.cli.commands.init import init_command
+from nuguard.cli.commands.policy import policy_app
 from nuguard.cli.commands.replay import replay_app
+from nuguard.cli.commands.redteam import redteam_app
+from nuguard.cli.commands.report import report_app
+from nuguard.cli.commands.sbom import sbom_app
+from nuguard.cli.commands.scan import scan_app
+from nuguard.cli.commands.seed import seed_app
+import typer
 
 app = typer.Typer(
     name="nuguard",
@@ -25,7 +24,7 @@ app = typer.Typer(
     add_completion=False,
 )
 
-app.add_typer(init_app, name="init")
+app.command(name="init")(init_command)
 app.add_typer(sbom_app, name="sbom")
 app.add_typer(analyze_app, name="analyze")
 app.add_typer(scan_app, name="scan")
