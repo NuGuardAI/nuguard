@@ -386,6 +386,7 @@ async def _run_orchestrator(
         guided_concurrency=guided_concurrency,
         extra_headers=extra_headers,
         strict_outcome=strict_outcome,
+        scenario_filter=scenario_filter,
         redteam_llm=redteam_llm,
         eval_llm=eval_llm,
     )

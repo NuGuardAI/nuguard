@@ -34,6 +34,19 @@ from .guided_executor import GuidedAttackExecutor
 _log = logging.getLogger(__name__)
 
 
+def _normalize_scenario_token(value: str) -> str:
+    return value.strip().lower().replace("-", "_")
+
+
+def _scenario_matches_filter(scenario: AttackScenario, filters: set[str]) -> bool:
+    if not filters:
+        return True
+    goal = _normalize_scenario_token(scenario.goal_type.value)
+    scenario_type = _normalize_scenario_token(scenario.scenario_type.value)
+    title = _normalize_scenario_token(scenario.title)
+    return any(token in goal or token in scenario_type or token in title for token in filters)
+
+
 @dataclass
 class ScenarioRecord:
     """Verbose per-scenario execution record for troubleshooting reports."""
@@ -222,6 +235,7 @@ class RedteamOrchestrator:
         guided_concurrency: int = 3,
         extra_headers: dict[str, str] | None = None,
         strict_outcome: bool = False,
+        scenario_filter: list[str] | None = None,
     ) -> None:
         self._sbom = sbom
         self._target_url = target_url
@@ -245,6 +259,11 @@ class RedteamOrchestrator:
         # Outcome semantics: when True, a scan with predominantly transport errors
         # is reported as inconclusive rather than no_findings.
         self._strict_outcome = strict_outcome
+        self._scenario_filter: set[str] = {
+            _normalize_scenario_token(s)
+            for s in (scenario_filter or [])
+            if s and s.strip()
+        }
         # Auto-discover from SBOM; fall back to provided values
         self._chat_path, self._chat_payload_key, self._chat_payload_list = (
             _discover_chat_config(sbom, chat_path, chat_payload_key, chat_payload_list)
@@ -332,6 +351,11 @@ class RedteamOrchestrator:
         else:
             scenarios = [
                 s for s in all_scenarios if s.impact_score >= self._min_impact
+            ]
+
+        if self._scenario_filter:
+            scenarios = [
+                s for s in scenarios if _scenario_matches_filter(s, self._scenario_filter)
             ]
 
         self.scenarios_run = len(scenarios)

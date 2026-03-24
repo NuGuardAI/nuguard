@@ -539,3 +539,74 @@ async def test_circuit_breaker_resets_on_success() -> None:
     assert client._consecutive_errors == 0
 
     await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_send_retries_429_then_succeeds() -> None:
+    """send() retries HTTP 429 with backoff and eventually returns success."""
+    import httpx
+    from nuguard.redteam.target.client import TargetAppClient
+    from nuguard.redteam.target.session import AttackSession
+
+    client = TargetAppClient(
+        base_url="http://localhost:9999",
+        max_429_retries=2,
+        retry_429_backoff_base_seconds=0.01,
+        retry_429_backoff_cap_seconds=0.02,
+    )
+    session = AttackSession(session_id="s1", target_url="http://localhost:9999", chain_id="c1")
+
+    req = httpx.Request("POST", "http://localhost:9999/chat")
+    resp_429 = MagicMock()
+    resp_429.raise_for_status = MagicMock(
+        side_effect=httpx.HTTPStatusError("429", request=req, response=httpx.Response(429, request=req, json={"retryAfterMs": 1}))
+    )
+
+    resp_ok = MagicMock()
+    resp_ok.raise_for_status = MagicMock()
+    resp_ok.json = MagicMock(return_value={"response": "ok"})
+
+    with patch("nuguard.redteam.target.client.asyncio.sleep", new_callable=AsyncMock) as sleep_mock:
+        with patch.object(client._client, "post", new_callable=AsyncMock, side_effect=[resp_429, resp_ok]) as post_mock:
+            text, _ = await client.send("hello", session)
+
+    assert text == "ok"
+    assert post_mock.await_count == 2
+    sleep_mock.assert_awaited_once()
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_invoke_endpoint_retries_429_then_succeeds() -> None:
+    """invoke_endpoint() retries HTTP 429 responses before returning."""
+    from nuguard.redteam.target.client import TargetAppClient
+
+    client = TargetAppClient(
+        base_url="http://localhost:9999",
+        max_429_retries=2,
+        retry_429_backoff_base_seconds=0.01,
+        retry_429_backoff_cap_seconds=0.02,
+    )
+
+    resp_429 = MagicMock()
+    resp_429.status_code = 429
+    resp_429.text = '{"retryAfterMs": 1}'
+    resp_429.headers = {}
+    resp_429.json = MagicMock(return_value={"retryAfterMs": 1})
+
+    resp_ok = MagicMock()
+    resp_ok.status_code = 200
+    resp_ok.text = '{"ok": true}'
+    resp_ok.headers = {}
+    resp_ok.json = MagicMock(return_value={"ok": True})
+
+    with patch("nuguard.redteam.target.client.asyncio.sleep", new_callable=AsyncMock) as sleep_mock:
+        with patch.object(client._client, "request", new_callable=AsyncMock, side_effect=[resp_429, resp_ok]) as request_mock:
+            status, text, payload = await client.invoke_endpoint(path="/orders", method="POST", body={"x": 1})
+
+    assert status == 200
+    assert text == '{"ok": true}'
+    assert payload == {"ok": True}
+    assert request_mock.await_count == 2
+    sleep_mock.assert_awaited_once()
+    await client.aclose()
