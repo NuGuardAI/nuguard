@@ -34,6 +34,19 @@ from .guided_executor import GuidedAttackExecutor
 _log = logging.getLogger(__name__)
 
 
+def _normalize_scenario_token(value: str) -> str:
+    return value.strip().lower().replace("-", "_")
+
+
+def _scenario_matches_filter(scenario: AttackScenario, filters: set[str]) -> bool:
+    if not filters:
+        return True
+    goal = _normalize_scenario_token(scenario.goal_type.value)
+    scenario_type = _normalize_scenario_token(scenario.scenario_type.value)
+    title = _normalize_scenario_token(scenario.title)
+    return any(token in goal or token in scenario_type or token in title for token in filters)
+
+
 @dataclass
 class ScenarioRecord:
     """Verbose per-scenario execution record for troubleshooting reports."""
@@ -47,6 +60,111 @@ class ScenarioRecord:
     chain_status: str  # completed | aborted | failed
     had_finding: bool
     steps: list[dict] = field(default_factory=list)  # per-step input/output dicts
+    # Transport health counters — populated from step results after execution
+    http_2xx: int = 0
+    http_4xx: int = 0
+    http_5xx: int = 0
+    request_errors: int = 0
+    timeout_errors: int = 0
+
+
+def _classify_step_transport(response: str, http_status_code: int | None) -> str:
+    """Classify a step's transport outcome into one of five categories.
+
+    Returns one of: ``http_2xx``, ``http_4xx``, ``http_5xx``,
+    ``timeout_error``, or ``request_error``.
+
+    For steps that used ``invoke_endpoint`` the HTTP status code is available
+    directly.  For steps that went through the chat ``send()`` path the status
+    is encoded in the response string (``[HTTP NNN]`` or ``[REQUEST_ERROR: ...]``).
+    """
+    if http_status_code is not None:
+        if 200 <= http_status_code < 300:
+            return "http_2xx"
+        if 400 <= http_status_code < 500:
+            return "http_4xx"
+        if http_status_code >= 500:
+            return "http_5xx"
+
+    if response.startswith("[REQUEST_ERROR:"):
+        if "timeout" in response.lower():
+            return "timeout_error"
+        return "request_error"
+
+    if response.startswith("[HTTP "):
+        try:
+            code = int(response[6:9])
+            if 200 <= code < 300:
+                return "http_2xx"
+            if 400 <= code < 500:
+                return "http_4xx"
+            if code >= 500:
+                return "http_5xx"
+        except (ValueError, IndexError):
+            pass
+
+    # Successful chat response with no error prefix
+    return "http_2xx"
+
+
+def _tally_transport(record: ScenarioRecord, step_results: list) -> None:
+    """Accumulate transport health counters into *record* from *step_results*."""
+    for sr in step_results:
+        category = _classify_step_transport(sr.response, sr.http_status_code)
+        if category == "http_2xx":
+            record.http_2xx += 1
+        elif category == "http_4xx":
+            record.http_4xx += 1
+        elif category == "http_5xx":
+            record.http_5xx += 1
+        elif category == "timeout_error":
+            record.timeout_errors += 1
+        else:
+            record.request_errors += 1
+
+
+def _compute_scan_outcome(
+    findings: list,
+    records: list[ScenarioRecord],
+    strict: bool,
+) -> str:
+    """Derive the scan-level outcome string from findings and scenario records.
+
+    Values
+    ------
+    ``passed``
+        At least one finding was raised — the target has confirmed vulnerabilities.
+    ``no_findings``
+        Scan ran to completion but no findings were raised.
+    ``inconclusive_target_errors``
+        The majority of transport events across all scenarios were server-side
+        errors (5xx) or network failures.  Only returned when ``strict=True``;
+        with the default ``strict=False`` the outcome falls back to ``no_findings``
+        so that existing CI pipelines are not disrupted.
+    ``aborted_target_unavailable``
+        Every executed scenario has ``chain_status == "aborted"`` or ``"skipped"``
+        (the circuit breaker tripped), indicating the target was unreachable.
+    """
+    if findings:
+        return "passed"
+
+    # Check for full abort (circuit breaker fired on every scenario)
+    if records and all(r.chain_status in ("aborted", "skipped") for r in records):
+        return "aborted_target_unavailable"
+
+    if strict and records:
+        total_error = sum(
+            r.http_5xx + r.request_errors + r.timeout_errors for r in records
+        )
+        total_all = sum(
+            r.http_2xx + r.http_4xx + r.http_5xx + r.request_errors + r.timeout_errors
+            for r in records
+        )
+        # Threshold: ≥ 80 % of transport events are server-side failures
+        if total_all > 0 and total_error / total_all >= 0.80:
+            return "inconclusive_target_errors"
+
+    return "no_findings"
 
 
 def _finding_id(title: str) -> str:
@@ -115,6 +233,9 @@ class RedteamOrchestrator:
         guided_conversations: bool = True,
         guided_max_turns: int = 12,
         guided_concurrency: int = 3,
+        extra_headers: dict[str, str] | None = None,
+        strict_outcome: bool = False,
+        scenario_filter: list[str] | None = None,
     ) -> None:
         self._sbom = sbom
         self._target_url = target_url
@@ -133,6 +254,16 @@ class RedteamOrchestrator:
         self._guided_conversations = guided_conversations
         self._guided_max_turns = guided_max_turns
         self._guided_concurrency = max(1, guided_concurrency)
+        # Default HTTP headers propagated to every request (e.g. auth header)
+        self._extra_headers: dict[str, str] = extra_headers or {}
+        # Outcome semantics: when True, a scan with predominantly transport errors
+        # is reported as inconclusive rather than no_findings.
+        self._strict_outcome = strict_outcome
+        self._scenario_filter: set[str] = {
+            _normalize_scenario_token(s)
+            for s in (scenario_filter or [])
+            if s and s.strip()
+        }
         # Auto-discover from SBOM; fall back to provided values
         self._chat_path, self._chat_payload_key, self._chat_payload_list = (
             _discover_chat_config(sbom, chat_path, chat_payload_key, chat_payload_list)
@@ -159,6 +290,9 @@ class RedteamOrchestrator:
         self.llm_variants_total: int = 0              # total LLM payload variants injected
         self.prompt_cache_hit: bool = False            # True when payloads loaded from cache
         self.llm_scenario_variants: dict[str, int] = {}  # scenario_title → variant_count
+        # Scan-level outcome — populated by run()
+        # Values: passed | no_findings | inconclusive_target_errors | aborted_target_unavailable
+        self.scan_outcome: str = "no_findings"
 
     async def run(self) -> list[Finding]:
         """Run the full scan and return a list of findings."""
@@ -219,6 +353,11 @@ class RedteamOrchestrator:
                 s for s in all_scenarios if s.impact_score >= self._min_impact
             ]
 
+        if self._scenario_filter:
+            scenarios = [
+                s for s in scenarios if _scenario_matches_filter(s, self._scenario_filter)
+            ]
+
         self.scenarios_run = len(scenarios)
         if self.llm_enriched_scenarios:
             self.llm_enriched_executed = sum(
@@ -257,6 +396,7 @@ class RedteamOrchestrator:
                 chat_payload_key=self._chat_payload_key,
                 chat_payload_list=self._chat_payload_list,
                 timeout=self._request_timeout,
+                default_headers=self._extra_headers or None,
             ) as client,
         ):
             # Substitute poison server URL into all scenario step payloads that
@@ -330,6 +470,14 @@ class RedteamOrchestrator:
                     self.scenario_records.extend(escalation_records)
 
         _log.info("Scan complete: %d findings", len(findings))
+
+        # Compute scan-level outcome from scenario records
+        self.scan_outcome = _compute_scan_outcome(
+            findings=findings,
+            records=self.scenario_records,
+            strict=self._strict_outcome,
+        )
+        _log.info("Scan outcome: %s", self.scan_outcome)
 
         # LLM evaluation + summary (opt-in — only when eval_llm is configured)
         if self._eval_llm and findings:
@@ -434,6 +582,7 @@ class RedteamOrchestrator:
                         had_finding=had_finding,
                         steps=step_details,
                     )
+                    _tally_transport(record, step_results)
                     return (
                         new_findings,
                         (scenario.title, scenario.goal_type.value, had_finding),
@@ -569,6 +718,20 @@ class RedteamOrchestrator:
             had_finding=had_finding,
             steps=step_details,
         )
+        # Tally transport health from guided turn responses
+        for turn_detail in step_details:
+            resp = turn_detail.get("response", "")
+            category = _classify_step_transport(resp, None)
+            if category == "http_2xx":
+                record.http_2xx += 1
+            elif category == "http_4xx":
+                record.http_4xx += 1
+            elif category == "http_5xx":
+                record.http_5xx += 1
+            elif category == "timeout_error":
+                record.timeout_errors += 1
+            else:
+                record.request_errors += 1
         return (
             finding_list,
             (scenario.title, scenario.goal_type.value, had_finding),

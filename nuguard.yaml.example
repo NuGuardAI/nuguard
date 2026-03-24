@@ -61,6 +61,14 @@ redteam:
   # NUGUARD_REDTEAM_VERBOSE=1 environment variable.
   verbose: false
 
+  # Strict outcome mode (default: false).
+  # When true, a scan where ≥ 80 % of transport events are server errors (5xx)
+  # or network failures is reported as 'inconclusive_target_errors' instead of
+  # 'no_findings'. Enable this in CI to catch false-clean outcomes caused by a
+  # broken or unreachable target. Disabled by default to preserve existing
+  # CI pipeline behaviour.
+  strict_outcome: false
+
   # Extra environment variables injected into the fixture app subprocess during
   # E2E redteam tests. Use ${VAR} interpolation to avoid storing secrets here.
   # app_env:
