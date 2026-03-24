@@ -118,9 +118,9 @@
 
                     <ul class="hero-list">
                         <li><strong class="accent">AI-SBOM</strong> — map every agent, model, tool, and datastore from source code</li>
-                        <li><strong class="accent">Static Analysis</strong> — NGA rules, MITRE ATLAS, OSV CVEs, IaC misconfigurations</li>
+                        <li><strong class="accent">Static Analysis</strong> — AI Stack analysis, MITRE ATLAS, CVEs, IaC misconfigurations</li>
                         <li><strong class="accent">Cognitive Policy</strong> — enforce behavioral guardrails, assess OWASP LLM compliance</li>
-                        <li><strong class="accent">Red-Team</strong> — SBOM-driven adversarial testing with canary exfiltration detection</li>
+                        <li><strong class="accent">Red-Team</strong> — context-based testing that exercises your sub-agents and MCP tools</li>
                     </ul>
 
                     <div class="hero-actions">
@@ -147,38 +147,194 @@
         </div>
     </section>
 
-    <!-- Pipeline demo -->
+    <!-- Pipeline graphic -->
     <section class="scan-demo">
         <div class="container">
-            <div class="scan-demo-label">The full security pipeline — one tool</div>
-            <div class="scan-demo-terminal">
-                <div class="glow-ring"></div>
-                <div class="code-window">
-                    <div class="code-titlebar">
-                        <span style="font-family:var(--mono);font-size:0.75rem;color:var(--text-dim)">nuguard — agentic AI security suite</span>
-                        <span></span>
+            <div class="scan-demo-label">End-to-end AI application security pipeline</div>
+
+            <!-- Pipeline diagram -->
+            <div style="position:relative;max-width:1100px;margin:0 auto;">
+
+                <!-- Glow backdrop -->
+                <div style="position:absolute;inset:-1px;border-radius:18px;background:linear-gradient(135deg,rgba(88,196,220,0.18) 0%,rgba(188,140,255,0.10) 50%,rgba(248,81,73,0.08) 100%);filter:blur(1px);z-index:0;pointer-events:none;"></div>
+
+                <div style="position:relative;z-index:1;background:var(--bg-surface);border:1px solid var(--border);border-radius:16px;overflow:hidden;">
+
+                    <!-- Top label bar -->
+                    <div style="display:flex;align-items:center;gap:0.75rem;padding:0.85rem 1.5rem;border-bottom:1px solid var(--border);background:rgba(255,255,255,0.02);">
+                        <div style="display:flex;gap:0.4rem;">
+                            <span style="width:10px;height:10px;border-radius:50%;background:#f85149;display:inline-block;"></span>
+                            <span style="width:10px;height:10px;border-radius:50%;background:#e3b341;display:inline-block;"></span>
+                            <span style="width:10px;height:10px;border-radius:50%;background:#3fb950;display:inline-block;"></span>
+                        </div>
+                        <span style="font-family:var(--mono);font-size:0.72rem;color:var(--text-dim);letter-spacing:0.02em;">nuguard — AI Application Security Suite</span>
                     </div>
-                    <pre style="margin:0"><span class="hl-prompt">$ </span><span class="hl-cmd">nuguard sbom generate --source ./my-ai-app --output app.sbom.json</span>
-  31 nodes · 42 deps · 38 edges → app.sbom.json
 
-<span class="hl-prompt">$ </span><span class="hl-cmd">nuguard analyze --sbom app.sbom.json --format markdown</span>
-  [NGA-004] CRITICAL  Agent 'PatientRouter' has write access to PHI datastore with no guardrail
-  [NGA-V002] HIGH     Tool 'execute_sql' has shell/exec permissions
-  [CVE-2024-3861] HIGH  langchain 0.1.4 — prompt injection via tool output
+                    <!-- Main pipeline flow -->
+                    <div style="padding:2rem 1.5rem 1.75rem;display:flex;align-items:stretch;gap:0;overflow-x:auto;">
 
-<span class="hl-prompt">$ </span><span class="hl-cmd">nuguard policy check --policy cognitive_policy.md --sbom app.sbom.json \
-    --framework owasp-llm-top10</span>
-  CHECK-001  FAIL   HITL trigger defined but no GUARDRAIL node found in SBOM
-  OWASP LLM01  PARTIAL   Prompt injection controls partially satisfied
-  Compliance score: 61/100
+                        <!-- ── INPUTS ── -->
+                        <div style="flex:0 0 auto;width:148px;display:flex;flex-direction:column;gap:0.6rem;">
+                            <!-- Source Code input -->
+                            <div style="flex:1;background:var(--bg-card);border:1px solid var(--border);border-left:3px solid #58c4dc;border-radius:8px;padding:0.85rem 0.9rem;display:flex;flex-direction:column;gap:0.45rem;">
+                                <div style="display:flex;align-items:center;gap:0.45rem;margin-bottom:0.2rem;">
+                                    <svg width="13" height="13" viewBox="0 0 16 16" fill="#58c4dc"><path d="M4 1.5a.5.5 0 0 0-.5.5v12a.5.5 0 0 0 .5.5h8a.5.5 0 0 0 .5-.5V6.5L9.5 1.5H4zm5 0v4h4"/><path d="M4 1.5h5.5v4H13"/></svg>
+                                    <span style="font-size:0.7rem;font-weight:700;color:#58c4dc;letter-spacing:0.05em;text-transform:uppercase;">Source Code</span>
+                                </div>
+                                <div style="font-size:0.68rem;color:var(--text-dim);line-height:1.6;">
+                                    Python · TypeScript<br>
+                                    Jupyter · SQL<br>
+                                    Dockerfiles · IaC<br>
+                                    YAML · Nginx
+                                </div>
+                            </div>
+                            <!-- Cognitive Policy input -->
+                            <div style="flex:0 0 auto;background:var(--bg-card);border:1px solid var(--border);border-left:3px solid #bc8cff;border-radius:8px;padding:0.85rem 0.9rem;display:flex;flex-direction:column;gap:0.3rem;">
+                                <div style="display:flex;align-items:center;gap:0.45rem;margin-bottom:0.2rem;">
+                                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#bc8cff" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>
+                                    <span style="font-size:0.7rem;font-weight:700;color:#bc8cff;letter-spacing:0.05em;text-transform:uppercase;">Policy</span>
+                                </div>
+                                <div style="font-size:0.68rem;color:var(--text-dim);line-height:1.6;">
+                                    Cognitive Policy<br>
+                                    Markdown format
+                                </div>
+                            </div>
+                        </div>
 
-<span class="hl-prompt">$ </span><span class="hl-cmd">nuguard redteam --sbom app.sbom.json --target http://localhost:8000 \
-    --canary canary.json --profile ci</span>
-  [CRITICAL] Canary value exfiltrated — patient SSN leaked via PatientRouter
-  [HIGH]     System prompt extracted via context flooding
-  2 confirmed findings → results.sarif</pre>
-                </div>
-            </div>
+                        <!-- Arrow 1 -->
+                        <div style="flex:0 0 auto;display:flex;align-items:center;justify-content:center;width:32px;">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="#30363d" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        </div>
+
+                        <!-- ── STAGE 1: AI-SBOM ── -->
+                        <div style="flex:1 1 0;min-width:0;background:var(--bg-card);border:1px solid rgba(88,196,220,0.3);border-top:3px solid #58c4dc;border-radius:8px;padding:1rem;display:flex;flex-direction:column;gap:0.5rem;">
+                            <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.3rem;">
+                                <div style="width:26px;height:26px;border-radius:6px;background:rgba(88,196,220,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#58c4dc" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg>
+                                </div>
+                                <div>
+                                    <div style="font-size:0.72rem;font-weight:700;color:#58c4dc;letter-spacing:0.04em;text-transform:uppercase;line-height:1.2;">AI-SBOM</div>
+                                    <div style="font-size:0.65rem;color:var(--text-dim);">Generator</div>
+                                </div>
+                            </div>
+                            <div style="display:flex;flex-direction:column;gap:0.32rem;">
+                                <div style="font-size:0.69rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#58c4dc;flex-shrink:0;margin-top:1px;">▸</span>AST adapters — 15+ frameworks</div>
+                                <div style="font-size:0.69rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#58c4dc;flex-shrink:0;margin-top:1px;">▸</span>Agents · Models · Tools</div>
+                                <div style="font-size:0.69rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#58c4dc;flex-shrink:0;margin-top:1px;">▸</span>Prompts · Datastores</div>
+                                <div style="font-size:0.69rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#58c4dc;flex-shrink:0;margin-top:1px;">▸</span>Guardrails · Auth · IaC</div>
+                                <div style="font-size:0.69rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#58c4dc;flex-shrink:0;margin-top:1px;">▸</span>PII/PHI classification</div>
+                            </div>
+                            <div style="margin-top:auto;padding-top:0.6rem;border-top:1px solid var(--border-mute);">
+                                <code style="font-size:0.63rem;color:var(--text-dim);font-family:var(--mono);">nuguard sbom generate</code>
+                            </div>
+                        </div>
+
+                        <!-- Arrow 2 -->
+                        <div style="flex:0 0 auto;display:flex;align-items:center;justify-content:center;width:32px;">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="#30363d" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        </div>
+
+                        <!-- ── STAGE 2: STATIC ANALYSIS ── -->
+                        <div style="flex:1 1 0;min-width:0;background:var(--bg-card);border:1px solid rgba(255,166,87,0.3);border-top:3px solid #ffa657;border-radius:8px;padding:1rem;display:flex;flex-direction:column;gap:0.5rem;">
+                            <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.3rem;">
+                                <div style="width:26px;height:26px;border-radius:6px;background:rgba(255,166,87,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ffa657" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                                </div>
+                                <div>
+                                    <div style="font-size:0.72rem;font-weight:700;color:#ffa657;letter-spacing:0.04em;text-transform:uppercase;line-height:1.2;">Static Analysis</div>
+                                    <div style="font-size:0.65rem;color:var(--text-dim);">+ Policy Engine</div>
+                                </div>
+                            </div>
+                            <div style="display:flex;flex-direction:column;gap:0.32rem;">
+                                <div style="font-size:0.69rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#ffa657;flex-shrink:0;margin-top:1px;">▸</span>NGA structural rules</div>
+                                <div style="font-size:0.69rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#ffa657;flex-shrink:0;margin-top:1px;">▸</span>MITRE ATLAS v2 mapping</div>
+                                <div style="font-size:0.69rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#ffa657;flex-shrink:0;margin-top:1px;">▸</span>OSV · Grype · Trivy CVEs</div>
+                                <div style="font-size:0.69rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#ffa657;flex-shrink:0;margin-top:1px;">▸</span>Checkov · Semgrep IaC</div>
+                                <div style="font-size:0.69rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#bc8cff;flex-shrink:0;margin-top:1px;">▸</span><span style="color:#bc8cff;">OWASP LLM · NIST · EU AI Act</span></div>
+                            </div>
+                            <div style="margin-top:auto;padding-top:0.6rem;border-top:1px solid var(--border-mute);">
+                                <code style="font-size:0.63rem;color:var(--text-dim);font-family:var(--mono);">nuguard analyze · policy check</code>
+                            </div>
+                        </div>
+
+                        <!-- Arrow 3 -->
+                        <div style="flex:0 0 auto;display:flex;align-items:center;justify-content:center;width:32px;">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="#30363d" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        </div>
+
+                        <!-- ── STAGE 3: RED-TEAM ── -->
+                        <div style="flex:1 1 0;min-width:0;background:var(--bg-card);border:1px solid rgba(248,81,73,0.3);border-top:3px solid #f85149;border-radius:8px;padding:1rem;display:flex;flex-direction:column;gap:0.5rem;">
+                            <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:0.3rem;">
+                                <div style="width:26px;height:26px;border-radius:6px;background:rgba(248,81,73,0.15);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f85149" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                                </div>
+                                <div>
+                                    <div style="font-size:0.72rem;font-weight:700;color:#f85149;letter-spacing:0.04em;text-transform:uppercase;line-height:1.2;">Red-Team</div>
+                                    <div style="font-size:0.65rem;color:var(--text-dim);">Dynamic Testing</div>
+                                </div>
+                            </div>
+                            <div style="display:flex;flex-direction:column;gap:0.32rem;">
+                                <div style="font-size:0.69rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#f85149;flex-shrink:0;margin-top:1px;">▸</span>SBOM-derived scenarios</div>
+                                <div style="font-size:0.69rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#f85149;flex-shrink:0;margin-top:1px;">▸</span>Guided multi-turn convos</div>
+                                <div style="font-size:0.69rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#f85149;flex-shrink:0;margin-top:1px;">▸</span>Canary exfiltration detection</div>
+                                <div style="font-size:0.69rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#f85149;flex-shrink:0;margin-top:1px;">▸</span>Prompt injection · Tool abuse</div>
+                                <div style="font-size:0.69rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#f85149;flex-shrink:0;margin-top:1px;">▸</span>MCP toxic flows · Data exfil</div>
+                            </div>
+                            <div style="margin-top:auto;padding-top:0.6rem;border-top:1px solid var(--border-mute);">
+                                <code style="font-size:0.63rem;color:var(--text-dim);font-family:var(--mono);">nuguard redteam</code>
+                            </div>
+                        </div>
+
+                        <!-- Arrow 4 -->
+                        <div style="flex:0 0 auto;display:flex;align-items:center;justify-content:center;width:32px;">
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M5 12h14M13 6l6 6-6 6" stroke="#30363d" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+                        </div>
+
+                        <!-- ── OUTPUTS ── -->
+                        <div style="flex:0 0 auto;width:132px;display:flex;flex-direction:column;gap:0.4rem;justify-content:center;">
+                            <div style="font-size:0.65rem;font-weight:700;color:#3fb950;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:0.3rem;">Outputs</div>
+                            <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:0.4rem 0.65rem;display:flex;align-items:center;gap:0.45rem;">
+                                <span style="width:6px;height:6px;border-radius:50%;background:#58c4dc;flex-shrink:0;"></span>
+                                <span style="font-size:0.7rem;color:var(--text-muted);font-family:var(--mono);">JSON</span>
+                                <span style="font-size:0.6rem;color:var(--text-dim);margin-left:auto;">AI-SBOM</span>
+                            </div>
+                            <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:0.4rem 0.65rem;display:flex;align-items:center;gap:0.45rem;">
+                                <span style="width:6px;height:6px;border-radius:50%;background:#3fb950;flex-shrink:0;"></span>
+                                <span style="font-size:0.7rem;color:var(--text-muted);font-family:var(--mono);">Markdown</span>
+                            </div>
+                            <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:0.4rem 0.65rem;display:flex;align-items:center;gap:0.45rem;">
+                                <span style="width:6px;height:6px;border-radius:50%;background:#ffa657;flex-shrink:0;"></span>
+                                <span style="font-size:0.7rem;color:var(--text-muted);font-family:var(--mono);">SARIF 2.1</span>
+                            </div>
+                            <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:0.4rem 0.65rem;display:flex;align-items:center;gap:0.45rem;">
+                                <span style="width:6px;height:6px;border-radius:50%;background:#bc8cff;flex-shrink:0;"></span>
+                                <span style="font-size:0.7rem;color:var(--text-muted);font-family:var(--mono);">SPDX 3.0</span>
+                            </div>
+                            <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:6px;padding:0.4rem 0.65rem;display:flex;align-items:center;gap:0.45rem;">
+                                <span style="width:6px;height:6px;border-radius:50%;background:#f85149;flex-shrink:0;"></span>
+                                <span style="font-size:0.7rem;color:var(--text-muted);font-family:var(--mono);">CycloneDX</span>
+                                <span style="font-size:0.6rem;color:var(--text-dim);margin-left:auto;">1.6</span>
+                            </div>
+                        </div>
+
+                    </div><!-- end main pipeline row -->
+
+                    <!-- Bottom: Cognitive Policy feeds into Analysis + Red-Team annotation -->
+                    <div style="padding:0 1.5rem 1.25rem;display:flex;align-items:center;gap:0.75rem;">
+                        <div style="height:1px;flex:0 0 148px;background:transparent;"></div><!-- spacer aligning with inputs column -->
+                        <div style="height:1px;width:32px;flex-shrink:0;"></div><!-- spacer for arrow -->
+                        <div style="flex:1;border-top:1px dashed rgba(188,140,255,0.35);border-left:1px dashed rgba(188,140,255,0.35);border-radius:4px 0 0 0;height:12px;"></div>
+                        <div style="font-size:0.64rem;color:rgba(188,140,255,0.7);white-space:nowrap;display:flex;align-items:center;gap:0.4rem;">
+                            <span style="width:8px;height:8px;border-radius:50%;background:rgba(188,140,255,0.4);border:1px solid #bc8cff;"></span>
+                            Cognitive Policy feeds into Analysis &amp; Red-Team
+                        </div>
+                        <div style="flex:1;border-top:1px dashed rgba(188,140,255,0.35);border-right:1px dashed rgba(188,140,255,0.35);border-radius:0 4px 0 0;height:12px;"></div>
+                        <div style="height:1px;width:32px;flex-shrink:0;"></div>
+                        <div style="height:1px;flex:0 0 132px;background:transparent;"></div>
+                    </div>
+
+                </div><!-- end bg-surface card -->
+            </div><!-- end relative wrapper -->
         </div>
     </section>
 

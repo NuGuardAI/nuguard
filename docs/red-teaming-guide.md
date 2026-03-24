@@ -2,6 +2,10 @@
 
 Dynamic adversarial testing for live AI applications.  The engine takes an AI-SBOM, a target URL, and optionally a Cognitive Policy, then automatically generates, executes, and scores attack scenarios against the running application — producing structured findings with OWASP/MITRE mappings and LLM-generated remediation briefs.
 
+It's designed for AI developers who may not have deep security expertise but want to proactively identify and fix weaknesses in their AI systems before production. The red-team engine requires no manual test case writing or pentesting knowledge — just an SBOM and a target URL.
+
+If you have access to a staging environment with realistic data, you can run the red-team engine against it to find vulnerabilities before they reach production.  For production environments, we recommend starting with the static analysis pipeline and policy compliance checks, then using the red-team engine for targeted testing of specific high-impact scenarios.
+
 ---
 
 ## Table of Contents
@@ -57,16 +61,6 @@ RedteamOrchestrator        ← concurrent scenario dispatch (semaphore-capped)
                                   │
                             Findings → Severity/Compliance mapping → Report
 ```
-
-**Key packages:**
-
-| Package | Role |
-|---|---|
-| `nuguard/redteam/scenarios/` | Scenario builders — one file per attack family |
-| `nuguard/redteam/executor/` | `AttackExecutor`, `GuidedAttackExecutor`, `RedteamOrchestrator` |
-| `nuguard/redteam/llm_engine/` | `ConversationDirector`, `LLMPromptGenerator`, `AdaptiveMutation`, `ResponseEvaluator` |
-| `nuguard/redteam/target/` | `TargetAppClient`, `CanaryScanner`, `ActionLogger`, `AttackSession` |
-| `nuguard/redteam/risk_engine/` | `severity_scorer`, `compliance_mapper`, `remediation_generator` |
 
 ---
 
@@ -313,7 +307,7 @@ The `CanaryConfig.all_watch_values()` method flattens `global_watch_values` and 
 
 ### Static Chain Execution
 
-`AttackExecutor.run(chain)` iterates over `ExploitChain.steps` in dependency order:
+Attack execution order:
 
 ```
 ExploitStep

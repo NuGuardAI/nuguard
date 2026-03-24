@@ -2,10 +2,6 @@
 
 This guide explains how NuGuard’s policy engine works, what inputs it expects, which checks it performs, and how to use it from the CLI.
 
-The current implementation lives under:
-
-- [nuguard/policy/](/workspaces/nuguard-oss/nuguard/policy)
-- [nuguard/cli/commands/policy.py](/workspaces/nuguard-oss/nuguard/cli/commands/policy.py)
 
 ## What the Policy Engine Does
 
@@ -35,10 +31,7 @@ The parser recognizes these sections:
 ### AI-SBOM
 
 The policy engine uses the AI-SBOM as the evidence source for structural checks and compliance assessment.
-
-Relevant model:
-
-- [nuguard/sbom/models.py](/workspaces/nuguard-oss/nuguard/sbom/models.py)
+The SBOM should be generated with `nuguard sbom generate` and contain detailed inventory and metadata about the AI system’s components.
 
 ## Parsing
 
@@ -85,9 +78,6 @@ Examples:
 
 ## Linting
 
-Linting is implemented in:
-
-- [nuguard/policy/validator.py](/workspaces/nuguard-oss/nuguard/policy/validator.py)
 
 Run it with:
 
@@ -153,11 +143,6 @@ Supported built-in frameworks currently include:
 - `nist-ai-rmf`
 - `eu-ai-act`
 
-Framework data is loaded from:
-
-- [nuguard/policy/compliance/data/owasp_llm_top10.json](/workspaces/nuguard-oss/nuguard/policy/compliance/data/owasp_llm_top10.json)
-- [nuguard/policy/compliance/data/nist_ai_rmf.json](/workspaces/nuguard-oss/nuguard/policy/compliance/data/nist_ai_rmf.json)
-- [nuguard/policy/compliance/data/eu_ai_act.json](/workspaces/nuguard-oss/nuguard/policy/compliance/data/eu_ai_act.json)
 
 ### Assessment pipeline
 
@@ -169,11 +154,6 @@ The implemented flow is:
 4. Optionally fall back to an LLM when a control is not assessable from the SBOM alone
 5. Aggregate the results into a weighted compliance score
 
-Relevant modules:
-
-- [nuguard/policy/aibom_snapshot.py](/workspaces/nuguard-oss/nuguard/policy/aibom_snapshot.py)
-- [nuguard/policy/evaluator.py](/workspaces/nuguard-oss/nuguard/policy/evaluator.py)
-- [nuguard/policy/synthesizer.py](/workspaces/nuguard-oss/nuguard/policy/synthesizer.py)
 
 ### LLM fallback
 

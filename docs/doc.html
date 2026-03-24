@@ -304,7 +304,7 @@
     <!-- Navigation -->
     <nav>
         <a href="index.html" class="nav-brand">
-            <img src="xelo-logo-tr1.png" alt="NuGuard" class="nav-logo" />
+            <img src="nuguard-logo.png" alt="NuGuard" class="nav-logo" />
         </a>
         <ul class="nav-links">
             <li><a href="index.html#what">What it does</a></li>
@@ -312,7 +312,7 @@
             <li><a href="index.html#quickstart">Quickstart</a></li>
             <li><a href="index.html#frameworks">Frameworks</a></li>
             <li><a href="doc.html?page=getting-started" class="active">Docs</a></li>
-            <li><a href="https://github.com/nuguardai/nuguard-oss" class="nav-cta">GitHub ↗</a></li>
+            <li><a href="https://github.com/NuGuardAI/nuguard-oss" class="nav-cta">GitHub ↗</a></li>
         </ul>
     </nav>
 
@@ -325,13 +325,12 @@
                 <div class="sidebar-section-title">Documentation</div>
                 <div class="sidebar-nav">
                     <ul>
-                        <li><a href="doc.html?page=getting-started" data-page="getting-started">Getting Started</a></li>
-                        <li><a href="doc.html?page=aibom-schema" data-page="aibom-schema">AI SBOM Schema</a></li>
+                        <li><a href="doc.html?page=quick-start" data-page="quick-start">Quick Start Guide</a></li>
+                        <li><a href="doc.html?page=sbom-schema" data-page="sbom-schema">AI SBOM Schema</a></li>
                         <li><a href="doc.html?page=cli-reference" data-page="cli-reference">CLI Reference</a></li>
-                        <li><a href="doc.html?page=developer-guide" data-page="developer-guide">Developer Guide</a></li>
-                        <li><a href="doc.html?page=vulnerability-scanning"
-                                data-page="vulnerability-scanning">Vulnerability Scanning</a></li>
-                        <li><a href="doc.html?page=atlas-mitre" data-page="atlas-mitre">MITRE ATLAS Annotation</a></li>
+                        <li><a href="doc.html?page=static-analysis-guide" data-page="static-analysis-guide">Static Analysis Guide</a></li>
+                        <li><a href="doc.html?page=policy-engine-guide" data-page="policy-engine-guide">Policy Engine Guide</a></li>
+                        <li><a href="doc.html?page=red-teaming-guide" data-page="red-teaming-guide">Red Teaming Guide</a></li>
                         <li><a href="doc.html?page=example-openai-cs-agents"
                                 data-page="example-openai-cs-agents">Example: OpenAI CS Agents</a></li>
                         <li><a href="doc.html?page=troubleshooting" data-page="troubleshooting">Troubleshooting</a></li>
@@ -357,16 +356,11 @@
             <div class="footer-brand">
             </div>
             <ul class="footer-links">
-                <li><a href="doc.html?page=getting-started">Getting Started</a></li>
-                <li><a href="doc.html?page=cli-reference">CLI Reference</a></li>
-                <li><a href="doc.html?page=developer-guide">Developer Guide</a></li>
-                <li><a href="doc.html?page=vulnerability-scanning">Vulnerability Scanning</a></li>
-                <li><a href="doc.html?page=atlas-mitre">MITRE ATLAS</a></li>
-                <li><a href="doc.html?page=example-openai-cs-agents">Example: OpenAI CS Agents</a></li>
-                <li><a href="https://github.com/nuguardai/nuguard-oss">GitHub</a></li>
-                <li><a href="https://github.com/nuguardai/nuguard-oss/issues">Issues</a></li>
+                <li><a href="doc.html?page=quick-start">Getting Started</a></li>
+                <li><a href="https://github.com/NuGuardAI/nuguard-oss">GitHub</a></li>
+                <li><a href="https://github.com/NuGuardAI/nuguard-oss/issues">Issues</a></li>
             </ul>
-            <span class="footer-copy">Apache-2.0 · Built by NuGuard AI</span>
+            <span class="footer-copy">· Built by NuGuard AI</span>
         </div>
     </footer>
 
@@ -378,21 +372,19 @@
         (function () {
             // Page name → title map
             const PAGE_TITLES = {
-                'getting-started': 'Getting Started',
-                'aibom-schema': 'AI SBOM Schema',
+                'quick-start': 'Quick Start Guide',
+                'sbom-schema': 'AI SBOM Schema',
                 'cli-reference': 'CLI Reference',
-                'developer-guide': 'Developer Guide',
-                'vulnerability-scanning': 'Vulnerability Scanning',
-                'atlas-mitre': 'MITRE ATLAS Annotation',
+                'static-analysis-guide': 'Static Analysis Guide',
+                'policy-engine-guide': 'Policy Engine Guide',
+                'red-teaming-guide': 'Red Teaming Guide',
                 'example-openai-cs-agents': 'Example: OpenAI CS Agents',
                 'troubleshooting': 'Troubleshooting',
-                'CHANGELOG': 'Documentation Changelog',
-                'README': 'Documentation Index',
             };
 
-            // Resolve page from ?page= param, default to getting-started
+            // Resolve page from ?page= param, default to quick-start
             const params = new URLSearchParams(window.location.search);
-            const page = params.get('page') || 'getting-started';
+            const page = params.get('page') || 'quick-start';
 
             // Highlight active sidebar link
             document.querySelectorAll('.sidebar-nav a[data-page]').forEach(function (a) {

@@ -2,11 +2,6 @@
 
 This guide explains NuGuard’s static analysis pipeline, how to run it, what each detector does, and how to install optional external tools such as Grype, Trivy, and Checkov.
 
-Relevant implementation:
-
-- [nuguard/analysis/static_analyzer.py](/workspaces/nuguard-oss/nuguard/analysis/static_analyzer.py)
-- [nuguard/cli/commands/analyze.py](/workspaces/nuguard-oss/nuguard/cli/commands/analyze.py)
-- [nuguard/cli/commands/scan.py](/workspaces/nuguard-oss/nuguard/cli/commands/scan.py)
 
 ## What Static Analysis Does
 
@@ -14,7 +9,7 @@ NuGuard static analysis works from an existing AI-SBOM. It does not need a runni
 
 The implemented static pipeline includes:
 
-1. NGA structural rules
+1. AI Static specific structural rules (NGA rules)
 2. OSV dependency CVE lookup
 3. Grype vulnerability scan
 4. Checkov IaC scan
@@ -29,7 +24,7 @@ The analyzer normalizes all findings into the shared `Finding` model and can ren
 ### 1. Generate an SBOM
 
 ```bash
-uv run nuguard sbom generate --source . --output app.sbom.json
+nuguard sbom generate --source . --output app.sbom.json
 ```
 
 ### 2. Run analysis

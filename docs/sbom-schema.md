@@ -1,11 +1,6 @@
-# NuGuard SBOM Schema
+# NuGuard AI SBOM Schema
 
 This document describes the canonical AI-SBOM document shape used by NuGuard.
-
-The source of truth for the schema is:
-
-- [nuguard/sbom/models.py](/workspaces/nuguard-oss/nuguard/sbom/models.py)
-- [nuguard/sbom/schemas/aibom.schema.json](/workspaces/nuguard-oss/nuguard/sbom/schemas/aibom.schema.json)
 
 ## Overview
 
@@ -30,7 +25,7 @@ Example shape:
 {
   "schema_version": "1.4.0",
   "generated_at": "2026-03-23T00:00:00Z",
-  "generator": "xelo",
+  "generator": "nuguard",
   "target": "https://github.com/NuGuardAI/nuguard-oss",
   "nodes": [],
   "edges": [],
@@ -259,9 +254,3 @@ To inspect the generated JSON schema:
 ```bash
 nuguard sbom schema
 ```
-
-## Sample File
-
-A small example document lives at:
-
-- [docs/sample-sbom.json](/workspaces/nuguard-oss/docs/sample-sbom.json)
