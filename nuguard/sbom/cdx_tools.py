@@ -191,7 +191,7 @@ class CycloneDxGenerator:
         ]
         bom["dependencies"] = []
         bom.setdefault("metadata", {})["properties"] = [
-            {"name": "cdx:generator", "value": "xelo-dep-scanner"},
+            {"name": "cdx:generator", "value": "nuguard-dep-scanner"},
             {
                 "name": "cdx:note",
                 "value": "Shallow manifest scan only — install cyclonedx-bom for full SBOM",

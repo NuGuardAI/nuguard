@@ -1,7 +1,24 @@
 [project]
 name = "nuguard"
 version = "0.1.0"
+description = "AI application security CLI — SBOM generation, static analysis, cognitive policy validation, and adversarial red-teaming for AI apps"
+readme = "README.md"
+license = { text = "Apache-2.0" }
 requires-python = ">=3.12"
+authors = [
+    { name = "NuGuard", email = "oss@nuguard.ai" },
+]
+keywords = ["ai", "security", "sbom", "red-team", "llm", "prompt-injection", "appsec"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
+    "License :: OSI Approved :: Apache Software License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Security",
+    "Topic :: Software Development :: Quality Assurance",
+]
 dependencies = [
     "typer>=0.12",
     "pydantic>=2.7",
@@ -29,6 +46,11 @@ dev = [
     "ruff>=0.4",
     "mypy>=1.10",
 ]
+
+[project.urls]
+Homepage = "https://github.com/nuguard/nuguard-oss"
+Repository = "https://github.com/nuguard/nuguard-oss"
+Issues = "https://github.com/nuguard/nuguard-oss/issues"
 
 [project.scripts]
 nuguard = "nuguard.cli.main:app"

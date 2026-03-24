@@ -1,10 +1,8 @@
 """Minimal CycloneDX BOM builder for analysis plugins.
 
-Converts the raw ``nuguard.models.sbom.AiSbomDocument`` dict (as produced by
+Converts the raw ``nuguard.sbom.models.AiSbomDocument`` dict (as produced by
 ``AiSbomDocument.model_dump()``) into a CycloneDX 1.4 JSON BOM that Grype and
-Trivy can consume.  Uses only fields present in ``nuguard.models.sbom`` —
-intentionally avoiding the Xelo ``nuguard.sbom.models`` namespace to prevent
-schema mismatches.
+Trivy can consume.
 """
 
 from __future__ import annotations
@@ -43,7 +41,7 @@ def sbom_dict_to_cyclonedx(sbom: dict[str, Any]) -> dict[str, Any]:
         components.append(entry)
 
     target    = sbom.get("target") or "unknown"
-    generated = str(sbom.get("generated_at") or datetime.datetime.utcnow().isoformat())
+    generated = str(sbom.get("generated_at") or datetime.datetime.now(datetime.timezone.utc).isoformat())
 
     return {
         "bomFormat":    "CycloneDX",

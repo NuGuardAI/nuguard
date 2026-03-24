@@ -31,7 +31,7 @@ _SARIF_SCHEMA = (
     "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/"
     "Schemata/sarif-schema-2.1.0.json"
 )
-_TOOL_NAME     = "xelo-toolbox"
+_TOOL_NAME     = "nuguard-toolbox"
 _TOOL_VERSION  = "0.1.2"
 _TOOL_INFO_URI = "https://nuguard.ai"
 

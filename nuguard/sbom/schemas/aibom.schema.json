@@ -1376,7 +1376,7 @@
       "type": "string"
     },
     "generator": {
-      "default": "xelo",
+      "default": "nuguard",
       "description": "Tool that produced this document",
       "title": "Generator",
       "type": "string"

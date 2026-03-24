@@ -104,13 +104,42 @@ class CheckovScannerPlugin(AnalysisPlugin):
 def _collect_iac_paths(sbom: dict[str, Any], config: dict[str, Any]) -> set[str]:
     """Extract IaC source paths from SBOM nodes.
 
-    Falls back to ``config["source_path"]`` when no dedicated IaC nodes are
-    found — Checkov will auto-discover IaC files (Terraform, K8s, etc.) within
-    the directory.
+    Resolution order for each candidate path string *p*:
+    1. Use *p* as-is when it exists on disk.
+    2. Try resolving *p* relative to ``config["source_path"]``.
+    3. Try resolving *p* relative to the SBOM ``target`` field (when it is a
+       local directory, not a git URL).
+
+    Falls back to the first existing directory among ``config["source_path"]``
+    and the SBOM ``target`` field when no typed IaC nodes yield a resolvable
+    path — Checkov will then auto-discover IaC files within that directory.
     """
     iac_types = {"INFRASTRUCTURE_AS_CODE", "DEPLOYMENT", "CONFIG"}
-    paths: set[str] = set()
 
+    # Candidate root directories for relative-path resolution, in priority order
+    roots: list[Path] = []
+    if sp := config.get("source_path"):
+        candidate = Path(str(sp))
+        if candidate.is_dir():
+            roots.append(candidate)
+    target = sbom.get("target") or ""
+    if target and not str(target).startswith(("http://", "https://", "git@")):
+        candidate = Path(str(target))
+        if candidate.is_dir():
+            roots.append(candidate)
+
+    def _resolve(raw: str) -> str | None:
+        """Return the first resolvable path for *raw*, or None."""
+        p = Path(raw)
+        if p.exists():
+            return str(p)
+        for root in roots:
+            resolved = root / p
+            if resolved.exists():
+                return str(resolved)
+        return None
+
+    paths: set[str] = set()
     for node in sbom.get("nodes") or []:
         ctype = (node.get("component_type") or "").upper()
         if ctype not in iac_types:
@@ -118,15 +147,17 @@ def _collect_iac_paths(sbom: dict[str, Any], config: dict[str, Any]) -> set[str]
         meta = node.get("metadata") or {}
         extras = meta.get("extras") or {}
         for key in ("source_path", "config_path", "file_path"):
-            p = meta.get(key) or extras.get(key)
-            if p and Path(str(p)).exists():
-                paths.add(str(p))
+            raw = meta.get(key) or extras.get(key)
+            if raw:
+                resolved = _resolve(str(raw))
+                if resolved:
+                    paths.add(resolved)
 
     # Fallback: scan the whole source directory when no typed IaC nodes exist
     if not paths:
-        sp = config.get("source_path")
-        if sp and Path(str(sp)).is_dir():
-            paths.add(str(sp))
+        for root in roots:
+            paths.add(str(root))
+            break  # one root is enough for directory-wide discovery
 
     return paths
 
