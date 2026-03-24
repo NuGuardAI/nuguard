@@ -1,6 +1,6 @@
 [project]
 name = "nuguard"
-version = "0.1.0"
+version = "0.2.0"
 description = "AI application security CLI — SBOM generation, static analysis, cognitive policy validation, and adversarial red-teaming for AI apps"
 readme = "README.md"
 license = { text = "Apache-2.0" }

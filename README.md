@@ -67,13 +67,13 @@ nuguard --help
 ### 1. Generate an AI-SBOM
 
 ```bash
-uv run nuguard sbom generate --source . --output app.sbom.json
+nuguard sbom generate --source . --output app.sbom.json
 ```
 
 You can also scan a remote repository:
 
 ```bash
-uv run nuguard sbom generate \
+nuguard sbom generate \
   --from-repo https://github.com/org/repo \
   --ref main \
   --output app.sbom.json
@@ -82,7 +82,7 @@ uv run nuguard sbom generate \
 ### 2. Run Static Analysis
 
 ```bash
-uv run nuguard analyze --sbom app.sbom.json --format markdown
+nuguard analyze --sbom app.sbom.json --format markdown
 ```
 
 Typical outputs:
@@ -96,13 +96,13 @@ Typical outputs:
 Validate policy structure:
 
 ```bash
-uv run nuguard policy validate --file cognitive-policy.md
+nuguard policy validate --file cognitive-policy.md
 ```
 
 Cross-check policy against the SBOM:
 
 ```bash
-uv run nuguard policy check \
+nuguard policy check \
   --policy cognitive-policy.md \
   --sbom app.sbom.json
 ```
@@ -110,7 +110,7 @@ uv run nuguard policy check \
 ### 4. Red-Team a Live App
 
 ```bash
-uv run nuguard redteam \
+nuguard redteam \
   --sbom app.sbom.json \
   --target http://localhost:3000 \
   --format json
@@ -125,7 +125,7 @@ For richer red-team coverage, you can also provide:
 ### 5. Run the Unified Pipeline
 
 ```bash
-uv run nuguard scan \
+nuguard scan \
   --source . \
   --output-dir nuguard-reports
 ```
@@ -158,12 +158,12 @@ More detail is available in [`docs/redteam-engine.md`](/workspaces/nuguard-oss/d
 ## Common Commands
 
 ```bash
-uv run nuguard --help
-uv run nuguard sbom --help
-uv run nuguard analyze --help
-uv run nuguard policy --help
-uv run nuguard redteam --help
-uv run nuguard scan --help
+nuguard --help
+nuguard sbom --help
+nuguard analyze --help
+nuguard policy --help
+nuguard redteam --help
+nuguard scan --help
 ```
 
 ## Development
