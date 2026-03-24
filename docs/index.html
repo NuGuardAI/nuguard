@@ -86,10 +86,10 @@
         <ul class="nav-links">
             <li><a href="#pipeline">Pipeline</a></li>
             <li><a href="#why">Why NuGuard</a></li>
-            <li><a href="#quickstart">Quickstart</a></li>
-            <li><a href="#plugins">Plugins</a></li>
+            <li><a href="#for-whom">For Whom</a></li>
+            <li><a href="#redteam">Red-Team</a></li>
             <li><a href="#frameworks">Frameworks</a></li>
-            <li><a href="doc.html?page=getting-started">Docs</a></li>
+            <li><a href="doc.html?page=quick-start">Docs</a></li>
             <li><a href="https://github.com/NuGuardAI/nuguard-oss" class="nav-icon-link" aria-label="GitHub"><svg width="20"
                         height="20" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                         <path
@@ -124,7 +124,7 @@
                     </ul>
 
                     <div class="hero-actions">
-                        <a href="doc.html?page=getting-started" class="btn-primary">Get started →</a>
+                        <a href="doc.html?page=quick-start" class="btn-primary">Get started →</a>
                         <a href="https://github.com/NuGuardAI/nuguard-oss" class="btn-secondary icon-link"><svg width="16"
                                 height="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                                 <path
@@ -160,11 +160,6 @@
 
                 <div style="position:relative;z-index:1;background:var(--bg-surface);border:1px solid var(--border);border-radius:16px;overflow:hidden;">
 
-                    <!-- Top label bar -->
-                    <div style="display:flex;align-items:center;gap:0.75rem;padding:0.85rem 1.5rem;border-bottom:1px solid var(--border);background:rgba(255,255,255,0.02);">
-                        <span style="font-family:var(--mono);font-size:0.72rem;color:var(--text-dim);letter-spacing:0.02em;">nuguard — AI Application Security Suite</span>
-                    </div>
-
                     <!-- Main pipeline flow -->
                     <div style="padding:2rem 1.5rem 1.75rem;display:flex;align-items:stretch;gap:0;overflow-x:auto;">
 
@@ -179,7 +174,7 @@
                                 <div style="font-size:0.68rem;color:var(--text-dim);line-height:1.6;">
                                     Python · TypeScript<br>
                                     Jupyter · SQL<br>
-                                    Dockerfiles · IaC<br>
+                                    Dockerfiles · K8s<br>
                                     YAML · Nginx
                                 </div>
                             </div>
@@ -191,7 +186,6 @@
                                 </div>
                                 <div style="font-size:0.68rem;color:var(--text-dim);line-height:1.6;">
                                     Cognitive Policy<br>
-                                    Markdown format
                                 </div>
                             </div>
                         </div>
@@ -213,7 +207,7 @@
                                 </div>
                             </div>
                             <div style="display:flex;flex-direction:column;gap:0.32rem;">
-                                <div style="font-size:0.69rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#58c4dc;flex-shrink:0;margin-top:1px;">▸</span>AST adapters — 15+ frameworks</div>
+                                <div style="font-size:0.69rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#58c4dc;flex-shrink:0;margin-top:1px;">▸</span>20+ AI frameworks</div>
                                 <div style="font-size:0.69rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#58c4dc;flex-shrink:0;margin-top:1px;">▸</span>Agents · Models · Tools</div>
                                 <div style="font-size:0.69rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#58c4dc;flex-shrink:0;margin-top:1px;">▸</span>Prompts · Datastores</div>
                                 <div style="font-size:0.69rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#58c4dc;flex-shrink:0;margin-top:1px;">▸</span>Guardrails · Auth · IaC</div>
@@ -241,7 +235,7 @@
                                 </div>
                             </div>
                             <div style="display:flex;flex-direction:column;gap:0.32rem;">
-                                <div style="font-size:0.69rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#ffa657;flex-shrink:0;margin-top:1px;">▸</span>NGA structural rules</div>
+                                <div style="font-size:0.69rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#ffa657;flex-shrink:0;margin-top:1px;">▸</span>Deep AI Stack Analysis</div>
                                 <div style="font-size:0.69rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#ffa657;flex-shrink:0;margin-top:1px;">▸</span>MITRE ATLAS v2 mapping</div>
                                 <div style="font-size:0.69rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#ffa657;flex-shrink:0;margin-top:1px;">▸</span>OSV · Grype · Trivy CVEs</div>
                                 <div style="font-size:0.69rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#ffa657;flex-shrink:0;margin-top:1px;">▸</span>Checkov · Semgrep IaC</div>
@@ -269,7 +263,7 @@
                                 </div>
                             </div>
                             <div style="display:flex;flex-direction:column;gap:0.32rem;">
-                                <div style="font-size:0.69rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#f85149;flex-shrink:0;margin-top:1px;">▸</span>SBOM-derived scenarios</div>
+                                <div style="font-size:0.69rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#f85149;flex-shrink:0;margin-top:1px;">▸</span>Context-based Attacks</div>
                                 <div style="font-size:0.69rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#f85149;flex-shrink:0;margin-top:1px;">▸</span>Guided multi-turn convos</div>
                                 <div style="font-size:0.69rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#f85149;flex-shrink:0;margin-top:1px;">▸</span>Canary exfiltration detection</div>
                                 <div style="font-size:0.69rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.4rem;"><span style="color:#f85149;flex-shrink:0;margin-top:1px;">▸</span>Prompt injection · Tool abuse</div>
@@ -544,13 +538,13 @@
                 </div>
             </div>
 
-            <div class="rule-categories">
+            <div class="rule-categories" style="grid-template-columns:repeat(3,1fr);">
                 <div class="rule-cat">
                     <div class="rule-cat-top">
                         <span class="rule-cat-icon">🧬</span>
                         <span class="rule-count-badge sev-critical">Built-in</span>
                     </div>
-                    <h4>NGA structural rules</h4>
+                    <h4>AI Stack deep analysis</h4>
                     <p>AI-native deterministic checks: missing guardrails, unsafe tool access, privilege paths, injection surfaces, unencrypted endpoints, unauthenticated agents. No network required.</p>
                 </div>
                 <div class="rule-cat">
@@ -622,14 +616,24 @@
             <div class="personas-grid">
                 <div class="persona-card">
                     <div class="persona-header">
+                        <span class="persona-icon">🧑‍💻</span>
+                        <h3>AI / Platform Engineers</h3>
+                    </div>
+                    <ul>
+                        <li>Reduce security review overhead — generate AI-SBOM artifacts automatically in CI</li>
+                        <li>Fix findings before AppSec review — structural rules fire on your actual code graph</li>
+                        <li>Extensible and customizable — adapt rules to your specific AI frameworks and workflows</li>
+                    </ul>
+                </div>
+                <div class="persona-card">
+                    <div class="persona-header">
                         <span class="persona-icon">👔</span>
                         <h3>CTO / VP Engineering</h3>
                     </div>
                     <ul>
                         <li>Know your AI attack surface before shipping to production</li>
-                        <li>One pipeline integrates into existing CI/CD — no separate security team tooling</li>
-                        <li>Evidence-backed security posture from source code, not manual questionnaires</li>
-                        <li>Standards-compliant output (CycloneDX, SPDX, SARIF) for your toolchain</li>
+                        <li>Integrates into existing CI/CD and security tooling</li>
+                        <li>Improve developer experience — no manual questionnaires</li>
                     </ul>
                 </div>
                 <div class="persona-card">
@@ -638,46 +642,9 @@
                         <h3>CISO / Security Director</h3>
                     </div>
                     <ul>
-                        <li>OWASP LLM Top 10, NIST AI RMF, EU AI Act compliance scores from SBOM evidence</li>
+                        <li>Self-serve & automation — less manual effort</li>
+                        <li>Audit ready - detailed evidence, documented AI policy enforcement</li>
                         <li>Identify PII/PHI flowing to external LLM APIs — the #1 AI data-risk concern</li>
-                        <li>Dynamic red-team results with canary-proven exfiltration findings</li>
-                        <li>Audit-ready Markdown and SARIF reports — no vendor access to your source code</li>
-                    </ul>
-                </div>
-                <div class="persona-card">
-                    <div class="persona-header">
-                        <span class="persona-icon">🧑‍💻</span>
-                        <h3>AI / Platform Engineers</h3>
-                    </div>
-                    <ul>
-                        <li>Reduce security review overhead — generate AI-SBOM artifacts automatically in CI</li>
-                        <li>Framework-native scanning understands LangChain, LangGraph, MCP, CrewAI, and more</li>
-                        <li>Fix findings before AppSec review — structural rules fire on your actual code graph</li>
-                        <li>Python API for embedding security checks in your own tooling</li>
-                    </ul>
-                </div>
-                <div class="persona-card">
-                    <div class="persona-header">
-                        <span class="persona-icon">🔍</span>
-                        <h3>AppSec / Red-Team Engineers</h3>
-                    </div>
-                    <ul>
-                        <li>SBOM-derived attack scenarios — test what the app actually exposes</li>
-                        <li>Multi-turn guided conversations using the Crescendo tactic pattern</li>
-                        <li>Canary seeds for definitive, un-ambiguous exfiltration proof</li>
-                        <li>MITRE ATLAS v2 technique mappings on every finding</li>
-                    </ul>
-                </div>
-                <div class="persona-card">
-                    <div class="persona-header">
-                        <span class="persona-icon">⚙️</span>
-                        <h3>DevSecOps Engineers</h3>
-                    </div>
-                    <ul>
-                        <li>Gate CI on HIGH+ findings with exit code 2 — no custom scripting needed</li>
-                        <li>Upload SARIF to GitHub Code Scanning, push findings to AWS Security Hub or JFrog Xray</li>
-                        <li>Offline core runs in air-gapped environments with no external API calls</li>
-                        <li>IaC scanning for encryption, root containers, single-AZ, missing secret stores</li>
                     </ul>
                 </div>
                 <div class="persona-card">
@@ -687,12 +654,150 @@
                     </div>
                     <ul>
                         <li>Self-serve compliance assessments — no need to wait for engineering time</li>
-                        <li>Machine-checkable Cognitive Policies with gap analysis against SBOM evidence</li>
                         <li>Human-readable Markdown reports for audit evidence packages</li>
                         <li>Version-controlled policy files — track compliance drift over time in git</li>
                     </ul>
                 </div>
             </div>
+        </div>
+    </section>
+
+    <!-- Red-Team Engine -->
+    <section id="redteam" style="border-top: 1px solid var(--border);">
+        <div class="container">
+            <div class="section-label">Red-Team Engine</div>
+            <h2 style="max-width: 660px;">Adversarial testing that knows your application</h2>
+            <p style="max-width: 740px; margin-bottom: 3.5rem;">
+                Most red-team tools fire generic prompt libraries at an LLM endpoint.
+                NuGuard reads your source first — building a semantic graph of every agent, tool, datastore,
+                guardrail, and auth boundary — then derives attacks from that graph. The result is zero wasted
+                API calls and zero false-start scenarios.
+            </p>
+
+            <!-- Three differentiator cards -->
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:1.5rem;margin-bottom:3rem;">
+
+                <!-- Context-based -->
+                <div style="background:var(--bg-card);border:1px solid var(--border);border-top:3px solid #58c4dc;border-radius:12px;padding:1.75rem;">
+                    <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1rem;">
+                        <div style="width:36px;height:36px;border-radius:8px;background:rgba(88,196,220,0.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#58c4dc" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/></svg>
+                        </div>
+                        <h3 style="margin:0;font-size:1rem;font-weight:700;color:var(--text);">Context-Based Attacks</h3>
+                    </div>
+                    <p style="font-size:0.9rem;color:var(--text-muted);line-height:1.7;margin:0 0 1rem;">
+                        Attack scenarios are derived from the <strong style="color:var(--text);">AI-SBOM graph</strong> and your
+                        <strong style="color:var(--text);">Cognitive Policy</strong> — not a generic payload library.
+                        A SQL injection scenario only fires when the SBOM shows a SQL-injectable tool.
+                        A PHI exfiltration scenario only fires when the SBOM contains a PII-classified datastore.
+                    </p>
+                    <ul style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:0.45rem;">
+                        <li style="font-size:0.85rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.5rem;"><span style="color:#58c4dc;flex-shrink:0;margin-top:2px;">✓</span>Policy-violation scenarios from Cognitive Policy sections</li>
+                        <li style="font-size:0.85rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.5rem;"><span style="color:#58c4dc;flex-shrink:0;margin-top:2px;">✓</span>No false-start scenarios — no wasted API calls</li>
+                        <li style="font-size:0.85rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.5rem;"><span style="color:#58c4dc;flex-shrink:0;margin-top:2px;">✓</span>Canary seeds give definitive proof of data exfiltration</li>
+                    </ul>
+                </div>
+
+                <!-- Developer-friendly -->
+                <div style="background:var(--bg-card);border:1px solid var(--border);border-top:3px solid #3fb950;border-radius:12px;padding:1.75rem;">
+                    <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1rem;">
+                        <div style="width:36px;height:36px;border-radius:8px;background:rgba(63,185,80,0.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3fb950" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                        </div>
+                        <h3 style="margin:0;font-size:1rem;font-weight:700;color:var(--text);">Developer-Friendly</h3>
+                    </div>
+                    <p style="font-size:0.9rem;color:var(--text-muted);line-height:1.7;margin:0 0 1rem;">
+                        Minimal input required. Point NuGuard at your source directory — it builds the attack
+                        surface model automatically. No manual threat modelling, no payload configuration,
+                        no proprietary DSL to learn.
+                    </p>
+                    <ul style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:0.45rem;">
+                        <li style="font-size:0.85rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.5rem;"><span style="color:#3fb950;flex-shrink:0;margin-top:2px;">✓</span>One command: <code style="font-family:var(--mono);font-size:0.8rem;color:var(--accent);">nuguard redteam --sbom app.sbom.json --target $URL</code></li>
+                        <li style="font-size:0.85rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.5rem;"><span style="color:#3fb950;flex-shrink:0;margin-top:2px;">✓</span>SARIF output for GitHub Code Scanning — drop into existing CI gates</li>
+                        <li style="font-size:0.85rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.5rem;"><span style="color:#3fb950;flex-shrink:0;margin-top:2px;">✓</span>Offline static chains — no LLM key needed for core scenarios</li>
+                    </ul>
+                </div>
+
+                <!-- Agentic App Coverage -->
+                <div style="background:var(--bg-card);border:1px solid var(--border);border-top:3px solid #f85149;border-radius:12px;padding:1.75rem;">
+                    <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1rem;">
+                        <div style="width:36px;height:36px;border-radius:8px;background:rgba(248,81,73,0.12);display:flex;align-items:center;justify-content:center;flex-shrink:0;">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f85149" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+                        </div>
+                        <h3 style="margin:0;font-size:1rem;font-weight:700;color:var(--text);">Full Agentic App Coverage</h3>
+                    </div>
+                    <p style="font-size:0.9rem;color:var(--text-muted);line-height:1.7;margin:0 0 1rem;">
+                        Attacks traverse the full agentic stack — not just the chat endpoint.
+                        NuGuard tests <strong style="color:var(--text);">sub-agents</strong>,
+                        <strong style="color:var(--text);">MCP tool servers</strong>, and
+                        <strong style="color:var(--text);">guardrail nodes</strong> individually,
+                        including privilege-escalation chains that cross component boundaries.
+                    </p>
+                    <ul style="margin:0;padding:0;list-style:none;display:flex;flex-direction:column;gap:0.45rem;">
+                        <li style="font-size:0.85rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.5rem;"><span style="color:#f85149;flex-shrink:0;margin-top:2px;">✓</span>MCP toxic flow injection via untrusted tool output</li>
+                        <li style="font-size:0.85rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.5rem;"><span style="color:#f85149;flex-shrink:0;margin-top:2px;">✓</span>Tool-chain privilege escalation to admin actions</li>
+                        <li style="font-size:0.85rem;color:var(--text-muted);display:flex;align-items:flex-start;gap:0.5rem;"><span style="color:#f85149;flex-shrink:0;margin-top:2px;">✓</span>Guardrail bypass via guided multi-turn Crescendo conversations</li>
+                    </ul>
+                </div>
+
+            </div>
+
+            <!-- Attack families table -->
+            <div style="background:var(--bg-card);border:1px solid var(--border);border-radius:12px;overflow:hidden;">
+                <div style="padding:1.25rem 1.5rem;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:0.75rem;">
+                    <span style="font-size:0.75rem;font-weight:700;color:var(--text-dim);letter-spacing:0.08em;text-transform:uppercase;">Attack scenario families</span>
+                    <span style="font-size:0.72rem;color:var(--text-dim);margin-left:auto;">Triggered by SBOM signal</span>
+                </div>
+                <div style="overflow-x:auto;">
+                    <table style="width:100%;border-collapse:collapse;font-size:0.85rem;">
+                        <thead>
+                            <tr style="border-bottom:1px solid var(--border);">
+                                <th style="text-align:left;padding:0.75rem 1.5rem;color:var(--text-dim);font-weight:600;font-size:0.78rem;">Family</th>
+                                <th style="text-align:left;padding:0.75rem 1rem;color:var(--text-dim);font-weight:600;font-size:0.78rem;">SBOM signal</th>
+                                <th style="text-align:left;padding:0.75rem 1rem;color:var(--text-dim);font-weight:600;font-size:0.78rem;">What gets tested</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr style="border-bottom:1px solid var(--border-mute);">
+                                <td style="padding:0.7rem 1.5rem;"><span style="font-family:var(--mono);font-size:0.8rem;color:#f85149;">prompt-injection</span></td>
+                                <td style="padding:0.7rem 1rem;color:var(--text-muted);">AGENT with system_prompt or blocked_topics</td>
+                                <td style="padding:0.7rem 1rem;color:var(--text-muted);">System prompt extraction, guardrail bypass, context flooding</td>
+                            </tr>
+                            <tr style="border-bottom:1px solid var(--border-mute);">
+                                <td style="padding:0.7rem 1.5rem;"><span style="font-family:var(--mono);font-size:0.8rem;color:#f85149;">data-exfiltration</span></td>
+                                <td style="padding:0.7rem 1rem;color:var(--text-muted);">DATASTORE with PII/PHI classification</td>
+                                <td style="padding:0.7rem 1rem;color:var(--text-muted);">Base64 exfil, cross-tenant leakage, document-embedded exfil</td>
+                            </tr>
+                            <tr style="border-bottom:1px solid var(--border-mute);">
+                                <td style="padding:0.7rem 1.5rem;"><span style="font-family:var(--mono);font-size:0.8rem;color:#f85149;">tool-abuse</span></td>
+                                <td style="padding:0.7rem 1rem;color:var(--text-muted);">TOOL with SQL-injectable or SSRF-capable tags</td>
+                                <td style="padding:0.7rem 1rem;color:var(--text-muted);">SQL injection, SSRF via tool parameters and URLs</td>
+                            </tr>
+                            <tr style="border-bottom:1px solid var(--border-mute);">
+                                <td style="padding:0.7rem 1.5rem;"><span style="font-family:var(--mono);font-size:0.8rem;color:#f85149;">privilege-escalation</span></td>
+                                <td style="padding:0.7rem 1rem;color:var(--text-muted);">AGENT → TOOL → DATASTORE privilege chains</td>
+                                <td style="padding:0.7rem 1rem;color:var(--text-muted);">Tool-chain escalation to admin actions across component boundaries</td>
+                            </tr>
+                            <tr style="border-bottom:1px solid var(--border-mute);">
+                                <td style="padding:0.7rem 1.5rem;"><span style="font-family:var(--mono);font-size:0.8rem;color:#bc8cff;">policy-violation</span></td>
+                                <td style="padding:0.7rem 1rem;color:var(--text-muted);">Cognitive Policy declared topics &amp; actions</td>
+                                <td style="padding:0.7rem 1rem;color:var(--text-muted);">Elicit responses that violate declared Cognitive Policy</td>
+                            </tr>
+                            <tr style="border-bottom:1px solid var(--border-mute);">
+                                <td style="padding:0.7rem 1.5rem;"><span style="font-family:var(--mono);font-size:0.8rem;color:#f85149;">mcp-toxic-flow</span></td>
+                                <td style="padding:0.7rem 1rem;color:var(--text-muted);">MCP_SERVER nodes</td>
+                                <td style="padding:0.7rem 1rem;color:var(--text-muted);">Tool injection via untrusted MCP output, output poisoning</td>
+                            </tr>
+                            <tr>
+                                <td style="padding:0.7rem 1.5rem;"><span style="font-family:var(--mono);font-size:0.8rem;color:#f85149;">api-attacks</span></td>
+                                <td style="padding:0.7rem 1rem;color:var(--text-muted);">API_ENDPOINT nodes</td>
+                                <td style="padding:0.7rem 1rem;color:var(--text-muted);">Auth bypass, mass assignment, IDOR</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
         </div>
     </section>
 
@@ -705,7 +810,7 @@
                     <div class="section-label">Quickstart</div>
                     <h2>From install to security posture in minutes</h2>
                     <p style="margin-bottom: 1.5rem;">
-                        The offline core — AI-SBOM generation, NGA structural rules, policy linting —
+                        The offline core — AI-SBOM generation, Deep AI Stack Analysis, Cognitive Policy Enforcement —
                         requires no API key and no external network access. Run it anywhere.
                     </p>
                     <p style="margin-bottom: 2rem;">
@@ -713,7 +818,7 @@
                         LLM enrichment. Add <code style="font-family:var(--mono);font-size:0.85rem;color:var(--accent)">--target</code> for
                         dynamic red-teaming. Both are opt-in.
                     </p>
-                    <a href="doc.html?page=getting-started" class="btn-primary" style="display: inline-flex;">Full guide →</a>
+                    <a href="doc.html?page=quick-start" class="btn-primary" style="display: inline-flex;">Full guide →</a>
                     <a href="doc.html?page=cli-reference" class="btn-secondary"
                         style="display: inline-flex; margin-top: 0.75rem;">CLI reference →</a>
                 </div>
@@ -850,31 +955,6 @@ jobs:
                     <span class="plugin-desc">Human-readable Markdown report covering all detected components, their metadata, evidence provenance, and relationship edges. Ready for audit packages or pull-request comments.</span>
                     <span class="plugin-badge badge-offline">Offline</span>
                 </div>
-                <div class="plugin-chip">
-                    <span class="plugin-name">license_check</span>
-                    <span class="plugin-desc">Checks all detected package dependencies against SPDX licence identifiers for compliance — flags copyleft and unknown licences in AI framework dependencies.</span>
-                    <span class="plugin-badge badge-offline">Offline</span>
-                </div>
-                <div class="plugin-chip">
-                    <span class="plugin-name">dependency_analyze</span>
-                    <span class="plugin-desc">Breaks down the SBOM into AI component counts by type and package dependency counts by group. Surfaces summary node counts for dashboards and reporting.</span>
-                    <span class="plugin-badge badge-offline">Offline</span>
-                </div>
-                <div class="plugin-chip">
-                    <span class="plugin-name">ghas</span>
-                    <span class="plugin-desc">Uploads SARIF findings directly to GitHub Advanced Security via the GitHub API for Code Scanning alerts and PR annotations.</span>
-                    <span class="plugin-badge badge-network">Network</span>
-                </div>
-                <div class="plugin-chip">
-                    <span class="plugin-name">aws-security-hub</span>
-                    <span class="plugin-desc">Pushes findings to AWS Security Hub as Security Finding Format (ASFF) records for centralised security event management.</span>
-                    <span class="plugin-badge badge-network">Network</span>
-                </div>
-                <div class="plugin-chip">
-                    <span class="plugin-name">xray</span>
-                    <span class="plugin-desc">Submits the SBOM to JFrog Xray for vulnerability enrichment and policy evaluation in JFrog Artifactory pipelines.</span>
-                    <span class="plugin-badge badge-network">Network</span>
-                </div>
             </div>
         </div>
     </section>
@@ -956,7 +1036,7 @@ jobs:
                     every AI component in your codebase — in minutes, from source code, no API key required.
                 </p>
                 <div class="hero-actions" style="justify-content: center;">
-                    <a href="doc.html?page=getting-started" class="btn-primary">Read the docs →</a>
+                    <a href="doc.html?page=quick-start" class="btn-primary">Read the docs →</a>
                     <a href="doc.html?page=cli-reference" class="btn-secondary">CLI reference</a>
                 </div>
                 <div class="install-block" style="margin: 0 auto; display: inline-flex;">
@@ -982,12 +1062,7 @@ jobs:
                 <span style="display:none;font-weight:600;font-size:0.95rem;color:var(--text-dim)">NuGuard</span>
             </div>
             <ul class="footer-links">
-                <li><a href="doc.html?page=getting-started">Getting Started</a></li>
-                <li><a href="doc.html?page=cli-reference">CLI Reference</a></li>
-                <li><a href="doc.html?page=static-analysis-guide">Static Analysis</a></li>
-                <li><a href="doc.html?page=policy-engine-guide">Policy Engine</a></li>
-                <li><a href="doc.html?page=redteam-engine">Red-Team Engine</a></li>
-                <li><a href="doc.html?page=vulnerability-scanning">Vulnerability Scanning</a></li>
+                <li><a href="doc.html?page=quick-start">Quick Start</a></li>
                 <li><a href="https://github.com/NuGuardAI/nuguard-oss" class="icon-link" aria-label="GitHub"><svg width="15"
                             height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                             <path
