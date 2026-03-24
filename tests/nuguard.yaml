@@ -5,7 +5,7 @@
 # Priority order (highest wins): CLI flags > nuguard.yaml > env vars > built-in defaults
 
 # ─── Project file paths ───────────────────────────────────────────────────────
-sbom: ./app.sbom.json               # path to pre-generated AI-SBOM JSON
+sbom: ./test-app.sbom.json               # path to pre-generated AI-SBOM JSON
 source: ./                          # generate SBOM from source dir (alternative to sbom:)
 policy: ./cognitive-policy.md       # Cognitive Policy Markdown to enforce during redteam
 
@@ -28,10 +28,10 @@ redteam:
   target_endpoint: /chat
 
   # HTTP header to send with every red-team request — use ${VAR} for secrets
-  auth_header: "Authorization: Bearer ${TARGET_TOKEN}"
+  # auth_header: "Authorization: Bearer ${TARGET_TOKEN}"
 
   # Canary JSON file — seeded values the scanner watches for in responses
-  canary: ./canary.json
+  # canary: ./canary.json
 
   # Scan profile
   #   ci   — fast, runs only scenarios with pre-impact score ≥ 5  (default)
@@ -59,15 +59,7 @@ redteam:
   # Verbose report: include full per-scenario traces (inputs, outputs, selection
   # rationale, risk scores) for troubleshooting. Also enabled by setting the
   # NUGUARD_REDTEAM_VERBOSE=1 environment variable.
-  verbose: false
-
-  # Strict outcome mode (default: false).
-  # When true, a scan where ≥ 80 % of transport events are server errors (5xx)
-  # or network failures is reported as 'inconclusive_target_errors' instead of
-  # 'no_findings'. Enable this in CI to catch false-clean outcomes caused by a
-  # broken or unreachable target. Disabled by default to preserve existing
-  # CI pipeline behaviour.
-  strict_outcome: false
+  verbose: true
 
   # Extra environment variables injected into the fixture app subprocess during
   # E2E redteam tests. Use ${VAR} interpolation to avoid storing secrets here.

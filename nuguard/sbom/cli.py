@@ -260,7 +260,7 @@ def _parse_config_pairs(pairs: list[str]) -> dict[str, Any]:
 
 def main() -> None:
     _load_dotenv()
-    parser = argparse.ArgumentParser(prog="xelo", description="Deterministic AI SBOM generator")
+    parser = argparse.ArgumentParser(prog="nuguard", description="Deterministic AI SBOM generator")
     parser.add_argument(
         "--verbose", "-v", action="store_true", help="Enable INFO-level logging to stderr"
     )

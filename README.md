@@ -43,6 +43,8 @@ If these tools are not installed, the corresponding checks can be skipped or may
 
 ## Installation
 
+The steps below describe how to set up a local development environment. For production use, install the package from PyPI with: pip install nuguard
+
 ```bash
 uv sync --dev
 ```

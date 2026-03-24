@@ -246,10 +246,10 @@ class AiBomMerger:
         meta: dict[str, Any] = result.get("metadata", {})
         meta_props: list[dict[str, str]] = list(meta.get("properties", []))
 
-        # Ensure tool entry records Xelo
+        # Ensure tool entry records NuGuard
         tools: list[dict[str, str]] = meta.get("tools", [])
-        vela_tool = {"vendor": "Xelo", "name": "xelo", "version": _VERSION}
-        if not any(t.get("name") == "xelo" for t in tools):
+        vela_tool = {"vendor": "NuGuard", "name": "nuguard", "version": _VERSION}
+        if not any(t.get("name") == "nuguard" for t in tools):
             tools.append(vela_tool)
         meta["tools"] = tools
 
@@ -257,7 +257,7 @@ class AiBomMerger:
         ai_counts = self._count_by_type(ai_doc)
         summary_props: list[dict[str, str]] = [
             {"name": "aibom:version", "value": "1.0"},
-            {"name": "aibom:generator", "value": f"xelo/{_VERSION}"},
+            {"name": "aibom:generator", "value": f"nuguard/{_VERSION}"},
             {"name": "aibom:depsBomMethod", "value": generator_method},
             {"name": "aibom:scanTarget", "value": ai_doc.target},
             {"name": "aibom:scanTimestamp", "value": datetime.now(timezone.utc).isoformat()},
