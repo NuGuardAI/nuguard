@@ -29,9 +29,8 @@ import ast
 import re
 from typing import Any
 
-from .base import ComponentDetection, FrameworkAdapter
 from ..types import ComponentType
-
+from .base import ComponentDetection, FrameworkAdapter
 
 # ---------------------------------------------------------------------------
 # PII / PHI field pattern library

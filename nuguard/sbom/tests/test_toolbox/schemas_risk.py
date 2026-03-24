@@ -11,10 +11,10 @@ The risk assessment evaluates:
 - Red team attack generation quality
 """
 from datetime import date
-from typing import Dict, List, Optional
-from pydantic import BaseModel, Field, field_validator
 from enum import Enum
+from typing import Dict, List, Optional
 
+from pydantic import BaseModel, Field, field_validator
 
 # ============================================================================
 # Enums

@@ -1,8 +1,6 @@
 """Unit tests for nuguard.redteam.target.session.AttackSession and TurnRecord."""
 from __future__ import annotations
 
-import pytest
-
 from nuguard.redteam.target.session import AttackSession, TurnRecord
 
 

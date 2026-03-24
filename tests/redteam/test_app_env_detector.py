@@ -1,15 +1,12 @@
 """Unit tests for app_env_detector and AppLauncher helpers."""
 from __future__ import annotations
 
-import pytest
-
 from nuguard.sbom.core.app_env_detector import (
-    _parse_env_file,
     _canonicalize_url,
     _classify_url,
+    _parse_env_file,
     detect_app_env,
 )
-
 
 # ── _parse_env_file ──────────────────────────────────────────────────────────
 
@@ -193,6 +190,7 @@ services:
 
 def test_pick_target_url_prefers_local() -> None:
     from unittest.mock import MagicMock
+
     from nuguard.redteam.launcher.app_launcher import pick_target_url
 
     sbom = MagicMock()
@@ -206,6 +204,7 @@ def test_pick_target_url_prefers_local() -> None:
 
 def test_pick_target_url_falls_back_to_staging() -> None:
     from unittest.mock import MagicMock
+
     from nuguard.redteam.launcher.app_launcher import pick_target_url
 
     sbom = MagicMock()
@@ -219,6 +218,7 @@ def test_pick_target_url_falls_back_to_staging() -> None:
 
 def test_pick_target_url_none_when_no_urls() -> None:
     from unittest.mock import MagicMock
+
     from nuguard.redteam.launcher.app_launcher import pick_target_url
 
     sbom = MagicMock()

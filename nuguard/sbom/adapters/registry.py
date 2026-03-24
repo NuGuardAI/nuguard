@@ -3,11 +3,11 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from ..normalization import canonicalize_text
+from ..types import ComponentType
 from .base import DetectionAdapter, FrameworkAdapter, RegexAdapter
 from .frameworks import builtin_framework_specs
 from .privilege import privilege_adapters
-from ..normalization import canonicalize_text
-from ..types import ComponentType
 
 
 @dataclass(frozen=True)

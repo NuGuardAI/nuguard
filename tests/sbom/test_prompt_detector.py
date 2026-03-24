@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-import pytest
 from pathlib import Path
 
+import pytest
 
 from nuguard.sbom.models import NodeType
+
 try:
     from nuguard.sbom.extractor.prompt_detector import PromptDetector
 except ImportError:

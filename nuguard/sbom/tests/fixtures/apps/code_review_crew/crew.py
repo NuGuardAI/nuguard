@@ -7,7 +7,6 @@ back-and-forth between the code execution proxy and the model.
 from __future__ import annotations
 
 # ── CrewAI layer ─────────────────────────────────────────────────────────────
-
 from crewai import Agent, Crew, Task
 from crewai.tools import BaseTool
 

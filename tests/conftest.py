@@ -3,12 +3,27 @@
 from __future__ import annotations
 
 import os
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
-import uuid
-
 import pytest
+
+from nuguard.sbom.models import (
+    AccessType,
+    AiSbomDocument,
+    DataClassification,
+    DatastoreType,
+    Edge,
+    EdgeRelationshipType,
+    Evidence,
+    EvidenceKind,
+    EvidenceLocation,
+    Node,
+    NodeMetadata,
+    NodeType,
+    ScanSummary,
+)
 
 _ENV_FILE = Path(__file__).parent / "redteam" / ".env"
 
@@ -31,23 +46,6 @@ def _load_dotenv(path: Path) -> None:
 # Load tests/.env before any test collection so all tests can see the keys
 if _ENV_FILE.exists():
     _load_dotenv(_ENV_FILE)
-
-from nuguard.sbom.models import (
-    AccessType,
-    AiSbomDocument,
-    DataClassification,
-    DatastoreType,
-    Edge,
-    EdgeRelationshipType,
-    Evidence,
-    EvidenceKind,
-    EvidenceLocation,
-    Node,
-    NodeMetadata,
-    NodeType,
-    ScanSummary,
-)
-
 
 _NS = uuid.NAMESPACE_URL
 _AGENT_ID = uuid.uuid5(_NS, "agent001")

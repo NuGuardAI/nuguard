@@ -15,8 +15,8 @@ from __future__ import annotations
 import ast
 from typing import Any
 
-from ..base import ComponentDetection, FrameworkAdapter, RelationshipHint
 from ...types import ComponentType
+from ..base import ComponentDetection, FrameworkAdapter, RelationshipHint
 
 # ---------------------------------------------------------------------------
 # Constants

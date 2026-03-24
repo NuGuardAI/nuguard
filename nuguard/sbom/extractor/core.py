@@ -43,14 +43,6 @@ from ..adapters.base import (
 )
 from ..adapters.data_classification import DataClassificationSQLAdapter
 from ..adapters.dockerfile import DockerfileAdapter
-from ..adapters.registry import default_framework_adapters, default_registry
-from ..adapters.nginx import NginxAdapter, is_nginx_file
-from ..adapters.yaml_adapters import (
-    AutoGenYAMLAdapter,
-    CrewAIYAMLAdapter,
-    LLMYAMLConfigAdapter,
-    PromptFileAdapter,
-)
 from ..adapters.iac import (
     BicepAdapter,
     CloudFormationAdapter,
@@ -59,10 +51,19 @@ from ..adapters.iac import (
     K8sAdapter,
     TerraformAdapter,
 )
+from ..adapters.nginx import NginxAdapter, is_nginx_file
+from ..adapters.registry import default_framework_adapters, default_registry
 from ..adapters.typescript._ts_regex import TSFrameworkAdapter
+from ..adapters.yaml_adapters import (
+    AutoGenYAMLAdapter,
+    CrewAIYAMLAdapter,
+    LLMYAMLConfigAdapter,
+    PromptFileAdapter,
+)
 from ..config import AiSbomConfig
 from ..core.application_summary import build_scan_summary
-from ..core.ts_parser import TSParseResult, parse_typescript as _parse_ts_impl
+from ..core.ts_parser import TSParseResult
+from ..core.ts_parser import parse_typescript as _parse_ts_impl
 from ..deps import DependencyScanner
 from ..models import AiSbomDocument, Edge, Evidence, Node, ScanSummary, SourceLocation
 from ..normalization import canonicalize_text
@@ -1405,11 +1406,11 @@ class AiSbomExtractor:
         2.5. Annotate MCP FRAMEWORK nodes with a short LLM description
         3. Enrich the scan-level use-case summary
         """
-        from ..llm_client import LLMClient
         from ..core.application_summary import maybe_refine_use_case_summary_with_llm
         from ..core.confidence import aggregate_node_confidence
         from ..core.gap_fill import apply_discovery_results, discover_missing_nodes
         from ..core.verification import apply_verification_results, verify_uncertain_nodes
+        from ..llm_client import LLMClient
 
         client = LLMClient(
             model=config.llm_model,

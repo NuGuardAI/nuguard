@@ -25,8 +25,8 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from ..integration_contracts import XrayConfig
 from ..http_utils import post_json
+from ..integration_contracts import XrayConfig
 from ..models import ToolResult
 from ..plugin_base import ToolPlugin
 

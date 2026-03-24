@@ -15,10 +15,11 @@ This module mirrors the Python ast_parser.py structure for consistency.
 """
 
 import re
-import structlog
-from typing import List, Optional, Dict, Any, Set, Tuple
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Set, Tuple
+
+import structlog
 
 logger = structlog.get_logger()
 

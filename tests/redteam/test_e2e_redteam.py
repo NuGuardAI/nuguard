@@ -26,6 +26,8 @@ if TYPE_CHECKING:
     from nuguard.common.llm_client import LLMClient
     from nuguard.config import NuGuardConfig
 
+    from .app_runner import AppConfig
+
 from nuguard.config import load_config
 from nuguard.models.policy import CognitivePolicy
 from nuguard.policy.parser import parse_policy

@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-import pytest
 from pathlib import Path
 
+import pytest
 
 from nuguard.sbom.models import DataClassification
+
 try:
     from nuguard.sbom.extractor.pii_classifier import PiiClassifier
 except ImportError:

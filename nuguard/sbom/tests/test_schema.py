@@ -6,11 +6,11 @@ import json
 from pathlib import Path
 
 import pytest
+from conftest import APPS, PY_ONLY
 
 from nuguard.sbom.extractor import AiSbomExtractor
 from nuguard.sbom.models import AiSbomDocument
 from nuguard.sbom.serializer import AiSbomSerializer
-from conftest import APPS, PY_ONLY
 
 _SCHEMA_FILE = Path(__file__).parent.parent / "schemas" / "aibom.schema.json"
 

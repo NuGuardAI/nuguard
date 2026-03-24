@@ -1,8 +1,8 @@
 """Tests for data classification — PII/PHI detection in SQL schemas and Python models."""
 from __future__ import annotations
 
-
 import pytest
+from conftest import APPS
 
 from nuguard.sbom.adapters.data_classification import (
     DataClassificationPythonAdapter,
@@ -13,7 +13,6 @@ from nuguard.sbom.config import AiSbomConfig
 from nuguard.sbom.extractor import AiSbomExtractor
 from nuguard.sbom.models import AiSbomDocument
 from nuguard.sbom.types import ComponentType
-from conftest import APPS
 
 _SQL_ONLY = AiSbomConfig(include_extensions={".sql"}, enable_llm=False)
 _SQL_AND_PY = AiSbomConfig(include_extensions={".py", ".sql"}, enable_llm=False)

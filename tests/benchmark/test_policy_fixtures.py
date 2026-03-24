@@ -7,7 +7,6 @@ from pathlib import Path
 from nuguard.policy.parser import parse_policy
 from nuguard.policy.validator import lint_policy
 
-
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
 
 

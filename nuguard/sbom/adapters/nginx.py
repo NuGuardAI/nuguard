@@ -25,8 +25,8 @@ from __future__ import annotations
 import logging
 import re
 
-from .base import ComponentDetection
 from ..types import ComponentType
+from .base import ComponentDetection
 
 _log = logging.getLogger(__name__)
 

@@ -10,7 +10,6 @@ from typer.testing import CliRunner
 
 from nuguard.cli.main import app
 from nuguard.sbom.extractor.serializer import AiSbomSerializer
-from nuguard.sbom.models import AiSbomDocument
 
 runner = CliRunner()
 

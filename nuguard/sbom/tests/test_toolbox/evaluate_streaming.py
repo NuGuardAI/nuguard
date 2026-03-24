@@ -17,12 +17,12 @@ import asyncio
 import json
 import os
 import sys
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from dotenv import load_dotenv
 import httpx
+from dotenv import load_dotenv
 
 # Load .env file from project root (supports GITHUB_TOKEN, etc.)
 _env_path = Path(__file__).resolve().parent.parent.parent / ".env"

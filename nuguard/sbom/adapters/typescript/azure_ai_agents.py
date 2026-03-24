@@ -20,12 +20,11 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..base import ComponentDetection, RelationshipHint
-from ._ts_regex import TSFrameworkAdapter
 from ...core.ts_parser import TSParseResult, parse_typescript
 from ...normalization import canonicalize_text
 from ...types import ComponentType
-
+from ..base import ComponentDetection, RelationshipHint
+from ._ts_regex import TSFrameworkAdapter
 
 _AZURE_AI_PACKAGES = [
     "@azure/ai-agents",

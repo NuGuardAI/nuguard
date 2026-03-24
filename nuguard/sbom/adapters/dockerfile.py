@@ -21,8 +21,8 @@ import logging
 import re
 from typing import Any
 
-from .base import ComponentDetection
 from ..types import ComponentType
+from .base import ComponentDetection
 
 _log = logging.getLogger(__name__)
 

@@ -115,11 +115,8 @@ class GuidedAttackExecutor:
                     _log.info("[guided] canary hit on turn %d: %s", turn_number, canary_hits)
 
             # Collect app logs written since mark()
-            app_log_context: str | None = None
             if self._app_log_reader:
-                new_lines = self._app_log_reader.read_new()
-                if new_lines:
-                    app_log_context = "\n".join(new_lines)
+                self._app_log_reader.read_new()
 
             # Assess progress
             current_milestone = (

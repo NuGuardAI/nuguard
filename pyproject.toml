@@ -91,6 +91,7 @@ markers = [
     "redteam_e2e: E2E redteam scan against a live fixture app (opt-in: NUGUARD_REDTEAM_E2E=1)",
     "benchmark_redteam: Full benchmark redteam CLI scan (opt-in: NUGUARD_REDTEAM_BENCHMARK=1)",
     "analyze_e2e: E2E analyze pipeline from GitHub clone (opt-in: NUGUARD_ANALYZE_E2E=1)",
+    "smoke: lightweight smoke coverage for representative fixtures and flows",
 ]
 
 [tool.ruff]
@@ -98,11 +99,16 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
+ignore = ["E501"]
+
+[tool.ruff.lint.per-file-ignores]
+"nuguard/sbom/tests/**/*.py" = ["E501"]
 
 [tool.mypy]
 python_version = "3.12"
 ignore_missing_imports = true
 warn_unused_ignores = false
+exclude = "(^nuguard/.*/tests/)|(^nuguard/sbom/tests/fixtures/)"
 
 [dependency-groups]
 dev = [

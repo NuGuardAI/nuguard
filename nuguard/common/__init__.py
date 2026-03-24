@@ -1,12 +1,12 @@
 """Shared utilities used across all nuguard capabilities."""
 
 from nuguard.common.errors import (
-    NuGuardError,
-    SbomError,
-    ValidationError,
-    ScanError,
     ConfigError,
     ExtractorError,
+    NuGuardError,
+    SbomError,
+    ScanError,
+    ValidationError,
 )
 from nuguard.common.logging import get_logger
 

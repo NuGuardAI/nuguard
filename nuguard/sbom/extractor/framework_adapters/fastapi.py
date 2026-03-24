@@ -12,7 +12,6 @@ import ast
 import logging
 import uuid
 from pathlib import Path
-from typing import Any
 
 from nuguard.sbom.models import Edge, EdgeRelationshipType, Node, NodeMetadata, NodeType
 

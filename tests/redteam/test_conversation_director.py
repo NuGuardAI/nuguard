@@ -8,8 +8,6 @@ from nuguard.redteam.llm_engine.conversation_director import (
     ConversationDirector,
     _select_tactic,
 )
-from nuguard.redteam.models.guided_conversation import TurnRecord
-
 
 # ── _select_tactic ────────────────────────────────────────────────────────────
 

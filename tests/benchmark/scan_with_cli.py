@@ -7,7 +7,6 @@ temporary folder, runs ``nuguard sbom generate``, and prints the resulting SBOM.
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
 
 from .evaluate import generate_sbom_cli, materialize_cached_fixture

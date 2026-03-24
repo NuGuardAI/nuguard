@@ -6,24 +6,24 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>NuGuard OSS – Page Not Found</title>
     <script>
-        // Org-level 404 handler for nuguardai.github.io
+        // Repo-level 404 handler for NuGuard OSS pages.
         (function () {
             var path = window.location.pathname;
             var search = window.location.search;
             var hash = window.location.hash;
 
-            // Case-fold the repo segment for any known renames
+            // Normalize historical repo path casing.
             var redirected = path
-                .replace(/^\/Xelo(\/|$)/, '/xelo$1');   // /Xelo/... → /xelo/...
+                .replace(/^\/NuGuard-OSS(\/|$)/, '/nuguard-oss$1');
 
             if (redirected !== path) {
                 window.location.replace(redirected + search + hash);
                 return; // browser will navigate away
             }
 
-            // For bare /xelo or /xelo/ send to docs
-            if (path === '/xelo' || path === '/xelo/') {
-                window.location.replace('/xelo/docs/');
+            // For bare /nuguard-oss or /nuguard-oss/ send to docs.
+            if (path === '/nuguard-oss' || path === '/nuguard-oss/') {
+                window.location.replace('/nuguard-oss/docs/');
             }
             // Otherwise fall through and show the 404 UI below
         })();

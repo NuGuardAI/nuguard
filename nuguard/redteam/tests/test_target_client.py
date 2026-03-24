@@ -6,18 +6,16 @@ Circuit-breaker state must only advance on 5xx and network errors, not on 4xx.
 """
 from __future__ import annotations
 
-import pytest
 import httpx
+import pytest
 import respx
 
 from nuguard.redteam.target.client import (
-    DEFAULT_TIMEOUT,
     MAX_CONSECUTIVE_ERRORS,
     TargetAppClient,
     TargetUnavailableError,
 )
 from nuguard.redteam.target.session import AttackSession
-
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 

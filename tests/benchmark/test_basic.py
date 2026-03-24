@@ -5,7 +5,8 @@ from __future__ import annotations
 
 def test_evaluate_importable() -> None:
     from tests.benchmark.evaluate import evaluate_repo, list_available_benchmarks
-    from tests.benchmark.evaluate_risk import evaluate_repo as evaluate_risk_repo, list_risk_benchmarks
+    from tests.benchmark.evaluate_risk import evaluate_repo as evaluate_risk_repo
+    from tests.benchmark.evaluate_risk import list_risk_benchmarks
 
     assert callable(evaluate_repo)
     assert callable(list_available_benchmarks)

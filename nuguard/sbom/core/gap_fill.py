@@ -39,8 +39,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from ..models import AiSbomDocument, Evidence, Node, NodeMetadata
-from ..models import SourceLocation
+from ..models import AiSbomDocument, Evidence, Node, NodeMetadata, SourceLocation
 from ..types import ComponentType
 
 _log = logging.getLogger(__name__)

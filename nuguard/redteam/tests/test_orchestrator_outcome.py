@@ -8,15 +8,12 @@ Covers:
 """
 from __future__ import annotations
 
-import pytest
-
 from nuguard.redteam.executor.orchestrator import (
     ScenarioRecord,
     _classify_step_transport,
     _compute_scan_outcome,
     _tally_transport,
 )
-
 
 # ── _classify_step_transport ──────────────────────────────────────────────────
 

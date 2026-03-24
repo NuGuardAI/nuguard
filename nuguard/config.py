@@ -75,12 +75,22 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["target_url"] = redteam["target"]
     if "target_endpoint" in redteam:
         flat["target_endpoint"] = redteam["target_endpoint"]
+    if "endpoint_id" in redteam:
+        flat["redteam_endpoint_id"] = redteam["endpoint_id"]
+    if "endpoint_name" in redteam:
+        flat["redteam_endpoint_name"] = redteam["endpoint_name"]
     if "chat_payload_key" in redteam:
         flat["redteam_chat_payload_key"] = redteam["chat_payload_key"]
     if "chat_payload_list" in redteam:
         flat["redteam_chat_payload_list"] = bool(redteam["chat_payload_list"])
     if "auth_header" in redteam:
         flat["redteam_auth_header"] = redteam["auth_header"]
+    if "session_init_endpoint" in redteam:
+        flat["redteam_session_init_endpoint"] = redteam["session_init_endpoint"]
+    if "session_id_json_key" in redteam:
+        flat["redteam_session_id_json_key"] = redteam["session_id_json_key"]
+    if "session_header_name" in redteam:
+        flat["redteam_session_header_name"] = redteam["session_header_name"]
     if "canary" in redteam:
         flat["canary_path"] = redteam["canary"]
     if "profile" in redteam:
@@ -194,6 +204,20 @@ class NuGuardConfig(BaseSettings):
         default="/chat",
         description="Agent chat endpoint path on the target (yaml: redteam.target_endpoint).",
     )
+    redteam_endpoint_id: str | None = Field(
+        default=None,
+        description=(
+            "Optional endpoint/profile identifier used to disambiguate redteam target "
+            "selection (yaml: redteam.endpoint_id)."
+        ),
+    )
+    redteam_endpoint_name: str | None = Field(
+        default=None,
+        description=(
+            "Optional endpoint name used to disambiguate redteam target selection "
+            "(yaml: redteam.endpoint_name)."
+        ),
+    )
     redteam_chat_payload_key: str = Field(
         default="message",
         description=(
@@ -213,6 +237,27 @@ class NuGuardConfig(BaseSettings):
         description=(
             "Authorization header to include with each redteam request, "
             "e.g. 'Authorization: Bearer ${TOKEN}' (yaml: redteam.auth_header)."
+        ),
+    )
+    redteam_session_init_endpoint: str | None = Field(
+        default=None,
+        description=(
+            "Optional endpoint to bootstrap a session before redteam requests "
+            "(yaml: redteam.session_init_endpoint)."
+        ),
+    )
+    redteam_session_id_json_key: str | None = Field(
+        default=None,
+        description=(
+            "JSON key to read a session id from bootstrap response payload "
+            "(yaml: redteam.session_id_json_key)."
+        ),
+    )
+    redteam_session_header_name: str | None = Field(
+        default=None,
+        description=(
+            "Header name used to send the extracted session id on subsequent requests "
+            "(yaml: redteam.session_header_name)."
         ),
     )
     canary_path: str | None = Field(

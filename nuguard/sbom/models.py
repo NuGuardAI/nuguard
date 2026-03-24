@@ -8,12 +8,11 @@ so schema and code can never drift.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from enum import Enum
 from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
-
-from enum import Enum
 
 from .deps import PackageDep
 from .types import (
@@ -21,7 +20,6 @@ from .types import (
     ComponentType,
     DataClassification,
     DatastoreType,
-    PrivilegeScope,
     RelationshipType,
 )
 
@@ -31,6 +29,8 @@ from .types import (
 
 NodeType = ComponentType
 EdgeRelationshipType = RelationshipType
+DataClassification = DataClassification
+DatastoreType = DatastoreType
 
 
 class EvidenceKind(str, Enum):
@@ -257,6 +257,40 @@ class NodeMetadata(BaseModel):
             "For TOOL nodes: list of parameters accepted by this tool, extracted from "
             "the function signature and docstring. Used by TOOL_ABUSE test scenarios "
             "to craft parameter-injection payloads targeting each parameter."
+        ),
+    )
+    interaction_role_tags: list[str] | None = Field(
+        default=None,
+        description=(
+            "Optional interaction-role tags used by redteam target profiling, e.g. "
+            "['auth_token', 'session_bootstrap', 'cookie_session']."
+        ),
+    )
+    response_id_map: dict[str, str] | None = Field(
+        default=None,
+        description=(
+            "Mapping of state keys to response keys for bootstrap/auth responses, "
+            "e.g. {'session_id': 'session_id', 'access_token': 'token'}."
+        ),
+    )
+    request_state_headers: dict[str, str] | None = Field(
+        default=None,
+        description=(
+            "Mapping of state keys to request header names for subsequent steps, "
+            "e.g. {'session_id': 'X-Session-ID'}."
+        ),
+    )
+    request_state_body: dict[str, str] | None = Field(
+        default=None,
+        description=(
+            "Mapping of state keys to request body field names used when replaying "
+            "multi-step target interactions."
+        ),
+    )
+    request_state_query: dict[str, str] | None = Field(
+        default=None,
+        description=(
+            "Mapping of state keys to query parameter names used in follow-up requests."
         ),
     )
     injection_risk_score: float | None = Field(

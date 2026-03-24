@@ -22,13 +22,12 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from conftest import APPS, FIXTURES, PY_ONLY, adapters, extract, names, nodes
 
 from nuguard.sbom.adapters.registry import default_framework_adapters
 from nuguard.sbom.extractor import AiSbomExtractor
 from nuguard.sbom.models import AiSbomDocument
 from nuguard.sbom.types import ComponentType, RelationshipType
-from conftest import APPS, FIXTURES, PY_ONLY, adapters, extract, names, nodes
-
 
 # ═══════════════════════════════════════════════════════════════════════════
 # fixtures/apps/ — scenario tests

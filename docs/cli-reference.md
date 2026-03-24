@@ -11,8 +11,14 @@ nuguard analyze     Static risk analysis from an AI-SBOM
 nuguard scan        Unified pipeline: SBOM → analyze → policy → redteam
 nuguard policy      Cognitive policy linting and compliance assessment
 nuguard redteam     Dynamic adversarial testing against a live AI application
+nuguard seed        Seed canary data into target (stub)
+nuguard report      Generate reports for completed test runs (stub)
+nuguard findings    List findings from completed test runs (stub)
+nuguard replay      Deterministically replay a completed test run (stub)
 
 ```
+
+`seed`, `report`, `findings`, and `replay` are present in the CLI surface but currently return "not yet implemented".
 
 ---
 
@@ -53,6 +59,10 @@ SBOM generation, validation, and management.
 | `show` | Display a registered SBOM by ID |
 | `schema` | Print the bundled `aibom.schema.json` to stdout |
 | `plugin` | Run a toolbox plugin or list available plugins |
+
+`generate` understands Python source from LangGraph, LangChain, OpenAI Agents SDK, CrewAI, AutoGen, Agno, LlamaIndex, Semantic Kernel, Azure AI Agents, Google ADK, AWS Bedrock AgentCore, GuardrailsAI, MCP Servers, FastAPI, Flask, and all major LLM client libraries. TypeScript/JavaScript support covers LangGraph.js, OpenAI Agents SDK (TS), Agno, Azure AI Agents, Google ADK, AWS Bedrock Agents, and common LLM clients. Infrastructure adapters handle Dockerfile, Kubernetes, Terraform, Nginx, and YAML configs.
+
+For the full adapter list, see [sbom-schema.md](./sbom-schema.md#framework-coverage).
 
 ### `nuguard sbom generate`
 
@@ -129,6 +139,8 @@ Runs up to six scanners in sequence: NuGuard AI structural rules (NGA), OSV CVE 
 
 NGA rules are always on and produce findings in the "NGA" family designed to identify structural risks in the AI stack of the application.
 
+For the full NGA rule table (NGA-001–NGA-019), see [static-analysis-guide.md](./static-analysis-guide.md#nga-structural-rules).
+
 ```bash
 nuguard analyze --sbom app.sbom.json
 nuguard analyze --sbom app.sbom.json --format sarif --output results.sarif
@@ -158,6 +170,8 @@ nuguard analyze --sbom app.sbom.json --no-grype --no-trivy --min-severity high
 ## `nuguard scan`
 
 Unified pipeline that chains SBOM generation, static analysis, policy check, and optionally red-team into a single command.
+
+Current status: SBOM and static analysis steps are implemented. Policy and redteam steps inside `scan` are placeholders; use `nuguard policy ...` and `nuguard redteam ...` directly.
 
 ```bash
 nuguard scan --source .
@@ -241,7 +255,7 @@ Display a stored cognitive policy by database ID.
 
 Dynamic adversarial testing against a live AI application. Reads the AI-SBOM to derive an attack surface, generates and executes scenarios, and produces structured findings with OWASP/MITRE mappings.
 
-See [redteam-engine.md](./redteam-engine.md) for a complete description of how the engine works.
+See [red-teaming-guide.md](./red-teaming-guide.md) for a complete description of how the engine works.
 
 ```bash
 # Basic scan (app already running)

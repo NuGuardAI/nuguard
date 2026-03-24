@@ -11,9 +11,8 @@ import re
 from typing import TYPE_CHECKING
 
 from nuguard.common.llm_client import LLMClient
-from nuguard.sbom.models import AiSbomDocument
-
 from nuguard.models.exploit_chain import ExploitStep
+from nuguard.sbom.models import AiSbomDocument
 
 if TYPE_CHECKING:
     from nuguard.models.policy import CognitivePolicy

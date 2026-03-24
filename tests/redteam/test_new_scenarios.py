@@ -38,7 +38,6 @@ from nuguard.redteam.scenarios.mcp_attacks import (
 )
 from nuguard.redteam.scenarios.prompt_injection import build_goal_redirection
 
-
 # ── Helpers ─────────────────────────────────────────────────────────────────
 
 
@@ -443,10 +442,10 @@ async def test_evaluator_data_exfil_hint_mentions_canary() -> None:
 
 def test_generator_produces_new_scenario_types() -> None:
     """ScenarioGenerator includes the new scenario types when given an agent SBOM."""
+    import uuid
+
     from nuguard.sbom.models import AiSbomDocument, Node, NodeMetadata, ScanSummary
     from nuguard.sbom.types import ComponentType
-
-    import uuid
     node = Node(
         id=uuid.uuid4(),
         name="CustomerAgent",
@@ -511,9 +510,9 @@ async def test_circuit_breaker_opens_after_threshold() -> None:
 @pytest.mark.asyncio
 async def test_circuit_breaker_resets_on_success() -> None:
     """Error counter resets when a successful response is received."""
-    import httpx
     from unittest.mock import AsyncMock, patch
-    from nuguard.redteam.target.client import TargetAppClient, TargetUnavailableError
+
+    from nuguard.redteam.target.client import TargetAppClient
     from nuguard.redteam.target.session import AttackSession
 
     client = TargetAppClient(
@@ -545,6 +544,7 @@ async def test_circuit_breaker_resets_on_success() -> None:
 async def test_send_retries_429_then_succeeds() -> None:
     """send() retries HTTP 429 with backoff and eventually returns success."""
     import httpx
+
     from nuguard.redteam.target.client import TargetAppClient
     from nuguard.redteam.target.session import AttackSession
 

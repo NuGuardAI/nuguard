@@ -6,7 +6,7 @@ PolicyViolation dataclass instances.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from nuguard.common.logging import get_logger
 from nuguard.models.policy import CognitivePolicy

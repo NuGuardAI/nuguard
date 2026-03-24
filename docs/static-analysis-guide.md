@@ -104,16 +104,30 @@ If one of these tools is not installed, NuGuard will usually skip that detector 
 
 ### NGA structural rules
 
-NuGuard-native deterministic rules for AI system structure and risk patterns.
+NuGuard-native deterministic rules for AI system structure and risk patterns. All rules run offline — no network or external tool required.
 
-Examples:
+| Rule ID | Description | Severity |
+|---|---|---|
+| NGA-001 | PII/PHI handled by external LLM providers without guardrails | CRITICAL |
+| NGA-002 | Insufficient guardrail coverage (A: missing entirely; B: coverage gap) | HIGH |
+| NGA-003 | Secrets exposed as environment variables or no secret store | HIGH |
+| NGA-004 | Containers / Kubernetes workloads running as root | HIGH |
+| NGA-005 | AI workloads without CPU/memory resource limits | LOW |
+| NGA-006 | Unencrypted datastore containing PII/PHI | HIGH |
+| NGA-007 | Missing authentication on external AI API endpoint | HIGH |
+| NGA-009 | Overly permissive IAM role for AI workload | HIGH |
+| NGA-010 | No network policy for AI workload in Kubernetes | MEDIUM |
+| NGA-011 | LLM model weight loaded from untrusted/unverified registry | HIGH |
+| NGA-012 | Container image using `latest` tag | LOW |
+| NGA-013 | AI workload missing health check | LOW |
+| NGA-014 | Multiple AI agents sharing a datastore with no IAM isolation | LOW |
+| NGA-015 | AI application has no audit logging enabled | HIGH |
+| NGA-016 | GitHub Actions: `pull_request_target` with untrusted input injection | HIGH |
+| NGA-017 | GitHub Actions: `GITHUB_ENV` written from untrusted input | HIGH |
+| NGA-018 | GitHub Actions: `ACTIONS_RUNNER_DEBUG` secret exposed | MEDIUM |
+| NGA-019 | Agent pipeline lacks HITL approval for high-risk actions | HIGH |
 
-- missing guardrails
-- unsafe tool access
-- privilege paths
-- injection surfaces
-- data-handling gaps
-- missing audit trails
+NGA-008 was retired and its checks absorbed into NGA-002 sub-check B.
 
 ### OSV
 

@@ -6,9 +6,10 @@ used to evaluate AI asset discovery accuracy.
 """
 
 from datetime import date
-from typing import Dict, List, Optional
-from pydantic import BaseModel, Field, field_validator
 from enum import Enum
+from typing import Dict, List, Optional
+
+from pydantic import BaseModel, Field, field_validator
 
 
 class AssetType(str, Enum):

@@ -43,6 +43,24 @@ _SEV_EMOJI: dict[str, str] = {
 }
 
 
+def _source_from_sbom_target(target: Any) -> Path | None:
+    """Return a local source Path inferred from SBOM target, if possible.
+
+    Only local filesystem targets are considered valid fallbacks. Remote URLs
+    and non-existent paths are ignored.
+    """
+    if not isinstance(target, str):
+        return None
+    stripped = target.strip()
+    if not stripped:
+        return None
+    lowered = stripped.lower()
+    if lowered.startswith(("http://", "https://", "git@")):
+        return None
+    candidate = Path(stripped)
+    return candidate if candidate.exists() else None
+
+
 @analyze_app.callback(invoke_without_command=True)
 def analyze(
     ctx: typer.Context,
@@ -127,7 +145,9 @@ def analyze(
 
     try:
         from nuguard.analysis.static_analyzer import StaticAnalyzer  # noqa: PLC0415
-        source_path = Path(source) if source else None
+        source_path: Path | None = Path(source) if source else None
+        if source_path is None:
+            source_path = _source_from_sbom_target(doc.target)
         analyzer = StaticAnalyzer(
             enable_atlas=atlas,
             enable_osv=osv,

@@ -16,10 +16,10 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from ..base import ComponentDetection, FrameworkAdapter, RelationshipHint
-from ..models_kb import get_model_details, infer_provider
 from ...normalization import canonicalize_text
 from ...types import ComponentType
+from ..base import ComponentDetection, FrameworkAdapter, RelationshipHint
+from ..models_kb import get_model_details, infer_provider
 
 # Agno model wrapper class names → provider hint
 _AGNO_MODEL_CLASSES: dict[str, str] = {

@@ -1,6 +1,6 @@
 # NuGuard Quick Start
 
-This guide gets you from a fresh checkout to a starter cognitive policy, a first SBOM, a static analysis report, a policy check, and a red-team run.
+This guide gets you from a fresh checkout to starter project files, a first SBOM, a static analysis report, a policy check, and a red-team run.
 
 ## Prerequisites
 
@@ -20,18 +20,20 @@ Check the CLI:
 nuguard --help
 ```
 
-## 1. Initialize a Starter Cognitive Policy With `nuguard init`
+## 1. Initialize Starter Project Files With `nuguard init`
 
-Create a blank starter `cognitive_policy.md` with the recognized policy section headers:
+Create starter files (`nuguard.yaml.example`, `canary.example.json`, and `cognitive_policy.md`):
 
 ```bash
 nuguard init
 ```
 
+The generated `cognitive_policy.md` is a starter template. Fill in at least one real policy section before expecting `nuguard policy validate` to pass.
+
 To write it somewhere else:
 
 ```bash
-nuguard init --path ./docs/cognitive_policy.md
+nuguard init --dir ./docs
 ```
 
 To overwrite an existing file:
@@ -96,6 +98,8 @@ nuguard scan \
   --output-dir nuguard-reports
 ```
 
+Current status: `scan` fully wires SBOM + analyze. Policy and redteam steps inside `scan` are placeholders, so use `nuguard policy ...` and `nuguard redteam ...` directly for those workflows.
+
 ## 6. Red-Team a Live AI App
 
 Run against a local target:
@@ -104,6 +108,12 @@ Run against a local target:
 nuguard redteam \
   --sbom app.sbom.json \
   --target http://localhost:3000
+```
+
+If your application exposes its chat endpoint somewhere other than `/chat`, copy `nuguard.yaml.example` to `nuguard.yaml`, set `redteam.target_endpoint`, and run:
+
+```bash
+nuguard redteam --config nuguard.yaml
 ```
 
 With canaries and JSON output:

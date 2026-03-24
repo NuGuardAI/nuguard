@@ -8,7 +8,6 @@ entrypoints.
 from __future__ import annotations
 
 import argparse
-import asyncio
 import json
 import logging
 import shutil
@@ -29,7 +28,13 @@ from nuguard.sbom.tests.test_toolbox.evaluate import (
     export_discovered_assets_csv,
 )
 
-from .schemas import BenchmarkSuiteResult, DiscoveredAsset, GroundTruth, ScanEvaluationResult, TypeMetrics
+from .schemas import (
+    BenchmarkSuiteResult,
+    DiscoveredAsset,
+    GroundTruth,
+    ScanEvaluationResult,
+    TypeMetrics,
+)
 
 logger = logging.getLogger(__name__)
 

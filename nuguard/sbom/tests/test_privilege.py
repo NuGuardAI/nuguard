@@ -14,7 +14,6 @@ from nuguard.sbom.adapters.privilege import privilege_adapters
 from nuguard.sbom.adapters.registry import default_registry
 from nuguard.sbom.types import ComponentType
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

@@ -69,9 +69,23 @@ class TargetAppClient:
             self._retry_429_backoff_base,
             retry_429_backoff_cap_seconds,
         )
+        # Transport health counters used by orchestrator/reporting.
+        self.transport_ok: int = 0
+        self.transport_429: int = 0
+        self.transport_errors: int = 0
         # Circuit breaker: count consecutive errors on the chat endpoint.
         # Reset to 0 on any successful response.
         self._consecutive_errors: int = 0
+
+    @property
+    def scan_outcome_state(self) -> dict[str, Any]:
+        """Return transport health counters and circuit-breaker state."""
+        return {
+            "ok": self.transport_ok,
+            "429": self.transport_429,
+            "errors": self.transport_errors,
+            "circuit_open": self._consecutive_errors >= self._max_consecutive_errors,
+        }
 
     def _parse_retry_after_seconds(self, value: str | None) -> float | None:
         if not value:
@@ -113,6 +127,7 @@ class TargetAppClient:
 
     def _record_chat_error(self, label: str) -> None:
         """Increment the consecutive-error counter and open the circuit when the threshold is hit."""
+        self.transport_errors += 1
         self._consecutive_errors += 1
         _log.warning(
             "Chat endpoint error (%s) — consecutive=%d/%d",
@@ -144,11 +159,12 @@ class TargetAppClient:
         value: Any = [payload] if self._chat_payload_list else payload
         body: dict[str, Any] = {self._chat_payload_key: value}
 
-        data: dict | str = {}
+        data: dict[str, Any] | str = {}
         for attempt in range(self._max_429_retries + 1):
             try:
                 resp = await self._client.post(self._chat_path, json=body)
                 resp.raise_for_status()
+                self.transport_ok += 1
                 data = resp.json()
                 break
             except httpx.HTTPStatusError as exc:
@@ -158,6 +174,12 @@ class TargetAppClient:
                     "Target HTTP %s  url=%s  body=%r",
                     status, exc.request.url, body_preview,
                 )
+                if status == 429:
+                    self.transport_429 += 1
+                elif status < 500:
+                    # Non-429 4xx means target is reachable and responded.
+                    self.transport_ok += 1
+
                 if status == 429 and attempt < self._max_429_retries:
                     delay = self._retry_delay_seconds(exc.response.headers, exc.response.text or "", attempt)
                     _log.warning(
@@ -188,28 +210,32 @@ class TargetAppClient:
                 return f"[REQUEST_ERROR: {label}]", []
 
         # Extract response text — try common response shapes
-        text = (
-            data.get("response")
-            or data.get("content")
-            or data.get("message", {}).get("content", "")
-            or ""
-        )
-        # Handle list-of-messages response (e.g. openai-cs-agents-demo)
-        if not text and isinstance(data.get("messages"), list):
-            msgs = data["messages"]
-            if msgs and isinstance(msgs[-1], dict):
-                text = msgs[-1].get("content") or msgs[-1].get("text") or ""
-        if not text and isinstance(data, str):
+        text = ""
+        if isinstance(data, dict):
+            text = (
+                data.get("response")
+                or data.get("content")
+                or data.get("message", {}).get("content", "")
+                or ""
+            )
+            # Handle list-of-messages response (e.g. openai-cs-agents-demo)
+            if not text and isinstance(data.get("messages"), list):
+                msgs = data["messages"]
+                if msgs and isinstance(msgs[-1], dict):
+                    text = msgs[-1].get("content") or msgs[-1].get("text") or ""
+        elif isinstance(data, str):
             text = data
 
         # Extract tool calls
         tool_calls: list[dict] = []
-        raw_calls = (
-            data.get("tool_calls")
-            or data.get("function_calls")
-            or data.get("message", {}).get("tool_calls", [])
-            or []
-        )
+        raw_calls: Any = []
+        if isinstance(data, dict):
+            raw_calls = (
+                data.get("tool_calls")
+                or data.get("function_calls")
+                or data.get("message", {}).get("tool_calls", [])
+                or []
+            )
         if isinstance(raw_calls, list):
             tool_calls = raw_calls
 
@@ -238,6 +264,10 @@ class TargetAppClient:
                     params=params,
                     headers=extra_headers or {},
                 )
+                if resp.status_code == 429:
+                    self.transport_429 += 1
+                else:
+                    self.transport_ok += 1
                 if resp.status_code == 429 and attempt < self._max_429_retries:
                     delay = self._retry_delay_seconds(resp.headers, resp.text or "", attempt)
                     _log.warning(

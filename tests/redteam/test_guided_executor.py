@@ -1,15 +1,15 @@
 """Tests for GuidedAttackExecutor — conversation loop, abort conditions, and success."""
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from nuguard.models.exploit_chain import GoalType
 from nuguard.redteam.executor.guided_executor import GuidedAttackExecutor
 from nuguard.redteam.models.guided_conversation import GuidedConversation, TurnRecord
 from nuguard.redteam.target.client import TargetUnavailableError
 from nuguard.redteam.target.session import AttackSession
-
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 

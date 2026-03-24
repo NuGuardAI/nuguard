@@ -254,3 +254,54 @@ To inspect the generated JSON schema:
 ```bash
 nuguard sbom schema
 ```
+
+## Framework Coverage
+
+NuGuard populates SBOM nodes by statically analysing source files with these framework adapters:
+
+### Python adapters
+
+| Adapter | Frameworks / libraries detected |
+|---|---|
+| `langchain` | LangChain chains, tools, memory, retrievers |
+| `langgraph` | LangGraph graph nodes, agents, conditional edges |
+| `openai_agents` | OpenAI Agents SDK — agents, tools, handoffs, prompts |
+| `crewai` | CrewAI crews, agents, tasks |
+| `autogen` | AutoGen agents, group chats |
+| `agno` | Agno agents, tools, knowledge, teams |
+| `llamaindex` | LlamaIndex query engines, data connectors, synthesizers |
+| `semantic_kernel` | Semantic Kernel kernels, plugins, prompts |
+| `azure_ai_agents` | Azure AI Foundry agents, tools, threads |
+| `google_adk` | Google Agent Development Kit agents, tools, sessions |
+| `bedrock_agentcore` | AWS Bedrock AgentCore runtimes, tools |
+| `guardrails_ai` | GuardrailsAI validators |
+| `mcp_server` | Model Context Protocol servers, tools, resources |
+| `fastapi_adapter` | FastAPI routes, auth dependencies, middleware |
+| `flask_adapter` | Flask routes, auth decorators |
+| `llm_clients` | OpenAI / Anthropic / Gemini / Cohere / local model clients |
+
+### TypeScript / JavaScript adapters
+
+| Adapter | Frameworks / libraries detected |
+|---|---|
+| `langgraph` (TS) | LangGraph.js graph nodes, agents |
+| `openai_agents` (TS) | OpenAI Agents SDK for Node — agents, tools, handoffs |
+| `agno` (TS) | Agno agents, tools |
+| `azure_ai_agents` (TS) | Azure AI Foundry agents, tools |
+| `google_adk` (TS) | Google ADK agents, tools (TypeScript SDK) |
+| `bedrock_agents` (TS) | AWS Bedrock Agents (JavaScript SDK) |
+| `llm_clients` (TS) | OpenAI / Anthropic / Google / Vertex AI / Bedrock clients |
+| `datastores` (TS) | PostgreSQL, MySQL, MongoDB, Redis, DynamoDB, Cosmos DB |
+| `prompts` (TS) | Prompt templates and system messages |
+
+### Infrastructure adapters
+
+| Adapter | What is detected |
+|---|---|
+| `dockerfile` | Container images, run-as-root, EXPOSE ports, resource annotations |
+| `iac` | Kubernetes manifests — RBAC, resource quotas, network policies |
+| `iac` | Terraform / CloudFormation — IAM roles, storage encryption |
+| `nginx` | Nginx reverse-proxy configs — auth headers, rate-limit rules |
+| `yaml_adapters` | Model endpoints, environment variables, secrets in YAML configs |
+| `data_classification` | PII/PHI field annotations in SQLAlchemy / Django / Pydantic models |
+| `privilege` | Privileged scope indicators across all detected components |

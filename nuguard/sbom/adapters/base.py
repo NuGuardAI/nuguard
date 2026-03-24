@@ -6,7 +6,6 @@ from typing import Any
 
 from ..types import ComponentType
 
-
 # ---------------------------------------------------------------------------
 # Legacy regex-adapter types (kept for backwards compatibility and non-Python
 # file scanning)

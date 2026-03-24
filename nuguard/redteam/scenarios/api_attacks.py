@@ -11,10 +11,10 @@ import re
 import uuid
 
 from nuguard.models.exploit_chain import (
+    HTTP_2XX_SENTINEL,
     ExploitChain,
     ExploitStep,
     GoalType,
-    HTTP_2XX_SENTINEL,
     ScenarioType,
 )
 

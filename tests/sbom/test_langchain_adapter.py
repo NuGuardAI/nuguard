@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-import pytest
 from pathlib import Path
 
+import pytest
 
 from nuguard.sbom.models import EdgeRelationshipType, NodeType
+
 try:
     from nuguard.sbom.extractor.framework_adapters.langchain import LangChainAdapter
 except ImportError:

@@ -16,7 +16,6 @@ import uuid
 from nuguard.models.exploit_chain import GoalType, ScenarioType
 from nuguard.redteam.models.guided_conversation import GuidedConversation
 
-from .pre_scorer import pre_score as _compute_pre_score
 from .scenario_types import AttackScenario
 
 # Default max turns for guided conversations.  Override per-scenario where the
@@ -189,8 +188,8 @@ def build_guided_tool_coercion(
         scenario_type=ScenarioType.RESTRICTED_ACTION,
         title=f"Guided Tool Coercion — {agent_name}",
         description=(
-            f"Conversational escalation that normalises tool use in early turns, "
-            f"then pivots to coercing the agent into harmful tool invocations."
+            "Conversational escalation that normalises tool use in early turns, "
+            "then pivots to coercing the agent into harmful tool invocations."
         ),
         goal_description=goal,
         target_node_id=agent_node_id,

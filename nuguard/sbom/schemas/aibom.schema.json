@@ -627,6 +627,86 @@
           "description": "For TOOL nodes: list of parameters accepted by this tool, extracted from the function signature and docstring. Used by TOOL_ABUSE test scenarios to craft parameter-injection payloads targeting each parameter.",
           "title": "Parameters"
         },
+        "interaction_role_tags": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Optional interaction-role tags used by redteam target profiling, e.g. ['auth_token', 'session_bootstrap', 'cookie_session'].",
+          "title": "Interaction Role Tags"
+        },
+        "response_id_map": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Mapping of state keys to response keys for bootstrap/auth responses, e.g. {'session_id': 'session_id', 'access_token': 'token'}.",
+          "title": "Response Id Map"
+        },
+        "request_state_headers": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Mapping of state keys to request header names for subsequent steps, e.g. {'session_id': 'X-Session-ID'}.",
+          "title": "Request State Headers"
+        },
+        "request_state_body": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Mapping of state keys to request body field names used when replaying multi-step target interactions.",
+          "title": "Request State Body"
+        },
+        "request_state_query": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Mapping of state keys to query parameter names used in follow-up requests.",
+          "title": "Request State Query"
+        },
         "injection_risk_score": {
           "anyOf": [
             {

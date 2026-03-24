@@ -17,13 +17,13 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from ...normalization import canonicalize_text
+from ...types import ComponentType
 from ..base import ComponentDetection, FrameworkAdapter, RelationshipHint
 from ..models_kb import (
     LANGCHAIN_LLM_CLASS_PROVIDERS,
     get_model_details,
 )
-from ...normalization import canonicalize_text
-from ...types import ComponentType
 
 # ---------------------------------------------------------------------------
 # LangGraph-specific constants
