@@ -12,16 +12,16 @@
     <meta name="keywords"
         content="AI security, agentic AI security, AI SBOM, AI Bill of Materials, LLM security, red team AI, prompt injection testing, OWASP LLM Top 10, NIST AI RMF, EU AI Act, AI governance, CycloneDX, SARIF, SPDX, MCP security, LangChain security, open source AI security, AI vulnerability scanning, AI compliance, CISO AI, CTO AI security" />
     <meta name="author" content="NuGuard AI" />
-    <link rel="canonical" href="https://nuguard.ai/" />
-    <link rel="alternate" type="text/plain" title="LLMs.txt" href="/llms.txt" />
+    <link rel="canonical" href="./" />
+    <link rel="alternate" type="text/plain" title="LLMs.txt" href="llms.txt" />
 
     <!-- Open Graph -->
     <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://nuguard.ai/" />
+    <meta property="og:url" content="./" />
     <meta property="og:title" content="NuGuard OSS — AI Application Security Suite" />
     <meta property="og:description"
         content="End-to-end security for agentic AI applications. AI-SBOM generation, static analysis, cognitive policy enforcement, and SBOM-driven red-teaming — in one open-source pipeline." />
-    <meta property="og:image" content="https://nuguard.ai/nuguard-og.png" />
+    <meta property="og:image" content="nuguard-logo.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
     <meta property="og:site_name" content="NuGuard OSS by NuGuard AI" />
@@ -32,7 +32,7 @@
     <meta name="twitter:title" content="NuGuard OSS — AI Application Security Suite" />
     <meta name="twitter:description"
         content="AI-SBOM · Static Analysis · Cognitive Policy · Red-Team — one pipeline, 20+ frameworks, fully offline core. Apache-2.0." />
-    <meta name="twitter:image" content="https://nuguard.ai/nuguard-og.png" />
+    <meta name="twitter:image" content="nuguard-logo.png" />
 
     <!-- Structured Data -->
     <script type="application/ld+json">
@@ -41,7 +41,7 @@
       "@type": "SoftwareApplication",
       "name": "NuGuard ",
       "alternateName": "AI Application Security Suite by NuGuard AI",
-      "url": "https://nuguard.ai/",
+      "url": "./",
       "description": "Open-source end-to-end security platform for agentic AI applications: AI-SBOM generation, static risk analysis, cognitive policy enforcement, and SBOM-driven dynamic red-teaming.",
       "applicationCategory": "SecurityApplication",
       "operatingSystem": "Linux, macOS, Windows",
@@ -55,7 +55,7 @@
       "author": {
         "@type": "Organization",
         "name": "NuGuard AI",
-        "url": "https://nuguard.ai/"
+        "url": "https://github.com/NuGuardAI/nuguard-oss"
       }
     }
     </script>
@@ -66,6 +66,26 @@
         href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
         rel="stylesheet" />
     <link rel="stylesheet" href="style.css" />
+    <script>
+        (function () {
+            var absoluteUrl = window.location.origin + window.location.pathname;
+            var canonical = document.querySelector('link[rel="canonical"]');
+            var ogUrl = document.querySelector('meta[property="og:url"]');
+            var jsonLd = document.querySelector('script[type="application/ld+json"]');
+
+            if (canonical) canonical.setAttribute('href', absoluteUrl);
+            if (ogUrl) ogUrl.setAttribute('content', absoluteUrl);
+            if (jsonLd) {
+                try {
+                    var data = JSON.parse(jsonLd.textContent);
+                    data.url = absoluteUrl;
+                    jsonLd.textContent = JSON.stringify(data);
+                } catch (error) {
+                    console.warn('Failed to update structured data URL', error);
+                }
+            }
+        })();
+    </script>
     <style>
         /* Hero list: align checkmark to top of multi-line items */
         .hero-list li { align-items: flex-start; }
