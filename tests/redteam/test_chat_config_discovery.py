@@ -5,7 +5,7 @@ from nuguard.sbom.models import AiSbomDocument, Node
 from nuguard.sbom.types import ComponentType
 
 
-def test_discovery_prefers_chat_message_endpoint_over_chat() -> None:
+def test_discovery_prefers_source_backed_queue_endpoint_over_synthetic_chat_message() -> None:
     sbom = AiSbomDocument(
         target="stateset-icommerce",
         nodes=[
@@ -22,9 +22,20 @@ def test_discovery_prefers_chat_message_endpoint_over_chat() -> None:
             Node(
                 name="Webchat Message API",
                 component_type=ComponentType.API_ENDPOINT,
-                confidence=0.9,
+                confidence=0.62,
                 metadata={
                     "endpoint": "/chat/message",
+                    "method": "POST",
+                    "chat_payload_key": "message",
+                    "extras": {"source": "auto_enrichment"},
+                },
+            ),
+            Node(
+                name="Queue API",
+                component_type=ComponentType.API_ENDPOINT,
+                confidence=0.92,
+                metadata={
+                    "endpoint": "/api/chat/queue",
                     "method": "POST",
                     "chat_payload_key": "message",
                 },
@@ -40,6 +51,6 @@ def test_discovery_prefers_chat_message_endpoint_over_chat() -> None:
         chat_payload_list=False,
     )
 
-    assert path == "/chat/message"
+    assert path == "/api/chat/queue"
     assert payload_key == "message"
     assert payload_list is False

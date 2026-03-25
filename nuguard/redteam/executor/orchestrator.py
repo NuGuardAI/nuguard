@@ -200,14 +200,30 @@ def _discover_chat_config(
 
         discovered_path = meta.endpoint or chat_path
         endpoint_l = discovered_path.lower()
+        source = (meta.extras or {}).get("source")
 
-        # Prefer concrete messaging endpoints over generic '/chat'.
+        # Prefer high-confidence, source-backed messaging endpoints over
+        # synthetic fallback routes such as '/chat/message'.
         score = 0
+        if source == "auto_enrichment":
+            score -= 2
+        elif source == "runtime_probe":
+            score -= 1
+        else:
+            score += 3
+
+        if node.confidence >= 0.9:
+            score += 2
+        elif node.confidence >= 0.75:
+            score += 1
+
         if "/chat/message" in endpoint_l:
-            score += 4
-        elif "message" in endpoint_l:
+            score += 2
+        elif any(token in endpoint_l for token in ("/chat/queue", "/messages", "/message", "/generate", "/completions", "/respond", "/query")):
             score += 3
         elif endpoint_l.endswith("/chat"):
+            score += 1
+        if endpoint_l.startswith("/api/"):
             score += 1
         if meta.response_text_key:
             score += 1
