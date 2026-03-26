@@ -958,8 +958,8 @@ pre {
 /* ── Plugins grid ─────────────────────────────────────────────────────── */
 .plugin-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
-    gap: 1rem;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1.5rem;
 }
 
 .plugin-chip {

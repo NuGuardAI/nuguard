@@ -1,6 +1,6 @@
 # NuGuard — AI Application Security Suite
 
-NuGuard is an end-to-end security platform for AI-powered and agentic applications.
+NuGuard is a security suite for AI-powered and agentic applications.
 It covers the full security pipeline: AI Bill of Materials (AI-SBOM) generation,
 static risk analysis, cognitive policy enforcement, and dynamic adversarial red-teaming.
 The four capabilities share a single intermediate representation — the AI-SBOM — so every
