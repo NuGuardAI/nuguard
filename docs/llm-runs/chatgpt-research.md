@@ -249,6 +249,7 @@ That structure handles state confusion, object reuse, auth drift, and multi-step
 You specifically called out thread IDs, customer IDs, patient IDs, etc.
 So implement:
 
+** Request templating **
 Request templating
 
 - JSON body paths
@@ -286,45 +287,33 @@ Without this correlation, you cannot prove cross-context leakage.
 8) Evaluation: use multiple judge types, never one
 The evaluator should combine:
 
-Deterministic detectors
-regex / structured rules for PII, secrets, account numbers, ICD/CPT patterns, ticket IDs
+** Deterministic detectors **
+- regex / structured rules for PII, secrets, account numbers, ICD/CPT patterns, ticket IDs
+- policy assertions like “response must not contain customer other than active customer_id”
+- authorization invariants like “tool X must not execute under role Y”
 
-policy assertions like “response must not contain customer other than active customer_id”
-
-authorization invariants like “tool X must not execute under role Y”
-
-Semantic judges
-model-based rubric graders for nuanced issues
-
-contradiction checks
-
-instruction hierarchy failure detection
+** Semantic judges **
+- model-based rubric graders for nuanced issues
+- contradiction checks
+- instruction hierarchy failure detection
 
 “did the assistant claim to complete an action it did not actually complete?”
 
-Trace-based judges
-inspect raw HTTP/tool traces
+** Trace-based judges **
+- inspect raw HTTP/tool traces
+- did backend call unauthorized resource?
+- did retrieval hit foreign tenant data?
+- did action side effect happen?
 
-did backend call unauthorized resource?
-
-did retrieval hit foreign tenant data?
-
-did action side effect happen?
-
-Differential judges
+** Differential judges **
 compare same scenario across:
 
-roles
-
-tenants
-
-model versions
-
-safety config versions
-
-endpoints
-
-canary vs prod-like builds
+- roles
+- tenants
+- model versions
+- safety config versions
+- endpoints
+- canary vs prod-like builds
 
 PyRIT and Inspect are useful precedent here because they support large-scale standardized evaluation runs and composable scoring/reporting rather than a single pass/fail string match. 
 
@@ -415,58 +404,48 @@ A clean backend design:
 11) Curated scenario generation workflow
 For each customer app, do this onboarding flow:
 
-Step 1: collect business context
+**Step 1: collect business context**
+
 Ask for:
 
-app purpose
+- app purpose
+- user types
+- privileged actions
+- protected data classes
+- external systems/tools
+- known abuse concerns
 
-user types
+**Step 2: import API/workflow surface**
 
-privileged actions
+- OpenAPI
+- traffic recording
+- manual step editor
 
-protected data classes
+**Step 3: map risk objects**
 
-external systems/tools
-
-known abuse concerns
-
-Step 2: import API/workflow surface
-OpenAPI
-
-traffic recording
-
-manual step editor
-
-Step 3: map risk objects
 Mark fields as:
 
-identity keys
+- identity keys
+- tenant keys
+- patient/customer/account keys
+- sensitive outputs
+- action-bearing parameters
 
-tenant keys
+**Step 4: choose scenario packs**
 
-patient/customer/account keys
+- healthcare support
+- fintech assistant
+- ITSM/ticketing
+- HR/helpdesk
+- developer copilot
+- internal knowledge agent
 
-sensitive outputs
+**Step 5: compile scenarios**
 
-action-bearing parameters
-
-Step 4: choose scenario packs
-healthcare support
-
-fintech assistant
-
-ITSM/ticketing
-
-HR/helpdesk
-
-developer copilot
-
-internal knowledge agent
-
-Step 5: compile scenarios
 Generate specific tests against actual endpoint/field names.
 
-Step 6: run and tune
+**Step 6: run and tune**
+
 Review false positives and harden assertions.
 
 12) Minimal DSL you should build
@@ -504,85 +483,61 @@ That DSL becomes your product moat.
 13) What to borrow from open source
 I’d combine ideas from:
 
-PyRIT for orchestrated risk identification and human-led red teaming UI concepts. 
-
-garak for pluginized probes/detectors and extensible generators, including REST-based target support. 
-
-Inspect AI for composable eval/task/scorer patterns and broad model/provider support. 
-
-promptfoo for declarative config, CI integration, and practical app/agent eval UX. 
+- PyRIT for orchestrated risk identification and human-led red teaming UI concepts
+- garak for pluginized probes/detectors and extensible generators, including REST-based target support
+- Inspect AI for composable eval/task/scorer patterns and broad model/provider support
+- promptfoo for declarative config, CI integration, and practical app/agent eval UX
 
 But your product should go beyond them with:
 
-richer auth/session handling
-
-stateful API workflows
-
-business-context scenario synthesis
-
-cross-endpoint correlation
-
-action/tool trace validation
+- richer auth/session handling
+- stateful API workflows
+- business-context scenario synthesis
+- cross-endpoint correlation
+- action/tool trace validation
 
 14) MVP that would actually be valuable
 Version 1 should support:
 
-REST/JSON only
-
-API key, bearer token, basic auth, cookie session, OIDC browser login
-
-OpenAPI import + manual fixes
-
-multi-step workflows
-
-variable extraction/substitution
+- REST/JSON only
+- API key, bearer token, basic auth, cookie session, OIDC browser login
+- OpenAPI import + manual fixes
+- multi-step workflows
+- variable extraction/substitution
 
 3 scenario packs:
 
-healthcare support
-
-fintech support
-
-IT ticketing
+- healthcare support
+- fintech support
+- IT ticketing
 
 6 detector families:
 
-cross-user leakage
+- cross-user leakage
+- prompt injection
+- tool misuse
+- authz bypass
+- policy bypass
+- hallucinated action claims
 
-prompt injection
+Additional features:
 
-tool misuse
-
-authz bypass
-
-policy bypass
-
-hallucinated action claims
-
-analyst replay UI
-
-CI regression runs
-
-report with severity + evidence
+- analyst replay UI
+- CI regression runs
+- report with severity + evidence
 
 That would already be much stronger than “LLM jailbreak scanner.”
 
 15) Biggest mistakes to avoid
-treating the app as one prompt box
 
-no stateful workflow support
-
-no notion of user/tenant/object ownership
-
-only model-judge scoring
-
-no backend trace/evidence capture
-
-no domain-specific scenarios
-
-no replayable, deterministic test definitions
-
-no distinction between model issue vs application integration issue
+- treating the app as one prompt box
+- no stateful workflow support
+- no notion of user/tenant/object ownership
+- only model-judge scoring
+- no backend trace/evidence capture
+- no domain-specific scenarios
+- no replayable, deterministic test definitions
+- no distinction between model issue vs application integration issue
 
 16) A crisp positioning statement
 You’re building:
