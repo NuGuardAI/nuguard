@@ -160,6 +160,7 @@ def redteam(
     findings = asyncio.run(
         _run_redteam(
             sbom_doc=sbom_doc,
+            sbom_path=sbom_path,
             policy_path=policy_path,
             target_url=target_url,
             canary_path=canary_path,
@@ -216,6 +217,7 @@ def _resolve_target_url(sbom_doc: object, launch: bool = False) -> str | None:
 
 async def _run_redteam(
     sbom_doc: object,
+    sbom_path: Path | None,
     policy_path: Path | None,
     target_url: str | None,
     canary_path: Path | None,
@@ -239,7 +241,34 @@ async def _run_redteam(
 ) -> list:
     """Async inner function: optionally launch the app, then run the orchestrator."""
     from nuguard.models.policy import CognitivePolicy
+    from nuguard.redteam.enrichment import maybe_auto_enrich_sbom
     from nuguard.redteam.target.canary import CanaryConfig
+
+    # Default behavior: auto-enrich low-confidence SBOMs before scenario generation.
+    try:
+        if hasattr(sbom_doc, "nodes") and hasattr(sbom_doc, "edges"):
+            enrichment = await maybe_auto_enrich_sbom(
+                sbom=sbom_doc,  # type: ignore[arg-type]
+                sbom_path=sbom_path,
+                target_url=target_url,
+            )
+            sbom_doc = enrichment.sbom
+            if enrichment.enriched:
+                msg = (
+                    "  SBOM auto-enrichment applied: "
+                    f"confidence {enrichment.confidence_before:.2f} -> "
+                    f"{enrichment.confidence_after:.2f}"
+                )
+                if enrichment.artifact_path:
+                    msg += f" (artifact: {enrichment.artifact_path})"
+                typer.echo(msg)
+            else:
+                _log.info(
+                    "SBOM auto-enrichment skipped (confidence %.2f)",
+                    enrichment.confidence_before,
+                )
+    except Exception as exc:
+        _log.warning("SBOM auto-enrichment failed, continuing with baseline SBOM: %s", exc)
 
     # Load policy
     cognitive_policy: CognitivePolicy | None = None

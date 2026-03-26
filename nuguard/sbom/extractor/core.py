@@ -229,6 +229,18 @@ _DOCS_EXTENSIONS = {
     ".ps1",
     ".mk",
 }
+
+
+def _should_skip_path_parts(parts: tuple[str, ...]) -> bool:
+    skip_dirs = {".git", "__pycache__", "node_modules", ".tox", ".claude", "site-packages"}
+    for part in parts:
+        if part in skip_dirs:
+            return True
+        if part == ".venv" or part == "venv":
+            return True
+        if part.startswith(".venv") or re.fullmatch(r"venv[\w.-]*", part):
+            return True
+    return False
 _DOCS_STEMS = {
     "readme",
     "changelog",
@@ -1745,8 +1757,8 @@ class AiSbomExtractor:
             if suffix not in config.include_extensions and not is_dockerfile:
                 continue
             # Skip common irrelevant directories
-            parts = set(path.parts)
-            if parts & {".git", "__pycache__", "node_modules", ".venv", "venv", ".tox", ".claude"}:
+            parts = path.parts
+            if _should_skip_path_parts(parts):
                 continue
             # Skip .github/** except .github/workflows/**
             if ".github" in parts and "workflows" not in parts:

@@ -1,8 +1,9 @@
 """Flask framework adapter for nuguard SBOM extraction.
 
 Detects Flask applications, blueprints, route endpoints, and auth decorators
-using Python's AST module.  Also discovers request body payload keys from
-``request.json.get("key")`` / ``data.get("key")`` patterns in route handlers.
+using Python's AST module. Also discovers request body payload keys from
+``request.json.get("key")`` / ``request.form.get("key")`` /
+``data.get("key")`` patterns in route handlers.
 """
 
 from __future__ import annotations
@@ -42,7 +43,7 @@ def _stable_id(key: str) -> uuid.UUID:
 def _infer_chat_payload_key(
     func_def: ast.FunctionDef | ast.AsyncFunctionDef,
 ) -> str | None:
-    """Scan the function body for request.json.get("key") / data.get("key") patterns.
+    """Scan the function body for request payload .get("key") patterns.
 
     Returns the first key that matches a known prompt field name, or the first
     key found if none match the known set.
@@ -66,7 +67,8 @@ def _infer_chat_payload_key(
         if not key:
             continue
 
-        # Heuristic: receiver should look like request.json, data, payload, body, json_data
+        # Heuristic: receiver should look like request.json, request.form,
+        # request.values, data, payload, body, or json_data.
         receiver = func.value
         receiver_name = ""
         if isinstance(receiver, ast.Name):
@@ -75,7 +77,16 @@ def _infer_chat_payload_key(
             # request.json → attr = "json"
             receiver_name = receiver.attr
 
-        if receiver_name in ("json", "data", "payload", "body", "json_data", "request_data"):
+        if receiver_name in (
+            "json",
+            "form",
+            "values",
+            "data",
+            "payload",
+            "body",
+            "json_data",
+            "request_data",
+        ):
             candidates.append(key)
 
     # Prefer a known prompt field name

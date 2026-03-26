@@ -186,6 +186,7 @@ def _discover_chat_config(
 
     Returns ``(chat_path, chat_payload_key, chat_payload_list)``.
     """
+    candidates: list[tuple[int, str, str, bool, str]] = []
     for node in sbom.nodes:
         if node.component_type != NodeType.API_ENDPOINT:
             continue
@@ -196,12 +197,49 @@ def _discover_chat_config(
             continue
         if not meta.chat_payload_key:
             continue
+
         discovered_path = meta.endpoint or chat_path
+        endpoint_l = discovered_path.lower()
+        source = (meta.extras or {}).get("source")
+
+        # Prefer high-confidence, source-backed messaging endpoints over
+        # synthetic fallback routes such as '/chat/message'.
+        score = 0
+        if source == "auto_enrichment":
+            score -= 2
+        elif source == "runtime_probe":
+            score -= 1
+        else:
+            score += 3
+
+        if node.confidence >= 0.9:
+            score += 2
+        elif node.confidence >= 0.75:
+            score += 1
+
+        if "/chat/message" in endpoint_l:
+            score += 2
+        elif any(token in endpoint_l for token in ("/chat/queue", "/messages", "/message", "/generate", "/completions", "/respond", "/query")):
+            score += 3
+        elif endpoint_l.endswith("/chat"):
+            score += 1
+        if endpoint_l.startswith("/api/"):
+            score += 1
+        if meta.response_text_key:
+            score += 1
+
+        candidates.append(
+            (score, discovered_path, meta.chat_payload_key, meta.chat_payload_list, node.name)
+        )
+
+    if candidates:
+        best = max(candidates, key=lambda item: item[0])
         _log.info(
             "SBOM auto-discovered chat config: path=%s key=%s list=%s (node=%s)",
-            discovered_path, meta.chat_payload_key, meta.chat_payload_list, node.name,
+            best[1], best[2], best[3], best[4],
         )
-        return discovered_path, meta.chat_payload_key, meta.chat_payload_list
+        return best[1], best[2], best[3]
+
     return chat_path, chat_payload_key, chat_payload_list
 
 

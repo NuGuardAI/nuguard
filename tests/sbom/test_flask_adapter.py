@@ -51,6 +51,17 @@ def api_data():
     return {"data": []}
 """
 
+FLASK_FORM_SOURCE = """
+from flask import Flask, request
+
+app = Flask(__name__)
+
+@app.route("/api/chat/queue", methods=["POST"])
+def queue_chat():
+    message = request.form.get("message")
+    return {"message": message}
+"""
+
 EMPTY_SOURCE = ""
 INVALID_SYNTAX = "def foo(:"
 
@@ -135,3 +146,11 @@ def test_framework_metadata_set(adapter: FlaskAdapter) -> None:
     nodes, _ = adapter.extract(Path("app.py"), FLASK_BASIC_SOURCE)
     for node in nodes:
         assert node.metadata.framework == "flask"
+
+
+def test_form_payload_key_detected(adapter: FlaskAdapter) -> None:
+    """request.form.get('message') is captured as chat_payload_key."""
+    nodes, _ = adapter.extract(Path("app.py"), FLASK_FORM_SOURCE)
+    endpoint = next(n for n in nodes if n.component_type == NodeType.API_ENDPOINT)
+    assert endpoint.metadata.endpoint == "/api/chat/queue"
+    assert endpoint.metadata.chat_payload_key == "message"

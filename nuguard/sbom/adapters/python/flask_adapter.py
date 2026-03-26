@@ -6,8 +6,8 @@ Registers as a ``FrameworkAdapter`` for Python source files that import
 - ``Flask()`` / ``Blueprint(...)`` instantiations → AGENT nodes
 - Auth decorators (``login_required``, ``jwt_required``, ...) → AUTH nodes
 - ``@app.route(...)`` decorators → API_ENDPOINT nodes
-  - ``request.json.get("key")`` / ``data.get("key")`` patterns in handler
-    bodies → ``chat_payload_key``
+    - ``request.json.get("key")`` / ``request.form.get("key")`` /
+        ``data.get("key")`` patterns in handler bodies → ``chat_payload_key``
 """
 
 from __future__ import annotations
@@ -98,7 +98,7 @@ def _parse_route_decorator(
 def _infer_chat_payload_key(
     func_def: ast.FunctionDef | ast.AsyncFunctionDef,
 ) -> str | None:
-    """Scan function body for request.json.get("key") / data.get("key") patterns."""
+    """Scan function body for request payload .get("key") patterns."""
     candidates: list[str] = []
 
     for node in ast.walk(func_def):
@@ -123,7 +123,16 @@ def _infer_chat_payload_key(
         elif isinstance(receiver, ast.Attribute):
             receiver_name = receiver.attr
 
-        if receiver_name in ("json", "data", "payload", "body", "json_data", "request_data"):
+        if receiver_name in (
+            "json",
+            "form",
+            "values",
+            "data",
+            "payload",
+            "body",
+            "json_data",
+            "request_data",
+        ):
             candidates.append(key)
 
     for key in candidates:
