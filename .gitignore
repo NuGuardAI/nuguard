@@ -17,7 +17,6 @@ tmp/
 .env.*
 tests/redteam/.env
 tests/output/
-docs/llm-runs/
 
 # Canary seed files contain fake-but-realistic PII — do not commit live versions
 # (the .example version is intentionally tracked)
