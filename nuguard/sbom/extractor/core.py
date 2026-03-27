@@ -222,13 +222,13 @@ _DOCS_EXTENSIONS = {
     ".html",
     ".htm",
     ".adoc",
-    ".sh",
-    ".bash",
-    ".zsh",
-    ".fish",
-    ".ps1",
     ".mk",
 }
+# Shell / script extensions are NOT in _DOCS_EXTENSIONS so that regex adapters
+# (deployment_generic, privilege, auth, etc.) can scan them.  They receive the
+# IAC source tier so their evidence confidence is scored like infrastructure
+# files rather than code.
+_SCRIPT_EXTENSIONS = {".sh", ".bash", ".zsh", ".fish", ".ps1"}
 
 
 def _should_skip_path_parts(parts: tuple[str, ...]) -> bool:
@@ -287,7 +287,7 @@ def _classify_source_tier(file_path: str, adapter_name: str, evidence_kind: str)
     stem = p.stem.lower()
     if suffix in _DOCS_EXTENSIONS or stem in _DOCS_STEMS:
         return _TIER_DOCS
-    if suffix in _IAC_EXTENSIONS:
+    if suffix in _IAC_EXTENSIONS or suffix in _SCRIPT_EXTENSIONS:
         return _TIER_IAC
     # Python / TypeScript / notebook files processed by regex fallback → code
     return _TIER_CODE

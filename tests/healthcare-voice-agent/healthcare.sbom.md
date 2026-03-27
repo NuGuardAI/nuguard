@@ -91,6 +91,13 @@
 - Adapter: `tool_search`
 - Detected at: `backend/langgraph_llm_agents.py` line 7 — tool_search: duckduckgo_search
 
+### Deployment Details
+
+**generic (`deployment_generic`)**
+- `uvicorn` — `Dockerfile`:41
+- `docker` — `docker-compose.yml`:11
+- Source tiers: code, iac
+
 ### Container Images
 
 | Image | Registry | Multi-stage | Security Findings |

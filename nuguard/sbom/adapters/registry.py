@@ -299,9 +299,31 @@ def default_registry() -> tuple[DetectionAdapter, ...]:
                 priority=170,
                 patterns=(
                     re.compile(
+                        # Container / orchestration runtimes
                         r"\b(docker|kubernetes|helm|terraform|compose|deployment"
                         r"|nginx|certbot|letsencrypt|gunicorn|uvicorn|caddy|traefik"
                         r"|reverse[._]proxy|ssl[._]certificate|systemd[._]service)\b",
+                        re.IGNORECASE,
+                    ),
+                    re.compile(
+                        # Cloud CLI tools — Azure, GCP, AWS, Kubernetes CLI
+                        # Matched as whole words to avoid false positives on
+                        # variable names; bare 'az' excluded (too short).
+                        r"\b(gcloud|gsutil|bq"
+                        r"|kubectl|kustomize|skaffold|argocd|fluxcd"
+                        r"|ansible(?:[_-]playbook)?|ansible[_-]galaxy"
+                        r"|pulumi|cdktf"
+                        r"|azd|azure[_-]cli|az\s+(?:login|group|webapp|container|acr|aks|"
+                        r"functionapp|storage|keyvault|cosmos|deploy)"
+                        r"|aws\s+(?:ec2|s3|lambda|ecs|eks|rds|cloudformation|deploy|"
+                        r"ecr|codecommit|codedeploy|codepipeline))\b",
+                        re.IGNORECASE,
+                    ),
+                    re.compile(
+                        # PaaS / serverless / edge deployment platforms
+                        r"\b(flyctl|fly\.io|heroku|vercel|netlify|railway|render"
+                        r"|serverless[_-]framework|sam[_-]cli|amplify[_-]cli"
+                        r"|wrangler|cloudflare[_-]pages|deno[_-]deploy)\b",
                         re.IGNORECASE,
                     ),
                 ),

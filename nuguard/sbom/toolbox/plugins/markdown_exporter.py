@@ -254,6 +254,44 @@ def _privilege_details(nodes: list[dict[str, Any]]) -> list[str]:
     return lines
 
 
+def _deployment_details(nodes: list[dict[str, Any]]) -> list[str]:
+    """Render a Deployment Details section with evidence locations."""
+    deployments = [n for n in nodes if n.get("component_type") == "DEPLOYMENT"]
+    if not deployments:
+        return []
+    lines: list[str] = ["### Deployment Details", ""]
+    for n in deployments:
+        extras = _extras(n)
+        evidence = n.get("evidence") or []
+        canonical = extras.get("canonical_name", "")
+
+        header = _esc(n.get("name", ""))
+        if canonical:
+            header += f" (`{canonical}`)"
+        lines.append(f"**{header}**")
+
+        # Group evidence by matched technology for a concise summary
+        technologies: dict[str, list[str]] = {}  # matched_term → [file:line, ...]
+        for ev in evidence:
+            detail = ev.get("detail", "")
+            matched = detail.split(": ", 1)[-1] if ": " in detail else detail
+            loc = ev.get("location") or {}
+            path = loc.get("path", "")
+            line_no = loc.get("line", "")
+            loc_str = f"`{path}`" + (f":{line_no}" if line_no else "") if path else ""
+            technologies.setdefault(matched, []).append(loc_str)
+
+        for tech, locs in technologies.items():
+            loc_list = ", ".join(l for l in locs if l)
+            lines.append(f"- `{tech}` — {loc_list}" if loc_list else f"- `{tech}`")
+
+        tiers = extras.get("detected_by_tiers") or []
+        if tiers:
+            lines.append(f"- Source tiers: {', '.join(tiers)}")
+        lines.append("")
+    return lines
+
+
 def _tool_details(nodes: list[dict[str, Any]]) -> list[str]:
     """Render a Tool Details section with evidence locations and security flags."""
     tools = [n for n in nodes if n.get("component_type") == "TOOL"]
@@ -396,6 +434,7 @@ class MarkdownExporterPlugin(ToolPlugin):
             lines += _datastore_details(nodes)
             lines += _model_details(nodes)
             lines += _tool_details(nodes)
+            lines += _deployment_details(nodes)
             lines += _container_image_details(nodes)
             lines += _privilege_details(nodes)
             lines += _iam_details(nodes)
