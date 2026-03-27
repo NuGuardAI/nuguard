@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from nuguard.common.auth import AuthConfig
     from nuguard.common.llm_client import LLMClient
     from nuguard.redteam.target.log_reader import BufferLogReader, FileLogReader
 
@@ -274,6 +275,7 @@ class RedteamOrchestrator:
         extra_headers: dict[str, str] | None = None,
         strict_outcome: bool = False,
         scenario_filter: list[str] | None = None,
+        auth_config: "AuthConfig | None" = None,
     ) -> None:
         self._sbom = sbom
         self._target_url = target_url
@@ -292,6 +294,8 @@ class RedteamOrchestrator:
         self._guided_conversations = guided_conversations
         self._guided_max_turns = guided_max_turns
         self._guided_concurrency = max(1, guided_concurrency)
+        # Structured auth config — when provided, takes precedence over extra_headers
+        self._auth_config = auth_config
         # Default HTTP headers propagated to every request (e.g. auth header)
         self._extra_headers: dict[str, str] = extra_headers or {}
         # Outcome semantics: when True, a scan with predominantly transport errors
@@ -339,6 +343,44 @@ class RedteamOrchestrator:
             self._target_url,
             self._profile,
         )
+
+        # 0. Auth bootstrap — resolve effective auth and verify every credential
+        #    before running any scenario. Raises TargetUnavailableError on network
+        #    failure; raises AuthError when the default credential is rejected.
+        import uuid as _uuid
+        from nuguard.common.auth import AuthConfig as _AuthConfig
+        from nuguard.common.bootstrap import AuthBootstrapper
+        from nuguard.common.errors import AuthError
+
+        effective_auth = self._auth_config or _AuthConfig(type="none")
+        # If auth_config not provided, reconstruct from extra_headers (legacy path)
+        if self._auth_config is None and self._extra_headers:
+            header_str = next(
+                (f"{k}: {v}" for k, v in self._extra_headers.items()), ""
+            )
+            effective_auth = _AuthConfig.from_header_string(header_str)
+
+        bootstrapper = AuthBootstrapper(
+            target_url=self._target_url,
+            endpoint=self._chat_path,
+            default_auth=effective_auth,
+            canary_config=self._canary_config,
+            run_id=str(_uuid.uuid4()),
+        )
+        health_report = await bootstrapper.run()
+        self.health_report = health_report
+        for line in health_report.summary_lines():
+            _log.info("bootstrap %s", line)
+        # Abort on default credential auth failure — scenarios would produce false negatives
+        default_check = health_report.checks[0] if health_report.checks else None
+        if default_check and default_check.status == "auth_failed":
+            raise AuthError(
+                f"Auth failed for identity '{default_check.identity}' "
+                f"(HTTP {default_check.http_status_code}): {default_check.error_detail}",
+                status_code=default_check.http_status_code or 0,
+                identity=default_check.identity,
+                detail=default_check.error_detail,
+            )
 
         # 1. Generate scenarios from SBOM + policy.
         # Guided conversations require an LLM — only generate when one is configured.

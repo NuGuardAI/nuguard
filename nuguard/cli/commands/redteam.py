@@ -4,7 +4,10 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+if TYPE_CHECKING:
+    from nuguard.common.auth import AuthConfig
 
 import typer
 
@@ -296,12 +299,10 @@ async def _run_redteam(
         except Exception as exc:
             _log.warning("Could not load canary config: %s", exc)
 
-    # Build extra headers from auth_header config (format: "Header-Name: value")
-    extra_headers: dict[str, str] = {}
-    if auth_header:
-        if ":" in auth_header:
-            hname, _, hval = auth_header.partition(":")
-            extra_headers[hname.strip()] = hval.strip()
+    # Resolve auth config — structured AuthConfig replaces the legacy inline header split
+    from nuguard.common.auth import AuthConfig
+    auth_config = AuthConfig.from_header_string(auth_header) if auth_header else AuthConfig(type="none")
+    extra_headers: dict[str, str] = auth_config.to_headers()
 
     # Auto-launch the app if requested
     if launch:
@@ -336,6 +337,7 @@ async def _run_redteam(
                 guided_conversations=guided_conversations,
                 guided_max_turns=guided_max_turns,
                 guided_concurrency=guided_concurrency,
+                auth_config=auth_config,
                 extra_headers=extra_headers or None,
                 strict_outcome=strict_outcome,
                 redteam_llm_model=redteam_llm_model,
@@ -360,6 +362,7 @@ async def _run_redteam(
         guided_conversations=guided_conversations,
         guided_max_turns=guided_max_turns,
         guided_concurrency=guided_concurrency,
+        auth_config=auth_config,
         extra_headers=extra_headers or None,
         strict_outcome=strict_outcome,
         redteam_llm_model=redteam_llm_model,
@@ -384,6 +387,7 @@ async def _run_orchestrator(
     guided_max_turns: int = 12,
     guided_concurrency: int = 3,
     extra_headers: dict[str, str] | None = None,
+    auth_config: "AuthConfig | None" = None,
     strict_outcome: bool = False,
     redteam_llm_model: str | None = None,
     redteam_llm_api_key: str | None = None,
@@ -414,6 +418,7 @@ async def _run_orchestrator(
         guided_max_turns=guided_max_turns,
         guided_concurrency=guided_concurrency,
         extra_headers=extra_headers,
+        auth_config=auth_config,
         strict_outcome=strict_outcome,
         scenario_filter=scenario_filter,
         redteam_llm=redteam_llm,
