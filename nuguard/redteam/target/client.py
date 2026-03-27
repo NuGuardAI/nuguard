@@ -12,6 +12,7 @@ from typing import Any
 
 import httpx
 
+from nuguard.common.errors import TargetUnavailableError  # noqa: F401 — re-exported for callers
 from .session import AttackSession
 
 _log = logging.getLogger(__name__)
@@ -21,14 +22,6 @@ MAX_CONSECUTIVE_ERRORS = 3
 DEFAULT_MAX_429_RETRIES = 2
 DEFAULT_429_BACKOFF_BASE_SECONDS = 0.5
 DEFAULT_429_BACKOFF_CAP_SECONDS = 5.0
-
-
-class TargetUnavailableError(Exception):
-    """Raised when the target chat endpoint returns too many consecutive errors.
-
-    Signals the orchestrator to abort remaining scenarios rather than
-    hammering a broken or unreachable endpoint.
-    """
 
 
 class TargetAppClient:
