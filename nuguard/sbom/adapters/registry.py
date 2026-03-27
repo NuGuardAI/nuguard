@@ -307,28 +307,119 @@ def default_registry() -> tuple[DetectionAdapter, ...]:
                 ),
                 canonical_name="deployment:generic",
             ),
-            # Web search tools used by AI agents — given a specific canonical name
-            # ("tool:search") so they appear as a named "search" component rather
-            # than being collapsed into the generic "tool:generic" bucket.
-            # Covers:
-            #   - Direct library usage: DDGS() from duckduckgo_search
-            #   - LangChain community wrappers: DuckDuckGoSearchRun, TavilySearchResults, etc.
-            #   - Other common retrieval SDKs: Tavily, SerpAPI, BraveSearch, Exa
+            # Web search / information-retrieval tools used by AI agents.
+            # Covers direct library usage, LangChain community wrappers, and
+            # standalone retrieval SDKs (DuckDuckGo, Tavily, SerpAPI, Perplexity, etc.).
             RegexAdapter(
                 name="tool_search",
                 component_type=ComponentType.TOOL,
-                priority=174,  # slightly higher priority than tool_generic
+                priority=174,
                 patterns=(
                     re.compile(
                         r"\b(duckduckgo[_-]search|DDGS"
                         r"|DuckDuckGoSearch(?:Run|Results|APIWrapper)?"
                         r"|TavilyClient|TavilySearch(?:Results)?"
                         r"|GoogleSerperAPIWrapper|SerpAPIWrapper"
-                        r"|BraveSearch(?:Wrapper)?|ExaSearchResults?)\b",
+                        r"|BraveSearch(?:Wrapper)?|ExaSearchResults?"
+                        r"|PerplexityClient|perplexipy|perplexity[_-](?:search|client))\b",
                         re.IGNORECASE,
                     ),
                 ),
                 canonical_name="tool:search",
+            ),
+            # OpenAI and Anthropic built-in / platform tools.
+            # Detects:
+            #   - OpenAI Agents SDK built-in tool classes (WebSearchTool,
+            #     FileSearchTool, CodeInterpreterTool)
+            #   - OpenAI Responses API built-in type strings
+            #     ("web_search_preview", "code_interpreter")
+            #   - Anthropic computer-use beta tool identifiers (computer_use,
+            #     ComputerTool, text_editor, bash when from anthropic SDK)
+            RegexAdapter(
+                name="tool_openai_builtin",
+                component_type=ComponentType.TOOL,
+                priority=174,
+                patterns=(
+                    re.compile(
+                        # OpenAI Agents SDK built-in tool classes
+                        r"\b(WebSearchTool|FileSearchTool|CodeInterpreterTool"
+                        # OpenAI Responses API type-string literals
+                        r"|web_search_preview|code_interpreter"
+                        # Anthropic computer-use tool identifiers
+                        r"|ComputerTool|computer_use|text_editor_tool"
+                        r"|anthropic[._](?:computer|bash|text.editor))\b",
+                        re.IGNORECASE,
+                    ),
+                ),
+                canonical_name="tool:platform_builtin",
+            ),
+            # Workspace / SaaS connector tools used by AI agents.
+            # Covers LangChain community toolkits, vendor SDKs, and
+            # direct API client imports for common business platforms.
+            RegexAdapter(
+                name="tool_workspace_connector",
+                component_type=ComponentType.TOOL,
+                priority=174,
+                patterns=(
+                    re.compile(
+                        # Google Drive and Gmail (LangChain toolkits + raw SDK)
+                        r"\b(GoogleDrive(?:Tool(?:kit)?|APIWrapper)"
+                        r"|GmailTool(?:kit)?|GmailSendMessage|GmailGetMessage"
+                        r"|GmailCreateDraft|pydrive2?)\b",
+                        re.IGNORECASE,
+                    ),
+                    re.compile(
+                        # Dropbox, Box, SharePoint, OneDrive
+                        r"\b(dropbox|DropboxAPIWrapper|BoxAPIWrapper|boxsdk"
+                        r"|SharePoint(?:Tool(?:kit)?|Loader|APIWrapper)?"
+                        r"|shareplum|OneDrive(?:Tool(?:kit)?|APIWrapper)?)\b",
+                        re.IGNORECASE,
+                    ),
+                    re.compile(
+                        # CRM / support platforms
+                        r"\b(SimpleSalesforce|simple[_-]salesforce|SalesforceAPIWrapper"
+                        r"|hubspot|HubSpot(?:Tool|Client|APIWrapper)?"
+                        r"|zendesk|ZendeskAPI|ZendeskTool(?:kit)?)\b",
+                        re.IGNORECASE,
+                    ),
+                    re.compile(
+                        # Productivity / no-code databases
+                        r"\b(airtable|pyairtable|AirtableAPIWrapper|AirtableLoader)\b",
+                        re.IGNORECASE,
+                    ),
+                ),
+                canonical_name="tool:workspace_connector",
+            ),
+            # Agent observability / tracing tools.
+            # These SDKs capture LLM inputs, outputs, and traces and send them
+            # to external services — relevant for data-flow and privacy analysis.
+            RegexAdapter(
+                name="tool_observability",
+                component_type=ComponentType.TOOL,
+                priority=174,
+                patterns=(
+                    re.compile(
+                        r"\b(langfuse|langsmith|LangSmithClient"
+                        r"|mlflow|arize(?:[_-]phoenix)?|openinference"
+                        r"|helicone|HeliconeAsyncLogger"
+                        r"|weave\.init|wandb[._]weave)\b",
+                        re.IGNORECASE,
+                    ),
+                ),
+                canonical_name="tool:observability",
+            ),
+            # RPA / robotic-process-automation tools used by AI agents.
+            RegexAdapter(
+                name="tool_rpa",
+                component_type=ComponentType.TOOL,
+                priority=174,
+                patterns=(
+                    re.compile(
+                        r"\b(uipath|UiPath|UiRobot|Orchestrator(?:Client|API))\b",
+                        re.IGNORECASE,
+                    ),
+                ),
+                canonical_name="tool:rpa",
             ),
             # Browser automation tools (playwright/selenium/puppeteer) are filtered
             # to skip test directories and JSON config files.  These tools are

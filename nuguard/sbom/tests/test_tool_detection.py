@@ -211,3 +211,192 @@ def test_serpapi_detected(tmp_path):
     assert "tool_search" in adapters_seen, (
         f"Expected tool_search adapter; got: {adapters_seen}"
     )
+
+
+def test_perplexity_search_detected(tmp_path):
+    """PerplexityClient must be detected as TOOL (via tool_search adapter)."""
+    (tmp_path / "agent.py").write_text(
+        "from perplexipy import PerplexityClient\n\n"
+        "client = PerplexityClient(api_key='pplx-xxx')\n",
+        encoding="utf-8",
+    )
+    doc = AiSbomExtractor().extract_from_path(tmp_path, _PY_ONLY)
+    adapters_seen = {n.metadata.extras.get("adapter") for n in doc.nodes if n.component_type == ComponentType.TOOL}
+    assert "tool_search" in adapters_seen, f"Expected tool_search; got: {adapters_seen}"
+
+
+# ── OpenAI / Anthropic platform built-in tools ───────────────────────────────
+
+
+def test_openai_web_search_tool_detected(tmp_path):
+    """WebSearchTool (OpenAI Agents SDK) must be detected as TOOL."""
+    (tmp_path / "agent.py").write_text(
+        "from agents import WebSearchTool\n\n"
+        "tools = [WebSearchTool()]\n",
+        encoding="utf-8",
+    )
+    doc = AiSbomExtractor().extract_from_path(tmp_path, _PY_ONLY)
+    adapters_seen = {n.metadata.extras.get("adapter") for n in doc.nodes if n.component_type == ComponentType.TOOL}
+    assert "tool_openai_builtin" in adapters_seen, f"Expected tool_openai_builtin; got: {adapters_seen}"
+
+
+def test_openai_code_interpreter_detected(tmp_path):
+    """code_interpreter type string (Responses API) must be detected as TOOL."""
+    (tmp_path / "agent.py").write_text(
+        'tools = [{"type": "code_interpreter"}]\n',
+        encoding="utf-8",
+    )
+    doc = AiSbomExtractor().extract_from_path(tmp_path, _PY_ONLY)
+    adapters_seen = {n.metadata.extras.get("adapter") for n in doc.nodes if n.component_type == ComponentType.TOOL}
+    assert "tool_openai_builtin" in adapters_seen, f"Expected tool_openai_builtin; got: {adapters_seen}"
+
+
+def test_anthropic_computer_use_detected(tmp_path):
+    """computer_use beta identifier must be detected as TOOL."""
+    (tmp_path / "agent.py").write_text(
+        'tools = [{"type": "computer_use", "display_width_px": 1280}]\n',
+        encoding="utf-8",
+    )
+    doc = AiSbomExtractor().extract_from_path(tmp_path, _PY_ONLY)
+    adapters_seen = {n.metadata.extras.get("adapter") for n in doc.nodes if n.component_type == ComponentType.TOOL}
+    assert "tool_openai_builtin" in adapters_seen, f"Expected tool_openai_builtin; got: {adapters_seen}"
+
+
+# ── Workspace / SaaS connector tools ─────────────────────────────────────────
+
+
+def test_gmail_toolkit_detected(tmp_path):
+    """GmailToolkit must be detected as TOOL (via tool_workspace_connector)."""
+    (tmp_path / "agent.py").write_text(
+        "from langchain_community.agent_toolkits import GmailToolkit\n\n"
+        "toolkit = GmailToolkit()\n",
+        encoding="utf-8",
+    )
+    doc = AiSbomExtractor().extract_from_path(tmp_path, _PY_ONLY)
+    adapters_seen = {n.metadata.extras.get("adapter") for n in doc.nodes if n.component_type == ComponentType.TOOL}
+    assert "tool_workspace_connector" in adapters_seen, f"Expected tool_workspace_connector; got: {adapters_seen}"
+
+
+def test_dropbox_sdk_detected(tmp_path):
+    """dropbox SDK import must be detected as TOOL."""
+    (tmp_path / "agent.py").write_text(
+        "import dropbox\n\n"
+        "dbx = dropbox.Dropbox(oauth2_access_token=token)\n",
+        encoding="utf-8",
+    )
+    doc = AiSbomExtractor().extract_from_path(tmp_path, _PY_ONLY)
+    adapters_seen = {n.metadata.extras.get("adapter") for n in doc.nodes if n.component_type == ComponentType.TOOL}
+    assert "tool_workspace_connector" in adapters_seen, f"Expected tool_workspace_connector; got: {adapters_seen}"
+
+
+def test_salesforce_detected(tmp_path):
+    """SimpleSalesforce must be detected as TOOL."""
+    (tmp_path / "agent.py").write_text(
+        "from simple_salesforce import Salesforce\n\n"
+        "sf = SimpleSalesforce(username='u', password='p', security_token='t')\n",
+        encoding="utf-8",
+    )
+    doc = AiSbomExtractor().extract_from_path(tmp_path, _PY_ONLY)
+    adapters_seen = {n.metadata.extras.get("adapter") for n in doc.nodes if n.component_type == ComponentType.TOOL}
+    assert "tool_workspace_connector" in adapters_seen, f"Expected tool_workspace_connector; got: {adapters_seen}"
+
+
+def test_hubspot_detected(tmp_path):
+    """hubspot SDK import must be detected as TOOL."""
+    (tmp_path / "agent.py").write_text(
+        "from hubspot import HubSpot\n\n"
+        "client = HubSpot(access_token='xxx')\n",
+        encoding="utf-8",
+    )
+    doc = AiSbomExtractor().extract_from_path(tmp_path, _PY_ONLY)
+    adapters_seen = {n.metadata.extras.get("adapter") for n in doc.nodes if n.component_type == ComponentType.TOOL}
+    assert "tool_workspace_connector" in adapters_seen, f"Expected tool_workspace_connector; got: {adapters_seen}"
+
+
+def test_airtable_detected(tmp_path):
+    """pyairtable import must be detected as TOOL."""
+    (tmp_path / "agent.py").write_text(
+        "from pyairtable import Api\n\n"
+        "api = Api('xxx')\n",
+        encoding="utf-8",
+    )
+    doc = AiSbomExtractor().extract_from_path(tmp_path, _PY_ONLY)
+    adapters_seen = {n.metadata.extras.get("adapter") for n in doc.nodes if n.component_type == ComponentType.TOOL}
+    assert "tool_workspace_connector" in adapters_seen, f"Expected tool_workspace_connector; got: {adapters_seen}"
+
+
+# ── Observability / tracing ───────────────────────────────────────────────────
+
+
+def test_langfuse_detected(tmp_path):
+    """langfuse import must be detected as TOOL (observability)."""
+    (tmp_path / "agent.py").write_text(
+        "from langfuse import Langfuse\n\n"
+        "lf = Langfuse(public_key='pk', secret_key='sk')\n",
+        encoding="utf-8",
+    )
+    doc = AiSbomExtractor().extract_from_path(tmp_path, _PY_ONLY)
+    adapters_seen = {n.metadata.extras.get("adapter") for n in doc.nodes if n.component_type == ComponentType.TOOL}
+    assert "tool_observability" in adapters_seen, f"Expected tool_observability; got: {adapters_seen}"
+
+
+def test_langsmith_detected(tmp_path):
+    """langsmith import must be detected as TOOL (observability)."""
+    (tmp_path / "agent.py").write_text(
+        "from langsmith import Client\n\n"
+        "client = LangSmithClient(api_key='xxx')\n",
+        encoding="utf-8",
+    )
+    doc = AiSbomExtractor().extract_from_path(tmp_path, _PY_ONLY)
+    adapters_seen = {n.metadata.extras.get("adapter") for n in doc.nodes if n.component_type == ComponentType.TOOL}
+    assert "tool_observability" in adapters_seen, f"Expected tool_observability; got: {adapters_seen}"
+
+
+def test_mlflow_detected(tmp_path):
+    """mlflow import must be detected as TOOL (observability)."""
+    (tmp_path / "agent.py").write_text(
+        "import mlflow\n\n"
+        "mlflow.set_tracking_uri('http://localhost:5000')\n",
+        encoding="utf-8",
+    )
+    doc = AiSbomExtractor().extract_from_path(tmp_path, _PY_ONLY)
+    adapters_seen = {n.metadata.extras.get("adapter") for n in doc.nodes if n.component_type == ComponentType.TOOL}
+    assert "tool_observability" in adapters_seen, f"Expected tool_observability; got: {adapters_seen}"
+
+
+def test_helicone_detected(tmp_path):
+    """helicone import must be detected as TOOL (observability)."""
+    (tmp_path / "agent.py").write_text(
+        "from helicone.openai import openai\n",
+        encoding="utf-8",
+    )
+    doc = AiSbomExtractor().extract_from_path(tmp_path, _PY_ONLY)
+    adapters_seen = {n.metadata.extras.get("adapter") for n in doc.nodes if n.component_type == ComponentType.TOOL}
+    assert "tool_observability" in adapters_seen, f"Expected tool_observability; got: {adapters_seen}"
+
+
+def test_weave_init_detected(tmp_path):
+    """weave.init() (W&B Weave) must be detected as TOOL (observability)."""
+    (tmp_path / "agent.py").write_text(
+        "import weave\n\n"
+        "weave.init('my-project')\n",
+        encoding="utf-8",
+    )
+    doc = AiSbomExtractor().extract_from_path(tmp_path, _PY_ONLY)
+    adapters_seen = {n.metadata.extras.get("adapter") for n in doc.nodes if n.component_type == ComponentType.TOOL}
+    assert "tool_observability" in adapters_seen, f"Expected tool_observability; got: {adapters_seen}"
+
+
+# ── RPA ───────────────────────────────────────────────────────────────────────
+
+
+def test_uipath_detected(tmp_path):
+    """UiPath SDK usage must be detected as TOOL (RPA)."""
+    (tmp_path / "agent.py").write_text(
+        "from uipath import UiRobot\n\n"
+        "robot = UiRobot(base_url='https://cloud.uipath.com')\n",
+        encoding="utf-8",
+    )
+    doc = AiSbomExtractor().extract_from_path(tmp_path, _PY_ONLY)
+    adapters_seen = {n.metadata.extras.get("adapter") for n in doc.nodes if n.component_type == ComponentType.TOOL}
+    assert "tool_rpa" in adapters_seen, f"Expected tool_rpa; got: {adapters_seen}"
