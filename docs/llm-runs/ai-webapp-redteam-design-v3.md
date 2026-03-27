@@ -640,7 +640,7 @@ Deliverables:
 | API HTTP client | httpx async | Existing `TargetAppClient` |
 | Browser automation | Playwright (Python) | Phase 4; login, screenshots, network hooks |
 | JSON schema validation | jsonschema | Request/response schema enforcement |
-| Multi-turn adversarial prompting | PyRIT (selective) | Mutation strategies; not core runtime |
+| Multi-turn adversarial prompting | PyRIT (selective) | Mutation strategies; not core runtime (only if needed) |
 | AI tracing | Arize Phoenix | Backend span correlation (optional) |
 | CI finding format | SARIF | GitHub Advanced Security integration |
 | Conventional API scanning | OWASP ZAP (supplemental) | Non-chat endpoint baseline |
