@@ -244,6 +244,53 @@ def _privilege_details(nodes: list[dict[str, Any]]) -> list[str]:
     return lines
 
 
+def _tool_details(nodes: list[dict[str, Any]]) -> list[str]:
+    """Render a Tool Details section with evidence locations and security flags."""
+    tools = [n for n in nodes if n.get("component_type") == "TOOL"]
+    if not tools:
+        return []
+    lines: list[str] = ["### Tool Details", ""]
+    for n in tools:
+        meta = _meta(n)
+        extras = _extras(n)
+        canonical = extras.get("canonical_name", "")
+        adapter = extras.get("adapter", "")
+        evidence = n.get("evidence") or []
+
+        header = _esc(n.get("name", ""))
+        if canonical:
+            header += f" (`{canonical}`)"
+        lines.append(f"**{header}**")
+        if adapter:
+            lines.append(f"- Adapter: `{adapter}`")
+
+        # Evidence locations — show where in the source this was detected
+        for ev in evidence:
+            detail = ev.get("detail", "")
+            loc = ev.get("location") or {}
+            path = loc.get("path", "")
+            line_no = loc.get("line", "")
+            if path:
+                loc_str = f"`{path}`" + (f" line {line_no}" if line_no else "")
+                lines.append(f"- Detected at: {loc_str}" + (f" — {_esc(detail)}" if detail else ""))
+
+        # Security-relevant flags from enrichment metadata
+        flags: list[str] = []
+        if meta.get("high_privilege"):
+            flags.append("⚠ high-privilege")
+        if meta.get("ssrf_possible"):
+            flags.append("⚠ SSRF-possible")
+        if meta.get("reads_external_content"):
+            flags.append("reads external content")
+        if meta.get("accepts_external_url"):
+            flags.append("accepts external URL")
+        if flags:
+            lines.append(f"- Security flags: {', '.join(flags)}")
+
+        lines.append("")
+    return lines
+
+
 def _iam_details(nodes: list[dict[str, Any]]) -> list[str]:
     """Render IAM entity details."""
     iam_nodes = [n for n in nodes if n.get("component_type") == "IAM"]
@@ -338,6 +385,7 @@ class MarkdownExporterPlugin(ToolPlugin):
             lines += _prompt_details(nodes)
             lines += _datastore_details(nodes)
             lines += _model_details(nodes)
+            lines += _tool_details(nodes)
             lines += _container_image_details(nodes)
             lines += _privilege_details(nodes)
             lines += _iam_details(nodes)
