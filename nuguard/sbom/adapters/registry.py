@@ -206,6 +206,9 @@ def default_registry() -> tuple[DetectionAdapter, ...]:
                         r"\b(postgres|mysql|mongodb|redis|pinecone|faiss|chroma|weaviate|qdrant|milvus"
                         r"|sqlite|aiosqlite|sqlite3|dynamodb|firestore|cosmosdb|supabase|neon"
                         r"|cassandra|elasticsearch|opensearch|neo4j|tidb|cockroachdb"
+                        r"|bigquery|snowflake|clickhouse|couchbase|mariadb"
+                        r"|azuresql|azure[_-]sql|sqlserver|mssql"
+                        r"|appwrite|nhost"
                         r"|kendra)\b",
                         re.IGNORECASE,
                     ),
