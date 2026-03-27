@@ -47,7 +47,7 @@
 | db_write | PRIVILEGE | 95% | db_write |
 | System Instruction | PROMPT | 65% | "You are a helpful AI Medical Triage Assistant. Your goal is to gather a clear li…" · role=system |
 | System Message | PROMPT | 80% | "You are an intelligent medical assistant that triages patients." · role=system |
-| search | TOOL | 75% |  |
+| search | TOOL | 75% | duckduckgo_search |
 
 ### Prompt Details
 

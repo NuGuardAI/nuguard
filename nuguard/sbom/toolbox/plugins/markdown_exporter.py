@@ -84,6 +84,16 @@ def _node_detail_summary(node: dict[str, Any]) -> str:
         fw = meta.get("framework")
         if fw:
             parts.append(fw)
+        # For regex-detected tools, surface the matched identifier from the
+        # first evidence detail (e.g. "tool_search: duckduckgo_search" → "duckduckgo_search")
+        if not fw:
+            evidence = node.get("evidence") or []
+            if evidence:
+                raw_detail = evidence[0].get("detail", "")
+                # Strip the leading "adapter_name: " prefix when present
+                matched = raw_detail.split(": ", 1)[-1] if ": " in raw_detail else raw_detail
+                if matched:
+                    parts.append(matched)
     elif ctype == "API_ENDPOINT":
         ep = meta.get("endpoint")
         method = meta.get("method")
