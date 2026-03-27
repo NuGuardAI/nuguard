@@ -304,14 +304,62 @@ def default_registry() -> tuple[DetectionAdapter, ...]:
                 ),
                 canonical_name="deployment:generic",
             ),
+            # Web search tools used by AI agents — given a specific canonical name
+            # ("tool:search") so they appear as a named "search" component rather
+            # than being collapsed into the generic "tool:generic" bucket.
+            # Covers:
+            #   - Direct library usage: DDGS() from duckduckgo_search
+            #   - LangChain community wrappers: DuckDuckGoSearchRun, TavilySearchResults, etc.
+            #   - Other common retrieval SDKs: Tavily, SerpAPI, BraveSearch, Exa
+            RegexAdapter(
+                name="tool_search",
+                component_type=ComponentType.TOOL,
+                priority=174,  # slightly higher priority than tool_generic
+                patterns=(
+                    re.compile(
+                        r"\b(duckduckgo[_-]search|DDGS"
+                        r"|DuckDuckGoSearch(?:Run|Results|APIWrapper)?"
+                        r"|TavilyClient|TavilySearch(?:Results)?"
+                        r"|GoogleSerperAPIWrapper|SerpAPIWrapper"
+                        r"|BraveSearch(?:Wrapper)?|ExaSearchResults?)\b",
+                        re.IGNORECASE,
+                    ),
+                ),
+                canonical_name="tool:search",
+            ),
+            # Browser automation tools (playwright/selenium/puppeteer) are filtered
+            # to skip test directories and JSON config files.  These tools are
+            # legitimately used as agent capabilities (e.g. RUN playwright install
+            # in Dockerfiles, browser_agent.py) but commonly appear as false
+            # positives in devDependency entries in package.json and test runner
+            # files (*.spec.js, tests/).
+            RegexAdapter(
+                name="tool_browser_automation",
+                component_type=ComponentType.TOOL,
+                priority=175,
+                patterns=(
+                    re.compile(
+                        # Browser automation / headless browser tools
+                        r"\b(playwright|puppeteer|selenium)\b",
+                        re.IGNORECASE,
+                    ),
+                ),
+                canonical_name="tool:browser_automation",
+                # Skip test directories — playwright/selenium in test files means
+                # the project uses them as a *test runner*, not as an agent tool.
+                skip_path_parts=frozenset({"tests", "test", "__tests__", "spec", "e2e"}),
+                # Skip JSON manifests — playwright in package.json is a package
+                # reference, not an agentic capability declaration.
+                skip_extensions=frozenset({".json"}),
+            ),
             RegexAdapter(
                 name="tool_generic",
                 component_type=ComponentType.TOOL,
                 priority=175,
                 patterns=(
                     re.compile(
-                        # Web automation and browser control
-                        r"\b(playwright|puppeteer|selenium|beautifulsoup|scrapy)\b",
+                        # Web scraping tools used in agent data pipelines
+                        r"\b(beautifulsoup|scrapy)\b",
                         re.IGNORECASE,
                     ),
                     re.compile(
