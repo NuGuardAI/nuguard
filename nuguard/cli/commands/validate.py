@@ -37,7 +37,7 @@ def validate_command(
         None, "--output", "-o", help="Write findings JSON to this path"
     ),
     format: str = typer.Option(
-        "text", "--format", "-f", help="Output format: text | json"
+        "text", "--format", "-f", help="Output format: text | json | markdown"
     ),
     fail_on: str = typer.Option(
         "high",
@@ -133,6 +133,13 @@ def _do_validate(
             _console.print(f"[green]Results written to[/green] {output_path}")
         else:
             _console.print(out)
+    elif fmt == "markdown":
+        md = _validate_result_to_markdown(result)
+        if output_path:
+            output_path.write_text(md, encoding="utf-8")
+            _console.print(f"[green]Results written to[/green] {output_path}")
+        else:
+            _console.print(md)
     else:
         _print_validate_result(result)
         if output_path:
@@ -244,3 +251,58 @@ def _print_validate_result(result: "ValidateRunResult") -> None:
                 _console.print(f"    [dim]{desc[:200]}[/dim]")
     else:
         _console.print("\n[green]No findings — all validate scenarios passed.[/green]")
+
+
+def _validate_result_to_markdown(result: "ValidateRunResult") -> str:
+    """Render a ValidateRunResult as a Markdown report string."""
+    lines: list[str] = [
+        "# NuGuard Validate Report",
+        "",
+        f"**Run ID:** {result.run_id}  ",
+        f"**Scenarios executed:** {result.scenarios_executed}  ",
+        f"**Outcome:** {result.scan_outcome}",
+        "",
+    ]
+
+    # Capability map
+    cm = result.capability_map
+    if cm.entries:
+        lines += [
+            "## Capability Map",
+            "",
+            f"**{cm.tools_exercised}/{cm.tools_total} tools exercised**",
+            "",
+            "| Tool | Exercised | Calls | Policy OK | Exercised By |",
+            "| --- | --- | --- | --- | --- |",
+        ]
+        for entry in cm.entries:
+            lines.append(
+                f"| {entry.tool_name} "
+                f"| {'✓' if entry.exercised else '✗'} "
+                f"| {entry.calls_observed} "
+                f"| {'✓' if entry.policy_compliant else '✗'} "
+                f"| {entry.exercised_by or '—'} |"
+            )
+        lines += [""]
+
+    # Findings
+    if result.findings:
+        lines += [f"## Findings ({len(result.findings)})", ""]
+        for f in result.findings:
+            sev = (f.get("severity") or "info").upper()
+            title = f.get("title", "Finding")
+            goal = f.get("goal_type") or ""
+            lines += [f"### [{sev}] {title}" + (f" ({goal})" if goal else ""), ""]
+            desc = f.get("description", "")
+            if desc:
+                lines += [desc, ""]
+            comp = f.get("affected_component")
+            if comp:
+                lines += [f"**Component:** {comp}", ""]
+            rem = f.get("remediation")
+            if rem:
+                lines += [f"**Remediation:** {rem}", ""]
+    else:
+        lines += ["## Findings", "", "_No findings — all validate scenarios passed._", ""]
+
+    return "\n".join(lines)

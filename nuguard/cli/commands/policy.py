@@ -123,7 +123,7 @@ def check(
     output_format: str = typer.Option(
         "text",
         "--format",
-        help="Output format: text | json.",
+        help="Output format: text | json | markdown.",
     ),
     enable_llm: bool = typer.Option(
         False,
@@ -276,15 +276,47 @@ def check(
         if output_format == "text":
             _print_assessment_table(assessment)
 
-    # ---- JSON output -------------------------------------------------------
+    # ---- JSON / Markdown output --------------------------------------------
     if output_format == "json":
         typer.echo(json.dumps(all_findings, indent=2, default=str))
+    elif output_format == "markdown":
+        typer.echo(_policy_findings_to_markdown(all_findings))
 
     if not all_findings:
         _console.print("[green]✓ No findings.[/green]")
         raise typer.Exit(code=_EXIT_CLEAN)
 
     raise typer.Exit(code=_EXIT_CRITICAL if has_critical else _EXIT_FINDINGS)
+
+
+def _policy_findings_to_markdown(findings: list[dict]) -> str:
+    """Render policy check findings as a Markdown report string."""
+    lines: list[str] = ["# NuGuard Policy Report", ""]
+    if not findings:
+        lines += ["_No findings._", ""]
+        return "\n".join(lines)
+
+    lines += [f"**{len(findings)} finding(s)**", ""]
+    for f in findings:
+        source = f.get("source", "")
+        if source == "policy_check":
+            sev = (f.get("severity") or "info").upper()
+            lines += [f"## [{sev}] Policy Gap: {f.get('id', '')}", ""]
+            lines += [f"**Section:** {f.get('section', '')}", ""]
+            lines += [f.get("message", ""), ""]
+            if f.get("component"):
+                lines += [f"**Component:** {f['component']}", ""]
+        elif source == "compliance":
+            result = (f.get("result") or "").upper()
+            sev = (f.get("severity") or "info").upper()
+            lines += [f"## [{result}] {f.get('id', '')}: {f.get('name', '')}", ""]
+            if f.get("gaps"):
+                for gap in f["gaps"]:
+                    lines += [f"- {gap}"]
+                lines += [""]
+            if f.get("remediation"):
+                lines += [f"**Remediation:** {f['remediation']}", ""]
+    return "\n".join(lines)
 
 
 def _print_assessment_table(assessment: object) -> None:

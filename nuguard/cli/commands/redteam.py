@@ -77,7 +77,7 @@ def redteam(
         None, "--output", help="Write findings JSON to this path."
     ),
     format: str = typer.Option(
-        "text", "--format", help="Output format: text | json | sarif."
+        "text", "--format", help="Output format: text | json | markdown | sarif."
     ),
     fail_on: str = typer.Option(
         "high",
@@ -190,9 +190,12 @@ def redteam(
     # Output
     _print_findings(findings, effective_format)
     if output:
-        output.write_text(
-            json.dumps([f.model_dump() for f in findings], indent=2, default=str)
-        )
+        if effective_format == "markdown":
+            output.write_text(_findings_to_markdown(findings), encoding="utf-8")
+        else:
+            output.write_text(
+                json.dumps([f.model_dump() for f in findings], indent=2, default=str)
+            )
         typer.echo(f"Findings written to {output}")
 
     # Exit code
@@ -450,6 +453,10 @@ def _print_findings(findings: list, format: str) -> None:
         )
         return
 
+    if format == "markdown":
+        typer.echo(_findings_to_markdown(findings))
+        return
+
     if not findings:
         typer.echo("No findings — scan complete")
         return
@@ -475,6 +482,35 @@ def _print_findings(findings: list, format: str) -> None:
         if f.owasp_asi_ref:
             typer.echo(f"  Ref: {f.owasp_asi_ref}")
     typer.echo(f"\n{'─' * 60}\n")
+
+
+def _findings_to_markdown(findings: list) -> str:
+    """Render redteam findings as a Markdown report string."""
+    lines: list[str] = ["# NuGuard Red-Team Report", ""]
+    if not findings:
+        lines += ["_No findings — scan complete._", ""]
+        return "\n".join(lines)
+
+    from nuguard.models.finding import Severity
+
+    lines += [f"**{len(findings)} finding(s)**", ""]
+    for f in sorted(findings, key=lambda x: list(Severity).index(x.severity)):
+        sev = f.severity.value.upper() if hasattr(f.severity, "value") else str(f.severity).upper()
+        lines += [f"## [{sev}] {f.title}", ""]
+        lines += [f.description, ""]
+        if f.affected_component:
+            lines += [f"**Component:** {f.affected_component}", ""]
+        if f.goal_type:
+            lines += [f"**Type:** {f.goal_type}", ""]
+        if f.remediation:
+            lines += [f"**Remediation:** {f.remediation}", ""]
+        if f.owasp_asi_ref:
+            lines += [f"**OWASP ASI:** {f.owasp_asi_ref}", ""]
+        if f.owasp_llm_ref:
+            lines += [f"**OWASP LLM:** {f.owasp_llm_ref}", ""]
+        if f.evidence:
+            lines += ["**Evidence:**", f"```", f.evidence[:500], "```", ""]
+    return "\n".join(lines)
 
 
 def _fail_on_severity(findings: list, fail_on: str) -> None:
