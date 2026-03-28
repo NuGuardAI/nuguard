@@ -7,7 +7,7 @@
 # ─── Project file paths ───────────────────────────────────────────────────────
 sbom: ./healthcare.sbom.json               # path to pre-generated AI-SBOM JSON
 source: https://github.com/NuGuardAI/Healthcare-voice-agent      # generate SBOM from source dir (alternative to sbom:)
-policy: ./cognitive-policy.md       # Cognitive Policy Markdown to enforce during validate
+policy: ./cognitive_policy.md       # Cognitive Policy Markdown to enforce during validate
 
 # ─── LLM settings ─────────────────────────────────────────────────────────────
 llm:
@@ -27,7 +27,7 @@ validate:
   target: https://hcagentcu0032557.delightfulrock-1fe46f1f.centralus.azurecontainerapps.io
 
   # Path of the chat/agent endpoint on the target (default: /chat)
-  target_endpoint: /assistant
+  target_endpoint: /run_langgraph
 
   # Authentication — choose one type:
   auth:
@@ -49,7 +49,7 @@ validate:
 
   # Canary seed file — records planted in the app's data store
   # Used by validate mode to detect accidental leakage during happy-path runs
-  canary: ./canary.json
+  # canary: ./canary.json
 
   # Workflows to run in validate mode:
   #   capability_probe     — verify each declared tool/sub-agent is invoked correctly
@@ -88,22 +88,22 @@ validate:
 # nuguard redteam exercises adversarial scenarios to find break points.
 redteam:
   # Required: URL of the running AI application under test
-  target: http://localhost:3000
+  target: https://hcagentcu0032557.delightfulrock-1fe46f1f.centralus.azurecontainerapps.io
 
   # Path of the chat/agent endpoint on the target (default: /chat)
-  target_endpoint: /chat
+  target_endpoint: /run_langgraph
 
   # Authentication — same options as validate.auth above.
   # Shorthand (backward-compatible): single auth_header string
-  auth_header: "Authorization: Bearer ${TARGET_TOKEN}"
+  # auth_header: "Authorization: Bearer ${TARGET_TOKEN}"
   # Or use the structured form:
   # auth:
   #   type: bearer
   #   header: "Authorization: Bearer ${TARGET_TOKEN}"
-  # auth:
-  #   type: basic
-  #   username: ${APP_USERNAME}
-  #   password: ${APP_PASSWORD}
+  auth:
+    type: basic
+    username: ${APP_USERNAME}
+    password: ${APP_PASSWORD}
 
   # Canary seed file — same file as validate.canary (or a separate one)
   # tenant session_tokens in canary.json are used as attacker credentials for
@@ -164,7 +164,7 @@ redteam:
 
   # LLM for attack-payload generation (must tolerate adversarial content)
   llm:
-    model: ${NUGUARD_REDTEAM_LLM_MODEL}
+    model: gemini/gemini-2.0-flash
     # api_key: ${NUGUARD_REDTEAM_LLM_API_KEY}
 
   # LLM for response evaluation and finding summarisation

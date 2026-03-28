@@ -12,7 +12,7 @@ echo "✅ SBOM generated successfully! \n"
 
 echo " Cognitive Policy Check... \n"
 
- uv run nuguard policy --config ./nuguard.yaml
+ uv run nuguard policy --config ./nuguard.yaml --policy ./cognitive-policy.md
 
 echo " Validateing results... \n"
 

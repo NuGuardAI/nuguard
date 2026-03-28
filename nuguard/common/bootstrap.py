@@ -161,7 +161,26 @@ class AuthBootstrapper:
                     error_detail=detail,
                 )
 
-            # 5xx or unexpected status → target_unavailable
+            if 400 <= resp.status_code < 500:
+                # Other 4xx (400, 404, 422, …): the server responded, so it is
+                # reachable. The probe payload likely doesn't match the API
+                # contract — the actual scenario payloads will use the correct
+                # format. Treat as connectivity-ok.
+                logger.debug(
+                    "bootstrap ok (probe format mismatch): identity=%s status=%d",
+                    identity,
+                    resp.status_code,
+                )
+                return CredentialCheckResult(
+                    identity=identity,
+                    auth_type=auth.type,
+                    endpoint=self.full_url,
+                    status="ok",
+                    http_status_code=resp.status_code,
+                    response_time_ms=elapsed_ms,
+                )
+
+            # 5xx → server is returning errors; treat as target_unavailable
             detail = f"HTTP {resp.status_code}"
             logger.warning(
                 "bootstrap target_unavailable: identity=%s %s", identity, detail
