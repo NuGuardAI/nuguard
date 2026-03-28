@@ -11,6 +11,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from nuguard.cli.report_meta import ReportMeta
 from nuguard.common.logging import get_logger
 
 _log = get_logger(__name__)
@@ -27,6 +28,95 @@ _EXIT_CLEAN = 0
 _EXIT_FINDINGS = 1
 _EXIT_CRITICAL = 2
 _EXIT_ERROR = 3
+
+
+@policy_app.command("compile")
+def compile_policy(
+    policy_file: Optional[Path] = typer.Option(
+        None,
+        "--policy",
+        "-p",
+        help="Cognitive policy Markdown file. Falls back to config policy path.",
+    ),
+    config_file: Optional[Path] = typer.Option(
+        None, "--config", "-c", help="nuguard.yaml config file."
+    ),
+    use_llm: bool = typer.Option(
+        False,
+        "--llm/--no-llm",
+        help="Use LLM to generate richer test and boundary prompts.",
+    ),
+    output_file: Optional[Path] = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help="Destination JSON file. Default: <policy>.json alongside the .md file.",
+    ),
+) -> None:
+    """Compile a cognitive policy Markdown file into structured JSON controls.
+
+    The resulting JSON is the canonical control list used by ``nuguard validate``
+    and ``nuguard redteam`` for consistent, reproducible treatment of policy rules.
+    """
+    from nuguard.config import load_config
+    from nuguard.policy.compiler import compile_controls
+    from nuguard.policy.loader import compiled_path_for, save_controls
+
+    cfg = load_config(config_file)
+
+    resolved_policy: Optional[Path] = policy_file
+    if resolved_policy is None and cfg.policy_path:
+        resolved_policy = Path(cfg.policy_path)
+    if resolved_policy is None:
+        _err_console.print(
+            "Error: no policy file specified. Use --policy or set 'policy' in nuguard.yaml."
+        )
+        raise typer.Exit(code=_EXIT_ERROR)
+    if not resolved_policy.exists():
+        _err_console.print(f"Error: policy file not found: {resolved_policy}")
+        raise typer.Exit(code=_EXIT_ERROR)
+
+    effective_llm = use_llm or cfg.policy_use_llm
+
+    llm_client = None
+    if effective_llm:
+        from nuguard.common.llm_client import LLMClient
+
+        llm_client = LLMClient(
+            model=cfg.litellm_model,
+            api_key=cfg.litellm_api_key,
+        )
+
+    text = resolved_policy.read_text(encoding="utf-8")
+    _console.print(
+        f"Compiling [bold]{resolved_policy.name}[/bold] "
+        f"({'LLM-assisted' if effective_llm and llm_client else 'rule-based'}) …"
+    )
+
+    try:
+        controls = asyncio.run(
+            compile_controls(text, use_llm=effective_llm, llm_client=llm_client)
+        )
+    except Exception as exc:
+        _err_console.print(f"Error during compilation: {exc}")
+        raise typer.Exit(code=_EXIT_ERROR) from exc
+
+    dest = output_file or compiled_path_for(resolved_policy)
+    save_controls(controls, dest)
+
+    _console.print(
+        f"[green]✓ {len(controls)} control(s) written to {dest}[/green]"
+    )
+
+    # Print a summary table
+    table = Table(title="Compiled Controls", show_lines=False)
+    table.add_column("ID", style="cyan", no_wrap=True)
+    table.add_column("Section")
+    table.add_column("Severity")
+    table.add_column("Description")
+    for ctrl in controls:
+        table.add_row(ctrl.id, ctrl.section, ctrl.severity, ctrl.description[:70])
+    _console.print(table)
 
 
 @policy_app.command("validate")
@@ -124,6 +214,12 @@ def check(
         "text",
         "--format",
         help="Output format: text | json | markdown.",
+    ),
+    output_file: Optional[Path] = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help="Write output to this file instead of stdout.",
     ),
     enable_llm: bool = typer.Option(
         False,
@@ -277,10 +373,26 @@ def check(
             _print_assessment_table(assessment)
 
     # ---- JSON / Markdown output --------------------------------------------
+    meta = ReportMeta(
+        llm_models=[cfg.litellm_model] if enable_llm else [],
+    )
     if output_format == "json":
-        typer.echo(json.dumps(all_findings, indent=2, default=str))
+        payload = {"_meta": meta.to_dict(), "findings": all_findings}
+        content = json.dumps(payload, indent=2, default=str)
+        if output_file:
+            output_file.write_text(content, encoding="utf-8")
+            _console.print(f"Output written to {output_file}")
+        else:
+            typer.echo(content)
     elif output_format == "markdown":
-        typer.echo(_policy_findings_to_markdown(all_findings))
+        content = _policy_findings_to_markdown(all_findings, meta)
+        if output_file:
+            output_file.write_text(content, encoding="utf-8")
+            _console.print(f"Output written to {output_file}")
+        else:
+            typer.echo(content)
+    else:
+        _console.print(f"[dim]{meta.to_text_line()}[/dim]")
 
     if not all_findings:
         _console.print("[green]✓ No findings.[/green]")
@@ -289,9 +401,12 @@ def check(
     raise typer.Exit(code=_EXIT_CRITICAL if has_critical else _EXIT_FINDINGS)
 
 
-def _policy_findings_to_markdown(findings: list[dict]) -> str:
+def _policy_findings_to_markdown(findings: list[dict], meta: ReportMeta | None = None) -> str:
     """Render policy check findings as a Markdown report string."""
+    if meta is None:
+        meta = ReportMeta()
     lines: list[str] = ["# NuGuard Policy Report", ""]
+    lines += meta.to_markdown_lines()
     if not findings:
         lines += ["_No findings._", ""]
         return "\n".join(lines)

@@ -50,10 +50,20 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
     """
     flat: dict[str, Any] = {}
 
-    # Top-level file-path keys — kept as their YAML names (matched via field aliases)
-    for key in ("sbom", "source", "policy"):
+    # Top-level file-path keys
+    for key in ("sbom", "source"):
         if key in data:
             flat[key] = data[key]
+
+    # Policy: string path OR {path: ..., use_llm: bool}
+    policy_val = data.get("policy")
+    if isinstance(policy_val, str):
+        flat["policy"] = policy_val
+    elif isinstance(policy_val, dict):
+        if "path" in policy_val:
+            flat["policy"] = policy_val["path"]
+        if "use_llm" in policy_val:
+            flat["policy_use_llm"] = bool(policy_val["use_llm"])
 
     # LLM section
     llm = data.get("llm", {}) or {}
@@ -197,6 +207,7 @@ class ValidateConfig(BaseModel):
     boundary_assertions: list[ValidateBoundaryAssertion] = Field(default_factory=list)
     request_timeout: float = 60.0
     verbose: bool = False
+    use_llm: bool = False
 
 
 class NuGuardConfig(BaseSettings):
@@ -236,7 +247,11 @@ class NuGuardConfig(BaseSettings):
     policy_path: str | None = Field(
         default=None,
         alias="policy",
-        description="Default cognitive policy Markdown path (yaml: policy).",
+        description="Default cognitive policy Markdown path (yaml: policy or policy.path).",
+    )
+    policy_use_llm: bool = Field(
+        default=False,
+        description="Use LLM to compile policy controls (yaml: policy.use_llm).",
     )
 
     # ------------------------------------------------- SBOM generation

@@ -7,7 +7,9 @@
 # ─── Project file paths ───────────────────────────────────────────────────────
 sbom: ./healthcare.sbom.json               # path to pre-generated AI-SBOM JSON
 source: https://github.com/NuGuardAI/Healthcare-voice-agent      # generate SBOM from source dir (alternative to sbom:)
-policy: ./cognitive_policy.md       # Cognitive Policy Markdown to enforce during validate
+policy:
+  path: ./cognitive_policy.md       # Cognitive Policy Markdown to enforce during validate
+  use_llm: true                     # use LLM to compile richer test/boundary prompts
 
 # ─── LLM settings ─────────────────────────────────────────────────────────────
 llm:
@@ -28,6 +30,7 @@ validate:
 
   # Path of the chat/agent endpoint on the target (default: /chat)
   target_endpoint: /run_langgraph
+  llm: true 
 
   # Authentication — choose one type:
   auth:

@@ -244,6 +244,53 @@ def _discover_chat_config(
     return chat_path, chat_payload_key, chat_payload_list
 
 
+def _enrich_policy_from_controls(
+    policy: "CognitivePolicy", controls: list
+) -> "CognitivePolicy":
+    """Return a copy of *policy* with restricted_topics / restricted_actions
+    extended by the boundary_prompt text from compiled controls.
+
+    This ensures the ScenarioGenerator uses richer, control-specific prompts
+    rather than falling back to generic templates.
+    """
+    extra_topics = [
+        p
+        for c in controls
+        if c.control_type == "topic_restriction"
+        for p in (c.boundary_prompts or [])
+    ]
+    extra_actions = [
+        p
+        for c in controls
+        if c.control_type == "action_restriction"
+        for p in (c.boundary_prompts or [])
+    ]
+    return policy.model_copy(
+        update={
+            "restricted_topics": list(policy.restricted_topics) + extra_topics,
+            "restricted_actions": list(policy.restricted_actions) + extra_actions,
+        }
+    )
+
+
+def _policy_from_controls(controls: list) -> "CognitivePolicy":
+    """Build a minimal CognitivePolicy from compiled controls when no .md policy exists."""
+    restricted_topics = [
+        c.description for c in controls if c.control_type == "topic_restriction"
+    ]
+    restricted_actions = [
+        c.description for c in controls if c.control_type == "action_restriction"
+    ]
+    hitl_triggers = [
+        c.description for c in controls if c.control_type == "hitl"
+    ]
+    return CognitivePolicy(
+        restricted_topics=restricted_topics,
+        restricted_actions=restricted_actions,
+        hitl_triggers=hitl_triggers,
+    )
+
+
 class RedteamOrchestrator:
     """Orchestrates a full red-team scan."""
 
@@ -256,6 +303,7 @@ class RedteamOrchestrator:
         sbom: AiSbomDocument,
         target_url: str,
         policy: CognitivePolicy | None = None,
+        policy_controls: list | None = None,
         canary_config: CanaryConfig | None = None,
         profile: str = "ci",
         min_impact_score: float = 0.0,
@@ -280,6 +328,7 @@ class RedteamOrchestrator:
         self._sbom = sbom
         self._target_url = target_url
         self._policy = policy
+        self._policy_controls = policy_controls  # compiled PolicyControl list
         self._canary_config = canary_config
         self._profile = profile
         self._min_impact = min_impact_score
@@ -383,9 +432,20 @@ class RedteamOrchestrator:
             )
 
         # 1. Generate scenarios from SBOM + policy.
+        # When compiled controls are available, enrich the policy with their
+        # boundary_prompts so the scenario generator uses the richer, LLM-crafted
+        # (or rule-based) prompts instead of generic templates.
+        effective_policy = self._policy
+        if self._policy_controls and effective_policy is not None:
+            effective_policy = _enrich_policy_from_controls(
+                effective_policy, self._policy_controls
+            )
+        elif self._policy_controls and effective_policy is None:
+            effective_policy = _policy_from_controls(self._policy_controls)
+
         # Guided conversations require an LLM — only generate when one is configured.
         _with_guided = self._guided_conversations and bool(self._redteam_llm)
-        generator = ScenarioGenerator(self._sbom, self._policy)
+        generator = ScenarioGenerator(self._sbom, effective_policy)
         all_scenarios = generator.generate(with_guided=_with_guided)
 
         # 2. LLM payload enrichment (opt-in — only when redteam_llm is configured)

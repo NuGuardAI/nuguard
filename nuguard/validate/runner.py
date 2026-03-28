@@ -133,6 +133,7 @@ class ValidateRunner:
         validate_config: ValidateConfig,
         auth_config: "AuthConfig | None" = None,
         policy: object | None = None,
+        controls: "list | None" = None,
         canary_config: CanaryConfig | None = None,
         baseline_capability_map: "CapabilityMap | None" = None,
         run_id: str | None = None,
@@ -140,6 +141,7 @@ class ValidateRunner:
         self._config = validate_config
         self._auth_config = auth_config
         self._policy = policy
+        self._controls = controls  # compiled PolicyControl list (preferred over policy)
         self._canary_config = canary_config
         self._baseline_map = baseline_capability_map
         self._run_id = run_id or str(uuid.uuid4())
@@ -174,7 +176,7 @@ class ValidateRunner:
             )
 
         # ── Step 1: Build scenarios ───────────────────────────────────────────
-        scenarios = build_scenarios(self._config, self._policy)
+        scenarios = build_scenarios(self._config, self._policy, self._controls)
         if not scenarios:
             _log.warning("No validate scenarios to run. Check workflows and boundary_assertions.")
 

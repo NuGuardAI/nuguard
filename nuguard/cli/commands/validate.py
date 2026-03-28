@@ -10,6 +10,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from nuguard.cli.report_meta import ReportMeta
 from nuguard.models.validate import ValidateRunResult
 
 validate_app = typer.Typer(name="validate", help="Validate AI application behaviour.")
@@ -126,25 +127,31 @@ def _do_validate(
         raise typer.Exit(code=3) from exc
 
     # ── Output ────────────────────────────────────────────────────────────────
+    meta = ReportMeta(
+        llm_models=[cfg.litellm_model] if resolved_policy_path else [],
+        verbose=vc.verbose,
+    )
     if fmt == "json":
-        out = json.dumps(result.model_dump(), indent=2, default=str)
+        payload = {"_meta": meta.to_dict(), **result.model_dump()}
+        out = json.dumps(payload, indent=2, default=str)
         if output_path:
             output_path.write_text(out, encoding="utf-8")
             _console.print(f"[green]Results written to[/green] {output_path}")
         else:
             _console.print(out)
     elif fmt == "markdown":
-        md = _validate_result_to_markdown(result)
+        md = _validate_result_to_markdown(result, meta)
         if output_path:
             output_path.write_text(md, encoding="utf-8")
             _console.print(f"[green]Results written to[/green] {output_path}")
         else:
             _console.print(md)
     else:
-        _print_validate_result(result)
+        _print_validate_result(result, meta)
         if output_path:
+            payload = {"_meta": meta.to_dict(), **result.model_dump()}
             output_path.write_text(
-                json.dumps(result.model_dump(), indent=2, default=str), encoding="utf-8"
+                json.dumps(payload, indent=2, default=str), encoding="utf-8"
             )
             _console.print(f"\n[green]Results written to[/green] {output_path}")
 
@@ -171,11 +178,23 @@ async def _run_validate(
     from nuguard.validate.runner import ValidateRunner  # noqa: PLC0415
 
     policy = None
+    controls = None
     if policy_path is not None:
         if not policy_path.exists():
             raise FileNotFoundError(f"Policy file not found: {policy_path}")
         from nuguard.policy.parser import parse_policy  # noqa: PLC0415
+        from nuguard.policy.loader import compiled_path_for, load_controls  # noqa: PLC0415
+
         policy = parse_policy(policy_path.read_text(encoding="utf-8"))
+
+        compiled = compiled_path_for(policy_path)
+        if compiled.exists():
+            _log.info("Loading compiled policy controls from %s", compiled)
+            controls = load_controls(compiled)
+        else:
+            _log.debug(
+                "No compiled controls found at %s — using rule-based defaults", compiled
+            )
 
     canary_config = None
     if canary_path is not None:
@@ -194,14 +213,18 @@ async def _run_validate(
         validate_config=validate_config,  # type: ignore[arg-type]
         auth_config=auth_config,  # type: ignore[arg-type]
         policy=policy,
+        controls=controls,
         canary_config=canary_config,
         baseline_capability_map=baseline_map,
     )
     return await runner.run()
 
 
-def _print_validate_result(result: "ValidateRunResult") -> None:
+def _print_validate_result(result: "ValidateRunResult", meta: ReportMeta | None = None) -> None:
+    if meta is None:
+        meta = ReportMeta()
     _console.rule("[bold]Validate Results[/bold]")
+    _console.print(f"[dim]{meta.to_text_line()}[/dim]")
     _console.print(
         f"Run ID: [dim]{result.run_id}[/dim]  "
         f"Scenarios: [bold]{result.scenarios_executed}[/bold]  "
@@ -253,11 +276,13 @@ def _print_validate_result(result: "ValidateRunResult") -> None:
         _console.print("\n[green]No findings — all validate scenarios passed.[/green]")
 
 
-def _validate_result_to_markdown(result: "ValidateRunResult") -> str:
+def _validate_result_to_markdown(result: "ValidateRunResult", meta: ReportMeta | None = None) -> str:
     """Render a ValidateRunResult as a Markdown report string."""
-    lines: list[str] = [
-        "# NuGuard Validate Report",
-        "",
+    if meta is None:
+        meta = ReportMeta()
+    lines: list[str] = ["# NuGuard Validate Report", ""]
+    lines += meta.to_markdown_lines()
+    lines += [
         f"**Run ID:** {result.run_id}  ",
         f"**Scenarios executed:** {result.scenarios_executed}  ",
         f"**Outcome:** {result.scan_outcome}",

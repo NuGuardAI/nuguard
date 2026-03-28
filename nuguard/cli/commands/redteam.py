@@ -11,6 +11,7 @@ if TYPE_CHECKING:
 
 import typer
 
+from nuguard.cli.report_meta import ReportMeta
 from nuguard.common.logging import get_logger
 
 _log = get_logger(__name__)
@@ -208,14 +209,15 @@ def redteam(
         raise typer.Exit(code=1) from exc
 
     # Output
-    _print_findings(findings, effective_format)
+    llm_models = [m for m in [cfg.redteam_llm_model, cfg.redteam_eval_llm_model] if m]
+    meta = ReportMeta(llm_models=llm_models, verbose=cfg.redteam_verbose)
+    _print_findings(findings, effective_format, meta)
     if output:
         if effective_format == "markdown":
-            output.write_text(_findings_to_markdown(findings), encoding="utf-8")
+            output.write_text(_findings_to_markdown(findings, meta), encoding="utf-8")
         else:
-            output.write_text(
-                json.dumps([f.model_dump() for f in findings], indent=2, default=str)
-            )
+            payload = {"_meta": meta.to_dict(), "findings": [f.model_dump() for f in findings]}
+            output.write_text(json.dumps(payload, indent=2, default=str))
         typer.echo(f"Findings written to {output}")
 
     # Exit code
@@ -296,13 +298,20 @@ async def _run_redteam(
     except Exception as exc:
         _log.warning("SBOM auto-enrichment failed, continuing with baseline SBOM: %s", exc)
 
-    # Load policy
+    # Load policy + compiled controls
     cognitive_policy: CognitivePolicy | None = None
+    policy_controls: list | None = None
     if policy_path and policy_path.exists():
         try:
             from nuguard.policy.parser import parse_policy
+            from nuguard.policy.loader import compiled_path_for, load_controls
 
             cognitive_policy = parse_policy(policy_path.read_text())
+
+            compiled = compiled_path_for(policy_path)
+            if compiled.exists():
+                _log.info("Loading compiled policy controls from %s", compiled)
+                policy_controls = load_controls(compiled)
         except NotImplementedError:
             _log.warning(
                 "Policy parser not implemented; running without policy constraints"
@@ -350,6 +359,7 @@ async def _run_redteam(
                 sbom_doc=sbom_doc,
                 target_url=effective_url,
                 cognitive_policy=cognitive_policy,
+                policy_controls=policy_controls,
                 canary_config=canary_config,
                 profile=profile,
                 min_impact_score=min_impact_score,
@@ -375,6 +385,7 @@ async def _run_redteam(
         sbom_doc=sbom_doc,
         target_url=target_url,
         cognitive_policy=cognitive_policy,
+        policy_controls=policy_controls,
         canary_config=canary_config,
         profile=profile,
         min_impact_score=min_impact_score,
@@ -403,6 +414,7 @@ async def _run_orchestrator(
     profile: str,
     min_impact_score: float,
     scenario_filter: list[str] | None,
+    policy_controls: list | None = None,
     chat_path: str = "/chat",
     chat_payload_key: str = "message",
     chat_payload_list: bool = False,
@@ -431,6 +443,7 @@ async def _run_orchestrator(
         sbom=sbom_doc,  # type: ignore[arg-type]
         target_url=target_url,
         policy=cognitive_policy,  # type: ignore[arg-type]
+        policy_controls=policy_controls,
         canary_config=canary_config,  # type: ignore[arg-type]
         profile=profile,
         min_impact_score=min_impact_score,
@@ -463,21 +476,24 @@ async def _run_orchestrator(
     return findings
 
 
-def _print_findings(findings: list, format: str) -> None:
+def _print_findings(findings: list, format: str, meta: ReportMeta | None = None) -> None:
     """Print findings to stdout in the requested format."""
     from nuguard.models.finding import Severity
 
+    if meta is None:
+        meta = ReportMeta()
+
     if format == "json":
-        typer.echo(
-            json.dumps([f.model_dump() for f in findings], indent=2, default=str)
-        )
+        payload = {"_meta": meta.to_dict(), "findings": [f.model_dump() for f in findings]}
+        typer.echo(json.dumps(payload, indent=2, default=str))
         return
 
     if format == "markdown":
-        typer.echo(_findings_to_markdown(findings))
+        typer.echo(_findings_to_markdown(findings, meta))
         return
 
     if not findings:
+        typer.echo(meta.to_text_line())
         typer.echo("No findings — scan complete")
         return
 
@@ -491,6 +507,7 @@ def _print_findings(findings: list, format: str) -> None:
 
     typer.echo(f"\n{'─' * 60}")
     typer.echo(f"  NuGuard Red-Team — {len(findings)} finding(s)")
+    typer.echo(f"  {meta.to_text_line()}")
     typer.echo(f"{'─' * 60}")
     for f in sorted(findings, key=lambda x: list(Severity).index(x.severity)):
         colour = _SEV_COLOUR.get(f.severity, "white")
@@ -504,9 +521,12 @@ def _print_findings(findings: list, format: str) -> None:
     typer.echo(f"\n{'─' * 60}\n")
 
 
-def _findings_to_markdown(findings: list) -> str:
+def _findings_to_markdown(findings: list, meta: ReportMeta | None = None) -> str:
     """Render redteam findings as a Markdown report string."""
+    if meta is None:
+        meta = ReportMeta()
     lines: list[str] = ["# NuGuard Red-Team Report", ""]
+    lines += meta.to_markdown_lines()
     if not findings:
         lines += ["_No findings — scan complete._", ""]
         return "\n".join(lines)
