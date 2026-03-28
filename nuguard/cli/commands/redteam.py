@@ -160,32 +160,52 @@ def redteam(
         )
         raise typer.Exit(code=1)
 
-    findings = asyncio.run(
-        _run_redteam(
-            sbom_doc=sbom_doc,
-            sbom_path=sbom_path,
-            policy_path=policy_path,
-            target_url=target_url,
-            canary_path=canary_path,
-            profile=effective_profile,
-            min_impact_score=effective_min_impact,
-            scenario_filter=effective_scenarios,
-            auth_header=cfg.redteam_auth_header,
-            source_dir=source_dir,
-            launch=launch,
-            chat_path=cfg.target_endpoint,
-            chat_payload_key=cfg.redteam_chat_payload_key,
-            chat_payload_list=cfg.redteam_chat_payload_list,
-            guided_conversations=effective_guided,
-            guided_max_turns=effective_guided_max_turns,
-            guided_concurrency=effective_guided_concurrency,
-            strict_outcome=cfg.redteam_strict_outcome,
-            redteam_llm_model=cfg.redteam_llm_model,
-            redteam_llm_api_key=cfg.redteam_llm_api_key,
-            eval_llm_model=cfg.redteam_eval_llm_model,
-            eval_llm_api_key=cfg.redteam_eval_llm_api_key,
+    try:
+        findings = asyncio.run(
+            _run_redteam(
+                sbom_doc=sbom_doc,
+                sbom_path=sbom_path,
+                policy_path=policy_path,
+                target_url=target_url,
+                canary_path=canary_path,
+                profile=effective_profile,
+                min_impact_score=effective_min_impact,
+                scenario_filter=effective_scenarios,
+                auth_header=cfg.redteam_auth_header,
+                source_dir=source_dir,
+                launch=launch,
+                chat_path=cfg.target_endpoint,
+                chat_payload_key=cfg.redteam_chat_payload_key,
+                chat_payload_list=cfg.redteam_chat_payload_list,
+                guided_conversations=effective_guided,
+                guided_max_turns=effective_guided_max_turns,
+                guided_concurrency=effective_guided_concurrency,
+                strict_outcome=cfg.redteam_strict_outcome,
+                redteam_llm_model=cfg.redteam_llm_model,
+                redteam_llm_api_key=cfg.redteam_llm_api_key,
+                eval_llm_model=cfg.redteam_eval_llm_model,
+                eval_llm_api_key=cfg.redteam_eval_llm_api_key,
+            )
         )
-    )
+    except Exception as exc:
+        from nuguard.common.errors import AuthError, TargetUnavailableError  # noqa: PLC0415
+        if isinstance(exc, TargetUnavailableError):
+            typer.echo(
+                f"Error: target is unreachable at {exc.url!r}.\n"
+                "Ensure the application is running and the URL is correct.\n"
+                "Run 'nuguard target verify' to diagnose connectivity.",
+                err=True,
+            )
+        elif isinstance(exc, AuthError):
+            typer.echo(
+                f"Error: authentication failed — {exc}\n"
+                "Check your auth credentials in nuguard.yaml or --auth-header.\n"
+                "Run 'nuguard target verify' to diagnose authentication.",
+                err=True,
+            )
+        else:
+            typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
 
     # Output
     _print_findings(findings, effective_format)
