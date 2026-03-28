@@ -6,9 +6,13 @@ set -e
 echo "🚀 Preparing Healthcare Voice Agent for NuGuard Testing... \n"
 
  uv run nuguard sbom generate --from-repo https://github.com/NuGuardAI/Healthcare-voice-agent \
- --format json -o ./healthcare.sbom.json -f markdown -o ./healthcare.sbom.md
+ --format markdown -o ./healthcare.sbom.json
 
 echo "✅ SBOM generated successfully! \n"
+
+echo " Cognitive Policy Check... \n"
+
+ uv run nuguard policy --config ./nuguard.yaml
 
 echo " Validateing results... \n"
 
