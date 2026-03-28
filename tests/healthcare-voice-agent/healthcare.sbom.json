@@ -1,0 +1,1634 @@
+{
+  "schema_version": "1.4.0",
+  "generated_at": "2026-03-27T19:58:14Z",
+  "generator": "nuguard",
+  "target": "https://github.com/NuGuardAI/Healthcare-voice-agent",
+  "nodes": [
+    {
+      "id": "52efcc2a-28d3-4698-9aa8-380711a015a4",
+      "name": "app",
+      "component_type": "AGENT",
+      "confidence": 0.9,
+      "metadata": {
+        "framework": "fastapi",
+        "injection_risk_score": 0.1,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "fastapi_agent_backend_main_py_app",
+          "adapter": "fastapi",
+          "evidence_count": 1,
+          "framework": "fastapi"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.9,
+          "detail": "fastapi: ",
+          "location": {
+            "path": "backend/main.py",
+            "line": 18
+          }
+        }
+      ]
+    },
+    {
+      "id": "d7c838c5-ebea-4874-8473-a50632d1174a",
+      "name": "fetch_doctor_details_agent",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "langgraph",
+        "injection_risk_score": 0.1,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "langgraph_fetch_doctor_details_agent",
+          "adapter": "langgraph",
+          "evidence_count": 1,
+          "registration_method": "add_node",
+          "framework": "langgraph"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "langgraph: add_node('fetch_doctor_details_agent', ...)",
+          "location": {
+            "path": "backend/langgraph_llm_agents.py",
+            "line": 211
+          }
+        }
+      ]
+    },
+    {
+      "id": "8d58fbb8-74c0-494a-8e05-beb88d23db13",
+      "name": "normalize_agent",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "langgraph",
+        "injection_risk_score": 0.1,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "langgraph_normalize_agent",
+          "adapter": "langgraph",
+          "evidence_count": 1,
+          "registration_method": "add_node",
+          "framework": "langgraph"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "langgraph: add_node('normalize_agent', ...)",
+          "location": {
+            "path": "backend/langgraph_llm_agents.py",
+            "line": 207
+          }
+        }
+      ]
+    },
+    {
+      "id": "99561669-e432-46f7-a081-57820f16b29e",
+      "name": "prognosis_search_agent",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "langgraph",
+        "injection_risk_score": 0.1,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "langgraph_prognosis_search_agent",
+          "adapter": "langgraph",
+          "evidence_count": 1,
+          "registration_method": "add_node",
+          "framework": "langgraph"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "langgraph: add_node('prognosis_search_agent', ...)",
+          "location": {
+            "path": "backend/langgraph_llm_agents.py",
+            "line": 208
+          }
+        }
+      ]
+    },
+    {
+      "id": "3bb68b4f-e9f6-429a-ae23-5d25e23dfc01",
+      "name": "recommend_specialists_agent",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "langgraph",
+        "injection_risk_score": 0.1,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "langgraph_recommend_specialists_agent",
+          "adapter": "langgraph",
+          "evidence_count": 1,
+          "registration_method": "add_node",
+          "framework": "langgraph"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "langgraph: add_node('recommend_specialists_agent', ...)",
+          "location": {
+            "path": "backend/langgraph_llm_agents.py",
+            "line": 210
+          }
+        }
+      ]
+    },
+    {
+      "id": "82ba31d0-f32d-4c56-bd25-6303ee5590fd",
+      "name": "specialist_lookup_agent",
+      "component_type": "AGENT",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "langgraph",
+        "injection_risk_score": 0.1,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "langgraph_specialist_lookup_agent",
+          "adapter": "langgraph",
+          "evidence_count": 1,
+          "registration_method": "add_node",
+          "framework": "langgraph"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "langgraph: add_node('specialist_lookup_agent', ...)",
+          "location": {
+            "path": "backend/langgraph_llm_agents.py",
+            "line": 209
+          }
+        }
+      ]
+    },
+    {
+      "id": "444bddb8-ee30-4596-8c47-85904db5f51e",
+      "name": "generic",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.9,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "api_endpoint_generic",
+          "adapter": "api_endpoint_generic",
+          "evidence_count": 1
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.9,
+          "detail": "api_endpoint_generic: @app.get(",
+          "location": {
+            "path": "backend/main.py",
+            "line": 49
+          }
+        }
+      ]
+    },
+    {
+      "id": "95cf9b44-4b4c-4f49-a5e7-05d962ebf4e2",
+      "name": "Port 8080",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.9,
+      "metadata": {
+        "endpoint": "8080",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "api_endpoint_port_8080",
+          "adapter": "dockerfile",
+          "evidence_count": 1,
+          "port": 8080,
+          "protocol": "tcp",
+          "source": "dockerfile_expose"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "dockerfile",
+          "confidence": 0.9,
+          "detail": "dockerfile: EXPOSE 8080",
+          "location": {
+            "path": "Dockerfile",
+            "line": 38
+          }
+        }
+      ]
+    },
+    {
+      "id": "ffe4df52-a27a-4f34-a221-a7552c7ef7c5",
+      "name": "create_appointment",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.9,
+      "metadata": {
+        "framework": "fastapi",
+        "endpoint": "/appointments",
+        "method": "POST",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "fastapi_endpoint_backend_main_py_create_appointment",
+          "adapter": "fastapi",
+          "evidence_count": 1,
+          "framework": "fastapi",
+          "method": "POST",
+          "endpoint": "/appointments"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.9,
+          "detail": "fastapi: @app.post('/appointments')",
+          "location": {
+            "path": "backend/main.py",
+            "line": 191
+          }
+        }
+      ]
+    },
+    {
+      "id": "3beb1b0c-9234-4111-a159-21d8efc05488",
+      "name": "get_medical_history",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.9,
+      "metadata": {
+        "framework": "fastapi",
+        "endpoint": "/medical-history/{user_id}",
+        "method": "GET",
+        "idor_surface": true,
+        "path_params": [
+          "user_id"
+        ],
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "fastapi_endpoint_backend_main_py_get_medical_history",
+          "adapter": "fastapi",
+          "evidence_count": 1,
+          "framework": "fastapi",
+          "method": "GET",
+          "endpoint": "/medical-history/{user_id}"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.9,
+          "detail": "fastapi: @app.get('/medical-history/{user_id}')",
+          "location": {
+            "path": "backend/main.py",
+            "line": 107
+          }
+        }
+      ]
+    },
+    {
+      "id": "4ad0e8b8-ee98-4ea7-8afd-ff1a834f1bd3",
+      "name": "get_patient_details",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.9,
+      "metadata": {
+        "framework": "fastapi",
+        "endpoint": "/patient-details/{user_id}",
+        "method": "GET",
+        "idor_surface": true,
+        "path_params": [
+          "user_id"
+        ],
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "fastapi_endpoint_backend_main_py_get_patient_details",
+          "adapter": "fastapi",
+          "evidence_count": 1,
+          "framework": "fastapi",
+          "method": "GET",
+          "endpoint": "/patient-details/{user_id}"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.9,
+          "detail": "fastapi: @app.get('/patient-details/{user_id}')",
+          "location": {
+            "path": "backend/main.py",
+            "line": 80
+          }
+        }
+      ]
+    },
+    {
+      "id": "7277765a-1161-46e6-bd96-3037084be1e1",
+      "name": "health_check",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.9,
+      "metadata": {
+        "framework": "fastapi",
+        "endpoint": "/api/health",
+        "method": "GET",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "fastapi_endpoint_backend_main_py_health_check",
+          "adapter": "fastapi",
+          "evidence_count": 1,
+          "framework": "fastapi",
+          "method": "GET",
+          "endpoint": "/api/health"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.9,
+          "detail": "fastapi: @app.get('/api/health')",
+          "location": {
+            "path": "backend/main.py",
+            "line": 51
+          }
+        }
+      ]
+    },
+    {
+      "id": "cd1ad332-1e31-42ad-8418-04cd95fdc4e4",
+      "name": "login",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.9,
+      "metadata": {
+        "framework": "fastapi",
+        "endpoint": "/login",
+        "method": "POST",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "fastapi_endpoint_backend_main_py_login",
+          "adapter": "fastapi",
+          "evidence_count": 1,
+          "framework": "fastapi",
+          "method": "POST",
+          "endpoint": "/login"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.9,
+          "detail": "fastapi: @app.post('/login')",
+          "location": {
+            "path": "backend/main.py",
+            "line": 55
+          }
+        }
+      ]
+    },
+    {
+      "id": "a825abf6-20a0-486a-beef-7a725b3c1941",
+      "name": "normalize",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.9,
+      "metadata": {
+        "framework": "fastapi",
+        "endpoint": "/normalize",
+        "method": "POST",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "fastapi_endpoint_backend_main_py_normalize",
+          "adapter": "fastapi",
+          "evidence_count": 1,
+          "framework": "fastapi",
+          "method": "POST",
+          "endpoint": "/normalize"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.9,
+          "detail": "fastapi: @app.post('/normalize')",
+          "location": {
+            "path": "backend/main.py",
+            "line": 142
+          }
+        }
+      ]
+    },
+    {
+      "id": "711d2437-94bb-4279-b827-506c945ce555",
+      "name": "run_langgraph",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.9,
+      "metadata": {
+        "framework": "fastapi",
+        "endpoint": "/run_langgraph",
+        "method": "POST",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "fastapi_endpoint_backend_main_py_run_langgraph",
+          "adapter": "fastapi",
+          "evidence_count": 1,
+          "framework": "fastapi",
+          "method": "POST",
+          "endpoint": "/run_langgraph"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.9,
+          "detail": "fastapi: @app.post('/run_langgraph')",
+          "location": {
+            "path": "backend/main.py",
+            "line": 160
+          }
+        }
+      ]
+    },
+    {
+      "id": "cb16b5bc-2e8d-4701-9e3d-318c10b292eb",
+      "name": "serve_spa",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.9,
+      "metadata": {
+        "framework": "fastapi",
+        "endpoint": "/{full_path:path}",
+        "method": "GET",
+        "idor_surface": false,
+        "path_params": [
+          "full_path:path"
+        ],
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "fastapi_endpoint_backend_main_py_serve_spa",
+          "adapter": "fastapi",
+          "evidence_count": 1,
+          "framework": "fastapi",
+          "method": "GET",
+          "endpoint": "/{full_path:path}"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.9,
+          "detail": "fastapi: @app.get('/{full_path:path}')",
+          "location": {
+            "path": "backend/main.py",
+            "line": 216
+          }
+        }
+      ]
+    },
+    {
+      "id": "fd86eb13-bb3a-4361-aaa2-cfbfc35a83d1",
+      "name": "generic",
+      "component_type": "AUTH",
+      "confidence": 0.6,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "auth_generic",
+          "adapter": "auth_runtime",
+          "evidence_count": 3
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "auth_runtime: os.getenv(\"DB_PASSWORD\")",
+          "location": {
+            "path": "backend/config.py",
+            "line": 9
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "auth_runtime: os.getenv(\"OPENAI_API_KEY\")",
+          "location": {
+            "path": "backend/langgraph_llm_agents.py",
+            "line": 33
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "auth_generic: apiKey",
+          "location": {
+            "path": "src/gemini.js",
+            "line": 4
+          }
+        }
+      ]
+    },
+    {
+      "id": "ab98305d-2980-43fd-963e-eab7c87f8759",
+      "name": "node:20",
+      "component_type": "CONTAINER_IMAGE",
+      "confidence": 0.99,
+      "metadata": {
+        "image_name": "node",
+        "image_tag": "20",
+        "registry": "docker.io",
+        "base_image": "node:20",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "container_image_node_20",
+          "adapter": "dockerfile",
+          "evidence_count": 1,
+          "base_image": "node:20",
+          "image_name": "node",
+          "image_tag": "20",
+          "image_digest": null,
+          "registry": "docker.io",
+          "dockerfile": "Dockerfile",
+          "runs_as_root": null,
+          "has_health_check": null,
+          "multi_stage_build": true,
+          "security_findings": [
+            "secrets_in_build_args"
+          ]
+        }
+      },
+      "evidence": [
+        {
+          "kind": "dockerfile",
+          "confidence": 0.99,
+          "detail": "dockerfile: FROM node:20 AS frontend-builder",
+          "location": {
+            "path": "Dockerfile",
+            "line": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "47d32c60-b912-421f-97b8-6362efd683fe",
+      "name": "python:3.11-slim",
+      "component_type": "CONTAINER_IMAGE",
+      "confidence": 0.99,
+      "metadata": {
+        "image_name": "python",
+        "image_tag": "3.11-slim",
+        "registry": "docker.io",
+        "base_image": "python:3.11-slim",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "container_image_python_3_11_slim",
+          "adapter": "dockerfile",
+          "evidence_count": 1,
+          "base_image": "python:3.11-slim",
+          "image_name": "python",
+          "image_tag": "3.11-slim",
+          "image_digest": null,
+          "registry": "docker.io",
+          "dockerfile": "Dockerfile",
+          "runs_as_root": null,
+          "has_health_check": null,
+          "multi_stage_build": true,
+          "security_findings": [
+            "secrets_in_build_args"
+          ]
+        }
+      },
+      "evidence": [
+        {
+          "kind": "dockerfile",
+          "confidence": 0.99,
+          "detail": "dockerfile: FROM python:3.11-slim",
+          "location": {
+            "path": "Dockerfile",
+            "line": 14
+          }
+        }
+      ]
+    },
+    {
+      "id": "9e2bae14-8d13-4393-bdd9-7985033a3b77",
+      "name": "postgres",
+      "component_type": "DATASTORE",
+      "confidence": 0.55,
+      "metadata": {
+        "data_classification": [
+          "PHI",
+          "PII"
+        ],
+        "classified_tables": [
+          "AppointmentRequest",
+          "LoginRequest",
+          "MedicalHistoryResponse",
+          "PatientDetailsResponse",
+          "appointments",
+          "doctors",
+          "hospitals",
+          "patient_history",
+          "patients",
+          "specialists",
+          "symptoms",
+          "users"
+        ],
+        "classified_fields": {
+          "LoginRequest": [
+            "email",
+            "password"
+          ],
+          "AppointmentRequest": [
+            "patient_id"
+          ],
+          "PatientDetailsResponse": [
+            "blood_group",
+            "contact_number",
+            "date_of_birth",
+            "gender",
+            "marital_status",
+            "medical_record_number",
+            "name"
+          ],
+          "MedicalHistoryResponse": [
+            "family_medical_history",
+            "hospital_admissions",
+            "immunization_records",
+            "past_diagnoses",
+            "surgeries"
+          ],
+          "users": [
+            "email",
+            "password"
+          ],
+          "patients": [
+            "blood_group",
+            "contact_number",
+            "date_of_birth",
+            "gender",
+            "marital_status",
+            "medical_record_number",
+            "name"
+          ],
+          "patient_history": [
+            "family_medical_history",
+            "hospital_admissions",
+            "immunization_records",
+            "past_diagnoses",
+            "patient_id",
+            "surgeries"
+          ],
+          "hospitals": [
+            "address",
+            "contact_number",
+            "name"
+          ],
+          "specialists": [
+            "name"
+          ],
+          "doctors": [
+            "name"
+          ],
+          "appointments": [
+            "patient_id"
+          ],
+          "symptoms": [
+            "name"
+          ]
+        },
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "postgres",
+          "adapter": "datastore_generic",
+          "evidence_count": 1,
+          "normalizer": "datastore"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "datastore_generic: postgres",
+          "location": {
+            "path": "docker-compose.yml",
+            "line": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "7cf2cc2d-91a1-449d-b050-ee23b7baa594",
+      "name": "generic",
+      "component_type": "DEPLOYMENT",
+      "confidence": 0.63,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "deployment_generic",
+          "adapter": "deployment_generic",
+          "evidence_count": 2,
+          "detected_by_tiers": [
+            "code",
+            "iac"
+          ]
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "deployment_generic: uvicorn",
+          "location": {
+            "path": "Dockerfile",
+            "line": 41
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "deployment_generic: docker",
+          "location": {
+            "path": "docker-compose.yml",
+            "line": 11
+          }
+        }
+      ]
+    },
+    {
+      "id": "69430c90-df06-4d5b-959f-64f24c094b61",
+      "name": "framework:langgraph",
+      "component_type": "FRAMEWORK",
+      "confidence": 0.95,
+      "metadata": {
+        "framework": "langgraph",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "framework_langgraph",
+          "adapter": "langgraph",
+          "evidence_count": 4,
+          "framework": "langgraph",
+          "implementation": "vela_builtin"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_import",
+          "confidence": 0.95,
+          "detail": "langgraph: import langgraph",
+          "location": {
+            "path": "backend/langgraph_llm_agents.py"
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.7,
+          "detail": "langgraph: LangGraph",
+          "location": {
+            "path": "backend/main.py",
+            "line": 162
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.7,
+          "detail": "langgraph: LangGraph",
+          "location": {
+            "path": "src/context/UserContext.jsx",
+            "line": 275
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "langgraph: langgraph",
+          "location": {
+            "path": "backend/langgraph_llm_agents.py",
+            "line": 9
+          }
+        }
+      ]
+    },
+    {
+      "id": "6cc790d8-8ca6-4d6f-9129-2ae1505012ed",
+      "name": "llm_clients_ts",
+      "component_type": "FRAMEWORK",
+      "confidence": 0.85,
+      "metadata": {
+        "framework": "google",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "framework_llm_clients_ts",
+          "adapter": "llm_clients_ts",
+          "evidence_count": 1,
+          "framework": "google",
+          "client_class": "GoogleGenAI",
+          "language": "typescript"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.85,
+          "detail": "llm_clients_ts: new GoogleGenAI({\n  apiKey: import.meta.env.VITE_GEMINI_API_KEY,\n})",
+          "location": {
+            "path": "src/gemini.js",
+            "line": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "b7b152e2-ea3d-483b-853c-7adc0ea35709",
+      "name": "gemini-2.0-flash",
+      "component_type": "MODEL",
+      "confidence": 0.88,
+      "metadata": {
+        "framework": "google",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "gemini_2_0_flash",
+          "adapter": "llm_clients_ts",
+          "evidence_count": 2,
+          "framework": "google",
+          "api_call": "ai.models.generateContent",
+          "provider": "google",
+          "model_card_url": "https://ai.google.dev/gemini-api/docs/models",
+          "api_endpoint": "https://generativelanguage.googleapis.com",
+          "language": "typescript"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.88,
+          "detail": "llm_clients_ts: ai.models.generateContent({\n    model: \"gemini-2.0-flash\",\n    contents: conversationHistory.join('\\",
+          "location": {
+            "path": "src/gemini.js",
+            "line": 15
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "model_generic: gemini-2.0",
+          "location": {
+            "path": "src/gemini.js",
+            "line": 16
+          }
+        }
+      ]
+    },
+    {
+      "id": "f037c17a-dbd8-4a63-8dc2-0f600950d0ac",
+      "name": "gpt-4",
+      "component_type": "MODEL",
+      "confidence": 0.9,
+      "metadata": {
+        "framework": "langchain",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "gpt_4",
+          "adapter": "langgraph",
+          "evidence_count": 2,
+          "framework": "langchain",
+          "class_name": "ChatOpenAI",
+          "provider": "openai",
+          "version": "4",
+          "api_endpoint": "https://api.openai.com/v1",
+          "model_card_url": "https://platform.openai.com/docs/models/gpt-4",
+          "model_family": "gpt",
+          "normalizer": "model-name"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.9,
+          "detail": "langgraph: ChatOpenAI(...)",
+          "location": {
+            "path": "backend/langgraph_llm_agents.py",
+            "line": 34
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: gpt-4",
+          "location": {
+            "path": "backend/langgraph_llm_agents.py",
+            "line": 31
+          }
+        }
+      ]
+    },
+    {
+      "id": "377f9ba2-491f-42ff-8b26-aa656c5abb9e",
+      "name": "db_write",
+      "component_type": "PRIVILEGE",
+      "confidence": 0.95,
+      "metadata": {
+        "privilege_scope": "db_write",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "privilege_db_write",
+          "adapter": "privilege_db_write",
+          "evidence_count": 3,
+          "privilege_scope": "db_write"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "privilege_db_write: CREATE TABLE IF",
+          "location": {
+            "path": "sql/schema.sql",
+            "line": 3
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.75,
+          "detail": "privilege_db_write: INSERT INTO specialists",
+          "location": {
+            "path": "sql/populate_more_specialists.sql",
+            "line": 3
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "privilege_db_write: INSERT INTO appointments",
+          "location": {
+            "path": "sql/functions/sp_create_appointment.sql",
+            "line": 10
+          }
+        }
+      ]
+    },
+    {
+      "id": "d95b3db8-0678-4a5e-b2b8-6d6135b4ac16",
+      "name": "System Instruction",
+      "component_type": "PROMPT",
+      "confidence": 0.65,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "system_instruction",
+          "adapter": "prompt_ts",
+          "evidence_count": 4,
+          "is_template": false,
+          "is_template_literal": false,
+          "template_variables": [],
+          "injection_risk_score": 0.0,
+          "role": "system",
+          "context": "systemInstruction",
+          "enclosing_function": null,
+          "content": "You are a helpful AI Medical Triage Assistant. Your goal is to gather a clear list of symptoms from the patient ",
+          "language": "typescript"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_string_literal",
+          "confidence": 0.65,
+          "detail": "prompt_ts: ast_string_literal",
+          "location": {
+            "path": "src/gemini.js",
+            "line": 19
+          }
+        },
+        {
+          "kind": "ast_string_literal",
+          "confidence": 0.65,
+          "detail": "prompt_ts: ast_string_literal",
+          "location": {
+            "path": "src/gemini.js",
+            "line": 22
+          }
+        },
+        {
+          "kind": "ast_string_literal",
+          "confidence": 0.65,
+          "detail": "prompt_ts: ast_string_literal",
+          "location": {
+            "path": "src/gemini.js",
+            "line": 23
+          }
+        },
+        {
+          "kind": "ast_string_literal",
+          "confidence": 0.65,
+          "detail": "prompt_ts: ast_string_literal",
+          "location": {
+            "path": "src/gemini.js",
+            "line": 24
+          }
+        }
+      ]
+    },
+    {
+      "id": "fc90ad08-81f8-4dab-b546-809da0f71725",
+      "name": "System Message",
+      "component_type": "PROMPT",
+      "confidence": 0.8,
+      "metadata": {
+        "framework": "langchain",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "system_message",
+          "adapter": "langgraph",
+          "evidence_count": 1,
+          "framework": "langchain",
+          "message_type": "SystemMessage",
+          "role": "system",
+          "content": "You are an intelligent medical assistant that triages patients.",
+          "char_count": 63,
+          "is_template": false,
+          "template_variables": []
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.8,
+          "detail": "langgraph: ast_instantiation",
+          "location": {
+            "path": "backend/langgraph_llm_agents.py",
+            "line": 148
+          }
+        }
+      ]
+    },
+    {
+      "id": "30e76402-f4c7-4a8a-8afd-6e62df5f1ee1",
+      "name": "search",
+      "component_type": "TOOL",
+      "confidence": 0.75,
+      "metadata": {
+        "high_privilege": false,
+        "sql_injectable": false,
+        "ssrf_possible": false,
+        "accepts_external_url": false,
+        "reads_external_content": false,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "tool_search",
+          "adapter": "tool_search",
+          "evidence_count": 1
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.75,
+          "detail": "tool_search: duckduckgo_search",
+          "location": {
+            "path": "backend/langgraph_llm_agents.py",
+            "line": 7
+          }
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "source": "8d58fbb8-74c0-494a-8e05-beb88d23db13",
+      "target": "99561669-e432-46f7-a081-57820f16b29e",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "99561669-e432-46f7-a081-57820f16b29e",
+      "target": "82ba31d0-f32d-4c56-bd25-6303ee5590fd",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "82ba31d0-f32d-4c56-bd25-6303ee5590fd",
+      "target": "3bb68b4f-e9f6-429a-ae23-5d25e23dfc01",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "3bb68b4f-e9f6-429a-ae23-5d25e23dfc01",
+      "target": "d7c838c5-ebea-4874-8473-a50632d1174a",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "8d58fbb8-74c0-494a-8e05-beb88d23db13",
+      "target": "f037c17a-dbd8-4a63-8dc2-0f600950d0ac",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "99561669-e432-46f7-a081-57820f16b29e",
+      "target": "f037c17a-dbd8-4a63-8dc2-0f600950d0ac",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "82ba31d0-f32d-4c56-bd25-6303ee5590fd",
+      "target": "f037c17a-dbd8-4a63-8dc2-0f600950d0ac",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "3bb68b4f-e9f6-429a-ae23-5d25e23dfc01",
+      "target": "f037c17a-dbd8-4a63-8dc2-0f600950d0ac",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "d7c838c5-ebea-4874-8473-a50632d1174a",
+      "target": "f037c17a-dbd8-4a63-8dc2-0f600950d0ac",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "52efcc2a-28d3-4698-9aa8-380711a015a4",
+      "target": "30e76402-f4c7-4a8a-8afd-6e62df5f1ee1",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "52efcc2a-28d3-4698-9aa8-380711a015a4",
+      "target": "b7b152e2-ea3d-483b-853c-7adc0ea35709",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "52efcc2a-28d3-4698-9aa8-380711a015a4",
+      "target": "f037c17a-dbd8-4a63-8dc2-0f600950d0ac",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "69430c90-df06-4d5b-959f-64f24c094b61",
+      "target": "f037c17a-dbd8-4a63-8dc2-0f600950d0ac",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "69430c90-df06-4d5b-959f-64f24c094b61",
+      "target": "b7b152e2-ea3d-483b-853c-7adc0ea35709",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "6cc790d8-8ca6-4d6f-9129-2ae1505012ed",
+      "target": "f037c17a-dbd8-4a63-8dc2-0f600950d0ac",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "6cc790d8-8ca6-4d6f-9129-2ae1505012ed",
+      "target": "b7b152e2-ea3d-483b-853c-7adc0ea35709",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "7cf2cc2d-91a1-449d-b050-ee23b7baa594",
+      "target": "ab98305d-2980-43fd-963e-eab7c87f8759",
+      "relationship_type": "DEPLOYS"
+    },
+    {
+      "source": "7cf2cc2d-91a1-449d-b050-ee23b7baa594",
+      "target": "47d32c60-b912-421f-97b8-6362efd683fe",
+      "relationship_type": "DEPLOYS"
+    },
+    {
+      "source": "fd86eb13-bb3a-4361-aaa2-cfbfc35a83d1",
+      "target": "95cf9b44-4b4c-4f49-a5e7-05d962ebf4e2",
+      "relationship_type": "PROTECTS"
+    },
+    {
+      "source": "fd86eb13-bb3a-4361-aaa2-cfbfc35a83d1",
+      "target": "ffe4df52-a27a-4f34-a221-a7552c7ef7c5",
+      "relationship_type": "PROTECTS"
+    },
+    {
+      "source": "fd86eb13-bb3a-4361-aaa2-cfbfc35a83d1",
+      "target": "444bddb8-ee30-4596-8c47-85904db5f51e",
+      "relationship_type": "PROTECTS"
+    },
+    {
+      "source": "fd86eb13-bb3a-4361-aaa2-cfbfc35a83d1",
+      "target": "3beb1b0c-9234-4111-a159-21d8efc05488",
+      "relationship_type": "PROTECTS"
+    },
+    {
+      "source": "fd86eb13-bb3a-4361-aaa2-cfbfc35a83d1",
+      "target": "4ad0e8b8-ee98-4ea7-8afd-ff1a834f1bd3",
+      "relationship_type": "PROTECTS"
+    },
+    {
+      "source": "fd86eb13-bb3a-4361-aaa2-cfbfc35a83d1",
+      "target": "7277765a-1161-46e6-bd96-3037084be1e1",
+      "relationship_type": "PROTECTS"
+    },
+    {
+      "source": "fd86eb13-bb3a-4361-aaa2-cfbfc35a83d1",
+      "target": "cd1ad332-1e31-42ad-8418-04cd95fdc4e4",
+      "relationship_type": "PROTECTS"
+    },
+    {
+      "source": "fd86eb13-bb3a-4361-aaa2-cfbfc35a83d1",
+      "target": "a825abf6-20a0-486a-beef-7a725b3c1941",
+      "relationship_type": "PROTECTS"
+    },
+    {
+      "source": "fd86eb13-bb3a-4361-aaa2-cfbfc35a83d1",
+      "target": "711d2437-94bb-4279-b827-506c945ce555",
+      "relationship_type": "PROTECTS"
+    },
+    {
+      "source": "fd86eb13-bb3a-4361-aaa2-cfbfc35a83d1",
+      "target": "cb16b5bc-2e8d-4701-9e3d-318c10b292eb",
+      "relationship_type": "PROTECTS"
+    }
+  ],
+  "deps": [
+    {
+      "name": "fastapi",
+      "version_spec": "",
+      "purl": "pkg:pypi/fastapi",
+      "group": "runtime",
+      "source_file": "backend/requirements.txt"
+    },
+    {
+      "name": "uvicorn",
+      "version_spec": "",
+      "purl": "pkg:pypi/uvicorn",
+      "group": "runtime",
+      "source_file": "backend/requirements.txt"
+    },
+    {
+      "name": "psycopg2-binary",
+      "version_spec": "",
+      "purl": "pkg:pypi/psycopg2-binary",
+      "group": "runtime",
+      "source_file": "backend/requirements.txt"
+    },
+    {
+      "name": "langgraph",
+      "version_spec": "",
+      "purl": "pkg:pypi/langgraph",
+      "group": "runtime",
+      "source_file": "backend/requirements.txt"
+    },
+    {
+      "name": "langchain",
+      "version_spec": "",
+      "purl": "pkg:pypi/langchain",
+      "group": "runtime",
+      "source_file": "backend/requirements.txt"
+    },
+    {
+      "name": "openai",
+      "version_spec": "",
+      "purl": "pkg:pypi/openai",
+      "group": "runtime",
+      "source_file": "backend/requirements.txt"
+    },
+    {
+      "name": "google-generativeai",
+      "version_spec": "",
+      "purl": "pkg:pypi/google-generativeai",
+      "group": "runtime",
+      "source_file": "backend/requirements.txt"
+    },
+    {
+      "name": "pydantic",
+      "version_spec": "",
+      "purl": "pkg:pypi/pydantic",
+      "group": "runtime",
+      "source_file": "backend/requirements.txt"
+    },
+    {
+      "name": "python-dotenv",
+      "version_spec": "",
+      "purl": "pkg:pypi/python-dotenv",
+      "group": "runtime",
+      "source_file": "backend/requirements.txt"
+    },
+    {
+      "name": "requests",
+      "version_spec": "",
+      "purl": "pkg:pypi/requests",
+      "group": "runtime",
+      "source_file": "backend/requirements.txt"
+    },
+    {
+      "name": "tqdm",
+      "version_spec": "",
+      "purl": "pkg:pypi/tqdm",
+      "group": "runtime",
+      "source_file": "backend/requirements.txt"
+    },
+    {
+      "name": "numpy",
+      "version_spec": "",
+      "purl": "pkg:pypi/numpy",
+      "group": "runtime",
+      "source_file": "backend/requirements.txt"
+    },
+    {
+      "name": "langchain-openai",
+      "version_spec": "",
+      "purl": "pkg:pypi/langchain-openai",
+      "group": "runtime",
+      "source_file": "backend/requirements.txt"
+    },
+    {
+      "name": "duckduckgo-search",
+      "version_spec": "",
+      "purl": "pkg:pypi/duckduckgo-search",
+      "group": "runtime",
+      "source_file": "backend/requirements.txt"
+    },
+    {
+      "name": "langchain-community",
+      "version_spec": "",
+      "purl": "pkg:pypi/langchain-community",
+      "group": "runtime",
+      "source_file": "backend/requirements.txt"
+    },
+    {
+      "name": "@google/genai",
+      "version_spec": "^0.10.0",
+      "purl": "pkg:npm/%40google/genai@0.10.0",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "@google/generative-ai",
+      "version_spec": "^0.24.0",
+      "purl": "pkg:npm/%40google/generative-ai@0.24.0",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "assemblyai",
+      "version_spec": "^4.12.2",
+      "purl": "pkg:npm/assemblyai@4.12.2",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "openai",
+      "version_spec": "^4.96.0",
+      "purl": "pkg:npm/openai@4.96.0",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "react",
+      "version_spec": "^19.0.0",
+      "purl": "pkg:npm/react@19.0.0",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "react-dom",
+      "version_spec": "^19.0.0",
+      "purl": "pkg:npm/react-dom@19.0.0",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "react-router-dom",
+      "version_spec": "^7.5.0",
+      "purl": "pkg:npm/react-router-dom@7.5.0",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "recordrtc",
+      "version_spec": "^5.5.1",
+      "purl": "pkg:npm/recordrtc@5.5.1",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "@eslint/js",
+      "version_spec": "^9.21.0",
+      "purl": "pkg:npm/%40eslint/js@9.21.0",
+      "group": "dev",
+      "source_file": "package.json"
+    },
+    {
+      "name": "@playwright/test",
+      "version_spec": "^1.57.0",
+      "purl": "pkg:npm/%40playwright/test@1.57.0",
+      "group": "dev",
+      "source_file": "package.json"
+    },
+    {
+      "name": "@types/react",
+      "version_spec": "^19.0.10",
+      "purl": "pkg:npm/%40types/react@19.0.10",
+      "group": "dev",
+      "source_file": "package.json"
+    },
+    {
+      "name": "@types/react-dom",
+      "version_spec": "^19.0.4",
+      "purl": "pkg:npm/%40types/react-dom@19.0.4",
+      "group": "dev",
+      "source_file": "package.json"
+    },
+    {
+      "name": "@vitejs/plugin-react",
+      "version_spec": "^4.3.4",
+      "purl": "pkg:npm/%40vitejs/plugin-react@4.3.4",
+      "group": "dev",
+      "source_file": "package.json"
+    },
+    {
+      "name": "eslint",
+      "version_spec": "^9.21.0",
+      "purl": "pkg:npm/eslint@9.21.0",
+      "group": "dev",
+      "source_file": "package.json"
+    },
+    {
+      "name": "eslint-plugin-react-hooks",
+      "version_spec": "^5.1.0",
+      "purl": "pkg:npm/eslint-plugin-react-hooks@5.1.0",
+      "group": "dev",
+      "source_file": "package.json"
+    },
+    {
+      "name": "eslint-plugin-react-refresh",
+      "version_spec": "^0.4.19",
+      "purl": "pkg:npm/eslint-plugin-react-refresh@0.4.19",
+      "group": "dev",
+      "source_file": "package.json"
+    },
+    {
+      "name": "globals",
+      "version_spec": "^15.15.0",
+      "purl": "pkg:npm/globals@15.15.0",
+      "group": "dev",
+      "source_file": "package.json"
+    },
+    {
+      "name": "vite",
+      "version_spec": "^6.2.0",
+      "purl": "pkg:npm/vite@6.2.0",
+      "group": "dev",
+      "source_file": "package.json"
+    },
+    {
+      "name": "cors",
+      "version_spec": "^2.8.5",
+      "purl": "pkg:npm/cors@2.8.5",
+      "group": "runtime",
+      "source_file": "backend/package.json"
+    },
+    {
+      "name": "dotenv",
+      "version_spec": "^16.5.0",
+      "purl": "pkg:npm/dotenv@16.5.0",
+      "group": "runtime",
+      "source_file": "backend/package.json"
+    },
+    {
+      "name": "express",
+      "version_spec": "^5.1.0",
+      "purl": "pkg:npm/express@5.1.0",
+      "group": "runtime",
+      "source_file": "backend/package.json"
+    }
+  ],
+  "summary": {
+    "use_case": "This application implements an agentic AI workflow with 6 agent(s), 1 tool integration(s), and 0 guardrail control(s). Detected use cases include specialist recommendation workflows, search-based retrieval. Multi-modal support: Voice supported, Images not supported, Video not supported.",
+    "frameworks": [
+      "langgraph",
+      "langchain"
+    ],
+    "modalities": [
+      "TEXT",
+      "VOICE"
+    ],
+    "modality_support": {
+      "text": true,
+      "voice": true,
+      "image": false,
+      "video": false
+    },
+    "api_endpoints": [
+      "/api/health",
+      "/login",
+      "/patient-details/{user_id}",
+      "/medical-history/{user_id}",
+      "/normalize",
+      "/run_langgraph",
+      "/appointments",
+      "/{full_path:path}"
+    ],
+    "deployment_platforms": [
+      "GCP",
+      "AWS"
+    ],
+    "regions": [],
+    "environments": [
+      "stage",
+      "dev",
+      "test",
+      "development",
+      "production"
+    ],
+    "deployment_urls": [],
+    "iac_accounts": [],
+    "node_counts": {
+      "AGENT": 6,
+      "API_ENDPOINT": 10,
+      "AUTH": 1,
+      "CONTAINER_IMAGE": 2,
+      "DATASTORE": 1,
+      "DEPLOYMENT": 1,
+      "FRAMEWORK": 2,
+      "MODEL": 2,
+      "PRIVILEGE": 1,
+      "PROMPT": 2,
+      "TOOL": 1
+    },
+    "secret_stores": [],
+    "availability_zones": [],
+    "encryption_at_rest_coverage": false,
+    "security_findings": [
+      "secrets_in_build_args"
+    ],
+    "iam_principals": [],
+    "service_accounts": [],
+    "data_classification": [
+      "PHI",
+      "PII"
+    ],
+    "classified_tables": [
+      "AppointmentRequest",
+      "LoginRequest",
+      "MedicalHistoryResponse",
+      "PatientDetailsResponse",
+      "appointments",
+      "doctors",
+      "hospitals",
+      "patient_history",
+      "patients",
+      "specialists",
+      "symptoms",
+      "users"
+    ],
+    "startup_commands": [
+      {
+        "command": "npm run start",
+        "source": "backend/package.json",
+        "label": "start"
+      },
+      {
+        "command": "docker compose up",
+        "source": "docker-compose.yml",
+        "label": "dev"
+      },
+      {
+        "command": "npm run dev",
+        "source": "package.json",
+        "label": "dev"
+      },
+      {
+        "command": "npm run preview",
+        "source": "package.json",
+        "label": "start"
+      }
+    ],
+    "env_files": [],
+    "env_var_keys": [],
+    "local_url": "http://localhost:5432",
+    "staging_urls": [],
+    "production_urls": [],
+    "log_paths": []
+  }
+}

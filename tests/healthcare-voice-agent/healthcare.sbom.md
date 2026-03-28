@@ -1,13 +1,13 @@
 # SBOM Report: https://github.com/NuGuardAI/Healthcare-voice-agent
 
-**Generated:** 2026-03-27T19:58:14Z  
+**Generated:** 2026-03-28T00:43:18Z  
 **Schema version:** 1.4.0  
 
 ## Summary
 
 | Field | Value |
 | --- | --- |
-| AI nodes | 29 |
+| AI nodes | 30 |
 | Dependencies | 36 |
 | Data classification | PHI, PII |
 | Classified tables | AppointmentRequest, LoginRequest, MedicalHistoryResponse, PatientDetailsResponse, appointments, doctors, hospitals, patient_history, patients, specialists, symptoms, users |
@@ -38,12 +38,13 @@
 | generic | AUTH | 60% |  |
 | node:20 | CONTAINER_IMAGE | 99% | node:20 |
 | python:3.11-slim | CONTAINER_IMAGE | 99% | python:3.11-slim |
-| postgres | DATASTORE | 55% | PHI, PII |
-| generic | DEPLOYMENT | 63% |  |
+| postgres | DATASTORE | 95% | PHI, PII |
+| generic | DEPLOYMENT | 98% |  |
 | framework:langgraph | FRAMEWORK | 95% | langgraph |
 | llm_clients_ts | FRAMEWORK | 85% | google |
 | gemini-2.0-flash | MODEL | 88% | google |
 | gpt-4 | MODEL | 90% | openai |
+| admin | PRIVILEGE | 60% | admin |
 | db_write | PRIVILEGE | 95% | db_write |
 | System Instruction | PROMPT | 65% | "You are a helpful AI Medical Triage Assistant. Your goal is to gather a clear li…" · role=system |
 | System Message | PROMPT | 80% | "You are an intelligent medical assistant that triages patients." · role=system |
@@ -94,8 +95,12 @@
 ### Deployment Details
 
 **generic (`deployment_generic`)**
+- `deployment` — `deploy_azure.sh`:4
+- `Docker` — `host_local.sh`:8
+- `docker` — `init-db.sh`:7, `sql/init-db.sh`:7, `docker-compose.yml`:11
+- `Deployment` — `deploy.sh`:20
 - `uvicorn` — `Dockerfile`:41
-- `docker` — `docker-compose.yml`:11
+- `render` — `src/main.jsx`:7
 - Source tiers: code, iac
 
 ### Container Images
@@ -107,6 +112,7 @@
 
 ### Privileges
 
+- **admin**: scope=`admin`
 - **db_write**: scope=`db_write`
 
 ## Dependencies
@@ -162,6 +168,6 @@
 | DEPLOYMENT | 1 |
 | FRAMEWORK | 2 |
 | MODEL | 2 |
-| PRIVILEGE | 1 |
+| PRIVILEGE | 2 |
 | PROMPT | 2 |
 | TOOL | 1 |
