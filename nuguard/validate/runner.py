@@ -6,6 +6,9 @@ import uuid
 import logging
 from typing import TYPE_CHECKING
 
+from rich.console import Console
+from rich.panel import Panel
+
 from nuguard.common.bootstrap import AuthBootstrapper
 from nuguard.common.errors import AuthError
 from nuguard.config import ValidateConfig
@@ -29,6 +32,48 @@ if TYPE_CHECKING:
     from nuguard.models.validate import CapabilityMap
 
 _log = logging.getLogger(__name__)
+_console = Console()
+
+
+def _print_turn_verbose(
+    scenario_name: str,
+    turn_idx: int,
+    url: str,
+    request: str,
+    response: str,
+    tool_calls: list[dict],
+) -> None:
+    """Print a single validate turn's request/response to the console."""
+    _console.rule(
+        f"[bold cyan]validate[/bold cyan] · {scenario_name} · turn {turn_idx + 1}",
+        style="cyan",
+    )
+    _console.print(
+        Panel(
+            request,
+            title=f"[bold]→ REQUEST[/bold]  {url}",
+            title_align="left",
+            border_style="blue",
+            expand=True,
+        )
+    )
+    tool_str = ""
+    if tool_calls:
+        tool_str = "  ".join(
+            tc.get("name") or tc.get("function", {}).get("name", "?")
+            for tc in tool_calls
+        )
+        _console.print(f"  [dim]tool_calls:[/dim] [yellow]{tool_str}[/yellow]")
+    _console.print(
+        Panel(
+            response or "[dim](empty)[/dim]",
+            title="[bold]← RESPONSE[/bold]",
+            title_align="left",
+            border_style="green",
+            expand=True,
+        )
+    )
+
 
 # Heuristic keywords that indicate the app refused a request.
 _REFUSAL_PHRASES = frozenset(
@@ -116,6 +161,7 @@ class ValidateRunner:
             default_auth=self._auth_config,
             canary_config=self._canary_config,
             run_id=self._run_id,
+            timeout=self._config.request_timeout,
         )
         report = await bootstrapper.run()
         if not report.all_ok:
@@ -169,6 +215,12 @@ class ValidateRunner:
 
         for scenario in scenarios:
             _log.info("Running scenario %r (%s)", scenario.name, scenario.scenario_type.value)
+            if self._config.verbose:
+                _console.print(
+                    f"\n[bold magenta]▶ scenario[/bold magenta] "
+                    f"[cyan]{scenario.name}[/cyan]  "
+                    f"[dim]({scenario.scenario_type.value})[/dim]"
+                )
             session = AttackSession(
                 session_id=str(uuid.uuid4()),
                 target_url=target_url,
@@ -186,6 +238,16 @@ class ValidateRunner:
                     )
                     response_text = ""
                     tool_calls = []
+
+                if self._config.verbose:
+                    _print_turn_verbose(
+                        scenario_name=scenario.name,
+                        turn_idx=turn_idx,
+                        url=client.base_url + (self._config.target_endpoint or "/chat"),
+                        request=message,
+                        response=response_text,
+                        tool_calls=tool_calls,
+                    )
 
                 session.add_turn(message, response_text, tool_calls)
 

@@ -45,12 +45,14 @@ class AuthBootstrapper:
         default_auth: AuthConfig | None = None,
         canary_config: CanaryConfig | None = None,
         run_id: str | None = None,
+        timeout: float | None = None,
     ) -> None:
         self._target_url = target_url.rstrip("/")
         self._endpoint = endpoint
         self._default_auth = default_auth or AuthConfig(type="none")
         self._canary = canary_config
         self._run_id = run_id or str(uuid.uuid4())
+        self._timeout = timeout if timeout is not None else BOOTSTRAP_TIMEOUT
 
     @property
     def full_url(self) -> str:
@@ -123,7 +125,7 @@ class AuthBootstrapper:
         start = time.monotonic()
 
         try:
-            async with httpx.AsyncClient(timeout=BOOTSTRAP_TIMEOUT) as client:
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
                 resp = await client.post(
                     self.full_url,
                     json=probe_body,
@@ -203,7 +205,7 @@ class AuthBootstrapper:
                 endpoint=self.full_url,
                 status="target_unavailable",
                 response_time_ms=elapsed_ms,
-                error_detail=f"timeout after {BOOTSTRAP_TIMEOUT}s: {exc}",
+                error_detail=f"timeout after {self._timeout}s: {exc}",
             )
         except httpx.RequestError as exc:
             elapsed_ms = (time.monotonic() - start) * 1000
