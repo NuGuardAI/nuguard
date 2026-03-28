@@ -299,16 +299,10 @@ def default_registry() -> tuple[DetectionAdapter, ...]:
                 priority=170,
                 patterns=(
                     re.compile(
-                        # Container / orchestration runtimes
-                        r"\b(docker|kubernetes|helm|terraform|compose|deployment"
-                        r"|nginx|certbot|letsencrypt|gunicorn|uvicorn|caddy|traefik"
-                        r"|reverse[._]proxy|ssl[._]certificate|systemd[._]service)\b",
-                        re.IGNORECASE,
-                    ),
-                    re.compile(
-                        # Cloud CLI tools — Azure, GCP, AWS, Kubernetes CLI
-                        # Matched as whole words to avoid false positives on
-                        # variable names; bare 'az' excluded (too short).
+                        # Cloud CLI tools listed FIRST so cloud commands surface as the
+                        # primary evidence snippet (takes priority over generic keywords
+                        # like "deployment" that appear in comments).
+                        # Bare 'az' excluded (too short); az sub-commands required.
                         r"\b(gcloud|gsutil|bq"
                         r"|kubectl|kustomize|skaffold|argocd|fluxcd"
                         r"|ansible(?:[_-]playbook)?|ansible[_-]galaxy"
@@ -324,6 +318,14 @@ def default_registry() -> tuple[DetectionAdapter, ...]:
                         r"\b(flyctl|fly\.io|heroku|vercel|netlify|railway|render"
                         r"|serverless[_-]framework|sam[_-]cli|amplify[_-]cli"
                         r"|wrangler|cloudflare[_-]pages|deno[_-]deploy)\b",
+                        re.IGNORECASE,
+                    ),
+                    re.compile(
+                        # Container / orchestration runtimes (last — generic keywords
+                        # like "deployment" are common in comments and strings)
+                        r"\b(docker|kubernetes|helm|terraform|compose|deployment"
+                        r"|nginx|certbot|letsencrypt|gunicorn|uvicorn|caddy|traefik"
+                        r"|reverse[._]proxy|ssl[._]certificate|systemd[._]service)\b",
                         re.IGNORECASE,
                     ),
                 ),

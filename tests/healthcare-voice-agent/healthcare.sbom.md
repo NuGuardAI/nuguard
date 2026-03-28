@@ -1,6 +1,6 @@
 # SBOM Report: https://github.com/NuGuardAI/Healthcare-voice-agent
 
-**Generated:** 2026-03-28T00:43:18Z  
+**Generated:** 2026-03-28T02:41:19Z  
 **Schema version:** 1.4.0  
 
 ## Summary
@@ -95,10 +95,10 @@
 ### Deployment Details
 
 **generic (`deployment_generic`)**
-- `deployment` — `deploy_azure.sh`:4
+- `az login` — `deploy_azure.sh`:23
 - `Docker` — `host_local.sh`:8
 - `docker` — `init-db.sh`:7, `sql/init-db.sh`:7, `docker-compose.yml`:11
-- `Deployment` — `deploy.sh`:20
+- `gcloud` — `deploy.sh`:4
 - `uvicorn` — `Dockerfile`:41
 - `render` — `src/main.jsx`:7
 - Source tiers: code, iac
