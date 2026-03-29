@@ -114,6 +114,13 @@ def _do_validate(
 
     auth_config = cfg.resolved_validate_auth_config()
 
+    # Resolve SBOM path for endpoint discovery
+    sbom_path: Optional[Path] = None
+    if cfg.sbom_path:
+        candidate = Path(cfg.sbom_path)
+        if candidate.exists():
+            sbom_path = candidate
+
     try:
         result: ValidateRunResult = asyncio.run(
             _run_validate(
@@ -122,6 +129,7 @@ def _do_validate(
                 policy_path=resolved_policy_path,
                 canary_path=resolved_canary_path,
                 baseline_path=baseline_path,
+                sbom_path=sbom_path,
             )
         )
     except Exception as exc:
@@ -132,6 +140,8 @@ def _do_validate(
     meta = ReportMeta(
         llm_models=[cfg.litellm_model] if resolved_policy_path else [],
         verbose=vc.verbose,
+        target_url=vc.target,
+        target_endpoint=vc.target_endpoint or "/chat",
     )
     if fmt == "json":
         payload = {"_meta": meta.to_dict(), **result.model_dump()}
@@ -175,17 +185,28 @@ async def _run_validate(
     policy_path: Optional[Path],
     canary_path: Optional[Path],
     baseline_path: Optional[Path],
+    sbom_path: Optional[Path] = None,
 ) -> ValidateRunResult:
     from nuguard.models.validate import CapabilityMap  # noqa: PLC0415
     from nuguard.validate.runner import ValidateRunner  # noqa: PLC0415
+
+    # Load SBOM when available — used for endpoint auto-discovery
+    sbom = None
+    if sbom_path is not None and sbom_path.exists():
+        try:
+            from nuguard.sbom.serializer import AiSbomSerializer  # noqa: PLC0415
+            sbom = AiSbomSerializer.from_json(sbom_path.read_text(encoding="utf-8"))
+            _log.debug("Loaded SBOM from %s for endpoint discovery", sbom_path)
+        except Exception as exc:
+            _log.debug("Could not load SBOM for endpoint discovery: %s", exc)
 
     policy = None
     controls = None
     if policy_path is not None:
         if not policy_path.exists():
             raise FileNotFoundError(f"Policy file not found: {policy_path}")
-        from nuguard.policy.parser import parse_policy  # noqa: PLC0415
         from nuguard.policy.loader import compiled_path_for, load_controls  # noqa: PLC0415
+        from nuguard.policy.parser import parse_policy  # noqa: PLC0415
 
         policy = parse_policy(policy_path.read_text(encoding="utf-8"))
 
@@ -218,6 +239,7 @@ async def _run_validate(
         controls=controls,
         canary_config=canary_config,
         baseline_capability_map=baseline_map,
+        sbom=sbom,
     )
     return await runner.run()
 
@@ -280,6 +302,7 @@ def _print_validate_result(result: "ValidateRunResult", meta: ReportMeta | None 
     # Verbose: print scenario traces grouped by scenario
     if meta.verbose and result.policy_records:
         from collections import OrderedDict  # noqa: PLC0415
+
         from rich.panel import Panel  # noqa: PLC0415
 
         _console.print()

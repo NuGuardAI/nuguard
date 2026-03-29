@@ -1,6 +1,6 @@
 # NuGuard Policy Report
 
-**Generated:** 2026-03-29T00:55:47+00:00  
+**Generated:** 2026-03-29T05:15:57+00:00  
 **LLM:** not used  
 
 **14 finding(s)**

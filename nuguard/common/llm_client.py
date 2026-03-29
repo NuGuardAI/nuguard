@@ -67,7 +67,7 @@ class LLMClient:
             or os.environ.get("LITELLM_MODEL", "")
             or _DEFAULT_MODEL
         )
-        self.api_key: str | None = api_key or self._resolve_api_key(self.model)
+        self.api_key: str | None = api_key or _resolve_api_key(self.model)
         self.min_temperature: float | None = min_temperature
         self.api_base: str | None = api_base
         self.budget_tokens: int | None = budget_tokens

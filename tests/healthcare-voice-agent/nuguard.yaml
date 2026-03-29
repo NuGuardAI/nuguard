@@ -13,8 +13,8 @@ policy:
 
 # ─── LLM settings ─────────────────────────────────────────────────────────────
 llm:
-  model: gemini/gemini-3.1-flash    # any LiteLLM model string (openai/gpt-4o, etc.)
-  api_key: ${LITELLM_API_KEY}     # never put keys here; use env var interpolation
+  model: gemini/gemini-2.0-flash    # any LiteLLM model string (openai/gpt-4o, etc.)
+#  api_key: ${LITELLM_API_KEY}     # never put keys here; use env var interpolation
 
 # ─── SBOM generation ──────────────────────────────────────────────────────────
 sbom_generation:
@@ -29,9 +29,10 @@ validate:
   target: https://hcagentcu0032557.delightfulrock-1fe46f1f.centralus.azurecontainerapps.io
 
   # Path of the chat/agent endpoint on the target (default: /chat)
-  target_endpoint: /run_langgraph
+  # target_endpoint: /run_langgraph
   chat_payload_key: phrases
   chat_payload_list: true
+  chat_response_key: prognosis
   llm: true
 
   # Authentication — choose one type:
@@ -113,8 +114,9 @@ redteam:
   canary: ./canary.json
 
   # Request body shape — override if your app uses a non-standard payload
-  # chat_payload_key: message      # JSON key for the message (default: message)
-  # chat_payload_list: false       # wrap message value in a list (default: false)
+  chat_payload_key: phrases         # JSON key for the message
+  chat_payload_list: true           # wrap message value in a list
+  chat_response_key: prognosis      # JSON key to extract response text from reply
 
   # Scan profile:
   #   ci   — fast; only scenarios with pre-impact score ≥ 5 (default)

@@ -162,14 +162,18 @@ def test_check_json_output(policy_file: Path, sbom_file: Path) -> None:
         ],
     )
     assert result.exit_code in (0, 1, 2), result.output
-    # Output may contain log lines before the JSON; find the JSON array
-    # by locating a '[' followed by newline+whitespace+'{' (start of JSON array of objects)
+    # Output may contain log lines before the JSON object; find the opening '{'
     output = result.output
     import re as _re
-    m = _re.search(r"\[\s*\{", output)
-    assert m is not None, f"No JSON array found in output: {output!r}"
+    m = _re.search(r"\{", output)
+    assert m is not None, f"No JSON object found in output: {output!r}"
     parsed = json.loads(output[m.start():])
-    assert isinstance(parsed, list)
+    # Supports both legacy bare-array format and current {"_meta":…,"findings":[…]} envelope
+    if isinstance(parsed, list):
+        findings = parsed
+    else:
+        findings = parsed.get("findings", [])
+    assert isinstance(findings, list)
 
 
 def test_check_reads_paths_from_nuguard_yaml(

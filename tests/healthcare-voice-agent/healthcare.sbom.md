@@ -1,6 +1,6 @@
 # SBOM Report: https://github.com/NuGuardAI/Healthcare-voice-agent
 
-**Generated:** 2026-03-29T01:05:00Z  
+**Generated:** 2026-03-29T05:15:30Z  
 **Schema version:** 1.4.0  
 
 ## Summary

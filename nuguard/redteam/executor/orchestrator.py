@@ -16,7 +16,6 @@ if TYPE_CHECKING:
 from nuguard.models.exploit_chain import ExploitChain, GoalType
 from nuguard.models.finding import Finding
 from nuguard.models.policy import CognitivePolicy
-from nuguard.sbom.models import NodeType
 from nuguard.redteam.risk_engine import (
     compliance_mapper,
     remediation_generator,
@@ -27,7 +26,7 @@ from nuguard.redteam.scenarios.scenario_types import AttackScenario
 from nuguard.redteam.target.action_logger import ActionLogger
 from nuguard.redteam.target.canary import CanaryConfig, CanaryScanner
 from nuguard.redteam.target.client import TargetAppClient, TargetUnavailableError
-from nuguard.sbom.models import AiSbomDocument
+from nuguard.sbom.models import AiSbomDocument, NodeType
 
 from .executor import AttackExecutor, StepResult
 from .guided_executor import GuidedAttackExecutor
@@ -180,10 +179,12 @@ def _discover_chat_config(
     chat_payload_key: str,
     chat_payload_list: bool,
 ) -> tuple[str, str, bool]:
-    """Auto-discover chat endpoint config from SBOM API_ENDPOINT nodes.
+    """Auto-discover chat endpoint config from SBOM API_ENDPOINT node metadata.
 
     Looks for a POST endpoint whose metadata has ``chat_payload_key`` set.
-    Falls back to the provided defaults if nothing is found.
+    Falls back to the provided defaults if nothing is found.  Live probing
+    (when ``chat_path`` is empty) is handled separately in
+    :meth:`RedteamOrchestrator.run`.
 
     Returns ``(chat_path, chat_payload_key, chat_payload_list)``.
     """
@@ -311,6 +312,7 @@ class RedteamOrchestrator:
         chat_path: str = "/chat",
         chat_payload_key: str = "message",
         chat_payload_list: bool = False,
+        chat_response_key: str | None = None,
         concurrency: int = DEFAULT_CONCURRENCY,
         request_timeout: float = 120.0,
         redteam_llm: "LLMClient | None" = None,
@@ -359,6 +361,7 @@ class RedteamOrchestrator:
         self._chat_path, self._chat_payload_key, self._chat_payload_list = (
             _discover_chat_config(sbom, chat_path, chat_payload_key, chat_payload_list)
         )
+        self._chat_response_key = chat_response_key
         # Populated by run() — scenarios executed and their titles
         self.scenarios_run: int = 0
         self.scenarios_executed: list[tuple[str, str, bool]] = []  # (title, goal_type, had_finding)
@@ -393,10 +396,16 @@ class RedteamOrchestrator:
             self._profile,
         )
 
-        # 0. Auth bootstrap — resolve effective auth and verify every credential
+        # 0. Endpoint auto-discovery — when chat_path was not explicitly configured,
+        #    probe SBOM POST endpoints live to find one that accepts chat requests.
+        if not self._chat_path:
+            await self._maybe_probe_endpoints()
+
+        # 0b. Auth bootstrap — resolve effective auth and verify every credential
         #    before running any scenario. Raises TargetUnavailableError on network
         #    failure; raises AuthError when the default credential is rejected.
         import uuid as _uuid
+
         from nuguard.common.auth import AuthConfig as _AuthConfig
         from nuguard.common.bootstrap import AuthBootstrapper
         from nuguard.common.errors import AuthError
@@ -535,6 +544,7 @@ class RedteamOrchestrator:
                 chat_path=self._chat_path,
                 chat_payload_key=self._chat_payload_key,
                 chat_payload_list=self._chat_payload_list,
+                chat_response_key=self._chat_response_key,
                 timeout=self._request_timeout,
                 default_headers=self._extra_headers or None,
             ) as client,
@@ -1131,3 +1141,54 @@ class RedteamOrchestrator:
                 )
 
         return findings
+
+    async def _maybe_probe_endpoints(self) -> None:
+        """Live-probe SBOM endpoints when no explicit chat path is configured.
+
+        Updates ``self._chat_path``, ``self._chat_payload_key``, and
+        ``self._chat_payload_list`` in-place when a working endpoint is found.
+        Only runs when ``self._chat_path`` is empty or the generic default '/chat'.
+        """
+        from nuguard.common.endpoint_probe import probe_chat_endpoints  # noqa: PLC0415
+
+        if self._chat_path:
+            # Already have an explicit path — skip probing
+            return
+
+        auth_headers: dict[str, str] = {}
+        if self._extra_headers:
+            auth_headers.update(self._extra_headers)
+
+        _log.info(
+            "redteam: target_endpoint not configured — probing SBOM endpoints at %s",
+            self._target_url,
+        )
+        result = await probe_chat_endpoints(
+            target_url=self._target_url,
+            sbom=self._sbom,
+            auth_headers=auth_headers or None,
+            timeout=15.0,
+            known_payload_key=(
+                self._chat_payload_key
+                if self._chat_payload_key != "message"
+                else None
+            ),
+            known_payload_list=self._chat_payload_list,
+            known_response_key=self._chat_response_key,
+        )
+        if result:
+            path, pay_key, pay_list = result
+            _log.info(
+                "redteam: discovered endpoint %s (payload_key=%r list=%s)",
+                path, pay_key, pay_list,
+            )
+            self._chat_path = path
+            self._chat_payload_key = pay_key
+            self._chat_payload_list = pay_list
+        else:
+            _log.warning(
+                "redteam: endpoint probe found nothing — keeping default %r",
+                self._chat_path or "/chat",
+            )
+            if not self._chat_path:
+                self._chat_path = "/chat"

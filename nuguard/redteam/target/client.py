@@ -13,6 +13,7 @@ from typing import Any
 import httpx
 
 from nuguard.common.errors import TargetUnavailableError  # noqa: F401 — re-exported for callers
+
 from .session import AttackSession
 
 _log = logging.getLogger(__name__)
@@ -33,6 +34,7 @@ class TargetAppClient:
         chat_path: str = "/chat",
         chat_payload_key: str = "message",
         chat_payload_list: bool = False,
+        chat_response_key: str | None = None,
         timeout: float = DEFAULT_TIMEOUT,
         max_consecutive_errors: int = MAX_CONSECUTIVE_ERRORS,
         max_429_retries: int = DEFAULT_MAX_429_RETRIES,
@@ -44,6 +46,7 @@ class TargetAppClient:
         self._chat_path = chat_path
         self._chat_payload_key = chat_payload_key
         self._chat_payload_list = chat_payload_list
+        self._chat_response_key = chat_response_key  # explicit key overrides auto-detection
         # Merge caller-supplied headers (e.g. auth) on top of the nuguard defaults.
         # These apply to every request made by this client instance.
         merged_headers: dict[str, str] = {"User-Agent": "nuguard-redteam/1.0"}
@@ -180,27 +183,34 @@ class TargetAppClient:
                 self._record_chat_error(label[:120])
                 return f"[REQUEST_ERROR: {label}]", []
 
-        # Extract response text — try common response shapes
-        text = (
-            data.get("response")
-            or data.get("content")
-            or data.get("message", {}).get("content", "")
-            or ""
-        )
+        # Extract response text — try explicit key first, then common shapes
+        text = ""
+        if self._chat_response_key and isinstance(data, dict):
+            text = str(data.get(self._chat_response_key) or "")
+        if not text and isinstance(data, dict):
+            text = (
+                data.get("response")
+                or data.get("content")
+                or data.get("message", {}).get("content", "")
+                or ""
+            )
         # Handle list-of-messages response (e.g. openai-cs-agents-demo)
-        if not text and isinstance(data.get("messages"), list):
+        if not text and isinstance(data, dict) and isinstance(data.get("messages"), list):
             msgs = data["messages"]
             if msgs and isinstance(msgs[-1], dict):
                 text = msgs[-1].get("content") or msgs[-1].get("text") or ""
         if not text and isinstance(data, str):
             text = data
+        # Last resort: return full JSON so evaluators have something to work with
+        if not text and isinstance(data, dict) and data:
+            text = json.dumps(data)
 
         # Extract tool calls
         tool_calls: list[dict] = []
         raw_calls = (
-            data.get("tool_calls")
-            or data.get("function_calls")
-            or data.get("message", {}).get("tool_calls", [])
+            (data.get("tool_calls") if isinstance(data, dict) else None)
+            or (data.get("function_calls") if isinstance(data, dict) else None)
+            or (data.get("message", {}).get("tool_calls", []) if isinstance(data, dict) else [])
             or []
         )
         if isinstance(raw_calls, list):

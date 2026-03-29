@@ -1,9 +1,9 @@
 """ValidateRunner — async orchestrator for nuguard validate mode."""
 from __future__ import annotations
 
+import logging
 import re
 import uuid
-import logging
 from typing import TYPE_CHECKING
 
 from rich.console import Console
@@ -30,6 +30,7 @@ from nuguard.validate.scenarios import build_scenarios
 if TYPE_CHECKING:
     from nuguard.common.auth import AuthConfig
     from nuguard.models.validate import CapabilityMap
+    from nuguard.sbom.models import AiSbomDocument
 
 _log = logging.getLogger(__name__)
 _console = Console()
@@ -137,6 +138,7 @@ class ValidateRunner:
         canary_config: CanaryConfig | None = None,
         baseline_capability_map: "CapabilityMap | None" = None,
         run_id: str | None = None,
+        sbom: "AiSbomDocument | None" = None,
     ) -> None:
         self._config = validate_config
         self._auth_config = auth_config
@@ -145,17 +147,25 @@ class ValidateRunner:
         self._canary_config = canary_config
         self._baseline_map = baseline_capability_map
         self._run_id = run_id or str(uuid.uuid4())
+        self._sbom = sbom
 
     async def run(self) -> ValidateRunResult:
         """Execute all validate scenarios and return a ValidateRunResult."""
         # ── Step 0: Auth bootstrap ────────────────────────────────────────────
         target_url = self._config.target
-        endpoint = self._config.target_endpoint or "/chat"
+        endpoint = self._config.target_endpoint  # empty string → auto-discover below
 
         if not target_url:
             raise ValueError(
                 "validate.target is required in nuguard.yaml (or pass --target)"
             )
+
+        # ── Step 0a: Endpoint auto-discovery from SBOM ───────────────────────
+        if not endpoint and self._sbom is not None:
+            endpoint = await self._discover_endpoint()
+        if not endpoint:
+            endpoint = "/chat"
+            _log.debug("No target_endpoint configured and SBOM unavailable — defaulting to /chat")
 
         bootstrapper = AuthBootstrapper(
             target_url=target_url,
@@ -204,6 +214,7 @@ class ValidateRunner:
             default_headers=auth_headers if auth_headers else None,
             chat_payload_key=self._config.chat_payload_key,
             chat_payload_list=self._config.chat_payload_list,
+            chat_response_key=self._config.chat_response_key or None,
         )
 
         # ── Step 4–6: Execute scenarios ───────────────────────────────────────
@@ -446,3 +457,52 @@ class ValidateRunner:
                     )
 
         return findings
+
+    async def _discover_endpoint(self) -> str:
+        """Probe SBOM API_ENDPOINT nodes to find a chat-capable path.
+
+        Returns the discovered path (e.g. ``/run_langgraph``) or empty string
+        if nothing responds usefully.
+        """
+        from nuguard.common.endpoint_probe import probe_chat_endpoints  # noqa: PLC0415
+
+        auth_headers: dict[str, str] = {}
+        if self._auth_config:
+            auth_headers = self._auth_config.to_headers()
+
+        _log.info(
+            "validate: target_endpoint not set — probing SBOM endpoints at %s",
+            self._config.target,
+        )
+        _console.print(
+            "[dim]target_endpoint not configured — probing SBOM endpoints…[/dim]"
+        )
+
+        result = await probe_chat_endpoints(
+            target_url=self._config.target,
+            sbom=self._sbom,  # type: ignore[arg-type]
+            auth_headers=auth_headers or None,
+            timeout=min(self._config.request_timeout, 15.0),
+            known_payload_key=(
+                self._config.chat_payload_key
+                if self._config.chat_payload_key != "message"
+                else None
+            ),
+            known_payload_list=self._config.chat_payload_list,
+            known_response_key=self._config.chat_response_key or None,
+        )
+        if result:
+            path, pay_key, pay_list = result
+            _console.print(
+                f"[green]✓[/green] Discovered endpoint: [bold]{path}[/bold]"
+                f"  (payload_key={pay_key!r})"
+            )
+            # Update config fields so the client uses the discovered values
+            self._config = self._config.model_copy(update={
+                "target_endpoint": path,
+                "chat_payload_key": pay_key,
+                "chat_payload_list": pay_list,
+            })
+            return path
+        _log.warning("validate: endpoint probe found nothing — falling back to /chat")
+        return ""

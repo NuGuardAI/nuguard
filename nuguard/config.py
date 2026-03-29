@@ -92,6 +92,8 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_chat_payload_key"] = redteam["chat_payload_key"]
     if "chat_payload_list" in redteam:
         flat["redteam_chat_payload_list"] = bool(redteam["chat_payload_list"])
+    if "chat_response_key" in redteam:
+        flat["redteam_chat_response_key"] = redteam["chat_response_key"]
     if "auth_header" in redteam:
         flat["redteam_auth_header"] = redteam["auth_header"]
     if "canary" in redteam:
@@ -199,7 +201,7 @@ class ValidateConfig(BaseModel):
     """Configuration for nuguard validate mode (Phase 3 execution; Phase 1 config parsing)."""
 
     target: str = ""
-    target_endpoint: str = "/chat"
+    target_endpoint: str = ""  # empty = auto-discover from SBOM; falls back to /chat
     auth: ValidateAuthConfig = Field(default_factory=ValidateAuthConfig)
     canary: str = ""
     workflows: list[str] = Field(default_factory=list)
@@ -210,6 +212,7 @@ class ValidateConfig(BaseModel):
     use_llm: bool = False
     chat_payload_key: str = "message"
     chat_payload_list: bool = False
+    chat_response_key: str = ""  # explicit JSON key for response text (empty = auto-detect)
 
 
 class NuGuardConfig(BaseSettings):
@@ -268,8 +271,11 @@ class NuGuardConfig(BaseSettings):
         description="URL of the running AI application under test (yaml: redteam.target).",
     )
     target_endpoint: str = Field(
-        default="/chat",
-        description="Agent chat endpoint path on the target (yaml: redteam.target_endpoint).",
+        default="",
+        description=(
+            "Agent chat endpoint path on the target (yaml: redteam.target_endpoint). "
+            "Empty string = auto-discover from SBOM; falls back to /chat."
+        ),
     )
     redteam_chat_payload_key: str = Field(
         default="message",
@@ -283,6 +289,13 @@ class NuGuardConfig(BaseSettings):
         description=(
             "When true, the chat message value is sent as a list rather than a plain string "
             "(yaml: redteam.chat_payload_list)."
+        ),
+    )
+    redteam_chat_response_key: str = Field(
+        default="",
+        description=(
+            "JSON key to extract response text from the target's reply body "
+            "(yaml: redteam.chat_response_key). Empty string = auto-detect."
         ),
     )
     redteam_auth_header: str | None = Field(

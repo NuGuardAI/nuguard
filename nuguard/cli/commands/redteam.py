@@ -178,6 +178,7 @@ def redteam(
                 chat_path=cfg.target_endpoint,
                 chat_payload_key=cfg.redteam_chat_payload_key,
                 chat_payload_list=cfg.redteam_chat_payload_list,
+                chat_response_key=cfg.redteam_chat_response_key or None,
                 guided_conversations=effective_guided,
                 guided_max_turns=effective_guided_max_turns,
                 guided_concurrency=effective_guided_concurrency,
@@ -210,7 +211,12 @@ def redteam(
 
     # Output
     llm_models = [m for m in [cfg.redteam_llm_model, cfg.redteam_eval_llm_model] if m]
-    meta = ReportMeta(llm_models=llm_models, verbose=cfg.redteam_verbose)
+    meta = ReportMeta(
+        llm_models=llm_models,
+        verbose=cfg.redteam_verbose,
+        target_url=target_url or "",
+        target_endpoint=cfg.target_endpoint or "/chat",
+    )
     _print_findings(findings, effective_format, meta)
     if output:
         if effective_format == "markdown":
@@ -258,6 +264,7 @@ async def _run_redteam(
     chat_path: str = "/chat",
     chat_payload_key: str = "message",
     chat_payload_list: bool = False,
+    chat_response_key: str | None = None,
     guided_conversations: bool = True,
     guided_max_turns: int = 12,
     guided_concurrency: int = 3,
@@ -303,8 +310,8 @@ async def _run_redteam(
     policy_controls: list | None = None
     if policy_path and policy_path.exists():
         try:
-            from nuguard.policy.parser import parse_policy
             from nuguard.policy.loader import compiled_path_for, load_controls
+            from nuguard.policy.parser import parse_policy
 
             cognitive_policy = parse_policy(policy_path.read_text())
 
@@ -367,6 +374,7 @@ async def _run_redteam(
                 chat_path=chat_path,
                 chat_payload_key=chat_payload_key,
                 chat_payload_list=chat_payload_list,
+                chat_response_key=chat_response_key,
                 guided_conversations=guided_conversations,
                 guided_max_turns=guided_max_turns,
                 guided_concurrency=guided_concurrency,
@@ -393,6 +401,7 @@ async def _run_redteam(
         chat_path=chat_path,
         chat_payload_key=chat_payload_key,
         chat_payload_list=chat_payload_list,
+        chat_response_key=chat_response_key,
         guided_conversations=guided_conversations,
         guided_max_turns=guided_max_turns,
         guided_concurrency=guided_concurrency,
@@ -418,6 +427,7 @@ async def _run_orchestrator(
     chat_path: str = "/chat",
     chat_payload_key: str = "message",
     chat_payload_list: bool = False,
+    chat_response_key: str | None = None,
     guided_conversations: bool = True,
     guided_max_turns: int = 12,
     guided_concurrency: int = 3,
@@ -450,6 +460,7 @@ async def _run_orchestrator(
         chat_path=chat_path,
         chat_payload_key=chat_payload_key,
         chat_payload_list=chat_payload_list,
+        chat_response_key=chat_response_key,
         guided_conversations=guided_conversations,
         guided_max_turns=guided_max_turns,
         guided_concurrency=guided_concurrency,
@@ -549,7 +560,7 @@ def _findings_to_markdown(findings: list, meta: ReportMeta | None = None) -> str
         if f.owasp_llm_ref:
             lines += [f"**OWASP LLM:** {f.owasp_llm_ref}", ""]
         if f.evidence:
-            lines += ["**Evidence:**", f"```", f.evidence[:500], "```", ""]
+            lines += ["**Evidence:**", "```", f.evidence[:500], "```", ""]
     return "\n".join(lines)
 
 
