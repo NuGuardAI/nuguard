@@ -208,6 +208,8 @@ class ValidateConfig(BaseModel):
     request_timeout: float = 60.0
     verbose: bool = False
     use_llm: bool = False
+    chat_payload_key: str = "message"
+    chat_payload_list: bool = False
 
 
 class NuGuardConfig(BaseSettings):

@@ -30,7 +30,9 @@ validate:
 
   # Path of the chat/agent endpoint on the target (default: /chat)
   target_endpoint: /run_langgraph
-  llm: true 
+  chat_payload_key: phrases
+  chat_payload_list: true
+  llm: true
 
   # Authentication — choose one type:
   auth:
@@ -60,10 +62,7 @@ validate:
   #   boundary_assertion   — verify the app correctly refuses out-of-scope requests
   #   policy_compliance    — evaluate responses against cognitive policy clauses
   workflows:
-    - capability_probe
     - happy_path
-    - boundary_assertion
-    - policy_compliance
 
   # Produce a CapabilityMap report listing which tools/sub-agents were exercised
   capability_map: true

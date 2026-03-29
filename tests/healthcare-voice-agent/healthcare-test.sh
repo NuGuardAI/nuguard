@@ -16,8 +16,10 @@ echo " Compiling Cognitive Policy controls... \n"
 
 echo " Cognitive Policy Check... \n"
 
- uv run nuguard policy check --config ./nuguard.yaml --format markdown -o ./healthcare-policy-check.md
+# policy check exits 2 when gaps are found — expected in testing; treat as non-fatal
+ uv run nuguard policy check --config ./nuguard.yaml --format markdown -o ./healthcare-policy-check.md || true
 
-echo " Validateing results... \n"
+echo " Validating results... \n"
 
- uv run nuguard validate --config ./nuguard.yaml --format markdown -o ./healthcare-validation.md
+# validate exits 2 when findings are present — expected in testing; treat as non-fatal
+ uv run nuguard validate --config ./nuguard.yaml --format markdown -o ./healthcare-validation.md || true

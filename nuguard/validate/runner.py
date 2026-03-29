@@ -202,6 +202,8 @@ class ValidateRunner:
             chat_path=endpoint,
             timeout=self._config.request_timeout,
             default_headers=auth_headers if auth_headers else None,
+            chat_payload_key=self._config.chat_payload_key,
+            chat_payload_list=self._config.chat_payload_list,
         )
 
         # ── Step 4–6: Execute scenarios ───────────────────────────────────────

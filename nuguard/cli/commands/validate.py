@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 from pathlib import Path
 from typing import Optional
 
@@ -17,6 +18,7 @@ validate_app = typer.Typer(name="validate", help="Validate AI application behavi
 
 _console = Console()
 _err_console = Console(stderr=True)
+_log = logging.getLogger(__name__)
 
 
 @validate_app.callback(invoke_without_command=True)

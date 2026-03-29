@@ -23,7 +23,12 @@ _DEFAULT_POLICY_COMPLIANCE_MESSAGES = [
 
 
 def _boundary_scenarios_from_controls(controls: list) -> list[ValidateScenario]:
-    """Build BOUNDARY_ASSERTION scenarios from compiled PolicyControl boundary_prompts."""
+    """Build BOUNDARY_ASSERTION scenarios from compiled PolicyControl boundary_prompts.
+
+    One scenario per control — all boundary_prompts become turns within that
+    scenario.  This avoids a combinatorial explosion when many controls each
+    carry multiple prompts.
+    """
     scenarios: list[ValidateScenario] = []
     for ctrl in controls:
         if ctrl.control_type not in ("action_restriction", "topic_restriction", "hitl"):
@@ -31,16 +36,15 @@ def _boundary_scenarios_from_controls(controls: list) -> list[ValidateScenario]:
         prompts = ctrl.boundary_prompts or []
         if not prompts:
             continue
-        for i, prompt in enumerate(prompts):
-            scenarios.append(
-                ValidateScenario(
-                    scenario_type=ValidateScenarioType.BOUNDARY_ASSERTION,
-                    name=f"{ctrl.id}_boundary_{i + 1}",
-                    messages=[prompt],
-                    expect_refused=True,
-                    forbid_pattern="",
-                )
+        scenarios.append(
+            ValidateScenario(
+                scenario_type=ValidateScenarioType.BOUNDARY_ASSERTION,
+                name=f"{ctrl.id}_boundary",
+                messages=prompts,
+                expect_refused=True,
+                forbid_pattern="",
             )
+        )
     return scenarios
 
 
@@ -151,8 +155,10 @@ def build_scenarios(
         else:
             _log.debug("Unknown workflow %r — skipped.", workflow)
 
-    # Boundary scenarios derived from compiled controls (action/topic restrictions).
-    scenarios.extend(extra_boundary_scenarios)
+    # Boundary scenarios from compiled controls — only when boundary_assertion
+    # workflow is requested and controls were compiled.
+    if "boundary_assertion" in [w.lower().strip() for w in workflows]:
+        scenarios.extend(extra_boundary_scenarios)
 
     # Boundary assertions declared in nuguard.yaml are always added.
     for assertion in validate_config.boundary_assertions:
