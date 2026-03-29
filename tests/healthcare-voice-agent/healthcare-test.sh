@@ -3,6 +3,8 @@
 # Exit on error
 set -e
 
+source .env
+
 echo "🚀 Preparing Healthcare Voice Agent for NuGuard Testing... \n"
 
  uv run nuguard sbom generate --from-repo https://github.com/NuGuardAI/Healthcare-voice-agent \

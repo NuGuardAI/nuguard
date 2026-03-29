@@ -1,11 +1,11 @@
 {
   "schema_version": "1.4.0",
-  "generated_at": "2026-03-28T02:41:19Z",
+  "generated_at": "2026-03-29T01:05:00Z",
   "generator": "nuguard",
   "target": "https://github.com/NuGuardAI/Healthcare-voice-agent",
   "nodes": [
     {
-      "id": "ecbd9180-6c92-44fa-86d8-db49ffd53085",
+      "id": "47a44483-7c27-4ce6-84be-5571ff79e2e4",
       "name": "app",
       "component_type": "AGENT",
       "confidence": 0.9,
@@ -34,7 +34,7 @@
       ]
     },
     {
-      "id": "0d945be3-3bb5-4ba7-854f-3733e51c9ea7",
+      "id": "323a82e2-fcfd-49ec-b213-3213f06f01bb",
       "name": "fetch_doctor_details_agent",
       "component_type": "AGENT",
       "confidence": 0.85,
@@ -64,7 +64,7 @@
       ]
     },
     {
-      "id": "f6da1493-d8dc-4b67-b183-351dafca0ef4",
+      "id": "8a08ca74-fe27-404d-a2e3-15a576223a36",
       "name": "normalize_agent",
       "component_type": "AGENT",
       "confidence": 0.85,
@@ -94,7 +94,7 @@
       ]
     },
     {
-      "id": "bb0e563e-8918-4072-ac06-ab28be834537",
+      "id": "f080aeda-644b-44e0-b70e-3fab548d2fca",
       "name": "prognosis_search_agent",
       "component_type": "AGENT",
       "confidence": 0.85,
@@ -124,7 +124,7 @@
       ]
     },
     {
-      "id": "fcdb24c4-e8af-4d77-96c8-7b183fcb6da0",
+      "id": "1a5ca09d-8d3b-43c0-85a9-bd1dbf132a77",
       "name": "recommend_specialists_agent",
       "component_type": "AGENT",
       "confidence": 0.85,
@@ -154,7 +154,7 @@
       ]
     },
     {
-      "id": "75fc3b80-61d5-4090-9182-c40f0b2fe45d",
+      "id": "2ee468e1-2d41-4cd0-8c73-9827f2c70c1c",
       "name": "specialist_lookup_agent",
       "component_type": "AGENT",
       "confidence": 0.85,
@@ -184,7 +184,7 @@
       ]
     },
     {
-      "id": "267c64bc-c5f9-4379-8c7f-c871d1cad3fa",
+      "id": "464faf1b-3488-4f14-b33e-0569ec650bfd",
       "name": "generic",
       "component_type": "API_ENDPOINT",
       "confidence": 0.9,
@@ -210,7 +210,7 @@
       ]
     },
     {
-      "id": "48f97784-ce8d-4f94-ad2f-f07430a13926",
+      "id": "2dd827c8-397f-4fa9-b403-195150ccbd38",
       "name": "Port 8080",
       "component_type": "API_ENDPOINT",
       "confidence": 0.9,
@@ -240,7 +240,7 @@
       ]
     },
     {
-      "id": "a5130b58-9584-4ab9-a444-fc7b2fb702be",
+      "id": "f08ab67f-c790-41ae-85a7-8fe34cd7cdc7",
       "name": "create_appointment",
       "component_type": "API_ENDPOINT",
       "confidence": 0.9,
@@ -272,7 +272,7 @@
       ]
     },
     {
-      "id": "7ecde136-13c5-40ba-96a8-c0882ae27920",
+      "id": "f0919b44-17e1-4417-bf26-ff840ca723a7",
       "name": "get_medical_history",
       "component_type": "API_ENDPOINT",
       "confidence": 0.9,
@@ -308,7 +308,7 @@
       ]
     },
     {
-      "id": "1d1383c5-6fcb-4212-88f5-b746bfc72f47",
+      "id": "3ed9b266-7f87-4785-96c3-1e28a7d1c973",
       "name": "get_patient_details",
       "component_type": "API_ENDPOINT",
       "confidence": 0.9,
@@ -344,7 +344,7 @@
       ]
     },
     {
-      "id": "d075ef65-61c9-4c46-b5ae-caf5b605384d",
+      "id": "42ea2bb1-7df7-484f-8d62-8eadaf48bb27",
       "name": "health_check",
       "component_type": "API_ENDPOINT",
       "confidence": 0.9,
@@ -376,7 +376,7 @@
       ]
     },
     {
-      "id": "a321ce06-f8a9-4588-968b-efafcf1e177c",
+      "id": "97f74f9a-35e3-4343-a1c6-acfb5b47126e",
       "name": "login",
       "component_type": "API_ENDPOINT",
       "confidence": 0.9,
@@ -408,7 +408,7 @@
       ]
     },
     {
-      "id": "6a8ff044-203c-463c-a744-2ff1797a51d6",
+      "id": "a27c1efb-5cd6-42ab-8699-a587329afaab",
       "name": "normalize",
       "component_type": "API_ENDPOINT",
       "confidence": 0.9,
@@ -440,7 +440,7 @@
       ]
     },
     {
-      "id": "49c9c4b1-cff6-494f-8793-50ee4e16f365",
+      "id": "e9184715-65a2-463f-94c0-cc0a1acd03bf",
       "name": "run_langgraph",
       "component_type": "API_ENDPOINT",
       "confidence": 0.9,
@@ -472,7 +472,7 @@
       ]
     },
     {
-      "id": "a40951b5-6c69-4b3e-9b5f-7db2a4268476",
+      "id": "84058780-8e6a-4fb1-a138-741a096d0299",
       "name": "serve_spa",
       "component_type": "API_ENDPOINT",
       "confidence": 0.9,
@@ -508,7 +508,7 @@
       ]
     },
     {
-      "id": "df65f71f-bfbb-4052-8870-eee17fd5edbc",
+      "id": "a5edc0f9-ad4b-483f-ac61-c71ef6c0e5db",
       "name": "generic",
       "component_type": "AUTH",
       "confidence": 0.6,
@@ -552,7 +552,7 @@
       ]
     },
     {
-      "id": "5a932246-63db-4b68-a0c4-e6190a531196",
+      "id": "6d7d61c0-cbdd-440d-b86f-993846e70141",
       "name": "node:20",
       "component_type": "CONTAINER_IMAGE",
       "confidence": 0.99,
@@ -594,7 +594,7 @@
       ]
     },
     {
-      "id": "9c73f529-9a6c-45fd-b31d-e2a3b265dfea",
+      "id": "734fd20b-78fc-4a5b-b1df-974601348dc9",
       "name": "python:3.11-slim",
       "component_type": "CONTAINER_IMAGE",
       "confidence": 0.99,
@@ -636,7 +636,7 @@
       ]
     },
     {
-      "id": "5785d806-ceda-452f-a470-c6eb40d70233",
+      "id": "f2fb3386-e448-431c-bf6c-ad8cd4474add",
       "name": "postgres",
       "component_type": "DATASTORE",
       "confidence": 0.95,
@@ -753,7 +753,7 @@
       ]
     },
     {
-      "id": "94c89f99-d583-4639-8d6b-948c142003a7",
+      "id": "346009d5-7154-4df1-89c6-85caa82ecc8e",
       "name": "generic",
       "component_type": "DEPLOYMENT",
       "confidence": 0.98,
@@ -846,7 +846,7 @@
       ]
     },
     {
-      "id": "31372bbd-f4d4-44cb-ba64-f7f581a901d0",
+      "id": "04d85120-2a7e-4690-bb50-b33588097c0a",
       "name": "framework:langgraph",
       "component_type": "FRAMEWORK",
       "confidence": 0.95,
@@ -901,7 +901,7 @@
       ]
     },
     {
-      "id": "771e3733-1add-488f-9c5c-0b86aab19568",
+      "id": "51045ba8-3ea7-4f4f-b45a-86ac820c2ec5",
       "name": "llm_clients_ts",
       "component_type": "FRAMEWORK",
       "confidence": 0.85,
@@ -931,7 +931,7 @@
       ]
     },
     {
-      "id": "6f5f0ffd-24a0-4d1e-a573-2ceec08563de",
+      "id": "8d00c5f9-855f-41cf-9dee-9b3da3cef42f",
       "name": "gemini-2.0-flash",
       "component_type": "MODEL",
       "confidence": 0.88,
@@ -973,7 +973,7 @@
       ]
     },
     {
-      "id": "f6a20174-30ca-4835-89aa-21adf52ebe69",
+      "id": "1f9f059d-9eb4-46c8-bc3c-ea81faf3e4c0",
       "name": "gpt-4",
       "component_type": "MODEL",
       "confidence": 0.9,
@@ -1017,7 +1017,7 @@
       ]
     },
     {
-      "id": "8ec34196-2e5b-4843-b049-7235c87947f0",
+      "id": "ae514de4-9610-4f55-a20a-e3e92fe43d84",
       "name": "admin",
       "component_type": "PRIVILEGE",
       "confidence": 0.6,
@@ -1045,7 +1045,7 @@
       ]
     },
     {
-      "id": "01572788-15e6-478f-b0d8-e4b65142dbce",
+      "id": "87c42343-f66b-4f38-bbc6-9df63d192b9d",
       "name": "db_write",
       "component_type": "PRIVILEGE",
       "confidence": 0.95,
@@ -1091,7 +1091,7 @@
       ]
     },
     {
-      "id": "12dd3b29-c47a-4f71-b430-9b8ce4f0fa06",
+      "id": "0d6c4d82-ef62-429d-bb86-aed98e18944d",
       "name": "System Instruction",
       "component_type": "PROMPT",
       "confidence": 0.65,
@@ -1153,7 +1153,7 @@
       ]
     },
     {
-      "id": "700b6bdc-dc3d-4377-8b16-c389c6ddd0c5",
+      "id": "74bbe52b-18f0-471d-9e1b-9e1495f39ce2",
       "name": "System Message",
       "component_type": "PROMPT",
       "confidence": 0.8,
@@ -1187,7 +1187,7 @@
       ]
     },
     {
-      "id": "62130d3e-da15-4b81-aca2-93ac186a12f6",
+      "id": "7dc7bb0d-af35-42e4-a567-3cb21920ede2",
       "name": "search",
       "component_type": "TOOL",
       "confidence": 0.75,
@@ -1220,143 +1220,143 @@
   ],
   "edges": [
     {
-      "source": "f6da1493-d8dc-4b67-b183-351dafca0ef4",
-      "target": "bb0e563e-8918-4072-ac06-ab28be834537",
+      "source": "8a08ca74-fe27-404d-a2e3-15a576223a36",
+      "target": "f080aeda-644b-44e0-b70e-3fab548d2fca",
       "relationship_type": "CALLS"
     },
     {
-      "source": "bb0e563e-8918-4072-ac06-ab28be834537",
-      "target": "75fc3b80-61d5-4090-9182-c40f0b2fe45d",
+      "source": "f080aeda-644b-44e0-b70e-3fab548d2fca",
+      "target": "2ee468e1-2d41-4cd0-8c73-9827f2c70c1c",
       "relationship_type": "CALLS"
     },
     {
-      "source": "75fc3b80-61d5-4090-9182-c40f0b2fe45d",
-      "target": "fcdb24c4-e8af-4d77-96c8-7b183fcb6da0",
+      "source": "2ee468e1-2d41-4cd0-8c73-9827f2c70c1c",
+      "target": "1a5ca09d-8d3b-43c0-85a9-bd1dbf132a77",
       "relationship_type": "CALLS"
     },
     {
-      "source": "fcdb24c4-e8af-4d77-96c8-7b183fcb6da0",
-      "target": "0d945be3-3bb5-4ba7-854f-3733e51c9ea7",
+      "source": "1a5ca09d-8d3b-43c0-85a9-bd1dbf132a77",
+      "target": "323a82e2-fcfd-49ec-b213-3213f06f01bb",
       "relationship_type": "CALLS"
     },
     {
-      "source": "f6da1493-d8dc-4b67-b183-351dafca0ef4",
-      "target": "f6a20174-30ca-4835-89aa-21adf52ebe69",
+      "source": "8a08ca74-fe27-404d-a2e3-15a576223a36",
+      "target": "1f9f059d-9eb4-46c8-bc3c-ea81faf3e4c0",
       "relationship_type": "USES"
     },
     {
-      "source": "bb0e563e-8918-4072-ac06-ab28be834537",
-      "target": "f6a20174-30ca-4835-89aa-21adf52ebe69",
+      "source": "f080aeda-644b-44e0-b70e-3fab548d2fca",
+      "target": "1f9f059d-9eb4-46c8-bc3c-ea81faf3e4c0",
       "relationship_type": "USES"
     },
     {
-      "source": "75fc3b80-61d5-4090-9182-c40f0b2fe45d",
-      "target": "f6a20174-30ca-4835-89aa-21adf52ebe69",
+      "source": "2ee468e1-2d41-4cd0-8c73-9827f2c70c1c",
+      "target": "1f9f059d-9eb4-46c8-bc3c-ea81faf3e4c0",
       "relationship_type": "USES"
     },
     {
-      "source": "fcdb24c4-e8af-4d77-96c8-7b183fcb6da0",
-      "target": "f6a20174-30ca-4835-89aa-21adf52ebe69",
+      "source": "1a5ca09d-8d3b-43c0-85a9-bd1dbf132a77",
+      "target": "1f9f059d-9eb4-46c8-bc3c-ea81faf3e4c0",
       "relationship_type": "USES"
     },
     {
-      "source": "0d945be3-3bb5-4ba7-854f-3733e51c9ea7",
-      "target": "f6a20174-30ca-4835-89aa-21adf52ebe69",
+      "source": "323a82e2-fcfd-49ec-b213-3213f06f01bb",
+      "target": "1f9f059d-9eb4-46c8-bc3c-ea81faf3e4c0",
       "relationship_type": "USES"
     },
     {
-      "source": "ecbd9180-6c92-44fa-86d8-db49ffd53085",
-      "target": "62130d3e-da15-4b81-aca2-93ac186a12f6",
+      "source": "47a44483-7c27-4ce6-84be-5571ff79e2e4",
+      "target": "7dc7bb0d-af35-42e4-a567-3cb21920ede2",
       "relationship_type": "CALLS"
     },
     {
-      "source": "ecbd9180-6c92-44fa-86d8-db49ffd53085",
-      "target": "6f5f0ffd-24a0-4d1e-a573-2ceec08563de",
+      "source": "47a44483-7c27-4ce6-84be-5571ff79e2e4",
+      "target": "8d00c5f9-855f-41cf-9dee-9b3da3cef42f",
       "relationship_type": "USES"
     },
     {
-      "source": "ecbd9180-6c92-44fa-86d8-db49ffd53085",
-      "target": "f6a20174-30ca-4835-89aa-21adf52ebe69",
+      "source": "47a44483-7c27-4ce6-84be-5571ff79e2e4",
+      "target": "1f9f059d-9eb4-46c8-bc3c-ea81faf3e4c0",
       "relationship_type": "USES"
     },
     {
-      "source": "31372bbd-f4d4-44cb-ba64-f7f581a901d0",
-      "target": "f6a20174-30ca-4835-89aa-21adf52ebe69",
+      "source": "04d85120-2a7e-4690-bb50-b33588097c0a",
+      "target": "1f9f059d-9eb4-46c8-bc3c-ea81faf3e4c0",
       "relationship_type": "USES"
     },
     {
-      "source": "31372bbd-f4d4-44cb-ba64-f7f581a901d0",
-      "target": "6f5f0ffd-24a0-4d1e-a573-2ceec08563de",
+      "source": "04d85120-2a7e-4690-bb50-b33588097c0a",
+      "target": "8d00c5f9-855f-41cf-9dee-9b3da3cef42f",
       "relationship_type": "USES"
     },
     {
-      "source": "771e3733-1add-488f-9c5c-0b86aab19568",
-      "target": "f6a20174-30ca-4835-89aa-21adf52ebe69",
+      "source": "51045ba8-3ea7-4f4f-b45a-86ac820c2ec5",
+      "target": "1f9f059d-9eb4-46c8-bc3c-ea81faf3e4c0",
       "relationship_type": "USES"
     },
     {
-      "source": "771e3733-1add-488f-9c5c-0b86aab19568",
-      "target": "6f5f0ffd-24a0-4d1e-a573-2ceec08563de",
+      "source": "51045ba8-3ea7-4f4f-b45a-86ac820c2ec5",
+      "target": "8d00c5f9-855f-41cf-9dee-9b3da3cef42f",
       "relationship_type": "USES"
     },
     {
-      "source": "94c89f99-d583-4639-8d6b-948c142003a7",
-      "target": "5a932246-63db-4b68-a0c4-e6190a531196",
+      "source": "346009d5-7154-4df1-89c6-85caa82ecc8e",
+      "target": "6d7d61c0-cbdd-440d-b86f-993846e70141",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "94c89f99-d583-4639-8d6b-948c142003a7",
-      "target": "9c73f529-9a6c-45fd-b31d-e2a3b265dfea",
+      "source": "346009d5-7154-4df1-89c6-85caa82ecc8e",
+      "target": "734fd20b-78fc-4a5b-b1df-974601348dc9",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "df65f71f-bfbb-4052-8870-eee17fd5edbc",
-      "target": "48f97784-ce8d-4f94-ad2f-f07430a13926",
+      "source": "a5edc0f9-ad4b-483f-ac61-c71ef6c0e5db",
+      "target": "2dd827c8-397f-4fa9-b403-195150ccbd38",
       "relationship_type": "PROTECTS"
     },
     {
-      "source": "df65f71f-bfbb-4052-8870-eee17fd5edbc",
-      "target": "a5130b58-9584-4ab9-a444-fc7b2fb702be",
+      "source": "a5edc0f9-ad4b-483f-ac61-c71ef6c0e5db",
+      "target": "f08ab67f-c790-41ae-85a7-8fe34cd7cdc7",
       "relationship_type": "PROTECTS"
     },
     {
-      "source": "df65f71f-bfbb-4052-8870-eee17fd5edbc",
-      "target": "267c64bc-c5f9-4379-8c7f-c871d1cad3fa",
+      "source": "a5edc0f9-ad4b-483f-ac61-c71ef6c0e5db",
+      "target": "464faf1b-3488-4f14-b33e-0569ec650bfd",
       "relationship_type": "PROTECTS"
     },
     {
-      "source": "df65f71f-bfbb-4052-8870-eee17fd5edbc",
-      "target": "7ecde136-13c5-40ba-96a8-c0882ae27920",
+      "source": "a5edc0f9-ad4b-483f-ac61-c71ef6c0e5db",
+      "target": "f0919b44-17e1-4417-bf26-ff840ca723a7",
       "relationship_type": "PROTECTS"
     },
     {
-      "source": "df65f71f-bfbb-4052-8870-eee17fd5edbc",
-      "target": "1d1383c5-6fcb-4212-88f5-b746bfc72f47",
+      "source": "a5edc0f9-ad4b-483f-ac61-c71ef6c0e5db",
+      "target": "3ed9b266-7f87-4785-96c3-1e28a7d1c973",
       "relationship_type": "PROTECTS"
     },
     {
-      "source": "df65f71f-bfbb-4052-8870-eee17fd5edbc",
-      "target": "d075ef65-61c9-4c46-b5ae-caf5b605384d",
+      "source": "a5edc0f9-ad4b-483f-ac61-c71ef6c0e5db",
+      "target": "42ea2bb1-7df7-484f-8d62-8eadaf48bb27",
       "relationship_type": "PROTECTS"
     },
     {
-      "source": "df65f71f-bfbb-4052-8870-eee17fd5edbc",
-      "target": "a321ce06-f8a9-4588-968b-efafcf1e177c",
+      "source": "a5edc0f9-ad4b-483f-ac61-c71ef6c0e5db",
+      "target": "97f74f9a-35e3-4343-a1c6-acfb5b47126e",
       "relationship_type": "PROTECTS"
     },
     {
-      "source": "df65f71f-bfbb-4052-8870-eee17fd5edbc",
-      "target": "6a8ff044-203c-463c-a744-2ff1797a51d6",
+      "source": "a5edc0f9-ad4b-483f-ac61-c71ef6c0e5db",
+      "target": "a27c1efb-5cd6-42ab-8699-a587329afaab",
       "relationship_type": "PROTECTS"
     },
     {
-      "source": "df65f71f-bfbb-4052-8870-eee17fd5edbc",
-      "target": "49c9c4b1-cff6-494f-8793-50ee4e16f365",
+      "source": "a5edc0f9-ad4b-483f-ac61-c71ef6c0e5db",
+      "target": "e9184715-65a2-463f-94c0-cc0a1acd03bf",
       "relationship_type": "PROTECTS"
     },
     {
-      "source": "df65f71f-bfbb-4052-8870-eee17fd5edbc",
-      "target": "a40951b5-6c69-4b3e-9b5f-7db2a4268476",
+      "source": "a5edc0f9-ad4b-483f-ac61-c71ef6c0e5db",
+      "target": "84058780-8e6a-4fb1-a138-741a096d0299",
       "relationship_type": "PROTECTS"
     }
   ],

@@ -295,6 +295,8 @@ class ValidateRunner:
                     violations=violations_raw,
                     canary_hits=canary_hits,
                     passed=not violations_raw and not canary_hits,
+                    scenario_name=scenario.name,
+                    scenario_type=scenario.scenario_type.value,
                 )
                 scenario_records.append(record)
                 policy_records.append(record)

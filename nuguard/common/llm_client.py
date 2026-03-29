@@ -18,6 +18,27 @@ _log = get_logger(__name__)
 _DEFAULT_MODEL = "gemini/gemini-2.0-flash"
 
 
+def _resolve_api_key(model: str) -> str | None:
+    """Return the best available API key for *model*.
+
+    Checks provider-specific env vars before the generic LITELLM_API_KEY so
+    that users who only have (e.g.) GEMINI_API_KEY set don't need to duplicate
+    it under a second name.
+    """
+    # Provider-specific keys, checked in priority order
+    _GEMINI_PREFIXES = ("gemini/", "google/", "vertex_ai/")
+    if any(model.startswith(p) for p in _GEMINI_PREFIXES):
+        for var in ("GEMINI_API_KEY", "GOOGLE_API_KEY", "LITELLM_API_KEY"):
+            val = os.environ.get(var)
+            if val:
+                _log.debug("Using %s for model %s", var, model)
+                return val
+        return None
+
+    # Generic fallback for all other providers
+    return os.environ.get("LITELLM_API_KEY") or None
+
+
 class LLMClient:
     """Thin async wrapper around LiteLLM.
 
@@ -46,7 +67,7 @@ class LLMClient:
             or os.environ.get("LITELLM_MODEL", "")
             or _DEFAULT_MODEL
         )
-        self.api_key: str | None = api_key or os.environ.get("LITELLM_API_KEY") or None
+        self.api_key: str | None = api_key or self._resolve_api_key(self.model)
         self.min_temperature: float | None = min_temperature
         self.api_base: str | None = api_base
         self.budget_tokens: int | None = budget_tokens
@@ -54,7 +75,7 @@ class LLMClient:
 
         if self.api_key is None:
             _log.debug(
-                "No LITELLM_API_KEY found — LLMClient will return canned responses."
+                "No API key found — LLMClient will return canned responses."
             )
 
     async def complete(

@@ -32,6 +32,9 @@ class TurnPolicyRecord(BaseModel):
     violations: list[dict] = Field(default_factory=list)  # serialised PolicyViolation dicts
     canary_hits: list[str] = Field(default_factory=list)
     passed: bool = True  # False when any violation or canary_hit is present
+    # Scenario grouping — set by ValidateRunner for trace reporting
+    scenario_name: str = ""
+    scenario_type: str = ""
 
 
 class ValidateScenario(BaseModel):

@@ -277,6 +277,59 @@ def _print_validate_result(result: "ValidateRunResult", meta: ReportMeta | None 
     else:
         _console.print("\n[green]No findings — all validate scenarios passed.[/green]")
 
+    # Verbose: print scenario traces grouped by scenario
+    if meta.verbose and result.policy_records:
+        from collections import OrderedDict  # noqa: PLC0415
+        from rich.panel import Panel  # noqa: PLC0415
+
+        _console.print()
+        _console.rule("[bold]Scenario Traces[/bold]")
+        groups: dict[tuple[str, str], list] = OrderedDict()
+        for rec in result.policy_records:
+            key = (rec.scenario_name or "unknown", rec.scenario_type or "")
+            groups.setdefault(key, []).append(rec)
+
+        for (sname, stype), records in groups.items():
+            label = f"[bold magenta]{sname}[/bold magenta]"
+            if stype:
+                label += f"  [dim]({stype})[/dim]"
+            _console.print(f"\n  {label}")
+            for rec in records:
+                _console.rule(
+                    f"[cyan]turn {rec.turn}[/cyan]",
+                    style="dim",
+                )
+                _console.print(
+                    Panel(
+                        rec.prompt,
+                        title="[bold]→ REQUEST[/bold]",
+                        title_align="left",
+                        border_style="blue",
+                        expand=True,
+                    )
+                )
+                if rec.tool_calls:
+                    tool_names = "  ".join(
+                        tc.get("name") or tc.get("function", {}).get("name", "?")
+                        for tc in rec.tool_calls
+                    )
+                    _console.print(f"  [dim]tool_calls:[/dim] [yellow]{tool_names}[/yellow]")
+                _console.print(
+                    Panel(
+                        rec.response or "[dim](empty)[/dim]",
+                        title="[bold]← RESPONSE[/bold]",
+                        title_align="left",
+                        border_style="green",
+                        expand=True,
+                    )
+                )
+                if rec.violations:
+                    for v in rec.violations:
+                        _console.print(
+                            f"  [red]policy violation:[/red] [{v.get('severity','?').upper()}] "
+                            f"{v.get('evidence', '')}"
+                        )
+
 
 def _validate_result_to_markdown(result: "ValidateRunResult", meta: ReportMeta | None = None) -> str:
     """Render a ValidateRunResult as a Markdown report string."""
@@ -331,5 +384,39 @@ def _validate_result_to_markdown(result: "ValidateRunResult", meta: ReportMeta |
                 lines += [f"**Remediation:** {rem}", ""]
     else:
         lines += ["## Findings", "", "_No findings — all validate scenarios passed._", ""]
+
+    # Verbose: scenario traces grouped by scenario
+    if meta.verbose and result.policy_records:
+        lines += ["## Scenario Traces", ""]
+        # Group records by (scenario_name, scenario_type) preserving insertion order
+        from collections import OrderedDict  # noqa: PLC0415
+        groups: dict[tuple[str, str], list] = OrderedDict()
+        for rec in result.policy_records:
+            key = (rec.scenario_name or "unknown", rec.scenario_type or "")
+            groups.setdefault(key, []).append(rec)
+
+        for (sname, stype), records in groups.items():
+            header = f"### Scenario: `{sname}`"
+            if stype:
+                header += f" ({stype})"
+            lines += [header, ""]
+            for rec in records:
+                lines += [f"#### Turn {rec.turn}", ""]
+                lines += ["**Request:**", ""]
+                lines += [f"```\n{rec.prompt}\n```", ""]
+                lines += ["**Response:**", ""]
+                lines += [f"```\n{rec.response or '(empty)'}\n```", ""]
+                if rec.tool_calls:
+                    tool_names = ", ".join(
+                        tc.get("name") or tc.get("function", {}).get("name", "?")
+                        for tc in rec.tool_calls
+                    )
+                    lines += [f"**Tool calls:** {tool_names}", ""]
+                if rec.violations:
+                    lines += ["**Policy violations:**", ""]
+                    for v in rec.violations:
+                        lines += [f"- [{v.get('severity','?').upper()}] {v.get('evidence','')}", ""]
+                if rec.canary_hits:
+                    lines += [f"**Canary hits:** {', '.join(rec.canary_hits)}", ""]
 
     return "\n".join(lines)

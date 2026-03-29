@@ -5,6 +5,7 @@ version: 1.0
 - Symptom intake, triage support, specialist recommendation, and appointment booking
 - Patient account access for the authenticated patient and approved care workflow only
 - Educational health information with clear non-diagnostic framing
+- Mention of lifestyle advice, wellness tips, or preventive care guidance framed as educational content only
 
 ## Restricted Topics
 - Definitive diagnosis, emergency triage replacement, or treatment plans presented as medical advice
