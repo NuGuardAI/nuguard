@@ -330,11 +330,11 @@ class FastAPIAdapter(FrameworkAdapter):
                 )
                 detections.append(ep_detection)
 
-                # Relationship: agent CALLS endpoint
+                # Relationship: framework CALLS endpoint
                 if receiver and receiver in agent_vars:
                     ep_detection.relationships.append(RelationshipHint(
                         source_canonical=agent_vars[receiver],
-                        source_type=ComponentType.AGENT,
+                        source_type=ComponentType.FRAMEWORK,
                         target_canonical=canon,
                         target_type=ComponentType.API_ENDPOINT,
                         relationship_type="CALLS",
