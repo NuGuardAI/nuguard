@@ -1,18 +1,18 @@
 # SBOM Report: https://github.com/rangoel-nu/agentic-healthcare-ai
 
-**Generated:** 2026-03-29T18:19:03Z  
+**Generated:** 2026-03-29T19:09:50Z  
 **Schema version:** 1.4.0  
 
 ## Summary
 
 | Field | Value |
 | --- | --- |
-| AI nodes | 112 |
+| AI nodes | 122 |
 | Dependencies | 83 |
 | Data classification | PHI, PII |
 | Classified tables | AssessmentRequest, AssessmentRequest, AssessmentRequest, AssessmentRequest, ClinicalAlert, ClinicalAlert, ClinicalAlert, ClinicalAlert, ClinicalAssessment, ClinicalAssessment, ClinicalAssessment, ClinicalAssessment, ClinicalDecisionSupport, ClinicalDecisionSupport, ClinicalDecisionSupport, ClinicalDecisionSupport, ClinicalTrial, ClinicalTrial, ClinicalTrial, ClinicalTrial, ClinicalWorkflow, ClinicalWorkflow, ClinicalWorkflow, ClinicalWorkflow, ConversationRequest, ConversationRequest, ConversationRequest, ConversationRequest, ConversationResponse, ConversationResponse, ConversationResponse, ConversationResponse, EmergencyConversationRequest, EmergencyConversationRequest, EmergencyConversationRequest, EmergencyConversationRequest, EmergencyRequest, EmergencyRequest, EmergencyRequest, EmergencyRequest, LLMCommunication, LLMCommunication, LLMCommunication, LLMCommunication, Medication, Medication, Medication, Medication, MedicationReconciliationRequest, MedicationReconciliationRequest, MedicationReconciliationRequest, MedicationReconciliationRequest, MedicationReviewRequest, MedicationReviewRequest, MedicationReviewRequest, MedicationReviewRequest, PDFGenerationRequest, PDFGenerationRequest, PDFGenerationRequest, PDFGenerationRequest, PatientDemographics, PatientDemographics, PatientDemographics, PatientDemographics, PatientSummary, PatientSummary, PatientSummary, PatientSummary, QualityMeasure, QualityMeasure, QualityMeasure, QualityMeasure, ScenarioConfig, ScenarioConfig, ScenarioConfig, ScenarioConfig, ScenarioExecutionRequest, ScenarioExecutionRequest, ScenarioExecutionRequest, ScenarioExecutionRequest, ServiceConfig, ServiceConfig, ServiceConfig, ServiceConfig, TaskExecutionRequest, TaskExecutionRequest, TaskExecutionRequest, TaskExecutionRequest, VitalSigns, VitalSigns, VitalSigns, VitalSigns, audit_logs, audit_logs, audit_logs, audit_logs |
 | Use case | This application implements an agentic AI workflow with 13 agent(s), 10 tool integration(s), and 0 guardrail control(s). Detected use cases include request triage and routing. Multi-modal support: Voice not supported, Images not supported, Video not supported. |
-| Frameworks | autogen, azure_ai_agent_service, langchain, openai_agents, crewai |
+| Frameworks | autogen, crewai, azure_ai_agent_service, langchain, openai_agents |
 | Modalities | TEXT |
 
 ## AI Components
@@ -22,16 +22,16 @@
 | Cardiologist | AGENT | 90% | autogen |
 | ClinicalPharmacist | AGENT | 90% | autogen |
 | EmergencyPhysician | AGENT | 90% | autogen |
+| group_591 | AGENT | 85% | autogen |
 | group_chat | AGENT | 85% | autogen |
 | manager | AGENT | 85% | autogen |
 | NurseCoordinator | AGENT | 90% | autogen |
 | PrimaryCarePhysician | AGENT | 90% | autogen |
 | UserProxy | AGENT | 90% | autogen |
-| api_router | AGENT | 90% | fastapi |
-| app | AGENT | 90% | fastapi |
-| app | AGENT | 90% | fastapi |
-| app | AGENT | 90% | fastapi |
-| app | AGENT | 90% | fastapi |
+| Cardiologist | AGENT | 90% | crewai |
+| Clinical Pharmacist | AGENT | 90% | crewai |
+| Nurse Care Coordinator | AGENT | 90% | crewai |
+| Primary Care Physician | AGENT | 90% | crewai |
 | generic | API_ENDPOINT | 95% |  |
 | delete_scenario | API_ENDPOINT | 90% | DELETE /scenarios/{scenario_id} |
 | root | API_ENDPOINT | 90% | GET / |
@@ -92,8 +92,14 @@
 | Port 8002 | DEPLOYMENT | 90% |  |
 | Port 8003 | DEPLOYMENT | 90% |  |
 | Port 8004 | DEPLOYMENT | 90% |  |
+| api_router | FRAMEWORK | 90% | fastapi |
+| app | FRAMEWORK | 90% | fastapi |
+| app | FRAMEWORK | 90% | fastapi |
+| app | FRAMEWORK | 90% | fastapi |
+| app | FRAMEWORK | 90% | fastapi |
 | autogen | FRAMEWORK | 98% | autogen |
 | framework:azure_ai_agent_service | FRAMEWORK | 95% | azure_ai_agent_service |
+| crewai | FRAMEWORK | 98% | crewai |
 | framework:langchain | FRAMEWORK | 95% | langchain |
 | framework:llm_clients | FRAMEWORK | 95% | llm_clients |
 | framework:openai_agents | FRAMEWORK | 95% | openai_agents |
@@ -117,6 +123,10 @@
 | ClinicalPharmacist System Message | PROMPT | 90% | "You are a clinical pharmacist with expertise in medication therapy              …" · role=system |
 | Create Cardiology Agent | PROMPT | 60% | "You are a board-certified cardiologist with expertise in              cardiovasc…" · role=system |
 | Create Pharmacist Agent | PROMPT | 60% | "You are a clinical pharmacist with expertise in              pharmacotherapy, dr…" · role=system |
+| Cardiologist Backstory | PROMPT | 88% | "You are a board-certified cardiologist with expertise in              cardiovasc…" · role=system |
+| Clinical Pharmacist Backstory | PROMPT | 88% | "You are a clinical pharmacist with expertise in              pharmacotherapy, dr…" · role=system |
+| Nurse Care Coordinator Backstory | PROMPT | 88% | "You are an experienced registered nurse with expertise in              care coor…" · role=system |
+| Primary Care Physician Backstory | PROMPT | 88% | "You are an experienced primary care physician with expertise in              int…" · role=system |
 | EmergencyPhysician System Message | PROMPT | 90% | "You are an emergency medicine physician with expertise in acute care,           …" · role=system |
 | NurseCoordinator System Message | PROMPT | 90% | "You are an experienced registered nurse specializing in care coordination       …" · role=system |
 | PrimaryCarePhysician System Message | PROMPT | 90% | "You are an experienced primary care physician with expertise in              com…" · role=system |
@@ -149,6 +159,22 @@
 **Create Pharmacist Agent**
 - Role: `system`
 - Content: You are a clinical pharmacist with expertise in              pharmacotherapy, drug interactions, and medication safety. You focus on              medication reconciliation, dosing optimization, and patient education              about medications.
+
+**Cardiologist Backstory**
+- Role: `system`
+- Content: You are a board-certified cardiologist with expertise in              cardiovascular disease prevention, diagnosis, and treatment. You specialize              in risk assessment, ECG interpretation, and evidence-based cardiovascular              therapeutics.
+
+**Clinical Pharmacist Backstory**
+- Role: `system`
+- Content: You are a clinical pharmacist with expertise in              pharmacotherapy, drug interactions, and medication safety. You focus on              medication reconciliation, dosing optimization, and patient education              about medications.
+
+**Nurse Care Coordinator Backstory**
+- Role: `system`
+- Content: You are an experienced registered nurse with expertise in              care coordination, patient education, and care transition management.              You focus on ensuring patients receive appropriate follow-up care and              understand their treatment plans.
+
+**Primary Care Physician Backstory**
+- Role: `system`
+- Content: You are an experienced primary care physician with expertise in              internal medicine, preventive care, and care coordination. You focus on              comprehensive patient assessment, risk factor identification, and              coordination with specialists when needed.
 
 **EmergencyPhysician System Message**
 - Role: `system`
@@ -535,9 +561,9 @@
 | CONTAINER_IMAGE | 3 |
 | DATASTORE | 4 |
 | DEPLOYMENT | 13 |
-| FRAMEWORK | 5 |
+| FRAMEWORK | 11 |
 | IAM | 8 |
 | MODEL | 2 |
 | PRIVILEGE | 6 |
-| PROMPT | 8 |
+| PROMPT | 12 |
 | TOOL | 10 |

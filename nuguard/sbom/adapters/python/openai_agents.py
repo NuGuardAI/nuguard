@@ -37,6 +37,18 @@ class OpenAIAgentsAdapter(FrameworkAdapter):
         if parse_result is None:
             return []
 
+        # Suppress the openai_agents framework node when the file's primary
+        # framework is autogen or crewai.  Those frameworks use the OpenAI
+        # Agents SDK / openai package internally, but the attribution belongs
+        # to the higher-level framework, not openai_agents standalone.
+        import_modules = {imp.module for imp in parse_result.imports}
+        _primary_frameworks = {
+            "autogen", "pyautogen", "autogen_agentchat",
+            "crewai", "crewai.agent", "crewai.crew",
+        }
+        if import_modules & _primary_frameworks:
+            return []
+
         detected: list[ComponentDetection] = [self._framework_node(file_path)]
         agent_canonicals: list[str] = []
 

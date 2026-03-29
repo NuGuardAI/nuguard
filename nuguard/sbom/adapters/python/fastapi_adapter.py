@@ -230,15 +230,18 @@ class FastAPIAdapter(FrameworkAdapter):
             var_name = node.targets[0].id
 
             if class_name in _AGENT_CLASSES:
-                canon = f"fastapi:agent:{file_path}:{var_name}"
+                # FastAPI() / APIRouter() are web framework objects, not AI agents.
+                # Emit as FRAMEWORK so they appear in the infrastructure section
+                # rather than polluting the AI agent list.
+                canon = f"fastapi:framework:{file_path}:{var_name}"
                 detections.append(ComponentDetection(
-                    component_type=ComponentType.AGENT,
+                    component_type=ComponentType.FRAMEWORK,
                     canonical_name=canon,
                     display_name=var_name,
                     adapter_name=self.name,
                     priority=self.priority,
                     confidence=_CONFIDENCE,
-                    metadata={"framework": "fastapi"},
+                    metadata={"framework": "fastapi", "class": class_name},
                     file_path=file_path,
                     line=node.lineno,
                     evidence_kind="ast_instantiation",

@@ -207,28 +207,35 @@ class _AstExtractor(ast.NodeVisitor):
     visit_AsyncFunctionDef = visit_FunctionDef  # type: ignore[assignment]
 
     def visit_Return(self, node: ast.Return) -> None:
-        """Capture large f-strings returned from functions as string literals.
+        """Capture class instantiations and f-strings returned from functions.
 
-        Enables detection of prompt-factory functions where the function body
-        returns a large f-string template (e.g. get_context_precision_prompt).
+        Handles two patterns:
+        - ``return SomeClass(...)`` → records instantiation so framework adapters
+          (e.g. CrewAI) can detect agents defined in factory methods such as
+          ``def _create_agent(self): return Agent(role=...)``.
+        - ``return f"..."`` → records large f-string as a string literal for
+          prompt-factory function detection.
         """
-        if node.value and isinstance(node.value, ast.JoinedStr):
-            parts: list[str] = []
-            for part in node.value.values:
-                if isinstance(part, ast.Constant) and isinstance(part.value, str):
-                    parts.append(part.value)
-                else:
-                    parts.append("{\u2026}")
-            text = "".join(parts)
-            if len(text) >= 100:
-                self.string_literals.append(
-                    ParsedStringLiteral(
-                        value=text,
-                        line=node.lineno,
-                        context=self._scope_stack[-1] if self._scope_stack else None,
-                        is_docstring=False,
+        if node.value:
+            if isinstance(node.value, ast.Call):
+                self._visit_call(node.value, assigned_to=None)
+            elif isinstance(node.value, ast.JoinedStr):
+                parts: list[str] = []
+                for part in node.value.values:
+                    if isinstance(part, ast.Constant) and isinstance(part.value, str):
+                        parts.append(part.value)
+                    else:
+                        parts.append("{\u2026}")
+                text = "".join(parts)
+                if len(text) >= 100:
+                    self.string_literals.append(
+                        ParsedStringLiteral(
+                            value=text,
+                            line=node.lineno,
+                            context=self._scope_stack[-1] if self._scope_stack else None,
+                            is_docstring=False,
+                        )
                     )
-                )
         self.generic_visit(node)
 
     def visit_ClassDef(self, node: ast.ClassDef) -> None:
