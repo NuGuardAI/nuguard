@@ -31,13 +31,13 @@ llm_with_tools = llm.bind_tools(TOOLS)
 def researcher_node(state: ResearchState) -> ResearchState:
     system = SystemMessage(content=SYSTEM_PROMPT)
     response = llm_with_tools.invoke([system] + state["messages"])
-    return {"messages": [response]}
+    return {"messages": [response]}  # type: ignore[typeddict-item]
 
 
 def writer_node(state: ResearchState) -> ResearchState:
     prompt = f"Synthesize the research into a clear summary: {state['messages']}"
     response = llm.invoke(prompt)
-    return {"draft": response.content}
+    return {"draft": response.content}  # type: ignore[typeddict-item]
 
 
 tool_node = ToolNode(TOOLS)

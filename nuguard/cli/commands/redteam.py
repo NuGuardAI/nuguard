@@ -117,7 +117,8 @@ def redteam(
     policy_path = policy or (Path(cfg.policy_path) if cfg.policy_path else None)
     target_url = target or cfg.target_url
     canary_path = canary or (Path(cfg.canary_path) if cfg.canary_path else None)
-    source_dir = source or (Path(cfg.source_path) if getattr(cfg, "source_path", None) else None)
+    _source_path_val = getattr(cfg, "source_path", None)
+    source_dir = source or (Path(str(_source_path_val)) if _source_path_val else None)
     # CLI flag takes precedence; fall back to config default
     effective_profile = profile if profile != "ci" else cfg.redteam_profile
     effective_min_impact = (

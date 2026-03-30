@@ -193,16 +193,29 @@ async def _llm_controls(text: str, llm_client: "LLMClient") -> list[PolicyContro
         label="policy-compile",
     )
 
+    # Canned response means no API key is configured — skip JSON parse entirely
+    if response.startswith("[NUGUARD_CANNED_RESPONSE]"):
+        _log.warning("No LLM API key configured; falling back to rule-based policy compilation")
+        policy = parse_policy(text)
+        return _rule_based_controls(policy)
+
     # Strip markdown fences if the model wrapped the JSON
     cleaned = re.sub(r"^```(?:json)?\s*", "", response.strip())
     cleaned = re.sub(r"\s*```$", "", cleaned)
+
+    # Handle preamble text before the JSON array (some models add prose before the array)
+    if not cleaned.startswith("["):
+        match = re.search(r"\[.*\]", cleaned, re.DOTALL)
+        if match:
+            cleaned = match.group(0)
 
     try:
         raw_list = json.loads(cleaned)
     except json.JSONDecodeError as exc:
         _log.warning(
-            "LLM returned invalid JSON for policy compilation (%s); falling back to rule-based",
+            "LLM returned invalid JSON for policy compilation (%s); response was: %r; falling back to rule-based",
             exc,
+            response[:200],
         )
         policy = parse_policy(text)
         return _rule_based_controls(policy)

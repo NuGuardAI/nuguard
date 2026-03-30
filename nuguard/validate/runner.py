@@ -148,6 +148,8 @@ class ValidateRunner:
         self._baseline_map = baseline_capability_map
         self._run_id = run_id or str(uuid.uuid4())
         self._sbom = sbom
+        # Set during run() — holds the live AuthSession after bootstrap
+        self._bootstrapper: AuthBootstrapper | None = None
 
     async def run(self) -> ValidateRunResult:
         """Execute all validate scenarios and return a ValidateRunResult."""
@@ -160,16 +162,14 @@ class ValidateRunner:
                 "validate.target is required in nuguard.yaml (or pass --target)"
             )
 
-        # ── Step 0a: Endpoint auto-discovery from SBOM ───────────────────────
-        if not endpoint and self._sbom is not None:
-            endpoint = await self._discover_endpoint()
-        if not endpoint:
-            endpoint = "/chat"
-            _log.debug("No target_endpoint configured and SBOM unavailable — defaulting to /chat")
-
+        # ── Step 0a: Bootstrap auth (initialises login-flow tokens if configured) ──
+        # Bootstrap runs first so that endpoint discovery can use live session
+        # headers (e.g. a freshly acquired JWT from a login_flow credential).
+        # We use a placeholder /chat endpoint for the initial connectivity check;
+        # after discovery we rebuild the client with the real endpoint.
         bootstrapper = AuthBootstrapper(
             target_url=target_url,
-            endpoint=endpoint,
+            endpoint=endpoint or "/chat",
             default_auth=self._auth_config,
             canary_config=self._canary_config,
             run_id=self._run_id,
@@ -184,9 +184,19 @@ class ValidateRunner:
                 "Run 'nuguard target verify --mode validate' to diagnose.",
                 identity=ident,
             )
+        # Store bootstrapper so we can access the live AuthSession
+        self._bootstrapper = bootstrapper
+
+        # ── Step 0b: Endpoint auto-discovery from SBOM ───────────────────────
+        # Runs after bootstrap so that live session headers are available.
+        if not endpoint and self._sbom is not None:
+            endpoint = await self._discover_endpoint()
+        if not endpoint:
+            endpoint = "/chat"
+            _log.debug("No target_endpoint configured and SBOM unavailable — defaulting to /chat")
 
         # ── Step 1: Build scenarios ───────────────────────────────────────────
-        scenarios = build_scenarios(self._config, self._policy, self._controls)
+        scenarios = build_scenarios(self._config, self._policy, self._controls, self._sbom)
         if not scenarios:
             _log.warning("No validate scenarios to run. Check workflows and boundary_assertions.")
 
@@ -203,9 +213,9 @@ class ValidateRunner:
             policy_evaluator = PolicyEvaluator(self._policy)  # type: ignore[arg-type]
 
         # ── Step 3: Build client ──────────────────────────────────────────────
-        auth_headers: dict[str, str] = {}
-        if self._auth_config:
-            auth_headers = self._auth_config.to_headers()
+        # Use live session headers from the bootstrapper so that login_flow
+        # tokens (and other dynamic auth) are correctly applied.
+        auth_headers: dict[str, str] = bootstrapper.session.headers()
 
         client = TargetAppClient(
             base_url=target_url,
@@ -228,6 +238,21 @@ class ValidateRunner:
             for tool in getattr(self._policy, "restricted_actions", []) or []:
                 cap_entries[tool] = CapabilityEntry(tool_name=tool)
 
+        # Initialise entries for AGENT nodes declared in the SBOM
+        if self._sbom is not None:
+            try:
+                for node in self._sbom.nodes:
+                    if (
+                        getattr(node, "node_type", None) == "AGENT"
+                        and getattr(node, "name", None)
+                        and node.name not in cap_entries
+                    ):
+                        cap_entries[node.name] = CapabilityEntry(
+                            tool_name=node.name, node_type="agent"
+                        )
+            except Exception as exc:
+                _log.debug("Could not initialise AGENT capability entries from SBOM: %s", exc)
+
         for scenario in scenarios:
             _log.info("Running scenario %r (%s)", scenario.name, scenario.scenario_type.value)
             if self._config.verbose:
@@ -247,6 +272,27 @@ class ValidateRunner:
             for turn_idx, message in enumerate(scenario.messages):
                 try:
                     response_text, tool_calls = await client.send(message, session)
+                    # On 401, attempt a token refresh and retry once
+                    if response_text.startswith("[HTTP 401]") and self._bootstrapper is not None:
+                        refreshed = await self._bootstrapper.session.refresh_if_needed()
+                        if refreshed:
+                            _log.info(
+                                "Scenario %r turn %d: 401 received, retrying after token refresh",
+                                scenario.name,
+                                turn_idx + 1,
+                            )
+                            # Rebuild client with updated headers after refresh
+                            new_headers = self._bootstrapper.session.headers()
+                            client = TargetAppClient(
+                                base_url=target_url,
+                                chat_path=endpoint,
+                                timeout=self._config.request_timeout,
+                                default_headers=new_headers if new_headers else None,
+                                chat_payload_key=self._config.chat_payload_key,
+                                chat_payload_list=self._config.chat_payload_list,
+                                chat_response_key=self._config.chat_response_key or None,
+                            )
+                            response_text, tool_calls = await client.send(message, session)
                 except Exception as exc:
                     _log.warning(
                         "Scenario %r turn %d failed: %s", scenario.name, turn_idx + 1, exc
@@ -440,6 +486,41 @@ class ValidateRunner:
                         )
                     )
 
+        elif scenario.scenario_type == ValidateScenarioType.AGENT_ROUTING:
+            # Pass if at least one of the target_agents appears in the tool_calls seen
+            if scenario.target_agents:
+                matched = any(agent in tool_calls_seen for agent in scenario.target_agents)
+                if not matched:
+                    # Also check response text as a fallback heuristic
+                    all_responses = " ".join(r.response for r in records).lower()
+                    matched = any(
+                        agent.lower() in all_responses for agent in scenario.target_agents
+                    )
+                if not matched:
+                    agent_label = ", ".join(scenario.target_agents)
+                    findings.append(
+                        Finding(
+                            finding_id=str(uuid.uuid4()),
+                            title=f"Agent routing gap: {agent_label} not activated",
+                            severity=Severity.MEDIUM,
+                            description=(
+                                f"Agent routing scenario '{scenario.name}' sent a message "
+                                f"expecting agents {scenario.target_agents!r} to activate, "
+                                "but none were observed in tool_calls or response text."
+                            ),
+                            affected_component=(
+                                scenario.target_agents[0]
+                                if scenario.target_agents
+                                else None
+                            ),
+                            goal_type=ValidateFindingType.CAPABILITY_GAP.value,
+                            remediation=(
+                                "Verify that the agent routing configuration correctly "
+                                "maps incoming requests to the expected agent nodes."
+                            ),
+                        )
+                    )
+
         elif scenario.scenario_type == ValidateScenarioType.POLICY_COMPLIANCE:
             for record in records:
                 for v in record.violations:
@@ -466,9 +547,10 @@ class ValidateRunner:
         """
         from nuguard.common.endpoint_probe import probe_chat_endpoints  # noqa: PLC0415
 
-        auth_headers: dict[str, str] = {}
-        if self._auth_config:
-            auth_headers = self._auth_config.to_headers()
+        # Use live session headers so login_flow tokens are included.
+        # _bootstrapper is always set before _discover_endpoint is called.
+        assert self._bootstrapper is not None
+        auth_headers: dict[str, str] = self._bootstrapper.session.headers()
 
         _log.info(
             "validate: target_endpoint not set — probing SBOM endpoints at %s",

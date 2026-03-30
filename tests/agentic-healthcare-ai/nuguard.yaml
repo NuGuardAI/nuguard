@@ -13,8 +13,10 @@ policy:
 
 # ─── LLM settings ─────────────────────────────────────────────────────────────
 llm:
-  model: gemini/gemini-2.0-flash    # any LiteLLM model string (openai/gpt-4o, etc.)
-#  api_key: ${LITELLM_API_KEY}     # never put keys here; use env var interpolation
+#  model: vertex_ai/gemini-2.0-flash  # Vertex AI — needs GOOGLE_CLOUD_PROJECT + GOOGLE_CLOUD_LOCATION
+#  api_key: ${GEMINI_API_KEY}         # Vertex AI API key (starts with AQ.)
+  model: openai/gpt-4.1  # OpenAI GPT-4.1
+  api_key: ${OPENAI_API_KEY}         # OpenAI API key
 
 # ─── SBOM generation ──────────────────────────────────────────────────────────
 sbom_generation:
@@ -168,13 +170,13 @@ redteam:
 
   # LLM for attack-payload generation (must tolerate adversarial content)
   llm:
-    model: gemini/gemini-2.0-flash
-    # api_key: ${NUGUARD_REDTEAM_LLM_API_KEY}
+    model: vertex_ai/gemini-2.0-flash
+    api_key: ${GEMINI_API_KEY}
 
   # LLM for response evaluation and finding summarisation
   eval_llm:
-    model: gemini/gemini-2.0-flash
-    # api_key: ${NUGUARD_REDTEAM_EVAL_LLM_API_KEY}
+    model: vertex_ai/gemini-2.0-flash
+    api_key: ${GEMINI_API_KEY}
 
   # MCP server hostnames treated as trusted.
   # Servers absent from this list are classified 'untrusted' and eligible

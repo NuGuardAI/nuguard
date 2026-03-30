@@ -11,7 +11,7 @@ import uuid
 
 import httpx
 
-from nuguard.common.auth import AuthConfig
+from nuguard.common.auth import AuthConfig, AuthSession
 from nuguard.common.errors import TargetUnavailableError
 from nuguard.models.health_report import CredentialCheckResult, TargetHealthReport
 from nuguard.redteam.target.canary import CanaryConfig
@@ -53,29 +53,55 @@ class AuthBootstrapper:
         self._canary = canary_config
         self._run_id = run_id or str(uuid.uuid4())
         self._timeout = timeout if timeout is not None else BOOTSTRAP_TIMEOUT
+        # Initialised during run() — exposed so validate/redteam can share it
+        self._session: AuthSession | None = None
 
     @property
     def full_url(self) -> str:
         return f"{self._target_url}{self._endpoint}"
 
+    @property
+    def session(self) -> AuthSession:
+        """The resolved AuthSession for the default credential.
+
+        Available after run() completes.  Both validate and redteam runners
+        call bootstrapper.run() before sending any requests, then use
+        bootstrapper.session.headers() on every outbound call.
+
+        Raises RuntimeError if accessed before run() is called.
+        """
+        if self._session is None:
+            raise RuntimeError("AuthBootstrapper.session accessed before run()")
+        return self._session
+
     async def run(self) -> TargetHealthReport:
         """Run bootstrap checks for all credentials. Returns a TargetHealthReport.
 
+        Executes the login flow (if configured) before probing the endpoint,
+        so the connectivity check uses the acquired token rather than raw
+        credentials.
+
         Does NOT raise on individual auth failures — callers inspect the report
         and decide whether to abort. The only exception raised here is a
-        network-level error that prevents even the default credential from
-        reaching the target.
+        network-level error that prevents the default credential from reaching
+        the target.
         """
+        # Initialise the AuthSession — executes login flow if configured
+        self._session = AuthSession(self._default_auth, self._target_url)
+        await self._session.initialize()
+
         report = TargetHealthReport(
             target_url=self._target_url,
             endpoint=self._endpoint,
             run_id=self._run_id,
         )
 
-        # Always check the default credential first
+        # Always check the default credential first, using the live session
+        # headers (which carry the acquired JWT for login_flow auth)
         result = await self._check_one(
             identity="default",
-            auth=self._default_auth,
+            headers=self._session.headers(),
+            auth_type=self._default_auth.type,
         )
         report.checks.append(result)
 
@@ -102,22 +128,34 @@ class AuthBootstrapper:
                     )
                     continue
                 tenant_auth = AuthConfig.from_tenant_token(tenant.session_token)
+                # Tenant credentials are always static (bearer/api_key) —
+                # no login flow needed; use AuthConfig.to_headers() directly
                 tenant_result = await self._check_one(
                     identity=tenant.tenant_id,
-                    auth=tenant_auth,
+                    headers=tenant_auth.to_headers(),
+                    auth_type=tenant_auth.type,
                 )
                 report.checks.append(tenant_result)
 
         return report
 
     async def _check_one(
-        self, identity: str, auth: AuthConfig
+        self,
+        identity: str,
+        headers: dict[str, str],
+        auth_type: str,
     ) -> CredentialCheckResult:
-        """Send a single health-check POST to the endpoint and record the result."""
-        headers = {
+        """Send a single health-check POST to the endpoint and record the result.
+
+        Args:
+            identity: Human-readable name for the credential being checked.
+            headers: Resolved auth headers (from AuthSession or AuthConfig).
+            auth_type: Auth type string for reporting (bearer/basic/login_flow/…).
+        """
+        request_headers = {
             "User-Agent": "nuguard-bootstrap/1.0",
             "Content-Type": "application/json",
-            **auth.to_headers(),
+            **headers,
         }
         # Minimal well-formed payload — enough to get an auth decision from the server.
         # Does NOT need to produce a meaningful AI response; just needs a 2xx vs 4xx.
@@ -129,7 +167,7 @@ class AuthBootstrapper:
                 resp = await client.post(
                     self.full_url,
                     json=probe_body,
-                    headers=headers,
+                    headers=request_headers,
                 )
             elapsed_ms = (time.monotonic() - start) * 1000
 
@@ -139,7 +177,7 @@ class AuthBootstrapper:
                 )
                 return CredentialCheckResult(
                     identity=identity,
-                    auth_type=auth.type,
+                    auth_type=auth_type,
                     endpoint=self.full_url,
                     status="ok",
                     http_status_code=resp.status_code,
@@ -155,7 +193,7 @@ class AuthBootstrapper:
                 )
                 return CredentialCheckResult(
                     identity=identity,
-                    auth_type=auth.type,
+                    auth_type=auth_type,
                     endpoint=self.full_url,
                     status="auth_failed",
                     http_status_code=resp.status_code,
@@ -175,7 +213,7 @@ class AuthBootstrapper:
                 )
                 return CredentialCheckResult(
                     identity=identity,
-                    auth_type=auth.type,
+                    auth_type=auth_type,
                     endpoint=self.full_url,
                     status="ok",
                     http_status_code=resp.status_code,
@@ -189,7 +227,7 @@ class AuthBootstrapper:
             )
             return CredentialCheckResult(
                 identity=identity,
-                auth_type=auth.type,
+                auth_type=auth_type,
                 endpoint=self.full_url,
                 status="target_unavailable",
                 http_status_code=resp.status_code,
@@ -201,7 +239,7 @@ class AuthBootstrapper:
             elapsed_ms = (time.monotonic() - start) * 1000
             return CredentialCheckResult(
                 identity=identity,
-                auth_type=auth.type,
+                auth_type=auth_type,
                 endpoint=self.full_url,
                 status="target_unavailable",
                 response_time_ms=elapsed_ms,
@@ -211,7 +249,7 @@ class AuthBootstrapper:
             elapsed_ms = (time.monotonic() - start) * 1000
             return CredentialCheckResult(
                 identity=identity,
-                auth_type=auth.type,
+                auth_type=auth_type,
                 endpoint=self.full_url,
                 status="target_unavailable",
                 response_time_ms=elapsed_ms,

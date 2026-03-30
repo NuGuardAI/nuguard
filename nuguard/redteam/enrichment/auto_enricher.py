@@ -18,7 +18,7 @@ from typing import Iterable
 
 import httpx
 
-from nuguard.sbom.models import AiSbomDocument, Edge, Node
+from nuguard.sbom.models import AiSbomDocument, Edge, Node, NodeMetadata
 from nuguard.sbom.types import AccessType, ComponentType, RelationshipType
 
 _log = logging.getLogger(__name__)
@@ -116,12 +116,13 @@ def _score_confidence(sbom: AiSbomDocument) -> tuple[float, list[str]]:
     elif datastore_nodes:
         reasons.append("datastore sensitivity metadata missing")
 
-    has_tool_access_edge = any(
-        edge.relationship_type == RelationshipType.ACCESSES
-        and _node_by_id(sbom, edge.source)
-        and _node_by_id(sbom, edge.source).component_type == ComponentType.TOOL
-        for edge in sbom.edges
-    )
+    def _is_tool_access_edge(edge: Edge) -> bool:
+        if edge.relationship_type != RelationshipType.ACCESSES:
+            return False
+        src = _node_by_id(sbom, edge.source)
+        return src is not None and src.component_type == ComponentType.TOOL
+
+    has_tool_access_edge = any(_is_tool_access_edge(e) for e in sbom.edges)
     if has_tool_access_edge:
         score += 0.15
     elif tool_nodes and datastore_nodes:
@@ -222,10 +223,10 @@ def _enrich_static(sbom: AiSbomDocument) -> AiSbomDocument:
                 name=_safe_name_from_target(enriched.target),
                 component_type=ComponentType.AGENT,
                 confidence=0.55,
-                metadata={
-                    "description": desc or "Inferred conversational assistant from runtime/security graph.",
-                    "extras": {"source": "auto_enrichment"},
-                },
+                metadata=NodeMetadata(
+                    description=desc or "Inferred conversational assistant from runtime/security graph.",
+                    extras={"source": "auto_enrichment"},
+                ),
                 evidence=[],
             )
         )
@@ -242,12 +243,12 @@ def _enrich_static(sbom: AiSbomDocument) -> AiSbomDocument:
                 name=f"{path} API",
                 component_type=ComponentType.API_ENDPOINT,
                 confidence=0.55,
-                metadata={
-                    "endpoint": path,
-                    "method": method,
-                    "accepts_user_input": method == "POST",
-                    "extras": {"source": "auto_enrichment"},
-                },
+                metadata=NodeMetadata(
+                    endpoint=path,
+                    method=method,
+                    accepts_user_input=(method == "POST"),
+                    extras={"source": "auto_enrichment"},
+                ),
                 evidence=[],
             )
         )
@@ -301,14 +302,19 @@ def _enrich_static(sbom: AiSbomDocument) -> AiSbomDocument:
 
     # Add TOOL -> DATASTORE relation in the simplest single-datastore case if none exist.
     if datastore_nodes:
-        has_tool_datastore_edge = any(
-            e.relationship_type == RelationshipType.ACCESSES
-            and _node_by_id(enriched, e.source)
-            and _node_by_id(enriched, e.source).component_type == ComponentType.TOOL
-            and _node_by_id(enriched, e.target)
-            and _node_by_id(enriched, e.target).component_type == ComponentType.DATASTORE
-            for e in enriched.edges
-        )
+        def _is_tool_datastore_edge(e: Edge) -> bool:
+            if e.relationship_type != RelationshipType.ACCESSES:
+                return False
+            src = _node_by_id(enriched, e.source)
+            tgt = _node_by_id(enriched, e.target)
+            return (
+                src is not None
+                and src.component_type == ComponentType.TOOL
+                and tgt is not None
+                and tgt.component_type == ComponentType.DATASTORE
+            )
+
+        has_tool_datastore_edge = any(_is_tool_datastore_edge(e) for e in enriched.edges)
         if not has_tool_datastore_edge and tool_nodes:
             enriched.edges.append(
                 Edge(
@@ -366,25 +372,25 @@ async def _probe_and_enrich(sbom: AiSbomDocument, target_url: str) -> tuple[AiSb
             except Exception:
                 continue
 
-            node = endpoint_by_path.get(path)
-            if node is None and get_resp.status_code in (200, 401, 403, 405, 429):
-                node = Node(
+            probe_node: Node | None = endpoint_by_path.get(path)
+            if probe_node is None and get_resp.status_code in (200, 401, 403, 405, 429):
+                probe_node = Node(
                     name=f"{path} API",
                     component_type=ComponentType.API_ENDPOINT,
                     confidence=0.60,
-                    metadata={"endpoint": path, "extras": {"source": "runtime_probe"}},
+                    metadata=NodeMetadata(endpoint=path, extras={"source": "runtime_probe"}),
                     evidence=[],
                 )
-                enriched.nodes.append(node)
-                endpoint_by_path[path] = node
+                enriched.nodes.append(probe_node)
+                endpoint_by_path[path] = probe_node
 
-            if node is not None:
-                if node.metadata.method is None:
-                    node.metadata.method = "GET"
+            if probe_node is not None:
+                if probe_node.metadata.method is None:
+                    probe_node.metadata.method = "GET"
                 if get_resp.status_code in (401, 403):
-                    node.metadata.auth_required = True
+                    probe_node.metadata.auth_required = True
                 if get_resp.status_code == 429:
-                    node.metadata.rate_limited = True
+                    probe_node.metadata.rate_limited = True
 
             # POST probe for chat-like paths only.
             if "chat" not in path and "message" not in path:
@@ -398,32 +404,32 @@ async def _probe_and_enrich(sbom: AiSbomDocument, target_url: str) -> tuple[AiSb
             except Exception:
                 continue
 
-            node = endpoint_by_path.get(path)
-            if node is None and post_resp.status_code in (200, 400, 401, 403, 405, 429):
-                node = Node(
+            probe_node = endpoint_by_path.get(path)
+            if probe_node is None and post_resp.status_code in (200, 400, 401, 403, 405, 429):
+                probe_node = Node(
                     name=f"{path} API",
                     component_type=ComponentType.API_ENDPOINT,
                     confidence=0.62,
-                    metadata={"endpoint": path, "extras": {"source": "runtime_probe"}},
+                    metadata=NodeMetadata(endpoint=path, extras={"source": "runtime_probe"}),
                     evidence=[],
                 )
-                enriched.nodes.append(node)
-                endpoint_by_path[path] = node
+                enriched.nodes.append(probe_node)
+                endpoint_by_path[path] = probe_node
 
-            if node is None:
+            if probe_node is None:
                 continue
 
-            node.metadata.method = "POST"
-            node.metadata.accepts_user_input = True
+            probe_node.metadata.method = "POST"
+            probe_node.metadata.accepts_user_input = True
             inferred_key = _infer_required_field_from_error(post_resp.text or "")
             if inferred_key:
-                node.metadata.chat_payload_key = inferred_key
+                probe_node.metadata.chat_payload_key = inferred_key
             else:
-                node.metadata.chat_payload_key = node.metadata.chat_payload_key or "message"
+                probe_node.metadata.chat_payload_key = probe_node.metadata.chat_payload_key or "message"
             if post_resp.status_code in (401, 403):
-                node.metadata.auth_required = True
+                probe_node.metadata.auth_required = True
             if post_resp.status_code == 429:
-                node.metadata.rate_limited = True
+                probe_node.metadata.rate_limited = True
 
             if post_resp.headers.get("content-type", "").lower().startswith("application/json"):
                 try:
@@ -433,7 +439,7 @@ async def _probe_and_enrich(sbom: AiSbomDocument, target_url: str) -> tuple[AiSb
                 if isinstance(body, dict):
                     for key in ("response", "content", "text"):
                         if key in body:
-                            node.metadata.response_text_key = key
+                            probe_node.metadata.response_text_key = key
                             break
 
     _ensure_summary_node_counts(enriched)

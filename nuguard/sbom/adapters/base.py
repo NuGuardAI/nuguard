@@ -33,6 +33,7 @@ class AdapterDetection:
 class DetectionAdapter:
     name: str
     priority: int
+    canonical_name: str | None = None
 
     def detect(self, content: str) -> AdapterDetection | None:
         raise NotImplementedError

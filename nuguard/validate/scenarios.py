@@ -2,9 +2,13 @@
 from __future__ import annotations
 
 import logging
+from typing import TYPE_CHECKING
 
 from nuguard.config import ValidateConfig
 from nuguard.models.validate import ValidateScenario, ValidateScenarioType
+
+if TYPE_CHECKING:
+    from nuguard.sbom.models import AiSbomDocument
 
 _log = logging.getLogger(__name__)
 
@@ -48,10 +52,41 @@ def _boundary_scenarios_from_controls(controls: list) -> list[ValidateScenario]:
     return scenarios
 
 
+def _agent_routing_scenarios_from_sbom(sbom: "AiSbomDocument") -> list[ValidateScenario]:
+    """Build AGENT_ROUTING scenarios from SBOM AGENT nodes.
+
+    One scenario per agent node — the probe message asks the system to route
+    to or activate that specific agent.
+    """
+    scenarios: list[ValidateScenario] = []
+    try:
+        agent_names = [
+            node.name
+            for node in sbom.nodes
+            if getattr(node, "node_type", None) == "AGENT" and getattr(node, "name", None)
+        ]
+    except Exception:
+        agent_names = []
+
+    for agent_name in agent_names:
+        scenarios.append(
+            ValidateScenario(
+                scenario_type=ValidateScenarioType.AGENT_ROUTING,
+                name=f"agent_routing_{agent_name[:40]}",
+                messages=[
+                    f"Please route this request to the {agent_name} agent for processing."
+                ],
+                target_agents=[agent_name],
+            )
+        )
+    return scenarios
+
+
 def build_scenarios(
     validate_config: ValidateConfig,
     policy: object | None = None,
     controls: list | None = None,
+    sbom: "AiSbomDocument | None" = None,
 ) -> list[ValidateScenario]:
     """Convert *validate_config* and optional *policy* / *controls* into runnable scenarios.
 
@@ -64,6 +99,7 @@ def build_scenarios(
         policy: Optional CognitivePolicy (parsed from .md).
         controls: Optional compiled PolicyControl list (from cognitive_policy.json).
             When supplied, used instead of the raw policy for scenario generation.
+        sbom: Optional AiSbomDocument used for agent_routing scenario generation.
 
     Returns:
         Ordered list of ValidateScenario objects ready for ValidateRunner.
@@ -151,6 +187,21 @@ def build_scenarios(
                     policy_clauses=policy_clauses,
                 )
             )
+
+        elif wf == "agent_routing":
+            if sbom is not None:
+                agent_scenarios = _agent_routing_scenarios_from_sbom(sbom)
+                if agent_scenarios:
+                    scenarios.extend(agent_scenarios)
+                else:
+                    _log.warning(
+                        "workflow 'agent_routing' requested but no AGENT nodes "
+                        "found in SBOM. Skipping."
+                    )
+            else:
+                _log.warning(
+                    "workflow 'agent_routing' requested but no SBOM provided. Skipping."
+                )
 
         else:
             _log.debug("Unknown workflow %r — skipped.", workflow)

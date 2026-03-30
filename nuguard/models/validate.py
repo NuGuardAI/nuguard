@@ -4,6 +4,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime
 from enum import Enum
+from typing import Literal
 
 from pydantic import BaseModel, Field, computed_field
 
@@ -13,6 +14,7 @@ class ValidateScenarioType(str, Enum):
     HAPPY_PATH = "happy_path"
     BOUNDARY_ASSERTION = "boundary_assertion"
     POLICY_COMPLIANCE = "policy_compliance"
+    AGENT_ROUTING = "agent_routing"
 
 
 class ValidateFindingType(str, Enum):
@@ -48,12 +50,16 @@ class ValidateScenario(BaseModel):
     expect_refused: bool = False           # for BOUNDARY_ASSERTION
     forbid_pattern: str = ""              # for BOUNDARY_ASSERTION
     policy_clauses: list[str] = Field(default_factory=list)  # for POLICY_COMPLIANCE
+    # for AGENT_ROUTING: SBOM agent node names expected to activate
+    target_agents: list[str] = Field(default_factory=list)
+    target_endpoint: str | None = None    # per-scenario endpoint override
 
 
 class CapabilityEntry(BaseModel):
-    """Whether a declared tool was exercised during validate."""
+    """Whether a declared tool or agent node was exercised during validate."""
 
     tool_name: str
+    node_type: Literal["tool", "agent"] = "tool"
     exercised: bool = False
     exercised_by: str | None = None   # "scenario_type/scenario_name"
     calls_observed: int = 0

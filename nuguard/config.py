@@ -19,6 +19,7 @@ import yaml
 from pydantic import AliasChoices, BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from nuguard.common.auth import LoginFlowConfig
 from nuguard.common.errors import ConfigError
 from nuguard.common.logging import get_logger
 
@@ -182,10 +183,11 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
 class ValidateAuthConfig(BaseModel):
     """Structured auth config for validate mode, parsed from validate.auth block."""
 
-    type: Literal["bearer", "api_key", "basic", "none"] = "none"
+    type: Literal["bearer", "api_key", "basic", "none", "login_flow"] = "none"
     header: str = ""
     username: str = ""
     password: str = ""
+    login_flow: LoginFlowConfig | None = None
 
 
 class ValidateBoundaryAssertion(BaseModel):
@@ -507,6 +509,7 @@ class NuGuardConfig(BaseSettings):
                 header=va.header,
                 username=va.username,
                 password=va.password,
+                login_flow=va.login_flow,
             )
         return AuthConfig(type="none")
 

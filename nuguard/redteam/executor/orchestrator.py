@@ -783,11 +783,11 @@ class RedteamOrchestrator:
         if self._sbom.summary:
             s = self._sbom.summary
             if getattr(s, "application_name", None):
-                parts.append(f"Application: {s.application_name}")
+                parts.append(f"Application: {getattr(s, 'application_name')}")
             if getattr(s, "use_case", None):
                 parts.append(f"Purpose: {s.use_case[:120]}")
             if getattr(s, "frameworks_detected", None):
-                parts.append(f"Frameworks: {', '.join(list(s.frameworks_detected)[:4])}")
+                parts.append(f"Frameworks: {', '.join(list(getattr(s, 'frameworks_detected'))[:4])}")
         agents = [n for n in self._sbom.nodes if n.component_type == NodeType.AGENT]
         if agents:
             names = ", ".join(n.name for n in agents[:4])
@@ -870,7 +870,7 @@ class RedteamOrchestrator:
         )
         # Tally transport health from guided turn responses
         for turn_detail in step_details:
-            resp = turn_detail.get("response", "")
+            resp = str(turn_detail.get("response", ""))
             category = _classify_step_transport(resp, None)
             if category == "http_2xx":
                 record.http_2xx += 1

@@ -121,7 +121,7 @@ class GroundTruth(BaseModel):
 
     def validate_counts(self) -> bool:
         """Check if asset list matches expected counts."""
-        actual = {}
+        actual: dict[str, int] = {}
         for asset in self.assets:
             asset_type = asset.asset_type.value
             actual[asset_type] = actual.get(asset_type, 0) + 1

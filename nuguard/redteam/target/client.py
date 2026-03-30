@@ -19,6 +19,23 @@ from .session import AttackSession
 _log = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT = 30.0
+
+
+def _extract_nested_key(data: dict[str, Any], key_path: str) -> Any:
+    """Extract a value from a nested dict using dot-notation key path.
+
+    Examples::
+
+        _extract_nested_key({"a": {"b": "val"}}, "a.b")  # → "val"
+        _extract_nested_key({"response": "text"}, "response")  # → "text"
+    """
+    parts = key_path.split(".")
+    current: Any = data
+    for part in parts:
+        if not isinstance(current, dict):
+            return None
+        current = current.get(part)
+    return current
 MAX_CONSECUTIVE_ERRORS = 3
 DEFAULT_MAX_429_RETRIES = 2
 DEFAULT_429_BACKOFF_BASE_SECONDS = 0.5
@@ -68,6 +85,11 @@ class TargetAppClient:
         # Circuit breaker: count consecutive errors on the chat endpoint.
         # Reset to 0 on any successful response.
         self._consecutive_errors: int = 0
+        # Session/conversation ID forwarding: if the app returns a session
+        # or conversation identifier in its response, store it here and
+        # include it in subsequent request bodies so multi-turn conversations
+        # are correlated on the server side.
+        self._session_context: dict[str, Any] = {}
 
     def _parse_retry_after_seconds(self, value: str | None) -> float | None:
         if not value:
@@ -139,6 +161,10 @@ class TargetAppClient:
         """
         value: Any = [payload] if self._chat_payload_list else payload
         body: dict[str, Any] = {self._chat_payload_key: value}
+        # Merge any previously extracted session/conversation context so the
+        # server can correlate subsequent turns within the same conversation.
+        if self._session_context:
+            body.update(self._session_context)
 
         data: dict | str = {}
         for attempt in range(self._max_429_retries + 1):
@@ -183,10 +209,12 @@ class TargetAppClient:
                 self._record_chat_error(label[:120])
                 return f"[REQUEST_ERROR: {label}]", []
 
-        # Extract response text — try explicit key first, then common shapes
+        # Extract response text — try explicit key first, then common shapes.
+        # chat_response_key supports dot-notation for nested keys (e.g. "result.text").
         text = ""
         if self._chat_response_key and isinstance(data, dict):
-            text = str(data.get(self._chat_response_key) or "")
+            extracted = _extract_nested_key(data, self._chat_response_key)
+            text = str(extracted) if extracted is not None else ""
         if not text and isinstance(data, dict):
             text = (
                 data.get("response")
@@ -215,6 +243,13 @@ class TargetAppClient:
         )
         if isinstance(raw_calls, list):
             tool_calls = raw_calls
+
+        # Extract and store session/conversation IDs for multi-turn forwarding.
+        # Heuristic: check the top-level response JSON for common session key names.
+        if isinstance(data, dict):
+            for key in ("session_id", "conversation_id", "thread_id", "chat_id"):
+                if key in data and data[key] is not None:
+                    self._session_context[key] = data[key]
 
         self._record_chat_success()
         return str(text), tool_calls

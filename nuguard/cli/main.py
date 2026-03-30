@@ -5,6 +5,16 @@ Registered as the ``nuguard`` console script via ``pyproject.toml``.
 
 from __future__ import annotations
 
+import os
+
+# Load .env from the current working directory (or any parent) before commands run.
+# This is a no-op if python-dotenv is not installed or no .env file is found.
+try:
+    from dotenv import load_dotenv
+    load_dotenv(override=False)  # env vars already in the shell take precedence
+except ImportError:
+    pass
+
 from nuguard.cli.commands.analyze import analyze_app
 from nuguard.cli.commands.findings import findings_app
 from nuguard.cli.commands.init import init_command
