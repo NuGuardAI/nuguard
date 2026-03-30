@@ -300,7 +300,7 @@ def calculate_metrics(
         recall=recall,
         f1_score=f1,
         by_type=by_type,
-        matches=[asdict(m) for m in matches],
+        matches=matches,
         false_positive_assets=false_positives[:10],  # Limit to first 10
         discovery_time_seconds=discovery_time,
     )

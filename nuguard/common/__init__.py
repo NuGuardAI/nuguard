@@ -9,6 +9,8 @@ from nuguard.common.errors import (
     ExtractorError,
 )
 from nuguard.common.logging import get_logger
+from nuguard.common.auth import AuthConfig, AuthSession, LoginFlowConfig
+from nuguard.common.bootstrap import AuthBootstrapper
 
 __all__ = [
     "NuGuardError",
@@ -18,4 +20,8 @@ __all__ = [
     "ConfigError",
     "ExtractorError",
     "get_logger",
+    "AuthConfig",
+    "AuthSession",
+    "LoginFlowConfig",
+    "AuthBootstrapper",
 ]

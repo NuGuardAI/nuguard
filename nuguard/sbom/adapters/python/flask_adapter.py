@@ -3,7 +3,7 @@
 Registers as a ``FrameworkAdapter`` for Python source files that import
 ``flask``.  Detects:
 
-- ``Flask()`` / ``Blueprint(...)`` instantiations → AGENT nodes
+- ``Flask()`` / ``Blueprint(...)`` instantiations → FRAMEWORK nodes
 - Auth decorators (``login_required``, ``jwt_required``, ...) → AUTH nodes
 - ``@app.route(...)`` decorators → API_ENDPOINT nodes
     - ``request.json.get("key")`` / ``request.form.get("key")`` /
@@ -194,15 +194,17 @@ class FlaskAdapter(FrameworkAdapter):
                     if isinstance(first_arg, ast.Constant) and isinstance(first_arg.value, str):
                         agent_name = first_arg.value
 
-            canon = f"flask:agent:{file_path}:{agent_name}"
+            # Flask() / Blueprint() are web framework objects, not AI agents.
+            # Emit as FRAMEWORK so they appear in the infrastructure section.
+            canon = f"flask:framework:{file_path}:{agent_name}"
             detections.append(ComponentDetection(
-                component_type=ComponentType.AGENT,
+                component_type=ComponentType.FRAMEWORK,
                 canonical_name=canon,
                 display_name=agent_name,
                 adapter_name=self.name,
                 priority=self.priority,
                 confidence=_CONFIDENCE,
-                metadata={"framework": "flask"},
+                metadata={"framework": "flask", "class": class_name},
                 file_path=file_path,
                 line=stmt.lineno,
                 evidence_kind="ast_instantiation",
@@ -250,7 +252,10 @@ class FlaskAdapter(FrameworkAdapter):
                 receiver, path_str, methods = route_info
                 method = methods[0].upper() if methods else "GET"
                 func_name = node.name
-                canon = f"flask:endpoint:{file_path}:{func_name}"
+                # Key on HTTP method + route path so the same endpoint defined
+                # across multiple Blueprint/service files is deduplicated into
+                # one node with evidence from all files.
+                canon = f"flask:endpoint:{method}:{path_str}"
 
                 chat_key: str | None = None
                 if "POST" in [m.upper() for m in methods]:
@@ -283,7 +288,7 @@ class FlaskAdapter(FrameworkAdapter):
                 if receiver and receiver in agent_vars:
                     ep_detection.relationships.append(RelationshipHint(
                         source_canonical=agent_vars[receiver],
-                        source_type=ComponentType.AGENT,
+                        source_type=ComponentType.FRAMEWORK,
                         target_canonical=canon,
                         target_type=ComponentType.API_ENDPOINT,
                         relationship_type="CALLS",

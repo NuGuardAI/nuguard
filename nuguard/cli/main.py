@@ -5,12 +5,24 @@ Registered as the ``nuguard`` console script via ``pyproject.toml``.
 
 from __future__ import annotations
 
+import os
+
+# Load .env from the current working directory (or any parent) before commands run.
+# This is a no-op if python-dotenv is not installed or no .env file is found.
+try:
+    from dotenv import load_dotenv
+    load_dotenv(override=False)  # env vars already in the shell take precedence
+except ImportError:
+    pass
+
 from nuguard.cli.commands.analyze import analyze_app
 from nuguard.cli.commands.findings import findings_app
 from nuguard.cli.commands.init import init_command
 from nuguard.cli.commands.policy import policy_app
 from nuguard.cli.commands.replay import replay_app
 from nuguard.cli.commands.redteam import redteam_app
+from nuguard.cli.commands.target import target_app
+from nuguard.cli.commands.validate import validate_app
 from nuguard.cli.commands.report import report_app
 from nuguard.cli.commands.sbom import sbom_app
 from nuguard.cli.commands.scan import scan_app
@@ -30,6 +42,8 @@ app.add_typer(analyze_app, name="analyze")
 app.add_typer(scan_app, name="scan")
 app.add_typer(policy_app, name="policy")
 app.add_typer(redteam_app, name="redteam")
+app.add_typer(target_app, name="target")
+app.add_typer(validate_app, name="validate")
 app.add_typer(seed_app, name="seed")
 app.add_typer(report_app, name="report")
 app.add_typer(findings_app, name="findings")

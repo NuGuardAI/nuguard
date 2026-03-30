@@ -13,14 +13,18 @@ from __future__ import annotations
 import os
 import re
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, Literal
 
 import yaml
-from pydantic import AliasChoices, Field
+from pydantic import AliasChoices, BaseModel, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from nuguard.common.auth import LoginFlowConfig
 from nuguard.common.errors import ConfigError
 from nuguard.common.logging import get_logger
+
+if TYPE_CHECKING:
+    from nuguard.common.auth import AuthConfig
 
 _log = get_logger(__name__)
 
@@ -47,10 +51,20 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
     """
     flat: dict[str, Any] = {}
 
-    # Top-level file-path keys — kept as their YAML names (matched via field aliases)
-    for key in ("sbom", "source", "policy"):
+    # Top-level file-path keys
+    for key in ("sbom", "source"):
         if key in data:
             flat[key] = data[key]
+
+    # Policy: string path OR {path: ..., use_llm: bool}
+    policy_val = data.get("policy")
+    if isinstance(policy_val, str):
+        flat["policy"] = policy_val
+    elif isinstance(policy_val, dict):
+        if "path" in policy_val:
+            flat["policy"] = policy_val["path"]
+        if "use_llm" in policy_val:
+            flat["policy_use_llm"] = bool(policy_val["use_llm"])
 
     # LLM section
     llm = data.get("llm", {}) or {}
@@ -79,6 +93,8 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_chat_payload_key"] = redteam["chat_payload_key"]
     if "chat_payload_list" in redteam:
         flat["redteam_chat_payload_list"] = bool(redteam["chat_payload_list"])
+    if "chat_response_key" in redteam:
+        flat["redteam_chat_response_key"] = redteam["chat_response_key"]
     if "auth_header" in redteam:
         flat["redteam_auth_header"] = redteam["auth_header"]
     if "canary" in redteam:
@@ -122,6 +138,31 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
     if "api_key" in redteam_eval_llm:
         flat["redteam_eval_llm_api_key"] = redteam_eval_llm["api_key"]
 
+    # Validate section — stored entirely as a nested ValidateConfig object.
+    # NOTE: validate.target is NOT written to target_url (the redteam field).
+    # The two modes may point at different URLs; callers use cfg.validate_config.target.
+    if "validate" in data:
+        v = data.get("validate") or {}
+        if isinstance(v, dict):
+            flat["validate_config"] = v
+
+    # Redteam structured auth block
+    redteam = data.get("redteam", {}) or {}
+    if isinstance(redteam, dict) and "auth" in redteam:
+        auth = redteam.get("auth") or {}
+        if isinstance(auth, dict):
+            auth_type = auth.get("type", "none")
+            flat["redteam_auth_type"] = auth_type
+            if auth_type in ("bearer", "api_key") and "header" in auth:
+                flat["redteam_auth_header"] = auth["header"]
+            if auth_type == "basic":
+                flat["redteam_auth_username"] = auth.get("username", "")
+                flat["redteam_auth_password"] = auth.get("password", "")
+
+    # Redteam defence_regressions
+    if isinstance(redteam, dict) and "defence_regressions" in redteam:
+        flat["redteam_defence_regressions"] = redteam["defence_regressions"]
+
     # Analyze section
     analyze = data.get("analyze", {}) or {}
     if "min_severity" in analyze:
@@ -137,6 +178,43 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["sarif_output_path"] = output["sarif_file"]
 
     return flat
+
+
+class ValidateAuthConfig(BaseModel):
+    """Structured auth config for validate mode, parsed from validate.auth block."""
+
+    type: Literal["bearer", "api_key", "basic", "none", "login_flow"] = "none"
+    header: str = ""
+    username: str = ""
+    password: str = ""
+    login_flow: LoginFlowConfig | None = None
+
+
+class ValidateBoundaryAssertion(BaseModel):
+    """Single boundary assertion declared in nuguard.yaml validate.boundary_assertions."""
+
+    name: str
+    message: str
+    expect: Literal["refused"] = "refused"
+    forbid_pattern: str = ""
+
+
+class ValidateConfig(BaseModel):
+    """Configuration for nuguard validate mode (Phase 3 execution; Phase 1 config parsing)."""
+
+    target: str = ""
+    target_endpoint: str = ""  # empty = auto-discover from SBOM; falls back to /chat
+    auth: ValidateAuthConfig = Field(default_factory=ValidateAuthConfig)
+    canary: str = ""
+    workflows: list[str] = Field(default_factory=list)
+    capability_map: bool = True
+    boundary_assertions: list[ValidateBoundaryAssertion] = Field(default_factory=list)
+    request_timeout: float = 60.0
+    verbose: bool = False
+    use_llm: bool = False
+    chat_payload_key: str = "message"
+    chat_payload_list: bool = False
+    chat_response_key: str = ""  # explicit JSON key for response text (empty = auto-detect)
 
 
 class NuGuardConfig(BaseSettings):
@@ -176,7 +254,11 @@ class NuGuardConfig(BaseSettings):
     policy_path: str | None = Field(
         default=None,
         alias="policy",
-        description="Default cognitive policy Markdown path (yaml: policy).",
+        description="Default cognitive policy Markdown path (yaml: policy or policy.path).",
+    )
+    policy_use_llm: bool = Field(
+        default=False,
+        description="Use LLM to compile policy controls (yaml: policy.use_llm).",
     )
 
     # ------------------------------------------------- SBOM generation
@@ -191,8 +273,11 @@ class NuGuardConfig(BaseSettings):
         description="URL of the running AI application under test (yaml: redteam.target).",
     )
     target_endpoint: str = Field(
-        default="/chat",
-        description="Agent chat endpoint path on the target (yaml: redteam.target_endpoint).",
+        default="",
+        description=(
+            "Agent chat endpoint path on the target (yaml: redteam.target_endpoint). "
+            "Empty string = auto-discover from SBOM; falls back to /chat."
+        ),
     )
     redteam_chat_payload_key: str = Field(
         default="message",
@@ -206,6 +291,13 @@ class NuGuardConfig(BaseSettings):
         description=(
             "When true, the chat message value is sent as a list rather than a plain string "
             "(yaml: redteam.chat_payload_list)."
+        ),
+    )
+    redteam_chat_response_key: str = Field(
+        default="",
+        description=(
+            "JSON key to extract response text from the target's reply body "
+            "(yaml: redteam.chat_response_key). Empty string = auto-detect."
         ),
     )
     redteam_auth_header: str | None = Field(
@@ -356,6 +448,70 @@ class NuGuardConfig(BaseSettings):
         default=None,
         description="Path to write SARIF output (yaml: output.sarif_file).",
     )
+
+    # ------------------------------------------------------- Validate mode
+    validate_config: ValidateConfig = Field(
+        default_factory=ValidateConfig,
+        description="Configuration for nuguard validate mode (Phase 1: parsing; Phase 3: execution).",
+    )
+
+    # ----------------------------------------- Structured redteam auth
+    redteam_auth_type: str = Field(
+        default="none",
+        description="Structured auth type for redteam: bearer|api_key|basic|none (yaml: redteam.auth.type).",
+    )
+    redteam_auth_username: str = Field(
+        default="",
+        description="Username for redteam basic auth (yaml: redteam.auth.username).",
+    )
+    redteam_auth_password: str = Field(
+        default="",
+        description="Password for redteam basic auth (yaml: redteam.auth.password).",
+    )
+
+    # ----------------------------------------- Defence regressions
+    redteam_defence_regressions: list[dict] = Field(
+        default_factory=list,
+        description="Defence regression scenarios declared in nuguard.yaml redteam.defence_regressions.",
+    )
+
+    def resolved_auth_config(self) -> "AuthConfig":
+        """Build an AuthConfig from the resolved *redteam* auth settings.
+
+        Priority: structured auth block > legacy auth_header string > none.
+        Import is deferred to avoid circular imports.
+        """
+        from nuguard.common.auth import AuthConfig
+
+        if self.redteam_auth_type and self.redteam_auth_type != "none":
+            return AuthConfig(
+                type=self.redteam_auth_type,  # type: ignore[arg-type]
+                header=self.redteam_auth_header or "",
+                username=self.redteam_auth_username,
+                password=self.redteam_auth_password,
+            )
+        if self.redteam_auth_header:
+            return AuthConfig.from_header_string(self.redteam_auth_header)
+        return AuthConfig(type="none")
+
+    def resolved_validate_auth_config(self) -> "AuthConfig":
+        """Build an AuthConfig from the resolved *validate* auth settings.
+
+        Reads from validate_config.auth. Falls back to none if not declared.
+        Import is deferred to avoid circular imports.
+        """
+        from nuguard.common.auth import AuthConfig
+
+        va = self.validate_config.auth
+        if va.type and va.type != "none":
+            return AuthConfig(
+                type=va.type,  # type: ignore[arg-type]
+                header=va.header,
+                username=va.username,
+                password=va.password,
+                login_flow=va.login_flow,
+            )
+        return AuthConfig(type="none")
 
     model_config = SettingsConfigDict(
         env_file=".nuguard.env",

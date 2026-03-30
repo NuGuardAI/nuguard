@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import argparse
+
 import pytest
 
 
-def _parse(argv: list[str]) -> object:
+def _parse(argv: list[str]) -> argparse.Namespace:
     """Helper: parse args using main's parser logic by monkey-patching sys.argv."""
     import argparse
 

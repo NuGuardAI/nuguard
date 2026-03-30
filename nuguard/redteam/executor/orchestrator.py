@@ -9,13 +9,13 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from nuguard.common.auth import AuthConfig
     from nuguard.common.llm_client import LLMClient
     from nuguard.redteam.target.log_reader import BufferLogReader, FileLogReader
 
 from nuguard.models.exploit_chain import ExploitChain, GoalType
 from nuguard.models.finding import Finding
 from nuguard.models.policy import CognitivePolicy
-from nuguard.sbom.models import NodeType
 from nuguard.redteam.risk_engine import (
     compliance_mapper,
     remediation_generator,
@@ -26,7 +26,7 @@ from nuguard.redteam.scenarios.scenario_types import AttackScenario
 from nuguard.redteam.target.action_logger import ActionLogger
 from nuguard.redteam.target.canary import CanaryConfig, CanaryScanner
 from nuguard.redteam.target.client import TargetAppClient, TargetUnavailableError
-from nuguard.sbom.models import AiSbomDocument
+from nuguard.sbom.models import AiSbomDocument, NodeType
 
 from .executor import AttackExecutor, StepResult
 from .guided_executor import GuidedAttackExecutor
@@ -179,10 +179,12 @@ def _discover_chat_config(
     chat_payload_key: str,
     chat_payload_list: bool,
 ) -> tuple[str, str, bool]:
-    """Auto-discover chat endpoint config from SBOM API_ENDPOINT nodes.
+    """Auto-discover chat endpoint config from SBOM API_ENDPOINT node metadata.
 
     Looks for a POST endpoint whose metadata has ``chat_payload_key`` set.
-    Falls back to the provided defaults if nothing is found.
+    Falls back to the provided defaults if nothing is found.  Live probing
+    (when ``chat_path`` is empty) is handled separately in
+    :meth:`RedteamOrchestrator.run`.
 
     Returns ``(chat_path, chat_payload_key, chat_payload_list)``.
     """
@@ -243,6 +245,53 @@ def _discover_chat_config(
     return chat_path, chat_payload_key, chat_payload_list
 
 
+def _enrich_policy_from_controls(
+    policy: "CognitivePolicy", controls: list
+) -> "CognitivePolicy":
+    """Return a copy of *policy* with restricted_topics / restricted_actions
+    extended by the boundary_prompt text from compiled controls.
+
+    This ensures the ScenarioGenerator uses richer, control-specific prompts
+    rather than falling back to generic templates.
+    """
+    extra_topics = [
+        p
+        for c in controls
+        if c.control_type == "topic_restriction"
+        for p in (c.boundary_prompts or [])
+    ]
+    extra_actions = [
+        p
+        for c in controls
+        if c.control_type == "action_restriction"
+        for p in (c.boundary_prompts or [])
+    ]
+    return policy.model_copy(
+        update={
+            "restricted_topics": list(policy.restricted_topics) + extra_topics,
+            "restricted_actions": list(policy.restricted_actions) + extra_actions,
+        }
+    )
+
+
+def _policy_from_controls(controls: list) -> "CognitivePolicy":
+    """Build a minimal CognitivePolicy from compiled controls when no .md policy exists."""
+    restricted_topics = [
+        c.description for c in controls if c.control_type == "topic_restriction"
+    ]
+    restricted_actions = [
+        c.description for c in controls if c.control_type == "action_restriction"
+    ]
+    hitl_triggers = [
+        c.description for c in controls if c.control_type == "hitl"
+    ]
+    return CognitivePolicy(
+        restricted_topics=restricted_topics,
+        restricted_actions=restricted_actions,
+        hitl_triggers=hitl_triggers,
+    )
+
+
 class RedteamOrchestrator:
     """Orchestrates a full red-team scan."""
 
@@ -255,6 +304,7 @@ class RedteamOrchestrator:
         sbom: AiSbomDocument,
         target_url: str,
         policy: CognitivePolicy | None = None,
+        policy_controls: list | None = None,
         canary_config: CanaryConfig | None = None,
         profile: str = "ci",
         min_impact_score: float = 0.0,
@@ -262,6 +312,7 @@ class RedteamOrchestrator:
         chat_path: str = "/chat",
         chat_payload_key: str = "message",
         chat_payload_list: bool = False,
+        chat_response_key: str | None = None,
         concurrency: int = DEFAULT_CONCURRENCY,
         request_timeout: float = 120.0,
         redteam_llm: "LLMClient | None" = None,
@@ -274,10 +325,12 @@ class RedteamOrchestrator:
         extra_headers: dict[str, str] | None = None,
         strict_outcome: bool = False,
         scenario_filter: list[str] | None = None,
+        auth_config: "AuthConfig | None" = None,
     ) -> None:
         self._sbom = sbom
         self._target_url = target_url
         self._policy = policy
+        self._policy_controls = policy_controls  # compiled PolicyControl list
         self._canary_config = canary_config
         self._profile = profile
         self._min_impact = min_impact_score
@@ -292,6 +345,8 @@ class RedteamOrchestrator:
         self._guided_conversations = guided_conversations
         self._guided_max_turns = guided_max_turns
         self._guided_concurrency = max(1, guided_concurrency)
+        # Structured auth config — when provided, takes precedence over extra_headers
+        self._auth_config = auth_config
         # Default HTTP headers propagated to every request (e.g. auth header)
         self._extra_headers: dict[str, str] = extra_headers or {}
         # Outcome semantics: when True, a scan with predominantly transport errors
@@ -306,6 +361,7 @@ class RedteamOrchestrator:
         self._chat_path, self._chat_payload_key, self._chat_payload_list = (
             _discover_chat_config(sbom, chat_path, chat_payload_key, chat_payload_list)
         )
+        self._chat_response_key = chat_response_key
         # Populated by run() — scenarios executed and their titles
         self.scenarios_run: int = 0
         self.scenarios_executed: list[tuple[str, str, bool]] = []  # (title, goal_type, had_finding)
@@ -340,10 +396,65 @@ class RedteamOrchestrator:
             self._profile,
         )
 
+        # 0. Endpoint auto-discovery — when chat_path was not explicitly configured,
+        #    probe SBOM POST endpoints live to find one that accepts chat requests.
+        if not self._chat_path:
+            await self._maybe_probe_endpoints()
+
+        # 0b. Auth bootstrap — resolve effective auth and verify every credential
+        #    before running any scenario. Raises TargetUnavailableError on network
+        #    failure; raises AuthError when the default credential is rejected.
+        import uuid as _uuid
+
+        from nuguard.common.auth import AuthConfig as _AuthConfig
+        from nuguard.common.bootstrap import AuthBootstrapper
+        from nuguard.common.errors import AuthError
+
+        effective_auth = self._auth_config or _AuthConfig(type="none")
+        # If auth_config not provided, reconstruct from extra_headers (legacy path)
+        if self._auth_config is None and self._extra_headers:
+            header_str = next(
+                (f"{k}: {v}" for k, v in self._extra_headers.items()), ""
+            )
+            effective_auth = _AuthConfig.from_header_string(header_str)
+
+        bootstrapper = AuthBootstrapper(
+            target_url=self._target_url,
+            endpoint=self._chat_path,
+            default_auth=effective_auth,
+            canary_config=self._canary_config,
+            run_id=str(_uuid.uuid4()),
+        )
+        health_report = await bootstrapper.run()
+        self.health_report = health_report
+        for line in health_report.summary_lines():
+            _log.info("bootstrap %s", line)
+        # Abort on default credential auth failure — scenarios would produce false negatives
+        default_check = health_report.checks[0] if health_report.checks else None
+        if default_check and default_check.status == "auth_failed":
+            raise AuthError(
+                f"Auth failed for identity '{default_check.identity}' "
+                f"(HTTP {default_check.http_status_code}): {default_check.error_detail}",
+                status_code=default_check.http_status_code or 0,
+                identity=default_check.identity,
+                detail=default_check.error_detail,
+            )
+
         # 1. Generate scenarios from SBOM + policy.
+        # When compiled controls are available, enrich the policy with their
+        # boundary_prompts so the scenario generator uses the richer, LLM-crafted
+        # (or rule-based) prompts instead of generic templates.
+        effective_policy = self._policy
+        if self._policy_controls and effective_policy is not None:
+            effective_policy = _enrich_policy_from_controls(
+                effective_policy, self._policy_controls
+            )
+        elif self._policy_controls and effective_policy is None:
+            effective_policy = _policy_from_controls(self._policy_controls)
+
         # Guided conversations require an LLM — only generate when one is configured.
         _with_guided = self._guided_conversations and bool(self._redteam_llm)
-        generator = ScenarioGenerator(self._sbom, self._policy)
+        generator = ScenarioGenerator(self._sbom, effective_policy)
         all_scenarios = generator.generate(with_guided=_with_guided)
 
         # 2. LLM payload enrichment (opt-in — only when redteam_llm is configured)
@@ -433,6 +544,7 @@ class RedteamOrchestrator:
                 chat_path=self._chat_path,
                 chat_payload_key=self._chat_payload_key,
                 chat_payload_list=self._chat_payload_list,
+                chat_response_key=self._chat_response_key,
                 timeout=self._request_timeout,
                 default_headers=self._extra_headers or None,
             ) as client,
@@ -671,11 +783,11 @@ class RedteamOrchestrator:
         if self._sbom.summary:
             s = self._sbom.summary
             if getattr(s, "application_name", None):
-                parts.append(f"Application: {s.application_name}")
+                parts.append(f"Application: {getattr(s, 'application_name')}")
             if getattr(s, "use_case", None):
                 parts.append(f"Purpose: {s.use_case[:120]}")
             if getattr(s, "frameworks_detected", None):
-                parts.append(f"Frameworks: {', '.join(list(s.frameworks_detected)[:4])}")
+                parts.append(f"Frameworks: {', '.join(list(getattr(s, 'frameworks_detected'))[:4])}")
         agents = [n for n in self._sbom.nodes if n.component_type == NodeType.AGENT]
         if agents:
             names = ", ".join(n.name for n in agents[:4])
@@ -758,7 +870,7 @@ class RedteamOrchestrator:
         )
         # Tally transport health from guided turn responses
         for turn_detail in step_details:
-            resp = turn_detail.get("response", "")
+            resp = str(turn_detail.get("response", ""))
             category = _classify_step_transport(resp, None)
             if category == "http_2xx":
                 record.http_2xx += 1
@@ -1029,3 +1141,54 @@ class RedteamOrchestrator:
                 )
 
         return findings
+
+    async def _maybe_probe_endpoints(self) -> None:
+        """Live-probe SBOM endpoints when no explicit chat path is configured.
+
+        Updates ``self._chat_path``, ``self._chat_payload_key``, and
+        ``self._chat_payload_list`` in-place when a working endpoint is found.
+        Only runs when ``self._chat_path`` is empty or the generic default '/chat'.
+        """
+        from nuguard.common.endpoint_probe import probe_chat_endpoints  # noqa: PLC0415
+
+        if self._chat_path:
+            # Already have an explicit path — skip probing
+            return
+
+        auth_headers: dict[str, str] = {}
+        if self._extra_headers:
+            auth_headers.update(self._extra_headers)
+
+        _log.info(
+            "redteam: target_endpoint not configured — probing SBOM endpoints at %s",
+            self._target_url,
+        )
+        result = await probe_chat_endpoints(
+            target_url=self._target_url,
+            sbom=self._sbom,
+            auth_headers=auth_headers or None,
+            timeout=15.0,
+            known_payload_key=(
+                self._chat_payload_key
+                if self._chat_payload_key != "message"
+                else None
+            ),
+            known_payload_list=self._chat_payload_list,
+            known_response_key=self._chat_response_key,
+        )
+        if result:
+            path, pay_key, pay_list = result
+            _log.info(
+                "redteam: discovered endpoint %s (payload_key=%r list=%s)",
+                path, pay_key, pay_list,
+            )
+            self._chat_path = path
+            self._chat_payload_key = pay_key
+            self._chat_payload_list = pay_list
+        else:
+            _log.warning(
+                "redteam: endpoint probe found nothing — keeping default %r",
+                self._chat_path or "/chat",
+            )
+            if not self._chat_path:
+                self._chat_path = "/chat"

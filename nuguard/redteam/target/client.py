@@ -12,23 +12,34 @@ from typing import Any
 
 import httpx
 
+from nuguard.common.errors import TargetUnavailableError  # noqa: F401 — re-exported for callers
+
 from .session import AttackSession
 
 _log = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT = 30.0
+
+
+def _extract_nested_key(data: dict[str, Any], key_path: str) -> Any:
+    """Extract a value from a nested dict using dot-notation key path.
+
+    Examples::
+
+        _extract_nested_key({"a": {"b": "val"}}, "a.b")  # → "val"
+        _extract_nested_key({"response": "text"}, "response")  # → "text"
+    """
+    parts = key_path.split(".")
+    current: Any = data
+    for part in parts:
+        if not isinstance(current, dict):
+            return None
+        current = current.get(part)
+    return current
 MAX_CONSECUTIVE_ERRORS = 3
 DEFAULT_MAX_429_RETRIES = 2
 DEFAULT_429_BACKOFF_BASE_SECONDS = 0.5
 DEFAULT_429_BACKOFF_CAP_SECONDS = 5.0
-
-
-class TargetUnavailableError(Exception):
-    """Raised when the target chat endpoint returns too many consecutive errors.
-
-    Signals the orchestrator to abort remaining scenarios rather than
-    hammering a broken or unreachable endpoint.
-    """
 
 
 class TargetAppClient:
@@ -40,6 +51,7 @@ class TargetAppClient:
         chat_path: str = "/chat",
         chat_payload_key: str = "message",
         chat_payload_list: bool = False,
+        chat_response_key: str | None = None,
         timeout: float = DEFAULT_TIMEOUT,
         max_consecutive_errors: int = MAX_CONSECUTIVE_ERRORS,
         max_429_retries: int = DEFAULT_MAX_429_RETRIES,
@@ -51,6 +63,7 @@ class TargetAppClient:
         self._chat_path = chat_path
         self._chat_payload_key = chat_payload_key
         self._chat_payload_list = chat_payload_list
+        self._chat_response_key = chat_response_key  # explicit key overrides auto-detection
         # Merge caller-supplied headers (e.g. auth) on top of the nuguard defaults.
         # These apply to every request made by this client instance.
         merged_headers: dict[str, str] = {"User-Agent": "nuguard-redteam/1.0"}
@@ -72,6 +85,11 @@ class TargetAppClient:
         # Circuit breaker: count consecutive errors on the chat endpoint.
         # Reset to 0 on any successful response.
         self._consecutive_errors: int = 0
+        # Session/conversation ID forwarding: if the app returns a session
+        # or conversation identifier in its response, store it here and
+        # include it in subsequent request bodies so multi-turn conversations
+        # are correlated on the server side.
+        self._session_context: dict[str, Any] = {}
 
     def _parse_retry_after_seconds(self, value: str | None) -> float | None:
         if not value:
@@ -143,6 +161,10 @@ class TargetAppClient:
         """
         value: Any = [payload] if self._chat_payload_list else payload
         body: dict[str, Any] = {self._chat_payload_key: value}
+        # Merge any previously extracted session/conversation context so the
+        # server can correlate subsequent turns within the same conversation.
+        if self._session_context:
+            body.update(self._session_context)
 
         data: dict | str = {}
         for attempt in range(self._max_429_retries + 1):
@@ -187,31 +209,47 @@ class TargetAppClient:
                 self._record_chat_error(label[:120])
                 return f"[REQUEST_ERROR: {label}]", []
 
-        # Extract response text — try common response shapes
-        text = (
-            data.get("response")
-            or data.get("content")
-            or data.get("message", {}).get("content", "")
-            or ""
-        )
+        # Extract response text — try explicit key first, then common shapes.
+        # chat_response_key supports dot-notation for nested keys (e.g. "result.text").
+        text = ""
+        if self._chat_response_key and isinstance(data, dict):
+            extracted = _extract_nested_key(data, self._chat_response_key)
+            text = str(extracted) if extracted is not None else ""
+        if not text and isinstance(data, dict):
+            text = (
+                data.get("response")
+                or data.get("content")
+                or data.get("message", {}).get("content", "")
+                or ""
+            )
         # Handle list-of-messages response (e.g. openai-cs-agents-demo)
-        if not text and isinstance(data.get("messages"), list):
+        if not text and isinstance(data, dict) and isinstance(data.get("messages"), list):
             msgs = data["messages"]
             if msgs and isinstance(msgs[-1], dict):
                 text = msgs[-1].get("content") or msgs[-1].get("text") or ""
         if not text and isinstance(data, str):
             text = data
+        # Last resort: return full JSON so evaluators have something to work with
+        if not text and isinstance(data, dict) and data:
+            text = json.dumps(data)
 
         # Extract tool calls
         tool_calls: list[dict] = []
         raw_calls = (
-            data.get("tool_calls")
-            or data.get("function_calls")
-            or data.get("message", {}).get("tool_calls", [])
+            (data.get("tool_calls") if isinstance(data, dict) else None)
+            or (data.get("function_calls") if isinstance(data, dict) else None)
+            or (data.get("message", {}).get("tool_calls", []) if isinstance(data, dict) else [])
             or []
         )
         if isinstance(raw_calls, list):
             tool_calls = raw_calls
+
+        # Extract and store session/conversation IDs for multi-turn forwarding.
+        # Heuristic: check the top-level response JSON for common session key names.
+        if isinstance(data, dict):
+            for key in ("session_id", "conversation_id", "thread_id", "chat_id"):
+                if key in data and data[key] is not None:
+                    self._session_context[key] = data[key]
 
         self._record_chat_success()
         return str(text), tool_calls

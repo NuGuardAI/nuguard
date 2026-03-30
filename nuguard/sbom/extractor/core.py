@@ -222,13 +222,13 @@ _DOCS_EXTENSIONS = {
     ".html",
     ".htm",
     ".adoc",
-    ".sh",
-    ".bash",
-    ".zsh",
-    ".fish",
-    ".ps1",
     ".mk",
 }
+# Shell / script extensions are NOT in _DOCS_EXTENSIONS so that regex adapters
+# (deployment_generic, privilege, auth, etc.) can scan them.  They receive the
+# IAC source tier so their evidence confidence is scored like infrastructure
+# files rather than code.
+_SCRIPT_EXTENSIONS = {".sh", ".bash", ".zsh", ".fish", ".ps1"}
 
 
 def _should_skip_path_parts(parts: tuple[str, ...]) -> bool:
@@ -287,7 +287,7 @@ def _classify_source_tier(file_path: str, adapter_name: str, evidence_kind: str)
     stem = p.stem.lower()
     if suffix in _DOCS_EXTENSIONS or stem in _DOCS_STEMS:
         return _TIER_DOCS
-    if suffix in _IAC_EXTENSIONS:
+    if suffix in _IAC_EXTENSIONS or suffix in _SCRIPT_EXTENSIONS:
         return _TIER_IAC
     # Python / TypeScript / notebook files processed by regex fallback → code
     return _TIER_CODE
@@ -1903,6 +1903,13 @@ def _dedup_by_location(
             # multiple imports on one line → multiple FAISS stores) and must
             # both be kept.
             if not (_has_regex_evidence(node_map[winner]) or _has_regex_evidence(node_map[loser])):
+                continue
+            # FRAMEWORK nodes with different canonical names are distinct
+            # frameworks even when detected on the same source line (e.g. a
+            # comment mentioning both "autogen" and "crewai" triggers both regex
+            # adapters at the same line).  Keep them separate so each framework
+            # gets its own node in the SBOM.
+            if winner[0] == ComponentType.FRAMEWORK and winner[1] != loser[1]:
                 continue
             # Absorb evidence so the winner node reflects all source locations
             node_map[winner].evidence.extend(node_map[loser].evidence)
