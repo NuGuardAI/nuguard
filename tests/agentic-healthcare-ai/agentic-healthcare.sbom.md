@@ -1,6 +1,6 @@
 # SBOM Report: https://github.com/rangoel-nu/agentic-healthcare-ai
 
-**Generated:** 2026-03-29T19:09:50Z  
+**Generated:** 2026-03-30T21:42:44Z  
 **Schema version:** 1.4.0  
 
 ## Summary
@@ -364,15 +364,15 @@
 - `aws cloudformation` — `.github/workflows/deploy-aws.yml`:530
 - `az group` — `.github/workflows/deploy-azure.yml`:112
 - `gcloud` — `.github/workflows/deploy-fhir-servers.yml`:144, `.github/workflows/deploy-gcp.yml`:98, `.github/workflows/env-template.yml`:101
+- `docker` — `deploy.sh`:9, `docker/docker-compose.yml`:22, `scripts/setup-config.py`:51, `setup.py`:41, `.github/workflows/ui-tests.yml`:147
 - `traefik` — `docker/docker-compose.agents.yml`:36
-- `docker` — `docker/docker-compose.yml`:22, `scripts/setup-config.py`:51, `setup.py`:41, `.github/workflows/ui-tests.yml`:147
 - `kubectl` — `kubernetes/cleanup.sh`:10, `kubernetes/deploy.sh`:42, `kubernetes/port-forward.sh`:53, `scripts/clean-up-docker.sh`:20, `kubernetes/manifests/02-secrets.yaml`:31
 - `nginx` — `ui/Dockerfile`:36, `ui/docker-compose.ui.yml`:13
 - `Deployment` — `kubernetes/manifests/06-healthcare-agents.yaml`:2, `kubernetes/manifests/07-healthcare-ui.yaml`:2, `kubernetes/manifests/09-elk-stack.yaml`:2, `kubernetes/manifests/04-database.yaml`:2, `kubernetes/manifests/08-monitoring.yaml`:2, `kubernetes/manifests/11-fhir-proxy.yaml`:2, `kubernetes/manifests/05-redis.yaml`:2
 - `KUBERNETES` — `config/secrets.py`:25
 - `Kubernetes` — `kubernetes/manifests/configmap-generator.yaml`:1, `scripts/generate-k8s-configmap.py`:3
 - `NGINX` — `docker/services/monitoring/prometheus.yml`:40
-- `uvicorn` — `agent_backend/main.py`:458, `autogen_fhir_agent/main.py`:11, `crewai_fhir_agent/main.py`:11, `fhir_mcp_server/fhir_mcp_service.py`:22, `fhir_proxy/main.py`:241, `agent_backend/Dockerfile`:34, `fhir_proxy/Dockerfile`:25
+- `uvicorn` — `agent_backend/main.py`:458, `autogen_fhir_agent/main.py`:11, `crewai_fhir_agent/main.py`:11, `fhir_mcp_server/fhir_mcp_service.py`:22, `fhir_proxy/main.py`:241, `agent_backend/Dockerfile`:36, `fhir_proxy/Dockerfile`:25
 - `render` — `ui/src/index.tsx`:49
 - Source tiers: code, iac
 
@@ -404,7 +404,7 @@
 - `EXPOSE 8001` — `autogen_fhir_agent/Dockerfile`:35
 
 **Port 8002 (`deployment_port_8002`)**
-- `EXPOSE 8002` — `agent_backend/Dockerfile`:27
+- `EXPOSE 8002` — `agent_backend/Dockerfile`:29
 
 **Port 8003 (`deployment_port_8003`)**
 - `EXPOSE 8003` — `fhir_proxy/Dockerfile`:18

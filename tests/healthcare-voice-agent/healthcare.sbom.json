@@ -1,40 +1,11 @@
 {
   "schema_version": "1.4.0",
-  "generated_at": "2026-03-29T05:15:30Z",
+  "generated_at": "2026-03-30T21:31:23Z",
   "generator": "nuguard",
   "target": "https://github.com/NuGuardAI/Healthcare-voice-agent",
   "nodes": [
     {
-      "id": "18750f71-d93b-447c-a2a1-285c40e4361f",
-      "name": "app",
-      "component_type": "AGENT",
-      "confidence": 0.9,
-      "metadata": {
-        "framework": "fastapi",
-        "injection_risk_score": 0.1,
-        "request_body_schema": {},
-        "chat_payload_list": false,
-        "extras": {
-          "canonical_name": "fastapi_agent_backend_main_py_app",
-          "adapter": "fastapi",
-          "evidence_count": 1,
-          "framework": "fastapi"
-        }
-      },
-      "evidence": [
-        {
-          "kind": "ast_instantiation",
-          "confidence": 0.9,
-          "detail": "fastapi: ",
-          "location": {
-            "path": "backend/main.py",
-            "line": 18
-          }
-        }
-      ]
-    },
-    {
-      "id": "86e084c7-7245-4680-b048-daed2fe1fdde",
+      "id": "035bc65c-31a3-41a9-b2af-40f2b8e374f2",
       "name": "fetch_doctor_details_agent",
       "component_type": "AGENT",
       "confidence": 0.85,
@@ -64,7 +35,7 @@
       ]
     },
     {
-      "id": "8e7cfcfa-28bc-477f-9278-82573f2b2451",
+      "id": "d4689e51-7981-4d84-894b-2f43b222747f",
       "name": "normalize_agent",
       "component_type": "AGENT",
       "confidence": 0.85,
@@ -94,7 +65,7 @@
       ]
     },
     {
-      "id": "be9e7065-1ff2-4804-b804-288e3160aa80",
+      "id": "d45fec5b-b05f-4866-a237-6eef074efb25",
       "name": "prognosis_search_agent",
       "component_type": "AGENT",
       "confidence": 0.85,
@@ -124,7 +95,7 @@
       ]
     },
     {
-      "id": "878c367e-828a-4175-9d85-30f147f93fd0",
+      "id": "eb5b412d-f13e-4c1d-9324-7e7f0ebe6f70",
       "name": "recommend_specialists_agent",
       "component_type": "AGENT",
       "confidence": 0.85,
@@ -154,7 +125,7 @@
       ]
     },
     {
-      "id": "f0fa4bec-3be5-426c-b52a-f10d4674a804",
+      "id": "034c24d3-c43b-46f5-a960-4a1fb5afbe3d",
       "name": "specialist_lookup_agent",
       "component_type": "AGENT",
       "confidence": 0.85,
@@ -184,7 +155,7 @@
       ]
     },
     {
-      "id": "44e39019-81a9-425e-9874-905551356ebf",
+      "id": "38665719-6817-4250-a346-b635dab17b1a",
       "name": "generic",
       "component_type": "API_ENDPOINT",
       "confidence": 0.9,
@@ -210,141 +181,7 @@
       ]
     },
     {
-      "id": "d2e6b727-3ce4-47ef-a86b-61db8cb7c8f6",
-      "name": "Port 8080",
-      "component_type": "API_ENDPOINT",
-      "confidence": 0.9,
-      "metadata": {
-        "endpoint": "8080",
-        "request_body_schema": {},
-        "chat_payload_list": false,
-        "extras": {
-          "canonical_name": "api_endpoint_port_8080",
-          "adapter": "dockerfile",
-          "evidence_count": 1,
-          "port": 8080,
-          "protocol": "tcp",
-          "source": "dockerfile_expose"
-        }
-      },
-      "evidence": [
-        {
-          "kind": "dockerfile",
-          "confidence": 0.9,
-          "detail": "dockerfile: EXPOSE 8080",
-          "location": {
-            "path": "Dockerfile",
-            "line": 38
-          }
-        }
-      ]
-    },
-    {
-      "id": "57278364-a8bc-47f1-a94a-0cb38db2264c",
-      "name": "create_appointment",
-      "component_type": "API_ENDPOINT",
-      "confidence": 0.9,
-      "metadata": {
-        "framework": "fastapi",
-        "endpoint": "/appointments",
-        "method": "POST",
-        "request_body_schema": {},
-        "chat_payload_list": false,
-        "extras": {
-          "canonical_name": "fastapi_endpoint_backend_main_py_create_appointment",
-          "adapter": "fastapi",
-          "evidence_count": 1,
-          "framework": "fastapi",
-          "method": "POST",
-          "endpoint": "/appointments"
-        }
-      },
-      "evidence": [
-        {
-          "kind": "ast",
-          "confidence": 0.9,
-          "detail": "fastapi: @app.post('/appointments')",
-          "location": {
-            "path": "backend/main.py",
-            "line": 191
-          }
-        }
-      ]
-    },
-    {
-      "id": "f90b2eff-39ad-47e3-a4a7-062031adb3ca",
-      "name": "get_medical_history",
-      "component_type": "API_ENDPOINT",
-      "confidence": 0.9,
-      "metadata": {
-        "framework": "fastapi",
-        "endpoint": "/medical-history/{user_id}",
-        "method": "GET",
-        "idor_surface": true,
-        "path_params": [
-          "user_id"
-        ],
-        "request_body_schema": {},
-        "chat_payload_list": false,
-        "extras": {
-          "canonical_name": "fastapi_endpoint_backend_main_py_get_medical_history",
-          "adapter": "fastapi",
-          "evidence_count": 1,
-          "framework": "fastapi",
-          "method": "GET",
-          "endpoint": "/medical-history/{user_id}"
-        }
-      },
-      "evidence": [
-        {
-          "kind": "ast",
-          "confidence": 0.9,
-          "detail": "fastapi: @app.get('/medical-history/{user_id}')",
-          "location": {
-            "path": "backend/main.py",
-            "line": 107
-          }
-        }
-      ]
-    },
-    {
-      "id": "a5b7bac3-e7e8-4350-95dc-80e2573b4a99",
-      "name": "get_patient_details",
-      "component_type": "API_ENDPOINT",
-      "confidence": 0.9,
-      "metadata": {
-        "framework": "fastapi",
-        "endpoint": "/patient-details/{user_id}",
-        "method": "GET",
-        "idor_surface": true,
-        "path_params": [
-          "user_id"
-        ],
-        "request_body_schema": {},
-        "chat_payload_list": false,
-        "extras": {
-          "canonical_name": "fastapi_endpoint_backend_main_py_get_patient_details",
-          "adapter": "fastapi",
-          "evidence_count": 1,
-          "framework": "fastapi",
-          "method": "GET",
-          "endpoint": "/patient-details/{user_id}"
-        }
-      },
-      "evidence": [
-        {
-          "kind": "ast",
-          "confidence": 0.9,
-          "detail": "fastapi: @app.get('/patient-details/{user_id}')",
-          "location": {
-            "path": "backend/main.py",
-            "line": 80
-          }
-        }
-      ]
-    },
-    {
-      "id": "2f1c2f8c-c4ec-43ce-939d-b3819074d19f",
+      "id": "ccc1571c-3f19-4b2a-bee4-dc2ad71fe673",
       "name": "health_check",
       "component_type": "API_ENDPOINT",
       "confidence": 0.9,
@@ -355,7 +192,7 @@
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
-          "canonical_name": "fastapi_endpoint_backend_main_py_health_check",
+          "canonical_name": "fastapi_endpoint_get_api_health",
           "adapter": "fastapi",
           "evidence_count": 1,
           "framework": "fastapi",
@@ -376,103 +213,7 @@
       ]
     },
     {
-      "id": "88da684e-92b7-490c-8f76-a70a5a26ae9b",
-      "name": "login",
-      "component_type": "API_ENDPOINT",
-      "confidence": 0.9,
-      "metadata": {
-        "framework": "fastapi",
-        "endpoint": "/login",
-        "method": "POST",
-        "request_body_schema": {},
-        "chat_payload_list": false,
-        "extras": {
-          "canonical_name": "fastapi_endpoint_backend_main_py_login",
-          "adapter": "fastapi",
-          "evidence_count": 1,
-          "framework": "fastapi",
-          "method": "POST",
-          "endpoint": "/login"
-        }
-      },
-      "evidence": [
-        {
-          "kind": "ast",
-          "confidence": 0.9,
-          "detail": "fastapi: @app.post('/login')",
-          "location": {
-            "path": "backend/main.py",
-            "line": 55
-          }
-        }
-      ]
-    },
-    {
-      "id": "bb19ef92-0bb4-411b-b6af-2fef9c61dc81",
-      "name": "normalize",
-      "component_type": "API_ENDPOINT",
-      "confidence": 0.9,
-      "metadata": {
-        "framework": "fastapi",
-        "endpoint": "/normalize",
-        "method": "POST",
-        "request_body_schema": {},
-        "chat_payload_list": false,
-        "extras": {
-          "canonical_name": "fastapi_endpoint_backend_main_py_normalize",
-          "adapter": "fastapi",
-          "evidence_count": 1,
-          "framework": "fastapi",
-          "method": "POST",
-          "endpoint": "/normalize"
-        }
-      },
-      "evidence": [
-        {
-          "kind": "ast",
-          "confidence": 0.9,
-          "detail": "fastapi: @app.post('/normalize')",
-          "location": {
-            "path": "backend/main.py",
-            "line": 142
-          }
-        }
-      ]
-    },
-    {
-      "id": "ccfd9d61-0088-4567-a866-dcd2a8e88712",
-      "name": "run_langgraph",
-      "component_type": "API_ENDPOINT",
-      "confidence": 0.9,
-      "metadata": {
-        "framework": "fastapi",
-        "endpoint": "/run_langgraph",
-        "method": "POST",
-        "request_body_schema": {},
-        "chat_payload_list": false,
-        "extras": {
-          "canonical_name": "fastapi_endpoint_backend_main_py_run_langgraph",
-          "adapter": "fastapi",
-          "evidence_count": 1,
-          "framework": "fastapi",
-          "method": "POST",
-          "endpoint": "/run_langgraph"
-        }
-      },
-      "evidence": [
-        {
-          "kind": "ast",
-          "confidence": 0.9,
-          "detail": "fastapi: @app.post('/run_langgraph')",
-          "location": {
-            "path": "backend/main.py",
-            "line": 160
-          }
-        }
-      ]
-    },
-    {
-      "id": "d31ae3b5-cc1a-472d-a527-124343bb82bf",
+      "id": "c2453bd0-b3ff-40f1-8b94-69bddacc01b5",
       "name": "serve_spa",
       "component_type": "API_ENDPOINT",
       "confidence": 0.9,
@@ -487,7 +228,7 @@
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
-          "canonical_name": "fastapi_endpoint_backend_main_py_serve_spa",
+          "canonical_name": "fastapi_endpoint_get_full_path_path",
           "adapter": "fastapi",
           "evidence_count": 1,
           "framework": "fastapi",
@@ -508,7 +249,207 @@
       ]
     },
     {
-      "id": "1900f09f-228a-485c-a222-a60035f3cec9",
+      "id": "b17a2fec-66c3-43c0-90e9-c6fb7617f075",
+      "name": "get_medical_history",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.9,
+      "metadata": {
+        "framework": "fastapi",
+        "endpoint": "/medical-history/{user_id}",
+        "method": "GET",
+        "idor_surface": true,
+        "path_params": [
+          "user_id"
+        ],
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "fastapi_endpoint_get_medical_history_user_id",
+          "adapter": "fastapi",
+          "evidence_count": 1,
+          "framework": "fastapi",
+          "method": "GET",
+          "endpoint": "/medical-history/{user_id}"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.9,
+          "detail": "fastapi: @app.get('/medical-history/{user_id}')",
+          "location": {
+            "path": "backend/main.py",
+            "line": 107
+          }
+        }
+      ]
+    },
+    {
+      "id": "2e2798dd-1e51-4424-9e91-b43642e41fad",
+      "name": "get_patient_details",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.9,
+      "metadata": {
+        "framework": "fastapi",
+        "endpoint": "/patient-details/{user_id}",
+        "method": "GET",
+        "idor_surface": true,
+        "path_params": [
+          "user_id"
+        ],
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "fastapi_endpoint_get_patient_details_user_id",
+          "adapter": "fastapi",
+          "evidence_count": 1,
+          "framework": "fastapi",
+          "method": "GET",
+          "endpoint": "/patient-details/{user_id}"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.9,
+          "detail": "fastapi: @app.get('/patient-details/{user_id}')",
+          "location": {
+            "path": "backend/main.py",
+            "line": 80
+          }
+        }
+      ]
+    },
+    {
+      "id": "5528235b-982a-48a0-8bf2-fc4a9d7202f7",
+      "name": "create_appointment",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.9,
+      "metadata": {
+        "framework": "fastapi",
+        "endpoint": "/appointments",
+        "method": "POST",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "fastapi_endpoint_post_appointments",
+          "adapter": "fastapi",
+          "evidence_count": 1,
+          "framework": "fastapi",
+          "method": "POST",
+          "endpoint": "/appointments"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.9,
+          "detail": "fastapi: @app.post('/appointments')",
+          "location": {
+            "path": "backend/main.py",
+            "line": 191
+          }
+        }
+      ]
+    },
+    {
+      "id": "92fd8e44-80a0-42fb-b09d-b24af58a056a",
+      "name": "login",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.9,
+      "metadata": {
+        "framework": "fastapi",
+        "endpoint": "/login",
+        "method": "POST",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "fastapi_endpoint_post_login",
+          "adapter": "fastapi",
+          "evidence_count": 1,
+          "framework": "fastapi",
+          "method": "POST",
+          "endpoint": "/login"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.9,
+          "detail": "fastapi: @app.post('/login')",
+          "location": {
+            "path": "backend/main.py",
+            "line": 55
+          }
+        }
+      ]
+    },
+    {
+      "id": "8545ff8c-a1b5-454e-be3b-33da6fd13d46",
+      "name": "normalize",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.9,
+      "metadata": {
+        "framework": "fastapi",
+        "endpoint": "/normalize",
+        "method": "POST",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "fastapi_endpoint_post_normalize",
+          "adapter": "fastapi",
+          "evidence_count": 1,
+          "framework": "fastapi",
+          "method": "POST",
+          "endpoint": "/normalize"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.9,
+          "detail": "fastapi: @app.post('/normalize')",
+          "location": {
+            "path": "backend/main.py",
+            "line": 142
+          }
+        }
+      ]
+    },
+    {
+      "id": "1871fbfe-1cce-49fa-b66f-c64d991a0c10",
+      "name": "run_langgraph",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.9,
+      "metadata": {
+        "framework": "fastapi",
+        "endpoint": "/run_langgraph",
+        "method": "POST",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "fastapi_endpoint_post_run_langgraph",
+          "adapter": "fastapi",
+          "evidence_count": 1,
+          "framework": "fastapi",
+          "method": "POST",
+          "endpoint": "/run_langgraph"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.9,
+          "detail": "fastapi: @app.post('/run_langgraph')",
+          "location": {
+            "path": "backend/main.py",
+            "line": 160
+          }
+        }
+      ]
+    },
+    {
+      "id": "df9040d8-3fa1-4e9b-97a3-bc4a8db7b2e3",
       "name": "generic",
       "component_type": "AUTH",
       "confidence": 0.6,
@@ -552,7 +493,7 @@
       ]
     },
     {
-      "id": "36d2f0a5-9318-4ffa-9985-efa2f5db3c64",
+      "id": "d051387a-c289-45bf-82e9-9b2a9353e3d4",
       "name": "node:20",
       "component_type": "CONTAINER_IMAGE",
       "confidence": 0.99,
@@ -594,7 +535,7 @@
       ]
     },
     {
-      "id": "31b4a5d2-9b8b-46ac-a914-b45c56214520",
+      "id": "f54f45ec-406f-4f90-9a09-d056692ab5bd",
       "name": "python:3.11-slim",
       "component_type": "CONTAINER_IMAGE",
       "confidence": 0.99,
@@ -636,7 +577,7 @@
       ]
     },
     {
-      "id": "cccd4d46-9116-4a3c-aafa-3503647d859b",
+      "id": "8c3d6503-41c6-4de9-a634-8ccaaa3a0af2",
       "name": "postgres",
       "component_type": "DATASTORE",
       "confidence": 0.95,
@@ -753,7 +694,7 @@
       ]
     },
     {
-      "id": "5ee6e1c1-8934-4617-852c-7fe920027d5d",
+      "id": "f26df0c9-ff97-49e3-bff6-d8f8760f4093",
       "name": "generic",
       "component_type": "DEPLOYMENT",
       "confidence": 0.98,
@@ -846,7 +787,65 @@
       ]
     },
     {
-      "id": "9aaf4d78-9aba-49ce-8562-9923e0c0d16f",
+      "id": "800a8280-4f79-4a86-a118-9203211c212e",
+      "name": "Port 8080",
+      "component_type": "DEPLOYMENT",
+      "confidence": 0.9,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "deployment_port_8080",
+          "adapter": "dockerfile",
+          "evidence_count": 1,
+          "port": 8080,
+          "protocol": "tcp",
+          "source": "dockerfile_expose"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "dockerfile",
+          "confidence": 0.9,
+          "detail": "dockerfile: EXPOSE 8080",
+          "location": {
+            "path": "Dockerfile",
+            "line": 38
+          }
+        }
+      ]
+    },
+    {
+      "id": "2d47b75c-2035-42fd-bf80-ae1c475ed14b",
+      "name": "app",
+      "component_type": "FRAMEWORK",
+      "confidence": 0.9,
+      "metadata": {
+        "framework": "fastapi",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "fastapi_framework_backend_main_py_app",
+          "adapter": "fastapi",
+          "evidence_count": 1,
+          "framework": "fastapi",
+          "class": "FastAPI"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.9,
+          "detail": "fastapi: ",
+          "location": {
+            "path": "backend/main.py",
+            "line": 18
+          }
+        }
+      ]
+    },
+    {
+      "id": "c231d305-0139-4803-909a-ac318aca5394",
       "name": "framework:langgraph",
       "component_type": "FRAMEWORK",
       "confidence": 0.95,
@@ -901,7 +900,7 @@
       ]
     },
     {
-      "id": "b2065cbd-5dca-40a2-8d22-f6a61dc4611e",
+      "id": "7c2e198b-ee7d-417c-8962-03ff61902f8d",
       "name": "llm_clients_ts",
       "component_type": "FRAMEWORK",
       "confidence": 0.85,
@@ -931,7 +930,7 @@
       ]
     },
     {
-      "id": "ffb6dba7-b795-4106-96ae-c03075eff06c",
+      "id": "36ad6e84-15f7-4fd9-931b-a6079f3240b9",
       "name": "gemini-2.0-flash",
       "component_type": "MODEL",
       "confidence": 0.88,
@@ -973,7 +972,7 @@
       ]
     },
     {
-      "id": "ad572b32-565a-4b9f-bdb4-d094e9055303",
+      "id": "578e233e-b244-454a-8399-0265803f4514",
       "name": "gpt-4",
       "component_type": "MODEL",
       "confidence": 0.9,
@@ -1017,7 +1016,7 @@
       ]
     },
     {
-      "id": "4b6f1e8b-03e5-4ba0-a65d-eb2bf6ac102e",
+      "id": "10cda116-5ad1-4815-9b62-99efcf6c6ae5",
       "name": "admin",
       "component_type": "PRIVILEGE",
       "confidence": 0.6,
@@ -1045,7 +1044,7 @@
       ]
     },
     {
-      "id": "2edaee6d-8289-4041-aa8e-874944c2d110",
+      "id": "cdb13def-5465-4c01-af34-5f5a9c80aadc",
       "name": "db_write",
       "component_type": "PRIVILEGE",
       "confidence": 0.95,
@@ -1091,7 +1090,7 @@
       ]
     },
     {
-      "id": "6bf4a3b3-91a4-4abf-a44a-e3f39d599f5f",
+      "id": "844afd59-7903-4ed2-90d6-b97c0c2dc7cb",
       "name": "System Instruction",
       "component_type": "PROMPT",
       "confidence": 0.65,
@@ -1153,7 +1152,7 @@
       ]
     },
     {
-      "id": "a782430b-5d40-43cc-9e2b-9db7b04a46c8",
+      "id": "29a74642-b8f1-4c87-9f4e-f9d5b60cb79c",
       "name": "System Message",
       "component_type": "PROMPT",
       "confidence": 0.8,
@@ -1187,7 +1186,7 @@
       ]
     },
     {
-      "id": "136c16b0-6fef-49f9-b64f-0024fcb64222",
+      "id": "d1b6bc1f-788c-4071-ad0d-6a667722d93d",
       "name": "search",
       "component_type": "TOOL",
       "confidence": 0.75,
@@ -1220,143 +1219,143 @@
   ],
   "edges": [
     {
-      "source": "8e7cfcfa-28bc-477f-9278-82573f2b2451",
-      "target": "be9e7065-1ff2-4804-b804-288e3160aa80",
+      "source": "d4689e51-7981-4d84-894b-2f43b222747f",
+      "target": "d45fec5b-b05f-4866-a237-6eef074efb25",
       "relationship_type": "CALLS"
     },
     {
-      "source": "be9e7065-1ff2-4804-b804-288e3160aa80",
-      "target": "f0fa4bec-3be5-426c-b52a-f10d4674a804",
+      "source": "d45fec5b-b05f-4866-a237-6eef074efb25",
+      "target": "034c24d3-c43b-46f5-a960-4a1fb5afbe3d",
       "relationship_type": "CALLS"
     },
     {
-      "source": "f0fa4bec-3be5-426c-b52a-f10d4674a804",
-      "target": "878c367e-828a-4175-9d85-30f147f93fd0",
+      "source": "034c24d3-c43b-46f5-a960-4a1fb5afbe3d",
+      "target": "eb5b412d-f13e-4c1d-9324-7e7f0ebe6f70",
       "relationship_type": "CALLS"
     },
     {
-      "source": "878c367e-828a-4175-9d85-30f147f93fd0",
-      "target": "86e084c7-7245-4680-b048-daed2fe1fdde",
+      "source": "eb5b412d-f13e-4c1d-9324-7e7f0ebe6f70",
+      "target": "035bc65c-31a3-41a9-b2af-40f2b8e374f2",
       "relationship_type": "CALLS"
     },
     {
-      "source": "8e7cfcfa-28bc-477f-9278-82573f2b2451",
-      "target": "ad572b32-565a-4b9f-bdb4-d094e9055303",
+      "source": "d4689e51-7981-4d84-894b-2f43b222747f",
+      "target": "578e233e-b244-454a-8399-0265803f4514",
       "relationship_type": "USES"
     },
     {
-      "source": "be9e7065-1ff2-4804-b804-288e3160aa80",
-      "target": "ad572b32-565a-4b9f-bdb4-d094e9055303",
+      "source": "d45fec5b-b05f-4866-a237-6eef074efb25",
+      "target": "578e233e-b244-454a-8399-0265803f4514",
       "relationship_type": "USES"
     },
     {
-      "source": "f0fa4bec-3be5-426c-b52a-f10d4674a804",
-      "target": "ad572b32-565a-4b9f-bdb4-d094e9055303",
+      "source": "034c24d3-c43b-46f5-a960-4a1fb5afbe3d",
+      "target": "578e233e-b244-454a-8399-0265803f4514",
       "relationship_type": "USES"
     },
     {
-      "source": "878c367e-828a-4175-9d85-30f147f93fd0",
-      "target": "ad572b32-565a-4b9f-bdb4-d094e9055303",
+      "source": "eb5b412d-f13e-4c1d-9324-7e7f0ebe6f70",
+      "target": "578e233e-b244-454a-8399-0265803f4514",
       "relationship_type": "USES"
     },
     {
-      "source": "86e084c7-7245-4680-b048-daed2fe1fdde",
-      "target": "ad572b32-565a-4b9f-bdb4-d094e9055303",
+      "source": "035bc65c-31a3-41a9-b2af-40f2b8e374f2",
+      "target": "578e233e-b244-454a-8399-0265803f4514",
       "relationship_type": "USES"
     },
     {
-      "source": "18750f71-d93b-447c-a2a1-285c40e4361f",
-      "target": "136c16b0-6fef-49f9-b64f-0024fcb64222",
-      "relationship_type": "CALLS"
-    },
-    {
-      "source": "18750f71-d93b-447c-a2a1-285c40e4361f",
-      "target": "ffb6dba7-b795-4106-96ae-c03075eff06c",
+      "source": "2d47b75c-2035-42fd-bf80-ae1c475ed14b",
+      "target": "578e233e-b244-454a-8399-0265803f4514",
       "relationship_type": "USES"
     },
     {
-      "source": "18750f71-d93b-447c-a2a1-285c40e4361f",
-      "target": "ad572b32-565a-4b9f-bdb4-d094e9055303",
+      "source": "2d47b75c-2035-42fd-bf80-ae1c475ed14b",
+      "target": "36ad6e84-15f7-4fd9-931b-a6079f3240b9",
       "relationship_type": "USES"
     },
     {
-      "source": "9aaf4d78-9aba-49ce-8562-9923e0c0d16f",
-      "target": "ad572b32-565a-4b9f-bdb4-d094e9055303",
+      "source": "c231d305-0139-4803-909a-ac318aca5394",
+      "target": "578e233e-b244-454a-8399-0265803f4514",
       "relationship_type": "USES"
     },
     {
-      "source": "9aaf4d78-9aba-49ce-8562-9923e0c0d16f",
-      "target": "ffb6dba7-b795-4106-96ae-c03075eff06c",
+      "source": "c231d305-0139-4803-909a-ac318aca5394",
+      "target": "36ad6e84-15f7-4fd9-931b-a6079f3240b9",
       "relationship_type": "USES"
     },
     {
-      "source": "b2065cbd-5dca-40a2-8d22-f6a61dc4611e",
-      "target": "ad572b32-565a-4b9f-bdb4-d094e9055303",
+      "source": "7c2e198b-ee7d-417c-8962-03ff61902f8d",
+      "target": "578e233e-b244-454a-8399-0265803f4514",
       "relationship_type": "USES"
     },
     {
-      "source": "b2065cbd-5dca-40a2-8d22-f6a61dc4611e",
-      "target": "ffb6dba7-b795-4106-96ae-c03075eff06c",
+      "source": "7c2e198b-ee7d-417c-8962-03ff61902f8d",
+      "target": "36ad6e84-15f7-4fd9-931b-a6079f3240b9",
       "relationship_type": "USES"
     },
     {
-      "source": "5ee6e1c1-8934-4617-852c-7fe920027d5d",
-      "target": "36d2f0a5-9318-4ffa-9985-efa2f5db3c64",
+      "source": "f26df0c9-ff97-49e3-bff6-d8f8760f4093",
+      "target": "d051387a-c289-45bf-82e9-9b2a9353e3d4",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "5ee6e1c1-8934-4617-852c-7fe920027d5d",
-      "target": "31b4a5d2-9b8b-46ac-a914-b45c56214520",
+      "source": "f26df0c9-ff97-49e3-bff6-d8f8760f4093",
+      "target": "f54f45ec-406f-4f90-9a09-d056692ab5bd",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "1900f09f-228a-485c-a222-a60035f3cec9",
-      "target": "d2e6b727-3ce4-47ef-a86b-61db8cb7c8f6",
+      "source": "800a8280-4f79-4a86-a118-9203211c212e",
+      "target": "d051387a-c289-45bf-82e9-9b2a9353e3d4",
+      "relationship_type": "DEPLOYS"
+    },
+    {
+      "source": "800a8280-4f79-4a86-a118-9203211c212e",
+      "target": "f54f45ec-406f-4f90-9a09-d056692ab5bd",
+      "relationship_type": "DEPLOYS"
+    },
+    {
+      "source": "df9040d8-3fa1-4e9b-97a3-bc4a8db7b2e3",
+      "target": "5528235b-982a-48a0-8bf2-fc4a9d7202f7",
       "relationship_type": "PROTECTS"
     },
     {
-      "source": "1900f09f-228a-485c-a222-a60035f3cec9",
-      "target": "57278364-a8bc-47f1-a94a-0cb38db2264c",
+      "source": "df9040d8-3fa1-4e9b-97a3-bc4a8db7b2e3",
+      "target": "38665719-6817-4250-a346-b635dab17b1a",
       "relationship_type": "PROTECTS"
     },
     {
-      "source": "1900f09f-228a-485c-a222-a60035f3cec9",
-      "target": "44e39019-81a9-425e-9874-905551356ebf",
+      "source": "df9040d8-3fa1-4e9b-97a3-bc4a8db7b2e3",
+      "target": "b17a2fec-66c3-43c0-90e9-c6fb7617f075",
       "relationship_type": "PROTECTS"
     },
     {
-      "source": "1900f09f-228a-485c-a222-a60035f3cec9",
-      "target": "f90b2eff-39ad-47e3-a4a7-062031adb3ca",
+      "source": "df9040d8-3fa1-4e9b-97a3-bc4a8db7b2e3",
+      "target": "2e2798dd-1e51-4424-9e91-b43642e41fad",
       "relationship_type": "PROTECTS"
     },
     {
-      "source": "1900f09f-228a-485c-a222-a60035f3cec9",
-      "target": "a5b7bac3-e7e8-4350-95dc-80e2573b4a99",
+      "source": "df9040d8-3fa1-4e9b-97a3-bc4a8db7b2e3",
+      "target": "ccc1571c-3f19-4b2a-bee4-dc2ad71fe673",
       "relationship_type": "PROTECTS"
     },
     {
-      "source": "1900f09f-228a-485c-a222-a60035f3cec9",
-      "target": "2f1c2f8c-c4ec-43ce-939d-b3819074d19f",
+      "source": "df9040d8-3fa1-4e9b-97a3-bc4a8db7b2e3",
+      "target": "92fd8e44-80a0-42fb-b09d-b24af58a056a",
       "relationship_type": "PROTECTS"
     },
     {
-      "source": "1900f09f-228a-485c-a222-a60035f3cec9",
-      "target": "88da684e-92b7-490c-8f76-a70a5a26ae9b",
+      "source": "df9040d8-3fa1-4e9b-97a3-bc4a8db7b2e3",
+      "target": "8545ff8c-a1b5-454e-be3b-33da6fd13d46",
       "relationship_type": "PROTECTS"
     },
     {
-      "source": "1900f09f-228a-485c-a222-a60035f3cec9",
-      "target": "bb19ef92-0bb4-411b-b6af-2fef9c61dc81",
+      "source": "df9040d8-3fa1-4e9b-97a3-bc4a8db7b2e3",
+      "target": "1871fbfe-1cce-49fa-b66f-c64d991a0c10",
       "relationship_type": "PROTECTS"
     },
     {
-      "source": "1900f09f-228a-485c-a222-a60035f3cec9",
-      "target": "ccfd9d61-0088-4567-a866-dcd2a8e88712",
-      "relationship_type": "PROTECTS"
-    },
-    {
-      "source": "1900f09f-228a-485c-a222-a60035f3cec9",
-      "target": "d31ae3b5-cc1a-472d-a527-124343bb82bf",
+      "source": "df9040d8-3fa1-4e9b-97a3-bc4a8db7b2e3",
+      "target": "c2453bd0-b3ff-40f1-8b94-69bddacc01b5",
       "relationship_type": "PROTECTS"
     }
   ],
@@ -1615,7 +1614,7 @@
     }
   ],
   "summary": {
-    "use_case": "This application implements an agentic AI workflow with 6 agent(s), 1 tool integration(s), and 0 guardrail control(s). Detected use cases include specialist recommendation workflows, search-based retrieval. Multi-modal support: Voice supported, Images not supported, Video not supported.",
+    "use_case": "This application implements an agentic AI workflow with 5 agent(s), 1 tool integration(s), and 0 guardrail control(s). Detected use cases include specialist recommendation workflows, search-based retrieval. Multi-modal support: Voice supported, Images not supported, Video not supported.",
     "frameworks": [
       "langgraph",
       "langchain"
@@ -1658,13 +1657,13 @@
     "deployment_urls": [],
     "iac_accounts": [],
     "node_counts": {
-      "AGENT": 6,
-      "API_ENDPOINT": 10,
+      "AGENT": 5,
+      "API_ENDPOINT": 9,
       "AUTH": 1,
       "CONTAINER_IMAGE": 2,
       "DATASTORE": 1,
-      "DEPLOYMENT": 1,
-      "FRAMEWORK": 2,
+      "DEPLOYMENT": 2,
+      "FRAMEWORK": 3,
       "MODEL": 2,
       "PRIVILEGE": 2,
       "PROMPT": 2,

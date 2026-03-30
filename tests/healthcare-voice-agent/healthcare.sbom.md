@@ -1,6 +1,6 @@
 # SBOM Report: https://github.com/NuGuardAI/Healthcare-voice-agent
 
-**Generated:** 2026-03-29T05:15:30Z  
+**Generated:** 2026-03-30T21:31:23Z  
 **Schema version:** 1.4.0  
 
 ## Summary
@@ -11,7 +11,7 @@
 | Dependencies | 36 |
 | Data classification | PHI, PII |
 | Classified tables | AppointmentRequest, LoginRequest, MedicalHistoryResponse, PatientDetailsResponse, appointments, doctors, hospitals, patient_history, patients, specialists, symptoms, users |
-| Use case | This application implements an agentic AI workflow with 6 agent(s), 1 tool integration(s), and 0 guardrail control(s). Detected use cases include specialist recommendation workflows, search-based retrieval. Multi-modal support: Voice supported, Images not supported, Video not supported. |
+| Use case | This application implements an agentic AI workflow with 5 agent(s), 1 tool integration(s), and 0 guardrail control(s). Detected use cases include specialist recommendation workflows, search-based retrieval. Multi-modal support: Voice supported, Images not supported, Video not supported. |
 | Frameworks | langgraph, langchain |
 | Modalities | TEXT, VOICE |
 
@@ -19,27 +19,27 @@
 
 | Name | Type | Confidence | Details |
 | --- | --- | --- | --- |
-| app | AGENT | 90% | fastapi |
 | fetch_doctor_details_agent | AGENT | 85% | langgraph |
 | normalize_agent | AGENT | 85% | langgraph |
 | prognosis_search_agent | AGENT | 85% | langgraph |
 | recommend_specialists_agent | AGENT | 85% | langgraph |
 | specialist_lookup_agent | AGENT | 85% | langgraph |
 | generic | API_ENDPOINT | 90% |  |
-| Port 8080 | API_ENDPOINT | 90% | 8080 |
-| create_appointment | API_ENDPOINT | 90% | POST /appointments |
+| health_check | API_ENDPOINT | 90% | GET /api/health |
+| serve_spa | API_ENDPOINT | 90% | GET /{full_path:path} |
 | get_medical_history | API_ENDPOINT | 90% | GET /medical-history/{user_id} |
 | get_patient_details | API_ENDPOINT | 90% | GET /patient-details/{user_id} |
-| health_check | API_ENDPOINT | 90% | GET /api/health |
+| create_appointment | API_ENDPOINT | 90% | POST /appointments |
 | login | API_ENDPOINT | 90% | POST /login |
 | normalize | API_ENDPOINT | 90% | POST /normalize |
 | run_langgraph | API_ENDPOINT | 90% | POST /run_langgraph |
-| serve_spa | API_ENDPOINT | 90% | GET /{full_path:path} |
 | generic | AUTH | 60% |  |
 | node:20 | CONTAINER_IMAGE | 99% | node:20 |
 | python:3.11-slim | CONTAINER_IMAGE | 99% | python:3.11-slim |
 | postgres | DATASTORE | 95% | PHI, PII |
 | generic | DEPLOYMENT | 98% |  |
+| Port 8080 | DEPLOYMENT | 90% |  |
+| app | FRAMEWORK | 90% | fastapi |
 | framework:langgraph | FRAMEWORK | 95% | langgraph |
 | llm_clients_ts | FRAMEWORK | 85% | google |
 | gemini-2.0-flash | MODEL | 88% | google |
@@ -103,6 +103,9 @@
 - `render` — `src/main.jsx`:7
 - Source tiers: code, iac
 
+**Port 8080 (`deployment_port_8080`)**
+- `EXPOSE 8080` — `Dockerfile`:38
+
 ### Container Images
 
 | Image | Registry | Multi-stage | Security Findings |
@@ -160,13 +163,13 @@
 
 | Type | Count |
 | --- | --- |
-| AGENT | 6 |
-| API_ENDPOINT | 10 |
+| AGENT | 5 |
+| API_ENDPOINT | 9 |
 | AUTH | 1 |
 | CONTAINER_IMAGE | 2 |
 | DATASTORE | 1 |
-| DEPLOYMENT | 1 |
-| FRAMEWORK | 2 |
+| DEPLOYMENT | 2 |
+| FRAMEWORK | 3 |
 | MODEL | 2 |
 | PRIVILEGE | 2 |
 | PROMPT | 2 |

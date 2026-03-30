@@ -13,10 +13,10 @@ policy:
 
 # ─── LLM settings ─────────────────────────────────────────────────────────────
 llm:
-#  model: vertex_ai/gemini-2.0-flash  # Vertex AI — needs GOOGLE_CLOUD_PROJECT + GOOGLE_CLOUD_LOCATION
-#  api_key: ${GEMINI_API_KEY}         # Vertex AI API key (starts with AQ.)
-  model: openai/gpt-4.1  # OpenAI GPT-4.1
-  api_key: ${OPENAI_API_KEY}         # OpenAI API key
+  model: gemini/gemini-2.0-flash  # Vertex AI — needs GOOGLE_CLOUD_PROJECT + GOOGLE_CLOUD_LOCATION
+  api_key: ${GEMINI_API_KEY}         # Vertex AI API key (starts with AQ.)
+#  model: openai/gpt-4.1-mini  # OpenAI GPT-4.1 mini
+#  api_key: ${OPENAI_API_KEY}         # OpenAI API key
 
 # ─── SBOM generation ──────────────────────────────────────────────────────────
 sbom_generation:
@@ -28,7 +28,7 @@ sbom_generation:
 # as declared and that all behaviour complies with the cognitive policy.
 validate:
   # Required: URL of the running AI application under test
-  target: http://127.0.0.1:3001/
+  target: http://localhost:3030/
 
   # Path of the chat/agent endpoint on the target (default: /chat)
   # target_endpoint: /run_langgraph

@@ -33,6 +33,8 @@ _DEFAULT_MODEL = "gemini/gemini-2.0-flash"
 
 _GEMINI_PREFIXES = ("gemini/", "google/", "vertex_ai/")
 _VERTEX_PREFIXES = ("vertex_ai/",)
+_OPENAI_PREFIXES = ("openai/", "azure/")
+_ANTHROPIC_PREFIXES = ("anthropic/", "claude/", "bedrock/anthropic")
 
 
 # ---------------------------------------------------------------------------
@@ -48,6 +50,22 @@ def _resolve_api_key(model: str) -> str | None:
     """
     if any(model.startswith(p) for p in _GEMINI_PREFIXES):
         for var in ("GEMINI_API_KEY", "GOOGLE_API_KEY", "LITELLM_API_KEY"):
+            val = os.environ.get(var)
+            if val:
+                _log.debug("Using %s for model %s", var, model)
+                return val
+        return None
+
+    if any(model.startswith(p) for p in _OPENAI_PREFIXES):
+        for var in ("OPENAI_API_KEY", "AZURE_OPENAI_KEY", "LITELLM_API_KEY"):
+            val = os.environ.get(var)
+            if val:
+                _log.debug("Using %s for model %s", var, model)
+                return val
+        return None
+
+    if any(model.startswith(p) for p in _ANTHROPIC_PREFIXES):
+        for var in ("ANTHROPIC_API_KEY", "LITELLM_API_KEY"):
             val = os.environ.get(var)
             if val:
                 _log.debug("Using %s for model %s", var, model)

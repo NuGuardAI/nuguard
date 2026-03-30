@@ -226,6 +226,12 @@ def check(
         "--llm/--no-llm",
         help="Enable LLM fallback for controls that cannot be assessed from SBOM alone.",
     ),
+    verbose: bool = typer.Option(
+        False,
+        "--verbose",
+        "-v",
+        help="Show all controls (passed and gaps) with full evidence in verbose mode.",
+    ),
 ) -> None:
     """Cross-check policy against SBOM or run a compliance framework assessment.
 
@@ -293,41 +299,49 @@ def check(
 
     # ---- Policy vs SBOM cross-check ----------------------------------------
     if policy_obj is not None and doc is not None:
-        from nuguard.policy.checker import check_policy_against_sbom
+        from nuguard.policy.checker import PolicyCheckResult, check_policy_against_sbom
 
-        gaps = check_policy_against_sbom(policy_obj, doc)
-        for gap in gaps:
+        check_result: PolicyCheckResult = check_policy_against_sbom(policy_obj, doc)
+        for gap in check_result.gaps:
             all_findings.append(
                 {
                     "source": "policy_check",
                     "id": gap.check_id,
+                    "name": gap.name,
+                    "description": gap.description,
                     "severity": gap.severity,
                     "section": gap.policy_section,
                     "component": gap.sbom_component,
                     "message": gap.message,
+                    "searched": gap.searched,
+                    "prompt_evidence": gap.prompt_evidence,
+                    "status": "gap",
                 }
             )
             if gap.severity in ("high", "critical"):
                 has_critical = True
 
+        if verbose:
+            # Include passing controls in findings for verbose output
+            for ctrl in check_result.passed:
+                all_findings.append(
+                    {
+                        "source": "policy_check",
+                        "id": ctrl.check_id,
+                        "name": ctrl.name,
+                        "description": ctrl.description,
+                        "severity": "info",
+                        "section": ctrl.policy_section,
+                        "component": "",
+                        "message": "",
+                        "evidence": ctrl.evidence,
+                        "evidence_source": ctrl.evidence_source,
+                        "status": "passed",
+                    }
+                )
+
         if output_format == "text":
-            if gaps:
-                table = Table(title="Policy ↔ SBOM Gaps", show_header=True)
-                table.add_column("Check")
-                table.add_column("Severity")
-                table.add_column("Section")
-                table.add_column("Message")
-                for gap in gaps:
-                    colour = "red" if gap.severity in ("high", "critical") else "yellow"
-                    table.add_row(
-                        gap.check_id,
-                        f"[{colour}]{gap.severity}[/{colour}]",
-                        gap.policy_section,
-                        gap.message,
-                    )
-                _console.print(table)
-            else:
-                _console.print("[green]✓ No policy/SBOM gaps found.[/green]")
+            _print_policy_check_result(check_result, verbose=verbose)
 
     # ---- Compliance framework assessment -----------------------------------
     if (framework or controls) and doc is not None:
@@ -401,6 +415,70 @@ def check(
     raise typer.Exit(code=_EXIT_CRITICAL if has_critical else _EXIT_FINDINGS)
 
 
+def _print_policy_check_result(check_result: object, *, verbose: bool = False) -> None:
+    """Print a PolicyCheckResult to the console."""
+    from nuguard.policy.checker import PolicyCheckResult
+
+    if not isinstance(check_result, PolicyCheckResult):
+        return
+
+    if verbose and check_result.passed:
+        passed_table = Table(title="Satisfied Controls", show_header=True, show_lines=True)
+        passed_table.add_column("Check", style="cyan", no_wrap=True)
+        passed_table.add_column("Name")
+        passed_table.add_column("Description")
+        passed_table.add_column("Evidence")
+        for ctrl in check_result.passed:
+            evidence_text = "\n".join(ctrl.evidence[:3])
+            if len(ctrl.evidence) > 3:
+                evidence_text += f"\n… +{len(ctrl.evidence) - 3} more"
+            passed_table.add_row(
+                f"[green]{ctrl.check_id}[/green]",
+                ctrl.name,
+                ctrl.description[:60] + ("…" if len(ctrl.description) > 60 else ""),
+                evidence_text,
+            )
+        _console.print(passed_table)
+
+    if check_result.gaps:
+        gap_table = Table(title="Policy ↔ SBOM Gaps", show_header=True, show_lines=verbose)
+        gap_table.add_column("Check", no_wrap=True)
+        gap_table.add_column("Name")
+        gap_table.add_column("Severity")
+        gap_table.add_column("Section")
+        gap_table.add_column("Message")
+        if verbose:
+            gap_table.add_column("Details")
+
+        for gap in check_result.gaps:
+            colour = "red" if gap.severity in ("high", "critical") else "yellow"
+            row = [
+                f"[{colour}]{gap.check_id}[/{colour}]",
+                gap.name,
+                f"[{colour}]{gap.severity}[/{colour}]",
+                gap.policy_section,
+                gap.message,
+            ]
+            if verbose:
+                details_lines: list[str] = []
+                if gap.description:
+                    details_lines.append(f"[dim]{gap.description[:80]}[/dim]")
+                if gap.searched:
+                    details_lines.append("[bold]Searched:[/bold]")
+                    details_lines.extend(f"  · {s}" for s in gap.searched[:3])
+                if gap.prompt_evidence:
+                    details_lines.append("[bold]Prompt evidence:[/bold]")
+                    details_lines.extend(f"  · {e}" for e in gap.prompt_evidence[:2])
+                row.append("\n".join(details_lines))
+            gap_table.add_row(*row)
+
+        _console.print(gap_table)
+    elif not verbose:
+        _console.print("[green]✓ No policy/SBOM gaps found.[/green]")
+    else:
+        _console.print("[green]✓ No policy/SBOM gaps found.[/green]")
+
+
 def _policy_findings_to_markdown(findings: list[dict], meta: ReportMeta | None = None) -> str:
     """Render policy check findings as a Markdown report string."""
     if meta is None:
@@ -411,16 +489,53 @@ def _policy_findings_to_markdown(findings: list[dict], meta: ReportMeta | None =
         lines += ["_No findings._", ""]
         return "\n".join(lines)
 
-    lines += [f"**{len(findings)} finding(s)**", ""]
+    gap_count = sum(1 for f in findings if f.get("status") == "gap")
+    passed_count = sum(1 for f in findings if f.get("status") == "passed")
+    summary_parts = []
+    if gap_count:
+        summary_parts.append(f"**{gap_count} gap(s)**")
+    if passed_count:
+        summary_parts.append(f"**{passed_count} control(s) satisfied**")
+    other_count = len(findings) - gap_count - passed_count
+    if other_count:
+        summary_parts.append(f"**{other_count} finding(s)**")
+    lines += [", ".join(summary_parts) if summary_parts else f"**{len(findings)} finding(s)**", ""]
     for f in findings:
         source = f.get("source", "")
         if source == "policy_check":
+            status = f.get("status", "gap")
             sev = (f.get("severity") or "info").upper()
-            lines += [f"## [{sev}] Policy Gap: {f.get('id', '')}", ""]
-            lines += [f"**Section:** {f.get('section', '')}", ""]
-            lines += [f.get("message", ""), ""]
-            if f.get("component"):
-                lines += [f"**Component:** {f['component']}", ""]
+            check_id = f.get("id", "")
+            name = f.get("name", "")
+            if status == "passed":
+                lines += [f"## [PASS] {check_id}: {name}", ""]
+                if f.get("description"):
+                    lines += [f"_{f['description']}_", ""]
+                if f.get("evidence"):
+                    lines += ["**Evidence:**"]
+                    for ev in f["evidence"][:5]:
+                        lines += [f"- {ev}"]
+                    lines += [""]
+            else:
+                heading = f"## [{sev}] {check_id}: {name}" if name else f"## [{sev}] Policy Gap: {check_id}"
+                lines += [heading, ""]
+                if f.get("description"):
+                    lines += [f"_{f['description']}_", ""]
+                lines += [f"**Section:** {f.get('section', '')}", ""]
+                if f.get("message"):
+                    lines += [f.get("message", ""), ""]
+                if f.get("component"):
+                    lines += [f"**Component:** {f['component']}", ""]
+                if f.get("searched"):
+                    lines += ["**Searched:**"]
+                    for s in f["searched"]:
+                        lines += [f"- {s}"]
+                    lines += [""]
+                if f.get("prompt_evidence"):
+                    lines += ["**Prompt evidence (partial):**"]
+                    for pe in f["prompt_evidence"]:
+                        lines += [f"- {pe}"]
+                    lines += [""]
         elif source == "compliance":
             result = (f.get("result") or "").upper()
             sev = (f.get("severity") or "info").upper()
