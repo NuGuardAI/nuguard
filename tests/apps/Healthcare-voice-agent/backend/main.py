@@ -57,7 +57,7 @@ async def health_check():
 
 @app.post("/login")
 def login(request: LoginRequest):
-    logger.info(f"Login attempt: {request.email} / {request.password}")
+    logger.info(f"Login attempt: {request.email}")
     conn = get_db()
     if not conn:
         raise HTTPException(status_code=503, detail="Database connection failed")
@@ -224,20 +224,29 @@ if os.path.exists(dist_path):
              logger.warning(f"404 for API path: {full_path}")
              raise HTTPException(status_code=404, detail="API route not found")
 
+        # Resolve and validate paths to prevent directory traversal
+        resolved_dist = os.path.realpath(dist_path)
+
+        def safe_join(base: str, *parts: str) -> str | None:
+            candidate = os.path.realpath(os.path.join(base, *parts))
+            if not candidate.startswith(resolved_dist + os.sep) and candidate != resolved_dist:
+                return None
+            return candidate
+
         # 2. Check if it's a file in the dist directory
-        file_path = os.path.join(dist_path, full_path)
-        if os.path.isfile(file_path):
+        file_path = safe_join(resolved_dist, full_path)
+        if file_path and os.path.isfile(file_path):
             return FileResponse(file_path)
             
         # 3. Check if it's a file in dist/assets (for bundled files)
         # This handles cases where assets are requested without the leading /assets/ or 
         # if the absolute leading slash in index.html is missing.
-        assets_path = os.path.join(dist_path, "assets", full_path)
-        if os.path.isfile(assets_path):
+        assets_path = safe_join(resolved_dist, "assets", full_path)
+        if assets_path and os.path.isfile(assets_path):
             return FileResponse(assets_path)
 
         # 4. SPA routing: for anything else, serve index.html
-        index_path = os.path.join(dist_path, "index.html")
+        index_path = os.path.join(resolved_dist, "index.html")
         if os.path.isfile(index_path):
             return FileResponse(index_path)
         
