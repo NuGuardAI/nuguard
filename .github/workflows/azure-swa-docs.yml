@@ -36,6 +36,7 @@ jobs:
           app_location: docs
           output_location: ""
           skip_app_build: true
+          skip_deploy_on_missing_secrets: true
 
   close_pr_environment:
     if: github.event_name == 'pull_request' && github.event.action == 'closed'
@@ -47,3 +48,4 @@ jobs:
         with:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_SWA_DOCS_TOKEN }}
           action: close
+          skip_deploy_on_missing_secrets: true
