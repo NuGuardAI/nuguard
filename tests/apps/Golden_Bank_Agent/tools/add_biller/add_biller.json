@@ -1,0 +1,9 @@
+{
+  "name": "37a3520b-ea95-415c-833d-b2e05a4c0f35",
+  "pythonFunction": {
+    "name": "add_biller",
+    "pythonCode": "tools/add_biller/python_function/python_code.py",
+    "description": "Adds a new billing entity to the user\u0027s profile.\n\nArgs:\n    biller_name (str): The name of the new biller.\n    biller_account_number (str): The account number associated with the biller.\n\nReturns:\n    dict[str, Any]: A dictionary indicating the success or failure of adding the biller.\n          Example: {\"success\": True, \"message\": \"Biller \u0027Utility Co.\u0027 added successfully.\", \"biller_id\": \"B003\"}\n          Example: {\"success\": False, \"message\": \"Invalid biller account number format.\"}"
+  },
+  "displayName": "add_biller"
+}

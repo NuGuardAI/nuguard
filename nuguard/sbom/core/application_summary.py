@@ -61,6 +61,140 @@ _VIDEO_PATTERN = re.compile(
 )
 _MODALITY_MATCH_THRESHOLD = 2
 
+# ---------------------------------------------------------------------------
+# Streaming detection patterns
+# ---------------------------------------------------------------------------
+
+# Frameworks that always expose a native streaming endpoint.
+# Presence of any of these in summary.frameworks is sufficient to infer streaming.
+_STREAMING_FRAMEWORKS: frozenset[str] = frozenset({"google-adk", "google_adk"})
+
+# Their canonical streaming endpoint path (registered in streaming_endpoints).
+_FRAMEWORK_STREAMING_ENDPOINTS: dict[str, str] = {
+    "google-adk": "/run_sse",
+    "google_adk": "/run_sse",
+}
+
+# Source-code tokens that indicate streaming output from the application itself
+# (not just upstream streaming to an LLM).
+_STREAMING_SOURCE_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(r"\bStreamingResponse\b"),
+    re.compile(r"\bEventSourceResponse\b"),
+    re.compile(r"['\"]text/event-stream['\"]"),
+    re.compile(r"\bastream\s*\("),                    # LangChain .astream()
+    re.compile(r"\bstream_events\s*\("),              # LangGraph .stream_events()
+    re.compile(r"\bstream\s*=\s*True"),               # litellm / openai stream=True passed to caller
+    re.compile(r"/run_sse"),                           # ADK SSE path reference
+    re.compile(r"\bserver.sent.events?\b", re.IGNORECASE),
+    re.compile(r"\bAsyncGenerator\b.*\bstr\b"),       # async generator route returning str chunks
+]
+
+# Decorator + return-type patterns that identify a specific route as streaming
+_STREAMING_ROUTE_RETURN_TYPES: frozenset[str] = frozenset({
+    "StreamingResponse",
+    "EventSourceResponse",
+})
+
+# Route path suffixes / names strongly associated with SSE output
+_STREAMING_PATH_PATTERNS: list[re.Pattern[str]] = [
+    re.compile(r"/(stream|sse|run_sse|events?)(/|$)", re.IGNORECASE),
+    re.compile(r"/chat/stream", re.IGNORECASE),
+]
+
+
+def detect_streaming_output(
+    nodes: "Sequence[Node]",
+    files: "Sequence[tuple[str, str]]",
+    frameworks: list[str],
+) -> tuple[bool, list[str]]:
+    """Detect whether the application exposes streaming output endpoints.
+
+    Detection works in three layers, from most to least authoritative:
+
+    1. **Framework inference** — frameworks like Google ADK always expose
+       ``/run_sse``; detecting the framework is sufficient evidence.
+    2. **SBOM node transport** — ``API_ENDPOINT`` nodes with
+       ``metadata.transport == 'sse'`` or ``'streamable-http'`` carry their
+       own endpoint path.
+    3. **Source-code pattern scan** — searches ``.py`` / ``.ts`` files for
+       ``StreamingResponse``, ``EventSourceResponse``, ``text/event-stream``,
+       ``.astream()``, etc.  When a match is found nearby a route decorator
+       the route path is extracted; otherwise the file is treated as
+       unanchored evidence (``uses_streaming`` set True without a specific
+       path).
+
+    Returns:
+        ``(uses_streaming, streaming_endpoints)`` where *streaming_endpoints*
+        is a deduplicated list of route paths serving SSE output.
+    """
+    streaming_endpoints: list[str] = []
+
+    # Layer 1 — framework-level inference
+    norm_frameworks = {f.strip().lower().replace("_", "-") for f in frameworks}
+    for fw in norm_frameworks:
+        ep = _FRAMEWORK_STREAMING_ENDPOINTS.get(fw)
+        if ep:
+            streaming_endpoints.append(ep)
+
+    # Layer 2 — SBOM node transport metadata
+    node_streaming = False
+    for node in nodes:
+        t = (node.metadata.transport or "").lower()
+        if t in ("sse", "streamable-http"):
+            node_streaming = True
+            ep = node.metadata.endpoint or ""
+            if ep:
+                streaming_endpoints.append(ep)
+
+    # Layer 3 — source-code pattern scan
+    file_has_streaming = False
+    for path, content in files:
+        if not path.lower().endswith((".py", ".ts", ".tsx", ".js", ".jsx")):
+            continue
+        text = content or ""
+        for pat in _STREAMING_SOURCE_PATTERNS:
+            if pat.search(text):
+                file_has_streaming = True
+                # Try to extract the route path from the same file
+                _extract_streaming_route_paths(text, streaming_endpoints)
+                break
+
+    uses_streaming = bool(streaming_endpoints) or node_streaming or file_has_streaming
+    return uses_streaming, _uniq(streaming_endpoints)
+
+
+def _extract_streaming_route_paths(source: str, out: "list[str]") -> None:
+    """Append route paths that appear to serve SSE in *source* to *out*.
+
+    Heuristic: scan for route decorators and check if the function body
+    or return annotation contains a streaming indicator within the next
+    30 lines.  Relies on textual proximity rather than full AST analysis
+    for speed.
+    """
+    lines = source.splitlines()
+    for i, line in enumerate(lines):
+        # Find route decorator (captures path like '/stream' or '/run_sse')
+        m = re.search(
+            r"@\w+\.\w+\(\s*[\"']([^\"']+)[\"']",
+            line,
+        )
+        if m is None:
+            continue
+        route_path = m.group(1)
+        # Quick check: is this path itself a known streaming path?
+        if any(p.search(route_path) for p in _STREAMING_PATH_PATTERNS):
+            out.append(route_path)
+            continue
+        # Check the next 30 lines for streaming return types or patterns
+        window = "\n".join(lines[i: i + 30])
+        if any(t in window for t in _STREAMING_ROUTE_RETURN_TYPES):
+            out.append(route_path)
+        elif re.search(r"['\"]text/event-stream['\"]", window):
+            out.append(route_path)
+        elif re.search(r"\bastream\s*\(", window):
+            out.append(route_path)
+
+
 _AGENTIC_FRAMEWORKS = {
     "langgraph",
     "langchain",
@@ -442,6 +576,9 @@ def build_scan_summary(
     use_case_summary = build_deterministic_use_case_summary(nodes, modality_support)
     modalities = [k.upper() for k, enabled in modality_support.items() if enabled]
 
+    frameworks_list: list[str] = _uniq(frameworks)
+    uses_streaming, streaming_endpoints = detect_streaming_output(nodes, files, frameworks_list)
+
     # App-launch discovery: startup commands, .env files, local/staging/prod URLs
     app_env = detect_app_env(files)
     # Merge any newly discovered deployment URLs into the IaC-detected list
@@ -474,11 +611,13 @@ def build_scan_summary(
         "source_ref": source_ref,
         "branch": branch,
         "node_type_counts": node_types,
-        "frameworks": _uniq(frameworks),
+        "frameworks": frameworks_list,
         "api_endpoints": endpoints[:200],
         "use_case_summary": use_case_summary,
         "modalities": modalities,
         "modality_support": modality_support,
+        "uses_streaming": uses_streaming,
+        "streaming_endpoints": streaming_endpoints,
         "data_classification": sorted(all_labels),
         "classified_tables": sorted(classified_tables),
         # App-launch discovery

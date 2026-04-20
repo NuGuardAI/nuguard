@@ -1,0 +1,1713 @@
+﻿<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pinnacle Bank — Bank With Confidence</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            navy: { 950:'#07192e', 900:'#0f2240', 800:'#1a3460', 700:'#1d4a8a', 600:'#1e5cb3' },
+            brand: { 700:'#1a4bb5', 600:'#1a56db', 500:'#1c64f2', 400:'#3f83f8', 100:'#e1effe', 50:'#eff6ff' },
+          },
+          fontFamily: { sans: ['Inter','system-ui','sans-serif'] },
+        }
+      }
+    };
+  </script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <style>
+    /* ── Page system ── */
+    .page { display:none; min-height:100vh; }
+    .page.active { display:block; }
+
+    /* ── Dashboard specific layout ── */
+    #page-dashboard.active { display:flex; flex-direction:column; }
+    #page-chat.active { display:flex; flex-direction:column; }
+
+    /* ── Sidebar nav links ── */
+    .nav-link { display:flex; align-items:center; gap:11px; padding:10px 14px; border-radius:10px; font-size:14px; font-weight:500; color:rgba(255,255,255,.65); cursor:pointer; transition:all .15s; white-space:nowrap; }
+    .nav-link:hover { background:rgba(255,255,255,.08); color:white; }
+    .nav-link.active { background:rgba(255,255,255,.13); color:white; }
+    .nav-link svg { flex-shrink:0; }
+
+    /* ── Account / product cards ── */
+    .acct-card { border-radius:20px; padding:26px; color:white; cursor:pointer; transition:transform .2s,box-shadow .2s; position:relative; overflow:hidden; }
+    .acct-card:hover { transform:translateY(-3px); box-shadow:0 18px 38px rgba(0,0,0,.18); }
+    .card-chk { background:linear-gradient(135deg,#0f2240 0%,#1c64f2 100%); }
+    .card-sav { background:linear-gradient(135deg,#064e3b 0%,#059669 100%); }
+    .card-inv { background:linear-gradient(135deg,#4c1d95 0%,#7c3aed 100%); }
+    .card-glow::before { content:''; position:absolute; top:-30%; right:-10%; width:200px; height:200px; border-radius:50%; background:rgba(255,255,255,.07); }
+
+    /* ── Chat bubbles ── */
+    .bubble-user { background:#1c64f2; color:white; border-radius:18px 18px 4px 18px; max-width:72%; align-self:flex-end; }
+    .bubble-nova { background:white; color:#1e293b; border-radius:18px 18px 18px 4px; max-width:72%; align-self:flex-start; box-shadow:0 2px 8px rgba(0,0,0,.07); }
+
+    /* ── Typing dots ── */
+    .dot { width:7px; height:7px; border-radius:50%; background:#94a3b8; display:inline-block; animation:dotBounce 1.2s infinite; }
+    .dot:nth-child(2) { animation-delay:.2s; }
+    .dot:nth-child(3) { animation-delay:.4s; }
+    @keyframes dotBounce { 0%,80%,100%{transform:translateY(0)} 40%{transform:translateY(-5px)} }
+
+    /* ── Animations ── */
+    @keyframes fadeUp { from{opacity:0;transform:translateY(12px)} to{opacity:1;transform:translateY(0)} }
+    .fade-up { animation:fadeUp .3s ease forwards; }
+
+    /* ── Scrollbar ── */
+    .custom-scroll::-webkit-scrollbar { width:4px; }
+    .custom-scroll::-webkit-scrollbar-track { background:transparent; }
+    .custom-scroll::-webkit-scrollbar-thumb { background:#cbd5e1; border-radius:4px; }
+
+    /* ── Dashboard section tabs ── */
+    .dash-tab { padding:10px 0; margin-right:28px; font-size:14px; font-weight:500; color:#64748b; cursor:pointer; border-bottom:2px solid transparent; transition:all .15s; white-space:nowrap; }
+    .dash-tab.active { border-bottom-color:#1c64f2; color:#1c64f2; font-weight:600; }
+    .dash-section { display:none; }
+    .dash-section.active { display:block; animation:fadeUp .25s ease; }
+
+    /* ── Transactions ── */
+    .tx-row { display:flex; align-items:center; padding:14px 0; border-bottom:1px solid #f1f5f9; transition:background .1s; }
+    .tx-row:last-child { border-bottom:none; }
+    .tx-row:hover { background:#f8fafc; margin:0 -20px; padding:14px 20px; border-radius:10px; }
+    .tx-credit { color:#059669; font-weight:600; }
+    .tx-debit { color:#dc2626; font-weight:600; }
+
+    /* ── Landing hero gradient ── */
+    .hero-gradient { background:linear-gradient(130deg, #07192e 0%, #0f2240 40%, #1a3460 70%, #1d4a8a 100%); }
+
+    /* ── Feature card hover ── */
+    .feature-card { transition:transform .2s,box-shadow .2s; }
+    .feature-card:hover { transform:translateY(-4px); box-shadow:0 16px 40px rgba(15,34,64,.12); }
+
+    /* ── Suggest pill ── */
+    .suggest-pill { background:#eff6ff; border:1px solid #bfdbfe; color:#1d4ed8; border-radius:999px; padding:7px 15px; font-size:13px; cursor:pointer; transition:all .15s; white-space:nowrap; }
+    .suggest-pill:hover { background:#dbeafe; border-color:#93c5fd; }
+
+    /* ── Debit card visual ── */
+    .debit-card-bg { background:linear-gradient(135deg,#0f2240 0%,#1c64f2 55%,#7c3aed 100%); }
+
+    /* ── Number counter ── */
+    .stat-num { font-size:2.6rem; font-weight:800; color:white; line-height:1; }
+
+    /* ── Smooth scroll indicator ── */
+    @keyframes scrollBounce { 0%,100%{transform:translateY(0)} 50%{transform:translateY(6px)} }
+    .scroll-hint { animation:scrollBounce 1.8s ease infinite; }
+
+    /* ── Mobile ── */
+    @media(max-width:768px) {
+      #appSidebar { position:fixed; left:0; top:0; height:100vh; z-index:50; transform:translateX(-100%); transition:transform .25s; }
+      #appSidebar.open { transform:translateX(0); }
+    }
+  </style>
+</head>
+<body class="bg-white font-sans antialiased">
+
+<!-- ═══════════════════════════════════════════════════════════════
+     PAGE 1 — LANDING (public marketing homepage)
+════════════════════════════════════════════════════════════════════ -->
+<div id="page-landing" class="page active">
+
+  <!-- ── Sticky Nav ── -->
+  <header id="landingNav" class="fixed top-0 left-0 right-0 z-50 transition-all duration-300" style="background:transparent;">
+    <div class="max-w-7xl mx-auto px-6 py-4 flex items-center gap-8">
+      <!-- Logo -->
+      <div class="flex items-center gap-2.5 flex-shrink-0">
+        <div class="w-9 h-9 bg-white/15 rounded-xl flex items-center justify-center border border-white/20">
+          <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 7c0-1.1.9-2 2-2h14c1.1 0 2 .9 2 2v1H3V7zm0 3h18v9a2 2 0 01-2 2H5a2 2 0 01-2-2v-9z"/>
+          </svg>
+        </div>
+        <span id="navLogoText" class="text-white font-bold text-lg">Pinnacle Bank</span>
+      </div>
+
+      <!-- Nav links (desktop) -->
+      <nav class="hidden md:flex items-center gap-1 ml-4">
+        <a id="navPersonal" class="nav-landing text-white/80 hover:text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-white/10 transition-all cursor-pointer">Personal</a>
+        <a class="nav-landing text-white/80 hover:text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-white/10 transition-all cursor-pointer">Business</a>
+        <a class="nav-landing text-white/80 hover:text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-white/10 transition-all cursor-pointer">Mortgages</a>
+        <a class="nav-landing text-white/80 hover:text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-white/10 transition-all cursor-pointer">Investing</a>
+        <a class="nav-landing text-white/80 hover:text-white text-sm font-medium px-4 py-2 rounded-lg hover:bg-white/10 transition-all cursor-pointer">About</a>
+      </nav>
+
+      <div class="ml-auto flex items-center gap-3">
+        <button onclick="navigate('login')" class="text-white/90 text-sm font-semibold px-5 py-2 rounded-lg border border-white/30 hover:bg-white/10 transition-all">Sign In</button>
+        <button onclick="navigate('login')" class="bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold px-5 py-2 rounded-lg transition-all shadow-lg shadow-brand-500/30">Open Account</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── Hero ── -->
+  <section class="hero-gradient min-h-screen flex flex-col justify-center items-center text-center px-6 pt-24 pb-20 relative overflow-hidden">
+    <!-- Background circles -->
+    <div class="absolute top-1/4 left-1/4 w-96 h-96 bg-white/3 rounded-full blur-3xl pointer-events-none"></div>
+    <div class="absolute bottom-1/4 right-1/4 w-80 h-80 bg-brand-500/10 rounded-full blur-3xl pointer-events-none"></div>
+
+    <!-- Badge -->
+    <div class="inline-flex items-center gap-2 bg-white/10 border border-white/20 rounded-full px-4 py-2 text-white/80 text-sm font-medium mb-8">
+      <span class="w-2 h-2 bg-emerald-400 rounded-full"></span>
+      FDIC Insured · Member Since 1987
+    </div>
+
+    <h1 class="text-5xl md:text-7xl font-black text-white leading-tight mb-6 max-w-4xl">
+      Bank With<br/><span class="text-brand-400">Confidence.</span>
+    </h1>
+    <p class="text-lg md:text-xl text-white/65 max-w-xl mb-10 leading-relaxed">
+      World-class banking with AI-powered insights, industry-leading security, and zero-fee everyday banking.
+    </p>
+
+    <div class="flex flex-col sm:flex-row gap-4 justify-center">
+      <button onclick="navigate('login')" class="bg-brand-500 hover:bg-brand-600 text-white font-bold px-8 py-4 rounded-xl text-lg transition-all shadow-xl shadow-brand-500/30 hover:scale-105">
+        Get Started — It's Free
+      </button>
+      <button onclick="document.getElementById('products').scrollIntoView({behavior:'smooth'})" class="border border-white/30 hover:border-white/60 text-white font-semibold px-8 py-4 rounded-xl text-base transition-all hover:bg-white/5">
+        Explore Products
+      </button>
+    </div>
+
+    <!-- Stats -->
+    <div class="mt-20 grid grid-cols-3 gap-8 md:gap-16 max-w-2xl">
+      <div class="text-center">
+        <div class="stat-num">2M<span class="text-brand-400">+</span></div>
+        <div class="text-white/50 text-sm mt-1">Customers</div>
+      </div>
+      <div class="text-center">
+        <div class="stat-num">$50<span class="text-3xl text-brand-400">B</span></div>
+        <div class="text-white/50 text-sm mt-1">Assets Managed</div>
+      </div>
+      <div class="text-center">
+        <div class="stat-num">99<span class="text-3xl text-brand-400">%</span></div>
+        <div class="text-white/50 text-sm mt-1">Uptime SLA</div>
+      </div>
+    </div>
+
+    <!-- Scroll hint -->
+    <div class="absolute bottom-10 left-1/2 -translate-x-1/2 scroll-hint text-white/30">
+      <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+    </div>
+  </section>
+
+  <!-- ── Products ── -->
+  <section id="products" class="py-24 px-6 bg-white">
+    <div class="max-w-7xl mx-auto">
+      <div class="text-center mb-16">
+        <p class="text-brand-600 font-semibold text-sm uppercase tracking-widest mb-3">Our Products</p>
+        <h2 class="text-4xl font-black text-navy-900">Everything You Need to Thrive</h2>
+        <p class="text-gray-500 mt-4 max-w-xl mx-auto">From everyday checking to long-term investing, Pinnacle has the right product for every stage of your financial journey.</p>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <!-- Checking -->
+        <div class="feature-card bg-white border border-gray-100 rounded-2xl p-7 shadow-sm">
+          <div class="w-12 h-12 bg-brand-50 rounded-xl flex items-center justify-center mb-5">
+            <svg class="w-6 h-6 text-brand-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>
+            </svg>
+          </div>
+          <h3 class="text-lg font-bold text-navy-900 mb-2">Premium Checking</h3>
+          <p class="text-gray-500 text-sm leading-relaxed mb-4">Zero monthly fees, unlimited transactions, and 1% cashback on every purchase. Your money, your way.</p>
+          <div class="flex flex-wrap gap-2">
+            <span class="bg-brand-50 text-brand-700 text-xs font-semibold px-3 py-1 rounded-full">No monthly fees</span>
+            <span class="bg-brand-50 text-brand-700 text-xs font-semibold px-3 py-1 rounded-full">1% cashback</span>
+          </div>
+        </div>
+        <!-- Savings -->
+        <div class="feature-card bg-white border border-gray-100 rounded-2xl p-7 shadow-sm">
+          <div class="w-12 h-12 bg-emerald-50 rounded-xl flex items-center justify-center mb-5">
+            <svg class="w-6 h-6 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/>
+            </svg>
+          </div>
+          <h3 class="text-lg font-bold text-navy-900 mb-2">High-Yield Savings</h3>
+          <p class="text-gray-500 text-sm leading-relaxed mb-4">Earn up to 4.85% APY — 10x the national average. Watch your savings grow faster than ever before.</p>
+          <div class="flex flex-wrap gap-2">
+            <span class="bg-emerald-50 text-emerald-700 text-xs font-semibold px-3 py-1 rounded-full">4.85% APY</span>
+            <span class="bg-emerald-50 text-emerald-700 text-xs font-semibold px-3 py-1 rounded-full">FDIC Insured</span>
+          </div>
+        </div>
+        <!-- Investments -->
+        <div class="feature-card bg-white border border-gray-100 rounded-2xl p-7 shadow-sm">
+          <div class="w-12 h-12 bg-violet-50 rounded-xl flex items-center justify-center mb-5">
+            <svg class="w-6 h-6 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"/>
+            </svg>
+          </div>
+          <h3 class="text-lg font-bold text-navy-900 mb-2">Smart Investing</h3>
+          <p class="text-gray-500 text-sm leading-relaxed mb-4">AI-powered portfolio management, zero-commission trades, and personalized strategies for your goals.</p>
+          <div class="flex flex-wrap gap-2">
+            <span class="bg-violet-50 text-violet-700 text-xs font-semibold px-3 py-1 rounded-full">$0 commissions</span>
+            <span class="bg-violet-50 text-violet-700 text-xs font-semibold px-3 py-1 rounded-full">AI-powered</span>
+          </div>
+        </div>
+        <!-- Mortgage -->
+        <div class="feature-card bg-white border border-gray-100 rounded-2xl p-7 shadow-sm">
+          <div class="w-12 h-12 bg-amber-50 rounded-xl flex items-center justify-center mb-5">
+            <svg class="w-6 h-6 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/>
+            </svg>
+          </div>
+          <h3 class="text-lg font-bold text-navy-900 mb-2">Home Mortgages</h3>
+          <p class="text-gray-500 text-sm leading-relaxed mb-4">Competitive rates for first-time buyers and refinancing. Our experts guide you every step of the way.</p>
+          <div class="flex flex-wrap gap-2">
+            <span class="bg-amber-50 text-amber-700 text-xs font-semibold px-3 py-1 rounded-full">From 6.25% APR</span>
+            <span class="bg-amber-50 text-amber-700 text-xs font-semibold px-3 py-1 rounded-full">Fast approval</span>
+          </div>
+        </div>
+        <!-- Cards -->
+        <div class="feature-card bg-white border border-gray-100 rounded-2xl p-7 shadow-sm">
+          <div class="w-12 h-12 bg-rose-50 rounded-xl flex items-center justify-center mb-5">
+            <svg class="w-6 h-6 text-rose-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>
+            </svg>
+          </div>
+          <h3 class="text-lg font-bold text-navy-900 mb-2">Pinnacle Credit Card</h3>
+          <p class="text-gray-500 text-sm leading-relaxed mb-4">3% back on dining & travel, 2% on groceries, 1% on everything else. No annual fee ever.</p>
+          <div class="flex flex-wrap gap-2">
+            <span class="bg-rose-50 text-rose-700 text-xs font-semibold px-3 py-1 rounded-full">3x travel rewards</span>
+            <span class="bg-rose-50 text-rose-700 text-xs font-semibold px-3 py-1 rounded-full">No annual fee</span>
+          </div>
+        </div>
+        <!-- Business -->
+        <div class="feature-card bg-white border border-gray-100 rounded-2xl p-7 shadow-sm">
+          <div class="w-12 h-12 bg-sky-50 rounded-xl flex items-center justify-center mb-5">
+            <svg class="w-6 h-6 text-sky-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/>
+            </svg>
+          </div>
+          <h3 class="text-lg font-bold text-navy-900 mb-2">Business Banking</h3>
+          <p class="text-gray-500 text-sm leading-relaxed mb-4">Dedicated business accounts, payroll management, merchant services, and dedicated relationship managers.</p>
+          <div class="flex flex-wrap gap-2">
+            <span class="bg-sky-50 text-sky-700 text-xs font-semibold px-3 py-1 rounded-full">Dedicated RM</span>
+            <span class="bg-sky-50 text-sky-700 text-xs font-semibold px-3 py-1 rounded-full">Payroll tools</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Why Pinnacle ── -->
+  <section class="py-24 px-6 bg-gray-50">
+    <div class="max-w-7xl mx-auto">
+      <div class="grid md:grid-cols-2 gap-16 items-center">
+        <div>
+          <p class="text-brand-600 font-semibold text-sm uppercase tracking-widest mb-3">Why Choose Us</p>
+          <h2 class="text-4xl font-black text-navy-900 mb-6 leading-tight">Banking That Puts You First</h2>
+          <div class="space-y-6">
+            <div class="flex gap-4">
+              <div class="w-10 h-10 bg-brand-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                <svg class="w-5 h-5 text-brand-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                </svg>
+              </div>
+              <div>
+                <h4 class="font-bold text-navy-900 mb-1">Bank-Grade Security</h4>
+                <p class="text-gray-500 text-sm">256-bit encryption, biometric login, real-time fraud monitoring and instant card freeze.</p>
+              </div>
+            </div>
+            <div class="flex gap-4">
+              <div class="w-10 h-10 bg-emerald-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                <svg class="w-5 h-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M13 10V3L4 14h7v7l9-11h-7z"/>
+                </svg>
+              </div>
+              <div>
+                <h4 class="font-bold text-navy-900 mb-1">Lightning Fast Transfers</h4>
+                <p class="text-gray-500 text-sm">Send money to anyone in seconds. Domestic wires settle same day. Zelle integrated.</p>
+              </div>
+            </div>
+            <div class="flex gap-4">
+              <div class="w-10 h-10 bg-violet-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                <svg class="w-5 h-5 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/>
+                </svg>
+              </div>
+              <div>
+                <h4 class="font-bold text-navy-900 mb-1">AI-Powered Insights</h4>
+                <p class="text-gray-500 text-sm">Nova, your AI banking assistant, helps you understand spending, optimize savings, and plan ahead.</p>
+              </div>
+            </div>
+            <div class="flex gap-4">
+              <div class="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center flex-shrink-0">
+                <svg class="w-5 h-5 text-amber-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                  <path stroke-linecap="round" stroke-linejoin="round" d="M18.364 5.636l-3.536 3.536m0 5.656l3.536 3.536M9.172 9.172L5.636 5.636m3.536 9.192l-3.536 3.536M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-5 0a4 4 0 11-8 0 4 4 0 018 0z"/>
+                </svg>
+              </div>
+              <div>
+                <h4 class="font-bold text-navy-900 mb-1">24/7 Live Support</h4>
+                <p class="text-gray-500 text-sm">Real humans available around the clock. Average hold time under 90 seconds.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Phone mockup -->
+        <div class="flex justify-center">
+          <div class="relative">
+            <div class="w-72 bg-navy-900 rounded-[40px] p-3 shadow-2xl">
+              <div class="bg-gray-900 rounded-[32px] overflow-hidden">
+                <div class="bg-navy-900 px-6 pt-8 pb-6 text-white">
+                  <div class="text-xs text-white/50 mb-1">Good Morning ☀️</div>
+                  <div class="text-sm font-semibold mb-4">Alice Johnson</div>
+                  <div class="text-xs text-white/50 mb-1">Total Balance</div>
+                  <div class="text-3xl font-black">$68,420.55</div>
+                </div>
+                <div class="bg-white px-4 pt-4 pb-6 space-y-3">
+                  <div class="flex justify-between text-xs text-gray-500 font-medium pb-1">
+                    <span>Recent Activity</span><span class="text-brand-600">View All</span>
+                  </div>
+                  <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 bg-blue-50 rounded-full flex items-center justify-center text-sm">💰</div>
+                    <div class="flex-1"><div class="text-xs font-semibold text-gray-800">Payroll</div><div class="text-xs text-gray-400">Apr 10</div></div>
+                    <div class="text-xs font-bold text-emerald-600">+$5,250</div>
+                  </div>
+                  <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 bg-rose-50 rounded-full flex items-center justify-center text-sm">🛒</div>
+                    <div class="flex-1"><div class="text-xs font-semibold text-gray-800">Whole Foods</div><div class="text-xs text-gray-400">Apr 9</div></div>
+                    <div class="text-xs font-bold text-red-600">-$127.43</div>
+                  </div>
+                  <div class="flex items-center gap-3">
+                    <div class="w-8 h-8 bg-purple-50 rounded-full flex items-center justify-center text-sm">📺</div>
+                    <div class="flex-1"><div class="text-xs font-semibold text-gray-800">Netflix</div><div class="text-xs text-gray-400">Apr 8</div></div>
+                    <div class="text-xs font-bold text-red-600">-$15.99</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Testimonials ── -->
+  <section class="py-24 px-6 bg-white">
+    <div class="max-w-7xl mx-auto">
+      <div class="text-center mb-16">
+        <p class="text-brand-600 font-semibold text-sm uppercase tracking-widest mb-3">Testimonials</p>
+        <h2 class="text-4xl font-black text-navy-900">Loved By 2 Million Customers</h2>
+      </div>
+      <div class="grid md:grid-cols-3 gap-6">
+        <div class="bg-gray-50 rounded-2xl p-7">
+          <div class="flex gap-1 mb-4">
+            <svg class="w-4 h-4 text-amber-400 fill-current" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+            <svg class="w-4 h-4 text-amber-400 fill-current" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+            <svg class="w-4 h-4 text-amber-400 fill-current" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+            <svg class="w-4 h-4 text-amber-400 fill-current" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+            <svg class="w-4 h-4 text-amber-400 fill-current" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+          </div>
+          <p class="text-gray-600 text-sm leading-relaxed mb-5">"Switching to Pinnacle was the best financial decision I've made. The AI assistant Nova helped me save an extra $400 a month just by analyzing my spending habits."</p>
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-full bg-gradient-to-br from-violet-400 to-purple-600 flex items-center justify-center text-white text-xs font-bold">AJ</div>
+            <div><div class="text-sm font-semibold text-navy-900">Alice J.</div><div class="text-xs text-gray-400">Software Engineer, NYC</div></div>
+          </div>
+        </div>
+        <div class="bg-gray-50 rounded-2xl p-7">
+          <div class="flex gap-1 mb-4">
+            <svg class="w-4 h-4 text-amber-400 fill-current" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+            <svg class="w-4 h-4 text-amber-400 fill-current" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+            <svg class="w-4 h-4 text-amber-400 fill-current" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+            <svg class="w-4 h-4 text-amber-400 fill-current" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+            <svg class="w-4 h-4 text-amber-400 fill-current" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+          </div>
+          <p class="text-gray-600 text-sm leading-relaxed mb-5">"The high-yield savings account is unmatched. 4.85% APY with no fees, and their mobile app is cleaner than any bank I've used. Highly recommend."</p>
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-full bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center text-white text-xs font-bold">BM</div>
+            <div><div class="text-sm font-semibold text-navy-900">Bob M.</div><div class="text-xs text-gray-400">Small Business Owner, TX</div></div>
+          </div>
+        </div>
+        <div class="bg-gray-50 rounded-2xl p-7">
+          <div class="flex gap-1 mb-4">
+            <svg class="w-4 h-4 text-amber-400 fill-current" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+            <svg class="w-4 h-4 text-amber-400 fill-current" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+            <svg class="w-4 h-4 text-amber-400 fill-current" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+            <svg class="w-4 h-4 text-amber-400 fill-current" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+            <svg class="w-4 h-4 text-amber-400 fill-current" viewBox="0 0 24 24"><path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z"/></svg>
+          </div>
+          <p class="text-gray-600 text-sm leading-relaxed mb-5">"Managing my investment portfolio has never been easier. The AI-powered insights are spot-on. My portfolio is up 22% this year thanks to Pinnacle's tools."</p>
+          <div class="flex items-center gap-3">
+            <div class="w-9 h-9 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white text-xs font-bold">CW</div>
+            <div><div class="text-sm font-semibold text-navy-900">Carol W.</div><div class="text-xs text-gray-400">Investment Consultant, CA</div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── CTA Banner ── -->
+  <section class="py-20 px-6 hero-gradient">
+    <div class="max-w-3xl mx-auto text-center">
+      <h2 class="text-4xl font-black text-white mb-4">Ready to Get Started?</h2>
+      <p class="text-white/60 mb-8 text-lg">Join 2 million customers who trust Pinnacle Bank. Open your account in under 5 minutes — no paperwork required.</p>
+      <button onclick="navigate('login')" class="bg-white text-navy-900 font-black px-10 py-4 rounded-xl text-lg hover:bg-brand-50 transition-all shadow-xl hover:scale-105">
+        Open Your Free Account →
+      </button>
+    </div>
+  </section>
+
+  <!-- ── Footer ── -->
+  <footer class="bg-navy-950 text-white/50 py-16 px-6">
+    <div class="max-w-7xl mx-auto">
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-10 mb-12">
+        <div class="col-span-2">
+          <div class="flex items-center gap-2.5 mb-4">
+            <div class="w-8 h-8 bg-brand-600 rounded-lg flex items-center justify-center">
+              <svg class="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M3 7c0-1.1.9-2 2-2h14c1.1 0 2 .9 2 2v1H3V7zm0 3h18v9a2 2 0 01-2 2H5a2 2 0 01-2-2v-9z"/>
+              </svg>
+            </div>
+            <span class="text-white font-bold">Pinnacle Bank</span>
+          </div>
+          <p class="text-sm leading-relaxed mb-4">Member FDIC. Equal Housing Lender. Pinnacle Bank is a federally chartered bank supervised by the OCC.</p>
+          <p class="text-xs">© 2026 Pinnacle Bank, N.A. All rights reserved.</p>
+        </div>
+        <div>
+          <h5 class="text-white font-semibold text-sm mb-4">Personal</h5>
+          <ul class="space-y-2 text-sm">
+            <li><a class="hover:text-white/80 cursor-pointer">Checking</a></li>
+            <li><a class="hover:text-white/80 cursor-pointer">Savings</a></li>
+            <li><a class="hover:text-white/80 cursor-pointer">Credit Cards</a></li>
+            <li><a class="hover:text-white/80 cursor-pointer">Mortgages</a></li>
+            <li><a class="hover:text-white/80 cursor-pointer">Auto Loans</a></li>
+          </ul>
+        </div>
+        <div>
+          <h5 class="text-white font-semibold text-sm mb-4">Investing</h5>
+          <ul class="space-y-2 text-sm">
+            <li><a class="hover:text-white/80 cursor-pointer">Brokerage</a></li>
+            <li><a class="hover:text-white/80 cursor-pointer">Retirement (IRA)</a></li>
+            <li><a class="hover:text-white/80 cursor-pointer">Managed Portfolios</a></li>
+            <li><a class="hover:text-white/80 cursor-pointer">Market Research</a></li>
+          </ul>
+        </div>
+        <div>
+          <h5 class="text-white font-semibold text-sm mb-4">Company</h5>
+          <ul class="space-y-2 text-sm">
+            <li><a class="hover:text-white/80 cursor-pointer">About Us</a></li>
+            <li><a class="hover:text-white/80 cursor-pointer">Careers</a></li>
+            <li><a class="hover:text-white/80 cursor-pointer">Newsroom</a></li>
+            <li><a class="hover:text-white/80 cursor-pointer">Investor Relations</a></li>
+            <li><a class="hover:text-white/80 cursor-pointer">Contact Us</a></li>
+          </ul>
+        </div>
+      </div>
+      <div class="border-t border-white/10 pt-6 flex flex-col md:flex-row justify-between items-center gap-4 text-xs">
+        <div class="flex gap-4 flex-wrap">
+          <a class="hover:text-white/80 cursor-pointer">Privacy Policy</a>
+          <a class="hover:text-white/80 cursor-pointer">Terms of Service</a>
+          <a class="hover:text-white/80 cursor-pointer">Cookie Policy</a>
+          <a class="hover:text-white/80 cursor-pointer">Accessibility</a>
+        </div>
+        <div class="flex items-center gap-2">
+          <svg class="w-4 h-4 text-emerald-400" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+          <span>FDIC Insured up to $250,000 per depositor</span>
+        </div>
+      </div>
+    </div>
+  </footer>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════
+     PAGE 2 — LOGIN
+════════════════════════════════════════════════════════════════════ -->
+<div id="page-login" class="page bg-gray-50">
+  <div class="min-h-screen flex flex-col">
+    <!-- Thin top bar -->
+    <div class="bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between">
+      <button onclick="navigate('landing')" class="flex items-center gap-2 text-navy-900 hover:text-brand-600 transition-colors">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
+        <span class="font-bold text-lg">Pinnacle Bank</span>
+      </button>
+      <span class="text-xs text-gray-400 hidden sm:block">🔒 256-bit SSL Encrypted</span>
+    </div>
+
+    <div class="flex-1 flex items-start justify-center px-4 pt-12 pb-12">
+      <div class="w-full max-w-md">
+        <!-- Login card -->
+        <div class="bg-white rounded-2xl shadow-xl border border-gray-100 p-8 mb-6">
+          <div class="text-center mb-8">
+            <div class="w-14 h-14 bg-brand-500 rounded-2xl flex items-center justify-center mx-auto mb-4">
+              <svg class="w-7 h-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+            </div>
+            <h1 class="text-2xl font-black text-navy-900">Welcome Back</h1>
+            <p class="text-gray-500 text-sm mt-1">Sign in to your Pinnacle Bank account</p>
+          </div>
+
+          <div id="loginError" class="hidden bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl p-3 mb-5 flex items-center gap-2">
+            <svg class="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z"/></svg>
+            <span id="loginErrorMsg">Invalid credentials. Please try again.</span>
+          </div>
+
+          <div class="space-y-4">
+            <div>
+              <label class="block text-sm font-semibold text-gray-700 mb-1.5">Email Address</label>
+              <input id="loginEmail" type="email" placeholder="you@example.com"
+                class="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all"
+                onkeydown="if(event.key==='Enter')attemptLogin()" />
+            </div>
+            <div>
+              <div class="flex justify-between mb-1.5">
+                <label class="block text-sm font-semibold text-gray-700">Password</label>
+                <a class="text-xs text-brand-600 hover:text-brand-700 cursor-pointer font-medium">Forgot Password?</a>
+              </div>
+              <input id="loginPassword" type="password" placeholder="••••••••"
+                class="w-full px-4 py-3 border border-gray-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition-all"
+                onkeydown="if(event.key==='Enter')attemptLogin()" />
+            </div>
+            <div class="flex items-center gap-2">
+              <input id="rememberMe" type="checkbox" class="w-4 h-4 accent-brand-600" />
+              <label for="rememberMe" class="text-sm text-gray-600">Remember this device for 30 days</label>
+            </div>
+            <button onclick="attemptLogin()" class="w-full bg-brand-500 hover:bg-brand-600 text-white font-bold py-3.5 rounded-xl transition-all text-sm shadow-lg shadow-brand-500/25 hover:shadow-brand-600/30 mt-2">
+              Sign In to Online Banking
+            </button>
+          </div>
+
+          <div class="mt-6 pt-6 border-t border-gray-100 text-center text-sm">
+            <span class="text-gray-500">New to Pinnacle? </span>
+            <a class="text-brand-600 font-semibold hover:text-brand-700 cursor-pointer">Open a free account →</a>
+          </div>
+        </div>
+
+        <!-- Demo accounts -->
+        <div class="bg-amber-50 border border-amber-200 rounded-2xl p-5">
+          <p class="text-xs font-bold text-amber-800 uppercase tracking-wider mb-3">Demo Accounts</p>
+          <div class="space-y-2">
+            <div class="bg-white rounded-xl px-4 py-2.5 flex justify-between items-center cursor-pointer hover:bg-amber-50 transition-colors border border-amber-100"
+                 onclick="fillLogin('alice.johnson@pinnaclebank.com','demo123')">
+              <div>
+                <div class="text-sm font-semibold text-gray-800">Alice Johnson</div>
+                <div class="text-xs text-gray-400">alice.johnson@pinnaclebank.com</div>
+              </div>
+              <span class="text-xs text-amber-600 font-semibold">Use →</span>
+            </div>
+            <div class="bg-white rounded-xl px-4 py-2.5 flex justify-between items-center cursor-pointer hover:bg-amber-50 transition-colors border border-amber-100"
+                 onclick="fillLogin('bob.martinez@pinnaclebank.com','demo123')">
+              <div>
+                <div class="text-sm font-semibold text-gray-800">Bob Martinez</div>
+                <div class="text-xs text-gray-400">bob.martinez@pinnaclebank.com</div>
+              </div>
+              <span class="text-xs text-amber-600 font-semibold">Use →</span>
+            </div>
+            <div class="bg-white rounded-xl px-4 py-2.5 flex justify-between items-center cursor-pointer hover:bg-amber-50 transition-colors border border-amber-100"
+                 onclick="fillLogin('carol.williams@pinnaclebank.com','demo123')">
+              <div>
+                <div class="text-sm font-semibold text-gray-800">Carol Williams</div>
+                <div class="text-xs text-gray-400">carol.williams@pinnaclebank.com</div>
+              </div>
+              <span class="text-xs text-amber-600 font-semibold">Use →</span>
+            </div>
+          </div>
+          <p class="text-xs text-amber-600 mt-3 text-center">Password for all demo accounts: <strong>demo123</strong></p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════
+     PAGE 3 — DASHBOARD (Portfolio Summary)
+════════════════════════════════════════════════════════════════════ -->
+<div id="page-dashboard" class="page bg-gray-50">
+  <!-- ── App top bar ── -->
+  <header class="bg-white border-b border-gray-100 px-6 py-3.5 flex items-center gap-4 flex-shrink-0 sticky top-0 z-40">
+    <!-- Mobile hamburger -->
+    <button class="md:hidden text-gray-500" onclick="document.getElementById('appSidebar').classList.toggle('open')">
+      <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+    <!-- Logo -->
+    <div class="flex items-center gap-2 flex-shrink-0">
+      <div class="w-7 h-7 bg-brand-600 rounded-lg flex items-center justify-center">
+        <svg class="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 7c0-1.1.9-2 2-2h14c1.1 0 2 .9 2 2v1H3V7zm0 3h18v9a2 2 0 01-2 2H5a2 2 0 01-2-2v-9z"/></svg>
+      </div>
+      <span class="font-black text-navy-900 text-sm hidden sm:inline">Pinnacle Bank</span>
+    </div>
+    <div class="flex-1"></div>
+    <!-- Search -->
+    <div class="hidden md:flex items-center gap-2 bg-gray-50 border border-gray-100 rounded-xl px-3 py-2 w-56">
+      <svg class="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+      <input placeholder="Search transactions…" class="bg-transparent text-sm text-gray-600 focus:outline-none w-full" />
+    </div>
+    <!-- Notifications -->
+    <div class="relative">
+      <button id="notifBtn" onclick="toggleNotifPanel()" class="relative w-9 h-9 flex items-center justify-center rounded-xl hover:bg-gray-50 text-gray-500 hover:text-gray-700 transition-colors">
+        <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+        <span class="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full border-2 border-white"></span>
+      </button>
+      <!-- Notification dropdown -->
+      <div id="notifPanel" class="hidden absolute right-0 top-full mt-2 w-80 bg-white rounded-2xl shadow-xl border border-gray-100 z-50">
+        <div class="px-5 py-3.5 border-b border-gray-100 flex items-center justify-between">
+          <h3 class="font-bold text-navy-900 text-sm">Notifications</h3>
+          <span class="bg-red-100 text-red-600 text-xs font-bold px-2 py-0.5 rounded-full">3 new</span>
+        </div>
+        <div class="divide-y divide-gray-50 max-h-72 overflow-y-auto">
+          <div class="px-5 py-3.5 hover:bg-gray-50 cursor-pointer">
+            <div class="flex gap-3"><div class="w-8 h-8 bg-emerald-50 rounded-lg flex items-center justify-center flex-shrink-0 text-base">💰</div><div><p class="text-xs font-semibold text-navy-900">Payroll deposited</p><p class="text-xs text-gray-400 mt-0.5">Your payroll was deposited · 2h ago</p></div></div>
+          </div>
+          <div class="px-5 py-3.5 hover:bg-gray-50 cursor-pointer">
+            <div class="flex gap-3"><div class="w-8 h-8 bg-brand-50 rounded-lg flex items-center justify-center flex-shrink-0 text-base">🛡️</div><div><p class="text-xs font-semibold text-navy-900">Security alert</p><p class="text-xs text-gray-400 mt-0.5">New login from Chrome / Windows · 4h ago</p></div></div>
+          </div>
+          <div class="px-5 py-3.5 hover:bg-gray-50 cursor-pointer">
+            <div class="flex gap-3"><div class="w-8 h-8 bg-violet-50 rounded-lg flex items-center justify-center flex-shrink-0 text-base">📈</div><div><p class="text-xs font-semibold text-navy-900">Portfolio update</p><p class="text-xs text-gray-400 mt-0.5">Your portfolio +4.2% this month · 1d ago</p></div></div>
+          </div>
+        </div>
+        <div class="px-5 py-3 border-t border-gray-50">
+          <button onclick="document.getElementById('notifPanel').classList.add('hidden');showToast('All notifications marked as read.','success')" class="text-brand-600 text-xs font-semibold hover:text-brand-700">Mark all as read</button>
+        </div>
+      </div>
+    </div>
+    <!-- Avatar -->
+    <div class="relative">
+      <div class="flex items-center gap-2.5 cursor-pointer pl-2" onclick="toggleProfileMenu()">
+        <div id="headerAvatar" class="w-8 h-8 rounded-full text-white text-xs font-bold flex items-center justify-center bg-gradient-to-br from-violet-400 to-purple-600"></div>
+        <span id="headerName" class="text-sm font-semibold text-navy-900 hidden sm:inline"></span>
+        <svg class="w-4 h-4 text-gray-400 hidden sm:block" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 9l-7 7-7-7"/></svg>
+      </div>
+      <!-- Profile dropdown -->
+      <div id="profileDropdown" class="hidden absolute right-0 top-full mt-2 w-52 bg-white rounded-2xl shadow-xl border border-gray-100 py-2 z-50">
+        <div class="px-4 py-2.5 border-b border-gray-50">
+          <p class="text-xs text-gray-400">Signed in as</p>
+          <p id="dropdownUserName" class="text-sm font-semibold text-navy-900 truncate"></p>
+        </div>
+        <button onclick="navigate('profile');document.getElementById('profileDropdown').classList.add('hidden')" class="w-full text-left px-4 py-2.5 text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-3 transition-colors">
+          <svg class="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+          Account Settings
+        </button>
+        <button onclick="logout()" class="w-full text-left px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 flex items-center gap-3 transition-colors">
+          <svg class="w-4 h-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+          Sign Out
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ── App body ── -->
+  <div class="flex flex-1 overflow-hidden" style="height:calc(100vh - 57px)">
+    <!-- Sidebar -->
+    <nav id="appSidebar" class="w-60 bg-navy-900 flex flex-col flex-shrink-0 overflow-y-auto custom-scroll">
+      <div class="p-4 space-y-1 flex-1">
+        <div class="text-white/30 text-xs font-semibold uppercase tracking-widest px-3 py-2 mt-2">Account</div>
+        <a class="nav-link active" onclick="showDashTab('overview',this)">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zM4 15a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1H5a1 1 0 01-1-1v-4zm10 0a1 1 0 011-1h4a1 1 0 011 1v4a1 1 0 01-1 1h-4a1 1 0 01-1-1v-4z"/></svg>
+          Overview
+        </a>
+        <a class="nav-link" onclick="showDashTab('accounts',this)">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
+          Accounts
+        </a>
+        <a class="nav-link" onclick="showDashTab('transactions',this)">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+          Transactions
+        </a>
+        <a class="nav-link" onclick="showDashTab('cards',this)">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
+          Cards
+        </a>
+        <a class="nav-link" onclick="showDashTab('transfers',this)">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
+          Transfers
+        </a>
+
+        <div class="text-white/30 text-xs font-semibold uppercase tracking-widest px-3 py-2 mt-4">Investing</div>
+        <a class="nav-link" onclick="showDashTab('portfolio',this)">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"/></svg>
+          Portfolio
+        </a>
+        <a class="nav-link" onclick="showDashTab('market',this)">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+          Markets
+        </a>
+
+        <div class="text-white/30 text-xs font-semibold uppercase tracking-widest px-3 py-2 mt-4">Support</div>
+        <!-- Nova chat CTA — prominent -->
+        <a class="flex items-center gap-3 px-3 py-3 rounded-xl bg-gradient-to-r from-brand-600 to-violet-600 text-white font-semibold text-sm cursor-pointer hover:opacity-90 transition-opacity"
+           onclick="navigate('chat')">
+          <div class="w-6 h-6 bg-white/20 rounded-lg flex items-center justify-center flex-shrink-0">
+            <svg class="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
+          </div>
+          Chat with Nova AI
+        </a>
+        <a class="nav-link" onclick="showDashTab('settings',this)">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+          Settings
+        </a>
+      </div>
+
+      <!-- Logout -->
+      <div class="p-4 border-t border-white/10">
+        <button onclick="logout()" class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-white/50 hover:text-white hover:bg-white/8 transition-all text-sm font-medium">
+          <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+          Sign Out
+        </button>
+      </div>
+    </nav>
+
+    <!-- Main content -->
+    <main class="flex-1 overflow-y-auto custom-scroll bg-gray-50">
+      <div class="max-w-5xl mx-auto px-6 py-8">
+
+        <!-- ── OVERVIEW TAB ── -->
+        <div id="section-overview" class="dash-section active">
+          <div class="flex items-center justify-between mb-6">
+            <div>
+              <h1 id="greetingText" class="text-2xl font-black text-navy-900"></h1>
+              <p class="text-gray-500 text-sm mt-0.5">Here's your financial snapshot — <span id="greetingDate"></span></p>
+            </div>
+            <button onclick="navigate('chat')" class="hidden sm:flex items-center gap-2 bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition-all shadow-md shadow-brand-500/25">
+              <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
+              Chat with Nova
+            </button>
+          </div>
+
+          <!-- Net Worth Banner -->
+          <div class="hero-gradient rounded-2xl p-7 mb-6 relative overflow-hidden">
+            <div class="absolute top-0 right-0 w-64 h-64 bg-white/3 rounded-full -translate-y-1/2 translate-x-1/3 pointer-events-none"></div>
+            <div class="text-white/60 text-sm mb-1">Total Net Worth</div>
+            <div id="totalBalance" class="text-4xl font-black text-white mb-1"></div>
+            <div class="flex items-center gap-2 text-sm">
+              <span class="bg-emerald-500/20 text-emerald-300 font-semibold px-2 py-0.5 rounded-full text-xs">↑ 2.4%</span>
+              <span class="text-white/50">vs last month</span>
+            </div>
+            <div class="mt-5 grid grid-cols-3 gap-4">
+              <div>
+                <div class="text-white/50 text-xs mb-1">Checking</div>
+                <div id="overviewChecking" class="text-white font-bold text-lg"></div>
+              </div>
+              <div>
+                <div class="text-white/50 text-xs mb-1">Savings</div>
+                <div id="overviewSavings" class="text-white font-bold text-lg"></div>
+              </div>
+              <div>
+                <div class="text-white/50 text-xs mb-1">Investments</div>
+                <div id="overviewInvest" class="text-white font-bold text-lg"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Account cards row -->
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+            <div class="acct-card card-chk card-glow" onclick="showDashTab('transactions', document.querySelector('[onclick*=transactions]'))">
+              <div class="text-white/60 text-xs font-semibold mb-3 flex items-center justify-between">
+                CHECKING ****<span id="chkLast4"></span>
+                <svg class="w-7 h-7 text-white/20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
+              </div>
+              <div id="chkBalance" class="text-2xl font-black mb-1"></div>
+              <div class="text-white/50 text-xs">Available balance</div>
+            </div>
+            <div class="acct-card card-sav card-glow" onclick="showDashTab('accounts',document.querySelector('[onclick*=accounts]'))">
+              <div class="text-white/60 text-xs font-semibold mb-3 flex items-center justify-between">
+                SAVINGS ****<span id="savLast4"></span>
+                <svg class="w-7 h-7 text-white/20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+              </div>
+              <div id="savBalance" class="text-2xl font-black mb-1"></div>
+              <div class="text-white/50 text-xs">4.85% APY · FDIC Insured</div>
+            </div>
+            <div class="acct-card card-inv card-glow" onclick="showDashTab('portfolio',document.querySelector('[onclick*=portfolio]'))">
+              <div class="text-white/60 text-xs font-semibold mb-3 flex items-center justify-between">
+                INVESTMENTS
+                <svg class="w-7 h-7 text-white/20" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5"><path stroke-linecap="round" stroke-linejoin="round" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"/></svg>
+              </div>
+              <div id="invBalance" class="text-2xl font-black mb-1"></div>
+              <div class="text-white/50 text-xs flex items-center gap-1.5"><span class="text-emerald-300 font-semibold" id="invChange">+4.2%</span> this month</div>
+            </div>
+          </div>
+
+          <!-- Quick Actions -->
+          <div class="grid grid-cols-4 gap-3 mb-6">
+            <button onclick="showDashTab('transfers',document.querySelector('[onclick*=transfers]'))" class="bg-white border border-gray-100 rounded-2xl p-4 text-center hover:shadow-md transition-all group">
+              <div class="w-10 h-10 bg-brand-50 rounded-xl flex items-center justify-center mx-auto mb-2 group-hover:bg-brand-100 transition-colors">
+                <svg class="w-5 h-5 text-brand-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
+              </div>
+              <span class="text-xs font-semibold text-gray-700">Transfer</span>
+            </button>
+            <button onclick="showDashTab('transfers',document.querySelector('[onclick*=transfers]'))" class="bg-white border border-gray-100 rounded-2xl p-4 text-center hover:shadow-md transition-all group">
+              <div class="w-10 h-10 bg-emerald-50 rounded-xl flex items-center justify-center mx-auto mb-2 group-hover:bg-emerald-100 transition-colors">
+                <svg class="w-5 h-5 text-emerald-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/></svg>
+              </div>
+              <span class="text-xs font-semibold text-gray-700">Pay Bills</span>
+            </button>
+            <button onclick="showToast('Mobile deposit: Use the camera in our mobile app to deposit a check.','info')" class="bg-white border border-gray-100 rounded-2xl p-4 text-center hover:shadow-md transition-all group">
+              <div class="w-10 h-10 bg-violet-50 rounded-xl flex items-center justify-center mx-auto mb-2 group-hover:bg-violet-100 transition-colors">
+                <svg class="w-5 h-5 text-violet-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4v16m8-8H4"/></svg>
+              </div>
+              <span class="text-xs font-semibold text-gray-700">Deposit</span>
+            </button>
+            <button onclick="navigate('chat')" class="bg-white border border-gray-100 rounded-2xl p-4 text-center hover:shadow-md transition-all group">
+              <div class="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center mx-auto mb-2 group-hover:bg-blue-100 transition-colors">
+                <svg class="w-5 h-5 text-blue-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z"/></svg>
+              </div>
+              <span class="text-xs font-semibold text-gray-700">Ask Nova</span>
+            </button>
+          </div>
+
+          <!-- Recent Transactions -->
+          <div class="bg-white rounded-2xl border border-gray-100 shadow-sm">
+            <div class="px-6 py-4 flex items-center justify-between border-b border-gray-50">
+              <h3 class="font-bold text-navy-900">Recent Transactions</h3>
+              <button onclick="showDashTab('transactions',document.querySelector('[onclick*=transactions]'))" class="text-brand-600 text-sm font-semibold hover:text-brand-700 transition-colors">View All →</button>
+            </div>
+            <div id="recentTxList" class="px-6 divide-y divide-gray-50"></div>
+          </div>
+        </div>
+
+        <!-- ── ACCOUNTS TAB ── -->
+        <div id="section-accounts" class="dash-section">
+          <h1 class="text-2xl font-black text-navy-900 mb-6">My Accounts</h1>
+          <div class="space-y-4">
+            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              <div class="card-chk p-6 text-white">
+                <div class="flex justify-between items-start">
+                  <div>
+                    <div class="text-white/60 text-xs font-semibold uppercase tracking-wider mb-1">Premium Checking</div>
+                    <div id="acctChkNumber" class="text-white/70 text-sm font-mono mb-3"></div>
+                    <div id="acctChkBalance" class="text-3xl font-black"></div>
+                    <div class="text-white/50 text-xs mt-1">Available balance</div>
+                  </div>
+                  <div class="text-right">
+                    <div class="bg-white/10 border border-white/20 rounded-xl px-3 py-1.5 text-xs font-semibold">Active</div>
+                  </div>
+                </div>
+              </div>
+              <div class="p-5 grid grid-cols-3 gap-4 text-center border-t border-gray-50">
+                <div><div class="text-xs text-gray-400 mb-1">Routing #</div><div class="text-sm font-semibold text-gray-700">021000021</div></div>
+                <div><div class="text-xs text-gray-400 mb-1">Monthly Fee</div><div class="text-sm font-semibold text-gray-700">$0.00</div></div>
+                <div><div class="text-xs text-gray-400 mb-1">Interest Rate</div><div class="text-sm font-semibold text-gray-700">0.01% APY</div></div>
+              </div>
+            </div>
+            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+              <div class="card-sav p-6 text-white">
+                <div class="flex justify-between items-start">
+                  <div>
+                    <div class="text-white/60 text-xs font-semibold uppercase tracking-wider mb-1">High-Yield Savings</div>
+                    <div id="acctSavNumber" class="text-white/70 text-sm font-mono mb-3"></div>
+                    <div id="acctSavBalance" class="text-3xl font-black"></div>
+                    <div class="text-white/50 text-xs mt-1">4.85% APY — Earning $<span id="monthlyEarnings"></span>/mo</div>
+                  </div>
+                  <div class="text-right">
+                    <div class="bg-white/10 border border-white/20 rounded-xl px-3 py-1.5 text-xs font-semibold">Active</div>
+                  </div>
+                </div>
+              </div>
+              <div class="p-5 grid grid-cols-3 gap-4 text-center border-t border-gray-50">
+                <div><div class="text-xs text-gray-400 mb-1">APY</div><div class="text-sm font-semibold text-emerald-600">4.85%</div></div>
+                <div><div class="text-xs text-gray-400 mb-1">Min Balance</div><div class="text-sm font-semibold text-gray-700">$0.00</div></div>
+                <div><div class="text-xs text-gray-400 mb-1">FDIC Insured</div><div class="text-sm font-semibold text-emerald-600">✓ Yes</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── TRANSACTIONS TAB ── -->
+        <div id="section-transactions" class="dash-section">
+          <div class="flex items-center justify-between mb-6">
+            <h1 class="text-2xl font-black text-navy-900">Transaction History</h1>
+            <div class="flex gap-2">
+              <select class="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
+                <option>All Accounts</option><option>Checking</option><option>Savings</option>
+              </select>
+              <select class="text-sm border border-gray-200 rounded-xl px-3 py-2 bg-white focus:outline-none focus:ring-2 focus:ring-brand-500">
+                <option>Last 30 days</option><option>Last 60 days</option><option>Last 90 days</option>
+              </select>
+            </div>
+          </div>
+          <div class="bg-white rounded-2xl border border-gray-100 shadow-sm">
+            <div id="fullTxList" class="px-6 divide-y divide-gray-50"></div>
+          </div>
+        </div>
+
+        <!-- ── CARDS TAB ── -->
+        <div id="section-cards" class="dash-section">
+          <h1 class="text-2xl font-black text-navy-900 mb-6">My Cards</h1>
+          <div class="grid md:grid-cols-2 gap-6">
+            <div>
+              <div class="debit-card-bg rounded-2xl p-7 text-white mb-4" style="aspect-ratio:1.586">
+                <div class="flex justify-between items-start mb-8">
+                  <div class="text-white/50 text-xs font-semibold uppercase tracking-wider">Pinnacle Bank</div>
+                  <div class="text-white/40">
+                    <svg class="w-8 h-8" viewBox="0 0 24 24" fill="currentColor"><circle cx="8" cy="12" r="7" opacity=".6"/><circle cx="16" cy="12" r="7" opacity=".4"/></svg>
+                  </div>
+                </div>
+                <div class="text-white font-mono text-lg tracking-widest mb-6" id="cardNumber">•••• •••• •••• 4821</div>
+                <div class="flex justify-between items-end">
+                  <div>
+                    <div class="text-white/40 text-xs mb-1">CARD HOLDER</div>
+                    <div id="cardName" class="font-bold text-sm"></div>
+                  </div>
+                  <div class="text-right">
+                    <div class="text-white/40 text-xs mb-1">EXPIRES</div>
+                    <div class="font-bold text-sm">04/29</div>
+                  </div>
+                  <div class="text-white/60 font-bold text-sm">VISA</div>
+                </div>
+              </div>
+              <div class="flex gap-3">
+                <button id="freezeCardBtn" onclick="toggleFreezeCard()" class="flex-1 bg-white border border-gray-200 text-gray-700 text-sm font-semibold py-2.5 rounded-xl hover:bg-gray-50 transition-colors">Freeze Card</button>
+                <button onclick="showToast('Card limit management is available in the mobile app.','info')" class="flex-1 bg-white border border-gray-200 text-gray-700 text-sm font-semibold py-2.5 rounded-xl hover:bg-gray-50 transition-colors">Manage Limits</button>
+              </div>
+            </div>
+            <div class="space-y-4">
+              <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+                <div class="text-sm font-bold text-navy-900 mb-3">Card Details</div>
+                <div class="space-y-3 text-sm">
+                  <div class="flex justify-between"><span class="text-gray-500">Status</span><span class="text-emerald-600 font-semibold">Active</span></div>
+                  <div class="flex justify-between"><span class="text-gray-500">Type</span><span class="text-gray-800 font-medium">Visa Debit</span></div>
+                  <div class="flex justify-between"><span class="text-gray-500">Daily Limit</span><span class="text-gray-800 font-medium">$5,000.00</span></div>
+                  <div class="flex justify-between"><span class="text-gray-500">ATM Limit</span><span class="text-gray-800 font-medium">$1,000.00</span></div>
+                  <div class="flex justify-between"><span class="text-gray-500">Cashback</span><span class="text-gray-800 font-medium">1.0%</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── TRANSFERS TAB ── -->
+        <div id="section-transfers" class="dash-section">
+          <h1 class="text-2xl font-black text-navy-900 mb-6">Transfer Funds</h1>
+          <div class="grid md:grid-cols-2 gap-6">
+            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+              <h3 class="font-bold text-navy-900 mb-5">Internal Transfer</h3>
+              <div class="space-y-4">
+                <div>
+                  <label class="block text-sm font-semibold text-gray-700 mb-1.5">From Account</label>
+                  <select class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white">
+                    <option>Checking — ****4821</option><option>Savings — ****7293</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-sm font-semibold text-gray-700 mb-1.5">To Account</label>
+                  <select class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-white">
+                    <option>Savings — ****7293</option><option>Checking — ****4821</option>
+                  </select>
+                </div>
+                <div>
+                  <label class="block text-sm font-semibold text-gray-700 mb-1.5">Amount</label>
+                  <div class="relative">
+                    <span class="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-semibold">$</span>
+                    <input id="internalAmount" type="number" placeholder="0.00" class="w-full border border-gray-200 rounded-xl pl-8 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                  </div>
+                </div>
+                <button onclick="doInternalTransfer()" class="w-full bg-brand-500 hover:bg-brand-600 text-white font-bold py-3 rounded-xl text-sm transition-all shadow-md shadow-brand-500/25">Transfer Now</button>
+              </div>
+            </div>
+            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+              <h3 class="font-bold text-navy-900 mb-5">Send Money</h3>
+              <div class="space-y-4">
+                <div>
+                  <label class="block text-sm font-semibold text-gray-700 mb-1.5">Recipient Email or Phone</label>
+                  <input id="zelleRecipient" placeholder="name@email.com or +1 (555) 000-0000" class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                </div>
+                <div>
+                  <label class="block text-sm font-semibold text-gray-700 mb-1.5">Amount</label>
+                  <div class="relative">
+                    <span class="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-semibold">$</span>
+                    <input id="zelleAmount" type="number" placeholder="0.00" class="w-full border border-gray-200 rounded-xl pl-8 pr-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                  </div>
+                </div>
+                <div>
+                  <label class="block text-sm font-semibold text-gray-700 mb-1.5">Note (optional)</label>
+                  <input placeholder="e.g. Rent for April" class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                </div>
+                <button onclick="doZelleTransfer()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-3 rounded-xl text-sm transition-all shadow-md shadow-emerald-600/25">Send via Zelle®</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── PORTFOLIO TAB ── -->
+        <div id="section-portfolio" class="dash-section">
+          <h1 class="text-2xl font-black text-navy-900 mb-6">Investment Portfolio</h1>
+          <div class="grid md:grid-cols-3 gap-4 mb-6">
+            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+              <div class="text-xs text-gray-400 mb-1">Portfolio Value</div>
+              <div id="portValue" class="text-2xl font-black text-navy-900"></div>
+              <div class="text-emerald-600 text-sm font-semibold mt-1">↑ +4.2% this month</div>
+            </div>
+            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+              <div class="text-xs text-gray-400 mb-1">Total Gain/Loss</div>
+              <div class="text-2xl font-black text-emerald-600">+$12,450.00</div>
+              <div class="text-gray-400 text-sm mt-1">Since inception</div>
+            </div>
+            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-5">
+              <div class="text-xs text-gray-400 mb-1">Annual Return</div>
+              <div class="text-2xl font-black text-navy-900">11.8%</div>
+              <div class="text-gray-400 text-sm mt-1">12-month trailing</div>
+            </div>
+          </div>
+          <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+            <h3 class="font-bold text-navy-900 mb-4">Holdings</h3>
+            <div class="space-y-3">
+              <div class="flex items-center justify-between py-2 border-b border-gray-50">
+                <div class="flex items-center gap-3">
+                  <div class="w-9 h-9 bg-blue-50 rounded-xl flex items-center justify-center text-xs font-bold text-blue-700">AAPL</div>
+                  <div><div class="text-sm font-semibold text-gray-800">Apple Inc.</div><div class="text-xs text-gray-400">40 shares · $187.42</div></div>
+                </div>
+                <div class="text-right"><div class="text-sm font-bold text-gray-800">$7,496.80</div><div class="text-xs text-emerald-600 font-semibold">+2.1%</div></div>
+              </div>
+              <div class="flex items-center justify-between py-2 border-b border-gray-50">
+                <div class="flex items-center gap-3">
+                  <div class="w-9 h-9 bg-green-50 rounded-xl flex items-center justify-center text-xs font-bold text-green-700">MSFT</div>
+                  <div><div class="text-sm font-semibold text-gray-800">Microsoft Corp.</div><div class="text-xs text-gray-400">25 shares · $415.30</div></div>
+                </div>
+                <div class="text-right"><div class="text-sm font-bold text-gray-800">$10,382.50</div><div class="text-xs text-emerald-600 font-semibold">+3.4%</div></div>
+              </div>
+              <div class="flex items-center justify-between py-2 border-b border-gray-50">
+                <div class="flex items-center gap-3">
+                  <div class="w-9 h-9 bg-purple-50 rounded-xl flex items-center justify-center text-xs font-bold text-purple-700">NVDA</div>
+                  <div><div class="text-sm font-semibold text-gray-800">NVIDIA Corp.</div><div class="text-xs text-gray-400">15 shares · $920.10</div></div>
+                </div>
+                <div class="text-right"><div class="text-sm font-bold text-gray-800">$13,801.50</div><div class="text-xs text-emerald-600 font-semibold">+8.7%</div></div>
+              </div>
+              <div class="flex items-center justify-between py-2">
+                <div class="flex items-center gap-3">
+                  <div class="w-9 h-9 bg-amber-50 rounded-xl flex items-center justify-center text-xs font-bold text-amber-700">SPY</div>
+                  <div><div class="text-sm font-semibold text-gray-800">S&amp;P 500 ETF</div><div class="text-xs text-gray-400">12 shares · $512.80</div></div>
+                </div>
+                <div class="text-right"><div class="text-sm font-bold text-gray-800">$6,153.60</div><div class="text-xs text-emerald-600 font-semibold">+1.9%</div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- ── MARKETS TAB ── -->
+        <div id="section-market" class="dash-section">
+          <h1 class="text-2xl font-black text-navy-900 mb-6">Market Overview</h1>
+          <div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+              <div class="text-xs text-gray-400 mb-1">S&amp;P 500</div>
+              <div class="text-xl font-black text-navy-900">5,218.41</div>
+              <div class="text-emerald-600 text-sm font-semibold">+0.74%</div>
+            </div>
+            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+              <div class="text-xs text-gray-400 mb-1">NASDAQ</div>
+              <div class="text-xl font-black text-navy-900">16,349.25</div>
+              <div class="text-emerald-600 text-sm font-semibold">+1.12%</div>
+            </div>
+            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+              <div class="text-xs text-gray-400 mb-1">DOW JONES</div>
+              <div class="text-xl font-black text-navy-900">38,774.20</div>
+              <div class="text-red-500 text-sm font-semibold">-0.21%</div>
+            </div>
+            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-4">
+              <div class="text-xs text-gray-400 mb-1">10-Yr Treasury</div>
+              <div class="text-xl font-black text-navy-900">4.38%</div>
+              <div class="text-red-500 text-sm font-semibold">-0.05%</div>
+            </div>
+          </div>
+          <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 text-center py-16">
+            <p class="text-gray-400 mb-4">Want deeper market analysis?</p>
+            <button onclick="navigate('chat')" class="bg-brand-500 hover:bg-brand-600 text-white font-bold px-6 py-3 rounded-xl text-sm transition-all">Ask Nova for Market Insights</button>
+          </div>
+        </div>
+
+        <!-- ── SETTINGS TAB ── -->
+        <div id="section-settings" class="dash-section">
+          <h1 class="text-2xl font-black text-navy-900 mb-6">Account Settings</h1>
+          <div class="space-y-4">
+            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+              <h3 class="font-bold text-navy-900 mb-5">Personal Information</h3>
+              <div class="grid md:grid-cols-2 gap-4">
+                <div><label class="block text-sm font-semibold text-gray-700 mb-1.5">Full Name</label><input id="settingsName" class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-gray-50" readonly /></div>
+                <div><label class="block text-sm font-semibold text-gray-700 mb-1.5">Email</label><input id="settingsEmail" class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-gray-50" readonly /></div>
+                <div><label class="block text-sm font-semibold text-gray-700 mb-1.5">Phone</label><input id="settingsPhone" class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 bg-gray-50" readonly /></div>
+                <div><label class="block text-sm font-semibold text-gray-700 mb-1.5">Member Since</label><input value="January 15, 2020" class="w-full border border-gray-200 rounded-xl px-4 py-3 text-sm bg-gray-50" readonly /></div>
+              </div>
+            </div>
+            <div class="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+              <h3 class="font-bold text-navy-900 mb-5">Security</h3>
+              <div class="space-y-3">
+                <div class="flex justify-between items-center py-3 border-b border-gray-50">
+                  <div><div class="text-sm font-semibold text-gray-800">Two-Factor Authentication</div><div class="text-xs text-gray-400">Add an extra layer of security</div></div>
+                  <button class="bg-emerald-100 text-emerald-700 font-semibold text-xs px-3 py-1.5 rounded-full">Enabled</button>
+                </div>
+                <div class="flex justify-between items-center py-3">
+                  <div><div class="text-sm font-semibold text-gray-800">Change Password</div><div class="text-xs text-gray-400">Last changed 3 months ago</div></div>
+                  <button onclick="showToast('Password update link sent to your registered email address.','success')" class="text-brand-600 font-semibold text-sm hover:text-brand-700">Update →</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </main>
+  </div>
+</div>
+
+
+<!-- ═══════════════════════════════════════════════════════════════
+     PAGE 4 — AGENT CHAT
+════════════════════════════════════════════════════════════════════ -->
+<div id="page-chat" class="page bg-gray-50">
+  <!-- Top bar -->
+  <header class="bg-white border-b border-gray-100 px-6 py-3.5 flex items-center gap-4 flex-shrink-0">
+    <button onclick="navigate('dashboard')" class="flex items-center gap-1.5 text-gray-500 hover:text-navy-900 transition-colors text-sm font-medium">
+      <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 19l-7-7m0 0l7-7m-7 7h18"/></svg>
+      Dashboard
+    </button>
+    <div class="w-px h-5 bg-gray-200"></div>
+    <div class="flex items-center gap-2.5">
+      <div class="w-8 h-8 bg-gradient-to-br from-brand-500 to-violet-600 rounded-full flex items-center justify-center">
+        <svg class="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+      </div>
+      <div>
+        <div class="text-sm font-bold text-navy-900">Nova — AI Banking Assistant</div>
+        <div class="text-xs text-emerald-500 font-medium flex items-center gap-1">
+          <span class="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse"></span> Online
+        </div>
+      </div>
+    </div>
+    <div class="ml-auto text-xs text-gray-400">Powered by Pinnacle Intelligence™</div>
+  </header>
+
+  <!-- Chat body -->
+  <div class="flex flex-1 overflow-hidden" style="height:calc(100vh - 57px)">
+
+    <!-- Left sidebar: suggestions + history -->
+    <div class="w-72 bg-white border-r border-gray-100 flex-col hidden md:flex overflow-y-auto custom-scroll">
+      <div class="p-5">
+        <div class="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Try asking Nova</div>
+        <div class="space-y-2" id="suggestionList">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+      <div class="p-5 border-t border-gray-100">
+        <div class="text-xs font-bold text-gray-400 uppercase tracking-widest mb-3">Quick Actions</div>
+        <div class="space-y-2">
+          <button onclick="clearChat()" class="w-full text-left flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-800 transition-colors">
+            <svg class="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/></svg>
+            New Conversation
+          </button>
+          <button onclick="navigate('dashboard')" class="w-full text-left flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm text-gray-600 hover:bg-gray-50 hover:text-gray-800 transition-colors">
+            <svg class="w-4 h-4 text-gray-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+            Back to Dashboard
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main chat area -->
+    <div class="flex-1 flex flex-col overflow-hidden">
+      <!-- Messages -->
+      <div id="chatMessages" class="flex-1 overflow-y-auto custom-scroll px-6 py-6 flex flex-col gap-4">
+        <!-- Welcome message populated by JS -->
+      </div>
+
+      <!-- Suggestion pills (mobile + initial) -->
+      <div id="chatSuggestions" class="px-6 pb-2 flex gap-2 overflow-x-auto custom-scroll flex-shrink-0">
+        <!-- Populated by JS -->
+      </div>
+
+      <!-- Input bar -->
+      <div class="border-t border-gray-100 bg-white px-6 py-4 flex-shrink-0">
+        <div class="flex items-end gap-3">
+          <div class="flex-1 relative">
+            <textarea id="chatInput"
+              placeholder="Ask Nova anything about your accounts, transfers, or market conditions…"
+              rows="1"
+              class="w-full border border-gray-200 rounded-2xl px-4 py-3.5 pr-12 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none custom-scroll"
+              style="max-height:120px; overflow-y:auto;"
+              onkeydown="handleChatKey(event)"
+              oninput="autoResize(this)"></textarea>
+          </div>
+          <button onclick="sendChat()" id="sendBtn"
+            class="w-11 h-11 bg-brand-500 hover:bg-brand-600 text-white rounded-xl flex items-center justify-center transition-all shadow-md shadow-brand-500/30 flex-shrink-0 disabled:opacity-50">
+            <svg class="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
+            </svg>
+          </button>
+        </div>
+        <div class="text-center mt-2">
+          <p class="text-xs text-gray-400">Nova may occasionally make mistakes. Verify important account details in the dashboard.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Pinnacle Bank — Online Banking</title>
+  <script src="https://cdn.tailwindcss.com"><\/script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            navy: { 900:"#0f2240", 800:"#1e3a5f", 700:"#1a4a7a", 600:"#1d5fa0" },
+            brand: { 500:"#2563eb", 400:"#3b82f6", 300:"#93c5fd" },
+          },
+          fontFamily: { sans: ['"Inter"',"system-ui","sans-serif"] },
+        },
+      },
+    };
+  <\/script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    *,*::before,*::after{box-sizing:border-box}
+    body{font-family:"Inter",system-ui,sans-serif;background:#f1f5f9}
+    .view{display:none}.view.active{display:flex}
+    #loginView.active{display:flex}#appShell.active{display:flex}
+    .user-card{transition:all .18s ease;cursor:pointer}
+    .user-card:hover{transform:translateY(-2px);box-shadow:0 8px 30px rgba(30,58,95,.2)}
+    .user-card.selected{border-color:#2563eb;background:#eff6ff}
+    .nav-item{transition:all .15s ease;border-radius:10px}
+    .nav-item:hover{background:rgba(255,255,255,.08)}
+    .nav-item.active{background:rgba(255,255,255,.15);font-weight:600}
+    .custom-scroll::-webkit-scrollbar{width:4px}
+    .custom-scroll::-webkit-scrollbar-track{background:transparent}
+    .custom-scroll::-webkit-scrollbar-thumb{background:#cbd5e1;border-radius:4px}
+    .dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:#94a3b8;animation:bounce 1.2s infinite}
+    .dot:nth-child(2){animation-delay:.2s}.dot:nth-child(3){animation-delay:.4s}
+    @keyframes bounce{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-6px)}}
+    #chatPanel{transform:translateY(20px) scale(.97);opacity:0;pointer-events:none;transition:all .22s cubic-bezier(.34,1.56,.64,1)}
+    #chatPanel.open{transform:translateY(0) scale(1);opacity:1;pointer-events:all}
+    .fab-pulse::after{content:"";position:absolute;inset:-4px;border-radius:50%;border:2px solid #2563eb;animation:fabpulse 2.5s ease infinite}
+    @keyframes fabpulse{0%{opacity:.7;transform:scale(1)}100%{opacity:0;transform:scale(1.45)}}
+    .page-view{display:none}.page-view.active{display:block;animation:fadeIn .2s ease}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+    #pinInput{letter-spacing:.6em;font-size:1.4rem}
+    .spark-bar{display:inline-block;width:4px;background:#93c5fd;border-radius:2px;margin:0 1px}
+    .tx-row{transition:background .12s}.tx-row:hover{background:#f8fafc}
+    .check-anim{stroke-dasharray:100;stroke-dashoffset:100;animation:drawCheck .6s ease .3s forwards}
+    @keyframes drawCheck{to{stroke-dashoffset:0}}
+    .debit-card-gradient{background:linear-gradient(135deg,#1e3a5f 0%,#2563eb 100%)}
+    @media(max-width:768px){
+      #sidebar{transform:translateX(-100%);transition:transform .25s ease;position:fixed;z-index:50;height:100vh}
+      #sidebar.open{transform:translateX(0)}
+      #mainContent{margin-left:0!important}
+    }
+  </style>
+</head>
+<body class="min-h-screen">
+
+<!-- ═══════════════ LOGIN VIEW ═══════════════ -->
+<div id="loginView" class="view active min-h-screen flex-col bg-gradient-to-br from-navy-900 via-navy-800 to-brand-500">
+  <div class="flex items-center px-8 py-5">
+    <div class="flex items-center gap-2.5">
+      <div class="w-9 h-9 bg-white/15 rounded-xl flex items-center justify-center">
+        <svg class="w-5 h-5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3 7c0-1.1.9-2 2-2h14a2 2 0 012 2v1H3V7zm0 3h18v9a2 2 0 01-2 2H5a2 2 0 01-2-2v-9z"/>
+        </svg>
+      </div>
+      <span class="text-white font-bold text-lg">Pinnacle Bank</span>
+    </div>
+    <div class="ml-auto text-white/50 text-sm">Secure Online Banking</div>
+  </div>
+  <div class="flex-1 flex items-center justify-center px-4 py-8">
+    <div class="w-full max-w-md">
+      <div class="text-center mb-8">
+        <div class="w-16 h-16 bg-white/10 rounded-2xl flex items-center justify-center mx-auto mb-4 border border-white/20">
+          <svg class="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 21v-8.25M15.75 21v-8.25M8.25 21v-8.25M3 9l9-6 9 6m-1.5 12V10.332A48.36 48.36 0 0012 9.75c-2.551 0-5.056.2-7.5.582V21M3 21h18M12 6.75h.008v.008H12V6.75z"/>
+          </svg>
+        </div>
+        <h1 class="text-3xl font-bold text-white mb-1">Welcome back</h1>
+        <p class="text-white/60 text-sm">Select your account to continue</p>
+      </div>
+      <div class="space-y-3 mb-6" id="userCards">
+        <div class="user-card bg-white/10 border border-white/20 rounded-2xl p-4 flex items-center gap-4" data-user="alice" onclick="selectUser('alice',this)">
+          <div class="w-12 h-12 rounded-full bg-gradient-to-br from-violet-400 to-purple-600 flex items-center justify-center text-white font-semibold text-lg flex-shrink-0">AJ</div>
+          <div class="flex-1"><p class="text-white font-semibold text-sm">Alice Johnson</p><p class="text-white/50 text-xs mt-0.5">Personal Checking · ••••01</p></div>
+          <svg class="w-5 h-5 text-white/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+        </div>
+        <div class="user-card bg-white/10 border border-white/20 rounded-2xl p-4 flex items-center gap-4" data-user="bob" onclick="selectUser('bob',this)">
+          <div class="w-12 h-12 rounded-full bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center text-white font-semibold text-lg flex-shrink-0">BM</div>
+          <div class="flex-1"><p class="text-white font-semibold text-sm">Bob Martinez</p><p class="text-white/50 text-xs mt-0.5">Personal Checking · ••••02</p></div>
+          <svg class="w-5 h-5 text-white/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+        </div>
+        <div class="user-card bg-white/10 border border-white/20 rounded-2xl p-4 flex items-center gap-4" data-user="carol" onclick="selectUser('carol',this)">
+          <div class="w-12 h-12 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white font-semibold text-lg flex-shrink-0">CW</div>
+          <div class="flex-1"><p class="text-white font-semibold text-sm">Carol Williams</p><p class="text-white/50 text-xs mt-0.5">Personal Checking · ••••03</p></div>
+          <svg class="w-5 h-5 text-white/30" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5l7 7-7 7"/></svg>
+        </div>
+      </div>
+      <div id="pinSection" class="hidden">
+        <div class="bg-white/10 border border-white/20 rounded-2xl p-6">
+          <p class="text-white/70 text-sm mb-3 text-center">Enter PIN for <span id="pinUserName" class="text-white font-semibold"></span></p>
+          <input id="pinInput" type="password" inputmode="numeric" maxlength="4" placeholder="••••"
+            class="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3.5 text-white text-center placeholder-white/30 focus:outline-none focus:border-brand-300 text-xl tracking-widest"
+            onkeyup="onPinKey(event)" autocomplete="off"/>
+          <button onclick="doLogin()" class="mt-4 w-full bg-brand-500 hover:bg-brand-400 text-white font-semibold py-3.5 rounded-xl transition-colors">Sign In</button>
+          <button onclick="cancelLogin()" class="mt-2 w-full text-white/50 hover:text-white/80 text-sm py-2 transition-colors">Back</button>
+        </div>
+      </div>
+      <div class="mt-5 flex items-center justify-between px-1">
+        <label class="flex items-center gap-2 text-white/50 text-xs cursor-pointer">
+          <input type="checkbox" class="rounded"> Remember this device
+        </label>
+        <a href="#" class="text-white/50 text-xs hover:text-white/70">Forgot PIN?</a>
+      </div>
+    </div>
+  </div>
+  <div class="text-center py-4 text-white/30 text-xs">© 2026 Pinnacle Bank, N.A. · Member FDIC · Equal Housing Lender</div>
+</div>
+
+<!-- ═══════════════ APP SHELL ═══════════════ -->
+<div id="appShell" class="view min-h-screen bg-slate-100">
+  <div id="sidebarOverlay" class="hidden fixed inset-0 bg-black/40 z-40 md:hidden" onclick="closeSidebar()"></div>
+
+  <!-- Sidebar -->
+  <aside id="sidebar" class="w-64 min-h-screen bg-navy-800 flex flex-col fixed top-0 left-0 z-50 md:relative md:translate-x-0">
+    <div class="px-6 py-5 border-b border-white/10">
+      <div class="flex items-center gap-2.5">
+        <div class="w-8 h-8 bg-white/15 rounded-lg flex items-center justify-center">
+          <svg class="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 7c0-1.1.9-2 2-2h14a2 2 0 012 2v1H3V7zm0 3h18v9a2 2 0 01-2 2H5a2 2 0 01-2-2v-9z"/>
+          </svg>
+        </div>
+        <span class="text-white font-bold">Pinnacle Bank</span>
+      </div>
+    </div>
+    <div class="px-5 py-4 border-b border-white/10">
+      <div class="flex items-center gap-3">
+        <div id="sidebarAvatar" class="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold text-sm flex-shrink-0"></div>
+        <div class="min-w-0">
+          <p id="sidebarName" class="text-white font-semibold text-sm truncate"></p>
+          <p id="sidebarAcct" class="text-white/50 text-xs"></p>
+        </div>
+      </div>
+    </div>
+    <nav class="flex-1 px-3 py-4 space-y-1">
+      <button onclick="navigate('dashboard')" id="nav-dashboard" class="nav-item active w-full flex items-center gap-3 px-3 py-2.5 text-white/90 text-sm">
+        <svg class="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6"/></svg>
+        Dashboard
+      </button>
+      <button onclick="navigate('accounts')" id="nav-accounts" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 text-white/60 text-sm">
+        <svg class="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
+        Accounts
+      </button>
+      <button onclick="navigate('transactions')" id="nav-transactions" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 text-white/60 text-sm">
+        <svg class="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"/></svg>
+        Transactions
+      </button>
+      <button onclick="navigate('transfers')" id="nav-transfers" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 text-white/60 text-sm">
+        <svg class="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
+        Transfers
+      </button>
+      <button onclick="navigate('profile')" id="nav-profile" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 text-white/60 text-sm">
+        <svg class="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"/></svg>
+        Profile
+      </button>
+    </nav>
+    <div class="px-3 py-4 border-t border-white/10">
+      <button onclick="signOut()" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 text-white/50 hover:text-white/80 text-sm">
+        <svg class="w-5 h-5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path stroke-linecap="round" stroke-linejoin="round" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"/></svg>
+        Sign Out
+      </button>
+    </div>
+  </aside>
+
+  <!-- Main content -->
+  <div id="mainContent" class="flex-1 flex flex-col min-w-0 md:ml-64 min-h-screen">
+    <header class="bg-white border-b border-slate-200 px-6 py-4 flex items-center gap-4 sticky top-0 z-30">
+      <button onclick="openSidebar()" class="md:hidden p-2 rounded-lg hover:bg-slate-100">
+        <svg class="w-5 h-5 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+      <div class="flex-1">
+        <p id="headerGreeting" class="text-slate-800 font-semibold text-base"></p>
+        <p id="headerDate" class="text-slate-400 text-xs mt-0.5"></p>
+      </div>
+      <button class="relative p-2 rounded-xl hover:bg-slate-100">
+        <svg class="w-5 h-5 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"/></svg>
+        <span class="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full"></span>
+      </button>
+      <div id="headerAvatar" class="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-semibold cursor-pointer" onclick="navigate('profile')"></div>
+    </header>
+
+    <main class="flex-1 p-6 overflow-y-auto custom-scroll">
+
+      <!-- DASHBOARD -->
+      <div id="page-dashboard" class="page-view active">
+        <div class="bg-navy-800 rounded-2xl p-6 text-white mb-6 relative overflow-hidden">
+          <div class="absolute right-0 top-0 w-64 h-full opacity-5 pointer-events-none">
+            <svg viewBox="0 0 200 200" fill="white"><circle cx="170" cy="30" r="80"/><circle cx="30" cy="170" r="60"/></svg>
+          </div>
+          <div class="relative z-10">
+            <p class="text-white/60 text-sm font-medium mb-1">Total Balance</p>
+            <p id="heroBalance" class="text-4xl font-bold tracking-tight mb-1"></p>
+            <p id="heroAccount" class="text-white/50 text-sm"></p>
+            <div class="mt-4 flex items-end gap-0.5 h-8">
+              <span class="spark-bar" style="height:30%"></span><span class="spark-bar" style="height:50%"></span><span class="spark-bar" style="height:40%"></span><span class="spark-bar" style="height:70%"></span><span class="spark-bar" style="height:55%"></span><span class="spark-bar" style="height:85%"></span><span class="spark-bar" style="height:65%"></span><span class="spark-bar" style="height:90%"></span><span class="spark-bar" style="height:75%"></span><span class="spark-bar" style="height:100%"></span>
+            </div>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
+          <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
+            <div class="flex items-center justify-between mb-3">
+              <p class="text-slate-500 text-xs font-medium uppercase tracking-wide">Income This Month</p>
+              <div class="w-8 h-8 bg-emerald-50 rounded-lg flex items-center justify-center"><svg class="w-4 h-4 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M7 11l5-5m0 0l5 5m-5-5v12"/></svg></div>
+            </div>
+            <p id="statIncome" class="text-2xl font-bold text-slate-800"></p>
+            <p class="text-emerald-500 text-xs mt-1 font-medium">↑ 12% from last month</p>
+          </div>
+          <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
+            <div class="flex items-center justify-between mb-3">
+              <p class="text-slate-500 text-xs font-medium uppercase tracking-wide">Expenses This Month</p>
+              <div class="w-8 h-8 bg-red-50 rounded-lg flex items-center justify-center"><svg class="w-4 h-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M17 13l-5 5m0 0l-5-5m5 5V6"/></svg></div>
+            </div>
+            <p id="statExpenses" class="text-2xl font-bold text-slate-800"></p>
+            <p class="text-red-400 text-xs mt-1 font-medium">↓ 3% from last month</p>
+          </div>
+          <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
+            <div class="flex items-center justify-between mb-3">
+              <p class="text-slate-500 text-xs font-medium uppercase tracking-wide">Savings Rate</p>
+              <div class="w-8 h-8 bg-blue-50 rounded-lg flex items-center justify-center"><svg class="w-4 h-4 text-brand-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></div>
+            </div>
+            <p id="statSavings" class="text-2xl font-bold text-slate-800"></p>
+            <p class="text-brand-500 text-xs mt-1 font-medium">Above average ✓</p>
+          </div>
+        </div>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div class="lg:col-span-2 bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+            <div class="flex items-center justify-between mb-4">
+              <h2 class="text-slate-800 font-semibold text-sm">Recent Transactions</h2>
+              <button onclick="navigate('transactions')" class="text-brand-500 text-xs font-medium hover:text-brand-400">View all →</button>
+            </div>
+            <div id="recentTxList" class="space-y-1"></div>
+          </div>
+          <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+            <h2 class="text-slate-800 font-semibold text-sm mb-4">Quick Transfer</h2>
+            <div class="space-y-3">
+              <div>
+                <label class="text-slate-500 text-xs font-medium block mb-1.5">From</label>
+                <div class="bg-slate-50 rounded-xl px-3 py-2.5 text-slate-700 text-sm border border-slate-200" id="quickFromAcct"></div>
+              </div>
+              <div>
+                <label class="text-slate-500 text-xs font-medium block mb-1.5">To Account</label>
+                <select id="quickToAcct" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-slate-700 text-sm focus:outline-none focus:border-brand-400"><option value="">Select recipient…</option></select>
+              </div>
+              <div>
+                <label class="text-slate-500 text-xs font-medium block mb-1.5">Amount</label>
+                <div class="relative"><span class="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">$</span><input id="quickAmount" type="number" min="1" placeholder="0.00" class="w-full bg-slate-50 border border-slate-200 rounded-xl pl-7 pr-3 py-2.5 text-slate-700 text-sm focus:outline-none focus:border-brand-400"/></div>
+              </div>
+              <button onclick="doQuickTransfer()" class="w-full bg-navy-800 hover:bg-navy-700 text-white font-semibold py-2.5 rounded-xl text-sm transition-colors">Send Money</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ACCOUNTS -->
+      <div id="page-accounts" class="page-view">
+        <h1 class="text-slate-800 font-bold text-xl mb-6">My Accounts</h1>
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 mb-4">
+          <div class="flex items-start justify-between mb-6">
+            <div>
+              <p class="text-slate-500 text-xs font-medium uppercase tracking-wide mb-1">Personal Checking</p>
+              <p id="acctCheckingBalance" class="text-3xl font-bold text-slate-800"></p>
+              <p id="acctCheckingNum" class="text-slate-400 text-sm mt-1 font-mono"></p>
+            </div>
+            <div class="w-10 h-10 bg-brand-500/10 rounded-xl flex items-center justify-center"><svg class="w-5 h-5 text-brand-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg></div>
+          </div>
+          <div class="grid grid-cols-2 gap-4 bg-slate-50 rounded-xl p-4 mb-5 text-sm">
+            <div><p class="text-slate-400 text-xs mb-0.5">Account Number</p><p id="acctFullNum" class="text-slate-700 font-mono font-medium"></p></div>
+            <div><p class="text-slate-400 text-xs mb-0.5">Routing Number</p><p class="text-slate-700 font-mono font-medium">021000021</p></div>
+          </div>
+          <div class="flex gap-3">
+            <button class="flex-1 border border-slate-200 hover:border-brand-400 text-slate-600 hover:text-brand-500 py-2.5 rounded-xl text-sm font-medium transition-colors">View Statements</button>
+            <button class="flex-1 border border-slate-200 hover:border-brand-400 text-slate-600 hover:text-brand-500 py-2.5 rounded-xl text-sm font-medium transition-colors">Card Settings</button>
+          </div>
+        </div>
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 mb-6">
+          <div class="flex items-start justify-between mb-4">
+            <div>
+              <p class="text-slate-500 text-xs font-medium uppercase tracking-wide mb-1">Pinnacle Savings</p>
+              <p id="acctSavingsBalance" class="text-3xl font-bold text-slate-800"></p>
+              <p class="text-slate-400 text-sm mt-1 font-mono">SAVI-••••</p>
+            </div>
+            <div class="w-10 h-10 bg-emerald-500/10 rounded-xl flex items-center justify-center"><svg class="w-5 h-5 text-emerald-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg></div>
+          </div>
+          <div class="bg-emerald-50 text-emerald-700 rounded-xl px-4 py-2.5 text-sm font-medium mb-4">APY: 4.75% · Interest credited monthly</div>
+          <div class="flex gap-3">
+            <button class="flex-1 border border-slate-200 hover:border-emerald-400 text-slate-600 hover:text-emerald-600 py-2.5 rounded-xl text-sm font-medium transition-colors">Transfer In</button>
+            <button class="flex-1 border border-slate-200 hover:border-emerald-400 text-slate-600 hover:text-emerald-600 py-2.5 rounded-xl text-sm font-medium transition-colors">Set Goals</button>
+          </div>
+        </div>
+        <div class="debit-card-gradient rounded-2xl p-6 text-white max-w-sm">
+          <div class="flex justify-between items-start mb-8">
+            <span class="text-white/70 text-sm font-medium">Pinnacle Bank</span>
+            <svg class="w-10 h-6 text-yellow-400/90" viewBox="0 0 48 30" fill="currentColor"><ellipse cx="18" cy="15" rx="15" ry="15" opacity=".8"/><ellipse cx="30" cy="15" rx="15" ry="15" opacity=".6"/></svg>
+          </div>
+          <p id="cardNumber" class="font-mono text-lg tracking-widest mb-6">•••• •••• •••• ••01</p>
+          <div class="flex justify-between text-sm">
+            <div><p class="text-white/50 text-xs mb-0.5">Cardholder</p><p id="cardHolder" class="font-semibold"></p></div>
+            <div class="text-right"><p class="text-white/50 text-xs mb-0.5">Expires</p><p class="font-semibold">08/29</p></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- TRANSACTIONS -->
+      <div id="page-transactions" class="page-view">
+        <h1 class="text-slate-800 font-bold text-xl mb-6">Transaction History</h1>
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 mb-4 flex flex-wrap gap-3">
+          <div class="flex rounded-xl overflow-hidden border border-slate-200">
+            <button onclick="filterTx('all')" id="filter-all" class="px-4 py-2 text-sm font-medium bg-navy-800 text-white">All</button>
+            <button onclick="filterTx('credit')" id="filter-credit" class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">Credits</button>
+            <button onclick="filterTx('debit')" id="filter-debit" class="px-4 py-2 text-sm font-medium text-slate-600 hover:bg-slate-50">Debits</button>
+          </div>
+          <div class="flex-1 min-w-48 relative">
+            <svg class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg>
+            <input id="txSearch" oninput="renderTransactions()" type="text" placeholder="Search transactions…" class="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-3 py-2 text-sm text-slate-700 focus:outline-none focus:border-brand-400"/>
+          </div>
+        </div>
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+          <div class="hidden sm:grid grid-cols-12 px-5 py-3 border-b border-slate-100 text-slate-400 text-xs font-medium uppercase tracking-wide">
+            <div class="col-span-5">Merchant</div><div class="col-span-3">Category</div><div class="col-span-2">Date</div><div class="col-span-2 text-right">Amount</div>
+          </div>
+          <div id="txBody" class="divide-y divide-slate-50"></div>
+        </div>
+      </div>
+
+      <!-- TRANSFERS -->
+      <div id="page-transfers" class="page-view">
+        <h1 class="text-slate-800 font-bold text-xl mb-6">Send Money</h1>
+        <div id="transferForm" class="max-w-lg">
+          <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 space-y-5">
+            <div>
+              <label class="text-slate-600 text-sm font-medium block mb-2">From Account</label>
+              <div id="transferFrom" class="bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-700 text-sm"></div>
+            </div>
+            <div>
+              <label class="text-slate-600 text-sm font-medium block mb-2">Transfer To</label>
+              <div class="flex rounded-xl overflow-hidden border border-slate-200 mb-3">
+                <button onclick="setTransferType('internal')" id="ttInternal" class="flex-1 py-2.5 text-sm font-medium bg-navy-800 text-white">My Accounts</button>
+                <button onclick="setTransferType('external')" id="ttExternal" class="flex-1 py-2.5 text-sm font-medium text-slate-600 hover:bg-slate-50">Someone Else</button>
+              </div>
+              <div id="transferInternal">
+                <select id="transferToInternal" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-700 text-sm focus:outline-none focus:border-brand-400"><option value="">Select account…</option></select>
+              </div>
+              <div id="transferExternal" class="hidden space-y-3">
+                <input type="text" id="extName" placeholder="Recipient full name" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-700 text-sm focus:outline-none focus:border-brand-400"/>
+                <input type="text" id="extRouting" placeholder="Routing number (9 digits)" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-700 text-sm focus:outline-none focus:border-brand-400 font-mono" maxlength="9"/>
+                <input type="text" id="extAccount" placeholder="Account number" class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-700 text-sm focus:outline-none focus:border-brand-400 font-mono" maxlength="17"/>
+              </div>
+            </div>
+            <div>
+              <label class="text-slate-600 text-sm font-medium block mb-2">Amount</label>
+              <div class="relative"><span class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500 font-semibold">$</span><input id="transferAmount" type="number" min="1" step="0.01" placeholder="0.00" class="w-full bg-slate-50 border border-slate-200 rounded-xl pl-8 pr-4 py-3 text-slate-700 text-lg font-semibold focus:outline-none focus:border-brand-400"/></div>
+            </div>
+            <div>
+              <label class="text-slate-600 text-sm font-medium block mb-2">Memo (optional)</label>
+              <input id="transferMemo" type="text" placeholder="e.g. Rent, dinner, etc." class="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-slate-700 text-sm focus:outline-none focus:border-brand-400" maxlength="100"/>
+            </div>
+            <button onclick="reviewTransfer()" class="w-full bg-navy-800 hover:bg-navy-700 text-white font-semibold py-3.5 rounded-xl transition-colors">Review Transfer</button>
+          </div>
+        </div>
+        <div id="transferReview" class="hidden max-w-lg">
+          <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6">
+            <h2 class="text-slate-800 font-semibold mb-5">Review Your Transfer</h2>
+            <div id="reviewDetails" class="space-y-3 mb-6"></div>
+            <div class="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 text-amber-700 text-sm mb-5">Please review all details before confirming. Transfers are typically processed within 1–2 business days.</div>
+            <div class="flex gap-3">
+              <button onclick="backToForm()" class="flex-1 border border-slate-200 text-slate-600 hover:bg-slate-50 py-3 rounded-xl font-medium text-sm transition-colors">Back</button>
+              <button onclick="confirmTransfer()" class="flex-1 bg-brand-500 hover:bg-brand-400 text-white py-3 rounded-xl font-semibold text-sm transition-colors">Confirm Transfer</button>
+            </div>
+          </div>
+        </div>
+        <div id="transferSuccess" class="hidden max-w-lg text-center">
+          <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-8">
+            <div class="w-20 h-20 bg-emerald-50 rounded-full flex items-center justify-center mx-auto mb-5">
+              <svg class="w-10 h-10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <circle cx="12" cy="12" r="10" stroke="#d1fae5" stroke-width="2" fill="#d1fae5"/>
+                <path class="check-anim" stroke="#10b981" stroke-linecap="round" stroke-linejoin="round" d="M7 13l3 3 7-7"/>
+              </svg>
+            </div>
+            <h2 class="text-slate-800 font-bold text-xl mb-2">Transfer Submitted!</h2>
+            <p class="text-slate-500 text-sm mb-6">Your transfer has been submitted and is being processed.</p>
+            <div id="successDetails" class="bg-slate-50 rounded-xl p-4 text-left text-sm space-y-2 mb-6"></div>
+            <button onclick="navigate('dashboard')" class="w-full bg-navy-800 hover:bg-navy-700 text-white py-3 rounded-xl font-semibold transition-colors">Back to Dashboard</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- PROFILE -->
+      <div id="page-profile" class="page-view">
+        <h1 class="text-slate-800 font-bold text-xl mb-6">Profile &amp; Settings</h1>
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div class="lg:col-span-1">
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 text-center">
+              <div id="profileAvatar" class="w-20 h-20 rounded-full flex items-center justify-center text-white text-2xl font-bold mx-auto mb-4"></div>
+              <p id="profileName" class="text-slate-800 font-bold text-lg mb-0.5"></p>
+              <p id="profileEmail" class="text-slate-500 text-sm mb-1"></p>
+              <p id="profilePhone" class="text-slate-400 text-xs mb-4"></p>
+              <p class="text-slate-400 text-xs">Member since January 2021</p>
+            </div>
+          </div>
+          <div class="lg:col-span-2 space-y-4">
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+              <h3 class="text-slate-800 font-semibold text-sm mb-4">Security</h3>
+              <div class="space-y-4">
+                <div class="flex items-center justify-between py-2 border-b border-slate-50">
+                  <div><p class="text-slate-700 text-sm font-medium">Change PIN</p><p class="text-slate-400 text-xs mt-0.5">Last changed 3 months ago</p></div>
+                  <button class="text-brand-500 text-sm font-medium border border-brand-200 hover:border-brand-400 px-3 py-1.5 rounded-lg transition-colors">Update</button>
+                </div>
+                <div class="flex items-center justify-between py-2 border-b border-slate-50">
+                  <div><p class="text-slate-700 text-sm font-medium">Two-Factor Authentication</p><p class="text-slate-400 text-xs mt-0.5">Adds an extra layer of security</p></div>
+                  <label class="relative inline-flex items-center cursor-pointer"><input type="checkbox" checked class="sr-only peer"><div class="w-11 h-6 bg-slate-200 rounded-full peer peer-checked:bg-brand-500 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-5"></div></label>
+                </div>
+                <div class="flex items-center justify-between py-2">
+                  <div><p class="text-slate-700 text-sm font-medium">Trusted Devices</p><p class="text-slate-400 text-xs mt-0.5">Chrome on Windows · Added today</p></div>
+                  <button class="text-slate-400 hover:text-red-500 text-xs transition-colors">Manage</button>
+                </div>
+              </div>
+            </div>
+            <div class="bg-white rounded-2xl shadow-sm border border-slate-100 p-5">
+              <h3 class="text-slate-800 font-semibold text-sm mb-4">Notifications</h3>
+              <div class="space-y-4">
+                <div class="flex items-center justify-between"><p class="text-slate-700 text-sm">Email Alerts</p><label class="relative inline-flex items-center cursor-pointer"><input type="checkbox" checked class="sr-only peer"><div class="w-11 h-6 bg-slate-200 rounded-full peer peer-checked:bg-brand-500 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-5"></div></label></div>
+                <div class="flex items-center justify-between"><p class="text-slate-700 text-sm">Push Notifications</p><label class="relative inline-flex items-center cursor-pointer"><input type="checkbox" checked class="sr-only peer"><div class="w-11 h-6 bg-slate-200 rounded-full peer peer-checked:bg-brand-500 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-5"></div></label></div>
+                <div class="flex items-center justify-between"><p class="text-slate-700 text-sm">SMS Alerts</p><label class="relative inline-flex items-center cursor-pointer"><input type="checkbox" class="sr-only peer"><div class="w-11 h-6 bg-slate-200 rounded-full peer peer-checked:bg-brand-500 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:after:translate-x-5"></div></label></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+</div>
+
+<!-- ═══════════════ NOVA AI CHAT WIDGET ═══════════════ -->
+<div id="chatRoot" class="hidden fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3">
+  <div id="chatPanel" class="w-96 bg-white rounded-2xl shadow-2xl border border-slate-200 flex flex-col overflow-hidden" style="height:560px">
+    <div class="bg-navy-800 px-5 py-4 flex items-center gap-3">
+      <div class="w-9 h-9 bg-brand-500 rounded-full flex items-center justify-center text-white text-sm font-bold flex-shrink-0">N</div>
+      <div class="flex-1 min-w-0">
+        <p class="text-white font-semibold text-sm">Nova</p>
+        <div class="flex items-center gap-1.5 mt-0.5"><span class="w-2 h-2 bg-emerald-400 rounded-full"></span><p class="text-white/60 text-xs">AI Banking Assistant · Online</p></div>
+      </div>
+      <button onclick="toggleChat()" class="text-white/50 hover:text-white p-1.5 rounded-lg hover:bg-white/10 transition-colors">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12"/></svg>
+      </button>
+    </div>
+    <div id="chatMessages" class="flex-1 overflow-y-auto p-4 space-y-3 custom-scroll bg-slate-50"></div>
+    <div id="chatSuggestions" class="px-4 py-2 flex flex-wrap gap-2 border-t border-slate-100 bg-white">
+      <button onclick="sendSuggestion('Check my balance')" class="px-3 py-1.5 bg-slate-100 hover:bg-brand-50 hover:text-brand-600 border border-slate-200 hover:border-brand-200 text-slate-600 text-xs rounded-full transition-colors">Check my balance</button>
+      <button onclick="sendSuggestion('Recent transactions')" class="px-3 py-1.5 bg-slate-100 hover:bg-brand-50 hover:text-brand-600 border border-slate-200 hover:border-brand-200 text-slate-600 text-xs rounded-full transition-colors">Recent transactions</button>
+      <button onclick="sendSuggestion('How do I transfer money?')" class="px-3 py-1.5 bg-slate-100 hover:bg-brand-50 hover:text-brand-600 border border-slate-200 hover:border-brand-200 text-slate-600 text-xs rounded-full transition-colors">How to transfer?</button>
+    </div>
+    <div class="px-4 py-3 bg-white border-t border-slate-100 flex gap-2">
+      <input id="chatInput" type="text" placeholder="Ask Nova anything…"
+        class="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2.5 text-sm text-slate-700 focus:outline-none focus:border-brand-400 placeholder-slate-400"
+        onkeydown="if(event.key==='Enter')sendChatMessage()" maxlength="500"/>
+      <button onclick="sendChatMessage()" id="chatSendBtn"
+        class="w-10 h-10 bg-brand-500 hover:bg-brand-400 text-white rounded-xl flex items-center justify-center flex-shrink-0 transition-colors">
+        <svg class="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5"><path stroke-linecap="round" stroke-linejoin="round" d="M6 12L3.269 3.126A59.768 59.768 0 0121.485 12 59.77 59.77 0 013.27 20.876L5.999 12zm0 0h7.5"/></svg>
+      </button>
+    </div>
+  </div>
+  <button onclick="toggleChat()" id="chatFab"
+    class="fab-pulse relative w-14 h-14 bg-navy-800 hover:bg-navy-700 text-white rounded-full shadow-xl flex items-center justify-center transition-colors">
+    <svg class="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z"/></svg>
+  </button>
+</div>
+
+<script src="app.js"><\/script>
+</body>
+</html>

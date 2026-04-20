@@ -1,0 +1,19 @@
+{
+  "app": {
+    "loggingSettings": {
+      "audioRecordingConfig": {
+        "gcsBucket": "gs://df-reference_audio-recording"
+      },
+      "bigqueryExportSettings": {
+        "project": "df-reference"
+      }
+    }
+  },
+  "toolsets": {
+    "crm_service": {
+      "openApiToolset": {
+        "url": "https://ces-plant-demo-mock-endpoint-zj7deoy6hq-uc.a.run.app"
+      }
+    }
+  }
+}

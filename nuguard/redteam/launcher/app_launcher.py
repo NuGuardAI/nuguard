@@ -275,8 +275,13 @@ class AppLauncher:
             return
         _log.info("[launcher] Stopping app (PID %d) …", proc.pid)
         try:
-            # Send SIGTERM to the process group so child processes also stop
-            os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+            # Send SIGTERM to the process group when available (POSIX).
+            killpg = getattr(os, "killpg", None)
+            getpgid = getattr(os, "getpgid", None)
+            if callable(killpg) and callable(getpgid):
+                killpg(getpgid(proc.pid), signal.SIGTERM)
+            else:
+                proc.terminate()
         except (ProcessLookupError, PermissionError):
             try:
                 proc.terminate()

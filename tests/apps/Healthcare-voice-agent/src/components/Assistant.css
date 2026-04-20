@@ -1,0 +1,278 @@
+.assistant-wrapper {
+    display: flex;
+    height: 100vh;
+    font-family: 'Segoe UI', sans-serif;
+  }
+  
+  .left-panel {
+    width: 65%;
+    display: flex;
+    flex-direction: column;
+    background-color: #f8f9fa;
+    border-right: 1px solid #ccc;
+  }
+  
+  .right-panel {
+    width: 35%;
+    padding: 1.5rem;
+    background-color: #ffffff;
+  }
+  
+  .assistant-header {
+    background-color: #0066cc;
+    color: white;
+    padding: 1rem;
+    font-size: 1.5rem;
+    text-align: center;
+  }
+  
+  .assistant-chat {
+    flex-grow: 1;
+    padding: 1rem;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+    justify-content: center;
+    align-items: center;
+  }
+  
+  .assistant-image {
+    width: 100%;
+    max-width: 300px;
+    height: auto;
+    border-radius: 10px;
+  }
+  
+  .assistant-footer {
+    padding: 1rem;
+    text-align: center;
+    background-color: #fff;
+    border-top: 1px solid #ccc;
+  }
+  
+  .mic-button {
+    background-color: #007bff;
+    color: white;
+    padding: 0.75rem 2rem;
+    border: none;
+    border-radius: 30px;
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background-color 0.2s ease;
+  }
+  
+  .mic-button:hover {
+    background-color: #0056b3;
+  }
+  
+  .right-panel h2 {
+    font-size: 1.25rem;
+    margin-bottom: 1rem;
+    color: #333;
+  }
+  
+  .right-panel p {
+    color: #666;
+    line-height: 1.5;
+  }
+  
+  .assistant-wrapper {
+    display: flex;
+    height: 100vh;
+  }
+  
+  .left-panel {
+    width: 70%;
+    padding: 20px;
+    border-right: 2px solid #ccc;
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .right-panel {
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-start;
+    height: 100vh; /* full height */
+    padding: 20px;
+    background-color: #f0f0f0;
+}
+  .assistant-header {
+    font-size: 24px;
+    font-weight: bold;
+    margin-bottom: 20px;
+  }
+  
+  .assistant-chat {
+    flex: 1;
+    overflow-y: auto;
+    background: #f5f5f5;
+    border-radius: 10px;
+    padding: 20px;
+  }
+  
+  .assistant-footer {
+    margin-top: 20px;
+    display: flex;
+    gap: 10px;
+  }
+  
+  .chat-container {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .chat-message.patient {
+    text-align: left;
+  }
+  
+  .chat-message.assistant {
+    text-align: right;
+  }
+  
+  .chat-bubble {
+    display: inline-block;
+    padding: 10px;
+    border-radius: 15px;
+    background-color: #e0f7fa;
+    max-width: 70%;
+  }
+  
+  .chat-message.assistant .chat-bubble {
+    background-color: #c8e6c9;
+  }
+  /* Wrapper for the entire assistant UI */
+.assistant-wrapper {
+  display: flex;
+  justify-content: space-between;
+  height: 100vh;
+}
+
+/* Left panel for the assistant image and buttons */
+.left-panel {
+  width: 300px;
+  background-color: #f4f6f9;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  border-right: 2px solid #ccc;
+}
+
+.assistant-header {
+  font-size: 24px;
+  font-weight: bold;
+  color: #1d3557;
+  margin-bottom: 20px;
+  text-align: center;
+}
+
+.assistant-chat {
+  display: flex;
+  justify-content: center;
+}
+
+.assistant-image {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+
+.assistant-footer {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 20px;
+}
+
+button {
+  padding: 10px 20px;
+  border-radius: 5px;
+  cursor: pointer;
+  border: none;
+}
+
+.btn-connect {
+  background-color: #4CAF50; /* Green for 'Connect' */
+  color: white;
+}
+
+.btn-disconnect {
+  background-color: #f44336; /* Red for 'Disconnect' */
+  color: white;
+}
+
+.right-panel {
+  flex-grow: 1;
+  padding: 20px;
+  background-color: #f0f0f0;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.messages-container {
+  background-color: #ffffff;
+  padding: 20px;
+  border-radius: 10px;
+  flex: 1;
+  overflow-y: auto;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  display: flex;
+  flex-direction: column;
+}
+
+/* Message styling */
+.message {
+  margin-bottom: 15px;
+  padding: 10px;
+  border-radius: 8px;
+  font-size: 16px;
+  width: fit-content;
+  max-width: 95%;
+  word-wrap: break-word;
+}
+
+.message.patient {
+  background-color: #d3f8e2; /* Light green for patient messages */
+  align-self: flex-start;
+  margin-left: 0;
+  width: fit-content;
+  max-width: 80%;
+}
+
+.message.assistant {
+  background-color: #e3f2fd; /* Light blue for assistant messages */
+  align-self: flex-end;
+  margin-right: 0;
+  width: fit-content;
+  max-width: 80%;
+  border: 1px solid #bbdefb;
+}
+
+.no-messages {
+  color: #888;
+  font-style: italic;
+  text-align: center;
+  margin-top: 50px;
+}
+
+strong {
+  font-weight: bold;
+}
+
+/* Scrollbar customization */
+.messages-container::-webkit-scrollbar {
+  width: 8px;
+}
+
+.messages-container::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 5px;
+}
+
+.messages-container::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}

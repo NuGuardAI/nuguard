@@ -1,0 +1,49 @@
+{
+  "name": "2ccd5388-34a8-4e17-8cd3-a900a7a0f4e2",
+  "displayName": "Update Cart - Rose Bushes",
+  "scenario": {
+    "task": "See how the agent handles a product swap. Tell the agent you already have \u0027All-Purpose Fertilizer\u0027 in your cart, but you need something better for your rose bushes. Agree to the agent\u0027s new recommendation and have it update your cart. Make sure to always say hello to the agent first.",
+    "scenarioExpectations": [{
+      "toolExpectation": {
+        "expectedToolCall": {
+          "tool": "update_cart",
+          "args": {
+          }
+        }
+      }
+    }, {
+      "toolExpectation": {
+        "expectedToolCall": {
+          "tool": "get_product_recommendations",
+          "args": {
+          }
+        },
+        "mockToolResponse": {
+          "tool": "get_product_recommendations",
+          "response": {
+            "recommendations": {
+              "results": {
+                "recommendations": [{
+                  "description": "Formulated for strong roots and vibrant blooms in rose bushes.",
+                  "name": "Premium Rose \u0026 Flower Soil Mix",
+                  "product_id": "soil-rose-101"
+                }, {
+                  "description": "3-in-1 formula provides fertilizer, insect control, and disease prevention for roses.",
+                  "name": "Systemic Rose \u0026 Flower Care",
+                  "product_id": "fert-rose-202"
+                }]
+              }
+            },
+            "search_results": {
+              "answer": ["The USDA Hardiness Zone Map is a tool used by gardeners to determine which plants, including rose bushes, are most likely to thrive in their location based on average annual minimum temperatures. Zones range from 1A to 13B, with each zone representing a 10-degree Fahrenheit range.\n\nFor sustainable rose growing, the USDA Specialty Crop Research Initiative funds projects focused on developing rose cultivars resistant to common diseases like rose rosette disease (RRD) and rose black spot disease (RBSD). Sustainable practices for rose cultivation include water conservation through drip irrigation, reduced chemical use, and crop rotation to maintain soil health and promote biodiversity."],
+              "search_queries": ["rose bushes USDA plant database", "rose bushes sustainability USDA"]
+            }
+          }
+        }
+      }
+    }],
+    "maxTurns": 5,
+    "variableOverrides": {
+    }
+  }
+}

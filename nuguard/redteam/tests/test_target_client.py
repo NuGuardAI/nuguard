@@ -6,18 +6,16 @@ Circuit-breaker state must only advance on 5xx and network errors, not on 4xx.
 """
 from __future__ import annotations
 
-import pytest
 import httpx
+import pytest
 import respx
 
 from nuguard.redteam.target.client import (
-    DEFAULT_TIMEOUT,
     MAX_CONSECUTIVE_ERRORS,
     TargetAppClient,
     TargetUnavailableError,
 )
 from nuguard.redteam.target.session import AttackSession
-
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -49,6 +47,27 @@ async def test_send_2xx_returns_immediately():
     assert text == "Hello"
     assert tool_calls == []
     assert client._consecutive_errors == 0
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_send_form_payload_mode_uses_form_encoded_body():
+    """Form payload mode should send message in request.form-style body."""
+    route = respx.post(f"{BASE}{CHAT}").mock(
+        return_value=httpx.Response(200, json={"response": "ok"})
+    )
+    client = TargetAppClient(
+        base_url=BASE,
+        chat_path=CHAT,
+        timeout=5.0,
+        chat_payload_format="form",
+    )
+    async with client:
+        text, _ = await client.send("hello", _session())
+    assert text == "ok"
+    assert route.called
+    body = route.calls.last.request.content.decode()
+    assert body == "message=hello"
 
 
 @pytest.mark.asyncio

@@ -1,0 +1,32 @@
+{
+  "name": "d0c03502-ea97-415d-8b47-a5be11361052",
+  "displayName": "retail_agent",
+  "description": "Retail assistant that helps users with their existing purchases and recommendations for new products based on their needs.",
+  "modelSettings": {
+    "model": "gemini-2.5-flash-001",
+    "temperature": 0.9
+  },
+  "instruction": "agents/retail_agent/instruction.txt",
+  "tools": ["affirmative", "request_image_upload", "ask_to_modify_cart", "end_session", "lookup_plant_details", "get_product_recommendations", "update_cart", "greeting"],
+  "childAgents": ["cymbal_upsell_agent", "out_of_scope_handling"],
+  "afterAgentCallbacks": [{
+    "pythonCode": "agents/retail_agent/after_agent_callbacks/after_agent_callbacks_01/python_code.py",
+    "description": "Tracks the user inactivity signal and increments the counter if there is no input. Clears the counter if the user is speaking again."
+  }],
+  "beforeModelCallbacks": [{
+    "pythonCode": "agents/retail_agent/before_model_callbacks/before_model_callbacks_01/python_code.py",
+    "description": "Inspect user input for any malicious content not covered by built-in Guardrails. This is a manual implementation of a guardrail to show how callbacks can be used to perform this task."
+  }],
+  "afterModelCallbacks": [{
+    "pythonCode": "agents/retail_agent/after_model_callbacks/after_model_callbacks_01/python_code.py",
+    "description": "Ensure proper tool calling for certain scenarios."
+  }],
+  "afterToolCallbacks": [{
+    "pythonCode": "agents/retail_agent/after_tool_callbacks/after_tool_callbacks_01/python_code.py",
+    "description": "Sets the flag for image upload tool after it has been properly used."
+  }],
+  "toolsets": [{
+    "toolset": "crm_service",
+    "toolIds": ["get_cart_information", "get_product_recommendations", "get_landscaping_quote"]
+  }]
+}

@@ -1,0 +1,62 @@
+Preparing Marketing Campaign Google ADK chatbot for NuGuard Testing...
+Log: /workspaces/nuguard-private/tests/apps/ai-agents-google-adk/reports/agentic-test-20260409T001845.log
+Started: 2026-04-09T00:18:45Z
+---
+[04/09/26 00:18:46] DEBUG    Loading config from                                                          
+                             /workspaces/nuguard-private/tests/apps/ai-agents-google-adk/nuguard.yaml     
+Scanning /workspaces/nuguard-private/tests/apps/ai-agents-google-adk …
+SBOM written to 
+/workspaces/nuguard-private/tests/apps/ai-agents-google-adk/reports/marketing-campaign.sbom.json (49 
+nodes, 51 edges)
+     Node Summary     
+┏━━━━━━━━━━━━┳━━━━━━━┓
+┃ Type       ┃ Count ┃
+┡━━━━━━━━━━━━╇━━━━━━━┩
+│ AGENT      │    22 │
+│ AUTH       │     1 │
+│ DATASTORE  │     1 │
+│ DEPLOYMENT │     1 │
+│ FRAMEWORK  │     2 │
+│ MODEL      │     1 │
+│ PRIVILEGE  │     1 │
+│ PROMPT     │    15 │
+│ TOOL       │     5 │
+└────────────┴───────┘
+---
+Compiling Cognitive Policy controls...
+Cognitive Policy Check...
+---
+Running behavior analysis (static + dynamic)...
+[04/09/26 00:19:13] DEBUG    Loading config from                                                          
+                             /workspaces/nuguard-private/tests/apps/ai-agents-google-adk/nuguard.yaml     
+Loaded SBOM: 
+/workspaces/nuguard-private/tests/apps/ai-agents-google-adk/reports/marketing-campaign.sbom.json
+Loaded policy: /workspaces/nuguard-private/tests/apps/ai-agents-google-adk/cognitive_policy.md
+Running behavior analysis  mode=static+dynamic
+[04/09/26 00:19:15] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash prompt_len=1425      
+                             [behavior:intent_extraction]                                                 
+[04/09/26 00:19:17] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash prompt_len=1515      
+                             [behavior:happy_path_gen]                                                    
+[04/09/26 00:19:22] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash prompt_len=6401      
+                             [behavior:component_coverage_gen]                                            
+Error: Behavior analysis failed: 'coroutine' object is not iterable
+Behavior analysis failed
+Traceback (most recent call last):
+  File "/workspaces/nuguard-private/nuguard/cli/commands/behavior.py", line 217, in _run_behavior
+    result = await analyzer.analyze(mode=mode)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspaces/nuguard-private/nuguard/behavior/analyzer.py", line 88, in analyze
+    scenarios = await build_scenarios(
+                ^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspaces/nuguard-private/nuguard/behavior/scenarios.py", line 647, in build_scenarios
+    boundary = _boundary_enforcement_scenarios(policy, controls, config)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspaces/nuguard-private/nuguard/behavior/scenarios.py", line 450, in _boundary_enforcement_scenarios
+    for ctrl in controls:
+TypeError: 'coroutine' object is not iterable
+sys:1: RuntimeWarning: coroutine 'compile_controls' was never awaited
+RuntimeWarning: Enable tracemalloc to get the object allocation traceback
+---
+Done: 2026-04-09T00:19:57Z
+Log saved to: /workspaces/nuguard-private/tests/apps/ai-agents-google-adk/reports/agentic-test-20260409T001845.log
+Report:       /workspaces/nuguard-private/tests/apps/ai-agents-google-adk/reports/marketing-campaign-behavior.md

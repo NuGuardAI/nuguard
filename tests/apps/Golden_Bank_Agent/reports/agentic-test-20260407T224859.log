@@ -1,0 +1,68 @@
+Preparing Golden Bank CES agent for NuGuard Testing...
+Log: /workspaces/nuguard-private/tests/apps/Golden_Bank_Agent/reports/agentic-test-20260407T224859.log
+Started: 2026-04-07T22:48:59Z
+---
+Generating SBOM from source...
+[04/07/26 22:49:00] DEBUG    Loading config from                                 
+                             /workspaces/nuguard-private/tests/apps/Golden_Bank_A
+                             gent/nuguard.yaml                                   
+╭────────────────────── Traceback (most recent call last) ──────────────────────╮
+│ /workspaces/nuguard-private/nuguard/cli/commands/sbom.py:350 in generate      │
+│                                                                               │
+│   347 │   config_file: Optional[Path] = _OPT_CONFIG,                          │
+│   348 ) -> None:                                                              │
+│   349 │   """Generate an AI-SBOM by scanning SOURCE or cloning --from-repo."" │
+│ ❱ 350 │   _do_generate(source, from_repo, ref, token, output, llm, format, co │
+│   351                                                                         │
+│   352                                                                         │
+│   353 @sbom_app.command("validate")                                           │
+│                                                                               │
+│ /workspaces/nuguard-private/nuguard/cli/commands/sbom.py:236 in _do_generate  │
+│                                                                               │
+│   233 │   # Always load nuguard.yaml so sbom_generation.llm, llm.model, and l │
+│   234 │   # are honoured even when --source is supplied on the CLI.           │
+│   235 │   from nuguard.config import load_config  # noqa: PLC0415             │
+│ ❱ 236 │   cfg = load_config(config_file)                                      │
+│   237 │                                                                       │
+│   238 │   # Fall back to nuguard.yaml's source field when --source is not pro │
+│   239 │   if source is None and from_repo is None:                            │
+│                                                                               │
+│ /workspaces/nuguard-private/nuguard/config.py:821 in load_config              │
+│                                                                               │
+│   818 │   │   yaml_overrides = _rebase_relative_paths(yaml_overrides, candida │
+│   819 │   │   break                                                           │
+│   820 │                                                                       │
+│ ❱ 821 │   return NuGuardConfig(**yaml_overrides)                              │
+│   822                                                                         │
+│                                                                               │
+│ /workspaces/nuguard-private/.venv/lib/python3.12/site-packages/pydantic_setti │
+│ ngs/main.py:242 in __init__                                                   │
+│                                                                               │
+│   239 │   │   │   )                                                           │
+│   240 │   │   )                                                               │
+│   241 │   │                                                                   │
+│ ❱ 242 │   │   super().__init__(**__pydantic_self__.__class__._settings_build_ │
+│   243 │                                                                       │
+│   244 │   @classmethod                                                        │
+│   245 │   def settings_customise_sources(                                     │
+│                                                                               │
+│ /workspaces/nuguard-private/.venv/lib/python3.12/site-packages/pydantic/main. │
+│ py:250 in __init__                                                            │
+│                                                                               │
+│    247 │   │   """                                                            │
+│    248 │   │   # `__tracebackhide__` tells pytest and some other tools to omi │
+│    249 │   │   __tracebackhide__ = True                                       │
+│ ❱  250 │   │   validated_self = self.__pydantic_validator__.validate_python(d │
+│    251 │   │   if self is not validated_self:                                 │
+│    252 │   │   │   warnings.warn(                                             │
+│    253 │   │   │   │   'A custom validator is returning a value other than `s │
+╰───────────────────────────────────────────────────────────────────────────────╯
+ValidationError: 2 validation errors for NuGuardConfig
+validate_config.credentials.username
+  Input should be a valid string [type=string_type, input_value=None, 
+input_type=NoneType]
+    For further information visit https://errors.pydantic.dev/2.12/v/string_type
+validate_config.credentials.password
+  Input should be a valid string [type=string_type, input_value=None, 
+input_type=NoneType]
+    For further information visit https://errors.pydantic.dev/2.12/v/string_type

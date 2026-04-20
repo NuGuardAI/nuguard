@@ -230,15 +230,18 @@ class FastAPIAdapter(FrameworkAdapter):
             var_name = node.targets[0].id
 
             if class_name in _AGENT_CLASSES:
-                canon = f"fastapi:agent:{file_path}:{var_name}"
+                # FastAPI() / APIRouter() are web framework objects, not AI agents.
+                # Emit as FRAMEWORK so they appear in the infrastructure section
+                # rather than polluting the AI agent list.
+                canon = f"fastapi:framework:{file_path}:{var_name}"
                 detections.append(ComponentDetection(
-                    component_type=ComponentType.AGENT,
+                    component_type=ComponentType.FRAMEWORK,
                     canonical_name=canon,
                     display_name=var_name,
                     adapter_name=self.name,
                     priority=self.priority,
                     confidence=_CONFIDENCE,
-                    metadata={"framework": "fastapi"},
+                    metadata={"framework": "fastapi", "class": class_name},
                     file_path=file_path,
                     line=node.lineno,
                     evidence_kind="ast_instantiation",
@@ -278,7 +281,11 @@ class FastAPIAdapter(FrameworkAdapter):
 
                 receiver, method, path_str = ep_info
                 func_name = node.name
-                canon = f"fastapi:endpoint:{file_path}:{func_name}"
+                # Key on HTTP method + route path so the same endpoint defined
+                # across multiple service files (e.g. GET /health in autogen,
+                # crewai, and agent_backend) is deduplicated into one node with
+                # evidence from all files, rather than one node per file.
+                canon = f"fastapi:endpoint:{method.upper()}:{path_str}"
 
                 ep_auth: str | None = _extract_depends_auth_type(node, auth_vars)
                 if ep_auth is None:
@@ -323,11 +330,11 @@ class FastAPIAdapter(FrameworkAdapter):
                 )
                 detections.append(ep_detection)
 
-                # Relationship: agent CALLS endpoint
+                # Relationship: framework CALLS endpoint
                 if receiver and receiver in agent_vars:
                     ep_detection.relationships.append(RelationshipHint(
                         source_canonical=agent_vars[receiver],
-                        source_type=ComponentType.AGENT,
+                        source_type=ComponentType.FRAMEWORK,
                         target_canonical=canon,
                         target_type=ComponentType.API_ENDPOINT,
                         relationship_type="CALLS",

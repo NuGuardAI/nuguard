@@ -1,0 +1,9 @@
+{
+  "name": "5d00d081-9e06-4a9e-8c30-1aa4c6184c38",
+  "pythonFunction": {
+    "name": "get_landscaping_quote",
+    "pythonCode": "tools/get_landscaping_quote/python_function/python_code.py",
+    "description": "Gets a quote for the landscaping services that the user requires."
+  },
+  "displayName": "get_landscaping_quote"
+}

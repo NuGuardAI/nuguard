@@ -105,7 +105,6 @@ def _affected_range_str(vuln: dict[str, Any], name: str) -> str:
         if pkg.get("name", "").lower() not in (name.lower(), ""):
             continue
         for r in affected.get("ranges") or []:
-            rtype = r.get("type", "")
             parts: list[str] = []
             for event in r.get("events") or []:
                 if "introduced" in event:

@@ -12,7 +12,7 @@ policy: ./cognitive-policy.md       # Cognitive Policy Markdown to enforce durin
 # ─── LLM settings ─────────────────────────────────────────────────────────────
 llm:
   model: gemini/gemini-2.0-flash    # any LiteLLM model string (openai/gpt-4o, etc.)
-  # api_key: ${LITELLM_API_KEY}     # never put keys here; use env var interpolation
+  api_key: ${GEMINI_API_KEY}     # never put keys here; use env var interpolation
 
 # ─── SBOM generation ──────────────────────────────────────────────────────────
 sbom_generation:

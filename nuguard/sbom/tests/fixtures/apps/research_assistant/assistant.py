@@ -11,29 +11,28 @@ from __future__ import annotations
 from agents import Agent, Runner, handoff
 from agents.tool import function_tool
 
-
 # ── Tools ────────────────────────────────────────────────────────────────────
 
 @function_tool
-def web_search(query: str, num_results: int = 10) -> list[dict]:
+def web_search(query: str, num_results: int = 10) -> list[dict]:  # type: ignore[empty-body]
     """Search the public web and return ranked result snippets."""
     ...
 
 
 @function_tool
-def fetch_arxiv_papers(topic: str, max_results: int = 5) -> list[dict]:
+def fetch_arxiv_papers(topic: str, max_results: int = 5) -> list[dict]:  # type: ignore[empty-body]
     """Fetch metadata and abstracts for recent arXiv papers on *topic*."""
     ...
 
 
 @function_tool
-def download_and_summarise(url: str) -> str:
+def download_and_summarise(url: str) -> str:  # type: ignore[empty-body]
     """Download a PDF or HTML page and return a structured summary."""
     ...
 
 
 @function_tool
-def cite_apa(title: str, authors: list[str], year: int, url: str = "") -> str:
+def cite_apa(title: str, authors: list[str], year: int, url: str = "") -> str:  # type: ignore[empty-body]
     """Format a citation in APA 7th edition style."""
     ...
 

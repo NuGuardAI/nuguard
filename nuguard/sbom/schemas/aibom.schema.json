@@ -964,7 +964,7 @@
             }
           ],
           "default": null,
-          "description": "Flat list of PII field names in this datastore, e.g. ['name', 'email', 'ssn']. Derived from classified_fields by the graph enricher.",
+          "description": "Flat list of general PII field names in this datastore, e.g. ['name', 'email', 'phone', 'address', 'date_of_birth']. Derived from classified_fields by the graph enricher. Financial identifiers (card numbers, bank accounts) belong in pfi_fields.",
           "title": "Pii Fields"
         },
         "phi_fields": {
@@ -980,8 +980,24 @@
             }
           ],
           "default": null,
-          "description": "Flat list of PHI field names in this datastore, e.g. ['diagnosis', 'medication', 'lab_result']. Derived from classified_fields by the graph enricher.",
+          "description": "Flat list of PHI field names in this datastore (HIPAA-regulated), e.g. ['diagnosis', 'medication', 'lab_result', 'patient_id']. Derived from classified_fields by the graph enricher.",
           "title": "Phi Fields"
+        },
+        "pfi_fields": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Flat list of Personal Financial Information field names (PCI-DSS / GLBA), e.g. ['card_number', 'bank_account', 'routing_number', 'cvv', 'ssn', 'tax_id', 'account_balance', 'iban', 'swift_code']. Derived from classified_fields by the graph enricher.",
+          "title": "Pfi Fields"
         },
         "access_type": {
           "anyOf": [
@@ -1278,6 +1294,20 @@
           },
           "title": "Log Paths",
           "type": "array"
+        },
+        "uses_streaming": {
+          "default": false,
+          "description": "True when the application exposes one or more streaming output endpoints (SSE, StreamingResponse, or framework-native streaming such as Google ADK /run_sse).  The behavior step reads this to enable streaming-aware turn execution instead of buffered HTTP requests.",
+          "title": "Uses Streaming",
+          "type": "boolean"
+        },
+        "streaming_endpoints": {
+          "description": "API endpoint paths confirmed to serve streaming output (e.g. ['/run_sse', '/chat/stream']).  Populated from FastAPI StreamingResponse return types, SSE route patterns, ADK /run_sse, and similar source-code evidence.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Streaming Endpoints",
+          "type": "array"
         }
       },
       "title": "ScanSummary",
@@ -1421,6 +1451,19 @@
       ],
       "default": null,
       "description": "Scan-level metadata: use-case summary, frameworks, modalities, API endpoints, and IaC/deployment context"
+    },
+    "relationship_graph_md": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Markdown section containing a Mermaid flowchart of key component relationships (AGENT \u2192 TOOL \u2192 DATASTORE, guardrail coverage, etc.) plus an LLM-written plain-English narrative. Only populated when enable_llm=True during SBOM generation.",
+      "title": "Relationship Graph Md"
     }
   },
   "required": [

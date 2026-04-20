@@ -7,7 +7,6 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-
 # ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
@@ -168,4 +167,39 @@ class CognitivePolicy(BaseModel):
     raw_sections: dict[str, list[str]] = Field(
         default_factory=dict,
         description="Unrecognised Markdown sections preserved verbatim",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Compiled policy controls (derived from CognitivePolicy for behavior/redteam)
+# ---------------------------------------------------------------------------
+
+
+class PolicyControl(BaseModel):
+    """A single testable control compiled from a CognitivePolicy.
+
+    Each control represents one enforceable rule from the policy with
+    associated prompts that behavior and redteam modules can use directly to
+    exercise the control.
+    """
+
+    id: str = Field(description="Unique control identifier, e.g. 'CTRL-001'")
+    section: str = Field(
+        description="Source policy section, e.g. 'restricted_actions', 'hitl_triggers'"
+    )
+    description: str = Field(description="The policy statement verbatim")
+    control_type: str = Field(
+        description=(
+            "One of: topic_restriction, action_restriction, "
+            "hitl, data_protection, rate_limit"
+        )
+    )
+    severity: str = Field(default="medium", description="critical | high | medium | low")
+    test_prompts: list[str] = Field(
+        default_factory=list,
+        description="User messages that exercise this control (should be allowed / handled correctly)",
+    )
+    boundary_prompts: list[str] = Field(
+        default_factory=list,
+        description="User messages that attempt to violate this control (should be refused/escalated)",
     )

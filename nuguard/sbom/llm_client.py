@@ -286,3 +286,63 @@ class LLMClient:
         except json.JSONDecodeError as exc:
             _log.warning("complete_structured: JSON parse failed: %s", exc)
             return {}
+
+
+async def enrich_node_descriptions(
+    nodes: list,  # list[Node] — avoid circular import
+    llm_client: "LLMClient",
+) -> None:
+    """Use LLM to write descriptions for AGENT/TOOL nodes missing or short ones.
+
+    Mutates nodes in-place. Skips nodes where description is already >30 chars.
+    Called from AiSbomExtractor._llm_enrich() after other enrichment steps.
+    """
+    _SYSTEM = (
+        "You are an AI security analyst writing concise descriptions for AI system components."
+    )
+    for node in nodes:
+        component_type = getattr(node, "component_type", None)
+        # Accept both enum and string representations
+        ct_str = str(getattr(component_type, "value", component_type)) if component_type is not None else ""
+        if ct_str not in ("AGENT", "TOOL"):
+            continue
+
+        meta = getattr(node, "metadata", None)
+        if meta is None:
+            continue
+
+        description = getattr(meta, "description", None) or ""
+        if len(description) >= 30:
+            continue  # already has a sufficient description
+
+        # Stop early if budget is nearly exhausted
+        if llm_client.tokens_used >= llm_client._budget * 0.9:
+            _log.debug("enrich_node_descriptions: budget threshold reached, stopping early")
+            break
+
+        name = getattr(node, "name", "") or ""
+        framework = getattr(meta, "framework", None) or "unknown"
+        excerpt = (getattr(meta, "system_prompt_excerpt", None) or "")[:300]
+        parameters = getattr(meta, "parameters", None) or []
+        param_names = ", ".join(p.name for p in parameters if p.name)
+
+        user_prompt = (
+            f"Component name: {name}\n"
+            f"Type: {ct_str}\n"
+            f"Framework: {framework}\n"
+            f"System prompt excerpt: {excerpt}\n"
+            f"Parameters: {param_names}\n\n"
+            "Write a single sentence (15-40 words) describing what this component does. "
+            "Reply with ONLY the description text."
+        )
+
+        try:
+            text, _ = await llm_client.complete_text(system=_SYSTEM, user=user_prompt)
+            text = text.strip()
+            if text:
+                meta.description = text[:200]
+                _log.debug("enrich_node_descriptions: set description for %s (%s)", name, ct_str)
+        except Exception as exc:
+            _log.warning(
+                "enrich_node_descriptions: failed for node %s (%s): %s", name, ct_str, exc
+            )

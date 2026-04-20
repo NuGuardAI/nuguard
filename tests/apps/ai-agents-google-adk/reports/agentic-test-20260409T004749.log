@@ -1,0 +1,113 @@
+Preparing Marketing Campaign Google ADK chatbot for NuGuard Testing...
+Log: /workspaces/nuguard-private/tests/apps/ai-agents-google-adk/reports/agentic-test-20260409T004749.log
+Started: 2026-04-09T00:47:49Z
+---
+[04/09/26 00:47:50] DEBUG    Loading config from                                   
+                             /workspaces/nuguard-private/tests/apps/ai-agents-googl
+                             e-adk/nuguard.yaml                                    
+Scanning /workspaces/nuguard-private/tests/apps/ai-agents-google-adk …
+SBOM written to 
+/workspaces/nuguard-private/tests/apps/ai-agents-google-adk/reports/marketing-campa
+ign.sbom.json (49 nodes, 51 edges)
+     Node Summary     
+┏━━━━━━━━━━━━┳━━━━━━━┓
+┃ Type       ┃ Count ┃
+┡━━━━━━━━━━━━╇━━━━━━━┩
+│ AGENT      │    22 │
+│ AUTH       │     1 │
+│ DATASTORE  │     1 │
+│ DEPLOYMENT │     1 │
+│ FRAMEWORK  │     2 │
+│ MODEL      │     1 │
+│ PRIVILEGE  │     1 │
+│ PROMPT     │    15 │
+│ TOOL       │     5 │
+└────────────┴───────┘
+---
+Compiling Cognitive Policy controls...
+Cognitive Policy Check...
+---
+Running behavior analysis (static + dynamic)...
+╭─────────────────────── Traceback (most recent call last) ───────────────────────╮
+│ /workspaces/nuguard-private/nuguard/cli/commands/behavior.py:93 in              │
+│ behavior_command                                                                │
+│                                                                                 │
+│    90 │   elif dynamic and not static:                                          │
+│    91 │   │   effective_mode = "dynamic"                                        │
+│    92 │                                                                         │
+│ ❱  93 │   asyncio.run(                                                          │
+│    94 │   │   _run_behavior(                                                    │
+│    95 │   │   │   config_path=config,                                           │
+│    96 │   │   │   mode=effective_mode,                                          │
+│                                                                                 │
+│ /usr/lib/python3.12/asyncio/runners.py:194 in run                               │
+│                                                                                 │
+│   191 │   │   │   "asyncio.run() cannot be called from a running event loop")   │
+│   192 │                                                                         │
+│   193 │   with Runner(debug=debug, loop_factory=loop_factory) as runner:        │
+│ ❱ 194 │   │   return runner.run(main)                                           │
+│   195                                                                           │
+│   196                                                                           │
+│   197 def _cancel_all_tasks(loop):                                              │
+│                                                                                 │
+│ /usr/lib/python3.12/asyncio/runners.py:118 in run                               │
+│                                                                                 │
+│   115 │   │                                                                     │
+│   116 │   │   self._interrupt_count = 0                                         │
+│   117 │   │   try:                                                              │
+│ ❱ 118 │   │   │   return self._loop.run_until_complete(task)                    │
+│   119 │   │   except exceptions.CancelledError:                                 │
+│   120 │   │   │   if self._interrupt_count > 0:                                 │
+│   121 │   │   │   │   uncancel = getattr(task, "uncancel", None)                │
+│                                                                                 │
+│ /usr/lib/python3.12/asyncio/base_events.py:687 in run_until_complete            │
+│                                                                                 │
+│    684 │   │   if not future.done():                                            │
+│    685 │   │   │   raise RuntimeError('Event loop stopped before Future complet │
+│    686 │   │                                                                    │
+│ ❱  687 │   │   return future.result()                                           │
+│    688 │                                                                        │
+│    689 │   def stop(self):                                                      │
+│    690 │   │   """Stop running the event loop.                                  │
+│                                                                                 │
+│ /workspaces/nuguard-private/nuguard/cli/commands/behavior.py:124 in             │
+│ _run_behavior                                                                   │
+│                                                                                 │
+│   121 │   verbose: bool,                                                        │
+│   122 ) -> None:                                                                │
+│   123 │   """Internal async implementation of the behavior command."""          │
+│ ❱ 124 │   from nuguard.behavior.analyzer import BehaviorAnalyzer                │
+│   125 │   from nuguard.behavior.report import to_json, to_markdown, to_text     │
+│   126 │   from nuguard.cli.report_meta import ReportMeta                        │
+│   127 │   from nuguard.common.llm_client import LLMClient                       │
+│                                                                                 │
+│ /workspaces/nuguard-private/nuguard/behavior/analyzer.py:11 in <module>         │
+│                                                                                 │
+│     8 from nuguard.behavior.intent import extract_intent                        │
+│     9 from nuguard.behavior.models import BehaviorAnalysisResult, IntentProfile │
+│    10 from nuguard.behavior.recommendations import RecommendationEngine         │
+│ ❱  11 from nuguard.behavior.runner import BehaviorRunner                        │
+│    12 from nuguard.behavior.scenarios import build_scenarios                    │
+│    13                                                                           │
+│    14 if TYPE_CHECKING:                                                         │
+│                                                                                 │
+│ /workspaces/nuguard-private/nuguard/behavior/runner.py:27 in <module>           │
+│                                                                                 │
+│    24 │   detect_login_success,                                                 │
+│    25 │   get_credential,                                                       │
+│    26 )                                                                         │
+│ ❱  27 from nuguard.behavior.judge import BehaviorJudge, TurnVerdict             │
+│    28 from nuguard.behavior.models import (                                     │
+│    29 │   BehaviorCoverage,                                                     │
+│    30 │   BehaviorDeviation,                                                    │
+╰─────────────────────────────────────────────────────────────────────────────────╯
+╭─────────────────────────────────────────────────────────────────────────────────╮
+│  /workspaces/nuguard-private/nuguard/behavior/judge.py:506                      │
+│         parsed = self._parse_judge_response(raw                                 │
+│                                             ▲                                   │
+╰─────────────────────────────────────────────────────────────────────────────────╯
+SyntaxError: invalid syntax. Perhaps you forgot a comma?
+---
+Done: 2026-04-09T00:48:19Z
+Log saved to: /workspaces/nuguard-private/tests/apps/ai-agents-google-adk/reports/agentic-test-20260409T004749.log
+Report:       /workspaces/nuguard-private/tests/apps/ai-agents-google-adk/reports/marketing-campaign-behavior.md

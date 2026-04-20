@@ -35,16 +35,16 @@ from typing import Dict, List, Optional, Tuple
 from dotenv import load_dotenv
 
 from .schemas_risk import (
-    RiskGroundTruth,
-    GroundTruthFinding,
+    CoveredControlMatchResult,
+    FindingMatchResult,
     GroundTruthCoveredControl,
+    GroundTruthFinding,
     MatchFlexibility,
     RiskBand,
-    RiskEvaluationResult,
     RiskBenchmarkSuiteResult,
+    RiskEvaluationResult,
+    RiskGroundTruth,
     RiskTypeMetrics,
-    FindingMatchResult,
-    CoveredControlMatchResult,
 )
 
 # Configure logging
@@ -451,6 +451,7 @@ async def evaluate_risk_assessment(
             matched_disc_indices.add(best_match_idx)
             disc = discovered_findings[best_match_idx]
             match_result.matched = True
+            assert best_match_level is not None
             match_result.match_level = best_match_level
             match_result.confidence = best_confidence
             match_result.discovered_title = disc.get("title")

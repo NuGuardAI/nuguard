@@ -1,0 +1,9 @@
+{
+  "name": "6b4d4195-265b-4302-93d2-2a3fca6a3460",
+  "pythonFunction": {
+    "name": "affirmative",
+    "pythonCode": "tools/affirmative/python_function/python_code.py",
+    "description": "Indicates a verbal affirmative from the user was provided to the agent\u0027s question. This could be something like `sure`, `ok`, `yes`, `sounds good`, or other affirmative respoonses\n  "
+  },
+  "displayName": "affirmative"
+}

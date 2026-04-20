@@ -1,0 +1,9 @@
+{
+  "name": "39010995-48dc-4cf3-b51e-b1c63f00b906",
+  "pythonFunction": {
+    "name": "apply_discount_to_service",
+    "pythonCode": "tools/apply_discount_to_service/python_function/python_code.py",
+    "description": "Applies the discount to the specified services."
+  },
+  "displayName": "apply_discount_to_service"
+}

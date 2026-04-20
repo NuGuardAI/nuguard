@@ -146,6 +146,7 @@ def enrich(doc: AiSbomDocument) -> None:
     _enrich_api_endpoints(doc, targets)
     _enrich_tools(doc, tool_frameworks, framework_auth, privilege_node_ids, targets)
     _enrich_agents(doc, targets, node_by_id)
+    _backfill_descriptions(doc)
 
 
 # ---------------------------------------------------------------------------
@@ -368,3 +369,68 @@ def _enrich_agents(
             score += 0.10
 
         node.metadata.injection_risk_score = min(round(score, 2), 1.0)
+
+
+# ---------------------------------------------------------------------------
+# Description backfill
+# ---------------------------------------------------------------------------
+
+
+def _backfill_descriptions(doc: AiSbomDocument) -> None:
+    """Fill in missing descriptions for TOOL and AGENT nodes using available metadata.
+
+    Mutates nodes in-place.  Only sets ``metadata.description`` when it is
+    currently empty or None.  Called at the end of ``enrich()`` so that
+    deterministic fields are always available before the LLM enrichment step.
+    """
+    for node in doc.nodes:
+        meta: NodeMetadata = node.metadata
+
+        if node.component_type == ComponentType.TOOL:
+            if meta.description:
+                continue  # already set
+
+            # 1. LLM-generated MCP description stored in extras
+            extras_desc = meta.extras.get("description", "")
+            if extras_desc and isinstance(extras_desc, str) and extras_desc.strip():
+                meta.description = extras_desc.strip()[:200]
+                continue
+
+            # 2. First parameter description that looks like a docstring sentence
+            if meta.parameters:
+                for param in meta.parameters:
+                    pdesc = (param.description or "").strip()
+                    if pdesc and ("." in pdesc or len(pdesc) > 20):
+                        meta.description = pdesc[:200]
+                        break
+                if meta.description:
+                    continue
+
+            # 3. Concatenate parameter names as last resort
+            if meta.parameters:
+                param_names = [p.name for p in meta.parameters if p.name]
+                if param_names:
+                    meta.description = "Tool with parameters: " + ", ".join(param_names[:8])
+
+        elif node.component_type == ComponentType.AGENT:
+            if meta.description:
+                continue  # already set
+
+            # 1. Build from role + goal extras
+            role = (meta.extras.get("role") or "").strip()
+            goal = (meta.extras.get("goal") or "").strip()
+            if role and goal:
+                meta.description = f"{role}: {goal}"[:200]
+                continue
+            if role:
+                meta.description = role[:200]
+                continue
+
+            # 2. Use system prompt excerpt
+            excerpt = (meta.system_prompt_excerpt or "").strip()
+            if excerpt:
+                meta.description = excerpt[:200]
+                continue
+
+            # 3. Final fallback
+            meta.description = f"{node.name} agent"

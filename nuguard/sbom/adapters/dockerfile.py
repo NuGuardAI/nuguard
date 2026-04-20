@@ -21,8 +21,8 @@ import logging
 import re
 from typing import Any
 
-from .base import ComponentDetection
 from ..types import ComponentType
+from .base import ComponentDetection
 
 _log = logging.getLogger(__name__)
 
@@ -245,7 +245,12 @@ class DockerfileAdapter:
     def _detect_exposed_ports(
         self, content: str, file_path: str
     ) -> list[ComponentDetection]:
-        """Emit API_ENDPOINT nodes for each EXPOSE instruction."""
+        """Emit DEPLOYMENT nodes for each EXPOSE instruction.
+
+        Ports are deployment/infrastructure details, not API endpoint paths.
+        They describe which ports a container listens on, not the HTTP routes
+        exposed by the application.
+        """
         results: list[ComponentDetection] = []
         seen_ports: set[str] = set()
         for match in _EXPOSE_RE.finditer(content):
@@ -259,7 +264,7 @@ class DockerfileAdapter:
                 port_str = token.split("/")[0]
                 if not port_str.isdigit():
                     continue
-                canonical = f"api_endpoint:port:{port_str}"
+                canonical = f"deployment:port:{port_str}"
                 if canonical in seen_ports:
                     continue
                 seen_ports.add(canonical)
@@ -268,7 +273,7 @@ class DockerfileAdapter:
                 )
                 results.append(
                     ComponentDetection(
-                        component_type=ComponentType.API_ENDPOINT,
+                        component_type=ComponentType.DEPLOYMENT,
                         canonical_name=canonical,
                         display_name=f"Port {port_str}",
                         adapter_name=self.name,

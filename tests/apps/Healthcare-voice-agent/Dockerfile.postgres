@@ -1,0 +1,6 @@
+FROM postgres:15-alpine
+
+COPY sql /docker-entrypoint-initdb.d/sql
+COPY sql/init-db.sh /docker-entrypoint-initdb.d/init-db.sh
+
+RUN chmod +x /docker-entrypoint-initdb.d/init-db.sh

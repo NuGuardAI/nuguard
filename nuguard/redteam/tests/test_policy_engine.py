@@ -1,8 +1,6 @@
 """Unit tests for nuguard.redteam.policy_engine.evaluator.PolicyEvaluator."""
 from __future__ import annotations
 
-import pytest
-
 from nuguard.models.policy import CognitivePolicy
 from nuguard.redteam.policy_engine.evaluator import PolicyEvaluator, PolicyViolation
 

@@ -1,0 +1,182 @@
+Preparing Golden Bank ADK chatbot for NuGuard Testing...
+Log: /workspaces/nuguard-private/tests/apps/Golden_Bank_Agent/reports/agentic-test-20260407T061534.log
+Started: 2026-04-07T06:15:34Z
+---
+[04/07/26 06:15:36] DEBUG    Loading config from nuguard.yaml                                                     
+Scanning /workspaces/nuguard-private/tests/apps/Golden_Bank_Agent …
+SBOM written to /workspaces/nuguard-private/tests/apps/Golden_Bank_Agent/reports/golden_bank.sbom.json (19 nodes, 
+5 edges)
+     Node Summary     
+┏━━━━━━━━━━━━┳━━━━━━━┓
+┃ Type       ┃ Count ┃
+┡━━━━━━━━━━━━╇━━━━━━━┩
+│ AGENT      │     1 │
+│ AUTH       │     1 │
+│ DATASTORE  │     1 │
+│ DEPLOYMENT │     1 │
+│ GUARDRAIL  │     1 │
+│ PRIVILEGE  │     2 │
+│ PROMPT     │     1 │
+│ TOOL       │    12 │
+└────────────┴───────┘
+SBOM: skipped (using pre-generated SBOM)
+---
+Compiling Cognitive Policy controls...
+Cognitive Policy Check...
+---
+Creating Validate Plan...
+---
+Running validate...
+[04/07/26 06:15:53] DEBUG    Loading config from                                                                  
+                             /workspaces/nuguard-private/tests/apps/Golden_Bank_Agent/nuguard.yaml                
+No plan file — building scenarios from SBOM and policy config.
+target_endpoint not configured — probing SBOM endpoints…
+✓ Discovered endpoint: /run  (payload_key='__adk__')
+
+▶ scenario sbom_discovery  (sbom_driven)
+send_stream request failed  RuntimeError: GoogleADKAdapter: session creation failed (HTTP 404) at /apps/golden_bank_agent/users/nuguard/sessions: <!DOCTYPE HTML>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <title>Error response</title>
+    </head>
+    <body>
+        <h1>Error response</h1>
+        <p>Error code: 404</p>
+   url=http://127.0.0.1:8080
+Chat endpoint error (RuntimeError: GoogleADKAdapter: session creation failed (HTTP 404) at /apps/golden_bank_agent/users/nuguard/sessions: <!) — consecutive=1/3
+!DOCTYPE HTML>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <title>Error response</title>
+    </head>
+    <body>
+        <h1>Error response</h1>
+        <p>Error code: 404</p>
+ ]adaptive_discovery: skipping turn 1 — infrastructure error: [REQUEST_ERROR: RuntimeError: GoogleADKAdapter: session creation failed (HTTP 404) at /apps/golden_bank_agent/users/nugu
+send_stream request failed  RuntimeError: GoogleADKAdapter: session creation failed (HTTP 404) at /apps/golden_bank_agent/users/nuguard/sessions: <!DOCTYPE HTML>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <title>Error response</title>
+    </head>
+    <body>
+        <h1>Error response</h1>
+        <p>Error code: 404</p>
+   url=http://127.0.0.1:8080
+Chat endpoint error (RuntimeError: GoogleADKAdapter: session creation failed (HTTP 404) at /apps/golden_bank_agent/users/nuguard/sessions: <!) — consecutive=2/3
+!DOCTYPE HTML>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <title>Error response</title>
+    </head>
+    <body>
+        <h1>Error response</h1>
+        <p>Error code: 404</p>
+ ]adaptive_discovery: skipping turn 2 — infrastructure error: [REQUEST_ERROR: RuntimeError: GoogleADKAdapter: session creation failed (HTTP 404) at /apps/golden_bank_agent/users/nugu
+send_stream request failed  RuntimeError: GoogleADKAdapter: session creation failed (HTTP 404) at /apps/golden_bank_agent/users/nuguard/sessions: <!DOCTYPE HTML>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <title>Error response</title>
+    </head>
+    <body>
+        <h1>Error response</h1>
+        <p>Error code: 404</p>
+   url=http://127.0.0.1:8080
+Chat endpoint error (RuntimeError: GoogleADKAdapter: session creation failed (HTTP 404) at /apps/golden_bank_agent/users/nuguard/sessions: <!) — consecutive=3/3
+DynamicEvalRunner: turn 3 failed: Chat endpoint returned 3 consecutive errors (last: RuntimeError: GoogleADKAdapter: session creation failed (HTTP 404) at /apps/golden_bank_agent/users/nuguard/sessions: <!) — aborting scan to avoid hammering a broken endpoint.
+adaptive_discovery: skipping turn 3 — infrastructure error: [REQUEST_ERROR: Chat endpoint returned 3 consecutive errors (last: RuntimeError: GoogleADKAdapter: session creation fail
+send_stream request failed  RuntimeError: GoogleADKAdapter: session creation failed (HTTP 404) at /apps/golden_bank_agent/users/nuguard/sessions: <!DOCTYPE HTML>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <title>Error response</title>
+    </head>
+    <body>
+        <h1>Error response</h1>
+        <p>Error code: 404</p>
+   url=http://127.0.0.1:8080
+Chat endpoint error (RuntimeError: GoogleADKAdapter: session creation failed (HTTP 404) at /apps/golden_bank_agent/users/nuguard/sessions: <!) — consecutive=4/3
+DynamicEvalRunner: turn 4 failed: Chat endpoint returned 4 consecutive errors (last: RuntimeError: GoogleADKAdapter: session creation failed (HTTP 404) at /apps/golden_bank_agent/users/nuguard/sessions: <!) — aborting scan to avoid hammering a broken endpoint.
+adaptive_discovery: skipping turn 4 — infrastructure error: [REQUEST_ERROR: Chat endpoint returned 4 consecutive errors (last: RuntimeError: GoogleADKAdapter: session creation fail
+send_stream request failed  RuntimeError: GoogleADKAdapter: session creation failed (HTTP 404) at /apps/golden_bank_agent/users/nuguard/sessions: <!DOCTYPE HTML>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <title>Error response</title>
+    </head>
+    <body>
+        <h1>Error response</h1>
+        <p>Error code: 404</p>
+   url=http://127.0.0.1:8080
+Chat endpoint error (RuntimeError: GoogleADKAdapter: session creation failed (HTTP 404) at /apps/golden_bank_agent/users/nuguard/sessions: <!) — consecutive=5/3
+DynamicEvalRunner: turn 5 failed: Chat endpoint returned 5 consecutive errors (last: RuntimeError: GoogleADKAdapter: session creation failed (HTTP 404) at /apps/golden_bank_agent/users/nuguard/sessions: <!) — aborting scan to avoid hammering a broken endpoint.
+adaptive_discovery: skipping turn 5 — infrastructure error: [REQUEST_ERROR: Chat endpoint returned 5 consecutive errors (last: RuntimeError: GoogleADKAdapter: session creation fail
+send_stream request failed  RuntimeError: GoogleADKAdapter: session creation failed (HTTP 404) at /apps/golden_bank_agent/users/nuguard/sessions: <!DOCTYPE HTML>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <title>Error response</title>
+    </head>
+    <body>
+        <h1>Error response</h1>
+        <p>Error code: 404</p>
+   url=http://127.0.0.1:8080
+Chat endpoint error (RuntimeError: GoogleADKAdapter: session creation failed (HTTP 404) at /apps/golden_bank_agent/users/nuguard/sessions: <!) — consecutive=6/3
+DynamicEvalRunner: turn 6 failed: Chat endpoint returned 6 consecutive errors (last: RuntimeError: GoogleADKAdapter: session creation failed (HTTP 404) at /apps/golden_bank_agent/users/nuguard/sessions: <!) — aborting scan to avoid hammering a broken endpoint.
+adaptive_discovery: skipping turn 6 — infrastructure error: [REQUEST_ERROR: Chat endpoint returned 6 consecutive errors (last: RuntimeError: GoogleADKAdapter: session creation fail
+send_stream request failed  RuntimeError: GoogleADKAdapter: session creation failed (HTTP 404) at /apps/golden_bank_agent/users/nuguard/sessions: <!DOCTYPE HTML>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <title>Error response</title>
+    </head>
+    <body>
+        <h1>Error response</h1>
+        <p>Error code: 404</p>
+   url=http://127.0.0.1:8080
+Chat endpoint error (RuntimeError: GoogleADKAdapter: session creation failed (HTTP 404) at /apps/golden_bank_agent/users/nuguard/sessions: <!) — consecutive=7/3
+DynamicEvalRunner: turn 7 failed: Chat endpoint returned 7 consecutive errors (last: RuntimeError: GoogleADKAdapter: session creation failed (HTTP 404) at /apps/golden_bank_agent/users/nuguard/sessions: <!) — aborting scan to avoid hammering a broken endpoint.
+adaptive_discovery: skipping turn 7 — infrastructure error: [REQUEST_ERROR: Chat endpoint returned 7 consecutive errors (last: RuntimeError: GoogleADKAdapter: session creation fail
+send_stream request failed  RuntimeError: GoogleADKAdapter: session creation failed (HTTP 404) at /apps/golden_bank_agent/users/nuguard/sessions: <!DOCTYPE HTML>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <title>Error response</title>
+    </head>
+    <body>
+        <h1>Error response</h1>
+        <p>Error code: 404</p>
+   url=http://127.0.0.1:8080
+Chat endpoint error (RuntimeError: GoogleADKAdapter: session creation failed (HTTP 404) at /apps/golden_bank_agent/users/nuguard/sessions: <!) — consecutive=8/3
+DynamicEvalRunner: turn 8 failed: Chat endpoint returned 8 consecutive errors (last: RuntimeError: GoogleADKAdapter: session creation failed (HTTP 404) at /apps/golden_bank_agent/users/nuguard/sessions: <!) — aborting scan to avoid hammering a broken endpoint.
+adaptive_discovery: skipping turn 8 — infrastructure error: [REQUEST_ERROR: Chat endpoint returned 8 consecutive errors (last: RuntimeError: GoogleADKAdapter: session creation fail
+send_stream request failed  RuntimeError: GoogleADKAdapter: session creation failed (HTTP 404) at /apps/golden_bank_agent/users/nuguard/sessions: <!DOCTYPE HTML>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <title>Error response</title>
+    </head>
+    <body>
+        <h1>Error response</h1>
+        <p>Error code: 404</p>
+   url=http://127.0.0.1:8080
+Chat endpoint error (RuntimeError: GoogleADKAdapter: session creation failed (HTTP 404) at /apps/golden_bank_agent/users/nuguard/sessions: <!) — consecutive=9/3
+DynamicEvalRunner: turn 9 failed: Chat endpoint returned 9 consecutive errors (last: RuntimeError: GoogleADKAdapter: session creation failed (HTTP 404) at /apps/golden_bank_agent/users/nuguard/sessions: <!) — aborting scan to avoid hammering a broken endpoint.
+adaptive_discovery: skipping turn 9 — infrastructure error: [REQUEST_ERROR: Chat endpoint returned 9 consecutive errors (last: RuntimeError: GoogleADKAdapter: session creation fail
+send_stream request failed  RuntimeError: GoogleADKAdapter: session creation failed (HTTP 404) at /apps/golden_bank_agent/users/nuguard/sessions: <!DOCTYPE HTML>
+<html lang="en">
+    <head>
+        <meta charset="utf-8">
+        <title>Error response</title>
+    </head>
+    <body>
+        <h1>Error response</h1>
+        <p>Error code: 404</p>
+   url=http://127.0.0.1:8080
+Chat endpoint error (RuntimeError: GoogleADKAdapter: session creation failed (HTTP 404) at /apps/golden_bank_agent/users/nuguard/sessions: <!) — consecutive=10/3
+DynamicEvalRunner: turn 10 failed: Chat endpoint returned 10 consecutive errors (last: RuntimeError: GoogleADKAdapter: session creation failed (HTTP 404) at /apps/golden_bank_agent/users/nuguard/sessions: <!) — aborting scan to avoid hammering a broken endpoint.
+adaptive_discovery: skipping turn 10 — infrastructure error: [REQUEST_ERROR: Chat endpoint returned 10 consecutive errors (last: RuntimeError: GoogleADKAdapter: session creation fai

@@ -1,0 +1,79 @@
+site_name: Conversation Design
+
+theme:
+  name: material
+  features:
+    - navigation.footer
+    - toc.integrate
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.superfences
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - toc:
+      toc_depth: 2
+
+extra:
+  generator: false
+
+extra_css:
+  - style/extra.css
+
+nav:
+  - Overview:
+      - "Welcome": index.md
+      - what-is-conversation-design.md
+      - learn-about-conversation.md
+  - Conversation design process:
+      - conversation-design-process/how-do-i-get-started.md
+      - conversation-design-process/is-conversation-the-right-fit.md
+      - conversation-design-process/gather-requirements.md
+      - conversation-design-process/create-a-persona.md
+      - conversation-design-process/write-sample-dialogs.md
+      - conversation-design-process/test-and-iterate.md
+      - conversation-design-process/design-for-the-long-tail.md
+      - conversation-design-process/scale-your-design.md
+      - conversation-design-process/help-users-find-your-action.md
+  - Workshops:
+      - "Conversation design workshop": conversation-design-workshop.md
+  - Style guide:
+      - style-guide/language.md
+      - style-guide/capitalization-and-punctuation.md
+  - Building blocks:
+      - building-blocks/overview.md
+      - building-blocks/account-linking.md
+      - building-blocks/discovery.md
+      - building-blocks/helpers.md
+      - building-blocks/notifications.md
+      - building-blocks/transactions.md
+  - Conversational components:
+      - conversational-components/overview.md
+      - conversational-components/acknowledgements.md
+      - conversational-components/apologies.md
+      - conversational-components/commands.md
+      - conversational-components/confirmations.md
+      - conversational-components/discourse-markers.md
+      - conversational-components/earcons.md
+      - conversational-components/endings.md
+      - conversational-components/errors.md
+      - conversational-components/greetings.md
+      - conversational-components/informational-statements.md
+      - conversational-components/questions.md
+      - conversational-components/suggestions.md
+      - conversational-components/chips.md
+  - Visual components:
+      - visual-components/overview.md
+      - visual-components/customization.md
+      - visual-components/basic-card.md
+      - visual-components/browsing-carousel.md
+      - visual-components/carousel.md
+      - visual-components/list.md
+      - visual-components/media-response.md
+      - visual-components/table.md

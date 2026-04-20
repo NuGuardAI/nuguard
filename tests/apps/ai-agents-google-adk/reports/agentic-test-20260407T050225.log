@@ -1,0 +1,25 @@
+Preparing Marketing Campaign Google ADK chatbot for NuGuard Testing...
+Log: /workspaces/nuguard-private/tests/apps/ai-agents-google-adk/reports/agentic-test-20260407T050225.log
+Started: 2026-04-07T05:02:25Z
+---
+SBOM: skipped (using pre-generated SBOM)
+---
+Compiling Cognitive Policy controls...
+Cognitive Policy Check...
+---
+Creating Validate Plan...
+[04/07/26 05:02:38] DEBUG    Loading config from                                                         
+                             /workspaces/nuguard-private/tests/apps/ai-agents-google-adk/nuguard.yaml    
+Error: 
+/workspaces/nuguard-private/tests/apps/ai-agents-google-adk/reports/marketing-campaign-validation-tests.m
+d already exists. Use --force to overwrite.
+---
+Running validate...
+[04/07/26 05:02:40] DEBUG    Loading config from                                                         
+                             /workspaces/nuguard-private/tests/apps/ai-agents-google-adk/nuguard.yaml    
+No plan file — building scenarios from SBOM and policy config.
+Error: Target unreachable at http://127.0.0.1:8090/chat: All connection attempts failed
+---
+Done: 2026-04-07T05:02:41Z
+Log saved to: /workspaces/nuguard-private/tests/apps/ai-agents-google-adk/reports/agentic-test-20260407T050225.log
+Report:       /workspaces/nuguard-private/tests/apps/ai-agents-google-adk/reports/marketing-campaign-validation.md

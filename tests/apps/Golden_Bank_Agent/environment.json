@@ -1,0 +1,15 @@
+{
+  "tools": {
+    "customer_data": {
+      "dataStoreTool": {
+        "engineSource": {
+          "dataStoreSources": [{
+            "dataStore": {
+              "name": "projects/115983574051/locations/us/collections/default_collection/dataStores/banking-app_1775492019708"
+            }
+          }]
+        }
+      }
+    }
+  }
+}

@@ -1,6 +1,7 @@
 """Pydantic models for the patient portal API."""
-from pydantic import BaseModel
 from typing import Optional
+
+from pydantic import BaseModel
 
 
 class PatientResponse(BaseModel):

@@ -84,6 +84,16 @@ def _node_detail_summary(node: dict[str, Any]) -> str:
         fw = meta.get("framework")
         if fw:
             parts.append(fw)
+        # For regex-detected tools, surface the matched identifier from the
+        # first evidence detail (e.g. "tool_search: duckduckgo_search" → "duckduckgo_search")
+        if not fw:
+            evidence = node.get("evidence") or []
+            if evidence:
+                raw_detail = evidence[0].get("detail", "")
+                # Strip the leading "adapter_name: " prefix when present
+                matched = raw_detail.split(": ", 1)[-1] if ": " in raw_detail else raw_detail
+                if matched:
+                    parts.append(matched)
     elif ctype == "API_ENDPOINT":
         ep = meta.get("endpoint")
         method = meta.get("method")
@@ -244,6 +254,91 @@ def _privilege_details(nodes: list[dict[str, Any]]) -> list[str]:
     return lines
 
 
+def _deployment_details(nodes: list[dict[str, Any]]) -> list[str]:
+    """Render a Deployment Details section with evidence locations."""
+    deployments = [n for n in nodes if n.get("component_type") == "DEPLOYMENT"]
+    if not deployments:
+        return []
+    lines: list[str] = ["### Deployment Details", ""]
+    for n in deployments:
+        extras = _extras(n)
+        evidence = n.get("evidence") or []
+        canonical = extras.get("canonical_name", "")
+
+        header = _esc(n.get("name", ""))
+        if canonical:
+            header += f" (`{canonical}`)"
+        lines.append(f"**{header}**")
+
+        # Group evidence by matched technology for a concise summary
+        technologies: dict[str, list[str]] = {}  # matched_term → [file:line, ...]
+        for ev in evidence:
+            detail = ev.get("detail", "")
+            matched = detail.split(": ", 1)[-1] if ": " in detail else detail
+            loc = ev.get("location") or {}
+            path = loc.get("path", "")
+            line_no = loc.get("line", "")
+            loc_str = f"`{path}`" + (f":{line_no}" if line_no else "") if path else ""
+            technologies.setdefault(matched, []).append(loc_str)
+
+        for tech, locs in technologies.items():
+            loc_list = ", ".join(loc for loc in locs if loc)
+            lines.append(f"- `{tech}` — {loc_list}" if loc_list else f"- `{tech}`")
+
+        tiers = extras.get("detected_by_tiers") or []
+        if tiers:
+            lines.append(f"- Source tiers: {', '.join(tiers)}")
+        lines.append("")
+    return lines
+
+
+def _tool_details(nodes: list[dict[str, Any]]) -> list[str]:
+    """Render a Tool Details section with evidence locations and security flags."""
+    tools = [n for n in nodes if n.get("component_type") == "TOOL"]
+    if not tools:
+        return []
+    lines: list[str] = ["### Tool Details", ""]
+    for n in tools:
+        meta = _meta(n)
+        extras = _extras(n)
+        canonical = extras.get("canonical_name", "")
+        adapter = extras.get("adapter", "")
+        evidence = n.get("evidence") or []
+
+        header = _esc(n.get("name", ""))
+        if canonical:
+            header += f" (`{canonical}`)"
+        lines.append(f"**{header}**")
+        if adapter:
+            lines.append(f"- Adapter: `{adapter}`")
+
+        # Evidence locations — show where in the source this was detected
+        for ev in evidence:
+            detail = ev.get("detail", "")
+            loc = ev.get("location") or {}
+            path = loc.get("path", "")
+            line_no = loc.get("line", "")
+            if path:
+                loc_str = f"`{path}`" + (f" line {line_no}" if line_no else "")
+                lines.append(f"- Detected at: {loc_str}" + (f" — {_esc(detail)}" if detail else ""))
+
+        # Security-relevant flags from enrichment metadata
+        flags: list[str] = []
+        if meta.get("high_privilege"):
+            flags.append("⚠ high-privilege")
+        if meta.get("ssrf_possible"):
+            flags.append("⚠ SSRF-possible")
+        if meta.get("reads_external_content"):
+            flags.append("reads external content")
+        if meta.get("accepts_external_url"):
+            flags.append("accepts external URL")
+        if flags:
+            lines.append(f"- Security flags: {', '.join(flags)}")
+
+        lines.append("")
+    return lines
+
+
 def _iam_details(nodes: list[dict[str, Any]]) -> list[str]:
     """Render IAM entity details."""
     iam_nodes = [n for n in nodes if n.get("component_type") == "IAM"]
@@ -338,6 +433,8 @@ class MarkdownExporterPlugin(ToolPlugin):
             lines += _prompt_details(nodes)
             lines += _datastore_details(nodes)
             lines += _model_details(nodes)
+            lines += _tool_details(nodes)
+            lines += _deployment_details(nodes)
             lines += _container_image_details(nodes)
             lines += _privilege_details(nodes)
             lines += _iam_details(nodes)

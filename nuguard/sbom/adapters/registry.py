@@ -3,11 +3,11 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from ..normalization import canonicalize_text
+from ..types import ComponentType
 from .base import DetectionAdapter, FrameworkAdapter, RegexAdapter
 from .frameworks import builtin_framework_specs
 from .privilege import privilege_adapters
-from ..normalization import canonicalize_text
-from ..types import ComponentType
 
 
 @dataclass(frozen=True)
@@ -206,6 +206,9 @@ def default_registry() -> tuple[DetectionAdapter, ...]:
                         r"\b(postgres|mysql|mongodb|redis|pinecone|faiss|chroma|weaviate|qdrant|milvus"
                         r"|sqlite|aiosqlite|sqlite3|dynamodb|firestore|cosmosdb|supabase|neon"
                         r"|cassandra|elasticsearch|opensearch|neo4j|tidb|cockroachdb"
+                        r"|bigquery|snowflake|clickhouse|couchbase|mariadb"
+                        r"|azuresql|azure[_-]sql|sqlserver|mssql"
+                        r"|appwrite|nhost"
                         r"|kendra)\b",
                         re.IGNORECASE,
                     ),
@@ -296,6 +299,30 @@ def default_registry() -> tuple[DetectionAdapter, ...]:
                 priority=170,
                 patterns=(
                     re.compile(
+                        # Cloud CLI tools listed FIRST so cloud commands surface as the
+                        # primary evidence snippet (takes priority over generic keywords
+                        # like "deployment" that appear in comments).
+                        # Bare 'az' excluded (too short); az sub-commands required.
+                        r"\b(gcloud|gsutil|bq"
+                        r"|kubectl|kustomize|skaffold|argocd|fluxcd"
+                        r"|ansible(?:[_-]playbook)?|ansible[_-]galaxy"
+                        r"|pulumi|cdktf"
+                        r"|azd|azure[_-]cli|az\s+(?:login|group|webapp|container|acr|aks|"
+                        r"functionapp|storage|keyvault|cosmos|deploy)"
+                        r"|aws\s+(?:ec2|s3|lambda|ecs|eks|rds|cloudformation|deploy|"
+                        r"ecr|codecommit|codedeploy|codepipeline))\b",
+                        re.IGNORECASE,
+                    ),
+                    re.compile(
+                        # PaaS / serverless / edge deployment platforms
+                        r"\b(flyctl|fly\.io|heroku|vercel|netlify|railway|render"
+                        r"|serverless[_-]framework|sam[_-]cli|amplify[_-]cli"
+                        r"|wrangler|cloudflare[_-]pages|deno[_-]deploy)\b",
+                        re.IGNORECASE,
+                    ),
+                    re.compile(
+                        # Container / orchestration runtimes (last — generic keywords
+                        # like "deployment" are common in comments and strings)
                         r"\b(docker|kubernetes|helm|terraform|compose|deployment"
                         r"|nginx|certbot|letsencrypt|gunicorn|uvicorn|caddy|traefik"
                         r"|reverse[._]proxy|ssl[._]certificate|systemd[._]service)\b",
@@ -304,14 +331,153 @@ def default_registry() -> tuple[DetectionAdapter, ...]:
                 ),
                 canonical_name="deployment:generic",
             ),
+            # Web search / information-retrieval tools used by AI agents.
+            # Covers direct library usage, LangChain community wrappers, and
+            # standalone retrieval SDKs (DuckDuckGo, Tavily, SerpAPI, Perplexity, etc.).
+            RegexAdapter(
+                name="tool_search",
+                component_type=ComponentType.TOOL,
+                priority=174,
+                patterns=(
+                    re.compile(
+                        r"\b(duckduckgo[_-]search|DDGS"
+                        r"|DuckDuckGoSearch(?:Run|Results|APIWrapper)?"
+                        r"|TavilyClient|TavilySearch(?:Results)?"
+                        r"|GoogleSerperAPIWrapper|SerpAPIWrapper"
+                        r"|BraveSearch(?:Wrapper)?|ExaSearchResults?"
+                        r"|PerplexityClient|perplexipy|perplexity[_-](?:search|client))\b",
+                        re.IGNORECASE,
+                    ),
+                ),
+                canonical_name="tool:search",
+            ),
+            # OpenAI and Anthropic built-in / platform tools.
+            # Detects:
+            #   - OpenAI Agents SDK built-in tool classes (WebSearchTool,
+            #     FileSearchTool, CodeInterpreterTool)
+            #   - OpenAI Responses API built-in type strings
+            #     ("web_search_preview", "code_interpreter")
+            #   - Anthropic computer-use beta tool identifiers (computer_use,
+            #     ComputerTool, text_editor, bash when from anthropic SDK)
+            RegexAdapter(
+                name="tool_openai_builtin",
+                component_type=ComponentType.TOOL,
+                priority=174,
+                patterns=(
+                    re.compile(
+                        # OpenAI Agents SDK built-in tool classes
+                        r"\b(WebSearchTool|FileSearchTool|CodeInterpreterTool"
+                        # OpenAI Responses API type-string literals
+                        r"|web_search_preview|code_interpreter"
+                        # Anthropic computer-use tool identifiers
+                        r"|ComputerTool|computer_use|text_editor_tool"
+                        r"|anthropic[._](?:computer|bash|text.editor))\b",
+                        re.IGNORECASE,
+                    ),
+                ),
+                canonical_name="tool:platform_builtin",
+            ),
+            # Workspace / SaaS connector tools used by AI agents.
+            # Covers LangChain community toolkits, vendor SDKs, and
+            # direct API client imports for common business platforms.
+            RegexAdapter(
+                name="tool_workspace_connector",
+                component_type=ComponentType.TOOL,
+                priority=174,
+                patterns=(
+                    re.compile(
+                        # Google Drive and Gmail (LangChain toolkits + raw SDK)
+                        r"\b(GoogleDrive(?:Tool(?:kit)?|APIWrapper)"
+                        r"|GmailTool(?:kit)?|GmailSendMessage|GmailGetMessage"
+                        r"|GmailCreateDraft|pydrive2?)\b",
+                        re.IGNORECASE,
+                    ),
+                    re.compile(
+                        # Dropbox, Box, SharePoint, OneDrive
+                        r"\b(dropbox|DropboxAPIWrapper|BoxAPIWrapper|boxsdk"
+                        r"|SharePoint(?:Tool(?:kit)?|Loader|APIWrapper)?"
+                        r"|shareplum|OneDrive(?:Tool(?:kit)?|APIWrapper)?)\b",
+                        re.IGNORECASE,
+                    ),
+                    re.compile(
+                        # CRM / support platforms
+                        r"\b(SimpleSalesforce|simple[_-]salesforce|SalesforceAPIWrapper"
+                        r"|hubspot|HubSpot(?:Tool|Client|APIWrapper)?"
+                        r"|zendesk|ZendeskAPI|ZendeskTool(?:kit)?)\b",
+                        re.IGNORECASE,
+                    ),
+                    re.compile(
+                        # Productivity / no-code databases
+                        r"\b(airtable|pyairtable|AirtableAPIWrapper|AirtableLoader)\b",
+                        re.IGNORECASE,
+                    ),
+                ),
+                canonical_name="tool:workspace_connector",
+            ),
+            # Agent observability / tracing tools.
+            # These SDKs capture LLM inputs, outputs, and traces and send them
+            # to external services — relevant for data-flow and privacy analysis.
+            RegexAdapter(
+                name="tool_observability",
+                component_type=ComponentType.TOOL,
+                priority=174,
+                patterns=(
+                    re.compile(
+                        r"\b(langfuse|langsmith|LangSmithClient"
+                        r"|mlflow|arize(?:[_-]phoenix)?|openinference"
+                        r"|helicone|HeliconeAsyncLogger"
+                        r"|weave\.init|wandb[._]weave)\b",
+                        re.IGNORECASE,
+                    ),
+                ),
+                canonical_name="tool:observability",
+            ),
+            # RPA / robotic-process-automation tools used by AI agents.
+            RegexAdapter(
+                name="tool_rpa",
+                component_type=ComponentType.TOOL,
+                priority=174,
+                patterns=(
+                    re.compile(
+                        r"\b(uipath|UiPath|UiRobot|Orchestrator(?:Client|API))\b",
+                        re.IGNORECASE,
+                    ),
+                ),
+                canonical_name="tool:rpa",
+            ),
+            # Browser automation tools (playwright/selenium/puppeteer) are filtered
+            # to skip test directories and JSON config files.  These tools are
+            # legitimately used as agent capabilities (e.g. RUN playwright install
+            # in Dockerfiles, browser_agent.py) but commonly appear as false
+            # positives in devDependency entries in package.json and test runner
+            # files (*.spec.js, tests/).
+            RegexAdapter(
+                name="tool_browser_automation",
+                component_type=ComponentType.TOOL,
+                priority=175,
+                patterns=(
+                    re.compile(
+                        # Browser automation / headless browser tools
+                        r"\b(playwright|puppeteer|selenium)\b",
+                        re.IGNORECASE,
+                    ),
+                ),
+                canonical_name="tool:browser_automation",
+                # Skip test directories — playwright/selenium in test files means
+                # the project uses them as a *test runner*, not as an agent tool.
+                skip_path_parts=frozenset({"tests", "test", "__tests__", "spec", "e2e"}),
+                # Skip JSON manifests — playwright in package.json is a package
+                # reference, not an agentic capability declaration.
+                skip_extensions=frozenset({".json"}),
+            ),
             RegexAdapter(
                 name="tool_generic",
                 component_type=ComponentType.TOOL,
                 priority=175,
                 patterns=(
                     re.compile(
-                        # Web automation and browser control
-                        r"\b(playwright|puppeteer|selenium|beautifulsoup|scrapy)\b",
+                        # Web scraping tools used in agent data pipelines
+                        r"\b(beautifulsoup|scrapy)\b",
                         re.IGNORECASE,
                     ),
                     re.compile(

@@ -1,0 +1,16 @@
+{
+  "name": "4ce41a11-599c-45aa-b2a8-8475af128753",
+  "displayName": "Prompt Guardrail 1757021081696",
+  "enabled": true,
+  "action": {
+    "respondImmediately": {
+      "responses": [{
+        "text": "It seems you\u0027re trying to bypass my safety measures. Please refrain from doing so, or I will have to escalate this to a human manager."
+      }]
+    }
+  },
+  "llmPromptSecurity": {
+    "defaultSettings": {
+    }
+  }
+}

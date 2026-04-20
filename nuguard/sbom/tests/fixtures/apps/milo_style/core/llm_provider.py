@@ -40,7 +40,7 @@ async def chat(provider: str, model: str, messages: list[dict]) -> str:
     chosen_model = model or default_model
     resp = await client.chat.completions.create(
         model=chosen_model,
-        messages=messages,
+        messages=messages,  # type: ignore[arg-type]
         temperature=0.0,
     )
     return resp.choices[0].message.content or ""

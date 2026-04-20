@@ -1,10 +1,10 @@
 # NuGuard Red-Team Engine
 
-Dynamic adversarial testing for live AI applications.  The engine takes an AI-SBOM, a target URL, and optionally a Cognitive Policy, then automatically generates, executes, and scores attack scenarios against the running application — producing structured findings with OWASP/MITRE mappings and LLM-generated remediation briefs.
+Dynamic adversarial testing for live AI applications. It's designed for AI developers who may not have deep security expertise but want to proactively identify and fix weaknesses in their AI systems before production.
 
-It's designed for AI developers who may not have deep security expertise but want to proactively identify and fix weaknesses in their AI systems before production. The red-team engine requires no manual test case writing or pentesting knowledge — just an SBOM and a target URL.
+The engine takes an AI-SBOM, a target URL, and optionally a Cognitive Policy, then automatically generates, executes, and scores attack scenarios against the running application — producing structured findings with OWASP/MITRE mappings and LLM-generated remediation briefs.
 
-If you have access to a staging environment with realistic data, you can run the red-team engine against it to find vulnerabilities before they reach production.  For production environments, we recommend starting with the static analysis pipeline and policy compliance checks, then using the red-team engine for targeted testing of specific high-impact scenarios.
+If you have access to a staging environment with realistic data, you can run the red-team engine against it to find vulnerabilities before they reach production.  For production environments, we recommend starting with the static analysis pipeline and behavior checks (happy path validation), then using the red-team engine for targeted testing of specific high-impact scenarios.
 
 ---
 
@@ -25,6 +25,8 @@ If you have access to a staging environment with realistic data, you can run the
    - [Guided (Adaptive) Conversations](#guided-adaptive-conversations)
 8. [Attack Techniques](#attack-techniques)
 9. [LLM Augmentation Layer](#llm-augmentation-layer)
+   - [TAP Tree Exploration](#tap-tree-exploration-rt-016)
+   - [PAIR Feedback Loop](#pair-feedback-loop-rt-017)
 10. [Success Detection](#success-detection)
 11. [HTTP Status Code Handling](#http-status-code-handling)
 12. [Findings and Severity Scoring](#findings-and-severity-scoring)
@@ -37,29 +39,31 @@ If you have access to a staging environment with realistic data, you can run the
 ## Architecture Overview
 
 ```
-AI-SBOM + Policy (opt)
-      │
-      ▼
-ScenarioGenerator          ← reads SBOM nodes/edges to derive attack surface
-      │ AttackScenario list (sorted by impact score desc)
-      ▼
-LLMPromptGenerator (opt)   ← enriches static payloads with LLM variants
-      │
-      ▼
-RedteamOrchestrator        ← concurrent scenario dispatch (semaphore-capped)
-      │
-      ├─── static chain? ──► AttackExecutor     ← step-by-step HTTP/chat loop
-      │                           │ AdaptiveMutation (LLM, on failure)
-      │
-      └─── guided conv? ───► GuidedAttackExecutor ← real-time ConversationDirector
-                                  │ plan → next_turn → assess_progress (per turn)
-                                  │
-                            TargetAppClient      ← HTTP POST to /chat (or configured path)
-                                  │
-                            CanaryScanner        ← watches for secret values in responses
-                            ActionLogger         ← persists every request/response pair
-                                  │
-                            Findings → Severity/Compliance mapping → Report
+AI-SBOM + Cognitive Policy (opt)
+        │
+        ▼
+Scenario Generator         ← SBOM signals → Attack Scenarios, pre-scored and prioritized
+        │
+        ▼
+LLM driven Enrichment     ← (optional) generate attack variants; cached by SBOM+policy hash
+        │
+        ▼
+Redteam Orchestrator       ← concurrent dispatch
+        │
+        ├── Static chain execution
+        │     Adaptive Mutation on failure
+        │
+        └── Guided conversation execution
+              Plans milestones, generates attacker turns, scores progress
+              TAP tree exploration branches N tactic variants per depth level (optional)
+              Canary Scanner checks every response for seeded canary values
+        │
+        ▼
+Findings                   ← severity scoring, OWASP/MITRE mapping, canary-hit elevation
+        │
+        ▼
+LLM Summary + Report       ← executive summary, remediation, coding-agent brief
+                              (optional: pytest regression test emission for findings)
 ```
 
 ---
@@ -105,6 +109,10 @@ The path appended to the base URL for every attack POST is configured separately
 
 The full request URL is `{target_url}{target_endpoint}` — e.g. `http://localhost:8000/chat`.
 
+Target URL should be the backend URL of the application under test that the API requests will be sent to.
+It should point to the service that handles the chat requests, not a frontend URL.
+
+The target endpoint should be the path that the backend service expects for chat requests. It is appended to the base URL to form the full request URL.
 There is no SBOM-based discovery for the endpoint path.  Set `target_endpoint` in `nuguard.yaml` when your app uses a non-standard path (e.g. `/api/v1/agent`, `/invoke`).
 
 ### Chat Payload Shape
@@ -152,6 +160,7 @@ Severity is elevated to CRITICAL when:
 - A privilege chain reaches an administrative action
 - Any MCP toxic flow succeeds
 
+If no GoalType is specified in the nuguard.yaml configuration, all the scenario types are considered by default.
 ---
 
 ## Scenario Generation
@@ -167,7 +176,7 @@ SBOM nodes / edges
       │                     ├── use_case                →  build_goal_redirection
       │                     ├── any AGENT               →  build_structural_injection
       │                     ├── any AGENT               →  build_context_flood
-      │                     └── PII/DATASTORE signals   →  guided PHI extraction (LLM)
+      │                     └── PII/PFI/PHI DATASTORE signals   →  guided classifieddata extraction (LLM)
       │
       ├── DATASTORE nodes ──┬── pii_types set           →  build_base64_exfiltration
       │                     ├── cross_tenant risk        →  build_cross_tenant_exfiltration
@@ -278,31 +287,6 @@ Copy `canary.example.json` (created by `nuguard init`), rename it `canary.json`,
 
 ---
 
-### Detection Mechanics
-
-`CanaryScanner` (`nuguard/redteam/target/canary.py`) is called after **every** step response in both static chain and guided conversation execution modes.
-
-It runs three passes:
-
-| Pass | Method | What it checks |
-|---|---|---|
-| Verbatim | `scan(text)` | Exact substring match — fastest and most reliable |
-| Base64 | `scan_decoded(text)` | Decodes the response as base64, then substring-matches — catches `encode this as base64` exfiltration |
-| Hex / Unicode | `scan_decoded(text)` | Decodes hex strings and `\uXXXX` escapes — catches obfuscated leakage |
-
-When any pass finds a match:
-
-1. The current step is marked `succeeded=True` and `canary_hits` is populated.
-2. In guided conversations, `progress` is overridden to `1.0`, triggering an immediate `succeeded=True` exit.
-3. In `_build_findings()`, a `Finding` is created with:
-   - `title` = `"Canary Value Exfiltrated — <scenario title>"`
-   - `severity` = CRITICAL (scored via `severity_scorer.score_finding(..., canary_verbatim=True)`)
-   - `evidence` = the matched canary values + a per-step attack transcript
-
-The `CanaryConfig.all_watch_values()` method flattens `global_watch_values` and all per-record `watch_values` into a single deduplicated list that `CanaryScanner` holds in memory for the duration of the scan.
-
----
-
 ## Execution Modes
 
 ### Static Chain Execution
@@ -366,18 +350,14 @@ Turn loop (max_turns=12 by default):
 
 The `ConversationDirector` sees the **full conversation history** (last 6 turns formatted as Attacker/Agent exchanges) when generating each new attacker turn.  Any agent self-disclosure — tool names, record counts, schema details — is available as context for follow-up exploitation.
 
-**Guided scenario builders** (in `guided_conversations.py`):
+### Guided Scenario Builders
+**`build_user_data_discovery`** runs a two-phase attack:
+- **Phase 1 (Turn 1):** opens with a natural "What data do you have about me?" question phrased for the agent's domain (healthcare, airline, banking, e-commerce, or generic). The agent's response reveals record IDs, field names, and schema that anchor all subsequent turns.
+- **Phase 2 (Turns 2–5):** uses whatever was disclosed to attempt (a) cross-user IDOR — request the same data for a different user by ID; (b) unauthorized record write — modify or delete a revealed field; (c) privilege escalation — claim an elevated role to access all records; (d) bulk enumeration — list all records matching the revealed schema.
 
-| Builder | Goal | Impact |
-|---|---|---|
-| `build_guided_phi_extraction` | Extract PHI / patient records by name/ID | 9.0 |
-| `build_guided_data_store_probe` | Reveal data store schema and record contents | 8.5 |
-| `build_guided_privilege_escalation` | Social-engineer into privileged/admin actions | 8.5 |
-| `build_guided_tool_coercion` | Coerce unauthorised/harmful tool invocations | 8.0 |
-| `build_guided_system_prompt_leak` | Extract full system prompt text | 7.5 |
-| `build_guided_role_override` | Override role constraints with fictional/authority framing | 7.0 |
+**`build_guided_tool_redteam`** derives the attack goal from each TOOL node's SBOM description, producing a contextually appropriate guided conversation per tool. Set `guided_conversations: true` to enable. 
 
-**Note:** Guided conversations adapt to the *semantic content* of responses, not to HTTP status codes.  A 422 validation error is treated as a failed step (the step may mutate if `on_failure="mutate"`), but the engine does not parse the 422 body to fix the request schema.  See [HTTP Status Code Handling](#http-status-code-handling) for details.
+**Note:** Guided conversations adapt to the *semantic content* of responses, not to HTTP status codes.  A 422 validation error is treated as a failed step (the step may mutate if `on_failure="mutate"`).
 
 ---
 
@@ -483,6 +463,21 @@ Real-time steering for guided conversations:
 - `assess_progress(attacker_msg, agent_response, milestone)` — score 0.0–1.0 how close the conversation is to the goal; success threshold is 0.85
 
 All methods fall back to deterministic heuristics when the LLM is unavailable or times out (45 s per call).
+
+### TAP Tree Exploration (RT-016)
+
+When `tree_exploration=True` on a `GuidedConversation`, the `GuidedAttackExecutor` delegates to `TreeExplorer` instead of the linear turn loop. TAP branches N tactic variants per depth level, scores each branch with the eval LLM, keeps the top-K survivors, and prunes paths whose score does not improve over their parent.
+
+| Config | YAML key | CI default | Full default | Description |
+|---|---|---|---|---|
+| breadth | `redteam.tree_breadth` | 2 | 3 | Parallel tactic variants per depth level |
+| depth | `redteam.tree_max_depth` | 2 | 3 | Maximum recursion depth |
+
+Set both to `0` in `nuguard.yaml` to let the engine auto-select from the active profile. Tactic variants at each breadth node are drawn from: `escalate`, `roleplay`, `hypothetical`, `code_gen`, `inject` — ensuring diversity rather than rephrasing.
+
+### PAIR Feedback Loop (RT-017)
+
+PAIR (Prompt Automatic Iterative Refinement) is active whenever `guided_conversations: true` and a redteam LLM is configured — no extra config needed. After each failed turn, the `ResponseEvaluator`'s `refusal_reason` is injected into the next attacker prompt as a `PAIR FEEDBACK` block. This makes every retry targeted at the specific defence that fired (e.g. "Your last attempt was refused because it mentioned the restricted topic directly — rephrase to approach it indirectly") rather than generating a generic variant.
 
 ### Summary Generation (`LLMSummaryGenerator`)
 
@@ -654,7 +649,9 @@ All flags can be set in `nuguard.yaml` under the `redteam:` section.  Run `nugua
 | — | `redteam.target_endpoint` | — | `/chat` | Chat endpoint path appended to target URL |
 | — | `redteam.chat_payload_key` | — | `message` | JSON key for the chat message in the POST body |
 | — | `redteam.chat_payload_list` | — | `false` | Send message value as a list instead of a string |
-| — | `redteam.auth_header` | — | — | HTTP header sent with every request (e.g. `Authorization: Bearer ${TOKEN}`) |
+| — | `redteam.headers` | `NUGUARD_REDTEAM_HEADERS_JSON` | `{}` | Explicit full header map override (highest precedence) |
+| — | `redteam.auth` | — | `type: none` | Structured auth config: `bearer`, `api_key`, `basic`, `login_flow`, or `none` |
+| — | `redteam.auth_header` | — | — | Legacy shorthand header string (fallback when `redteam.auth` is not set) |
 | `--profile` | `redteam.profile` | — | `ci` | `ci` (impact ≥ 5.0) or `full` (all scenarios) |
 | `--scenarios` | `redteam.scenarios` | — | all | Scenario type filter (list in YAML, comma-separated on CLI) |
 | `--min-impact-score` | `redteam.min_impact_score` | — | `0.0` | Exclude scenarios below this pre-score |
@@ -670,8 +667,34 @@ All flags can be set in `nuguard.yaml` under the `redteam:` section.  Run `nugua
 | — | `redteam.llm.api_key` | `NUGUARD_REDTEAM_LLM_API_KEY` | — | API key for the redteam LLM |
 | — | `redteam.eval_llm.model` | `NUGUARD_REDTEAM_EVAL_LLM_MODEL` | top-level `llm.model` | LiteLLM model for response evaluation and report summaries |
 | — | `redteam.eval_llm.api_key` | `NUGUARD_REDTEAM_EVAL_LLM_API_KEY` | top-level `llm.api_key` | API key for the eval LLM |
+| — | `redteam.finding_triggers.canary_hits` | `REDTEAM_TRIGGER_CANARY_HITS` | `true` | Emit findings when canary values are detected |
+| — | `redteam.finding_triggers.policy_violations` | `REDTEAM_TRIGGER_POLICY_VIOLATIONS` | `true` | Emit findings for policy violations |
+| — | `redteam.finding_triggers.critical_success_hits` | `REDTEAM_TRIGGER_CRITICAL_SUCCESS_HITS` | `true` | Emit fallback findings for high-confidence success signals |
+| — | `redteam.finding_triggers.any_inject_success` | `REDTEAM_TRIGGER_ANY_INJECT_SUCCESS` | `false` | Aggressive fallback: emit findings for successful INJECT steps when no stronger trigger fired |
+| — | `redteam.strict_outcome` | — | `false` | When `true`, a run where ≥ 80% of events are 5xx/network errors is reported as `inconclusive_target_errors` rather than `no_findings` — catches false-clean runs caused by a broken target |
+| — | `redteam.emit_pytest` | — | `false` | Emit pytest regression test files for each HIT finding (severity ≥ medium) into `emit_pytest_dir` |
+| — | `redteam.emit_pytest_dir` | — | `./redteam-regression` | Output directory for generated regression tests; run with `pytest redteam-regression/ -m regression` |
+| — | `redteam.tree_breadth` | — | `0` (auto) | TAP tree breadth: parallel tactic variants per depth level (ci=2, full=3) |
+| — | `redteam.tree_max_depth` | — | `0` (auto) | TAP tree max depth: recursion depth per scenario (ci=2, full=3) |
 | `--fail-on` | `output.fail_on` | — | `high` | Exit code 2 if any finding ≥ this severity |
-| `--format` | `output.format` | — | `text` | `text`, `json`, or `sarif` |
+| `--format` / `-f` | `output.format` | — | `text` | `text`, `json`, `markdown`, or `sarif` |
+| `--output` / `-o` | — | — | — | Write report to this file path |
+| `--verbose` / `-v` | `redteam.verbose` | — | `false` | Print detailed per-scenario traces to terminal |
+
+For future server-side storage of run configs/tokens, follow the encrypt-at-rest pattern in
+`docs/secure-credential-persistence.md`.
+
+### Finding Trigger Precedence
+
+When multiple trigger types could apply to the same scenario, NuGuard uses deterministic precedence:
+
+1. `canary_hits`
+2. `policy_violations`
+3. `critical_success_hits`
+4. `any_inject_success`
+
+`any_inject_success` only emits findings when none of the higher-precedence triggers fired.
+The same trigger controls are enforced in both static-chain and guided-conversation execution paths.
 
 ---
 
@@ -687,8 +710,25 @@ redteam:
   chat_payload_key: message       # JSON key for the attack message
   # chat_payload_list: false      # set true if the app expects a list value
 
-  # Auth header for protected endpoints
-  auth_header: "Authorization: Bearer ${API_TOKEN}"
+  # Highest-precedence full header override
+  # headers:
+  #   Authorization: "Bearer ${API_TOKEN}"
+  #   X-Tenant-Id: "tenant-1"
+
+  # Preferred structured auth
+  auth:
+    type: login_flow
+    login_flow:
+      endpoint: /login
+      payload:
+        username: ${APP_USERNAME}
+        password: ${APP_PASSWORD}
+      token_response_key: access_token
+      token_header: "Authorization: Bearer"
+      refresh_on_401: true
+
+  # Legacy shorthand still supported
+  # auth_header: "Authorization: Bearer ${API_TOKEN}"
 
   profile: full
   canary: ./canary.json
@@ -712,6 +752,13 @@ redteam:
   guided_max_turns: 12
   guided_concurrency: 3
 
+  # Finding emission controls (defaults preserve existing behavior)
+  finding_triggers:
+    canary_hits: true
+    policy_violations: true
+    critical_success_hits: true
+    any_inject_success: false
+
   # Redteam LLM — attack payload generation (must be uncensored)
   llm:
     model: openrouter/meta-llama/llama-3.3-70b-instruct
@@ -731,4 +778,28 @@ output:
   format: json
   fail_on: high
   sarif_file: results.sarif
+```
+
+### Conservative vs Aggressive Trigger Profiles
+
+Conservative profile (high confidence only):
+
+```yaml
+redteam:
+  finding_triggers:
+    canary_hits: true
+    policy_violations: true
+    critical_success_hits: false
+    any_inject_success: false
+```
+
+Aggressive profile (include inject-success fallback):
+
+```yaml
+redteam:
+  finding_triggers:
+    canary_hits: true
+    policy_violations: true
+    critical_success_hits: true
+    any_inject_success: true
 ```

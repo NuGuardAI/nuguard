@@ -11,12 +11,8 @@ installed.  Each plugin is tested for:
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Any
 from unittest.mock import MagicMock, patch
-
-import pytest
-
 
 # ---------------------------------------------------------------------------
 # Shared helpers
@@ -266,7 +262,7 @@ class TestTrivyPlugin:
         assert result.findings == []
 
     def test_severity_mapping(self) -> None:
-        plugin = self._import()
+        self._import()
         from nuguard.analysis.plugins.trivy_scanner import _parse_trivy_output  # noqa: PLC0415
         trivy_out = {
             "Results": [{

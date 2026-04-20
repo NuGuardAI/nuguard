@@ -8,21 +8,26 @@ so schema and code can never drift.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from enum import Enum
 from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from enum import Enum
-
 from .deps import PackageDep
 from .types import (
     AccessType,
     ComponentType,
-    DataClassification,
-    DatastoreType,
-    PrivilegeScope,
     RelationshipType,
+)
+from .types import (
+    DataClassification as _DataClassification,
+)
+from .types import (
+    DatastoreType as _DatastoreType,
+)
+from .types import (
+    PrivilegeScope as _PrivilegeScope,
 )
 
 # ---------------------------------------------------------------------------
@@ -31,6 +36,9 @@ from .types import (
 
 NodeType = ComponentType
 EdgeRelationshipType = RelationshipType
+DataClassification = _DataClassification
+DatastoreType = _DatastoreType
+PrivilegeScope = _PrivilegeScope
 
 
 class EvidenceKind(str, Enum):
@@ -391,16 +399,26 @@ class NodeMetadata(BaseModel):
     pii_fields: list[str] | None = Field(
         default=None,
         description=(
-            "Flat list of PII field names in this datastore, "
-            "e.g. ['name', 'email', 'ssn']. "
-            "Derived from classified_fields by the graph enricher."
+            "Flat list of general PII field names in this datastore, "
+            "e.g. ['name', 'email', 'phone', 'address', 'date_of_birth']. "
+            "Derived from classified_fields by the graph enricher. "
+            "Financial identifiers (card numbers, bank accounts) belong in pfi_fields."
         ),
     )
     phi_fields: list[str] | None = Field(
         default=None,
         description=(
-            "Flat list of PHI field names in this datastore, "
-            "e.g. ['diagnosis', 'medication', 'lab_result']. "
+            "Flat list of PHI field names in this datastore (HIPAA-regulated), "
+            "e.g. ['diagnosis', 'medication', 'lab_result', 'patient_id']. "
+            "Derived from classified_fields by the graph enricher."
+        ),
+    )
+    pfi_fields: list[str] | None = Field(
+        default=None,
+        description=(
+            "Flat list of Personal Financial Information field names (PCI-DSS / GLBA), "
+            "e.g. ['card_number', 'bank_account', 'routing_number', 'cvv', 'ssn', "
+            "'tax_id', 'account_balance', 'iban', 'swift_code']. "
             "Derived from classified_fields by the graph enricher."
         ),
     )
@@ -580,6 +598,25 @@ class ScanSummary(BaseModel):
         default_factory=list,
         description="Log file paths discovered during scanning (relative to app root).",
     )
+    # Streaming output detection (populated by SBOM extractor)
+    uses_streaming: bool = Field(
+        default=False,
+        description=(
+            "True when the application exposes one or more streaming output endpoints "
+            "(SSE, StreamingResponse, or framework-native streaming such as Google ADK "
+            "/run_sse).  The behavior step reads this to enable streaming-aware turn "
+            "execution instead of buffered HTTP requests."
+        ),
+    )
+    streaming_endpoints: list[str] = Field(
+        default_factory=list,
+        description=(
+            "API endpoint paths confirmed to serve streaming output "
+            "(e.g. ['/run_sse', '/chat/stream']).  Populated from FastAPI "
+            "StreamingResponse return types, SSE route patterns, ADK /run_sse, "
+            "and similar source-code evidence."
+        ),
+    )
 
 
 class AiSbomDocument(BaseModel):
@@ -629,5 +666,14 @@ class AiSbomDocument(BaseModel):
         description=(
             "Scan-level metadata: use-case summary, frameworks, modalities, "
             "API endpoints, and IaC/deployment context"
+        ),
+    )
+    relationship_graph_md: str | None = Field(
+        default=None,
+        description=(
+            "Markdown section containing a Mermaid flowchart of key component "
+            "relationships (AGENT → TOOL → DATASTORE, guardrail coverage, etc.) "
+            "plus an LLM-written plain-English narrative. "
+            "Only populated when enable_llm=True during SBOM generation."
         ),
     )

@@ -1,0 +1,17 @@
+{
+  "name": "006aba87-1af2-4758-86c9-a30893076f0b",
+  "dataStoreTool": {
+    "name": "customer_data",
+    "description": "customer data for the bank",
+    "engineSource": {
+      "dataStoreSources": [{
+        "dataStore": {
+          "name": "$env_var"
+        }
+      }]
+    },
+    "filterParameterBehavior": "NEVER_INCLUDE"
+  },
+  "executionType": "SYNCHRONOUS",
+  "displayName": "customer_data"
+}

@@ -1,0 +1,9 @@
+{
+  "name": "f798e5fc-e33c-4203-8dc8-11cb99a82891",
+  "pythonFunction": {
+    "name": "ask_to_modify_cart",
+    "pythonCode": "tools/ask_to_modify_cart/python_function/python_code.py",
+    "description": "Confirm with the customer that it is ok to modify their cart."
+  },
+  "displayName": "ask_to_modify_cart"
+}

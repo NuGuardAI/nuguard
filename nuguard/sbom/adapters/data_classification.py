@@ -27,11 +27,11 @@ from __future__ import annotations
 
 import ast
 import re
+from bisect import bisect_right
 from typing import Any
 
-from .base import ComponentDetection, FrameworkAdapter
 from ..types import ComponentType
-
+from .base import ComponentDetection, FrameworkAdapter
 
 # ---------------------------------------------------------------------------
 # PII / PHI field pattern library
@@ -147,6 +147,7 @@ class DataClassificationSQLAdapter:
 
     def scan(self, content: str, file_path: str) -> list[ComponentDetection]:
         detections: list[ComponentDetection] = []
+        nl_offsets = [m.start() for m in re.finditer(r"\n", content)]
 
         for table_match in _CREATE_TABLE_RE.finditer(content):
             table_name = table_match.group(1)
@@ -180,7 +181,7 @@ class DataClassificationSQLAdapter:
                 continue
 
             all_labels = sorted({lbl for lbls in classified.values() for lbl in lbls})
-            line_num = content[: table_match.start()].count("\n") + 1
+            line_num = bisect_right(nl_offsets, table_match.start()) + 1
 
             detections.append(
                 ComponentDetection(

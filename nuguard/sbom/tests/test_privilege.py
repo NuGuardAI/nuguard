@@ -14,7 +14,6 @@ from nuguard.sbom.adapters.privilege import privilege_adapters
 from nuguard.sbom.adapters.registry import default_registry
 from nuguard.sbom.types import ComponentType
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -76,6 +75,7 @@ class TestRegistry:
         for adapter in privilege_adapters():
             scope = adapter.metadata.get("privilege_scope")
             assert scope, f"{adapter.name} missing metadata['privilege_scope']"
+            assert adapter.canonical_name is not None, f"{adapter.name} has no canonical_name"
             expected = adapter.canonical_name.split(":")[1]
             assert scope == expected, (
                 f"{adapter.name}: privilege_scope={scope!r} but canonical={adapter.canonical_name!r}"

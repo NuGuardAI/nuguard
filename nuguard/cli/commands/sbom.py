@@ -230,10 +230,13 @@ def _do_generate(
     # Run all pre-flight checks before touching the filesystem or network
     _validate_inputs(source, from_repo, token, output, llm, format)
 
+    # Always load nuguard.yaml so sbom_generation.llm, llm.model, and llm.api_key
+    # are honoured even when --source is supplied on the CLI.
+    from nuguard.config import load_config  # noqa: PLC0415
+    cfg = load_config(config_file)
+
     # Fall back to nuguard.yaml's source field when --source is not provided
     if source is None and from_repo is None:
-        from nuguard.config import load_config  # noqa: PLC0415
-        cfg = load_config(config_file)
         if cfg.source_path:
             source = Path(cfg.source_path)
 
@@ -243,7 +246,16 @@ def _do_generate(
         )
         raise typer.Exit(code=1)
 
-    config = AiSbomConfig(enable_llm=llm)
+    # --llm flag takes precedence; fall back to sbom_generation.llm from nuguard.yaml
+    effective_llm = llm or cfg.sbom_llm_enabled
+    _sbom_model = cfg.litellm_model or ""
+    _sbom_api_base = cfg.litellm_api_base if _sbom_model.startswith("azure") else None
+    config = AiSbomConfig(
+        enable_llm=effective_llm,
+        llm_model=_sbom_model,
+        llm_api_key=cfg.litellm_api_key or None,
+        llm_api_base=_sbom_api_base,
+    )
     gen = SbomGenerator(config=config)
 
     try:

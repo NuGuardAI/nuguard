@@ -1,0 +1,9 @@
+{
+  "name": "30a596cc-c395-4703-a9a5-ff6cf8523f73",
+  "googleSearchTool": {
+    "name": "lookup_plant_details",
+    "description": "Uses the USDA plant database to look up information about a plant and if it is sustainable to grow in the region or area where the user is located.",
+    "contextUrls": ["https://plants.usda.gov/"]
+  },
+  "displayName": "lookup_plant_details"
+}

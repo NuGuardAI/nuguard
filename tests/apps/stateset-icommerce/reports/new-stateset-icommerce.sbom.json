@@ -1,0 +1,3147 @@
+{
+  "schema_version": "1.4.0",
+  "generated_at": "2026-04-08T09:29:44Z",
+  "generator": "nuguard",
+  "target": "/Users/ganesh/work/nuguard/nuguard-private/tests/apps/stateset-icommerce",
+  "nodes": [
+    {
+      "id": "339ce19f-fdf7-4c5d-ae30-3c1b02c11d37",
+      "name": "generic",
+      "component_type": "API_ENDPOINT",
+      "confidence": 1.0,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "api_endpoint_generic",
+          "adapter": "api_endpoint_generic",
+          "evidence_count": 5,
+          "confidence_breakdown": {
+            "regex_confidence": 0.95,
+            "llm_confidence": 0.0,
+            "evidence_count": 6,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3",
+              "evidence:4",
+              "confidence:high"
+            ],
+            "base_confidence": 0.76,
+            "evidence_multiplier": 1.4,
+            "validation_penalty": 0.0,
+            "final_confidence": 1.0
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "api_endpoint_generic: GET /api/v1/orders",
+          "location": {
+            "path": "reports/stateset-icommerce.redteam.ci.with-llm.json",
+            "line": 2320
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "api_endpoint_generic: GET /health",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.enriched.json",
+            "line": 87
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "api_endpoint_generic: GET /api/v1/orders",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.enriched.json",
+            "line": 86
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "api_endpoint_generic: GET /api/v1/orders",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.json",
+            "line": 25
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "api_endpoint_generic: GET /api/v1/orders",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.with-llm_gpt_4_1_mini.json",
+            "line": 25
+          }
+        }
+      ]
+    },
+    {
+      "id": "e2c6b779-1ab0-432c-a3ac-f3609e667bb2",
+      "name": "generic",
+      "component_type": "AUTH",
+      "confidence": 1.0,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "auth_generic",
+          "adapter": "auth_generic",
+          "evidence_count": 10,
+          "confidence_breakdown": {
+            "regex_confidence": 0.95,
+            "llm_confidence": 0.0,
+            "evidence_count": 6,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3",
+              "evidence:4",
+              "confidence:high"
+            ],
+            "base_confidence": 0.76,
+            "evidence_multiplier": 1.4,
+            "validation_penalty": 0.0,
+            "final_confidence": 1.0
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "auth_generic: authorization",
+          "location": {
+            "path": "reports/stateset-icommerce.redteam.ci.json",
+            "line": 90
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "auth_generic: OAuth",
+          "location": {
+            "path": "reports/stateset-icommerce.redteam.ci.with-llm.json",
+            "line": 1730
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "auth_generic: apiKey",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.enriched.json",
+            "line": 305
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "auth_generic: OAuth",
+          "location": {
+            "path": "reports/stateset-icommerce.validate.dynamic.with-llm.json",
+            "line": 455
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "auth_generic: OAuth",
+          "location": {
+            "path": "reports/stateset-icommerce.validate.dynamic.without-llm.json",
+            "line": 433
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.9,
+          "detail": "auth_generic: OAuth",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.enriched.json",
+            "line": 200
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.9,
+          "detail": "auth_generic: OAuth",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.json",
+            "line": 78
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.8,
+          "detail": "auth_generic: OAuth",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.with-llm_gpt_4_1_mini.json",
+            "line": 78
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "auth_generic: api_key",
+          "location": {
+            "path": "nuguard_azure.yaml",
+            "line": 9
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "auth_generic: api_key",
+          "location": {
+            "path": "nuguard_openai.yaml",
+            "line": 9
+          }
+        }
+      ]
+    },
+    {
+      "id": "ad158ca8-b174-4d69-b8a0-6641146f3423",
+      "name": "mongodb",
+      "component_type": "DATASTORE",
+      "confidence": 1.0,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "mongodb",
+          "adapter": "datastore_generic",
+          "evidence_count": 4,
+          "normalizer": "datastore",
+          "confidence_breakdown": {
+            "regex_confidence": 0.95,
+            "llm_confidence": 0.0,
+            "evidence_count": 5,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3",
+              "confidence:high"
+            ],
+            "base_confidence": 0.76,
+            "evidence_multiplier": 1.4,
+            "validation_penalty": 0.0,
+            "final_confidence": 1.0
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "datastore_generic: mongodb",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.enriched.json",
+            "line": 264
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "datastore_generic: mongodb",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.json",
+            "line": 142
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "datastore_generic: mongodb",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.with-llm_gpt_4_1_mini.json",
+            "line": 124
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "datastore_generic: MongoDB",
+          "location": {
+            "path": "reports/stateset-icommerce.validate.dynamic.without-llm.json",
+            "line": 649
+          }
+        }
+      ]
+    },
+    {
+      "id": "040b683e-f4e3-41d7-b11c-9197ef7eed63",
+      "name": "postgres",
+      "component_type": "DATASTORE",
+      "confidence": 0.9880000000000001,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "postgres",
+          "adapter": "datastore_generic",
+          "evidence_count": 3,
+          "normalizer": "datastore",
+          "confidence_breakdown": {
+            "regex_confidence": 0.95,
+            "llm_confidence": 0.0,
+            "evidence_count": 4,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "confidence:high"
+            ],
+            "base_confidence": 0.76,
+            "evidence_multiplier": 1.3,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.988
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "datastore_generic: postgres",
+          "location": {
+            "path": "reports/stateset-icommerce.redteam.ci.json",
+            "line": 16
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "datastore_generic: postgres",
+          "location": {
+            "path": "reports/stateset-icommerce.redteam.ci.with-llm.json",
+            "line": 19
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "datastore_generic: postgres",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.enriched.json",
+            "line": 1153
+          }
+        }
+      ]
+    },
+    {
+      "id": "d49077da-3d8c-40ec-ac59-dea5a14d0e94",
+      "name": "generic",
+      "component_type": "DEPLOYMENT",
+      "confidence": 1.0,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "deployment_generic",
+          "adapter": "deployment_generic",
+          "evidence_count": 4,
+          "confidence_breakdown": {
+            "regex_confidence": 0.95,
+            "llm_confidence": 0.0,
+            "evidence_count": 5,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3",
+              "confidence:high"
+            ],
+            "base_confidence": 0.76,
+            "evidence_multiplier": 1.4,
+            "validation_penalty": 0.0,
+            "final_confidence": 1.0
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "deployment_generic: kustomize",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.enriched.json",
+            "line": 3052
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.7,
+          "detail": "deployment_generic: kustomize",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.enriched.json",
+            "line": 544
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.7,
+          "detail": "deployment_generic: kustomize",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.json",
+            "line": 239
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.7,
+          "detail": "deployment_generic: kustomize",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.with-llm_gpt_4_1_mini.json",
+            "line": 221
+          }
+        }
+      ]
+    },
+    {
+      "id": "184fb6e5-79f5-4040-892d-2c145ae95cea",
+      "name": "claude-3-5-haiku-20241022",
+      "component_type": "MODEL",
+      "confidence": 0.5720000000000001,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "claude_3_5_haiku_20241022",
+          "adapter": "model_generic",
+          "evidence_count": 4,
+          "normalizer": "model-name",
+          "llm_soft_rejected": true,
+          "llm_verification_reason": "The model node is referenced in a test file (cli/test/unit/providers-base.test.js) and has low confidence; likely a test or mock, not production code.",
+          "confidence_breakdown": {
+            "regex_confidence": 0.55,
+            "llm_confidence": 0.0,
+            "evidence_count": 4,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3"
+            ],
+            "base_confidence": 0.44,
+            "evidence_multiplier": 1.3,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.572
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: claude-3-5-haiku-20241022",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.enriched.json",
+            "line": 4520
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: claude-3-5-haiku-20241022",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.enriched.json",
+            "line": 563
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: claude-3-5-haiku-20241022",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.json",
+            "line": 258
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: claude-3-5-haiku-20241022",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.with-llm_gpt_4_1_mini.json",
+            "line": 240
+          }
+        }
+      ]
+    },
+    {
+      "id": "74ce3304-c019-4559-a51d-84fdae68073e",
+      "name": "claude-3-5-sonnet-20241022",
+      "component_type": "MODEL",
+      "confidence": 0.7839999999999999,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "claude_3_5_sonnet_20241022",
+          "adapter": "model_generic",
+          "evidence_count": 8,
+          "normalizer": "model-name",
+          "confidence_breakdown": {
+            "regex_confidence": 0.7,
+            "llm_confidence": 0.0,
+            "evidence_count": 6,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3",
+              "evidence:4",
+              "confidence:high"
+            ],
+            "base_confidence": 0.56,
+            "evidence_multiplier": 1.4,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.784
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.7,
+          "detail": "model_generic: claude-3-5-sonnet-20241022",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.enriched.json",
+            "line": 4609
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: claude-3-5-sonnet-20241022",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.enriched.json",
+            "line": 660
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: claude-3-5-sonnet-20241022",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.json",
+            "line": 294
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: claude-3-5-sonnet-20241022",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.with-llm_gpt_4_1_mini.json",
+            "line": 276
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: claude-3",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.enriched.json",
+            "line": 4431
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "model_generic: claude-3",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.enriched.json",
+            "line": 756
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "model_generic: claude-3",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.json",
+            "line": 329
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "model_generic: claude-3",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.with-llm_gpt_4_1_mini.json",
+            "line": 311
+          }
+        }
+      ]
+    },
+    {
+      "id": "1eb85c16-e509-4a5d-9f5d-d8fee12115d8",
+      "name": "claude-haiku-3-5-20241022",
+      "component_type": "MODEL",
+      "confidence": 0.8400000000000001,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "claude_haiku_3_5_20241022",
+          "adapter": "model_generic",
+          "evidence_count": 8,
+          "normalizer": "model-name",
+          "confidence_breakdown": {
+            "regex_confidence": 0.75,
+            "llm_confidence": 0.0,
+            "evidence_count": 6,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3",
+              "evidence:4",
+              "confidence:high"
+            ],
+            "base_confidence": 0.6,
+            "evidence_multiplier": 1.4,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.84
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.75,
+          "detail": "model_generic: claude-haiku-3-5-20241022",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.enriched.json",
+            "line": 5200
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.75,
+          "detail": "model_generic: claude-haiku-3-5",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.enriched.json",
+            "line": 4698
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: claude-haiku-3-5-20241022",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.enriched.json",
+            "line": 775
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: claude-haiku-3-5-20241022",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.json",
+            "line": 348
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: claude-haiku-3-5-20241022",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.with-llm_gpt_4_1_mini.json",
+            "line": 330
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "model_generic: claude-haiku-3-5",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.enriched.json",
+            "line": 862
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "model_generic: claude-haiku-3-5",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.json",
+            "line": 374
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "model_generic: claude-haiku-3-5",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.with-llm_gpt_4_1_mini.json",
+            "line": 356
+          }
+        }
+      ]
+    },
+    {
+      "id": "1dac0b8b-4b98-48e5-898c-e31b14ce8320",
+      "name": "claude-opus-4-5-20251101",
+      "component_type": "MODEL",
+      "confidence": 0.7839999999999999,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "claude_opus_4_5_20251101",
+          "adapter": "model_generic",
+          "evidence_count": 8,
+          "normalizer": "model-name",
+          "confidence_breakdown": {
+            "regex_confidence": 0.7,
+            "llm_confidence": 0.0,
+            "evidence_count": 6,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3",
+              "evidence:4",
+              "confidence:high"
+            ],
+            "base_confidence": 0.56,
+            "evidence_multiplier": 1.4,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.784
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.7,
+          "detail": "model_generic: claude-opus-4-5-20251101",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.enriched.json",
+            "line": 5191
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.7,
+          "detail": "model_generic: claude-opus-4-5",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.enriched.json",
+            "line": 4805
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: claude-opus-4-5-20251101",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.enriched.json",
+            "line": 890
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: claude-opus-4-5-20251101",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.json",
+            "line": 402
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: claude-opus-4-5-20251101",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.with-llm_gpt_4_1_mini.json",
+            "line": 384
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "model_generic: claude-opus-4-5",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.enriched.json",
+            "line": 986
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "model_generic: claude-opus-4-5",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.json",
+            "line": 437
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "model_generic: claude-opus-4-5",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.with-llm_gpt_4_1_mini.json",
+            "line": 410
+          }
+        }
+      ]
+    },
+    {
+      "id": "c1d2a12b-7764-4f8d-b6ef-f8235b5f1d44",
+      "name": "claude-sonnet-4-20250514",
+      "component_type": "MODEL",
+      "confidence": 0.8400000000000001,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "claude_sonnet_4_20250514",
+          "adapter": "model_generic",
+          "evidence_count": 4,
+          "normalizer": "model-name",
+          "confidence_breakdown": {
+            "regex_confidence": 0.75,
+            "llm_confidence": 0.0,
+            "evidence_count": 5,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3",
+              "confidence:high"
+            ],
+            "base_confidence": 0.6,
+            "evidence_multiplier": 1.4,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.84
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.75,
+          "detail": "model_generic: claude-sonnet-4-20250514",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.enriched.json",
+            "line": 4992
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: claude-sonnet-4-20250514",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.enriched.json",
+            "line": 1005
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: claude-sonnet-4-20250514",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.json",
+            "line": 456
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: claude-sonnet-4-20250514",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.with-llm_gpt_4_1_mini.json",
+            "line": 438
+          }
+        }
+      ]
+    },
+    {
+      "id": "fd38df2f-cc11-45dd-8ea3-160b98e5c83d",
+      "name": "claude-sonnet-4-5-20250929",
+      "component_type": "MODEL",
+      "confidence": 1.0,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "claude_sonnet_4_5_20250929",
+          "adapter": "model_generic",
+          "evidence_count": 12,
+          "normalizer": "model-name",
+          "confidence_breakdown": {
+            "regex_confidence": 0.95,
+            "llm_confidence": 0.0,
+            "evidence_count": 6,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3",
+              "evidence:4",
+              "confidence:high"
+            ],
+            "base_confidence": 0.76,
+            "evidence_multiplier": 1.4,
+            "validation_penalty": 0.0,
+            "final_confidence": 1.0
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "model_generic: claude-sonnet-4-5-20250929",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.enriched.json",
+            "line": 5103
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.7,
+          "detail": "model_generic: claude-sonnet-4",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.enriched.json",
+            "line": 4903
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.7,
+          "detail": "model_generic: claude-sonnet-4-5",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.enriched.json",
+            "line": 6212
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: claude-sonnet-4-5-20250929",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.enriched.json",
+            "line": 1102
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: claude-sonnet-4-5-20250929",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.json",
+            "line": 492
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: claude-sonnet-4-5-20250929",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.with-llm_gpt_4_1_mini.json",
+            "line": 474
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "model_generic: claude-sonnet-4",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.enriched.json",
+            "line": 1207
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "model_generic: claude-sonnet-4",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.json",
+            "line": 536
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "model_generic: claude-sonnet-4",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.with-llm_gpt_4_1_mini.json",
+            "line": 518
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "model_generic: claude-sonnet-4-5",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.enriched.json",
+            "line": 1189
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "model_generic: claude-sonnet-4-5",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.json",
+            "line": 518
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "model_generic: claude-sonnet-4-5",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.with-llm_gpt_4_1_mini.json",
+            "line": 500
+          }
+        }
+      ]
+    },
+    {
+      "id": "7a9f3527-259c-432d-b904-793d7793e889",
+      "name": "codellama",
+      "component_type": "MODEL",
+      "confidence": 0.8960000000000001,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "codellama",
+          "adapter": "model_generic",
+          "evidence_count": 4,
+          "normalizer": "model-name",
+          "confidence_breakdown": {
+            "regex_confidence": 0.8,
+            "llm_confidence": 0.0,
+            "evidence_count": 5,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3",
+              "confidence:high"
+            ],
+            "base_confidence": 0.64,
+            "evidence_multiplier": 1.4,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.896
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.8,
+          "detail": "model_generic: codellama",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.enriched.json",
+            "line": 5345
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.7,
+          "detail": "model_generic: codellama",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.enriched.json",
+            "line": 1235
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.7,
+          "detail": "model_generic: codellama",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.json",
+            "line": 564
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.7,
+          "detail": "model_generic: codellama",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.with-llm_gpt_4_1_mini.json",
+            "line": 546
+          }
+        }
+      ]
+    },
+    {
+      "id": "e41bc70c-e014-4675-8b92-5bd478bcb606",
+      "name": "command-registry.js",
+      "component_type": "MODEL",
+      "confidence": 1.0,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "command_registry_js",
+          "adapter": "model_generic",
+          "evidence_count": 4,
+          "normalizer": "model-name",
+          "confidence_breakdown": {
+            "regex_confidence": 0.95,
+            "llm_confidence": 0.0,
+            "evidence_count": 5,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3",
+              "confidence:high"
+            ],
+            "base_confidence": 0.76,
+            "evidence_multiplier": 1.4,
+            "validation_penalty": 0.0,
+            "final_confidence": 1.0
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "model_generic: command-registry.js",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.enriched.json",
+            "line": 5461
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: command-registry.js",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.enriched.json",
+            "line": 1332
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: command-registry.js",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.json",
+            "line": 600
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: command-registry.js",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.with-llm_gpt_4_1_mini.json",
+            "line": 582
+          }
+        }
+      ]
+    },
+    {
+      "id": "cb885e18-d100-4376-b1aa-89bbb52cf803",
+      "name": "command-registry.test.js",
+      "component_type": "MODEL",
+      "confidence": 0.5720000000000001,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "command_registry_test_js",
+          "adapter": "model_generic",
+          "evidence_count": 4,
+          "normalizer": "model-name",
+          "llm_soft_rejected": true,
+          "llm_verification_reason": "The node name 'command-registry.test.js' indicates it is a test file, which matches rejection criteria #1.",
+          "confidence_breakdown": {
+            "regex_confidence": 0.55,
+            "llm_confidence": 0.0,
+            "evidence_count": 4,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3"
+            ],
+            "base_confidence": 0.44,
+            "evidence_multiplier": 1.3,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.572
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: command-registry.test.js",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.enriched.json",
+            "line": 1429
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: command-registry.test.js",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.json",
+            "line": 636
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: command-registry.test.js",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.with-llm_gpt_4_1_mini.json",
+            "line": 618
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "model_generic: command-registry.test.js",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.enriched.json",
+            "line": 5542
+          }
+        }
+      ]
+    },
+    {
+      "id": "4a552c8c-c431-4e53-ad3a-39433bb85e25",
+      "name": "gemini-1.5",
+      "component_type": "MODEL",
+      "confidence": 0.5720000000000001,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "gemini_1_5",
+          "adapter": "model_generic",
+          "evidence_count": 4,
+          "normalizer": "model-name",
+          "llm_soft_rejected": true,
+          "llm_verification_reason": "The node is found in an SBOM JSON file, with no concrete instantiation or usage context, low confidence, and no framework or model_name specified; likely a metadata entry rather than a production AI model instantiation.",
+          "confidence_breakdown": {
+            "regex_confidence": 0.55,
+            "llm_confidence": 0.0,
+            "evidence_count": 4,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3"
+            ],
+            "base_confidence": 0.44,
+            "evidence_multiplier": 1.3,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.572
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: gemini-1.5",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.enriched.json",
+            "line": 5613
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: gemini-1.5",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.enriched.json",
+            "line": 1526
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: gemini-1.5",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.json",
+            "line": 672
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: gemini-1.5",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.with-llm_gpt_4_1_mini.json",
+            "line": 654
+          }
+        }
+      ]
+    },
+    {
+      "id": "a273e5f8-fde0-4b50-b5ec-bb5edd8543fc",
+      "name": "gpt-4.1-mini",
+      "component_type": "MODEL",
+      "confidence": 1.0,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "gpt_4_1_mini",
+          "adapter": "model_generic",
+          "evidence_count": 12,
+          "normalizer": "model-name",
+          "confidence_breakdown": {
+            "regex_confidence": 0.95,
+            "llm_confidence": 0.0,
+            "evidence_count": 6,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3",
+              "evidence:4",
+              "confidence:high"
+            ],
+            "base_confidence": 0.76,
+            "evidence_multiplier": 1.4,
+            "validation_penalty": 0.0,
+            "final_confidence": 1.0
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "model_generic: gpt-4.1-mini",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.enriched.json",
+            "line": 1720
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "model_generic: gpt-4.1-mini",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.json",
+            "line": 744
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.8,
+          "detail": "model_generic: gpt-4.1-mini",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.with-llm_gpt_4_1_mini.json",
+            "line": 726
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: openai/gpt-4.1-mini",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.enriched.json",
+            "line": 1816
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: openai/gpt-4.1-mini",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.json",
+            "line": 779
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "model_generic: gpt-4.1-mini",
+          "location": {
+            "path": "reports/stateset-icommerce.redteam.ci.with-llm.json",
+            "line": 5
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "model_generic: openai/gpt-4.1-mini",
+          "location": {
+            "path": "reports/stateset-icommerce.redteam.ci.with-llm.json",
+            "line": 5
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "model_generic: openai/gpt-4.1-mini",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.with-llm_gpt_4_1_mini.json",
+            "line": 761
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "model_generic: gpt-4.1-mini",
+          "location": {
+            "path": "nuguard_azure.yaml",
+            "line": 8
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "model_generic: gpt-4.1-mini",
+          "location": {
+            "path": "nuguard_openai.yaml",
+            "line": 8
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "model_generic: gpt-4.1-mini",
+          "location": {
+            "path": "reports/stateset-icommerce.validate.dynamic.with-llm.json",
+            "line": 5
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "model_generic: openai/gpt-4.1-mini",
+          "location": {
+            "path": "nuguard_openai.yaml",
+            "line": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": "18ad38bb-28bc-4185-8f96-f8473f547b9f",
+      "name": "gpt-4o-2024-01",
+      "component_type": "MODEL",
+      "confidence": 0.728,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "gpt_4o_2024_01",
+          "adapter": "model_generic",
+          "evidence_count": 12,
+          "normalizer": "model-name",
+          "confidence_breakdown": {
+            "regex_confidence": 0.65,
+            "llm_confidence": 0.0,
+            "evidence_count": 5,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3",
+              "evidence:4"
+            ],
+            "base_confidence": 0.52,
+            "evidence_multiplier": 1.4,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.728
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "model_generic: GPT-4o",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.enriched.json",
+            "line": 5739
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.75,
+          "detail": "model_generic: gpt-4",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.enriched.json",
+            "line": 5924
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: gpt-4o-2024-01",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.enriched.json",
+            "line": 5702
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: gpt-4o-2024-01",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.enriched.json",
+            "line": 1871
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: gpt-4o-2024-01",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.json",
+            "line": 834
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: gpt-4o-2024-01",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.with-llm_gpt_4_1_mini.json",
+            "line": 789
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "model_generic: gpt-4",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.enriched.json",
+            "line": 1958
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "model_generic: gpt-4",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.json",
+            "line": 860
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "model_generic: gpt-4",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.with-llm_gpt_4_1_mini.json",
+            "line": 815
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "model_generic: gpt-4o",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.enriched.json",
+            "line": 1949
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "model_generic: gpt-4o",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.json",
+            "line": 851
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "model_generic: gpt-4o",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.with-llm_gpt_4_1_mini.json",
+            "line": 806
+          }
+        }
+      ]
+    },
+    {
+      "id": "7d239743-a9f4-4076-9b3b-47d2440a1edb",
+      "name": "gpt-4o-mini",
+      "component_type": "MODEL",
+      "confidence": 0.8400000000000001,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "gpt_4o_mini",
+          "adapter": "model_generic",
+          "evidence_count": 4,
+          "normalizer": "model-name",
+          "confidence_breakdown": {
+            "regex_confidence": 0.75,
+            "llm_confidence": 0.0,
+            "evidence_count": 5,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3",
+              "confidence:high"
+            ],
+            "base_confidence": 0.6,
+            "evidence_multiplier": 1.4,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.84
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.75,
+          "detail": "model_generic: gpt-4o-mini",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.enriched.json",
+            "line": 5791
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: gpt-4o-mini",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.enriched.json",
+            "line": 2004
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: gpt-4o-mini",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.json",
+            "line": 906
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: gpt-4o-mini",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.with-llm_gpt_4_1_mini.json",
+            "line": 861
+          }
+        }
+      ]
+    },
+    {
+      "id": "0200265b-2e21-4e29-93ad-fc206dd5df29",
+      "name": "gpt-5-ultra",
+      "component_type": "MODEL",
+      "confidence": 0.676,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "gpt_5_ultra",
+          "adapter": "model_generic",
+          "evidence_count": 4,
+          "normalizer": "model-name",
+          "confidence_breakdown": {
+            "regex_confidence": 0.65,
+            "llm_confidence": 0.0,
+            "evidence_count": 4,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3"
+            ],
+            "base_confidence": 0.52,
+            "evidence_multiplier": 1.3,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.676
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: gpt-5-ultra",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.enriched.json",
+            "line": 6294
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: gpt-5-ultra",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.enriched.json",
+            "line": 2101
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: gpt-5-ultra",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.json",
+            "line": 942
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: gpt-5-ultra",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.with-llm_gpt_4_1_mini.json",
+            "line": 897
+          }
+        }
+      ]
+    },
+    {
+      "id": "cd99b726-ff45-4957-9deb-a1bea2839f63",
+      "name": "llama3:latest",
+      "component_type": "MODEL",
+      "confidence": 0.676,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "llama3_latest",
+          "adapter": "model_generic",
+          "evidence_count": 4,
+          "normalizer": "model-name",
+          "confidence_breakdown": {
+            "regex_confidence": 0.65,
+            "llm_confidence": 0.0,
+            "evidence_count": 4,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3"
+            ],
+            "base_confidence": 0.52,
+            "evidence_multiplier": 1.3,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.676
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: llama3:latest",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.enriched.json",
+            "line": 6383
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: llama3:latest",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.enriched.json",
+            "line": 2198
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: llama3:latest",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.json",
+            "line": 978
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: llama3:latest",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.with-llm_gpt_4_1_mini.json",
+            "line": 933
+          }
+        }
+      ]
+    },
+    {
+      "id": "756e3027-5acf-4ba9-8c88-826ddc4b7951",
+      "name": "o1-mini",
+      "component_type": "MODEL",
+      "confidence": 0.676,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "o1_mini",
+          "adapter": "model_generic",
+          "evidence_count": 4,
+          "normalizer": "model-name",
+          "confidence_breakdown": {
+            "regex_confidence": 0.65,
+            "llm_confidence": 0.0,
+            "evidence_count": 4,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3"
+            ],
+            "base_confidence": 0.52,
+            "evidence_multiplier": 1.3,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.676
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: o1-mini",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.enriched.json",
+            "line": 5915
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: o1-mini",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.enriched.json",
+            "line": 2295
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: o1-mini",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.json",
+            "line": 1014
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: o1-mini",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.with-llm_gpt_4_1_mini.json",
+            "line": 969
+          }
+        }
+      ]
+    },
+    {
+      "id": "61894153-54f3-461b-b2f5-032649ead046",
+      "name": "o1-model",
+      "component_type": "MODEL",
+      "confidence": 0.7839999999999999,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "o1_model",
+          "adapter": "model_generic",
+          "evidence_count": 12,
+          "normalizer": "model-name",
+          "confidence_breakdown": {
+            "regex_confidence": 0.7,
+            "llm_confidence": 0.0,
+            "evidence_count": 6,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3",
+              "evidence:4",
+              "confidence:high"
+            ],
+            "base_confidence": 0.56,
+            "evidence_multiplier": 1.4,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.784
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "model_generic: o1",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.enriched.json",
+            "line": 5828
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "model_generic: gemini-2.0",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.enriched.json",
+            "line": 5828
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.7,
+          "detail": "model_generic: o1-model",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.enriched.json",
+            "line": 6472
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: o1-model",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.enriched.json",
+            "line": 2392
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: o1-model",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.json",
+            "line": 1050
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: o1-model",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.with-llm_gpt_4_1_mini.json",
+            "line": 1005
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: gemini-2.0",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.enriched.json",
+            "line": 1623
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: gemini-2.0",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.json",
+            "line": 708
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: gemini-2.0",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.with-llm_gpt_4_1_mini.json",
+            "line": 690
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "model_generic: o1",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.enriched.json",
+            "line": 2470
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "model_generic: o1",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.json",
+            "line": 1067
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "model_generic: o1",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.with-llm_gpt_4_1_mini.json",
+            "line": 1022
+          }
+        }
+      ]
+    },
+    {
+      "id": "e1a61e9b-c8a3-49be-a3c2-a0ca3237c44a",
+      "name": "o2",
+      "component_type": "MODEL",
+      "confidence": 0.9520000000000002,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "o2",
+          "adapter": "model_generic",
+          "evidence_count": 4,
+          "normalizer": "model-name",
+          "confidence_breakdown": {
+            "regex_confidence": 0.85,
+            "llm_confidence": 0.0,
+            "evidence_count": 5,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3",
+              "confidence:high"
+            ],
+            "base_confidence": 0.68,
+            "evidence_multiplier": 1.4,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.952
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.8500000000000001,
+          "detail": "model_generic: o2",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.enriched.json",
+            "line": 6561
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.7,
+          "detail": "model_generic: o2",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.enriched.json",
+            "line": 2507
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.7,
+          "detail": "model_generic: o2",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.json",
+            "line": 1104
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.7,
+          "detail": "model_generic: o2",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.with-llm_gpt_4_1_mini.json",
+            "line": 1059
+          }
+        }
+      ]
+    },
+    {
+      "id": "ed497eb2-9bbc-4049-a013-a94c58621526",
+      "name": "phi3",
+      "component_type": "MODEL",
+      "confidence": 0.7839999999999999,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "phi3",
+          "adapter": "model_generic",
+          "evidence_count": 4,
+          "normalizer": "model-name",
+          "confidence_breakdown": {
+            "regex_confidence": 0.7,
+            "llm_confidence": 0.0,
+            "evidence_count": 5,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3",
+              "confidence:high"
+            ],
+            "base_confidence": 0.56,
+            "evidence_multiplier": 1.4,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.784
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.7,
+          "detail": "model_generic: phi3",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.enriched.json",
+            "line": 2604
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.7,
+          "detail": "model_generic: phi3",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.json",
+            "line": 1140
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.7,
+          "detail": "model_generic: phi3",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.with-llm_gpt_4_1_mini.json",
+            "line": 1095
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: phi3",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.enriched.json",
+            "line": 5382
+          }
+        }
+      ]
+    },
+    {
+      "id": "ea707247-9c4b-4ce7-bfa7-eefb75304f28",
+      "name": "admin",
+      "component_type": "PRIVILEGE",
+      "confidence": 1.0,
+      "metadata": {
+        "privilege_scope": "admin",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "privilege_admin",
+          "adapter": "privilege_admin",
+          "evidence_count": 5,
+          "privilege_scope": "admin",
+          "confidence_breakdown": {
+            "regex_confidence": 0.95,
+            "llm_confidence": 0.0,
+            "evidence_count": 6,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3",
+              "evidence:4",
+              "confidence:high"
+            ],
+            "base_confidence": 0.76,
+            "evidence_multiplier": 1.4,
+            "validation_penalty": 0.0,
+            "final_confidence": 1.0
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "privilege_admin: sudo",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.enriched.json",
+            "line": 6696
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "privilege_admin: require admin",
+          "location": {
+            "path": "reports/stateset-icommerce.redteam.ci.with-llm.json",
+            "line": 2424
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "privilege_admin: sudo",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.enriched.json",
+            "line": 2779
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "privilege_admin: sudo",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.json",
+            "line": 1194
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "privilege_admin: sudo",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.with-llm_gpt_4_1_mini.json",
+            "line": 1149
+          }
+        }
+      ]
+    },
+    {
+      "id": "3220cc66-c0a4-424c-a9ab-db58f166f297",
+      "name": "db_write",
+      "component_type": "PRIVILEGE",
+      "confidence": 1.0,
+      "metadata": {
+        "privilege_scope": "db_write",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "privilege_db_write",
+          "adapter": "privilege_db_write",
+          "evidence_count": 6,
+          "privilege_scope": "db_write",
+          "confidence_breakdown": {
+            "regex_confidence": 0.95,
+            "llm_confidence": 0.0,
+            "evidence_count": 6,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3",
+              "evidence:4",
+              "confidence:high"
+            ],
+            "base_confidence": 0.76,
+            "evidence_multiplier": 1.4,
+            "validation_penalty": 0.0,
+            "final_confidence": 1.0
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "privilege_db_write: DELETE FROM customers",
+          "location": {
+            "path": "reports/stateset-icommerce.redteam.ci.with-llm.json",
+            "line": 3848
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "privilege_db_write: CREATE TABLE IF",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.enriched.json",
+            "line": 6894
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.7,
+          "detail": "privilege_db_write: DELETE FROM customers",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.enriched.json",
+            "line": 2885
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.7,
+          "detail": "privilege_db_write: DELETE FROM customers",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.json",
+            "line": 1240
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.7,
+          "detail": "privilege_db_write: DELETE FROM customers",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.with-llm_gpt_4_1_mini.json",
+            "line": 1195
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "privilege_code_execution: exec(`\\n      CREATE TABLE IF NOT EXISTS agent_sessions (\\n        session_id   TEXT PRIMARY KEY,\\n        provider     ",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.enriched.json",
+            "line": 6894
+          }
+        }
+      ]
+    },
+    {
+      "id": "01b39839-d784-40db-94bc-85efcda013bd",
+      "name": "filesystem_write",
+      "component_type": "PRIVILEGE",
+      "confidence": 0.5720000000000001,
+      "metadata": {
+        "privilege_scope": "filesystem_write",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "privilege_filesystem_write",
+          "adapter": "privilege_filesystem_write",
+          "evidence_count": 4,
+          "privilege_scope": "filesystem_write",
+          "llm_soft_rejected": true,
+          "llm_verification_reason": "The evidence shows a filesystem write operation (open with 'wb') but does not demonstrate AI/ML functionality or integration; it is a generic privilege and not specifically AI-related.",
+          "confidence_breakdown": {
+            "regex_confidence": 0.55,
+            "llm_confidence": 0.0,
+            "evidence_count": 4,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3"
+            ],
+            "base_confidence": 0.44,
+            "evidence_multiplier": 1.3,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.572
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "privilege_filesystem_write: open('output_with_metadata.pdf', 'wb')",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.enriched.json",
+            "line": 3000
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "privilege_filesystem_write: open('output_with_metadata.pdf', 'wb')",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.json",
+            "line": 1295
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "privilege_filesystem_write: open('output_with_metadata.pdf', 'wb')",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.with-llm_gpt_4_1_mini.json",
+            "line": 1250
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "privilege_filesystem_write: open('output_with_metadata.pdf', 'wb')",
+          "location": {
+            "path": "reports/stateset-icommerce.redteam.ci.with-llm.json",
+            "line": 1451
+          }
+        }
+      ]
+    },
+    {
+      "id": "464cbbcd-63d8-4fd9-80e3-68bb026abf60",
+      "name": "network_out",
+      "component_type": "PRIVILEGE",
+      "confidence": 0.8960000000000001,
+      "metadata": {
+        "privilege_scope": "network_out",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "privilege_network_out",
+          "adapter": "privilege_network_out",
+          "evidence_count": 4,
+          "privilege_scope": "network_out",
+          "confidence_breakdown": {
+            "regex_confidence": 0.8,
+            "llm_confidence": 0.0,
+            "evidence_count": 5,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3",
+              "confidence:high"
+            ],
+            "base_confidence": 0.64,
+            "evidence_multiplier": 1.4,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.896
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.8,
+          "detail": "privilege_network_out: requests.delete(",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.enriched.json",
+            "line": 7855
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "privilege_network_out: requests.delete(",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.enriched.json",
+            "line": 3097
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "privilege_network_out: requests.delete(",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.json",
+            "line": 1332
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "privilege_network_out: requests.delete(",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.with-llm_gpt_4_1_mini.json",
+            "line": 1287
+          }
+        }
+      ]
+    },
+    {
+      "id": "24bb4a2d-6f87-49a1-b014-e8bbf6a86bb5",
+      "name": "rbac",
+      "component_type": "PRIVILEGE",
+      "confidence": 1.0,
+      "metadata": {
+        "privilege_scope": "rbac",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "privilege_rbac",
+          "adapter": "privilege_rbac",
+          "evidence_count": 7,
+          "privilege_scope": "rbac",
+          "confidence_breakdown": {
+            "regex_confidence": 0.95,
+            "llm_confidence": 0.0,
+            "evidence_count": 6,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3",
+              "evidence:4",
+              "confidence:high"
+            ],
+            "base_confidence": 0.76,
+            "evidence_multiplier": 1.4,
+            "validation_penalty": 0.0,
+            "final_confidence": 1.0
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "privilege_rbac: Access Control",
+          "location": {
+            "path": "reports/stateset-icommerce.redteam.ci.with-llm.json",
+            "line": 78
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "privilege_rbac: access control",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.enriched.json",
+            "line": 260
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "privilege_rbac: Access Control",
+          "location": {
+            "path": "reports/stateset-icommerce.validate.dynamic.with-llm.json",
+            "line": 206
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "privilege_rbac: Access Control",
+          "location": {
+            "path": "reports/stateset-icommerce.validate.dynamic.without-llm.json",
+            "line": 415
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.9,
+          "detail": "privilege_rbac: rbac",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.enriched.json",
+            "line": 3116
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.9,
+          "detail": "privilege_rbac: rbac",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.json",
+            "line": 1351
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.9,
+          "detail": "privilege_rbac: rbac",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.with-llm_gpt_4_1_mini.json",
+            "line": 1306
+          }
+        }
+      ]
+    },
+    {
+      "id": "84d84419-342f-4943-b574-e31b39a97ca1",
+      "name": "social_media_out",
+      "component_type": "PRIVILEGE",
+      "confidence": 1.0,
+      "metadata": {
+        "privilege_scope": "social_media_out",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "privilege_social_media_out",
+          "adapter": "privilege_social_media_out",
+          "evidence_count": 4,
+          "privilege_scope": "social_media_out",
+          "description": "This node represents the privilege to send outbound messages to social media channels (e.g., Discord) from the application.",
+          "llm_verified": true,
+          "llm_verification_reason": "The code snippet shows concrete usage of a social media outbound privilege via channel.send in production code (cli/src/discord/gateway.js). This matches the PRIVILEGE type for social media outbound actions.",
+          "llm_confidence": 0.8,
+          "confidence_breakdown": {
+            "regex_confidence": 0.8,
+            "llm_confidence": 0.8,
+            "evidence_count": 6,
+            "evidence_sources": [
+              "llm:verified",
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3",
+              "confidence:high"
+            ],
+            "base_confidence": 0.8,
+            "evidence_multiplier": 1.4,
+            "validation_penalty": 0.0,
+            "final_confidence": 1.0
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "privilege_social_media_out: update_status",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.enriched.json",
+            "line": 8122
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "privilege_social_media_out: update_status",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.enriched.json",
+            "line": 3318
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "privilege_social_media_out: update_status",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.json",
+            "line": 1433
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "privilege_social_media_out: update_status",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.with-llm_gpt_4_1_mini.json",
+            "line": 1388
+          }
+        }
+      ]
+    },
+    {
+      "id": "cbcf2239-80a7-436d-832c-1ddde2088c1a",
+      "name": "generic",
+      "component_type": "PROMPT",
+      "confidence": 1.0,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "prompt_generic",
+          "adapter": "prompt_generic",
+          "evidence_count": 8,
+          "confidence_breakdown": {
+            "regex_confidence": 0.95,
+            "llm_confidence": 0.0,
+            "evidence_count": 6,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3",
+              "evidence:4",
+              "confidence:high"
+            ],
+            "base_confidence": 0.76,
+            "evidence_multiplier": 1.4,
+            "validation_penalty": 0.0,
+            "final_confidence": 1.0
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "prompt_generic: regex",
+          "location": {
+            "path": "reports/stateset-icommerce.redteam.ci.with-llm.json",
+            "line": 1643
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.8,
+          "detail": "prompt_generic: regex",
+          "location": {
+            "path": "reports/stateset-icommerce.validate.dynamic.with-llm.json",
+            "line": 208
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.8,
+          "detail": "prompt_generic: regex",
+          "location": {
+            "path": "reports/stateset-icommerce.validate.dynamic.without-llm.json",
+            "line": 206
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.75,
+          "detail": "prompt_generic: regex",
+          "location": {
+            "path": "reports/stateset-icommerce.redteam.ci.json",
+            "line": 390
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "prompt_generic: regex",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.enriched.json",
+            "line": 10098
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "prompt_generic: regex",
+          "location": {
+            "path": "nuguard_azure.yaml",
+            "line": 26
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "prompt_generic: regex",
+          "location": {
+            "path": "nuguard_no_llm.yaml",
+            "line": 23
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "prompt_generic: regex",
+          "location": {
+            "path": "nuguard_openai.yaml",
+            "line": 26
+          }
+        }
+      ]
+    },
+    {
+      "id": "b6074975-ec70-4207-9c48-d0cb3fd4211e",
+      "name": "workspace_connector",
+      "component_type": "TOOL",
+      "confidence": 0.728,
+      "metadata": {
+        "description": "The workspace_connector tool integrates and synchronizes data between different work environments, enabling seamless collaboration and efficient workflow management across platforms.",
+        "high_privilege": false,
+        "sql_injectable": false,
+        "ssrf_possible": false,
+        "accepts_external_url": false,
+        "reads_external_content": false,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "tool_workspace_connector",
+          "adapter": "tool_workspace_connector",
+          "evidence_count": 5,
+          "confidence_breakdown": {
+            "regex_confidence": 0.65,
+            "llm_confidence": 0.0,
+            "evidence_count": 5,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3",
+              "evidence:4"
+            ],
+            "base_confidence": 0.52,
+            "evidence_multiplier": 1.4,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.728
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "tool_workspace_connector: HubSpot",
+          "location": {
+            "path": "reports/stateset-icommerce.redteam.ci.with-llm.json",
+            "line": 2792
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "tool_workspace_connector: HubSpot",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.enriched.json",
+            "line": 3564
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "tool_workspace_connector: HubSpot",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.no-llm.smoke.json",
+            "line": 1562
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "tool_workspace_connector: HubSpot",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.with-llm_gpt_4_1_mini.json",
+            "line": 1490
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "tool_workspace_connector: Zendesk",
+          "location": {
+            "path": "reports/stateset-icommerce.sbom.enriched.json",
+            "line": 10338
+          }
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "source": "e2c6b779-1ab0-432c-a3ac-f3609e667bb2",
+      "target": "339ce19f-fdf7-4c5d-ae30-3c1b02c11d37",
+      "relationship_type": "PROTECTS"
+    }
+  ],
+  "deps": [],
+  "summary": {
+    "use_case": "This AI application facilitates general agentic task orchestration with integration of one tool and no agents or guardrails. It supports text and voice modalities but does not support image or video inputs. The system includes multiple AI models and datastore integrations (MongoDB, PostgreSQL), with a generic API endpoint and authentication mechanism, though no dedicated MCP server is specified.",
+    "frameworks": [],
+    "modalities": [
+      "TEXT",
+      "VOICE"
+    ],
+    "modality_support": {
+      "text": true,
+      "voice": true,
+      "image": false,
+      "video": false
+    },
+    "api_endpoints": [],
+    "deployment_platforms": [
+      "Azure",
+      "AWS"
+    ],
+    "regions": [
+      "ap_payments",
+      "ca-certificates",
+      "ap-aging"
+    ],
+    "environments": [
+      "test",
+      "production",
+      "development",
+      "staging",
+      "dev",
+      "stage",
+      "prod",
+      "qa"
+    ],
+    "deployment_urls": [],
+    "iac_accounts": [
+      "6dc919ae-cbef-405c-bfd6-adcbdf773886",
+      "b5afb6c0-75c4-41fd-9fcf-7910511196c8",
+      "168fa6cb-5335-411e-adab-6f77d4c69b51",
+      "96e83af9-1408-4fa1-8502-f0c26a1c9118",
+      "201264f0-51ee-4858-ba46-cbf9bd0e428f",
+      "b8012903-b1dd-499a-9247-ffb296e84400",
+      "11338953-7701-4732-be96-9d6cf9a5bc10",
+      "ad091ecd-acfd-4117-a72e-5b5e654b68d1",
+      "bbd4e578-84b8-4063-81fe-bf8c8d8ba769",
+      "0cab5dc2-10e1-4095-95fa-08fd607a8a76",
+      "2632db5b-11ab-4c88-97f9-6428b83630a7",
+      "073cfd42-0f8b-4559-85fb-4a960b021d48",
+      "b1037ac4-4e00-4798-ae31-d3976c4c0208",
+      "4d54d20d-3c74-417a-8847-4dd6a6cc7654",
+      "3332d462-935f-4eef-84d6-91c01a2490d1",
+      "360f881e-3f4d-45b8-85e2-85e77f31fd99",
+      "32e696a2-bb6c-4a76-ba95-df7f88454a09",
+      "94fba083-fb7e-4169-95e2-d3ef34878343",
+      "7ded141d-5a02-4c23-904f-b771fe6bba53",
+      "88b3f0cb-4ebe-49ac-a062-cfc5a5a2a909",
+      "c2c35b24-2d07-4f20-b3b5-c669b0b62428",
+      "663be796-1cb9-4851-a80f-f7a77173cc6c",
+      "4fe88599-b594-46e9-aa9b-422997d2e41b",
+      "3869bc97-e7e4-4426-beb1-d4530a887335",
+      "b760f671-cae5-4256-a567-87bd851a0a77",
+      "9fa6fc56-8d7b-47ea-84ed-4e074c62e3a1",
+      "50e7defc-8069-454e-a82a-0a0006fc49b4",
+      "f2db61b9-5e38-4bb6-b886-f796a5290646",
+      "e6beff55-0c08-4ebf-94f6-0dc88619d782",
+      "0ea7d20f-fa74-4eb4-aa32-9b4bbdd01fff",
+      "1e024888-7f89-488e-901e-949ac82929eb",
+      "670d05a6-d00b-4f50-a1ed-71f3e89269de",
+      "427a2ff1-e75e-4fe2-9b4f-5f6c68222497",
+      "c0d8858d-c41c-4c3c-a108-d26454983d24",
+      "0355a801-b35c-4f70-8fe1-349ef66e55f8",
+      "cbd479d1-1f5d-47fd-9647-ba3a5856dc88",
+      "546e788e-2e15-4015-aa49-32b4e1682bc8",
+      "a1af1855-ce54-4f87-af1f-7ce7fd6d416e",
+      "123eb43e-046b-456f-8dfe-41078321808f",
+      "8edb66b5-9b07-4bb0-9777-b530ae2d1ceb",
+      "000000000000",
+      "000000000001",
+      "000000000002",
+      "3637ffde-ddb7-43cb-8207-e9a839f5eb05",
+      "bc8ecaea-00bd-44e7-8a63-67e7460ec2f2",
+      "2aa3e4c7-92b5-4504-856c-0cfeb691a0d7",
+      "aec7f58b-08ed-4ba7-8fca-b2e9dbedffb3",
+      "607f5428-0903-465b-859e-bb1566dec434",
+      "93834b37-db7b-4c83-9851-db626007bbf5",
+      "53a01719-4dcc-41f2-9b20-e00cfd84a889",
+      "0a44d235-b574-444a-a67f-8cbed7e73e55",
+      "55e6d021-fca4-42b7-91ea-32a9025c76d5",
+      "735a665a-10bf-4bd5-86d7-a6fb0678f653",
+      "0f56bfb7-ed30-4b56-8625-9617708cc717",
+      "a8c4cb24-d1c7-49c7-9b1e-8737d38d1119",
+      "20628764-e2e2-4baf-9d1a-168f0bd66d05",
+      "9c1125a6-76cc-4a84-840f-d72e2a64f877",
+      "5ecb9916-8723-4396-9a78-ddf804cde3f6",
+      "b7817bba-28c8-42c9-a8aa-6742e4721cdf",
+      "775fd61e-28ff-4ab2-9b44-f99048d75fe8",
+      "b04d2e6c-4d96-4296-9723-09f0f0130a2f",
+      "75b4f99c-cb79-45dd-aa6a-be8692332e61",
+      "cc99b4dc-c41a-46ae-9713-c41abe682541",
+      "0c9b439c-8abc-49ba-91d7-3a9b0ab31f65",
+      "8d5e147e-8422-4da7-8e6a-61d62ef5a7e3",
+      "b03dc15e-a4a9-4a29-bf90-3f15ed067332",
+      "e91b6793-d1ae-49aa-a351-af0b108de783",
+      "fe4f565d-c269-42a0-a35f-58b1c6ef64d3",
+      "68f96a5a-9137-43d0-bab8-a0d41bc9b21c",
+      "15d1fb71-b26d-409e-a6f8-68e5eea20db8",
+      "aa463f0c-d3ce-4aad-af94-d2ff66e183bd",
+      "b436f647-cd0d-4863-aee5-2fc08bb7a78f",
+      "7d9d794d-8f83-482d-a80a-929045f36dcf",
+      "0e1db985-19f1-4c35-82ef-a08c91c1538c",
+      "435b91ee-7f10-45d2-901f-a89ee9236ed5",
+      "1dac58bd-28c2-4391-a966-22efdd4fd6cb",
+      "1172141f-668a-4353-babf-31f8d48314c2",
+      "6bb6adba-49ca-4d2a-99ee-7dc07eeaa545",
+      "c26b7484-9ea3-47b8-a200-45792af5e2f3",
+      "68da0037-e94e-4903-ac50-6f65133956b7",
+      "7d17b5c1-7cfd-40ac-80c7-8621e69ee2ea",
+      "6bd03752-89fa-40f5-95e6-6e6c06750203",
+      "c28f1058-9900-4262-b821-4a0ca07d4f0f",
+      "aa51e19d-62b3-4381-9f6f-0e69cf9da0eb",
+      "88899a37-464e-4378-8a97-172be68ac886",
+      "9a7c4965-5dbc-499a-a948-7d5e7967bcef",
+      "0840a0de-6ed4-4ad9-a023-43fb3625893c",
+      "8fdf248c-b8d4-4136-9542-d88a52e8560b",
+      "96e72620-1535-4faa-a5fb-328c86ff68a0",
+      "f21690df-6417-432c-b81a-ead60bf4d833",
+      "6b437d7f-b2ff-42ed-9359-fdb5d852bf3e",
+      "e56e5d8e-d875-435d-9ee3-ccdfbe50b446",
+      "3f7f66fb-2d60-40b5-bf1a-aad406ddabd9",
+      "ce75c28e-aec2-422f-bf2c-48ee1e91365a",
+      "d3d69ba6-992e-4b4c-b3e4-808f33bdc883",
+      "a004f70a-ea84-4b2b-8c46-a8d4d3be1a2c",
+      "3e6387b9-1b45-4869-aa00-1428cf44e9fe",
+      "2b513b7d-df51-4e31-bc5a-b0c875fdd8ac",
+      "475636ec-7957-446e-869a-eded725d8f9a",
+      "9b24ae25-ad02-4d4e-8f00-a84a5ce5b84a",
+      "76071f90-5327-4ed2-b332-1efadf2cb381",
+      "da8d525a-bc7c-495f-b8eb-892e9d04bca3",
+      "2ad7cac5-e3bb-4a71-951e-739bf7bb97f6",
+      "3364e018-d57c-4746-8cfb-e2f78d86320f",
+      "e617f6b5-2a11-4d90-adfb-d88d1bac91b2",
+      "fd639ce3-eecd-4991-9ed4-90a8fb958a69",
+      "8c04c2e2-c4a6-4f2b-98dc-0020aa511cc8",
+      "c9de735e-6ea0-496c-b55a-6fac00d8c413",
+      "ce0022ed-5d17-4a4d-b2b7-ea61126e7e08",
+      "17ae1151-a66b-491c-b5db-f571bf541bbb",
+      "bdc0c10b-8922-4a2b-bb9a-35f0ba602e24",
+      "cd2968a2-f178-4daa-9f7b-52cb7297fb43",
+      "00000000-0000-0000-0000-000000000000",
+      "00000000-0000-0000-0000-000000000001",
+      "00000000-0000-0000-0000-000000000002",
+      "40b75b1b-982a-46d8-88f4-efa2b9910f90",
+      "ecbd0f4a-f6f4-4e6a-af20-39afe8d792d1",
+      "efbae92d-7d69-4c14-a37c-7c7ed7147290",
+      "73b53b8f-59b4-4696-98a6-148b24599910",
+      "1696257d-2958-4f64-bb34-3f24e16ade89",
+      "483e4bac-5cce-4061-80b7-e205fab9c87a",
+      "2091d8b5-fbea-44cd-b1de-63f137fa767a",
+      "97380a4c-5227-420c-aa4f-e993e6761e87",
+      "09f4890f-7e24-4402-a2d8-9f054ca4342e",
+      "df3e9463-bc2f-4649-9940-c0a5fc37043f",
+      "d92e045c-4f7a-435f-9463-d39e8b568490",
+      "36f91b9d-0b45-4fa5-a935-bcc0951ad2b1",
+      "81373db4-31de-48dd-8594-9797ddd67bd0",
+      "8dcea1bf-0c3d-4af0-9d88-9e45fd2189df",
+      "72148f8d-ab86-4e56-94a4-3970c4bc5910",
+      "91f9b96f-960e-4310-90a2-296c5f142865",
+      "97bb66a2-d05b-455a-8025-14603faab300",
+      "26a5ccf8-e185-47a1-9100-1b0ab38eb896",
+      "0da9b6ad-5dc5-4c78-aa31-cd8b4e03ab2e",
+      "32b637e5-2c11-47d1-b089-df2903e0fd7a",
+      "e0d57cd2-0b7d-4d4f-9e84-503275ef2509",
+      "8c60dbfe-ca2e-4212-a6b8-effca189629a",
+      "4231778e-b6de-4c98-94be-300db9628f11",
+      "65007904-c005-4865-bd15-0ab9f2583c09",
+      "e14c8f35-5f66-4e3b-9a3a-d94921985de8",
+      "2c41d592-85b3-4bf4-8be9-9b506b81de99",
+      "3a66329a-3dc8-42f1-bc54-b270dd676011",
+      "a14cdd42-b479-43b6-91e4-73d256afcb44",
+      "5ac68225-d1a2-4a5c-ab6b-0038c4fd85af",
+      "96eebfa2-030f-4689-89b5-8cae227a739e",
+      "08db255c-cb46-47e6-ac33-89941d36f22e",
+      "26761912-5b22-40a5-8ecc-b9865fdd9fc8",
+      "51bd404a-883a-4834-ad52-91a291c7c29c",
+      "d51839b0-ecb9-42d0-b6fd-4b2492b364a7",
+      "14089bc2-be7b-4c5a-bd77-2b9de8e2a31f",
+      "f1d3f7af-8c25-4d07-a92b-7de66ec40cec",
+      "4cd16353-6f2e-47fc-9357-7d7169cbd958",
+      "391ef5ff-96c4-477e-b4fc-898c6e358f6a",
+      "6faf8d18-928f-40c9-9dae-0f9f9615de49",
+      "71d13b5f-57ba-49c8-8f55-7049ca2b363c",
+      "0eb3dc5b-f3ea-4593-bac1-a379a2f36f5c",
+      "c4383e09-a950-41a6-9e69-5a5196e323c4",
+      "f6f968b7-b9f1-4131-935c-e0ea13feba4f",
+      "e9bd0f44-9e50-41d4-a3e1-5dd2fb1e0d7a",
+      "fffdef7e-c068-4ba1-b33d-5729d51e6c00",
+      "3346c364-143a-4393-b1e2-47c911c2220c",
+      "77b0806a-3a0a-4795-80ba-f7d2e6b6de0e",
+      "718f9d0a-a50a-4a10-bd73-559dfad7227c",
+      "94ea9ac4-4c38-413b-9a74-fa61eb161048",
+      "d5f1087c-3bc1-4b0d-97d9-a632b364c74d",
+      "c8544796-6979-46e1-87d2-f4dfe33b7da8",
+      "f075df81-a990-4fdb-b66c-b87a35031ce6",
+      "d7408dc1-b88f-412b-9577-3990293fadb0",
+      "09aa892e-a0fc-4409-9102-f58e09f92051",
+      "95b1ad60-0000-4759-9006-d97c03fd080d",
+      "9322427c-c31e-4c55-b665-bf89a09dda01",
+      "668c6834-59db-4918-962a-46244b84fbf4",
+      "2c5204ba-bfea-4894-bbbb-fd6d45a1c54f",
+      "af071773-266f-4e0e-a23d-5a7aeb6decf9",
+      "3114e4e8-4fce-4fd5-b31e-6bb05c23c72b",
+      "4da21a6a-0931-4aef-96c4-bae0fbc50dd0",
+      "5a1da39b-f097-476a-8ae8-80e12191356d",
+      "a15386d2-5f09-4cc8-9123-4c4f3aea8e7c",
+      "1ed29807-dd11-4ef6-9bb4-3a7f19d81c4f",
+      "d03b65ef-a0f8-4594-86a2-0a2b9088aa37",
+      "398ddd48-8aec-4dc1-a87f-8bb3d3b143b6",
+      "4fe54383-4698-48aa-9b11-5e79995ee439",
+      "6868df28-c346-41b3-b3c4-eb009abc8e47",
+      "283a42fa-e188-4c5f-90c1-8508ea63405e",
+      "efb2be6e-90ca-4db2-88d9-3b7ffbd9cbea",
+      "7e2a21e0-12f2-4cb1-ba3d-2e71f734410d",
+      "8059d49c-0ea2-439e-bb1b-4a05e481e743",
+      "a5f7cdcf-cf11-4691-bbf7-4421aa580340",
+      "a1c37c29-ba18-4494-b0e2-7f62210bbe92",
+      "acfe5ccc-6297-45ea-9538-c5bc164d55ef",
+      "3df05b4e-e22a-4428-b4a7-af2877f5cdd6",
+      "0479aca7-c58c-4fdc-9923-f2e150bee368",
+      "a03ab8fc-ffae-43ac-8bda-09b8c0ce83bb",
+      "61c78890-630c-432e-9b4b-9174871268e7",
+      "c569e38e-75b3-4661-a270-f490f1595013",
+      "a448da8f-ef8e-4c71-b042-044b634d2d70",
+      "25f68b1d-c73c-4d14-8032-1b9874d04a6b",
+      "af47b666-34c9-48a0-b0e5-72e6d256c8aa",
+      "80340b11-24da-4ee4-aa38-e58c649abaec",
+      "62eb9664-67af-46f5-9d21-99118f56ea3e",
+      "b009a489-ccf0-48e0-9186-690e3efcc015",
+      "a3f26ea4-cdaa-452a-bc4f-6e066b08e73d",
+      "df7ce862-4ad4-4a37-a0d1-5e7d17624b77",
+      "8d996a3f-365d-4284-a12a-95ea26aaeb51",
+      "6a63f61d-6620-4275-bb2f-bd13f3b38a90",
+      "78e42442-6b0c-465f-98b9-5c1ed65e4ada",
+      "195a3f3c-3615-4c24-9605-5472f9a8f8fe",
+      "a89c98eb-d2f5-4011-a7e0-430f6e75b099",
+      "73801ba5-83a3-4e9e-bd3f-852ddb70acec",
+      "d3117eaf-a1b6-470c-8d4a-c0670c0d681a",
+      "67e41c8d-9195-4aff-b364-92de8952c32a",
+      "8ce3a6e4-9af5-455e-bd71-24c41a2e6b1b",
+      "29484a42-0205-4a4d-9e16-481a58c93b7f",
+      "bcca8188-c410-496e-bb6f-728af607a9bb",
+      "d7926063-d3fb-403b-a5b9-562fe13dfacd",
+      "28303cdc-866d-47f0-a692-ba792b472c03",
+      "d27eaf4c-5054-41ef-8419-d9949c2da043",
+      "e8d84c47-3ab3-4c6c-bfae-5cccaa104517",
+      "3ac726a8-4a62-4903-99d4-9f6538cae263",
+      "de8b9000-f68a-4c85-a283-42703d756faf",
+      "2754044e-9d67-4695-91e6-5933477febd8",
+      "21ca70bf-e982-499d-a206-4ee721bad240",
+      "cecae5c5-fad9-4986-83bc-043c5cacb949",
+      "f779dd3f-332a-4a5b-aa43-918b46f15c2d",
+      "9b25aa62-5717-43e9-a50a-16374e8cccfb",
+      "0e3a3980-82ea-4152-b1cf-b1aad216a96f",
+      "29f55b0b-ac40-44e7-851f-82a9dde826e5",
+      "5bb03c50-39d8-4942-8b54-f77eb75df7ec",
+      "2b549493-fc67-4941-97de-e3d0ae72ab4a",
+      "a48cdd4d-6635-4edf-aec4-509343a165b3",
+      "40267837-359b-4131-b522-9cb0fc1d9ef5",
+      "ff1132af-83b3-47b9-b4c5-9490e23b9346",
+      "e7cc04f8-a8d3-4d11-a207-af0a92c09349",
+      "0a827cbf-2394-4490-bcac-e368529380b5",
+      "df6223f1-0e2b-4a48-89ed-0960b450e3bb",
+      "8b5586d7-7a32-4c59-a2ac-4e92f0bee74b",
+      "6026e121-52db-438b-8788-d189b3cc0447",
+      "f8966f48-717a-44db-b1a2-122e63d19740",
+      "4dc30c1a-dfd0-419c-aeb8-a2300e6c2b22",
+      "e4ecd137-f76d-454f-b3a2-4570495cefad",
+      "aee4ee4d-57ee-4f59-b887-7094f4a8e29d",
+      "f8a5bb62-a225-4688-8df5-d97bab5500b6",
+      "12267d12-769a-44dc-8405-73d3acdc5dac",
+      "f1c5c747-3160-424f-9ba6-fae487c060e8",
+      "6a67f015-2e8a-426f-983a-8a7d1dc286b8",
+      "244311c6-75a0-40ed-a6c1-ab32dd9956b9",
+      "82237413-0ee6-40f1-ae18-3e862eba9f5b",
+      "d547eaff-d13f-4d49-b324-dfd6ba46ca42",
+      "a5f624ff-ed3f-48ac-bc0a-8854fe4bdc06",
+      "3c3a7a28-9e9e-47a7-b1be-57b0d229ef97",
+      "65c90f60-9e20-4972-9bf4-87755de4824c"
+    ],
+    "node_counts": {
+      "API_ENDPOINT": 1,
+      "AUTH": 1,
+      "DATASTORE": 2,
+      "DEPLOYMENT": 1,
+      "MODEL": 19,
+      "PRIVILEGE": 6,
+      "PROMPT": 1,
+      "TOOL": 1
+    },
+    "secret_stores": [],
+    "availability_zones": [],
+    "encryption_at_rest_coverage": false,
+    "security_findings": [],
+    "iam_principals": [],
+    "service_accounts": [],
+    "iac_security_summary": "# Security Briefing: AI Application Infrastructure Review\n\n## 1. Deployment Posture\n- **Cloud Providers & Regions:** No explicit cloud provider or region information is detected in the infrastructure configuration. The single deployment node named \"generic\" lacks metadata indicating cloud environment or geographic distribution.\n- **High Availability / Resilience:** There is no evidence of multi-region or multi-availability zone deployment. The absence of availability zone data suggests no configured redundancy or failover mechanisms, which may impact application resilience and uptime SLAs.\n\n## 2. Secret Management\n- **Secret Stores:** No secret management solutions (e.g., AWS Secrets Manager, HashiCorp Vault, Azure Key Vault) are detected.\n- **Plaintext Secret Risks:** The absence of secret stores raises concerns about potential plaintext secrets embedded in code or configuration, increasing the risk of secret leakage and unauthorized access.\n\n## 3. Encryption\n- **Encryption-at-Rest Coverage:** The aggregate signals indicate no encryption-at-rest coverage is configured. This implies that data persistence layers (databases, storage volumes) may be unencrypted, exposing sensitive data to risk if storage is compromised.\n- **Key Management:** No key management infrastructure or integration with KMS services is detected, suggesting a lack of centralized cryptographic key lifecycle management.\n\n## 4. IAM / Least-Privilege\n- **Service Accounts & IAM Principals:** No service accounts or IAM principals are defined or detected. This absence suggests either default permissions are in use or IAM is not explicitly configured, which can lead to over-permissive access.\n- **OIDC Trusts & Policies:** No OIDC trust relationships or policy definitions are present, indicating no fine-grained identity federation or workload identity management is implemented.\n\n## 5. CI/CD Security\n- **GitHub Actions Runners & OIDC Config:** No information on CI/CD pipelines, GitHub Actions runners, or OIDC configurations is available. This lack of data prevents assessment of pipeline security posture, including least-privilege token issuance or workflow trigger controls.\n- **Workflow Trigger Surface:** Without detected workflows or triggers, it is unclear if the CI/CD pipeline is hardened against unauthorized or malicious code execution.\n\n## 6. Container Security\n- **Root Containers:** No container-specific security signals are present; therefore, it is unknown if containers run as root or with elevated privileges.\n- **Health Checks:** No health check configurations are detected, which may impact container lifecycle management and automated recovery.\n- **Resource Limits:** Absence of resource limit definitions (CPU, memory) can lead to resource contention or denial-of-service conditions within the cluster.\n\n## 7. Key Risks and Recommendations\n\n| Risk | Description | Recommendation |\n|-------|-------------|----------------|\n| **1. Lack of Secret Management** | No secret stores detected, increasing risk of secret exposure. | Implement a centralized secret management solution (e.g., Vault, AWS Secrets Manager) and eliminate plaintext secrets from code/configuration. |\n| **2. Missing Encryption-at-Rest** | Data storage is unencrypted, exposing sensitive data to compromise. | Enable encryption-at-rest for all persistent storage and integrate with a managed KMS for key lifecycle management. |\n| **3. Absence of IAM and Least-Privilege Controls** | No explicit IAM principals or service accounts, risking over-permissive access. | Define granular IAM roles and service accounts following least-privilege principles; implement OIDC trust where applicable for workload identity. |\n\n---\n\n**Summary:** The current infrastructure configuration lacks critical security controls across secret management, encryption, and identity management. Immediate focus should be on establishing secure secret storage, enabling encryption-at-rest, and implementing least-privilege IAM policies to reduce attack surface and protect sensitive data. Further investigation is needed to assess container and CI/CD security once additional configuration details are available.",
+    "data_classification": [],
+    "classified_tables": [],
+    "startup_commands": [],
+    "env_files": [],
+    "env_var_keys": [],
+    "staging_urls": [],
+    "production_urls": [],
+    "log_paths": [
+      "price_update.log"
+    ],
+    "uses_streaming": false,
+    "streaming_endpoints": []
+  },
+  "relationship_graph_md": "## Component Relationship Graph\n\n- The system includes a generic authentication component (AUTH) that protects a generic API endpoint, indicating an access control layer guarding API access.\n- There are multiple AI models (e.g., various Claude, GPT, Gemini, LLaMA, and other models) present, but none show connections to other components, suggesting no explicit orchestration or data flow between models and other parts.\n- Two datastores, MongoDB and PostgreSQL, exist but have no visible connections to any models, tools, or agents, implying no direct data access or integration is currently defined.\n- A generic prompt component and a workspace_connector tool are present but unconnected, indicating no active usage or orchestration in the current architecture.\n- No tools or models are shown to be orchestrated by any agents or connected to data stores, which may reflect an incomplete or minimal integration setup.\n- The only explicit security guardrail is the generic AUTH protecting the API endpoint; no other guardrails or protections are visible around models, tools, or datastores.\n- Notably, the workspace_connector tool is unguarded and unconnected, which could pose a risk if activated without proper access controls.\n- Overall, the architecture shows isolated components with minimal data flow and limited security coverage beyond API endpoint protection.\n\n```mermaid\nflowchart LR\n    generic_339ce1([\"🌐 generic\"])\n    mongodb_ad158c[(\"🗄 mongodb\")]\n    postgres_040b68[(\"🗄 postgres\")]\n    claude_3_5_haiku_20241022_184fb6[(\"🧠 claude-3-5-haiku-20241022\")]\n    claude_3_5_sonnet_20241022_74ce33[(\"🧠 claude-3-5-sonnet-20241022\")]\n    claude_haiku_3_5_20241022_1eb85c[(\"🧠 claude-haiku-3-5-20241022\")]\n    claude_opus_4_5_20251101_1dac0b[(\"🧠 claude-opus-4-5-20251101\")]\n    claude_sonnet_4_20250514_c1d2a1[(\"🧠 claude-sonnet-4-20250514\")]\n    claude_sonnet_4_5_20250929_fd38df[(\"🧠 claude-sonnet-4-5-20250929\")]\n    codellama_7a9f35[(\"🧠 codellama\")]\n    command_registry_js_e41bc7[(\"🧠 command-registry.js\")]\n    command_registry_test_js_cb885e[(\"🧠 command-registry.test.js\")]\n    gemini_1_5_4a552c[(\"🧠 gemini-1.5\")]\n    gpt_4_1_mini_a273e5[(\"🧠 gpt-4.1-mini\")]\n    gpt_4o_2024_01_18ad38[(\"🧠 gpt-4o-2024-01\")]\n    gpt_4o_mini_7d2397[(\"🧠 gpt-4o-mini\")]\n    gpt_5_ultra_020026[(\"🧠 gpt-5-ultra\")]\n    llama3_latest_cd99b7[(\"🧠 llama3:latest\")]\n    o1_mini_756e30[(\"🧠 o1-mini\")]\n    o1_model_618941[(\"🧠 o1-model\")]\n    o2_e1a61e[(\"🧠 o2\")]\n    phi3_ed497e[(\"🧠 phi3\")]\n    generic_cbcf22>\"💬 generic\"]\n    workspace_connector_b60749(\"🔧 workspace_connector\")\n\n\n    classDef agent    fill:#4A90D9,stroke:#2C6FAC,color:#fff\n    classDef tool     fill:#7ED321,stroke:#5A9A18,color:#fff\n    classDef model    fill:#9B59B6,stroke:#7D3C98,color:#fff\n    classDef prompt   fill:#F39C12,stroke:#D68910,color:#fff\n    classDef guard    fill:#E74C3C,stroke:#C0392B,color:#fff\n    classDef store    fill:#1ABC9C,stroke:#17A589,color:#fff\n    classDef fw       fill:#95A5A6,stroke:#717D7E,color:#fff\n    classDef endpoint fill:#3498DB,stroke:#2471A3,color:#fff\n    class workspace_connector_b60749 tool\n    class claude_3_5_haiku_20241022_184fb6,claude_3_5_sonnet_20241022_74ce33,claude_haiku_3_5_20241022_1eb85c,claude_opus_4_5_20251101_1dac0b,claude_sonnet_4_20250514_c1d2a1,claude_sonnet_4_5_20250929_fd38df,codellama_7a9f35,command_registry_js_e41bc7,command_registry_test_js_cb885e,gemini_1_5_4a552c,gpt_4_1_mini_a273e5,gpt_4o_2024_01_18ad38,gpt_4o_mini_7d2397,gpt_5_ultra_020026,llama3_latest_cd99b7,o1_mini_756e30,o1_model_618941,o2_e1a61e,phi3_ed497e model\n    class generic_cbcf22 prompt\n    class mongodb_ad158c,postgres_040b68 store\n    class generic_339ce1 endpoint\n```"
+}

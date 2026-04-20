@@ -1037,7 +1037,7 @@ class NgaRulesPlugin(AnalysisPlugin):
         # Phase 3: Grype scan
         grype_findings: list[dict[str, Any]] = []
         if provider in ("grype", "all"):
-            from nuguard.analysis.grype_client import query_grype_sbom, query_grype_images
+            from nuguard.analysis.grype_client import query_grype_images, query_grype_sbom
             grype_timeout = float(config.get("grype_timeout", 60.0))
             _log.info("Running grype sbom scan")
             for g in query_grype_sbom(sbom, timeout=grype_timeout):

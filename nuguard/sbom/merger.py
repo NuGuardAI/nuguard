@@ -229,17 +229,29 @@ class AiBomMerger:
 
         # ── AI relationship edges → CycloneDX dependencies ───────────────
         existing_deps: list[dict[str, Any]] = list(result.get("dependencies", []))
+        deps_by_ref: dict[str, dict[str, Any]] = {
+            str(dep_ref): dep
+            for dep in existing_deps
+            if (dep_ref := dep.get("ref"))
+        }
+        depends_on_sets: dict[str, set[str]] = {
+            dep_ref: set(dep.get("dependsOn", [])) for dep_ref, dep in deps_by_ref.items()
+        }
         for edge in ai_doc.edges:
             src_ref = id_to_ref.get(str(edge.source))
             tgt_ref = id_to_ref.get(str(edge.target))
             if src_ref and tgt_ref and src_ref != tgt_ref:
-                # Merge into existing entry for src_ref, or add new
-                existing_entry = next((d for d in existing_deps if d.get("ref") == src_ref), None)
-                if existing_entry:
-                    if tgt_ref not in existing_entry.get("dependsOn", []):
-                        existing_entry.setdefault("dependsOn", []).append(tgt_ref)
-                else:
-                    existing_deps.append({"ref": src_ref, "dependsOn": [tgt_ref]})
+                # Merge into existing entry for src_ref, or add new (O(1) lookup)
+                existing_entry = deps_by_ref.get(src_ref)
+                if existing_entry is None:
+                    existing_entry = {"ref": src_ref, "dependsOn": []}
+                    existing_deps.append(existing_entry)
+                    deps_by_ref[src_ref] = existing_entry
+                    depends_on_sets[src_ref] = set()
+                dep_set = depends_on_sets[src_ref]
+                if tgt_ref not in dep_set:
+                    existing_entry.setdefault("dependsOn", []).append(tgt_ref)
+                    dep_set.add(tgt_ref)
         result["dependencies"] = existing_deps
 
         # ── Metadata enrichment ───────────────────────────────────────────

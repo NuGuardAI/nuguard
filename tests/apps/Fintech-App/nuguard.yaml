@@ -1,0 +1,64 @@
+# nuguard.yaml — NuGuard config for FinTech GOAT red-team target
+# Run from this directory: uv --directory C:\Users\kani2\nuguard run nuguard <command>
+# Or if installed globally: nuguard <command>
+#
+# Priority order (highest wins): CLI flags > nuguard.yaml > env vars > built-in defaults
+
+# ─── Project file paths ───────────────────────────────────────────────────────
+source: ./src                         # generate SBOM from the src/ directory
+sbom: ./app.sbom.json                 # output path for generated SBOM
+policy: ./cognitive_policy.md         # cognitive policy (copy from nuguard repo if needed)
+
+# ─── LLM settings ─────────────────────────────────────────────────────────────
+llm:
+  model: azure/gpt-4o                 # matches the Azure OpenAI deployment used by the app
+  # Set AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT in your environment
+
+# ─── SBOM generation ──────────────────────────────────────────────────────────
+sbom_generation:
+  llm: false                          # set true to enrich SBOM nodes with LLM descriptions
+
+# ─── Red-team ─────────────────────────────────────────────────────────────────
+redteam:
+  # Orchestrator API — update to your deployed URL or keep localhost for Docker
+  # target: http://localhost:8001
+  target:  https://frontend-ui.agreeablesky-8c7ba25f.eastus.azurecontainerapps.io/
+  #target_endpoint: /api/chat
+
+  # Canary file — seeded with FinTech GOAT's known account data
+  canary: ./canary.json
+
+  # Full profile — run all scenarios (fintech-goat has 36 deliberate vulns)
+  profile: full
+  min_impact_score: 0.0
+
+  # All relevant scenario types for an AI banking app
+  scenarios:
+    - prompt-injection
+    - tool-abuse
+    - privilege-escalation
+    - data-exfiltration
+    - policy-violation
+    - mcp-toxic-flow
+
+  # Increase timeout — multi-agent LLM pipelines can be slow
+  request_timeout: 90
+  verbose: true
+  strict_outcome: false
+
+  # MCP services running internally — treated as trusted
+  mcp_trusted_servers:
+    - mcp-banking-server
+    - mcp-accounts
+    - mcp-admin
+    - mcp-audit
+
+# ─── Static analysis ──────────────────────────────────────────────────────────
+analyze:
+  min_severity: low                   # catch everything — this is a vuln target
+
+# ─── Output ───────────────────────────────────────────────────────────────────
+output:
+  format: markdown
+  fail_on: low
+  sarif_file: ./nuguard-results.sarif

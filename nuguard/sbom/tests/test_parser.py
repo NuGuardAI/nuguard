@@ -5,7 +5,6 @@ class instantiations, function calls, and string literals from Python source.
 """
 from __future__ import annotations
 
-
 from nuguard.sbom.ast_parser import ParseResult, parse
 
 

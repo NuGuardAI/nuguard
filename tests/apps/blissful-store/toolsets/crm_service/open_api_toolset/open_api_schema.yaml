@@ -1,0 +1,145 @@
+openapi: 3.0.0
+info:
+  title: Plant Demo Agent API
+  description: API for the plant demo agent that provides shopping cart information, product recommendations, and service quotes from the customer database.
+  version: 1.0.0
+servers:
+  - url: $env_var
+    description: Production server
+paths:
+  /get_cart_information:
+    get:
+      summary: Get Cart Information
+      description: Retrieves the current user's shopping cart information from the CRM.
+      operationId: get_cart_information
+      responses:
+        '200':
+          description: A successful response with the user's cart information.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetCartResponse'
+
+  /get_product_recommendations:
+    get:
+      summary: Get Product Recommendations
+      description: Retrieves product recommendations for the user based on their profile and cart contents.
+      operationId: get_product_recommendations
+      responses:
+        '200':
+          description: A successful response with product recommendations.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetRecommendationsResponse'
+  
+  /get_landscaping_quote:
+    post:
+      summary: Get Landscaping Quote
+      description: Generates a quote for landscaping services.
+      operationId: get_landscaping_quote
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LandscapingQuoteRequest'
+      responses:
+        '200':
+          description: A successful response with the landscaping quote.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetQuoteResponse'
+
+components:
+  schemas:
+    CartItem:
+      type: object
+      properties:
+        product_id:
+          type: string
+          example: "soil-123"
+        name:
+          type: string
+          example: "Standard Potting Soil"
+        quantity:
+          type: integer
+          example: 1
+    
+    CartInformation:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CartItem'
+        subtotal:
+          type: number
+          format: float
+          example: 25.98
+          
+    GetCartResponse:
+      type: object
+      properties:
+        results:
+          $ref: '#/components/schemas/CartInformation'
+
+    RecommendationItem:
+      type: object
+      properties:
+        product_id:
+          type: string
+          example: "soil-456"
+        name:
+          type: string
+          example: "Bloom Booster Potting Mix"
+        description:
+          type: string
+          example: "Provides extra nutrients that Petunias love."
+
+    ProductRecommendations:
+      type: object
+      properties:
+        recommendations:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecommendationItem'
+
+    GetRecommendationsResponse:
+      type: object
+      properties:
+        results:
+          $ref: '#/components/schemas/ProductRecommendations'
+
+    LandscapingQuoteRequest:
+      type: object
+      required:
+        - service_type
+        - amount
+      properties:
+        service_type:
+          type: string
+          description: The type of landscaping service requested.
+          example: "tree trimming"
+        amount:
+          type: integer
+          description: The quantity or area for the service.
+          example: 10
+
+    LandscapingQuote:
+      type: object
+      properties:
+        service_type:
+          type: string
+          example: "landscaping services"
+        amount:
+          type: number
+          format: float
+          example: 200.00
+          
+    GetQuoteResponse:
+      type: object
+      properties:
+        results:
+          $ref: '#/components/schemas/LandscapingQuote'

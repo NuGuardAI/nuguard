@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 
 from pydantic import BaseModel, Field
 
-from nuguard.models.exploit_chain import GoalType, ScenarioType, ExploitChain
+from nuguard.models.exploit_chain import ExploitChain, GoalType, ScenarioType
 
 if TYPE_CHECKING:
     from nuguard.redteam.models.guided_conversation import GuidedConversation

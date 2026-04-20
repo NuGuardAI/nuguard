@@ -1,0 +1,7 @@
+fastmcp>=3.2.0
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+requests>=2.28.0
+celery[redis]>=5.4.0
+opentelemetry-sdk>=1.20.0
+azure-monitor-opentelemetry>=1.6.0

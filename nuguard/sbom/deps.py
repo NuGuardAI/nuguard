@@ -18,6 +18,7 @@ full transitive closure.  For a complete lock-file SBOM combine this with
 from __future__ import annotations
 
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -62,6 +63,19 @@ class PackageDep(BaseModel):
 _SPLIT_RE = re.compile(r"[><=!~\[;\s]")
 _COMMENT_RE = re.compile(r"#.*$")
 _DIGIT_START = re.compile(r"\d")
+_MANIFEST_SKIP_DIRS = {
+    ".venv",
+    "venv",
+    ".env",
+    "env",
+    "node_modules",
+    ".git",
+    "__pycache__",
+    "site-packages",
+    "dist",
+    "build",
+    ".tox",
+}
 
 
 def _normalise(name: str) -> str:
@@ -129,6 +143,48 @@ def _poetry_spec(ver: object) -> str:
     return ""
 
 
+def _root_first_sorted(root: Path, paths: list[Path], root_name: str) -> list[Path]:
+    root_path = root / root_name
+    ordered = sorted(set(paths))
+    if root_path in ordered:
+        ordered.remove(root_path)
+        ordered.insert(0, root_path)
+    return ordered
+
+
+def _collect_manifest_candidates(root: Path) -> dict[str, list[Path]]:
+    """Walk project tree once and bucket manifest paths by type."""
+    pyproject_paths: list[Path] = []
+    requirements_paths: list[Path] = []
+    setup_cfg_paths: list[Path] = []
+    package_json_paths: list[Path] = []
+
+    for current_root, dirnames, filenames in os.walk(root):
+        dirnames[:] = [d for d in dirnames if d not in _MANIFEST_SKIP_DIRS]
+        current = Path(current_root)
+        in_requirements_dir = current.name == "requirements"
+
+        for filename in filenames:
+            path = current / filename
+            if filename == "pyproject.toml":
+                pyproject_paths.append(path)
+            elif filename == "setup.cfg":
+                setup_cfg_paths.append(path)
+            elif filename == "package.json":
+                package_json_paths.append(path)
+            elif filename.endswith(".txt") and (
+                filename.startswith("requirements") or in_requirements_dir
+            ):
+                requirements_paths.append(path)
+
+    return {
+        "pyproject": _root_first_sorted(root, pyproject_paths, "pyproject.toml"),
+        "requirements": sorted(set(requirements_paths)),
+        "setup_cfg": _root_first_sorted(root, setup_cfg_paths, "setup.cfg"),
+        "package_json": _root_first_sorted(root, package_json_paths, "package.json"),
+    }
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -156,11 +212,12 @@ class DependencyScanner:
         ``pkg:npm/debug``) so ecosystem is always part of the key.
         """
         seen: dict[str, PackageDep] = {}
+        manifest_candidates = _collect_manifest_candidates(root)
         for dep in [
-            *self._scan_pyproject(root),
-            *self._scan_requirements(root),
-            *self._scan_setup_cfg(root),
-            *self._scan_package_json(root),
+            *self._scan_pyproject(root, manifest_candidates["pyproject"]),
+            *self._scan_requirements(root, manifest_candidates["requirements"]),
+            *self._scan_setup_cfg(root, manifest_candidates["setup_cfg"]),
+            *self._scan_package_json(root, manifest_candidates["package_json"]),
         ]:
             # Strip version from PURL for dedup key so pkg:pypi/foo and
             # pkg:npm/foo are treated as distinct entries.
@@ -172,45 +229,18 @@ class DependencyScanner:
     # Manifest parsers
     # ------------------------------------------------------------------
 
-    def _scan_pyproject(self, root: Path) -> list[PackageDep]:
+    def _scan_pyproject(self, root: Path, candidate_paths: list[Path] | None = None) -> list[PackageDep]:
         """Parse ``pyproject.toml`` files found under *root*.
 
         Scans the root-level file first; then recursively finds any
         ``pyproject.toml`` files in sub-packages (skipping common
         virtual-environment / build directories).
         """
-        _SKIP_DIRS = {
-            ".venv",
-            "venv",
-            ".env",
-            "env",
-            "node_modules",
-            ".git",
-            "__pycache__",
-            "site-packages",
-            "dist",
-            "build",
-            ".tox",
-        }
         if tomllib is None:
             return []  # type: ignore[unreachable]
 
-        candidate_paths: list[Path] = []
-        seen_abs: set[Path] = set()
-
-        def _add(p: Path) -> None:
-            if p in seen_abs or not p.exists():
-                return
-            rel_parts = p.relative_to(root).parts
-            if any(part in _SKIP_DIRS for part in rel_parts[:-1]):
-                return
-            seen_abs.add(p)
-            candidate_paths.append(p)
-
-        # Root first (highest priority for dedup in scan())
-        _add(root / "pyproject.toml")
-        for p in sorted(root.rglob("pyproject.toml")):
-            _add(p)
+        if candidate_paths is None:
+            candidate_paths = _collect_manifest_candidates(root)["pyproject"]
 
         deps: list[PackageDep] = []
         for path in candidate_paths:
@@ -297,7 +327,7 @@ class DependencyScanner:
 
         return deps
 
-    def _scan_requirements(self, root: Path) -> list[PackageDep]:
+    def _scan_requirements(self, root: Path, candidate_paths: list[Path] | None = None) -> list[PackageDep]:
         """Return deps from all requirements files found anywhere under *root*.
 
         Recursively globs for ``requirements*.txt`` (e.g. ``requirements.txt``,
@@ -305,40 +335,8 @@ class DependencyScanner:
         ``requirements/*.txt`` (e.g. ``requirements/base.txt``).  Common
         virtual-environment and cache directories are skipped.
         """
-        _SKIP_DIRS = {
-            ".venv",
-            "venv",
-            ".env",
-            "env",
-            "node_modules",
-            ".git",
-            "__pycache__",
-            "site-packages",
-            "dist",
-            "build",
-            ".tox",
-        }
-
-        # Collect candidate paths (deduplicated, stable sort).
-        seen_abs: set[Path] = set()
-        candidate_paths: list[Path] = []
-
-        def _add(p: Path) -> None:
-            if p in seen_abs:
-                return
-            rel_parts = p.relative_to(root).parts
-            if any(part in _SKIP_DIRS for part in rel_parts):
-                return
-            seen_abs.add(p)
-            candidate_paths.append(p)
-
-        # Pattern 1: requirements*.txt anywhere in tree
-        for p in sorted(root.rglob("requirements*.txt")):
-            _add(p)
-
-        # Pattern 2: requirements/<name>.txt anywhere in tree (base.txt, prod.txt …)
-        for p in sorted(root.rglob("requirements/*.txt")):
-            _add(p)
+        if candidate_paths is None:
+            candidate_paths = _collect_manifest_candidates(root)["requirements"]
 
         deps: list[PackageDep] = []
         for req_path in candidate_paths:
@@ -357,27 +355,36 @@ class DependencyScanner:
                 pass
         return deps
 
-    def _scan_setup_cfg(self, root: Path) -> list[PackageDep]:
-        path = root / "setup.cfg"
-        if not path.exists():
+    def _scan_setup_cfg(self, root: Path, candidate_paths: list[Path] | None = None) -> list[PackageDep]:
+        if candidate_paths is None:
+            candidate_paths = _collect_manifest_candidates(root)["setup_cfg"]
+        if not candidate_paths:
             return []
+
         deps: list[PackageDep] = []
-        in_section = False
-        for line in path.read_text(encoding="utf-8").splitlines():
-            stripped = line.strip()
-            if stripped == "install_requires" or stripped == "install_requires =":
-                in_section = True
+        for path in candidate_paths:
+            rel_path = str(path.relative_to(root))
+            try:
+                lines = path.read_text(encoding="utf-8").splitlines()
+            except OSError:
                 continue
-            if in_section:
-                if stripped.startswith("[") or (stripped and not line[0].isspace()):
-                    in_section = False
+
+            in_section = False
+            for line in lines:
+                stripped = line.strip()
+                if stripped == "install_requires" or stripped == "install_requires =":
+                    in_section = True
                     continue
-                dep = _parse_req_line(stripped, "setup.cfg", "runtime")
-                if dep:
-                    deps.append(dep)
+                if in_section:
+                    if stripped.startswith("[") or (stripped and not line[0].isspace()):
+                        in_section = False
+                        continue
+                    dep = _parse_req_line(stripped, rel_path, "runtime")
+                    if dep:
+                        deps.append(dep)
         return deps
 
-    def _scan_package_json(self, root: Path) -> list[PackageDep]:
+    def _scan_package_json(self, root: Path, candidate_paths: list[Path] | None = None) -> list[PackageDep]:
         """Parse ``package.json`` files and return npm deps with versions.
 
         Reads the standard dependency sections:
@@ -395,16 +402,6 @@ class DependencyScanner:
         (``"workspace:*"``), file links (``"file:.."``) and git URLs are
         skipped as they carry no useful version info for an SBOM.
         """
-        _SKIP_DIRS = {
-            "node_modules",
-            ".git",
-            ".venv",
-            "venv",
-            "__pycache__",
-            "dist",
-            "build",
-            ".tox",
-        }
         _SKIP_PREFIXES = ("workspace:", "file:", "git+", "git://", "github:", "link:", "portal:")
         _GROUP_MAP = {
             "dependencies": "runtime",
@@ -412,21 +409,8 @@ class DependencyScanner:
             "peerDependencies": "optional:peer",
         }
 
-        seen_abs: set[Path] = set()
-        candidate_paths: list[Path] = []
-
-        def _add(p: Path) -> None:
-            if p in seen_abs or not p.exists():
-                return
-            rel_parts = p.relative_to(root).parts
-            if any(part in _SKIP_DIRS for part in rel_parts[:-1]):
-                return
-            seen_abs.add(p)
-            candidate_paths.append(p)
-
-        _add(root / "package.json")
-        for p in sorted(root.rglob("package.json")):
-            _add(p)
+        if candidate_paths is None:
+            candidate_paths = _collect_manifest_candidates(root)["package_json"]
 
         deps: list[PackageDep] = []
         for path in candidate_paths:

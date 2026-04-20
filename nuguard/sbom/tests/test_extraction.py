@@ -20,15 +20,15 @@ Cross-cutting quality tests are in ``TestQuality`` at the bottom.
 from __future__ import annotations
 
 from pathlib import Path
+from urllib.parse import urlparse
 
 import pytest
 
 from nuguard.sbom.adapters.registry import default_framework_adapters
 from nuguard.sbom.extractor import AiSbomExtractor
 from nuguard.sbom.models import AiSbomDocument
+from nuguard.sbom.tests.conftest import APPS, FIXTURES, PY_ONLY, adapters, extract, names, nodes
 from nuguard.sbom.types import ComponentType, RelationshipType
-from conftest import APPS, FIXTURES, PY_ONLY, adapters, extract, names, nodes
-
 
 # ═══════════════════════════════════════════════════════════════════════════
 # fixtures/apps/ — scenario tests
@@ -125,8 +125,10 @@ class TestResearchAssistant:
         if gpt_nodes:
             m = gpt_nodes[0]
             assert m.metadata.extras.get("model_family") == "gpt"
-            assert m.metadata.extras.get("model_card_url", "").startswith(
-                "https://platform.openai.com"
+            card_url = m.metadata.extras.get("model_card_url", "")
+            parsed = urlparse(card_url)
+            assert parsed.scheme == "https" and parsed.netloc == "platform.openai.com", (
+                f"Unexpected model_card_url: {card_url!r}"
             )
 
 

@@ -1,0 +1,12 @@
+sbom: tests/apps/pinnacle-bank-app/reports/pinnacle-bank-app.sbom.json
+source: /Users/ganesh/work/nuguard-base/Fintech-App
+policy:
+  path: tests/apps/pinnacle-bank-app/cognitive_policy.md
+  use_llm: true
+
+llm:
+  model: openai/gpt-4.1-mini
+  api_key: ${OPENAI_API_KEY}
+
+sbom_generation:
+  llm: true

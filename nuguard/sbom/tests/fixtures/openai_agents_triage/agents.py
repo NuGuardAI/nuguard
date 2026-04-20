@@ -1,7 +1,6 @@
 """Customer support triage system using the OpenAI Agents SDK."""
 from agents import Agent, function_tool
 
-
 TRIAGE_INSTRUCTIONS = """You are a customer support triage agent. Your job is to:
 - Understand the customer's issue
 - Route them to the right specialist agent
