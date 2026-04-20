@@ -1,0 +1,48 @@
+Embed
+Paste this code into the <head> section of your HTML file
+
+<script defer
+  src="https://www.gstatic.com/ces-console/fast/chat-messenger/prod/v1.15/chat-messenger.js">
+</script>
+<link rel="stylesheet" href="https://www.gstatic.com/ces-console/fast/chat-messenger/prod/v1.15/themes/chat-messenger-default.css">
+<link rel="stylesheet" href="https://www.gstatic.com/ces-console/fast/chat-messenger/prod/v1.15/themes/chat-messenger-layout.css">
+
+Paste this code at the end of the <body> section of your HTML file
+<script>
+    window.addEventListener("chat-messenger-loaded", () => {
+      chatSdk.registerContext(
+        chatSdk.prebuilts.ces.createContext({
+          deploymentName: "projects/115983574051/locations/us/apps/dfe2a521-59d6-459a-8358-cedc73f1a92e/deployments/021c82f1-d4f7-4c80-8864-fb7a796b608f"
+        }),
+      );
+    });
+    // window.addEventListener("chat-messenger-loaded", () => {
+    //   const cm = document.querySelector("chat-messenger");
+    //   cm.accessToken = yourToken;
+    // });
+</script>
+<!-- Update the url-allowlist attribute with a comma-separated list of origins allowed to render images -->
+<chat-messenger
+  url-allowlist="*"
+>
+  <chat-messenger-container
+    chat-title="Blissful Home and Garden"
+    chat-title-icon="https://gstatic.com/dialogflow-console/common/assets/ccai-favicons/conversational_agents.png"
+    enable-file-upload
+    enable-audio-input
+  >
+    <chat-reset-session-button
+      slot="titlebar-actions"
+      title-text="Start new chat"
+    ></chat-reset-session-button>
+    <chat-toggle-dialog-button
+      slot="titlebar-actions"
+      title-text-expanded="Collapse"
+      title-text-collapsed="Expand"
+    ></chat-toggle-dialog-button>
+    <chat-messenger-close-button
+      slot="titlebar-actions"
+      title-text="Close"
+    ></chat-messenger-close-button>
+  </chat-messenger-container>
+</chat-messenger>

@@ -7,7 +7,6 @@ back-and-forth between the code execution proxy and the model.
 from __future__ import annotations
 
 # ── CrewAI layer ─────────────────────────────────────────────────────────────
-
 from crewai import Agent, Crew, Task
 from crewai.tools import BaseTool
 
@@ -16,7 +15,7 @@ class StaticAnalysisTool(BaseTool):
     name: str = "static_analysis"
     description: str = "Run ruff, mypy, and bandit on a file and return findings."
 
-    def _run(self, file_path: str) -> str:
+    def _run(self, file_path: str) -> str:  # type: ignore[empty-body]
         ...
 
 
@@ -24,7 +23,7 @@ class DependencyAuditTool(BaseTool):
     name: str = "dependency_audit"
     description: str = "Run pip-audit and return known CVEs for project dependencies."
 
-    def _run(self, project_dir: str) -> list[dict]:
+    def _run(self, project_dir: str) -> list[dict]:  # type: ignore[empty-body]
         ...
 
 

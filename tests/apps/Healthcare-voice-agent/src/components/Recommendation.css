@@ -1,0 +1,84 @@
+.recommendation-container {
+  background-color: #1f3d73;
+  min-height: 100vh;
+  padding: 2rem;
+  color: #fff;
+  font-family: Arial, sans-serif;
+}
+
+.recommendation-heading {
+  font-size: 2rem;
+  font-weight: bold;
+  margin-bottom: 1rem;
+}
+
+.recommendation-text {
+  font-size: 1.1rem;
+  margin-bottom: 0.5rem;
+}
+
+.specialist-list {
+  list-style-type: disc;
+  margin-left: 2rem;
+  margin-bottom: 2rem;
+}
+
+.warning-text {
+  color: #ffef92;
+  font-weight: 500;
+  margin-top: 1rem;
+}
+
+.doctor-card-container {
+  display: grid;
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+}
+
+.doctor-card {
+  background-color: #ffffff;
+  color: #000;
+  padding: 1.5rem;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  display: flex;
+  justify-content: space-between;
+  align-items: stretch;  /* important */
+  flex-wrap: wrap;
+  max-width: 1000px;
+  margin: 0 auto;
+}
+
+.doctor-info {
+  flex: 1;
+  min-width: 250px;
+}
+
+.doctor-actions {
+  display: flex;
+  align-items: flex-end;   /* ✅ aligns button to bottom */
+  justify-content: flex-end;
+  margin-left: 2rem;
+}
+
+.doctor-name {
+  font-size: 1.2rem;
+  font-weight: 600;
+  margin-bottom: 0.6rem;
+}
+
+.book-btn {
+  padding: 0.6rem 1.2rem;
+  background-color: #4141ce;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+  white-space: nowrap;
+}
+
+.book-btn:hover {
+  background-color: #4c1d95;
+}

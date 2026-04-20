@@ -29,8 +29,8 @@ from pathlib import Path
 from typing import Any
 
 from .deps import DependencyScanner
-from .serializer import AiSbomSerializer
 from .models import AiSbomDocument
+from .serializer import AiSbomSerializer
 
 _log = logging.getLogger(__name__)
 

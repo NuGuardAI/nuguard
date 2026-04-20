@@ -1,0 +1,16 @@
+fastapi
+uvicorn
+psycopg2-binary
+langgraph
+langchain
+openai
+google-generativeai
+pydantic
+python-dotenv
+requests
+tqdm
+numpy
+langchain-openai
+duckduckgo-search
+langchain-community
+

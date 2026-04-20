@@ -18,7 +18,6 @@ from llama_index.embeddings.openai import OpenAIEmbedding
 from llama_index.llms.anthropic import Anthropic
 from llama_index.vector_stores.chroma import ChromaVectorStore
 
-
 # ── Model / embedding configuration ─────────────────────────────────────────
 
 Settings.llm = Anthropic(

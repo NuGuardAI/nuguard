@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python3 -c \"from dotenv import load_dotenv; print\\(''''ok''''\\)\")",
+      "Bash(pip show:*)",
+      "Bash(python3:*)"
+    ]
+  }
+}

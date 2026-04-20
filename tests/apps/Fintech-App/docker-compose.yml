@@ -1,0 +1,314 @@
+# FinTech GOAT — Local Development
+# =====================================
+# Complex multi-agent AI banking platform with 20+ MCP microservices,
+# 6 AI sub-agents, and 27+ intentional vulnerabilities for red-team testing.
+#
+# Usage:
+#   docker compose up --build          # Build and start ALL 23 services
+#   docker compose up orchestrator mcp-banking-server redis  # Core only
+#   docker compose down -v             # Stop and remove volumes
+#
+# Requires: .env file (copy from .env.example)
+
+version: "3.9"
+
+services:
+  # ── Redis message broker (for Celery task queue) ──────────────────────────
+  redis:
+    image: redis:7.4-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  # ── MCP Banking Server (core, legacy) ─────────────────────────────────────
+  mcp-banking-server:
+    build:
+      context: ./src/mcp_server
+      dockerfile: Dockerfile
+    ports:
+      - "8082:8080"
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - APPLICATIONINSIGHTS_CONNECTION_STRING=${APPLICATIONINSIGHTS_CONNECTION_STRING:-}
+      - DATABASE_URL=sqlite:///./cipher_bank.db
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - mcp_data:/app/data
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ── MCP Microservices (20 domain-specific servers) ─────────────────────────
+
+  mcp-accounts:
+    build: { context: ./src/mcp-accounts, dockerfile: Dockerfile }
+    ports: ["8083:8080"]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  mcp-payments:
+    build: { context: ./src/mcp-payments, dockerfile: Dockerfile }
+    ports: ["8084:8080"]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  mcp-cards:
+    build: { context: ./src/mcp-cards, dockerfile: Dockerfile }
+    ports: ["8085:8080"]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  mcp-loans:
+    build: { context: ./src/mcp-loans, dockerfile: Dockerfile }
+    ports: ["8086:8080"]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  mcp-investments:
+    build: { context: ./src/mcp-investments, dockerfile: Dockerfile }
+    ports: ["8087:8080"]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  mcp-market-data:
+    build: { context: ./src/mcp-market-data, dockerfile: Dockerfile }
+    ports: ["8088:8080"]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  mcp-fx:
+    build: { context: ./src/mcp-fx, dockerfile: Dockerfile }
+    ports: ["8089:8080"]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  mcp-crypto:
+    build: { context: ./src/mcp-crypto, dockerfile: Dockerfile }
+    ports: ["8090:8080"]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  mcp-fraud:
+    build: { context: ./src/mcp-fraud, dockerfile: Dockerfile }
+    ports: ["8091:8080"]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  mcp-kyc:
+    build: { context: ./src/mcp-kyc, dockerfile: Dockerfile }
+    ports: ["8092:8080"]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  mcp-aml:
+    build: { context: ./src/mcp-aml, dockerfile: Dockerfile }
+    ports: ["8093:8080"]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  mcp-compliance:
+    build: { context: ./src/mcp-compliance, dockerfile: Dockerfile }
+    ports: ["8094:8080"]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  mcp-notifications:
+    build: { context: ./src/mcp-notifications, dockerfile: Dockerfile }
+    ports: ["8095:8080"]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  mcp-audit:
+    build: { context: ./src/mcp-audit, dockerfile: Dockerfile }
+    ports: ["8096:8080"]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  mcp-reporting:
+    build: { context: ./src/mcp-reporting, dockerfile: Dockerfile }
+    ports: ["8097:8080"]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  mcp-documents:
+    build: { context: ./src/mcp-documents, dockerfile: Dockerfile }
+    ports: ["8098:8080"]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  mcp-admin:
+    build: { context: ./src/mcp-admin, dockerfile: Dockerfile }
+    ports: ["8099:8080"]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  mcp-data-export:
+    build: { context: ./src/mcp-data-export, dockerfile: Dockerfile }
+    ports: ["8100:8080"]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  mcp-internal-bridge:
+    build: { context: ./src/mcp-internal-bridge, dockerfile: Dockerfile }
+    ports: ["8101:8080"]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  mcp-scheduler:
+    build: { context: ./src/mcp-scheduler, dockerfile: Dockerfile }
+    ports: ["8102:8080"]
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ── Agent Orchestrator (6 AI sub-agents) ──────────────────────────────────
+  orchestrator:
+    build:
+      context: ./src/orchestrator
+      dockerfile: Dockerfile
+    ports:
+      - "8001:8001"
+    environment:
+      # Core
+      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
+      - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY:-}
+      - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT:-}
+      - AZURE_OPENAI_DEPLOYMENT=${AZURE_OPENAI_DEPLOYMENT:-gpt-4o}
+      - AZURE_OPENAI_API_VERSION=${AZURE_OPENAI_API_VERSION:-2024-11-20}
+      - APPLICATIONINSIGHTS_CONNECTION_STRING=${APPLICATIONINSIGHTS_CONNECTION_STRING:-}
+      # MCP service URLs
+      - MCP_SERVER_URL=http://mcp-banking-server:8080
+      - MCP_ACCOUNTS_URL=http://mcp-accounts:8080
+      - MCP_PAYMENTS_URL=http://mcp-payments:8080
+      - MCP_CARDS_URL=http://mcp-cards:8080
+      - MCP_LOANS_URL=http://mcp-loans:8080
+      - MCP_INVESTMENTS_URL=http://mcp-investments:8080
+      - MCP_MARKET_DATA_URL=http://mcp-market-data:8080
+      - MCP_FX_URL=http://mcp-fx:8080
+      - MCP_CRYPTO_URL=http://mcp-crypto:8080
+      - MCP_FRAUD_URL=http://mcp-fraud:8080
+      - MCP_KYC_URL=http://mcp-kyc:8080
+      - MCP_AML_URL=http://mcp-aml:8080
+      - MCP_COMPLIANCE_URL=http://mcp-compliance:8080
+      - MCP_NOTIFICATIONS_URL=http://mcp-notifications:8080
+      - MCP_AUDIT_URL=http://mcp-audit:8080
+      - MCP_REPORTING_URL=http://mcp-reporting:8080
+      - MCP_DOCUMENTS_URL=http://mcp-documents:8080
+      - MCP_ADMIN_URL=http://mcp-admin:8080
+      - MCP_DATA_EXPORT_URL=http://mcp-data-export:8080
+      - MCP_INTERNAL_BRIDGE_URL=http://mcp-internal-bridge:8080
+      - MCP_SCHEDULER_URL=http://mcp-scheduler:8080
+    depends_on:
+      mcp-banking-server:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:8001/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ── Frontend UI ───────────────────────────────────────────────────────────
+  frontend:
+    build:
+      context: ./src/frontend
+      dockerfile: Dockerfile
+    ports:
+      - "8080:80"
+    environment:
+      - ORCHESTRATOR_URL=http://orchestrator:8001
+      - ORCHESTRATOR_UPSTREAM=orchestrator:8001
+    depends_on:
+      - orchestrator
+
+volumes:
+  mcp_data:

@@ -80,18 +80,18 @@ import asyncio
 import logging
 from typing import Any, cast
 
-from nuguard.analysis.models import AnalysisResult
-from nuguard.analysis.plugin_base import AnalysisPlugin
 from nuguard.analysis._atlas_data import (
     ATLAS_VERSION,
+    EXTERNAL_PROVIDERS,
     MITIGATIONS,
     NATIVE_CHECKS,
+    NGA_TO_ATLAS,
     OUTBOUND_KEYWORDS,
     TACTICS,
     TECHNIQUES,
-    NGA_TO_ATLAS,
-    EXTERNAL_PROVIDERS,
 )
+from nuguard.analysis.models import AnalysisResult
+from nuguard.analysis.plugin_base import AnalysisPlugin
 
 _log = logging.getLogger("analysis.plugins.atlas")
 

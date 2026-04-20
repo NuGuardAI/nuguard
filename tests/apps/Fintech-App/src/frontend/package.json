@@ -1,0 +1,14 @@
+{
+  "name": "fintech-goat-frontend",
+  "version": "0.1.0",
+  "description": "FinTech GOAT — Deliberately vulnerable frontend for NuGuard SBOM testing",
+  "private": true,
+  "dependencies": {
+    "openai": "^4.47.1",
+    "@anthropic-ai/sdk": "^0.27.3"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5",
+    "vite": "^5.2.11"
+  }
+}

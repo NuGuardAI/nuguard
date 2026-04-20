@@ -67,73 +67,35 @@ Useful variants:
 
 ```bash
 nuguard analyze --sbom app.sbom.json --format json
-nuguard analyze --sbom app.sbom.json --format sarif
+nuguard analyze --config nuguard.yaml --format sarif
 ```
 
-## 4. Validate or Check a Cognitive Policy
+## 5. Run the Behavior Validation
 
-Validate the policy structure:
-
-```bash
-nuguard policy validate --file cognitive_policy.md
-```
-
-Cross-check the policy against the SBOM:
+Run the behavior validation (static and dynamic tests) based on the cognitive policy. Dynamic tests will run against the live application. Make sure to configure the target application URL and any necessary credentials in `nuguard.yaml` before running.
 
 ```bash
-nuguard policy check \
-  --policy cognitive_policy.md \
-  --sbom app.sbom.json
-```
-
-## 5. Run the Unified Pipeline
-
-If you want one command for SBOM generation plus static analysis:
-
-```bash
-nuguard scan \
-  --source . \
-  --output-dir nuguard-reports
+nuguard behavior \
+  --config nuguard.yaml \
+  --format markdown \
+  --output reports/behavior.md
 ```
 
 ## 6. Red-Team a Live AI App
 
-Run against a local target:
-
-```bash
-nuguard redteam \
-  --sbom app.sbom.json \
-  --target http://localhost:3000
-```
-
-With canaries and JSON output:
-
-```bash
-nuguard redteam \
-  --sbom app.sbom.json \
-  --target http://localhost:3000 \
-  --canary ./canary.json \
-  --format json
-```
-
-For red-team canaries, start from the tracked example file:
+For red-team canaries, start from the tracked example file (optional step but useful to check for accurate data exfiltration validation):
 
 ```bash
 cp canary.example.json canary.json
 ```
 
-## 7. Use Project Config
-
-NuGuard can read defaults from `nuguard.yaml`. Start from:
+Run against a live application with the canary file for validation:
 
 ```bash
-cp nuguard.yaml.example nuguard.yaml
+nuguard redteam \
+  --config nuguard.yaml \
+  --output reports/redteam.md \
+  --format markdown
 ```
 
-Then use commands with fewer flags, for example:
-
-```bash
-nuguard policy check
-nuguard redteam
-```
 

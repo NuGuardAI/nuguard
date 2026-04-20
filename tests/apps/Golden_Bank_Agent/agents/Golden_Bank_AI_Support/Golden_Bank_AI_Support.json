@@ -1,0 +1,7 @@
+{
+  "name": "97907e02-3b1e-4817-8ec9-b25698797c90",
+  "displayName": "Golden Bank AI Support",
+  "description": "Customer support bot for a bank",
+  "instruction": "agents/Golden_Bank_AI_Support/instruction.txt",
+  "tools": ["end_session", "authenticate_user", "get_user_accounts", "get_account_summary", "get_transaction_history", "get_account_statements", "transfer_funds", "pay_bill", "add_biller", "escalate_to_human_agent", "initiate_account_closure", "find_locations", "next_steps"]
+}

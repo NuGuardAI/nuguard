@@ -1,0 +1,9 @@
+{
+  "name": "67b2e393-07e3-4015-ad77-5dd2030a1e0c",
+  "pythonFunction": {
+    "name": "find_locations",
+    "pythonCode": "tools/find_locations/python_function/python_code.py",
+    "description": "Finds nearby ATM or branch locations based on a provided zip code or geolocation.\n\nArgs:\n    location_type (str): The type of location to search for (\"ATM\" or \"Branch\").\n    zip_code (Optional[str]): The zip code to search within.\n    latitude (Optional[float]): The latitude of the user\u0027s current location.\n    longitude (Optional[float]): The longitude of the user\u0027s current location.\n\nReturns:\n    dict[str, Any]: A dictionary containing a list of found locations.\n          Example: {\"locations\": [{\"name\": \"Golden Bank ATM - Downtown\", \"address\": \"123 Main St, City, State 12345\"}]}\n          Example: {\"error\": True, \"message\": \"Please provide a zip code or your current location.\"}"
+  },
+  "displayName": "find_locations"
+}

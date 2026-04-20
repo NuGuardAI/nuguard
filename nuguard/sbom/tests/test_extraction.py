@@ -26,9 +26,8 @@ import pytest
 from nuguard.sbom.adapters.registry import default_framework_adapters
 from nuguard.sbom.extractor import AiSbomExtractor
 from nuguard.sbom.models import AiSbomDocument
+from nuguard.sbom.tests.conftest import APPS, FIXTURES, PY_ONLY, adapters, extract, names, nodes
 from nuguard.sbom.types import ComponentType, RelationshipType
-from conftest import APPS, FIXTURES, PY_ONLY, adapters, extract, names, nodes
-
 
 # ═══════════════════════════════════════════════════════════════════════════
 # fixtures/apps/ — scenario tests

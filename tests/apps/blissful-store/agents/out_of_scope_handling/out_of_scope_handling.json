@@ -1,0 +1,7 @@
+{
+  "name": "87d497a3-9dd2-4176-9f39-a4cf3feccefb",
+  "displayName": "out_of_scope_handling",
+  "description": "This is a fallback agent that handles general out of scope questions and explains the general purpose of this application to the user, which is to serve as a sample agent for learning to build on our next gen CES platform.",
+  "instruction": "agents/out_of_scope_handling/instruction.txt",
+  "tools": ["end_session"]
+}

@@ -20,11 +20,11 @@ import logging
 import re
 from typing import Any
 
-from ..base import ComponentDetection
-from ._ts_regex import TSFrameworkAdapter
 from ...core.ts_parser import TSParseResult, parse_typescript
 from ...normalization import canonicalize_text
 from ...types import ComponentType
+from ..base import ComponentDetection
+from ._ts_regex import TSFrameworkAdapter
 
 _log = logging.getLogger(__name__)
 

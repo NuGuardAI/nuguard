@@ -17,12 +17,12 @@ import asyncio
 import json
 import os
 import sys
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from dotenv import load_dotenv
 import httpx
+from dotenv import load_dotenv
 
 # Load .env file from project root (supports GITHUB_TOKEN, etc.)
 _env_path = Path(__file__).resolve().parent.parent.parent / ".env"
@@ -300,7 +300,7 @@ def calculate_metrics(
         recall=recall,
         f1_score=f1,
         by_type=by_type,
-        matches=[asdict(m) for m in matches],
+        matches=matches,
         false_positive_assets=false_positives[:10],  # Limit to first 10
         discovery_time_seconds=discovery_time,
     )

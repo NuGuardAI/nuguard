@@ -1,0 +1,9 @@
+{
+  "name": "441d711e-7a65-487e-91cf-e8b1d7a9f330",
+  "pythonFunction": {
+    "name": "transfer_funds",
+    "pythonCode": "tools/transfer_funds/python_function/python_code.py",
+    "description": "Transfers funds securely between two internal Golden Bank accounts.\n\nArgs:\n    from_account_id (str): The ID of the account to transfer funds from.\n    to_account_id (str): The ID of the account to transfer funds to.\n    amount (float): The amount of money to transfer.\n\nReturns:\n    dict[str, Any]: A dictionary indicating the success or failure of the transfer.\n          Example: {\"success\": True, \"message\": \"Funds transferred successfully.\", \"transaction_id\": \"TRN-12345\"}\n          Example: {\"success\": False, \"message\": \"Insufficient funds in source account.\"}"
+  },
+  "displayName": "transfer_funds"
+}

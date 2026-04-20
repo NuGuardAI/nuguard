@@ -1,0 +1,118 @@
+{
+  "name": "8ce26cbc-da74-44e8-8298-ea771b242293",
+  "displayName": "Off Topic - Buy Gas Grills",
+  "golden": {
+    "turns": [{
+      "steps": [{
+        "userInput": {
+          "text": "hi"
+        }
+      }, {
+        "expectation": {
+          "toolCall": {
+            "id": "adk-43b8342a-1903-41cc-a9c6-ad2fb34281fc",
+            "tool": "greeting",
+            "args": {
+            },
+            "displayName": "greeting"
+          }
+        }
+      }, {
+        "expectation": {
+          "toolResponse": {
+            "id": "adk-43b8342a-1903-41cc-a9c6-ad2fb34281fc",
+            "tool": "greeting",
+            "response": {
+              "result": {
+                "cart_information": {
+                  "results": {
+                    "items": [{
+                      "name": "Standard Potting Soil",
+                      "product_id": "soil-123",
+                      "quantity": 1.0
+                    }, {
+                      "name": "General Purpose Fertilizer",
+                      "product_id": "fert-456",
+                      "quantity": 1.0
+                    }],
+                    "subtotal": 25.98
+                  }
+                },
+                "greeting": "Hi there! Welcome to Cymbal Garden. Is this Patrick?"
+              }
+            },
+            "displayName": "greeting"
+          }
+        }
+      }, {
+        "expectation": {
+          "agentResponse": {
+            "role": "cymbal_retail_agent",
+            "chunks": [{
+              "text": "Welcome back, Patrick! I see you\u0027ve already got some items in your Cymbal Home \u0026 Garden cart. How can I help you today?"
+            }]
+          }
+        }
+      }]
+    }, {
+      "steps": [{
+        "userInput": {
+          "text": "do you sell gas grills?"
+        }
+      }, {
+        "expectation": {
+          "agentTransfer": {
+            "targetAgent": "out_of_scope_handling",
+            "displayName": "out_of_scope_handling"
+          }
+        }
+      }, {
+        "expectation": {
+          "agentResponse": {
+            "role": "out_of_scope_handling",
+            "chunks": [{
+              "text": "Thanks for trying out \u003ca href\u003d\" https://docs.cloud.google.com/customer-engagement-ai/conversational-agents/ps\" target\u003d\"_blank\"\u003eCX Agent Studio\u003c/a\u003e!\u003cbr\u003e\n\nI\u0027m a sample agent designed to be an educational tool, showing some best practices for building agents on our platform.\n\nSince you\u0027ve ventured off the main path, let me take a moment to highlight some key features of our platform you can explore in the UI:\n\n*   ⚒️ **Build Mode:** This is your current view. Here you can preview your agent in our simulator (where we\u0027re talking now!), build multi-agent architectures, add tools, set up guardrails, and manage version control for your agent application. Check out the right tool bar for more settings.\n*   📋 **Evaluate Mode:** This mode allows you to test and understand the performance of the agent you are building. We\u0027ve preloaded some evaluations for you to look into. You can find the Evaluate Mode at the top of the screen.\n*   🚀 **Deploy Mode:** This mode allows you to deploy your agent to the world using our web chat interface, telephony integrations, or our API. You can find the Deploy Mode at the top of the screen, next to Evaluate.\n\nI will now transfer you back to the main retail agent to continue the conversation."
+            }]
+          }
+        }
+      }]
+    }, {
+      "steps": [{
+        "userInput": {
+          "text": "oh, ok bye"
+        }
+      }, {
+        "expectation": {
+          "agentTransfer": {
+            "targetAgent": "retail_agent",
+            "displayName": "cymbal_retail_agent"
+          }
+        }
+      }, {
+        "expectation": {
+          "agentResponse": {
+            "role": "cymbal_retail_agent",
+            "chunks": [{
+              "text": "Now that we\u0027ve clarified that, is there anything I can help you with regarding plant identification or product recommendations?"
+            }]
+          }
+        }
+      }]
+    }, {
+      "steps": [{
+        "userInput": {
+          "text": "no I\u0027m all good"
+        }
+      }, {
+        "expectation": {
+          "agentResponse": {
+            "role": "cymbal_retail_agent",
+            "chunks": [{
+              "text": "You\u0027re welcome! Thanks for shopping with us at Cymbal Home \u0026 Garden. Have a great day!"
+            }]
+          }
+        }
+      }]
+    }]
+  }
+}

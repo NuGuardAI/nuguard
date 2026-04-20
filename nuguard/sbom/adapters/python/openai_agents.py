@@ -13,10 +13,10 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from ..base import ComponentDetection, FrameworkAdapter, RelationshipHint
-from ..models_kb import get_model_details, infer_provider
 from ...normalization import canonicalize_text
 from ...types import ComponentType
+from ..base import ComponentDetection, FrameworkAdapter, RelationshipHint
+from ..models_kb import get_model_details, infer_provider
 
 _TEMPLATE_VAR_RE = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
 
@@ -35,6 +35,18 @@ class OpenAIAgentsAdapter(FrameworkAdapter):
         parse_result: Any,
     ) -> list[ComponentDetection]:
         if parse_result is None:
+            return []
+
+        # Suppress the openai_agents framework node when the file's primary
+        # framework is autogen or crewai.  Those frameworks use the OpenAI
+        # Agents SDK / openai package internally, but the attribution belongs
+        # to the higher-level framework, not openai_agents standalone.
+        import_modules = {imp.module for imp in parse_result.imports}
+        _primary_frameworks = {
+            "autogen", "pyautogen", "autogen_agentchat",
+            "crewai", "crewai.agent", "crewai.crew",
+        }
+        if import_modules & _primary_frameworks:
             return []
 
         detected: list[ComponentDetection] = [self._framework_node(file_path)]

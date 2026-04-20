@@ -1,7 +1,7 @@
 """Maps goal types and scenario types to compliance framework references."""
 from __future__ import annotations
 
-from nuguard.models.exploit_chain import GoalType, ScenarioType
+from nuguard.models.exploit_chain import GoalType
 
 _OWASP_LLM: dict[GoalType, str] = {
     GoalType.PROMPT_DRIVEN_THREAT: "LLM01 – Prompt Injection",

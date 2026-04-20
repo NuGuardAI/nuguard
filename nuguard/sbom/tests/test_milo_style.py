@@ -11,14 +11,13 @@ Validates all new adapters added to improve coverage of:
 
 from __future__ import annotations
 
-
 import pytest
 
 from nuguard.sbom.config import AiSbomConfig
 from nuguard.sbom.extractor import AiSbomExtractor
 from nuguard.sbom.models import AiSbomDocument
+from nuguard.sbom.tests.conftest import APPS, nodes
 from nuguard.sbom.types import ComponentType
-from conftest import APPS, nodes
 
 MILO = APPS / "milo_style"
 
@@ -126,13 +125,14 @@ class TestDockerfile:
         )
 
     def test_expose_port_detected(self, doc: AiSbomDocument) -> None:
-        endpoints = nodes(doc, ComponentType.API_ENDPOINT)
+        # Dockerfile EXPOSE ports are classified as DEPLOYMENT, not API_ENDPOINT
+        deployments = nodes(doc, ComponentType.DEPLOYMENT)
         port_nodes = [
-            n for n in endpoints if "8420" in n.name or n.metadata.extras.get("port") == 8420
+            n for n in deployments if "8420" in n.name or n.metadata.extras.get("port") == 8420
         ]
         assert port_nodes, (
-            f"Expected API_ENDPOINT for port 8420 from EXPOSE. "
-            f"endpoints={[n.name for n in endpoints]}"
+            f"Expected DEPLOYMENT node for port 8420 from EXPOSE. "
+            f"deployments={[n.name for n in deployments]}"
         )
 
     def test_playwright_tool_from_dockerfile(self, doc: AiSbomDocument) -> None:

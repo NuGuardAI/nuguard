@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Blissful Home & Garden</title>
+    <meta name="description" content="Premium plants, home decor, and outdoor furniture for your blissful home.">
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <!-- CSS -->
+    <link rel="stylesheet" href="style.css">
+
+    <style>
+        /* Modern Chat Widget Styles */
+        #chat-widget {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            z-index: 1000;
+        }
+        #chat-button {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: var(--accent-color);
+            color: white;
+            border: none;
+            box-shadow: var(--shadow-lg);
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: var(--transition);
+        }
+        #chat-button:hover {
+            transform: scale(1.05);
+            background: var(--accent-hover);
+        }
+        #chat-button svg {
+            width: 30px;
+            height: 30px;
+            fill: white;
+        }
+        #chat-window {
+            display: none;
+            position: absolute;
+            bottom: 80px;
+            right: 0;
+            width: 360px;
+            height: 500px;
+            background: var(--white);
+            border-radius: 20px;
+            box-shadow: var(--shadow-lg);
+            flex-direction: column;
+            overflow: hidden;
+            animation: slideUp 0.3s ease-out forwards;
+        }
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        #chat-header {
+            background: var(--accent-color);
+            color: white;
+            padding: 20px;
+            font-weight: 600;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        #chat-header button {
+            background: transparent;
+            border: none;
+            color: white;
+            cursor: pointer;
+            font-size: 1.2rem;
+        }
+        #chat-header-actions {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        #new-chat {
+            font-size: 0.8rem;
+            font-weight: 600;
+            border: 1px solid rgba(255, 255, 255, 0.6);
+            border-radius: 14px;
+            padding: 4px 10px;
+            line-height: 1.2;
+        }
+        #chat-messages {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            background: var(--secondary-bg);
+        }
+        .message {
+            max-width: 80%;
+            padding: 12px 16px;
+            border-radius: 12px;
+            font-size: 0.95rem;
+            line-height: 1.4;
+        }
+        .msg-user {
+            background: var(--accent-color);
+            color: white;
+            align-self: flex-end;
+            border-bottom-right-radius: 4px;
+        }
+        .msg-bot {
+            background: white;
+            color: var(--text-color);
+            align-self: flex-start;
+            border-bottom-left-radius: 4px;
+            box-shadow: var(--shadow-sm);
+        }
+        #chat-input-area {
+            display: flex;
+            padding: 15px;
+            background: white;
+            border-top: 1px solid var(--secondary-bg);
+        }
+        #chat-input {
+            flex: 1;
+            border: 1px solid var(--secondary-bg);
+            border-radius: 20px;
+            padding: 10px 15px;
+            outline: none;
+            font-family: inherit;
+        }
+        #chat-send {
+            background: transparent;
+            border: none;
+            color: var(--accent-color);
+            font-weight: 600;
+            padding: 0 15px;
+            cursor: pointer;
+            transition: var(--transition);
+        }
+        #chat-send:hover {
+            color: var(--accent-hover);
+        }
+    </style>
+</head>
+<body>
+    <header class="glass-header">
+        <div class="logo">Blissful <br/><span>Home & Garden</span></div>
+        <nav>
+            <ul>
+                <li><a href="#" class="active">Home</a></li>
+                <li><a href="#">Collection</a></li>
+                <li><a href="#">Outdoor</a></li>
+                <li><a href="#">Journal</a></li>
+            </ul>
+        </nav>
+        <button class="nav-btn">Shop Now</button>
+    </header>
+
+    <main>
+        <section class="hero" id="hero-section">
+            <div class="hero-overlay"></div>
+            <div class="hero-content">
+                <span class="badge">New Arrivals</span>
+                <h1 class="fade-up">Curate Your <br/>Personal Oasis</h1>
+                <p class="fade-up delay-1">Discover our premium selection of indoor plants, high-quality ceramics, and timeless outdoor patio furniture designed for modern living.</p>
+                <div class="hero-actions fade-up delay-2">
+                    <button class="cta-primary">Explore Collection</button>
+                    <button class="cta-secondary">Design Services</button>
+                </div>
+            </div>
+            <div class="hero-image-container">
+                 <img src="assets/hero_image.png" alt="A premium modern living room filled with lush green indoor plants">
+            </div>
+        </section>
+
+        <section class="featured-section">
+            <div class="section-title">
+                <h2>Our Bestsellers</h2>
+                <a href="#" class="view-all">View All Products &rarr;</a>
+            </div>
+            
+            <div class="product-grid">
+                <div class="product-card">
+                    <div class="img-wrapper">
+                        <img src="assets/product_1.png" alt="High-quality ceramic planter with monstera plant">
+                        <button class="add-to-cart">+</button>
+                    </div>
+                    <div class="product-info">
+                        <p class="category">Indoor Plants</p>
+                        <h3>Monstera in Ceramic Planter</h3>
+                        <p class="price">$120.00</p>
+                    </div>
+                </div>
+
+                <div class="product-card">
+                    <div class="img-wrapper">
+                        <img src="assets/product_2.png" alt="Modern aesthetic outdoor teak patio chair">
+                        <button class="add-to-cart">+</button>
+                    </div>
+                    <div class="product-info">
+                        <p class="category">Outdoor Furniture</p>
+                        <h3>Premium Teak Patio Chair</h3>
+                        <p class="price">$450.00</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <section class="story-section">
+           <div class="story-content">
+              <h2>Rooted in Nature</h2>
+              <p>At Blissful Home & Garden, we believe your space should be a sanctuary. Our botanists and interior designers collaborate to bring you ethically sourced plants and sustainably crafted furniture.</p>
+              <button class="cta-outline">Read Our Story</button>
+           </div>
+        </section>
+    </main>
+
+    <footer>
+        <div class="footer-content">
+            <div class="footer-col">
+                <h3>Blissful</h3>
+                <p>Bringing nature home.</p>
+            </div>
+            <div class="footer-col">
+                <h4>Shop</h4>
+                <a href="#">Plants</a>
+                <a href="#">Planters</a>
+                <a href="#">Furniture</a>
+            </div>
+            <div class="footer-col">
+                <h4>Support</h4>
+                <a href="#">FAQ</a>
+                <a href="#">Shipping</a>
+                <a href="#">Contact</a>
+            </div>
+        </div>
+        <div class="footer-bottom">
+            <p>&copy; 2026 Blissful Home & Garden. All rights reserved.</p>
+        </div>
+    </footer>
+
+    <!-- Custom Chatbot Widget -->
+    <div id="chat-widget">
+        <div id="chat-window">
+            <div id="chat-header">
+                <div>Blissful Intercom</div>
+                <div id="chat-header-actions">
+                    <button id="new-chat">New Chat</button>
+                    <button id="close-chat">&times;</button>
+                </div>
+            </div>
+            <div id="chat-messages">
+                <div class="message msg-bot">Hello! I'm your Blissful Home assistant. How can I help curate your space today?</div>
+            </div>
+            <div id="chat-input-area">
+                <input type="text" id="chat-input" placeholder="Ask about our plants or furniture..." autocomplete="off">
+                <button id="chat-send">Send</button>
+            </div>
+        </div>
+        <button id="chat-button" aria-label="Open Chat">
+            <svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>
+        </button>
+    </div>
+
+    <script>
+        const chatBtn = document.getElementById('chat-button');
+        const chatWin = document.getElementById('chat-window');
+        const closeChat = document.getElementById('close-chat');
+        const newChatBtn = document.getElementById('new-chat');
+        const chatInput = document.getElementById('chat-input');
+        const chatSend = document.getElementById('chat-send');
+        const chatMessages = document.getElementById('chat-messages');
+        const CHAT_SESSION_STORAGE_KEY = 'blissful_chat_session_id';
+        const CHAT_WELCOME_MESSAGE = "Hello! I'm your Blissful Home assistant. How can I help curate your space today?";
+
+        function createSessionId() {
+            if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+                return `blissful-${window.crypto.randomUUID()}`;
+            }
+            return `blissful-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+        }
+
+        function getOrCreateSessionId() {
+            let sessionId = localStorage.getItem(CHAT_SESSION_STORAGE_KEY);
+            if (!sessionId) {
+                sessionId = createSessionId();
+                localStorage.setItem(CHAT_SESSION_STORAGE_KEY, sessionId);
+            }
+            return sessionId;
+        }
+
+        function resetChatSession() {
+            localStorage.setItem(CHAT_SESSION_STORAGE_KEY, createSessionId());
+            chatMessages.innerHTML = '';
+            addMessage(CHAT_WELCOME_MESSAGE, 'bot');
+        }
+
+        chatBtn.addEventListener('click', () => {
+            chatWin.style.display = chatWin.style.display === 'flex' ? 'none' : 'flex';
+        });
+
+        closeChat.addEventListener('click', () => {
+            chatWin.style.display = 'none';
+        });
+
+        newChatBtn.addEventListener('click', () => {
+            resetChatSession();
+        });
+
+        async function sendMessage() {
+            const text = chatInput.value.trim();
+            if(!text) return;
+            
+            // Add user message
+            addMessage(text, 'user');
+            chatInput.value = '';
+
+            // Add typing indicator
+            const typingMsg = addMessage('...', 'bot');
+
+            try {
+                const sessionId = getOrCreateSessionId();
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: text, session_id: sessionId })
+                });
+
+                const data = await response.json();
+                typingMsg.remove();
+                
+                console.log("Chatbot API Response:", data);
+                
+                // Parse CES response
+                let botReply = "I'm sorry, I couldn't understand that.";
+                if (data.outputs && data.outputs.length > 0) {
+                    botReply = data.outputs.map(o => o.text).filter(t => t).join(' ');
+                } else if (data.queryResult && data.queryResult.responseMessages && data.queryResult.responseMessages.length > 0) {
+                    const msgs = data.queryResult.responseMessages;
+                    botReply = msgs.map(m => m.text ? m.text.text.join(' ') : '').filter(t => t).join(' ');
+                }
+                
+                addMessage(botReply || JSON.stringify(data), 'bot');
+
+            } catch (err) {
+                typingMsg.remove();
+                addMessage("Oops! Something went wrong reaching the backend: " + err.message, 'bot');
+            }
+        }
+
+        function addMessage(text, sender) {
+            const div = document.createElement('div');
+            div.className = `message msg-${sender}`;
+            div.textContent = text;
+            chatMessages.appendChild(div);
+            // scroll to bottom
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+            return div;
+        }
+
+        chatSend.addEventListener('click', sendMessage);
+        chatInput.addEventListener('keypress', (e) => {
+            if(e.key === 'Enter') sendMessage();
+        });
+    </script>
+</body>
+</html>

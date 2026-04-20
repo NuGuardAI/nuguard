@@ -7,10 +7,12 @@ from typing import TYPE_CHECKING
 from nuguard.common.llm_client import LLMClient
 
 if TYPE_CHECKING:
+    from nuguard.common.auth import AuthSession
     from nuguard.redteam.target.log_reader import BufferLogReader, FileLogReader
 from nuguard.models.exploit_chain import HTTP_2XX_SENTINEL, ExploitChain, ExploitStep
 from nuguard.models.policy import CognitivePolicy
 from nuguard.redteam.llm_engine.adaptive_mutation import AdaptiveMutationStrategy
+from nuguard.redteam.llm_engine.happy_path import generate_happy_path_opener
 from nuguard.redteam.llm_engine.response_evaluator import LLMResponseEvaluator
 from nuguard.redteam.policy_engine.evaluator import PolicyEvaluator, PolicyViolation
 from nuguard.redteam.target.action_logger import ActionLogger
@@ -112,6 +114,9 @@ class AttackExecutor:
         eval_llm: LLMClient | None = None,
         mutation_llm: LLMClient | None = None,
         app_log_reader: "FileLogReader | BufferLogReader | None" = None,
+        auth_session: "AuthSession | None" = None,
+        app_domain: str = "",
+        allowed_topics: list[str] | None = None,
     ) -> None:
         self._client = client
         self._evaluator = PolicyEvaluator(policy) if policy else None
@@ -125,15 +130,44 @@ class AttackExecutor:
             AdaptiveMutationStrategy(mutation_llm) if mutation_llm else None
         )
         self._app_log_reader = app_log_reader
+        self._auth_session = auth_session
+        # Happy-path opener context — used once per chain to prime the session
+        # with an on-topic legitimate user message before any adversarial step.
+        # The mutation LLM is reused because it's the adversarial-content-tolerant
+        # one; when None, a deterministic fallback opener is used.
+        self._happy_path_llm = mutation_llm
+        self._app_domain = app_domain
+        self._allowed_topics = list(allowed_topics or [])
 
     async def run(
         self, chain: ExploitChain
     ) -> tuple[ExploitChain, list[StepResult]]:
-        """Run the chain and return updated chain + step results."""
+        """Run the chain and return updated chain + step results.
+
+        Before the first adversarial step, a domain-specific happy-path
+        message is sent to the agent to establish realistic engagement.  The
+        warmup is recorded as a ``WARMUP`` step in the returned results so it
+        shows up in verbose reports, but is never evaluated as a success
+        signal and never triggers a finding.
+        """
         chain.status = "running"
         session = self._client.new_session(chain.chain_id)
         steps = ChainAssembler.sort_steps(chain)
         results: list[StepResult] = []
+
+        # Warmup turn — legitimate on-topic message that primes the agent
+        # session with realistic context.  Skipped when:
+        #   - the chain is HTTP-direct (no chat path exists), or
+        #   - no domain context is configured (nothing meaningful to say).
+        # The second guard also keeps existing unit tests — which construct
+        # AttackExecutor with no SBOM/policy — on their original single-step
+        # code path.
+        has_chat_steps = any(not s.target_path for s in steps)
+        has_domain_context = bool(self._app_domain or self._allowed_topics)
+        if has_chat_steps and has_domain_context:
+            warmup_result = await self._send_happy_path_warmup(chain, session)
+            if warmup_result is not None:
+                results.append(warmup_result)
 
         for step in steps:
             if chain.status == "aborted":
@@ -183,6 +217,64 @@ class AttackExecutor:
         chain.status = "completed"
         return chain, results
 
+    async def _send_happy_path_warmup(
+        self,
+        chain: ExploitChain,
+        session: AttackSession,
+    ) -> "StepResult | None":
+        """Send a domain-specific legitimate opener to the target.
+
+        Returns a ``StepResult`` wrapping a synthetic ``WARMUP`` ``ExploitStep``
+        so verbose reports show the warmup in the attack-step timeline.  The
+        warmup's ``success_signal`` is empty (no success/failure semantics) and
+        ``on_failure`` is ``skip`` so transport errors do not abort the chain.
+        Returns ``None`` if the target is unreachable (the chain will then
+        raise naturally on the first real step, preserving existing behaviour).
+        """
+        try:
+            # Derive a stable variation index from the chain ID so concurrent
+            # chains with identical SBOM context still produce different openers.
+            variation_idx = abs(hash(chain.chain_id)) if chain.chain_id else 0
+            message = await generate_happy_path_opener(
+                self._happy_path_llm,
+                self._app_domain,
+                self._allowed_topics,
+                label=f"happy-path chain={chain.chain_id[:8]}",
+                variation_idx=variation_idx,
+            )
+        except Exception as exc:  # pragma: no cover — helper already swallows
+            _log.warning("happy_path generation failed: %s — skipping warmup", exc)
+            return None
+
+        warmup_step = ExploitStep(
+            step_id=f"{chain.chain_id}_warmup",
+            step_type="WARMUP",
+            description="Domain-specific happy-path engagement (non-adversarial)",
+            payload=message,
+            target_node_id=chain.sbom_path[-1] if chain.sbom_path else "",
+            success_signal="",
+            on_failure="skip",
+        )
+        try:
+            response, tool_calls = await self._client.send(message, session)
+        except Exception as exc:
+            _log.warning(
+                "happy_path warmup send failed chain=%s: %s",
+                chain.chain_id, exc,
+            )
+            return None
+        session.add_turn(message, response, tool_calls)
+        # Log as a dedicated warmup turn so audit trails preserve it.
+        self._logger.log(
+            chain_id=chain.chain_id,
+            step_id=warmup_step.step_id,
+            goal_type=chain.goal_type.value,
+            payload=message,
+            response=response,
+            succeeded=False,  # warmup is never a "success" in attack terms
+        )
+        return StepResult(step=warmup_step, response=response, tool_calls=tool_calls)
+
     async def _execute_step(
         self,
         step: ExploitStep,
@@ -200,6 +292,14 @@ class AttackExecutor:
         session: AttackSession,
         chain: ExploitChain,
     ) -> StepResult:
+        async def _refresh_auth_headers() -> bool:
+            if self._auth_session is None:
+                return False
+            refreshed = await self._auth_session.refresh_if_needed()
+            if refreshed:
+                self._client.update_default_headers(self._auth_session.headers())
+            return refreshed
+
         if step.target_path:
             # Direct HTTP attack — bypass the chat endpoint entirely
             status_code, response, _ = await self._client.invoke_endpoint(
@@ -208,6 +308,20 @@ class AttackExecutor:
                 body=step.http_body,
                 params=step.http_params or None,
             )
+            if status_code == 401 and await _refresh_auth_headers():
+                _log.info(
+                    "Chain %s step %s: 401 received on %s %s, retrying after auth refresh",
+                    chain.chain_id,
+                    step.step_id,
+                    step.http_method,
+                    step.target_path,
+                )
+                status_code, response, _ = await self._client.invoke_endpoint(
+                    path=step.target_path,
+                    method=step.http_method,
+                    body=step.http_body,
+                    params=step.http_params or None,
+                )
             tool_calls: list[dict] = []
             # Log the request path as the prompt for session continuity / audit
             session.add_turn(
@@ -225,6 +339,13 @@ class AttackExecutor:
             if self._app_log_reader:
                 self._app_log_reader.mark()
             response, tool_calls = await self._client.send(payload, session)
+            if response.startswith("[HTTP 401]") and await _refresh_auth_headers():
+                _log.info(
+                    "Chain %s step %s: 401 received on chat endpoint, retrying after auth refresh",
+                    chain.chain_id,
+                    step.step_id,
+                )
+                response, tool_calls = await self._client.send(payload, session)
             session.add_turn(payload, response, tool_calls)
             result = StepResult(step=step, response=response, tool_calls=tool_calls)
 
@@ -246,6 +367,13 @@ class AttackExecutor:
         # is available, override the keyword-based success_signal_found with the
         # LLM's verdict.  Falls back to keyword result if the LLM is unavailable.
         is_client_error = response.startswith(("[REQUEST_ERROR:", "[HTTP "))
+        if step.use_llm_eval and not self._response_evaluator:
+            _log.warning(
+                "LLM eval requested (step=%s) but no eval_llm is configured — "
+                "falling back to keyword matching. Set redteam.eval_llm in config "
+                "or NUGUARD_REDTEAM_EVAL_LLM_MODEL env var to enable LLM evaluation.",
+                step.step_id,
+            )
         if step.use_llm_eval and self._response_evaluator and not is_client_error:
             llm_eval = await self._response_evaluator.evaluate(
                 goal_type=chain.goal_type.value,

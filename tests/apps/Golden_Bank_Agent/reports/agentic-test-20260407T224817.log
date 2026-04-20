@@ -1,0 +1,239 @@
+Preparing Golden Bank CES agent for NuGuard Testing...
+Log: /workspaces/nuguard-private/tests/apps/Golden_Bank_Agent/reports/agentic-test-20260407T224817.log
+Started: 2026-04-07T22:48:17Z
+---
+Generating SBOM from source...
+[04/07/26 22:48:18] DEBUG    Loading config from                                 
+                             /workspaces/nuguard-private/tests/apps/Golden_Bank_A
+                             gent/nuguard.yaml                                   
+╭────────────────────── Traceback (most recent call last) ──────────────────────╮
+│ /workspaces/nuguard-private/nuguard/config.py:812 in load_config              │
+│                                                                               │
+│   809 │   │   │   break                                                       │
+│   810 │   │   _log.debug("Loading config from %s", candidate)                 │
+│   811 │   │   try:                                                            │
+│ ❱ 812 │   │   │   raw = yaml.safe_load(candidate.read_text(encoding="utf-8")) │
+│   813 │   │   except yaml.YAMLError as exc:                                   │
+│   814 │   │   │   raise ConfigError(f"Failed to parse {candidate}: {exc}") fr │
+│   815                                                                         │
+│                                                                               │
+│ /workspaces/nuguard-private/.venv/lib/python3.12/site-packages/yaml/__init__. │
+│ py:125 in safe_load                                                           │
+│                                                                               │
+│   122 │   Resolve only basic YAML tags. This is known                         │
+│   123 │   to be safe for untrusted input.                                     │
+│   124 │   """                                                                 │
+│ ❱ 125 │   return load(stream, SafeLoader)                                     │
+│   126                                                                         │
+│   127 def safe_load_all(stream):                                              │
+│   128 │   """                                                                 │
+│                                                                               │
+│ /workspaces/nuguard-private/.venv/lib/python3.12/site-packages/yaml/__init__. │
+│ py:81 in load                                                                 │
+│                                                                               │
+│    78 │   """                                                                 │
+│    79 │   loader = Loader(stream)                                             │
+│    80 │   try:                                                                │
+│ ❱  81 │   │   return loader.get_single_data()                                 │
+│    82 │   finally:                                                            │
+│    83 │   │   loader.dispose()                                                │
+│    84                                                                         │
+│                                                                               │
+│ /workspaces/nuguard-private/.venv/lib/python3.12/site-packages/yaml/construct │
+│ or.py:49 in get_single_data                                                   │
+│                                                                               │
+│    46 │                                                                       │
+│    47 │   def get_single_data(self):                                          │
+│    48 │   │   # Ensure that the stream contains a single document and constru │
+│ ❱  49 │   │   node = self.get_single_node()                                   │
+│    50 │   │   if node is not None:                                            │
+│    51 │   │   │   return self.construct_document(node)                        │
+│    52 │   │   return None                                                     │
+│                                                                               │
+│ /workspaces/nuguard-private/.venv/lib/python3.12/site-packages/yaml/composer. │
+│ py:36 in get_single_node                                                      │
+│                                                                               │
+│    33 │   │   # Compose a document if the stream is not empty.                │
+│    34 │   │   document = None                                                 │
+│    35 │   │   if not self.check_event(StreamEndEvent):                        │
+│ ❱  36 │   │   │   document = self.compose_document()                          │
+│    37 │   │                                                                   │
+│    38 │   │   # Ensure that the stream contains no more documents.            │
+│    39 │   │   if not self.check_event(StreamEndEvent):                        │
+│                                                                               │
+│ /workspaces/nuguard-private/.venv/lib/python3.12/site-packages/yaml/composer. │
+│ py:55 in compose_document                                                     │
+│                                                                               │
+│    52 │   │   self.get_event()                                                │
+│    53 │   │                                                                   │
+│    54 │   │   # Compose the root node.                                        │
+│ ❱  55 │   │   node = self.compose_node(None, None)                            │
+│    56 │   │                                                                   │
+│    57 │   │   # Drop the DOCUMENT-END event.                                  │
+│    58 │   │   self.get_event()                                                │
+│                                                                               │
+│ /workspaces/nuguard-private/.venv/lib/python3.12/site-packages/yaml/composer. │
+│ py:84 in compose_node                                                         │
+│                                                                               │
+│    81 │   │   elif self.check_event(SequenceStartEvent):                      │
+│    82 │   │   │   node = self.compose_sequence_node(anchor)                   │
+│    83 │   │   elif self.check_event(MappingStartEvent):                       │
+│ ❱  84 │   │   │   node = self.compose_mapping_node(anchor)                    │
+│    85 │   │   self.ascend_resolver()                                          │
+│    86 │   │   return node                                                     │
+│    87                                                                         │
+│                                                                               │
+│ /workspaces/nuguard-private/.venv/lib/python3.12/site-packages/yaml/composer. │
+│ py:133 in compose_mapping_node                                                │
+│                                                                               │
+│   130 │   │   │   #if item_key in node.value:                                 │
+│   131 │   │   │   #    raise ComposerError("while composing a mapping", start │
+│   132 │   │   │   #            "found duplicate key", key_event.start_mark)   │
+│ ❱ 133 │   │   │   item_value = self.compose_node(node, item_key)              │
+│   134 │   │   │   #node.value[item_key] = item_value                          │
+│   135 │   │   │   node.value.append((item_key, item_value))                   │
+│   136 │   │   end_event = self.get_event()                                    │
+│                                                                               │
+│ /workspaces/nuguard-private/.venv/lib/python3.12/site-packages/yaml/composer. │
+│ py:84 in compose_node                                                         │
+│                                                                               │
+│    81 │   │   elif self.check_event(SequenceStartEvent):                      │
+│    82 │   │   │   node = self.compose_sequence_node(anchor)                   │
+│    83 │   │   elif self.check_event(MappingStartEvent):                       │
+│ ❱  84 │   │   │   node = self.compose_mapping_node(anchor)                    │
+│    85 │   │   self.ascend_resolver()                                          │
+│    86 │   │   return node                                                     │
+│    87                                                                         │
+│                                                                               │
+│ /workspaces/nuguard-private/.venv/lib/python3.12/site-packages/yaml/composer. │
+│ py:133 in compose_mapping_node                                                │
+│                                                                               │
+│   130 │   │   │   #if item_key in node.value:                                 │
+│   131 │   │   │   #    raise ComposerError("while composing a mapping", start │
+│   132 │   │   │   #            "found duplicate key", key_event.start_mark)   │
+│ ❱ 133 │   │   │   item_value = self.compose_node(node, item_key)              │
+│   134 │   │   │   #node.value[item_key] = item_value                          │
+│   135 │   │   │   node.value.append((item_key, item_value))                   │
+│   136 │   │   end_event = self.get_event()                                    │
+│                                                                               │
+│ /workspaces/nuguard-private/.venv/lib/python3.12/site-packages/yaml/composer. │
+│ py:84 in compose_node                                                         │
+│                                                                               │
+│    81 │   │   elif self.check_event(SequenceStartEvent):                      │
+│    82 │   │   │   node = self.compose_sequence_node(anchor)                   │
+│    83 │   │   elif self.check_event(MappingStartEvent):                       │
+│ ❱  84 │   │   │   node = self.compose_mapping_node(anchor)                    │
+│    85 │   │   self.ascend_resolver()                                          │
+│    86 │   │   return node                                                     │
+│    87                                                                         │
+│                                                                               │
+│ /workspaces/nuguard-private/.venv/lib/python3.12/site-packages/yaml/composer. │
+│ py:127 in compose_mapping_node                                                │
+│                                                                               │
+│   124 │   │   │   │   flow_style=start_event.flow_style)                      │
+│   125 │   │   if anchor is not None:                                          │
+│   126 │   │   │   self.anchors[anchor] = node                                 │
+│ ❱ 127 │   │   while not self.check_event(MappingEndEvent):                    │
+│   128 │   │   │   #key_event = self.peek_event()                              │
+│   129 │   │   │   item_key = self.compose_node(node, None)                    │
+│   130 │   │   │   #if item_key in node.value:                                 │
+│                                                                               │
+│ /workspaces/nuguard-private/.venv/lib/python3.12/site-packages/yaml/parser.py │
+│ :98 in check_event                                                            │
+│                                                                               │
+│    95 │   │   # Check the type of the next event.                             │
+│    96 │   │   if self.current_event is None:                                  │
+│    97 │   │   │   if self.state:                                              │
+│ ❱  98 │   │   │   │   self.current_event = self.state()                       │
+│    99 │   │   if self.current_event is not None:                              │
+│   100 │   │   │   if not choices:                                             │
+│   101 │   │   │   │   return True                                             │
+│                                                                               │
+│ /workspaces/nuguard-private/.venv/lib/python3.12/site-packages/yaml/parser.py │
+│ :428 in parse_block_mapping_key                                               │
+│                                                                               │
+│   425 │   │   return self.parse_block_mapping_key()                           │
+│   426 │                                                                       │
+│   427 │   def parse_block_mapping_key(self):                                  │
+│ ❱ 428 │   │   if self.check_token(KeyToken):                                  │
+│   429 │   │   │   token = self.get_token()                                    │
+│   430 │   │   │   if not self.check_token(KeyToken, ValueToken, BlockEndToken │
+│   431 │   │   │   │   self.states.append(self.parse_block_mapping_value)      │
+│                                                                               │
+│ /workspaces/nuguard-private/.venv/lib/python3.12/site-packages/yaml/scanner.p │
+│ y:116 in check_token                                                          │
+│                                                                               │
+│    113 │   def check_token(self, *choices):                                   │
+│    114 │   │   # Check if the next token is one of the given types.           │
+│    115 │   │   while self.need_more_tokens():                                 │
+│ ❱  116 │   │   │   self.fetch_more_tokens()                                   │
+│    117 │   │   if self.tokens:                                                │
+│    118 │   │   │   if not choices:                                            │
+│    119 │   │   │   │   return True                                            │
+│                                                                               │
+│ /workspaces/nuguard-private/.venv/lib/python3.12/site-packages/yaml/scanner.p │
+│ y:223 in fetch_more_tokens                                                    │
+│                                                                               │
+│    220 │   │                                                                  │
+│    221 │   │   # Is it the value indicator?                                   │
+│    222 │   │   if ch == ':' and self.check_value():                           │
+│ ❱  223 │   │   │   return self.fetch_value()                                  │
+│    224 │   │                                                                  │
+│    225 │   │   # Is it an alias?                                              │
+│    226 │   │   if ch == '*':                                                  │
+│                                                                               │
+│ /workspaces/nuguard-private/.venv/lib/python3.12/site-packages/yaml/scanner.p │
+│ y:577 in fetch_value                                                          │
+│                                                                               │
+│    574 │   │   │   │   # We are allowed to start a complex value if and only  │
+│    575 │   │   │   │   # we can start a simple key.                           │
+│    576 │   │   │   │   if not self.allow_simple_key:                          │
+│ ❱  577 │   │   │   │   │   raise ScannerError(None, None,                     │
+│    578 │   │   │   │   │   │   │   "mapping values are not allowed here",     │
+│    579 │   │   │   │   │   │   │   self.get_mark())                           │
+│    580                                                                        │
+╰───────────────────────────────────────────────────────────────────────────────╯
+ScannerError: mapping values are not allowed here
+  in "<unicode string>", line 65, column 14:
+         username: ${APP_USERNAME}
+                 ^
+
+The above exception was the direct cause of the following exception:
+
+╭────────────────────── Traceback (most recent call last) ──────────────────────╮
+│ /workspaces/nuguard-private/nuguard/cli/commands/sbom.py:350 in generate      │
+│                                                                               │
+│   347 │   config_file: Optional[Path] = _OPT_CONFIG,                          │
+│   348 ) -> None:                                                              │
+│   349 │   """Generate an AI-SBOM by scanning SOURCE or cloning --from-repo."" │
+│ ❱ 350 │   _do_generate(source, from_repo, ref, token, output, llm, format, co │
+│   351                                                                         │
+│   352                                                                         │
+│   353 @sbom_app.command("validate")                                           │
+│                                                                               │
+│ /workspaces/nuguard-private/nuguard/cli/commands/sbom.py:236 in _do_generate  │
+│                                                                               │
+│   233 │   # Always load nuguard.yaml so sbom_generation.llm, llm.model, and l │
+│   234 │   # are honoured even when --source is supplied on the CLI.           │
+│   235 │   from nuguard.config import load_config  # noqa: PLC0415             │
+│ ❱ 236 │   cfg = load_config(config_file)                                      │
+│   237 │                                                                       │
+│   238 │   # Fall back to nuguard.yaml's source field when --source is not pro │
+│   239 │   if source is None and from_repo is None:                            │
+│                                                                               │
+│ /workspaces/nuguard-private/nuguard/config.py:814 in load_config              │
+│                                                                               │
+│   811 │   │   try:                                                            │
+│   812 │   │   │   raw = yaml.safe_load(candidate.read_text(encoding="utf-8")) │
+│   813 │   │   except yaml.YAMLError as exc:                                   │
+│ ❱ 814 │   │   │   raise ConfigError(f"Failed to parse {candidate}: {exc}") fr │
+│   815 │   │                                                                   │
+│   816 │   │   expanded = _expand_env_vars(raw)                                │
+│   817 │   │   yaml_overrides = _flatten_yaml(expanded)                        │
+╰───────────────────────────────────────────────────────────────────────────────╯
+ConfigError: Failed to parse 
+/workspaces/nuguard-private/tests/apps/Golden_Bank_Agent/nuguard.yaml: mapping 
+values are not allowed here
+  in "<unicode string>", line 65, column 14:
+         username: ${APP_USERNAME}
+                 ^

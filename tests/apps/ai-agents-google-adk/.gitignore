@@ -1,0 +1,10 @@
+.env
+.venv
+venv_*
+__pycache__
+# ADK session database (runtime state)
+.adk/
+*/.adk/
+# Generated policy snapshot
+cognitive_policy.json
+

@@ -1,19 +1,37 @@
 """Topic boundary violation detector.
 
-Performs two-tier keyword matching against policy topic lists:
+Performs two-tier matching against policy topic lists:
   Tier 1 (HIGH)   — response contains a restricted_topic keyword.
-  Tier 2 (MEDIUM) — allowed_topics defined AND response has no overlap with
-                    any allowed_topic keyword.
+  Tier 2 (MEDIUM) — allowed_topics defined AND response has no word-level
+                    overlap with any allowed_topic.
 
-No LLM is used.
+No LLM is used.  Tier-2 uses word-overlap matching (words ≥ 4 chars) rather
+than exact substring matching so that paraphrased on-topic responses are not
+falsely flagged.
 """
 
 from __future__ import annotations
+
+import re
 
 from nuguard.common.logging import get_logger
 from nuguard.models.policy import CognitivePolicy
 
 _log = get_logger(__name__)
+
+
+def _response_overlaps_topic(response_lower: str, topic: str) -> bool:
+    """Return True when *response_lower* has meaningful word-level overlap with *topic*.
+
+    Words shorter than 4 characters are ignored to avoid spurious matches on
+    stop-words.  If the topic has no meaningful words (all short), falls back
+    to a plain substring check.
+    """
+    topic_words = re.sub(r"[^\w\s]", " ", topic.lower()).split()
+    meaningful = [w for w in topic_words if len(w) >= 4]
+    if not meaningful:
+        return topic.strip().lower() in response_lower
+    return any(w in response_lower for w in meaningful)
 
 
 def detect_topic_violations(
@@ -62,7 +80,7 @@ def detect_topic_violations(
     # ---- Tier 2: no overlap with allowed topics ---------------------------
     if policy.allowed_topics:
         matched_any_allowed = any(
-            topic.strip().lower() in response_lower
+            _response_overlaps_topic(response_lower, topic)
             for topic in policy.allowed_topics
             if topic.strip()
         )

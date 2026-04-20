@@ -1,0 +1,193 @@
+name: Deploy to Azure
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  AZURE_WEBAPP_NAME: openai-cs-agents-backend
+  AZURE_WEBAPP_PACKAGE_PATH: './python-backend'
+  PYTHON_VERSION: '3.11'
+  NODE_VERSION: '20'
+  RESOURCE_GROUP: openai-cs-agents-demo-rg
+  LOCATION: eastus2
+  APP_SERVICE_PLAN: openai-cs-agents-plan
+  STATIC_WEB_APP_NAME: openai-cs-agents-frontend
+
+jobs:
+  build-and-deploy-backend:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        working-directory: ./python-backend
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Create Resource Group (if not exists)
+        run: |
+          az group create --name ${{ env.RESOURCE_GROUP }} --location ${{ env.LOCATION }} || true
+
+      - name: Create App Service Plan (Free Tier)
+        run: |
+          az appservice plan create \
+            --name ${{ env.APP_SERVICE_PLAN }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --sku F1 \
+            --is-linux || true
+
+      - name: Create Web App
+        run: |
+          az webapp create \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --plan ${{ env.APP_SERVICE_PLAN }} \
+            --runtime "PYTHON:3.11" || true
+
+      - name: Configure App Settings
+        run: |
+          az webapp config appsettings set \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --settings \
+              OPENAI_API_KEY="${{ secrets.OPENAI_API_KEY }}" \
+              SCM_DO_BUILD_DURING_DEPLOYMENT=true \
+              WEBSITES_PORT=8000
+
+      - name: Configure startup command
+        run: |
+          az webapp config set \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --startup-file "gunicorn -w 2 -k uvicorn.workers.UvicornWorker api:app --bind 0.0.0.0:8000"
+
+      - name: Deploy to Azure Web App
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          package: ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}
+
+      - name: Output Backend URL
+        id: backend-url
+        run: |
+          BACKEND_URL="https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net"
+          echo "BACKEND_URL=$BACKEND_URL" >> $GITHUB_OUTPUT
+          echo "Backend deployed to: $BACKEND_URL"
+
+    outputs:
+      backend_url: ${{ steps.backend-url.outputs.BACKEND_URL }}
+
+  build-and-deploy-frontend:
+    runs-on: ubuntu-latest
+    needs: build-and-deploy-backend
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install pnpm
+        run: npm install -g pnpm
+
+      - name: Install dependencies
+        working-directory: ./ui
+        run: pnpm install
+
+      - name: Build frontend
+        working-directory: ./ui
+        run: pnpm run build
+        env:
+          NEXT_PUBLIC_API_BASE: ${{ needs.build-and-deploy-backend.outputs.backend_url }}
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Create Static Web App (if not exists)
+        run: |
+          az staticwebapp create \
+            --name ${{ env.STATIC_WEB_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --location ${{ env.LOCATION }} \
+            --sku Free || true
+
+      - name: Get Static Web App deployment token
+        id: swa-token
+        run: |
+          TOKEN=$(az staticwebapp secrets list \
+            --name ${{ env.STATIC_WEB_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query "properties.apiKey" -o tsv)
+          echo "::add-mask::$TOKEN"
+          echo "DEPLOYMENT_TOKEN=$TOKEN" >> $GITHUB_OUTPUT
+
+      - name: Deploy to Azure Static Web Apps
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ steps.swa-token.outputs.DEPLOYMENT_TOKEN }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: "upload"
+          app_location: "./ui/out"
+          output_location: ""
+          skip_app_build: true
+
+      - name: Output Frontend URL
+        run: |
+          FRONTEND_URL=$(az staticwebapp show \
+            --name ${{ env.STATIC_WEB_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query "defaultHostname" -o tsv)
+          echo "Frontend deployed to: https://$FRONTEND_URL"
+
+  configure-cors:
+    runs-on: ubuntu-latest
+    needs: [build-and-deploy-backend, build-and-deploy-frontend]
+    
+    steps:
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Get Static Web App URL
+        id: frontend-url
+        run: |
+          FRONTEND_URL=$(az staticwebapp show \
+            --name ${{ env.STATIC_WEB_APP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --query "defaultHostname" -o tsv)
+          echo "FRONTEND_URL=https://$FRONTEND_URL" >> $GITHUB_OUTPUT
+
+      - name: Configure CORS on Backend
+        run: |
+          az webapp cors add \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --allowed-origins "${{ steps.frontend-url.outputs.FRONTEND_URL }}"
+
+      - name: Summary
+        run: |
+          echo "=== Deployment Complete ==="
+          echo "Backend URL: ${{ needs.build-and-deploy-backend.outputs.backend_url }}"
+          echo "Frontend URL: ${{ steps.frontend-url.outputs.FRONTEND_URL }}"

@@ -1,0 +1,11 @@
+{
+  "hosting": {
+    "target": "goodbye-graffiti-agent",
+    "public": "views",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ]
+  }
+}

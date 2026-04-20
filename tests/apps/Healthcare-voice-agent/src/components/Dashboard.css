@@ -1,0 +1,117 @@
+/* Dashboard.css */
+.dashboard-container {
+    max-width: 1200px;
+    margin: 1.5rem auto;
+    padding: 1.5rem;
+    background-color: #ffffff;
+    border-radius: 1rem;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  }
+  
+  .dashboard-title {
+    font-size: 2rem;
+    font-weight: bold;
+    margin-bottom: 1rem;
+    padding: 1.5rem;
+  }
+  
+  /* Patient Information Section Styling */
+  .patient-information-section {
+    background-color: #f9f9f9;
+    padding: 1.5rem;
+    border-radius: 0.75rem;
+    margin-bottom: 1.5rem;
+  }
+  
+  .patient-information-section h2 {
+    font-size: 1.5rem;
+    font-weight: bold;
+    margin-bottom: 1rem;
+    color: #333;
+  }
+  
+  .patient-info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr; /* Two equal columns */
+    gap: 1.5rem;
+  }
+  
+  .patient-info-column {
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .patient-info-item {
+    display: flex;
+    align-items: baseline;
+    margin-bottom: 0.75rem;
+    color: #555;
+  }
+  
+  .patient-info-item strong {
+    font-weight: bold;
+    margin-right: 0.5rem;
+    width: 150px; /* Adjust width for label alignment */
+    display: inline-block;
+  }
+  
+  /* Patient Medical History Section Styling (Two Columns) */
+  .patient-medical-history-section {
+    background-color: #f9f9f9;
+    padding: 1.5rem;
+    border-radius: 0.75rem;
+    margin-bottom: 1.5rem;
+  }
+  
+  .patient-medical-history-section h2 {
+    font-size: 1.5rem;
+    font-weight: bold;
+    margin-bottom: 1rem;
+    color: #333;
+  }
+  
+  .medical-history-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr; /* Two equal columns */
+    gap: 1.5rem;
+  }
+  
+  .medical-history-column {
+    display: flex;
+    flex-direction: column;
+  }
+  
+  .medical-history-item {
+    margin-bottom: 1rem;
+    color: #555;
+  }
+  
+  .medical-history-item strong {
+    font-weight: bold;
+    display: block;
+    margin-bottom: 0.25rem;
+  }
+  
+  /* Styling for Previous Visits */
+  .medical-history-item.previous-visits ul {
+    list-style-type: disc; /* Use bullet points */
+    padding-left: 1.5rem; /* Indent the list */
+  }
+  
+  .medical-history-item.previous-visits ul li {
+    margin-bottom: 0.25rem;
+  }
+  
+  .medical-history-item.previous-visits ul li span {
+    font-weight: bold;
+    margin-right: 0.5rem;
+  }
+  
+  /* Appointment Help Section Styling */
+  .appointment-help-section {
+    background-color: #e9ecef;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    color: #495057;
+    text-align: center;
+  }

@@ -3,7 +3,8 @@
     "allow": [
       "Bash(*:*)",
       "Read",
-      "Edit"
+      "Edit",
+      "Write"
     ],
     "deny": [
       "Bash(rm:*)"

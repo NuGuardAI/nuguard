@@ -1,0 +1,9 @@
+import { Type } from './Type';
+import type { Platform } from '../platforms';
+import type { EntityProperty } from '../typings';
+export declare class Uint8ArrayType extends Type<Uint8Array | null> {
+    convertToDatabaseValue(value: Uint8Array): Buffer;
+    convertToJSValue(value: Buffer): Uint8Array | null;
+    compareAsType(): string;
+    getColumnType(prop: EntityProperty, platform: Platform): string;
+}

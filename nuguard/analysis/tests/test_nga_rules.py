@@ -20,8 +20,6 @@ from __future__ import annotations
 
 from typing import Any
 
-import pytest
-
 from nuguard.analysis.plugins.nga_rules import (
     _RULES,
     _rule_nga001_phi_to_external_llm,

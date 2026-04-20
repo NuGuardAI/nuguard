@@ -1,11 +1,11 @@
 from __future__ import annotations
 
 import re
+from bisect import bisect_right
 from dataclasses import dataclass, field
 from typing import Any
 
 from ..types import ComponentType
-
 
 # ---------------------------------------------------------------------------
 # Legacy regex-adapter types (kept for backwards compatibility and non-Python
@@ -33,6 +33,7 @@ class AdapterDetection:
 class DetectionAdapter:
     name: str
     priority: int
+    canonical_name: str | None = None
 
     def detect(self, content: str) -> AdapterDetection | None:
         raise NotImplementedError
@@ -69,9 +70,10 @@ class RegexAdapter(DetectionAdapter):
 
     def detect(self, content: str) -> AdapterDetection | None:
         all_matches: list[AdapterMatch] = []
+        newline_offsets = [match.start() for match in re.finditer(r"\n", content)]
         for pattern in self.patterns:
             for match in pattern.finditer(content):
-                line = content[: match.start()].count("\n") + 1
+                line = bisect_right(newline_offsets, match.start()) + 1
                 all_matches.append(
                     AdapterMatch(
                         pattern=pattern.pattern,

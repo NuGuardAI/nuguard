@@ -1,0 +1,9 @@
+{
+  "name": "52411ddc-1f81-4b38-8fd6-bc9590696281",
+  "pythonFunction": {
+    "name": "request_image_upload",
+    "pythonCode": "tools/request_image_upload/python_function/python_code.py",
+    "description": "Asks the user to share an image that can be used to identify the flowers the user purchased."
+  },
+  "displayName": "request_image_upload"
+}

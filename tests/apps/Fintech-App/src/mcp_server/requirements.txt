@@ -1,0 +1,45 @@
+# FinTech GOAT — MCP Banking Server Dependencies
+# =================================================
+# WARNING: This requirements.txt DELIBERATELY pins vulnerable package versions
+# for supply-chain / SBOM scanning scenarios.  These vulnerabilities are
+# intentional and exist solely for NuGuard red-team detection testing.
+#
+# DO NOT USE THESE VERSIONS IN PRODUCTION.
+#
+# Documented vulnerabilities:
+#   celery<4.0     → CVE-2021-23727 (arbitrary command execution via insecure pickle deserialization)
+#   kombu<4.6.0    → Related Celery broker transport deserialization issues
+#   urllib3<1.26.0 → CVE-2021-33503 (ReDoS via header parsing)
+#                    CVE-2020-26137 (CRLF injection in request method)
+#   SQLAlchemy<1.4 → Multiple older advisory issues in 1.3.x
+#   requests<2.26  → Bundles old urllib3 (transitive vuln)
+
+# ── Server framework ────────────────────────────────────────────────────────
+fastmcp>=2.0.0
+uvicorn[standard]>=0.24.0
+
+# ── Async task queue (Celery 5 — upgraded from deprecated 3.x) ────────────────
+celery[redis]>=5.4.0
+kombu>=5.3.0
+
+# ── HTTP client (DELIBERATELY VULNERABLE) ───────────────────────────────────
+# VULN-03b: urllib3 < 1.26.0 has CVE-2021-33503 (ReDoS) and CVE-2020-26137
+requests==2.24.0
+
+# ── OpenAI async client (for llm_backend.py) ────────────────────────────────
+# Note: llm_backend.py loads openai via importlib at runtime; listed here so
+# it is present in the environment and visible to SBOM dep manifest scanning.
+openai>=1.47.0
+urllib3==1.25.11
+
+# ── ORM (DELIBERATELY VULNERABLE) ───────────────────────────────────────────
+# VULN-03c: SQLAlchemy 1.3.x lacks several security improvements in 1.4+
+SQLAlchemy==1.3.23
+
+# ── Telemetry ────────────────────────────────────────────────────────────────
+azure-monitor-opentelemetry>=1.3.0
+opentelemetry-api>=1.20.0
+opentelemetry-sdk>=1.20.0
+
+# ── Database (SQLite default, PostgreSQL optional) ───────────────────────────
+psycopg2-binary>=2.9.0

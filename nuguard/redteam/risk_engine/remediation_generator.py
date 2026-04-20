@@ -1,7 +1,7 @@
 """Template-based remediation advice generator."""
 from __future__ import annotations
 
-from nuguard.models.exploit_chain import GoalType, ScenarioType
+from nuguard.models.exploit_chain import GoalType
 
 # Per-violation-type remediations used when a policy violation is detected
 # against a scenario that has a different primary goal type (e.g. a TOPIC_BOUNDARY

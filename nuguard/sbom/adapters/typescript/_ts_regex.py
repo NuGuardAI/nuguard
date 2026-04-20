@@ -12,8 +12,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from ..base import ComponentDetection, FrameworkAdapter
 from ...types import ComponentType
+from ..base import ComponentDetection, FrameworkAdapter
 
 
 class TSFrameworkAdapter(FrameworkAdapter):

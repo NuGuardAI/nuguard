@@ -105,6 +105,8 @@ class AiSbomConfig(BaseModel):
             ".tfvars",
             ".bicep",
             ".jinja",
+            ".sh",
+            ".bash",
             ".md",
         }
     )

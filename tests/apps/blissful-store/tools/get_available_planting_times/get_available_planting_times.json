@@ -1,0 +1,9 @@
+{
+  "name": "f1dfeb07-242e-4c4f-acb7-e1e4ecec9d34",
+  "pythonFunction": {
+    "name": "get_available_planting_times",
+    "pythonCode": "tools/get_available_planting_times/python_function/python_code.py",
+    "description": "Retrieves available planting service time slots for a given date.\n\nArgs:\n    date: The date to check (YYYY-MM-DD).\n\nReturns:\n    A list of available time ranges. Example:\n    [\u00278-12\u0027, \u002713-17\u0027]"
+  },
+  "displayName": "get_available_planting_times"
+}

@@ -1,0 +1,9 @@
+{
+  "name": "2654d891-ae14-43b1-aea6-941136edd8f1",
+  "pythonFunction": {
+    "name": "schedule_planting_service",
+    "pythonCode": "tools/schedule_planting_service/python_function/python_code.py",
+    "description": "Schedules a planting service appointment.\n\nArgs:\n    customer_id: The ID of the customer.\n    date:  The desired date (YYYY-MM-DD).\n    time_range: The desired time range (e.g., \"8-12\").\n    details: Any additional details (e.g., \"Planting Petunias\").\n\nReturns:\n    A dictionary indicating the status of the scheduling. Example:\n    {\u0027status\u0027: \u0027success\u0027, \u0027appointment_id\u0027: \u002712345\u0027, \u0027date\u0027: \u00272024-07-29\u0027, \u0027time\u0027: \u00278:00 AM - 12:00 PM\u0027}"
+  },
+  "displayName": "schedule_planting_service"
+}

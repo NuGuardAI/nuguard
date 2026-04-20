@@ -34,7 +34,7 @@ from nuguard.sbom.extractor.config import AiSbomConfig
 from nuguard.sbom.extractor.core import AiSbomExtractor
 from nuguard.sbom.serializer import AiSbomSerializer
 
-from .app_runner import APP_CONFIGS, FIXTURES_DIR, AppRunner
+from .app_runner import APP_CONFIGS, FIXTURES_DIR, AppConfig, AppRunner
 from .report import write_redteam_report
 
 _log = logging.getLogger(__name__)
@@ -63,6 +63,7 @@ def _build_llm_clients(app_cfg: "NuGuardConfig") -> "tuple[LLMClient | None, LLM
         redteam_llm = LLMClient(
             model=app_cfg.redteam_llm_model or os.getenv("NUGUARD_REDTEAM_LLM_MODEL"),
             api_key=app_cfg.redteam_llm_api_key or os.getenv("NUGUARD_REDTEAM_LLM_API_KEY"),
+            api_base=app_cfg.redteam_llm_api_base or os.getenv("NUGUARD_REDTEAM_LLM_API_BASE"),
             min_temperature=0.7,
         )
     eval_llm = None
@@ -172,7 +173,7 @@ def _generate_sbom(source_dir: Path, app_name: str, fixture_dir: str = ""):  # t
     return sbom, sbom_path
 
 
-def _load_policy(config: "AppConfig") -> CognitivePolicy | None:  # type: ignore[name-defined]
+def _load_policy(config: AppConfig) -> CognitivePolicy | None:
     """Load and parse a CognitivePolicy from the fixture's static directory.
 
     Checks (in order):
@@ -197,7 +198,7 @@ def _load_policy(config: "AppConfig") -> CognitivePolicy | None:  # type: ignore
     return None
 
 
-def _load_fixture_config(config: "AppConfig") -> "NuGuardConfig":  # type: ignore[name-defined]
+def _load_fixture_config(config: AppConfig) -> "NuGuardConfig":
     """Load per-fixture nuguard.yaml if present, falling back to the repo-root config.
 
     Looks for ``nuguard.yaml`` in the fixture's static directory alongside
@@ -298,6 +299,7 @@ def _run_redteam(app_name: str) -> None:
                     eval_llm=eval_llm,
                     prompt_cache_dir=OUTPUT_DIR,
                     app_log_reader=app_log_reader,
+                    verbose=app_cfg.redteam_verbose or _VERBOSE,
                 )
                 findings = asyncio.run(orchestrator.run())
                 scenarios_generated = orchestrator.scenarios_run

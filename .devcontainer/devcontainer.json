@@ -1,0 +1,10 @@
+{
+  "name": "NuGuard",
+  "portsAttributes": {
+    "8081": {
+      "label": "Blissful webapp",
+      "onAutoForward": "openPreview",
+      "visibility": "public"
+    }
+  }
+}

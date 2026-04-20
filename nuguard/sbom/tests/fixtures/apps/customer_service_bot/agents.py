@@ -12,11 +12,10 @@ import operator
 from typing import Annotated, TypedDict
 
 from langchain_anthropic import ChatAnthropic
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage
+from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode, create_react_agent
-
 
 # ── State ────────────────────────────────────────────────────────────────────
 
@@ -55,17 +54,17 @@ Provide step-by-step guidance and include relevant documentation links.\
 
 # ── Tools ────────────────────────────────────────────────────────────────────
 
-def lookup_account(customer_id: str) -> dict:
+def lookup_account(customer_id: str) -> dict:  # type: ignore[empty-body]
     """Return account metadata for the given customer ID."""
     ...
 
 
-def get_invoice(invoice_id: str) -> dict:
+def get_invoice(invoice_id: str) -> dict:  # type: ignore[empty-body]
     """Fetch a single invoice by ID including line items and status."""
     ...
 
 
-def create_support_ticket(
+def create_support_ticket(  # type: ignore[empty-body]
     customer_id: str,
     category: str,
     description: str,
@@ -75,7 +74,7 @@ def create_support_ticket(
     ...
 
 
-def search_knowledge_base(query: str, max_results: int = 5) -> list[dict]:
+def search_knowledge_base(query: str, max_results: int = 5) -> list[dict]:  # type: ignore[empty-body]
     """Full-text search the internal knowledge base."""
     ...
 

@@ -25,6 +25,7 @@ import asyncio
 import hashlib
 import json
 import logging
+import os
 import re
 import shutil
 import subprocess
@@ -43,14 +44,6 @@ from ..adapters.base import (
 )
 from ..adapters.data_classification import DataClassificationSQLAdapter
 from ..adapters.dockerfile import DockerfileAdapter
-from ..adapters.registry import default_framework_adapters, default_registry
-from ..adapters.nginx import NginxAdapter, is_nginx_file
-from ..adapters.yaml_adapters import (
-    AutoGenYAMLAdapter,
-    CrewAIYAMLAdapter,
-    LLMYAMLConfigAdapter,
-    PromptFileAdapter,
-)
 from ..adapters.iac import (
     BicepAdapter,
     CloudFormationAdapter,
@@ -59,10 +52,27 @@ from ..adapters.iac import (
     K8sAdapter,
     TerraformAdapter,
 )
+from ..adapters.json_adapters import (
+    AgentJSONConfigAdapter,
+    GoogleADKJSONAdapter,
+    LLMJSONConfigAdapter,
+    MCPServerJSONAdapter,
+    OpenAIToolsJSONAdapter,
+    PromptJSONAdapter,
+)
+from ..adapters.nginx import NginxAdapter, is_nginx_file
+from ..adapters.registry import default_framework_adapters, default_registry
 from ..adapters.typescript._ts_regex import TSFrameworkAdapter
+from ..adapters.yaml_adapters import (
+    AutoGenYAMLAdapter,
+    CrewAIYAMLAdapter,
+    LLMYAMLConfigAdapter,
+    PromptFileAdapter,
+)
 from ..config import AiSbomConfig
 from ..core.application_summary import build_scan_summary
-from ..core.ts_parser import TSParseResult, parse_typescript as _parse_ts_impl
+from ..core.ts_parser import TSParseResult
+from ..core.ts_parser import parse_typescript as _parse_ts_impl
 from ..deps import DependencyScanner
 from ..models import AiSbomDocument, Edge, Evidence, Node, ScanSummary, SourceLocation
 from ..normalization import canonicalize_text
@@ -222,13 +232,13 @@ _DOCS_EXTENSIONS = {
     ".html",
     ".htm",
     ".adoc",
-    ".sh",
-    ".bash",
-    ".zsh",
-    ".fish",
-    ".ps1",
     ".mk",
 }
+# Shell / script extensions are NOT in _DOCS_EXTENSIONS so that regex adapters
+# (deployment_generic, privilege, auth, etc.) can scan them.  They receive the
+# IAC source tier so their evidence confidence is scored like infrastructure
+# files rather than code.
+_SCRIPT_EXTENSIONS = {".sh", ".bash", ".zsh", ".fish", ".ps1"}
 
 
 def _should_skip_path_parts(parts: tuple[str, ...]) -> bool:
@@ -287,7 +297,7 @@ def _classify_source_tier(file_path: str, adapter_name: str, evidence_kind: str)
     stem = p.stem.lower()
     if suffix in _DOCS_EXTENSIONS or stem in _DOCS_STEMS:
         return _TIER_DOCS
-    if suffix in _IAC_EXTENSIONS:
+    if suffix in _IAC_EXTENSIONS or suffix in _SCRIPT_EXTENSIONS:
         return _TIER_IAC
     # Python / TypeScript / notebook files processed by regex fallback → code
     return _TIER_CODE
@@ -340,6 +350,7 @@ class AiSbomExtractor:
         sql_adapters: tuple[DataClassificationSQLAdapter, ...] | None = None,
         dockerfile_adapter: DockerfileAdapter | None = None,
         yaml_adapters: tuple[Any, ...] | None = None,
+        json_adapters: tuple[Any, ...] | None = None,
         nginx_adapter: NginxAdapter | None = None,
         prompt_file_adapter: PromptFileAdapter | None = None,
         iac_adapters: tuple[Any, ...] | None = None,
@@ -369,6 +380,18 @@ class AiSbomExtractor:
             yaml_adapters
             if yaml_adapters is not None
             else (CrewAIYAMLAdapter(), AutoGenYAMLAdapter(), LLMYAMLConfigAdapter())
+        )
+        self.json_adapters = (
+            json_adapters
+            if json_adapters is not None
+            else (
+                GoogleADKJSONAdapter(),
+                OpenAIToolsJSONAdapter(),
+                AgentJSONConfigAdapter(),
+                LLMJSONConfigAdapter(),
+                PromptJSONAdapter(),
+                MCPServerJSONAdapter(),
+            )
         )
         self.nginx_adapter = nginx_adapter if nginx_adapter is not None else NginxAdapter()
         self.prompt_file_adapter = (
@@ -400,24 +423,59 @@ class AiSbomExtractor:
     ) -> AiSbomDocument:
         """Extract an SBOM from a directory on the local filesystem."""
         root = Path(path).resolve()
-        files = list(self._iter_files(root, config))
-        _log.info("scanning %d files under %s", len(files), root)
+        _log.info("scanning files under %s", root)
         doc = AiSbomDocument(target=source_ref or str(root))
         node_map: dict[tuple[ComponentType, str], _NodeAccumulator] = {}
         # Classification-only metadata from data_classification adapters (not emitted as nodes)
         _dc_metadata: list[dict[str, Any]] = []
-        # Accumulated for Phase 3 LLM enrichment (rel_path → content)
+        # Keep full file contents only when LLM enrichment is enabled.
+        keep_full_contents = bool(config.enable_llm)
         file_contents: dict[str, str] = {}
+        # Summary builder only needs a bounded content sample.
+        files_sample: list[tuple[str, str]] = []
+        files_scanned = 0
+        files_sample_bytes = 0
+        full_cache_files = 0
+        full_cache_bytes = 0
 
-        for file_path in files:
+        def _human_bytes(num_bytes: int) -> str:
+            if num_bytes < 1024:
+                return f"{num_bytes} B"
+            if num_bytes < 1024 * 1024:
+                return f"{num_bytes / 1024:.2f} KiB"
+            if num_bytes < 1024 * 1024 * 1024:
+                return f"{num_bytes / (1024 * 1024):.2f} MiB"
+            return f"{num_bytes / (1024 * 1024 * 1024):.2f} GiB"
+
+        for file_path, file_size in self._iter_files(root, config):
             try:
                 content = file_path.read_text(encoding="utf-8", errors="ignore")
             except OSError as exc:
                 _log.warning("skipping unreadable file %s: %s", file_path, exc)
                 continue
 
+            # Skip JSON files that were generated by nuguard itself — they are
+            # output artefacts, not application source evidence.
+            if file_path.suffix.lower() == ".json" and '"generator"' in content[:512]:
+                try:
+                    import json as _json
+                    _peek = _json.loads(content)
+                    if isinstance(_peek, dict) and str(_peek.get("generator", "")).lower().startswith("nuguard"):
+                        _log.debug("skipping nuguard-generated file: %s", file_path)
+                        continue
+                except Exception:
+                    pass
+
+            files_scanned += 1
             rel_path = str(file_path.relative_to(root))
-            file_contents[rel_path] = content
+            content_bytes = file_size
+            if keep_full_contents:
+                file_contents[rel_path] = content
+                full_cache_files += 1
+                full_cache_bytes += content_bytes
+            if len(files_sample) < 200:
+                files_sample.append((rel_path, content))
+                files_sample_bytes += content_bytes
             suffix = file_path.suffix.lower()
             is_python = suffix in _PYTHON_EXTENSIONS
             is_notebook = suffix in _NOTEBOOK_EXTENSIONS
@@ -554,6 +612,23 @@ class AiSbomExtractor:
                     except Exception as exc:
                         _log.warning(
                             "YAML adapter %r failed on %s: %s", yaml_adapter.name, rel_path, exc
+                        )
+
+            # Phase 1f: JSON-aware framework adapters (tools.json, agents.json, etc.)
+            if suffix == ".json":
+                for json_adapter in self.json_adapters:
+                    _log.debug("running JSON adapter %r on %s", json_adapter.name, rel_path)
+                    try:
+                        # GoogleADKJSONAdapter needs root to resolve instruction file paths
+                        if isinstance(json_adapter, GoogleADKJSONAdapter):
+                            dets = json_adapter.scan(content, rel_path, root=root)
+                        else:
+                            dets = json_adapter.scan(content, rel_path)
+                        for det in dets:
+                            self._merge_detection(node_map, det)
+                    except Exception as exc:
+                        _log.warning(
+                            "JSON adapter %r failed on %s: %s", json_adapter.name, rel_path, exc
                         )
 
             # Phase 1g: IaC adapters (K8s, CFN, GCP DM for YAML/JSON;
@@ -973,6 +1048,39 @@ class AiSbomExtractor:
 
         self._resolve_edges(doc, node_map)
 
+        # Phase CES: scan for Google Customer Engagement Suite deployments.
+        # Runs after the main AST/regex loop so CES nodes can be appended.
+        try:
+            from ..adapters.ces import CESScanner, build_ces_sbom_nodes  # noqa: PLC0415
+            ces_detections = CESScanner().scan_directory(root)
+            if ces_detections:
+                _log.info(
+                    "CESScanner: detected %d CES deployment(s)", len(ces_detections)
+                )
+                ces_nodes = build_ces_sbom_nodes(ces_detections, doc)
+                if ces_nodes:
+                    # Collect source files covered by CES endpoints
+                    ces_source_files = {
+                        det.source_file for det in ces_detections if det.source_file
+                    }
+                    # Remove generic API_ENDPOINT nodes whose only evidence comes from the
+                    # same source files — CES nodes are more specific (auth, schema, endpoint URL)
+                    from ..types import ComponentType as _CT  # noqa: PLC0415
+                    doc.nodes = [
+                        n for n in doc.nodes
+                        if not (
+                            n.component_type == _CT.API_ENDPOINT
+                            and not getattr(n.metadata, "framework", None)
+                            and all(
+                                (e.location.path if e.location else "") in ces_source_files
+                                for e in (n.evidence or [])
+                            )
+                        )
+                    ]
+                doc.nodes.extend(ces_nodes)
+        except Exception as exc:  # noqa: BLE001
+            _log.warning("CES scanner failed: %s", exc)
+
         # Post-extraction enrichment: derive risk attributes from graph topology
         from ..enricher import enrich as _enrich_sbom
         _enrich_sbom(doc)
@@ -980,9 +1088,19 @@ class AiSbomExtractor:
         # Scan package manifest dependencies (pyproject.toml, requirements*.txt, package.json, …)
         doc.deps = DependencyScanner().scan(root)
         _log.info("deps scan: %d packages found", len(doc.deps))
+        _log.info("scan complete: %d files processed under %s", files_scanned, root)
+        _log.info(
+            "memory metrics: sample_files=%d sample_bytes=%d (%s) full_cache_files=%d full_cache_bytes=%d (%s) llm_enabled=%s",
+            len(files_sample),
+            files_sample_bytes,
+            _human_bytes(files_sample_bytes),
+            full_cache_files,
+            full_cache_bytes,
+            _human_bytes(full_cache_bytes),
+            keep_full_contents,
+        )
 
         # Build deterministic scan-level summary (always populated)
-        files_sample = list(file_contents.items())[:200]
         doc.summary = _make_scan_summary(
             build_scan_summary(
                 doc.nodes,
@@ -993,8 +1111,23 @@ class AiSbomExtractor:
             )
         )
 
+        # Ensure google-ces is listed in summary.frameworks when CES nodes exist
+        _has_ces = any(
+            getattr(n.metadata, "framework", "") == "google-ces"
+            for n in doc.nodes
+        )
+        if _has_ces and doc.summary is not None:
+            if "google-ces" not in doc.summary.frameworks:
+                doc.summary.frameworks.append("google-ces")
+
         # Phase 3: LLM enrichment (skipped unless enable_llm=True)
         if config.enable_llm:
+            _log.info(
+                "llm enrichment input cache: files=%d bytes=%d (%s)",
+                full_cache_files,
+                full_cache_bytes,
+                _human_bytes(full_cache_bytes),
+            )
             try:
                 try:
                     running_loop = asyncio.get_running_loop()
@@ -1417,11 +1550,11 @@ class AiSbomExtractor:
         2.5. Annotate MCP FRAMEWORK nodes with a short LLM description
         3. Enrich the scan-level use-case summary
         """
-        from ..llm_client import LLMClient
         from ..core.application_summary import maybe_refine_use_case_summary_with_llm
         from ..core.confidence import aggregate_node_confidence
         from ..core.gap_fill import apply_discovery_results, discover_missing_nodes
         from ..core.verification import apply_verification_results, verify_uncertain_nodes
+        from ..llm_client import LLMClient
 
         client = LLMClient(
             model=config.llm_model,
@@ -1481,6 +1614,24 @@ class AiSbomExtractor:
             doc = await self._llm_summarize_iac(doc, client)
         except Exception as exc:
             _log.warning("iac-summary: unexpected error — continuing without: %s", exc)
+
+        # Step 5: Enrich descriptions for AGENT/TOOL nodes missing them
+        try:
+            from ..llm_client import enrich_node_descriptions
+            await enrich_node_descriptions(doc.nodes, client)
+            _log.info("description-enrichment: completed for agent/tool nodes")
+        except Exception as exc:
+            _log.warning("description-enrichment: unexpected error — continuing without: %s", exc)
+
+        # Step 6: Build Markdown relationship graph (Mermaid diagram + LLM narrative)
+        try:
+            from ..core.relationship_graph import build_relationship_graph_with_llm
+            graph_md = await build_relationship_graph_with_llm(doc, client)
+            if graph_md:
+                doc.relationship_graph_md = graph_md
+                _log.info("relationship-graph: Mermaid diagram and narrative generated")
+        except Exception as exc:
+            _log.warning("relationship-graph: unexpected error — continuing without: %s", exc)
 
         _log.info("llm enrichment complete: tokens_used=%d", client.tokens_used)
         return doc
@@ -1744,38 +1895,48 @@ class AiSbomExtractor:
             ) from exc
 
     @staticmethod
-    def _iter_files(root: Path, config: AiSbomConfig) -> Iterator[Path]:
+    def _iter_files(root: Path, config: AiSbomConfig) -> Iterator[tuple[Path, int]]:
         count = 0
-        for path in sorted(root.rglob("*")):
-            if not path.is_file():
-                continue
-            suffix = path.suffix.lower()
-            # Always include Dockerfile* files (extensionless or .dockerfile suffix)
-            is_dockerfile = (
-                suffix in _DOCKERFILE_EXTENSIONS or path.name.lower() in _DOCKERFILE_NAMES
-            )
-            if suffix not in config.include_extensions and not is_dockerfile:
-                continue
-            # Skip common irrelevant directories
-            parts = path.parts
-            if _should_skip_path_parts(parts):
-                continue
-            # Skip .github/** except .github/workflows/**
-            if ".github" in parts and "workflows" not in parts:
-                continue
-            # Skip meta/tooling instruction files
-            if path.name in {"CLAUDE.md", "AGENTS.md"}:
-                continue
-            try:
-                size = path.stat().st_size
-            except OSError:
-                continue
-            if size > config.max_file_size_bytes:
-                continue
-            yield path
-            count += 1
-            if count >= config.max_files:
-                break
+        for dirpath, dirnames, filenames in os.walk(root):
+            # Keep traversal deterministic and prune irrelevant dirs early.
+            dirnames[:] = sorted(d for d in dirnames if not _should_skip_path_parts((d,)))
+            for filename in sorted(filenames):
+                path = Path(dirpath) / filename
+                suffix = path.suffix.lower()
+                # Always include Dockerfile* files (extensionless or .dockerfile suffix)
+                is_dockerfile = (
+                    suffix in _DOCKERFILE_EXTENSIONS or path.name.lower() in _DOCKERFILE_NAMES
+                )
+                if suffix not in config.include_extensions and not is_dockerfile:
+                    continue
+                # Skip common irrelevant directories
+                parts = path.parts
+                if _should_skip_path_parts(parts):
+                    continue
+                # Skip .github/** except .github/workflows/**
+                if ".github" in parts and "workflows" not in parts:
+                    continue
+                # Skip meta/tooling instruction files
+                if path.name in {"CLAUDE.md", "AGENTS.md"}:
+                    continue
+                # Skip NuGuard-specific config, policy, and output files
+                if path.name == "nuguard.yaml":
+                    continue
+                name_lower = path.name.lower()
+                if name_lower in {"cognitive_policy.md", "cognitive_policy.json"}:
+                    continue
+                if name_lower.endswith("sbom.json") or name_lower.endswith("aibom.json"):
+                    continue
+                try:
+                    size = path.stat().st_size
+                except OSError:
+                    continue
+                if size > config.max_file_size_bytes:
+                    continue
+                yield path, size
+                count += 1
+                if count >= config.max_files:
+                    return
 
 
 def _make_scan_summary(d: dict[str, Any]) -> ScanSummary:
@@ -1809,6 +1970,9 @@ def _make_scan_summary(d: dict[str, Any]) -> ScanSummary:
         staging_urls=d.get("staging_urls") or [],
         production_urls=d.get("production_urls") or [],
         log_paths=d.get("log_paths") or [],
+        # Streaming output detection
+        uses_streaming=bool(d.get("uses_streaming", False)),
+        streaming_endpoints=d.get("streaming_endpoints") or [],
     )
 
 
@@ -1823,39 +1987,51 @@ def _dedup_by_name_prefix(
     (``gemini-2.0-flash``) from an adjacent line of the same call.
     The shorter entry is dropped and its evidence absorbed by the longer one.
     """
-    keys = list(node_map.keys())
     keys_to_remove: set[tuple[ComponentType, str]] = set()
+    files_by_key: dict[tuple[ComponentType, str], set[str]] = {
+        key: {ev.location.path for ev in acc.evidence if ev.location}
+        for key, acc in node_map.items()
+    }
 
-    for i, key_a in enumerate(keys):
-        if key_a in keys_to_remove:
+    # Compare only key pairs that actually share at least one source file.
+    # This avoids global O(n^2) comparisons across unrelated components.
+    file_to_keys: dict[tuple[ComponentType, str], list[tuple[ComponentType, str]]] = {}
+    for key, files in files_by_key.items():
+        ctype = key[0]
+        for file_path in files:
+            file_to_keys.setdefault((ctype, file_path), []).append(key)
+
+    for keys in file_to_keys.values():
+        if len(keys) < 2:
             continue
-        acc_a = node_map[key_a]
-        files_a = {ev.location.path for ev in acc_a.evidence if ev.location}
-
-        for key_b in keys[i + 1 :]:
-            if key_b in keys_to_remove:
+        sorted_keys = sorted(keys, key=lambda key: node_map[key].display_name.lower())
+        for index, key_a in enumerate(sorted_keys[:-1]):
+            if key_a in keys_to_remove:
                 continue
-            if key_a[0] != key_b[0]:  # must be same component_type
-                continue
-            acc_b = node_map[key_b]
-            files_b = {ev.location.path for ev in acc_b.evidence if ev.location}
-
-            if not files_a & files_b:  # must share at least one file
+            name_a = node_map[key_a].display_name.lower()
+            if not name_a:
                 continue
 
-            name_a = acc_a.display_name.lower()
-            name_b = acc_b.display_name.lower()
-            if name_b.startswith(name_a) and name_b != name_a:
-                # a is the shorter prefix — drop it, keep b
-                node_map[key_b].evidence.extend(node_map[key_a].evidence)
+            winner_key: tuple[ComponentType, str] | None = None
+            winner_name = ""
+            for key_b in sorted_keys[index + 1 :]:
+                if key_b in keys_to_remove:
+                    continue
+                name_b = node_map[key_b].display_name.lower()
+                if name_b == name_a:
+                    continue
+                if not name_b.startswith(name_a):
+                    break
+                if len(name_b) > len(winner_name):
+                    winner_key = key_b
+                    winner_name = name_b
+
+            if winner_key is not None:
+                node_map[winner_key].evidence.extend(node_map[key_a].evidence)
                 keys_to_remove.add(key_a)
-                _log.debug("dedup_by_name_prefix: dropped %s → kept %s", key_a, key_b)
-                break
-            elif name_a.startswith(name_b) and name_a != name_b:
-                # b is the shorter prefix — drop it, keep a
-                node_map[key_a].evidence.extend(node_map[key_b].evidence)
-                keys_to_remove.add(key_b)
-                _log.debug("dedup_by_name_prefix: dropped %s → kept %s", key_b, key_a)
+                _log.debug(
+                    "dedup_by_name_prefix: dropped %s → kept %s", key_a, winner_key
+                )
 
     for k in keys_to_remove:
         del node_map[k]
@@ -1872,21 +2048,19 @@ def _dedup_by_location(
     ``gemini-2.0`` from the same line.  The lower-priority-number (higher
     precedence) adapter wins; ties broken by confidence descending.
     """
-    # loc → [key, ...] for all keys that have at least one evidence item at that location
-    loc_to_keys: dict[tuple[ComponentType, str, int | None], list[tuple[ComponentType, str]]] = {}
+    # loc → {key, ...} for all keys that have at least one evidence item at that location
+    loc_to_keys: dict[tuple[ComponentType, str, int | None], set[tuple[ComponentType, str]]] = {}
+    has_regex_evidence: dict[tuple[ComponentType, str], bool] = {}
     for key, acc in node_map.items():
+        has_regex_evidence[key] = any(ev.kind == "regex" for ev in acc.evidence)
         for ev in acc.evidence:
             if ev.location:
                 loc = (key[0], ev.location.path, ev.location.line)
-                if key not in loc_to_keys.get(loc, []):
-                    loc_to_keys.setdefault(loc, []).append(key)
-
-    # Helper: does an accumulator have at least one regex-based evidence item?
-    def _has_regex_evidence(acc: _NodeAccumulator) -> bool:
-        return any(ev.kind == "regex" for ev in acc.evidence)
+                loc_to_keys.setdefault(loc, set()).add(key)
 
     keys_to_remove: set[tuple[ComponentType, str]] = set()
-    for loc, keys in loc_to_keys.items():
+    for loc, key_set in loc_to_keys.items():
+        keys = list(key_set)
         if len(keys) <= 1:
             continue
         # Sort: lower priority number = higher precedence; break ties by confidence desc
@@ -1902,7 +2076,14 @@ def _dedup_by_location(
             # Two AST-only nodes at the same line are distinct components (e.g.
             # multiple imports on one line → multiple FAISS stores) and must
             # both be kept.
-            if not (_has_regex_evidence(node_map[winner]) or _has_regex_evidence(node_map[loser])):
+            if not (has_regex_evidence.get(winner, False) or has_regex_evidence.get(loser, False)):
+                continue
+            # FRAMEWORK nodes with different canonical names are distinct
+            # frameworks even when detected on the same source line (e.g. a
+            # comment mentioning both "autogen" and "crewai" triggers both regex
+            # adapters at the same line).  Keep them separate so each framework
+            # gets its own node in the SBOM.
+            if winner[0] == ComponentType.FRAMEWORK and winner[1] != loser[1]:
                 continue
             # Absorb evidence so the winner node reflects all source locations
             node_map[winner].evidence.extend(node_map[loser].evidence)
@@ -1938,41 +2119,47 @@ def _suppress_generic_tech_regex_datastore(
     metadata (or its display name starts with the tech name as a prefix).
     """
     keys_to_remove: set[tuple[ComponentType, str]] = set()
+    datastore_keys = [key for key in node_map if key[0] == ComponentType.DATASTORE]
+    is_regex_only: dict[tuple[ComponentType, str], bool] = {}
+    evidence_paths: dict[tuple[ComponentType, str], set[str]] = {}
+
+    for key in datastore_keys:
+        acc = node_map[key]
+        is_regex_only[key] = all(ev.kind == "regex" for ev in acc.evidence)
+        evidence_paths[key] = {
+            ev.location.path for ev in acc.evidence if ev.location and ev.location.path
+        }
 
     # Collect: file → set of tech names from specific (non-regex) DATASTORE nodes
     file_to_specific_techs: dict[str, set[str]] = {}
-    for key, acc in node_map.items():
-        if key[0] != ComponentType.DATASTORE:
-            continue
-        if all(ev.kind == "regex" for ev in acc.evidence):
+    for key in datastore_keys:
+        acc = node_map[key]
+        if is_regex_only[key]:
             continue  # Skip — this is itself a regex-only node
         provider = str(acc.metadata.get("provider", "")).lower().strip()
         tech = provider or acc.display_name.lower()
-        for ev in acc.evidence:
-            if ev.location and ev.location.path:
-                file_to_specific_techs.setdefault(ev.location.path, set()).add(tech)
+        for file_path in evidence_paths[key]:
+            file_to_specific_techs.setdefault(file_path, set()).add(tech)
 
     # Identify generic regex-only DATASTORE nodes that are covered by specific ones
-    for key, acc in node_map.items():
-        if key[0] != ComponentType.DATASTORE:
-            continue
-        if not all(ev.kind == "regex" for ev in acc.evidence):
+    for key in datastore_keys:
+        acc = node_map[key]
+        if not is_regex_only[key]:
             continue  # Only suppress regex-only nodes
         tech_name = acc.display_name.lower()
         # Check whether any source file for this node already has a specific node
-        for ev in acc.evidence:
-            if ev.location and ev.location.path:
-                specific_techs = file_to_specific_techs.get(ev.location.path, set())
-                if tech_name in specific_techs:
-                    keys_to_remove.add(key)
-                    _log.debug(
-                        "suppress_generic_tech_regex: dropped generic %r"
-                        " (file %s already has specific %r nodes)",
-                        tech_name,
-                        ev.location.path,
-                        tech_name,
-                    )
-                    break
+        for file_path in evidence_paths[key]:
+            specific_techs = file_to_specific_techs.get(file_path, set())
+            if tech_name in specific_techs:
+                keys_to_remove.add(key)
+                _log.debug(
+                    "suppress_generic_tech_regex: dropped generic %r"
+                    " (file %s already has specific %r nodes)",
+                    tech_name,
+                    file_path,
+                    tech_name,
+                )
+                break
 
     for k in keys_to_remove:
         del node_map[k]

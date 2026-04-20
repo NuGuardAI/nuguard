@@ -49,5 +49,5 @@ def test_cli_flag_enables_llm_regardless_of_env(monkeypatch) -> None:
 
 
 def test_legacy_deterministic_only_input_maps_to_enable_llm() -> None:
-    cfg = AiSbomConfig(deterministic_only=False)
+    cfg = AiSbomConfig(deterministic_only=False)  # type: ignore[call-arg]
     assert cfg.enable_llm is True

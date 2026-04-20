@@ -33,5 +33,10 @@ class Finding(BaseModel):
     mitre_atlas_technique: str | None = None
     evidence: str | None = None
     log_correlation_status: str | None = None
+    # Redteam evidence fields — mirrors behavior/judge.py output for unified reporting
+    reasoning: str = ""                          # one-sentence explanation of the finding
+    evidence_quote: str = ""                     # exact substring of agent response proving the breach
+    success_indicator: str | None = None         # named success indicator (e.g. "PII_disclosed")
+    scores: dict[str, int | None] = Field(default_factory=dict)  # 1-5 rubric scores
     # Redteam step-level detail — each entry describes one executed attack step
     attack_steps: list[dict] = Field(default_factory=list)

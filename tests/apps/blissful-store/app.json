@@ -1,0 +1,306 @@
+{
+  "name": "dfe2a521-59d6-459a-8358-cedc73f1a92e",
+  "displayName": "Blissful Home store",
+  "description": "Sample Agent included with all projects. This is meant to be an educational tool for users to understand best practices for building agents on CX Agent Studio.",
+  "rootAgent": "retail_agent",
+  "audioProcessingConfig": {
+    "synthesizeSpeechConfigs": {
+      "en-US": {
+        "voice": "en-US-Chirp3-HD-Achernar"
+      },
+      "es-ES": {
+      },
+      "fr-CA": {
+      }
+    },
+    "inactivityTimeout": "2s",
+    "ambientSoundConfig": {
+      "volumeGainDb": -3.0,
+      "prebuiltAmbientSound": "hum"
+    }
+  },
+  "loggingSettings": {
+    "redactionConfig": {
+    },
+    "audioRecordingConfig": {
+      "gcsBucket": "$env_var"
+    },
+    "bigqueryExportSettings": {
+      "enabled": true,
+      "project": "$env_var"
+    },
+    "cloudLoggingSettings": {
+      "enableCloudLogging": true
+    },
+    "conversationLoggingSettings": {
+    },
+    "evaluationAudioRecordingConfig": {
+    }
+  },
+  "guardrails": ["Safety Guardrail 1757021079744", "Prompt Guardrail 1757021081696", "bad words", "French Fries Policy"],
+  "modelSettings": {
+    "model": "gemini-3.0-flash-001"
+  },
+  "variableDeclarations": [{
+    "name": "customer_profile",
+    "description": "Pre-loaded personalization information about the current customer. In a production implementation, these details can be sent dynamically when the session starts to provide a personalized experience for the authenticated user.",
+    "schema": {
+      "type": "OBJECT",
+      "properties": {
+        "account_number": {
+          "type": "STRING"
+        },
+        "billing_address": {
+          "type": "OBJECT",
+          "properties": {
+            "city": {
+              "type": "STRING"
+            },
+            "state": {
+              "type": "STRING"
+            },
+            "street": {
+              "type": "STRING"
+            },
+            "zip": {
+              "type": "STRING"
+            }
+          }
+        },
+        "communication_preferences": {
+          "type": "OBJECT",
+          "properties": {
+            "email": {
+              "type": "BOOLEAN"
+            },
+            "push_notifications": {
+              "type": "BOOLEAN"
+            },
+            "sms": {
+              "type": "BOOLEAN"
+            }
+          }
+        },
+        "customer_first_name": {
+          "type": "STRING"
+        },
+        "customer_last_name": {
+          "type": "STRING"
+        },
+        "customer_start_date": {
+          "type": "STRING"
+        },
+        "email": {
+          "type": "STRING"
+        },
+        "garden_profile": {
+          "type": "OBJECT",
+          "properties": {
+            "interests": {
+              "type": "ARRAY",
+              "items": {
+                "type": "STRING"
+              }
+            },
+            "size": {
+              "type": "STRING"
+            },
+            "soil_type": {
+              "type": "STRING"
+            },
+            "sun_exposure": {
+              "type": "STRING"
+            },
+            "type": {
+              "type": "STRING"
+            }
+          }
+        },
+        "loyalty_points": {
+          "type": "INTEGER"
+        },
+        "phone_number": {
+          "type": "STRING"
+        },
+        "preferred_store": {
+          "type": "STRING"
+        },
+        "purchase_history": {
+          "type": "ARRAY",
+          "items": {
+            "type": "OBJECT",
+            "properties": {
+              "date": {
+                "type": "STRING"
+              },
+              "items": {
+                "type": "ARRAY",
+                "items": {
+                  "type": "OBJECT",
+                  "properties": {
+                    "name": {
+                      "type": "STRING"
+                    },
+                    "product_id": {
+                      "type": "STRING"
+                    },
+                    "quantity": {
+                      "type": "INTEGER"
+                    }
+                  }
+                }
+              },
+              "total_amount": {
+                "type": "NUMBER"
+              }
+            }
+          }
+        },
+        "scheduled_appointments": {
+          "type": "OBJECT"
+        },
+        "years_as_customer": {
+          "type": "INTEGER"
+        }
+      },
+      "default": {
+        "account_number": "428765091",
+        "billing_address": {
+          "city": "Austin",
+          "state": "TX",
+          "street": "123 Town Lake Blvd.",
+          "zip": "78702"
+        },
+        "communication_preferences": {
+          "email": true,
+          "push_notifications": false,
+          "sms": true
+        },
+        "customer_first_name": "Patrick",
+        "customer_last_name": "Marlow",
+        "customer_start_date": "2022-06-10",
+        "email": "pmarlow@google.com",
+        "garden_profile": {
+          "interests": ["flowers", "vegetables"],
+          "size": "medium",
+          "soil_type": "unknown",
+          "sun_exposure": "full sun",
+          "type": "backyard"
+        },
+        "loyalty_points": 133.0,
+        "phone_number": "+1-702-555-1212",
+        "preferred_store": "Cymbal Home \u0026 Garden - Austin (Main)",
+        "purchase_history": [{
+          "date": "2023-03-05",
+          "items": [{
+            "name": "All-Purpose Fertilizer",
+            "product_id": "fert-111",
+            "quantity": 1.0
+          }, {
+            "name": "Gardening Trowel",
+            "product_id": "trowel-222",
+            "quantity": 1.0
+          }],
+          "total_amount": 35.98
+        }, {
+          "date": "2023-07-12",
+          "items": [{
+            "name": "Tomato Seeds (Variety Pack)",
+            "product_id": "seeds-333",
+            "quantity": 2.0
+          }, {
+            "name": "Terracotta Pots (6-inch)",
+            "product_id": "pots-444",
+            "quantity": 4.0
+          }],
+          "total_amount": 42.5
+        }, {
+          "date": "2024-01-20",
+          "items": [{
+            "name": "Gardening Gloves (Leather)",
+            "product_id": "gloves-555",
+            "quantity": 1.0
+          }, {
+            "name": "Pruning Shears",
+            "product_id": "pruner-666",
+            "quantity": 1.0
+          }],
+          "total_amount": 55.25
+        }],
+        "scheduled_appointments": {
+        },
+        "years_as_customer": 2.0
+      }
+    }
+  }, {
+    "name": "manager_approved",
+    "description": "Defines whether or not a manager has approved the discount request",
+    "schema": {
+      "type": "BOOLEAN",
+      "default": false
+    }
+  }, {
+    "name": "no_input_counter",
+    "description": "Track the user inactivity signal",
+    "schema": {
+      "type": "NUMBER",
+      "default": 0.0
+    }
+  }, {
+    "name": "request_image_tool_called",
+    "description": "This is used to if the request_image_upload tool is called during the conversation. It will help to track the behavior of the agent, and if the agent misses this tool call, we can force it to happen. However, we need to track this forced state, so we use this flag to track that information.",
+    "schema": {
+      "type": "BOOLEAN",
+      "default": false
+    }
+  }, {
+    "name": "telephony-caller-id",
+    "description": "The incoming ANI for the caller when using the GTP integration",
+    "schema": {
+      "type": "STRING",
+      "default": " "
+    }
+  }, {
+    "name": "uui-headers",
+    "description": "UUI Headers that are passed in as part of the integration with GTP telephony deployment",
+    "schema": {
+      "type": "ARRAY",
+      "default": ["None"]
+    }
+  }],
+  "globalInstruction": "global_instruction.txt",
+  "languageSettings": {
+    "defaultLanguageCode": "en-US",
+    "supportedLanguageCodes": ["fr-CA", "es-ES"],
+    "enableMultilingualSupport": true
+  },
+  "defaultChannelProfile": {
+    "personaProperty": {
+      "persona": "CONCISE"
+    }
+  },
+  "evaluationMetricsThresholds": {
+    "goldenEvaluationMetricsThresholds": {
+      "turnLevelMetricsThresholds": {
+        "semanticSimilaritySuccessThreshold": 2,
+        "overallToolInvocationCorrectnessThreshold": 0.75
+      },
+      "expectationLevelMetricsThresholds": {
+        "toolInvocationParameterCorrectnessThreshold": 0.75
+      }
+    },
+    "hallucinationMetricBehavior": "DISABLED"
+  },
+  "timeZoneSettings": {
+    "timeZone": "America/Los_Angeles"
+  },
+  "evaluationPersonas": [{
+    "name": "b27eebe5-0f51-4eb2-af0a-87e07e3ab72c",
+    "displayName": "testing helen",
+    "personality": "testing helen"
+  }],
+  "pinned": true,
+  "toolExecutionMode": "PARALLEL",
+  "errorHandlingSettings": {
+  }
+}
