@@ -53,6 +53,8 @@ import json
 import re
 from typing import Any
 
+from nuguard import __version__
+
 from .deps import PackageDep
 from .models import AiSbomDocument
 from .types import ComponentType
@@ -238,7 +240,7 @@ class AiSbomSerializer:
                     {
                         "vendor": "Xelo",
                         "name": doc.generator,
-                        "version": "0.2.0",
+                        "version": __version__,
                     }
                 ],
                 "component": {

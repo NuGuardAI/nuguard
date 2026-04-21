@@ -41,6 +41,8 @@ import re
 from datetime import datetime, timezone
 from typing import Any
 
+from nuguard import __version__
+
 from .models import AiSbomDocument
 from .types import ComponentType
 
@@ -48,7 +50,7 @@ from .types import ComponentType
 # Constants
 # ---------------------------------------------------------------------------
 
-_VERSION = "0.2.0"
+_VERSION = __version__
 
 # Map Xelo types to CycloneDX component types
 _CDX_TYPE: dict[ComponentType, str] = {

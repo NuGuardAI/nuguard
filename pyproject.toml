@@ -1,16 +1,16 @@
 [project]
 name = "nuguard"
-version = "0.2.0"
-description = "AI application security CLI — SBOM generation, static analysis, cognitive policy validation, and adversarial red-teaming for AI apps"
+version = "0.3.0"
+description = "AI application security — SBOM generation, vulnerability scanning, behavioral validation, and adversarial red-teaming for AI Agents"
 readme = "README.md"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.12"
 authors = [
-    { name = "NuGuard", email = "oss@nuguard.ai" },
+    { name = "NuGuard", email = "info@nuguard.ai" },
 ]
-keywords = ["ai", "security", "sbom", "red-team", "llm", "prompt-injection", "appsec"]
+keywords = ["ai", "security", "sbom", "red-team", "llm", "prompt-injection", "appsec", "agent"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Intended Audience :: Information Technology",
     "License :: OSI Approved :: Apache Software License",
