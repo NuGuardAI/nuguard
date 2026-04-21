@@ -1,6 +1,6 @@
 [project]
 name = "nuguard"
-version = "0.3.0"
+version = "0.3.1"
 description = "AI application security — SBOM generation, vulnerability scanning, behavioral validation, and adversarial red-teaming for AI Agents"
 readme = "README.md"
 license = { text = "Apache-2.0" }
@@ -50,9 +50,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/nuguard/nuguard-oss"
-Repository = "https://github.com/nuguard/nuguard-oss"
-Issues = "https://github.com/nuguard/nuguard-oss/issues"
+Homepage = "https://github.com/NuGuardAI/nuguard"
+Repository = "https://github.com/NuGuardAI/nuguard"
+Issues = "https://github.com/NuGuardAI/nuguard/issues"
 
 [project.scripts]
 nuguard = "nuguard.cli.main:app"
