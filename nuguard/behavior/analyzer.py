@@ -119,6 +119,88 @@ class BehaviorAnalyzer:
                     )
 
                 # Run scenarios
+                # ── Endpoint auto-discovery ─────────────────────────────
+                # When target_endpoint is not configured, attempt to infer
+                # it from SBOM metadata (zero-I/O) then fall back to a live
+                # HTTP probe.  This mirrors the RedteamOrchestrator logic so
+                # that both analysis modes share the same discovery path.
+                cfg_endpoint = getattr(self._config, "target_endpoint", "") or ""
+                if not cfg_endpoint and self._sbom is not None:
+                    from nuguard.common.endpoint_probe import (  # noqa: PLC0415
+                        discover_chat_config_from_sbom,
+                        probe_chat_endpoints,
+                    )
+
+                    # 1. Static SBOM-based discovery (no network)
+                    disc_path, disc_payload_key, disc_payload_list, disc_response_key = (
+                        discover_chat_config_from_sbom(
+                            self._sbom,
+                            chat_path="",
+                            chat_payload_key=getattr(self._config, "chat_payload_key", "message") or "message",
+                            chat_payload_list=bool(getattr(self._config, "chat_payload_list", False)),
+                        )
+                    )
+
+                    if disc_path:
+                        _log.info(
+                            "BehaviorAnalyzer: SBOM-discovered endpoint %s "
+                            "(key=%s list=%s response_key=%s)",
+                            disc_path, disc_payload_key, disc_payload_list, disc_response_key,
+                        )
+                        updates: dict = {"target_endpoint": disc_path}
+                        if disc_payload_key and disc_payload_key != getattr(self._config, "chat_payload_key", "message"):
+                            updates["chat_payload_key"] = disc_payload_key
+                        if disc_payload_list != bool(getattr(self._config, "chat_payload_list", False)):
+                            updates["chat_payload_list"] = disc_payload_list
+                        if disc_response_key and not getattr(self._config, "chat_response_key", ""):
+                            updates["chat_response_key"] = disc_response_key
+                        self._config = self._config.model_copy(update=updates)
+                    else:
+                        # 2. Live HTTP probe fallback
+                        auth_headers: dict[str, str] = {}
+                        try:
+                            from nuguard.common.auth import AuthConfig  # noqa: PLC0415
+                            from nuguard.common.auth_runtime import (
+                                resolve_auth_runtime,  # noqa: PLC0415
+                            )
+                            va = getattr(self._config, "auth", None)
+                            if va and getattr(va, "type", "none") != "none":
+                                ac = AuthConfig(
+                                    type=va.type,
+                                    header=getattr(va, "header", ""),
+                                    username=getattr(va, "username", ""),
+                                    password=getattr(va, "password", ""),
+                                )
+                                rt = resolve_auth_runtime(auth_config=ac)
+                                auth_headers = getattr(rt, "initial_headers", {}) or {}
+                        except Exception:
+                            pass
+
+                        probe_result = await probe_chat_endpoints(
+                            target_url=target_url,
+                            sbom=self._sbom,
+                            auth_headers=auth_headers or None,
+                            timeout=15.0,
+                        )
+                        if probe_result:
+                            probed_path, probed_key, probed_list = probe_result
+                            _log.info(
+                                "BehaviorAnalyzer: live-probed endpoint %s (key=%s list=%s)",
+                                probed_path, probed_key, probed_list,
+                            )
+                            probe_updates: dict = {"target_endpoint": probed_path}
+                            if probed_key and probed_key != getattr(self._config, "chat_payload_key", "message"):
+                                probe_updates["chat_payload_key"] = probed_key
+                            if probed_list != bool(getattr(self._config, "chat_payload_list", False)):
+                                probe_updates["chat_payload_list"] = probed_list
+                            self._config = self._config.model_copy(update=probe_updates)
+                        else:
+                            _log.warning(
+                                "BehaviorAnalyzer: endpoint auto-discovery found nothing "
+                                "for %s — scenarios will use default /chat",
+                                target_url,
+                            )
+
                 runner = BehaviorRunner(
                     config=self._config,
                     sbom=self._sbom,
