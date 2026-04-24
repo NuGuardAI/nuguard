@@ -10,8 +10,8 @@ import os
 import re
 from typing import TYPE_CHECKING
 
-from nuguard.common.logging import get_logger
 from nuguard.common.llm_client import LLMClient
+from nuguard.common.logging import get_logger
 from nuguard.models.exploit_chain import ExploitStep
 from nuguard.sbom.models import AiSbomDocument
 
