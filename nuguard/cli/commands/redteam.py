@@ -660,88 +660,9 @@ def _print_findings(
 
 
 def _scenario_coverage_table(scenario_records: list) -> list[str]:
-    """Return Markdown lines for the Scenario Coverage summary table.
-
-    One row per executed scenario, sorted by impact score descending.
-    Columns: rank, title, goal, finding (YES/no), turns used / budget,
-    duration, avg time per turn.
-
-    A summary line below the table shows aggregate stats.
-    """
-    if not scenario_records:
-        return []
-
-    # Sort by impact_score desc; within same score, findings first
-    records = sorted(
-        scenario_records,
-        key=lambda r: (-getattr(r, "impact_score", 0.0), 0 if r.had_finding else 1),
-    )
-
-    # Abbreviate goal_type labels so they fit in the table
-    _GOAL_ABBREV = {
-        "DATA_EXFILTRATION": "Data Exfil",
-        "PRIVILEGE_ESCALATION": "Priv Esc",
-        "PROMPT_DRIVEN_THREAT": "Prompt Threat",
-        "POLICY_VIOLATION": "Policy Viol",
-        "TOOL_ABUSE": "Tool Abuse",
-        "API_ATTACK": "API Attack",
-        "MCP_TOXIC_FLOW": "MCP Toxic",
-    }
-
-    def _fmt_duration(s: float) -> str:
-        if s <= 0:
-            return "—"
-        return f"{s:.1f}s"
-
-    def _fmt_avg(s: float, turns: int) -> str:
-        if s <= 0 or turns <= 0:
-            return "—"
-        return f"{s / turns:.1f}s"
-
-    lines: list[str] = ["## Scenario Coverage", ""]
-    lines.append(
-        "| # | Scenario | Goal | Finding | Turns | Duration | Avg/Turn |"
-    )
-    lines.append(
-        "|---|---|---|---|---|---|---|"
-    )
-
-    total_duration = 0.0
-    total_turns = 0
-    findings_count = 0
-
-    for idx, r in enumerate(records, start=1):
-        title = r.title[:60] + ("…" if len(r.title) > 60 else "")
-        goal = _GOAL_ABBREV.get(r.goal_type, r.goal_type.replace("_", " ").title())
-        finding_cell = "**YES**" if r.had_finding else "no"
-        turns_used = getattr(r, "turns_used", len(r.steps))
-        turns_budget = getattr(r, "turns_budget", 0) or turns_used
-        turns_cell = f"{turns_used}/{turns_budget}"
-        duration = getattr(r, "duration_s", 0.0)
-        dur_cell = _fmt_duration(duration)
-        avg_cell = _fmt_avg(duration, turns_used)
-
-        total_duration += duration
-        total_turns += turns_used
-        if r.had_finding:
-            findings_count += 1
-
-        lines.append(
-            f"| {idx} | {title} | {goal} | {finding_cell} "
-            f"| {turns_cell} | {dur_cell} | {avg_cell} |"
-        )
-
-    n = len(records)
-    avg_scenario = _fmt_duration(total_duration / n if n else 0)
-    avg_turn = _fmt_avg(total_duration, total_turns)
-    lines.append("")
-    lines.append(
-        f"_{n} scenario(s) executed — {findings_count} finding(s). "
-        f"Total: {_fmt_duration(total_duration)} | "
-        f"Avg per scenario: {avg_scenario} | Avg per turn: {avg_turn}_"
-    )
-    lines.append("")
-    return lines
+    """Delegate to :func:`nuguard.redteam.report._scenario_coverage_table`."""
+    from nuguard.redteam.report import _scenario_coverage_table as _impl
+    return _impl(scenario_records)
 
 
 def _findings_to_markdown(
@@ -750,111 +671,20 @@ def _findings_to_markdown(
     remediation_plan: list | None = None,
     scenario_records: list | None = None,
 ) -> str:
-    """Render redteam findings as a Markdown report string.
-
-    When *remediation_plan* is supplied (a list of ``RemediationArtefact``
-    objects produced by :class:`RemediationSynthesizer`), a
-    ``## Remediation Plan`` section is appended with concrete, SBOM-node
-    specific patches, guardrails and architectural changes grouped by
-    component — matching the behavior report's layout.
-
-    When *scenario_records* is supplied (a list of ``ScenarioRecord`` objects
-    from the orchestrator), a ``## Scenario Coverage`` table is inserted
-    immediately after the report header, before the per-finding detail.
-    """
-    if meta is None:
-        meta = ReportMeta()
-    lines: list[str] = ["# NuGuard Red-Team Report", ""]
-    lines += meta.to_markdown_lines()
-
-    if scenario_records:
-        lines += _scenario_coverage_table(scenario_records)
-
-    if not findings:
-        lines += ["_No findings — scan complete._", ""]
-        return "\n".join(lines)
-
-    from nuguard.models.finding import Severity
-
-    lines += [f"**{len(findings)} finding(s)**", ""]
-    for f in sorted(findings, key=lambda x: list(Severity).index(x.severity)):
-        sev = f.severity.value.upper() if hasattr(f.severity, "value") else str(f.severity).upper()
-        lines += [f"## [{sev}] {f.title}", ""]
-        lines += [f.description, ""]
-        if f.affected_component:
-            lines += [f"**Component:** {f.affected_component}", ""]
-        if f.goal_type:
-            lines += [f"**Type:** {f.goal_type}", ""]
-        # Progress score (1–5 rubric)
-        scores = getattr(f, "scores", None) or {}
-        progress = scores.get("goal_progress")
-        if progress is not None:
-            lines += [f"**Progress score:** {progress}/5", ""]
-        # One-sentence reasoning from the judge
-        reasoning = getattr(f, "reasoning", "") or ""
-        if reasoning:
-            lines += [f"**Finding reasoning:** {reasoning}", ""]
-        # Named success indicator
-        success_indicator = getattr(f, "success_indicator", None)
-        if success_indicator:
-            lines += [f"**Success indicator:** `{success_indicator}`", ""]
-        # Evidence quote — exact substring proving the breach
-        evidence_quote = getattr(f, "evidence_quote", "") or ""
-        if evidence_quote:
-            lines += [
-                "**Evidence quote:**",
-                "> " + evidence_quote.replace("\n", "\n> "),
-                "",
-            ]
-        if f.remediation:
-            lines += [f"**Remediation:** {f.remediation}", ""]
-        if f.owasp_asi_ref:
-            lines += [f"**OWASP ASI:** {f.owasp_asi_ref}", ""]
-        if f.owasp_llm_ref:
-            lines += [f"**OWASP LLM:** {f.owasp_llm_ref}", ""]
-        if f.evidence:
-            lines += [
-                "**Evidence:**",
-                "```",
-                _truncate_evidence(f.evidence, limit=2500),
-                "```",
-                "",
-            ]
-
-    if remediation_plan:
-        _append_remediation_plan(lines, remediation_plan)
-    return "\n".join(lines)
+    """Delegate to :func:`nuguard.redteam.report.to_markdown`."""
+    from nuguard.redteam.report import to_markdown
+    return to_markdown(
+        findings,
+        meta=meta,
+        remediation_plan=remediation_plan,
+        scenario_records=scenario_records,
+    )
 
 
 def _append_remediation_plan(lines: list[str], remediation_plan: list) -> None:
-    """Append a Remediation Plan section to *lines*, grouped by SBOM node.
-
-    Mirrors the behavior report's remediation layout so the developer sees
-    the same actionable, per-node patch / guardrail / architectural-change
-    artefacts regardless of which tool produced the finding.
-    """
-    # Reuse the behavior report's renderer so the format stays identical.
-    from nuguard.behavior.report import _render_artefact
-
-    lines.append("## Remediation Plan")
-    lines.append("")
-    lines.append(
-        "Concrete, SBOM-node-specific remediations generated from the findings "
-        "above. Apply in priority order."
-    )
-    lines.append("")
-
-    # Group by affected component so developers see every change they need
-    # to make to a single agent/tool in one place.
-    by_component: dict[str, list] = {}
-    for art in remediation_plan:
-        by_component.setdefault(art.component, []).append(art)
-
-    for comp, arts in by_component.items():
-        lines.append(f"### {comp}")
-        lines.append("")
-        for art in arts:
-            _render_artefact(lines, art)
+    """Delegate to :func:`nuguard.redteam.report._append_remediation_plan`."""
+    from nuguard.redteam.report import _append_remediation_plan as _impl
+    _impl(lines, remediation_plan)
 
 
 def _build_redteam_remediation_plan(
@@ -896,29 +726,6 @@ def _build_redteam_remediation_plan(
     except Exception as exc:
         _log.warning("remediation synthesis failed — skipping plan: %s", exc)
         return []
-
-
-def _truncate_evidence(text: str, *, limit: int = 2500) -> str:
-    """Trim *text* to ``limit`` chars at a newline/word boundary.
-
-    The previous implementation did ``text[:500]`` which cut mid-word and
-    — worse — kept only the opening warmup turn of multi-turn evidence.
-    This variant prefers breaking on a newline, falling back to a word
-    boundary, and only hard-cuts as a last resort.
-    """
-    if len(text) <= limit:
-        return text
-    cut = text[:limit]
-    # Prefer a newline break within the last ~20% of the window — keeps
-    # turn boundaries intact when the evidence is a transcript.
-    window = max(200, limit // 5)
-    last_nl = cut.rfind("\n", limit - window)
-    if last_nl != -1:
-        return cut[:last_nl] + "\n… (truncated)"
-    last_sp = cut.rfind(" ", limit - 80)
-    if last_sp != -1:
-        return cut[:last_sp] + " … (truncated)"
-    return cut + "… (truncated)"
 
 
 def _fail_on_severity(findings: list, fail_on: str) -> None:
