@@ -33,6 +33,11 @@ from nuguard.behavior.models import (
 )
 from nuguard.common.console import _console
 from nuguard.common.console import print_turn as _common_print_turn
+from nuguard.common.rate_limit import (
+    SCENARIO_MAX_RATE_LIMIT_RETRIES,
+    is_rate_limited,
+    scenario_rate_limit_backoff,
+)
 
 if TYPE_CHECKING:
     from nuguard.behavior.models import IntentProfile
@@ -356,13 +361,23 @@ class BehaviorRunner:
         _MAX_CONSECUTIVE_FAILURES = 3
 
         turn_delay = float(getattr(self._config, "turn_delay_seconds", 0.0))
+        # Scenario-level 429 state — tracks retries for the *current* turn so that
+        # a rate-limited turn is retried (with backoff) rather than immediately
+        # recorded as FAIL.
+        _rate_limit_retries: int = 0
+        _rate_limit_retry_message: str | None = None
 
         while turn_idx < max_turns:
             # Determine next message
             message: str | None = None
 
+            # 0. Rate-limited turn retry — replay the same message after backoff.
+            if _rate_limit_retry_message is not None:
+                message = _rate_limit_retry_message
+                _rate_limit_retry_message = None
+
             # 1. Queued invocation after a "not used" probe
-            if pending_invocation is not None:
+            elif pending_invocation is not None:
                 message, _ = pending_invocation
                 pending_invocation = None
 
@@ -413,6 +428,20 @@ class BehaviorRunner:
                     if refreshed:
                         client.update_default_headers(self._auth_session.headers())
                         response, canary_hits = await client.send(message, session=session)
+                # 429 scenario-level retry — on top of TargetAppClient's per-request
+                # retries.  Back off and replay the same turn; do NOT record a FAIL
+                # verdict or increment consecutive_failures (target is alive).
+                if is_rate_limited(response) and _rate_limit_retries < SCENARIO_MAX_RATE_LIMIT_RETRIES:
+                    await scenario_rate_limit_backoff(
+                        _rate_limit_retries, context=scenario.name
+                    )
+                    _rate_limit_retries += 1
+                    _rate_limit_retry_message = message
+                    _console.print(
+                        f"  [yellow]⏳ Rate limited (429) — backing off "
+                        f"({_rate_limit_retries}/{SCENARIO_MAX_RATE_LIMIT_RETRIES})[/yellow]"
+                    )
+                    continue
                 # Treat any HTTP error response as a failure so the circuit
                 # breaker also fires for persistent 4xx (e.g. 405, 400, 422)
                 # which the TargetAppClient returns as strings, not exceptions.
@@ -420,6 +449,7 @@ class BehaviorRunner:
                     send_error = response
                 else:
                     consecutive_failures = 0  # reset only on a real reply
+                    _rate_limit_retries = 0   # reset on successful reply
             except Exception as exc:
                 send_error = str(exc)
                 _log.warning("_run_scenario turn %d: send failed: %s", turn_idx + 1, exc)
@@ -440,7 +470,13 @@ class BehaviorRunner:
 
             # On send error: record a FAIL verdict immediately and check abort threshold.
             if send_error is not None:
-                consecutive_failures += 1
+                _rate_limit_retries = 0  # reset for the next turn
+                # 429: target is alive (just rate-limiting) — do not count toward
+                # the circuit breaker that aborts the scenario on repeated failures.
+                if is_rate_limited(send_error):
+                    consecutive_failures = 0
+                else:
+                    consecutive_failures += 1
                 _fail_verdict = TurnVerdict(
                     turn=turn_idx + 1,
                     scenario_name=scenario.name,
