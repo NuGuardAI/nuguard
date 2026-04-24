@@ -237,6 +237,127 @@ async def probe_chat_endpoints(
     return None
 
 
+def discover_chat_config_from_sbom(
+    sbom: "AiSbomDocument",
+    chat_path: str = "",
+    chat_payload_key: str = "message",
+    chat_payload_list: bool = False,
+) -> tuple[str, str, bool, str | None]:
+    """Auto-discover chat endpoint config from SBOM API_ENDPOINT node metadata.
+
+    Looks for a POST endpoint whose metadata has ``chat_payload_key`` set.
+    Falls back to framework-convention inference (e.g. LangGraph ``phrases``/
+    list semantics) when the node lacks an explicit payload key.  Falls back
+    to the provided defaults if nothing is found.
+
+    Returns ``(chat_path, chat_payload_key, chat_payload_list, response_text_key)``.
+    ``response_text_key`` is ``None`` when not determinable from the SBOM.
+
+    This function is zero-I/O (no network calls).  Use :func:`probe_chat_endpoints`
+    for live HTTP probing when the SBOM lacks sufficient metadata.
+    """
+    from nuguard.sbom.models import NodeType  # noqa: PLC0415
+
+    # Detect which AI frameworks are present in the SBOM.
+    summary = getattr(sbom, "summary", None)
+    sbom_frameworks: set[str] = set()
+    if summary is not None:
+        raw = getattr(summary, "frameworks", None)
+        if isinstance(raw, (list, tuple)):
+            sbom_frameworks = {str(f).lower() for f in raw if f}
+    has_langgraph = bool(sbom_frameworks & {"langgraph"})
+
+    candidates: list[tuple[int, str, str, bool, str, str | None]] = []
+    for node in sbom.nodes:
+        if node.component_type != NodeType.API_ENDPOINT:
+            continue
+        meta = node.metadata
+        if not meta:
+            continue
+        if meta.method and meta.method.upper() != "POST":
+            continue
+
+        discovered_path = meta.endpoint or chat_path
+        endpoint_l = discovered_path.lower()
+        source = (meta.extras or {}).get("source")
+
+        # ── Resolve payload key ────────────────────────────────────────────
+        inferred_response_key: str | None = meta.response_text_key or None
+        if meta.chat_payload_key:
+            payload_key = meta.chat_payload_key
+            payload_list = bool(meta.chat_payload_list)
+        elif has_langgraph and any(
+            tok in endpoint_l
+            for tok in ("/run_langgraph", "/run_graph", "/langgraph/run")
+        ):
+            # LangGraph convention: POST {"phrases": ["..."]} → response["prognosis"]
+            payload_key = "phrases"
+            payload_list = True
+            if inferred_response_key is None:
+                inferred_response_key = "prognosis"
+        else:
+            # No payload info and no matching framework convention — skip this node.
+            continue
+
+        # ── Scoring ────────────────────────────────────────────────────────
+        score = 0
+        if source == "auto_enrichment":
+            score -= 2
+        elif source == "runtime_probe":
+            score -= 1
+        else:
+            score += 3
+
+        if node.confidence >= 0.9:
+            score += 2
+        elif node.confidence >= 0.75:
+            score += 1
+
+        if "/chat/message" in endpoint_l:
+            score += 2
+        elif any(token in endpoint_l for token in ("/chat/queue", "/messages", "/message", "/generate", "/completions", "/respond", "/query")):
+            score += 3
+        elif endpoint_l.endswith("/chat"):
+            score += 1
+
+        # LangGraph run endpoint is always the primary agent interface.
+        if "run_langgraph" in endpoint_l or "run_graph" in endpoint_l:
+            score += 3
+
+        if endpoint_l.startswith("/api/"):
+            score += 1
+        if inferred_response_key:
+            score += 1
+
+        # Penalise nodes that had no explicit payload key (inferred).
+        if not meta.chat_payload_key:
+            score -= 1
+
+        # Penalise nodes confirmed dead by the live probe — GET 404 means the
+        # route doesn't exist at all on the deployed target; POST 405 strongly
+        # suggests the path is handled by a different mechanism (e.g. static file
+        # serving on Azure SWA, not the API backend).
+        extras = meta.extras or {}
+        if extras.get("probe_get_404"):
+            score -= 8
+        if extras.get("probe_post_405"):
+            score -= 6
+
+        candidates.append(
+            (score, discovered_path, payload_key, payload_list, node.name, inferred_response_key)
+        )
+
+    if candidates:
+        best = max(candidates, key=lambda item: item[0])
+        _log.info(
+            "SBOM auto-discovered chat config: path=%s key=%s list=%s response_key=%s (node=%s)",
+            best[1], best[2], best[3], best[5], best[4],
+        )
+        return best[1], best[2], best[3], best[5]
+
+    return chat_path, chat_payload_key, chat_payload_list, None
+
+
 def _looks_like_chat_response(data: object, response_key: str | None = None) -> bool:
     """Return True if *data* looks like a processed response from a chat endpoint.
 
