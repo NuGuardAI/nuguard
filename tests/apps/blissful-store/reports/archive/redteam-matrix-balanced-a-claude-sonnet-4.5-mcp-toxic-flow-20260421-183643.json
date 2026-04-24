@@ -1,0 +1,19 @@
+{
+  "_meta": {
+    "generated_at": "2026-04-21T18:39:04-04:00",
+    "llm": [
+      "claude-sonnet-4-5",
+      "claude-sonnet-4-5"
+    ],
+    "verbose": true,
+    "target": "http://localhost:8081/api/chat",
+    "finding_triggers": {
+      "canary_hits": true,
+      "policy_violations": true,
+      "critical_success_hits": true,
+      "any_inject_success": true
+    }
+  },
+  "findings": [],
+  "remediation_plan": []
+}

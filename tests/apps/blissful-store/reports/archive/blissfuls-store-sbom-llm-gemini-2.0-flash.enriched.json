@@ -1,0 +1,2121 @@
+{
+  "schema_version": "1.4.0",
+  "generated_at": "2026-04-15T18:46:53Z",
+  "generator": "nuguard",
+  "target": "C:\\Uma\\Job Search\\Prospects\\NuGuard\\Code\\nuguard-private\\tests\\apps\\blissful-store",
+  "nodes": [
+    {
+      "id": "31d6291b-ef5b-4143-b8c2-6abaac8e1730",
+      "name": "cymbal_upsell_agent",
+      "component_type": "AGENT",
+      "confidence": 0.8640000000000001,
+      "metadata": {
+        "framework": "google_adk",
+        "description": "The `cymbal_upsell_agent` leverages the Google ADK framework to identify opportunities to upsell customers on Cymbal products, aiming to increase revenue and customer satisfaction through personalized",
+        "injection_risk_score": 0.1,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "cymbal_upsell_agent",
+          "adapter": "google_adk_json",
+          "evidence_count": 1,
+          "framework": "google_adk",
+          "source": "json_config",
+          "description": "Handles all upsell transactions, assisting users with quotes, scheduling additional services and updating CRM.",
+          "tools": [
+            "update_salesforce_crm",
+            "get_available_planting_times",
+            "apply_discount_to_service",
+            "approve_discount",
+            "end_session",
+            "schedule_planting_service"
+          ],
+          "child_agents": null,
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:google_adk",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.864
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "json",
+          "confidence": 0.9,
+          "detail": "google_adk_json: agent: cymbal_upsell_agent \u2014 Handles all upsell transactions, assisting users with quotes",
+          "location": {
+            "path": "agents\\cymbal_upsell_agent\\cymbal_upsell_agent.json",
+            "line": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "029aae2e-8de5-4db5-a38d-4f164914ae3f",
+      "name": "out_of_scope_handling",
+      "component_type": "AGENT",
+      "confidence": 0.8640000000000001,
+      "metadata": {
+        "framework": "google_adk",
+        "description": "The out_of_scope_handling agent determines if a user request falls outside the AI system's intended capabilities, and if so, provides a graceful fallback response or redirects the user to appropriate",
+        "injection_risk_score": 0.1,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "out_of_scope_handling",
+          "adapter": "google_adk_json",
+          "evidence_count": 1,
+          "framework": "google_adk",
+          "source": "json_config",
+          "description": "This is a fallback agent that handles general out of scope questions and explains the general purpose of this application to the user, which is to serve as a sample agent for learning to build on our ",
+          "tools": [
+            "end_session"
+          ],
+          "child_agents": null,
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:google_adk",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.864
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "json",
+          "confidence": 0.9,
+          "detail": "google_adk_json: agent: out_of_scope_handling \u2014 This is a fallback agent that handles general out of scope q",
+          "location": {
+            "path": "agents\\out_of_scope_handling\\out_of_scope_handling.json",
+            "line": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "e6b28266-9d8d-4b95-b0a0-79a6c1220c70",
+      "name": "retail_agent",
+      "component_type": "AGENT",
+      "confidence": 0.9360000000000002,
+      "metadata": {
+        "framework": "google_adk",
+        "description": "The retail_agent is a Google ADK-based agent designed to assist customers with product information, purchase recommendations, and order management within a retail environment.",
+        "injection_risk_score": 0.1,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "retail_agent",
+          "adapter": "google_adk_json",
+          "evidence_count": 2,
+          "framework": "google_adk",
+          "source": "json_config",
+          "role": "root_agent",
+          "description": "Retail assistant that helps users with their existing purchases and recommendations for new products based on their needs.",
+          "tools": [
+            "affirmative",
+            "request_image_upload",
+            "ask_to_modify_cart",
+            "end_session",
+            "lookup_plant_details",
+            "get_product_recommendations",
+            "update_cart",
+            "greeting"
+          ],
+          "child_agents": [
+            "cymbal_upsell_agent",
+            "out_of_scope_handling"
+          ],
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 4,
+            "evidence_sources": [
+              "framework:google_adk",
+              "evidence:0",
+              "evidence:1",
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.3,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.936
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "json",
+          "confidence": 0.9,
+          "detail": "google_adk_json: agent: retail_agent \u2014 Retail assistant that helps users with their existing purcha",
+          "location": {
+            "path": "agents\\retail_agent\\retail_agent.json",
+            "line": 3
+          }
+        },
+        {
+          "kind": "json",
+          "confidence": 0.85,
+          "detail": "google_adk_json: rootAgent: retail_agent",
+          "location": {
+            "path": "app.json",
+            "line": 5
+          }
+        }
+      ]
+    },
+    {
+      "id": "3448862e-125f-4a93-be37-ad4b79c7366c",
+      "name": "generic",
+      "component_type": "AUTH",
+      "confidence": 1.0,
+      "metadata": {
+        "description": "Retrieves a GCP OAuth2 access token for authentication.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "auth_generic",
+          "adapter": "auth_runtime",
+          "evidence_count": 4,
+          "description": "Retrieves a GCP OAuth2 access token for authentication.",
+          "llm_verified": true,
+          "llm_verification_reason": "The code retrieves a GCP OAuth2 access token, which is used for authentication. This is a valid AUTH node.",
+          "llm_confidence": 0.9,
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.9,
+            "evidence_count": 6,
+            "evidence_sources": [
+              "llm:verified",
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3",
+              "confidence:high"
+            ],
+            "base_confidence": 0.9,
+            "evidence_multiplier": 1.4,
+            "validation_penalty": 0.0,
+            "final_confidence": 1.0
+          },
+          "description_source": "original_sbom"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.7,
+          "detail": "auth_generic: OAuth2",
+          "location": {
+            "path": "webapp\\app.py",
+            "line": 91
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "auth_generic: OAuth2",
+          "location": {
+            "path": "test_api.py",
+            "line": 11
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "auth_runtime: os.getenv(\"GCP_ACCESS_TOKEN\")",
+          "location": {
+            "path": "webapp\\app.py",
+            "line": 60
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "auth_generic: Bearer",
+          "location": {
+            "path": "test_structure.py",
+            "line": 15
+          }
+        }
+      ]
+    },
+    {
+      "id": "7d60c676-a393-4205-921d-d3777478bfd5",
+      "name": "generic",
+      "component_type": "DEPLOYMENT",
+      "confidence": 0.616,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "deployment_generic",
+          "adapter": "deployment_generic",
+          "evidence_count": 5,
+          "detected_by_tiers": [
+            "code",
+            "iac"
+          ],
+          "llm_soft_rejected": true,
+          "llm_verification_reason": "This code snippet is related to obtaining Google Cloud credentials, not an AI deployment. It's about authentication and authorization, not AI functionality.",
+          "confidence_breakdown": {
+            "regex_confidence": 0.55,
+            "llm_confidence": 0.0,
+            "evidence_count": 5,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3",
+              "evidence:4"
+            ],
+            "base_confidence": 0.44,
+            "evidence_multiplier": 1.4,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.616
+          },
+          "description_source": "none"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.75,
+          "detail": "deployment_generic: gcloud",
+          "location": {
+            "path": "webapp\\app.py",
+            "line": 74
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "deployment_generic: gcloud",
+          "location": {
+            "path": "test_structure.py",
+            "line": 9
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "deployment_generic: deployment",
+          "location": {
+            "path": "app.json",
+            "line": 265
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "deployment_generic: deployment",
+          "location": {
+            "path": "response.json",
+            "line": 190
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "deployment_generic: deployment",
+          "location": {
+            "path": "test_api.py",
+            "line": 36
+          }
+        }
+      ]
+    },
+    {
+      "id": "dc1914fb-d20a-4529-8952-c04d3c0dd1ae",
+      "name": "bad words",
+      "component_type": "GUARDRAIL",
+      "confidence": 0.8640000000000001,
+      "metadata": {
+        "framework": "google_adk",
+        "description": "block and redirect for bad language",
+        "rules_excerpt": "Guard type: content_filter",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "bad_words",
+          "adapter": "google_adk_json",
+          "evidence_count": 1,
+          "framework": "google_adk",
+          "source": "json_config",
+          "guardrail_type": "content_filter",
+          "description": "block and redirect for bad language",
+          "enabled": true,
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:google_adk",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.864
+          },
+          "description_source": "original_sbom"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "json",
+          "confidence": 0.9,
+          "detail": "google_adk_json: guardrail: bad words",
+          "location": {
+            "path": "guardrails\\bad_words\\bad_words.json",
+            "line": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "7b4a07a4-edea-45a3-8b33-fe4004ac46fa",
+      "name": "Prompt Guardrail 1757021081696",
+      "component_type": "GUARDRAIL",
+      "confidence": 0.8640000000000001,
+      "metadata": {
+        "framework": "google_adk",
+        "rules_excerpt": "Guard type: llm_prompt_security",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "prompt_guardrail_1757021081696",
+          "adapter": "google_adk_json",
+          "evidence_count": 1,
+          "framework": "google_adk",
+          "source": "json_config",
+          "guardrail_type": "llm_prompt_security",
+          "description": null,
+          "enabled": true,
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:google_adk",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.864
+          },
+          "description_source": "none"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "json",
+          "confidence": 0.9,
+          "detail": "google_adk_json: guardrail: Prompt Guardrail 1757021081696",
+          "location": {
+            "path": "guardrails\\Prompt_Guardrail_1757021081696\\Prompt_Guardrail_1757021081696.json",
+            "line": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "eb538dff-ab21-44ee-ba49-bb5e4067eef9",
+      "name": "gemini-2.5-flash-001",
+      "component_type": "MODEL",
+      "confidence": 1.0,
+      "metadata": {
+        "framework": "google_adk",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "gemini_2_5_flash_001",
+          "adapter": "google_adk_json",
+          "evidence_count": 3,
+          "framework": "google_adk",
+          "source": "json_config",
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 5,
+            "evidence_sources": [
+              "framework:google_adk",
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.4,
+            "validation_penalty": 0.0,
+            "final_confidence": 1.0
+          },
+          "description_source": "none"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "json",
+          "confidence": 0.9,
+          "detail": "google_adk_json: model: gemini-2.5-flash-001",
+          "location": {
+            "path": "agents\\retail_agent\\retail_agent.json",
+            "line": 6
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.8,
+          "detail": "model_generic: gemini-2.5",
+          "location": {
+            "path": "response.json",
+            "line": 205
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "model_generic: gemini-2.5",
+          "location": {
+            "path": "agents\\retail_agent\\retail_agent.json",
+            "line": 6
+          }
+        }
+      ]
+    },
+    {
+      "id": "e4a316fc-db8c-4996-8bda-6deb403ab431",
+      "name": "gemini-3.0-flash-001",
+      "component_type": "MODEL",
+      "confidence": 0.9360000000000002,
+      "metadata": {
+        "framework": "google_adk",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "gemini_3_0_flash_001",
+          "adapter": "google_adk_json",
+          "evidence_count": 2,
+          "framework": "google_adk",
+          "source": "json_config",
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 4,
+            "evidence_sources": [
+              "framework:google_adk",
+              "evidence:0",
+              "evidence:1",
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.3,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.936
+          },
+          "description_source": "none"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "json",
+          "confidence": 0.9,
+          "detail": "google_adk_json: model: gemini-3.0-flash-001",
+          "location": {
+            "path": "app.json",
+            "line": 42
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "model_generic: gemini-3.0",
+          "location": {
+            "path": "app.json",
+            "line": 42
+          }
+        }
+      ]
+    },
+    {
+      "id": "f1548f28-6d12-4ce1-8f01-a0088c1c22d2",
+      "name": "code_execution",
+      "component_type": "PRIVILEGE",
+      "confidence": 0.4840000000000001,
+      "metadata": {
+        "privilege_scope": "code_execution",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "privilege_code_execution",
+          "adapter": "privilege_code_execution",
+          "evidence_count": 2,
+          "privilege_scope": "code_execution",
+          "confidence_breakdown": {
+            "regex_confidence": 0.55,
+            "llm_confidence": 0.0,
+            "evidence_count": 2,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1"
+            ],
+            "base_confidence": 0.44,
+            "evidence_multiplier": 1.1,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.484
+          },
+          "description_source": "none"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "privilege_code_execution: subprocess.check_output",
+          "location": {
+            "path": "test_structure.py",
+            "line": 9
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "privilege_code_execution: subprocess.check_output",
+          "location": {
+            "path": "webapp\\app.py",
+            "line": 82
+          }
+        }
+      ]
+    },
+    {
+      "id": "3a8b4ba8-5a20-4ccf-81f7-9f68e3e1bd6a",
+      "name": "filesystem_write",
+      "component_type": "PRIVILEGE",
+      "confidence": 0.44000000000000006,
+      "metadata": {
+        "privilege_scope": "filesystem_write",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "privilege_filesystem_write",
+          "adapter": "privilege_filesystem_write",
+          "evidence_count": 1,
+          "privilege_scope": "filesystem_write",
+          "confidence_breakdown": {
+            "regex_confidence": 0.55,
+            "llm_confidence": 0.0,
+            "evidence_count": 1,
+            "evidence_sources": [
+              "evidence:0"
+            ],
+            "base_confidence": 0.44,
+            "evidence_multiplier": 1.0,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.44
+          },
+          "description_source": "none"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "privilege_filesystem_write: open(\"response.json\", \"w\")",
+          "location": {
+            "path": "test_structure.py",
+            "line": 35
+          }
+        }
+      ]
+    },
+    {
+      "id": "8622c4de-9808-41f5-9823-56be338f2b15",
+      "name": "network_out",
+      "component_type": "PRIVILEGE",
+      "confidence": 0.528,
+      "metadata": {
+        "privilege_scope": "network_out",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "privilege_network_out",
+          "adapter": "privilege_network_out",
+          "evidence_count": 3,
+          "privilege_scope": "network_out",
+          "confidence_breakdown": {
+            "regex_confidence": 0.55,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2"
+            ],
+            "base_confidence": 0.44,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.528
+          },
+          "description_source": "none"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "privilege_network_out: urllib.request.urlopen(",
+          "location": {
+            "path": "test_api.py",
+            "line": 46
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "privilege_network_out: urllib.request.urlopen(",
+          "location": {
+            "path": "test_structure.py",
+            "line": 32
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "privilege_network_out: urllib.request.urlopen(",
+          "location": {
+            "path": "webapp\\app.py",
+            "line": 157
+          }
+        }
+      ]
+    },
+    {
+      "id": "82203f88-e9c6-4edd-836e-56661d0df093",
+      "name": "Blissful Home store instruction",
+      "component_type": "PROMPT",
+      "confidence": 0.8640000000000001,
+      "metadata": {
+        "framework": "google_adk",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "blissful_home_store_instruction",
+          "adapter": "google_adk_json",
+          "evidence_count": 1,
+          "framework": "google_adk",
+          "source": "instruction_file",
+          "content": "CURRENT CUSTOMER PROFILE: {customer_profile}\n\n<persona>\n    You are an AI assistant for Blissful Home & Garden, a retailer specializing in home improvement and gardening. Your goal is to provide excellent, helpful, and friendly customer service.\n\n    You have access to internal tools that are your primary resource for solving customer problems. Use them proactively and frequently. Think step-by-step and consider which tool can help at each step.\n\n    If the user wants to talk about sensitive topics like politics, race, gender, religion, or disability, politely decline to respond with a message like, \"I'm not equipped to discuss that topic, but I can certainly help you with your home and garden questions,\" and redirect to the main task.\n</persona>\n<constraints>\n    1.  **Tool Priority:** Prioritize using your tools for information and actions over your general knowledge.\n    2.  **Conceal Tool Names:** Refer to the action the tool performs (e.g., \"I can check your cart\"), not the internal name of the tool (e.g., \"I will use the access_cart_information tool\").\n    3.  **Be Concise:** Keep your spoken responses brief and to the point.\n    4.  **Confirm Actions:** Always confirm actions like modifying a cart or scheduling an appointment with the user before executing them.\n</constraints>",
+          "role": "system",
+          "is_template": true,
+          "template_variables": [
+            "{customer_profile}"
+          ],
+          "char_count": 1304,
+          "instruction_file": "global_instruction.txt",
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:google_adk",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.864
+          },
+          "description_source": "none"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "json",
+          "confidence": 0.9,
+          "detail": "google_adk_json: json",
+          "location": {
+            "path": "global_instruction.txt",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "239d75b4-216c-4638-b02c-11506affeee0",
+      "name": "cymbal_upsell_agent instruction",
+      "component_type": "PROMPT",
+      "confidence": 0.8640000000000001,
+      "metadata": {
+        "framework": "google_adk",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "cymbal_upsell_agent_instruction",
+          "adapter": "google_adk_json",
+          "evidence_count": 1,
+          "framework": "google_adk",
+          "source": "instruction_file",
+          "content": "<role>\n    You are a service specialist for Blissful Home & Garden. Your specific role is to handle service inquiries, manage discounts, and schedule appointments after a customer has finished their product selection with a retail agent. You will have access to the full conversation history and must use it to provide a seamless, contextual response.\n</role>\n<persona>\n    You are taking over a conversation in progress. Your first response should directly address the user's last query which triggered the handoff to you. Do not re-greet the customer or act as if this is a new interaction. Maintain a professional and efficient tone.\n</persona>\n<constraints>\n    1.  **No Greetings:** Do not greet the customer. Begin your response by directly addressing their service request from the previous turn.\n    2.  **Scope Limitation:** Your scope is limited to services (quotes, scheduling, discounts). Do not handle product identification, product recommendations, or cart management. Politely redirect any such requests back to the service discussion.\n</constraints>\n<taskflow>\n    <subtask name=\"Initial Engagement\">\n        <step name=\"Acknowledge Handoff Contextually\">\n            <trigger>The conversation begins for you (after a handoff).</trigger>\n            <action>\n                1. Review the conversation history to understand the user's need.\n                2. Respond directly to the user's last message. For example, if they asked \"Can you plant these for me?\", your first response should be something like, \"Yes, we can certainly help with planting those Petunias for you. I can get you a quote for that.\"\n            </action>\n        </step>\n    </subtask>\n    <subtask name=\"Quoting and Discount Management\">\n        <step name=\"Provide Quote\">\n            <trigger>User asks for a cost estimate for a service.</trigger>\n            <action>Use the `get_landscaping_quote` tool to provide a cost estimate. You may need to ask clarifying questions first (e.g., \"How many plants are we planting?\").</action>\n        </step>\n        <step name=\"Handle Discount Request\">\n            <trigger>User asks about a discount.</trigger>\n            <action>Use the `approve_discount` tool if the request is within policy. Inform the user and seek manager approval if necessary.</action>\n        </step>\n        <step name=\"Apply Discount\">\n            <trigger>A discount has been successfully approved.</trigger>\n            <action>Use the `apply_discount_to_service` tool and confirm with the user.</action>\n        </step>\n    </subtask>\n    <subtask name=\"Price Matching\">\n        <step name=\"Handle Price Match Request\">\n            <trigger>User asks about price matching.</trigger>\n            <action>Confirm that price matching is handled on a case-by-case basis and ask for details about the competitor's price.</action>\n        </step>\n        <step name=\"Evaluate Price Match\">\n            <trigger>User provides details for a price match request.</trigger>\n            <action>Evaluate the request. You can consider it directly or seek manager approval. The `approve_discount` tool can be used for this process.</action>\n        </step>\n    </subtask>\n    <subtask name=\"Appointment Scheduling\">\n        <step name=\"Check Availability\">\n            <trigger>User agrees to a service and is ready to schedule.</trigger>\n            <action>Use the `get_available_planting_times` tool to find open slots.</action>\n        </step>\n        <step name=\"Book Appointment\">\n            <trigger>Customer confirms a desired time slot.</trigger>\n            <action>Use the `schedule_planting_service` tool to book the appointment and then confirm the details with the user.</action>\n        </step>\n    </subtask>\n    <subtask name=\"Logging and Wrap Up\">\n        <step name=\"Update CRM\">\n            <trigger>An appointment has been successfully scheduled.</trigger>\n            <action>Use the `update_salesforce_crm` tool to log the interaction details.</action>\n        </step>\n    </subtask>\n</taskflow>\n<examples>\n</examples>",
+          "role": "system",
+          "is_template": false,
+          "template_variables": [],
+          "char_count": 4048,
+          "instruction_file": "agents/cymbal_upsell_agent/instruction.txt",
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:google_adk",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.864
+          },
+          "description_source": "none"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "json",
+          "confidence": 0.9,
+          "detail": "google_adk_json: json",
+          "location": {
+            "path": "agents/cymbal_upsell_agent/instruction.txt",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "b5d03fb7-985e-47b0-acca-bed99c9e995f",
+      "name": "out_of_scope_handling instruction",
+      "component_type": "PROMPT",
+      "confidence": 0.8640000000000001,
+      "metadata": {
+        "framework": "google_adk",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "out_of_scope_handling_instruction",
+          "adapter": "google_adk_json",
+          "evidence_count": 1,
+          "framework": "google_adk",
+          "source": "instruction_file",
+          "content": "<role>You are a fallback agent activated when a user's query is off-topic for the main demo experience. Your purpose is to \"break the fourth wall,\" explain the key features of the agent building platform, and then guide the user back to the main agent.</role>\n<persona>\n    Your primary goal is to act as an educational tool. When activated, you should explain the core features of the agent building platform (Build, Evaluate, and Deploy modes) and then transfer the user back to the main retail agent.\n</persona>\n<constraints>\n    1. You must follow the steps in the taskflow in the exact order they are presented.\n</constraints>\n<taskflow>\n    These define the conversational subtasks that you can take. Each subtask has a sequence of steps that should be taken in order.\n    <subtask name=\"FallbackAndRedirect\">\n        <step name=\"ExplainPlatformAndAnnounceTransfer\">\n            <trigger>The user's query is off-topic for the main agent.</trigger>\n            <action>Respond with a message that explains the platform's features and announces the transfer. The message should be: \"Thanks for trying out <a href=\" https://docs.cloud.google.com/customer-engagement-ai/conversational-agents/ps\" target=\"_blank\">CX Agent Studio</a>!<br>\n            \n            I'm a sample agent designed to be an educational tool, showing some best practices for building agents on our platform.\n\nSince you've ventured off the main path, let me take a moment to highlight some key features of our platform you can explore in the UI:\n\n*   \u2692\ufe0f **Build Mode:** This is your current view. Here you can preview your agent in our simulator (where we're talking now!), build multi-agent architectures, add tools, set up guardrails, and manage version control for your agent application. Check out the right tool bar for more settings.\n*   \ud83d\udccb **Evaluate Mode:** This mode allows you to test and understand the performance of the agent you are building. We've preloaded some evaluations for you to look into. You can find the Evaluate Mode at the top of the screen.\n*   \ud83d\ude80 **Deploy Mode:** This mode allows you to deploy your agent to the world using our web chat interface, telephony integrations, or our API. You can find the Deploy Mode at the top of the screen, next to Evaluate.\n\nI will now transfer you back to the main retail agent to continue the conversation.\"</action>\n        </step>\n        <step name=\"TransferUser\">\n            <trigger>After explaining the platform and announcing the transfer.</trigger>\n            <action>Transfer the user to the {@AGENT: retail_agent} .</action>\n        </step>\n    </subtask>\n</taskflow>\n<examples></examples>",
+          "role": "system",
+          "is_template": false,
+          "template_variables": [],
+          "char_count": 2639,
+          "instruction_file": "agents/out_of_scope_handling/instruction.txt",
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:google_adk",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.864
+          },
+          "description_source": "none"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "json",
+          "confidence": 0.9,
+          "detail": "google_adk_json: json",
+          "location": {
+            "path": "agents/out_of_scope_handling/instruction.txt",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "69e82eea-34dd-49db-be24-24675066aa02",
+      "name": "generic",
+      "component_type": "PROMPT",
+      "confidence": 1.0,
+      "metadata": {
+        "description": "A prompt used to test for prompt injection vulnerabilities using social engineering techniques.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "prompt_generic",
+          "adapter": "prompt_generic",
+          "evidence_count": 2,
+          "description": "A prompt used to test for prompt injection vulnerabilities using social engineering techniques.",
+          "llm_verified": true,
+          "llm_verification_reason": "The JSON file contains a prompt injection test case, specifically designed to evaluate the system's resilience against social engineering attacks. The `userInput.text` field likely contains a prompt designed to manipulate the agent's behavior.",
+          "llm_confidence": 0.9,
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.9,
+            "evidence_count": 4,
+            "evidence_sources": [
+              "llm:verified",
+              "evidence:0",
+              "evidence:1",
+              "confidence:high"
+            ],
+            "base_confidence": 0.9,
+            "evidence_multiplier": 1.3,
+            "validation_penalty": 0.0,
+            "final_confidence": 1.0
+          },
+          "description_source": "original_sbom"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "prompt_generic: regex",
+          "location": {
+            "path": "evaluations\\Prompt_Injection_-_Social_Engineering_Method\\Prompt_Injection_-_Social_Engineering_Method.json",
+            "line": 3
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "prompt_generic: regex",
+          "location": {
+            "path": "evaluations\\Prompt_Injection_-_User_Testing\\Prompt_Injection_-_User_Testing.json",
+            "line": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "f5a35254-f953-4ddb-82fc-97ffad0577c2",
+      "name": "retail_agent instruction",
+      "component_type": "PROMPT",
+      "confidence": 0.8640000000000001,
+      "metadata": {
+        "framework": "google_adk",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "retail_agent_instruction",
+          "adapter": "google_adk_json",
+          "evidence_count": 1,
+          "framework": "google_adk",
+          "source": "instruction_file",
+          "content": "<role>\n    You are \"Project Pro,\" a primary AI assistant for Blissful Home & Garden store. Your role is to assist with product selection, identification, and shopping cart management.\n</role>\n<persona>\n    Maintain a friendly, empathetic, and helpful tone, but keep your conversational turns concise and not overly verbose.\n</persona>\n<constraints>\n    1.  **Scope of Capabilities:** Your capabilities are strictly defined. Adhere to the following in-scope and out-of-scope guidelines.\n        - **In-Scope:**\n            - Identifying plants from user descriptions or images.\n            - Looking up plant details and care instructions.\n            - Recommending soil and fertilizer based on identified plants.\n            - Modifying the shopping cart with recommended products upon user confirmation.\n        - **Out-of-Scope Handoffs:** You must hand off any requests that fall outside your scope using the specified agent or tool. Do not attempt to answer them yourself.\n            - **Service Inquiries (e.g., planting, landscaping):** Immediately and silently transfer to the `{@AGENT: cymbal_upsell_agent}`.\n            - **General Inquiries (e.g., discounts, store hours, return policies, purchasing plants or garden accessories):** Immediately transfer to the `{@AGENT: out_of_scope_handling}`. After this agent returns control, re-engage the user.\n            - **Live Agent Requests:** Immediately execute the `{@TOOL: end_session}` with session_escalated=true and reason=\"customer_requested_live_agent\".\n\n    2.  **Interaction Flow:** Explicitly wait for the user to respond after you present recommendations before you suggest any cart modifications.\n</constraints>\n<taskflow>\n    <subtask name=\"Personalized Customer Assistance\">\n        <step name=\"Greet Returning Customer\">\n            <trigger>The conversation begins.</trigger>\n            <action>\n                1. On the very first turn, your one and only action MUST be to call the `{@TOOL: greeting}` tool to identify the customer.\n                2. Based on the output from the `greeting` tool, greet the customer warmly by name, mentioning \"Blissful Home & Garden.\"\n                    - If their cart has items, briefly acknowledge them (e.g., \"Welcome back, [Name]! I see you've already got some items in your Cymbal Home & Garden cart.\").\n                    - If their cart is empty, provide a simple welcome (e.g., \"Welcome back to Blissful Home & Garden, [Name]!\").\n                3. Always end your greeting with an open-ended question, such as \"How can I help you today?\"\n            </action>\n        </step>\n    </subtask>\n    <subtask name=\"Product Recommendation and Cart Management\">\n        <step name=\"Identify Plant and Get Recommendations\">\n            <trigger>The user asks for help selecting products for their plant(s) OR a plant has been identified from a user-uploaded image.</trigger>\n            <action>\n                1.  **Determine the context:**\n                    - **If a plant name is available:** Call the `{@TOOL: get_product_recommendations}` tool with the plant name.\n                    - **If the user provides an ambiguous description (e.g., \"my plants\"):** Prioritize asking for an image. State that a picture will provide the best recommendations and call the `{@TOOL: request_image_upload}` tool.\n                    - **Fallback:** If the user cannot provide an image, ask them to describe the plant in more detail.\n            </action>\n        </step>\n        <step name=\"Present Recommendations\">\n            <trigger>The `{@TOOL: get_product_recommendations}` tool returns a result with recommendations.</trigger>\n            <action>\n                1. Briefly explain why the new recommendations are a good fit for the user's plant.\n                2. Ask for the user's opinion on the displayed recommendations, e.g., \"What do you think of these options?\"\n            </action>\n        </step>\n        <step name=\"Propose Cart Modification\">\n            <trigger>The user responds positively to the product recommendations.</trigger>\n            <action>\n                1. Propose a specific, concise cart modification.\n                2. Ask for confirmation. For example: \"Great! Should I swap the standard soil for the Bloom Booster Potting Mix in your cart?\"\n            </action>\n        </step>\n        <step name=\"Execute and Confirm Cart Update\">\n            <trigger>The user agrees to the proposed cart modification.</trigger>\n            <action>\n                1. Call the tool {@TOOL: update_cart} to modify the cart\n                2. After the tool confirms the update was successful, inform the user (e.g., \"Done! I've updated your cart.\").\n            </action>\n        </step>\n    </subtask>\n    <subtask name=\"Handling Out-of-Scope Inquiries\">\n        <step name=\"Identify and Deflect General Out-of-Scope Request\">\n            <trigger>The user asks a question that is out-of-scope and is not a service inquiry or live agent request (e.g., asking about discounts, store hours, return policies).</trigger>\n            <action>\n                1. Do not attempt to answer the question.\n                2. Your only action is to immediately transfer to the `{@AGENT: out_of_scope_handling}`.\n                3. After control returns to you, re-engage the user by asking if you can assist with an in-scope topic. For example: \"Now that we've clarified that, is there anything I can help you with regarding plant identification or product recommendations?\"\n            </action>\n        </step>\n        <step name=\"Identify Service Inquiry\">\n            <trigger>The customer asks about services like planting, installation, or landscaping.</trigger>\n            <action>\n                1.  **DO NOT RESPOND to the user.**\n                2.  Your only action is to immediately and silently transfer to the `{@AGENT: cymbal_upsell_agent}`.\n            </action>\n        </step>\n    </subtask>\n    <subtask name=\"Session Management\">\n        <step name=\"Escalate to Live Agent\">\n            <trigger>The customer asks for a live agent or human representative.</trigger>\n            <action>\n                1. Always provide a short empathetic response (e.g. \"Absolutely, let me connect you now...\")\n                2. Immediately execute the `{@TOOL: end_session}` with the arguments session_escalated=true and reason=\"customer_requested_live_agent\".\n            </action>\n        </step>\n        <step name=\"End Session on Successful Completion\">\n            <trigger>The user indicates their query is fully resolved (e.g., \"That's all I need,\" \"I'm good, thanks\").</trigger>\n            <action>\n                1. Provide a warm closing (e.g., \"You're welcome! Thanks for shopping with us at Cymbal Home & Garden. Have a great day!\").\n                2. Immediately execute the `{@TOOL: end_session}` with the arguments session_escalated=false, reason=\"task_completed\", and params={\"status\": \"success\"}.\n            </action>\n        </step>\n        <step name=\"End Session on Explicit Request\">\n            <trigger>The customer explicitly asks to end the session (e.g., \"End chat\", \"I want to stop\").</trigger>\n            <action>\n                1. Acknowledge the request briefly (e.g., \"Okay, no problem. Feel free to come back any time.\").\n                2. Immediately execute the `{@TOOL: end_session}` with the arguments session_escalated=false, reason=\"customer_request\", and params={\"status\": \"abandoned\"}.\n            </action>\n        </step>\n    </subtask>\n</taskflow>\n<examples>\n</examples>",
+          "role": "system",
+          "is_template": false,
+          "template_variables": [],
+          "char_count": 7564,
+          "instruction_file": "agents/retail_agent/instruction.txt",
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:google_adk",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.864
+          },
+          "description_source": "none"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "json",
+          "confidence": 0.9,
+          "detail": "google_adk_json: json",
+          "location": {
+            "path": "agents/retail_agent/instruction.txt",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "4aca6eb2-e32f-46b8-bb03-ceef10a65efb",
+      "name": "affirmative",
+      "component_type": "TOOL",
+      "confidence": 0.8640000000000001,
+      "metadata": {
+        "framework": "google_adk",
+        "description": "Indicates a verbal affirmative from the user was provided to the agent's question. This could be something like `sure`, `ok`, `yes`, `sounds good`, or other affirmative respoonses",
+        "high_privilege": false,
+        "sql_injectable": false,
+        "ssrf_possible": false,
+        "accepts_external_url": false,
+        "reads_external_content": false,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "affirmative",
+          "adapter": "google_adk_json",
+          "evidence_count": 1,
+          "framework": "google_adk",
+          "source": "json_config",
+          "description": "Indicates a verbal affirmative from the user was provided to the agent's question. This could be something like `sure`, `ok`, `yes`, `sounds good`, or other affirmative respoonses",
+          "execution_type": null,
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:google_adk",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.864
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "json",
+          "confidence": 0.9,
+          "detail": "google_adk_json: tool: affirmative \u2014 Indicates a verbal affirmative from the user was provided to",
+          "location": {
+            "path": "tools\\affirmative\\affirmative.json",
+            "line": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": "6de2f473-179f-48fd-a247-331e6e92c74c",
+      "name": "apply_discount_to_service",
+      "component_type": "TOOL",
+      "confidence": 0.8640000000000001,
+      "metadata": {
+        "framework": "google_adk",
+        "description": "Applies the discount to the specified services.",
+        "high_privilege": false,
+        "sql_injectable": false,
+        "ssrf_possible": false,
+        "accepts_external_url": false,
+        "reads_external_content": false,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "apply_discount_to_service",
+          "adapter": "google_adk_json",
+          "evidence_count": 1,
+          "framework": "google_adk",
+          "source": "json_config",
+          "description": "Applies the discount to the specified services.",
+          "execution_type": null,
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:google_adk",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.864
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "json",
+          "confidence": 0.9,
+          "detail": "google_adk_json: tool: apply_discount_to_service \u2014 Applies the discount to the specified services.",
+          "location": {
+            "path": "tools\\apply_discount_to_service\\apply_discount_to_service.json",
+            "line": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": "44cdb3b9-ba5e-4f44-8098-8a0c12a4d723",
+      "name": "approve_discount",
+      "component_type": "TOOL",
+      "confidence": 0.8640000000000001,
+      "metadata": {
+        "framework": "google_adk",
+        "description": "Approve the flat rate or percentage discount requested by the user.",
+        "high_privilege": false,
+        "sql_injectable": false,
+        "ssrf_possible": false,
+        "accepts_external_url": false,
+        "reads_external_content": false,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "approve_discount",
+          "adapter": "google_adk_json",
+          "evidence_count": 1,
+          "framework": "google_adk",
+          "source": "json_config",
+          "description": "Approve the flat rate or percentage discount requested by the user.",
+          "execution_type": null,
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:google_adk",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.864
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "json",
+          "confidence": 0.9,
+          "detail": "google_adk_json: tool: approve_discount \u2014 Approve the flat rate or percentage discount requested by th",
+          "location": {
+            "path": "tools\\approve_discount\\approve_discount.json",
+            "line": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": "cbbf3b80-1b02-409b-a4d9-817d17a3f958",
+      "name": "ask_to_modify_cart",
+      "component_type": "TOOL",
+      "confidence": 0.8640000000000001,
+      "metadata": {
+        "framework": "google_adk",
+        "description": "Confirm with the customer that it is ok to modify their cart.",
+        "high_privilege": false,
+        "sql_injectable": false,
+        "ssrf_possible": false,
+        "accepts_external_url": false,
+        "reads_external_content": false,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "ask_to_modify_cart",
+          "adapter": "google_adk_json",
+          "evidence_count": 1,
+          "framework": "google_adk",
+          "source": "json_config",
+          "description": "Confirm with the customer that it is ok to modify their cart.",
+          "execution_type": null,
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:google_adk",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.864
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "json",
+          "confidence": 0.9,
+          "detail": "google_adk_json: tool: ask_to_modify_cart \u2014 Confirm with the customer that it is ok to modify their cart",
+          "location": {
+            "path": "tools\\ask_to_modify_cart\\ask_to_modify_cart.json",
+            "line": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": "4c63b341-23b7-43f1-aff7-92b1b0cb7c84",
+      "name": "get_available_planting_times",
+      "component_type": "TOOL",
+      "confidence": 0.8640000000000001,
+      "metadata": {
+        "framework": "google_adk",
+        "description": "Retrieves available planting service time slots for a given date.\n\nArgs:\n    date: The date to check (YYYY-MM-DD).\n\nReturns:\n    A list of available time ranges. Example:\n    ['8-12', '13-17']",
+        "high_privilege": false,
+        "sql_injectable": false,
+        "ssrf_possible": false,
+        "accepts_external_url": false,
+        "reads_external_content": false,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "get_available_planting_times",
+          "adapter": "google_adk_json",
+          "evidence_count": 1,
+          "framework": "google_adk",
+          "source": "json_config",
+          "description": "Retrieves available planting service time slots for a given date.\n\nArgs:\n    date: The date to check (YYYY-MM-DD).\n\nReturns:\n    A list of available time ranges. Example:\n    ['8-12', '13-17']",
+          "execution_type": null,
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:google_adk",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.864
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "json",
+          "confidence": 0.9,
+          "detail": "google_adk_json: tool: get_available_planting_times \u2014 Retrieves available planting service time slots for a given ",
+          "location": {
+            "path": "tools\\get_available_planting_times\\get_available_planting_times.json",
+            "line": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": "9ad7e4b4-3b20-41b0-ad34-f9efb2abf046",
+      "name": "get_landscaping_quote",
+      "component_type": "TOOL",
+      "confidence": 0.8640000000000001,
+      "metadata": {
+        "framework": "google_adk",
+        "description": "Gets a quote for the landscaping services that the user requires.",
+        "high_privilege": false,
+        "sql_injectable": false,
+        "ssrf_possible": false,
+        "accepts_external_url": false,
+        "reads_external_content": false,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "get_landscaping_quote",
+          "adapter": "google_adk_json",
+          "evidence_count": 1,
+          "framework": "google_adk",
+          "source": "json_config",
+          "description": "Gets a quote for the landscaping services that the user requires.",
+          "execution_type": null,
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:google_adk",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.864
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "json",
+          "confidence": 0.9,
+          "detail": "google_adk_json: tool: get_landscaping_quote \u2014 Gets a quote for the landscaping services that the user requ",
+          "location": {
+            "path": "tools\\get_landscaping_quote\\get_landscaping_quote.json",
+            "line": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": "8b3f9903-71ce-4734-8195-5186e4d7e7ec",
+      "name": "get_product_recommendations",
+      "component_type": "TOOL",
+      "confidence": 0.8640000000000001,
+      "metadata": {
+        "framework": "google_adk",
+        "description": "Performs a lookup on the flower or plant details and then provides recommendations based on that information.",
+        "high_privilege": false,
+        "sql_injectable": false,
+        "ssrf_possible": false,
+        "accepts_external_url": false,
+        "reads_external_content": false,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "get_product_recommendations",
+          "adapter": "google_adk_json",
+          "evidence_count": 1,
+          "framework": "google_adk",
+          "source": "json_config",
+          "description": "Performs a lookup on the flower or plant details and then provides recommendations based on that information.",
+          "execution_type": "SYNCHRONOUS",
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:google_adk",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.864
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "json",
+          "confidence": 0.9,
+          "detail": "google_adk_json: tool: get_product_recommendations \u2014 Performs a lookup on the flower or plant details and then pr",
+          "location": {
+            "path": "tools\\get_product_recommendations\\get_product_recommendations.json",
+            "line": 9
+          }
+        }
+      ]
+    },
+    {
+      "id": "1bc8219f-184a-45cc-922e-ce6f85bd45b5",
+      "name": "greeting",
+      "component_type": "TOOL",
+      "confidence": 0.8640000000000001,
+      "metadata": {
+        "framework": "google_adk",
+        "description": "A static default greeting that is sent to the user.",
+        "high_privilege": false,
+        "sql_injectable": false,
+        "ssrf_possible": false,
+        "accepts_external_url": false,
+        "reads_external_content": false,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "greeting",
+          "adapter": "google_adk_json",
+          "evidence_count": 1,
+          "framework": "google_adk",
+          "source": "json_config",
+          "description": "A static default greeting that is sent to the user.",
+          "execution_type": "SYNCHRONOUS",
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:google_adk",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.864
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "json",
+          "confidence": 0.9,
+          "detail": "google_adk_json: tool: greeting \u2014 A static default greeting that is sent to the user.",
+          "location": {
+            "path": "tools\\greeting\\greeting.json",
+            "line": 9
+          }
+        }
+      ]
+    },
+    {
+      "id": "7571e0e6-711b-49e4-9c63-e99e720d95a5",
+      "name": "request_image_upload",
+      "component_type": "TOOL",
+      "confidence": 0.8640000000000001,
+      "metadata": {
+        "framework": "google_adk",
+        "description": "Asks the user to share an image that can be used to identify the flowers the user purchased.",
+        "high_privilege": false,
+        "sql_injectable": false,
+        "ssrf_possible": false,
+        "accepts_external_url": false,
+        "reads_external_content": false,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "request_image_upload",
+          "adapter": "google_adk_json",
+          "evidence_count": 1,
+          "framework": "google_adk",
+          "source": "json_config",
+          "description": "Asks the user to share an image that can be used to identify the flowers the user purchased.",
+          "execution_type": null,
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:google_adk",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.864
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "json",
+          "confidence": 0.9,
+          "detail": "google_adk_json: tool: request_image_upload \u2014 Asks the user to share an image that can be used to identify",
+          "location": {
+            "path": "tools\\request_image_upload\\request_image_upload.json",
+            "line": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": "ce37de1c-92be-49e8-b662-6eb761f12923",
+      "name": "schedule_planting_service",
+      "component_type": "TOOL",
+      "confidence": 0.8640000000000001,
+      "metadata": {
+        "framework": "google_adk",
+        "description": "Schedules a planting service appointment.\n\nArgs:\n    customer_id: The ID of the customer.\n    date:  The desired date (YYYY-MM-DD).\n    time_range: The desired time range (e.g., \"8-12\").\n    details:",
+        "high_privilege": false,
+        "sql_injectable": false,
+        "ssrf_possible": false,
+        "accepts_external_url": false,
+        "reads_external_content": false,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "schedule_planting_service",
+          "adapter": "google_adk_json",
+          "evidence_count": 1,
+          "framework": "google_adk",
+          "source": "json_config",
+          "description": "Schedules a planting service appointment.\n\nArgs:\n    customer_id: The ID of the customer.\n    date:  The desired date (YYYY-MM-DD).\n    time_range: The desired time range (e.g., \"8-12\").\n    details: ",
+          "execution_type": null,
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:google_adk",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.864
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "json",
+          "confidence": 0.9,
+          "detail": "google_adk_json: tool: schedule_planting_service \u2014 Schedules a planting service appointment.\n\nArgs:\n    custome",
+          "location": {
+            "path": "tools\\schedule_planting_service\\schedule_planting_service.json",
+            "line": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": "aff82d40-ccd9-4aa4-a018-4761a7dc73fb",
+      "name": "crm_service",
+      "component_type": "TOOL",
+      "confidence": 1.0,
+      "metadata": {
+        "framework": "google_adk",
+        "description": "Used to look up information about the user's current cart information and also get recommendations on items based on the users current plant or flower choices.",
+        "high_privilege": false,
+        "sql_injectable": false,
+        "ssrf_possible": false,
+        "accepts_external_url": false,
+        "reads_external_content": false,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "toolset_crm_service",
+          "adapter": "google_adk_json",
+          "evidence_count": 1,
+          "framework": "google_adk",
+          "source": "json_config",
+          "resource_kind": "toolset",
+          "description": "A tool for accessing CRM data, including user cart information and product recommendations.",
+          "open_api_schema": "toolsets/crm_service/open_api_toolset/open_api_schema.yaml",
+          "llm_verified": true,
+          "llm_verification_reason": "The JSON defines a tool named 'crm_service' that uses an OpenAPI schema. The description indicates it's used to look up user cart information and provide recommendations, suggesting it's a functional tool used in production.",
+          "llm_confidence": 0.9,
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.9,
+            "evidence_count": 4,
+            "evidence_sources": [
+              "llm:verified",
+              "framework:google_adk",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.9,
+            "evidence_multiplier": 1.3,
+            "validation_penalty": 0.0,
+            "final_confidence": 1.0
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "json",
+          "confidence": 0.85,
+          "detail": "google_adk_json: toolset: crm_service",
+          "location": {
+            "path": "toolsets\\crm_service\\crm_service.json",
+            "line": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "d5f48d65-eb7b-4cce-8d1b-7a7da2a60ac0",
+      "name": "update_cart",
+      "component_type": "TOOL",
+      "confidence": 0.8640000000000001,
+      "metadata": {
+        "framework": "google_adk",
+        "description": "Update the user's cart based on their selections.",
+        "high_privilege": false,
+        "sql_injectable": false,
+        "ssrf_possible": false,
+        "accepts_external_url": false,
+        "reads_external_content": false,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "update_cart",
+          "adapter": "google_adk_json",
+          "evidence_count": 1,
+          "framework": "google_adk",
+          "source": "json_config",
+          "description": "Update the user's cart based on their selections.",
+          "execution_type": "SYNCHRONOUS",
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:google_adk",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.864
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "json",
+          "confidence": 0.9,
+          "detail": "google_adk_json: tool: update_cart \u2014 Update the user's cart based on their selections.",
+          "location": {
+            "path": "tools\\update_cart\\update_cart.json",
+            "line": 9
+          }
+        }
+      ]
+    },
+    {
+      "id": "b99e1650-dcb4-4182-b256-c4b2a5a13f52",
+      "name": "update_salesforce_crm",
+      "component_type": "TOOL",
+      "confidence": 0.8640000000000001,
+      "metadata": {
+        "framework": "google_adk",
+        "description": "Updates the Salesforce CRM with the most recent conversation details.",
+        "high_privilege": false,
+        "sql_injectable": false,
+        "ssrf_possible": false,
+        "accepts_external_url": false,
+        "reads_external_content": false,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "update_salesforce_crm",
+          "adapter": "google_adk_json",
+          "evidence_count": 1,
+          "framework": "google_adk",
+          "source": "json_config",
+          "description": "Updates the Salesforce CRM with the most recent conversation details.",
+          "execution_type": null,
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:google_adk",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.864
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "json",
+          "confidence": 0.9,
+          "detail": "google_adk_json: tool: update_salesforce_crm \u2014 Updates the Salesforce CRM with the most recent conversation",
+          "location": {
+            "path": "tools\\update_salesforce_crm\\update_salesforce_crm.json",
+            "line": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": "ec7801f5-9902-5517-9297-e4c3a58220ed",
+      "name": "google-ces",
+      "component_type": "FRAMEWORK",
+      "confidence": 0.8360000000000001,
+      "metadata": {
+        "framework": "google-ces",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "confidence_breakdown": {
+            "regex_confidence": 0.95,
+            "llm_confidence": 0.0,
+            "evidence_count": 2,
+            "evidence_sources": [
+              "framework:google-ces",
+              "confidence:high"
+            ],
+            "base_confidence": 0.76,
+            "evidence_multiplier": 1.1,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.836
+          },
+          "description_source": "none"
+        }
+      },
+      "evidence": []
+    },
+    {
+      "id": "a835fb48-9f34-53e5-93fe-545f05057354",
+      "name": "CES Agent (ces.googleapis.com)",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.7920000000000001,
+      "metadata": {
+        "framework": "google-ces",
+        "auth_type": "gcloud",
+        "endpoint": "https://ces.googleapis.com/v1beta/projects/115983574051/locations/us/apps/dfe2a521-59d6-459a-8358-cedc73f1a92e/sessions/{session_id}:runSession",
+        "method": "POST",
+        "description": "Google Customer Engagement Suite (CES) agent endpoint. Auth: gcloud Bearer token. Request: {config, inputs}. Response: {outputs[0].text}.",
+        "auth_required": true,
+        "idor_surface": false,
+        "path_params": [
+          "session_id"
+        ],
+        "request_body_schema": {
+          "config": "{\"type\": \"object\", \"properties\": {\"session\": {\"type\": \"string\"}, \"app_version\": {\"type\": \"string\"}, \"deployment\": {\"type\": \"string\"}}}",
+          "inputs": "{\"type\": \"array\", \"items\": {\"type\": \"object\", \"properties\": {\"text\": {\"type\": \"string\"}}}}"
+        },
+        "chat_payload_list": false,
+        "response_text_key": "outputs[0].text",
+        "extras": {
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 2,
+            "evidence_sources": [
+              "framework:google-ces",
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.1,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.792
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "config",
+          "confidence": 0.9,
+          "detail": "Detected in: embed-instructions.txt",
+          "location": {
+            "path": "embed-instructions.txt",
+            "line": 15
+          }
+        },
+        {
+          "kind": "config",
+          "confidence": 0.9,
+          "detail": "Deployment: 021c82f1-d4f7-4c80-8864-fb7a796b608f",
+          "location": {
+            "path": "embed-instructions.txt",
+            "line": 15
+          }
+        },
+        {
+          "kind": "config",
+          "confidence": 0.9,
+          "detail": "Version: 5317c9ed-d32c-4c34-9f5a-db08cb1f4bb1",
+          "location": {
+            "path": "embed-instructions.txt",
+            "line": 15
+          }
+        }
+      ]
+    },
+    {
+      "id": "4ab2cf39-c38c-5b7e-8724-1018a073889a",
+      "name": "CES Agent (ces.googleapis.com)",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.7920000000000001,
+      "metadata": {
+        "framework": "google-ces",
+        "auth_type": "gcloud",
+        "endpoint": "https://ces.googleapis.com/v1beta/projects/platform-dev-2025/locations/us/apps/dfe2a521-59d6-459a-8358-cedc73f1a92e/sessions/{session_id}:runSession",
+        "method": "POST",
+        "description": "Google Customer Engagement Suite (CES) agent endpoint. Auth: gcloud Bearer token. Request: {config, inputs}. Response: {outputs[0].text}.",
+        "auth_required": true,
+        "idor_surface": false,
+        "path_params": [
+          "session_id"
+        ],
+        "request_body_schema": {
+          "config": "{\"type\": \"object\", \"properties\": {\"session\": {\"type\": \"string\"}, \"app_version\": {\"type\": \"string\"}, \"deployment\": {\"type\": \"string\"}}}",
+          "inputs": "{\"type\": \"array\", \"items\": {\"type\": \"object\", \"properties\": {\"text\": {\"type\": \"string\"}}}}"
+        },
+        "chat_payload_list": false,
+        "response_text_key": "outputs[0].text",
+        "extras": {
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 2,
+            "evidence_sources": [
+              "framework:google-ces",
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.1,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.792
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "config",
+          "confidence": 0.9,
+          "detail": "Detected in: response.json",
+          "location": {
+            "path": "response.json",
+            "line": 190
+          }
+        },
+        {
+          "kind": "config",
+          "confidence": 0.9,
+          "detail": "Deployment: 95a08aa7-8453-4439-8218-a9ba77dfdf47",
+          "location": {
+            "path": "response.json",
+            "line": 190
+          }
+        },
+        {
+          "kind": "config",
+          "confidence": 0.9,
+          "detail": "Version: 5317c9ed-d32c-4c34-9f5a-db08cb1f4bb1",
+          "location": {
+            "path": "response.json",
+            "line": 190
+          }
+        }
+      ]
+    },
+    {
+      "id": "10b16786-3933-56e4-81b6-f0aeee505760",
+      "name": "/api/chat API",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.62,
+      "metadata": {
+        "endpoint": "/api/chat",
+        "method": "POST",
+        "accepts_user_input": true,
+        "request_body_schema": {},
+        "chat_payload_key": "message",
+        "chat_payload_list": false,
+        "extras": {
+          "source": "runtime_probe",
+          "description_source": "none"
+        }
+      },
+      "evidence": []
+    }
+  ],
+  "edges": [
+    {
+      "source": "31d6291b-ef5b-4143-b8c2-6abaac8e1730",
+      "target": "4aca6eb2-e32f-46b8-bb03-ceef10a65efb",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "31d6291b-ef5b-4143-b8c2-6abaac8e1730",
+      "target": "6de2f473-179f-48fd-a247-331e6e92c74c",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "31d6291b-ef5b-4143-b8c2-6abaac8e1730",
+      "target": "44cdb3b9-ba5e-4f44-8098-8a0c12a4d723",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "31d6291b-ef5b-4143-b8c2-6abaac8e1730",
+      "target": "cbbf3b80-1b02-409b-a4d9-817d17a3f958",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "31d6291b-ef5b-4143-b8c2-6abaac8e1730",
+      "target": "aff82d40-ccd9-4aa4-a018-4761a7dc73fb",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "31d6291b-ef5b-4143-b8c2-6abaac8e1730",
+      "target": "eb538dff-ab21-44ee-ba49-bb5e4067eef9",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "31d6291b-ef5b-4143-b8c2-6abaac8e1730",
+      "target": "e4a316fc-db8c-4996-8bda-6deb403ab431",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "029aae2e-8de5-4db5-a38d-4f164914ae3f",
+      "target": "4aca6eb2-e32f-46b8-bb03-ceef10a65efb",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "029aae2e-8de5-4db5-a38d-4f164914ae3f",
+      "target": "6de2f473-179f-48fd-a247-331e6e92c74c",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "029aae2e-8de5-4db5-a38d-4f164914ae3f",
+      "target": "44cdb3b9-ba5e-4f44-8098-8a0c12a4d723",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "029aae2e-8de5-4db5-a38d-4f164914ae3f",
+      "target": "cbbf3b80-1b02-409b-a4d9-817d17a3f958",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "029aae2e-8de5-4db5-a38d-4f164914ae3f",
+      "target": "aff82d40-ccd9-4aa4-a018-4761a7dc73fb",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "029aae2e-8de5-4db5-a38d-4f164914ae3f",
+      "target": "eb538dff-ab21-44ee-ba49-bb5e4067eef9",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "029aae2e-8de5-4db5-a38d-4f164914ae3f",
+      "target": "e4a316fc-db8c-4996-8bda-6deb403ab431",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "e6b28266-9d8d-4b95-b0a0-79a6c1220c70",
+      "target": "4aca6eb2-e32f-46b8-bb03-ceef10a65efb",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "e6b28266-9d8d-4b95-b0a0-79a6c1220c70",
+      "target": "6de2f473-179f-48fd-a247-331e6e92c74c",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "e6b28266-9d8d-4b95-b0a0-79a6c1220c70",
+      "target": "44cdb3b9-ba5e-4f44-8098-8a0c12a4d723",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "e6b28266-9d8d-4b95-b0a0-79a6c1220c70",
+      "target": "cbbf3b80-1b02-409b-a4d9-817d17a3f958",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "e6b28266-9d8d-4b95-b0a0-79a6c1220c70",
+      "target": "aff82d40-ccd9-4aa4-a018-4761a7dc73fb",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "e6b28266-9d8d-4b95-b0a0-79a6c1220c70",
+      "target": "eb538dff-ab21-44ee-ba49-bb5e4067eef9",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "e6b28266-9d8d-4b95-b0a0-79a6c1220c70",
+      "target": "e4a316fc-db8c-4996-8bda-6deb403ab431",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "31d6291b-ef5b-4143-b8c2-6abaac8e1730",
+      "target": "4c63b341-23b7-43f1-aff7-92b1b0cb7c84",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "31d6291b-ef5b-4143-b8c2-6abaac8e1730",
+      "target": "9ad7e4b4-3b20-41b0-ad34-f9efb2abf046",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "31d6291b-ef5b-4143-b8c2-6abaac8e1730",
+      "target": "8b3f9903-71ce-4734-8195-5186e4d7e7ec",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "31d6291b-ef5b-4143-b8c2-6abaac8e1730",
+      "target": "1bc8219f-184a-45cc-922e-ce6f85bd45b5",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "31d6291b-ef5b-4143-b8c2-6abaac8e1730",
+      "target": "7571e0e6-711b-49e4-9c63-e99e720d95a5",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "31d6291b-ef5b-4143-b8c2-6abaac8e1730",
+      "target": "ce37de1c-92be-49e8-b662-6eb761f12923",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "31d6291b-ef5b-4143-b8c2-6abaac8e1730",
+      "target": "d5f48d65-eb7b-4cce-8d1b-7a7da2a60ac0",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "31d6291b-ef5b-4143-b8c2-6abaac8e1730",
+      "target": "b99e1650-dcb4-4182-b256-c4b2a5a13f52",
+      "relationship_type": "CALLS"
+    }
+  ],
+  "deps": [
+    {
+      "name": "python-dotenv",
+      "version_spec": ">=1.0,<2",
+      "purl": "pkg:pypi/python-dotenv",
+      "group": "runtime",
+      "source_file": "webapp\\requirements.txt"
+    }
+  ],
+  "summary": {
+    "use_case": "This application serves as a retail assistant and upsell agent, primarily assisting users with existing purchases, product recommendations, landscaping quotes, and scheduling planting services. It leverages multiple agents to handle tasks such as CRM updates, discount approvals, and out-of-scope inquiries. The system supports text-based interactions and can request image uploads from users.",
+    "frameworks": [
+      "google_adk",
+      "google-ces"
+    ],
+    "modalities": [
+      "TEXT"
+    ],
+    "modality_support": {
+      "text": true,
+      "voice": false,
+      "image": false,
+      "video": false
+    },
+    "api_endpoints": [],
+    "deployment_platforms": [
+      "GCP",
+      "Azure",
+      "AWS"
+    ],
+    "regions": [
+      "US-Chirp3-HD-Achernar"
+    ],
+    "environments": [
+      "test",
+      "production",
+      "dev",
+      "stage"
+    ],
+    "deployment_urls": [],
+    "iac_accounts": [
+      "dfe2a521-59d6-459a-8358-cedc73f1a92e",
+      "b27eebe5-0f51-4eb2-af0a-87e07e3ab72c",
+      "115983574051",
+      "c79a6ed6-d240-4f87-938a-5fa2d491b369",
+      "26ddf530-3a34-47a2-a5ed-ce770cc7f586",
+      "95a08aa7-8453-4439-8218-a9ba77dfdf47",
+      "5317c9ed-d32c-4c34-9f5a-db08cb1f4bb1",
+      "52e4d31c-c497-47ff-847b-837583e4d6c8",
+      "a9d321a5-52fe-47ba-b6c0-b2f946599c3d",
+      "81cd78a0-cb6b-4440-925d-00b4252d3ab8",
+      "f5711aa9-1019-432b-81aa-44d654a5d10f",
+      "7ffcf1f0-0447-4c53-8574-a59a6a2f5e80",
+      "eb08bfdc-2e4b-44b3-be0c-1cd93d553f52",
+      "46896a3c-800b-4223-904c-7dc1f3ce9435",
+      "9ca4a18b-585a-4dd0-a4a2-6c79f56cf1b9",
+      "87d497a3-9dd2-4176-9f39-a4cf3feccefb",
+      "d0c03502-ea97-415d-8b47-a5be11361052",
+      "923a35e8-7a8f-47e9-99cb-82a3913ab5d1",
+      "8ce26cbc-da74-44e8-8298-ea771b242293",
+      "43b8342a-1903-41cc-a9c6-ad2fb34281fc",
+      "f9baa7b5-539e-4c34-b845-4b0eb5c583c4",
+      "714f2c07-9f35-4906-aa7a-5b2ad5b235f3",
+      "d10ab47c-2fe5-4ce7-b452-9560dc6b9228",
+      "fc02eca4-64f2-40c2-a921-c494edca932c",
+      "32f2b741-ff1d-4687-9615-002b6118be03",
+      "2005c114-9633-4bf5-b8a6-9b9e7ce339d5",
+      "845e9474-36f0-4cb4-9ea9-974e5aae1f04",
+      "64dbb039-ef53-438f-9403-c8335db71f66",
+      "a4bf8c76-90a4-4b2b-8f31-aaee5ad030b7",
+      "77f929ad-ef03-47ef-9906-2dd132644103",
+      "1bcdffb3-0217-412e-854f-42a92059dec8",
+      "9689b2ef-c595-4a29-afd6-fbc7aa180300",
+      "ed031c26-6d5a-4738-90c4-4fb6bbf96c44",
+      "31846d86-1898-44ef-a899-518fbe4573af",
+      "69478306-beb1-48d7-9446-f17251f74ddf",
+      "2ccd5388-34a8-4e17-8cd3-a900a7a0f4e2",
+      "08596baa-8ca6-4fb8-b69c-c32cfc3bab20",
+      "4ce41a11-599c-45aa-b2a8-8475af128753",
+      "4d8f6d77-d886-451b-aa60-2556e3ee3b1c",
+      "1b475157-4b1d-41fe-a8c1-b80697173b32",
+      "147abda8-0547-4d65-a035-8ab2a68da599",
+      "6b4d4195-265b-4302-93d2-2a3fca6a3460",
+      "39010995-48dc-4cf3-b51e-b1c63f00b906",
+      "87358a34-2847-4595-bc81-0c6e9934a5e6",
+      "f798e5fc-e33c-4203-8dc8-11cb99a82891",
+      "f1dfeb07-242e-4c4f-acb7-e1e4ecec9d34",
+      "5d00d081-9e06-4a9e-8c30-1aa4c6184c38",
+      "a4eb53a5-de4d-4f81-9de0-7eb24e28454d",
+      "30a596cc-c395-4703-a9a5-ff6cf8523f73",
+      "52411ddc-1f81-4b38-8fd6-bc9590696281",
+      "2654d891-ae14-43b1-aea6-941136edd8f1",
+      "a9373927-7f25-4b2c-b52b-c24ae3f6f402",
+      "cd782932-d31f-4596-94d6-475f7189d583",
+      "6af07ccf-9144-4881-9763-4681130b608f",
+      "os.getenv"
+    ],
+    "node_counts": {
+      "AGENT": 3,
+      "AUTH": 1,
+      "DEPLOYMENT": 1,
+      "GUARDRAIL": 2,
+      "MODEL": 2,
+      "PRIVILEGE": 3,
+      "PROMPT": 5,
+      "TOOL": 13,
+      "FRAMEWORK": 1,
+      "API_ENDPOINT": 3
+    },
+    "secret_stores": [],
+    "availability_zones": [],
+    "encryption_at_rest_coverage": false,
+    "security_findings": [],
+    "iam_principals": [],
+    "service_accounts": [],
+    "iac_security_summary": "## AI Application Infrastructure Security Briefing\n\nThis briefing summarizes the security posture of the AI application based on the provided infrastructure configuration and aggregate security signals.\n\n**1. Deployment Posture:**\n\n*   The application is deployed as a generic `DEPLOYMENT` resource.\n*   No specific cloud provider or region is identified.\n*   No availability zones are configured, indicating a lack of high availability or resilience setup.\n\n**2. Secret Management:**\n\n*   No secret stores are currently in use. This suggests a potential risk of secrets being stored in plaintext within the application code or configuration files.\n\n**3. Encryption:**\n\n*   Encryption at rest coverage is absent. Data stored by the application is not encrypted, posing a significant data security risk.\n*   Key management practices are not defined, as encryption is not enabled.\n\n**4. IAM / Least-Privilege:**\n\n*   No IAM principals or service accounts are defined. This makes it difficult to assess the application's adherence to the principle of least privilege.\n\n**5. CI/CD Security:**\n\n*   No CI/CD configuration details are available (e.g., GitHub Actions runners, OIDC configuration, workflow trigger surface).\n\n**6. Container Security:**\n\n*   No container security information is available.\n\n**7. Key Risks and Recommendations:**\n\nThe following are the top 3 prioritized actions to improve the security posture of the AI application:\n\n1.  **Implement Encryption at Rest:** Enable encryption at rest for all data storage used by the application. Select an appropriate key management solution (e.g., cloud provider's KMS) and ensure proper key rotation and access control.\n2.  **Implement Secret Management:** Integrate a secure secret store (e.g., HashiCorp Vault, cloud provider's Secrets Manager) to manage sensitive information such as API keys, database passwords, and certificates. Remove any plaintext secrets from the application code and configuration files.\n3.  **Implement IAM and Least Privilege:** Define IAM principals and service accounts with the minimum necessary permissions to access resources. Review and restrict access to sensitive data and operations.",
+    "data_classification": [],
+    "classified_tables": [],
+    "startup_commands": [],
+    "env_files": [],
+    "env_var_keys": [],
+    "staging_urls": [],
+    "production_urls": [],
+    "log_paths": [
+      "$SCRIPT_DIR/reports/agentic-test-$(date +%Y%m%dT%H%M%S).log",
+      "$REPORTS_DIR/server.log"
+    ],
+    "uses_streaming": true,
+    "streaming_endpoints": [
+      "/run_sse"
+    ]
+  },
+  "relationship_graph_md": "## Component Relationship Graph\n\nHere's a summary of the AI system's architecture and potential security considerations:\n\n*   Three agents (`cymbal_upsell_agent`, `out_of_scope_handling`, `retail_agent`) use the same two models (`gemini-2.5-flash-001`, `gemini-3.0-flash-001`).\n*   All three agents can call the same set of tools: `affirmative`, `apply_discount_to_service`, `approve_discount`, `ask_to_modify_cart`, and `crm_service`.\n*   The `crm_service` tool suggests access to a CRM system, implying potential access to sensitive customer data.\n*   There are two guardrails (`bad words`, `Prompt Guardrail 1757021081696`), but their specific function and coverage are unknown, and they are not explicitly connected to any agents or tools.\n*   Several tools (`get_available_planting_times`, `get_landscaping_quote`, `get_product_recommendations`, `greeting`, `request_image_upload`, `schedule_planting_service`, `update_cart`, `update_salesforce_crm`) are present but not used by any agent, suggesting potential future functionality or unused capabilities.\n*   The `update_salesforce_crm` tool suggests access to a CRM system, implying potential access to sensitive customer data.\n*   Two API endpoints are present but not used by any agent, suggesting potential future functionality or unused capabilities.\n*   Risk Pattern: The agents have broad access to tools, including CRM access, without clearly defined guardrail coverage. This could lead to unintended data exposure or misuse.\n\n```mermaid\nflowchart LR\n    cymbal_upsell_agent_31d629[\"\ud83e\udd16 cymbal_upsell_agent\"]\n    out_of_scope_handling_029aae[\"\ud83e\udd16 out_of_scope_handling\"]\n    retail_agent_e6b282[\"\ud83e\udd16 retail_agent\"]\n    bad_words_dc1914{\"\ud83d\udee1 bad words\"}\n    Prompt_Guardrail_1757021081696_7b4a07{\"\ud83d\udee1 Prompt Guardrail 1757021081696\"}\n    gemini_2_5_flash_001_eb538d[(\"\ud83e\udde0 gemini-2.5-flash-001\")]\n    gemini_3_0_flash_001_e4a316[(\"\ud83e\udde0 gemini-3.0-flash-001\")]\n    Blissful_Home_store_instruction_82203f>\"\ud83d\udcac Blissful Home store instruction\"]\n    cymbal_upsell_agent_instruction_239d75>\"\ud83d\udcac cymbal_upsell_agent instruction\"]\n    out_of_scope_handling_instruction_b5d03f>\"\ud83d\udcac out_of_scope_handling instruction\"]\n    generic_69e82e>\"\ud83d\udcac generic\"]\n    retail_agent_instruction_f5a352>\"\ud83d\udcac retail_agent instruction\"]\n    affirmative_4aca6e(\"\ud83d\udd27 affirmative\")\n    apply_discount_to_service_6de2f4(\"\ud83d\udd27 apply_discount_to_service\")\n    approve_discount_44cdb3(\"\ud83d\udd27 approve_discount\")\n    ask_to_modify_cart_cbbf3b(\"\ud83d\udd27 ask_to_modify_cart\")\n    get_available_planting_times_4c63b3(\"\ud83d\udd27 get_available_planting_times\")\n    get_landscaping_quote_9ad7e4(\"\ud83d\udd27 get_landscaping_quote\")\n    get_product_recommendations_8b3f99(\"\ud83d\udd27 get_product_recommendations\")\n    greeting_1bc821(\"\ud83d\udd27 greeting\")\n    request_image_upload_7571e0(\"\ud83d\udd27 request_image_upload\")\n    schedule_planting_service_ce37de(\"\ud83d\udd27 schedule_planting_service\")\n    crm_service_aff82d(\"\ud83d\udd27 crm_service\")\n    update_cart_d5f48d(\"\ud83d\udd27 update_cart\")\n    update_salesforce_crm_b99e16(\"\ud83d\udd27 update_salesforce_crm\")\n    google_ces_ec7801[/\"\u2699 google-ces\"/]\n    CES_Agent__ces_googleapis_com__a835fb([\"\ud83c\udf10 CES Agent (ces.googleapis.com)\"])\n    CES_Agent__ces_googleapis_com__4ab2cf([\"\ud83c\udf10 CES Agent (ces.googleapis.com)\"])\n\n    cymbal_upsell_agent_31d629 -->|calls| affirmative_4aca6e\n    cymbal_upsell_agent_31d629 -->|calls| apply_discount_to_service_6de2f4\n    cymbal_upsell_agent_31d629 -->|calls| approve_discount_44cdb3\n    cymbal_upsell_agent_31d629 -->|calls| ask_to_modify_cart_cbbf3b\n    cymbal_upsell_agent_31d629 -->|calls| crm_service_aff82d\n    cymbal_upsell_agent_31d629 -->|uses| gemini_2_5_flash_001_eb538d\n    cymbal_upsell_agent_31d629 -->|uses| gemini_3_0_flash_001_e4a316\n    out_of_scope_handling_029aae -->|calls| affirmative_4aca6e\n    out_of_scope_handling_029aae -->|calls| apply_discount_to_service_6de2f4\n    out_of_scope_handling_029aae -->|calls| approve_discount_44cdb3\n    out_of_scope_handling_029aae -->|calls| ask_to_modify_cart_cbbf3b\n    out_of_scope_handling_029aae -->|calls| crm_service_aff82d\n    out_of_scope_handling_029aae -->|uses| gemini_2_5_flash_001_eb538d\n    out_of_scope_handling_029aae -->|uses| gemini_3_0_flash_001_e4a316\n    retail_agent_e6b282 -->|calls| affirmative_4aca6e\n    retail_agent_e6b282 -->|calls| apply_discount_to_service_6de2f4\n    retail_agent_e6b282 -->|calls| approve_discount_44cdb3\n    retail_agent_e6b282 -->|calls| ask_to_modify_cart_cbbf3b\n    retail_agent_e6b282 -->|calls| crm_service_aff82d\n    retail_agent_e6b282 -->|uses| gemini_2_5_flash_001_eb538d\n    retail_agent_e6b282 -->|uses| gemini_3_0_flash_001_e4a316\n\n    classDef agent    fill:#4A90D9,stroke:#2C6FAC,color:#fff\n    classDef tool     fill:#7ED321,stroke:#5A9A18,color:#fff\n    classDef model    fill:#9B59B6,stroke:#7D3C98,color:#fff\n    classDef prompt   fill:#F39C12,stroke:#D68910,color:#fff\n    classDef guard    fill:#E74C3C,stroke:#C0392B,color:#fff\n    classDef store    fill:#1ABC9C,stroke:#17A589,color:#fff\n    classDef fw       fill:#95A5A6,stroke:#717D7E,color:#fff\n    classDef endpoint fill:#3498DB,stroke:#2471A3,color:#fff\n    class cymbal_upsell_agent_31d629,out_of_scope_handling_029aae,retail_agent_e6b282 agent\n    class affirmative_4aca6e,apply_discount_to_service_6de2f4,approve_discount_44cdb3,ask_to_modify_cart_cbbf3b,get_available_planting_times_4c63b3,get_landscaping_quote_9ad7e4,get_product_recommendations_8b3f99,greeting_1bc821,request_image_upload_7571e0,schedule_planting_service_ce37de,crm_service_aff82d,update_cart_d5f48d,update_salesforce_crm_b99e16 tool\n    class gemini_2_5_flash_001_eb538d,gemini_3_0_flash_001_e4a316 model\n    class Blissful_Home_store_instruction_82203f,cymbal_upsell_agent_instruction_239d75,out_of_scope_handling_instruction_b5d03f,generic_69e82e,retail_agent_instruction_f5a352 prompt\n    class bad_words_dc1914,Prompt_Guardrail_1757021081696_7b4a07 guard\n    class google_ces_ec7801 fw\n    class CES_Agent__ces_googleapis_com__a835fb,CES_Agent__ces_googleapis_com__4ab2cf endpoint\n```",
+  "_enrichment_cache_key": "04b0851c716baa6948553d332926f1c2a9963f5f3b869a52c6cb993a0c4028db"
+}

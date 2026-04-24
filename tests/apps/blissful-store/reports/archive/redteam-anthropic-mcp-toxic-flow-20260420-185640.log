@@ -1,0 +1,8 @@
+[04/20/26 21:09:24] DEBUG    Loading config from                               
+                             tests\apps\blissful-store\nuguard.yaml            
+[04/20/26 21:09:24] INFO     Loading compiled policy controls from C:\Uma\Job  
+                             Search\Prospects\NuGuard\Code\nuguard-private\test
+                             s\apps\blissful-store\cognitive_policy.json       
+Generated: 2026-04-20T21:09:27-04:00  |  LLM: claude-sonnet-4-5, claude-sonnet-4-5  |  Target: http://localhost:8081/api/chat  |  Mode: verbose  |  Triggers: canary_hits=on, policy_violations=on, critical_success_hits=on, any_inject_success=on
+No findings GÇö scan complete
+Findings written to tests\apps\blissful-store\reports\redteam-anthropic-mcp-toxic-flow-20260420-185640.json

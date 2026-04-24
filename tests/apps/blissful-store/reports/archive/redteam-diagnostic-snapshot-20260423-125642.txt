@@ -1,0 +1,265 @@
+DIAGNOSTIC_SNAPSHOT_TS=2026-04-23 12:56:42
+WORKDIR=C:\Uma\Job Search\Prospects\NuGuard\Code\nuguard-private
+
+=== REDTEAM PROCESS DISCOVERY ===
+PID=23616 PPID=44788 NAME=nuguard.exe
+CMD="C:\Uma\Job Search\Prospects\NuGuard\Code\nuguard-private\.venv\Scripts\nuguard.exe" redteam --config tests/apps/blissful-store/nuguard.yaml --profile full --format json -o tests\apps\blissful-store\reports\redteam-full-gemini-20260423-124025.json
+---
+PID=23736 PPID=34868 NAME=python.exe
+CMD="C:\Uma\Job Search\Prospects\NuGuard\Code\nuguard-private\.venv\Scripts\python.exe" "C:\Uma\Job Search\Prospects\NuGuard\Code\nuguard-private\.venv\Scripts\nuguard.exe" redteam --config tests/apps/blissful-store/nuguard.yaml --profile full --format json -o tests\apps\blissful-store\reports\redteam-full-gemini-20260423-124025.json
+---
+PID=34868 PPID=23616 NAME=python.exe
+CMD="C:\Uma\Job Search\Prospects\NuGuard\Code\nuguard-private\.venv\Scripts\python.exe" "C:\Uma\Job Search\Prospects\NuGuard\Code\nuguard-private\.venv\Scripts\nuguard.exe" redteam --config tests/apps/blissful-store/nuguard.yaml --profile full --format json -o tests\apps\blissful-store\reports\redteam-full-gemini-20260423-124025.json
+---
+PID=36340 PPID=18000 NAME=uv.exe
+CMD="C:\Users\r_uma\.local\bin\uv.exe" run python tests/apps/blissful-store/webapp/app.py
+---
+PID=44788 PPID=20880 NAME=uv.exe
+CMD="C:\Users\r_uma\.local\bin\uv.exe" run nuguard redteam --config tests/apps/blissful-store/nuguard.yaml --profile full --format json -o tests\apps\blissful-store\reports\redteam-full-gemini-20260423-124025.json
+---
+
+=== PROCESS RUNTIME METRICS ===
+PID=17472 NAME=python START=2026-04-23 12:01:20 CPU_SEC=0 WS_MB=3.45 THREADS=1 RESPONDING=True
+PID=23616 NAME=nuguard START=2026-04-23 12:40:25 CPU_SEC=0.02 WS_MB=4.97 THREADS=1 RESPONDING=True
+PID=23736 NAME=python START=2026-04-23 12:40:25 CPU_SEC=206.11 WS_MB=262.32 THREADS=10 RESPONDING=True
+PID=34868 NAME=python START=2026-04-23 12:40:25 CPU_SEC=0.02 WS_MB=3.93 THREADS=1 RESPONDING=True
+PID=36340 NAME=uv START=2026-04-23 12:01:20 CPU_SEC=0.06 WS_MB=15.87 THREADS=3 RESPONDING=True
+PID=44788 NAME=uv START=2026-04-23 12:40:25 CPU_SEC=0.08 WS_MB=25.43 THREADS=4 RESPONDING=True
+
+=== WIN32_THREAD SNAPSHOT (thread dump style metadata) ===
+-- PID=17472 --
+
+Handle Priority PriorityBase ThreadState ThreadWaitReason KernelModeTime UserMo
+                                                                         deTime
+------ -------- ------------ ----------- ---------------- -------------- ------
+24048         9            8           5                6              0      0
+
+
+
+-- PID=23616 --
+
+Handle Priority PriorityBase ThreadState ThreadWaitReason KernelModeTime UserMo
+                                                                         deTime
+------ -------- ------------ ----------- ---------------- -------------- ------
+32200         9            8           5                6             15      0
+
+
+
+-- PID=23736 --
+
+Handle Priority PriorityBase ThreadState ThreadWaitReason KernelModeTime UserMo
+                                                                         deTime
+------ -------- ------------ ----------- ---------------- -------------- ------
+17700        10            8           5                6         141703  63609
+19948         9            8           5                6             62     46
+21916         8            8           5               15              0      0
+31364         9            8           5                6             46     78
+36212         9            8           5                6             15    312
+37668         9            8           5                6             15     78
+42124         8            8           5                6             15     46
+43336         9            9           5               15              0      0
+47640         9            8           5                6              0     46
+49440         9            8           5                6             46     93
+
+
+
+-- PID=34868 --
+
+Handle Priority PriorityBase ThreadState ThreadWaitReason KernelModeTime UserMo
+                                                                         deTime
+------ -------- ------------ ----------- ---------------- -------------- ------
+27288         9            8           5                6             15      0
+
+
+
+-- PID=36340 --
+
+Handle Priority PriorityBase ThreadState ThreadWaitReason KernelModeTime UserMo
+                                                                         deTime
+------ -------- ------------ ----------- ---------------- -------------- ------
+32588         9            8           5               15              0     46
+34268         8            8           5               15              0      0
+49156         9            8           5                6             15      0
+
+
+
+-- PID=44788 --
+
+Handle Priority PriorityBase ThreadState ThreadWaitReason KernelModeTime UserMo
+                                                                         deTime
+------ -------- ------------ ----------- ---------------- -------------- ------
+1852          8            8           5               15              0      0
+21072         8            8           5               15              0      0
+45072         9            8           5               15             15     31
+46340         9            8           5                6              0     31
+
+
+
+
+=== NETWORK CONNECTIONS FOR CANDIDATE PIDS ===
+-- PID=17472 --
+NO_TCP_CONNECTIONS
+-- PID=23616 --
+NO_TCP_CONNECTIONS
+-- PID=23736 --
+
+LocalAddress                           LocalPort RemoteAddress            Remot
+                                                                          ePort
+------------                           --------- -------------            -----
+::                                         64738 ::                           0
+::                                         64707 ::                           0
+::                                         64706 ::                           0
+::                                         64705 ::                           0
+::                                         64704 ::                           0
+::                                         62043 ::                           0
+2607:fb92:1c9d:937:20a9:cc14:8c1a:4175     64738 2607:f8b0:4008:809::200a   443
+2607:fb92:1c9d:937:20a9:cc14:8c1a:4175     64707 2607:f8b0:4008:817::200a   443
+2607:fb92:1c9d:937:20a9:cc14:8c1a:4175     64706 2607:f8b0:4008:809::200a   443
+2607:fb92:1c9d:937:20a9:cc14:8c1a:4175     64705 2607:f8b0:4008:805::200a   443
+2607:fb92:1c9d:937:20a9:cc14:8c1a:4175     64704 2607:f8b0:400c:c04::5f     443
+2607:fb92:1c9d:937:20a9:cc14:8c1a:4175     62043 2607:f8b0:4008:814::200a   443
+0.0.0.0                                    58553 0.0.0.0                      0
+127.0.0.1                                  58557 0.0.0.0                      0
+127.0.0.1                                  58553 127.0.0.1                58552
+127.0.0.1                                  58552 127.0.0.1                58553
+
+
+
+-- PID=34868 --
+NO_TCP_CONNECTIONS
+-- PID=36340 --
+NO_TCP_CONNECTIONS
+-- PID=44788 --
+NO_TCP_CONNECTIONS
+
+=== LOG FILE SNAPSHOT ===
+LOG_PATH=tests/apps/blissful-store/reports/redteam-full-gemini-20260423-124025.log
+LOG_LAST_WRITE=2026-04-23 12:56:29
+LOG_SIZE=1408546
+COUNT_429=228
+COUNT_TIMEOUT=8
+COUNT_REQUEST=272
+COUNT_HIT=13
+COUNT_MISS=241
+-- LOG TAIL (last 120 lines) --
+runSession  body='{\n  "error": {\n    "code": 429,\n    "message": "Resource 
+has been exhausted (e.g. check quota).",\n    "status": "RESOURCE_EXHAUSTED"\n 
+ }\n}\n'
+Rate limited (429) on https://ces.googleapis.com/v1beta/projects/115983574051/l
+ocations/us/apps/dfe2a521-59d6-459a-8358-cedc73f1a92e/sessions/CFTm6bg6HUoKYtEx
+:runSession G현 retrying in 0.59s (1/2)
+GoogleCESAdapter.send: unexpected error: Client error '429 Too Many Requests' 
+for url 'https://ces.googleapis.com/v1beta/projects/115983574051/locations/us/a
+pps/dfe2a521-59d6-459a-8358-cedc73f1a92e/sessions/cRZsSBBiiObaS30m:runSession'
+For more information check: 
+https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/429
+Target HTTP 429  url=https://ces.googleapis.com/v1beta/projects/115983574051/lo
+cations/us/apps/dfe2a521-59d6-459a-8358-cedc73f1a92e/sessions/cRZsSBBiiObaS30m:
+runSession  body='{\n  "error": {\n    "code": 429,\n    "message": "Resource 
+has been exhausted (e.g. check quota).",\n    "status": "RESOURCE_EXHAUSTED"\n 
+ }\n}\n'
+Rate limited (429) on https://ces.googleapis.com/v1beta/projects/115983574051/l
+ocations/us/apps/dfe2a521-59d6-459a-8358-cedc73f1a92e/sessions/cRZsSBBiiObaS30m
+:runSession G현 retrying in 0.52s (1/2)
+GoogleCESAdapter.send: unexpected error: Client error '429 Too Many Requests' 
+for url 'https://ces.googleapis.com/v1beta/projects/115983574051/locations/us/a
+pps/dfe2a521-59d6-459a-8358-cedc73f1a92e/sessions/K39nHkuR30oTj6KN:runSession'
+For more information check: 
+https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/429
+Target HTTP 429  url=https://ces.googleapis.com/v1beta/projects/115983574051/lo
+cations/us/apps/dfe2a521-59d6-459a-8358-cedc73f1a92e/sessions/K39nHkuR30oTj6KN:
+runSession  body='{\n  "error": {\n    "code": 429,\n    "message": "Resource 
+has been exhausted (e.g. check quota).",\n    "status": "RESOURCE_EXHAUSTED"\n 
+ }\n}\n'
+Rate limited (429) on https://ces.googleapis.com/v1beta/projects/115983574051/l
+ocations/us/apps/dfe2a521-59d6-459a-8358-cedc73f1a92e/sessions/K39nHkuR30oTj6KN
+:runSession G현 retrying in 0.56s (1/2)
+GoogleCESAdapter.send: unexpected error: Client error '429 Too Many Requests' 
+for url 'https://ces.googleapis.com/v1beta/projects/115983574051/locations/us/a
+pps/dfe2a521-59d6-459a-8358-cedc73f1a92e/sessions/180UnmOQGX1gyZZN:runSession'
+For more information check: 
+https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/429
+Target HTTP 429  url=https://ces.googleapis.com/v1beta/projects/115983574051/lo
+cations/us/apps/dfe2a521-59d6-459a-8358-cedc73f1a92e/sessions/180UnmOQGX1gyZZN:
+runSession  body='{\n  "error": {\n    "code": 429,\n    "message": "Resource 
+has been exhausted (e.g. check quota).",\n    "status": "RESOURCE_EXHAUSTED"\n 
+ }\n}\n'
+Rate limited (429) on https://ces.googleapis.com/v1beta/projects/115983574051/l
+ocations/us/apps/dfe2a521-59d6-459a-8358-cedc73f1a92e/sessions/180UnmOQGX1gyZZN
+:runSession G현 retrying in 1.24s (2/2)
+GoogleCESAdapter.send: unexpected error: Client error '429 Too Many Requests' 
+for url 'https://ces.googleapis.com/v1beta/projects/115983574051/locations/us/a
+pps/dfe2a521-59d6-459a-8358-cedc73f1a92e/sessions/5cP6jPi3i2afEaru:runSession'
+For more information check: 
+https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/429
+Target HTTP 429  url=https://ces.googleapis.com/v1beta/projects/115983574051/lo
+cations/us/apps/dfe2a521-59d6-459a-8358-cedc73f1a92e/sessions/5cP6jPi3i2afEaru:
+runSession  body='{\n  "error": {\n    "code": 429,\n    "message": "Resource 
+has been exhausted (e.g. check quota).",\n    "status": "RESOURCE_EXHAUSTED"\n 
+ }\n}\n'
+Rate limited (429) on https://ces.googleapis.com/v1beta/projects/115983574051/l
+ocations/us/apps/dfe2a521-59d6-459a-8358-cedc73f1a92e/sessions/5cP6jPi3i2afEaru
+:runSession G현 retrying in 1.03s (2/2)
+GoogleCESAdapter.send: unexpected error: Client error '429 Too Many Requests' 
+for url 'https://ces.googleapis.com/v1beta/projects/115983574051/locations/us/a
+pps/dfe2a521-59d6-459a-8358-cedc73f1a92e/sessions/CFTm6bg6HUoKYtEx:runSession'
+For more information check: 
+https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/429
+Target HTTP 429  url=https://ces.googleapis.com/v1beta/projects/115983574051/lo
+cations/us/apps/dfe2a521-59d6-459a-8358-cedc73f1a92e/sessions/CFTm6bg6HUoKYtEx:
+runSession  body='{\n  "error": {\n    "code": 429,\n    "message": "Resource 
+has been exhausted (e.g. check quota).",\n    "status": "RESOURCE_EXHAUSTED"\n 
+ }\n}\n'
+Rate limited (429) on https://ces.googleapis.com/v1beta/projects/115983574051/l
+ocations/us/apps/dfe2a521-59d6-459a-8358-cedc73f1a92e/sessions/CFTm6bg6HUoKYtEx
+:runSession G현 retrying in 1.08s (2/2)
+GoogleCESAdapter.send: unexpected error: Client error '429 Too Many Requests' 
+for url 'https://ces.googleapis.com/v1beta/projects/115983574051/locations/us/a
+pps/dfe2a521-59d6-459a-8358-cedc73f1a92e/sessions/cRZsSBBiiObaS30m:runSession'
+For more information check: 
+https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/429
+Target HTTP 429  url=https://ces.googleapis.com/v1beta/projects/115983574051/lo
+cations/us/apps/dfe2a521-59d6-459a-8358-cedc73f1a92e/sessions/cRZsSBBiiObaS30m:
+runSession  body='{\n  "error": {\n    "code": 429,\n    "message": "Resource 
+has been exhausted (e.g. check quota).",\n    "status": "RESOURCE_EXHAUSTED"\n 
+ }\n}\n'
+Rate limited (429) on https://ces.googleapis.com/v1beta/projects/115983574051/l
+ocations/us/apps/dfe2a521-59d6-459a-8358-cedc73f1a92e/sessions/cRZsSBBiiObaS30m
+:runSession G현 retrying in 1.02s (2/2)
+GoogleCESAdapter.send: unexpected error: Client error '429 Too Many Requests' 
+for url 'https://ces.googleapis.com/v1beta/projects/115983574051/locations/us/a
+pps/dfe2a521-59d6-459a-8358-cedc73f1a92e/sessions/K39nHkuR30oTj6KN:runSession'
+For more information check: 
+https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/429
+Target HTTP 429  url=https://ces.googleapis.com/v1beta/projects/115983574051/lo
+cations/us/apps/dfe2a521-59d6-459a-8358-cedc73f1a92e/sessions/K39nHkuR30oTj6KN:
+runSession  body='{\n  "error": {\n    "code": 429,\n    "message": "Resource 
+has been exhausted (e.g. check quota).",\n    "status": "RESOURCE_EXHAUSTED"\n 
+ }\n}\n'
+Rate limited (429) on https://ces.googleapis.com/v1beta/projects/115983574051/l
+ocations/us/apps/dfe2a521-59d6-459a-8358-cedc73f1a92e/sessions/K39nHkuR30oTj6KN
+:runSession G현 retrying in 1.18s (2/2)
+GoogleCESAdapter.send: unexpected error: Client error '429 Too Many Requests' 
+for url 'https://ces.googleapis.com/v1beta/projects/115983574051/locations/us/a
+pps/dfe2a521-59d6-459a-8358-cedc73f1a92e/sessions/180UnmOQGX1gyZZN:runSession'
+For more information check: 
+https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/429
+Target HTTP 429  url=https://ces.googleapis.com/v1beta/projects/115983574051/lo
+cations/us/apps/dfe2a521-59d6-459a-8358-cedc73f1a92e/sessions/180UnmOQGX1gyZZN:
+runSession  body='{\n  "error": {\n    "code": 429,\n    "message": "Resource 
+has been exhausted (e.g. check quota).",\n    "status": "RESOURCE_EXHAUSTED"\n 
+ }\n}\n'
+GoogleCESAdapter.send: unexpected error: Client error '429 Too Many Requests' 
+for url 'https://ces.googleapis.com/v1beta/projects/115983574051/locations/us/a
+pps/dfe2a521-59d6-459a-8358-cedc73f1a92e/sessions/180UnmOQGX1gyZZN:runSession'
+For more information check: 
+https://developer.mozilla.org/en-US/docs/Web/HTTP/Status/429
+Target HTTP 429  url=https://ces.googleapis.com/v1beta/projects/115983574051/lo
+cations/us/apps/dfe2a521-59d6-459a-8358-cedc73f1a92e/sessions/180UnmOQGX1gyZZN:
+runSession  body='{\n  "error": {\n    "code": 429,\n    "message": "Resource 
+has been exhausted (e.g. check quota).",\n    "status": "RESOURCE_EXHAUSTED"\n 
+ }\n}\n'
+Rate limited (429) on https://ces.googleapis.com/v1beta/projects/115983574051/l
+ocations/us/apps/dfe2a521-59d6-459a-8358-cedc73f1a92e/sessions/180UnmOQGX1gyZZN
+:runSession G현 retrying in 0.62s (1/2)
+

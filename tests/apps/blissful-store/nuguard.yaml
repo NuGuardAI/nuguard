@@ -5,7 +5,7 @@
 # Priority order (highest wins): CLI flags > nuguard.yaml > env vars > built-in defaults
 
 # ─── Project file paths ───────────────────────────────────────────────────────
-sbom: ./reports/blissfuls-store-sbom-llm-gemini-2.0-flash.json  # path to pre-generated AI-SBOM JSON
+sbom: ./reports/blissful-store-sbom-fullfixture-llm-azure-gpt-4.1-20260422-150109.json  # path to pre-generated AI-SBOM JSON
 source: .      # generate SBOM from source dir (alternative to sbom:)
 policy:
   path: ./cognitive_policy.md       # Cognitive Policy Markdown to enforce during behavior analysis
@@ -13,8 +13,10 @@ policy:
 
 # ─── LLM settings ─────────────────────────────────────────────────────────────
 llm:
-  model: anthropic/claude-3-5-sonnet-latest
-  api_key: ${ANTHROPIC_API_KEY}
+  # model: anthropic/claude-3-5-sonnet-latest
+  # api_key: ${ANTHROPIC_API_KEY}
+  model: ${GEMINI_MODEL_NAME}
+  api_key: ${GEMINI_API_KEY}
 #  model: openai/gpt-4.1-mini  # OpenAI GPT-4.1 mini
 #  api_key: ${OPENAI_API_KEY}         # OpenAI API key
 
@@ -95,9 +97,7 @@ redteam:
   #   type: bearer
   #   header: "Authorization: Bearer ${TARGET_TOKEN}"
   auth:
-    type: basic
-    username: ${APP_USERNAME}
-    password: ${APP_PASSWORD}
+    type: none
 
   # Canary seed file — same file as behavior.canary (or a separate one)
   # tenant session_tokens in canary.json are used as attacker credentials for
@@ -151,6 +151,9 @@ redteam:
   # Multi-agent pipelines with LLM calls can take 60–120 s; increase for slow apps
   request_timeout: 120
 
+  # Prompt cache artifacts are written under the fixture reports folder.
+  prompt_cache_dir: ./reports
+
   # Verbose report: include full per-scenario traces in redteam report
   verbose: true
 
@@ -173,15 +176,24 @@ redteam:
 
   # LLM for attack-payload generation (must tolerate adversarial content)
   llm:
-    model: ${AZURE_ANTHROPIC_MODEL_NAME}
-    api_key: ${AZURE_ANTHROPIC_KEY}
-    api_base: ${AZURE_ANTHROPIC_ENDPOINT}
+    model: ${AWS_BEDROCK_MODEL}
+    api_key: ${AWS_BEARER_TOKEN_BEDROCK}
+    # model: ${AZURE_ANTHROPIC_MODEL_NAME}
+    # api_key: ${AZURE_ANTHROPIC_KEY}
+    # api_base: ${AZURE_ANTHROPIC_ENDPOINT}
+    # model: ${GEMINI_MODEL_NAME}
+    # api_key: ${GEMINI_API_KEY}
 
   # LLM for response evaluation and finding summarisation
   eval_llm:
-    model: ${AZURE_ANTHROPIC_MODEL_NAME}
-    api_key: ${AZURE_ANTHROPIC_KEY}
-    api_base: ${AZURE_ANTHROPIC_ENDPOINT}
+
+    model: ${AWS_BEDROCK_MODEL}
+    api_key: ${AWS_BEARER_TOKEN_BEDROCK}  
+    # model: ${AZURE_ANTHROPIC_MODEL_NAME}
+    # api_key: ${AZURE_ANTHROPIC_KEY}
+    # api_base: ${AZURE_ANTHROPIC_ENDPOINT}
+    # model: ${GEMINI_MODEL_NAME}
+    # api_key: ${GEMINI_API_K EY}
 
   # MCP server hostnames treated as trusted.
   # Servers absent from this list are classified 'untrusted' and eligible

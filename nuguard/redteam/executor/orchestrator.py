@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import logging
 import re
 import time
 from dataclasses import dataclass, field
@@ -17,6 +16,7 @@ if TYPE_CHECKING:
     from nuguard.redteam.target.log_reader import BufferLogReader, FileLogReader
 
 from nuguard.common.console import print_turn as _common_print_turn
+from nuguard.common.logging import get_logger
 from nuguard.models.exploit_chain import ExploitChain, GoalType
 from nuguard.models.finding import Finding
 from nuguard.models.policy import CognitivePolicy
@@ -36,7 +36,7 @@ from nuguard.sbom.models import AiSbomDocument, NodeType
 from .executor import AttackExecutor, StepResult
 from .guided_executor import GuidedAttackExecutor
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 
 def _normalize_scenario_token(value: str) -> str:
@@ -662,8 +662,11 @@ class RedteamOrchestrator:
                 LLMPromptGenerator,
                 _inject_llm_payloads,
             )
-            _cache_dir = self._prompt_cache_dir or Path("tests/output")
-            _cache = PromptCache(_cache_dir)
+            _cache_dir = self._prompt_cache_dir or Path(".")
+            _cache = PromptCache(
+                _cache_dir,
+                llm_model=getattr(self._redteam_llm, "model", None),
+            )
             _cache_key = _cache.cache_key(self._sbom, self._policy)
             _cache_existed = _cache.load(_cache_key) is not None
             _llm_payloads = await LLMPromptGenerator(
@@ -681,10 +684,11 @@ class RedteamOrchestrator:
             }
             scenarios = _inject_llm_payloads(scenarios, _llm_payloads)
             _log.info(
-                "LLM payload enrichment: %d/%d scenarios enriched (%d total variants, cache=%s)",
+                "LLM payload enrichment: %d/%d scenarios enriched (%d total variants, cache=%s, cache_file=%s)",
                 self.llm_enriched_scenarios, len(scenarios),
                 self.llm_variants_total,
                 "hit" if self.prompt_cache_hit else "miss",
+                self.prompt_cache_path,
             )
 
         # v4 Layer 6: deduplicate scenarios with identical openers before any HTTP calls.
