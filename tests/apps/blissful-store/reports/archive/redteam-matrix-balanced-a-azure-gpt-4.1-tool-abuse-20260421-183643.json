@@ -1,0 +1,19 @@
+{
+  "_meta": {
+    "generated_at": "2026-04-21T18:37:43-04:00",
+    "llm": [
+      "azure/gpt-4.1",
+      "azure/gpt-4.1"
+    ],
+    "verbose": true,
+    "target": "http://localhost:8081/api/chat",
+    "finding_triggers": {
+      "canary_hits": true,
+      "policy_violations": true,
+      "critical_success_hits": true,
+      "any_inject_success": true
+    }
+  },
+  "findings": [],
+  "remediation_plan": []
+}

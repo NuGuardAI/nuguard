@@ -77,7 +77,14 @@ def _rebase_path(value: Any, base_dir: Path, repo_root: Path | None = None) -> A
 
 def _rebase_relative_paths(flat: dict[str, Any], base_dir: Path) -> dict[str, Any]:
     """Rebase relative path-like config values against the config file dir."""
-    path_keys = ("sbom", "source", "policy", "canary_path", "sarif_output_path")
+    path_keys = (
+        "sbom",
+        "source",
+        "policy",
+        "canary_path",
+        "sarif_output_path",
+        "redteam_prompt_cache_dir",
+    )
     repo_root = _find_repo_root(base_dir)
 
     rebased = dict(flat)
@@ -212,6 +219,8 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_verbose"] = bool(redteam["verbose"])
     if "request_timeout" in redteam:
         flat["redteam_request_timeout"] = float(redteam["request_timeout"])
+    if "prompt_cache_dir" in redteam:
+        flat["redteam_prompt_cache_dir"] = str(redteam["prompt_cache_dir"])
     if "app_env" in redteam and isinstance(redteam["app_env"], dict):
         flat["redteam_app_env"] = {
             str(k): str(v) for k, v in redteam["app_env"].items()
@@ -654,6 +663,17 @@ class NuGuardConfig(BaseSettings):
             "Per-request HTTP timeout in seconds for redteam chat/agent calls "
             "(yaml: redteam.request_timeout). Multi-agent pipelines can take "
             "60-120 s; increase further for very slow apps."
+        ),
+    )
+    redteam_prompt_cache_dir: str = Field(
+        default=".",
+        validation_alias=AliasChoices(
+            "NUGUARD_REDTEAM_PROMPT_CACHE_DIR",
+            "redteam_prompt_cache_dir",
+        ),
+        description=(
+            "Directory for redteam attack-payload prompt cache files "
+            "(yaml: redteam.prompt_cache_dir, env: NUGUARD_REDTEAM_PROMPT_CACHE_DIR)."
         ),
     )
     redteam_verbose: bool = Field(

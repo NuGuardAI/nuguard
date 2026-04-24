@@ -65,6 +65,20 @@ class TestGuidedMutationModeConfig:
         monkeypatch.setenv("NUGUARD_REDTEAM_GUIDED_MUTATION_MODE", "soft")
         cfg = NuGuardConfig()
         assert cfg.redteam_guided_mutation_mode == "soft"
+
+
+class TestRedteamPromptCacheDirConfig:
+    def test_flatten_yaml_redteam_prompt_cache_dir(self) -> None:
+        flat = _flatten("""
+            redteam:
+              prompt_cache_dir: ./tmp/redteam-cache
+        """)
+        assert flat["redteam_prompt_cache_dir"] == "./tmp/redteam-cache"
+
+    def test_default_redteam_prompt_cache_dir(self) -> None:
+        cfg = NuGuardConfig()
+        assert cfg.redteam_prompt_cache_dir == "."
+
 class TestFlattenYamlRedteamAuth:
     def test_bearer_block(self) -> None:
         flat = _flatten("""

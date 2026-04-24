@@ -1,0 +1,63 @@
+# Blissful Store profile: Balanced B (higher throughput, still controlled)
+
+sbom: ./reports/blissfuls-store-sbom-llm-gemini-2.0-flash.json
+source: .
+policy:
+  path: ./cognitive_policy.md
+  use_llm: true
+
+llm:
+  model: anthropic/claude-3-5-sonnet-latest
+  api_key: ${ANTHROPIC_API_KEY}
+
+sbom_generation:
+  llm: true
+
+redteam:
+  target: http://localhost:8081/
+  target_endpoint: /api/chat
+  auth:
+    type: none
+  canary: ./canary.json
+  chat_payload_key: phrases
+  chat_payload_list: true
+  chat_response_key: outputs[0].text
+
+  profile: full
+  scenarios:
+    - prompt-injection
+    - tool-abuse
+    - privilege-escalation
+    - data-exfiltration
+    - policy-violation
+    - mcp-toxic-flow
+
+  min_impact_score: 0.0
+  request_timeout: 100
+  verbose: true
+  strict_outcome: false
+
+  guided_conversations: true
+  guided_max_turns: 10
+  guided_concurrency: 2
+
+  finding_triggers:
+    canary_hits: true
+    policy_violations: true
+    critical_success_hits: true
+    any_inject_success: true
+
+  llm:
+    model: ${AZURE_ANTHROPIC_MODEL_NAME}
+    api_key: ${AZURE_ANTHROPIC_KEY}
+    api_base: ${AZURE_ANTHROPIC_ENDPOINT}
+
+  eval_llm:
+    model: ${AZURE_ANTHROPIC_MODEL_NAME}
+    api_key: ${AZURE_ANTHROPIC_KEY}
+    api_base: ${AZURE_ANTHROPIC_ENDPOINT}
+
+output:
+  format: text
+  fail_on: high
+  sarif_file: ./nuguard-results.sarif

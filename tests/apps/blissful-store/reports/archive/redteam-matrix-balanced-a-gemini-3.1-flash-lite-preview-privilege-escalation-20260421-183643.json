@@ -1,0 +1,19 @@
+{
+  "_meta": {
+    "generated_at": "2026-04-21T18:37:05-04:00",
+    "llm": [
+      "gemini/gemini-3.1-flash-lite-preview",
+      "gemini/gemini-3.1-flash-lite-preview"
+    ],
+    "verbose": true,
+    "target": "http://localhost:8081/api/chat",
+    "finding_triggers": {
+      "canary_hits": true,
+      "policy_violations": true,
+      "critical_success_hits": true,
+      "any_inject_success": true
+    }
+  },
+  "findings": [],
+  "remediation_plan": []
+}

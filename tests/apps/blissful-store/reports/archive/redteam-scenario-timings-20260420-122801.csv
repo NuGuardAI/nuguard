@@ -1,0 +1,7 @@
+scenario,seconds,exit_code,output_file
+prompt-injection,3.44,1,tests\apps\blissful-store\reports\redteam-prompt-injection-20260420-122801.json
+tool-abuse,3.71,1,tests\apps\blissful-store\reports\redteam-tool-abuse-20260420-122801.json
+privilege-escalation,3.45,1,tests\apps\blissful-store\reports\redteam-privilege-escalation-20260420-122801.json
+data-exfiltration,3.38,1,tests\apps\blissful-store\reports\redteam-data-exfiltration-20260420-122801.json
+policy-violation,3.23,1,tests\apps\blissful-store\reports\redteam-policy-violation-20260420-122801.json
+mcp-toxic-flow,3.26,1,tests\apps\blissful-store\reports\redteam-mcp-toxic-flow-20260420-122801.json
