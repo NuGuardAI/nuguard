@@ -5,6 +5,11 @@ import logging
 from typing import TYPE_CHECKING
 
 from nuguard.common.llm_client import LLMClient
+from nuguard.common.rate_limit import (
+    SCENARIO_MAX_RATE_LIMIT_RETRIES,
+    is_rate_limited,
+    scenario_rate_limit_backoff,
+)
 
 if TYPE_CHECKING:
     from nuguard.common.auth import AuthSession
@@ -344,6 +349,17 @@ class AttackExecutor:
                     "Chain %s step %s: 401 received on chat endpoint, retrying after auth refresh",
                     chain.chain_id,
                     step.step_id,
+                )
+                response, tool_calls = await self._client.send(payload, session)
+            # 429 scenario-level retry — on top of TargetAppClient's per-request
+            # retries.  Back off and retry the same step payload; the target is
+            # alive and functioning, so this must NOT count as a chain failure.
+            for _rl_attempt in range(SCENARIO_MAX_RATE_LIMIT_RETRIES):
+                if not is_rate_limited(response):
+                    break
+                await scenario_rate_limit_backoff(
+                    _rl_attempt,
+                    context=f"chain={chain.chain_id} step={step.step_id}",
                 )
                 response, tool_calls = await self._client.send(payload, session)
             session.add_turn(payload, response, tool_calls)
