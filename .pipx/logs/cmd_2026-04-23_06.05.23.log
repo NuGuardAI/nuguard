@@ -1,0 +1,62 @@
+   122.0ms (setup:1113): 2026-04-23 06:05:23
+   122.1ms (setup:1114): /usr/local/py-utils/bin/pipx install azure-cli
+   122.1ms (setup:1115): pipx version is 1.8.0
+   122.2ms (setup:1116): Default python interpreter is '/usr/local/python/3.12.1/bin/python3.12'
+   122.3ms (mkdir:76): creating directory /workspaces/nuguard-private/.pipx/venvs
+   122.5ms (mkdir:76): creating directory /workspaces/nuguard-private/.local/bin
+   122.9ms (mkdir:76): creating directory /workspaces/nuguard-private/.pipx/.cache
+   123.1ms (mkdir:76): creating directory /workspaces/nuguard-private/.pipx/py
+   123.3ms (setup:1130): Adding CACHEDIR.TAG to cache directory
+   123.4ms (setup:1130): Adding CACHEDIR.TAG to cache directory
+   123.9ms (package_name_from_spec:381): Determined package name: azure-cli
+   124.0ms (package_name_from_spec:382): Package name determined in 0.0s
+   124.2ms (create_venv:164): Creating virtual environment
+   124.5ms (run_subprocess:175): running /usr/local/python/3.12.1/bin/python3.12 -m venv --without-pip /workspaces/nuguard-private/.pipx/venvs/azure-cli
+   175.5ms (run_subprocess:195): stdout:
+   175.6ms (run_subprocess:197): stderr:
+   175.6ms (run_subprocess:198): returncode: 0
+   176.3ms (run_subprocess:175): running /usr/local/python/3.12.1/bin/python3.12 -m venv --clear /workspaces/nuguard-private/.pipx/shared
+  3624.9ms (run_subprocess:195): stdout:
+  3625.0ms (run_subprocess:197): stderr:
+  3625.1ms (run_subprocess:198): returncode: 0
+  3625.6ms (run_subprocess:175): running <checking pip's availability>
+  3639.3ms (run_subprocess:195): stdout: ModuleSpec(name='pip', loader=<_frozen_importlib_external.SourceFileLoader object at 0x7e4faa683e30>, origin='/workspaces/nuguard-private/.pipx/shared/lib/python3.12/site-packages/pip/__init__.py', submodule_search_locations=['/workspaces/nuguard-private/.pipx/shared/lib/python3.12/site-packages/pip'])
+  3639.3ms (run_subprocess:198): returncode: 0
+  3639.6ms (upgrade:119): Upgrading shared libraries in /workspaces/nuguard-private/.pipx/shared
+  3640.0ms (run_subprocess:175): running /workspaces/nuguard-private/.pipx/shared/bin/python -m pip --no-input --disable-pip-version-check install --force-reinstall -q --upgrade pip >= 23.1
+ 11533.2ms (run_subprocess:195): stdout:
+ 11533.3ms (run_subprocess:197): stderr: WARNING: The directory '/home/codespace/.cache/pip' or its parent directory is not owned or is not writable by the current user. The cache has been disabled. Check the permissions and owner of that directory. If executing pip with sudo, you should use sudo's -H flag.
+WARNING: Retrying (Retry(total=4, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<pip._vendor.urllib3.connection.HTTPSConnection object at 0x7ed25711f9e0>: Failed to establish a new connection: [Errno -2] Name or service not known')': /simple/pip/
+WARNING: Retrying (Retry(total=3, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<pip._vendor.urllib3.connection.HTTPSConnection object at 0x7ed25704c0b0>: Failed to establish a new connection: [Errno -2] Name or service not known')': /simple/pip/
+WARNING: Retrying (Retry(total=2, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<pip._vendor.urllib3.connection.HTTPSConnection object at 0x7ed25704d220>: Failed to establish a new connection: [Errno -2] Name or service not known')': /simple/pip/
+WARNING: Retrying (Retry(total=1, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<pip._vendor.urllib3.connection.HTTPSConnection object at 0x7ed25704d400>: Failed to establish a new connection: [Errno -2] Name or service not known')': /simple/pip/
+WARNING: Retrying (Retry(total=0, connect=None, read=None, redirect=None, status=None)) after connection broken by 'NewConnectionError('<pip._vendor.urllib3.connection.HTTPSConnection object at 0x7ed25704d5e0>: Failed to establish a new connection: [Errno -2] Name or service not known')': /simple/pip/
+ERROR: Could not find a version that satisfies the requirement pip>=23.1 (from versions: none)
+ERROR: No matching distribution found for pip>=23.1
+ 11533.3ms (run_subprocess:198): returncode: 1
+ 11533.5ms (upgrade:146): Failed to upgrade shared libraries
+ 11533.6ms (rmdir:56): removing directory /workspaces/nuguard-private/.pipx/venvs/azure-cli
+ 11534.8ms (cli:1184): PipxError: '/workspaces/nuguard-private/.pipx/shared/bin/python -m pip --no-input
+--disable-pip-version-check install --force-reinstall -q --upgrade pip >=
+23.1' failed
+Traceback (most recent call last):
+  File "/usr/local/py-utils/venvs/pipx/lib/python3.12/site-packages/pipx/main.py", line 1181, in cli
+    return run_pipx_command(parsed_pipx_args, subparsers)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/local/py-utils/venvs/pipx/lib/python3.12/site-packages/pipx/main.py", line 282, in run_pipx_command
+    return commands.install(
+           ^^^^^^^^^^^^^^^^^
+  File "/usr/local/py-utils/venvs/pipx/lib/python3.12/site-packages/pipx/commands/install.py", line 96, in install
+    venv.create_venv(venv_args, pip_args, override_shared)
+  File "/usr/local/py-utils/venvs/pipx/lib/python3.12/site-packages/pipx/venv.py", line 172, in create_venv
+    shared_libs.create(verbose=self.verbose, pip_args=pip_args)
+  File "/usr/local/py-utils/venvs/pipx/lib/python3.12/site-packages/pipx/shared_libs.py", line 72, in create
+    self.upgrade(pip_args=pip_args, verbose=verbose, raises=True)
+  File "/usr/local/py-utils/venvs/pipx/lib/python3.12/site-packages/pipx/shared_libs.py", line 140, in upgrade
+    subprocess_post_check(upgrade_process)
+  File "/usr/local/py-utils/venvs/pipx/lib/python3.12/site-packages/pipx/util.py", line 210, in subprocess_post_check
+    raise PipxError(f"{' '.join([str(x) for x in completed_process.args])!r} failed")
+pipx.util.PipxError: '/workspaces/nuguard-private/.pipx/shared/bin/python -m pip --no-input
+--disable-pip-version-check install --force-reinstall -q --upgrade pip >=
+23.1' failed
+ 11536.7ms (cli:1192): pipx finished.

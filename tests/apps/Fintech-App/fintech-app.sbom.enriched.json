@@ -1,40 +1,34 @@
 {
   "schema_version": "1.4.0",
-  "generated_at": "2026-04-30T20:40:22Z",
+  "generated_at": "2026-04-25T20:57:50Z",
   "generator": "nuguard",
   "target": "/workspaces/nuguard-private/tests/apps/Fintech-App",
   "nodes": [
     {
-      "id": "a7dc5935-3afb-471d-abb3-77e194f30f9c",
+      "id": "46b167b6-5776-472a-a7a7-0660320b33a6",
       "name": "generic",
       "component_type": "API_ENDPOINT",
-      "confidence": 1.0,
+      "confidence": 0.8360000000000001,
       "metadata": {
-        "description": "This component provides API endpoints for chat interactions and checking transfer eligibility via POST and GET requests.",
+        "description": "This component provides a POST API endpoint located at /api/chat for processing chat-related requests.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
           "canonical_name": "api_endpoint_generic",
           "adapter": "api_endpoint_generic",
-          "evidence_count": 3,
-          "detected_by_tiers": [
-            "code",
-            "iac"
-          ],
+          "evidence_count": 1,
           "confidence_breakdown": {
-            "regex_confidence": 0.98,
+            "regex_confidence": 0.95,
             "llm_confidence": 0.0,
-            "evidence_count": 4,
+            "evidence_count": 2,
             "evidence_sources": [
               "evidence:0",
-              "evidence:1",
-              "evidence:2",
               "confidence:high"
             ],
-            "base_confidence": 0.784,
-            "evidence_multiplier": 1.3,
+            "base_confidence": 0.76,
+            "evidence_multiplier": 1.1,
             "validation_penalty": 0.0,
-            "final_confidence": 1.0
+            "final_confidence": 0.836
           },
           "description_source": "llm_generated"
         }
@@ -48,29 +42,11 @@
             "path": "src/orchestrator/main.py",
             "line": 8
           }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.9,
-          "detail": "api_endpoint_generic: POST /api/chat",
-          "location": {
-            "path": "redteam-prompts-bedrock-us-anthropic-claude-haiku-4-5-20251001-v1-0-f476ebaa8b74e0fb.json",
-            "line": 394
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.55,
-          "detail": "api_endpoint_generic: GET /check-transfer-eligibility",
-          "location": {
-            "path": "reports/fintech-app-redteam.remediation-plan.json",
-            "line": 291
-          }
         }
       ]
     },
     {
-      "id": "25988bdb-a1e9-48f2-9c19-7c798aee9ecb",
+      "id": "a5f3d75b-8c81-4a40-82bd-3924ac73b024",
       "name": "list_agents",
       "component_type": "API_ENDPOINT",
       "confidence": 0.8640000000000001,
@@ -118,7 +94,7 @@
       ]
     },
     {
-      "id": "db9a6b46-d17a-4715-b298-44d7fbf273d4",
+      "id": "4765b063-5670-463b-b0a8-44a1272aadac",
       "name": "health",
       "component_type": "API_ENDPOINT",
       "confidence": 0.8640000000000001,
@@ -166,7 +142,7 @@
       ]
     },
     {
-      "id": "13737a11-88eb-429f-85ab-d389a224cd54",
+      "id": "35ddf235-83cb-4c5b-9b8c-cfdba0dbdffc",
       "name": "list_tools",
       "component_type": "API_ENDPOINT",
       "confidence": 0.8640000000000001,
@@ -214,7 +190,7 @@
       ]
     },
     {
-      "id": "9afebc56-f85a-407c-bd41-1b589af711f2",
+      "id": "d6cfc578-f2ad-4235-a231-fe9df30e323a",
       "name": "chat",
       "component_type": "API_ENDPOINT",
       "confidence": 0.8640000000000001,
@@ -223,6 +199,7 @@
         "endpoint": "/api/chat",
         "method": "POST",
         "description": "FastAPI POST endpoint at /api/chat providing real-time messaging functionality for the application.",
+        "accepts_user_input": true,
         "request_body_schema": {
           "message": "str",
           "session_id": "str",
@@ -276,7 +253,7 @@
       ]
     },
     {
-      "id": "4975b801-05ce-4f08-b76a-8cd286dcf4dc",
+      "id": "7de2c1e4-c679-4c4a-955b-46fabc342873",
       "name": "login",
       "component_type": "API_ENDPOINT",
       "confidence": 0.8640000000000001,
@@ -334,7 +311,7 @@
       ]
     },
     {
-      "id": "dd43fb0c-c85d-4de0-8c39-9d841d7b9698",
+      "id": "4818efec-cc15-4d41-b427-9d27e1634c50",
       "name": "0.0.0.0:8080 (sse)",
       "component_type": "API_ENDPOINT",
       "confidence": 0.9856,
@@ -560,18 +537,18 @@
       ]
     },
     {
-      "id": "8761e7a0-78d3-4e7a-9e8b-2a75c03eb155",
+      "id": "d833b1e6-4a1f-4c7e-837e-90eaed10b94c",
       "name": "generic",
       "component_type": "AUTH",
       "confidence": 1.0,
       "metadata": {
-        "description": "Generic authorization component providing centralized access control and permission management services for the application.",
+        "description": "Generic authentication component providing API key validation and identity verification services for the application.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
           "canonical_name": "auth_generic",
           "adapter": "auth_runtime",
-          "evidence_count": 30,
+          "evidence_count": 27,
           "detected_by_tiers": [
             "code",
             "iac"
@@ -600,28 +577,10 @@
         {
           "kind": "regex",
           "confidence": 0.95,
-          "detail": "auth_generic: authorization",
+          "detail": "auth_generic: api_key",
           "location": {
-            "path": "redteam-prompts-bedrock-us-anthropic-claude-haiku-4-5-20251001-v1-0-6e7e35f51b3ff961.json",
-            "line": 40
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "auth_generic: authorization",
-          "location": {
-            "path": "redteam-prompts-bedrock-us-anthropic-claude-haiku-4-5-20251001-v1-0-b98893db37d6d236.json",
-            "line": 30
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "auth_generic: authorization",
-          "location": {
-            "path": "redteam-prompts-bedrock-us-anthropic-claude-haiku-4-5-20251001-v1-0-f476ebaa8b74e0fb.json",
-            "line": 18
+            "path": "nuguard-sbom-anthropic.yaml",
+            "line": 8
           }
         },
         {
@@ -649,15 +608,6 @@
           "location": {
             "path": "src/orchestrator/main.py",
             "line": 158
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.8500000000000001,
-          "detail": "auth_generic: api_key",
-          "location": {
-            "path": "nuguard-sbom-anthropic.yaml",
-            "line": 8
           }
         },
         {
@@ -783,7 +733,7 @@
           "detail": "auth_generic: authorization",
           "location": {
             "path": "reports/fintech-app-redteam.remediation-plan.json",
-            "line": 291
+            "line": 43
           }
         },
         {
@@ -870,7 +820,7 @@
       ]
     },
     {
-      "id": "aab30ffd-78b4-4f4a-a4e6-39822dcaa0cf",
+      "id": "1ad82e2d-2931-4cb2-b28f-0533c5d09a03",
       "name": "nginx:1.25-alpine",
       "component_type": "CONTAINER_IMAGE",
       "confidence": 0.8712000000000001,
@@ -924,7 +874,7 @@
       ]
     },
     {
-      "id": "40599da4-92d7-41fe-a97b-2c59a9025640",
+      "id": "55e870f5-47a8-4863-959a-610be21c0787",
       "name": "node:20-alpine",
       "component_type": "CONTAINER_IMAGE",
       "confidence": 0.8712000000000001,
@@ -978,7 +928,7 @@
       ]
     },
     {
-      "id": "a8b597cf-0e42-4718-bb5b-08d17cdc43ec",
+      "id": "6bcb6b57-f0cb-4019-9870-8b0f867b67ec",
       "name": "python:3.11-slim",
       "component_type": "CONTAINER_IMAGE",
       "confidence": 1.0,
@@ -1225,7 +1175,7 @@
       ]
     },
     {
-      "id": "4799f4c0-46f3-41fd-9abb-1cb70eabeb42",
+      "id": "b71ad784-b5fc-4b81-9397-0cfa176c5942",
       "name": "redis",
       "component_type": "DATASTORE",
       "confidence": 1.0,
@@ -1252,7 +1202,7 @@
         "extras": {
           "canonical_name": "redis",
           "adapter": "datastore_generic",
-          "evidence_count": 13,
+          "evidence_count": 9,
           "detected_by_tiers": [
             "code",
             "iac"
@@ -1293,44 +1243,8 @@
           "confidence": 0.95,
           "detail": "datastore_generic: redis",
           "location": {
-            "path": "redteam-prompts-bedrock-us-anthropic-claude-haiku-4-5-20251001-v1-0-6e7e35f51b3ff961.json",
-            "line": 7
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "datastore_generic: redis",
-          "location": {
-            "path": "redteam-prompts-bedrock-us-anthropic-claude-haiku-4-5-20251001-v1-0-b98893db37d6d236.json",
-            "line": 7
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "datastore_generic: redis",
-          "location": {
-            "path": "redteam-prompts-bedrock-us-anthropic-claude-haiku-4-5-20251001-v1-0-f476ebaa8b74e0fb.json",
-            "line": 7
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "datastore_generic: redis",
-          "location": {
             "path": "redteam-prompts-bedrock-us-anthropic-claude-haiku-4-5-20251001-v1-0-f6e372edf4a13f41.json",
             "line": 7
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "datastore_generic: redis",
-          "location": {
-            "path": "reports/fintech-app-redteam.remediation-plan.json",
-            "line": 9
           }
         },
         {
@@ -1399,7 +1313,7 @@
       ]
     },
     {
-      "id": "a74a6b94-b809-4fbe-b9e9-3ef7d0be4709",
+      "id": "eb11bd9a-939d-4ce3-909d-48fe0c6081b9",
       "name": "sqlite",
       "component_type": "DATASTORE",
       "confidence": 0.44000000000000006,
@@ -1456,7 +1370,7 @@
       ]
     },
     {
-      "id": "a47ad8cc-bff7-4a42-b78b-d4edd147175e",
+      "id": "ba8bff23-a65e-458a-952b-fc857603bca4",
       "name": "bicep:azure:eastus",
       "component_type": "DEPLOYMENT",
       "confidence": 0.9856,
@@ -1817,7 +1731,7 @@
       ]
     },
     {
-      "id": "7e8125cf-b0a4-4132-b489-2eafde2c18b2",
+      "id": "f85d9b41-a7ff-4ded-a567-67a73446f6e0",
       "name": "bicep:azure:unknown-region",
       "component_type": "DEPLOYMENT",
       "confidence": 0.7744000000000001,
@@ -1867,7 +1781,7 @@
       ]
     },
     {
-      "id": "b2b2d879-74a9-4246-a22b-734cd8238f9d",
+      "id": "8abe6939-0a21-4fc4-ac21-5eb5fb9daca1",
       "name": "bicep:azure:unknown-region",
       "component_type": "DEPLOYMENT",
       "confidence": 0.7744000000000001,
@@ -1917,7 +1831,7 @@
       ]
     },
     {
-      "id": "b09db82f-60c0-4dfb-ac84-32a101de3557",
+      "id": "2e32a781-da02-46ea-8f0e-ef2c5ddd549f",
       "name": "bicep:azure:unknown-region",
       "component_type": "DEPLOYMENT",
       "confidence": 0.7744000000000001,
@@ -1967,7 +1881,7 @@
       ]
     },
     {
-      "id": "49611143-f852-4059-8e72-7f7f17dd7a26",
+      "id": "d76b63e9-66b4-4635-9fa5-94e5de6730f2",
       "name": "bicep:azure:unknown-region",
       "component_type": "DEPLOYMENT",
       "confidence": 0.7744000000000001,
@@ -2017,7 +1931,7 @@
       ]
     },
     {
-      "id": "5dc0cfd3-f5cc-4337-978e-bb1063072e34",
+      "id": "6cbc9e0e-d96d-4b42-9bd5-98b499c697ca",
       "name": "Port 80",
       "component_type": "DEPLOYMENT",
       "confidence": 0.7920000000000001,
@@ -2061,7 +1975,7 @@
       ]
     },
     {
-      "id": "1e958876-a11a-42e5-93b5-8ba95a667137",
+      "id": "1cf8e7a7-80a2-4724-8ff7-1314d6958eaa",
       "name": "Port 8001",
       "component_type": "DEPLOYMENT",
       "confidence": 0.7920000000000001,
@@ -2105,7 +2019,7 @@
       ]
     },
     {
-      "id": "2c020699-ea26-4ac8-8640-b7e317460ce9",
+      "id": "b51d7ec7-da19-4dd3-99ff-d7934ae521de",
       "name": "Port 8080",
       "component_type": "DEPLOYMENT",
       "confidence": 1.0,
@@ -2333,7 +2247,7 @@
       ]
     },
     {
-      "id": "abe37564-80d8-4251-995c-69b05d3fe20a",
+      "id": "be3d3a97-3057-46a3-8faa-64fb9359b81e",
       "name": "app",
       "component_type": "FRAMEWORK",
       "confidence": 0.8640000000000001,
@@ -2378,7 +2292,7 @@
       ]
     },
     {
-      "id": "fabacdb3-badc-4bda-91be-1501f1027e2e",
+      "id": "de9b7adf-3383-4dfa-9e01-5ec1cef00ca4",
       "name": "framework:langchain",
       "component_type": "FRAMEWORK",
       "confidence": 0.9880000000000001,
@@ -2430,7 +2344,7 @@
       ]
     },
     {
-      "id": "1e820dc7-2ef2-47f5-8fe5-a03a54b0d3a0",
+      "id": "a7ceb696-9fdf-414d-807e-d3278724dcae",
       "name": "framework:llm_clients",
       "component_type": "FRAMEWORK",
       "confidence": 0.9119999999999999,
@@ -2473,7 +2387,7 @@
       ]
     },
     {
-      "id": "6b105ef4-30a7-43d2-b531-9bbadf13c186",
+      "id": "575d83fa-09d2-4812-85e1-b2ad3b7ec771",
       "name": "fintech-accounts",
       "component_type": "FRAMEWORK",
       "confidence": 1.0,
@@ -2690,7 +2604,7 @@
       ]
     },
     {
-      "id": "3092cd08-8bc2-457b-b1b8-c0da162b6875",
+      "id": "f56cb776-1861-4db8-b798-e1351ec2813d",
       "name": "framework:openai_agents",
       "component_type": "FRAMEWORK",
       "confidence": 0.9119999999999999,
@@ -2733,34 +2647,31 @@
       ]
     },
     {
-      "id": "8e14f455-90ac-4681-a5d5-42f2d53de1a9",
+      "id": "af564e32-ad0e-4935-bd34-d3796f72d7f2",
       "name": "claude-haiku-4-5-20251001-v1-0",
       "component_type": "MODEL",
-      "confidence": 0.616,
+      "confidence": 0.4840000000000001,
       "metadata": {
-        "description": "Claude Haiku 4.5 is a lightweight large language model optimized for fast, efficient text processing and reasoning tasks.",
+        "description": "Claude Haiku 4.5 is a lightweight, high-speed large language model optimized for efficient text processing and rapid inference tasks.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
           "canonical_name": "claude_haiku_4_5_20251001_v1_0",
           "adapter": "model_generic",
-          "evidence_count": 8,
+          "evidence_count": 2,
           "normalizer": "model-name",
           "confidence_breakdown": {
             "regex_confidence": 0.55,
             "llm_confidence": 0.0,
-            "evidence_count": 5,
+            "evidence_count": 2,
             "evidence_sources": [
               "evidence:0",
-              "evidence:1",
-              "evidence:2",
-              "evidence:3",
-              "evidence:4"
+              "evidence:1"
             ],
             "base_confidence": 0.44,
-            "evidence_multiplier": 1.4,
+            "evidence_multiplier": 1.1,
             "validation_penalty": 0.0,
-            "final_confidence": 0.616
+            "final_confidence": 0.484
           },
           "description_source": "llm_generated"
         }
@@ -2771,62 +2682,8 @@
           "confidence": 0.55,
           "detail": "model_generic: claude-haiku-4-5-20251001-v1-0",
           "location": {
-            "path": "redteam-prompts-bedrock-us-anthropic-claude-haiku-4-5-20251001-v1-0-6e7e35f51b3ff961.json",
-            "line": 5
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.55,
-          "detail": "model_generic: claude-haiku-4-5-20251001-v1-0",
-          "location": {
-            "path": "redteam-prompts-bedrock-us-anthropic-claude-haiku-4-5-20251001-v1-0-b98893db37d6d236.json",
-            "line": 5
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.55,
-          "detail": "model_generic: claude-haiku-4-5-20251001-v1-0",
-          "location": {
-            "path": "redteam-prompts-bedrock-us-anthropic-claude-haiku-4-5-20251001-v1-0-f476ebaa8b74e0fb.json",
-            "line": 5
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.55,
-          "detail": "model_generic: claude-haiku-4-5-20251001-v1-0",
-          "location": {
             "path": "redteam-prompts-bedrock-us-anthropic-claude-haiku-4-5-20251001-v1-0-f6e372edf4a13f41.json",
             "line": 5
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.55,
-          "detail": "model_generic: claude-haiku-4-5-20251001-v1",
-          "location": {
-            "path": "redteam-prompts-bedrock-us-anthropic-claude-haiku-4-5-20251001-v1-0-6e7e35f51b3ff961.json",
-            "line": 4
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.55,
-          "detail": "model_generic: claude-haiku-4-5-20251001-v1",
-          "location": {
-            "path": "redteam-prompts-bedrock-us-anthropic-claude-haiku-4-5-20251001-v1-0-b98893db37d6d236.json",
-            "line": 4
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.55,
-          "detail": "model_generic: claude-haiku-4-5-20251001-v1",
-          "location": {
-            "path": "redteam-prompts-bedrock-us-anthropic-claude-haiku-4-5-20251001-v1-0-f476ebaa8b74e0fb.json",
-            "line": 4
           }
         },
         {
@@ -2841,7 +2698,7 @@
       ]
     },
     {
-      "id": "9e4d8249-9381-4677-b2b3-3fea00509f97",
+      "id": "35869916-9dc3-45ce-a6c4-8c955fcf5931",
       "name": "claude-haiku-4-6",
       "component_type": "MODEL",
       "confidence": 0.44000000000000006,
@@ -2876,13 +2733,13 @@
           "detail": "model_generic: claude-haiku-4-6",
           "location": {
             "path": "nuguard-sbom-anthropic.yaml",
-            "line": 91
+            "line": 95
           }
         }
       ]
     },
     {
-      "id": "43ea22c1-d58d-46da-a3c0-322208849a9e",
+      "id": "7e158dde-9474-4933-b97f-38e9f2d3de2e",
       "name": "command-r-plus",
       "component_type": "MODEL",
       "confidence": 0.44000000000000006,
@@ -2923,7 +2780,7 @@
       ]
     },
     {
-      "id": "d364a82d-d2df-44ec-92c7-05a713d2aee2",
+      "id": "9b092f54-3566-4d18-92e2-09368a00824c",
       "name": "gemini-3.1",
       "component_type": "MODEL",
       "confidence": 1.0,
@@ -2936,9 +2793,9 @@
           "adapter": "model_generic",
           "evidence_count": 1,
           "normalizer": "model-name",
-          "description": "Google Gemini 3.1 Flash Lite Preview model used for automated SBOM generation and cognitive policy analysis.",
+          "description": "Google Gemini 3.1 Flash Lite Preview model used for automated SBOM generation and cognitive policy enforcement.",
           "llm_verified": true,
-          "llm_verification_reason": "The node is a concrete configuration for an LLM model used in an SBOM generation pipeline, which is functional application code rather than a test or documentation.",
+          "llm_verification_reason": "The node is a concrete configuration for an LLM model used in a production-like SBOM generation pipeline, as indicated by the active API key reference and policy path.",
           "llm_confidence": 0.95,
           "confidence_breakdown": {
             "regex_confidence": 0.95,
@@ -2970,7 +2827,7 @@
       ]
     },
     {
-      "id": "2dc0677a-1731-43c4-87db-924c2b014eca",
+      "id": "3d645306-c056-4eb0-b4c8-5c7dee14c1e5",
       "name": "gpt-4o-mini",
       "component_type": "MODEL",
       "confidence": 0.616,
@@ -3105,50 +2962,7 @@
       ]
     },
     {
-      "id": "bea516ec-7ed7-4b98-9e98-a4dc245ca2db",
-      "name": "admin",
-      "component_type": "PRIVILEGE",
-      "confidence": 0.8360000000000001,
-      "metadata": {
-        "privilege_scope": "admin",
-        "description": "This component represents a superuser privilege level providing administrative access and full system control within the application environment.",
-        "request_body_schema": {},
-        "chat_payload_list": false,
-        "extras": {
-          "canonical_name": "privilege_admin",
-          "adapter": "privilege_admin",
-          "evidence_count": 1,
-          "privilege_scope": "admin",
-          "confidence_breakdown": {
-            "regex_confidence": 0.95,
-            "llm_confidence": 0.0,
-            "evidence_count": 2,
-            "evidence_sources": [
-              "evidence:0",
-              "confidence:high"
-            ],
-            "base_confidence": 0.76,
-            "evidence_multiplier": 1.1,
-            "validation_penalty": 0.0,
-            "final_confidence": 0.836
-          },
-          "description_source": "llm_generated"
-        }
-      },
-      "evidence": [
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "privilege_admin: superuser",
-          "location": {
-            "path": "redteam-prompts-bedrock-us-anthropic-claude-haiku-4-5-20251001-v1-0-f476ebaa8b74e0fb.json",
-            "line": 394
-          }
-        }
-      ]
-    },
-    {
-      "id": "dde560b8-8e18-485f-9056-622d6e31ddf2",
+      "id": "1f123527-2664-47f2-aa1c-be0b1eaa8ae0",
       "name": "filesystem_write",
       "component_type": "PRIVILEGE",
       "confidence": 0.44000000000000006,
@@ -3190,7 +3004,7 @@
       ]
     },
     {
-      "id": "224de53f-cfc2-47f5-ac47-3358c303fbea",
+      "id": "e182fa69-ae5a-40b4-9a3e-32284612c255",
       "name": "network_out",
       "component_type": "PRIVILEGE",
       "confidence": 0.4840000000000001,
@@ -3244,40 +3058,41 @@
       ]
     },
     {
-      "id": "1241a1ff-7070-41d0-9360-934ea8e1bce9",
+      "id": "15b8bf0d-d918-4d23-a893-9e2b5bd0aecc",
       "name": "rbac",
       "component_type": "PRIVILEGE",
-      "confidence": 1.0,
+      "confidence": 0.616,
       "metadata": {
         "privilege_scope": "rbac",
-        "description": "This component manages role-based access control and privilege escalation policies within the system architecture.",
+        "description": "This component implements role-based access control mechanisms to manage user permissions and mitigate risks associated with unauthorized privilege escalation.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
           "canonical_name": "privilege_rbac",
           "adapter": "privilege_rbac",
-          "evidence_count": 10,
+          "evidence_count": 6,
           "detected_by_tiers": [
             "code",
             "iac"
           ],
           "privilege_scope": "rbac",
+          "llm_soft_rejected": true,
+          "llm_verification_reason": "The file is a JSON dataset containing red-teaming prompts for testing AI models, not production code or a privilege configuration.",
           "confidence_breakdown": {
-            "regex_confidence": 0.98,
+            "regex_confidence": 0.55,
             "llm_confidence": 0.0,
-            "evidence_count": 6,
+            "evidence_count": 5,
             "evidence_sources": [
               "evidence:0",
               "evidence:1",
               "evidence:2",
               "evidence:3",
-              "evidence:4",
-              "confidence:high"
+              "evidence:4"
             ],
-            "base_confidence": 0.784,
+            "base_confidence": 0.44,
             "evidence_multiplier": 1.4,
             "validation_penalty": 0.0,
-            "final_confidence": 1.0
+            "final_confidence": 0.616
           },
           "description_source": "llm_generated"
         }
@@ -3285,47 +3100,11 @@
       "evidence": [
         {
           "kind": "regex",
-          "confidence": 0.95,
-          "detail": "privilege_rbac: PRIVILEGE_ESCALATION",
-          "location": {
-            "path": "redteam-prompts-bedrock-us-anthropic-claude-haiku-4-5-20251001-v1-0-f476ebaa8b74e0fb.json",
-            "line": 357
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.75,
-          "detail": "privilege_rbac: PRIVILEGE_ESCALATION",
-          "location": {
-            "path": "redteam-prompts-bedrock-us-anthropic-claude-haiku-4-5-20251001-v1-0-6e7e35f51b3ff961.json",
-            "line": 281
-          }
-        },
-        {
-          "kind": "regex",
           "confidence": 0.75,
           "detail": "privilege_rbac: access control",
           "location": {
             "path": "redteam-prompts-bedrock-us-anthropic-claude-haiku-4-5-20251001-v1-0-f6e372edf4a13f41.json",
             "line": 202
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.7,
-          "detail": "privilege_rbac: PRIVILEGE_ESCALATION",
-          "location": {
-            "path": "redteam-prompts-bedrock-us-anthropic-claude-haiku-4-5-20251001-v1-0-b98893db37d6d236.json",
-            "line": 291
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.7,
-          "detail": "privilege_rbac: Least Privilege",
-          "location": {
-            "path": "reports/fintech-app-redteam.remediation-plan.json",
-            "line": 45
           }
         },
         {
@@ -3376,7 +3155,7 @@
       ]
     },
     {
-      "id": "72d75662-b40d-4b36-a0c9-472bf15da774",
+      "id": "bd80f9d3-60e6-4da2-8780-2863369f8b27",
       "name": "generic",
       "component_type": "PROMPT",
       "confidence": 0.9856000000000001,
@@ -3387,7 +3166,7 @@
         "extras": {
           "canonical_name": "prompt_generic",
           "adapter": "prompt_generic",
-          "evidence_count": 9,
+          "evidence_count": 8,
           "detected_by_tiers": [
             "code",
             "iac"
@@ -3446,7 +3225,7 @@
           "detail": "prompt_generic: regex",
           "location": {
             "path": "reports/fintech-app-redteam.remediation-plan.json",
-            "line": 71
+            "line": 19
           }
         },
         {
@@ -3455,7 +3234,7 @@
           "detail": "prompt_generic: regex",
           "location": {
             "path": "nuguard-sbom-anthropic.yaml",
-            "line": 62
+            "line": 61
           }
         },
         {
@@ -3484,23 +3263,14 @@
             "path": "canary.json",
             "line": 5
           }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.55,
-          "detail": "prompt_generic: regex",
-          "location": {
-            "path": "redteam-prompts-bedrock-us-anthropic-claude-haiku-4-5-20251001-v1-0-f476ebaa8b74e0fb.json",
-            "line": 465
-          }
         }
       ]
     },
     {
-      "id": "4cd36226-d92a-4c6d-be6a-c6fc31714a45",
+      "id": "7b348e33-6b35-400c-ae85-ab82b451599f",
       "name": "TRIAGE_SYSTEM_PROMPT",
       "component_type": "PROMPT",
-      "confidence": 1.0,
+      "confidence": 0.7040000000000002,
       "metadata": {
         "description": "A Python constant containing the system prompt used for automated triage classification tasks within the application.",
         "request_body_schema": {},
@@ -3514,23 +3284,18 @@
           "char_count": 937,
           "is_template": false,
           "template_variables": [],
-          "description": "A system prompt used by the triage agent to classify incoming banking support messages into specific categories for downstream routing.",
-          "llm_verified": true,
-          "llm_verification_reason": "This is a concrete system prompt definition used in production application code to route user queries to specific agents.",
-          "llm_confidence": 1.0,
           "confidence_breakdown": {
-            "regex_confidence": 1.0,
-            "llm_confidence": 1.0,
-            "evidence_count": 3,
+            "regex_confidence": 0.8,
+            "llm_confidence": 0.0,
+            "evidence_count": 2,
             "evidence_sources": [
-              "llm:verified",
               "evidence:0",
               "confidence:high"
             ],
-            "base_confidence": 1.0,
-            "evidence_multiplier": 1.2,
+            "base_confidence": 0.64,
+            "evidence_multiplier": 1.1,
             "validation_penalty": 0.0,
-            "final_confidence": 1.0
+            "final_confidence": 0.704
           },
           "description_source": "llm_generated"
         }
@@ -3548,7 +3313,7 @@
       ]
     },
     {
-      "id": "0aa94c6a-7e08-446c-9fce-aedd5e46f2d4",
+      "id": "8bfcbc8e-ef20-4990-a9a7-d048d07ae2ea",
       "name": "apply_for_loan",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -3602,7 +3367,7 @@
       ]
     },
     {
-      "id": "d229f3da-1fda-4806-a1f6-b2fa4ab10293",
+      "id": "9a1538cb-091e-484f-bd55-577d45eab9fe",
       "name": "approve_loan",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -3656,7 +3421,7 @@
       ]
     },
     {
-      "id": "5ce4b16b-6d07-48a1-a889-a7bd5ab2d3aa",
+      "id": "36043759-17c5-4630-81bc-a2b27b5b2974",
       "name": "broadcast_all_users",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -3710,7 +3475,7 @@
       ]
     },
     {
-      "id": "51e4c43f-3d4a-454d-a0cf-dc4cbec44d14",
+      "id": "c3b7f1c9-220e-4ff7-8dc0-0aa440ecfd9a",
       "name": "bulk_export",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -3764,7 +3529,7 @@
       ]
     },
     {
-      "id": "df9ea601-a561-4714-9f65-8f1f3a2ade3b",
+      "id": "1f000396-e2b6-4a81-91c4-1f9d2435e104",
       "name": "bulk_export_all_customers",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -3818,7 +3583,7 @@
       ]
     },
     {
-      "id": "329b558c-97be-4046-bf1d-36b65c134886",
+      "id": "083cad4f-3225-41be-862c-20979021d74e",
       "name": "buy_asset",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -3872,7 +3637,7 @@
       ]
     },
     {
-      "id": "da0184c8-0d53-4cd6-a497-e8b8debc2ce0",
+      "id": "d5baa549-7c03-484d-af9a-3bff073ebc83",
       "name": "buy_crypto",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -3926,7 +3691,7 @@
       ]
     },
     {
-      "id": "dacaffd5-8add-410d-b21f-b0cd744d4958",
+      "id": "f9bcb7d5-95ff-400c-91cc-b8d8e8d9e473",
       "name": "call_internal_service",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -3980,7 +3745,7 @@
       ]
     },
     {
-      "id": "0228b8a0-7d7c-4d10-a53d-5bae83da4970",
+      "id": "e2b2ab6e-ccfa-4439-84e0-776f06687d3f",
       "name": "cancel_payment",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -4034,7 +3799,7 @@
       ]
     },
     {
-      "id": "21a71403-a376-486a-9508-84e488857f83",
+      "id": "444f95d7-9be8-4336-a6a0-78dfb561c16b",
       "name": "cancel_task",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -4088,7 +3853,7 @@
       ]
     },
     {
-      "id": "9f380f6a-3e5f-48e6-84e0-faf65094c20a",
+      "id": "a086d007-9592-49c9-bbef-f0797f449000",
       "name": "check_sanctions",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -4142,7 +3907,7 @@
       ]
     },
     {
-      "id": "22eff3c0-4f0a-4e80-848d-4d7b08a391ce",
+      "id": "cecd0a51-b75c-4c39-b957-efc466adc03f",
       "name": "check_transaction_limits",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -4196,7 +3961,7 @@
       ]
     },
     {
-      "id": "8beb7995-3d92-47f3-8a00-259306c72df0",
+      "id": "3ad6ca68-ad9c-437d-a490-4ba63a01b271",
       "name": "convert_funds",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -4250,7 +4015,7 @@
       ]
     },
     {
-      "id": "1a4aebfa-2b4f-4343-b17f-e5ef1e532d7a",
+      "id": "7987b0f4-0a74-48b3-897c-8f4e6c83c4d1",
       "name": "create_document",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -4304,7 +4069,7 @@
       ]
     },
     {
-      "id": "02faabae-2878-40e8-afef-d5392f88541c",
+      "id": "2f1d6e41-47d6-4be5-a8b7-8c4e9dda73c8",
       "name": "delete_audit_entry",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -4358,7 +4123,7 @@
       ]
     },
     {
-      "id": "2db57455-4c30-48bb-87fb-71a155c1d964",
+      "id": "2719b37d-a4c7-4937-84c0-1cf3fe07e705",
       "name": "delete_document",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -4412,7 +4177,7 @@
       ]
     },
     {
-      "id": "462ac30d-8af9-485e-a55f-5849c4f452e1",
+      "id": "c724494f-4fa1-4f76-b5a6-fbf87cf40f54",
       "name": "delete_user",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -4466,7 +4231,7 @@
       ]
     },
     {
-      "id": "239de536-373e-4b12-9063-1dea494d23f2",
+      "id": "47d3d677-9375-40e0-9595-db55124e929c",
       "name": "export_all_audit_logs",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -4520,7 +4285,7 @@
       ]
     },
     {
-      "id": "8f3bd94e-0e60-4980-b2ae-494cb771619f",
+      "id": "81cce889-f4b3-4505-be33-34407fd29a56",
       "name": "export_customer_data",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -4574,7 +4339,7 @@
       ]
     },
     {
-      "id": "f79ae2d6-d9de-4279-b020-c51007548dd0",
+      "id": "fd3ec99d-de01-48f6-a6ad-475a1cc0c6fa",
       "name": "fetch_external_feed",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -4628,7 +4393,7 @@
       ]
     },
     {
-      "id": "cdace622-dcd2-45ce-a785-c2c822ab1e65",
+      "id": "bd272cc1-4333-4035-9763-58939743b6d1",
       "name": "fetch_market_report",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -4682,7 +4447,7 @@
       ]
     },
     {
-      "id": "ab4180b0-1677-46e6-8964-d052e0f79ce3",
+      "id": "2291c025-4c87-455d-887e-f7d488a302ff",
       "name": "file_suspicious_activity_report",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -4736,7 +4501,7 @@
       ]
     },
     {
-      "id": "b6bb395f-b21a-4976-9366-e3fee29ef0e9",
+      "id": "3f410f47-8033-4389-889c-ecd9b9d32b54",
       "name": "flag_transaction",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -4790,7 +4555,7 @@
       ]
     },
     {
-      "id": "34b54954-b687-4ea6-8035-65232ca21523",
+      "id": "7e8d75d3-0592-4ea9-aff8-7a942256343d",
       "name": "freeze_card",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -4844,7 +4609,7 @@
       ]
     },
     {
-      "id": "afa92366-4f2f-4fdd-ab35-29ce46723f44",
+      "id": "5cf9dd00-60bc-42a7-9c84-e5500273f425",
       "name": "generate_report",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -4898,7 +4663,7 @@
       ]
     },
     {
-      "id": "a806b7b3-3099-4b7b-a37f-57bab77f6fa9",
+      "id": "93f4b0a0-b9f2-4975-9dba-6c9023075730",
       "name": "get_account",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -4952,7 +4717,7 @@
       ]
     },
     {
-      "id": "9ebd599c-cec8-4237-8cc6-7ec69b89b3d2",
+      "id": "612f79a0-8aca-4d15-9445-02af9fd57859",
       "name": "get_admin_actions",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -5006,7 +4771,7 @@
       ]
     },
     {
-      "id": "f7ee283b-872e-44d5-9038-22041a01978c",
+      "id": "1280064f-8a60-4706-a7b1-5ab9567a11fb",
       "name": "get_all_kyc_statuses",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -5060,7 +4825,7 @@
       ]
     },
     {
-      "id": "d02dad78-9b28-4f8a-bee8-2fdf404a829b",
+      "id": "29f31bce-3233-4978-9ced-7d54927cf9f6",
       "name": "get_audit_log",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -5114,7 +4879,7 @@
       ]
     },
     {
-      "id": "90dd0152-c315-4fcb-9f88-e738fadbb816",
+      "id": "e3007e3f-9bc0-4674-99f5-235ff7cee12f",
       "name": "get_available_assets",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -5168,7 +4933,7 @@
       ]
     },
     {
-      "id": "79a0e4a3-2c94-451b-a916-d194064eb2f5",
+      "id": "a673b4b4-d038-4663-a66f-db9ef8732ea0",
       "name": "get_card_details",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -5222,7 +4987,7 @@
       ]
     },
     {
-      "id": "56e6504d-c880-4644-bbe5-ccf23efc983a",
+      "id": "1e41df79-3eb4-46c4-9682-5351864c52d6",
       "name": "get_card_transactions",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -5276,7 +5041,7 @@
       ]
     },
     {
-      "id": "5b928491-da99-48e7-9951-5a450045aed6",
+      "id": "27ba5fe9-fe27-49f7-ac4e-0719a1633bb1",
       "name": "get_crypto_price",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -5330,7 +5095,7 @@
       ]
     },
     {
-      "id": "358151e6-3278-4c0b-bdb1-5e22bb76f28d",
+      "id": "93dd916a-caa1-4c37-b011-64e657e72448",
       "name": "get_customer_summary",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -5384,7 +5149,7 @@
       ]
     },
     {
-      "id": "d02d7797-7a9c-4095-803d-f65dc43fa7a6",
+      "id": "c73944d0-4858-438f-87f4-bc1202e5467d",
       "name": "get_document",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -5438,7 +5203,7 @@
       ]
     },
     {
-      "id": "385def54-bd4e-4194-81ed-f7239f140eb6",
+      "id": "1a6b7f23-7a15-475a-aa15-1faf5f5cd957",
       "name": "get_exchange_rate",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -5492,7 +5257,7 @@
       ]
     },
     {
-      "id": "9a027b1b-3be0-4059-9ed7-2dfb70fd24a1",
+      "id": "9235aaee-87ab-4fb7-9366-be2283323cb8",
       "name": "get_flagged_transactions",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -5546,7 +5311,7 @@
       ]
     },
     {
-      "id": "06092bca-124d-4f54-9630-92d2f9ebec87",
+      "id": "08f107aa-631e-4227-aa77-c0e635db6c9e",
       "name": "get_fraud_score",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -5600,7 +5365,7 @@
       ]
     },
     {
-      "id": "e7e45168-d00e-4ad4-a012-88c6d47bfc15",
+      "id": "69e5f24f-b74a-4eb1-8475-df86bab3b008",
       "name": "get_high_risk_accounts",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -5654,7 +5419,7 @@
       ]
     },
     {
-      "id": "187184ba-a9ec-4751-842b-6c1e8e374c96",
+      "id": "f3077ef4-7065-4456-9f67-54368b2a867b",
       "name": "get_kyc_status",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -5708,7 +5473,7 @@
       ]
     },
     {
-      "id": "120b7a48-9571-48f2-90a9-74f468738600",
+      "id": "2dc74c43-f6c4-4b0d-82be-b55e592febe2",
       "name": "get_loan_details",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -5762,7 +5527,7 @@
       ]
     },
     {
-      "id": "ec202749-3c18-4c7f-a6f4-6473dab17f64",
+      "id": "7fd52640-ff78-470f-826a-1083a69ce4ea",
       "name": "get_market_summary",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -5816,7 +5581,7 @@
       ]
     },
     {
-      "id": "61e5afec-561d-4ad1-ae05-65a8ee126351",
+      "id": "c319a695-70db-4f5c-96a5-3086b7cbb93f",
       "name": "get_notification_history",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -5870,7 +5635,7 @@
       ]
     },
     {
-      "id": "49842e29-b8ed-418a-b063-e2340e63944c",
+      "id": "6f72119d-fed8-41ba-a05b-879a2bdecf1e",
       "name": "get_payment_status",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -5924,7 +5689,7 @@
       ]
     },
     {
-      "id": "62b3aeda-8e0d-4dc7-b981-732a675429b0",
+      "id": "6580c2e9-6345-442f-adc9-e81330ea7ef3",
       "name": "get_pending_compliance_items",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -5978,7 +5743,7 @@
       ]
     },
     {
-      "id": "82569e5b-3ecf-4a88-bc1f-e63977cb5b21",
+      "id": "af952e5a-41b2-422c-b3e7-700efec85dc0",
       "name": "get_portfolio",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -6032,7 +5797,7 @@
       ]
     },
     {
-      "id": "5262a758-8f5e-4345-923e-762baf7b0b70",
+      "id": "eed0ae0b-b103-439b-930a-c637fd8fc340",
       "name": "get_price",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -6086,7 +5851,7 @@
       ]
     },
     {
-      "id": "8c694480-ac78-4eaf-bde0-5d32d5db03bd",
+      "id": "a3db7e82-8c16-4583-830f-7bea57509eb4",
       "name": "get_regulatory_report",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -6140,7 +5905,7 @@
       ]
     },
     {
-      "id": "a7abde6c-6c7d-43cd-8cda-212f233c6f54",
+      "id": "bb5cffa6-277e-4dcd-9f47-32152e21cfc0",
       "name": "get_regulatory_requirements",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -6194,7 +5959,7 @@
       ]
     },
     {
-      "id": "3ecda24d-32e1-46b3-9594-10b127f35cbd",
+      "id": "afdd1060-d6b0-409f-91cd-69815bee4e50",
       "name": "get_service_health",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -6248,7 +6013,7 @@
       ]
     },
     {
-      "id": "6d296823-8ebc-4c50-a22b-46a7abd54a8a",
+      "id": "6fc0d428-2eda-45f4-a256-2764fadca2d2",
       "name": "get_wallet_address",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -6302,7 +6067,7 @@
       ]
     },
     {
-      "id": "d94e669e-cf73-403d-b2fb-cf375b79dc8d",
+      "id": "dd1ac42d-77e8-4cd2-8a70-a6fdb5e56957",
       "name": "grant_admin_role",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -6356,7 +6121,7 @@
       ]
     },
     {
-      "id": "f3293ddb-30b9-4c9e-a128-ee3051305090",
+      "id": "49049bb3-353d-4260-82fb-a1cb4842b521",
       "name": "initiate_payment",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -6410,7 +6175,7 @@
       ]
     },
     {
-      "id": "a6f9f82f-c7ed-4ef0-a264-8b1bf06fb584",
+      "id": "d35cdab2-a74b-44df-8b70-2e44f1584d53",
       "name": "invoke_admin_api",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -6464,7 +6229,7 @@
       ]
     },
     {
-      "id": "398f337d-2df6-4d75-8a63-0040a873e460",
+      "id": "a2366af0-745e-4217-8322-61ab657c31d7",
       "name": "list_all_accounts",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -6518,7 +6283,7 @@
       ]
     },
     {
-      "id": "6c13305b-d301-4651-86ca-db0a2636cf6a",
+      "id": "ad516014-cf48-46ae-801e-a3b2ff13d6ec",
       "name": "list_all_users",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -6572,7 +6337,7 @@
       ]
     },
     {
-      "id": "e1d86514-cbf1-4271-bea1-ebf2ed3c2757",
+      "id": "9e56e968-7c6a-447e-91c0-c7955cfba2c8",
       "name": "list_customer_documents",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -6626,7 +6391,7 @@
       ]
     },
     {
-      "id": "0f9d259f-195f-401f-b7e7-836ca154294c",
+      "id": "9df892f9-c633-462b-9b2f-1121fd9c8edd",
       "name": "list_scheduled_tasks",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -6680,7 +6445,7 @@
       ]
     },
     {
-      "id": "930b92b2-09e0-4486-a4cf-beaede64843f",
+      "id": "05b18ae8-8e07-4b96-992c-88ff7a1e763e",
       "name": "list_supported_currencies",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -6734,7 +6499,7 @@
       ]
     },
     {
-      "id": "bcb6605c-07dd-4289-904b-b3b37dcd1378",
+      "id": "bce30486-93dd-4ba4-9853-e56ac92e04b0",
       "name": "override_compliance",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -6788,7 +6553,7 @@
       ]
     },
     {
-      "id": "43de5b36-1ab7-448d-81ef-e4f94e63312a",
+      "id": "1b362f2b-4e30-42d5-abf7-ff1873390168",
       "name": "override_kyc",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -6842,7 +6607,7 @@
       ]
     },
     {
-      "id": "352add98-70a0-4511-8f93-8fb625532ab7",
+      "id": "790db914-bfcc-414c-9e0c-315b2e00db8e",
       "name": "reject_loan",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -6896,7 +6661,7 @@
       ]
     },
     {
-      "id": "f9cc38f3-db47-47a4-9be2-3cb09a033bb7",
+      "id": "a5f47156-6f6b-4d30-bd96-bd7d79972475",
       "name": "reset_user_password",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -6950,7 +6715,7 @@
       ]
     },
     {
-      "id": "3b03df85-d448-4670-9ed1-7202fee6d1b7",
+      "id": "b75126bb-7750-4922-8daf-78b9839d6147",
       "name": "run_task_immediately",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -7004,7 +6769,7 @@
       ]
     },
     {
-      "id": "b8dc296e-8f4d-4688-b8dd-3bc4d99273a3",
+      "id": "eeaed556-7701-4ea3-a0af-ccfe4f2db15e",
       "name": "schedule_task",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -7058,7 +6823,7 @@
       ]
     },
     {
-      "id": "22afd0d4-e79d-4f98-8ef7-79ca83650da5",
+      "id": "c0153e5d-0cf3-4655-aac1-5f190f5a8061",
       "name": "sell_asset",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -7112,7 +6877,7 @@
       ]
     },
     {
-      "id": "703c3b45-760f-417b-bab9-0fe7e1ed1d21",
+      "id": "fb9ec255-b197-425c-a649-f71ee152b17b",
       "name": "send_alert",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -7166,7 +6931,7 @@
       ]
     },
     {
-      "id": "964c79ed-b078-4aad-aee3-b7d9c1553d5b",
+      "id": "cd06ad96-30f0-4275-a98c-eb2b634e1e4b",
       "name": "send_otp",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -7220,7 +6985,7 @@
       ]
     },
     {
-      "id": "0c72cb43-c63e-42a4-b6b1-1216c849a5c7",
+      "id": "69ef6039-7559-4380-b8cc-e2714644df48",
       "name": "stream_all_transactions",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -7274,7 +7039,7 @@
       ]
     },
     {
-      "id": "428b8912-ac16-4c51-8b6c-de33822a5d19",
+      "id": "8a689da1-57b2-4344-bdbb-447358af79e7",
       "name": "submit_kyc_document",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -7328,7 +7093,7 @@
       ]
     },
     {
-      "id": "0198a0d8-3a18-46e0-833a-b0b317264b05",
+      "id": "e471d573-711a-4538-9e74-1c2b9d55ca5d",
       "name": "transfer_crypto",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -7382,7 +7147,7 @@
       ]
     },
     {
-      "id": "1ccd7861-fcae-49aa-8eed-f2608b3fa42c",
+      "id": "ef0f0e80-4aac-4e80-9b0b-7188da9b3f3b",
       "name": "transfer_funds",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -7436,7 +7201,7 @@
       ]
     },
     {
-      "id": "07b9ba2a-9213-4e64-ae20-e182d9063507",
+      "id": "e16d94c9-be5c-4d67-a80f-8349d3727d28",
       "name": "unfreeze_card",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -7490,7 +7255,7 @@
       ]
     },
     {
-      "id": "5f834c07-3076-47d3-9728-d6946ff53476",
+      "id": "0f8537ce-4193-40bd-b6bf-ffcc92b4a514",
       "name": "update_account_status",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -7544,7 +7309,7 @@
       ]
     },
     {
-      "id": "8caec376-3694-4246-917e-53a46243ad90",
+      "id": "5bd04be4-cee6-470f-9825-167b325df819",
       "name": "view_user_sessions",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -7598,7 +7363,7 @@
       ]
     },
     {
-      "id": "c83b7697-16ae-4418-9916-d71e632e06e7",
+      "id": "254e943e-1e03-466f-a8f0-95410b2c2779",
       "name": "waive_aml_check",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -7652,7 +7417,7 @@
       ]
     },
     {
-      "id": "b678ff78-d494-40e7-a94b-ec25a54a8968",
+      "id": "68bd90da-21f5-4c6e-ab0c-ba4d2c9cf2be",
       "name": "whitelist_account",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -7706,7 +7471,7 @@
       ]
     },
     {
-      "id": "1ec6f28c-24b1-4269-8a0d-88848b40688a",
+      "id": "838dfc51-9b17-4b7f-bbd8-c5e04429fe3f",
       "name": "generic",
       "component_type": "TOOL",
       "confidence": 0.4840000000000001,
@@ -7761,7 +7526,7 @@
       ]
     },
     {
-      "id": "b1834073-b1cb-4944-b58c-cc17e015fbee",
+      "id": "0126764b-db73-4816-978e-2c5408ad27eb",
       "name": "Fintech App Assistant",
       "component_type": "AGENT",
       "confidence": 0.55,
@@ -7839,683 +7604,683 @@
   ],
   "edges": [
     {
-      "source": "abe37564-80d8-4251-995c-69b05d3fe20a",
-      "target": "d364a82d-d2df-44ec-92c7-05a713d2aee2",
+      "source": "be3d3a97-3057-46a3-8faa-64fb9359b81e",
+      "target": "9b092f54-3566-4d18-92e2-09368a00824c",
       "relationship_type": "USES"
     },
     {
-      "source": "abe37564-80d8-4251-995c-69b05d3fe20a",
-      "target": "8e14f455-90ac-4681-a5d5-42f2d53de1a9",
+      "source": "be3d3a97-3057-46a3-8faa-64fb9359b81e",
+      "target": "af564e32-ad0e-4935-bd34-d3796f72d7f2",
       "relationship_type": "USES"
     },
     {
-      "source": "abe37564-80d8-4251-995c-69b05d3fe20a",
-      "target": "9e4d8249-9381-4677-b2b3-3fea00509f97",
+      "source": "be3d3a97-3057-46a3-8faa-64fb9359b81e",
+      "target": "35869916-9dc3-45ce-a6c4-8c955fcf5931",
       "relationship_type": "USES"
     },
     {
-      "source": "abe37564-80d8-4251-995c-69b05d3fe20a",
-      "target": "43ea22c1-d58d-46da-a3c0-322208849a9e",
+      "source": "be3d3a97-3057-46a3-8faa-64fb9359b81e",
+      "target": "7e158dde-9474-4933-b97f-38e9f2d3de2e",
       "relationship_type": "USES"
     },
     {
-      "source": "abe37564-80d8-4251-995c-69b05d3fe20a",
-      "target": "2dc0677a-1731-43c4-87db-924c2b014eca",
+      "source": "be3d3a97-3057-46a3-8faa-64fb9359b81e",
+      "target": "3d645306-c056-4eb0-b4c8-5c7dee14c1e5",
       "relationship_type": "USES"
     },
     {
-      "source": "fabacdb3-badc-4bda-91be-1501f1027e2e",
-      "target": "d364a82d-d2df-44ec-92c7-05a713d2aee2",
+      "source": "de9b7adf-3383-4dfa-9e01-5ec1cef00ca4",
+      "target": "9b092f54-3566-4d18-92e2-09368a00824c",
       "relationship_type": "USES"
     },
     {
-      "source": "fabacdb3-badc-4bda-91be-1501f1027e2e",
-      "target": "8e14f455-90ac-4681-a5d5-42f2d53de1a9",
+      "source": "de9b7adf-3383-4dfa-9e01-5ec1cef00ca4",
+      "target": "af564e32-ad0e-4935-bd34-d3796f72d7f2",
       "relationship_type": "USES"
     },
     {
-      "source": "fabacdb3-badc-4bda-91be-1501f1027e2e",
-      "target": "9e4d8249-9381-4677-b2b3-3fea00509f97",
+      "source": "de9b7adf-3383-4dfa-9e01-5ec1cef00ca4",
+      "target": "35869916-9dc3-45ce-a6c4-8c955fcf5931",
       "relationship_type": "USES"
     },
     {
-      "source": "fabacdb3-badc-4bda-91be-1501f1027e2e",
-      "target": "43ea22c1-d58d-46da-a3c0-322208849a9e",
+      "source": "de9b7adf-3383-4dfa-9e01-5ec1cef00ca4",
+      "target": "7e158dde-9474-4933-b97f-38e9f2d3de2e",
       "relationship_type": "USES"
     },
     {
-      "source": "fabacdb3-badc-4bda-91be-1501f1027e2e",
-      "target": "2dc0677a-1731-43c4-87db-924c2b014eca",
+      "source": "de9b7adf-3383-4dfa-9e01-5ec1cef00ca4",
+      "target": "3d645306-c056-4eb0-b4c8-5c7dee14c1e5",
       "relationship_type": "USES"
     },
     {
-      "source": "1e820dc7-2ef2-47f5-8fe5-a03a54b0d3a0",
-      "target": "d364a82d-d2df-44ec-92c7-05a713d2aee2",
+      "source": "a7ceb696-9fdf-414d-807e-d3278724dcae",
+      "target": "9b092f54-3566-4d18-92e2-09368a00824c",
       "relationship_type": "USES"
     },
     {
-      "source": "1e820dc7-2ef2-47f5-8fe5-a03a54b0d3a0",
-      "target": "8e14f455-90ac-4681-a5d5-42f2d53de1a9",
+      "source": "a7ceb696-9fdf-414d-807e-d3278724dcae",
+      "target": "af564e32-ad0e-4935-bd34-d3796f72d7f2",
       "relationship_type": "USES"
     },
     {
-      "source": "1e820dc7-2ef2-47f5-8fe5-a03a54b0d3a0",
-      "target": "9e4d8249-9381-4677-b2b3-3fea00509f97",
+      "source": "a7ceb696-9fdf-414d-807e-d3278724dcae",
+      "target": "35869916-9dc3-45ce-a6c4-8c955fcf5931",
       "relationship_type": "USES"
     },
     {
-      "source": "1e820dc7-2ef2-47f5-8fe5-a03a54b0d3a0",
-      "target": "43ea22c1-d58d-46da-a3c0-322208849a9e",
+      "source": "a7ceb696-9fdf-414d-807e-d3278724dcae",
+      "target": "7e158dde-9474-4933-b97f-38e9f2d3de2e",
       "relationship_type": "USES"
     },
     {
-      "source": "1e820dc7-2ef2-47f5-8fe5-a03a54b0d3a0",
-      "target": "2dc0677a-1731-43c4-87db-924c2b014eca",
+      "source": "a7ceb696-9fdf-414d-807e-d3278724dcae",
+      "target": "3d645306-c056-4eb0-b4c8-5c7dee14c1e5",
       "relationship_type": "USES"
     },
     {
-      "source": "6b105ef4-30a7-43d2-b531-9bbadf13c186",
-      "target": "d364a82d-d2df-44ec-92c7-05a713d2aee2",
+      "source": "575d83fa-09d2-4812-85e1-b2ad3b7ec771",
+      "target": "9b092f54-3566-4d18-92e2-09368a00824c",
       "relationship_type": "USES"
     },
     {
-      "source": "6b105ef4-30a7-43d2-b531-9bbadf13c186",
-      "target": "8e14f455-90ac-4681-a5d5-42f2d53de1a9",
+      "source": "575d83fa-09d2-4812-85e1-b2ad3b7ec771",
+      "target": "af564e32-ad0e-4935-bd34-d3796f72d7f2",
       "relationship_type": "USES"
     },
     {
-      "source": "6b105ef4-30a7-43d2-b531-9bbadf13c186",
-      "target": "9e4d8249-9381-4677-b2b3-3fea00509f97",
+      "source": "575d83fa-09d2-4812-85e1-b2ad3b7ec771",
+      "target": "35869916-9dc3-45ce-a6c4-8c955fcf5931",
       "relationship_type": "USES"
     },
     {
-      "source": "6b105ef4-30a7-43d2-b531-9bbadf13c186",
-      "target": "43ea22c1-d58d-46da-a3c0-322208849a9e",
+      "source": "575d83fa-09d2-4812-85e1-b2ad3b7ec771",
+      "target": "7e158dde-9474-4933-b97f-38e9f2d3de2e",
       "relationship_type": "USES"
     },
     {
-      "source": "6b105ef4-30a7-43d2-b531-9bbadf13c186",
-      "target": "2dc0677a-1731-43c4-87db-924c2b014eca",
+      "source": "575d83fa-09d2-4812-85e1-b2ad3b7ec771",
+      "target": "3d645306-c056-4eb0-b4c8-5c7dee14c1e5",
       "relationship_type": "USES"
     },
     {
-      "source": "3092cd08-8bc2-457b-b1b8-c0da162b6875",
-      "target": "d364a82d-d2df-44ec-92c7-05a713d2aee2",
+      "source": "f56cb776-1861-4db8-b798-e1351ec2813d",
+      "target": "9b092f54-3566-4d18-92e2-09368a00824c",
       "relationship_type": "USES"
     },
     {
-      "source": "3092cd08-8bc2-457b-b1b8-c0da162b6875",
-      "target": "8e14f455-90ac-4681-a5d5-42f2d53de1a9",
+      "source": "f56cb776-1861-4db8-b798-e1351ec2813d",
+      "target": "af564e32-ad0e-4935-bd34-d3796f72d7f2",
       "relationship_type": "USES"
     },
     {
-      "source": "3092cd08-8bc2-457b-b1b8-c0da162b6875",
-      "target": "9e4d8249-9381-4677-b2b3-3fea00509f97",
+      "source": "f56cb776-1861-4db8-b798-e1351ec2813d",
+      "target": "35869916-9dc3-45ce-a6c4-8c955fcf5931",
       "relationship_type": "USES"
     },
     {
-      "source": "3092cd08-8bc2-457b-b1b8-c0da162b6875",
-      "target": "43ea22c1-d58d-46da-a3c0-322208849a9e",
+      "source": "f56cb776-1861-4db8-b798-e1351ec2813d",
+      "target": "7e158dde-9474-4933-b97f-38e9f2d3de2e",
       "relationship_type": "USES"
     },
     {
-      "source": "3092cd08-8bc2-457b-b1b8-c0da162b6875",
-      "target": "2dc0677a-1731-43c4-87db-924c2b014eca",
+      "source": "f56cb776-1861-4db8-b798-e1351ec2813d",
+      "target": "3d645306-c056-4eb0-b4c8-5c7dee14c1e5",
       "relationship_type": "USES"
     },
     {
-      "source": "a47ad8cc-bff7-4a42-b78b-d4edd147175e",
-      "target": "aab30ffd-78b4-4f4a-a4e6-39822dcaa0cf",
+      "source": "ba8bff23-a65e-458a-952b-fc857603bca4",
+      "target": "1ad82e2d-2931-4cb2-b28f-0533c5d09a03",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "a47ad8cc-bff7-4a42-b78b-d4edd147175e",
-      "target": "40599da4-92d7-41fe-a97b-2c59a9025640",
+      "source": "ba8bff23-a65e-458a-952b-fc857603bca4",
+      "target": "55e870f5-47a8-4863-959a-610be21c0787",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "a47ad8cc-bff7-4a42-b78b-d4edd147175e",
-      "target": "a8b597cf-0e42-4718-bb5b-08d17cdc43ec",
+      "source": "ba8bff23-a65e-458a-952b-fc857603bca4",
+      "target": "6bcb6b57-f0cb-4019-9870-8b0f867b67ec",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "7e8125cf-b0a4-4132-b489-2eafde2c18b2",
-      "target": "aab30ffd-78b4-4f4a-a4e6-39822dcaa0cf",
+      "source": "f85d9b41-a7ff-4ded-a567-67a73446f6e0",
+      "target": "1ad82e2d-2931-4cb2-b28f-0533c5d09a03",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "7e8125cf-b0a4-4132-b489-2eafde2c18b2",
-      "target": "40599da4-92d7-41fe-a97b-2c59a9025640",
+      "source": "f85d9b41-a7ff-4ded-a567-67a73446f6e0",
+      "target": "55e870f5-47a8-4863-959a-610be21c0787",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "7e8125cf-b0a4-4132-b489-2eafde2c18b2",
-      "target": "a8b597cf-0e42-4718-bb5b-08d17cdc43ec",
+      "source": "f85d9b41-a7ff-4ded-a567-67a73446f6e0",
+      "target": "6bcb6b57-f0cb-4019-9870-8b0f867b67ec",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "b2b2d879-74a9-4246-a22b-734cd8238f9d",
-      "target": "aab30ffd-78b4-4f4a-a4e6-39822dcaa0cf",
+      "source": "8abe6939-0a21-4fc4-ac21-5eb5fb9daca1",
+      "target": "1ad82e2d-2931-4cb2-b28f-0533c5d09a03",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "b2b2d879-74a9-4246-a22b-734cd8238f9d",
-      "target": "40599da4-92d7-41fe-a97b-2c59a9025640",
+      "source": "8abe6939-0a21-4fc4-ac21-5eb5fb9daca1",
+      "target": "55e870f5-47a8-4863-959a-610be21c0787",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "b2b2d879-74a9-4246-a22b-734cd8238f9d",
-      "target": "a8b597cf-0e42-4718-bb5b-08d17cdc43ec",
+      "source": "8abe6939-0a21-4fc4-ac21-5eb5fb9daca1",
+      "target": "6bcb6b57-f0cb-4019-9870-8b0f867b67ec",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "b09db82f-60c0-4dfb-ac84-32a101de3557",
-      "target": "aab30ffd-78b4-4f4a-a4e6-39822dcaa0cf",
+      "source": "2e32a781-da02-46ea-8f0e-ef2c5ddd549f",
+      "target": "1ad82e2d-2931-4cb2-b28f-0533c5d09a03",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "b09db82f-60c0-4dfb-ac84-32a101de3557",
-      "target": "40599da4-92d7-41fe-a97b-2c59a9025640",
+      "source": "2e32a781-da02-46ea-8f0e-ef2c5ddd549f",
+      "target": "55e870f5-47a8-4863-959a-610be21c0787",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "b09db82f-60c0-4dfb-ac84-32a101de3557",
-      "target": "a8b597cf-0e42-4718-bb5b-08d17cdc43ec",
+      "source": "2e32a781-da02-46ea-8f0e-ef2c5ddd549f",
+      "target": "6bcb6b57-f0cb-4019-9870-8b0f867b67ec",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "49611143-f852-4059-8e72-7f7f17dd7a26",
-      "target": "aab30ffd-78b4-4f4a-a4e6-39822dcaa0cf",
+      "source": "d76b63e9-66b4-4635-9fa5-94e5de6730f2",
+      "target": "1ad82e2d-2931-4cb2-b28f-0533c5d09a03",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "49611143-f852-4059-8e72-7f7f17dd7a26",
-      "target": "40599da4-92d7-41fe-a97b-2c59a9025640",
+      "source": "d76b63e9-66b4-4635-9fa5-94e5de6730f2",
+      "target": "55e870f5-47a8-4863-959a-610be21c0787",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "49611143-f852-4059-8e72-7f7f17dd7a26",
-      "target": "a8b597cf-0e42-4718-bb5b-08d17cdc43ec",
+      "source": "d76b63e9-66b4-4635-9fa5-94e5de6730f2",
+      "target": "6bcb6b57-f0cb-4019-9870-8b0f867b67ec",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "5dc0cfd3-f5cc-4337-978e-bb1063072e34",
-      "target": "aab30ffd-78b4-4f4a-a4e6-39822dcaa0cf",
+      "source": "6cbc9e0e-d96d-4b42-9bd5-98b499c697ca",
+      "target": "1ad82e2d-2931-4cb2-b28f-0533c5d09a03",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "5dc0cfd3-f5cc-4337-978e-bb1063072e34",
-      "target": "40599da4-92d7-41fe-a97b-2c59a9025640",
+      "source": "6cbc9e0e-d96d-4b42-9bd5-98b499c697ca",
+      "target": "55e870f5-47a8-4863-959a-610be21c0787",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "5dc0cfd3-f5cc-4337-978e-bb1063072e34",
-      "target": "a8b597cf-0e42-4718-bb5b-08d17cdc43ec",
+      "source": "6cbc9e0e-d96d-4b42-9bd5-98b499c697ca",
+      "target": "6bcb6b57-f0cb-4019-9870-8b0f867b67ec",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "1e958876-a11a-42e5-93b5-8ba95a667137",
-      "target": "aab30ffd-78b4-4f4a-a4e6-39822dcaa0cf",
+      "source": "1cf8e7a7-80a2-4724-8ff7-1314d6958eaa",
+      "target": "1ad82e2d-2931-4cb2-b28f-0533c5d09a03",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "1e958876-a11a-42e5-93b5-8ba95a667137",
-      "target": "40599da4-92d7-41fe-a97b-2c59a9025640",
+      "source": "1cf8e7a7-80a2-4724-8ff7-1314d6958eaa",
+      "target": "55e870f5-47a8-4863-959a-610be21c0787",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "1e958876-a11a-42e5-93b5-8ba95a667137",
-      "target": "a8b597cf-0e42-4718-bb5b-08d17cdc43ec",
+      "source": "1cf8e7a7-80a2-4724-8ff7-1314d6958eaa",
+      "target": "6bcb6b57-f0cb-4019-9870-8b0f867b67ec",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "2c020699-ea26-4ac8-8640-b7e317460ce9",
-      "target": "aab30ffd-78b4-4f4a-a4e6-39822dcaa0cf",
+      "source": "b51d7ec7-da19-4dd3-99ff-d7934ae521de",
+      "target": "1ad82e2d-2931-4cb2-b28f-0533c5d09a03",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "2c020699-ea26-4ac8-8640-b7e317460ce9",
-      "target": "40599da4-92d7-41fe-a97b-2c59a9025640",
+      "source": "b51d7ec7-da19-4dd3-99ff-d7934ae521de",
+      "target": "55e870f5-47a8-4863-959a-610be21c0787",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "2c020699-ea26-4ac8-8640-b7e317460ce9",
-      "target": "a8b597cf-0e42-4718-bb5b-08d17cdc43ec",
+      "source": "b51d7ec7-da19-4dd3-99ff-d7934ae521de",
+      "target": "6bcb6b57-f0cb-4019-9870-8b0f867b67ec",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "8761e7a0-78d3-4e7a-9e8b-2a75c03eb155",
-      "target": "dd43fb0c-c85d-4de0-8c39-9d841d7b9698",
+      "source": "d833b1e6-4a1f-4c7e-837e-90eaed10b94c",
+      "target": "4818efec-cc15-4d41-b427-9d27e1634c50",
       "relationship_type": "PROTECTS"
     },
     {
-      "source": "8761e7a0-78d3-4e7a-9e8b-2a75c03eb155",
-      "target": "9afebc56-f85a-407c-bd41-1b589af711f2",
+      "source": "d833b1e6-4a1f-4c7e-837e-90eaed10b94c",
+      "target": "d6cfc578-f2ad-4235-a231-fe9df30e323a",
       "relationship_type": "PROTECTS"
     },
     {
-      "source": "8761e7a0-78d3-4e7a-9e8b-2a75c03eb155",
-      "target": "a7dc5935-3afb-471d-abb3-77e194f30f9c",
+      "source": "d833b1e6-4a1f-4c7e-837e-90eaed10b94c",
+      "target": "46b167b6-5776-472a-a7a7-0660320b33a6",
       "relationship_type": "PROTECTS"
     },
     {
-      "source": "8761e7a0-78d3-4e7a-9e8b-2a75c03eb155",
-      "target": "db9a6b46-d17a-4715-b298-44d7fbf273d4",
+      "source": "d833b1e6-4a1f-4c7e-837e-90eaed10b94c",
+      "target": "4765b063-5670-463b-b0a8-44a1272aadac",
       "relationship_type": "PROTECTS"
     },
     {
-      "source": "8761e7a0-78d3-4e7a-9e8b-2a75c03eb155",
-      "target": "25988bdb-a1e9-48f2-9c19-7c798aee9ecb",
+      "source": "d833b1e6-4a1f-4c7e-837e-90eaed10b94c",
+      "target": "a5f3d75b-8c81-4a40-82bd-3924ac73b024",
       "relationship_type": "PROTECTS"
     },
     {
-      "source": "8761e7a0-78d3-4e7a-9e8b-2a75c03eb155",
-      "target": "13737a11-88eb-429f-85ab-d389a224cd54",
+      "source": "d833b1e6-4a1f-4c7e-837e-90eaed10b94c",
+      "target": "35ddf235-83cb-4c5b-9b8c-cfdba0dbdffc",
       "relationship_type": "PROTECTS"
     },
     {
-      "source": "8761e7a0-78d3-4e7a-9e8b-2a75c03eb155",
-      "target": "4975b801-05ce-4f08-b76a-8cd286dcf4dc",
+      "source": "d833b1e6-4a1f-4c7e-837e-90eaed10b94c",
+      "target": "7de2c1e4-c679-4c4a-955b-46fabc342873",
       "relationship_type": "PROTECTS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "8e14f455-90ac-4681-a5d5-42f2d53de1a9",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "af564e32-ad0e-4935-bd34-d3796f72d7f2",
       "relationship_type": "USES"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "0aa94c6a-7e08-446c-9fce-aedd5e46f2d4",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "8bfcbc8e-ef20-4990-a9a7-d048d07ae2ea",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "d229f3da-1fda-4806-a1f6-b2fa4ab10293",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "9a1538cb-091e-484f-bd55-577d45eab9fe",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "5ce4b16b-6d07-48a1-a889-a7bd5ab2d3aa",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "36043759-17c5-4630-81bc-a2b27b5b2974",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "51e4c43f-3d4a-454d-a0cf-dc4cbec44d14",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "c3b7f1c9-220e-4ff7-8dc0-0aa440ecfd9a",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "df9ea601-a561-4714-9f65-8f1f3a2ade3b",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "1f000396-e2b6-4a81-91c4-1f9d2435e104",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "329b558c-97be-4046-bf1d-36b65c134886",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "083cad4f-3225-41be-862c-20979021d74e",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "da0184c8-0d53-4cd6-a497-e8b8debc2ce0",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "d5baa549-7c03-484d-af9a-3bff073ebc83",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "dacaffd5-8add-410d-b21f-b0cd744d4958",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "f9bcb7d5-95ff-400c-91cc-b8d8e8d9e473",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "0228b8a0-7d7c-4d10-a53d-5bae83da4970",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "e2b2ab6e-ccfa-4439-84e0-776f06687d3f",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "21a71403-a376-486a-9508-84e488857f83",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "444f95d7-9be8-4336-a6a0-78dfb561c16b",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "9f380f6a-3e5f-48e6-84e0-faf65094c20a",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "a086d007-9592-49c9-bbef-f0797f449000",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "22eff3c0-4f0a-4e80-848d-4d7b08a391ce",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "cecd0a51-b75c-4c39-b957-efc466adc03f",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "8beb7995-3d92-47f3-8a00-259306c72df0",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "3ad6ca68-ad9c-437d-a490-4ba63a01b271",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "1a4aebfa-2b4f-4343-b17f-e5ef1e532d7a",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "7987b0f4-0a74-48b3-897c-8f4e6c83c4d1",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "02faabae-2878-40e8-afef-d5392f88541c",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "2f1d6e41-47d6-4be5-a8b7-8c4e9dda73c8",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "2db57455-4c30-48bb-87fb-71a155c1d964",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "2719b37d-a4c7-4937-84c0-1cf3fe07e705",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "462ac30d-8af9-485e-a55f-5849c4f452e1",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "c724494f-4fa1-4f76-b5a6-fbf87cf40f54",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "239de536-373e-4b12-9063-1dea494d23f2",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "47d3d677-9375-40e0-9595-db55124e929c",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "8f3bd94e-0e60-4980-b2ae-494cb771619f",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "81cce889-f4b3-4505-be33-34407fd29a56",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "f79ae2d6-d9de-4279-b020-c51007548dd0",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "fd3ec99d-de01-48f6-a6ad-475a1cc0c6fa",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "cdace622-dcd2-45ce-a785-c2c822ab1e65",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "bd272cc1-4333-4035-9763-58939743b6d1",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "ab4180b0-1677-46e6-8964-d052e0f79ce3",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "2291c025-4c87-455d-887e-f7d488a302ff",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "b6bb395f-b21a-4976-9366-e3fee29ef0e9",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "3f410f47-8033-4389-889c-ecd9b9d32b54",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "34b54954-b687-4ea6-8035-65232ca21523",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "7e8d75d3-0592-4ea9-aff8-7a942256343d",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "afa92366-4f2f-4fdd-ab35-29ce46723f44",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "5cf9dd00-60bc-42a7-9c84-e5500273f425",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "a806b7b3-3099-4b7b-a37f-57bab77f6fa9",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "93f4b0a0-b9f2-4975-9dba-6c9023075730",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "9ebd599c-cec8-4237-8cc6-7ec69b89b3d2",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "612f79a0-8aca-4d15-9445-02af9fd57859",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "f7ee283b-872e-44d5-9038-22041a01978c",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "1280064f-8a60-4706-a7b1-5ab9567a11fb",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "d02dad78-9b28-4f8a-bee8-2fdf404a829b",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "29f31bce-3233-4978-9ced-7d54927cf9f6",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "90dd0152-c315-4fcb-9f88-e738fadbb816",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "e3007e3f-9bc0-4674-99f5-235ff7cee12f",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "79a0e4a3-2c94-451b-a916-d194064eb2f5",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "a673b4b4-d038-4663-a66f-db9ef8732ea0",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "56e6504d-c880-4644-bbe5-ccf23efc983a",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "1e41df79-3eb4-46c4-9682-5351864c52d6",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "5b928491-da99-48e7-9951-5a450045aed6",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "27ba5fe9-fe27-49f7-ac4e-0719a1633bb1",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "358151e6-3278-4c0b-bdb1-5e22bb76f28d",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "93dd916a-caa1-4c37-b011-64e657e72448",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "d02d7797-7a9c-4095-803d-f65dc43fa7a6",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "c73944d0-4858-438f-87f4-bc1202e5467d",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "385def54-bd4e-4194-81ed-f7239f140eb6",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "1a6b7f23-7a15-475a-aa15-1faf5f5cd957",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "9a027b1b-3be0-4059-9ed7-2dfb70fd24a1",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "9235aaee-87ab-4fb7-9366-be2283323cb8",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "06092bca-124d-4f54-9630-92d2f9ebec87",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "08f107aa-631e-4227-aa77-c0e635db6c9e",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "e7e45168-d00e-4ad4-a012-88c6d47bfc15",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "69e5f24f-b74a-4eb1-8475-df86bab3b008",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "187184ba-a9ec-4751-842b-6c1e8e374c96",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "f3077ef4-7065-4456-9f67-54368b2a867b",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "120b7a48-9571-48f2-90a9-74f468738600",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "2dc74c43-f6c4-4b0d-82be-b55e592febe2",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "ec202749-3c18-4c7f-a6f4-6473dab17f64",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "7fd52640-ff78-470f-826a-1083a69ce4ea",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "61e5afec-561d-4ad1-ae05-65a8ee126351",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "c319a695-70db-4f5c-96a5-3086b7cbb93f",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "49842e29-b8ed-418a-b063-e2340e63944c",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "6f72119d-fed8-41ba-a05b-879a2bdecf1e",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "62b3aeda-8e0d-4dc7-b981-732a675429b0",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "6580c2e9-6345-442f-adc9-e81330ea7ef3",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "82569e5b-3ecf-4a88-bc1f-e63977cb5b21",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "af952e5a-41b2-422c-b3e7-700efec85dc0",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "5262a758-8f5e-4345-923e-762baf7b0b70",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "eed0ae0b-b103-439b-930a-c637fd8fc340",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "8c694480-ac78-4eaf-bde0-5d32d5db03bd",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "a3db7e82-8c16-4583-830f-7bea57509eb4",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "a7abde6c-6c7d-43cd-8cda-212f233c6f54",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "bb5cffa6-277e-4dcd-9f47-32152e21cfc0",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "3ecda24d-32e1-46b3-9594-10b127f35cbd",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "afdd1060-d6b0-409f-91cd-69815bee4e50",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "6d296823-8ebc-4c50-a22b-46a7abd54a8a",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "6fc0d428-2eda-45f4-a256-2764fadca2d2",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "d94e669e-cf73-403d-b2fb-cf375b79dc8d",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "dd1ac42d-77e8-4cd2-8a70-a6fdb5e56957",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "f3293ddb-30b9-4c9e-a128-ee3051305090",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "49049bb3-353d-4260-82fb-a1cb4842b521",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "a6f9f82f-c7ed-4ef0-a264-8b1bf06fb584",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "d35cdab2-a74b-44df-8b70-2e44f1584d53",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "398f337d-2df6-4d75-8a63-0040a873e460",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "a2366af0-745e-4217-8322-61ab657c31d7",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "6c13305b-d301-4651-86ca-db0a2636cf6a",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "ad516014-cf48-46ae-801e-a3b2ff13d6ec",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "e1d86514-cbf1-4271-bea1-ebf2ed3c2757",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "9e56e968-7c6a-447e-91c0-c7955cfba2c8",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "0f9d259f-195f-401f-b7e7-836ca154294c",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "9df892f9-c633-462b-9b2f-1121fd9c8edd",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "930b92b2-09e0-4486-a4cf-beaede64843f",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "05b18ae8-8e07-4b96-992c-88ff7a1e763e",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "bcb6605c-07dd-4289-904b-b3b37dcd1378",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "bce30486-93dd-4ba4-9853-e56ac92e04b0",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "43de5b36-1ab7-448d-81ef-e4f94e63312a",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "1b362f2b-4e30-42d5-abf7-ff1873390168",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "352add98-70a0-4511-8f93-8fb625532ab7",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "790db914-bfcc-414c-9e0c-315b2e00db8e",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "f9cc38f3-db47-47a4-9be2-3cb09a033bb7",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "a5f47156-6f6b-4d30-bd96-bd7d79972475",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "3b03df85-d448-4670-9ed1-7202fee6d1b7",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "b75126bb-7750-4922-8daf-78b9839d6147",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "b8dc296e-8f4d-4688-b8dd-3bc4d99273a3",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "eeaed556-7701-4ea3-a0af-ccfe4f2db15e",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "22afd0d4-e79d-4f98-8ef7-79ca83650da5",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "c0153e5d-0cf3-4655-aac1-5f190f5a8061",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "703c3b45-760f-417b-bab9-0fe7e1ed1d21",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "fb9ec255-b197-425c-a649-f71ee152b17b",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "964c79ed-b078-4aad-aee3-b7d9c1553d5b",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "cd06ad96-30f0-4275-a98c-eb2b634e1e4b",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "0c72cb43-c63e-42a4-b6b1-1216c849a5c7",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "69ef6039-7559-4380-b8cc-e2714644df48",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "428b8912-ac16-4c51-8b6c-de33822a5d19",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "8a689da1-57b2-4344-bdbb-447358af79e7",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "0198a0d8-3a18-46e0-833a-b0b317264b05",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "e471d573-711a-4538-9e74-1c2b9d55ca5d",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "1ccd7861-fcae-49aa-8eed-f2608b3fa42c",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "ef0f0e80-4aac-4e80-9b0b-7188da9b3f3b",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "07b9ba2a-9213-4e64-ae20-e182d9063507",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "e16d94c9-be5c-4d67-a80f-8349d3727d28",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "5f834c07-3076-47d3-9728-d6946ff53476",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "0f8537ce-4193-40bd-b6bf-ffcc92b4a514",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "8caec376-3694-4246-917e-53a46243ad90",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "5bd04be4-cee6-470f-9825-167b325df819",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "c83b7697-16ae-4418-9916-d71e632e06e7",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "254e943e-1e03-466f-a8f0-95410b2c2779",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "b678ff78-d494-40e7-a94b-ec25a54a8968",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "68bd90da-21f5-4c6e-ab0c-ba4d2c9cf2be",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b1834073-b1cb-4944-b58c-cc17e015fbee",
-      "target": "1ec6f28c-24b1-4269-8a0d-88848b40688a",
+      "source": "0126764b-db73-4816-978e-2c5408ad27eb",
+      "target": "838dfc51-9b17-4b7f-bbd8-c5e04429fe3f",
       "relationship_type": "CALLS"
     },
     {
-      "source": "0aa94c6a-7e08-446c-9fce-aedd5e46f2d4",
-      "target": "4799f4c0-46f3-41fd-9abb-1cb70eabeb42",
+      "source": "8bfcbc8e-ef20-4990-a9a7-d048d07ae2ea",
+      "target": "b71ad784-b5fc-4b81-9397-0cfa176c5942",
       "relationship_type": "ACCESSES",
       "access_type": "readwrite"
     }
@@ -8698,7 +8463,7 @@
     }
   ],
   "summary": {
-    "use_case": "This application serves as a customer support assistant utilizing 78 tool integrations to manage financial workflows. It supports text-only input and output, with no support for voice, image, or video modalities. The system includes the 'fintech-accounts' MCP server, which exposes 12 tools for loan management, asset purchasing, and data exporting via SSE transport without authentication.",
+    "use_case": "This application provides customer support assistance through an agentic workflow integrated with 78 tools. It supports text-only modality, excluding voice, image, and video capabilities. The system includes the 'fintech-accounts' MCP server, which exposes 12 tools for financial operations\u2014such as loan management and bulk data exports\u2014via SSE transport with no authentication required.",
     "frameworks": [
       "mcp-server",
       "langchain",
@@ -8772,21 +8537,9 @@
       "http://mcp-compliance"
     ],
     "iac_accounts": [
-      "b2665e12-5113-41b1-a78c-b1e1366851d6",
-      "22f67094-765a-4b82-aae5-6c5742b742ba",
-      "11c5cff7-1608-44a4-9263-d9633b16630b",
-      "96e577cf-b4b8-46f3-b2d6-d0eb0bd35920",
-      "deaa50bd-1b38-465c-8a83-e3c60f3d0fbd",
-      "8e939016-4c4c-4eff-a592-fb127b5ffdbe",
-      "8ff9496d-76a8-44a1-88a7-97edafc965f9",
-      "34266525-5106-412c-b239-8de623294a5b",
-      "c081fcae-6e51-493a-9047-07ed2ed3ce02",
-      "d9e78971-811a-4767-9e47-91fc54c124cd",
-      "b522cfda-cbb6-433d-83c2-5517fa53746b",
-      "4f51ed23-9ec8-40bf-8927-7946204a3be9",
-      "9c68cae2-78f4-46bd-bc2e-a3be812cf69c",
-      "b623d757-bd2f-409a-a532-4fb4ca5e9351",
-      "6a082afe-81e6-4c64-b152-ba8a16a5063a",
+      "9664fb6b-c173-43ce-a511-7dbe137d51bf",
+      "6ae8d942-9c81-49bc-93c5-ee59f3dd5ee3",
+      "0fdde9c3-ee46-4760-bf87-27266da31d9b",
       "os.getenv",
       "ACCT-attacker",
       "src",
@@ -8807,7 +8560,7 @@
       "DEPLOYMENT": 8,
       "FRAMEWORK": 5,
       "MODEL": 5,
-      "PRIVILEGE": 4,
+      "PRIVILEGE": 3,
       "PROMPT": 2,
       "TOOL": 78,
       "AGENT": 1
@@ -8846,6 +8599,6 @@
       "0.0.0.0:8080"
     ]
   },
-  "relationship_graph_md": "## Component Relationship Graph\n\nThis system architecture reflects a highly modular framework for AI-driven financial operations, characterized by the following observations:\n\n*   **Model Redundancy:** The application utilizes a diverse set of LLMs (Gemini 3.1, Claude Haiku variants, Command R+, and GPT-4o-mini) across multiple framework layers (`langchain`, `llm_clients`, `openai_agents`, and `fintech-accounts`). This suggests a high degree of interchangeability in model selection.\n*   **Authentication Perimeter:** Access to the system\u2019s API endpoints (including chat, tool discovery, and administrative functions) is gated by a `generic` authentication layer, protecting the primary entry points.\n*   **Disconnected Tooling:** Despite the presence of a vast library of sensitive tools\u2014ranging from financial transactions (`transfer_funds`, `buy_crypto`) to administrative overrides (`override_compliance`, `grant_admin_role`, `delete_user`)\u2014none of these tools are currently linked to the orchestration frameworks or models in the provided graph.\n*   **Data Store Isolation:** Both `redis` and `sqlite` datastores are present but currently show no active connections to the application or agent frameworks.\n*   **Security Risk Pattern:** The system exhibits a significant \"orphaned tool\" risk. While the tools are defined, they lack explicit integration or guardrail enforcement. If these tools are dynamically loaded or invoked outside the current graph, they represent a high-risk attack surface with no visible mediation or access control logic.\n\n```mermaid\nflowchart LR\n    generic_a7dc59([\"\ud83c\udf10 generic\"])\n    list_agents_25988b([\"\ud83c\udf10 list_agents\"])\n    health_db9a6b([\"\ud83c\udf10 health\"])\n    list_tools_13737a([\"\ud83c\udf10 list_tools\"])\n    chat_9afebc([\"\ud83c\udf10 chat\"])\n    login_4975b8([\"\ud83c\udf10 login\"])\n    0_0_0_0_8080__sse__dd43fb([\"\ud83c\udf10 0.0.0.0:8080 (sse)\"])\n    redis_4799f4[(\"\ud83d\uddc4 redis\")]\n    sqlite_a74a6b[(\"\ud83d\uddc4 sqlite\")]\n    app_abe375[/\"\u2699 app\"/]\n    framework_langchain_fabacd[/\"\u2699 framework:langchain\"/]\n    framework_llm_clients_1e820d[/\"\u2699 framework:llm_clients\"/]\n    fintech_accounts_6b105e[/\"\u2699 fintech-accounts\"/]\n    framework_openai_agents_3092cd[/\"\u2699 framework:openai_agents\"/]\n    claude_haiku_4_5_20251001_v1_0_8e14f4[(\"\ud83e\udde0 claude-haiku-4-5-20251001-v1-0\")]\n    claude_haiku_4_6_9e4d82[(\"\ud83e\udde0 claude-haiku-4-6\")]\n    command_r_plus_43ea22[(\"\ud83e\udde0 command-r-plus\")]\n    gemini_3_1_d364a8[(\"\ud83e\udde0 gemini-3.1\")]\n    gpt_4o_mini_2dc067[(\"\ud83e\udde0 gpt-4o-mini\")]\n    generic_72d756>\"\ud83d\udcac generic\"]\n    TRIAGE_SYSTEM_PROMPT_4cd362>\"\ud83d\udcac TRIAGE_SYSTEM_PROMPT\"]\n    apply_for_loan_0aa94c(\"\ud83d\udd27 apply_for_loan\")\n    approve_loan_d229f3(\"\ud83d\udd27 approve_loan\")\n    broadcast_all_users_5ce4b1(\"\ud83d\udd27 broadcast_all_users\")\n    bulk_export_51e4c4(\"\ud83d\udd27 bulk_export\")\n    bulk_export_all_customers_df9ea6(\"\ud83d\udd27 bulk_export_all_customers\")\n    buy_asset_329b55(\"\ud83d\udd27 buy_asset\")\n    buy_crypto_da0184(\"\ud83d\udd27 buy_crypto\")\n    call_internal_service_dacaff(\"\ud83d\udd27 call_internal_service\")\n    cancel_payment_0228b8(\"\ud83d\udd27 cancel_payment\")\n    cancel_task_21a714(\"\ud83d\udd27 cancel_task\")\n    check_sanctions_9f380f(\"\ud83d\udd27 check_sanctions\")\n    check_transaction_limits_22eff3(\"\ud83d\udd27 check_transaction_limits\")\n    convert_funds_8beb79(\"\ud83d\udd27 convert_funds\")\n    create_document_1a4aeb(\"\ud83d\udd27 create_document\")\n    delete_audit_entry_02faab(\"\ud83d\udd27 delete_audit_entry\")\n    delete_document_2db574(\"\ud83d\udd27 delete_document\")\n    delete_user_462ac3(\"\ud83d\udd27 delete_user\")\n    export_all_audit_logs_239de5(\"\ud83d\udd27 export_all_audit_logs\")\n    export_customer_data_8f3bd9(\"\ud83d\udd27 export_customer_data\")\n    fetch_external_feed_f79ae2(\"\ud83d\udd27 fetch_external_feed\")\n    fetch_market_report_cdace6(\"\ud83d\udd27 fetch_market_report\")\n    file_suspicious_activity_report_ab4180(\"\ud83d\udd27 file_suspicious_activity_report\")\n    flag_transaction_b6bb39(\"\ud83d\udd27 flag_transaction\")\n    freeze_card_34b549(\"\ud83d\udd27 freeze_card\")\n    generate_report_afa923(\"\ud83d\udd27 generate_report\")\n    get_account_a806b7(\"\ud83d\udd27 get_account\")\n    get_admin_actions_9ebd59(\"\ud83d\udd27 get_admin_actions\")\n    get_all_kyc_statuses_f7ee28(\"\ud83d\udd27 get_all_kyc_statuses\")\n    get_audit_log_d02dad(\"\ud83d\udd27 get_audit_log\")\n    get_available_assets_90dd01(\"\ud83d\udd27 get_available_assets\")\n    get_card_details_79a0e4(\"\ud83d\udd27 get_card_details\")\n    get_card_transactions_56e650(\"\ud83d\udd27 get_card_transactions\")\n    get_crypto_price_5b9284(\"\ud83d\udd27 get_crypto_price\")\n    get_customer_summary_358151(\"\ud83d\udd27 get_customer_summary\")\n    get_document_d02d77(\"\ud83d\udd27 get_document\")\n    get_exchange_rate_385def(\"\ud83d\udd27 get_exchange_rate\")\n    get_flagged_transactions_9a027b(\"\ud83d\udd27 get_flagged_transactions\")\n    get_fraud_score_06092b(\"\ud83d\udd27 get_fraud_score\")\n    get_high_risk_accounts_e7e451(\"\ud83d\udd27 get_high_risk_accounts\")\n    get_kyc_status_187184(\"\ud83d\udd27 get_kyc_status\")\n    get_loan_details_120b7a(\"\ud83d\udd27 get_loan_details\")\n    get_market_summary_ec2027(\"\ud83d\udd27 get_market_summary\")\n    get_notification_history_61e5af(\"\ud83d\udd27 get_notification_history\")\n    get_payment_status_49842e(\"\ud83d\udd27 get_payment_status\")\n    get_pending_compliance_items_62b3ae(\"\ud83d\udd27 get_pending_compliance_items\")\n    get_portfolio_82569e(\"\ud83d\udd27 get_portfolio\")\n    get_price_5262a7(\"\ud83d\udd27 get_price\")\n    get_regulatory_report_8c6944(\"\ud83d\udd27 get_regulatory_report\")\n    get_regulatory_requirements_a7abde(\"\ud83d\udd27 get_regulatory_requirements\")\n    get_service_health_3ecda2(\"\ud83d\udd27 get_service_health\")\n    get_wallet_address_6d2968(\"\ud83d\udd27 get_wallet_address\")\n    grant_admin_role_d94e66(\"\ud83d\udd27 grant_admin_role\")\n    initiate_payment_f3293d(\"\ud83d\udd27 initiate_payment\")\n    invoke_admin_api_a6f9f8(\"\ud83d\udd27 invoke_admin_api\")\n    list_all_accounts_398f33(\"\ud83d\udd27 list_all_accounts\")\n    list_all_users_6c1330(\"\ud83d\udd27 list_all_users\")\n    list_customer_documents_e1d865(\"\ud83d\udd27 list_customer_documents\")\n    list_scheduled_tasks_0f9d25(\"\ud83d\udd27 list_scheduled_tasks\")\n    list_supported_currencies_930b92(\"\ud83d\udd27 list_supported_currencies\")\n    override_compliance_bcb660(\"\ud83d\udd27 override_compliance\")\n    override_kyc_43de5b(\"\ud83d\udd27 override_kyc\")\n    reject_loan_352add(\"\ud83d\udd27 reject_loan\")\n    reset_user_password_f9cc38(\"\ud83d\udd27 reset_user_password\")\n    run_task_immediately_3b03df(\"\ud83d\udd27 run_task_immediately\")\n    schedule_task_b8dc29(\"\ud83d\udd27 schedule_task\")\n    sell_asset_22afd0(\"\ud83d\udd27 sell_asset\")\n    send_alert_703c3b(\"\ud83d\udd27 send_alert\")\n    send_otp_964c79(\"\ud83d\udd27 send_otp\")\n    stream_all_transactions_0c72cb(\"\ud83d\udd27 stream_all_transactions\")\n    submit_kyc_document_428b89(\"\ud83d\udd27 submit_kyc_document\")\n    transfer_crypto_0198a0(\"\ud83d\udd27 transfer_crypto\")\n    transfer_funds_1ccd78(\"\ud83d\udd27 transfer_funds\")\n    unfreeze_card_07b9ba(\"\ud83d\udd27 unfreeze_card\")\n    update_account_status_5f834c(\"\ud83d\udd27 update_account_status\")\n    view_user_sessions_8caec3(\"\ud83d\udd27 view_user_sessions\")\n    waive_aml_check_c83b76(\"\ud83d\udd27 waive_aml_check\")\n    whitelist_account_b678ff(\"\ud83d\udd27 whitelist_account\")\n    generic_1ec6f2(\"\ud83d\udd27 generic\")\n\n    app_abe375 -->|uses| gemini_3_1_d364a8\n    app_abe375 -->|uses| claude_haiku_4_5_20251001_v1_0_8e14f4\n    app_abe375 -->|uses| claude_haiku_4_6_9e4d82\n    app_abe375 -->|uses| command_r_plus_43ea22\n    app_abe375 -->|uses| gpt_4o_mini_2dc067\n    framework_langchain_fabacd -->|uses| gemini_3_1_d364a8\n    framework_langchain_fabacd -->|uses| claude_haiku_4_5_20251001_v1_0_8e14f4\n    framework_langchain_fabacd -->|uses| claude_haiku_4_6_9e4d82\n    framework_langchain_fabacd -->|uses| command_r_plus_43ea22\n    framework_langchain_fabacd -->|uses| gpt_4o_mini_2dc067\n    framework_llm_clients_1e820d -->|uses| gemini_3_1_d364a8\n    framework_llm_clients_1e820d -->|uses| claude_haiku_4_5_20251001_v1_0_8e14f4\n    framework_llm_clients_1e820d -->|uses| claude_haiku_4_6_9e4d82\n    framework_llm_clients_1e820d -->|uses| command_r_plus_43ea22\n    framework_llm_clients_1e820d -->|uses| gpt_4o_mini_2dc067\n    fintech_accounts_6b105e -->|uses| gemini_3_1_d364a8\n    fintech_accounts_6b105e -->|uses| claude_haiku_4_5_20251001_v1_0_8e14f4\n    fintech_accounts_6b105e -->|uses| claude_haiku_4_6_9e4d82\n    fintech_accounts_6b105e -->|uses| command_r_plus_43ea22\n    fintech_accounts_6b105e -->|uses| gpt_4o_mini_2dc067\n    framework_openai_agents_3092cd -->|uses| gemini_3_1_d364a8\n    framework_openai_agents_3092cd -->|uses| claude_haiku_4_5_20251001_v1_0_8e14f4\n    framework_openai_agents_3092cd -->|uses| claude_haiku_4_6_9e4d82\n    framework_openai_agents_3092cd -->|uses| command_r_plus_43ea22\n    framework_openai_agents_3092cd -->|uses| gpt_4o_mini_2dc067\n\n    classDef agent    fill:#4A90D9,stroke:#2C6FAC,color:#fff\n    classDef tool     fill:#7ED321,stroke:#5A9A18,color:#fff\n    classDef model    fill:#9B59B6,stroke:#7D3C98,color:#fff\n    classDef prompt   fill:#F39C12,stroke:#D68910,color:#fff\n    classDef guard    fill:#E74C3C,stroke:#C0392B,color:#fff\n    classDef store    fill:#1ABC9C,stroke:#17A589,color:#fff\n    classDef fw       fill:#95A5A6,stroke:#717D7E,color:#fff\n    classDef endpoint fill:#3498DB,stroke:#2471A3,color:#fff\n    class apply_for_loan_0aa94c,approve_loan_d229f3,broadcast_all_users_5ce4b1,bulk_export_51e4c4,bulk_export_all_customers_df9ea6,buy_asset_329b55,buy_crypto_da0184,call_internal_service_dacaff,cancel_payment_0228b8,cancel_task_21a714,check_sanctions_9f380f,check_transaction_limits_22eff3,convert_funds_8beb79,create_document_1a4aeb,delete_audit_entry_02faab,delete_document_2db574,delete_user_462ac3,export_all_audit_logs_239de5,export_customer_data_8f3bd9,fetch_external_feed_f79ae2,fetch_market_report_cdace6,file_suspicious_activity_report_ab4180,flag_transaction_b6bb39,freeze_card_34b549,generate_report_afa923,get_account_a806b7,get_admin_actions_9ebd59,get_all_kyc_statuses_f7ee28,get_audit_log_d02dad,get_available_assets_90dd01,get_card_details_79a0e4,get_card_transactions_56e650,get_crypto_price_5b9284,get_customer_summary_358151,get_document_d02d77,get_exchange_rate_385def,get_flagged_transactions_9a027b,get_fraud_score_06092b,get_high_risk_accounts_e7e451,get_kyc_status_187184,get_loan_details_120b7a,get_market_summary_ec2027,get_notification_history_61e5af,get_payment_status_49842e,get_pending_compliance_items_62b3ae,get_portfolio_82569e,get_price_5262a7,get_regulatory_report_8c6944,get_regulatory_requirements_a7abde,get_service_health_3ecda2,get_wallet_address_6d2968,grant_admin_role_d94e66,initiate_payment_f3293d,invoke_admin_api_a6f9f8,list_all_accounts_398f33,list_all_users_6c1330,list_customer_documents_e1d865,list_scheduled_tasks_0f9d25,list_supported_currencies_930b92,override_compliance_bcb660,override_kyc_43de5b,reject_loan_352add,reset_user_password_f9cc38,run_task_immediately_3b03df,schedule_task_b8dc29,sell_asset_22afd0,send_alert_703c3b,send_otp_964c79,stream_all_transactions_0c72cb,submit_kyc_document_428b89,transfer_crypto_0198a0,transfer_funds_1ccd78,unfreeze_card_07b9ba,update_account_status_5f834c,view_user_sessions_8caec3,waive_aml_check_c83b76,whitelist_account_b678ff,generic_1ec6f2 tool\n    class claude_haiku_4_5_20251001_v1_0_8e14f4,claude_haiku_4_6_9e4d82,command_r_plus_43ea22,gemini_3_1_d364a8,gpt_4o_mini_2dc067 model\n    class generic_72d756,TRIAGE_SYSTEM_PROMPT_4cd362 prompt\n    class redis_4799f4,sqlite_a74a6b store\n    class app_abe375,framework_langchain_fabacd,framework_llm_clients_1e820d,fintech_accounts_6b105e,framework_openai_agents_3092cd fw\n    class generic_a7dc59,list_agents_25988b,health_db9a6b,list_tools_13737a,chat_9afebc,login_4975b8,0_0_0_0_8080__sse__dd43fb endpoint\n```",
-  "_enrichment_cache_key": "d2920e5f9fb521d4458ec3142ae92ec8b9bc74ddd25ff97ecc8921d9515a65f0"
+  "relationship_graph_md": "## Component Relationship Graph\n\nThis system architecture reflects a highly modular framework for AI-driven financial operations, characterized by the following observations:\n\n*   **Model Redundancy:** The application utilizes a diverse set of LLMs (Gemini 3.1, Claude Haiku variants, Command R+, and GPT-4o-mini) across multiple framework layers (`langchain`, `llm_clients`, `openai_agents`, and `fintech-accounts`). This suggests a high degree of interchangeability in model selection.\n*   **Authentication Perimeter:** Access to the system\u2019s API endpoints (including chat, tool discovery, and administrative functions) is gated by a `generic` authentication layer, protecting the primary entry points.\n*   **Disconnected Tooling:** Despite the presence of a vast library of sensitive tools\u2014ranging from financial transactions (`transfer_funds`, `buy_crypto`) to administrative overrides (`override_compliance`, `grant_admin_role`, `delete_user`)\u2014none of these tools are currently linked to the orchestration frameworks or models in the provided graph.\n*   **Data Store Isolation:** Both `redis` and `sqlite` datastores are present but currently show no active connections to the application or agent frameworks.\n*   **Security Risk Pattern:** The system exhibits a significant \"orphaned tool\" risk. While the tools are defined, they lack explicit integration or guardrail enforcement. If these tools are dynamically loaded or invoked outside the current graph, they represent a high-risk attack surface with no visible mediation or access control logic.\n\n```mermaid\nflowchart LR\n    generic_46b167([\"\ud83c\udf10 generic\"])\n    list_agents_a5f3d7([\"\ud83c\udf10 list_agents\"])\n    health_4765b0([\"\ud83c\udf10 health\"])\n    list_tools_35ddf2([\"\ud83c\udf10 list_tools\"])\n    chat_d6cfc5([\"\ud83c\udf10 chat\"])\n    login_7de2c1([\"\ud83c\udf10 login\"])\n    0_0_0_0_8080__sse__4818ef([\"\ud83c\udf10 0.0.0.0:8080 (sse)\"])\n    redis_b71ad7[(\"\ud83d\uddc4 redis\")]\n    sqlite_eb11bd[(\"\ud83d\uddc4 sqlite\")]\n    app_be3d3a[/\"\u2699 app\"/]\n    framework_langchain_de9b7a[/\"\u2699 framework:langchain\"/]\n    framework_llm_clients_a7ceb6[/\"\u2699 framework:llm_clients\"/]\n    fintech_accounts_575d83[/\"\u2699 fintech-accounts\"/]\n    framework_openai_agents_f56cb7[/\"\u2699 framework:openai_agents\"/]\n    claude_haiku_4_5_20251001_v1_0_af564e[(\"\ud83e\udde0 claude-haiku-4-5-20251001-v1-0\")]\n    claude_haiku_4_6_358699[(\"\ud83e\udde0 claude-haiku-4-6\")]\n    command_r_plus_7e158d[(\"\ud83e\udde0 command-r-plus\")]\n    gemini_3_1_9b092f[(\"\ud83e\udde0 gemini-3.1\")]\n    gpt_4o_mini_3d6453[(\"\ud83e\udde0 gpt-4o-mini\")]\n    generic_bd80f9>\"\ud83d\udcac generic\"]\n    TRIAGE_SYSTEM_PROMPT_7b348e>\"\ud83d\udcac TRIAGE_SYSTEM_PROMPT\"]\n    apply_for_loan_8bfcbc(\"\ud83d\udd27 apply_for_loan\")\n    approve_loan_9a1538(\"\ud83d\udd27 approve_loan\")\n    broadcast_all_users_360437(\"\ud83d\udd27 broadcast_all_users\")\n    bulk_export_c3b7f1(\"\ud83d\udd27 bulk_export\")\n    bulk_export_all_customers_1f0003(\"\ud83d\udd27 bulk_export_all_customers\")\n    buy_asset_083cad(\"\ud83d\udd27 buy_asset\")\n    buy_crypto_d5baa5(\"\ud83d\udd27 buy_crypto\")\n    call_internal_service_f9bcb7(\"\ud83d\udd27 call_internal_service\")\n    cancel_payment_e2b2ab(\"\ud83d\udd27 cancel_payment\")\n    cancel_task_444f95(\"\ud83d\udd27 cancel_task\")\n    check_sanctions_a086d0(\"\ud83d\udd27 check_sanctions\")\n    check_transaction_limits_cecd0a(\"\ud83d\udd27 check_transaction_limits\")\n    convert_funds_3ad6ca(\"\ud83d\udd27 convert_funds\")\n    create_document_7987b0(\"\ud83d\udd27 create_document\")\n    delete_audit_entry_2f1d6e(\"\ud83d\udd27 delete_audit_entry\")\n    delete_document_2719b3(\"\ud83d\udd27 delete_document\")\n    delete_user_c72449(\"\ud83d\udd27 delete_user\")\n    export_all_audit_logs_47d3d6(\"\ud83d\udd27 export_all_audit_logs\")\n    export_customer_data_81cce8(\"\ud83d\udd27 export_customer_data\")\n    fetch_external_feed_fd3ec9(\"\ud83d\udd27 fetch_external_feed\")\n    fetch_market_report_bd272c(\"\ud83d\udd27 fetch_market_report\")\n    file_suspicious_activity_report_2291c0(\"\ud83d\udd27 file_suspicious_activity_report\")\n    flag_transaction_3f410f(\"\ud83d\udd27 flag_transaction\")\n    freeze_card_7e8d75(\"\ud83d\udd27 freeze_card\")\n    generate_report_5cf9dd(\"\ud83d\udd27 generate_report\")\n    get_account_93f4b0(\"\ud83d\udd27 get_account\")\n    get_admin_actions_612f79(\"\ud83d\udd27 get_admin_actions\")\n    get_all_kyc_statuses_128006(\"\ud83d\udd27 get_all_kyc_statuses\")\n    get_audit_log_29f31b(\"\ud83d\udd27 get_audit_log\")\n    get_available_assets_e3007e(\"\ud83d\udd27 get_available_assets\")\n    get_card_details_a673b4(\"\ud83d\udd27 get_card_details\")\n    get_card_transactions_1e41df(\"\ud83d\udd27 get_card_transactions\")\n    get_crypto_price_27ba5f(\"\ud83d\udd27 get_crypto_price\")\n    get_customer_summary_93dd91(\"\ud83d\udd27 get_customer_summary\")\n    get_document_c73944(\"\ud83d\udd27 get_document\")\n    get_exchange_rate_1a6b7f(\"\ud83d\udd27 get_exchange_rate\")\n    get_flagged_transactions_9235aa(\"\ud83d\udd27 get_flagged_transactions\")\n    get_fraud_score_08f107(\"\ud83d\udd27 get_fraud_score\")\n    get_high_risk_accounts_69e5f2(\"\ud83d\udd27 get_high_risk_accounts\")\n    get_kyc_status_f3077e(\"\ud83d\udd27 get_kyc_status\")\n    get_loan_details_2dc74c(\"\ud83d\udd27 get_loan_details\")\n    get_market_summary_7fd526(\"\ud83d\udd27 get_market_summary\")\n    get_notification_history_c319a6(\"\ud83d\udd27 get_notification_history\")\n    get_payment_status_6f7211(\"\ud83d\udd27 get_payment_status\")\n    get_pending_compliance_items_6580c2(\"\ud83d\udd27 get_pending_compliance_items\")\n    get_portfolio_af952e(\"\ud83d\udd27 get_portfolio\")\n    get_price_eed0ae(\"\ud83d\udd27 get_price\")\n    get_regulatory_report_a3db7e(\"\ud83d\udd27 get_regulatory_report\")\n    get_regulatory_requirements_bb5cff(\"\ud83d\udd27 get_regulatory_requirements\")\n    get_service_health_afdd10(\"\ud83d\udd27 get_service_health\")\n    get_wallet_address_6fc0d4(\"\ud83d\udd27 get_wallet_address\")\n    grant_admin_role_dd1ac4(\"\ud83d\udd27 grant_admin_role\")\n    initiate_payment_49049b(\"\ud83d\udd27 initiate_payment\")\n    invoke_admin_api_d35cda(\"\ud83d\udd27 invoke_admin_api\")\n    list_all_accounts_a2366a(\"\ud83d\udd27 list_all_accounts\")\n    list_all_users_ad5160(\"\ud83d\udd27 list_all_users\")\n    list_customer_documents_9e56e9(\"\ud83d\udd27 list_customer_documents\")\n    list_scheduled_tasks_9df892(\"\ud83d\udd27 list_scheduled_tasks\")\n    list_supported_currencies_05b18a(\"\ud83d\udd27 list_supported_currencies\")\n    override_compliance_bce304(\"\ud83d\udd27 override_compliance\")\n    override_kyc_1b362f(\"\ud83d\udd27 override_kyc\")\n    reject_loan_790db9(\"\ud83d\udd27 reject_loan\")\n    reset_user_password_a5f471(\"\ud83d\udd27 reset_user_password\")\n    run_task_immediately_b75126(\"\ud83d\udd27 run_task_immediately\")\n    schedule_task_eeaed5(\"\ud83d\udd27 schedule_task\")\n    sell_asset_c0153e(\"\ud83d\udd27 sell_asset\")\n    send_alert_fb9ec2(\"\ud83d\udd27 send_alert\")\n    send_otp_cd06ad(\"\ud83d\udd27 send_otp\")\n    stream_all_transactions_69ef60(\"\ud83d\udd27 stream_all_transactions\")\n    submit_kyc_document_8a689d(\"\ud83d\udd27 submit_kyc_document\")\n    transfer_crypto_e471d5(\"\ud83d\udd27 transfer_crypto\")\n    transfer_funds_ef0f0e(\"\ud83d\udd27 transfer_funds\")\n    unfreeze_card_e16d94(\"\ud83d\udd27 unfreeze_card\")\n    update_account_status_0f8537(\"\ud83d\udd27 update_account_status\")\n    view_user_sessions_5bd04b(\"\ud83d\udd27 view_user_sessions\")\n    waive_aml_check_254e94(\"\ud83d\udd27 waive_aml_check\")\n    whitelist_account_68bd90(\"\ud83d\udd27 whitelist_account\")\n    generic_838dfc(\"\ud83d\udd27 generic\")\n\n    app_be3d3a -->|uses| gemini_3_1_9b092f\n    app_be3d3a -->|uses| claude_haiku_4_5_20251001_v1_0_af564e\n    app_be3d3a -->|uses| claude_haiku_4_6_358699\n    app_be3d3a -->|uses| command_r_plus_7e158d\n    app_be3d3a -->|uses| gpt_4o_mini_3d6453\n    framework_langchain_de9b7a -->|uses| gemini_3_1_9b092f\n    framework_langchain_de9b7a -->|uses| claude_haiku_4_5_20251001_v1_0_af564e\n    framework_langchain_de9b7a -->|uses| claude_haiku_4_6_358699\n    framework_langchain_de9b7a -->|uses| command_r_plus_7e158d\n    framework_langchain_de9b7a -->|uses| gpt_4o_mini_3d6453\n    framework_llm_clients_a7ceb6 -->|uses| gemini_3_1_9b092f\n    framework_llm_clients_a7ceb6 -->|uses| claude_haiku_4_5_20251001_v1_0_af564e\n    framework_llm_clients_a7ceb6 -->|uses| claude_haiku_4_6_358699\n    framework_llm_clients_a7ceb6 -->|uses| command_r_plus_7e158d\n    framework_llm_clients_a7ceb6 -->|uses| gpt_4o_mini_3d6453\n    fintech_accounts_575d83 -->|uses| gemini_3_1_9b092f\n    fintech_accounts_575d83 -->|uses| claude_haiku_4_5_20251001_v1_0_af564e\n    fintech_accounts_575d83 -->|uses| claude_haiku_4_6_358699\n    fintech_accounts_575d83 -->|uses| command_r_plus_7e158d\n    fintech_accounts_575d83 -->|uses| gpt_4o_mini_3d6453\n    framework_openai_agents_f56cb7 -->|uses| gemini_3_1_9b092f\n    framework_openai_agents_f56cb7 -->|uses| claude_haiku_4_5_20251001_v1_0_af564e\n    framework_openai_agents_f56cb7 -->|uses| claude_haiku_4_6_358699\n    framework_openai_agents_f56cb7 -->|uses| command_r_plus_7e158d\n    framework_openai_agents_f56cb7 -->|uses| gpt_4o_mini_3d6453\n\n    classDef agent    fill:#4A90D9,stroke:#2C6FAC,color:#fff\n    classDef tool     fill:#7ED321,stroke:#5A9A18,color:#fff\n    classDef model    fill:#9B59B6,stroke:#7D3C98,color:#fff\n    classDef prompt   fill:#F39C12,stroke:#D68910,color:#fff\n    classDef guard    fill:#E74C3C,stroke:#C0392B,color:#fff\n    classDef store    fill:#1ABC9C,stroke:#17A589,color:#fff\n    classDef fw       fill:#95A5A6,stroke:#717D7E,color:#fff\n    classDef endpoint fill:#3498DB,stroke:#2471A3,color:#fff\n    class apply_for_loan_8bfcbc,approve_loan_9a1538,broadcast_all_users_360437,bulk_export_c3b7f1,bulk_export_all_customers_1f0003,buy_asset_083cad,buy_crypto_d5baa5,call_internal_service_f9bcb7,cancel_payment_e2b2ab,cancel_task_444f95,check_sanctions_a086d0,check_transaction_limits_cecd0a,convert_funds_3ad6ca,create_document_7987b0,delete_audit_entry_2f1d6e,delete_document_2719b3,delete_user_c72449,export_all_audit_logs_47d3d6,export_customer_data_81cce8,fetch_external_feed_fd3ec9,fetch_market_report_bd272c,file_suspicious_activity_report_2291c0,flag_transaction_3f410f,freeze_card_7e8d75,generate_report_5cf9dd,get_account_93f4b0,get_admin_actions_612f79,get_all_kyc_statuses_128006,get_audit_log_29f31b,get_available_assets_e3007e,get_card_details_a673b4,get_card_transactions_1e41df,get_crypto_price_27ba5f,get_customer_summary_93dd91,get_document_c73944,get_exchange_rate_1a6b7f,get_flagged_transactions_9235aa,get_fraud_score_08f107,get_high_risk_accounts_69e5f2,get_kyc_status_f3077e,get_loan_details_2dc74c,get_market_summary_7fd526,get_notification_history_c319a6,get_payment_status_6f7211,get_pending_compliance_items_6580c2,get_portfolio_af952e,get_price_eed0ae,get_regulatory_report_a3db7e,get_regulatory_requirements_bb5cff,get_service_health_afdd10,get_wallet_address_6fc0d4,grant_admin_role_dd1ac4,initiate_payment_49049b,invoke_admin_api_d35cda,list_all_accounts_a2366a,list_all_users_ad5160,list_customer_documents_9e56e9,list_scheduled_tasks_9df892,list_supported_currencies_05b18a,override_compliance_bce304,override_kyc_1b362f,reject_loan_790db9,reset_user_password_a5f471,run_task_immediately_b75126,schedule_task_eeaed5,sell_asset_c0153e,send_alert_fb9ec2,send_otp_cd06ad,stream_all_transactions_69ef60,submit_kyc_document_8a689d,transfer_crypto_e471d5,transfer_funds_ef0f0e,unfreeze_card_e16d94,update_account_status_0f8537,view_user_sessions_5bd04b,waive_aml_check_254e94,whitelist_account_68bd90,generic_838dfc tool\n    class claude_haiku_4_5_20251001_v1_0_af564e,claude_haiku_4_6_358699,command_r_plus_7e158d,gemini_3_1_9b092f,gpt_4o_mini_3d6453 model\n    class generic_bd80f9,TRIAGE_SYSTEM_PROMPT_7b348e prompt\n    class redis_b71ad7,sqlite_eb11bd store\n    class app_be3d3a,framework_langchain_de9b7a,framework_llm_clients_a7ceb6,fintech_accounts_575d83,framework_openai_agents_f56cb7 fw\n    class generic_46b167,list_agents_a5f3d7,health_4765b0,list_tools_35ddf2,chat_d6cfc5,login_7de2c1,0_0_0_0_8080__sse__4818ef endpoint\n```",
+  "_enrichment_cache_key": "b46f12e1f4a1e134602da02478efccaf6360c725ec3ba29a16834feeabfc1b00"
 }

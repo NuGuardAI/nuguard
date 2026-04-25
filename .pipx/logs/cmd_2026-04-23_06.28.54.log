@@ -1,0 +1,38 @@
+   109.9ms (setup:1113): 2026-04-23 06:28:54
+   110.0ms (setup:1114): /usr/local/py-utils/bin/pipx install azure-cli
+   110.0ms (setup:1115): pipx version is 1.8.0
+   110.1ms (setup:1116): Default python interpreter is '/usr/local/python/3.12.1/bin/python3.12'
+   110.8ms (package_name_from_spec:381): Determined package name: azure-cli
+   110.9ms (package_name_from_spec:382): Package name determined in 0.0s
+   111.0ms (create_venv:164): Creating virtual environment
+   111.3ms (run_subprocess:175): running /usr/local/python/3.12.1/bin/python3.12 -m venv --without-pip /workspaces/nuguard-private/.pipx/venvs/azure-cli
+   157.3ms (run_subprocess:195): stdout:
+   157.4ms (run_subprocess:197): stderr:
+   157.4ms (run_subprocess:198): returncode: 0
+   157.9ms (run_subprocess:175): running <checking pip's availability>
+   170.8ms (run_subprocess:195): stdout: ModuleSpec(name='pip', loader=<_frozen_importlib_external.SourceFileLoader object at 0x7fa868ac7e90>, origin='/workspaces/nuguard-private/.pipx/shared/lib/python3.12/site-packages/pip/__init__.py', submodule_search_locations=['/workspaces/nuguard-private/.pipx/shared/lib/python3.12/site-packages/pip'])
+   170.8ms (run_subprocess:198): returncode: 0
+   171.1ms (run_subprocess:175): running /workspaces/nuguard-private/.pipx/venvs/azure-cli/bin/python -c import sysconfig; print(sysconfig.get_path('purelib'))
+   188.3ms (run_subprocess:195): stdout: /workspaces/nuguard-private/.pipx/venvs/azure-cli/lib/python3.12/site-packages
+   188.4ms (run_subprocess:198): returncode: 0
+   188.8ms (run_subprocess:175): running /workspaces/nuguard-private/.pipx/shared/bin/python -c import sysconfig; print(sysconfig.get_path('purelib'))
+   206.5ms (run_subprocess:195): stdout: /workspaces/nuguard-private/.pipx/shared/lib/python3.12/site-packages
+   206.6ms (run_subprocess:198): returncode: 0
+   207.1ms (run_subprocess:175): running /workspaces/nuguard-private/.pipx/venvs/azure-cli/bin/python --version
+   209.2ms (run_subprocess:195): stdout: Python 3.12.1
+   209.3ms (run_subprocess:197): stderr:
+   209.3ms (run_subprocess:198): returncode: 0
+   209.5ms (_parsed_package_to_package_or_url:139): cleaned package spec: azure-cli
+   209.6ms (install_package:247): Installing azure-cli
+   209.8ms (run_subprocess:175): running /workspaces/nuguard-private/.pipx/venvs/azure-cli/bin/python -m pip --no-input install azure-cli
+ 70332.0ms (run_subprocess:198): returncode: 0
+ 70332.3ms (run_subprocess:175): running <fetch_info_in_venv commands>
+ 70356.7ms (run_subprocess:195): stdout: {"sys_path": ["/usr/local/python/3.12.1/lib/python312.zip", "/usr/local/python/3.12.1/lib/python3.12", "/usr/local/python/3.12.1/lib/python3.12/lib-dynload", "/workspaces/nuguard-private/.pipx/venvs/azure-cli/lib/python3.12/site-packages", "/workspaces/nuguard-private/.pipx/shared/lib/python3.12/site-packages"], "python_version": "3.12.1", "environment": {"implementation_name": "cpython", "implementation_version": "3.12.1", "os_name": "posix", "platform_machine": "x86_64", "platform_release": "6.8.0-1044-azure", "platform_system": "Linux", "platform_version": "#50~22.04.1-Ubuntu SMP Wed Dec  3 15:13:22 UTC 2025", "python_full_version": "3.12.1", "platform_python_implementation": "CPython", "python_version": "3.12", "sys_platform": "linux"}}
+ 70356.8ms (run_subprocess:198): returncode: 0
+ 74636.0ms (get_venv_metadata_for_package:351): get_venv_metadata_for_package: 4304ms
+ 74636.1ms (_parsed_package_to_package_or_url:139): cleaned package spec: azure-cli
+ 74644.1ms (warn_if_not_on_path:477): ⚠️  Note: '/workspaces/nuguard-private/.local/bin' is not on your PATH
+    environment variable. These apps will not be globally accessible until
+    your PATH is updated. Run `pipx ensurepath` to automatically add it, or
+    manually modify your PATH in your shell's config file (e.g. ~/.bashrc).
+ 74644.2ms (cli:1192): pipx finished.
