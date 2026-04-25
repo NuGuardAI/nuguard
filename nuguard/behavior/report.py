@@ -69,6 +69,8 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
     lines: list[str] = []
     lines.append("# Behavior Analysis Report")
     lines.append("")
+    if meta is not None:
+        lines += meta.to_markdown_lines()
 
     # Determine mode
     has_static = bool(result.static_findings)

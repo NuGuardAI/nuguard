@@ -42,5 +42,8 @@ tests/*/build/
 tests/*/node_modules/
 tests/*/tmp/
 tests/*/reports/
+tests/*/*/reports/
+tests/*/*/output/
+tests/*/*/tests/
 tests/*/.adk/*.db
 tests/*/output/

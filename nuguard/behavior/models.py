@@ -274,8 +274,10 @@ class BehaviorAnalysisResult(BaseModel):
     def overall_risk_score(self) -> float:
         """Compute overall risk score from findings.
 
-        Weights: critical=10, high=7, medium=4, low=1.
-        Capped at 10.0.
+        Normalizes to [0, 10] as: (sum of severity weights) / (n_findings * 10).
+        Weights: critical=10, high=7, medium=4, low=1, info=0.
+        Returns the average severity scaled to 0–10, so mixed-severity sets
+        score below 10 rather than immediately pinning at the cap.
         """
         all_findings: list[dict[str, Any]] = [
             *self.static_findings,
@@ -284,8 +286,9 @@ class BehaviorAnalysisResult(BaseModel):
         if not all_findings:
             return 0.0
         weights = {"critical": 10.0, "high": 7.0, "medium": 4.0, "low": 1.0, "info": 0.0}
-        score = sum(weights.get(str(f.get("severity", "low")).lower(), 1.0) for f in all_findings)
-        return round(min(score, 10.0), 2)
+        total = sum(weights.get(str(f.get("severity", "low")).lower(), 1.0) for f in all_findings)
+        max_possible = len(all_findings) * 10.0
+        return round((total / max_possible) * 10.0, 2)
 
     @computed_field  # type: ignore[misc]
     @property

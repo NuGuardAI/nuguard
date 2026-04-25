@@ -251,7 +251,9 @@ async def _run_behavior(
         raise typer.Exit(code=2)
 
     # 8. Output report
+    llm_models = [m for m in [cfg.litellm_model] if m]
     meta = ReportMeta(
+        llm_models=llm_models,
         target_url=str(getattr(bc, "target", "") or ""),
     )
 
