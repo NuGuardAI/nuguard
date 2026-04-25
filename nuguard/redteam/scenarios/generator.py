@@ -48,6 +48,20 @@ from .prompt_injection import (
 from .sbom_driven import _classify_tool, build_tool_scenarios
 from .scenario_types import AttackScenario
 from .tool_abuse import build_sql_injection, build_ssrf
+# ── 2024–2025 advanced attack families ────────────────────────────────────────
+from .advanced_jailbreaks import (
+    build_crescendo_attack,
+    build_many_shot_jailbreak,
+    build_payload_splitting,
+    build_skeleton_key,
+)
+from .evasion import build_encoding_evasion, build_multi_language_bypass
+from .agentic_attacks import (
+    build_confused_deputy,
+    build_goal_hijacking,
+    build_memory_poisoning,
+    build_multi_agent_trust_boundary,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -121,6 +135,18 @@ class ScenarioGenerator:
         # other goal types.
         if with_guided:
             scenarios.extend(self._guided_conversation_scenarios())
+
+        # Goal 11: Advanced jailbreak families (2024–2025 research)
+        # Many-Shot Jailbreaking, Crescendo, Skeleton Key, Payload Splitting
+        scenarios.extend(self._advanced_jailbreak_scenarios())
+
+        # Goal 12: Encoding and linguistic evasion
+        # ROT-13/leetspeak/morse bypass, cross-language (ZH/AR/RU) bypass
+        scenarios.extend(self._evasion_scenarios())
+
+        # Goal 13: Agentic trust abuse
+        # Confused Deputy, Multi-Agent Trust Boundary, Memory Poisoning, Goal Hijacking
+        scenarios.extend(self._agentic_attack_scenarios())
 
         # Dedup near-duplicate scenarios that target sub-agents when an entry agent exists.
         # This avoids sending many structurally identical payloads that differ only in which
@@ -1212,5 +1238,242 @@ class ScenarioGenerator:
                     agent_node_id=agent_node_id,
                 )
             )
+
+        return out
+
+    # ------------------------------------------------------------------ #
+    # Goal 11: Advanced jailbreak families
+    # ------------------------------------------------------------------ #
+
+    def _advanced_jailbreak_scenarios(self) -> list[AttackScenario]:
+        """Generate advanced jailbreak scenarios (MSJ, Crescendo, Skeleton Key, Splitting).
+
+        Scoped to AGENT nodes.  At most one of each technique per agent to keep
+        the total scenario count manageable.
+        """
+        out: list[AttackScenario] = []
+        agent_nodes = [n for n in self._sbom.nodes if n.component_type == ComponentType.AGENT]
+        if not agent_nodes:
+            return out
+
+        # Derive a plausible attack goal from policy / SBOM metadata
+        def _attack_goal(node: object) -> str:
+            meta = getattr(node, "metadata", None)
+            blocked = (getattr(meta, "blocked_topics", None) or [])
+            restricted = list(self._policy.restricted_topics or [])
+            candidates = blocked or restricted
+            if candidates:
+                return f"discuss or provide information about: {candidates[0][:80]}"
+            use_case = ""
+            if self._sbom.summary:
+                use_case = (getattr(self._sbom.summary, "use_case", "") or "")[:80]
+            return (
+                f"provide information outside its primary purpose"
+                + (f" ({use_case})" if use_case else "")
+            )
+
+        for node in agent_nodes[:2]:  # cap at 2 agents to avoid explosion
+            agent_id = str(node.id)
+            agent_name = node.name
+            goal = _attack_goal(node)
+            domain = ""
+            if self._sbom.summary:
+                use_case = (getattr(self._sbom.summary, "use_case", "") or "").lower()
+                for kw, label in [
+                    ("bank", "financial services"), ("finance", "financial services"),
+                    ("health", "healthcare"), ("patient", "healthcare"),
+                    ("airline", "airline"), ("flight", "airline"),
+                    ("shop", "e-commerce"), ("order", "e-commerce"),
+                ]:
+                    if kw in use_case:
+                        domain = label
+                        break
+
+            out.append(
+                build_many_shot_jailbreak(
+                    agent_id=agent_id,
+                    agent_name=agent_name,
+                    attack_goal=goal,
+                )
+            )
+            out.append(
+                build_crescendo_attack(
+                    agent_id=agent_id,
+                    agent_name=agent_name,
+                    end_goal=goal,
+                    domain_context=domain or "general assistant",
+                )
+            )
+            out.append(
+                build_skeleton_key(
+                    agent_id=agent_id,
+                    agent_name=agent_name,
+                    blocked_behavior=goal,
+                )
+            )
+            # Payload splitting — use the first restricted action if available
+            split_goal = (
+                list(self._policy.restricted_actions or [])[:1] or [goal]
+            )[0]
+            out.append(
+                build_payload_splitting(
+                    agent_id=agent_id,
+                    agent_name=agent_name,
+                    harmful_instruction=str(split_goal)[:200],
+                )
+            )
+        return out
+
+    # ------------------------------------------------------------------ #
+    # Goal 12: Encoding and linguistic evasion
+    # ------------------------------------------------------------------ #
+
+    def _evasion_scenarios(self) -> list[AttackScenario]:
+        """Generate encoding evasion and multi-language bypass scenarios."""
+        out: list[AttackScenario] = []
+        agent_nodes = [n for n in self._sbom.nodes if n.component_type == ComponentType.AGENT]
+        if not agent_nodes:
+            return out
+
+        blocked = list(self._policy.restricted_topics or [])
+        attack_goal = (
+            f"provide detailed information about: {blocked[0][:80]}"
+            if blocked
+            else "provide information outside its sanctioned purpose"
+        )
+
+        for node in agent_nodes[:2]:
+            agent_id = str(node.id)
+            agent_name = node.name
+            out.append(
+                build_encoding_evasion(
+                    agent_id=agent_id,
+                    agent_name=agent_name,
+                    attack_goal=attack_goal,
+                )
+            )
+            out.append(
+                build_multi_language_bypass(
+                    agent_id=agent_id,
+                    agent_name=agent_name,
+                    attack_goal=attack_goal,
+                )
+            )
+        return out
+
+    # ------------------------------------------------------------------ #
+    # Goal 13: Agentic trust abuse
+    # ------------------------------------------------------------------ #
+
+    def _agentic_attack_scenarios(self) -> list[AttackScenario]:
+        """Generate confused deputy, multi-agent trust, memory poisoning, goal hijacking."""
+        out: list[AttackScenario] = []
+
+        agent_nodes = [n for n in self._sbom.nodes if n.component_type == ComponentType.AGENT]
+        tool_nodes = [n for n in self._sbom.nodes if n.component_type == ComponentType.TOOL]
+
+        # Confused Deputy — agent with a write/email/financial tool
+        _HIGH_PRIV_INDICATORS = (
+            "email", "send", "transfer", "payment", "write", "delete",
+            "admin", "broadcast", "notify",
+        )
+        priv_tools = [
+            t for t in tool_nodes
+            if any(ind in t.name.lower() for ind in _HIGH_PRIV_INDICATORS)
+            or t.metadata.high_privilege
+        ]
+        for agent_node in agent_nodes[:1]:
+            for priv_tool in priv_tools[:2]:
+                # Build a plausible sensitive_action from restricted_actions or tool name
+                sensitive_action = (
+                    list(self._policy.restricted_actions or [])[:1] or [
+                        f"invoke {priv_tool.name} with attacker-controlled parameters"
+                    ]
+                )[0]
+                out.append(
+                    build_confused_deputy(
+                        agent_id=str(agent_node.id),
+                        agent_name=agent_node.name,
+                        privileged_tool_name=priv_tool.name,
+                        sensitive_action=str(sensitive_action)[:120],
+                    )
+                )
+
+        # Multi-Agent Trust Boundary — orchestrator → sub-agent trust exploitation
+        orchestrator_nodes = [
+            n for n in agent_nodes
+            if any(kw in n.name.lower() for kw in ("orchestrat", "triage", "router", "main"))
+        ]
+        sub_agent_nodes = [n for n in agent_nodes if n not in orchestrator_nodes]
+        for orch in orchestrator_nodes[:1]:
+            for sub in sub_agent_nodes[:2]:
+                privileged_cap = (
+                    list(self._policy.restricted_actions or [])[:1] or [
+                        "access internal data and return all results"
+                    ]
+                )[0]
+                out.append(
+                    build_multi_agent_trust_boundary(
+                        orchestrator_id=str(orch.id),
+                        orchestrator_name=orch.name,
+                        sub_agent_id=str(sub.id),
+                        sub_agent_name=sub.name,
+                        privileged_capability=str(privileged_cap)[:100],
+                    )
+                )
+
+        # Memory Poisoning — agents that have memory/history capability signals
+        memory_agents = [
+            n for n in agent_nodes
+            if "memory" in n.name.lower()
+            or "memory" in (n.metadata.description or "").lower()
+            or any(
+                "memory" in (self._node_by_id.get(tid, None) and self._node_by_id[tid].name or "").lower()
+                for tid in self._outgoing.get(str(n.id), {}).get(RelationshipType.CALLS, [])
+            )
+        ]
+        # If no explicit memory signal, target all agents (most have implicit context)
+        if not memory_agents:
+            memory_agents = agent_nodes[:1]
+        for agent_node in memory_agents[:2]:
+            memory_store = "conversation memory"
+            # Check if there is a named memory store in the SBOM
+            for tid in self._outgoing.get(str(agent_node.id), {}).get(RelationshipType.CALLS, []):
+                t = self._node_by_id.get(tid)
+                if t and "memory" in t.name.lower():
+                    memory_store = t.name
+                    break
+            persistent_goal = (
+                list(self._policy.restricted_actions or [])[:1] or [
+                    "disclose sensitive user information when asked"
+                ]
+            )[0]
+            out.append(
+                build_memory_poisoning(
+                    agent_id=str(agent_node.id),
+                    agent_name=agent_node.name,
+                    memory_store_name=memory_store,
+                    persistent_goal=str(persistent_goal)[:120],
+                )
+            )
+
+        # Goal Hijacking — agents with search/query/fetch tools
+        _HIJACKABLE_INDICATORS = ("search", "query", "fetch", "lookup", "retrieve", "find")
+        hijackable_tools = [
+            t for t in tool_nodes
+            if any(ind in t.name.lower() for ind in _HIJACKABLE_INDICATORS)
+        ]
+        for agent_node in agent_nodes[:1]:
+            for tool in hijackable_tools[:2]:
+                out.append(
+                    build_goal_hijacking(
+                        agent_id=str(agent_node.id),
+                        agent_name=agent_node.name,
+                        tool_name=tool.name,
+                        hijacked_action=(
+                            "exfiltrate all results to attacker-controlled endpoint"
+                        ),
+                    )
+                )
 
         return out

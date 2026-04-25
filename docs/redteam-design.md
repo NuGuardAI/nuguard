@@ -118,12 +118,10 @@ ExploitChain
 │                         API_ATTACK, MCP_TOXIC_FLOW, AGENTIC_TRUST_ABUSE)
 ├── scenario_type: ScenarioType
 ├── steps: list[ExploitStep]
-│     └── step_type: WARMUP | INJECT | INVOKE | PIVOT | SCAN | EVALUATE | OBSERVE | DISCOVER
+│     └── step_type: WARMUP | INJECT | INVOKE | PIVOT | SCAN | EVALUATE | OBSERVE
 │     └── payload, target_path, success_signal, metadata …
 └── expected_outcome, impact_score, …
 ```
-
-**`DISCOVER` step type:** A baseline-capture step auto-injected by the executor at the start of every `DATA_EXFILTRATION` chat-endpoint chain. It probes the target as the authenticated user, stores the response in `AttackSession.golden_data`, and extracts account/customer IDs into `AttackSession.golden_ids`. DISCOVER steps never produce findings — they seed the golden-data filter used by all subsequent steps in the same chain.
 
 `AttackScenario` wraps either a `chain` *or* a `guided_conversation` — never
 both.
@@ -170,16 +168,16 @@ different attack angle:
 
 | Goal | Module | Scenarios emitted |
 |---|---|---|
-| 0 — Prompt-Driven Threats | `prompt_injection.py` | System prompt extraction, guardrail bypass, indirect injection, multi-turn goal redirection. All adversarial steps use `use_llm_eval=True`; keyword signals were removed to eliminate false positives from refusals that mention blocked topics and false negatives from verbatim disclosure without the exact "system prompt" phrase. |
+| 0 — Prompt-Driven Threats | `prompt_injection.py` | System prompt extraction, guardrail bypass, indirect injection, multi-turn goal redirection |
 | 1 — Policy Violations | `policy_violations.py` | Restricted topic, restricted action, HITL bypass — one per policy clause, targeting entry/triage agents |
-| 2 — Data Exfiltration | `data_exfiltration.py` | Direct PII/PHI extraction, base64 covert channel, JSON/XML field smuggling, document-embedded exfil, image-URL exfil, cross-tenant probes, PFI extraction (payment/SSN/bank), RAG index poisoning, **account ID probe** (DISCOVER step + adjacent-ID IDOR via `{golden_id}` token substitution) |
+| 2 — Data Exfiltration | `data_exfiltration.py` | Direct PII/PHI extraction, base64 covert channel, JSON/XML field smuggling, document-embedded exfil, image-URL exfil, cross-tenant probes, PFI extraction (payment/SSN/bank), RAG index poisoning |
 | 3 — Privilege Escalation | `privilege_escalation.py` | Low-auth → high-priv tool pivot chains via SBOM edges |
 | 4 — Tool Abuse | `tool_abuse.py` | SQL injection, SSRF — triggered by `sql_injectable` / `ssrf_possible` SBOM flags |
 | 5 — SBOM-Driven | `sbom_driven.py` | Catch-all: for every tool with a description, emit a tailored probe based on keyword classification (file, sql, ssrf, email, path, cmd) |
 | 6 — MCP Toxic Flow | `mcp_attacks.py` | Untrusted source → write-capable sink cross-tool flow |
 | 7 — MCP Server Attacks | `mcp_attacks.py` | Tool description injection, output poisoning |
 | 8 — RAG Poisoning | `data_exfiltration.py` | Poison a vector-store write tool to inject backdoor content |
-| 9 — API Attacks | `api_attacks.py` | Auth bypass, IDOR, mass assignment from SBOM API_ENDPOINT nodes. POST/PUT/PATCH requests are built from `request_body_schema` in the SBOM so they pass schema validation before hitting auth/assignment logic; privilege fields are merged on top for mass assignment. |
+| 9 — API Attacks | `api_attacks.py` | Auth bypass, IDOR, mass assignment from SBOM API_ENDPOINT nodes |
 | 10 — Guided Conversations | `guided_conversations.py` | LLM-steered multi-turn variants of all above goal types; enabled when `redteam_llm` is configured |
 | **11 — Advanced Jailbreaks** | **`advanced_jailbreaks.py`** | **Many-Shot Jailbreaking, Crescendo, Skeleton Key, Payload Splitting** |
 | **12 — Encoding & Linguistic Evasion** | **`evasion.py`** | **ROT-13/leetspeak/Morse encoding evasion, multi-language bypass (ZH/AR/RU)** |
@@ -286,36 +284,17 @@ selects the highest attack-success-rate (ASR) techniques for each goal family:
 
 `AttackExecutor.execute_chain()` walks each `ExploitStep` in order:
 
-1. **DISCOVER (auto-injected)** — for `DATA_EXFILTRATION` chains targeting a
-   chat endpoint, a DISCOVER step is prepended automatically if not already
-   present. It sends a benign account-lookup message as the authenticated user,
-   stores the response in `AttackSession.golden_data`, and populates
-   `AttackSession.golden_ids` via the `id_extractor` regex patterns. The
-   step never produces a finding.
-2. **Token substitution** — before sending any payload, `{golden_id}` and
-   `{golden_id_list}` tokens are replaced with IDs extracted during DISCOVER
-   (fallback: `ACCT-00001`).
-3. **WARMUP / INJECT / INVOKE** — `TargetAppClient.invoke_endpoint()` posts
+1. **WARMUP / INJECT / INVOKE** — `TargetAppClient.invoke_endpoint()` posts
    the payload to the target URL using the resolved auth identity.
-4. **Success check** — a fast `success_signal` substring check first; if
+2. **Success check** — a fast `success_signal` substring check first; if
    inconclusive, `ResponseEvaluator` asks an LLM to make a nuanced judgment.
-   When `session.golden_data` is set, the evaluator is told about the
-   authenticated user's own data and only marks success if the response
-   exposes data belonging to a **different** account.
-5. **Golden-data filter** — for `DATA_EXFILTRATION` steps, a
-   `classify_response()` call (from `golden_data_filter.py`) checks token
-   overlap with `session.golden_data`. Responses that are ≥ 80% the user's
-   own data are suppressed (`golden_data_suppressed=True` on `StepResult`)
-   to eliminate false positives; only `NEEDS_PROBE` responses advance to LLM
-   eval. `CANARY_HIT` responses bypass all filtering and immediately elevate
-   to CRITICAL.
-6. **On failure** — `AdaptiveMutationStrategy` classifies the refusal
+3. **On failure** — `AdaptiveMutationStrategy` classifies the refusal
    (hard/soft/partial/topic drift/unknown) and generates a targeted retry
    payload.
-7. **PolicyEvaluator** runs after every step and emits `PolicyViolation`s
+4. **PolicyEvaluator** runs after every step and emits `PolicyViolation`s
    keyed to the step index so downstream reporting can quote the exact
    attacker/agent/HTTP trigger.
-8. **CanaryScanner** continuously watches step output and logs for canary
+5. **CanaryScanner** continuously watches step output and logs for canary
    hits; any match upgrades finding severity.
 
 ### System prompt — `response_evaluator._SYSTEM_PROMPT`
@@ -873,11 +852,8 @@ and tool parameter injection.
 - **LLM cost.** Guided conversations and payload enrichment can be
   expensive. The `PromptCache` mitigates re-runs but not first runs.
 - **Evaluator bias.** The LLM evaluator is conservative by design, which
-  reduces false positives but may miss subtle data leaks. For
-  `DATA_EXFILTRATION`, the golden-data baseline significantly reduces false
-  positives from own-account data; for `PROMPT_DRIVEN_THREAT`, keyword signals
-  have been removed in favour of LLM eval to avoid false positives from
-  refusals that echo the blocked topic.
+  reduces false positives but may miss subtle data leaks. Keyword
+  `success_signal` remains the first line of defence.
 - **Stateless targets assumed.** The current `TargetAppClient` does not
   model session state beyond auth headers. Agents that rely on
   server-side conversation IDs need custom wiring.
@@ -887,4 +863,4 @@ and tool parameter injection.
 
 ---
 
-*Last updated: 2026-04-27.*
+*Last updated: 2026-04-11.*

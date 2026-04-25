@@ -1,0 +1,179 @@
+{
+    "injected_packages": {},
+    "main_package": {
+        "app_paths": [
+            {
+                "__Path__": "/workspaces/nuguard-private/.pipx/venvs/azure-cli/bin/az",
+                "__type__": "Path"
+            },
+            {
+                "__Path__": "/workspaces/nuguard-private/.pipx/venvs/azure-cli/bin/az.bat",
+                "__type__": "Path"
+            },
+            {
+                "__Path__": "/workspaces/nuguard-private/.pipx/venvs/azure-cli/bin/az.completion.sh",
+                "__type__": "Path"
+            },
+            {
+                "__Path__": "/workspaces/nuguard-private/.pipx/venvs/azure-cli/bin/azps.ps1",
+                "__type__": "Path"
+            }
+        ],
+        "app_paths_of_dependencies": {
+            "antlr4-python3-runtime": [
+                {
+                    "__Path__": "/workspaces/nuguard-private/.pipx/venvs/azure-cli/bin/pygrun",
+                    "__type__": "Path"
+                }
+            ],
+            "argcomplete": [
+                {
+                    "__Path__": "/workspaces/nuguard-private/.pipx/venvs/azure-cli/bin/activate-global-python-argcomplete",
+                    "__type__": "Path"
+                },
+                {
+                    "__Path__": "/workspaces/nuguard-private/.pipx/venvs/azure-cli/bin/python-argcomplete-check-easy-install-script",
+                    "__type__": "Path"
+                },
+                {
+                    "__Path__": "/workspaces/nuguard-private/.pipx/venvs/azure-cli/bin/register-python-argcomplete",
+                    "__type__": "Path"
+                }
+            ],
+            "chardet": [
+                {
+                    "__Path__": "/workspaces/nuguard-private/.pipx/venvs/azure-cli/bin/chardetect",
+                    "__type__": "Path"
+                }
+            ],
+            "charset-normalizer": [
+                {
+                    "__Path__": "/workspaces/nuguard-private/.pipx/venvs/azure-cli/bin/normalizer",
+                    "__type__": "Path"
+                }
+            ],
+            "distro": [
+                {
+                    "__Path__": "/workspaces/nuguard-private/.pipx/venvs/azure-cli/bin/distro",
+                    "__type__": "Path"
+                }
+            ],
+            "fabric": [
+                {
+                    "__Path__": "/workspaces/nuguard-private/.pipx/venvs/azure-cli/bin/fab",
+                    "__type__": "Path"
+                }
+            ],
+            "humanfriendly": [
+                {
+                    "__Path__": "/workspaces/nuguard-private/.pipx/venvs/azure-cli/bin/humanfriendly",
+                    "__type__": "Path"
+                }
+            ],
+            "invoke": [
+                {
+                    "__Path__": "/workspaces/nuguard-private/.pipx/venvs/azure-cli/bin/inv",
+                    "__type__": "Path"
+                },
+                {
+                    "__Path__": "/workspaces/nuguard-private/.pipx/venvs/azure-cli/bin/invoke",
+                    "__type__": "Path"
+                }
+            ],
+            "jmespath": [
+                {
+                    "__Path__": "/workspaces/nuguard-private/.pipx/venvs/azure-cli/bin/jp.py",
+                    "__type__": "Path"
+                }
+            ],
+            "jsondiff": [
+                {
+                    "__Path__": "/workspaces/nuguard-private/.pipx/venvs/azure-cli/bin/jdiff",
+                    "__type__": "Path"
+                }
+            ],
+            "pkginfo": [
+                {
+                    "__Path__": "/workspaces/nuguard-private/.pipx/venvs/azure-cli/bin/pkginfo",
+                    "__type__": "Path"
+                }
+            ],
+            "pygments": [
+                {
+                    "__Path__": "/workspaces/nuguard-private/.pipx/venvs/azure-cli/bin/pygmentize",
+                    "__type__": "Path"
+                }
+            ],
+            "semver": [
+                {
+                    "__Path__": "/workspaces/nuguard-private/.pipx/venvs/azure-cli/bin/pysemver",
+                    "__type__": "Path"
+                }
+            ],
+            "sshtunnel": [
+                {
+                    "__Path__": "/workspaces/nuguard-private/.pipx/venvs/azure-cli/bin/sshtunnel",
+                    "__type__": "Path"
+                }
+            ],
+            "tabulate": [
+                {
+                    "__Path__": "/workspaces/nuguard-private/.pipx/venvs/azure-cli/bin/tabulate",
+                    "__type__": "Path"
+                }
+            ],
+            "websocket-client": [
+                {
+                    "__Path__": "/workspaces/nuguard-private/.pipx/venvs/azure-cli/bin/wsdump",
+                    "__type__": "Path"
+                }
+            ]
+        },
+        "apps": [
+            "az",
+            "az.bat",
+            "az.completion.sh",
+            "azps.ps1"
+        ],
+        "apps_of_dependencies": [
+            "pygrun",
+            "normalizer",
+            "activate-global-python-argcomplete",
+            "python-argcomplete-check-easy-install-script",
+            "register-python-argcomplete",
+            "distro",
+            "humanfriendly",
+            "jp.py",
+            "pygmentize",
+            "tabulate",
+            "pkginfo",
+            "chardetect",
+            "fab",
+            "inv",
+            "invoke",
+            "jdiff",
+            "pysemver",
+            "sshtunnel",
+            "wsdump"
+        ],
+        "include_apps": true,
+        "include_dependencies": false,
+        "man_pages": [],
+        "man_pages_of_dependencies": [],
+        "man_paths": [],
+        "man_paths_of_dependencies": {},
+        "package": "azure-cli",
+        "package_or_url": "azure-cli",
+        "package_version": "2.85.0",
+        "pinned": false,
+        "pip_args": [],
+        "suffix": ""
+    },
+    "pipx_metadata_version": "0.5",
+    "python_version": "Python 3.12.1",
+    "source_interpreter": {
+        "__Path__": "/usr/local/python/3.12.1/bin/python3.12",
+        "__type__": "Path"
+    },
+    "venv_args": []
+}
