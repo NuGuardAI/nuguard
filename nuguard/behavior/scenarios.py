@@ -499,7 +499,328 @@ def _boundary_enforcement_scenarios(
     controls: "list[PolicyControl] | None",
     config: Any,
 ) -> list[BehaviorScenario]:
+<<<<<<< HEAD
     """Generate boundary assertion scenarios.
+=======
+    """Generate one scenario per AGENT node, grounded in its description + allowed_topic."""
+    allowed_topics: list[str] = list(getattr(policy, "allowed_topics", None) or [])
+    use_case = ""
+    summary = getattr(sbom, "summary", None)
+    if summary:
+        use_case = getattr(summary, "use_case", "") or ""
+    if not use_case and intent.app_purpose:
+        use_case = intent.app_purpose
+
+    scenarios: list[BehaviorScenario] = []
+    seen_names: set[str] = set()
+
+    for idx, node in enumerate(getattr(sbom, "nodes", [])):
+        ct = getattr(node, "component_type", None) or getattr(node, "type", None)
+        nt = getattr(ct, "value", str(ct) if ct else "").upper()
+        if nt != "AGENT":
+            continue
+        name = getattr(node, "name", None) or str(getattr(node, "id", ""))
+        if name in seen_names:
+            continue
+        seen_names.add(name)
+
+        meta = getattr(node, "metadata", None)
+        desc = (
+            (getattr(meta, "description", "") or "")
+            if meta is not None
+            else (getattr(node, "description", "") or "")
+        )
+        if not desc:
+            sys_excerpt = getattr(meta, "system_prompt_excerpt", "") or "" if meta else ""
+            desc = sys_excerpt[:200]
+
+        # Find the closest allowed_topic to this agent's description + name
+        matched_topic = _find_best_topic_match(name + " " + desc, allowed_topics)
+        if matched_topic is None:
+            matched_topic = allowed_topics[0] if allowed_topics else (use_case[:60] if use_case else "general assistance")
+
+        if llm_client is None or getattr(llm_client, "api_key", None) is None:
+            scenarios.append(_deterministic_agent_scenario(name, desc, matched_topic, use_case, idx))
+            continue
+
+        prompt = _AGENT_COVERAGE_USER_TEMPLATE.format(
+            use_case=use_case[:120],
+            allowed_topics=", ".join(allowed_topics[:8]) or "general",
+            agent_name=name,
+            agent_description=desc[:300] or "no description",
+            matched_topic=matched_topic[:80],
+            agent_name_lower=name.lower().replace(" ", "_"),
+        )
+
+        try:
+            raw = await llm_client.complete(prompt, system=_AGENT_COVERAGE_SYSTEM, label="behavior:agent_coverage_gen")
+            parsed = extract_json_object(raw)
+        except Exception as exc:
+            _log.warning("_agent_coverage_scenarios: LLM call failed for %s (%s), using template", name, exc)
+            scenarios.append(_deterministic_agent_scenario(name, desc, matched_topic, use_case, idx))
+            continue
+
+        if not parsed or not parsed.get("messages"):
+            scenarios.append(_deterministic_agent_scenario(name, desc, matched_topic, use_case, idx))
+            continue
+
+        messages = [str(m) for m in (parsed.get("messages") or []) if m]
+        if not messages:
+            scenarios.append(_deterministic_agent_scenario(name, desc, matched_topic, use_case, idx))
+            continue
+
+        messages = _normalize_scenario_messages(messages, append_suffix=False)
+        sc_name = str(parsed.get("name") or f"agent_{name.lower().replace(' ', '_')}_coverage")
+        scenarios.append(
+            BehaviorScenario(
+                scenario_type=BehaviorScenarioType.AGENT_COVERAGE,
+                name=sc_name,
+                messages=messages,
+                target_component=name,
+                target_component_type="AGENT",
+                goal=str(parsed.get("goal") or f"Verify that {name} handles '{matched_topic}' requests correctly"),
+                component_description=desc,
+                scoped_agents=[name],
+                matched_topic=matched_topic,
+                primary_agent=name,
+            )
+        )
+
+    return scenarios
+
+
+# ---------------------------------------------------------------------------
+# Layer 2b: Tool Coverage with chaining (v7)
+# ---------------------------------------------------------------------------
+
+_TOOL_CHAIN_SYSTEM = (
+    "You are a QA engineer creating multi-turn behavior test scenarios. "
+    "Return ONLY valid JSON."
+)
+
+_TOOL_CHAIN_USER_TEMPLATE = """\
+## Application Context
+Use case: {use_case}
+Allowed topics: {allowed_topics}
+Agent: {agent_name}
+
+## Tool Chain to Exercise
+{tool_chain_lines}
+
+## Instructions
+Generate exactly one multi-turn test conversation that naturally exercises the tools above in sequence.
+Rules:
+- Start with a user request that would naturally invoke the first (INFO) tool
+- Each subsequent turn should naturally lead to the next tool in the sequence
+- The final turn should invoke the ACTION tool (if any)
+- Keep messages realistic — a natural user conversation, not a script
+- Number of turns should equal the number of tools (or fewer if tools can share a turn)
+
+Return JSON:
+{{
+  "name": "snake_case_scenario_name",
+  "goal": "Verify the {agent_name} tool chain: {tool_names_short}",
+  "messages": ["turn1", "turn2", ...]
+}}
+"""
+
+
+def _build_tool_groups(sbom: "AiSbomDocument") -> dict[str, list[tuple[str, str, str]]]:
+    """Build {agent_name: [(tool_name, description, tier), ...]} from SBOM CALLS edges."""
+    # Build agent → tool mappings via CALLS edges
+    node_map: dict[str, Any] = {}
+    for node in getattr(sbom, "nodes", []):
+        node_id = str(getattr(node, "id", ""))
+        node_map[node_id] = node
+
+    agent_tools: dict[str, list[tuple[str, str, str]]] = {}
+    seen_tools: set[tuple[str, str]] = set()  # (agent_name, tool_name)
+
+    for edge in getattr(sbom, "edges", []):
+        # Support both field names: relationship_type (AiSbomDocument Edge model)
+        # and legacy relationship / type attributes used by older SBOM formats.
+        rel = (
+            getattr(edge, "relationship_type", None)
+            or getattr(edge, "relationship", None)
+            or getattr(edge, "type", None)
+        )
+        rel_str = getattr(rel, "value", str(rel) if rel else "").upper()
+        if rel_str != "CALLS":
+            continue
+
+        source_id = str(getattr(edge, "source", ""))
+        target_id = str(getattr(edge, "target", ""))
+        source_node = node_map.get(source_id)
+        target_node = node_map.get(target_id)
+        if source_node is None or target_node is None:
+            continue
+
+        source_ct = getattr(source_node, "component_type", None) or getattr(source_node, "type", None)
+        source_nt = getattr(source_ct, "value", str(source_ct) if source_ct else "").upper()
+        target_ct = getattr(target_node, "component_type", None) or getattr(target_node, "type", None)
+        target_nt = getattr(target_ct, "value", str(target_ct) if target_ct else "").upper()
+
+        if source_nt != "AGENT" or target_nt != "TOOL":
+            continue
+
+        agent_name = str(getattr(source_node, "name", "") or getattr(source_node, "id", ""))
+        tool_name = str(getattr(target_node, "name", "") or getattr(target_node, "id", ""))
+
+        if (agent_name, tool_name) in seen_tools:
+            continue
+        seen_tools.add((agent_name, tool_name))
+
+        tool_meta = getattr(target_node, "metadata", None)
+        tool_desc = (
+            (getattr(tool_meta, "description", "") or "")
+            if tool_meta is not None
+            else (getattr(target_node, "description", "") or "")
+        )
+        if not tool_desc:
+            inferred = _name_to_description(tool_name)
+            if inferred:
+                tool_desc = inferred
+
+        tier = _tool_action_tier(tool_name, tool_desc)
+        if agent_name not in agent_tools:
+            agent_tools[agent_name] = []
+        agent_tools[agent_name].append((tool_name, tool_desc, tier))
+
+    # Sort each group: INFO first, DECISION middle, ACTION last
+    tier_order = {"INFO": 0, "DECISION": 1, "ACTION": 2}
+    for agent_name in agent_tools:
+        agent_tools[agent_name].sort(key=lambda t: tier_order.get(t[2], 0))
+
+    return agent_tools
+
+
+def _deterministic_tool_chain(
+    agent_name: str,
+    tool_chain: list[tuple[str, str, str]],
+    matched_topic: str,
+    idx: int,
+) -> BehaviorScenario:
+    """Template-based multi-turn scenario for a tool chain."""
+    tool_names = [t[0] for t in tool_chain]
+    sc_name = f"tool_chain_{agent_name.lower().replace(' ', '_')}_{idx}"
+
+    messages: list[str] = []
+    last_idx = len(tool_chain) - 1
+    # Place the tool-discovery suffix at turn 2 (3rd message, index 2) so it fires
+    # after the core logic has been exercised but before the chain is exhausted.
+    # For short chains (≤3 tools) this falls back to the last turn naturally.
+    suffix_idx = min(2, last_idx)
+    for i, (tool_name, tool_desc, tier) in enumerate(tool_chain):
+        action = _policy_fragment(tool_desc, 80) if tool_desc else "complete the task"
+        if i == 0:
+            msg = f"I need help with {matched_topic[:60]}. Can you {action}?"
+        elif tier == "ACTION":
+            msg = f"Great, can you now use {tool_name} to {action}?"
+        else:
+            msg = f"And can you also {action}?"
+        if i == suffix_idx:
+            msg = msg.rstrip() + _TURN_SUFFIX
+        messages.append(msg)
+
+    if not messages:
+        messages = [f"Can you help me with {matched_topic[:60]}?"]
+
+    return BehaviorScenario(
+        scenario_type=BehaviorScenarioType.COMPONENT_COVERAGE,
+        name=sc_name,
+        messages=messages,
+        target_component=tool_names[0] if tool_names else "",
+        target_component_type="TOOL",
+        goal=f"Verify tool chain for {agent_name}: {', '.join(tool_names[:3])}",
+        scoped_tools=tool_names,
+        scoped_agents=[agent_name],
+        matched_topic=matched_topic,
+        primary_agent=agent_name,
+        tool_action_tiers=[t[2] for t in tool_chain],
+    )
+
+
+def _is_standalone_group(agent_name: str) -> bool:
+    """Return True for synthetic standalone-tool group keys."""
+    return agent_name == "__standalone__" or agent_name.startswith("__standalone__")
+
+
+async def _tool_coverage_scenarios(
+    sbom: "AiSbomDocument",
+    intent: "IntentProfile",
+    policy: "CognitivePolicy | None",
+    llm_client: "LLMClient | None",
+) -> list[BehaviorScenario]:
+    """Generate tool coverage scenarios with natural chaining per agent."""
+    allowed_topics: list[str] = list(getattr(policy, "allowed_topics", None) or [])
+    use_case = ""
+    summary = getattr(sbom, "summary", None)
+    if summary:
+        use_case = getattr(summary, "use_case", "") or ""
+    if not use_case and intent.app_purpose:
+        use_case = intent.app_purpose
+
+    # Build agent description map so we can emit one agent-level scenario per real agent.
+    agent_desc_map: dict[str, str] = {}
+    for _node in getattr(sbom, "nodes", []):
+        _ct = getattr(_node, "component_type", None) or getattr(_node, "type", None)
+        if getattr(_ct, "value", str(_ct) if _ct else "").upper() != "AGENT":
+            continue
+        _name = str(getattr(_node, "name", "") or getattr(_node, "id", ""))
+        _meta = getattr(_node, "metadata", None)
+        _desc = (
+            (getattr(_meta, "description", "") or "")
+            if _meta is not None
+            else (getattr(_node, "description", "") or "")
+        )
+        agent_desc_map[_name] = _desc
+
+    # Also handle standalone tools not reachable via CALLS edges
+    tool_groups = _build_tool_groups(sbom)
+
+    # Collect standalone tools (not in any agent's group)
+    grouped_tools: set[str] = set()
+    for tools in tool_groups.values():
+        grouped_tools.update(t[0] for t in tools)
+
+    standalone_tools: list[tuple[str, str, str]] = []
+    for node in getattr(sbom, "nodes", []):
+        ct = getattr(node, "component_type", None) or getattr(node, "type", None)
+        nt = getattr(ct, "value", str(ct) if ct else "").upper()
+        if nt != "TOOL":
+            continue
+        name = str(getattr(node, "name", "") or getattr(node, "id", ""))
+        if name in grouped_tools:
+            continue
+        meta = getattr(node, "metadata", None)
+        desc = (
+            (getattr(meta, "description", "") or "")
+            if meta is not None
+            else (getattr(node, "description", "") or "")
+        )
+        if not desc:
+            inferred = _name_to_description(name)
+            if inferred:
+                desc = inferred
+        tier = _tool_action_tier(name, desc)
+        standalone_tools.append((name, desc, tier))
+
+    if standalone_tools:
+        # Shard standalone tools by tier and chunk (≤_STANDALONE_GROUP_MAX per group)
+        # so each scenario stays focused rather than becoming an 80-turn monster.
+        _STANDALONE_GROUP_MAX = 5
+        tier_buckets: dict[str, list[tuple[str, str, str]]] = {
+            "INFO": [], "DECISION": [], "ACTION": []
+        }
+        for t in standalone_tools:
+            tier_buckets.get(t[2], tier_buckets["INFO"]).append(t)
+        for tier_name, bucket in tier_buckets.items():
+            if not bucket:
+                continue
+            for chunk_idx, start in enumerate(range(0, len(bucket), _STANDALONE_GROUP_MAX)):
+                key = f"__standalone__{tier_name}_{chunk_idx}"
+                tool_groups[key] = bucket[start : start + _STANDALONE_GROUP_MAX]
+>>>>>>> 3e526d0a (fix(behavior): fix AGENT node coverage gap in component_coverage workflow)
 
     Sources (in priority order):
     1. Compiled PolicyControl boundary_prompts (1 scenario per boundary prompt)
@@ -578,6 +899,15 @@ def _boundary_enforcement_scenarios(
                     policy_clauses=[action],
                     goal=f"Verify the application refuses: {action_short}",
                 )
+            )
+
+        # Emit one agent-level scenario per real (non-standalone) agent so that
+        # the AGENT node itself is always probed when component_coverage runs,
+        # without requiring agent_coverage to be listed in workflows.
+        if not _is_standalone_group(agent_name):
+            agent_desc = agent_desc_map.get(agent_name, "")
+            scenarios.append(
+                _deterministic_agent_scenario(agent_name, agent_desc, matched_topic, use_case, idx)
             )
 
     return scenarios
