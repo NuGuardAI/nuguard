@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 from nuguard.common.llm_client import LLMClient
 from nuguard.common.logging import get_logger
-from nuguard.models.exploit_chain import ExploitStep
+from nuguard.models.exploit_chain import ExploitStep, GoalType
 from nuguard.sbom.models import AiSbomDocument
 
 if TYPE_CHECKING:
@@ -237,9 +237,8 @@ def _build_user_prompt(
     return "\n".join(prompt_lines)
 
 
-def _goal_technique_hints(goal_type: "GoalType") -> str:
+def _goal_technique_hints(goal_type: GoalType) -> str:
     """Return technique-selection hints tuned to a specific goal type."""
-    from nuguard.models.exploit_chain import GoalType
 
     _hints: dict[str, str] = {
         GoalType.DATA_EXFILTRATION.value: (
