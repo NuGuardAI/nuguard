@@ -521,7 +521,9 @@ class ScenarioGenerator:
                 continue
             meta = node.metadata
             ds_name = node.name
-            ds_type = meta.datastore_type or "database"
+            # Fall back to node name so "sqlite", "postgres" etc. in the name
+            # still trigger the correct SQL-dialect injection path.
+            ds_type = meta.datastore_type or node.name or "database"
             table_names = list(meta.classified_fields.keys()) if meta.classified_fields else []
             primary_key_fields = [
                 f

@@ -96,7 +96,14 @@ def _scenario_matches_filter(scenario: AttackScenario, filters: set[str]) -> boo
     goal = _normalize_scenario_token(scenario.goal_type.value)
     scenario_type = _normalize_scenario_token(scenario.scenario_type.value)
     title = _normalize_scenario_token(scenario.title)
-    return any(token in goal or token in scenario_type or token in title for token in filters)
+    # Check both directions so plural/singular mismatches (e.g. "api-attacks" vs
+    # "API_ATTACK") and prefix tokens (e.g. "data" vs "data_exfiltration") match.
+    return any(
+        token in goal or goal in token
+        or token in scenario_type or scenario_type in token
+        or token in title
+        for token in filters
+    )
 
 
 @dataclass
