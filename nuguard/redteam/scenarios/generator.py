@@ -27,7 +27,10 @@ from .api_attacks import build_auth_bypass, build_idor, build_mass_assignment
 from .data_exfiltration import (
     build_bank_account_probe,
     build_base64_exfiltration,
+    build_cross_account_tool_abuse,
     build_cross_tenant_exfiltration,
+    build_datastore_schema_probe,
+    build_datastore_sql_injection,
     build_document_embedded_exfiltration,
     build_image_url_exfiltration,
     build_json_xml_exfiltration,
@@ -508,6 +511,93 @@ class ScenarioGenerator:
                 )
             )
 
+        # Phase A: Datastore-grounded schema probe + SQL injection
+        # Use actual table names and pii_fields from SBOM classified_fields.
+        # Agents are resolved via ACCESSES edges → data-tool heuristic → all agents.
+        _last_ds_name: str = ""
+        _last_all_pii: list[str] = []
+        for node in self._sbom.nodes:
+            if node.component_type != ComponentType.DATASTORE:
+                continue
+            meta = node.metadata
+            ds_name = node.name
+            ds_type = meta.datastore_type or "database"
+            table_names = list(meta.classified_fields.keys()) if meta.classified_fields else []
+            primary_key_fields = [
+                f
+                for fields in (meta.classified_fields or {}).values()
+                for f in fields
+                if any(k in f.lower() for k in ("id", "key", "account", "customer", "user"))
+            ]
+            all_pii = (meta.pii_fields or []) + (meta.phi_fields or []) + (meta.pfi_fields or [])
+            _last_ds_name = ds_name
+            _last_all_pii = all_pii
+
+            ds_agent_ids = self._agents_reaching_datastore(str(node.id))
+            if not ds_agent_ids:
+                ds_agent_ids = self._agents_with_data_tools()
+            if not ds_agent_ids:
+                ds_agent_ids = [
+                    str(n.id)
+                    for n in self._sbom.nodes
+                    if n.component_type == ComponentType.AGENT
+                ]
+
+            for agent_id in ds_agent_ids[:2]:
+                agent_node = self._node_by_id.get(agent_id)
+                if not agent_node:
+                    continue
+                if table_names:
+                    out.append(
+                        build_datastore_schema_probe(
+                            agent_id=agent_id,
+                            agent_name=agent_node.name,
+                            datastore_name=ds_name,
+                            table_names=table_names,
+                            primary_key_fields=primary_key_fields,
+                        )
+                    )
+                if any(
+                    t in ds_type.lower()
+                    for t in ("sql", "sqlite", "postgres", "mysql", "db", "relational")
+                ):
+                    out.append(
+                        build_datastore_sql_injection(
+                            agent_id=agent_id,
+                            agent_name=agent_node.name,
+                            datastore_name=ds_name,
+                            datastore_type=ds_type,
+                            pii_fields=all_pii,
+                        )
+                    )
+
+        # Phase B: Cross-account bulk tool abuse
+        # Find agents that CALL privileged bulk/export/list_all tools and attempt
+        # to social-engineer them into dumping data without per-account scoping.
+        _BULK_TOOL_KEYWORDS = ("list_all", "bulk", "export", "all_", "dump", "enumerate")
+        for agent_node in [n for n in self._sbom.nodes if n.component_type == ComponentType.AGENT]:
+            tool_ids = self._outgoing.get(str(agent_node.id), {}).get(
+                RelationshipType.CALLS, []
+            )
+            privileged_tools = [
+                self._node_by_id[tid].name
+                for tid in tool_ids
+                if tid in self._node_by_id
+                and any(
+                    kw in self._node_by_id[tid].name.lower() for kw in _BULK_TOOL_KEYWORDS
+                )
+            ]
+            if privileged_tools:
+                out.append(
+                    build_cross_account_tool_abuse(
+                        agent_id=str(agent_node.id),
+                        agent_name=agent_node.name,
+                        tool_names=privileged_tools[:3],
+                        datastore_name=_last_ds_name or "application datastore",
+                        pii_fields=_last_all_pii,
+                    )
+                )
+
         # Fallback: when policy declares data_classification but no DATASTORE SBOM
         # nodes carry PII metadata, generate agent-level extraction scenarios directly
         if not out and self._policy.data_classification:
@@ -589,6 +679,33 @@ class ScenarioGenerator:
             agent_id = str(node.id)
             for tool_id in self._outgoing.get(agent_id, {}).get(RelationshipType.CALLS, []):
                 if ds_id in self._outgoing.get(tool_id, {}).get(RelationshipType.ACCESSES, []):
+                    result.append(agent_id)
+                    break
+        return result
+
+    # Keywords indicating a tool is likely involved in data access / querying.
+    # Matched against tool.name.lower() — used by _agents_with_data_tools().
+    _DATA_TOOL_KEYWORDS: frozenset[str] = frozenset({
+        "query", "search", "lookup", "fetch", "get_", "list_", "find",
+        "account", "user", "customer", "booking", "record",
+    })
+
+    def _agents_with_data_tools(self) -> list[str]:
+        """Return AGENT node IDs that CALL at least one tool with a data-access name pattern.
+
+        Used as a fallback when ACCESSES edges are absent from the SBOM (e.g. Fintech
+        and OpenAI-CS SBOMs define no TOOL→DATASTORE ACCESSES edges).
+        """
+        result = []
+        for node in self._sbom.nodes:
+            if node.component_type != ComponentType.AGENT:
+                continue
+            agent_id = str(node.id)
+            for tid in self._outgoing.get(agent_id, {}).get(RelationshipType.CALLS, []):
+                tool_node = self._node_by_id.get(tid)
+                if tool_node and any(
+                    kw in tool_node.name.lower() for kw in self._DATA_TOOL_KEYWORDS
+                ):
                     result.append(agent_id)
                     break
         return result

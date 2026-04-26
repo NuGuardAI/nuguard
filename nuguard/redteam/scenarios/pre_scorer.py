@@ -21,6 +21,7 @@ _SCENARIO_SCORE_OVERRIDES: dict[str, float] = {
     ScenarioType.SQL_INJECTION.value: 8.5,
     ScenarioType.SSRF.value: 8.0,
     ScenarioType.RESTRICTED_ACTION.value: 7.5,
+    ScenarioType.DATASTORE_PROBE.value: 7.5,   # recon; lower than direct extraction
 }
 
 
