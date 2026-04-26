@@ -1,0 +1,16 @@
+Golden Bank server: http://localhost:8095
+Chat API:           POST http://localhost:8095/chat
+ADK API:            POST http://localhost:8095/run
+Press Ctrl+C to stop.
+
+Traceback (most recent call last):
+  File "/workspaces/nuguard-private/tests/apps/Golden_Bank_Agent/serve.py", line 241, in <module>
+    with http.server.ThreadingHTTPServer(("", PORT), Handler) as httpd:
+         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/usr/lib/python3.12/socketserver.py", line 457, in __init__
+    self.server_bind()
+  File "/usr/lib/python3.12/http/server.py", line 136, in server_bind
+    socketserver.TCPServer.server_bind(self)
+  File "/usr/lib/python3.12/socketserver.py", line 473, in server_bind
+    self.socket.bind(self.server_address)
+OSError: [Errno 98] Address already in use

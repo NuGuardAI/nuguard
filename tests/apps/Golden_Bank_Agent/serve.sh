@@ -23,7 +23,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PORT="${PORT:-8080}"
+PORT="${PORT:-8200}"
 
 # ── Activate virtualenv if not already active ─────────────────────────────────
 #if [[ -z "${VIRTUAL_ENV:-}" ]]; then
@@ -57,11 +57,21 @@ echo ""
 # Ensure the .adk directory exists for SQLite session storage
 mkdir -p "$SCRIPT_DIR/.adk"
 
-# Kill any process already holding the port
+# Kill any process already holding the port.
+# docker-proxy processes must be stopped via `docker stop`, not kill -9.
 if lsof -ti tcp:"$PORT" >/dev/null 2>&1; then
-  echo "Port $PORT in use — killing existing process..."
-  lsof -ti tcp:"$PORT" | xargs kill -9 2>/dev/null || true
-  sleep 1
+  echo "Port $PORT in use — checking for Docker containers..."
+  CONTAINER=$(docker ps --format '{{.Names}}\t{{.Ports}}' 2>/dev/null \
+    | awk -F'\t' -v port="$PORT" '$2 ~ port {print $1}' | head -1)
+  if [[ -n "$CONTAINER" ]]; then
+    echo "Stopping Docker container $CONTAINER on port $PORT..."
+    docker stop "$CONTAINER" >/dev/null
+    sleep 1
+  else
+    echo "Killing process on port $PORT..."
+    lsof -ti tcp:"$PORT" | xargs kill -9 2>/dev/null || true
+    sleep 1
+  fi
 fi
 
 #exec adk api_server \
