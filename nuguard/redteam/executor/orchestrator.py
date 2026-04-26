@@ -46,10 +46,11 @@ def _normalize_scenario_token(value: str) -> str:
 def _dedup_findings(findings: list[Finding]) -> list[Finding]:
     """Collapse near-duplicate findings, keeping the highest-severity instance.
 
-    Two findings are considered duplicates when they share the same
-    ``(goal_type, affected_component, success_indicator)`` triple.  The one
-    with the higher severity (lower index in the Severity enum order) wins;
-    ties are broken by taking the one with the longer evidence string.
+    Two findings are duplicates when they share the same
+    ``(finding_id, goal_type, affected_component)`` triple — i.e. the same
+    attack type against the same component.  Distinct scenarios (HITL_BYPASS vs
+    RESTRICTED_ACTION vs AUTH_BYPASS) always produce different finding_ids so
+    they are never collapsed, even when they target the same component.
     """
     from nuguard.models.finding import Severity
 
@@ -66,9 +67,9 @@ def _dedup_findings(findings: list[Finding]) -> list[Finding]:
     seen: dict[tuple, Finding] = {}
     for f in findings:
         key = (
+            f.finding_id or "",
             f.goal_type or "",
             (f.affected_component or "").lower(),
-            f.success_indicator or "",
         )
         if key not in seen:
             seen[key] = f
@@ -1485,7 +1486,18 @@ class RedteamOrchestrator:
         step_summary = self._step_evidence_summary(step_details)
         if self._trigger_enabled("policy_violations"):
             for step_idx, sr, violation in violations_with_step:
-                sev = severity_scorer.score_finding(scenario.goal_type)
+                from nuguard.models.finding import Severity as _Sev
+                _SEV_ORDER_LOCAL = [_Sev.CRITICAL, _Sev.HIGH, _Sev.MEDIUM, _Sev.LOW, _Sev.INFO]
+                # Cap at the violation's own severity so that low-confidence
+                # detectors (e.g. topic_boundary Tier-2, confidence=0.7,
+                # severity=MEDIUM) are not inflated to the scenario goal-type
+                # severity (e.g. HIGH for DATA_EXFILTRATION).
+                goal_sev = severity_scorer.score_finding(scenario.goal_type)
+                try:
+                    viol_sev = _Sev(violation.severity.lower())
+                except (ValueError, AttributeError):
+                    viol_sev = goal_sev
+                sev = viol_sev if _SEV_ORDER_LOCAL.index(viol_sev) > _SEV_ORDER_LOCAL.index(goal_sev) else goal_sev
                 violation_title = f"{violation.type.replace('_', ' ').title()} — {scenario.title}"
                 # Evidence centres on the specific step that triggered the
                 # violation — the attacker message sent and the response

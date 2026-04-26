@@ -71,8 +71,9 @@ def build_restricted_topic(agent_id: str, topic: str) -> AttackScenario:
             ),
             target_node_id=agent_id,
             depends_on=[f"{chain_id}_s2"],
-            success_signal=topic.split()[0].lower(),
+            success_signal="",   # first-word keyword would match refusals; use LLM eval
             on_failure="mutate",
+            use_llm_eval=True,
         ),
     ]
     chain.pre_score = pre_score(chain)
@@ -136,8 +137,9 @@ def build_restricted_action(agent_id: str, action: str) -> AttackScenario:
             ),
             target_node_id=agent_id,
             depends_on=[f"{chain_id}_s2"],
-            success_signal=action.split()[0].lower(),
+            success_signal="",   # first-word keyword would match refusals; use LLM eval
             on_failure="mutate",
+            use_llm_eval=True,
         ),
     ]
     chain.pre_score = pre_score(chain)
