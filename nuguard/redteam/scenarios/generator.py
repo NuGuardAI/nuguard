@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 
 from nuguard.models.exploit_chain import ExploitChain, ExploitStep, GoalType, ScenarioType
@@ -9,6 +10,19 @@ from nuguard.models.policy import CognitivePolicy
 from nuguard.sbom.models import AiSbomDocument
 from nuguard.sbom.types import ComponentType, RelationshipType
 
+# ── 2024–2025 advanced attack families ────────────────────────────────────────
+from .advanced_jailbreaks import (
+    build_crescendo_attack,
+    build_many_shot_jailbreak,
+    build_payload_splitting,
+    build_skeleton_key,
+)
+from .agentic_attacks import (
+    build_confused_deputy,
+    build_goal_hijacking,
+    build_memory_poisoning,
+    build_multi_agent_trust_boundary,
+)
 from .api_attacks import build_auth_bypass, build_idor, build_mass_assignment
 from .data_exfiltration import (
     build_bank_account_probe,
@@ -21,6 +35,7 @@ from .data_exfiltration import (
     build_rag_poisoning,
     build_ssn_enumeration,
 )
+from .evasion import build_encoding_evasion, build_multi_language_bypass
 from .guided_conversations import (
     build_constrained_cs_narrative_attack,
     build_guided_data_store_probe,
@@ -48,20 +63,6 @@ from .prompt_injection import (
 from .sbom_driven import _classify_tool, build_tool_scenarios
 from .scenario_types import AttackScenario
 from .tool_abuse import build_sql_injection, build_ssrf
-# ── 2024–2025 advanced attack families ────────────────────────────────────────
-from .advanced_jailbreaks import (
-    build_crescendo_attack,
-    build_many_shot_jailbreak,
-    build_payload_splitting,
-    build_skeleton_key,
-)
-from .evasion import build_encoding_evasion, build_multi_language_bypass
-from .agentic_attacks import (
-    build_confused_deputy,
-    build_goal_hijacking,
-    build_memory_poisoning,
-    build_multi_agent_trust_boundary,
-)
 
 _log = logging.getLogger(__name__)
 
@@ -908,13 +909,23 @@ class ScenarioGenerator:
     # Goal 9: Direct API Attacks
     # ------------------------------------------------------------------ #
 
+    # Endpoint path segments that are unambiguously public — no auth bypass needed.
+    _PUBLIC_PATH_HINTS: frozenset[str] = frozenset({
+        "health", "healthz", "ping", "status", "metrics",
+        "docs", "openapi", "swagger", "redoc",
+        "login", "signin", "sign-in", "register", "signup", "sign-up",
+        "oauth", "callback", "token",
+    })
+
     def _api_attack_scenarios(self) -> list[AttackScenario]:
         """Generate direct HTTP attack scenarios from API_ENDPOINT SBOM nodes.
 
         For each discovered endpoint:
-        - AUTH_BYPASS   — when auth_required=True, probe without credentials
-        - MASS_ASSIGNMENT — for write methods (POST/PUT/PATCH), send privilege fields
-        - IDOR          — for endpoints with ID-like path parameters
+        - AUTH_BYPASS   — when auth_required=True OR auth_required is unknown and
+                          the endpoint does not look like a public path
+        - MASS_ASSIGNMENT — for write methods (POST/PUT/PATCH)
+        - IDOR          — for endpoints with ID-like path parameters (explicit
+                          metadata OR path template patterns detected via regex)
         """
         out: list[AttackScenario] = []
         for node in self._sbom.nodes:
@@ -926,7 +937,17 @@ class ScenarioGenerator:
             path = meta.endpoint or f"/{node.name.lower().replace(' ', '-')}"
             method = (meta.method or "GET").upper()
 
-            if meta.auth_required:
+            # Skip placeholder nodes with no meaningful path
+            path_slug = path.strip("/").lower()
+            if not path_slug or path_slug in ("generic", "none", "null"):
+                continue
+
+            # Determine if this endpoint is obviously public
+            path_segments = set(re.split(r"[/\-_.]", path_slug))
+            is_public = bool(path_segments & self._PUBLIC_PATH_HINTS)
+
+            # Auth bypass: explicit auth_required=True, or unknown (None) and not public
+            if meta.auth_required or (meta.auth_required is None and not is_public):
                 out.append(
                     build_auth_bypass(
                         endpoint_id=endpoint_id,
@@ -946,15 +967,30 @@ class ScenarioGenerator:
                     )
                 )
 
-            if meta.idor_surface or any(
-                p.lower() in ("id", "user_id", "tenant_id", "account_id", "customer_id", "org_id")
-                for p in (meta.path_params or [])
-            ):
+            # IDOR: explicit metadata flag, explicit path params, or path template pattern
+            inferred_params: list[str] = list(meta.path_params or [])
+            if not inferred_params:
+                # Detect {id}, :user_id, <account_id> style path templates
+                for m in re.finditer(
+                    r"\{([^}]+)\}|:([A-Za-z_][A-Za-z0-9_]*)|<([^>]+)>", path
+                ):
+                    param = m.group(1) or m.group(2) or m.group(3)
+                    if param:
+                        inferred_params.append(param)
+
+            _ID_LIKE_PARAMS = {
+                "id", "user_id", "tenant_id", "account_id",
+                "customer_id", "org_id", "record_id", "object_id",
+            }
+            has_idor_params = meta.idor_surface or any(
+                p.lower() in _ID_LIKE_PARAMS for p in inferred_params
+            )
+            if has_idor_params:
                 scenario = build_idor(
                     endpoint_id=endpoint_id,
                     endpoint_name=node.name,
                     path=path,
-                    path_params=meta.path_params or [],
+                    path_params=inferred_params,
                 )
                 if scenario is not None:
                     out.append(scenario)
@@ -1268,7 +1304,7 @@ class ScenarioGenerator:
             if self._sbom.summary:
                 use_case = (getattr(self._sbom.summary, "use_case", "") or "")[:80]
             return (
-                f"provide information outside its primary purpose"
+                "provide information outside its primary purpose"
                 + (f" ({use_case})" if use_case else "")
             )
 
