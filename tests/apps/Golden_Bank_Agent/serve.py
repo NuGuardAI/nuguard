@@ -12,8 +12,8 @@ server directly:
 
 Usage:
     gcloud auth login          # one-time
-    python3 serve.py           # default port 8088
-    python3 serve.py 8080      # custom port
+    python3 serve.py           # default port 8095
+    python3 serve.py 8095      # custom port
 """
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ import urllib.request
 import uuid
 from pathlib import Path
 
-PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8088
+PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8095
 ROOT = Path(__file__).parent
 
 PROJECT      = "platform-dev-2025"

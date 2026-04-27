@@ -35,7 +35,6 @@ from nuguard.models.exploit_chain import (
 from .pre_scorer import pre_score
 from .scenario_types import AttackScenario
 
-
 # ---------------------------------------------------------------------------
 # Helper encoders
 # ---------------------------------------------------------------------------

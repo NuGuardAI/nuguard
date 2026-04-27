@@ -13,7 +13,7 @@ policy:
 
 # ─── LLM settings ─────────────────────────────────────────────────────────────
 llm:
-  model: gemini/gemini-2.0-flash    # any LiteLLM model string (openai/gpt-4o, etc.)
+  model: gemini/gemini-3.1-flash-lite-preview    # any LiteLLM model string (openai/gpt-4o, etc.)
   api_key: ${GEMINI_API_KEY}     # never put keys here; use env var interpolation
 
 # ─── SBOM generation ──────────────────────────────────────────────────────────
@@ -174,7 +174,7 @@ redteam:
 
   # LLM for response evaluation and finding summarisation
   eval_llm:
-    model: gemini/gemini-2.0-flash
+    model: gemini/gemini-3.1-flash-lite-preview
     api_key: ${GEMINI_API_KEY}
 
   # MCP server hostnames treated as trusted.

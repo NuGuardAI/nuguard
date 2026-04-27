@@ -63,8 +63,8 @@ redteam:
   #   header: "Authorization: Bearer ${TARGET_TOKEN}"
   auth:
     type: basic
-    username: ${APP_USERNAME}
-    password: ${APP_PASSWORD}
+    username: testuser
+    password: testpass
 
   # Canary seed file — same file as behavior.canary (or a separate one)
   # tenant session_tokens in canary.json are used as attacker credentials for
@@ -79,7 +79,7 @@ redteam:
   # Scan profile:
   #   ci   — fast; only scenarios with pre-impact score ≥ 5 (default)
   #   full — all scenarios regardless of score
-  profile: ci
+  profile: full
 
   # Scenario types to run (omit section to run all):
   scenarios:
@@ -88,6 +88,7 @@ redteam:
     - privilege-escalation
     - data-exfiltration
     - policy-violation
+    - api-attacks
     - mcp-toxic-flow
 
   # Minimum pre-impact score [0–10] for a scenario to be included (default: 0.0)
@@ -108,10 +109,10 @@ redteam:
 
   # Per-request HTTP timeout in seconds (default: 120)
   # Multi-agent pipelines with LLM calls can take 60–120 s; increase for slow apps
-  request_timeout: 120
+  request_timeout: 90
 
   # Verbose report: include full per-scenario traces in redteam report
-  verbose: false
+  verbose: true
 
   # Strict outcome mode (default: false)
   # When true, a run where ≥ 80% of transport events are 5xx/network errors is
@@ -126,8 +127,10 @@ redteam:
 
   # LLM for attack-payload generation (must tolerate adversarial content)
   llm:
-    model: ${AWS_BEDROCK_MODEL}
-    api_key: ${ANTHROPIC_API_KEY}
+ #   model: ${AWS_BEDROCK_MODEL}
+ #   api_key: ${ANTHROPIC_API_KEY}
+    model: openai/gpt-5.4
+    api_key: ${OPENAI_API_KEY}  
 
   # LLM for response evaluation and finding summarisation
   eval_llm:

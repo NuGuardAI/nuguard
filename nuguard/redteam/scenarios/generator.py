@@ -25,6 +25,7 @@ from .agentic_attacks import (
 )
 from .api_attacks import build_auth_bypass, build_idor, build_mass_assignment
 from .data_exfiltration import (
+    build_account_id_probe,
     build_bank_account_probe,
     build_base64_exfiltration,
     build_cross_account_tool_abuse,
@@ -599,6 +600,34 @@ class ScenarioGenerator:
                         pii_fields=_last_all_pii,
                     )
                 )
+
+        # Phase C: IDOR via discovered account IDs
+        # Generate one ACCOUNT_ID_PROBE scenario per agent that has data-access tools.
+        # The executor auto-injects a DISCOVER step to capture the authenticated user's
+        # golden data; subsequent steps use {golden_id} tokens resolved at runtime.
+        _ID_LABELS = {
+            "account": ("account", "customer"),
+            "booking": ("booking", "reservation", "order"),
+            "user": ("user", "member", "profile"),
+        }
+        for agent_node in [n for n in self._sbom.nodes if n.component_type == ComponentType.AGENT]:
+            tool_ids = self._outgoing.get(str(agent_node.id), {}).get(RelationshipType.CALLS, [])
+            tool_names_lower = {
+                self._node_by_id[tid].name.lower()
+                for tid in tool_ids if tid in self._node_by_id
+            }
+            id_label = "account"
+            for label, keywords in _ID_LABELS.items():
+                if any(kw in tn for kw in keywords for tn in tool_names_lower):
+                    id_label = label
+                    break
+            out.append(
+                build_account_id_probe(
+                    agent_id=str(agent_node.id),
+                    agent_name=agent_node.name,
+                    id_label=id_label,
+                )
+            )
 
         # Fallback: when policy declares data_classification but no DATASTORE SBOM
         # nodes carry PII metadata, generate agent-level extraction scenarios directly
