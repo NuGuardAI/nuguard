@@ -610,3 +610,122 @@ async def test_invoke_endpoint_retries_429_then_succeeds() -> None:
     assert request_mock.await_count == 2
     sleep_mock.assert_awaited_once()
     await client.aclose()
+
+
+# ── API attack: schema-aware POST body generation ─────────────────────────────
+
+
+from nuguard.redteam.scenarios.api_attacks import (  # noqa: E402
+    _MASS_ASSIGN_BODY,
+    _build_realistic_body,
+    build_auth_bypass,
+    build_mass_assignment,
+)
+
+
+class TestBuildRealisticBody:
+    def test_field_name_hint_username(self):
+        body = _build_realistic_body({"username": "str"})
+        assert body["username"] == "testuser@example.com"
+
+    def test_field_name_hint_email(self):
+        body = _build_realistic_body({"email": "str"})
+        assert "@" in body["email"]
+
+    def test_field_name_hint_message(self):
+        body = _build_realistic_body({"message": "str"})
+        assert isinstance(body["message"], str) and len(body["message"]) > 5
+
+    def test_field_name_hint_password(self):
+        body = _build_realistic_body({"password": "str"})
+        assert body["password"] == "TestPass123!"
+
+    def test_field_name_hint_session_id(self):
+        body = _build_realistic_body({"session_id": "str"})
+        assert "sess" in body["session_id"]
+
+    def test_field_name_hint_user_id(self):
+        body = _build_realistic_body({"user_id": "str"})
+        assert "user" in body["user_id"]
+
+    def test_type_fallback_int(self):
+        body = _build_realistic_body({"count": "int"})
+        assert body["count"] == 1
+
+    def test_type_fallback_bool(self):
+        body = _build_realistic_body({"active": "bool"})
+        assert body["active"] is True
+
+    def test_type_fallback_unknown_field_str(self):
+        body = _build_realistic_body({"foo": "str"})
+        assert body["foo"] == "test-value"
+
+    def test_empty_schema_returns_empty_dict(self):
+        assert _build_realistic_body({}) == {}
+
+    def test_multi_field_schema(self):
+        schema = {"message": "str", "session_id": "str", "user_id": "str"}
+        body = _build_realistic_body(schema)
+        assert set(body.keys()) == {"message", "session_id", "user_id"}
+
+
+class TestMassAssignmentSchema:
+    def test_includes_schema_fields(self):
+        schema = {"message": "str", "session_id": "str"}
+        scenario = build_mass_assignment("ep-1", "chat", "/api/chat", request_body_schema=schema)
+        body = scenario.chain.steps[0].http_body
+        assert "message" in body
+        assert "session_id" in body
+
+    def test_includes_privilege_fields(self):
+        schema = {"message": "str"}
+        scenario = build_mass_assignment("ep-1", "chat", "/api/chat", request_body_schema=schema)
+        body = scenario.chain.steps[0].http_body
+        assert body.get("role") == "admin"
+        assert body.get("is_admin") is True
+
+    def test_privilege_fields_win_on_collision(self):
+        # If schema has a "role" field, _MASS_ASSIGN_BODY's "admin" value must win
+        schema = {"role": "str", "message": "str"}
+        scenario = build_mass_assignment("ep-1", "chat", "/api/chat", request_body_schema=schema)
+        body = scenario.chain.steps[0].http_body
+        assert body["role"] == "admin"
+
+    def test_no_schema_uses_generic_body(self):
+        scenario = build_mass_assignment("ep-1", "chat", "/api/chat", request_body_schema=None)
+        body = scenario.chain.steps[0].http_body
+        assert body == _MASS_ASSIGN_BODY
+
+    def test_schema_fields_have_plausible_values(self):
+        schema = {"username": "str", "password": "str"}
+        scenario = build_mass_assignment("ep-1", "login", "/api/login", request_body_schema=schema)
+        body = scenario.chain.steps[0].http_body
+        assert "@" in body["username"]
+        assert body["password"] == "TestPass123!"
+
+
+class TestAuthBypassSchema:
+    def test_post_with_schema_has_body(self):
+        schema = {"message": "str", "session_id": "str"}
+        scenario = build_auth_bypass("ep-1", "chat", "/api/chat", method="POST",
+                                     request_body_schema=schema)
+        body = scenario.chain.steps[0].http_body
+        assert isinstance(body, dict) and len(body) > 0
+
+    def test_post_body_contains_schema_fields(self):
+        schema = {"message": "str", "user_id": "str"}
+        scenario = build_auth_bypass("ep-1", "chat", "/api/chat", method="POST",
+                                     request_body_schema=schema)
+        body = scenario.chain.steps[0].http_body
+        assert "message" in body
+        assert "user_id" in body
+
+    def test_get_has_no_body(self):
+        scenario = build_auth_bypass("ep-1", "users", "/api/users", method="GET",
+                                     request_body_schema={"message": "str"})
+        assert scenario.chain.steps[0].http_body is None
+
+    def test_post_without_schema_has_no_body(self):
+        scenario = build_auth_bypass("ep-1", "chat", "/api/chat", method="POST",
+                                     request_body_schema=None)
+        assert scenario.chain.steps[0].http_body is None

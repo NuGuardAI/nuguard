@@ -1094,6 +1094,9 @@ class ScenarioGenerator:
             path_segments = set(re.split(r"[/\-_.]", path_slug))
             is_public = bool(path_segments & self._PUBLIC_PATH_HINTS)
 
+            # Extract request body schema from SBOM metadata (populated by FastAPI adapter)
+            request_body_schema: dict[str, str] | None = meta.request_body_schema or None
+
             # Auth bypass: explicit auth_required=True, or unknown (None) and not public
             if meta.auth_required or (meta.auth_required is None and not is_public):
                 out.append(
@@ -1102,6 +1105,7 @@ class ScenarioGenerator:
                         endpoint_name=node.name,
                         path=path,
                         method=method,
+                        request_body_schema=request_body_schema,
                     )
                 )
 
@@ -1112,6 +1116,7 @@ class ScenarioGenerator:
                         endpoint_name=node.name,
                         path=path,
                         method=method,
+                        request_body_schema=request_body_schema,
                     )
                 )
 
