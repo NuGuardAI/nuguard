@@ -23,22 +23,22 @@ sbom_generation:
 target:
   url: http://127.0.0.1:8250   # URL of the running AI application under test (required for behavior and redteam)
 
-# Authentication — choose one type:
-auth:
-  # Option A: Bearer token (OAuth2, JWT, or custom token)
-  # type: bearer
-  # header: "Authorization: Bearer ${TARGET_TOKEN}"
+  # Authentication — choose one type:
+  auth:
+    # Option A: Bearer token (OAuth2, JWT, or custom token)
+    # type: bearer
+    # header: "Authorization: Bearer ${TARGET_TOKEN}"
 
-  # Option B: API key in a custom header
-  # type: api_key
-  # header: "X-API-Key: ${TARGET_API_KEY}"
+    # Option B: API key in a custom header
+    # type: api_key
+    # header: "X-API-Key: ${TARGET_API_KEY}"
 
-  # Option C: HTTP Basic Auth (username + password)
-  type: basic
-  username: ${APP_USERNAME}
-  password: ${APP_PASSWORD}
-  # Option D: No authentication (open endpoints, local dev)
-  # type: none
+    # Option C: HTTP Basic Auth (username + password)
+    type: basic
+    username: ${APP_USERNAME}
+    password: ${APP_PASSWORD}
+    # Option D: No authentication (open endpoints, local dev)
+    # type: none
 
 # ─── Behavior mode ────────────────────────────────────────────────────────────
 # nuguard behavior exercises the AI app's happy path to verify capabilities work
