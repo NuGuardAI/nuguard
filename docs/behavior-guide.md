@@ -84,40 +84,62 @@ NuGuard's behavior approach verifies intent alignment, component coverage, and p
 The target URL is resolved in this priority order:
 
 1. `--target` CLI flag
-2. `behavior.target` in `nuguard.yaml`
-3. SBOM discovery — prefers local URLs, falls back to staging → production deployment URLs embedded in the SBOM
-4. Hard error: `nuguard behavior` exits if no URL is found
+2. `target.url` in `nuguard.yaml` (top-level shared block — used by both `behavior` and `redteam`)
+3. `behavior.target` in `nuguard.yaml` (per-command override; takes precedence over `target.url` for behavior only)
+4. SBOM discovery — prefers local URLs, falls back to staging → production deployment URLs embedded in the SBOM
+5. Hard error: `nuguard behavior` exits if no URL is found
+
+> [!TIP]
+> Set `target.url` once at the top level so both `nuguard behavior` and `nuguard redteam` share the same endpoint without duplication. Use `behavior.target` only when the two commands need to hit different URLs.
 
 ### Chat Endpoint
 
+Endpoint and payload shape are configured in the `target:` block and inherited by `behavior`. Override in `behavior:` only when behavior needs different values from redteam.
+
 | Setting | Default | Description |
 |---|---|---|
-| `behavior.target_endpoint` | `/chat` | Path appended to the base URL |
-| `behavior.chat_payload_key` | `message` | JSON key for the message in the POST body |
-| `behavior.chat_payload_list` | `false` | Wrap the message in a list |
-| `behavior.chat_response_key` | — | JSON key to extract from the response body |
+| `target.endpoint` | `/chat` | Path appended to the base URL |
+| `target.chat_payload_key` | `message` | JSON key for the message in the POST body |
+| `target.chat_payload_list` | `false` | Wrap the message in a list |
+| `target.chat_response_key` | — | JSON key to extract from the response body |
 
 Example for an app expecting `{"query": "..."}` and returning `{"answer": "..."}`:
 
 ```yaml
-behavior:
-  target_endpoint: /api/v1/chat
+target:
+  url: http://localhost:8000
+  endpoint: /api/v1/chat
   chat_payload_key: query
   chat_response_key: answer
 ```
 
 ### Authentication
 
-Same structured options as `redteam.auth`:
+Auth is configured in the shared `target.auth` block and inherited by both `behavior` and `redteam`. Override in `behavior.auth` or `redteam.auth` only when the two commands need different credentials.
 
 ```yaml
-behavior:
+# top-level — shared by behavior and redteam
+target:
+  url: https://my-ai-app.example.com
   auth:
     type: bearer
     header: "Authorization: Bearer ${TARGET_TOKEN}"
+
+# per-command override (optional)
+behavior:
+  auth:
+    type: login_flow
+    login_flow:
+      endpoint: /login
+      payload:
+        username: ${APP_USERNAME}
+        password: ${APP_PASSWORD}
+      token_response_key: access_token
+      token_header: "Authorization: Bearer"
+      refresh_on_401: true
 ```
 
-Supported types: `bearer`, `api_key`, `basic`, `login_flow`, `none`.
+Supported auth types: `bearer`, `api_key`, `basic`, `login_flow`, `none`.
 
 ---
 
@@ -156,7 +178,8 @@ behavior:
     - data_discovery_probe
 ```
 
-> **Note:** `boundary_enforcement` was removed in v7. Adversarial boundary testing (refusal verification, prompt injection, policy bypass) is handled by `nuguard redteam`.
+> [!NOTE]
+> `boundary_enforcement` was removed in v7. Adversarial boundary testing (refusal verification, prompt injection, policy bypass) is handled by `nuguard redteam`.
 
 ### Layer 1: Intent Happy Path
 
@@ -491,16 +514,19 @@ nuguard behavior \
 
 ## Configuration Reference
 
-All flags can be set in `nuguard.yaml` under the `behavior:` section. Run `nuguard init` to generate an annotated template.
+All flags can be set in `nuguard.yaml`. Run `nuguard init` to generate an annotated template.
+
+**Target and auth** are configured in the top-level `target:` block and inherited by `behavior`. Override in `behavior:` only when behavior needs different values from redteam.
 
 | CLI flag | YAML key | Default | Description |
 |---|---|---|---|
-| `--target` | `behavior.target` | SBOM discovery | URL of the live AI application |
-| — | `behavior.target_endpoint` | `/chat` | Chat endpoint path |
-| — | `behavior.chat_payload_key` | `message` | JSON key for the message in POST body |
-| — | `behavior.chat_payload_list` | `false` | Send message as a list |
-| — | `behavior.chat_response_key` | — | JSON key to extract from response |
-| — | `behavior.auth` | `type: none` | Structured auth: `bearer`, `api_key`, `basic`, `login_flow`, `none` |
+| `--target` | `target.url` | SBOM discovery | URL of the live AI application (shared; override with `behavior.target`) |
+| — | `target.endpoint` | `/chat` | Chat endpoint path (shared; override with `behavior.target_endpoint`) |
+| — | `target.chat_payload_key` | `message` | JSON key for the message in POST body |
+| — | `target.chat_payload_list` | `false` | Send message as a list |
+| — | `target.chat_response_key` | — | JSON key to extract from response |
+| — | `target.auth` | `type: none` | Shared auth config: `bearer`, `api_key`, `basic`, `login_flow`, `none` |
+| — | `behavior.auth` | inherits `target.auth` | Per-command auth override for behavior only |
 | `--mode` / `-m` | — | `static+dynamic` | `static`, `dynamic`, or `static+dynamic` |
 | `--static` | — | — | Shorthand for `--mode static` |
 | `--dynamic` | — | — | Shorthand for `--mode dynamic` |
@@ -526,32 +552,40 @@ All flags can be set in `nuguard.yaml` under the `behavior:` section. Run `nugua
 sbom: ./app.sbom.json
 policy:
   path: ./cognitive-policy.md
-  llm: true                         # compile richer boundary prompts with LLM
+  use_llm: true                     # compile richer boundary prompts with LLM
 
 llm:
   model: gemini/gemini-2.0-flash    # used for scenario gen, judging, and summaries
   # api_key: ${LITELLM_API_KEY}
 
-behavior:
-  target: https://my-ai-app.example.com
-  target_endpoint: /chat            # default; change to /api/v1/agent etc.
-  chat_payload_key: message         # JSON key for user message
+# ── Shared target — used by both behavior and redteam ─────────────────────────
+target:
+  url: https://my-ai-app.example.com
+
+  # endpoint: /chat                 # default; change to /api/v1/agent etc.
+  # chat_payload_key: message       # JSON key for the user message (default: message)
   # chat_response_key: answer       # extract this key from response JSON
 
   auth:
+    # Option A: Bearer token
     type: bearer
     header: "Authorization: Bearer ${TARGET_TOKEN}"
-  # auth:
-  #   type: login_flow
-  #   login_flow:
-  #     endpoint: /login
-  #     payload:
-  #       username: ${APP_USERNAME}
-  #       password: ${APP_PASSWORD}
-  #     token_response_key: access_token
-  #     token_header: "Authorization: Bearer"
-  #     refresh_on_401: true
 
+    # Option B: Login flow (preferred when the app has a /login endpoint)
+    # type: login_flow
+    # login_flow:
+    #   endpoint: /login
+    #   payload:
+    #     username: ${APP_USERNAME}
+    #     password: ${APP_PASSWORD}
+    #   token_response_key: access_token
+    #   token_header: "Authorization: Bearer"
+    #   refresh_on_401: true
+
+    # Option C: Open endpoint
+    # type: none
+
+behavior:
   llm: true                         # enable LLM scenario generation and LLM judging
 
   # Workflows to run (default: all layers)
@@ -563,10 +597,17 @@ behavior:
     - data_discovery_probe         # per-user data disclosure + cross-user IDOR
 
   request_timeout: 60               # per-request timeout (seconds); increase for slow pipelines
-  verbose: false                    # set true to include full turn traces in report
   adaptive_coverage_turns: 3        # max extra turns generated to cover uncovered components
+  verbose: false                    # set true to include full turn traces in report
 
   canary: ./canary.json             # optional: plant unique sentinel values to detect leakage
+
+  # Override target or auth for behavior only (optional):
+  # target: https://staging.my-ai-app.example.com
+  # auth:
+  #   type: basic
+  #   username: ${STAGING_USERNAME}
+  #   password: ${STAGING_PASSWORD}
 
 output:
   format: markdown                  # text | json | markdown
