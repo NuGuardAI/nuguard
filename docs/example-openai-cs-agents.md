@@ -128,7 +128,9 @@ If you plan to run multiple commands, generate a project config:
 nuguard init --target http://localhost:8000
 ```
 
-This writes a `nuguard.yaml` with auto-detected defaults. The key change from older configs is that `target` and `auth` are now **top-level blocks** shared across `behavior` and `redteam` — no need to repeat them per section:
+This writes a `nuguard.yaml` with auto-detected defaults. With everything configured in the file, `nuguard behavior` and `nuguard redteam` need only a single `-c` flag — no long CLI argument lists.
+
+`target` and `auth` are **top-level blocks** shared by both commands. Override them inside `behavior:` or `redteam:` only when the two commands need different values.
 
 ```yaml
 sbom: ./openai-cs-agents.sbom.json
@@ -141,27 +143,26 @@ llm:
   model: gemini/gemini-2.0-flash
   api_key: ${GEMINI_API_KEY}
 
-# ── Shared target — used by both behavior and redteam ─────────────────────────
+# ── Shared target and auth — used by both behavior and redteam ────────────────
 target:
-  url: http://localhost:8000        # backend URL (not the frontend)
+  url: http://localhost:8000        # backend URL, not the frontend
 
-# ── Shared auth — used by both behavior and redteam ───────────────────────────
-auth:
-  # Option A: Bearer token
-  # type: bearer
-  # header: "Authorization: Bearer ${TARGET_TOKEN}"
+  auth:
+    # Option A: Bearer token
+    # type: bearer
+    # header: "Authorization: Bearer ${TARGET_TOKEN}"
 
-  # Option B: API key header
-  # type: api_key
-  # header: "X-API-Key: ${TARGET_API_KEY}"
+    # Option B: API key header
+    # type: api_key
+    # header: "X-API-Key: ${TARGET_API_KEY}"
 
-  # Option C: HTTP Basic Auth
-  # type: basic
-  # username: ${APP_USERNAME}
-  # password: ${APP_PASSWORD}
+    # Option C: HTTP Basic Auth
+    # type: basic
+    # username: ${APP_USERNAME}
+    # password: ${APP_PASSWORD}
 
-  # Option D: Open endpoint (local dev, no auth)
-  type: none
+    # Option D: Open endpoint (local dev, no auth)
+    type: none
 
 behavior:
   llm: true
@@ -190,6 +191,10 @@ redteam:
   eval_llm:
     model: gemini/gemini-2.0-flash
     api_key: ${GEMINI_API_KEY}
+
+output:
+  format: markdown
+  fail_on: high
 ```
 
 > [!IMPORTANT]
@@ -212,13 +217,14 @@ This prints a status table with identity, HTTP status, response time, and any er
 
 Behavioral testing validates the app against its declared intent and Cognitive Policy — without adversarial attack payloads. It runs static SBOM-policy alignment checks first, then dynamic multi-turn conversations scored on five dimensions.
 
+With the SBOM path, policy path, target URL, auth, and output format all declared in `nuguard.yaml`, the command is a single line:
+
 ```bash
-nuguard behavior \
-  --config nuguard.yaml \
-  --policy cognitive_policy.md \
-  --output openai-cs-behavior.md \
-  --format markdown
+nuguard behavior -c nuguard.yaml --output openai-cs-behavior.md
 ```
+
+> [!NOTE]
+> `--output` is the only flag needed here — everything else (SBOM, policy, target, auth, format, LLM) is read from `nuguard.yaml`.
 
 ### What behavioral testing found
 
@@ -356,34 +362,22 @@ cp canary.example.json canary.json
 > [!TIP]
 > `canary.json` is listed in `.gitignore` — only `canary.example.json` is tracked. Even though canary values are fake, they look like real PII and should not be committed.
 
-Run the full red-team scan:
+With the SBOM path, policy, target URL, auth, canary, profile, guided conversation settings, and output format all declared in `nuguard.yaml`, the command is:
 
 ```bash
-nuguard redteam \
-  --sbom openai-cs-agents.sbom.json \
-  --target http://localhost:8000 \
-  --policy cognitive_policy.md \
-  --canary ./canary.json \
-  --profile full \
-  --output openai-cs-redteam.md \
-  --format markdown
+nuguard redteam -c nuguard.yaml --output openai-cs-redteam.md
 ```
 
-To enable adaptive multi-turn guided conversations (recommended for this multi-agent app):
+The redteam LLM credentials are the only values passed as environment variables (they should never be committed):
 
 ```bash
 NUGUARD_REDTEAM_LLM_MODEL=openrouter/meta-llama/llama-3.3-70b-instruct \
 NUGUARD_REDTEAM_LLM_API_KEY=sk-... \
-nuguard redteam \
-  --sbom openai-cs-agents.sbom.json \
-  --target http://localhost:8000 \
-  --policy cognitive_policy.md \
-  --canary ./canary.json \
-  --profile full \
-  --guided --guided-max-turns 12 \
-  --output openai-cs-redteam.md \
-  --format markdown
+nuguard redteam -c nuguard.yaml --output openai-cs-redteam.md
 ```
+
+> [!NOTE]
+> `guided_conversations`, `guided_max_turns`, `guided_concurrency`, `profile`, `canary`, and `defence_regressions` are all configured under `redteam:` in `nuguard.yaml`. No CLI flags needed for any of them.
 
 ### What the red-team scan found
 
@@ -429,27 +423,40 @@ Total: 9237.7s | Avg per scenario: 83.2s | Avg per turn: 13.7s
 
 ### Run specific attack families only
 
-```bash
-# Focus on prompt injection and data exfiltration
-nuguard redteam \
-  --sbom openai-cs-agents.sbom.json \
-  --target http://localhost:8000 \
-  --scenarios prompt-injection,data-exfiltration \
-  --profile full
+Set `redteam.scenarios` in `nuguard.yaml` to limit which families run:
+
+```yaml
+redteam:
+  scenarios:
+    - prompt-injection
+    - data-exfiltration
 ```
 
-Valid `--scenarios` values: `prompt-injection`, `tool-abuse`, `privilege-escalation`, `data-exfiltration`, `policy-violation`, `mcp-toxic-flow`
+Then run as usual:
+
+```bash
+nuguard redteam -c nuguard.yaml --output openai-cs-redteam.md
+```
+
+Valid scenario values: `prompt-injection`, `tool-abuse`, `privilege-escalation`, `data-exfiltration`, `policy-violation`, `mcp-toxic-flow`
 
 ### CI gate
 
+For CI, use a separate config (e.g. `nuguard.ci.yaml`) that sets a faster profile and SARIF output:
+
+```yaml
+# nuguard.ci.yaml — inherits all target/auth from nuguard.yaml, overrides output
+redteam:
+  profile: ci
+  guided_conversations: false       # skip guided conversations for speed
+
+output:
+  format: sarif
+  fail_on: high
+```
+
 ```bash
-nuguard redteam \
-  --sbom openai-cs-agents.sbom.json \
-  --target $APP_URL \
-  --profile ci \
-  --fail-on high \
-  --format sarif \
-  --output results.sarif
+nuguard redteam -c nuguard.ci.yaml --output results.sarif
 ```
 
 ## 7. Recommended End-to-End Flow
@@ -459,9 +466,10 @@ For the OpenAI customer-service demo, the most useful sequence is:
 1. `nuguard sbom generate` — map the app's agent, tool, and data-store surface.
 2. `nuguard analyze` — catch structural and dependency issues before running the app.
 3. `nuguard policy validate` and `nuguard policy check` — define behavioral guardrails and verify SBOM alignment.
-4. `nuguard target verify` — confirm connectivity and auth before dynamic scans.
-5. `nuguard behavior` — validate the live app against its declared intent; surfaces capability gaps and policy violations using realistic (non-adversarial) conversations.
-6. `nuguard redteam` — adversarially probe the app for confirmed exploits; treat 0 findings as a signal that the runtime guardrails are working, not that the structural issues don't matter.
+4. `nuguard init` — generate `nuguard.yaml`; configure `target.url`, `target.auth`, `behavior`, and `redteam` once so all subsequent commands need only `-c nuguard.yaml`.
+5. `nuguard target verify -c nuguard.yaml` — confirm connectivity and auth before dynamic scans.
+6. `nuguard behavior -c nuguard.yaml` — validate the live app against its declared intent; surfaces capability gaps and policy violations using realistic (non-adversarial) conversations.
+7. `nuguard redteam -c nuguard.yaml` — adversarially probe the app for confirmed exploits; treat 0 findings as a signal that the runtime guardrails are working, not that the structural issues don't matter.
 
 The behavior scan and the red-team scan answer different questions: behavior tells you whether the app does what it claims; red-team tells you whether an attacker can make it do something it shouldn't.
 
