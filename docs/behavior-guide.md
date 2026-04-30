@@ -552,7 +552,7 @@ All flags can be set in `nuguard.yaml`. Run `nuguard init` to generate an annota
 sbom: ./app.sbom.json
 policy:
   path: ./cognitive-policy.md
-  use_llm: true                     # compile richer boundary prompts with LLM
+  llm: true                         # compile richer boundary prompts with LLM
 
 llm:
   model: gemini/gemini-2.0-flash    # used for scenario gen, judging, and summaries

@@ -137,7 +137,7 @@ sbom: ./openai-cs-agents.sbom.json
 
 policy:
   path: ./cognitive_policy.md
-  use_llm: true
+  llm: true
 
 llm:
   model: gemini/gemini-2.0-flash
@@ -442,10 +442,17 @@ Valid scenario values: `prompt-injection`, `tool-abuse`, `privilege-escalation`,
 
 ### CI gate
 
-For CI, use a separate config (e.g. `nuguard.ci.yaml`) that sets a faster profile and SARIF output:
+For CI, use a separate config (e.g. `nuguard.ci.yaml`) that sets a faster profile and SARIF output. It needs its own `target:` block — credentials come from environment variables so no secrets are committed:
 
 ```yaml
-# nuguard.ci.yaml — inherits all target/auth from nuguard.yaml, overrides output
+# nuguard.ci.yaml
+target:
+  url: ${TARGET_URL}
+  auth:
+    type: bearer
+    header: "Authorization: Bearer ${TARGET_TOKEN}"
+    # or type: none for open endpoints
+
 redteam:
   profile: ci
   guided_conversations: false       # skip guided conversations for speed
