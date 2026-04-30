@@ -20,6 +20,25 @@ llm:
 sbom_generation:
   llm: true                        # set true to enrich SBOM nodes with LLM descriptions
                                     # requires LITELLM_API_KEY to be set
+target:
+  url: http://127.0.0.1:8250   # URL of the running AI application under test (required for behavior and redteam)
+
+# Authentication — choose one type:
+auth:
+  # Option A: Bearer token (OAuth2, JWT, or custom token)
+  # type: bearer
+  # header: "Authorization: Bearer ${TARGET_TOKEN}"
+
+  # Option B: API key in a custom header
+  # type: api_key
+  # header: "X-API-Key: ${TARGET_API_KEY}"
+
+  # Option C: HTTP Basic Auth (username + password)
+  type: basic
+  username: ${APP_USERNAME}
+  password: ${APP_PASSWORD}
+  # Option D: No authentication (open endpoints, local dev)
+  # type: none
 
 # ─── Behavior mode ────────────────────────────────────────────────────────────
 # nuguard behavior exercises the AI app's happy path to verify capabilities work
@@ -28,31 +47,13 @@ sbom_generation:
 behavior:
   # Required: URL of the running AI application under test
 #  target: https://openai-cs-agents-backend.azurewebsites.net
-  target: http://127.0.0.1:8250
+#  target: http://127.0.0.1:8250
   # Path of the chat/agent endpoint on the target (default: /chat)
 #  target_endpoint: /api/chat
 #  chat_payload_key: phrases
 #  chat_payload_list: true
 #  chat_response_key: prognosis
   llm: true
-
-  # Authentication — choose one type:
-  auth:
-    # Option A: Bearer token (OAuth2, JWT, or custom token)
-    # type: bearer
-    # header: "Authorization: Bearer ${TARGET_TOKEN}"
-
-    # Option B: API key in a custom header
-    # type: api_key
-    # header: "X-API-Key: ${TARGET_API_KEY}"
-
-    # Option C: HTTP Basic Auth (username + password)
-    type: basic
-    username: ${APP_USERNAME}
-    password: ${APP_PASSWORD}
-
-    # Option D: No authentication (open endpoints, local dev)
-    # type: none
 
   # Canary seed file — records planted in the app's data store
   # Used by behavior mode to detect accidental leakage during happy-path runs
@@ -91,17 +92,6 @@ behavior:
 # ─── Red-team mode ────────────────────────────────────────────────────────────
 # nuguard redteam exercises adversarial scenarios to find break points.
 redteam:
-  # Required: URL of the running AI application under test
-#  target: https://openai-cs-agents-backend.azurewebsites.net
-  target: http://127.0.0.1:8250
-  # Path of the chat/agent endpoint on the target (default: /chat)
-  # target_endpoint: /run_langgraph
-
-  # Authentication — HTTP Basic Auth (username/password from .env)
-  auth:
-    type: basic
-    username: ${APP_USERNAME}
-    password: ${APP_PASSWORD}
 
   # Canary seed file — same file as behavior.canary (or a separate one)
   # tenant session_tokens in canary.json are used as attacker credentials for
