@@ -95,9 +95,10 @@ NuGuard's red-team approach mirrors real adversarial tradecraft:
 The base URL of the application under test is resolved in this priority order:
 
 1. `--target` CLI flag
-2. `redteam.target` in `nuguard.yaml`
-3. SBOM discovery via `pick_target_url()` — prefers local URLs when `--launch`, otherwise staging → production → deployment URLs embedded in the SBOM
-4. Hard error: `nuguard redteam` exits with code 1 if no URL is found and `--launch` is not set
+2. `target.url` in `nuguard.yaml` — shared by both `behavior` and `redteam`
+3. `redteam.target` in `nuguard.yaml` — per-command override (use only when redteam needs a different URL than behavior)
+4. SBOM discovery via `pick_target_url()` — prefers local URLs when `--launch`, otherwise staging → production → deployment URLs embedded in the SBOM
+5. Hard error: `nuguard redteam` exits with code 1 if no URL is found and `--launch` is not set
 
 ### Chat Endpoint Path
 
@@ -105,37 +106,38 @@ The path appended to the base URL for every attack POST is configured separately
 
 | Setting | Default | Description |
 |---|---|---|
-| `redteam.target_endpoint` in `nuguard.yaml` | `/chat` | Path of the agent's chat endpoint |
+| `target.endpoint` in `nuguard.yaml` | `/chat` | Path of the agent's chat endpoint (shared by behavior and redteam) |
+| `redteam.endpoint` in `nuguard.yaml` | inherits `target.endpoint` | Per-command override for redteam only |
 
-The full request URL is `{target_url}{target_endpoint}` — e.g. `http://localhost:8000/chat`.
+The full request URL is `{target.url}{target.endpoint}` — e.g. `http://localhost:8000/chat`.
 
-Target URL should be the backend URL of the application under test that the API requests will be sent to.
-It should point to the service that handles the chat requests, not a frontend URL.
-
-The target endpoint should be the path that the backend service expects for chat requests. It is appended to the base URL to form the full request URL.
-There is no SBOM-based discovery for the endpoint path.  Set `target_endpoint` in `nuguard.yaml` when your app uses a non-standard path (e.g. `/api/v1/agent`, `/invoke`).
+`target.url` should point to the backend service that handles chat requests, not a frontend URL. There is no SBOM-based discovery for the endpoint path — set `target.endpoint` when your app uses a non-standard path (e.g. `/api/v1/agent`, `/invoke`).
 
 ### Chat Payload Shape
 
-The engine POSTs a JSON body.  Two settings control its structure:
+The engine POSTs a JSON body. Two settings control its structure:
 
 | YAML key | Default | Description |
 |---|---|---|
-| `redteam.chat_payload_key` | `message` | JSON key for the attack message (e.g. `message`, `query`, `phrases`) |
-| `redteam.chat_payload_list` | `false` | When `true`, wraps the value in a list: `{"phrases": ["..."]}` |
+| `target.chat_payload_key` | `message` | JSON key for the attack message (e.g. `message`, `query`, `phrases`) |
+| `target.chat_payload_list` | `false` | When `true`, wraps the value in a list: `{"phrases": ["..."]}` |
+
+Both keys can be overridden per-command with `redteam.chat_payload_key` / `redteam.chat_payload_list`.
 
 Example for an app expecting `{"query": "..."}`:
 
 ```yaml
-redteam:
-  target_endpoint: /api/v1/chat
+target:
+  url: http://localhost:8000
+  endpoint: /api/v1/chat
   chat_payload_key: query
 ```
 
 Example for an app expecting `{"phrases": ["..."]}`:
 
 ```yaml
-redteam:
+target:
+  url: http://localhost:8000
   chat_payload_key: phrases
   chat_payload_list: true
 ```

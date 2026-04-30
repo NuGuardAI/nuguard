@@ -183,7 +183,12 @@ Pass `--target` explicitly:
 nuguard redteam --sbom app.sbom.json --target http://localhost:3000
 ```
 
-Or configure `redteam.target` in `nuguard.yaml`.
+Or configure `target.url` in `nuguard.yaml` (shared by both `behavior` and `redteam`):
+
+```yaml
+target:
+  url: http://localhost:3000
+```
 
 ## Guided redteam or LLM-enriched scenarios are not working
 
@@ -239,17 +244,22 @@ Possible causes:
 
 Things to check:
 
-- target URL is reachable
-- `redteam.target_endpoint` matches the app
-- required auth is configured
+- target URL is reachable (`nuguard target verify --config nuguard.yaml`)
+- `target.endpoint` matches the app's chat path
+- `target.auth` is configured correctly
 - request timeout is large enough
 
 Example config knobs:
 
 ```yaml
+target:
+  url: http://localhost:3000
+  endpoint: /chat
+  auth:
+    type: bearer
+    header: "Authorization: Bearer ${TARGET_TOKEN}"
+
 redteam:
-  target: http://localhost:3000
-  target_endpoint: /chat
   request_timeout: 120
 ```
 

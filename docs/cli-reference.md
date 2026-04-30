@@ -423,26 +423,40 @@ Priority order: **CLI flags > nuguard.yaml > environment variables > built-in de
 Secrets are never stored directly — use `${ENV_VAR}` interpolation:
 
 ```yaml
+# ─── Target application — shared by behavior and redteam ───────────────────
+target:
+  url: https://your-app.example.com
+
+  # Authentication — set once; both behavior and redteam inherit it.
+  # Override per-command with behavior.auth or redteam.auth when needed.
+  auth:
+    # Option A: Login flow (preferred when the app exposes a /login endpoint)
+    # type: login_flow
+    # login_flow:
+    #   endpoint: /api/login
+    #   payload:
+    #     username: ${APP_USERNAME}
+    #     password: ${APP_PASSWORD}
+    #   token_response_key: access_token
+    #   token_header: "Authorization: Bearer"
+
+    # Option B: Static Bearer token
+    # type: bearer
+    # header: "Authorization: Bearer ${TARGET_TOKEN}"
+
+    # Option C: API key in a custom header
+    # type: api_key
+    # header: "X-API-Key: ${TARGET_API_KEY}"
+
+    # Option D: HTTP Basic Auth
+    # type: basic
+    # username: ${APP_USERNAME}
+    # password: ${APP_PASSWORD}
+
+    # Option E: No authentication (open endpoints, local dev)
+    # type: none
+
 redteam:
-  # Highest-precedence header override (equivalent to CHAT_HEADERS_JSON-style usage)
-  # headers:
-  #   Authorization: "Bearer ${TARGET_TOKEN}"
-  #   X-Tenant-Id: "tenant-1"
-
-  # Legacy shorthand (still supported)
-  auth_header: "Authorization: Bearer ${TARGET_TOKEN}"
-
-  # Preferred structured auth (supports bearer/api_key/basic/login_flow)
-  # auth:
-  #   type: login_flow
-  #   login_flow:
-  #     endpoint: /login
-  #     payload:
-  #       username: ${APP_USERNAME}
-  #       password: ${APP_PASSWORD}
-  #     token_response_key: access_token
-  #     token_header: "Authorization: Bearer"
-  #     refresh_on_401: true
   llm:
     api_key: ${NUGUARD_REDTEAM_LLM_API_KEY}
 ```
