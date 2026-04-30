@@ -12,6 +12,7 @@ nuguard scan        Unified pipeline: SBOM → analyze → policy → redteam
 nuguard policy      Cognitive policy linting and compliance assessment
 nuguard behavior    Intent-aware behavioral analysis against a live AI application
 nuguard redteam     Dynamic adversarial testing against a live AI application
+nuguard target      Verify target connectivity and authentication before scanning
 ```
 
 ---
@@ -192,6 +193,22 @@ nuguard scan --source . --llm --output-dir reports/
 Cognitive policy linting, SBOM cross-checking, and compliance assessment.
 Cognitive Policies are human-readable Markdown documents that define guardrails for AI application behavior, architecture, and components. They can be used for documentation, internal governance, or as enforceable policies in CI or runtime gates. `nuguard init` creates a `cognitive_policy.md` template with common sections.
 
+### `nuguard policy compile`
+
+Compile a Cognitive Policy Markdown document into a structured JSON controls file. The compiled JSON is consumed by `policy check` and `behavior` for faster, LLM-optional assessment.
+
+```bash
+nuguard policy compile --policy cognitive_policy.md --output policy.controls.json
+nuguard policy compile --policy policy.md --llm --output policy.controls.json
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--policy`, `-p` | from `nuguard.yaml` | Cognitive Policy Markdown file |
+| `--config`, `-c` | `./nuguard.yaml` | Config file path |
+| `--llm` / `--no-llm` | off | LLM-assisted compilation — extracts nuanced constraints that rule-based parsing may miss |
+| `--output`, `-o` | stdout | Destination JSON file for compiled controls |
+
 ### `nuguard policy validate`
 
 Lint a Cognitive Policy Markdown file for completeness and common mistakes.
@@ -230,8 +247,10 @@ nuguard policy check
 | `--config` | `./nuguard.yaml` | Config file path |
 | `--framework` | — | `owasp-llm-top10` \| `nist-ai-rmf` \| `eu-ai-act` |
 | `--controls` | — | Custom controls JSON file |
-| `--format` | `text` | `text` \| `json` |
+| `--format` | `text` | `text` \| `json` \| `markdown` |
+| `--output`, `-o` | stdout | Write the assessment report to this file |
 | `--llm` / `--no-llm` | off | LLM fallback for controls that can't be assessed from SBOM alone |
+| `--verbose`, `-v` | off | Show all controls including PASS results with evidence |
 
 ### `nuguard policy show`
 
@@ -356,6 +375,37 @@ nuguard redteam --sbom app.sbom.json --target $APP_URL \
 | `redteam.emit_pytest_dir` | `tests/redteam` | Directory to write generated pytest files |
 | `redteam.tree_breadth` | `0` (off) | TAP: number of tactic variants to branch per depth level |
 | `redteam.tree_max_depth` | `0` (off) | TAP: maximum tree depth before pruning non-improving paths |
+
+---
+
+## `nuguard target`
+
+Verify connectivity and authentication against a live AI application before running a full scan. Prints a status table covering identity, auth type, HTTP status, response time, and any error details.
+
+### `nuguard target verify`
+
+```bash
+# Verify using nuguard.yaml
+nuguard target verify --config nuguard.yaml
+
+# Quick spot-check with inline options
+nuguard target verify --target http://localhost:8000 \
+  --endpoint /chat \
+  --auth-header "Authorization: Bearer $TOKEN"
+
+# Verify all tenant tokens in a canary file
+nuguard target verify --config nuguard.yaml --canary canary.json
+```
+
+| Flag | Short | Default | Description |
+|---|---|---|---|
+| `--config` | `-c` | `./nuguard.yaml` | Config file path |
+| `--target` | — | from `nuguard.yaml` | Base URL of the target application |
+| `--endpoint` | — | from `nuguard.yaml` | Chat endpoint path (e.g. `/chat`, `/api/v1/agent`) |
+| `--auth-header` | — | from `nuguard.yaml` | Auth header string (e.g. `"Authorization: Bearer $TOKEN"`) |
+| `--canary` | — | from `nuguard.yaml` | Path to `canary.json` — verifies each tenant session token can authenticate |
+
+Run `nuguard target verify` before `nuguard redteam` or `nuguard behavior` to catch misconfigured endpoints, expired tokens, or firewall blocks early.
 
 ---
 

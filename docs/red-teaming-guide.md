@@ -590,6 +590,14 @@ MCP_TOXIC_FLOW                  → always CRITICAL
 
 ## Key Commands
 
+### Verify connectivity before scanning
+
+Run this first to confirm the target is reachable and auth is working — it prints a status table with identity, HTTP status, response time, and error details.
+
+```bash
+nuguard target verify --config nuguard.yaml
+```
+
 ### Basic scan (app already running)
 
 ```bash
