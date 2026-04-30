@@ -9,7 +9,7 @@ sbom: ./openai-cs.sbom.json               # path to pre-generated AI-SBOM JSON
 source: .      # generate SBOM from source dir (alternative to sbom:)
 policy:
   path: ./cognitive_policy.md       # Cognitive Policy Markdown to enforce during behavior
-  use_llm: true                     # use LLM to compile richer test/boundary prompts
+  llm: true                     # use LLM to compile richer test/boundary prompts
 
 # ─── LLM settings ─────────────────────────────────────────────────────────────
 llm:

@@ -6,7 +6,7 @@ sbom: tests/apps/stateset-icommerce/reports/latest-1-sbom-stateset-icommerce.no-
 source: ../stateset-icommerce
 policy:
   path: tests/apps/stateset-icommerce/cognitive_policy.md
-  use_llm: true
+  llm: true
 
 # ─── LLM settings ─────────────────────────────────────────────────────────────
 llm:

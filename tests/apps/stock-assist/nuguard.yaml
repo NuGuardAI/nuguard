@@ -2,7 +2,7 @@ sbom: tests/apps/stock-assist/reports/stock-assist.sbom.json
 source: ../stock-assist  # path to stock-assist source for SBOM generation
 policy:
   path: tests/apps/stock-assist/cognitive_policy.md
-  use_llm: true
+  llm: true
 
 llm:
   model: openai/gpt-4o-mini
@@ -11,7 +11,7 @@ llm:
 behavior:
   target: http://127.0.0.1:5001
   target_endpoint: /api/chat/queue
-  use_llm: true
+  llm: true
   auth:
     type: api_key
     header: "Cookie: session=${STOCK_ASSIST_SESSION_COOKIE}"

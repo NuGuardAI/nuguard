@@ -2,7 +2,7 @@ sbom: tests/apps/stateset-icommerce/reports/stateset-icommerce.sbom.json
 source: ../stateset-icommerce
 policy:
   path: tests/apps/stateset-icommerce/cognitive_policy.md
-  use_llm: true
+  llm: true
 
 llm:
   model: azure/gpt-4.1-mini
