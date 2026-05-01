@@ -79,34 +79,24 @@ redteam:
   # Path of the chat/agent endpoint on the target (default: /chat)
   target_endpoint: /chat
 
-  # Authentication — same options as behavior.auth above.
-  # Highest-precedence override: explicit full header map.
-  # When set, this takes precedence over auth/auth_header.
-  # headers:
-  #   Authorization: "Bearer ${TARGET_TOKEN}"
-  #   X-Tenant-Id: "tenant-1"
-
-  # Shorthand (backward-compatible): single auth_header string
-  auth_header: "Authorization: Bearer ${TARGET_TOKEN}"
-  # Or use the structured form:
-  # auth:
-  #   type: bearer
-  #   header: "Authorization: Bearer ${TARGET_TOKEN}"
-  # auth:
-  #   type: basic
-  #   username: ${APP_USERNAME}
-  #   password: ${APP_PASSWORD}
-  # auth:
-  #   type: login_flow
-  #   login_flow:
-  #     endpoint: /login
-  #     method: POST
-  #     payload:
-  #       username: ${APP_USERNAME}
-  #       password: ${APP_PASSWORD}
-  #     token_response_key: access_token
-  #     token_header: "Authorization: Bearer"
-  #     refresh_on_401: true
+  # Authentication — choose one type (configure in target: block above for shared auth)
+  auth:
+    # type: bearer
+    # header: "Authorization: Bearer ${TARGET_TOKEN}"
+    # type: api_key
+    # header: "X-API-Key: ${TARGET_API_KEY}"
+    # type: basic
+    # username: ${APP_USERNAME}
+    # password: ${APP_PASSWORD}
+    # type: login_flow
+    # login_flow:
+    #   endpoint: /login
+    #   payload:
+    #     username: ${APP_USERNAME}
+    #     password: ${APP_PASSWORD}
+    #   token_response_key: access_token
+    #   token_header: "Authorization: Bearer"
+    type: none
 
   # Canary seed file — same file as behavior.canary (or a separate one)
   # tenant session_tokens in canary.json are used as attacker credentials for

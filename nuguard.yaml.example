@@ -21,35 +21,62 @@ sbom_generation:
   llm: false                        # set true to enrich SBOM nodes with LLM descriptions
                                     # requires LITELLM_API_KEY to be set
 
-# behavior validation for AI application based on cognitive_policy
-behavior:
-  # Required: URL of the running AI application under test
-  target: https://openai-cs-agents-backend.azurewebsites.net
+# ─── Target application — shared by behavior and redteam ──────────────────────
+# Set once here; both commands pick it up automatically.
+# Override in the behavior: or redteam: sections below for per-command differences.
+target:
+  url: https://your-app.example.com
 
-  # Path of the chat/agent endpoint on the target (default: /chat)
-#  target_endpoint: /api/chat
-#  chat_payload_key: phrases
-#  chat_payload_list: true
-#  chat_response_key: prognosis
-  llm: true
+  # Path of the chat/agent endpoint (default: auto-discovered from SBOM, fallback /chat)
+  # endpoint: /api/chat
 
-  # Authentication — choose one type:
+  # Request body shape — override if your app uses non-standard keys
+  # chat_payload_key: message       # JSON key for the message (default: message)
+  # chat_payload_list: false        # wrap message in a list (default: false)
+  # chat_response_key: response     # JSON key to extract reply text (default: auto-detect)
+
+  # Authentication — uncomment ONE option:
   auth:
-    # Option A: Bearer token (OAuth2, JWT, or custom token)
+    # Option A: Login flow (preferred when the app exposes a /login endpoint)
+    # type: login_flow
+    # login_flow:
+    #   endpoint: /api/login
+    #   method: POST
+    #   base_url: http://localhost:8080   # optional; defaults to target.url
+    #   payload:
+    #     username: ${APP_USERNAME}
+    #     password: ${APP_PASSWORD}
+    #   token_response_key: access_token
+    #   token_header: "Authorization: Bearer"
+    #   refresh_on_401: true
+
+    # Option B: Static Bearer token
     # type: bearer
     # header: "Authorization: Bearer ${TARGET_TOKEN}"
 
-    # Option B: API key in a custom header
+    # Option C: API key in a custom header
     # type: api_key
     # header: "X-API-Key: ${TARGET_API_KEY}"
 
-    # Option C: HTTP Basic Auth (username + password)
-  #  type: basic
-  #  username: ${APP_USERNAME}
-  #  password: ${APP_PASSWORD}
+    # Option D: HTTP Basic Auth
+    # type: basic
+    # username: ${APP_USERNAME}
+    # password: ${APP_PASSWORD}
 
-    # Option D: No authentication (open endpoints, local dev)
+    # Option E: No authentication (open endpoints, local dev)
     # type: none
+
+  # Extra HTTP headers added to every request (behavior + redteam)
+  # headers:
+  #   X-Tenant-Id: "tenant-1"
+
+# behavior validation for AI application based on cognitive_policy
+behavior:
+  # target: https://override-for-behavior-only.example.com  # overrides target.url
+  # endpoint: /api/chat                                      # overrides target.endpoint
+  # chat_payload_key: phrases                                # overrides target.chat_payload_key
+  # auth: ...                                                # overrides target.auth (see target.auth above for all options)
+  llm: true
 
 
   # Workflows to run in behavior mode:
@@ -72,41 +99,14 @@ behavior:
 
 # ─── Red-team mode ────────────────────────────────────────────────────────────
 # nuguard redteam exercises adversarial scenarios to find break points.
+# target.url, target.auth, target.endpoint are inherited from the target: block above.
+# Override any of them here when redteam needs different credentials than behavior.
 redteam:
-  # Required: URL of the running AI application under test
-  target: http://localhost:3000
-
-  # Path of the chat/agent endpoint on the target (default: /chat)
-  target_endpoint: /chat
-
-  # Authentication — same options as behavior.auth above.
-  # Highest-precedence override: explicit full header map.
-  # When set, this takes precedence over auth/auth_header.
-  # headers:
-  #   Authorization: "Bearer ${TARGET_TOKEN}"
-  #   X-Tenant-Id: "tenant-1"
-
-  # Shorthand (backward-compatible): single auth_header string
-  auth_header: "Authorization: Bearer ${TARGET_TOKEN}"
-  # Or use the structured form:
-  # auth:
+  # target: http://localhost:3000            # overrides target.url for redteam only
+  # target_endpoint: /chat                   # overrides target.endpoint
+  # auth:                                    # overrides target.auth
   #   type: bearer
-  #   header: "Authorization: Bearer ${TARGET_TOKEN}"
-  # auth:
-  #   type: basic
-  #   username: ${APP_USERNAME}
-  #   password: ${APP_PASSWORD}
-  # auth:
-  #   type: login_flow
-  #   login_flow:
-  #     endpoint: /login
-  #     method: POST
-  #     payload:
-  #       username: ${APP_USERNAME}
-  #       password: ${APP_PASSWORD}
-  #     token_response_key: access_token
-  #     token_header: "Authorization: Bearer"
-  #     refresh_on_401: true
+  #   header: "Authorization: Bearer ${REDTEAM_TOKEN}"
 
   # Canary seed file — same file as behavior.canary (or a separate one)
   # tenant session_tokens in canary.json are used as attacker credentials for
@@ -159,6 +159,7 @@ redteam:
   # reported as 'inconclusive_target_errors' rather than 'no_findings'.
   # Enable in CI to catch false-clean runs caused by a broken target.
   strict_outcome: false
+  similar_miss_threshold: 4   # set to 0 to disable
 
   # Guided adversarial conversations using ConversationDirector
   # build_guided_tool_redteam() derives the goal description from each TOOL node's

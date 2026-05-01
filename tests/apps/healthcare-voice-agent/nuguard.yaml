@@ -10,7 +10,7 @@ sbom: ./healthcare.sbom.json               # path to pre-generated AI-SBOM JSON
 source: .
 policy:
   path: ./cognitive_policy.md       # Cognitive Policy Markdown to enforce during behavior
-  use_llm: true                     # use LLM to compile richer test/boundary prompts
+  llm: true                     # use LLM to compile richer test/boundary prompts
 
 # ─── LLM settings ─────────────────────────────────────────────────────────────
 llm:
@@ -99,8 +99,6 @@ redteam:
   target_endpoint: /run_langgraph
 
   # Authentication — same options as behavior.auth above.
-  # Shorthand (backward-compatible): single auth_header string
-  # auth_header: "Authorization: Bearer ${TARGET_TOKEN}"
   # Or use the structured form:
   # auth:
   #   type: bearer

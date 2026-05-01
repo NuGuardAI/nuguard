@@ -4,7 +4,7 @@ sbom: ./reports/blissfuls-store-sbom-llm-gemini-2.0-flash.json
 source: .
 policy:
   path: ./cognitive_policy.md
-  use_llm: true
+  llm: true
 
 llm:
   model: anthropic/claude-3-5-sonnet-latest

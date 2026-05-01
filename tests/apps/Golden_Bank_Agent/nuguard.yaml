@@ -57,8 +57,6 @@ redteam:
   #target_endpoint: /chat
 
   # Authentication — same options as behavior.auth above.
-  # Shorthand (backward-compatible): single auth_header string
-  # auth_header: "Authorization: Bearer ${TARGET_TOKEN}"
   # Or use the structured form:
   # auth:
   #   type: bearer

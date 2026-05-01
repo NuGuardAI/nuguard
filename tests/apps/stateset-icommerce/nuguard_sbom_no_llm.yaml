@@ -2,7 +2,7 @@ sbom: tests/apps/stateset-icommerce/reports/stateset-icommerce.sbom.json
 source: ../stateset-icommerce
 policy:
   path: tests/apps/stateset-icommerce/cognitive_policy.md
-  use_llm: false
+  llm: false
 
 sbom_generation:
   llm: false

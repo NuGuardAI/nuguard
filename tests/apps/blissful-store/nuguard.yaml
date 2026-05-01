@@ -9,7 +9,7 @@ sbom: ./reports/blissful-store-sbom-fullfixture-llm-azure-gpt-4.1-20260422-15010
 source: .      # generate SBOM from source dir (alternative to sbom:)
 policy:
   path: ./cognitive_policy.md       # Cognitive Policy Markdown to enforce during behavior analysis
-  use_llm: true                     # use LLM to compile richer test/boundary prompts
+  llm: true                     # use LLM to compile richer test/boundary prompts
 
 # ─── LLM settings ─────────────────────────────────────────────────────────────
 llm:
@@ -90,8 +90,6 @@ redteam:
   target_endpoint: /api/chat
 
   # Authentication — same options as behavior.auth above.
-  # Shorthand (backward-compatible): single auth_header string
-  # auth_header: "Authorization: Bearer ${TARGET_TOKEN}"
   # Or use the structured form:
   # auth:
   #   type: bearer

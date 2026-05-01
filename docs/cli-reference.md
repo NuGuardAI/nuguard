@@ -12,6 +12,7 @@ nuguard scan        Unified pipeline: SBOM → analyze → policy → redteam
 nuguard policy      Cognitive policy linting and compliance assessment
 nuguard behavior    Intent-aware behavioral analysis against a live AI application
 nuguard redteam     Dynamic adversarial testing against a live AI application
+nuguard target      Verify target connectivity and authentication before scanning
 ```
 
 ---
@@ -192,6 +193,22 @@ nuguard scan --source . --llm --output-dir reports/
 Cognitive policy linting, SBOM cross-checking, and compliance assessment.
 Cognitive Policies are human-readable Markdown documents that define guardrails for AI application behavior, architecture, and components. They can be used for documentation, internal governance, or as enforceable policies in CI or runtime gates. `nuguard init` creates a `cognitive_policy.md` template with common sections.
 
+### `nuguard policy compile`
+
+Compile a Cognitive Policy Markdown document into a structured JSON controls file. The compiled JSON is consumed by `policy check` and `behavior` for faster, LLM-optional assessment.
+
+```bash
+nuguard policy compile --policy cognitive_policy.md --output policy.controls.json
+nuguard policy compile --policy policy.md --llm --output policy.controls.json
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--policy`, `-p` | from `nuguard.yaml` | Cognitive Policy Markdown file |
+| `--config`, `-c` | `./nuguard.yaml` | Config file path |
+| `--llm` / `--no-llm` | off | LLM-assisted compilation — extracts nuanced constraints that rule-based parsing may miss |
+| `--output`, `-o` | stdout | Destination JSON file for compiled controls |
+
 ### `nuguard policy validate`
 
 Lint a Cognitive Policy Markdown file for completeness and common mistakes.
@@ -230,8 +247,10 @@ nuguard policy check
 | `--config` | `./nuguard.yaml` | Config file path |
 | `--framework` | — | `owasp-llm-top10` \| `nist-ai-rmf` \| `eu-ai-act` |
 | `--controls` | — | Custom controls JSON file |
-| `--format` | `text` | `text` \| `json` |
+| `--format` | `text` | `text` \| `json` \| `markdown` |
+| `--output`, `-o` | stdout | Write the assessment report to this file |
 | `--llm` / `--no-llm` | off | LLM fallback for controls that can't be assessed from SBOM alone |
+| `--verbose`, `-v` | off | Show all controls including PASS results with evidence |
 
 ### `nuguard policy show`
 
@@ -359,6 +378,37 @@ nuguard redteam --sbom app.sbom.json --target $APP_URL \
 
 ---
 
+## `nuguard target`
+
+Verify connectivity and authentication against a live AI application before running a full scan. Prints a status table covering identity, auth type, HTTP status, response time, and any error details.
+
+### `nuguard target verify`
+
+```bash
+# Verify using nuguard.yaml
+nuguard target verify --config nuguard.yaml
+
+# Quick spot-check with inline options
+nuguard target verify --target http://localhost:8000 \
+  --endpoint /chat \
+  --auth-header "Authorization: Bearer $TOKEN"
+
+# Verify all tenant tokens in a canary file
+nuguard target verify --config nuguard.yaml --canary canary.json
+```
+
+| Flag | Short | Default | Description |
+|---|---|---|---|
+| `--config` | `-c` | `./nuguard.yaml` | Config file path |
+| `--target` | — | from `nuguard.yaml` | Base URL of the target application |
+| `--endpoint` | — | from `nuguard.yaml` | Chat endpoint path (e.g. `/chat`, `/api/v1/agent`) |
+| `--auth-header` | — | from `nuguard.yaml` | Auth header string (e.g. `"Authorization: Bearer $TOKEN"`) |
+| `--canary` | — | from `nuguard.yaml` | Path to `canary.json` — verifies each tenant session token can authenticate |
+
+Run `nuguard target verify` before `nuguard redteam` or `nuguard behavior` to catch misconfigured endpoints, expired tokens, or firewall blocks early.
+
+---
+
 ## Configuration File
 
 All CLI flags can be set in `nuguard.yaml`. Run `nuguard init` to generate one with auto-detected defaults.
@@ -373,26 +423,40 @@ Priority order: **CLI flags > nuguard.yaml > environment variables > built-in de
 Secrets are never stored directly — use `${ENV_VAR}` interpolation:
 
 ```yaml
+# ─── Target application — shared by behavior and redteam ───────────────────
+target:
+  url: https://your-app.example.com
+
+  # Authentication — set once; both behavior and redteam inherit it.
+  # Override per-command with behavior.auth or redteam.auth when needed.
+  auth:
+    # Option A: Login flow (preferred when the app exposes a /login endpoint)
+    # type: login_flow
+    # login_flow:
+    #   endpoint: /api/login
+    #   payload:
+    #     username: ${APP_USERNAME}
+    #     password: ${APP_PASSWORD}
+    #   token_response_key: access_token
+    #   token_header: "Authorization: Bearer"
+
+    # Option B: Static Bearer token
+    # type: bearer
+    # header: "Authorization: Bearer ${TARGET_TOKEN}"
+
+    # Option C: API key in a custom header
+    # type: api_key
+    # header: "X-API-Key: ${TARGET_API_KEY}"
+
+    # Option D: HTTP Basic Auth
+    # type: basic
+    # username: ${APP_USERNAME}
+    # password: ${APP_PASSWORD}
+
+    # Option E: No authentication (open endpoints, local dev)
+    # type: none
+
 redteam:
-  # Highest-precedence header override (equivalent to CHAT_HEADERS_JSON-style usage)
-  # headers:
-  #   Authorization: "Bearer ${TARGET_TOKEN}"
-  #   X-Tenant-Id: "tenant-1"
-
-  # Legacy shorthand (still supported)
-  auth_header: "Authorization: Bearer ${TARGET_TOKEN}"
-
-  # Preferred structured auth (supports bearer/api_key/basic/login_flow)
-  # auth:
-  #   type: login_flow
-  #   login_flow:
-  #     endpoint: /login
-  #     payload:
-  #       username: ${APP_USERNAME}
-  #       password: ${APP_PASSWORD}
-  #     token_response_key: access_token
-  #     token_header: "Authorization: Bearer"
-  #     refresh_on_401: true
   llm:
     api_key: ${NUGUARD_REDTEAM_LLM_API_KEY}
 ```

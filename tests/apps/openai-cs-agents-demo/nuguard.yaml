@@ -9,7 +9,7 @@ sbom: ./openai-cs.sbom.json               # path to pre-generated AI-SBOM JSON
 source: .      # generate SBOM from source dir (alternative to sbom:)
 policy:
   path: ./cognitive_policy.md       # Cognitive Policy Markdown to enforce during behavior
-  use_llm: true                     # use LLM to compile richer test/boundary prompts
+  llm: true                     # use LLM to compile richer test/boundary prompts
 
 # ─── LLM settings ─────────────────────────────────────────────────────────────
 llm:
@@ -20,21 +20,8 @@ llm:
 sbom_generation:
   llm: true                        # set true to enrich SBOM nodes with LLM descriptions
                                     # requires LITELLM_API_KEY to be set
-
-# ─── Behavior mode ────────────────────────────────────────────────────────────
-# nuguard behavior exercises the AI app's happy path to verify capabilities work
-# as declared and that all behaviour complies with the cognitive policy.
-#validate:
-behavior:
-  # Required: URL of the running AI application under test
-#  target: https://openai-cs-agents-backend.azurewebsites.net
-  target: http://127.0.0.1:8250
-  # Path of the chat/agent endpoint on the target (default: /chat)
-#  target_endpoint: /api/chat
-#  chat_payload_key: phrases
-#  chat_payload_list: true
-#  chat_response_key: prognosis
-  llm: true
+target:
+  url: http://127.0.0.1:8250   # URL of the running AI application under test (required for behavior and redteam)
 
   # Authentication — choose one type:
   auth:
@@ -50,9 +37,23 @@ behavior:
     type: basic
     username: ${APP_USERNAME}
     password: ${APP_PASSWORD}
-
     # Option D: No authentication (open endpoints, local dev)
     # type: none
+
+# ─── Behavior mode ────────────────────────────────────────────────────────────
+# nuguard behavior exercises the AI app's happy path to verify capabilities work
+# as declared and that all behaviour complies with the cognitive policy.
+#validate:
+behavior:
+  # Required: URL of the running AI application under test
+#  target: https://openai-cs-agents-backend.azurewebsites.net
+#  target: http://127.0.0.1:8250
+  # Path of the chat/agent endpoint on the target (default: /chat)
+#  target_endpoint: /api/chat
+#  chat_payload_key: phrases
+#  chat_payload_list: true
+#  chat_response_key: prognosis
+  llm: true
 
   # Canary seed file — records planted in the app's data store
   # Used by behavior mode to detect accidental leakage during happy-path runs
@@ -91,17 +92,6 @@ behavior:
 # ─── Red-team mode ────────────────────────────────────────────────────────────
 # nuguard redteam exercises adversarial scenarios to find break points.
 redteam:
-  # Required: URL of the running AI application under test
-#  target: https://openai-cs-agents-backend.azurewebsites.net
-  target: http://127.0.0.1:8250
-  # Path of the chat/agent endpoint on the target (default: /chat)
-  # target_endpoint: /run_langgraph
-
-  # Authentication — HTTP Basic Auth (username/password from .env)
-  auth:
-    type: basic
-    username: ${APP_USERNAME}
-    password: ${APP_PASSWORD}
 
   # Canary seed file — same file as behavior.canary (or a separate one)
   # tenant session_tokens in canary.json are used as attacker credentials for
