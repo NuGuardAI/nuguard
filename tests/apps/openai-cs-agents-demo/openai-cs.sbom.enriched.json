@@ -1,11 +1,11 @@
 {
   "schema_version": "1.4.0",
-  "generated_at": "2026-04-30T21:00:06Z",
+  "generated_at": "2026-04-30T21:06:34Z",
   "generator": "nuguard",
   "target": "/workspaces/nuguard-private/tests/apps/openai-cs-agents-demo",
   "nodes": [
     {
-      "id": "4c0623ad-246c-4642-8279-6777d59abd86",
+      "id": "a604fe4e-c5a1-4a3e-8e6c-18ea67262191",
       "name": "Cancellation Agent",
       "component_type": "AGENT",
       "confidence": 0.8832000000000001,
@@ -60,7 +60,7 @@
       ]
     },
     {
-      "id": "563f585d-49bd-411b-bfd6-8d4fa5b45a12",
+      "id": "7e91020f-2092-4607-a5e0-b4aeb2e951c1",
       "name": "FAQ Agent",
       "component_type": "AGENT",
       "confidence": 0.8832000000000001,
@@ -115,7 +115,7 @@
       ]
     },
     {
-      "id": "cfe8e305-72e3-4bc0-93b7-b830b87a196b",
+      "id": "6b77acff-a9d7-499b-a84b-d2a4938e7a82",
       "name": "Flight Status Agent",
       "component_type": "AGENT",
       "confidence": 0.8832000000000001,
@@ -170,7 +170,7 @@
       ]
     },
     {
-      "id": "832e8107-b8ed-4c0c-be01-839e383faf72",
+      "id": "1ca1ed6b-586f-4976-b8ff-e007dbee4bbd",
       "name": "Seat Booking Agent",
       "component_type": "AGENT",
       "confidence": 0.8832000000000001,
@@ -225,7 +225,7 @@
       ]
     },
     {
-      "id": "aa22e580-c9ed-4d75-bfeb-7a48919202ff",
+      "id": "bb05c1aa-9710-431e-afd7-dc37f259c271",
       "name": "Triage Agent",
       "component_type": "AGENT",
       "confidence": 0.8832000000000001,
@@ -280,7 +280,7 @@
       ]
     },
     {
-      "id": "3fb3a815-1b5d-4846-bbc2-d78e39fb8d8b",
+      "id": "4d5e727e-29b5-4434-aedf-3f1b1d124221",
       "name": "generic",
       "component_type": "API_ENDPOINT",
       "confidence": 0.4840000000000001,
@@ -336,7 +336,7 @@
       ]
     },
     {
-      "id": "c1e95967-c5ce-40a3-b317-9efa9c2994b5",
+      "id": "5f3a69df-d5a7-49ab-896e-e6c5e07612fc",
       "name": "chat_endpoint",
       "component_type": "API_ENDPOINT",
       "confidence": 0.8640000000000001,
@@ -394,7 +394,7 @@
       ]
     },
     {
-      "id": "16bb6133-3332-4b82-9d1f-d235995f61aa",
+      "id": "93dab8c1-f8bc-4830-9801-1833ab56f741",
       "name": "generic",
       "component_type": "AUTH",
       "confidence": 0.616,
@@ -579,7 +579,7 @@
       ]
     },
     {
-      "id": "e9fb37c8-0745-48be-beee-fc1671dbe377",
+      "id": "5c22d760-0498-4e37-b963-641a53dd549e",
       "name": "security",
       "component_type": "AUTH",
       "confidence": 0.8640000000000001,
@@ -627,7 +627,7 @@
       ]
     },
     {
-      "id": "2d97f658-d2cc-4bea-8ce5-0262d3ec9a53",
+      "id": "3e56a19a-70ed-4b52-9928-7240f9bc669c",
       "name": "sqlite",
       "component_type": "DATASTORE",
       "confidence": 1.0,
@@ -764,7 +764,7 @@
       ]
     },
     {
-      "id": "d466feeb-74eb-4c97-9a51-4fd079c55a8c",
+      "id": "ba4e5033-97ac-4859-85b7-46c5a8d7374d",
       "name": "sqlite3",
       "component_type": "DATASTORE",
       "confidence": 0.44000000000000006,
@@ -822,7 +822,7 @@
       ]
     },
     {
-      "id": "c987205a-8772-4f68-8d4c-0ace0ff68d2f",
+      "id": "14856c3a-5b94-49d9-a1cd-064b0859a6b0",
       "name": "generic",
       "component_type": "DEPLOYMENT",
       "confidence": 0.528,
@@ -888,7 +888,7 @@
       ]
     },
     {
-      "id": "9963d2bb-3cb7-4e2b-a908-bd7059a990c0",
+      "id": "eb2aab94-f2f9-455b-8111-2ef87c37a483",
       "name": "Deploy to Azure",
       "component_type": "DEPLOYMENT",
       "confidence": 0.8360000000000001,
@@ -951,7 +951,7 @@
       ]
     },
     {
-      "id": "c470f9ea-4355-4c58-8e22-4d2fa3328ee4",
+      "id": "17f196a3-c38b-46aa-b8ac-c19e05062d99",
       "name": "app",
       "component_type": "FRAMEWORK",
       "confidence": 0.8640000000000001,
@@ -996,7 +996,7 @@
       ]
     },
     {
-      "id": "30d918ec-4865-4f93-aebb-3af2446c0222",
+      "id": "5954f71d-1243-4e47-b86d-bf85b74a6a6f",
       "name": "flight-live-service",
       "component_type": "FRAMEWORK",
       "confidence": 1.0,
@@ -1059,7 +1059,7 @@
       ]
     },
     {
-      "id": "f158806e-d5cb-4221-a991-1eac04d408fb",
+      "id": "1fe62c19-e53e-4a9d-8a6a-4ad6641577b0",
       "name": "framework:openai_agents",
       "component_type": "FRAMEWORK",
       "confidence": 0.9880000000000001,
@@ -1111,7 +1111,7 @@
       ]
     },
     {
-      "id": "b4a6a587-f283-49d7-a601-0f717d5b2394",
+      "id": "a86779d7-28fd-42e6-8ddd-4a8852fcdb87",
       "name": "Jailbreak Guardrail",
       "component_type": "GUARDRAIL",
       "confidence": 0.8832000000000001,
@@ -1164,7 +1164,7 @@
       ]
     },
     {
-      "id": "96e1559d-2eb2-482b-9093-1a61d3243a55",
+      "id": "f3ea277e-f6f9-4b2a-814a-90ee95697f6d",
       "name": "Relevance Guardrail",
       "component_type": "GUARDRAIL",
       "confidence": 0.8832000000000001,
@@ -1217,7 +1217,7 @@
       ]
     },
     {
-      "id": "b1c33aab-852d-437f-8e8a-866f3690a733",
+      "id": "7dca29ed-0dfa-4334-b3d7-634795cf87ba",
       "name": "${{ secrets.AZURE_CREDENTIALS }}",
       "component_type": "IAM",
       "confidence": 0.8184000000000001,
@@ -1274,7 +1274,7 @@
       ]
     },
     {
-      "id": "a6e716b5-7878-4209-83eb-2483f6ba2ac9",
+      "id": "2f17ab94-40de-49f5-9c93-afd10c53c44f",
       "name": "gpt-4.1-mini",
       "component_type": "MODEL",
       "confidence": 1.0,
@@ -1440,7 +1440,7 @@
       ]
     },
     {
-      "id": "4bb4c03d-f093-4833-b994-738c72f1cde8",
+      "id": "defb9e42-23d2-4ef5-9939-4f76cddfa7b5",
       "name": "admin",
       "component_type": "PRIVILEGE",
       "confidence": 0.8360000000000001,
@@ -1483,7 +1483,7 @@
       ]
     },
     {
-      "id": "ef5df96b-4ca7-42a8-bf3e-955615b241c2",
+      "id": "cd6cb5be-62d2-45d4-bc23-f68d09843573",
       "name": "db_write",
       "component_type": "PRIVILEGE",
       "confidence": 1.0,
@@ -1550,7 +1550,7 @@
       ]
     },
     {
-      "id": "f9994e9a-08e9-400f-9516-58e96fe57198",
+      "id": "425f59b9-1638-4f4e-b41c-1038c5ea97df",
       "name": "rbac",
       "component_type": "PRIVILEGE",
       "confidence": 0.8360000000000001,
@@ -1593,7 +1593,7 @@
       ]
     },
     {
-      "id": "7b26daf7-32c1-4896-922f-67c0caa457b8",
+      "id": "daff6e1d-01b4-4802-b752-27607a1b1173",
       "name": "Cancellation Agent Instructions",
       "component_type": "PROMPT",
       "confidence": 0.8096000000000002,
@@ -1639,7 +1639,7 @@
       ]
     },
     {
-      "id": "65fb82e5-3e10-4bc5-88b5-d3b5d0db00f5",
+      "id": "3b317e57-313c-44bd-974f-8d5e4d2b3a2b",
       "name": "FAQ Agent Instructions",
       "component_type": "PROMPT",
       "confidence": 0.8096000000000002,
@@ -1685,7 +1685,7 @@
       ]
     },
     {
-      "id": "5014407c-cc2a-4606-ba6d-b839d20753f8",
+      "id": "2475ab43-0a75-4c32-83be-1266f3f58acc",
       "name": "Flight Status Agent Instructions",
       "component_type": "PROMPT",
       "confidence": 0.8096000000000002,
@@ -1731,7 +1731,7 @@
       ]
     },
     {
-      "id": "af20a17f-f68d-4bfe-ae5e-574b148df831",
+      "id": "89a5025a-4ccc-4e68-8e6b-bb5f88152a6f",
       "name": "Jailbreak Guardrail Instructions",
       "component_type": "PROMPT",
       "confidence": 0.8096000000000002,
@@ -1777,7 +1777,7 @@
       ]
     },
     {
-      "id": "9f698743-b04d-4352-870e-a9c3d6284eeb",
+      "id": "696367cf-b47c-45d3-aaf2-00c2edc5e2b0",
       "name": "generic",
       "component_type": "PROMPT",
       "confidence": 0.5720000000000001,
@@ -1853,7 +1853,7 @@
       ]
     },
     {
-      "id": "756c4f69-cb14-4853-b6a7-058e84a55b3b",
+      "id": "fe6afc0e-e540-4702-aa56-8c9fca9afcbc",
       "name": "Relevance Guardrail Instructions",
       "component_type": "PROMPT",
       "confidence": 0.8096000000000002,
@@ -1899,7 +1899,7 @@
       ]
     },
     {
-      "id": "0dd76ab2-e290-4179-a919-3fc371c10886",
+      "id": "e9de8a30-95bf-4520-99a4-db1e004ce94c",
       "name": "Seat Booking Agent Instructions",
       "component_type": "PROMPT",
       "confidence": 0.8096000000000002,
@@ -1945,7 +1945,7 @@
       ]
     },
     {
-      "id": "80b0fd85-c3cb-45a7-b75f-30171f79b7f0",
+      "id": "9bbb00c2-12e7-4139-9739-e4da007c34be",
       "name": "Triage Agent Instructions",
       "component_type": "PROMPT",
       "confidence": 0.8096000000000002,
@@ -1991,7 +1991,7 @@
       ]
     },
     {
-      "id": "ed1187b4-32a3-4231-9d2b-48890d72aae5",
+      "id": "1d072049-c34c-4b6e-bde8-cf332cffe5b5",
       "name": "get_airport_parking",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -2045,7 +2045,7 @@
       ]
     },
     {
-      "id": "cadcdffe-27ee-42fc-a50c-e3c6a66e0b19",
+      "id": "af4584f9-1d94-4e09-a81d-62a055bbd321",
       "name": "get_airport_traffic",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -2099,7 +2099,7 @@
       ]
     },
     {
-      "id": "bb3a9b90-6eb8-413d-8c5c-a16551f58a52",
+      "id": "f41bb0ba-59be-4442-a27a-208eb5d0fcab",
       "name": "get_airport_weather",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -2153,7 +2153,7 @@
       ]
     },
     {
-      "id": "f04f9ac1-c3af-4747-9534-0a63ece264a5",
+      "id": "8d8ff208-9a3a-4e62-8af3-e23c0b614ec8",
       "name": "get_arrival_board",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -2207,7 +2207,7 @@
       ]
     },
     {
-      "id": "baa57a8f-fade-47c3-ae94-a2cca66d5eed",
+      "id": "829090ca-82ae-4baf-be4f-1f34d81d7973",
       "name": "get_departure_board",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -2261,7 +2261,7 @@
       ]
     },
     {
-      "id": "c872541b-97a4-44bd-8e7e-124b61ae77d7",
+      "id": "bd57040a-a601-4628-9c99-389681e377da",
       "name": "get_gate_change_alerts",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -2315,7 +2315,7 @@
       ]
     },
     {
-      "id": "a5df8388-01bd-40e7-bc61-3e5ed9e154ad",
+      "id": "53b2ec82-c62a-445a-b7fc-2233f2ac310b",
       "name": "get_live_flight_status",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -2369,7 +2369,7 @@
       ]
     },
     {
-      "id": "9c9fe97b-4d1a-432d-9f7c-9b068ee5dcd2",
+      "id": "1b6f4d4c-b77f-4f07-b69b-083b5c593788",
       "name": "get_route_weather",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
@@ -2423,7 +2423,7 @@
       ]
     },
     {
-      "id": "9a4b3ddf-f5b4-49fb-bab9-0d40e1e78ecf",
+      "id": "dc37cdec-cb42-4f61-8a68-4ef3562035f5",
       "name": "account_bookings_tool",
       "component_type": "TOOL",
       "confidence": 1.0,
@@ -2478,7 +2478,7 @@
       ]
     },
     {
-      "id": "2c17fe1c-0710-4123-a346-3740087f6a0a",
+      "id": "ce4e3b94-bb05-4d64-ad8e-b18b2b0b1983",
       "name": "airline_policy_rag_tool",
       "component_type": "TOOL",
       "confidence": 1.0,
@@ -2533,7 +2533,7 @@
       ]
     },
     {
-      "id": "543b238d-afd1-4c40-aa64-6d03e0d52b36",
+      "id": "4e4ac006-41d6-4677-af66-e9afe45bc634",
       "name": "baggage_tool",
       "component_type": "TOOL",
       "confidence": 1.0,
@@ -2588,7 +2588,7 @@
       ]
     },
     {
-      "id": "0210eac4-044e-442f-bb49-e660ebe9d5cc",
+      "id": "432a343f-e6dd-40e1-b998-9ef5ae9cee95",
       "name": "booking_lookup_tool",
       "component_type": "TOOL",
       "confidence": 0.8160000000000001,
@@ -2638,7 +2638,7 @@
       ]
     },
     {
-      "id": "696aa6df-23a1-4da7-9c94-53dfe745e08b",
+      "id": "c9111245-67cb-4cac-beb8-cd9a8e112bde",
       "name": "cancel_flight",
       "component_type": "TOOL",
       "confidence": 0.8160000000000001,
@@ -2688,7 +2688,7 @@
       ]
     },
     {
-      "id": "e4937d39-9d8d-4fb1-a0bf-605d7e9e5bd2",
+      "id": "19ac434d-c127-44f3-922a-777744855284",
       "name": "current_booking_tool",
       "component_type": "TOOL",
       "confidence": 0.8160000000000001,
@@ -2738,7 +2738,7 @@
       ]
     },
     {
-      "id": "273e5d64-f0d1-40a3-9cda-e67f53a7e606",
+      "id": "51780b19-aab5-47cf-9196-dede529813e1",
       "name": "display_seat_map",
       "component_type": "TOOL",
       "confidence": 0.8160000000000001,
@@ -2788,7 +2788,7 @@
       ]
     },
     {
-      "id": "3b87ca0f-53c3-4d6f-aab1-35e47fed24b4",
+      "id": "bf8ca358-c0c5-4a7f-8ec7-5b3b214c2ab4",
       "name": "faq_lookup_tool",
       "component_type": "TOOL",
       "confidence": 0.8160000000000001,
@@ -2838,7 +2838,7 @@
       ]
     },
     {
-      "id": "1c7fb9f6-0e13-4a9f-8934-647e4dbc49b4",
+      "id": "c40f583f-4d94-4fa8-823c-ba8b82bb59a7",
       "name": "flight_status_tool",
       "component_type": "TOOL",
       "confidence": 0.8160000000000001,
@@ -2888,7 +2888,7 @@
       ]
     },
     {
-      "id": "e917358c-bc2c-4a2a-ac83-a129208457df",
+      "id": "89506021-30af-4b75-83ba-a103d9411547",
       "name": "my_bookings_tool",
       "component_type": "TOOL",
       "confidence": 0.8160000000000001,
@@ -2938,7 +2938,7 @@
       ]
     },
     {
-      "id": "e64346dd-e588-4423-8ee9-09d26b96870a",
+      "id": "9cc51a52-fda7-4521-8609-ff9cf7dc5912",
       "name": "update_seat",
       "component_type": "TOOL",
       "confidence": 0.8160000000000001,
@@ -2990,208 +2990,208 @@
   ],
   "edges": [
     {
-      "source": "96e1559d-2eb2-482b-9093-1a61d3243a55",
-      "target": "a6e716b5-7878-4209-83eb-2483f6ba2ac9",
+      "source": "f3ea277e-f6f9-4b2a-814a-90ee95697f6d",
+      "target": "2f17ab94-40de-49f5-9c93-afd10c53c44f",
       "relationship_type": "USES"
     },
     {
-      "source": "b4a6a587-f283-49d7-a601-0f717d5b2394",
-      "target": "a6e716b5-7878-4209-83eb-2483f6ba2ac9",
+      "source": "a86779d7-28fd-42e6-8ddd-4a8852fcdb87",
+      "target": "2f17ab94-40de-49f5-9c93-afd10c53c44f",
       "relationship_type": "USES"
     },
     {
-      "source": "4c0623ad-246c-4642-8279-6777d59abd86",
-      "target": "9a4b3ddf-f5b4-49fb-bab9-0d40e1e78ecf",
+      "source": "a604fe4e-c5a1-4a3e-8e6c-18ea67262191",
+      "target": "dc37cdec-cb42-4f61-8a68-4ef3562035f5",
       "relationship_type": "CALLS"
     },
     {
-      "source": "4c0623ad-246c-4642-8279-6777d59abd86",
-      "target": "2c17fe1c-0710-4123-a346-3740087f6a0a",
+      "source": "a604fe4e-c5a1-4a3e-8e6c-18ea67262191",
+      "target": "ce4e3b94-bb05-4d64-ad8e-b18b2b0b1983",
       "relationship_type": "CALLS"
     },
     {
-      "source": "4c0623ad-246c-4642-8279-6777d59abd86",
-      "target": "543b238d-afd1-4c40-aa64-6d03e0d52b36",
+      "source": "a604fe4e-c5a1-4a3e-8e6c-18ea67262191",
+      "target": "4e4ac006-41d6-4677-af66-e9afe45bc634",
       "relationship_type": "CALLS"
     },
     {
-      "source": "4c0623ad-246c-4642-8279-6777d59abd86",
-      "target": "0210eac4-044e-442f-bb49-e660ebe9d5cc",
+      "source": "a604fe4e-c5a1-4a3e-8e6c-18ea67262191",
+      "target": "432a343f-e6dd-40e1-b998-9ef5ae9cee95",
       "relationship_type": "CALLS"
     },
     {
-      "source": "4c0623ad-246c-4642-8279-6777d59abd86",
-      "target": "696aa6df-23a1-4da7-9c94-53dfe745e08b",
+      "source": "a604fe4e-c5a1-4a3e-8e6c-18ea67262191",
+      "target": "c9111245-67cb-4cac-beb8-cd9a8e112bde",
       "relationship_type": "CALLS"
     },
     {
-      "source": "4c0623ad-246c-4642-8279-6777d59abd86",
-      "target": "a6e716b5-7878-4209-83eb-2483f6ba2ac9",
+      "source": "a604fe4e-c5a1-4a3e-8e6c-18ea67262191",
+      "target": "2f17ab94-40de-49f5-9c93-afd10c53c44f",
       "relationship_type": "USES"
     },
     {
-      "source": "563f585d-49bd-411b-bfd6-8d4fa5b45a12",
-      "target": "9a4b3ddf-f5b4-49fb-bab9-0d40e1e78ecf",
+      "source": "7e91020f-2092-4607-a5e0-b4aeb2e951c1",
+      "target": "dc37cdec-cb42-4f61-8a68-4ef3562035f5",
       "relationship_type": "CALLS"
     },
     {
-      "source": "563f585d-49bd-411b-bfd6-8d4fa5b45a12",
-      "target": "2c17fe1c-0710-4123-a346-3740087f6a0a",
+      "source": "7e91020f-2092-4607-a5e0-b4aeb2e951c1",
+      "target": "ce4e3b94-bb05-4d64-ad8e-b18b2b0b1983",
       "relationship_type": "CALLS"
     },
     {
-      "source": "563f585d-49bd-411b-bfd6-8d4fa5b45a12",
-      "target": "543b238d-afd1-4c40-aa64-6d03e0d52b36",
+      "source": "7e91020f-2092-4607-a5e0-b4aeb2e951c1",
+      "target": "4e4ac006-41d6-4677-af66-e9afe45bc634",
       "relationship_type": "CALLS"
     },
     {
-      "source": "563f585d-49bd-411b-bfd6-8d4fa5b45a12",
-      "target": "0210eac4-044e-442f-bb49-e660ebe9d5cc",
+      "source": "7e91020f-2092-4607-a5e0-b4aeb2e951c1",
+      "target": "432a343f-e6dd-40e1-b998-9ef5ae9cee95",
       "relationship_type": "CALLS"
     },
     {
-      "source": "563f585d-49bd-411b-bfd6-8d4fa5b45a12",
-      "target": "696aa6df-23a1-4da7-9c94-53dfe745e08b",
+      "source": "7e91020f-2092-4607-a5e0-b4aeb2e951c1",
+      "target": "c9111245-67cb-4cac-beb8-cd9a8e112bde",
       "relationship_type": "CALLS"
     },
     {
-      "source": "563f585d-49bd-411b-bfd6-8d4fa5b45a12",
-      "target": "a6e716b5-7878-4209-83eb-2483f6ba2ac9",
+      "source": "7e91020f-2092-4607-a5e0-b4aeb2e951c1",
+      "target": "2f17ab94-40de-49f5-9c93-afd10c53c44f",
       "relationship_type": "USES"
     },
     {
-      "source": "cfe8e305-72e3-4bc0-93b7-b830b87a196b",
-      "target": "9a4b3ddf-f5b4-49fb-bab9-0d40e1e78ecf",
+      "source": "6b77acff-a9d7-499b-a84b-d2a4938e7a82",
+      "target": "dc37cdec-cb42-4f61-8a68-4ef3562035f5",
       "relationship_type": "CALLS"
     },
     {
-      "source": "cfe8e305-72e3-4bc0-93b7-b830b87a196b",
-      "target": "2c17fe1c-0710-4123-a346-3740087f6a0a",
+      "source": "6b77acff-a9d7-499b-a84b-d2a4938e7a82",
+      "target": "ce4e3b94-bb05-4d64-ad8e-b18b2b0b1983",
       "relationship_type": "CALLS"
     },
     {
-      "source": "cfe8e305-72e3-4bc0-93b7-b830b87a196b",
-      "target": "543b238d-afd1-4c40-aa64-6d03e0d52b36",
+      "source": "6b77acff-a9d7-499b-a84b-d2a4938e7a82",
+      "target": "4e4ac006-41d6-4677-af66-e9afe45bc634",
       "relationship_type": "CALLS"
     },
     {
-      "source": "cfe8e305-72e3-4bc0-93b7-b830b87a196b",
-      "target": "0210eac4-044e-442f-bb49-e660ebe9d5cc",
+      "source": "6b77acff-a9d7-499b-a84b-d2a4938e7a82",
+      "target": "432a343f-e6dd-40e1-b998-9ef5ae9cee95",
       "relationship_type": "CALLS"
     },
     {
-      "source": "cfe8e305-72e3-4bc0-93b7-b830b87a196b",
-      "target": "696aa6df-23a1-4da7-9c94-53dfe745e08b",
+      "source": "6b77acff-a9d7-499b-a84b-d2a4938e7a82",
+      "target": "c9111245-67cb-4cac-beb8-cd9a8e112bde",
       "relationship_type": "CALLS"
     },
     {
-      "source": "cfe8e305-72e3-4bc0-93b7-b830b87a196b",
-      "target": "a6e716b5-7878-4209-83eb-2483f6ba2ac9",
+      "source": "6b77acff-a9d7-499b-a84b-d2a4938e7a82",
+      "target": "2f17ab94-40de-49f5-9c93-afd10c53c44f",
       "relationship_type": "USES"
     },
     {
-      "source": "832e8107-b8ed-4c0c-be01-839e383faf72",
-      "target": "9a4b3ddf-f5b4-49fb-bab9-0d40e1e78ecf",
+      "source": "1ca1ed6b-586f-4976-b8ff-e007dbee4bbd",
+      "target": "dc37cdec-cb42-4f61-8a68-4ef3562035f5",
       "relationship_type": "CALLS"
     },
     {
-      "source": "832e8107-b8ed-4c0c-be01-839e383faf72",
-      "target": "2c17fe1c-0710-4123-a346-3740087f6a0a",
+      "source": "1ca1ed6b-586f-4976-b8ff-e007dbee4bbd",
+      "target": "ce4e3b94-bb05-4d64-ad8e-b18b2b0b1983",
       "relationship_type": "CALLS"
     },
     {
-      "source": "832e8107-b8ed-4c0c-be01-839e383faf72",
-      "target": "543b238d-afd1-4c40-aa64-6d03e0d52b36",
+      "source": "1ca1ed6b-586f-4976-b8ff-e007dbee4bbd",
+      "target": "4e4ac006-41d6-4677-af66-e9afe45bc634",
       "relationship_type": "CALLS"
     },
     {
-      "source": "832e8107-b8ed-4c0c-be01-839e383faf72",
-      "target": "0210eac4-044e-442f-bb49-e660ebe9d5cc",
+      "source": "1ca1ed6b-586f-4976-b8ff-e007dbee4bbd",
+      "target": "432a343f-e6dd-40e1-b998-9ef5ae9cee95",
       "relationship_type": "CALLS"
     },
     {
-      "source": "832e8107-b8ed-4c0c-be01-839e383faf72",
-      "target": "696aa6df-23a1-4da7-9c94-53dfe745e08b",
+      "source": "1ca1ed6b-586f-4976-b8ff-e007dbee4bbd",
+      "target": "c9111245-67cb-4cac-beb8-cd9a8e112bde",
       "relationship_type": "CALLS"
     },
     {
-      "source": "832e8107-b8ed-4c0c-be01-839e383faf72",
-      "target": "a6e716b5-7878-4209-83eb-2483f6ba2ac9",
+      "source": "1ca1ed6b-586f-4976-b8ff-e007dbee4bbd",
+      "target": "2f17ab94-40de-49f5-9c93-afd10c53c44f",
       "relationship_type": "USES"
     },
     {
-      "source": "aa22e580-c9ed-4d75-bfeb-7a48919202ff",
-      "target": "9a4b3ddf-f5b4-49fb-bab9-0d40e1e78ecf",
+      "source": "bb05c1aa-9710-431e-afd7-dc37f259c271",
+      "target": "dc37cdec-cb42-4f61-8a68-4ef3562035f5",
       "relationship_type": "CALLS"
     },
     {
-      "source": "aa22e580-c9ed-4d75-bfeb-7a48919202ff",
-      "target": "2c17fe1c-0710-4123-a346-3740087f6a0a",
+      "source": "bb05c1aa-9710-431e-afd7-dc37f259c271",
+      "target": "ce4e3b94-bb05-4d64-ad8e-b18b2b0b1983",
       "relationship_type": "CALLS"
     },
     {
-      "source": "aa22e580-c9ed-4d75-bfeb-7a48919202ff",
-      "target": "543b238d-afd1-4c40-aa64-6d03e0d52b36",
+      "source": "bb05c1aa-9710-431e-afd7-dc37f259c271",
+      "target": "4e4ac006-41d6-4677-af66-e9afe45bc634",
       "relationship_type": "CALLS"
     },
     {
-      "source": "aa22e580-c9ed-4d75-bfeb-7a48919202ff",
-      "target": "0210eac4-044e-442f-bb49-e660ebe9d5cc",
+      "source": "bb05c1aa-9710-431e-afd7-dc37f259c271",
+      "target": "432a343f-e6dd-40e1-b998-9ef5ae9cee95",
       "relationship_type": "CALLS"
     },
     {
-      "source": "aa22e580-c9ed-4d75-bfeb-7a48919202ff",
-      "target": "696aa6df-23a1-4da7-9c94-53dfe745e08b",
+      "source": "bb05c1aa-9710-431e-afd7-dc37f259c271",
+      "target": "c9111245-67cb-4cac-beb8-cd9a8e112bde",
       "relationship_type": "CALLS"
     },
     {
-      "source": "aa22e580-c9ed-4d75-bfeb-7a48919202ff",
-      "target": "a6e716b5-7878-4209-83eb-2483f6ba2ac9",
+      "source": "bb05c1aa-9710-431e-afd7-dc37f259c271",
+      "target": "2f17ab94-40de-49f5-9c93-afd10c53c44f",
       "relationship_type": "USES"
     },
     {
-      "source": "c470f9ea-4355-4c58-8e22-4d2fa3328ee4",
-      "target": "a6e716b5-7878-4209-83eb-2483f6ba2ac9",
+      "source": "17f196a3-c38b-46aa-b8ac-c19e05062d99",
+      "target": "2f17ab94-40de-49f5-9c93-afd10c53c44f",
       "relationship_type": "USES"
     },
     {
-      "source": "30d918ec-4865-4f93-aebb-3af2446c0222",
-      "target": "a6e716b5-7878-4209-83eb-2483f6ba2ac9",
+      "source": "5954f71d-1243-4e47-b86d-bf85b74a6a6f",
+      "target": "2f17ab94-40de-49f5-9c93-afd10c53c44f",
       "relationship_type": "USES"
     },
     {
-      "source": "f158806e-d5cb-4221-a991-1eac04d408fb",
-      "target": "a6e716b5-7878-4209-83eb-2483f6ba2ac9",
+      "source": "1fe62c19-e53e-4a9d-8a6a-4ad6641577b0",
+      "target": "2f17ab94-40de-49f5-9c93-afd10c53c44f",
       "relationship_type": "USES"
     },
     {
-      "source": "b1c33aab-852d-437f-8e8a-866f3690a733",
-      "target": "c987205a-8772-4f68-8d4c-0ace0ff68d2f",
+      "source": "7dca29ed-0dfa-4334-b3d7-634795cf87ba",
+      "target": "14856c3a-5b94-49d9-a1cd-064b0859a6b0",
       "relationship_type": "USES"
     },
     {
-      "source": "b1c33aab-852d-437f-8e8a-866f3690a733",
-      "target": "9963d2bb-3cb7-4e2b-a908-bd7059a990c0",
+      "source": "7dca29ed-0dfa-4334-b3d7-634795cf87ba",
+      "target": "eb2aab94-f2f9-455b-8111-2ef87c37a483",
       "relationship_type": "USES"
     },
     {
-      "source": "16bb6133-3332-4b82-9d1f-d235995f61aa",
-      "target": "c1e95967-c5ce-40a3-b317-9efa9c2994b5",
+      "source": "93dab8c1-f8bc-4830-9801-1833ab56f741",
+      "target": "5f3a69df-d5a7-49ab-896e-e6c5e07612fc",
       "relationship_type": "PROTECTS"
     },
     {
-      "source": "16bb6133-3332-4b82-9d1f-d235995f61aa",
-      "target": "3fb3a815-1b5d-4846-bbc2-d78e39fb8d8b",
+      "source": "93dab8c1-f8bc-4830-9801-1833ab56f741",
+      "target": "4d5e727e-29b5-4434-aedf-3f1b1d124221",
       "relationship_type": "PROTECTS"
     },
     {
-      "source": "e9fb37c8-0745-48be-beee-fc1671dbe377",
-      "target": "c1e95967-c5ce-40a3-b317-9efa9c2994b5",
+      "source": "5c22d760-0498-4e37-b963-641a53dd549e",
+      "target": "5f3a69df-d5a7-49ab-896e-e6c5e07612fc",
       "relationship_type": "PROTECTS"
     },
     {
-      "source": "e9fb37c8-0745-48be-beee-fc1671dbe377",
-      "target": "3fb3a815-1b5d-4846-bbc2-d78e39fb8d8b",
+      "source": "5c22d760-0498-4e37-b963-641a53dd549e",
+      "target": "4d5e727e-29b5-4434-aedf-3f1b1d124221",
       "relationship_type": "PROTECTS"
     }
   ],
@@ -3492,6 +3492,6 @@
     "uses_streaming": false,
     "streaming_endpoints": []
   },
-  "relationship_graph_md": "## Component Relationship Graph\n\nThis system utilizes a centralized model architecture where all agents and frameworks rely on `gpt-4.1-mini`. The architecture is characterized by high tool-access redundancy and significant security gaps.\n\n*   **Agent Orchestration:** Five specialized agents (Cancellation, FAQ, Flight Status, Seat Booking, and Triage) are configured with identical tool access. Every agent has the capability to execute the `cancel_flight` tool, regardless of its primary function.\n*   **Data Flow & Tooling:** Agents interact with account-specific data (`account_bookings_tool`, `booking_lookup_tool`) and policy documentation (`airline_policy_rag_tool`). \n*   **Security Observations:**\n    *   **Over-privileged Agents:** There is no functional separation of concerns; agents designed for information retrieval (e.g., FAQ, Flight Status) possess the same destructive write capabilities (`cancel_flight`) as the Cancellation Agent.\n    *   **Guardrail Limitations:** While Relevance and Jailbreak guardrails exist, they are not explicitly mapped to the agent-to-tool execution path, suggesting they may only filter input/output rather than restricting tool usage.\n    *   **Unused Assets:** Multiple tools (e.g., `update_seat`, `get_live_flight_status`) and datastores (`sqlite`) are defined but remain disconnected from the agent graph.\n    *   **Authentication:** API endpoints are protected by `generic` and `security` auth layers, but internal tool-level authorization is absent.\n\n```mermaid\nflowchart LR\n    Cancellation_Agent_4c0623[\"\ud83e\udd16 Cancellation Agent\"]\n    FAQ_Agent_563f58[\"\ud83e\udd16 FAQ Agent\"]\n    Flight_Status_Agent_cfe8e3[\"\ud83e\udd16 Flight Status Agent\"]\n    Seat_Booking_Agent_832e81[\"\ud83e\udd16 Seat Booking Agent\"]\n    Triage_Agent_aa22e5[\"\ud83e\udd16 Triage Agent\"]\n    generic_3fb3a8([\"\ud83c\udf10 generic\"])\n    chat_endpoint_c1e959([\"\ud83c\udf10 chat_endpoint\"])\n    sqlite_2d97f6[(\"\ud83d\uddc4 sqlite\")]\n    sqlite3_d466fe[(\"\ud83d\uddc4 sqlite3\")]\n    app_c470f9[/\"\u2699 app\"/]\n    flight_live_service_30d918[/\"\u2699 flight-live-service\"/]\n    framework_openai_agents_f15880[/\"\u2699 framework:openai_agents\"/]\n    Jailbreak_Guardrail_b4a6a5{\"\ud83d\udee1 Jailbreak Guardrail\"}\n    Relevance_Guardrail_96e155{\"\ud83d\udee1 Relevance Guardrail\"}\n    gpt_4_1_mini_a6e716[(\"\ud83e\udde0 gpt-4.1-mini\")]\n    Cancellation_Agent_Instructions_7b26da>\"\ud83d\udcac Cancellation Agent Instructions\"]\n    FAQ_Agent_Instructions_65fb82>\"\ud83d\udcac FAQ Agent Instructions\"]\n    Flight_Status_Agent_Instructions_501440>\"\ud83d\udcac Flight Status Agent Instructions\"]\n    Jailbreak_Guardrail_Instructions_af20a1>\"\ud83d\udcac Jailbreak Guardrail Instructions\"]\n    generic_9f6987>\"\ud83d\udcac generic\"]\n    Relevance_Guardrail_Instructions_756c4f>\"\ud83d\udcac Relevance Guardrail Instructions\"]\n    Seat_Booking_Agent_Instructions_0dd76a>\"\ud83d\udcac Seat Booking Agent Instructions\"]\n    Triage_Agent_Instructions_80b0fd>\"\ud83d\udcac Triage Agent Instructions\"]\n    get_airport_parking_ed1187(\"\ud83d\udd27 get_airport_parking\")\n    get_airport_traffic_cadcdf(\"\ud83d\udd27 get_airport_traffic\")\n    get_airport_weather_bb3a9b(\"\ud83d\udd27 get_airport_weather\")\n    get_arrival_board_f04f9a(\"\ud83d\udd27 get_arrival_board\")\n    get_departure_board_baa57a(\"\ud83d\udd27 get_departure_board\")\n    get_gate_change_alerts_c87254(\"\ud83d\udd27 get_gate_change_alerts\")\n    get_live_flight_status_a5df83(\"\ud83d\udd27 get_live_flight_status\")\n    get_route_weather_9c9fe9(\"\ud83d\udd27 get_route_weather\")\n    account_bookings_tool_9a4b3d(\"\ud83d\udd27 account_bookings_tool\")\n    airline_policy_rag_tool_2c17fe(\"\ud83d\udd27 airline_policy_rag_tool\")\n    baggage_tool_543b23(\"\ud83d\udd27 baggage_tool\")\n    booking_lookup_tool_0210ea(\"\ud83d\udd27 booking_lookup_tool\")\n    cancel_flight_696aa6(\"\ud83d\udd27 cancel_flight\")\n    current_booking_tool_e4937d(\"\ud83d\udd27 current_booking_tool\")\n    display_seat_map_273e5d(\"\ud83d\udd27 display_seat_map\")\n    faq_lookup_tool_3b87ca(\"\ud83d\udd27 faq_lookup_tool\")\n    flight_status_tool_1c7fb9(\"\ud83d\udd27 flight_status_tool\")\n    my_bookings_tool_e91735(\"\ud83d\udd27 my_bookings_tool\")\n    update_seat_e64346(\"\ud83d\udd27 update_seat\")\n\n    Relevance_Guardrail_96e155 -->|uses| gpt_4_1_mini_a6e716\n    Jailbreak_Guardrail_b4a6a5 -->|uses| gpt_4_1_mini_a6e716\n    Cancellation_Agent_4c0623 -->|calls| account_bookings_tool_9a4b3d\n    Cancellation_Agent_4c0623 -->|calls| airline_policy_rag_tool_2c17fe\n    Cancellation_Agent_4c0623 -->|calls| baggage_tool_543b23\n    Cancellation_Agent_4c0623 -->|calls| booking_lookup_tool_0210ea\n    Cancellation_Agent_4c0623 -->|calls| cancel_flight_696aa6\n    Cancellation_Agent_4c0623 -->|uses| gpt_4_1_mini_a6e716\n    FAQ_Agent_563f58 -->|calls| account_bookings_tool_9a4b3d\n    FAQ_Agent_563f58 -->|calls| airline_policy_rag_tool_2c17fe\n    FAQ_Agent_563f58 -->|calls| baggage_tool_543b23\n    FAQ_Agent_563f58 -->|calls| booking_lookup_tool_0210ea\n    FAQ_Agent_563f58 -->|calls| cancel_flight_696aa6\n    FAQ_Agent_563f58 -->|uses| gpt_4_1_mini_a6e716\n    Flight_Status_Agent_cfe8e3 -->|calls| account_bookings_tool_9a4b3d\n    Flight_Status_Agent_cfe8e3 -->|calls| airline_policy_rag_tool_2c17fe\n    Flight_Status_Agent_cfe8e3 -->|calls| baggage_tool_543b23\n    Flight_Status_Agent_cfe8e3 -->|calls| booking_lookup_tool_0210ea\n    Flight_Status_Agent_cfe8e3 -->|calls| cancel_flight_696aa6\n    Flight_Status_Agent_cfe8e3 -->|uses| gpt_4_1_mini_a6e716\n    Seat_Booking_Agent_832e81 -->|calls| account_bookings_tool_9a4b3d\n    Seat_Booking_Agent_832e81 -->|calls| airline_policy_rag_tool_2c17fe\n    Seat_Booking_Agent_832e81 -->|calls| baggage_tool_543b23\n    Seat_Booking_Agent_832e81 -->|calls| booking_lookup_tool_0210ea\n    Seat_Booking_Agent_832e81 -->|calls| cancel_flight_696aa6\n    Seat_Booking_Agent_832e81 -->|uses| gpt_4_1_mini_a6e716\n    Triage_Agent_aa22e5 -->|calls| account_bookings_tool_9a4b3d\n    Triage_Agent_aa22e5 -->|calls| airline_policy_rag_tool_2c17fe\n    Triage_Agent_aa22e5 -->|calls| baggage_tool_543b23\n    Triage_Agent_aa22e5 -->|calls| booking_lookup_tool_0210ea\n    Triage_Agent_aa22e5 -->|calls| cancel_flight_696aa6\n    Triage_Agent_aa22e5 -->|uses| gpt_4_1_mini_a6e716\n    app_c470f9 -->|uses| gpt_4_1_mini_a6e716\n    flight_live_service_30d918 -->|uses| gpt_4_1_mini_a6e716\n    framework_openai_agents_f15880 -->|uses| gpt_4_1_mini_a6e716\n\n    classDef agent    fill:#4A90D9,stroke:#2C6FAC,color:#fff\n    classDef tool     fill:#7ED321,stroke:#5A9A18,color:#fff\n    classDef model    fill:#9B59B6,stroke:#7D3C98,color:#fff\n    classDef prompt   fill:#F39C12,stroke:#D68910,color:#fff\n    classDef guard    fill:#E74C3C,stroke:#C0392B,color:#fff\n    classDef store    fill:#1ABC9C,stroke:#17A589,color:#fff\n    classDef fw       fill:#95A5A6,stroke:#717D7E,color:#fff\n    classDef endpoint fill:#3498DB,stroke:#2471A3,color:#fff\n    class Cancellation_Agent_4c0623,FAQ_Agent_563f58,Flight_Status_Agent_cfe8e3,Seat_Booking_Agent_832e81,Triage_Agent_aa22e5 agent\n    class get_airport_parking_ed1187,get_airport_traffic_cadcdf,get_airport_weather_bb3a9b,get_arrival_board_f04f9a,get_departure_board_baa57a,get_gate_change_alerts_c87254,get_live_flight_status_a5df83,get_route_weather_9c9fe9,account_bookings_tool_9a4b3d,airline_policy_rag_tool_2c17fe,baggage_tool_543b23,booking_lookup_tool_0210ea,cancel_flight_696aa6,current_booking_tool_e4937d,display_seat_map_273e5d,faq_lookup_tool_3b87ca,flight_status_tool_1c7fb9,my_bookings_tool_e91735,update_seat_e64346 tool\n    class gpt_4_1_mini_a6e716 model\n    class Cancellation_Agent_Instructions_7b26da,FAQ_Agent_Instructions_65fb82,Flight_Status_Agent_Instructions_501440,Jailbreak_Guardrail_Instructions_af20a1,generic_9f6987,Relevance_Guardrail_Instructions_756c4f,Seat_Booking_Agent_Instructions_0dd76a,Triage_Agent_Instructions_80b0fd prompt\n    class Jailbreak_Guardrail_b4a6a5,Relevance_Guardrail_96e155 guard\n    class sqlite_2d97f6,sqlite3_d466fe store\n    class app_c470f9,flight_live_service_30d918,framework_openai_agents_f15880 fw\n    class generic_3fb3a8,chat_endpoint_c1e959 endpoint\n```",
-  "_enrichment_cache_key": "446406d506261fecfe15fa591bd8cea33f3a3673414a68c29a77966bb632a75a"
+  "relationship_graph_md": "## Component Relationship Graph\n\nThis system utilizes a centralized model architecture where all agents and frameworks rely on `gpt-4.1-mini`. The architecture is characterized by high tool-access redundancy and significant security gaps.\n\n*   **Agent Orchestration:** Five specialized agents (Cancellation, FAQ, Flight Status, Seat Booking, and Triage) are configured with identical tool access. Every agent has the capability to execute the `cancel_flight` tool, regardless of its primary function.\n*   **Data Flow & Tooling:** Agents interact with account-specific data (`account_bookings_tool`, `booking_lookup_tool`) and policy documentation (`airline_policy_rag_tool`). \n*   **Security Observations:**\n    *   **Over-privileged Agents:** There is no functional separation of concerns; agents designed for information retrieval (e.g., FAQ, Flight Status) possess the same destructive write capabilities (`cancel_flight`) as the Cancellation Agent.\n    *   **Guardrail Limitations:** While Relevance and Jailbreak guardrails exist, they are not explicitly mapped to the agent-to-tool execution path, suggesting they may only filter input/output rather than restricting tool usage.\n    *   **Unused Assets:** Multiple tools (e.g., `update_seat`, `get_live_flight_status`) and datastores (`sqlite`) are defined but remain disconnected from the agent graph.\n    *   **Authentication:** API endpoints are protected by `generic` and `security` auth layers, but internal tool-level authorization is absent.\n\n```mermaid\nflowchart LR\n    Cancellation_Agent_a604fe[\"\ud83e\udd16 Cancellation Agent\"]\n    FAQ_Agent_7e9102[\"\ud83e\udd16 FAQ Agent\"]\n    Flight_Status_Agent_6b77ac[\"\ud83e\udd16 Flight Status Agent\"]\n    Seat_Booking_Agent_1ca1ed[\"\ud83e\udd16 Seat Booking Agent\"]\n    Triage_Agent_bb05c1[\"\ud83e\udd16 Triage Agent\"]\n    generic_4d5e72([\"\ud83c\udf10 generic\"])\n    chat_endpoint_5f3a69([\"\ud83c\udf10 chat_endpoint\"])\n    sqlite_3e56a1[(\"\ud83d\uddc4 sqlite\")]\n    sqlite3_ba4e50[(\"\ud83d\uddc4 sqlite3\")]\n    app_17f196[/\"\u2699 app\"/]\n    flight_live_service_5954f7[/\"\u2699 flight-live-service\"/]\n    framework_openai_agents_1fe62c[/\"\u2699 framework:openai_agents\"/]\n    Jailbreak_Guardrail_a86779{\"\ud83d\udee1 Jailbreak Guardrail\"}\n    Relevance_Guardrail_f3ea27{\"\ud83d\udee1 Relevance Guardrail\"}\n    gpt_4_1_mini_2f17ab[(\"\ud83e\udde0 gpt-4.1-mini\")]\n    Cancellation_Agent_Instructions_daff6e>\"\ud83d\udcac Cancellation Agent Instructions\"]\n    FAQ_Agent_Instructions_3b317e>\"\ud83d\udcac FAQ Agent Instructions\"]\n    Flight_Status_Agent_Instructions_2475ab>\"\ud83d\udcac Flight Status Agent Instructions\"]\n    Jailbreak_Guardrail_Instructions_89a502>\"\ud83d\udcac Jailbreak Guardrail Instructions\"]\n    generic_696367>\"\ud83d\udcac generic\"]\n    Relevance_Guardrail_Instructions_fe6afc>\"\ud83d\udcac Relevance Guardrail Instructions\"]\n    Seat_Booking_Agent_Instructions_e9de8a>\"\ud83d\udcac Seat Booking Agent Instructions\"]\n    Triage_Agent_Instructions_9bbb00>\"\ud83d\udcac Triage Agent Instructions\"]\n    get_airport_parking_1d0720(\"\ud83d\udd27 get_airport_parking\")\n    get_airport_traffic_af4584(\"\ud83d\udd27 get_airport_traffic\")\n    get_airport_weather_f41bb0(\"\ud83d\udd27 get_airport_weather\")\n    get_arrival_board_8d8ff2(\"\ud83d\udd27 get_arrival_board\")\n    get_departure_board_829090(\"\ud83d\udd27 get_departure_board\")\n    get_gate_change_alerts_bd5704(\"\ud83d\udd27 get_gate_change_alerts\")\n    get_live_flight_status_53b2ec(\"\ud83d\udd27 get_live_flight_status\")\n    get_route_weather_1b6f4d(\"\ud83d\udd27 get_route_weather\")\n    account_bookings_tool_dc37cd(\"\ud83d\udd27 account_bookings_tool\")\n    airline_policy_rag_tool_ce4e3b(\"\ud83d\udd27 airline_policy_rag_tool\")\n    baggage_tool_4e4ac0(\"\ud83d\udd27 baggage_tool\")\n    booking_lookup_tool_432a34(\"\ud83d\udd27 booking_lookup_tool\")\n    cancel_flight_c91112(\"\ud83d\udd27 cancel_flight\")\n    current_booking_tool_19ac43(\"\ud83d\udd27 current_booking_tool\")\n    display_seat_map_51780b(\"\ud83d\udd27 display_seat_map\")\n    faq_lookup_tool_bf8ca3(\"\ud83d\udd27 faq_lookup_tool\")\n    flight_status_tool_c40f58(\"\ud83d\udd27 flight_status_tool\")\n    my_bookings_tool_895060(\"\ud83d\udd27 my_bookings_tool\")\n    update_seat_9cc51a(\"\ud83d\udd27 update_seat\")\n\n    Relevance_Guardrail_f3ea27 -->|uses| gpt_4_1_mini_2f17ab\n    Jailbreak_Guardrail_a86779 -->|uses| gpt_4_1_mini_2f17ab\n    Cancellation_Agent_a604fe -->|calls| account_bookings_tool_dc37cd\n    Cancellation_Agent_a604fe -->|calls| airline_policy_rag_tool_ce4e3b\n    Cancellation_Agent_a604fe -->|calls| baggage_tool_4e4ac0\n    Cancellation_Agent_a604fe -->|calls| booking_lookup_tool_432a34\n    Cancellation_Agent_a604fe -->|calls| cancel_flight_c91112\n    Cancellation_Agent_a604fe -->|uses| gpt_4_1_mini_2f17ab\n    FAQ_Agent_7e9102 -->|calls| account_bookings_tool_dc37cd\n    FAQ_Agent_7e9102 -->|calls| airline_policy_rag_tool_ce4e3b\n    FAQ_Agent_7e9102 -->|calls| baggage_tool_4e4ac0\n    FAQ_Agent_7e9102 -->|calls| booking_lookup_tool_432a34\n    FAQ_Agent_7e9102 -->|calls| cancel_flight_c91112\n    FAQ_Agent_7e9102 -->|uses| gpt_4_1_mini_2f17ab\n    Flight_Status_Agent_6b77ac -->|calls| account_bookings_tool_dc37cd\n    Flight_Status_Agent_6b77ac -->|calls| airline_policy_rag_tool_ce4e3b\n    Flight_Status_Agent_6b77ac -->|calls| baggage_tool_4e4ac0\n    Flight_Status_Agent_6b77ac -->|calls| booking_lookup_tool_432a34\n    Flight_Status_Agent_6b77ac -->|calls| cancel_flight_c91112\n    Flight_Status_Agent_6b77ac -->|uses| gpt_4_1_mini_2f17ab\n    Seat_Booking_Agent_1ca1ed -->|calls| account_bookings_tool_dc37cd\n    Seat_Booking_Agent_1ca1ed -->|calls| airline_policy_rag_tool_ce4e3b\n    Seat_Booking_Agent_1ca1ed -->|calls| baggage_tool_4e4ac0\n    Seat_Booking_Agent_1ca1ed -->|calls| booking_lookup_tool_432a34\n    Seat_Booking_Agent_1ca1ed -->|calls| cancel_flight_c91112\n    Seat_Booking_Agent_1ca1ed -->|uses| gpt_4_1_mini_2f17ab\n    Triage_Agent_bb05c1 -->|calls| account_bookings_tool_dc37cd\n    Triage_Agent_bb05c1 -->|calls| airline_policy_rag_tool_ce4e3b\n    Triage_Agent_bb05c1 -->|calls| baggage_tool_4e4ac0\n    Triage_Agent_bb05c1 -->|calls| booking_lookup_tool_432a34\n    Triage_Agent_bb05c1 -->|calls| cancel_flight_c91112\n    Triage_Agent_bb05c1 -->|uses| gpt_4_1_mini_2f17ab\n    app_17f196 -->|uses| gpt_4_1_mini_2f17ab\n    flight_live_service_5954f7 -->|uses| gpt_4_1_mini_2f17ab\n    framework_openai_agents_1fe62c -->|uses| gpt_4_1_mini_2f17ab\n\n    classDef agent    fill:#4A90D9,stroke:#2C6FAC,color:#fff\n    classDef tool     fill:#7ED321,stroke:#5A9A18,color:#fff\n    classDef model    fill:#9B59B6,stroke:#7D3C98,color:#fff\n    classDef prompt   fill:#F39C12,stroke:#D68910,color:#fff\n    classDef guard    fill:#E74C3C,stroke:#C0392B,color:#fff\n    classDef store    fill:#1ABC9C,stroke:#17A589,color:#fff\n    classDef fw       fill:#95A5A6,stroke:#717D7E,color:#fff\n    classDef endpoint fill:#3498DB,stroke:#2471A3,color:#fff\n    class Cancellation_Agent_a604fe,FAQ_Agent_7e9102,Flight_Status_Agent_6b77ac,Seat_Booking_Agent_1ca1ed,Triage_Agent_bb05c1 agent\n    class get_airport_parking_1d0720,get_airport_traffic_af4584,get_airport_weather_f41bb0,get_arrival_board_8d8ff2,get_departure_board_829090,get_gate_change_alerts_bd5704,get_live_flight_status_53b2ec,get_route_weather_1b6f4d,account_bookings_tool_dc37cd,airline_policy_rag_tool_ce4e3b,baggage_tool_4e4ac0,booking_lookup_tool_432a34,cancel_flight_c91112,current_booking_tool_19ac43,display_seat_map_51780b,faq_lookup_tool_bf8ca3,flight_status_tool_c40f58,my_bookings_tool_895060,update_seat_9cc51a tool\n    class gpt_4_1_mini_2f17ab model\n    class Cancellation_Agent_Instructions_daff6e,FAQ_Agent_Instructions_3b317e,Flight_Status_Agent_Instructions_2475ab,Jailbreak_Guardrail_Instructions_89a502,generic_696367,Relevance_Guardrail_Instructions_fe6afc,Seat_Booking_Agent_Instructions_e9de8a,Triage_Agent_Instructions_9bbb00 prompt\n    class Jailbreak_Guardrail_a86779,Relevance_Guardrail_f3ea27 guard\n    class sqlite_3e56a1,sqlite3_ba4e50 store\n    class app_17f196,flight_live_service_5954f7,framework_openai_agents_1fe62c fw\n    class generic_4d5e72,chat_endpoint_5f3a69 endpoint\n```",
+  "_enrichment_cache_key": "4623295c05285f1e6f5280df7306bd4413116ff0d13657c11650e7b3a3cc2f39"
 }
