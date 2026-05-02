@@ -124,6 +124,9 @@ The engine POSTs a JSON body. Two settings control its structure:
 
 Both keys can be overridden per-command with `redteam.chat_payload_key` / `redteam.chat_payload_list`.
 
+> [!TIP]
+> Run `nuguard target verify --config nuguard.yaml` to confirm the target is reachable and auth is working before starting a red-team scan.
+
 Example for an app expecting `{"query": "..."}`:
 
 ```yaml

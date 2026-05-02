@@ -141,6 +141,9 @@ behavior:
 
 Supported auth types: `bearer`, `api_key`, `basic`, `login_flow`, `none`.
 
+> [!TIP]
+> Run `nuguard target verify --config nuguard.yaml` to confirm the target is reachable and auth is working before kicking off a full behavior run.
+
 ---
 
 ## Analysis Modes
@@ -440,6 +443,14 @@ The per-scenario turn table shows only `FAIL` and `PARTIAL` turns — passing tu
 ---
 
 ## Key Commands
+
+### Verify connectivity before running
+
+Run this first to confirm the target is reachable and auth is working — it prints a status table with identity, HTTP status, response time, and error details.
+
+```bash
+nuguard target verify --config nuguard.yaml
+```
 
 ### Basic run (default: static + dynamic)
 
