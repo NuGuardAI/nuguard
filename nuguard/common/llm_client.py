@@ -174,6 +174,7 @@ class LLMClient:
         api_base: str | None = None,
         budget_tokens: int | None = None,
         google_api_key: str | None = None,
+        request_timeout: float | None = None,
     ) -> None:
         self.model: str = (
             model
@@ -185,6 +186,21 @@ class LLMClient:
         self.api_base: str | None = api_base
         self.budget_tokens: int | None = budget_tokens
         self.google_api_key: str | None = google_api_key
+        # Per-request timeout for LLM calls (seconds).
+        # Resolution order:
+        #   1. explicit request_timeout argument
+        #   2. LLM_REQUEST_TIMEOUT env var
+        #   3. hard-coded default of 120s
+        # Set to 0 to disable entirely (no timeout).
+        _DEFAULT_LLM_TIMEOUT = 120.0
+        _env_timeout = os.environ.get("LLM_REQUEST_TIMEOUT")
+        if request_timeout is not None:
+            self.request_timeout: float | None = request_timeout if request_timeout > 0 else None
+        elif _env_timeout:
+            _parsed = float(_env_timeout)
+            self.request_timeout = _parsed if _parsed > 0 else None
+        else:
+            self.request_timeout = _DEFAULT_LLM_TIMEOUT
 
         # vertex_ai/ requires ADC or a service-account JSON.  A plain API key
         # (e.g. AQ.… from Google Cloud Console) only works with the gemini/
@@ -269,6 +285,10 @@ class LLMClient:
                 kwargs.setdefault(k, v)
 
         kwargs = _sanitize_litellm_kwargs(kwargs)
+
+        # Apply per-request timeout so a stalled LLM call doesn't hang forever.
+        if self.request_timeout is not None:
+            kwargs.setdefault("timeout", self.request_timeout)
 
         try:
             stream = await litellm.acompletion(
