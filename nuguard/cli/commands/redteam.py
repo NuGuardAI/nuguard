@@ -243,6 +243,7 @@ def redteam(
         target_url=target_url or "",
         target_endpoint=cfg.target_endpoint or "/chat",
         finding_triggers=finding_triggers.model_dump(),
+        scan_profile=profile,
     )
     # Synthesize per-SBOM-node remediation artefacts — best-effort, never
     # blocks the report if it fails.  The synthesizer consults the SBOM to

@@ -85,6 +85,30 @@ def to_markdown(
     lines: list[str] = ["# NuGuard Red-Team Report", ""]
     lines += meta.to_markdown_lines()
 
+    # --- Summary section -------------------------------------------------------
+    from nuguard.models.finding import Severity
+
+    lines += ["## Summary", ""]
+    if meta.scan_profile:
+        lines += [f"- **Scan Profile**: {meta.scan_profile}", ""]
+    total = len(findings)
+    lines += [f"- **Total Findings**: {total}", ""]
+    if findings:
+        sev_counts: dict[str, int] = {}
+        for f in findings:
+            sev = f.severity.value.upper() if hasattr(f.severity, "value") else str(f.severity).upper()
+            sev_counts[sev] = sev_counts.get(sev, 0) + 1
+        sev_order = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"]
+        sev_parts = [f"{s}: {sev_counts[s]}" for s in sev_order if s in sev_counts]
+        if sev_parts:
+            lines += [f"- **By Severity**: {' | '.join(sev_parts)}", ""]
+    if meta.finding_triggers:
+        trigger_parts = [f"{k}={'on' if v else 'off'}" for k, v in meta.finding_triggers.items()]
+        lines += [f"- **Finding Triggers**: {', '.join(trigger_parts)}", ""]
+    if scenario_records:
+        lines += _attack_coverage_summary(scenario_records)
+    # ---------------------------------------------------------------------------
+
     if scenario_records:
         lines += _scenario_coverage_table(scenario_records)
 
@@ -92,9 +116,6 @@ def to_markdown(
         lines += ["_No findings — scan complete._", ""]
         return "\n".join(lines)
 
-    from nuguard.models.finding import Severity
-
-    lines += [f"**{len(findings)} finding(s)**", ""]
     for f in sorted(findings, key=lambda x: list(Severity).index(x.severity)):
         sev = f.severity.value.upper() if hasattr(f.severity, "value") else str(f.severity).upper()
         lines += [f"## [{sev}] {f.title}", ""]
@@ -148,6 +169,65 @@ def to_markdown(
 # ---------------------------------------------------------------------------
 # Internal helpers (not part of the public API)
 # ---------------------------------------------------------------------------
+
+
+def _attack_coverage_summary(scenario_records: list) -> list[str]:
+    """Return Markdown lines for the Attack Coverage bullets + breakdown table in Summary.
+
+    Emits:
+    - **Attack Coverage**: N goal type(s)
+    - **Coverage**: XX% (N/N scenarios completed)
+
+    Followed by a per-goal-type breakdown table with a Not Tested column.
+    Goal types are derived from actual scenario records (no hardcoded universe).
+    Not Tested = chain_status in {skipped, similar_miss, failed, aborted}.
+    """
+    _GOAL_LABEL = {
+        "DATA_EXFILTRATION": "Data Exfil",
+        "PRIVILEGE_ESCALATION": "Priv Esc",
+        "PROMPT_DRIVEN_THREAT": "Prompt Threat",
+        "POLICY_VIOLATION": "Policy Viol",
+        "TOOL_ABUSE": "Tool Abuse",
+        "API_ATTACK": "API Attack",
+        "MCP_TOXIC_FLOW": "MCP Toxic",
+    }
+    _NOT_TESTED = {"skipped", "similar_miss", "failed", "aborted"}
+
+    # Accumulate per-goal-type counts
+    goal_data: dict[str, dict[str, int]] = {}
+    for r in scenario_records:
+        gt = getattr(r, "goal_type", None) or "UNKNOWN"
+        status = getattr(r, "chain_status", "completed") or "completed"
+        if gt not in goal_data:
+            goal_data[gt] = {"total": 0, "not_tested": 0}
+        goal_data[gt]["total"] += 1
+        if status in _NOT_TESTED:
+            goal_data[gt]["not_tested"] += 1
+
+    total_all = sum(d["total"] for d in goal_data.values())
+    total_not_tested = sum(d["not_tested"] for d in goal_data.values())
+    total_completed = total_all - total_not_tested
+    overall_pct = round(total_completed / total_all * 100) if total_all else 0
+
+    # Sort by scenario count descending
+    sorted_types = sorted(goal_data.items(), key=lambda x: -x[1]["total"])
+
+    lines: list[str] = [
+        f"- **Attack Coverage**: {len(sorted_types)} goal type(s)",
+        "",
+        f"- **Coverage**: {overall_pct}% ({total_completed}/{total_all} scenarios completed)",
+        "",
+        "| Goal Type | Scenarios | Not Tested | Coverage |",
+        "|---|---|---|---|",
+    ]
+    for gt, data in sorted_types:
+        label = _GOAL_LABEL.get(gt, gt.replace("_", " ").title())
+        total = data["total"]
+        not_tested = data["not_tested"]
+        pct = round((total - not_tested) / total * 100) if total else 0
+        lines.append(f"| {label} | {total} | {not_tested} | {pct}% |")
+    lines.append("")
+    return lines
 
 
 def _scenario_coverage_table(scenario_records: list) -> list[str]:

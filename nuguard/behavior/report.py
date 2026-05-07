@@ -69,10 +69,11 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
     lines: list[str] = []
     lines.append("# Behavior Analysis Report")
     lines.append("")
+
     if meta is not None:
         lines += meta.to_markdown_lines()
 
-    # Determine mode
+    # Determine analysis mode
     has_static = bool(result.static_findings)
     has_dynamic = bool(result.dynamic_findings or result.scenario_results)
     if has_static and has_dynamic:
@@ -87,7 +88,7 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
     lines.append("## Summary")
     lines.append("")
     lines.append(f"- **Intent**: {result.intent.app_purpose or 'not determined'}")
-    lines.append(f"- **Mode**: {mode}")
+    lines.append(f"- **Analysis Mode**: {mode}")
     lines.append(f"- **Overall Risk Score**: {result.overall_risk_score:.1f} / 10")
     total_comp = len(result.coverage)
     exercised = sum(1 for c in result.coverage if c.exercised)
@@ -98,11 +99,11 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
     # Severity breakdown
     sev_counts: dict[str, int] = {}
     for f in list(result.static_findings) + list(result.dynamic_findings):
-        sev = str(f.get("severity", "unknown")).upper()
+        sev = _norm_sev(f.get("severity", "unknown"))
         sev_counts[sev] = sev_counts.get(sev, 0) + 1
-    if sev_counts:
-        sev_order = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"]
-        sev_parts = [f"{s}: {sev_counts[s]}" for s in sev_order if s in sev_counts]
+    sev_order = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"]
+    sev_parts = [f"{s}: {sev_counts[s]}" for s in sev_order if s in sev_counts]
+    if sev_parts:
         lines.append(f"- **By Severity**: {' | '.join(sev_parts)}")
     lines.append("")
 
