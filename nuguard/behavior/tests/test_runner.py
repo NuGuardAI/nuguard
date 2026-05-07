@@ -168,7 +168,7 @@ async def test_run_policy_violation_creates_finding():
     violation_result = ScenarioResult(
         scenario_id="test-id",
         scenario_name="boundary_test",
-        scenario_type="boundary_enforcement",
+        scenario_type="invariant_probe",
         verdicts=[{"overall_score": 1.5, "verdict": "FAIL", "agents_mentioned": [], "tools_mentioned": [], "deviations": [{"deviation_type": "policy_violation", "description": "gambling content returned", "severity": "HIGH"}]}],
         overall_score=1.5,
         coverage_pct=0.0,
@@ -258,3 +258,89 @@ async def test_run_handles_scenario_exception():
     # The second scenario should still have run
     assert len(result.scenario_results) == 1
     assert result.scenario_results[0].scenario_name == "will_pass"
+
+
+# ---------------------------------------------------------------------------
+# v7.5: _adapt_message — probe deferral + scenario-type filter
+# ---------------------------------------------------------------------------
+
+
+def _make_adapt_scenario(
+    scenario_type: BehaviorScenarioType = BehaviorScenarioType.INTENT_HAPPY_PATH,
+) -> BehaviorScenario:
+    return BehaviorScenario(
+        scenario_type=scenario_type,
+        name="adapt_test",
+        messages=["hello"],
+    )
+
+
+def test_adapt_message_pii_probe_defers_original():
+    """When PII is disclosed and not yet probed, probe fires; original is deferred."""
+    from nuguard.behavior.runner import _adapt_message
+    from nuguard.behavior.turn_context import TurnContext
+
+    ctx = TurnContext(disclosed_pii=["$50,000"])
+    scenario = _make_adapt_scenario(BehaviorScenarioType.INTENT_HAPPY_PATH)
+    msg, pii, hook, deferred = _adapt_message("Transfer $500", ctx, scenario)
+
+    assert deferred == "Transfer $500"
+    assert "\n\n" not in msg          # exactly one question
+    assert "$50,000" in msg or "personal" in msg.lower() or "account" in msg.lower()
+    assert pii is True
+    assert hook is False
+
+
+def test_adapt_message_skips_probe_for_component_coverage():
+    """COMPONENT_COVERAGE bypasses all probes even with PII disclosed."""
+    from nuguard.behavior.runner import _adapt_message
+    from nuguard.behavior.turn_context import TurnContext
+
+    ctx = TurnContext(disclosed_pii=["$50,000"])
+    scenario = _make_adapt_scenario(BehaviorScenarioType.COMPONENT_COVERAGE)
+    msg, pii, hook, deferred = _adapt_message("Use get_balance", ctx, scenario)
+
+    assert msg == "Use get_balance"
+    assert deferred is None
+
+
+def test_adapt_message_skips_probe_for_agent_coverage():
+    """AGENT_COVERAGE also bypasses all probes."""
+    from nuguard.behavior.runner import _adapt_message
+    from nuguard.behavior.turn_context import TurnContext
+
+    ctx = TurnContext(follow_up_hooks=["ACCT-001 is active"])
+    scenario = _make_adapt_scenario(BehaviorScenarioType.AGENT_COVERAGE)
+    msg, pii, hook, deferred = _adapt_message("Route to LoanAdvisor", ctx, scenario)
+
+    assert msg == "Route to LoanAdvisor"
+    assert deferred is None
+
+
+def test_adapt_message_hook_probed_only_once():
+    """Hook probe fires on first call; suppressed on subsequent calls."""
+    from nuguard.behavior.runner import _adapt_message
+    from nuguard.behavior.turn_context import TurnContext
+
+    ctx = TurnContext(follow_up_hooks=["ACCT-001 is active"])
+    scenario = _make_adapt_scenario(BehaviorScenarioType.INTENT_HAPPY_PATH)
+
+    # First call — hook fires, original is deferred
+    msg1, pii1, hook1, deferred1 = _adapt_message("Next message", ctx, scenario, hook_probed=False)
+    assert deferred1 == "Next message"
+    assert hook1 is True
+
+    # Second call with hook_probed=True — no probe
+    msg2, pii2, hook2, deferred2 = _adapt_message("Another", ctx, scenario, hook_probed=hook1)
+    assert msg2 == "Another"
+    assert deferred2 is None
+
+
+def test_adapt_message_no_context_passthrough():
+    """With no context, message is returned unchanged."""
+    from nuguard.behavior.runner import _adapt_message
+
+    scenario = _make_adapt_scenario()
+    msg, pii, hook, deferred = _adapt_message("Hello", None, scenario)
+    assert msg == "Hello"
+    assert deferred is None

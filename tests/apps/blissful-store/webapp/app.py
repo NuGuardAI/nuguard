@@ -8,6 +8,7 @@ from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import urllib.error
+import urllib.parse
 import urllib.request
 
 try:
@@ -25,16 +26,14 @@ except ImportError:
 
 BASE_DIR = Path(__file__).resolve().parent
 ENV_PATH = BASE_DIR.parent / ".env"
+PROFILE_MANIFEST_PATH = BASE_DIR.parent / "customer_profiles.json"
+CUSTOMER_RECORDS_PATH = BASE_DIR.parent / "mock_crm" / "customer_records.json"
 if load_dotenv and ENV_PATH.exists():
     load_dotenv(ENV_PATH)
 
 PROJECT_ID = os.getenv("BLISSFUL_PROJECT_ID", "platform-dev-2025")
 LOCATION = os.getenv("BLISSFUL_LOCATION", "us")
 APP_ID = os.getenv("BLISSFUL_APP_ID", "dfe2a521-59d6-459a-8358-cedc73f1a92e")
-APP_VERSION = os.getenv(
-    "BLISSFUL_APP_VERSION",
-    "5317c9ed-d32c-4c34-9f5a-db08cb1f4bb1",
-)
 DEPLOYMENT_ID = os.getenv(
     "BLISSFUL_DEPLOYMENT_ID",
     "95a08aa7-8453-4439-8218-a9ba77dfdf47",
@@ -55,6 +54,137 @@ _TOKEN_LOCK = threading.Lock()
 _CACHED_ACCESS_TOKEN: str | None = None
 _CACHED_ACCESS_TOKEN_EXPIRY_TS: float = 0.0
 _ADC_CREDENTIALS = None
+
+
+def _load_profile_manifest() -> tuple[str, dict[str, dict[str, str]]]:
+    with PROFILE_MANIFEST_PATH.open("r", encoding="utf-8") as handle:
+        manifest = json.load(handle)
+
+    if not isinstance(manifest, dict):
+        raise RuntimeError("customer_profiles.json must contain a top-level object")
+
+    default_profile = manifest.get("default_profile")
+    profiles = manifest.get("profiles")
+    if not isinstance(default_profile, str) or not default_profile:
+        raise RuntimeError("customer_profiles.json must define a non-empty default_profile")
+    if not isinstance(profiles, dict):
+        raise RuntimeError("customer_profiles.json must define a 'profiles' object")
+
+    normalized_profiles: dict[str, dict[str, str]] = {}
+    for key, value in profiles.items():
+        if not isinstance(key, str) or not key:
+            raise RuntimeError("customer_profiles.json profile keys must be non-empty strings")
+        if not isinstance(value, dict):
+            raise RuntimeError(f"customer_profiles.json entry '{key}' must be an object")
+
+        label = value.get("label")
+        if not isinstance(label, str) or not label:
+            raise RuntimeError(f"customer_profiles.json entry '{key}' must define a non-empty label")
+
+        normalized_profiles[key] = {"label": label}
+
+    if default_profile not in normalized_profiles:
+        raise RuntimeError("customer_profiles.json default_profile must exist in profiles")
+
+    return default_profile, normalized_profiles
+
+
+def _load_customer_records() -> dict[str, dict]:
+    with CUSTOMER_RECORDS_PATH.open("r", encoding="utf-8") as handle:
+        payload = json.load(handle)
+
+    customers = payload.get("customers")
+    if not isinstance(customers, list):
+        raise RuntimeError("customer_records.json must contain a 'customers' list")
+
+    records_by_profile: dict[str, dict] = {}
+    for customer in customers:
+        if not isinstance(customer, dict):
+            raise RuntimeError("customer_records.json customers entries must be objects")
+
+        profile_key = customer.get("profile_key")
+        if not isinstance(profile_key, str) or not profile_key:
+            raise RuntimeError("Each customer record must define a non-empty profile_key")
+
+        records_by_profile[profile_key] = customer
+
+    return records_by_profile
+
+
+def _first_billing_address(customer_record: dict) -> dict:
+    addresses = customer_record.get("addresses")
+    if not isinstance(addresses, list):
+        return {}
+
+    for address in addresses:
+        if not isinstance(address, dict):
+            continue
+        if address.get("type") == "billing":
+            return {
+                "street": address.get("street", ""),
+                "city": address.get("city", ""),
+                "state": address.get("state", ""),
+                "zip": address.get("zip", ""),
+            }
+
+    return {}
+
+
+def _build_session_profile(profile_key: str, customer_record: dict) -> dict:
+    contact = customer_record.get("contact") or {}
+    metrics = customer_record.get("metrics") or {}
+    preferences = customer_record.get("preferences") or {}
+    communication_preferences = preferences.get("communication") or {}
+    name = customer_record.get("name") or {}
+    domain_context = customer_record.get("domain_context") or {}
+    blissful_store_context = domain_context.get("blissful_store") or {}
+
+    return {
+        "profile_key": profile_key,
+        "account_number": (customer_record.get("external_ids") or {}).get("account_number", ""),
+        "customer_id": customer_record.get("customer_id", ""),
+        "billing_address": _first_billing_address(customer_record),
+        "communication_preferences": communication_preferences,
+        "customer_first_name": name.get("first_name", ""),
+        "customer_last_name": name.get("last_name", ""),
+        "customer_start_date": metrics.get("customer_since", ""),
+        "email": contact.get("email", ""),
+        "garden_profile": blissful_store_context.get("garden_profile", {}),
+        "loyalty_points": metrics.get("loyalty_points", 0),
+        "phone_number": contact.get("phone", ""),
+        "preferred_store": preferences.get("preferred_location", ""),
+        "purchase_history": customer_record.get("purchase_history", []),
+        "scheduled_appointments": customer_record.get("appointments", {}),
+        "years_as_customer": metrics.get("tenure_years", 0),
+    }
+
+
+PROFILE_DEFAULT, PROFILE_MANIFEST = _load_profile_manifest()
+CUSTOMER_RECORDS = _load_customer_records()
+
+missing_manifest_profiles = [
+    profile_key for profile_key in PROFILE_MANIFEST if profile_key not in CUSTOMER_RECORDS
+]
+if missing_manifest_profiles:
+    raise RuntimeError(
+        "customer_profiles.json contains unknown profiles: "
+        + ", ".join(sorted(missing_manifest_profiles))
+    )
+
+missing_manifest_labels = [
+    profile_key for profile_key in CUSTOMER_RECORDS if profile_key not in PROFILE_MANIFEST
+]
+if missing_manifest_labels:
+    raise RuntimeError(
+        "customer_profiles.json is missing labels for CRM profiles: "
+        + ", ".join(sorted(missing_manifest_labels))
+    )
+
+
+PROFILE_OPTIONS = [
+    {"key": profile_key, "label": metadata["label"]}
+    for profile_key, metadata in PROFILE_MANIFEST.items()
+]
 
 
 def _clear_cached_auth_state() -> None:
@@ -122,9 +252,10 @@ def _get_token_from_adc() -> str | None:
 def _get_token_from_gcloud() -> str | None:
     gcloud_candidates = [
         "gcloud",
-        str(Path(__file__).resolve().parents[3] / "tmp" / "google-cloud-sdk" / "bin" / "gcloud"),
+        str(Path(__file__).resolve().parents[4] / "tmp" / "google-cloud-sdk" / "bin" / "gcloud"),
     ]
     gcloud_commands = [
+        ["auth", "print-access-token"],
         ["auth", "application-default", "print-access-token"],
     ]
 
@@ -188,11 +319,15 @@ def _sanitize_ces_response(response_body: bytes) -> bytes:
         return response_body
 
     updated = False
+    sanitized_outputs: list[dict] = []
+    seen_texts: set[str] = set()
     for item in outputs:
         if not isinstance(item, dict):
+            sanitized_outputs.append(item)
             continue
         text = item.get("text")
         if not isinstance(text, str):
+            sanitized_outputs.append(item)
             continue
 
         # CES fixture fallback currently contains verbose platform copy and rich formatting.
@@ -204,15 +339,70 @@ def _sanitize_ces_response(response_body: bytes) -> bytes:
             item["text"] = FALLBACK_PLAIN_MESSAGE
             updated = True
 
+        normalized_text = item.get("text")
+        if isinstance(normalized_text, str):
+            if normalized_text in seen_texts:
+                updated = True
+                continue
+            seen_texts.add(normalized_text)
+
+        sanitized_outputs.append(item)
+
     if not updated:
         return response_body
 
+    payload["outputs"] = sanitized_outputs
     return json.dumps(payload).encode("utf-8")
+
+
+def _normalize_profile_name(profile_name: str | None) -> str:
+    if not profile_name:
+        return PROFILE_DEFAULT
+
+    normalized = str(profile_name).strip()
+    return normalized or PROFILE_DEFAULT
+
+
+def _get_customer_profile(profile_name: str | None) -> tuple[str, dict]:
+    selected_name = _normalize_profile_name(profile_name)
+    selected_record = CUSTOMER_RECORDS.get(selected_name)
+    if selected_record is None:
+        available_profiles = ", ".join(sorted(CUSTOMER_RECORDS))
+        raise ValueError(
+            f"Unknown profile '{selected_name}'. Available profiles: {available_profiles}"
+        )
+
+    return selected_name, _build_session_profile(selected_name, selected_record)
+
+
+def _get_requested_profile_name(handler: SimpleHTTPRequestHandler, request_json: dict) -> str:
+    body_profile = request_json.get("profile")
+    if body_profile is not None:
+        return _normalize_profile_name(str(body_profile))
+
+    parsed_url = urllib.parse.urlparse(handler.path)
+    query_params = urllib.parse.parse_qs(parsed_url.query)
+    query_profile = query_params.get("profile", [None])[0]
+    if query_profile is not None:
+        return _normalize_profile_name(query_profile)
+
+    env_profile = os.getenv("BLISSFUL_CUSTOMER_PROFILE")
+    return _normalize_profile_name(env_profile)
 
 
 class ChatProxyHandler(SimpleHTTPRequestHandler):
     def do_GET(self) -> None:
-        if self.path in {"", "/"}:
+        parsed_path = urllib.parse.urlparse(self.path)
+        if parsed_path.path == "/api/profiles":
+            self._send_json(
+                200,
+                {
+                    "default_profile": PROFILE_DEFAULT,
+                    "profiles": PROFILE_OPTIONS,
+                },
+            )
+            return
+        if parsed_path.path in {"", "/"}:
             self.path = "/index.html"
         super().do_GET()
 
@@ -225,7 +415,8 @@ class ChatProxyHandler(SimpleHTTPRequestHandler):
         self.wfile.write(encoded)
 
     def do_POST(self) -> None:
-        if self.path != "/api/chat":
+        parsed_path = urllib.parse.urlparse(self.path)
+        if parsed_path.path != "/api/chat":
             self._send_json(404, {"error": "Not found"})
             return
 
@@ -241,19 +432,25 @@ class ChatProxyHandler(SimpleHTTPRequestHandler):
         session_id = request_json.get("session_id") or f"test_session_{uuid.uuid4().hex[:8]}"
         session_name = build_session_name(session_id)
 
+        try:
+            profile_name = _get_requested_profile_name(self, request_json)
+            _, customer_profile = _get_customer_profile(profile_name)
+        except ValueError as exc:
+            self._send_json(400, {"error": str(exc)})
+            return
+
         payload = {
             "config": {
                 "session": session_name,
-                "app_version": (
-                    f"projects/{PROJECT_ID}/locations/{LOCATION}/apps/{APP_ID}"
-                    f"/versions/{APP_VERSION}"
-                ),
                 "deployment": (
                     f"projects/{PROJECT_ID}/locations/{LOCATION}/apps/{APP_ID}"
                     f"/deployments/{DEPLOYMENT_ID}"
                 ),
             },
-            "inputs": [{"text": user_text}],
+            "inputs": [
+                {"variables": {"customer_profile": customer_profile}},
+                {"text": user_text},
+            ],
         }
 
         try:

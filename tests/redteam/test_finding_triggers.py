@@ -46,6 +46,8 @@ def _step_result(
     on_failure: str = "abort",
     canary_hits: list[str] | None = None,
     violations: list[PolicyViolation] | None = None,
+    use_llm_eval: bool = False,
+    llm_eval_confidence: str = "",
 ) -> StepResult:
     signal = "match-token" if success else "never-match"
     response = "contains match-token" if success else "safe response"
@@ -56,12 +58,15 @@ def _step_result(
         payload="payload",
         success_signal=signal,
         on_failure=on_failure,
+        use_llm_eval=use_llm_eval,
     )
     result = StepResult(step=step, response=response, tool_calls=[])
     if canary_hits:
         result.canary_hits = canary_hits
     if violations:
         result.policy_violations = violations
+    # Simulate LLM evaluator having run and set confidence
+    result.llm_eval_confidence = llm_eval_confidence
     return result
 
 
@@ -240,3 +245,143 @@ def test_guided_findings_respect_critical_trigger() -> None:
 
     assert disabled_findings == []
     assert len(enabled_findings) == 1
+
+
+# ---------------------------------------------------------------------------
+# LLM-eval-confirmed critical hits
+# ---------------------------------------------------------------------------
+
+def _default_orchestrator() -> RedteamOrchestrator:
+    return _orchestrator(RedteamFindingTriggers())
+
+
+def test_llm_eval_high_confidence_generates_finding() -> None:
+    orchestrator = _default_orchestrator()
+    scenario = _scenario()
+    chain = _chain()
+    sr = _step_result(
+        success=True,
+        step_type="INJECT",
+        on_failure="skip",
+        use_llm_eval=True,
+        llm_eval_confidence="high",
+    )
+    findings = orchestrator._build_findings(
+        scenario=scenario,
+        chain=chain,
+        step_results=[sr],
+        step_details=orchestrator._build_step_details([sr]),
+    )
+    assert len(findings) == 1
+    assert findings[0].goal_type == GoalType.DATA_EXFILTRATION
+
+
+def test_llm_eval_medium_confidence_generates_finding() -> None:
+    orchestrator = _default_orchestrator()
+    scenario = _scenario()
+    chain = _chain()
+    sr = _step_result(
+        success=True,
+        step_type="INJECT",
+        on_failure="mutate",
+        use_llm_eval=True,
+        llm_eval_confidence="medium",
+    )
+    findings = orchestrator._build_findings(
+        scenario=scenario,
+        chain=chain,
+        step_results=[sr],
+        step_details=orchestrator._build_step_details([sr]),
+    )
+    assert len(findings) == 1
+
+
+def test_llm_eval_low_confidence_no_finding() -> None:
+    orchestrator = _default_orchestrator()
+    scenario = _scenario()
+    chain = _chain()
+    sr = _step_result(
+        success=True,
+        step_type="INJECT",
+        on_failure="skip",
+        use_llm_eval=True,
+        llm_eval_confidence="low",
+    )
+    findings = orchestrator._build_findings(
+        scenario=scenario,
+        chain=chain,
+        step_results=[sr],
+        step_details=orchestrator._build_step_details([sr]),
+    )
+    assert findings == []
+
+
+def test_keyword_only_skip_step_no_finding() -> None:
+    """Keyword match with no LLM eval on a skip step should not generate a finding."""
+    orchestrator = _default_orchestrator()
+    scenario = _scenario()
+    chain = _chain()
+    sr = _step_result(
+        success=True,
+        step_type="INJECT",
+        on_failure="skip",
+        use_llm_eval=False,
+        llm_eval_confidence="",
+    )
+    findings = orchestrator._build_findings(
+        scenario=scenario,
+        chain=chain,
+        step_results=[sr],
+        step_details=orchestrator._build_step_details([sr]),
+    )
+    assert findings == []
+
+
+def test_abort_step_success_generates_finding() -> None:
+    """Existing behavior: on_failure=abort + success → finding (no LLM eval needed)."""
+    orchestrator = _default_orchestrator()
+    scenario = _scenario()
+    chain = _chain()
+    sr = _step_result(success=True, step_type="INVOKE", on_failure="abort")
+    findings = orchestrator._build_findings(
+        scenario=scenario,
+        chain=chain,
+        step_results=[sr],
+        step_details=orchestrator._build_step_details([sr]),
+    )
+    assert len(findings) == 1
+
+
+def test_abort_step_failure_no_finding() -> None:
+    orchestrator = _default_orchestrator()
+    scenario = _scenario()
+    chain = _chain()
+    sr = _step_result(success=False, step_type="INVOKE", on_failure="abort")
+    findings = orchestrator._build_findings(
+        scenario=scenario,
+        chain=chain,
+        step_results=[sr],
+        step_details=orchestrator._build_step_details([sr]),
+    )
+    assert findings == []
+
+
+def test_empty_llm_confidence_skip_no_finding() -> None:
+    """use_llm_eval=True but evaluator unavailable (confidence='') → no finding."""
+    orchestrator = _default_orchestrator()
+    scenario = _scenario()
+    chain = _chain()
+    sr = _step_result(
+        success=True,
+        step_type="INJECT",
+        on_failure="skip",
+        use_llm_eval=True,
+        llm_eval_confidence="",
+    )
+    findings = orchestrator._build_findings(
+        scenario=scenario,
+        chain=chain,
+        step_results=[sr],
+        step_details=orchestrator._build_step_details([sr]),
+    )
+    assert findings == []

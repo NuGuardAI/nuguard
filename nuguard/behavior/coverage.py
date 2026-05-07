@@ -145,6 +145,7 @@ async def generate_coverage_turns(
     llm_client: "LLMClient | None",
     domain_context: str = "",
     intent: "IntentProfile | None" = None,
+    scoped_components: set[str] | None = None,
 ) -> list[str]:
     """Return follow-up messages targeting uncovered SBOM components.
 
@@ -155,10 +156,19 @@ async def generate_coverage_turns(
         llm_client: Optional LLM client for richer message generation.
         domain_context: One-line description of the application under test.
         intent: Optional IntentProfile for intent-grounded messages.
+        scoped_components: When provided, restrict coverage turns to this
+            subset of component names (v5 scoped coverage).  Components
+            outside this set are skipped — they belong to other scenarios.
 
     Returns:
         A list of at most MAX_COVERAGE_TURNS message strings.
     """
+    if not uncovered:
+        return []
+
+    # v5: filter down to scoped components only, avoiding cross-domain contamination.
+    if scoped_components is not None:
+        uncovered = uncovered & scoped_components
     if not uncovered:
         return []
 

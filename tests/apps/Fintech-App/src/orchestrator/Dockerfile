@@ -26,4 +26,8 @@ COPY . ./orchestrator/
 
 EXPOSE 8001
 
-CMD ["python", "-m", "uvicorn", "orchestrator.main:app", "--host", "0.0.0.0", "--port", "8001"]
+ENV PYTHONUNBUFFERED=1
+
+CMD ["python", "-m", "uvicorn", "orchestrator.main:app", \
+     "--host", "0.0.0.0", "--port", "8001", \
+     "--log-level", "info", "--access-log"]

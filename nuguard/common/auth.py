@@ -51,6 +51,10 @@ class LoginFlowConfig(BaseModel):
     endpoint: str = "/login"
     method: Literal["POST", "GET"] = "POST"
 
+    # Optional override for the host that serves the login endpoint.
+    # When omitted, AuthSession uses the target base URL.
+    base_url: str | None = None
+
     # Key/value pairs sent in the login request body.
     # Values are resolved from ${ENV_VAR} by the config loader before this
     # model is built.
@@ -304,7 +308,11 @@ class AuthSession:
         lf = self._config.login_flow
         assert lf is not None  # always true when type == login_flow
 
-        url = f"{self._base_url}{lf.endpoint}"
+        login_base_url = (lf.base_url or self._base_url).rstrip("/")
+        if lf.endpoint.startswith(("http://", "https://")):
+            url = lf.endpoint
+        else:
+            url = f"{login_base_url}{lf.endpoint}"
         _log.debug("AuthSession: logging in via %s %s", lf.method, url)
 
         try:

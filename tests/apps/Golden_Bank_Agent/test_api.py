@@ -23,6 +23,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
+from pathlib import Path
 from typing import Any
 
 
@@ -46,11 +47,36 @@ TURN_DELAY = float(os.environ.get("TURN_DELAY", "3"))
 # ---------------------------------------------------------------------------
 
 def _access_token() -> str:
-    """Return a short-lived gcloud access token."""
-    for cmd in (
-        ["gcloud", "auth", "print-access-token"],
-        ["gcloud", "auth", "application-default", "print-access-token"],
-    ):
+    """Return a short-lived Google Cloud access token.
+
+    Priority:
+    1. google-auth Application Default Credentials (no gcloud CLI required).
+       Works with GOOGLE_APPLICATION_CREDENTIALS, Workload Identity, etc.
+    2. gcloud CLI (``gcloud auth print-access-token`` / application-default).
+    """
+    # 1. google-auth ADC — preferred; works without the gcloud CLI binary.
+    try:
+        import google.auth  # type: ignore[import]
+        import google.auth.transport.requests  # type: ignore[import]
+        creds, _ = google.auth.default(
+            scopes=["https://www.googleapis.com/auth/cloud-platform"]
+        )
+        creds.refresh(google.auth.transport.requests.Request())
+        if creds.token:
+            return creds.token
+    except Exception:
+        pass
+
+    # 2. gcloud CLI fallback — try PATH first, then the bundled SDK in tmp/.
+    _GCLOUD_CANDIDATES = [
+        "gcloud",
+        str(Path(__file__).parents[3] / "tmp" / "google-cloud-sdk" / "bin" / "gcloud"),
+    ]
+    _gcloud_cmds = []
+    for _bin in _GCLOUD_CANDIDATES:
+        _gcloud_cmds.append([_bin, "auth", "print-access-token"])
+        _gcloud_cmds.append([_bin, "auth", "application-default", "print-access-token"])
+    for cmd in _gcloud_cmds:
         try:
             r = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
             t = r.stdout.strip()
@@ -147,19 +173,54 @@ def _load_dotenv(path: str) -> None:
         pass
 
 
-def _nuguard_llm_client():
-    """Import and return a nuguard LLMClient, adding project root to sys.path if needed."""
+def _model_from_yaml(yaml_path: str) -> str:
+    """Read llm.model from nuguard.yaml next to this script, if present.
+
+    Falls back to the LITELLM_MODEL env var and then the LLMClient default.
+    Uses stdlib only — no PyYAML dependency required.
+    """
+    env_model = os.environ.get("LITELLM_MODEL", "")
+    if env_model:
+        return env_model
     try:
-        from nuguard.common.llm_client import LLMClient
-        return LLMClient()
+        with open(yaml_path) as fh:
+            for line in fh:
+                stripped = line.strip()
+                # Simple key: value match under the top-level llm: block
+                if stripped.startswith("model:"):
+                    value = stripped.split(":", 1)[1].strip().strip('"').strip("'")
+                    # Strip inline YAML comments
+                    value = value.split("#")[0].strip()
+                    if value:
+                        return value
+    except FileNotFoundError:
+        pass
+    return ""  # LLMClient will use its own default
+
+
+def _nuguard_llm_client():
+    """Import and return a nuguard LLMClient configured from nuguard.yaml.
+
+    Reads llm.model from the nuguard.yaml in the same directory as this script
+    so the model stays in sync with the project config rather than defaulting
+    to gemini-2.0-flash unconditionally.
+    """
+    _yaml = os.path.join(os.path.dirname(__file__), "nuguard.yaml")
+    _model = _model_from_yaml(_yaml) or None
+
+    def _make(model: str | None):
+        from nuguard.common.llm_client import LLMClient  # noqa: PLC0415
+        return LLMClient(model=model) if model else LLMClient()
+
+    try:
+        return _make(_model)
     except ImportError:
         project_root = os.path.abspath(
             os.path.join(os.path.dirname(__file__), "..", "..", "..")
         )
         if project_root not in sys.path:
             sys.path.insert(0, project_root)
-        from nuguard.common.llm_client import LLMClient  # type: ignore[import]
-        return LLMClient()
+        return _make(_model)
 
 
 async def _generate_followup(agent_response: str) -> str:

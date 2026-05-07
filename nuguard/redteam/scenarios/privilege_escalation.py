@@ -52,7 +52,6 @@ def build_privilege_chain(
                 target_node_id=pivot_tool_id,
                 depends_on=[f"{chain_id}_s1"],
                 success_signal="update",
-                on_failure="skip",
             ),
         ],
     )

@@ -21,8 +21,10 @@ in the model string.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
+import random
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -181,6 +183,19 @@ class LLMClient:
             or os.environ.get("LITELLM_MODEL", "")
             or _DEFAULT_MODEL
         )
+        # Bare "gemini-*" model names (no provider prefix) are ambiguous —
+        # LiteLLM routes them to Vertex AI which requires ADC / SA credentials.
+        # Auto-prefix with "gemini/" so the Gemini REST endpoint is used instead,
+        # which accepts a plain API key.
+        if self.model and not any(self.model.startswith(p) for p in _GEMINI_PREFIXES + _OPENAI_PREFIXES + _ANTHROPIC_PREFIXES + _BEDROCK_PREFIXES) and self.model.startswith("gemini-"):
+            prefixed = f"gemini/{self.model}"
+            _log.debug(
+                "Bare model name %r detected — adding 'gemini/' prefix → %r. "
+                "Use 'gemini/<name>' explicitly to suppress this.",
+                self.model,
+                prefixed,
+            )
+            self.model = prefixed
         self.api_key: str | None = api_key or _resolve_api_key(self.model)
         self.min_temperature: float | None = min_temperature
         self.api_base: str | None = api_base
@@ -290,64 +305,89 @@ class LLMClient:
         if self.request_timeout is not None:
             kwargs.setdefault("timeout", self.request_timeout)
 
-        try:
-            stream = await litellm.acompletion(
-                model=self.model,
-                messages=messages,
-                api_key=self.api_key,
-                stream=True,
-                **kwargs,
-            )
-            async for chunk in stream:
-                delta: str = chunk.choices[0].delta.content or ""
-                if delta:
-                    yield delta
-            return
+        _MAX_RETRIES = 4
+        _BASE_DELAY = 2.0   # seconds before first retry
+        _MAX_DELAY = 60.0   # cap on any single sleep
 
-        except litellm.AuthenticationError as exc:
-            _log.warning(
-                "LLM authentication failed (model=%s label=%s): %s",
-                self.model, label or "-", exc,
-            )
-            if any(self.model.startswith(p) for p in _VERTEX_PREFIXES):
-                _log.warning(
-                    "Vertex AI requires ADC or a service-account JSON. "
-                    "Set GOOGLE_APPLICATION_CREDENTIALS=/path/to/sa.json "
-                    "or switch the model to 'gemini/%s' for API-key auth.",
-                    self.model.split("/", 1)[1],
+        for _attempt in range(_MAX_RETRIES + 1):
+            try:
+                stream = await litellm.acompletion(
+                    model=self.model,
+                    messages=messages,
+                    api_key=self.api_key,
+                    stream=True,
+                    **kwargs,
                 )
-        except litellm.RateLimitError as exc:
-            _log.warning(
-                "LLM rate limit reached (model=%s label=%s): %s",
-                self.model, label or "-", exc,
-            )
-        except litellm.ServiceUnavailableError as exc:
-            _log.warning(
-                "LLM service unavailable (model=%s label=%s): %s",
-                self.model, label or "-", exc,
-            )
-        except litellm.BadRequestError as exc:
-            _log.warning(
-                "LLM bad request (model=%s label=%s): %s",
-                self.model, label or "-", exc,
-            )
-        except litellm.APIConnectionError as exc:
-            _log.warning(
-                "LLM connection error (model=%s label=%s): %s",
-                self.model, label or "-", exc,
-            )
-        except litellm.Timeout as exc:
-            _log.warning(
-                "LLM request timed out (model=%s label=%s): %s",
-                self.model, label or "-", exc,
-            )
-        except Exception as exc:
-            _log.warning(
-                "Unexpected LLM error (model=%s label=%s): %s: %s",
-                self.model, label or "-", type(exc).__name__, exc,
-            )
-        # On any error fall back to canned response
-        yield self._canned_response(prompt)
+                async for chunk in stream:
+                    delta: str = chunk.choices[0].delta.content or ""
+                    if delta:
+                        yield delta
+                return
+
+            except (litellm.RateLimitError, litellm.ServiceUnavailableError) as exc:
+                if _attempt < _MAX_RETRIES:
+                    delay = min(_BASE_DELAY * (2 ** _attempt) + random.uniform(0, 1), _MAX_DELAY)
+                    _log.warning(
+                        "LLM transient error (model=%s label=%s attempt=%d/%d) — "
+                        "retrying in %.1fs: %s",
+                        self.model, label or "-", _attempt + 1, _MAX_RETRIES, delay, exc,
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    _log.warning(
+                        "LLM transient error (model=%s label=%s) — "
+                        "all %d retries exhausted: %s",
+                        self.model, label or "-", _MAX_RETRIES, exc,
+                    )
+                    yield self._canned_response(prompt)
+                    return
+
+            except litellm.AuthenticationError as exc:
+                _log.warning(
+                    "LLM authentication failed (model=%s label=%s): %s",
+                    self.model, label or "-", exc,
+                )
+                if any(self.model.startswith(p) for p in _VERTEX_PREFIXES):
+                    _log.warning(
+                        "Vertex AI requires ADC or a service-account JSON. "
+                        "Set GOOGLE_APPLICATION_CREDENTIALS=/path/to/sa.json "
+                        "or switch the model to 'gemini/%s' for API-key auth.",
+                        self.model.split("/", 1)[1],
+                    )
+                yield self._canned_response(prompt)
+                return
+
+            except litellm.BadRequestError as exc:
+                _log.warning(
+                    "LLM bad request (model=%s label=%s): %s",
+                    self.model, label or "-", exc,
+                )
+                yield self._canned_response(prompt)
+                return
+
+            except litellm.APIConnectionError as exc:
+                _log.warning(
+                    "LLM connection error (model=%s label=%s): %s",
+                    self.model, label or "-", exc,
+                )
+                yield self._canned_response(prompt)
+                return
+
+            except litellm.Timeout as exc:
+                _log.warning(
+                    "LLM request timed out (model=%s label=%s): %s",
+                    self.model, label or "-", exc,
+                )
+                yield self._canned_response(prompt)
+                return
+
+            except Exception as exc:
+                _log.warning(
+                    "Unexpected LLM error (model=%s label=%s): %s: %s",
+                    self.model, label or "-", type(exc).__name__, exc,
+                )
+                yield self._canned_response(prompt)
+                return
 
     async def complete(
         self,

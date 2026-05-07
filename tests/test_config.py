@@ -79,6 +79,7 @@ class TestRedteamPromptCacheDirConfig:
         cfg = NuGuardConfig()
         assert cfg.redteam_prompt_cache_dir == "."
 
+
 class TestFlattenYamlRedteamAuth:
     def test_bearer_block(self) -> None:
         flat = _flatten("""
@@ -287,3 +288,175 @@ class TestLoadConfigPathResolution:
         cfg = load_config(config_file)
 
         assert cfg.sbom_path == str(sbom_abs.resolve())
+
+
+# ── Shared target: block ─────────────────────────────────────────────────────
+
+
+class TestSharedTargetBlock:
+    """top-level target: block propagates to both redteam and behavior config."""
+
+    def test_target_url_set_from_shared_block(self) -> None:
+        flat = _flatten("""
+            target:
+              url: http://shared.test
+        """)
+        assert flat["target_url"] == "http://shared.test"
+
+    def test_redteam_target_overrides_shared_url(self) -> None:
+        flat = _flatten("""
+            target:
+              url: http://shared.test
+            redteam:
+              target: http://redteam-override.test
+        """)
+        assert flat["target_url"] == "http://redteam-override.test"
+
+    def test_behavior_target_overrides_shared_url(self) -> None:
+        flat = _flatten("""
+            target:
+              url: http://shared.test
+            behavior:
+              target: http://behavior-override.test
+        """)
+        # behavior_config dict carries the behavior-level override
+        assert flat["behavior_config"]["target"] == "http://behavior-override.test"
+        # target_url (redteam) still resolves to shared
+        assert flat["target_url"] == "http://shared.test"
+
+    def test_shared_endpoint_propagates_to_redteam(self) -> None:
+        flat = _flatten("""
+            target:
+              url: http://shared.test
+              endpoint: /api/chat
+        """)
+        assert flat["target_endpoint"] == "/api/chat"
+
+    def test_redteam_endpoint_overrides_shared_endpoint(self) -> None:
+        flat = _flatten("""
+            target:
+              url: http://shared.test
+              endpoint: /api/chat
+            redteam:
+              target_endpoint: /api/redteam
+        """)
+        assert flat["target_endpoint"] == "/api/redteam"
+
+    def test_shared_chat_payload_key_propagates(self) -> None:
+        flat = _flatten("""
+            target:
+              url: http://shared.test
+              chat_payload_key: phrases
+              chat_payload_list: true
+              chat_response_key: prognosis
+        """)
+        assert flat["redteam_chat_payload_key"] == "phrases"
+        assert flat["redteam_chat_payload_list"] is True
+        assert flat["redteam_chat_response_key"] == "prognosis"
+
+    def test_shared_headers_propagate_to_redteam(self) -> None:
+        flat = _flatten("""
+            target:
+              url: http://shared.test
+              headers:
+                X-Tenant-Id: tenant-1
+                X-Custom: value
+        """)
+        assert flat["redteam_headers"]["X-Tenant-Id"] == "tenant-1"
+        assert flat["redteam_headers"]["X-Custom"] == "value"
+
+    def test_shared_bearer_auth_propagates(self) -> None:
+        flat = _flatten("""
+            target:
+              url: http://shared.test
+              auth:
+                type: bearer
+                header: "Authorization: Bearer shared-tok"
+        """)
+        assert flat["redteam_auth_type"] == "bearer"
+        assert flat["redteam_auth_header"] == "Authorization: Bearer shared-tok"
+
+    def test_redteam_auth_overrides_shared_auth(self) -> None:
+        flat = _flatten("""
+            target:
+              url: http://shared.test
+              auth:
+                type: bearer
+                header: "Authorization: Bearer shared-tok"
+            redteam:
+              auth:
+                type: bearer
+                header: "Authorization: Bearer redteam-tok"
+        """)
+        assert flat["redteam_auth_header"] == "Authorization: Bearer redteam-tok"
+
+    def test_shared_login_flow_auth_propagates(self) -> None:
+        flat = _flatten("""
+            target:
+              url: http://shared.test
+              auth:
+                type: login_flow
+                login_flow:
+                  endpoint: /api/login
+                  method: POST
+                  payload:
+                    username: alice
+                    password: secret
+                  token_response_key: access_token
+                  token_header: "Authorization: Bearer"
+                  refresh_on_401: true
+        """)
+        assert flat["redteam_auth_type"] == "login_flow"
+        assert flat["redteam_auth_login_flow"]["endpoint"] == "/api/login"
+        assert flat["redteam_auth_login_flow"]["token_response_key"] == "access_token"
+
+    def test_shared_auth_injected_into_behavior_config(self) -> None:
+        flat = _flatten("""
+            target:
+              url: http://shared.test
+              auth:
+                type: bearer
+                header: "Authorization: Bearer shared-tok"
+            behavior:
+              llm: true
+        """)
+        # behavior_config should have the shared auth as a default
+        assert flat["behavior_config"]["auth"]["type"] == "bearer"
+        assert flat["behavior_config"]["auth"]["header"] == "Authorization: Bearer shared-tok"
+
+    def test_behavior_auth_overrides_shared_auth_in_behavior_config(self) -> None:
+        flat = _flatten("""
+            target:
+              url: http://shared.test
+              auth:
+                type: bearer
+                header: "Authorization: Bearer shared-tok"
+            behavior:
+              auth:
+                type: api_key
+                header: "X-API-Key: behavior-key"
+        """)
+        assert flat["behavior_config"]["auth"]["type"] == "api_key"
+        assert flat["behavior_config"]["auth"]["header"] == "X-API-Key: behavior-key"
+
+    def test_shared_url_injected_into_behavior_config_as_target(self) -> None:
+        flat = _flatten("""
+            target:
+              url: http://shared.test
+            behavior:
+              llm: true
+        """)
+        assert flat["behavior_config"]["target"] == "http://shared.test"
+
+    def test_no_target_block_leaves_target_url_unset(self) -> None:
+        flat = _flatten("""
+            redteam:
+              profile: ci
+        """)
+        assert "target_url" not in flat
+
+    def test_empty_target_block_is_harmless(self) -> None:
+        flat = _flatten("""
+            target: {}
+        """)
+        assert "target_url" not in flat

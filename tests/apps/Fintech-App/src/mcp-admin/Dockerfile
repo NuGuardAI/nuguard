@@ -6,5 +6,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 RUN mkdir mcp_admin
 COPY . ./mcp_admin/
+ENV PYTHONUNBUFFERED=1
+
 EXPOSE 8080
 CMD ["python", "-m", "mcp_admin.server"]

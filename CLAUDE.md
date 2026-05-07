@@ -11,6 +11,10 @@ uv sync --dev
 # Run all tests
 uv run pytest tests/ -v
 
+# Run a single test file or test by name
+uv run pytest tests/redteam/test_finding_triggers.py -v
+uv run pytest tests/ -k "test_llm_eval_high_confidence" -v
+
 # Lint and type check
 uv run ruff check nuguard/
 uv run mypy nuguard/
@@ -20,11 +24,13 @@ uv run nuguard --help
 uv run nuguard sbom generate --from-repo https://github.com/org/repo --ref main
 ```
 
-Or use the Makefile shortcuts: `make dev`, `make test`, `make lint`, `make fmt`.
+Makefile shortcuts: `make dev`, `make test`, `make lint`, `make fmt`.
+
+Use `tmp/` for scratch scripts and one-off experiments rather than streaming commands in the terminal.
 
 ## Architecture
 
-NuGuard is an AI application security package. The four capabilities are:
+NuGuard is an AI application security package with five capabilities:
 
 1. **sbom** — Generate an AI-SBOM (AI Bill of Materials) by statically scanning Python/TypeScript source
 2. **analyze** — Static analysis of an AI-SBOM to detect security issues
@@ -38,16 +44,16 @@ The intended pipeline is: `sbom generate` → `analyze` → `behavior` → `redt
 
 ```
 nuguard/
-├── sbom/           # AI-SBOM generation — the most complete package (absorbed from Xelo)
+├── sbom/           # AI-SBOM generation — the most complete package
 ├── behavior/       # Static and dynamic behavioral testing
-├── redteam/        # Dynamic red-team — agents, executor, scenarios, policy_engine, risk_engine
+├── redteam/        # Dynamic red-team — see detailed breakdown below
 ├── graph/          # Attack graph builder (SBOM → enriched graph)
 ├── analysis/       # Static SBOM analysis — detector plugins
 ├── policy/         # Cognitive Policy parsing and violation checking
 ├── models/         # Shared Pydantic models (AttackGraph, ExploitChain, Scan, Finding, Policy)
 ├── db/             # SQLite (default) or Postgres (async SQLAlchemy)
 ├── output/         # SARIF / JSON / Markdown report generators
-├── cli/            # Typer app — main.py wires 8 sub-commands from commands/
+├── cli/            # Typer app — main.py wires sub-commands from commands/
 ├── config.py       # nuguard.yaml loader with ${ENV_VAR} interpolation
 └── common/         # errors.py, logging.py, llm_client.py, http.py
 ```
@@ -75,19 +81,72 @@ LLM calls are optional everywhere. Pass `--llm` to `nuguard sbom generate` or se
 - Pydantic fields and file names: `snake_case`
 - `ACCESSES` edges carry `access_type: read | write | readwrite`
 
+---
+
+## Redteam package internals
+
+The redteam package is the most complex and actively developed. Understanding its data flow is critical.
+
+```
+nuguard/redteam/
+├── scenarios/          # Scenario generation: reads SBOM → emits AttackScenario list
+│   ├── generator.py    # ScenarioGenerator — entry point, wires all builders
+│   ├── scenario_types.py  # AttackScenario dataclass
+│   └── *.py            # One file per attack family (data_exfiltration, prompt_injection, etc.)
+├── executor/
+│   ├── orchestrator.py # RedteamOrchestrator — top-level async runner
+│   ├── executor.py     # AttackExecutor — runs ExploitChain step by step
+│   ├── guided_executor.py  # GuidedAttackExecutor — multi-turn adaptive conversations
+│   └── chain_assembler.py  # Assembles LLM-enriched payloads into ExploitStep sequences
+├── llm_engine/
+│   ├── response_evaluator.py  # LLMResponseEvaluator — judges whether a step succeeded
+│   ├── adaptive_mutation.py   # AdaptiveMutationStrategy — rewrites payloads between turns
+│   └── conversation_director.py  # Steers guided conversations toward goal
+├── policy_engine/
+│   └── evaluator.py    # PolicyEvaluator — checks responses against CognitivePolicy
+├── risk_engine/
+│   ├── remediation_generator.py  # Template-based remediation advice per GoalType
+│   └── remediation_synthesizer.py  # LLM-based remediation narrative
+├── target/
+│   ├── client.py       # TargetAppClient — HTTP client with circuit breaker
+│   └── canary.py       # CanaryScanner — watches for canary value leaks in responses
+└── report.py           # Builds the Markdown/JSON redteam report from scenario records
+```
+
+### Data flow
+
+1. `ScenarioGenerator.generate()` reads the SBOM and emits a sorted list of `AttackScenario` objects. Each scenario has either a `chain: ExploitChain` (static steps) or a `guided_conversation: GuidedConversation` (adaptive).
+2. `RedteamOrchestrator.run()` deduplicates scenarios, then dispatches them concurrently via `asyncio.Semaphore` (default concurrency=5).
+3. Static chains run through `AttackExecutor.run()` — each `ExploitStep` is executed in order with optional LLM eval (`use_llm_eval=True`) and adaptive mutation on failure.
+4. Guided conversations run through `GuidedAttackExecutor` — a `ConversationDirector` steers turn-by-turn toward the goal, scoring progress 0–1 each turn.
+5. `_build_findings()` converts step results into `Finding` objects using a 4-tier trigger hierarchy: **canary_hits → policy_violations → critical_success_hits → any_inject_success**. The `RedteamFindingTriggers` config controls which tiers are active.
+
+### Finding triggers and LLM eval
+
+`ExploitStep.on_failure` controls abort semantics:
+- `"abort"` — step failure aborts the chain; success always qualifies as a critical hit
+- `"skip"` / `"mutate"` — non-critical steps; only qualify as findings when `use_llm_eval=True` and `llm_eval_confidence in ("high", "medium")`
+
+`LLMResponseEvaluator.evaluate()` returns `{succeeded, confidence, evidence, severity_signal}`. Pre-LLM heuristics short-circuit the call for known patterns (unexpected code generation → PROMPT_DRIVEN_THREAT; fictional-framing + PII fields → DATA_EXFILTRATION).
+
+### Circuit breaker and scenario timeout
+
+`TargetUnavailableError` from `TargetAppClient` trips the circuit breaker only after **3 consecutive** failures (threshold in `_run_scenarios`). A single transient error marks that scenario `"aborted"` but does not stop the run.
+
+`scenario_timeout` (config: `redteam.scenario_timeout`, default 300 s) wraps each scenario execution in `asyncio.wait_for()`. Timed-out scenarios record `chain_status="timeout"`.
+
+### GoalType taxonomy
+
+`GoalType` (in `nuguard/models/exploit_chain.py`) maps to attack families. Key ones:
+- `PROMPT_DRIVEN_THREAT` — prompt injection, system prompt extraction, guardrail bypass
+- `DATA_EXFILTRATION` — PII/PHI extraction, cross-tenant, covert encoding
+- `PRIVILEGE_ESCALATION` — HITL bypass, privilege chain
+- `API_ATTACK` — auth bypass, IDOR, mass assignment
+- `MCP_TOXIC_FLOW` — poisoned MCP server content flowing to write-capable tools
+- `POLICY_VIOLATION` — topic boundary, restricted actions
+
 ### Coding style
 - Follow PEP8 and Black formatting
-- use the tmp folder for scratch code and scripts instead of streaming the command in the terminal and to resue
-- Being a security tool, prioritize secure coding practices (e.g. validate all inputs, handle exceptions, avoid shelling out when possible)
 - Type hint all functions and methods
 - Use `logging` for debug/info/warning messages; avoid print statements
-- Write modular, single-responsibility functions and classes
-- Use docstrings to explain complex logic and public APIs
-- Write unit tests for all new code and aim for high coverage
-- Use `uv run` to execute commands in the virtual environment
-- For CLI commands, provide helpful messages and error handling
 - For LLM calls, handle rate limits and errors gracefully; provide fallback behavior if the LLM is unavailable
-- When in doubt, prioritize code readability and maintainability over cleverness
-- Use GitHub Issues and Pull Requests to track work and code changes; provide clear descriptions and context in PRs
-- Regularly update this CLAUDE.md file as the codebase evolves to keep guidance accurate and relevant
-

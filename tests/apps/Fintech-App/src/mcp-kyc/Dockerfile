@@ -6,5 +6,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 RUN mkdir mcp_kyc
 COPY . ./mcp_kyc/
+ENV PYTHONUNBUFFERED=1
+
 EXPOSE 8080
 CMD ["python", "-m", "mcp_kyc.server"]

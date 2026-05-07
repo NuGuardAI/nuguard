@@ -29,3 +29,13 @@ function Set-FastEnv {
     $env:NUGUARD_REDTEAM_PROMPT_GATE_MAX_SIMILARITY = '0.90'
     $env:NUGUARD_REDTEAM_PROMPT_GATE_KEEP_BEST_EFFORT = 'true'
 }
+
+function Set-BlissfulCustomerProfile {
+    param(
+        [Parameter(Mandatory = $true)]
+        [ValidateSet('patrick','new_customer','high_value','anonymous')]
+        [string]$CustomerProfile
+    )
+
+    $env:BLISSFUL_CUSTOMER_PROFILE = $CustomerProfile
+}

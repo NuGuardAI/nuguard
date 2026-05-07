@@ -1,14 +1,32 @@
 """FinTech GOAT — MCP Compliance — DELIBERATELY VULNERABLE."""
 from __future__ import annotations
-import json, logging, os, uuid
+
+import json
+import logging
+import os
+import time
 from typing import Any
-import requests
+
 from fastmcp import FastMCP
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-logger = logging.getLogger("mcp_compliance")
-logging.basicConfig(level=logging.INFO)
+
+def _setup_logger(name: str) -> "logging.Logger":
+    """Named logger with its own StreamHandler — survives uvicorn dictConfig reset."""
+    log = logging.getLogger(name)
+    if not log.handlers:
+        _h = logging.StreamHandler()
+        _h.setFormatter(logging.Formatter(
+            "%(asctime)s %(levelname)-8s %(name)s  %(message)s",
+            datefmt="%Y-%m-%dT%H:%M:%S",
+        ))
+        log.addHandler(_h)
+    log.setLevel(getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO))
+    log.propagate = False
+    return log
+
+logger = _setup_logger("mcp_compliance")
 mcp = FastMCP(name="fintech-compliance", instructions="Pinnacle Bank compliance tool API.")
 
 _JURISDICTION_LIMITS: dict[str, dict[str, float]] = {
@@ -42,6 +60,27 @@ _REGULATORY_REQS: dict[str, dict[str, Any]] = {
         "kyc_refresh_years": 2,
     },
 }
+
+
+def _summarize_arguments(arguments: dict[str, Any]) -> dict[str, Any]:
+    summary: dict[str, Any] = {"keys": sorted(arguments.keys())}
+    if "jurisdiction" in arguments:
+        summary["jurisdiction"] = str(arguments["jurisdiction"])
+    if "amount" in arguments:
+        summary["amount"] = arguments["amount"]
+    if "transaction_type" in arguments:
+        summary["transaction_type"] = str(arguments["transaction_type"])
+    if "transaction_id" in arguments:
+        summary["transaction_id"] = str(arguments["transaction_id"])
+    if "policy_id" in arguments:
+        summary["policy_id"] = str(arguments["policy_id"])
+    if "reason" in arguments:
+        reason = str(arguments["reason"])
+        summary["reason_len"] = len(reason)
+        summary["reason_preview"] = reason[:48]
+    if "override_by" in arguments:
+        summary["override_by"] = str(arguments["override_by"])
+    return summary
 
 
 @mcp.tool()
@@ -110,6 +149,8 @@ async def tools_call_endpoint(request: Request) -> JSONResponse:
     params = body.get("params", {})
     tool_name = params.get("name", "")
     arguments = params.get("arguments", {})
+    started_at = time.monotonic()
+    logger.info("tool_call start id=%s tool=%s args=%s", call_id, tool_name, _summarize_arguments(arguments))
     try:
         if tool_name == "check_transaction_limits":
             result = await check_transaction_limits(**arguments)
@@ -120,10 +161,15 @@ async def tools_call_endpoint(request: Request) -> JSONResponse:
         elif tool_name == "get_pending_compliance_items":
             result = await get_pending_compliance_items()
         else:
+            logger.warning("tool_call unknown id=%s tool=%s args=%s", call_id, tool_name, _summarize_arguments(arguments))
             return JSONResponse({"jsonrpc": "2.0", "id": call_id, "error": {"code": -32601, "message": f"Unknown tool: {tool_name}"}})
+        elapsed_ms = (time.monotonic() - started_at) * 1000
+        result_summary = list(result.keys()) if isinstance(result, dict) else type(result).__name__
+        logger.info("tool_call complete id=%s tool=%s elapsed_ms=%.1f result=%s", call_id, tool_name, elapsed_ms, result_summary)
         return JSONResponse({"jsonrpc": "2.0", "id": call_id, "result": {"content": [{"type": "text", "text": json.dumps(result)}]}})
     except Exception as exc:
-        logger.error("tools/call tool=%s: %s", tool_name, exc)
+        elapsed_ms = (time.monotonic() - started_at) * 1000
+        logger.exception("tool_call failed id=%s tool=%s elapsed_ms=%.1f args=%s", call_id, tool_name, elapsed_ms, _summarize_arguments(arguments))
         return JSONResponse({"jsonrpc": "2.0", "id": call_id, "error": {"code": -32603, "message": str(exc)}}, status_code=500)
 
 

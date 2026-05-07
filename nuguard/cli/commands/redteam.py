@@ -213,6 +213,11 @@ def redteam(
                 # ^ eval_llm falls back to top-level llm.model/api_key when redteam.eval_llm is not set
                 finding_triggers=finding_triggers,
                 verbose=effective_verbose,
+                scenario_timeout=cfg.redteam_scenario_timeout,
+                concurrency=cfg.redteam_concurrency,
+                turn_delay_seconds=cfg.redteam_turn_delay_seconds,
+                scenario_delay_seconds=cfg.redteam_scenario_delay_seconds,
+                similar_miss_threshold=cfg.redteam_similar_miss_threshold,
             )
         )
     except Exception as exc:
@@ -243,13 +248,21 @@ def redteam(
         target_url=target_url or "",
         target_endpoint=cfg.target_endpoint or "/chat",
         finding_triggers=finding_triggers.model_dump(),
+        scan_profile=profile,
     )
     # Synthesize per-SBOM-node remediation artefacts — best-effort, never
     # blocks the report if it fails.  The synthesizer consults the SBOM to
     # produce concrete system-prompt patches, guardrail specs, and
     # architectural changes targeted at each affected component.
+    _cognitive_policy = None
+    if policy_path and policy_path.exists():
+        try:
+            from nuguard.policy.parser import parse_policy as _parse_policy  # noqa: PLC0415
+            _cognitive_policy = _parse_policy(policy_path.read_text())
+        except Exception:
+            pass
     remediation_plan = _build_redteam_remediation_plan(
-        findings, sbom_doc, cognitive_policy=None
+        findings, sbom_doc, cognitive_policy=_cognitive_policy
     )
 
     _print_findings(findings, effective_format, meta, remediation_plan=remediation_plan,
@@ -361,6 +374,11 @@ async def _run_redteam(
     finding_triggers: "RedteamFindingTriggers | None" = None,
     verbose: bool = False,
     credentials: dict[str, str] | None = None,
+    scenario_timeout: float = 300.0,
+    concurrency: int = 5,
+    turn_delay_seconds: float = 0.0,
+    scenario_delay_seconds: float = 0.0,
+    similar_miss_threshold: int = 4,
 ) -> tuple[list, dict[str, str], list]:
     """Async inner function: optionally launch the app, then run the orchestrator."""
     from nuguard.models.policy import CognitivePolicy
@@ -478,6 +496,11 @@ async def _run_redteam(
                 finding_triggers=finding_triggers,
                 verbose=verbose,
                 credentials=credentials,
+                scenario_timeout=scenario_timeout,
+                concurrency=concurrency,
+                turn_delay_seconds=turn_delay_seconds,
+                scenario_delay_seconds=scenario_delay_seconds,
+                similar_miss_threshold=similar_miss_threshold,
             )
 
     # App already running — just scan
@@ -514,6 +537,11 @@ async def _run_redteam(
         finding_triggers=finding_triggers,
         verbose=verbose,
         credentials=credentials,
+        scenario_timeout=scenario_timeout,
+        concurrency=concurrency,
+        turn_delay_seconds=turn_delay_seconds,
+        scenario_delay_seconds=scenario_delay_seconds,
+        similar_miss_threshold=similar_miss_threshold,
     )
 
 
@@ -549,6 +577,11 @@ async def _run_orchestrator(
     finding_triggers: "RedteamFindingTriggers | None" = None,
     verbose: bool = False,
     credentials: dict[str, str] | None = None,
+    scenario_timeout: float = 300.0,
+    concurrency: int = 5,
+    turn_delay_seconds: float = 0.0,
+    scenario_delay_seconds: float = 0.0,
+    similar_miss_threshold: int = 4,
 ) -> tuple[list, dict[str, str], list]:
     from nuguard.common.llm_client import LLMClient
     from nuguard.redteam.executor.orchestrator import RedteamOrchestrator
@@ -588,6 +621,11 @@ async def _run_orchestrator(
         finding_triggers=finding_triggers,
         verbose=verbose,
         credentials=credentials,
+        scenario_timeout=scenario_timeout,
+        concurrency=concurrency,
+        turn_delay_seconds=turn_delay_seconds,
+        scenario_delay_seconds=scenario_delay_seconds,
+        similar_miss_threshold=similar_miss_threshold,
     )
     findings = await orchestrator.run()
     llm_remediations: dict[str, str] = orchestrator.llm_remediations

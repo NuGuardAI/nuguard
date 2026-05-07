@@ -1,14 +1,32 @@
 """FinTech GOAT — MCP Data Export — DELIBERATELY VULNERABLE."""
 from __future__ import annotations
-import json, logging, os, uuid
+
+import json
+import logging
+import os
+import time
 from typing import Any
-import requests
+
 from fastmcp import FastMCP
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-logger = logging.getLogger("mcp_data_export")
-logging.basicConfig(level=logging.INFO)
+
+def _setup_logger(name: str) -> "logging.Logger":
+    """Named logger with its own StreamHandler — survives uvicorn dictConfig reset."""
+    log = logging.getLogger(name)
+    if not log.handlers:
+        _h = logging.StreamHandler()
+        _h.setFormatter(logging.Formatter(
+            "%(asctime)s %(levelname)-8s %(name)s  %(message)s",
+            datefmt="%Y-%m-%dT%H:%M:%S",
+        ))
+        log.addHandler(_h)
+    log.setLevel(getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO))
+    log.propagate = False
+    return log
+
+logger = _setup_logger("mcp_data_export")
 mcp = FastMCP(name="fintech-data-export", instructions="Pinnacle Bank data export tool API.")
 
 _ALL_CUSTOMERS = [
@@ -39,6 +57,23 @@ _KYC_DATA = [
     {"customer_id": "ACCT-002", "kyc_level": "standard", "id_type": "drivers_license", "id_number": "DL-IL-98765432", "verified_at": "2023-06-10", "expires_at": "2027-06-10", "risk_rating": "low"},
     {"customer_id": "ACCT-003", "kyc_level": "enhanced", "id_type": "passport", "id_number": "P987654321", "verified_at": "2023-11-20", "expires_at": "2033-11-20", "risk_rating": "high"},
 ]
+
+
+def _summarize_arguments(arguments: dict[str, Any]) -> dict[str, Any]:
+    summary: dict[str, Any] = {"keys": sorted(arguments.keys())}
+    if "customer_id" in arguments:
+        summary["customer_id"] = str(arguments["customer_id"])
+    if "include_pii" in arguments:
+        summary["include_pii"] = bool(arguments["include_pii"])
+    if "page" in arguments:
+        summary["page"] = arguments["page"]
+    if "page_size" in arguments:
+        summary["page_size"] = arguments["page_size"]
+    if "data_type" in arguments:
+        summary["data_type"] = str(arguments["data_type"])
+    if "format" in arguments:
+        summary["format"] = str(arguments["format"])
+    return summary
 
 
 @mcp.tool()
@@ -108,6 +143,8 @@ async def tools_call_endpoint(request: Request) -> JSONResponse:
     params = body.get("params", {})
     tool_name = params.get("name", "")
     arguments = params.get("arguments", {})
+    started_at = time.monotonic()
+    logger.info("tool_call start id=%s tool=%s args=%s", call_id, tool_name, _summarize_arguments(arguments))
     try:
         if tool_name == "export_customer_data":
             result = await export_customer_data(**arguments)
@@ -116,10 +153,15 @@ async def tools_call_endpoint(request: Request) -> JSONResponse:
         elif tool_name == "bulk_export":
             result = await bulk_export(**arguments)
         else:
+            logger.warning("tool_call unknown id=%s tool=%s args=%s", call_id, tool_name, _summarize_arguments(arguments))
             return JSONResponse({"jsonrpc": "2.0", "id": call_id, "error": {"code": -32601, "message": f"Unknown tool: {tool_name}"}})
+        elapsed_ms = (time.monotonic() - started_at) * 1000
+        result_summary = list(result.keys()) if isinstance(result, dict) else type(result).__name__
+        logger.info("tool_call complete id=%s tool=%s elapsed_ms=%.1f result=%s", call_id, tool_name, elapsed_ms, result_summary)
         return JSONResponse({"jsonrpc": "2.0", "id": call_id, "result": {"content": [{"type": "text", "text": json.dumps(result)}]}})
     except Exception as exc:
-        logger.error("tools/call tool=%s: %s", tool_name, exc)
+        elapsed_ms = (time.monotonic() - started_at) * 1000
+        logger.exception("tool_call failed id=%s tool=%s elapsed_ms=%.1f args=%s", call_id, tool_name, elapsed_ms, _summarize_arguments(arguments))
         return JSONResponse({"jsonrpc": "2.0", "id": call_id, "error": {"code": -32603, "message": str(exc)}}, status_code=500)
 
 

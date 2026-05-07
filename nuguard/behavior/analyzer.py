@@ -79,6 +79,7 @@ class BehaviorAnalyzer:
         dynamic_findings: list[dict] = []
         coverage = []
         scenario_results = []
+        skipped_scenario_names: list[str] = []
 
         if "dynamic" in mode:
             target_url = getattr(self._config, "target", None) or ""
@@ -102,6 +103,7 @@ class BehaviorAnalyzer:
                         controls=self._controls,
                         sbom=self._sbom,
                         llm_client=self._llm,
+                        skipped_out=skipped_scenario_names,
                     )
                     scenario_cache.save(cache_key, scenarios)
                 _log.info("BehaviorAnalyzer.analyze: %d scenarios to execute", len(scenarios))
@@ -221,6 +223,7 @@ class BehaviorAnalyzer:
             dynamic_findings=dynamic_findings,
             coverage=coverage,
             scenario_results=scenario_results,
+            scenarios_skipped=skipped_scenario_names,
         )
 
         # Step 5: Generate recommendations

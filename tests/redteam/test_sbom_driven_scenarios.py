@@ -138,17 +138,30 @@ def test_build_tool_scenarios_sql_category():
     node = _tool_node("query_orders", "runs SQL queries against order database")
     scenarios = build_tool_scenarios(node, "TestAgent")
 
-    assert len(scenarios) == 1
-    s = scenarios[0]
-    assert s.scenario_type == ScenarioType.SQL_INJECTION
-    assert s.goal_type == GoalType.TOOL_ABUSE
-    assert s.chain is not None
-    assert len(s.chain.steps) == 2
-    # Step 1 uses classic SQLi
-    assert "1'='1" in s.chain.steps[0].payload or "OR" in s.chain.steps[0].payload
-    assert s.chain.owasp_asi_ref == "ASI05"
-    assert s.chain.owasp_llm_ref == "LLM05"
-    assert s.impact_score >= 8.0
+    # SQL builder now returns 4 real-world attack scenarios
+    assert len(scenarios) == 4
+
+    types = {s.scenario_type for s in scenarios}
+    assert ScenarioType.DATASTORE_SQL_INJECTION in types, "Expected SQL gen+exec scenario"
+    assert ScenarioType.IDOR in types, "Expected account-ID substitution scenario"
+    assert ScenarioType.MASS_ASSIGNMENT in types, "Expected unauthorized UPDATE scenario"
+    assert ScenarioType.SQL_INJECTION in types, "Expected MCP/direct passthrough scenario"
+
+    goal_types = {s.goal_type for s in scenarios}
+    assert GoalType.DATA_EXFILTRATION in goal_types
+    assert GoalType.TOOL_ABUSE in goal_types
+
+    # Each scenario must have a valid chain with at least 2 steps
+    for s in scenarios:
+        assert s.chain is not None
+        assert len(s.chain.steps) >= 2
+
+    # Payloads should contain realistic SQL — SELECT, UPDATE, or WHERE
+    all_payloads = " ".join(
+        step.payload for s in scenarios for step in s.chain.steps  # type: ignore[union-attr]
+    )
+    assert "SELECT" in all_payloads
+    assert "UPDATE" in all_payloads
 
 
 def test_build_tool_scenarios_ssrf_category():
@@ -285,7 +298,8 @@ def test_generator_sbom_driven_all_categories_each_get_one_scenario():
         if s.chain is not None
         and any(t_name in s.title for t_name in tool_names)
     ]
-    assert len(sbom_driven) >= 7, f"Expected ≥7 sbom_driven scenarios, got {len(sbom_driven)}"
+    # SQL tool produces 4 scenarios; other tools produce 1 each → 4 + 6*1 = 10 minimum.
+    assert len(sbom_driven) >= 10, f"Expected ≥10 sbom_driven scenarios, got {len(sbom_driven)}"
 
 
 def test_generator_find_owning_agent_name_with_calls_edge():

@@ -52,7 +52,6 @@ def build_sql_injection(
                 target_node_id=tool_id,
                 depends_on=[f"{chain_id}_s1"],
                 success_signal="UNION",
-                on_failure="skip",
             ),
         ],
     )
@@ -104,7 +103,6 @@ def build_ssrf(
                 target_node_id=tool_id,
                 depends_on=[f"{chain_id}_s1"],
                 success_signal="internal",
-                on_failure="skip",
             ),
         ],
     )

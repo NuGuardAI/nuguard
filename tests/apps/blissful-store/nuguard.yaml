@@ -9,7 +9,7 @@ sbom: ./reports/blissful-store-sbom-fullfixture-llm-azure-gpt-4.1-20260422-15010
 source: .      # generate SBOM from source dir (alternative to sbom:)
 policy:
   path: ./cognitive_policy.md       # Cognitive Policy Markdown to enforce during behavior analysis
-  llm: true                     # use LLM to compile richer test/boundary prompts
+  use_llm: true                     # use LLM to compile richer test/boundary prompts
 
 # ─── LLM settings ─────────────────────────────────────────────────────────────
 llm:
@@ -90,6 +90,8 @@ redteam:
   target_endpoint: /api/chat
 
   # Authentication — same options as behavior.auth above.
+  # Shorthand (backward-compatible): single auth_header string
+  # auth_header: "Authorization: Bearer ${TARGET_TOKEN}"
   # Or use the structured form:
   # auth:
   #   type: bearer
@@ -101,6 +103,10 @@ redteam:
   # tenant session_tokens in canary.json are used as attacker credentials for
   # cross-tenant scenarios — no extra identity config needed.
   canary: ./canary.json
+
+  # Optional Blissful fixture profile override. Mapped to
+  # BLISSFUL_CUSTOMER_PROFILE for local app launches.
+  customer_profile: patrick
 
   # Request body shape — override if your app uses a non-standard payload
   chat_payload_key: phrases         # JSON key for the message
@@ -186,12 +192,12 @@ redteam:
   eval_llm:
 
     model: ${AWS_BEDROCK_MODEL}
-    api_key: ${AWS_BEARER_TOKEN_BEDROCK}  
+    api_key: ${AWS_BEARER_TOKEN_BEDROCK}
     # model: ${AZURE_ANTHROPIC_MODEL_NAME}
     # api_key: ${AZURE_ANTHROPIC_KEY}
     # api_base: ${AZURE_ANTHROPIC_ENDPOINT}
     # model: ${GEMINI_MODEL_NAME}
-    # api_key: ${GEMINI_API_K EY}
+    # api_key: ${GEMINI_API_KEY}
 
   # MCP server hostnames treated as trusted.
   # Servers absent from this list are classified 'untrusted' and eligible

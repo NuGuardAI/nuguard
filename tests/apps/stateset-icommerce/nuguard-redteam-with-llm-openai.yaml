@@ -60,6 +60,7 @@ redteam:
   request_timeout: 120
   verbose: true
   strict_outcome: false
+  similar_miss_threshold: 4   # set to 0 to disable
   guided_conversations: true
   guided_max_turns: 12
   guided_concurrency: 3

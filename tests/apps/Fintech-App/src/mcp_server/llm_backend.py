@@ -30,6 +30,9 @@ import logging
 import os
 from typing import Any
 
+# LLM call budget — keeps gateway from blocking too long
+_LLM_TIMEOUT_S: float = float(os.getenv("LLM_TIMEOUT_SECONDS", "30"))
+
 logger = logging.getLogger("mcp_server.llm_backend")
 
 # ── Hard-to-detect model name: concatenated string literals ──────────────────
@@ -59,8 +62,10 @@ def _get_client() -> Any:
         api_key=os.getenv("AZURE_OPENAI_API_KEY", ""),
         azure_endpoint=os.getenv("AZURE_OPENAI_ENDPOINT", ""),
         api_version=_API_VERSION,
+        timeout=_LLM_TIMEOUT_S,
+        max_retries=1,
     )
-    logger.info("OpenAI client initialised via importlib (model=%s)", _CHAT_MODEL)
+    logger.info("OpenAI client initialised via importlib (model=%s, timeout=%.0fs)", _CHAT_MODEL, _LLM_TIMEOUT_S)
     return _client
 
 
@@ -81,20 +86,48 @@ def _get_fallback_client() -> Any:
 async def complete(prompt: str, max_tokens: int = 512) -> str:
     """Run a chat completion using the lazily-loaded Azure OpenAI client."""
     client = _get_client()
-    response = await client.chat.completions.create(
-        model=_CHAT_MODEL,
-        messages=[{"role": "user", "content": prompt}],
-        max_tokens=max_tokens,
-        temperature=0.2,
-    )
-    return response.choices[0].message.content or ""
+    try:
+        response = await client.chat.completions.create(
+            model=_CHAT_MODEL,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=max_tokens,
+            temperature=0.2,
+        )
+        return response.choices[0].message.content or ""
+    except Exception as exc:
+        # Detect timeout by class name since the module is dynamically imported
+        exc_type = type(exc).__name__
+        if exc_type == "APITimeoutError":
+            logger.warning("LLM completion timed out after %.0fs: %s", _LLM_TIMEOUT_S, exc)
+            raise TimeoutError(
+                f"The AI service did not respond within {_LLM_TIMEOUT_S:.0f} seconds. "
+                "Please try again in a moment."
+            ) from exc
+        if exc_type == "RateLimitError":
+            logger.warning("LLM completion rate-limited: %s", exc)
+            raise RuntimeError(
+                "The AI service is currently experiencing high demand. "
+                "Please wait a moment and try again."
+            ) from exc
+        logger.error("LLM completion failed: %s", exc)
+        raise
 
 
 async def embed(text: str) -> list[float]:
     """Return a text embedding vector using the lazily-loaded client."""
     client = _get_client()
-    response = await client.embeddings.create(
-        model=_EMBED_MODEL,
-        input=text,
-    )
-    return response.data[0].embedding
+    try:
+        response = await client.embeddings.create(
+            model=_EMBED_MODEL,
+            input=text,
+        )
+        return response.data[0].embedding
+    except Exception as exc:
+        exc_type = type(exc).__name__
+        if exc_type == "APITimeoutError":
+            logger.warning("LLM embedding timed out after %.0fs: %s", _LLM_TIMEOUT_S, exc)
+            raise TimeoutError(
+                f"Embedding request timed out after {_LLM_TIMEOUT_S:.0f} seconds."
+            ) from exc
+        logger.error("LLM embedding failed: %s", exc)
+        raise

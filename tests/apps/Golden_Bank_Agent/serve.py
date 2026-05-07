@@ -12,8 +12,8 @@ server directly:
 
 Usage:
     gcloud auth login          # one-time
-    python3 serve.py           # default port 8088
-    python3 serve.py 8080      # custom port
+    python3 serve.py           # default port 8095
+    python3 serve.py 8095      # custom port
 """
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ import urllib.request
 import uuid
 from pathlib import Path
 
-PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8088
+PORT = int(sys.argv[1]) if len(sys.argv) > 1 else 8095
 ROOT = Path(__file__).parent
 
 PROJECT      = "platform-dev-2025"
@@ -44,11 +44,36 @@ _SESSION_PATH_RE = re.compile(r"^/apps/[^/]+/users/[^/]+/sessions$")
 
 
 def _access_token() -> str:
-    """Return a short-lived access token via gcloud."""
-    for cmd in (
-        ["gcloud", "auth", "print-access-token"],
-        ["gcloud", "auth", "application-default", "print-access-token"],
-    ):
+    """Return a short-lived Google Cloud access token.
+
+    Priority:
+    1. google-auth Application Default Credentials (no gcloud CLI required).
+       Works with GOOGLE_APPLICATION_CREDENTIALS, Workload Identity, etc.
+    2. gcloud CLI (``gcloud auth print-access-token`` / application-default).
+    """
+    # 1. google-auth ADC — preferred; works without the gcloud CLI binary.
+    try:
+        import google.auth  # type: ignore[import]
+        import google.auth.transport.requests  # type: ignore[import]
+        creds, _ = google.auth.default(
+            scopes=["https://www.googleapis.com/auth/cloud-platform"]
+        )
+        creds.refresh(google.auth.transport.requests.Request())
+        if creds.token:
+            return creds.token
+    except Exception:
+        pass
+
+    # 2. gcloud CLI fallback — try PATH first, then the bundled SDK in tmp/.
+    _GCLOUD_CANDIDATES = [
+        "gcloud",
+        str(Path(__file__).parents[3] / "tmp" / "google-cloud-sdk" / "bin" / "gcloud"),
+    ]
+    _gcloud_cmds = []
+    for _bin in _GCLOUD_CANDIDATES:
+        _gcloud_cmds.append([_bin, "auth", "print-access-token"])
+        _gcloud_cmds.append([_bin, "auth", "application-default", "print-access-token"])
+    for cmd in _gcloud_cmds:
         try:
             r = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
             t = r.stdout.strip()
@@ -56,7 +81,11 @@ def _access_token() -> str:
                 return t
         except Exception:
             pass
-    raise RuntimeError("No Google credentials. Run: gcloud auth login")
+    raise RuntimeError(
+        "Google Cloud authentication required. Run one of:\n"
+        "  gcloud auth login                          # personal account\n"
+        "  gcloud auth application-default login      # application default"
+    )
 
 
 def _run_session(session_id: str, message: str) -> str:
@@ -130,11 +159,15 @@ class Handler(http.server.SimpleHTTPRequestHandler):
 
     def _handle_chat(self):
         payload    = self._read_json()
-        session_id = payload.get("session_id", "default-session")
+        session_id = payload.get("session_id") or str(uuid.uuid4())
         message    = payload.get("message", "")
+        # nuguard sends message as a list when chat_payload_list: true
+        if isinstance(message, list):
+            message = " ".join(str(m) for m in message if m)
         try:
             reply = _run_session(session_id, message)
-            self._json_ok({"reply": reply})
+            # Return both reply (browser UI) and outputs[0].text (nuguard chat_response_key)
+            self._json_ok({"reply": reply, "outputs": [{"text": reply}]})
         except urllib.error.HTTPError as exc:
             err = exc.read().decode()[:400]
             self._error(f"CES API error {exc.code}: {err}")

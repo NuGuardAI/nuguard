@@ -112,6 +112,7 @@ redteam:
   # reported as 'inconclusive_target_errors' rather than 'no_findings'.
   # Enable in CI to catch false-clean runs caused by a broken target.
   strict_outcome: false
+  similar_miss_threshold: 4   # set to 0 to disable
 
   # Guided adversarial conversations using ConversationDirector
   guided_conversations: true        # enable adaptive multi-turn attacks

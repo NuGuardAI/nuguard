@@ -158,11 +158,16 @@ def _get_guardrail_name(g) -> str:
 def _build_agents_list() -> List[Dict[str, Any]]:
     """Build a list of all available agents and their metadata."""
     def make_agent_dict(agent):
+        mcp_names = [
+            getattr(s, "name", repr(s))
+            for s in getattr(agent, "mcp_servers", [])
+        ]
         return {
             "name": agent.name,
             "description": getattr(agent, "handoff_description", ""),
             "handoffs": [getattr(h, "agent_name", getattr(h, "name", "")) for h in getattr(agent, "handoffs", [])],
             "tools": [getattr(t, "name", getattr(t, "__name__", "")) for t in getattr(agent, "tools", [])],
+            "mcp_servers": mcp_names,
             "input_guardrails": [_get_guardrail_name(g) for g in getattr(agent, "input_guardrails", [])],
         }
     return [

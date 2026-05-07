@@ -31,6 +31,62 @@ _MASS_ASSIGN_BODY: dict = {
     "permissions": ["admin", "write", "delete"],
 }
 
+# Field-name substring → plausible value (checked in order, longest/most-specific first)
+_FIELD_VALUE_HINTS: list[tuple[str, object]] = [
+    ("message",    "Hello, can you help me with my account?"),
+    ("content",    "Hello, can you help me?"),
+    ("prompt",     "What is my account balance?"),
+    ("text",       "test message"),
+    ("username",   "testuser@example.com"),
+    ("email",      "testuser@example.com"),
+    ("password",   "TestPass123!"),
+    ("session_id", "sess-test-12345"),
+    ("session",    "sess-test-12345"),
+    ("user_id",    "user-test-001"),
+    ("user",       "user-test-001"),
+    ("account",    "acct-test-001"),
+    ("tenant",     "tenant-test-001"),
+    ("name",       "Test User"),
+    ("amount",     100),
+    ("price",      100),
+    ("query",      "show me my account details"),
+]
+
+# Type-string substring → fallback value when no field-name hint matches
+_TYPE_VALUE_FALLBACKS: list[tuple[str, object]] = [
+    ("int",   1),
+    ("float", 1.0),
+    ("bool",  True),
+    ("list",  []),
+    ("dict",  {}),
+]
+
+
+def _build_realistic_body(schema: dict[str, str]) -> dict:
+    """Return a plausible request body dict from a ``{field_name: type_string}`` schema.
+
+    Field-name heuristics take priority; type-string fallback applies otherwise.
+    Empty schema returns empty dict.
+    """
+    body: dict = {}
+    for field, type_str in schema.items():
+        field_lower = field.lower()
+        value: object = None
+        for hint_key, hint_val in _FIELD_VALUE_HINTS:
+            if hint_key in field_lower:
+                value = hint_val
+                break
+        if value is None:
+            type_lower = (type_str or "str").lower()
+            for type_key, type_val in _TYPE_VALUE_FALLBACKS:
+                if type_key in type_lower:
+                    value = type_val
+                    break
+            else:
+                value = "test-value"
+        body[field] = value
+    return body
+
 _ID_PARAM_PATTERN = re.compile(
     r"\{(?P<param>[^}]+)\}|:(?P<bare>[A-Za-z_][A-Za-z0-9_]*)"
 )
@@ -60,12 +116,23 @@ def build_auth_bypass(
     endpoint_name: str,
     path: str,
     method: str = "GET",
+    request_body_schema: dict[str, str] | None = None,
 ) -> AttackScenario:
     """Build an authentication bypass scenario for a protected endpoint.
 
     Sends a request to *path* without any auth headers.  Success is defined as
     receiving a 2xx response — which means the endpoint failed to enforce auth.
+
+    For POST/PUT/PATCH endpoints a realistic body is generated from
+    *request_body_schema* so that the request passes schema validation and
+    reaches the authentication check rather than being rejected with 422.
     """
+    # Build a realistic body for write-method endpoints so the request
+    # passes schema validation — auth bypass must be tested on a valid request.
+    http_body: dict | None = None
+    if method in ("POST", "PUT", "PATCH") and request_body_schema:
+        http_body = _build_realistic_body(request_body_schema)
+
     chain_id = str(uuid.uuid4())
     chain = ExploitChain(
         chain_id=chain_id,
@@ -82,6 +149,7 @@ def build_auth_bypass(
                 payload="",
                 target_path=path,
                 http_method=method,
+                http_body=http_body,
                 target_node_id=endpoint_id,
                 success_signal=HTTP_2XX_SENTINEL,
                 on_failure="abort",
@@ -109,13 +177,24 @@ def build_mass_assignment(
     endpoint_name: str,
     path: str,
     method: str = "POST",
+    request_body_schema: dict[str, str] | None = None,
 ) -> AttackScenario:
     """Build a mass-assignment scenario for a write-capable endpoint.
 
     Sends extra privilege-escalating fields (role, is_admin, etc.) in the
     request body.  Success is detection of an echoed privilege value in the
     response, indicating the server accepted and reflected the extra fields.
+
+    When *request_body_schema* is provided (from the SBOM), plausible values are
+    generated for all required fields so the request passes schema validation.
+    The privilege-escalation fields are then merged on top: the combined body
+    looks like a legitimate request that also smuggles in the escalation fields.
     """
+    # Start with plausible values for all known schema fields so the request
+    # passes validation, then overlay the privilege-escalation fields.
+    base_body = _build_realistic_body(request_body_schema) if request_body_schema else {}
+    body = {**base_body, **_MASS_ASSIGN_BODY}
+
     chain_id = str(uuid.uuid4())
     chain = ExploitChain(
         chain_id=chain_id,
@@ -131,7 +210,7 @@ def build_mass_assignment(
                 payload="",
                 target_path=path,
                 http_method=method,
-                http_body=_MASS_ASSIGN_BODY,
+                http_body=body,
                 target_node_id=endpoint_id,
                 success_signal="superuser",
                 # Require 2xx so that frameworks (e.g. FastAPI) echoing the request

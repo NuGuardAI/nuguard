@@ -71,6 +71,38 @@
             justify-content: space-between;
             align-items: center;
         }
+        #chat-header-copy {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        #chat-header-title {
+            font-weight: 600;
+        }
+        #chat-profile-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.78rem;
+            color: rgba(255, 255, 255, 0.88);
+        }
+        #chat-profile-select {
+            appearance: none;
+            border: 1px solid rgba(255, 255, 255, 0.35);
+            background: rgba(255, 255, 255, 0.14);
+            color: white;
+            border-radius: 999px;
+            padding: 4px 28px 4px 10px;
+            font: inherit;
+            cursor: pointer;
+            background-image: linear-gradient(45deg, transparent 50%, white 50%), linear-gradient(135deg, white 50%, transparent 50%);
+            background-position: calc(100% - 16px) calc(50% - 2px), calc(100% - 11px) calc(50% - 2px);
+            background-size: 5px 5px, 5px 5px;
+            background-repeat: no-repeat;
+        }
+        #chat-profile-select option {
+            color: var(--text-color);
+        }
         #chat-header button {
             background: transparent;
             border: none;
@@ -145,6 +177,19 @@
         }
         #chat-send:hover {
             color: var(--accent-hover);
+        }
+        @media (max-width: 640px) {
+            #chat-window {
+                width: min(92vw, 360px);
+                right: -8px;
+            }
+            #chat-header {
+                align-items: flex-start;
+                gap: 12px;
+            }
+            #chat-profile-row {
+                flex-wrap: wrap;
+            }
         }
     </style>
 </head>
@@ -249,7 +294,13 @@
     <div id="chat-widget">
         <div id="chat-window">
             <div id="chat-header">
-                <div>Blissful Intercom</div>
+                <div id="chat-header-copy">
+                    <div id="chat-header-title">Blissful Intercom</div>
+                    <label id="chat-profile-row" for="chat-profile-select">
+                        <span>Persona</span>
+                        <select id="chat-profile-select" aria-label="Select customer persona"></select>
+                    </label>
+                </div>
                 <div id="chat-header-actions">
                     <button id="new-chat">New Chat</button>
                     <button id="close-chat">&times;</button>
@@ -277,7 +328,11 @@
         const chatSend = document.getElementById('chat-send');
         const chatMessages = document.getElementById('chat-messages');
         const CHAT_SESSION_STORAGE_KEY = 'blissful_chat_session_id';
+        const CHAT_PROFILE_STORAGE_KEY = 'blissful_chat_profile';
         const CHAT_WELCOME_MESSAGE = "Hello! I'm your Blissful Home assistant. How can I help curate your space today?";
+        const chatProfileSelect = document.getElementById('chat-profile-select');
+        let profileLabels = {};
+        let defaultProfile = 'patrick';
 
         function createSessionId() {
             if (window.crypto && typeof window.crypto.randomUUID === 'function') {
@@ -301,6 +356,50 @@
             addMessage(CHAT_WELCOME_MESSAGE, 'bot');
         }
 
+        function getSelectedProfile() {
+            return chatProfileSelect.value || 'patrick';
+        }
+
+        function renderProfileOptions(profiles) {
+            chatProfileSelect.innerHTML = '';
+            profileLabels = {};
+
+            profiles.forEach((profile) => {
+                profileLabels[profile.key] = profile.label;
+                const option = document.createElement('option');
+                option.value = profile.key;
+                option.textContent = profile.label;
+                chatProfileSelect.appendChild(option);
+            });
+        }
+
+        function applySelectedProfile() {
+            const storedProfile = localStorage.getItem(CHAT_PROFILE_STORAGE_KEY);
+            if (storedProfile && profileLabels[storedProfile]) {
+                chatProfileSelect.value = storedProfile;
+                return;
+            }
+
+            chatProfileSelect.value = defaultProfile;
+            persistSelectedProfile();
+        }
+
+        function persistSelectedProfile() {
+            localStorage.setItem(CHAT_PROFILE_STORAGE_KEY, getSelectedProfile());
+        }
+
+        async function loadProfileOptions() {
+            const response = await fetch('/api/profiles');
+            if (!response.ok) {
+                throw new Error(`Unable to load profiles (${response.status})`);
+            }
+
+            const payload = await response.json();
+            defaultProfile = payload.default_profile || 'patrick';
+            renderProfileOptions(payload.profiles || []);
+            applySelectedProfile();
+        }
+
         chatBtn.addEventListener('click', () => {
             chatWin.style.display = chatWin.style.display === 'flex' ? 'none' : 'flex';
         });
@@ -311,6 +410,12 @@
 
         newChatBtn.addEventListener('click', () => {
             resetChatSession();
+        });
+
+        chatProfileSelect.addEventListener('change', () => {
+            persistSelectedProfile();
+            resetChatSession();
+            addMessage(`Persona switched to ${profileLabels[getSelectedProfile()] || getSelectedProfile()}.`, 'bot');
         });
 
         async function sendMessage() {
@@ -329,7 +434,11 @@
                 const response = await fetch('/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ text: text, session_id: sessionId })
+                    body: JSON.stringify({
+                        text: text,
+                        session_id: sessionId,
+                        profile: getSelectedProfile()
+                    })
                 });
 
                 const data = await response.json();
@@ -367,6 +476,9 @@
         chatSend.addEventListener('click', sendMessage);
         chatInput.addEventListener('keypress', (e) => {
             if(e.key === 'Enter') sendMessage();
+        });
+        loadProfileOptions().catch((err) => {
+            addMessage("Oops! Something went wrong loading customer personas: " + err.message, 'bot');
         });
     </script>
 </body>

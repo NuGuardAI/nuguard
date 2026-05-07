@@ -6,6 +6,7 @@ import json
 import logging
 import re
 from pathlib import Path
+from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -15,7 +16,7 @@ _log = logging.getLogger(__name__)
 class CanaryRecord(BaseModel):
     resource: str
     id: str
-    fields: dict[str, str] = Field(default_factory=dict)
+    fields: dict[str, Any] = Field(default_factory=dict)
     watch_values: list[str] = Field(default_factory=list)
 
 

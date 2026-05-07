@@ -73,6 +73,13 @@ class CESAuthError(RuntimeError):
     """Raised when Google Cloud authentication fails for CES calls."""
 
 
+class CESSessionEndedError(RuntimeError):
+    """Raised when CES returns 400 'Session has already ended'.
+
+    The caller should create a fresh session and retry the turn.
+    """
+
+
 # ---------------------------------------------------------------------------
 # Auth helper
 # ---------------------------------------------------------------------------
@@ -147,9 +154,20 @@ def get_gcloud_token() -> str:
         if adc_token:
             return _cache_token(adc_token)
 
-    commands = [
-        ["gcloud", "auth", "application-default", "print-access-token"],
-    ]
+    # Build candidate gcloud binaries: PATH first, then the bundled SDK that
+    # may be installed under tmp/ in the workspace (common in devcontainers).
+    from pathlib import Path as _Path
+
+    _gcloud_bins = ["gcloud"]
+    _bundled = str(_Path(__file__).parents[2] / "tmp" / "google-cloud-sdk" / "bin" / "gcloud")
+    if _bundled not in _gcloud_bins:
+        _gcloud_bins.append(_bundled)
+
+    commands = []
+    for _bin in _gcloud_bins:
+        commands.append([_bin, "auth", "print-access-token"])
+        commands.append([_bin, "auth", "application-default", "print-access-token"])
+
     last_error: str = ""
     for cmd in commands:
         try:
@@ -286,19 +304,24 @@ class CESClient:
 
     # ------------------------------------------------------------------
 
-    def run_turn(self, session_id: str, message: str) -> str:
+    def run_turn(self, session_id: str, message: str, max_retries: int = 4) -> str:
         """Send one message to CES and return the reply text.
+
+        Retries up to *max_retries* times on HTTP 429 (rate limit) using
+        exponential backoff with jitter, honouring the ``Retry-After`` header
+        when present.
 
         Args:
             session_id: Active session identifier.
             message: User message text.
+            max_retries: Maximum number of 429 retry attempts (default 4).
 
         Returns:
             The agent's reply text, or an empty string when no output.
 
         Raises:
             CESAuthError: On HTTP 401 or 403.
-            httpx.HTTPError: On other HTTP errors.
+            httpx.HTTPError: On other non-retryable HTTP errors.
         """
         token = self._token_fn()
         url = self._config.run_session_url(session_id)
@@ -315,23 +338,63 @@ class CESClient:
             "Content-Type": "application/json",
         }
         _log.debug("CESClient.run_turn: POST %s", url)
-        with httpx.Client(timeout=60) as http:
-            resp = http.post(url, json=body, headers=headers)
 
-        if resp.status_code in (401, 403):
-            raise CESAuthError(
-                f"CES authentication failed (HTTP {resp.status_code}). "
-                "Your gcloud token may have expired. Run: gcloud auth login"
-            )
+        for attempt in range(max_retries + 1):
+            with httpx.Client(timeout=60) as http:
+                resp = http.post(url, json=body, headers=headers)
 
-        resp.raise_for_status()
-        data = resp.json()
-        outputs = data.get("outputs", [])
-        if outputs and isinstance(outputs, list):
-            first = outputs[0]
-            if isinstance(first, dict):
-                return str(first.get("text", ""))
-        return ""
+            if resp.status_code in (401, 403):
+                raise CESAuthError(
+                    f"CES authentication failed (HTTP {resp.status_code}). "
+                    "Your gcloud token may have expired. Run: gcloud auth login"
+                )
+
+            if resp.status_code == 400:
+                try:
+                    body_text = resp.text
+                except Exception:
+                    body_text = ""
+                if "session has already ended" in body_text.lower():
+                    raise CESSessionEndedError(
+                        f"CES session '{session_id}' has already ended. "
+                        "A new session is required."
+                    )
+                resp.raise_for_status()
+
+            if resp.status_code == 429 and attempt < max_retries:
+                # Honour Retry-After if provided, else exponential backoff with jitter.
+                retry_after_raw = resp.headers.get("Retry-After") or resp.headers.get("retry-after")
+                if retry_after_raw:
+                    try:
+                        delay = float(retry_after_raw)
+                    except ValueError:
+                        delay = None
+                else:
+                    delay = None
+                if delay is None:
+                    base = min(2 ** attempt * 5, 60)  # 5s, 10s, 20s, 40s, capped 60s
+                    delay = base + random.uniform(0, base * 0.3)
+                _log.warning(
+                    "CES 429 rate-limit on attempt %d/%d — backing off %.1fs",
+                    attempt + 1, max_retries, delay,
+                )
+                time.sleep(delay)
+                # Refresh token in case it expired during the wait.
+                token = self._token_fn()
+                headers["Authorization"] = f"Bearer {token}"
+                continue
+
+            resp.raise_for_status()
+            data = resp.json()
+            outputs = data.get("outputs", [])
+            if outputs and isinstance(outputs, list):
+                first = outputs[0]
+                if isinstance(first, dict):
+                    return str(first.get("text", ""))
+            return ""
+
+        # Should not reach here — last raise_for_status() covers it.
+        return ""  # pragma: no cover
 
     # ------------------------------------------------------------------
 

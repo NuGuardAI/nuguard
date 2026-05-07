@@ -1,15 +1,37 @@
 """FinTech GOAT — MCP KYC — DELIBERATELY VULNERABLE."""
 from __future__ import annotations
-import json, logging, os
+
+import json
+import logging
+import os
+import time
 from typing import Any
-import requests
+
 from fastmcp import FastMCP
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-logger = logging.getLogger("mcp_kyc")
-logging.basicConfig(level=logging.INFO)
+
+def _setup_logger(name: str) -> "logging.Logger":
+    """Named logger with its own StreamHandler — survives uvicorn dictConfig reset."""
+    log = logging.getLogger(name)
+    if not log.handlers:
+        _h = logging.StreamHandler()
+        _h.setFormatter(logging.Formatter(
+            "%(asctime)s %(levelname)-8s %(name)s  %(message)s",
+            datefmt="%Y-%m-%dT%H:%M:%S",
+        ))
+        log.addHandler(_h)
+    log.setLevel(getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO))
+    log.propagate = False
+    return log
+
+logger = _setup_logger("mcp_kyc")
 mcp = FastMCP(name="fintech-kyc", instructions="Pinnacle Bank KYC tool API.")
+
+
+def _summarize_arguments(arguments: dict[str, Any]) -> dict[str, Any]:
+    return {"keys": sorted(arguments.keys()), "arg_count": len(arguments)}
 
 _KYC_STATUSES: dict = {
     "alice": {"kyc_level": 3, "verified": True, "documents": ["passport", "utility_bill", "bank_statement"]},
@@ -37,6 +59,8 @@ async def tools_call_endpoint(request: Request) -> JSONResponse:
     params = body.get("params", {})
     tool_name = params.get("name", "")
     arguments = params.get("arguments", {})
+    started_at = time.monotonic()
+    logger.info("tool_call start id=%s tool=%s args=%s", call_id, tool_name, _summarize_arguments(arguments))
     try:
         if tool_name == "get_kyc_status":
             result = await get_kyc_status(**arguments)
@@ -47,10 +71,15 @@ async def tools_call_endpoint(request: Request) -> JSONResponse:
         elif tool_name == "get_all_kyc_statuses":
             result = await get_all_kyc_statuses(**arguments)
         else:
+            logger.warning("tool_call unknown id=%s tool=%s args=%s", call_id, tool_name, _summarize_arguments(arguments))
             return JSONResponse({"jsonrpc": "2.0", "id": call_id, "error": {"code": -32601, "message": f"Unknown tool: {tool_name}"}})
+        elapsed_ms = (time.monotonic() - started_at) * 1000
+        result_summary = list(result.keys()) if isinstance(result, dict) else type(result).__name__
+        logger.info("tool_call complete id=%s tool=%s elapsed_ms=%.1f result=%s", call_id, tool_name, elapsed_ms, result_summary)
         return JSONResponse({"jsonrpc": "2.0", "id": call_id, "result": {"content": [{"type": "text", "text": json.dumps(result)}]}})
     except Exception as exc:
-        logger.error("tools/call error tool=%s: %s", tool_name, exc)
+        elapsed_ms = (time.monotonic() - started_at) * 1000
+        logger.exception("tool_call failed id=%s tool=%s elapsed_ms=%.1f args=%s", call_id, tool_name, elapsed_ms, _summarize_arguments(arguments))
         return JSONResponse({"jsonrpc": "2.0", "id": call_id, "error": {"code": -32603, "message": str(exc)}}, status_code=500)
 
 

@@ -12,6 +12,10 @@
 
 version: "3.9"
 
+x-logging-env: &logging-env
+  LOG_LEVEL: ${LOG_LEVEL:-INFO}
+  PYTHONUNBUFFERED: "1"
+
 services:
   # ── Redis message broker (for Celery task queue) ──────────────────────────
   redis:
@@ -32,9 +36,10 @@ services:
     ports:
       - "8082:8080"
     environment:
-      - REDIS_URL=redis://redis:6379/0
-      - APPLICATIONINSIGHTS_CONNECTION_STRING=${APPLICATIONINSIGHTS_CONNECTION_STRING:-}
-      - DATABASE_URL=sqlite:///./cipher_bank.db
+      <<: *logging-env
+      REDIS_URL: redis://redis:6379/0
+      APPLICATIONINSIGHTS_CONNECTION_STRING: ${APPLICATIONINSIGHTS_CONNECTION_STRING:-}
+      DATABASE_URL: sqlite:///./cipher_bank.db
     depends_on:
       redis:
         condition: service_healthy
@@ -42,7 +47,7 @@ services:
       - mcp_data:/app/data
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
-      interval: 10s
+      interval: 30s
       timeout: 5s
       retries: 5
       start_period: 15s
@@ -54,7 +59,7 @@ services:
     ports: ["8083:8080"]
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
-      interval: 10s
+      interval: 30s
       timeout: 5s
       retries: 5
       start_period: 15s
@@ -64,7 +69,7 @@ services:
     ports: ["8084:8080"]
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
-      interval: 10s
+      interval: 30s
       timeout: 5s
       retries: 5
       start_period: 15s
@@ -74,7 +79,7 @@ services:
     ports: ["8085:8080"]
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
-      interval: 10s
+      interval: 30s
       timeout: 5s
       retries: 5
       start_period: 15s
@@ -84,7 +89,7 @@ services:
     ports: ["8086:8080"]
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
-      interval: 10s
+      interval: 30s
       timeout: 5s
       retries: 5
       start_period: 15s
@@ -94,7 +99,7 @@ services:
     ports: ["8087:8080"]
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
-      interval: 10s
+      interval: 30s
       timeout: 5s
       retries: 5
       start_period: 15s
@@ -104,7 +109,7 @@ services:
     ports: ["8088:8080"]
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
-      interval: 10s
+      interval: 30s
       timeout: 5s
       retries: 5
       start_period: 15s
@@ -114,7 +119,7 @@ services:
     ports: ["8089:8080"]
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
-      interval: 10s
+      interval: 30s
       timeout: 5s
       retries: 5
       start_period: 15s
@@ -124,7 +129,7 @@ services:
     ports: ["8090:8080"]
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
-      interval: 10s
+      interval: 30s
       timeout: 5s
       retries: 5
       start_period: 15s
@@ -134,7 +139,7 @@ services:
     ports: ["8091:8080"]
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
-      interval: 10s
+      interval: 30s
       timeout: 5s
       retries: 5
       start_period: 15s
@@ -144,7 +149,7 @@ services:
     ports: ["8092:8080"]
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
-      interval: 10s
+      interval: 30s
       timeout: 5s
       retries: 5
       start_period: 15s
@@ -154,7 +159,7 @@ services:
     ports: ["8093:8080"]
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
-      interval: 10s
+      interval: 30s
       timeout: 5s
       retries: 5
       start_period: 15s
@@ -164,7 +169,7 @@ services:
     ports: ["8094:8080"]
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
-      interval: 10s
+      interval: 30s
       timeout: 5s
       retries: 5
       start_period: 15s
@@ -174,7 +179,7 @@ services:
     ports: ["8095:8080"]
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
-      interval: 10s
+      interval: 30s
       timeout: 5s
       retries: 5
       start_period: 15s
@@ -184,7 +189,7 @@ services:
     ports: ["8096:8080"]
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
-      interval: 10s
+      interval: 30s
       timeout: 5s
       retries: 5
       start_period: 15s
@@ -194,7 +199,7 @@ services:
     ports: ["8097:8080"]
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
-      interval: 10s
+      interval: 30s
       timeout: 5s
       retries: 5
       start_period: 15s
@@ -204,7 +209,7 @@ services:
     ports: ["8098:8080"]
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
-      interval: 10s
+      interval: 30s
       timeout: 5s
       retries: 5
       start_period: 15s
@@ -214,7 +219,7 @@ services:
     ports: ["8099:8080"]
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
-      interval: 10s
+      interval: 30s
       timeout: 5s
       retries: 5
       start_period: 15s
@@ -224,7 +229,7 @@ services:
     ports: ["8100:8080"]
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
-      interval: 10s
+      interval: 30s
       timeout: 5s
       retries: 5
       start_period: 15s
@@ -234,7 +239,7 @@ services:
     ports: ["8101:8080"]
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
-      interval: 10s
+      interval: 30s
       timeout: 5s
       retries: 5
       start_period: 15s
@@ -244,7 +249,7 @@ services:
     ports: ["8102:8080"]
     healthcheck:
       test: ["CMD", "curl", "-sf", "http://localhost:8080/health"]
-      interval: 10s
+      interval: 30s
       timeout: 5s
       retries: 5
       start_period: 15s
@@ -257,36 +262,40 @@ services:
     ports:
       - "8001:8001"
     environment:
-      # Core
-      - OPENAI_API_KEY=${OPENAI_API_KEY:-}
-      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY:-}
-      - AZURE_OPENAI_API_KEY=${AZURE_OPENAI_API_KEY:-}
-      - AZURE_OPENAI_ENDPOINT=${AZURE_OPENAI_ENDPOINT:-}
-      - AZURE_OPENAI_DEPLOYMENT=${AZURE_OPENAI_DEPLOYMENT:-gpt-4o}
-      - AZURE_OPENAI_API_VERSION=${AZURE_OPENAI_API_VERSION:-2024-11-20}
-      - APPLICATIONINSIGHTS_CONNECTION_STRING=${APPLICATIONINSIGHTS_CONNECTION_STRING:-}
+      <<: *logging-env
+      # Core — OPENAI_API_KEY takes priority over Azure (avoids Azure content filter)
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4o}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      # Accept AZURE_OPENAI_KEY (legacy) or AZURE_OPENAI_API_KEY
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY:-${AZURE_OPENAI_KEY:-}}
+      AZURE_OPENAI_ENDPOINT: ${AZURE_OPENAI_ENDPOINT:-}
+      # Accept AZURE_OPENAI_MODEL_NAME (legacy) or AZURE_OPENAI_DEPLOYMENT
+      AZURE_OPENAI_DEPLOYMENT: ${AZURE_OPENAI_DEPLOYMENT:-${AZURE_OPENAI_MODEL_NAME:-gpt-4o}}
+      AZURE_OPENAI_API_VERSION: ${AZURE_OPENAI_API_VERSION:-2025-01-01-preview}
+      APPLICATIONINSIGHTS_CONNECTION_STRING: ${APPLICATIONINSIGHTS_CONNECTION_STRING:-}
       # MCP service URLs
-      - MCP_SERVER_URL=http://mcp-banking-server:8080
-      - MCP_ACCOUNTS_URL=http://mcp-accounts:8080
-      - MCP_PAYMENTS_URL=http://mcp-payments:8080
-      - MCP_CARDS_URL=http://mcp-cards:8080
-      - MCP_LOANS_URL=http://mcp-loans:8080
-      - MCP_INVESTMENTS_URL=http://mcp-investments:8080
-      - MCP_MARKET_DATA_URL=http://mcp-market-data:8080
-      - MCP_FX_URL=http://mcp-fx:8080
-      - MCP_CRYPTO_URL=http://mcp-crypto:8080
-      - MCP_FRAUD_URL=http://mcp-fraud:8080
-      - MCP_KYC_URL=http://mcp-kyc:8080
-      - MCP_AML_URL=http://mcp-aml:8080
-      - MCP_COMPLIANCE_URL=http://mcp-compliance:8080
-      - MCP_NOTIFICATIONS_URL=http://mcp-notifications:8080
-      - MCP_AUDIT_URL=http://mcp-audit:8080
-      - MCP_REPORTING_URL=http://mcp-reporting:8080
-      - MCP_DOCUMENTS_URL=http://mcp-documents:8080
-      - MCP_ADMIN_URL=http://mcp-admin:8080
-      - MCP_DATA_EXPORT_URL=http://mcp-data-export:8080
-      - MCP_INTERNAL_BRIDGE_URL=http://mcp-internal-bridge:8080
-      - MCP_SCHEDULER_URL=http://mcp-scheduler:8080
+      MCP_SERVER_URL: http://mcp-banking-server:8080
+      MCP_ACCOUNTS_URL: http://mcp-accounts:8080
+      MCP_PAYMENTS_URL: http://mcp-payments:8080
+      MCP_CARDS_URL: http://mcp-cards:8080
+      MCP_LOANS_URL: http://mcp-loans:8080
+      MCP_INVESTMENTS_URL: http://mcp-investments:8080
+      MCP_MARKET_DATA_URL: http://mcp-market-data:8080
+      MCP_FX_URL: http://mcp-fx:8080
+      MCP_CRYPTO_URL: http://mcp-crypto:8080
+      MCP_FRAUD_URL: http://mcp-fraud:8080
+      MCP_KYC_URL: http://mcp-kyc:8080
+      MCP_AML_URL: http://mcp-aml:8080
+      MCP_COMPLIANCE_URL: http://mcp-compliance:8080
+      MCP_NOTIFICATIONS_URL: http://mcp-notifications:8080
+      MCP_AUDIT_URL: http://mcp-audit:8080
+      MCP_REPORTING_URL: http://mcp-reporting:8080
+      MCP_DOCUMENTS_URL: http://mcp-documents:8080
+      MCP_ADMIN_URL: http://mcp-admin:8080
+      MCP_DATA_EXPORT_URL: http://mcp-data-export:8080
+      MCP_INTERNAL_BRIDGE_URL: http://mcp-internal-bridge:8080
+      MCP_SCHEDULER_URL: http://mcp-scheduler:8080
     depends_on:
       mcp-banking-server:
         condition: service_healthy

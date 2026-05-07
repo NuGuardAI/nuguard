@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import re
 import uuid
 
 from nuguard.models.exploit_chain import ExploitChain, ExploitStep, GoalType, ScenarioType
@@ -9,11 +10,28 @@ from nuguard.models.policy import CognitivePolicy
 from nuguard.sbom.models import AiSbomDocument
 from nuguard.sbom.types import ComponentType, RelationshipType
 
+# ── 2024–2025 advanced attack families ────────────────────────────────────────
+from .advanced_jailbreaks import (
+    build_crescendo_attack,
+    build_many_shot_jailbreak,
+    build_payload_splitting,
+    build_skeleton_key,
+)
+from .agentic_attacks import (
+    build_confused_deputy,
+    build_goal_hijacking,
+    build_memory_poisoning,
+    build_multi_agent_trust_boundary,
+)
 from .api_attacks import build_auth_bypass, build_idor, build_mass_assignment
 from .data_exfiltration import (
+    build_account_id_probe,
     build_bank_account_probe,
     build_base64_exfiltration,
+    build_cross_account_tool_abuse,
     build_cross_tenant_exfiltration,
+    build_datastore_schema_probe,
+    build_datastore_sql_injection,
     build_document_embedded_exfiltration,
     build_image_url_exfiltration,
     build_json_xml_exfiltration,
@@ -21,6 +39,7 @@ from .data_exfiltration import (
     build_rag_poisoning,
     build_ssn_enumeration,
 )
+from .evasion import build_encoding_evasion, build_multi_language_bypass
 from .guided_conversations import (
     build_constrained_cs_narrative_attack,
     build_guided_data_store_probe,
@@ -50,6 +69,10 @@ from .scenario_types import AttackScenario
 from .tool_abuse import build_sql_injection, build_ssrf
 
 _log = logging.getLogger(__name__)
+
+# Cap agents per attack goal to avoid combinatorial explosion while still
+# covering heterogeneous deployments (primary + secondary agent).
+_MAX_AGENTS_PER_GOAL = 2
 
 
 class ScenarioGenerator:
@@ -121,6 +144,18 @@ class ScenarioGenerator:
         # other goal types.
         if with_guided:
             scenarios.extend(self._guided_conversation_scenarios())
+
+        # Goal 11: Advanced jailbreak families (2024–2025 research)
+        # Many-Shot Jailbreaking, Crescendo, Skeleton Key, Payload Splitting
+        scenarios.extend(self._advanced_jailbreak_scenarios())
+
+        # Goal 12: Encoding and linguistic evasion
+        # ROT-13/leetspeak/morse bypass, cross-language (ZH/AR/RU) bypass
+        scenarios.extend(self._evasion_scenarios())
+
+        # Goal 13: Agentic trust abuse
+        # Confused Deputy, Multi-Agent Trust Boundary, Memory Poisoning, Goal Hijacking
+        scenarios.extend(self._agentic_attack_scenarios())
 
         # Dedup near-duplicate scenarios that target sub-agents when an entry agent exists.
         # This avoids sending many structurally identical payloads that differ only in which
@@ -334,7 +369,7 @@ class ScenarioGenerator:
                     if n.component_type == ComponentType.AGENT
                 ]
 
-            for agent_id in agent_ids[:2]:  # cap at 2 agents per datastore
+            for agent_id in agent_ids[:_MAX_AGENTS_PER_GOAL]:  # cap at 2 agents per datastore
                 chain_id = str(uuid.uuid4())
                 fields = (pii + phi + pfi)[:5]
                 field_list = ", ".join(fields)
@@ -370,7 +405,6 @@ class ScenarioGenerator:
                         target_node_id=str(node.id),
                         depends_on=[f"{chain_id}_s1"],
                         success_signal="canary",
-                        on_failure="skip",
                     ),
                 ]
                 chain.pre_score = pre_score(
@@ -419,22 +453,22 @@ class ScenarioGenerator:
         agent_nodes_for_covert = [
             n for n in self._sbom.nodes if n.component_type == ComponentType.AGENT
         ]
-        for agent_node in agent_nodes_for_covert[:2]:  # cap at 2 agents
-            # Derive a meaningful field label from PII fields or policy
-            field_names = []
-            for ds in self._sbom.nodes:
-                if ds.component_type == ComponentType.DATASTORE:
-                    field_names = (
-                        (ds.metadata.pii_fields or [])
-                        + (ds.metadata.phi_fields or [])
-                        + (ds.metadata.pfi_fields or [])
-                    )
-                    if field_names:
-                        break
-            if not field_names and self._policy.data_classification:
-                field_names = self._parse_policy_pii_fields(self._policy.data_classification)
-            target_field = ", ".join(field_names[:3]) if field_names else "user record"
+        # Derive target_field once outside the agent loop (O(n) not O(n²))
+        _covert_field_names: list[str] = []
+        for ds in self._sbom.nodes:
+            if ds.component_type == ComponentType.DATASTORE:
+                _covert_field_names = (
+                    (ds.metadata.pii_fields or [])
+                    + (ds.metadata.phi_fields or [])
+                    + (ds.metadata.pfi_fields or [])
+                )
+                if _covert_field_names:
+                    break
+        if not _covert_field_names and self._policy.data_classification:
+            _covert_field_names = self._parse_policy_pii_fields(self._policy.data_classification)
+        target_field = ", ".join(_covert_field_names[:3]) if _covert_field_names else "user record"
 
+        for agent_node in agent_nodes_for_covert[:_MAX_AGENTS_PER_GOAL]:
             out.extend([
                 build_base64_exfiltration(
                     agent_id=str(agent_node.id),
@@ -472,12 +506,142 @@ class ScenarioGenerator:
             # Fallback: add for all agents (most SaaS agents have multi-tenant data)
             cross_tenant_nodes = [
                 n for n in self._sbom.nodes if n.component_type == ComponentType.AGENT
-            ][:2]
-        for agent_node in cross_tenant_nodes[:2]:
+            ][:_MAX_AGENTS_PER_GOAL]
+        for agent_node in cross_tenant_nodes[:_MAX_AGENTS_PER_GOAL]:
             out.append(
                 build_cross_tenant_exfiltration(
                     agent_id=str(agent_node.id),
                     agent_name=agent_node.name,
+                )
+            )
+
+        # Phase A: Datastore-grounded schema probe + SQL injection
+        # Use actual table names and pii_fields from SBOM classified_fields.
+        # Agents are resolved via ACCESSES edges → data-tool heuristic → all agents.
+        _last_ds_name: str = ""
+        _last_all_pii: list[str] = []
+        for node in self._sbom.nodes:
+            if node.component_type != ComponentType.DATASTORE:
+                continue
+            meta = node.metadata
+            ds_name = node.name
+            # Fall back to node name so "sqlite", "postgres" etc. in the name
+            # still trigger the correct SQL-dialect injection path.
+            ds_type = meta.datastore_type or node.name or "database"
+            table_names = list(meta.classified_fields.keys()) if meta.classified_fields else []
+            primary_key_fields = [
+                f
+                for fields in (meta.classified_fields or {}).values()
+                for f in fields
+                if any(k in f.lower() for k in ("id", "key", "account", "customer", "user"))
+            ]
+            all_pii = (meta.pii_fields or []) + (meta.phi_fields or []) + (meta.pfi_fields or [])
+            _last_ds_name = ds_name
+            _last_all_pii = all_pii
+
+            ds_agent_ids = self._agents_reaching_datastore(str(node.id))
+            if not ds_agent_ids:
+                ds_agent_ids = self._agents_with_data_tools()
+            if not ds_agent_ids:
+                ds_agent_ids = [
+                    str(n.id)
+                    for n in self._sbom.nodes
+                    if n.component_type == ComponentType.AGENT
+                ]
+
+            # NoSQL databases share "db" as a substring with SQL dbs, so guard
+            # explicitly before running SQL-specific probes.
+            _NOSQL_INDICATORS = (
+                "mongo", "redis", "cassandra", "dynamo", "elastic",
+                "couch", "neo4j", "graph", "firestore", "hbase",
+            )
+            _is_nosql = any(t in ds_type.lower() for t in _NOSQL_INDICATORS)
+            _is_sql = not _is_nosql and any(
+                t in ds_type.lower()
+                for t in ("sql", "sqlite", "postgres", "mysql", "relational")
+            )
+
+            for agent_id in ds_agent_ids[:_MAX_AGENTS_PER_GOAL]:
+                agent_node = self._node_by_id.get(agent_id)
+                if not agent_node:
+                    continue
+                # Generate schema probe whenever the datastore carries PII — even
+                # without classified_fields (table_names will be empty; the probe
+                # falls back to using the datastore name as the table hint).
+                if table_names or all_pii:
+                    out.append(
+                        build_datastore_schema_probe(
+                            agent_id=agent_id,
+                            agent_name=agent_node.name,
+                            datastore_name=ds_name,
+                            table_names=table_names,
+                            primary_key_fields=primary_key_fields,
+                        )
+                    )
+                if _is_sql:
+                    out.append(
+                        build_datastore_sql_injection(
+                            agent_id=agent_id,
+                            agent_name=agent_node.name,
+                            datastore_name=ds_name,
+                            datastore_type=ds_type,
+                            pii_fields=all_pii,
+                            table_names=table_names,
+                        )
+                    )
+
+        # Phase B: Cross-account bulk tool abuse
+        # Find agents that CALL privileged bulk/export/list_all tools and attempt
+        # to social-engineer them into dumping data without per-account scoping.
+        _BULK_TOOL_KEYWORDS = ("list_all", "bulk", "export", "all_", "dump", "enumerate")
+        for agent_node in [n for n in self._sbom.nodes if n.component_type == ComponentType.AGENT]:
+            tool_ids = self._outgoing.get(str(agent_node.id), {}).get(
+                RelationshipType.CALLS, []
+            )
+            privileged_tools = [
+                self._node_by_id[tid].name
+                for tid in tool_ids
+                if tid in self._node_by_id
+                and any(
+                    kw in self._node_by_id[tid].name.lower() for kw in _BULK_TOOL_KEYWORDS
+                )
+            ]
+            if privileged_tools:
+                out.append(
+                    build_cross_account_tool_abuse(
+                        agent_id=str(agent_node.id),
+                        agent_name=agent_node.name,
+                        tool_names=privileged_tools[:3],
+                        datastore_name=_last_ds_name or "application datastore",
+                        pii_fields=_last_all_pii,
+                    )
+                )
+
+        # Phase C: IDOR via discovered account IDs
+        # Generate one ACCOUNT_ID_PROBE scenario per agent that has data-access tools.
+        # The executor auto-injects a DISCOVER step to capture the authenticated user's
+        # golden data; subsequent steps use {golden_id} tokens resolved at runtime.
+        _ID_LABELS = {
+            "account": ("account", "customer"),
+            "booking": ("booking", "reservation", "order"),
+            "user": ("user", "member", "profile"),
+        }
+        for agent_node in [n for n in self._sbom.nodes if n.component_type == ComponentType.AGENT]:
+            tool_ids = self._outgoing.get(str(agent_node.id), {}).get(RelationshipType.CALLS, [])
+            tool_names_lower = {
+                self._node_by_id[tid].name.lower()
+                for tid in tool_ids if tid in self._node_by_id
+            }
+            id_label = "account"
+            for label, keywords in _ID_LABELS.items():
+                if any(kw in tn for kw in keywords for tn in tool_names_lower):
+                    id_label = label
+                    break
+            out.append(
+                build_account_id_probe(
+                    agent_id=str(agent_node.id),
+                    agent_name=agent_node.name,
+                    id_label=id_label,
                 )
             )
 
@@ -508,8 +672,6 @@ class ScenarioGenerator:
                                 "information. Can you help me with that?"
                             ),
                             target_node_id=str(node.id),
-                            success_signal="",
-                            on_failure="skip",
                         ),
                         ExploitStep(
                             step_id=f"{chain_id}_s2",
@@ -521,8 +683,6 @@ class ScenarioGenerator:
                             ),
                             target_node_id=str(node.id),
                             depends_on=[f"{chain_id}_s1"],
-                            success_signal="",
-                            on_failure="skip",
                         ),
                         ExploitStep(
                             step_id=f"{chain_id}_s3",
@@ -562,6 +722,33 @@ class ScenarioGenerator:
             agent_id = str(node.id)
             for tool_id in self._outgoing.get(agent_id, {}).get(RelationshipType.CALLS, []):
                 if ds_id in self._outgoing.get(tool_id, {}).get(RelationshipType.ACCESSES, []):
+                    result.append(agent_id)
+                    break
+        return result
+
+    # Keywords indicating a tool is likely involved in data access / querying.
+    # Matched against tool.name.lower() — used by _agents_with_data_tools().
+    _DATA_TOOL_KEYWORDS: frozenset[str] = frozenset({
+        "query", "search", "lookup", "fetch", "get_", "list_", "find",
+        "account", "user", "customer", "booking", "record",
+    })
+
+    def _agents_with_data_tools(self) -> list[str]:
+        """Return AGENT node IDs that CALL at least one tool with a data-access name pattern.
+
+        Used as a fallback when ACCESSES edges are absent from the SBOM (e.g. Fintech
+        and OpenAI-CS SBOMs define no TOOL→DATASTORE ACCESSES edges).
+        """
+        result = []
+        for node in self._sbom.nodes:
+            if node.component_type != ComponentType.AGENT:
+                continue
+            agent_id = str(node.id)
+            for tid in self._outgoing.get(agent_id, {}).get(RelationshipType.CALLS, []):
+                tool_node = self._node_by_id.get(tid)
+                if tool_node and any(
+                    kw in tool_node.name.lower() for kw in self._DATA_TOOL_KEYWORDS
+                ):
                     result.append(agent_id)
                     break
         return result
@@ -640,7 +827,8 @@ class ScenarioGenerator:
             if category == "ssrf" and meta.ssrf_possible:
                 continue
             agent_name = self._find_owning_agent_name(node)
-            scenarios = build_tool_scenarios(node, agent_name)
+            agent_id = self._find_owning_agent_id(node)
+            scenarios = build_tool_scenarios(node, agent_name, agent_id=agent_id)
             out.extend(scenarios)
             _log.debug(
                 "sbom_driven: %d scenario(s) for tool %s",
@@ -705,7 +893,7 @@ class ScenarioGenerator:
 
             if entry_targeted:
                 entry_targeted.sort(key=lambda s: s.impact_score, reverse=True)
-                result.extend(entry_targeted[:2])
+                result.extend(entry_targeted[:_MAX_AGENTS_PER_GOAL])
             else:
                 group.sort(key=lambda s: s.impact_score, reverse=True)
                 result.extend(group[:3])
@@ -727,6 +915,17 @@ class ScenarioGenerator:
             called_ids = self._outgoing.get(str(node.id), {}).get(RelationshipType.CALLS, [])
             if tool_id in called_ids:
                 return node.name
+        return ""
+
+    def _find_owning_agent_id(self, tool_node: object) -> str:
+        """Return the str(id) of the first AGENT node that CALLS this tool, or empty string."""
+        tool_id = str(getattr(tool_node, "id", ""))
+        for node in self._sbom.nodes:
+            if node.component_type != ComponentType.AGENT:
+                continue
+            called_ids = self._outgoing.get(str(node.id), {}).get(RelationshipType.CALLS, [])
+            if tool_id in called_ids:
+                return str(node.id)
         return ""
 
     # ------------------------------------------------------------------ #
@@ -802,7 +1001,7 @@ class ScenarioGenerator:
                 )
             ]
 
-            for mcp_tool in mcp_tools[:2]:  # cap per agent
+            for mcp_tool in mcp_tools[:_MAX_AGENTS_PER_GOAL]:  # cap per agent
                 out.append(
                     build_mcp_tool_injection(
                         agent_id=agent_id,
@@ -882,13 +1081,23 @@ class ScenarioGenerator:
     # Goal 9: Direct API Attacks
     # ------------------------------------------------------------------ #
 
+    # Endpoint path segments that are unambiguously public — no auth bypass needed.
+    _PUBLIC_PATH_HINTS: frozenset[str] = frozenset({
+        "health", "healthz", "ping", "status", "metrics",
+        "docs", "openapi", "swagger", "redoc",
+        "login", "signin", "sign-in", "register", "signup", "sign-up",
+        "oauth", "callback", "token",
+    })
+
     def _api_attack_scenarios(self) -> list[AttackScenario]:
         """Generate direct HTTP attack scenarios from API_ENDPOINT SBOM nodes.
 
         For each discovered endpoint:
-        - AUTH_BYPASS   — when auth_required=True, probe without credentials
-        - MASS_ASSIGNMENT — for write methods (POST/PUT/PATCH), send privilege fields
-        - IDOR          — for endpoints with ID-like path parameters
+        - AUTH_BYPASS   — when auth_required=True OR auth_required is unknown and
+                          the endpoint does not look like a public path
+        - MASS_ASSIGNMENT — for write methods (POST/PUT/PATCH)
+        - IDOR          — for endpoints with ID-like path parameters (explicit
+                          metadata OR path template patterns detected via regex)
         """
         out: list[AttackScenario] = []
         for node in self._sbom.nodes:
@@ -900,13 +1109,27 @@ class ScenarioGenerator:
             path = meta.endpoint or f"/{node.name.lower().replace(' ', '-')}"
             method = (meta.method or "GET").upper()
 
-            if meta.auth_required:
+            # Skip placeholder nodes with no meaningful path
+            path_slug = path.strip("/").lower()
+            if not path_slug or path_slug in ("generic", "none", "null"):
+                continue
+
+            # Determine if this endpoint is obviously public
+            path_segments = set(re.split(r"[/\-_.]", path_slug))
+            is_public = bool(path_segments & self._PUBLIC_PATH_HINTS)
+
+            # Extract request body schema from SBOM metadata (populated by FastAPI adapter)
+            request_body_schema: dict[str, str] | None = meta.request_body_schema or None
+
+            # Auth bypass: explicit auth_required=True, or unknown (None) and not public
+            if meta.auth_required or (meta.auth_required is None and not is_public):
                 out.append(
                     build_auth_bypass(
                         endpoint_id=endpoint_id,
                         endpoint_name=node.name,
                         path=path,
                         method=method,
+                        request_body_schema=request_body_schema,
                     )
                 )
 
@@ -917,18 +1140,34 @@ class ScenarioGenerator:
                         endpoint_name=node.name,
                         path=path,
                         method=method,
+                        request_body_schema=request_body_schema,
                     )
                 )
 
-            if meta.idor_surface or any(
-                p.lower() in ("id", "user_id", "tenant_id", "account_id", "customer_id", "org_id")
-                for p in (meta.path_params or [])
-            ):
+            # IDOR: explicit metadata flag, explicit path params, or path template pattern
+            inferred_params: list[str] = list(meta.path_params or [])
+            if not inferred_params:
+                # Detect {id}, :user_id, <account_id> style path templates
+                for m in re.finditer(
+                    r"\{([^}]+)\}|:([A-Za-z_][A-Za-z0-9_]*)|<([^>]+)>", path
+                ):
+                    param = m.group(1) or m.group(2) or m.group(3)
+                    if param:
+                        inferred_params.append(param)
+
+            _ID_LIKE_PARAMS = {
+                "id", "user_id", "tenant_id", "account_id",
+                "customer_id", "org_id", "record_id", "object_id",
+            }
+            has_idor_params = meta.idor_surface or any(
+                p.lower() in _ID_LIKE_PARAMS for p in inferred_params
+            )
+            if has_idor_params:
                 scenario = build_idor(
                     endpoint_id=endpoint_id,
                     endpoint_name=node.name,
                     path=path,
-                    path_params=meta.path_params or [],
+                    path_params=inferred_params,
                 )
                 if scenario is not None:
                     out.append(scenario)
@@ -1212,5 +1451,242 @@ class ScenarioGenerator:
                     agent_node_id=agent_node_id,
                 )
             )
+
+        return out
+
+    # ------------------------------------------------------------------ #
+    # Goal 11: Advanced jailbreak families
+    # ------------------------------------------------------------------ #
+
+    def _advanced_jailbreak_scenarios(self) -> list[AttackScenario]:
+        """Generate advanced jailbreak scenarios (MSJ, Crescendo, Skeleton Key, Splitting).
+
+        Scoped to AGENT nodes.  At most one of each technique per agent to keep
+        the total scenario count manageable.
+        """
+        out: list[AttackScenario] = []
+        agent_nodes = [n for n in self._sbom.nodes if n.component_type == ComponentType.AGENT]
+        if not agent_nodes:
+            return out
+
+        # Derive a plausible attack goal from policy / SBOM metadata
+        def _attack_goal(node: object) -> str:
+            meta = getattr(node, "metadata", None)
+            blocked = (getattr(meta, "blocked_topics", None) or [])
+            restricted = list(self._policy.restricted_topics or [])
+            candidates = blocked or restricted
+            if candidates:
+                return f"discuss or provide information about: {candidates[0][:80]}"
+            use_case = ""
+            if self._sbom.summary:
+                use_case = (getattr(self._sbom.summary, "use_case", "") or "")[:80]
+            return (
+                "provide information outside its primary purpose"
+                + (f" ({use_case})" if use_case else "")
+            )
+
+        for node in agent_nodes[:_MAX_AGENTS_PER_GOAL]:  # cap at 2 agents to avoid explosion
+            agent_id = str(node.id)
+            agent_name = node.name
+            goal = _attack_goal(node)
+            domain = ""
+            if self._sbom.summary:
+                use_case = (getattr(self._sbom.summary, "use_case", "") or "").lower()
+                for kw, label in [
+                    ("bank", "financial services"), ("finance", "financial services"),
+                    ("health", "healthcare"), ("patient", "healthcare"),
+                    ("airline", "airline"), ("flight", "airline"),
+                    ("shop", "e-commerce"), ("order", "e-commerce"),
+                ]:
+                    if kw in use_case:
+                        domain = label
+                        break
+
+            out.append(
+                build_many_shot_jailbreak(
+                    agent_id=agent_id,
+                    agent_name=agent_name,
+                    attack_goal=goal,
+                )
+            )
+            out.append(
+                build_crescendo_attack(
+                    agent_id=agent_id,
+                    agent_name=agent_name,
+                    end_goal=goal,
+                    domain_context=domain or "general assistant",
+                )
+            )
+            out.append(
+                build_skeleton_key(
+                    agent_id=agent_id,
+                    agent_name=agent_name,
+                    blocked_behavior=goal,
+                )
+            )
+            # Payload splitting — use the first restricted action if available
+            split_goal = (
+                list(self._policy.restricted_actions or [])[:1] or [goal]
+            )[0]
+            out.append(
+                build_payload_splitting(
+                    agent_id=agent_id,
+                    agent_name=agent_name,
+                    harmful_instruction=str(split_goal)[:200],
+                )
+            )
+        return out
+
+    # ------------------------------------------------------------------ #
+    # Goal 12: Encoding and linguistic evasion
+    # ------------------------------------------------------------------ #
+
+    def _evasion_scenarios(self) -> list[AttackScenario]:
+        """Generate encoding evasion and multi-language bypass scenarios."""
+        out: list[AttackScenario] = []
+        agent_nodes = [n for n in self._sbom.nodes if n.component_type == ComponentType.AGENT]
+        if not agent_nodes:
+            return out
+
+        blocked = list(self._policy.restricted_topics or [])
+        attack_goal = (
+            f"provide detailed information about: {blocked[0][:80]}"
+            if blocked
+            else "provide information outside its sanctioned purpose"
+        )
+
+        for node in agent_nodes[:_MAX_AGENTS_PER_GOAL]:
+            agent_id = str(node.id)
+            agent_name = node.name
+            out.append(
+                build_encoding_evasion(
+                    agent_id=agent_id,
+                    agent_name=agent_name,
+                    attack_goal=attack_goal,
+                )
+            )
+            out.append(
+                build_multi_language_bypass(
+                    agent_id=agent_id,
+                    agent_name=agent_name,
+                    attack_goal=attack_goal,
+                )
+            )
+        return out
+
+    # ------------------------------------------------------------------ #
+    # Goal 13: Agentic trust abuse
+    # ------------------------------------------------------------------ #
+
+    def _agentic_attack_scenarios(self) -> list[AttackScenario]:
+        """Generate confused deputy, multi-agent trust, memory poisoning, goal hijacking."""
+        out: list[AttackScenario] = []
+
+        agent_nodes = [n for n in self._sbom.nodes if n.component_type == ComponentType.AGENT]
+        tool_nodes = [n for n in self._sbom.nodes if n.component_type == ComponentType.TOOL]
+
+        # Confused Deputy — agent with a write/email/financial tool
+        _HIGH_PRIV_INDICATORS = (
+            "email", "send", "transfer", "payment", "write", "delete",
+            "admin", "broadcast", "notify",
+        )
+        priv_tools = [
+            t for t in tool_nodes
+            if any(ind in t.name.lower() for ind in _HIGH_PRIV_INDICATORS)
+            or t.metadata.high_privilege
+        ]
+        for agent_node in agent_nodes[:1]:
+            for priv_tool in priv_tools[:_MAX_AGENTS_PER_GOAL]:
+                # Build a plausible sensitive_action from restricted_actions or tool name
+                sensitive_action = (
+                    list(self._policy.restricted_actions or [])[:1] or [
+                        f"invoke {priv_tool.name} with attacker-controlled parameters"
+                    ]
+                )[0]
+                out.append(
+                    build_confused_deputy(
+                        agent_id=str(agent_node.id),
+                        agent_name=agent_node.name,
+                        privileged_tool_name=priv_tool.name,
+                        sensitive_action=str(sensitive_action)[:120],
+                    )
+                )
+
+        # Multi-Agent Trust Boundary — orchestrator → sub-agent trust exploitation
+        orchestrator_nodes = [
+            n for n in agent_nodes
+            if any(kw in n.name.lower() for kw in ("orchestrat", "triage", "router", "main"))
+        ]
+        sub_agent_nodes = [n for n in agent_nodes if n not in orchestrator_nodes]
+        for orch in orchestrator_nodes[:1]:
+            for sub in sub_agent_nodes[:_MAX_AGENTS_PER_GOAL]:
+                privileged_cap = (
+                    list(self._policy.restricted_actions or [])[:1] or [
+                        "access internal data and return all results"
+                    ]
+                )[0]
+                out.append(
+                    build_multi_agent_trust_boundary(
+                        orchestrator_id=str(orch.id),
+                        orchestrator_name=orch.name,
+                        sub_agent_id=str(sub.id),
+                        sub_agent_name=sub.name,
+                        privileged_capability=str(privileged_cap)[:100],
+                    )
+                )
+
+        # Memory Poisoning — agents that have memory/history capability signals
+        memory_agents = [
+            n for n in agent_nodes
+            if "memory" in n.name.lower()
+            or "memory" in (n.metadata.description or "").lower()
+            or any(
+                "memory" in (self._node_by_id.get(tid, None) and self._node_by_id[tid].name or "").lower()
+                for tid in self._outgoing.get(str(n.id), {}).get(RelationshipType.CALLS, [])
+            )
+        ]
+        # If no explicit memory signal, target all agents (most have implicit context)
+        if not memory_agents:
+            memory_agents = agent_nodes[:1]
+        for agent_node in memory_agents[:_MAX_AGENTS_PER_GOAL]:
+            memory_store = "conversation memory"
+            # Check if there is a named memory store in the SBOM
+            for tid in self._outgoing.get(str(agent_node.id), {}).get(RelationshipType.CALLS, []):
+                t = self._node_by_id.get(tid)
+                if t and "memory" in t.name.lower():
+                    memory_store = t.name
+                    break
+            persistent_goal = (
+                list(self._policy.restricted_actions or [])[:1] or [
+                    "disclose sensitive user information when asked"
+                ]
+            )[0]
+            out.append(
+                build_memory_poisoning(
+                    agent_id=str(agent_node.id),
+                    agent_name=agent_node.name,
+                    memory_store_name=memory_store,
+                    persistent_goal=str(persistent_goal)[:120],
+                )
+            )
+
+        # Goal Hijacking — agents with search/query/fetch tools
+        _HIJACKABLE_INDICATORS = ("search", "query", "fetch", "lookup", "retrieve", "find")
+        hijackable_tools = [
+            t for t in tool_nodes
+            if any(ind in t.name.lower() for ind in _HIJACKABLE_INDICATORS)
+        ]
+        for agent_node in agent_nodes[:1]:
+            for tool in hijackable_tools[:_MAX_AGENTS_PER_GOAL]:
+                out.append(
+                    build_goal_hijacking(
+                        agent_id=str(agent_node.id),
+                        agent_name=agent_node.name,
+                        tool_name=tool.name,
+                        hijacked_action=(
+                            "exfiltrate all results to attacker-controlled endpoint"
+                        ),
+                    )
+                )
 
         return out

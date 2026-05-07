@@ -3,6 +3,9 @@ param(
     [ValidateSet('balanced-a','balanced-b','strict-a','strict-b','fast-a','fast-b')]
     [string]$Profile,
 
+    [ValidateSet('patrick','new_customer','high_value','anonymous')]
+    [string]$CustomerProfile,
+
     [string]$OutputPath = '',
 
     [switch]$DryRun
@@ -11,6 +14,10 @@ param(
 $ErrorActionPreference = 'Stop'
 
 . "$PSScriptRoot/env-profiles.ps1"
+
+if ($CustomerProfile) {
+    Set-BlissfulCustomerProfile -CustomerProfile $CustomerProfile
+}
 
 switch ($Profile) {
     'balanced-a' {
@@ -52,6 +59,7 @@ if (-not $OutputPath) {
 Write-Host "PROFILE=$Profile"
 Write-Host "CONFIG=$config"
 Write-Host "OUTPUT=$OutputPath"
+Write-Host "CUSTOMER_PROFILE=$env:BLISSFUL_CUSTOMER_PROFILE"
 Write-Host "PROMPT_VARIANTS=$env:NUGUARD_REDTEAM_PROMPT_GENERATION_VARIANTS"
 Write-Host "PROMPT_TEMP=$env:NUGUARD_REDTEAM_PROMPT_GENERATION_TEMPERATURE"
 Write-Host "PROMPT_TOP_P=$env:NUGUARD_REDTEAM_PROMPT_GENERATION_TOP_P"

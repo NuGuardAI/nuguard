@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 from nuguard.common.console import print_turn as _common_print_turn
 from nuguard.common.logging import get_logger
 from nuguard.models.exploit_chain import ExploitChain, GoalType
-from nuguard.models.finding import Finding
+from nuguard.models.finding import Finding, Severity
 from nuguard.models.policy import CognitivePolicy
 from nuguard.redteam.policy_engine.evaluator import PolicyViolation
 from nuguard.redteam.risk_engine import (
@@ -35,8 +35,21 @@ from nuguard.sbom.models import AiSbomDocument, NodeType
 
 from .executor import AttackExecutor, StepResult
 from .guided_executor import GuidedAttackExecutor
+from .similarity_miss_tracker import SimilarityMissTracker
 
 _log = get_logger(__name__)
+
+_SEV_ORDER: list[Severity] = [
+    Severity.CRITICAL, Severity.HIGH, Severity.MEDIUM, Severity.LOW, Severity.INFO
+]
+
+
+def _sev_rank(severity: Severity) -> int:
+    """Return numeric rank where lower = higher severity (CRITICAL=0, INFO=4)."""
+    try:
+        return _SEV_ORDER.index(severity)
+    except (ValueError, AttributeError):
+        return len(_SEV_ORDER)
 
 
 def _normalize_scenario_token(value: str) -> str:
@@ -46,41 +59,28 @@ def _normalize_scenario_token(value: str) -> str:
 def _dedup_findings(findings: list[Finding]) -> list[Finding]:
     """Collapse near-duplicate findings, keeping the highest-severity instance.
 
-    Two findings are considered duplicates when they share the same
-    ``(goal_type, affected_component, success_indicator)`` triple.  The one
-    with the higher severity (lower index in the Severity enum order) wins;
-    ties are broken by taking the one with the longer evidence string.
+    Two findings are duplicates when they share the same
+    ``(finding_id, goal_type, affected_component)`` triple — i.e. the same
+    attack type against the same component.  Distinct scenarios (HITL_BYPASS vs
+    RESTRICTED_ACTION vs AUTH_BYPASS) always produce different finding_ids so
+    they are never collapsed, even when they target the same component.
     """
-    from nuguard.models.finding import Severity
-
-    _SEV_ORDER = [
-        Severity.CRITICAL, Severity.HIGH, Severity.MEDIUM, Severity.LOW, Severity.INFO
-    ]
-
-    def _sev_rank(f: Finding) -> int:
-        try:
-            return _SEV_ORDER.index(f.severity)
-        except ValueError:
-            return len(_SEV_ORDER)
-
     seen: dict[tuple, Finding] = {}
     for f in findings:
         key = (
+            f.finding_id or "",
             f.goal_type or "",
             (f.affected_component or "").lower(),
-            f.success_indicator or "",
         )
         if key not in seen:
             seen[key] = f
         else:
             existing = seen[key]
             # Prefer higher severity; on tie, prefer longer evidence
-            if _sev_rank(f) < _sev_rank(existing):
+            if _sev_rank(f.severity) < _sev_rank(existing.severity):
                 seen[key] = f
-            elif _sev_rank(f) == _sev_rank(existing):
-                ev_len = len(f.evidence or "")
-                ex_len = len(existing.evidence or "")
-                if ev_len > ex_len:
+            elif _sev_rank(f.severity) == _sev_rank(existing.severity):
+                if len(f.evidence or "") > len(existing.evidence or ""):
                     seen[key] = f
 
     result = list(seen.values())
@@ -96,7 +96,14 @@ def _scenario_matches_filter(scenario: AttackScenario, filters: set[str]) -> boo
     goal = _normalize_scenario_token(scenario.goal_type.value)
     scenario_type = _normalize_scenario_token(scenario.scenario_type.value)
     title = _normalize_scenario_token(scenario.title)
-    return any(token in goal or token in scenario_type or token in title for token in filters)
+    # Check both directions so plural/singular mismatches (e.g. "api-attacks" vs
+    # "API_ATTACK") and prefix tokens (e.g. "data" vs "data_exfiltration") match.
+    return any(
+        token in goal or goal in token
+        or token in scenario_type or scenario_type in token
+        or token in title
+        for token in filters
+    )
 
 
 @dataclass
@@ -426,6 +433,10 @@ class RedteamOrchestrator:
         finding_triggers: "RedteamFindingTriggers | None" = None,
         verbose: bool = False,
         credentials: dict[str, str] | None = None,
+        scenario_timeout: float = 300.0,
+        turn_delay_seconds: float = 0.0,
+        scenario_delay_seconds: float = 0.0,
+        similar_miss_threshold: int = 4,
     ) -> None:
         self._sbom = sbom
         self._target_url = target_url
@@ -467,6 +478,10 @@ class RedteamOrchestrator:
         self._finding_triggers = finding_triggers
         self._verbose = verbose
         self._credentials: dict[str, str] = credentials or {}
+        self._scenario_timeout = max(0.0, scenario_timeout)
+        self._turn_delay_seconds = max(0.0, turn_delay_seconds)
+        self._scenario_delay_seconds = max(0.0, scenario_delay_seconds)
+        self._similar_miss_threshold = max(1, similar_miss_threshold)
         # Auto-discover from SBOM; fall back to provided values
         self._chat_path, self._chat_payload_key, self._chat_payload_list, _discovered_response_key = (
             _discover_chat_config(sbom, chat_path, chat_payload_key, chat_payload_list)
@@ -775,6 +790,7 @@ class RedteamOrchestrator:
                 auth_session=bootstrapper.session,
                 app_domain=_warmup_app_domain,
                 allowed_topics=_warmup_allowed_topics,
+                turn_delay_seconds=self._turn_delay_seconds,
             )
 
             # Build GuidedAttackExecutor when LLM is configured and guided is enabled
@@ -896,11 +912,18 @@ class RedteamOrchestrator:
         """
         sem = asyncio.Semaphore(self._concurrency)
         abort_event = asyncio.Event()
+        # Circuit breaker: trip only after this many consecutive unavailability errors.
+        _ABORT_THRESHOLD = 3
+        consecutive_unavailable = 0
+        # Similarity miss tracker: skip scenarios whose payloads closely resemble
+        # already-failed attacks once the miss count exceeds the threshold.
+        miss_tracker = SimilarityMissTracker(miss_threshold=self._similar_miss_threshold)
 
         async def _run_one(
             scenario: AttackScenario,
             scenario_idx: int = 0,
         ) -> tuple[list[Finding], tuple[str, str, bool], ScenarioRecord]:
+            nonlocal consecutive_unavailable
             affected = ", ".join(
                 self._node_label.get(nid, nid) for nid in scenario.target_node_ids[:2]
             )
@@ -927,7 +950,17 @@ class RedteamOrchestrator:
                 if abort_event.is_set():
                     return [], (scenario.title, scenario.goal_type.value, False), _skipped_record("skipped")
 
-                try:
+                # Skip scenarios whose payloads are too similar to already-failed
+                # attacks.  Checked here (post-semaphore) so that misses from
+                # concurrently-running scenarios can inform the decision.
+                if miss_tracker.should_skip(scenario):
+                    return [], (scenario.title, scenario.goal_type.value, False), _skipped_record("similar_miss")
+
+                # Optional delay to avoid hammering rate-limited targets.
+                if self._scenario_delay_seconds > 0:
+                    await asyncio.sleep(self._scenario_delay_seconds)
+
+                async def _execute_body() -> tuple[list[Finding], tuple[str, str, bool], ScenarioRecord]:
                     _t0 = time.perf_counter()
                     # Route: guided conversation vs. static chain
                     if scenario.guided_conversation is not None and guided_executor is not None:
@@ -977,7 +1010,9 @@ class RedteamOrchestrator:
                         had_finding=had_finding,
                         steps=step_details,
                         duration_s=time.perf_counter() - _t0,
-                        turns_used=len(step_details),
+                        turns_used=sum(
+                            1 for sd in step_details if sd.get("step_type") != "WARMUP"
+                        ),
                         turns_budget=len(scenario.chain.steps),
                     )
                     _tally_transport(record, step_results)
@@ -986,11 +1021,38 @@ class RedteamOrchestrator:
                         (scenario.title, scenario.goal_type.value, had_finding),
                         record,
                     )
-                except TargetUnavailableError as exc:
-                    _log.error(
-                        "Target endpoint unavailable — aborting remaining scenarios. %s", exc
+
+                _timeout = self._scenario_timeout if self._scenario_timeout > 0 else None
+                try:
+                    result = await asyncio.wait_for(_execute_body(), timeout=_timeout)
+                    consecutive_unavailable = 0
+                    # Record a miss so subsequent similar scenarios can be suppressed.
+                    if not result[0]:  # no findings produced
+                        miss_tracker.record_miss(scenario)
+                    return result
+                except asyncio.TimeoutError:
+                    _log.warning(
+                        "Scenario %s timed out after %.0f s — skipping.",
+                        scenario.scenario_id,
+                        self._scenario_timeout,
                     )
-                    abort_event.set()
+                    return [], (scenario.title, scenario.goal_type.value, False), _skipped_record("timeout")
+                except TargetUnavailableError as exc:
+                    consecutive_unavailable += 1
+                    if consecutive_unavailable >= _ABORT_THRESHOLD:
+                        _log.error(
+                            "Target endpoint unavailable %d consecutive times — aborting remaining scenarios. %s",
+                            consecutive_unavailable,
+                            exc,
+                        )
+                        abort_event.set()
+                    else:
+                        _log.warning(
+                            "Target temporarily unavailable (%d/%d) — continuing. %s",
+                            consecutive_unavailable,
+                            _ABORT_THRESHOLD,
+                            exc,
+                        )
                     return [], (scenario.title, scenario.goal_type.value, False), _skipped_record("aborted")
                 except Exception as exc:
                     _log.warning("Scenario %s failed: %s", scenario.scenario_id, exc)
@@ -1427,16 +1489,30 @@ class RedteamOrchestrator:
             for v in sr.policy_violations:
                 violations_with_step.append((step_idx, sr, v))
             canary_hits.extend(sr.canary_hits)
-        _all_violations = [v for (_, _, v) in violations_with_step]  # noqa: F841
 
-        # Resolve human-readable component labels for this scenario's target nodes
+        # Hoist repeated per-scenario computations — all four finding tiers share these.
         affected = ", ".join(
             self._node_label.get(nid, nid) for nid in scenario.target_node_ids[:2]
         )
-        # Build human-readable sbom_path_descriptions from the chain's node IDs
         sbom_path_descriptions = [
             self._node_label.get(nid, nid) for nid in chain.sbom_path
         ]
+        step_summary = self._step_evidence_summary(step_details)
+        goal_sev = severity_scorer.score_finding(scenario.goal_type)
+        owasp_asi = compliance_mapper.owasp_asi_ref(scenario.goal_type)
+        owasp_llm = compliance_mapper.owasp_llm_ref(scenario.goal_type)
+
+        # Fields shared by every Finding produced from this scenario/chain.
+        _base: dict = dict(
+            goal_type=scenario.goal_type,
+            chain_id=chain.chain_id,
+            sbom_path=chain.sbom_path,
+            sbom_path_descriptions=sbom_path_descriptions,
+            affected_component=affected,
+            owasp_asi_ref=owasp_asi,
+            owasp_llm_ref=owasp_llm,
+            attack_steps=step_details,
+        )
 
         # Canary-based finding
         if canary_hits and self._trigger_enabled("canary_hits"):
@@ -1448,6 +1524,7 @@ class RedteamOrchestrator:
             canary_title = f"Canary Value Exfiltrated — {scenario.title}"
             findings.append(
                 Finding(
+                    **_base,
                     finding_id=_finding_id(canary_title),
                     title=canary_title,
                     severity=sev,
@@ -1455,99 +1532,80 @@ class RedteamOrchestrator:
                         f"Canary value(s) {canary_hits[:3]} were found in the agent response, "
                         f"confirming data exfiltration via scenario: {scenario.title}"
                     ),
-                    affected_component=affected,
                     remediation=remediation_generator.generate(
                         scenario.goal_type, scenario.title
                     ),
-                    goal_type=scenario.goal_type,
-                    chain_id=chain.chain_id,
-                    sbom_path=chain.sbom_path,
-                    sbom_path_descriptions=sbom_path_descriptions,
                     policy_clauses_violated=chain.policy_clauses,
-                    owasp_asi_ref=compliance_mapper.owasp_asi_ref(scenario.goal_type),
-                    owasp_llm_ref=compliance_mapper.owasp_llm_ref(scenario.goal_type),
-                    evidence=(
-                        f"Canary values found: {canary_hits} | "
-                        f"Attack steps: {self._step_evidence_summary(step_details)}"
-                    ),
-                    attack_steps=step_details,
+                    evidence=f"Canary values found: {canary_hits} | Attack steps: {step_summary}",
                 )
             )
 
         # Policy violation findings
-        step_summary = self._step_evidence_summary(step_details)
         if self._trigger_enabled("policy_violations"):
             for step_idx, sr, violation in violations_with_step:
-                sev = severity_scorer.score_finding(scenario.goal_type)
+                # Cap at the violation's own severity so that low-confidence
+                # detectors (e.g. topic_boundary Tier-2, severity=MEDIUM) are not
+                # inflated to the scenario goal-type severity (e.g. HIGH for DATA_EXFILTRATION).
+                try:
+                    viol_sev = Severity(violation.severity.lower())
+                except (ValueError, AttributeError):
+                    viol_sev = goal_sev
+                sev = viol_sev if _sev_rank(viol_sev) > _sev_rank(goal_sev) else goal_sev
                 violation_title = f"{violation.type.replace('_', ' ').title()} — {scenario.title}"
-                # Evidence centres on the specific step that triggered the
-                # violation — the attacker message sent and the response
-                # excerpt — so reports show *where* the bad behaviour happened
-                # rather than a flat summary of every step in the chain.
+                # Evidence centres on the specific step that triggered the violation.
                 trigger_block = self._format_trigger_step(step_idx, sr)
-                evidence = (
-                    f"{violation.evidence}\n\n"
-                    f"{trigger_block}\n\n"
-                    f"All steps: {step_summary}"
-                )
                 findings.append(
                     Finding(
+                        **_base,
                         finding_id=_finding_id(violation_title),
                         title=violation_title,
                         severity=sev,
                         description=violation.evidence,
-                        affected_component=affected,
                         remediation=remediation_generator.generate(
                             scenario.goal_type,
                             scenario.title,
                             violation_type=violation.type,
                         ),
-                        goal_type=scenario.goal_type,
-                        chain_id=chain.chain_id,
-                        sbom_path=chain.sbom_path,
-                        sbom_path_descriptions=sbom_path_descriptions,
                         policy_clauses_violated=[violation.policy_clause],
-                        owasp_asi_ref=compliance_mapper.owasp_asi_ref(scenario.goal_type),
-                        owasp_llm_ref=compliance_mapper.owasp_llm_ref(scenario.goal_type),
-                        evidence=evidence,
-                        attack_steps=step_details,
+                        evidence=(
+                            f"{violation.evidence}\n\n"
+                            f"{trigger_block}\n\n"
+                            f"All steps: {step_summary}"
+                        ),
                     )
                 )
 
         # If no violations or canary but the scan ran, check for goal-specific signals
         if not findings:
-            # Check whether success signals were hit in high-confidence steps
             critical_hits = [
                 sr
                 for sr in step_results
                 if sr.success_signal_found
                 and sr.step.step_type in ("INJECT", "INVOKE")
-                and sr.step.on_failure == "abort"
+                and getattr(sr.step, "contributes_to_finding", True)
+                and (
+                    sr.step.on_failure == "abort"
+                    or (
+                        getattr(sr.step, "use_llm_eval", False)
+                        and sr.llm_eval_confidence in ("high", "medium")
+                    )
+                )
             ]
             if critical_hits and self._trigger_enabled("critical_success_hits"):
-                sev = severity_scorer.score_finding(scenario.goal_type)
-                step_summary = self._step_evidence_summary(step_details)
                 findings.append(
                     Finding(
+                        **_base,
                         finding_id=_finding_id(scenario.title),
                         title=scenario.title,
-                        severity=sev,
+                        severity=goal_sev,
                         description=(
                             f"Attack scenario '{scenario.title}' succeeded: "
                             f"success signals detected in {len(critical_hits)} step(s)."
                         ),
-                        affected_component=affected,
                         remediation=remediation_generator.generate(
                             scenario.goal_type, scenario.title
                         ),
-                        goal_type=scenario.goal_type,
-                        chain_id=chain.chain_id,
-                        sbom_path=chain.sbom_path,
-                        sbom_path_descriptions=sbom_path_descriptions,
-                        owasp_asi_ref=compliance_mapper.owasp_asi_ref(scenario.goal_type),
-                        owasp_llm_ref=compliance_mapper.owasp_llm_ref(scenario.goal_type),
                         evidence=f"Attack steps: {step_summary}",
-                        attack_steps=step_details,
                     )
                 )
 
@@ -1556,31 +1614,25 @@ class RedteamOrchestrator:
             inject_hits = [
                 sr
                 for sr in step_results
-                if sr.success_signal_found and sr.step.step_type == "INJECT"
+                if sr.success_signal_found
+                and sr.step.step_type == "INJECT"
+                and getattr(sr.step, "contributes_to_finding", True)
             ]
             if inject_hits:
-                sev = severity_scorer.score_finding(scenario.goal_type)
                 findings.append(
                     Finding(
+                        **_base,
                         finding_id=_finding_id(f"inject-success-{scenario.title}"),
                         title=f"Inject Success Signal — {scenario.title}",
-                        severity=sev,
+                        severity=goal_sev,
                         description=(
                             f"INJECT steps succeeded in scenario '{scenario.title}' "
                             f"without higher-confidence canary/policy/critical triggers."
                         ),
-                        affected_component=affected,
                         remediation=remediation_generator.generate(
                             scenario.goal_type, scenario.title
                         ),
-                        goal_type=scenario.goal_type,
-                        chain_id=chain.chain_id,
-                        sbom_path=chain.sbom_path,
-                        sbom_path_descriptions=sbom_path_descriptions,
-                        owasp_asi_ref=compliance_mapper.owasp_asi_ref(scenario.goal_type),
-                        owasp_llm_ref=compliance_mapper.owasp_llm_ref(scenario.goal_type),
                         evidence=f"Attack steps: {step_summary}",
-                        attack_steps=step_details,
                     )
                 )
 

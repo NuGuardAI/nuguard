@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -70,7 +71,10 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
     lines.append("# Behavior Analysis Report")
     lines.append("")
 
-    # Determine mode
+    if meta is not None:
+        lines += meta.to_markdown_lines()
+
+    # Determine analysis mode
     has_static = bool(result.static_findings)
     has_dynamic = bool(result.dynamic_findings or result.scenario_results)
     if has_static and has_dynamic:
@@ -85,22 +89,36 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
     lines.append("## Summary")
     lines.append("")
     lines.append(f"- **Intent**: {result.intent.app_purpose or 'not determined'}")
-    lines.append(f"- **Mode**: {mode}")
+    lines.append(f"- **Analysis Mode**: {mode}")
     lines.append(f"- **Overall Risk Score**: {result.overall_risk_score:.1f} / 10")
     total_comp = len(result.coverage)
     exercised = sum(1 for c in result.coverage if c.exercised)
     lines.append(f"- **Coverage**: {result.coverage_percentage * 100:.0f}% ({exercised}/{total_comp} components exercised)")
+
+    # Unexercised components
+    not_exercised = [c for c in result.coverage if not c.exercised]
+    if not_exercised:
+        ne_names = ", ".join(f"`{c.component_name}`" for c in not_exercised)
+        lines.append(f"- **Not Exercised** ({len(not_exercised)} components): {ne_names}")
+
+    # Scenarios skipped due to max_scenarios cap
+    if result.scenarios_skipped:
+        skipped_names = ", ".join(f"`{n}`" for n in result.scenarios_skipped)
+        lines.append(
+            f"- **Scenarios Not Run** ({len(result.scenarios_skipped)} skipped by `max_scenarios` cap): {skipped_names}"
+        )
+
     lines.append(f"- **Intent Alignment Score**: {result.intent_alignment_score:.2f} / 5.0")
     total_findings = len(result.static_findings) + len(result.dynamic_findings)
     lines.append(f"- **Total Findings**: {total_findings}")
     # Severity breakdown
     sev_counts: dict[str, int] = {}
     for f in list(result.static_findings) + list(result.dynamic_findings):
-        sev = str(f.get("severity", "unknown")).upper()
+        sev = _norm_sev(f.get("severity", "unknown"))
         sev_counts[sev] = sev_counts.get(sev, 0) + 1
-    if sev_counts:
-        sev_order = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"]
-        sev_parts = [f"{s}: {sev_counts[s]}" for s in sev_order if s in sev_counts]
+    sev_order = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"]
+    sev_parts = [f"{s}: {sev_counts[s]}" for s in sev_order if s in sev_counts]
+    if sev_parts:
         lines.append(f"- **By Severity**: {' | '.join(sev_parts)}")
     lines.append("")
 
@@ -118,8 +136,7 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
         for finding in result.static_findings:
             desc = finding.get("description", "")
             # BA-003: "Policy restricts action 'X', but agent 'Y' has a CALLS edge to tool 'Z'"
-            import re as _re
-            m = _re.search(r"Policy restricts action '([^']+)'", desc)
+            m = re.search(r"Policy restricts action '([^']+)'", desc)
             if m:
                 rule_key = m.group(1)
                 grouped_static.setdefault(rule_key, []).append(finding)
@@ -201,20 +218,19 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
                             f"{passed_count} passing turn(s) omitted._"
                         )
                         lines.append("")
-                    lines.append("| Turn | Verdict | Intent | Compliance | Component | Data | Escalation | Gaps |")
-                    lines.append("|------|---------|--------|-----------|-----------|------|------------|------|")
+                    lines.append("| Turn | Verdict | Comp | Validity | Alignment | Score | Gaps |")
+                    lines.append("|------|---------|------|----------|-----------|-------|------|")
                     for v in non_pass:
                         t = v.get("turn", "?")
                         verdict = v.get("verdict", "?")
                         scores = v.get("scores", {})
-                        ia = f"{scores.get('intent_alignment', '-'):.0f}" if isinstance(scores.get("intent_alignment"), (int, float)) else "-"
-                        bc = f"{scores.get('behavioral_compliance', '-'):.0f}" if isinstance(scores.get("behavioral_compliance"), (int, float)) else "-"
-                        cc = f"{scores.get('component_correctness', '-'):.0f}" if isinstance(scores.get("component_correctness"), (int, float)) else "-"
-                        dh = f"{scores.get('data_handling', '-'):.0f}" if isinstance(scores.get("data_handling"), (int, float)) else "-"
-                        ec = f"{scores.get('escalation_compliance', '-'):.0f}" if isinstance(scores.get("escalation_compliance"), (int, float)) else "-"
+                        ci = f"{scores.get('component_invoked'):.1f}" if isinstance(scores.get("component_invoked"), (int, float)) else "-"
+                        rv = f"{scores.get('response_validity'):.1f}" if isinstance(scores.get("response_validity"), (int, float)) else "-"
+                        ta = f"{scores.get('topic_alignment'):.1f}" if isinstance(scores.get("topic_alignment"), (int, float)) else "-"
+                        os_ = f"{v.get('overall_score'):.2f}" if isinstance(v.get("overall_score"), (int, float)) else "-"
                         gaps_raw = v.get("gaps") or []
                         gaps_str = ("; ".join(str(g) for g in gaps_raw[:2]))[:60] or "-"
-                        lines.append(f"| {t} | {verdict} | {ia} | {bc} | {cc} | {dh} | {ec} | {gaps_str} |")
+                        lines.append(f"| {t} | {verdict} | {ci} | {rv} | {ta} | {os_} | {gaps_str} |")
                     lines.append("")
 
                     # Evidence excerpts for FAIL turns only
@@ -239,9 +255,13 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
                         lines.append("")
                         lines.extend(evidence_lines)
 
-            if sr.uncovered_agents or sr.uncovered_tools:
-                uncovered = sr.uncovered_agents + sr.uncovered_tools
-                lines.append(f"**Uncovered components**: {', '.join(uncovered)}")
+            covered = sorted(set(
+                name
+                for v in sr.verdicts
+                for name in (v.get("agents_mentioned") or []) + (v.get("tools_mentioned") or [])
+            ))
+            if covered:
+                lines.append(f"**Covered components**: {', '.join(covered)}")
                 lines.append("")
 
     # Coverage Map

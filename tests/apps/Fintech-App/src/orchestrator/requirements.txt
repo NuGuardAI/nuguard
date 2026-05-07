@@ -4,7 +4,7 @@
 # for supply-chain / SBOM scanning scenarios.
 #
 # Documented vulnerabilities:
-#   langchain==0.2.5   → Prompt injection via ReAct agent scratchpad;
+#   langchain==0.0.300   → Prompt injection via ReAct agent scratchpad;
 #                           arbitrary Python eval via PAL chain (CVE-2023-29374);
 #                           LangChain < 0.0.312 has known prompt injection issues.
 
@@ -19,11 +19,11 @@ websockets>=12.0
 #     next prompt → indirect prompt injection via tool responses
 #   - PAL chain uses Python exec() without sandboxing
 #   - Known CVE-2023-29374: arbitrary code execution via PythonREPLTool
-langchain==0.2.5
+langchain==0.0.300
 openai>=1.47.0           # Modern SDK — agents.py uses AzureOpenAI directly
 
 # ── LangChain ecosystem sub-packages (NEW API — used by model_provider.py) ───
-# These are used alongside the old langchain==0.2.5 in separate modules,
+# These are used alongside the old langchain==0.0.300 in separate modules,
 # demonstrating mixed-generation dependency patterns (SBOM COMPLEXITY TEST #3)
 langchain-core>=0.1.52
 langchain-openai>=0.1.22

@@ -1,0 +1,398 @@
+{
+  "customers": [
+    {
+      "customer_id": "cust-1001",
+      "profile_key": "patrick",
+      "status": "active",
+      "external_ids": {
+        "account_number": "428765091"
+      },
+      "name": {
+        "first_name": "Patrick",
+        "last_name": "Marlow",
+        "display_name": "Patrick Marlow"
+      },
+      "contact": {
+        "email": "pmarlow@google.com",
+        "phone": "+1-702-555-1212"
+      },
+      "addresses": [
+        {
+          "type": "billing",
+          "street": "123 Town Lake Blvd.",
+          "city": "Austin",
+          "state": "TX",
+          "zip": "78702"
+        }
+      ],
+      "preferences": {
+        "communication": {
+          "email": true,
+          "push_notifications": false,
+          "sms": true
+        },
+        "preferred_location": "Cymbal Home & Garden - Austin (Main)"
+      },
+      "segments": [
+        "returning_customer"
+      ],
+      "metrics": {
+        "customer_since": "2022-06-10",
+        "tenure_years": 3,
+        "loyalty_points": 133
+      },
+      "purchase_history": [
+        {
+          "date": "2023-03-05",
+          "items": [
+            {
+              "name": "All-Purpose Fertilizer",
+              "product_id": "fert-111",
+              "quantity": 1
+            },
+            {
+              "name": "Gardening Trowel",
+              "product_id": "trowel-222",
+              "quantity": 1
+            }
+          ],
+          "total_amount": 35.98
+        },
+        {
+          "date": "2023-07-12",
+          "items": [
+            {
+              "name": "Tomato Seeds (Variety Pack)",
+              "product_id": "seeds-333",
+              "quantity": 2
+            },
+            {
+              "name": "Terracotta Pots (6-inch)",
+              "product_id": "pots-444",
+              "quantity": 4
+            }
+          ],
+          "total_amount": 42.5
+        },
+        {
+          "date": "2024-01-20",
+          "items": [
+            {
+              "name": "Gardening Gloves (Leather)",
+              "product_id": "gloves-555",
+              "quantity": 1
+            },
+            {
+              "name": "Pruning Shears",
+              "product_id": "pruner-666",
+              "quantity": 1
+            }
+          ],
+          "total_amount": 55.25
+        }
+      ],
+      "active_cart": {
+        "cart_id": "cart-1001",
+        "currency": "USD",
+        "items": [
+          {
+            "name": "Standard Potting Soil",
+            "product_id": "soil-123",
+            "quantity": 1,
+            "unit_price": 14.99,
+            "category": "soil"
+          },
+          {
+            "name": "General Purpose Fertilizer",
+            "product_id": "fert-456",
+            "quantity": 1,
+            "unit_price": 10.99,
+            "category": "fertilizer"
+          }
+        ],
+        "subtotal": 25.98,
+        "estimated_tax": 2.14,
+        "total": 28.12,
+        "last_updated": "2026-04-20T18:30:00Z"
+      },
+      "appointments": {
+        "upcoming": [],
+        "past": []
+      },
+      "domain_context": {
+        "blissful_store": {
+          "garden_profile": {
+            "interests": [
+              "flowers",
+              "vegetables"
+            ],
+            "size": "medium",
+            "soil_type": "unknown",
+            "sun_exposure": "full sun",
+            "type": "backyard"
+          }
+        }
+      }
+    },
+    {
+      "customer_id": "cust-1002",
+      "profile_key": "new_customer",
+      "status": "new",
+      "external_ids": {
+        "account_number": "901245773"
+      },
+      "name": {
+        "first_name": "Maria",
+        "last_name": "Chen",
+        "display_name": "Maria Chen"
+      },
+      "contact": {
+        "email": "maria.chen@example.com",
+        "phone": "+1-206-555-0147"
+      },
+      "addresses": [
+        {
+          "type": "billing",
+          "street": "85 Pine Street",
+          "city": "Seattle",
+          "state": "WA",
+          "zip": "98101"
+        }
+      ],
+      "preferences": {
+        "communication": {
+          "email": true,
+          "push_notifications": true,
+          "sms": false
+        },
+        "preferred_location": "Cymbal Home & Garden - Seattle"
+      },
+      "segments": [
+        "new_customer"
+      ],
+      "metrics": {
+        "customer_since": "2026-01-18",
+        "tenure_years": 0,
+        "loyalty_points": 0
+      },
+      "purchase_history": [],
+      "active_cart": {
+        "cart_id": "cart-1002",
+        "currency": "USD",
+        "items": [],
+        "subtotal": 0.0,
+        "estimated_tax": 0.0,
+        "total": 0.0,
+        "last_updated": "2026-04-20T18:30:00Z"
+      },
+      "appointments": {
+        "upcoming": [],
+        "past": []
+      },
+      "domain_context": {
+        "blissful_store": {
+          "garden_profile": {
+            "interests": [
+              "indoor plants",
+              "balcony herbs"
+            ],
+            "size": "small",
+            "soil_type": "potting mix",
+            "sun_exposure": "partial shade",
+            "type": "apartment balcony"
+          }
+        }
+      }
+    },
+    {
+      "customer_id": "cust-1003",
+      "profile_key": "high_value",
+      "status": "active",
+      "external_ids": {
+        "account_number": "776512904"
+      },
+      "name": {
+        "first_name": "Robert",
+        "last_name": "Okafor",
+        "display_name": "Robert Okafor"
+      },
+      "contact": {
+        "email": "robert.okafor@example.com",
+        "phone": "+1-404-555-0193"
+      },
+      "addresses": [
+        {
+          "type": "billing",
+          "street": "412 Peachtree Hills Ave.",
+          "city": "Atlanta",
+          "state": "GA",
+          "zip": "30305"
+        }
+      ],
+      "preferences": {
+        "communication": {
+          "email": true,
+          "push_notifications": true,
+          "sms": true
+        },
+        "preferred_location": "Cymbal Home & Garden - Atlanta"
+      },
+      "segments": [
+        "high_value"
+      ],
+      "metrics": {
+        "customer_since": "2019-04-02",
+        "tenure_years": 7,
+        "loyalty_points": 865
+      },
+      "purchase_history": [
+        {
+          "date": "2025-03-11",
+          "items": [
+            {
+              "name": "Premium Raised Bed Soil",
+              "product_id": "soil-801",
+              "quantity": 12
+            },
+            {
+              "name": "Compost Tea Concentrate",
+              "product_id": "fert-802",
+              "quantity": 4
+            }
+          ],
+          "total_amount": 318.45
+        },
+        {
+          "date": "2025-09-02",
+          "items": [
+            {
+              "name": "Drip Irrigation Starter Kit",
+              "product_id": "irr-803",
+              "quantity": 2
+            },
+            {
+              "name": "Fruit Tree Fertilizer Spikes",
+              "product_id": "fert-804",
+              "quantity": 6
+            },
+            {
+              "name": "Cedar Mulch Bags",
+              "product_id": "mulch-805",
+              "quantity": 20
+            }
+          ],
+          "total_amount": 542.2
+        }
+      ],
+      "active_cart": {
+        "cart_id": "cart-1003",
+        "currency": "USD",
+        "items": [
+          {
+            "name": "Decorative Planters (18-inch)",
+            "product_id": "planter-806",
+            "quantity": 2,
+            "unit_price": 74.99,
+            "category": "planters"
+          },
+          {
+            "name": "Organic Lawn Booster",
+            "product_id": "lawn-807",
+            "quantity": 4,
+            "unit_price": 39.5,
+            "category": "lawn-care"
+          }
+        ],
+        "subtotal": 307.98,
+        "estimated_tax": 25.41,
+        "total": 333.39,
+        "last_updated": "2026-04-18T13:00:00Z"
+      },
+      "appointments": {
+        "upcoming": [
+          {
+            "appointment_id": "apt-20260504-01",
+            "type": "spring planting consultation",
+            "status": "scheduled",
+            "scheduled_date": "2026-05-04",
+            "time_window": "8-12",
+            "location": "On-site"
+          }
+        ],
+        "past": []
+      },
+      "domain_context": {
+        "blissful_store": {
+          "garden_profile": {
+            "interests": [
+              "landscaping",
+              "native plants",
+              "fruit trees"
+            ],
+            "size": "large",
+            "soil_type": "clay loam",
+            "sun_exposure": "full sun",
+            "type": "multi-zone yard"
+          }
+        }
+      }
+    },
+    {
+      "customer_id": "cust-anon",
+      "profile_key": "anonymous",
+      "status": "anonymous",
+      "external_ids": {},
+      "name": {
+        "first_name": "",
+        "last_name": "",
+        "display_name": "Guest"
+      },
+      "contact": {
+        "email": "",
+        "phone": "+1-000-000-0000"
+      },
+      "addresses": [],
+      "preferences": {
+        "communication": {
+          "email": false,
+          "push_notifications": false,
+          "sms": false
+        },
+        "preferred_location": ""
+      },
+      "segments": [
+        "anonymous"
+      ],
+      "metrics": {
+        "customer_since": "",
+        "tenure_years": 0,
+        "loyalty_points": 0
+      },
+      "purchase_history": [],
+      "active_cart": {
+        "cart_id": "cart-anon",
+        "currency": "USD",
+        "items": [],
+        "subtotal": 0.0,
+        "estimated_tax": 0.0,
+        "total": 0.0,
+        "last_updated": "2026-04-20T18:30:00Z"
+      },
+      "appointments": {
+        "upcoming": [],
+        "past": []
+      },
+      "domain_context": {
+        "blissful_store": {
+          "garden_profile": {
+            "interests": [],
+            "size": "",
+            "soil_type": "",
+            "sun_exposure": "",
+            "type": ""
+          }
+        }
+      }
+    }
+  ]
+}

@@ -1,13 +1,23 @@
-import json
-
 def greeting() -> dict:
   """A static default greeting that is sent to the user."""
-  # Deterministically call another tool from within the greeting tool.
-  # The syntax for OpenAPI spec tools is:
-  # tools.<tool_name>_<endpoint_name>({tool_args})
-  res = tools.crm_service_get_cart_information({})
+  # Keep the cart lookup inside the greeting tool because CES already proved
+  # this first-turn tool flow works for this app; only the lookup args changed.
+  customer_profile = context.variables["customer_profile"]
+  customer_id = customer_profile.get("customer_id")
+  profile_key = customer_profile.get("profile_key")
+  account_number = customer_profile.get("account_number")
 
-  FIRST_NAME = context.variables["customer_profile"]["customer_first_name"]
+  cart_args = {}
+  if customer_id:
+    cart_args["customer_id"] = customer_id
+  elif account_number:
+    cart_args["account_number"] = account_number
+  elif profile_key:
+    cart_args["profile_key"] = profile_key
+
+  res = tools.crm_service_get_cart_information(cart_args)
+
+  FIRST_NAME = customer_profile["customer_first_name"]
   PHONE_NUMBER = get_variable("telephony-caller-id")
   UUI_HEADERS = get_variable("uui-headers")
 

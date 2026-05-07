@@ -1,4 +1,4 @@
-﻿"""
+"""
 FinTech GOAT â€” Agent Orchestrator â€” FastAPI Application
 ========================================================
 Entry point for the orchestrator service. Routes chat requests through
@@ -16,18 +16,20 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import time
 import uuid
 from contextlib import asynccontextmanager
 from typing import AsyncGenerator
 
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from .agents import (
     AGENT_REGISTRY,
     _ALL_TOOL_DEFS,
+    _ACCOUNT_REGISTRY,
     _INTENT_TO_AGENT,
     build_agent,
     build_wealth_advisor_agent,
@@ -38,11 +40,22 @@ from .mcp_router import MCPRouter
 from .telemetry import setup_telemetry
 
 # ---------------------------------------------------------------------------
-# Telemetry bootstrapping
+# Logging -- configure before setup_telemetry so early warnings are captured.
+# force=True reinstalls handlers after uvicorn calls dictConfig.
+# ---------------------------------------------------------------------------
+_LOG_LEVEL = getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO)
+logging.basicConfig(
+    level=_LOG_LEVEL,
+    format="%(asctime)s %(levelname)-8s %(name)s  %(message)s",
+    datefmt="%Y-%m-%dT%H:%M:%S",
+    force=True,
+)
+
+# ---------------------------------------------------------------------------
+# Telemetry bootstrapping (after logging is configured)
 # ---------------------------------------------------------------------------
 setup_telemetry()
 logger = logging.getLogger("orchestrator.main")
-logging.basicConfig(level=logging.INFO)
 
 # ---------------------------------------------------------------------------
 # WebSocket broadcast manager
@@ -82,6 +95,13 @@ broadcast_mgr = BroadcastManager()
 mcp_router = MCPRouter()
 mcp_client = MCPClient()   # legacy â€” kept for any remaining compat shims
 
+_DEMO_PASSWORD = os.getenv("APP_PASSWORD", "demo123")
+_EMAIL_TO_USER_ID = {
+    str(account.get("email", "")).strip().lower(): user_id
+    for user_id, account in _ACCOUNT_REGISTRY.items()
+    if str(account.get("email", "")).strip()
+}
+
 
 # ---------------------------------------------------------------------------
 # App lifecycle
@@ -110,6 +130,22 @@ app.add_middleware(
 )
 
 
+@app.middleware("http")
+async def _request_logger(request: Request, call_next):
+    """Log every HTTP request with method, path, status, and latency."""
+    t0 = time.monotonic()
+    response = await call_next(request)
+    latency_ms = (time.monotonic() - t0) * 1000
+    logger.info(
+        "http %s %s -> %d  %.0fms",
+        request.method,
+        request.url.path,
+        response.status_code,
+        latency_ms,
+    )
+    return response
+
+
 # ---------------------------------------------------------------------------
 # Request / Response models
 # ---------------------------------------------------------------------------
@@ -118,6 +154,17 @@ class ChatRequest(BaseModel):
     message: str
     session_id: str = ""
     user_id: str = ""   # client-supplied â€” used to build agent context (VULN-AI-02)
+
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+
+class LoginResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user_id: str
 
 
 class ChatResponse(BaseModel):
@@ -171,8 +218,27 @@ async def list_tools() -> dict:
     }
 
 
+@app.post("/api/login", response_model=LoginResponse)
+async def login(req: LoginRequest) -> LoginResponse:
+    """Authenticate a demo user and mint a bearer token bound to that user."""
+    user_id = _EMAIL_TO_USER_ID.get(req.username.strip().lower())
+    if not user_id or req.password != _DEMO_PASSWORD:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
+    return LoginResponse(access_token=user_id, user_id=user_id)
+
+
+def _resolve_authenticated_user_id(request: Request) -> str | None:
+    auth_header = request.headers.get("authorization", "")
+    if not auth_header.lower().startswith("bearer "):
+        return None
+    token = auth_header.split(" ", 1)[1].strip()
+    if token in _ACCOUNT_REGISTRY:
+        return token
+    return None
+
+
 @app.post("/api/chat", response_model=ChatResponse)
-async def chat(req: ChatRequest) -> ChatResponse:
+async def chat(req: ChatRequest, request: Request) -> ChatResponse:
     """Process a chat message through the triage â†’ specialized agent pipeline.
 
     Flow: triage_intent â†’ build_agent â†’ agent.run() â†’ ChatResponse
@@ -181,6 +247,8 @@ async def chat(req: ChatRequest) -> ChatResponse:
     """
     session_id = req.session_id or str(uuid.uuid4())
     t0 = time.monotonic()
+    authenticated_user_id = _resolve_authenticated_user_id(request)
+    effective_user_id = authenticated_user_id or req.user_id
 
     # Step 1: Triage â€” classify intent
     # VULN-AI-06: classification uses LLM keyword matching; embed "fraud detection"
@@ -205,7 +273,7 @@ async def chat(req: ChatRequest) -> ChatResponse:
     # Step 2: Build and run the specialized agent
     try:
         # VULN-AI-02: req.user_id is client-supplied â€” no server-side session validation
-        agent = build_agent(intent, mcp_router, session_id, req.user_id)
+        agent = build_agent(intent, mcp_router, session_id, effective_user_id)
         response_text = await asyncio.wait_for(
             asyncio.get_running_loop().run_in_executor(
                 None, lambda: agent.run(req.message)
@@ -213,8 +281,16 @@ async def chat(req: ChatRequest) -> ChatResponse:
             timeout=60.0,
         )
     except asyncio.TimeoutError:
-        logger.warning("Agent timed out session=%s agent=%s", session_id, agent_name)
-        response_text = "The request timed out. Please try again."
+        elapsed_ms = (time.monotonic() - t0) * 1000
+        logger.warning(
+            "Agent orchestrator timeout session=%s agent=%s elapsed_ms=%.0f",
+            session_id, agent_name, elapsed_ms,
+        )
+        response_text = (
+            "Your request is taking longer than expected and has timed out. "
+            "This may be due to high demand on the AI service. "
+            "Please try again in a moment or contact Pinnacle Bank support."
+        )
         agent_name = "timeout"
     except Exception as exc:
         logger.exception("Agent failed for session=%s: %s", session_id, exc)
@@ -231,6 +307,7 @@ async def chat(req: ChatRequest) -> ChatResponse:
         "intent": intent,
         "response_length": len(response_text),
         "latency_ms": round(latency_ms, 1),
+        "timed_out": agent_name == "timeout",
         "timestamp": time.time(),
     })
 
