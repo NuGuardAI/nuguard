@@ -1,17 +1,17 @@
 {
   "schema_version": "1.4.0",
-  "generated_at": "2026-04-09T01:46:27Z",
+  "generated_at": "2026-04-26T20:32:45Z",
   "generator": "nuguard",
   "target": "/workspaces/nuguard-private/tests/apps/Golden_Bank_Agent",
   "nodes": [
     {
-      "id": "c7347b01-7c28-4023-b7ef-59336c4f7ab2",
+      "id": "c4a60cab-1696-4fb6-8e8c-ecfc2a867ebf",
       "name": "Golden Bank AI Support",
       "component_type": "AGENT",
       "confidence": 0.9360000000000002,
       "metadata": {
         "framework": "google_adk",
-        "description": "The Golden Bank AI Support agent, built with Google ADK, provides customer service and support, answering queries, resolving issues, and guiding users through banking processes using natural language ",
+        "description": "The Golden Bank AI Support agent utilizes the Google ADK framework to provide secure, automated customer assistance by processing financial inquiries and executing account-related tasks within the ban",
         "injection_risk_score": 0.1,
         "request_body_schema": {},
         "chat_payload_list": false,
@@ -77,10 +77,10 @@
       ]
     },
     {
-      "id": "9b6badd1-1193-44bb-94f7-b4e09e8dd3a3",
+      "id": "a14a3a6d-1eff-4fa3-88ce-aa39e4312483",
       "name": "generic",
       "component_type": "AUTH",
-      "confidence": 0.9799999999999999,
+      "confidence": 0.616,
       "metadata": {
         "request_body_schema": {},
         "chat_payload_list": false,
@@ -92,27 +92,23 @@
             "code",
             "iac"
           ],
-          "description": "Authentication handled server-side via gcloud.",
-          "llm_verified": true,
-          "llm_verification_reason": "The code description mentions \"Auth is handled server-side via gcloud\". This indicates that authentication is being handled, making it a valid AUTH node.",
-          "llm_confidence": 0.7,
+          "llm_soft_rejected": true,
+          "llm_verification_reason": "The detection is based on a comment in the docstring describing how authentication is handled externally via gcloud, rather than an implementation of an AUTH node in the code.",
           "confidence_breakdown": {
-            "regex_confidence": 0.7,
-            "llm_confidence": 0.7,
-            "evidence_count": 7,
+            "regex_confidence": 0.55,
+            "llm_confidence": 0.0,
+            "evidence_count": 5,
             "evidence_sources": [
-              "llm:verified",
               "evidence:0",
               "evidence:1",
               "evidence:2",
               "evidence:3",
-              "evidence:4",
-              "confidence:high"
+              "evidence:4"
             ],
-            "base_confidence": 0.7,
+            "base_confidence": 0.44,
             "evidence_multiplier": 1.4,
             "validation_penalty": 0.0,
-            "final_confidence": 0.98
+            "final_confidence": 0.616
           }
         }
       },
@@ -165,7 +161,7 @@
       ]
     },
     {
-      "id": "608fab6a-19ed-4bf0-88a2-3172f6d80f91",
+      "id": "3441ad8d-d380-4077-87f5-b4e4e8343ab1",
       "name": "sqlite",
       "component_type": "DATASTORE",
       "confidence": 0.44000000000000006,
@@ -204,35 +200,36 @@
       ]
     },
     {
-      "id": "3eb5eb92-bc90-49ec-a379-6caf022418f0",
+      "id": "7bd1843b-bcf3-491e-9a28-1fb5809356e0",
       "name": "generic",
       "component_type": "DEPLOYMENT",
-      "confidence": 0.9099999999999999,
+      "confidence": 0.528,
       "metadata": {
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
           "canonical_name": "deployment_generic",
           "adapter": "deployment_generic",
-          "evidence_count": 2,
-          "description": "Authentication handled server-side via gcloud.",
-          "llm_verified": true,
-          "llm_verification_reason": "The code description mentions \"Auth is handled server-side via gcloud\". This indicates that authentication is being handled, making it a valid AUTH node.",
-          "llm_confidence": 0.7,
+          "evidence_count": 3,
+          "detected_by_tiers": [
+            "code",
+            "iac"
+          ],
+          "llm_soft_rejected": true,
+          "llm_verification_reason": "The detection is based on a comment in the docstring describing how authentication is handled externally via gcloud, rather than an implementation of an AUTH node in the code.",
           "confidence_breakdown": {
-            "regex_confidence": 0.7,
-            "llm_confidence": 0.7,
-            "evidence_count": 4,
+            "regex_confidence": 0.55,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
             "evidence_sources": [
-              "llm:verified",
               "evidence:0",
               "evidence:1",
-              "confidence:high"
+              "evidence:2"
             ],
-            "base_confidence": 0.7,
-            "evidence_multiplier": 1.3,
+            "base_confidence": 0.44,
+            "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
-            "final_confidence": 0.91
+            "final_confidence": 0.528
           }
         }
       },
@@ -254,11 +251,20 @@
             "path": "test_api.py",
             "line": 5
           }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.8,
+          "detail": "deployment_generic: docker",
+          "location": {
+            "path": "serve.sh",
+            "line": 61
+          }
         }
       ]
     },
     {
-      "id": "8a453676-391e-4f35-8b85-f053b923d5a1",
+      "id": "9d93af2d-33a5-4995-9627-bec399a46dd4",
       "name": "Prompt Guardrail 1774918519560",
       "component_type": "GUARDRAIL",
       "confidence": 0.8640000000000001,
@@ -305,7 +311,7 @@
       ]
     },
     {
-      "id": "977f4371-3660-4300-b216-8a17c62958ac",
+      "id": "35727897-997e-45cf-aad9-43f8ccf4e49c",
       "name": "code_execution",
       "component_type": "PRIVILEGE",
       "confidence": 0.4840000000000001,
@@ -355,7 +361,7 @@
       ]
     },
     {
-      "id": "3e7e70c7-c2ab-4684-ae2f-b13014a2eed7",
+      "id": "4f9df8b8-d29a-40fb-921c-b56c15d233b0",
       "name": "network_out",
       "component_type": "PRIVILEGE",
       "confidence": 0.4840000000000001,
@@ -405,7 +411,7 @@
       ]
     },
     {
-      "id": "e57f071c-0869-434d-9fed-4e02f03c0fb2",
+      "id": "e2e926ba-7682-43c3-98df-d162ba499d49",
       "name": "Golden Bank AI Support instruction",
       "component_type": "PROMPT",
       "confidence": 0.8640000000000001,
@@ -456,7 +462,7 @@
       ]
     },
     {
-      "id": "44cb7933-56e6-4d09-aa52-c5fb86e8595e",
+      "id": "3ed8b75d-a49d-46c7-b1f1-69bee46b518d",
       "name": "add_biller",
       "component_type": "TOOL",
       "confidence": 0.8640000000000001,
@@ -507,7 +513,7 @@
       ]
     },
     {
-      "id": "3f87693e-e5c8-401e-9cae-ad83d0e1d01f",
+      "id": "db9aec74-8bc4-4b99-a08b-81246d4458a1",
       "name": "authenticate_user",
       "component_type": "TOOL",
       "confidence": 0.8640000000000001,
@@ -558,13 +564,13 @@
       ]
     },
     {
-      "id": "cbc77e92-3650-497d-b833-12f8e46c4420",
+      "id": "21549a50-9e69-49e8-b5f3-63e6b39148b8",
       "name": "customer_data",
       "component_type": "TOOL",
       "confidence": 0.8640000000000001,
       "metadata": {
         "framework": "google_adk",
-        "description": "The `customer_data` tool retrieves and formats customer information, including demographics, purchase history, and contact details, from a secure database for use by other AI components.",
+        "description": "This tool facilitates secure retrieval and management of customer records within the Google ADK framework, enabling authorized system processes to access sensitive user information while maintaining s",
         "high_privilege": false,
         "sql_injectable": false,
         "ssrf_possible": false,
@@ -609,7 +615,7 @@
       ]
     },
     {
-      "id": "d789eb77-51db-40a9-8023-cd00e125f497",
+      "id": "6d6ce409-7988-41a1-8c60-34e6ee744f03",
       "name": "escalate_to_human_agent",
       "component_type": "TOOL",
       "confidence": 0.8640000000000001,
@@ -660,7 +666,7 @@
       ]
     },
     {
-      "id": "76cdba9b-fd56-4575-85eb-f2b247e7c79a",
+      "id": "c534bc71-eadd-4378-bae4-d44e6cfe5fba",
       "name": "find_locations",
       "component_type": "TOOL",
       "confidence": 0.8640000000000001,
@@ -711,7 +717,7 @@
       ]
     },
     {
-      "id": "67f4955f-3489-4e8e-85da-c904d497c0e7",
+      "id": "28eb2a44-f7d0-4843-a3af-9033f1d90c50",
       "name": "get_account_statements",
       "component_type": "TOOL",
       "confidence": 0.8640000000000001,
@@ -762,7 +768,7 @@
       ]
     },
     {
-      "id": "a0e1fa5e-6468-46c6-9fd1-75a5d3fc06c2",
+      "id": "0fb57754-b0da-4506-acba-3ce042d0e0be",
       "name": "get_account_summary",
       "component_type": "TOOL",
       "confidence": 0.8640000000000001,
@@ -813,7 +819,7 @@
       ]
     },
     {
-      "id": "de486b17-e9fe-4855-8506-650e05bfc2d8",
+      "id": "7856b1eb-6d5f-4f01-8b37-47c21cff0d90",
       "name": "get_transaction_history",
       "component_type": "TOOL",
       "confidence": 0.8640000000000001,
@@ -864,7 +870,7 @@
       ]
     },
     {
-      "id": "013189d8-262a-4364-8e44-c14b10d9588a",
+      "id": "df14a194-95a9-46cf-ab82-77d55f0b5c47",
       "name": "get_user_accounts",
       "component_type": "TOOL",
       "confidence": 0.8640000000000001,
@@ -915,7 +921,7 @@
       ]
     },
     {
-      "id": "0f2d751c-bb26-4211-a953-8ec30ca1eeff",
+      "id": "24a2b7df-b0d7-4b59-871d-3b8958c8b583",
       "name": "initiate_account_closure",
       "component_type": "TOOL",
       "confidence": 0.8640000000000001,
@@ -966,7 +972,7 @@
       ]
     },
     {
-      "id": "b5723087-0198-4ad5-8a61-72941f0dea79",
+      "id": "af167de9-1923-46b7-9479-dd94f08d5af2",
       "name": "pay_bill",
       "component_type": "TOOL",
       "confidence": 0.8640000000000001,
@@ -1017,7 +1023,7 @@
       ]
     },
     {
-      "id": "69cefe0b-dfad-4d98-8658-eb260d5ffa5a",
+      "id": "060410b2-57cd-45a8-abad-fe991c421e1a",
       "name": "transfer_funds",
       "component_type": "TOOL",
       "confidence": 0.8640000000000001,
@@ -1165,39 +1171,39 @@
   ],
   "edges": [
     {
-      "source": "c7347b01-7c28-4023-b7ef-59336c4f7ab2",
-      "target": "44cb7933-56e6-4d09-aa52-c5fb86e8595e",
+      "source": "c4a60cab-1696-4fb6-8e8c-ecfc2a867ebf",
+      "target": "3ed8b75d-a49d-46c7-b1f1-69bee46b518d",
       "relationship_type": "CALLS"
     },
     {
-      "source": "c7347b01-7c28-4023-b7ef-59336c4f7ab2",
-      "target": "3f87693e-e5c8-401e-9cae-ad83d0e1d01f",
+      "source": "c4a60cab-1696-4fb6-8e8c-ecfc2a867ebf",
+      "target": "db9aec74-8bc4-4b99-a08b-81246d4458a1",
       "relationship_type": "CALLS"
     },
     {
-      "source": "c7347b01-7c28-4023-b7ef-59336c4f7ab2",
-      "target": "cbc77e92-3650-497d-b833-12f8e46c4420",
+      "source": "c4a60cab-1696-4fb6-8e8c-ecfc2a867ebf",
+      "target": "21549a50-9e69-49e8-b5f3-63e6b39148b8",
       "relationship_type": "CALLS"
     },
     {
-      "source": "c7347b01-7c28-4023-b7ef-59336c4f7ab2",
-      "target": "d789eb77-51db-40a9-8023-cd00e125f497",
+      "source": "c4a60cab-1696-4fb6-8e8c-ecfc2a867ebf",
+      "target": "6d6ce409-7988-41a1-8c60-34e6ee744f03",
       "relationship_type": "CALLS"
     },
     {
-      "source": "c7347b01-7c28-4023-b7ef-59336c4f7ab2",
-      "target": "76cdba9b-fd56-4575-85eb-f2b247e7c79a",
+      "source": "c4a60cab-1696-4fb6-8e8c-ecfc2a867ebf",
+      "target": "c534bc71-eadd-4378-bae4-d44e6cfe5fba",
       "relationship_type": "CALLS"
     },
     {
-      "source": "9b6badd1-1193-44bb-94f7-b4e09e8dd3a3",
-      "target": "0338f50d-b9ca-4623-8f48-280687296d1a",
+      "source": "a14a3a6d-1eff-4fa3-88ce-aa39e4312483",
+      "target": "553cc93e-c679-4d97-a935-07182422d871",
       "relationship_type": "PROTECTS"
     }
   ],
   "deps": [],
   "summary": {
-    "use_case": "This AI application provides customer support assistance for Golden Bank, enabling users to manage their accounts, pay bills, transfer funds, and find nearby locations. It supports text-based interactions and integrates with tools for user authentication, account information retrieval, and bill management. No MCP server was detected.",
+    "use_case": "Golden Bank AI Support is a customer service agent designed to assist banking clients with account management, transaction history, and bill payments. The system operates exclusively via text modality, lacking support for voice, image, or video inputs.",
     "frameworks": [
       "google_adk",
       "google-ces"
@@ -1251,7 +1257,7 @@
     "node_counts": {
       "AGENT": 1,
       "AUTH": 1,
-      "DATASTORE": 1,
+      "DATASTORE": 2,
       "DEPLOYMENT": 1,
       "GUARDRAIL": 1,
       "PRIVILEGE": 2,
@@ -1259,7 +1265,7 @@
       "TOOL": 12,
       "FRAMEWORK": 1,
       "API_ENDPOINT": 1,
-      "MODEL": 2
+      "MODEL": 1
     },
     "secret_stores": [],
     "availability_zones": [],
@@ -1267,7 +1273,7 @@
     "security_findings": [],
     "iam_principals": [],
     "service_accounts": [],
-    "iac_security_summary": "## AI Application Infrastructure Security Briefing\n\nThis briefing summarizes the security posture of the AI application based on the provided infrastructure configuration and aggregate security signals.\n\n**1. Deployment Posture:**\n\n*   The application is deployed as a generic `DEPLOYMENT` resource.\n*   No specific cloud provider or region is identified.\n*   No availability zones are configured, indicating a lack of high availability or resilience setup.\n\n**2. Secret Management:**\n\n*   No secret stores are currently in use. This suggests a potential risk of secrets being stored in plaintext within the application code, configuration files, or environment variables.\n\n**3. Encryption:**\n\n*   Encryption at rest coverage is absent. This means data stored by the application is not encrypted, increasing the risk of data exposure in case of unauthorized access.\n*   Key management practices are not defined due to the lack of encryption at rest.\n\n**4. IAM / Least-Privilege:**\n\n*   No IAM principals or service accounts are defined. This makes it difficult to assess the application's adherence to the principle of least privilege.\n\n**5. CI/CD Security:**\n\n*   No information is available regarding CI/CD security aspects such as GitHub Actions runners, OIDC configuration, or workflow trigger surface.\n\n**6. Container Security:**\n\n*   No information is available regarding container security aspects such as root containers, missing health checks, or missing resource limits.\n\n**7. Key Risks and Recommendations:**\n\nBased on the analysis, the top 3 prioritized actions are:\n\n1.  **Implement Encryption at Rest:** Prioritize enabling encryption at rest for all data storage used by the application. This mitigates the risk of data exposure in case of unauthorized access. Choose a suitable key management solution (e.g., cloud provider's KMS) and integrate it with the application.\n2.  **Implement Secure Secret Management:** Introduce a dedicated secret store (e.g., HashiCorp Vault, AWS Secrets Manager, Azure Key Vault) to manage sensitive information such as API keys, database passwords, and certificates. Migrate any existing plaintext secrets to the secret store and update the application to retrieve secrets from the store.\n3.  **Implement IAM and Service Accounts:** Define IAM roles and service accounts with the least necessary privileges for the application to access cloud resources. This limits the potential impact of compromised credentials.",
+    "iac_security_summary": "### Security Briefing: AI Application Infrastructure\n\n**To:** DevSecOps Engineering Team  \n**Subject:** Security Posture Assessment – Deployment `generic`\n\nThis briefing summarizes the security posture of the `generic` deployment node based on current infrastructure telemetry. The configuration currently lacks foundational security controls, presenting a high-risk profile for production readiness.\n\n#### 1. Deployment Posture\nThe infrastructure lacks defined availability zones (AZs) and regional configuration. The deployment is currently isolated from high-availability (HA) constructs, indicating a single point of failure and a lack of regional resilience.\n\n#### 2. Secret Management\nThere is no integration with managed secret stores (e.g., AWS Secrets Manager, HashiCorp Vault, GCP Secret Manager). The absence of a dedicated secret provider suggests a high probability of hardcoded credentials or environment-variable-based secret injection, which are susceptible to exposure via logs or process inspection.\n\n#### 3. Encryption\nEncryption-at-rest coverage is currently **disabled**. There is no evidence of managed key rotation or integration with a Key Management Service (KMS). Data persistence layers, if present, are currently unencrypted, violating standard compliance requirements for AI workloads handling sensitive training data or inference inputs.\n\n#### 4. IAM / Least-Privilege\nThe infrastructure lacks defined IAM principals and service accounts. Without workload identity federation or scoped service accounts, the application is likely running with default or overly permissive execution roles, increasing the blast radius in the event of a container breakout.\n\n#### 5. CI/CD Security\nNo OIDC trust relationships or CI/CD pipeline configurations were detected. The lack of explicit identity configuration for the deployment pipeline suggests potential reliance on long-lived static credentials, which are high-risk vectors for supply chain compromise.\n\n#### 6. Container Security\nThe current configuration provides no visibility into container runtime security. Without defined resource limits, health checks, or non-root user enforcement, the deployment is vulnerable to resource exhaustion (DoS) and privilege escalation attacks.\n\n---\n\n### Key Risks and Recommendations\n\n1. **Implement Secret Management:** Immediately migrate all sensitive configuration (API keys, database credentials) to a managed secret store. Remove all plaintext secrets from environment variables and CI/CD configuration files.\n2. **Enforce Encryption-at-Rest:** Enable encryption-at-rest for all storage volumes and databases using customer-managed keys (CMKs) via a KMS. Ensure audit logging is enabled for all key access requests.\n3. **Adopt Workload Identity:** Define and assign a dedicated, least-privilege IAM role to the deployment. Utilize OIDC for CI/CD authentication to eliminate the need for long-lived static credentials in the deployment pipeline.",
     "data_classification": [],
     "classified_tables": [],
     "startup_commands": [],
@@ -1283,5 +1289,5 @@
       "/run_sse"
     ]
   },
-  "relationship_graph_md": "## Component Relationship Graph\n\nHere's a summary of the Golden Bank AI Support system architecture:\n\n*   The `Golden Bank AI Support` agent orchestrates several tools: `add_biller`, `authenticate_user`, `customer_data`, `escalate_to_human_agent`, and `find_locations`.\n*   The `customer_data` tool likely provides access to sensitive customer information.\n*   A single guardrail, `Prompt Guardrail 1774918519560`, is present, but its specific function and coverage are unknown.\n*   The `sqlite` datastore is isolated, with no connections to any other component.\n*   Several tools appear to be unused by the main agent: `get_account_statements`, `get_account_summary`, `get_transaction_history`, `get_user_accounts`, `initiate_account_closure`, `pay_bill`, and `transfer_funds`. These represent potential attack vectors if they are reachable through other means.\n*   The `CES Agent` API endpoint and `google-ces` framework are present but not connected to the core agent, suggesting potential future integration.\n*   Risk patterns include the unguarded `customer_data` tool and the presence of unused tools.\n\n```mermaid\nflowchart LR\n    Golden_Bank_AI_Support_c7347b[\"🤖 Golden Bank AI Support\"]\n    sqlite_608fab[(\"🗄 sqlite\")]\n    Prompt_Guardrail_1774918519560_8a4536{\"🛡 Prompt Guardrail 1774918519560\"}\n    Golden_Bank_AI_Support_instruction_e57f07>\"💬 Golden Bank AI Support instruction\"]\n    add_biller_44cb79(\"🔧 add_biller\")\n    authenticate_user_3f8769(\"🔧 authenticate_user\")\n    customer_data_cbc77e(\"🔧 customer_data\")\n    escalate_to_human_agent_d789eb(\"🔧 escalate_to_human_agent\")\n    find_locations_76cdba(\"🔧 find_locations\")\n    get_account_statements_67f495(\"🔧 get_account_statements\")\n    get_account_summary_a0e1fa(\"🔧 get_account_summary\")\n    get_transaction_history_de486b(\"🔧 get_transaction_history\")\n    get_user_accounts_013189(\"🔧 get_user_accounts\")\n    initiate_account_closure_0f2d75(\"🔧 initiate_account_closure\")\n    pay_bill_b57230(\"🔧 pay_bill\")\n    transfer_funds_69cefe(\"🔧 transfer_funds\")\n    google_ces_ec7801[/\"⚙ google-ces\"/]\n    CES_Agent__ces_googleapis_com__9e407b([\"🌐 CES Agent (ces.googleapis.com)\"])\n\n    Golden_Bank_AI_Support_c7347b -->|calls| add_biller_44cb79\n    Golden_Bank_AI_Support_c7347b -->|calls| authenticate_user_3f8769\n    Golden_Bank_AI_Support_c7347b -->|calls| customer_data_cbc77e\n    Golden_Bank_AI_Support_c7347b -->|calls| escalate_to_human_agent_d789eb\n    Golden_Bank_AI_Support_c7347b -->|calls| find_locations_76cdba\n\n    classDef agent    fill:#4A90D9,stroke:#2C6FAC,color:#fff\n    classDef tool     fill:#7ED321,stroke:#5A9A18,color:#fff\n    classDef model    fill:#9B59B6,stroke:#7D3C98,color:#fff\n    classDef prompt   fill:#F39C12,stroke:#D68910,color:#fff\n    classDef guard    fill:#E74C3C,stroke:#C0392B,color:#fff\n    classDef store    fill:#1ABC9C,stroke:#17A589,color:#fff\n    classDef fw       fill:#95A5A6,stroke:#717D7E,color:#fff\n    classDef endpoint fill:#3498DB,stroke:#2471A3,color:#fff\n    class Golden_Bank_AI_Support_c7347b agent\n    class add_biller_44cb79,authenticate_user_3f8769,customer_data_cbc77e,escalate_to_human_agent_d789eb,find_locations_76cdba,get_account_statements_67f495,get_account_summary_a0e1fa,get_transaction_history_de486b,get_user_accounts_013189,initiate_account_closure_0f2d75,pay_bill_b57230,transfer_funds_69cefe tool\n    class Golden_Bank_AI_Support_instruction_e57f07 prompt\n    class Prompt_Guardrail_1774918519560_8a4536 guard\n    class sqlite_608fab store\n    class google_ces_ec7801 fw\n    class CES_Agent__ces_googleapis_com__9e407b endpoint\n```"
+  "relationship_graph_md": "## Component Relationship Graph\n\n### System Architecture and Data Flow\n\nThe Golden Bank AI Support agent acts as the central orchestrator, managing user interactions through a limited set of integrated tools.\n\n*   **Orchestration:** The AI agent is authorized to call five specific tools: `add_biller`, `authenticate_user`, `customer_data`, `escalate_to_human_agent`, and `find_locations`.\n*   **Data Access:** The agent interacts with `customer_data`, representing a direct path to sensitive user information.\n*   **Security Observations:**\n    *   **Disconnected Components:** A significant number of high-risk tools—including `transfer_funds`, `pay_bill`, and `initiate_account_closure`—are currently disconnected from the agent, limiting its functional scope.\n    *   **Guardrail Isolation:** The `Prompt Guardrail` is not linked to the agent, meaning there is no active enforcement mechanism governing the agent's inputs or outputs.\n    *   **Unused Infrastructure:** The `sqlite` datastore and the `google-ces` framework are present in the environment but remain unlinked, indicating they are not currently utilized by the agent.\n    *   **Risk Pattern:** The agent lacks integration with account-specific tools (e.g., `get_account_summary`), suggesting a restricted operational profile despite having access to sensitive customer data.\n\n```mermaid\nflowchart LR\n    Golden_Bank_AI_Support_c4a60c[\"🤖 Golden Bank AI Support\"]\n    sqlite_3441ad[(\"🗄 sqlite\")]\n    Prompt_Guardrail_1774918519560_9d93af{\"🛡 Prompt Guardrail 1774918519560\"}\n    Golden_Bank_AI_Support_instruction_e2e926>\"💬 Golden Bank AI Support instruction\"]\n    add_biller_3ed8b7(\"🔧 add_biller\")\n    authenticate_user_db9aec(\"🔧 authenticate_user\")\n    customer_data_21549a(\"🔧 customer_data\")\n    escalate_to_human_agent_6d6ce4(\"🔧 escalate_to_human_agent\")\n    find_locations_c534bc(\"🔧 find_locations\")\n    get_account_statements_28eb2a(\"🔧 get_account_statements\")\n    get_account_summary_0fb577(\"🔧 get_account_summary\")\n    get_transaction_history_7856b1(\"🔧 get_transaction_history\")\n    get_user_accounts_df14a1(\"🔧 get_user_accounts\")\n    initiate_account_closure_24a2b7(\"🔧 initiate_account_closure\")\n    pay_bill_af167d(\"🔧 pay_bill\")\n    transfer_funds_060410(\"🔧 transfer_funds\")\n    google_ces_ec7801[/\"⚙ google-ces\"/]\n    CES_Agent__ces_googleapis_com__9e407b([\"🌐 CES Agent (ces.googleapis.com)\"])\n\n    Golden_Bank_AI_Support_c4a60c -->|calls| add_biller_3ed8b7\n    Golden_Bank_AI_Support_c4a60c -->|calls| authenticate_user_db9aec\n    Golden_Bank_AI_Support_c4a60c -->|calls| customer_data_21549a\n    Golden_Bank_AI_Support_c4a60c -->|calls| escalate_to_human_agent_6d6ce4\n    Golden_Bank_AI_Support_c4a60c -->|calls| find_locations_c534bc\n\n    classDef agent    fill:#4A90D9,stroke:#2C6FAC,color:#fff\n    classDef tool     fill:#7ED321,stroke:#5A9A18,color:#fff\n    classDef model    fill:#9B59B6,stroke:#7D3C98,color:#fff\n    classDef prompt   fill:#F39C12,stroke:#D68910,color:#fff\n    classDef guard    fill:#E74C3C,stroke:#C0392B,color:#fff\n    classDef store    fill:#1ABC9C,stroke:#17A589,color:#fff\n    classDef fw       fill:#95A5A6,stroke:#717D7E,color:#fff\n    classDef endpoint fill:#3498DB,stroke:#2471A3,color:#fff\n    class Golden_Bank_AI_Support_c4a60c agent\n    class add_biller_3ed8b7,authenticate_user_db9aec,customer_data_21549a,escalate_to_human_agent_6d6ce4,find_locations_c534bc,get_account_statements_28eb2a,get_account_summary_0fb577,get_transaction_history_7856b1,get_user_accounts_df14a1,initiate_account_closure_24a2b7,pay_bill_af167d,transfer_funds_060410 tool\n    class Golden_Bank_AI_Support_instruction_e2e926 prompt\n    class Prompt_Guardrail_1774918519560_9d93af guard\n    class sqlite_3441ad store\n    class google_ces_ec7801 fw\n    class CES_Agent__ces_googleapis_com__9e407b endpoint\n```"
 }

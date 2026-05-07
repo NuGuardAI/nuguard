@@ -13,7 +13,7 @@ policy:
 
 # ─── LLM settings ─────────────────────────────────────────────────────────────
 llm:
-  model: gemini/gemini-2.0-flash  # Vertex AI — needs GOOGLE_CLOUD_PROJECT + GOOGLE_CLOUD_LOCATION
+  model: gemini/gemini-3.1-flash-lite-preview  # Vertex AI — needs GOOGLE_CLOUD_PROJECT + GOOGLE_CLOUD_LOCATION
   api_key: ${GEMINI_API_KEY}         # Vertex AI API key (starts with AQ.)
 #  model: openai/gpt-4.1-mini  # OpenAI GPT-4.1 mini
 #  api_key: ${OPENAI_API_KEY}         # OpenAI API key
@@ -27,7 +27,7 @@ sbom_generation:
 # nuguard behavior runs intent-aware static + dynamic analysis.
 behavior:
   # Required for dynamic mode: URL of the running AI application under test
-  target: http://127.0.0.1:8080/
+  target: http://127.0.0.1:8200/
 
   llm: true
 
@@ -51,7 +51,7 @@ behavior:
 # nuguard redteam exercises adversarial scenarios to find break points.
 redteam:
   # Required: URL of the running AI application under test
-  target: http://localhost:8080/
+  target: http://localhost:8200/
 
   # Path of the chat/agent endpoint on the target (default: /chat)
   #target_endpoint: /chat
@@ -63,8 +63,8 @@ redteam:
   #   header: "Authorization: Bearer ${TARGET_TOKEN}"
   auth:
     type: basic
-    username: ${APP_USERNAME}
-    password: ${APP_PASSWORD}
+    username: testuser
+    password: testpass
 
   # Canary seed file — same file as behavior.canary (or a separate one)
   # tenant session_tokens in canary.json are used as attacker credentials for
@@ -76,10 +76,19 @@ redteam:
   chat_payload_list: true           # wrap message value in a list
   chat_response_key: outputs[0].text  # JSON key to extract response text from reply
 
+  # ── Rate-limit protection for Google CES ──────────────────────────────────
+  # CES has strict per-project QPS limits. Run scenarios sequentially and add
+  # delays between turns/scenarios so we don't exhaust the quota mid-run.
+  # CESClient.run_turn() also retries 429s automatically (up to 4 attempts,
+  # exponential backoff 5s→10s→20s→40s), but these settings prevent most 429s.
+  concurrency: 1              # run scenarios one at a time (CES is heavily rate-limited)
+  turn_delay_seconds: 3       # 3 s between turns within a scenario
+  scenario_delay_seconds: 5   # 5 s between scenario starts
+
   # Scan profile:
   #   ci   — fast; only scenarios with pre-impact score ≥ 5 (default)
   #   full — all scenarios regardless of score
-  profile: ci
+  profile: full
 
   # Scenario types to run (omit section to run all):
   scenarios:
@@ -88,6 +97,7 @@ redteam:
     - privilege-escalation
     - data-exfiltration
     - policy-violation
+    - api-attacks
     - mcp-toxic-flow
 
   # Minimum pre-impact score [0–10] for a scenario to be included (default: 0.0)
@@ -108,16 +118,17 @@ redteam:
 
   # Per-request HTTP timeout in seconds (default: 120)
   # Multi-agent pipelines with LLM calls can take 60–120 s; increase for slow apps
-  request_timeout: 120
+  request_timeout: 90
 
   # Verbose report: include full per-scenario traces in redteam report
-  verbose: false
+  verbose: true
 
   # Strict outcome mode (default: false)
   # When true, a run where ≥ 80% of transport events are 5xx/network errors is
   # reported as 'inconclusive_target_errors' rather than 'no_findings'.
   # Enable in CI to catch false-clean runs caused by a broken target.
   strict_outcome: false
+  similar_miss_threshold: 4   # set to 0 to disable
 
   # Guided adversarial conversations using ConversationDirector
   guided_conversations: true        # enable adaptive multi-turn attacks
@@ -126,12 +137,14 @@ redteam:
 
   # LLM for attack-payload generation (must tolerate adversarial content)
   llm:
-    model: vertex_ai/gemini-2.0-flash
-    api_key: ${GEMINI_API_KEY}
+ #   model: ${AWS_BEDROCK_MODEL}
+ #   api_key: ${ANTHROPIC_API_KEY}
+    model: openai/gpt-5.4
+    api_key: ${OPENAI_API_KEY}  
 
   # LLM for response evaluation and finding summarisation
   eval_llm:
-    model: vertex_ai/gemini-2.0-flash
+    model: gemini/gemini-3.1-flash-lite-preview
     api_key: ${GEMINI_API_KEY}
 
   # MCP server hostnames treated as trusted.

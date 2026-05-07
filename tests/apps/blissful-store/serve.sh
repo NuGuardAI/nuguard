@@ -11,6 +11,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PORT="${PORT:-8081}"
+BLISSFUL_CUSTOMER_PROFILE="${BLISSFUL_CUSTOMER_PROFILE:-patrick}"
 REPORTS_DIR="$SCRIPT_DIR/reports"
 LOG_FILE="$REPORTS_DIR/server.log"
 
@@ -39,7 +40,8 @@ fi
 
 echo "Starting Blissful Store webapp on http://127.0.0.1:${PORT}"
 echo "  Logs: $LOG_FILE"
+echo "  Customer profile: $BLISSFUL_CUSTOMER_PROFILE"
 echo ""
 
-exec env PORT="$PORT" uv run python3 "$SCRIPT_DIR/webapp/app.py" \
+exec env PORT="$PORT" BLISSFUL_CUSTOMER_PROFILE="$BLISSFUL_CUSTOMER_PROFILE" uv run python3 "$SCRIPT_DIR/webapp/app.py" \
   >> "$LOG_FILE" 2>&1

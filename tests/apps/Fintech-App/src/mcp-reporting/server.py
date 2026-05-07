@@ -1,15 +1,38 @@
 """FinTech GOAT — MCP Reporting — DELIBERATELY VULNERABLE."""
 from __future__ import annotations
-import json, logging, os, uuid
+
+import json
+import logging
+import os
+import time
+import uuid
 from typing import Any
-import requests
+
 from fastmcp import FastMCP
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-logger = logging.getLogger("mcp_reporting")
-logging.basicConfig(level=logging.INFO)
+
+def _setup_logger(name: str) -> "logging.Logger":
+    """Named logger with its own StreamHandler — survives uvicorn dictConfig reset."""
+    log = logging.getLogger(name)
+    if not log.handlers:
+        _h = logging.StreamHandler()
+        _h.setFormatter(logging.Formatter(
+            "%(asctime)s %(levelname)-8s %(name)s  %(message)s",
+            datefmt="%Y-%m-%dT%H:%M:%S",
+        ))
+        log.addHandler(_h)
+    log.setLevel(getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO))
+    log.propagate = False
+    return log
+
+logger = _setup_logger("mcp_reporting")
 mcp = FastMCP(name="fintech-reporting", instructions="Pinnacle Bank reporting tool API.")
+
+
+def _summarize_arguments(arguments: dict[str, Any]) -> dict[str, Any]:
+    return {"keys": sorted(arguments.keys()), "arg_count": len(arguments)}
 
 _CUSTOMERS: dict[str, dict] = {
     "ACCT-001": {"customer_id": "ACCT-001", "name": "Alice Johnson", "email": "alice.johnson@email.com", "dob": "1985-03-15", "ssn_last4": "6782", "address": "123 Main St, Boston, MA 02101", "balance": 12400.50, "currency": "USD", "account_type": "checking", "credit_score": 745, "annual_income": 85000, "recent_transactions": [{"txn": "TXN-1001", "amount": -500.00, "desc": "Wire to ACCT-007"}, {"txn": "TXN-1002", "amount": 2500.00, "desc": "Payroll deposit"}, {"txn": "TXN-1003", "amount": -9800.00, "desc": "International wire"}]},
@@ -93,6 +116,8 @@ async def tools_call_endpoint(request: Request) -> JSONResponse:
     params = body.get("params", {})
     tool_name = params.get("name", "")
     arguments = params.get("arguments", {})
+    started_at = time.monotonic()
+    logger.info("tool_call start id=%s tool=%s args=%s", call_id, tool_name, _summarize_arguments(arguments))
     try:
         if tool_name == "generate_report":
             result = await generate_report(**arguments)
@@ -103,10 +128,15 @@ async def tools_call_endpoint(request: Request) -> JSONResponse:
         elif tool_name == "get_regulatory_report":
             result = await get_regulatory_report(**arguments)
         else:
+            logger.warning("tool_call unknown id=%s tool=%s args=%s", call_id, tool_name, _summarize_arguments(arguments))
             return JSONResponse({"jsonrpc": "2.0", "id": call_id, "error": {"code": -32601, "message": f"Unknown tool: {tool_name}"}})
+        elapsed_ms = (time.monotonic() - started_at) * 1000
+        result_summary = list(result.keys()) if isinstance(result, dict) else type(result).__name__
+        logger.info("tool_call complete id=%s tool=%s elapsed_ms=%.1f result=%s", call_id, tool_name, elapsed_ms, result_summary)
         return JSONResponse({"jsonrpc": "2.0", "id": call_id, "result": {"content": [{"type": "text", "text": json.dumps(result)}]}})
     except Exception as exc:
-        logger.error("tools/call tool=%s: %s", tool_name, exc)
+        elapsed_ms = (time.monotonic() - started_at) * 1000
+        logger.exception("tool_call failed id=%s tool=%s elapsed_ms=%.1f args=%s", call_id, tool_name, elapsed_ms, _summarize_arguments(arguments))
         return JSONResponse({"jsonrpc": "2.0", "id": call_id, "error": {"code": -32603, "message": str(exc)}}, status_code=500)
 
 

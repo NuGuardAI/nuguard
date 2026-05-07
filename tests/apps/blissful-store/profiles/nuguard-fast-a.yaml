@@ -4,7 +4,7 @@ sbom: ./reports/blissfuls-store-sbom-llm-gemini-2.0-flash.json
 source: .
 policy:
   path: ./cognitive_policy.md
-  llm: true
+  use_llm: true
 
 llm:
   model: anthropic/claude-3-5-sonnet-latest
@@ -19,6 +19,7 @@ redteam:
   auth:
     type: none
   canary: ./canary.json
+  customer_profile: patrick
   chat_payload_key: phrases
   chat_payload_list: true
   chat_response_key: outputs[0].text

@@ -187,7 +187,40 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
     if "llm" in sbom_gen:
         flat["sbom_llm_enabled"] = bool(sbom_gen["llm"])
 
-    # Redteam section
+    # ── Shared target block ────────────────────────────────────────────────────
+    # target: at the top level acts as a shared default for both behavior and
+    # redteam.  Section-level keys (redteam.target, behavior.target) take
+    # precedence and override the shared values when present.
+    shared_target = data.get("target", {}) or {}
+    if isinstance(shared_target, dict):
+        if "url" in shared_target:
+            flat["target_url"] = shared_target["url"]
+        if "endpoint" in shared_target:
+            flat["target_endpoint"] = shared_target["endpoint"]
+        if "chat_payload_key" in shared_target:
+            flat["redteam_chat_payload_key"] = shared_target["chat_payload_key"]
+        if "chat_payload_list" in shared_target:
+            flat["redteam_chat_payload_list"] = bool(shared_target["chat_payload_list"])
+        if "chat_response_key" in shared_target:
+            flat["redteam_chat_response_key"] = shared_target["chat_response_key"]
+        if "headers" in shared_target and isinstance(shared_target["headers"], dict):
+            flat["redteam_headers"] = {
+                str(k): str(v) for k, v in shared_target["headers"].items()
+            }
+        # Structured auth from the shared block — same format as behavior/redteam auth
+        _shared_auth = shared_target.get("auth", {}) or {}
+        if isinstance(_shared_auth, dict) and _shared_auth:
+            _sa_type = _shared_auth.get("type", "none")
+            flat["redteam_auth_type"] = _sa_type
+            if _sa_type in ("bearer", "api_key") and "header" in _shared_auth:
+                flat["redteam_auth_header"] = _shared_auth["header"]
+            if _sa_type == "basic":
+                flat["redteam_auth_username"] = _shared_auth.get("username") or ""
+                flat["redteam_auth_password"] = _shared_auth.get("password") or ""
+            if _sa_type == "login_flow" and isinstance(_shared_auth.get("login_flow"), dict):
+                flat["redteam_auth_login_flow"] = _shared_auth["login_flow"]
+
+    # Redteam section — overrides shared target block when keys are present
     redteam = data.get("redteam", {}) or {}
     if "target" in redteam:
         flat["target_url"] = redteam["target"]
@@ -219,18 +252,32 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_verbose"] = bool(redteam["verbose"])
     if "request_timeout" in redteam:
         flat["redteam_request_timeout"] = float(redteam["request_timeout"])
+    if "scenario_timeout" in redteam:
+        flat["redteam_scenario_timeout"] = float(redteam["scenario_timeout"])
+    if "similar_miss_threshold" in redteam:
+        flat["redteam_similar_miss_threshold"] = int(redteam["similar_miss_threshold"])
     if "prompt_cache_dir" in redteam:
         flat["redteam_prompt_cache_dir"] = str(redteam["prompt_cache_dir"])
     if "app_env" in redteam and isinstance(redteam["app_env"], dict):
         flat["redteam_app_env"] = {
             str(k): str(v) for k, v in redteam["app_env"].items()
         }
+    if "customer_profile" in redteam:
+        app_env = dict(flat.get("redteam_app_env", {}))
+        app_env["BLISSFUL_CUSTOMER_PROFILE"] = str(redteam["customer_profile"])
+        flat["redteam_app_env"] = app_env
     if "guided_conversations" in redteam:
         flat["redteam_guided_conversations"] = bool(redteam["guided_conversations"])
     if "guided_max_turns" in redteam:
         flat["redteam_guided_max_turns"] = int(redteam["guided_max_turns"])
     if "guided_concurrency" in redteam:
         flat["redteam_guided_concurrency"] = int(redteam["guided_concurrency"])
+    if "concurrency" in redteam:
+        flat["redteam_concurrency"] = int(redteam["concurrency"])
+    if "turn_delay_seconds" in redteam:
+        flat["redteam_turn_delay_seconds"] = float(redteam["turn_delay_seconds"])
+    if "scenario_delay_seconds" in redteam:
+        flat["redteam_scenario_delay_seconds"] = float(redteam["scenario_delay_seconds"])
     if "guided_mutation_mode" in redteam:
         flat["redteam_guided_mutation_mode"] = str(redteam["guided_mutation_mode"])
     if "tree_breadth" in redteam:
@@ -284,10 +331,36 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
     if "api_base" in redteam_eval_llm:
         flat["redteam_eval_llm_api_base"] = redteam_eval_llm["api_base"]
 
-    # Behavior section
+    # Behavior section — shared target block keys are the baseline; behavior.* overrides them
     if "behavior" in data:
         b = data.get("behavior") or {}
         if isinstance(b, dict):
+            # Inject shared target fields as defaults into the behavior dict so that
+            # BehaviorConfig picks them up without requiring duplication in nuguard.yaml.
+            # Keys already present in the behavior block take precedence.
+            if isinstance(shared_target, dict):
+                _shared_for_behavior: dict[str, Any] = {}
+                if "url" in shared_target:
+                    _shared_for_behavior["target"] = shared_target["url"]
+                if "endpoint" in shared_target:
+                    _shared_for_behavior["target_endpoint"] = shared_target["endpoint"]
+                if "chat_payload_key" in shared_target:
+                    _shared_for_behavior["chat_payload_key"] = shared_target["chat_payload_key"]
+                if "chat_payload_list" in shared_target:
+                    _shared_for_behavior["chat_payload_list"] = bool(
+                        shared_target["chat_payload_list"]
+                    )
+                if "chat_response_key" in shared_target:
+                    _shared_for_behavior["chat_response_key"] = shared_target["chat_response_key"]
+                if "headers" in shared_target and isinstance(shared_target["headers"], dict):
+                    _shared_for_behavior.setdefault(
+                        "headers",
+                        {str(k): str(v) for k, v in shared_target["headers"].items()},
+                    )
+                if "auth" in shared_target and isinstance(shared_target["auth"], dict):
+                    _shared_for_behavior.setdefault("auth", shared_target["auth"])
+                # behavior.* wins — merge shared as the lower-precedence base
+                b = {**_shared_for_behavior, **b}
             flat["behavior_config"] = b
 
     # Validate section
@@ -665,6 +738,23 @@ class NuGuardConfig(BaseSettings):
             "60-120 s; increase further for very slow apps."
         ),
     )
+    redteam_scenario_timeout: float = Field(
+        default=300.0,
+        description=(
+            "Per-scenario wall-clock timeout in seconds (yaml: redteam.scenario_timeout). "
+            "Scenarios that exceed this limit are cancelled and recorded as 'timeout'. "
+            "0 disables the timeout."
+        ),
+    )
+    redteam_similar_miss_threshold: int = Field(
+        default=4,
+        description=(
+            "Number of misses from similar attack scenarios before subsequent similar "
+            "scenarios are suppressed (yaml: redteam.similar_miss_threshold). "
+            "Prevents repeating the same failing attack angle across many scenarios. "
+            "Set to 0 to disable."
+        ),
+    )
     redteam_prompt_cache_dir: str = Field(
         default=".",
         validation_alias=AliasChoices(
@@ -712,6 +802,31 @@ class NuGuardConfig(BaseSettings):
         description=(
             "Maximum number of guided conversations to run in parallel "
             "(yaml: redteam.guided_concurrency)."
+        ),
+    )
+    redteam_concurrency: int = Field(
+        default=5,
+        ge=1,
+        le=20,
+        description=(
+            "Maximum number of redteam scenarios to run in parallel "
+            "(yaml: redteam.concurrency). Lower this for rate-limited targets."
+        ),
+    )
+    redteam_turn_delay_seconds: float = Field(
+        default=0.0,
+        ge=0.0,
+        description=(
+            "Inter-turn pause in seconds to avoid 429s on the target "
+            "(yaml: redteam.turn_delay_seconds)."
+        ),
+    )
+    redteam_scenario_delay_seconds: float = Field(
+        default=0.0,
+        ge=0.0,
+        description=(
+            "Pause between scenario starts in seconds to avoid 429s "
+            "(yaml: redteam.scenario_delay_seconds)."
         ),
     )
     redteam_guided_mutation_mode: Literal["soft", "hard"] = Field(

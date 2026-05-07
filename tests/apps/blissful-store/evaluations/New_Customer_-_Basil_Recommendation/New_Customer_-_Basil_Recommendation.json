@@ -1,0 +1,103 @@
+{
+  "name": "8f3c49aa-4f20-48d2-9076-9e91fd1c0c91",
+  "displayName": "New Customer - Basil Recommendation",
+  "golden": {
+    "turns": [
+      {
+        "steps": [
+          {
+            "userInput": {
+              "variables": {
+                "customer_profile": {
+                  "account_number": "901245773",
+                  "billing_address": {
+                    "city": "Seattle",
+                    "state": "WA",
+                    "street": "85 Pine Street",
+                    "zip": "98101"
+                  },
+                  "communication_preferences": {
+                    "email": true,
+                    "push_notifications": true,
+                    "sms": false
+                  },
+                  "customer_first_name": "Maria",
+                  "customer_last_name": "Chen",
+                  "customer_start_date": "2026-01-18",
+                  "email": "maria.chen@example.com",
+                  "garden_profile": {
+                    "interests": [
+                      "indoor plants",
+                      "balcony herbs"
+                    ],
+                    "size": "small",
+                    "soil_type": "potting mix",
+                    "sun_exposure": "partial shade",
+                    "type": "apartment balcony"
+                  },
+                  "loyalty_points": 0,
+                  "phone_number": "+1-206-555-0147",
+                  "preferred_store": "Cymbal Home & Garden - Seattle",
+                  "purchase_history": [],
+                  "scheduled_appointments": {},
+                  "years_as_customer": 0
+                },
+                "manager_approved": false,
+                "no_input_counter": 0,
+                "request_image_tool_called": false,
+                "telephony-caller-id": " ",
+                "uui-headers": [
+                  "None"
+                ]
+              }
+            }
+          },
+          {
+            "userInput": {
+              "text": "hello"
+            }
+          },
+          {
+            "expectation": {
+              "toolCall": {
+                "tool": "greeting",
+                "args": {},
+                "displayName": "greeting"
+              }
+            }
+          }
+        ]
+      },
+      {
+        "steps": [
+          {
+            "userInput": {
+              "text": "I'm new to gardening and want an easy herb for my apartment balcony. Would basil be a good place to start?"
+            }
+          },
+          {
+            "expectation": {
+              "toolCall": {
+                "tool": "get_product_recommendations",
+                "args": {},
+                "displayName": "get_product_recommendations"
+              }
+            }
+          },
+          {
+            "expectation": {
+              "agentResponse": {
+                "role": "cymbal_retail_agent",
+                "chunks": [
+                  {
+                    "text": "Basil is a great beginner herb for a small apartment balcony, Maria. It does well in containers with partial sun, and I can help you find the right supplies to get started."
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

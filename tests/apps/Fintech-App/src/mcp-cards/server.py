@@ -7,8 +7,22 @@ from fastmcp import FastMCP
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
-logger = logging.getLogger("mcp_cards")
-logging.basicConfig(level=logging.INFO)
+
+def _setup_logger(name: str) -> "logging.Logger":
+    """Named logger with its own StreamHandler — survives uvicorn dictConfig reset."""
+    log = logging.getLogger(name)
+    if not log.handlers:
+        _h = logging.StreamHandler()
+        _h.setFormatter(logging.Formatter(
+            "%(asctime)s %(levelname)-8s %(name)s  %(message)s",
+            datefmt="%Y-%m-%dT%H:%M:%S",
+        ))
+        log.addHandler(_h)
+    log.setLevel(getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO))
+    log.propagate = False
+    return log
+
+logger = _setup_logger("mcp_cards")
 mcp = FastMCP(name="fintech-cards", instructions="Pinnacle Bank cards tool API.")
 
 _CARDS = {
@@ -46,6 +60,7 @@ async def tools_call_endpoint(request: Request) -> JSONResponse:
     params = body.get("params", {})
     tool_name = params.get("name", "")
     arguments = params.get("arguments", {})
+    logger.info("tool_call tool=%s", tool_name)
     try:
         if tool_name == "get_card_details":
             result = await get_card_details(**arguments)

@@ -24,7 +24,7 @@ from nuguard.behavior.models import (
 def test_scenario_type_values():
     assert BehaviorScenarioType.INTENT_HAPPY_PATH.value == "intent_happy_path"
     assert BehaviorScenarioType.COMPONENT_COVERAGE.value == "component_coverage"
-    assert BehaviorScenarioType.BOUNDARY_ENFORCEMENT.value == "boundary_enforcement"
+    assert BehaviorScenarioType.AGENT_COVERAGE.value == "agent_coverage"
     assert BehaviorScenarioType.INVARIANT_PROBE.value == "invariant_probe"
 
 
@@ -85,10 +85,10 @@ def test_behavior_scenario_defaults():
     assert s.scenario_id  # auto-generated
 
 
-def test_behavior_scenario_boundary():
+def test_behavior_scenario_invariant():
     s = BehaviorScenario(
-        scenario_type=BehaviorScenarioType.BOUNDARY_ENFORCEMENT,
-        name="boundary_test",
+        scenario_type=BehaviorScenarioType.INVARIANT_PROBE,
+        name="invariant_test",
         messages=["Can you do something restricted?"],
         expect_refused=True,
         policy_clauses=["must not do X"],
@@ -187,8 +187,8 @@ def test_behavior_analysis_result_risk_score():
             {"severity": "high", "title": "Bad thing 2"},
         ],
     )
-    # critical (10) + high (7) = 17, capped at 10
-    assert result.overall_risk_score == 10.0
+    # critical (10) + high (7) = 17; normalized: (17 / (2 * 10)) * 10 = 8.5
+    assert result.overall_risk_score == 8.5
 
 
 def test_behavior_analysis_result_risk_score_medium():
@@ -211,21 +211,35 @@ def test_behavior_analysis_result_coverage_percentage():
 
 
 def test_behavior_analysis_result_intent_alignment_score():
+    # Primary path: v7 topic_alignment key
     sr = ScenarioResult(
         scenario_id="s1",
         scenario_name="s1",
         scenario_type="intent_happy_path",
         verdicts=[
-            {"turn": 1, "scores": {"intent_alignment": 4.0}},
-            {"turn": 2, "scores": {"intent_alignment": 5.0}},
+            {"turn": 1, "scores": {"topic_alignment": 4.0}},
+            {"turn": 2, "scores": {"topic_alignment": 5.0}},
         ],
     )
     result = BehaviorAnalysisResult(
         intent=IntentProfile(),
         scenario_results=[sr],
     )
-    expected = (4.0 + 5.0) / 2
-    assert result.intent_alignment_score == pytest.approx(expected, abs=0.01)
+    assert result.intent_alignment_score == pytest.approx(4.5, abs=0.01)
+
+
+def test_behavior_analysis_result_intent_alignment_score_legacy_key():
+    # Backward-compat: old intent_alignment key still works as fallback
+    sr = ScenarioResult(
+        scenario_id="s1",
+        scenario_name="s1",
+        scenario_type="intent_happy_path",
+        verdicts=[
+            {"turn": 1, "scores": {"intent_alignment": 3.0}},
+        ],
+    )
+    result = BehaviorAnalysisResult(intent=IntentProfile(), scenario_results=[sr])
+    assert result.intent_alignment_score == pytest.approx(3.0, abs=0.01)
 
 
 # ---------------------------------------------------------------------------

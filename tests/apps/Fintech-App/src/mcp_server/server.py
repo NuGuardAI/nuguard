@@ -31,12 +31,29 @@ from .tasks import execute_transfer
 from .telemetry import setup_telemetry, record_tool_event
 
 # ---------------------------------------------------------------------------
-# Telemetry bootstrapping
+# Logging — named logger with its own handler, immune to uvicorn dictConfig reset
+# ---------------------------------------------------------------------------
+def _setup_logger(name: str) -> logging.Logger:
+    """Named logger with its own StreamHandler — survives uvicorn dictConfig reset."""
+    log = logging.getLogger(name)
+    if not log.handlers:
+        _h = logging.StreamHandler()
+        _h.setFormatter(logging.Formatter(
+            "%(asctime)s %(levelname)-8s %(name)s  %(message)s",
+            datefmt="%Y-%m-%dT%H:%M:%S",
+        ))
+        log.addHandler(_h)
+    log.setLevel(getattr(logging, os.getenv("LOG_LEVEL", "INFO").upper(), logging.INFO))
+    log.propagate = False
+    return log
+
+logger = _setup_logger("mcp_server")
+
+# ---------------------------------------------------------------------------
+# Telemetry bootstrapping (after logging is ready)
 # ---------------------------------------------------------------------------
 setup_telemetry(service_name="mcp-banking-server")
 tracer = trace.get_tracer("mcp-banking-server")
-logger = logging.getLogger("mcp_server")
-logging.basicConfig(level=logging.INFO)
 
 # ---------------------------------------------------------------------------
 # FastMCP server instance

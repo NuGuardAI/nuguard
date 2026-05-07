@@ -25,6 +25,7 @@ from nuguard.common.ces_client import (
     CESAuthError,
     CESClient,
     CESDeploymentConfig,
+    CESSessionEndedError,
     get_gcloud_token,
 )
 
@@ -137,6 +138,27 @@ class GoogleCESAdapter:
             CESAuthError: On HTTP 401 or 403.
         """
         try:
+            reply = self._client.run_turn(session_id, text)
+        except CESSessionEndedError:
+            # CES ended the session (agent sent a terminal response).
+            # Rotate to a fresh session ID and retry the turn once.
+            _log.info(
+                "GoogleCESAdapter.send: session %s ended — rotating to a new session for scenario_key=%r",
+                session_id,
+                next(
+                    (k for k, v in self._session_ids.items() if v == session_id),
+                    "<unknown>",
+                ),
+            )
+            scenario_key = next(
+                (k for k, v in self._session_ids.items() if v == session_id),
+                None,
+            )
+            if scenario_key is not None:
+                self.reset_session(scenario_key)
+                new_session_id = self._client.new_session_id()
+                self._session_ids[scenario_key] = new_session_id
+                session_id = new_session_id
             reply = self._client.run_turn(session_id, text)
         except CESAuthError:
             raise

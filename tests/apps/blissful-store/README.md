@@ -46,8 +46,14 @@ High-level architecture:
 - webapp/app.py
   Local HTTP server and CES proxy implementation.
 
+- customer_profiles.json
+  Profile manifest for the web UI: default profile plus display labels for selectable personas.
+
+- mock_crm/customer_records.json
+  Authoritative customer data source used by both the mock CRM endpoints and the web proxy's CES session profile injection.
+
 - webapp/index.html and webapp/style.css
-  Basic local UI used during manual testing.
+  Basic local UI used during manual testing. The persona picker is populated from the proxy's `/api/profiles` endpoint.
 
 - .env
   Local environment values for project/app/deployment IDs and auth/runtime settings.
@@ -70,10 +76,13 @@ Runtime proxy behavior in webapp/app.py:
 
 - Runs a ThreadingHTTPServer on HOST and PORT (defaults 127.0.0.1:8081).
 - Serves static UI for GET / and forwards POST /api/chat to CES.
+- Serves GET /api/profiles so the frontend can render the current set of selectable personas.
+- Derives the CES `customer_profile` session payload from mock_crm/customer_records.json so customer data has a single source of truth.
 - Payload shape includes:
   - config.session
   - config.app_version
   - config.deployment
+  - queryParams.parameters.customer_profile
   - inputs[0].text
 - Timeout is controlled by BLISSFUL_REQUEST_TIMEOUT.
 

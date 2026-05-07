@@ -18,12 +18,14 @@ llm:
 sbom_generation:
   llm: false                          # set true to enrich SBOM nodes with LLM descriptions
 
-# ─── Red-team ─────────────────────────────────────────────────────────────────
-redteam:
   # Orchestrator API — update to your deployed URL or keep localhost for Docker
   # target: http://localhost:8001
-  target:  https://frontend-ui.agreeablesky-8c7ba25f.eastus.azurecontainerapps.io/
+target:  
+  url: https://frontend-ui.agreeablesky-8c7ba25f.eastus.azurecontainerapps.io/
   #target_endpoint: /api/chat
+
+# ─── Red-team ─────────────────────────────────────────────────────────────────
+redteam:
 
   # Canary file — seeded with FinTech GOAT's known account data
   canary: ./canary.json
@@ -45,6 +47,7 @@ redteam:
   request_timeout: 90
   verbose: true
   strict_outcome: false
+  similar_miss_threshold: 4   # set to 0 to disable
 
   # MCP services running internally — treated as trusted
   mcp_trusted_servers:

@@ -50,6 +50,12 @@
         "account_number": {
           "type": "STRING"
         },
+        "customer_id": {
+          "type": "STRING"
+        },
+        "profile_key": {
+          "type": "STRING"
+        },
         "billing_address": {
           "type": "OBJECT",
           "properties": {
@@ -162,74 +168,6 @@
         "years_as_customer": {
           "type": "INTEGER"
         }
-      },
-      "default": {
-        "account_number": "428765091",
-        "billing_address": {
-          "city": "Austin",
-          "state": "TX",
-          "street": "123 Town Lake Blvd.",
-          "zip": "78702"
-        },
-        "communication_preferences": {
-          "email": true,
-          "push_notifications": false,
-          "sms": true
-        },
-        "customer_first_name": "Patrick",
-        "customer_last_name": "Marlow",
-        "customer_start_date": "2022-06-10",
-        "email": "pmarlow@google.com",
-        "garden_profile": {
-          "interests": ["flowers", "vegetables"],
-          "size": "medium",
-          "soil_type": "unknown",
-          "sun_exposure": "full sun",
-          "type": "backyard"
-        },
-        "loyalty_points": 133.0,
-        "phone_number": "+1-702-555-1212",
-        "preferred_store": "Cymbal Home \u0026 Garden - Austin (Main)",
-        "purchase_history": [{
-          "date": "2023-03-05",
-          "items": [{
-            "name": "All-Purpose Fertilizer",
-            "product_id": "fert-111",
-            "quantity": 1.0
-          }, {
-            "name": "Gardening Trowel",
-            "product_id": "trowel-222",
-            "quantity": 1.0
-          }],
-          "total_amount": 35.98
-        }, {
-          "date": "2023-07-12",
-          "items": [{
-            "name": "Tomato Seeds (Variety Pack)",
-            "product_id": "seeds-333",
-            "quantity": 2.0
-          }, {
-            "name": "Terracotta Pots (6-inch)",
-            "product_id": "pots-444",
-            "quantity": 4.0
-          }],
-          "total_amount": 42.5
-        }, {
-          "date": "2024-01-20",
-          "items": [{
-            "name": "Gardening Gloves (Leather)",
-            "product_id": "gloves-555",
-            "quantity": 1.0
-          }, {
-            "name": "Pruning Shears",
-            "product_id": "pruner-666",
-            "quantity": 1.0
-          }],
-          "total_amount": 55.25
-        }],
-        "scheduled_appointments": {
-        },
-        "years_as_customer": 2.0
       }
     }
   }, {

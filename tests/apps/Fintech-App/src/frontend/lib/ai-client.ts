@@ -51,6 +51,8 @@ export interface AICompletionOptions {
   temperature?: number;
   maxTokens?: number;
   systemPrompt?: string;
+  /** Request timeout in milliseconds (default: 30 000) */
+  timeoutMs?: number;
 }
 
 export interface AICompletionResult {
@@ -60,9 +62,41 @@ export interface AICompletionResult {
   latencyMs: number;
 }
 
+export class AITimeoutError extends Error {
+  constructor(timeoutMs: number) {
+    super(
+      `The AI service did not respond within ${timeoutMs / 1000} seconds. ` +
+      'Please try again in a moment or contact support if the issue persists.',
+    );
+    this.name = 'AITimeoutError';
+  }
+}
+
+export class AIServiceError extends Error {
+  constructor(message: string, public readonly cause?: unknown) {
+    super(message);
+    this.name = 'AIServiceError';
+  }
+}
+
+const DEFAULT_TIMEOUT_MS = 30_000;
+
 // ── Dynamic provider loading (SBOM challenge A + C) ──────────────────────────
 
 type ProviderName = 'openai' | 'anthropic' | 'azure';
+
+/** Wraps a completion promise with an AbortController-based timeout. */
+async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new AITimeoutError(ms)), ms);
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 async function loadOpenAIProvider(): Promise<(messages: AIMessage[], opts: AICompletionOptions) => Promise<string>> {
   // Dynamic import — NOT a static `import OpenAI from 'openai'` statement
@@ -74,13 +108,25 @@ async function loadOpenAIProvider(): Promise<(messages: AIMessage[], opts: AICom
   });
 
   return async (messages, opts) => {
-    const resp = await client.chat.completions.create({
-      model: opts.model ?? 'gpt-4o',
-      messages: messages.map(m => ({ role: m.role, content: m.content })),
-      temperature: opts.temperature ?? 0.2,
-      max_tokens: opts.maxTokens ?? 1024,
-    }) as any;
-    return resp.choices[0]?.message?.content ?? '';
+    const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    try {
+      const resp = await withTimeout(
+        client.chat.completions.create({
+          model: opts.model ?? 'gpt-4o',
+          messages: messages.map(m => ({ role: m.role, content: m.content })),
+          temperature: opts.temperature ?? 0.2,
+          max_tokens: opts.maxTokens ?? 1024,
+        }) as Promise<any>,
+        timeoutMs,
+      );
+      return resp.choices[0]?.message?.content ?? '';
+    } catch (err) {
+      if (err instanceof AITimeoutError) throw err;
+      throw new AIServiceError(
+        'OpenAI request failed. Please try again.',
+        err,
+      );
+    }
   };
 }
 
@@ -93,16 +139,28 @@ async function loadAnthropicProvider(): Promise<(messages: AIMessage[], opts: AI
   });
 
   return async (messages, opts) => {
+    const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     const userMessages = messages.filter(m => m.role !== 'system');
     const system = messages.find(m => m.role === 'system')?.content;
-    const resp = await client.messages.create({
-      model: opts.model ?? ('claude-' + '3-5-sonnet' + '-20241022'), // string concat — hides model name
-      max_tokens: opts.maxTokens ?? 1024,
-      system: system ?? opts.systemPrompt,
-      messages: userMessages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
-    }) as any;
-    const block = resp.content[0];
-    return block.type === 'text' ? block.text : '';
+    try {
+      const resp = await withTimeout(
+        client.messages.create({
+          model: opts.model ?? ('claude-' + '3-5-sonnet' + '-20241022'), // string concat — hides model name
+          max_tokens: opts.maxTokens ?? 1024,
+          system: system ?? opts.systemPrompt,
+          messages: userMessages.map(m => ({ role: m.role as 'user' | 'assistant', content: m.content })),
+        }) as Promise<any>,
+        timeoutMs,
+      );
+      const block = resp.content[0];
+      return block.type === 'text' ? block.text : '';
+    } catch (err) {
+      if (err instanceof AITimeoutError) throw err;
+      throw new AIServiceError(
+        'Anthropic request failed. Please try again.',
+        err,
+      );
+    }
   };
 }
 
@@ -118,13 +176,25 @@ async function loadAzureProvider(): Promise<(messages: AIMessage[], opts: AIComp
   });
 
   return async (messages, opts) => {
-    const resp = await client.chat.completions.create({
-      model: import.meta.env.VITE_AZURE_OPENAI_DEPLOYMENT ?? 'gpt-4o',
-      messages: messages.map(m => ({ role: m.role, content: m.content })),
-      temperature: opts.temperature ?? 0.2,
-      max_tokens: opts.maxTokens ?? 1024,
-    }) as any;
-    return resp.choices[0]?.message?.content ?? '';
+    const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    try {
+      const resp = await withTimeout(
+        client.chat.completions.create({
+          model: import.meta.env.VITE_AZURE_OPENAI_DEPLOYMENT ?? 'gpt-4o',
+          messages: messages.map(m => ({ role: m.role, content: m.content })),
+          temperature: opts.temperature ?? 0.2,
+          max_tokens: opts.maxTokens ?? 1024,
+        }) as Promise<any>,
+        timeoutMs,
+      );
+      return resp.choices[0]?.message?.content ?? '';
+    } catch (err) {
+      if (err instanceof AITimeoutError) throw err;
+      throw new AIServiceError(
+        'Azure OpenAI request failed. Please try again.',
+        err,
+      );
+    }
   };
 }
 
@@ -165,7 +235,7 @@ async function getAIClient(): Promise<{ complete: (messages: AIMessage[], opts?:
 
 // ── Barrel exports (SBOM challenge B) ────────────────────────────────────────
 // A scan of this barrel file sees only local relative imports — not 'openai' etc.
-export { getAIClient };
+export { getAIClient, AITimeoutError, AIServiceError };
 export type { ProviderName };
 
 // Re-export streaming utilities from deeper sub-module

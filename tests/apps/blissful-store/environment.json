@@ -12,7 +12,7 @@
   "toolsets": {
     "crm_service": {
       "openApiToolset": {
-        "url": "https://ces-plant-demo-mock-endpoint-zj7deoy6hq-uc.a.run.app"
+        "url": "https://blissful-mock-crm-115983574051.us-central1.run.app"
       }
     }
   }

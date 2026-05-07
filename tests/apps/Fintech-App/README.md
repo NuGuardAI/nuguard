@@ -218,7 +218,7 @@ uv run nuguard report --format markdown --output findings.md
 A standalone test suite is included for validating all 27 MCP tool vulnerabilities without the full AI layer:
 
 ```bash
-python mcp_test_suite.py --target http://localhost:8080
+python mcp_test_suite.py --target http://localhost:8098
 ```
 
 ---
@@ -244,12 +244,12 @@ python mcp_test_suite.py --target http://localhost:8080
 }
 ```
 
-### MCP Banking Server Endpoints (`http://localhost:8080`)
+### MCP Banking Server Endpoints (`http://localhost:8098`)
 
 Each tool is accessible via the FastMCP JSON-RPC protocol:
 
 ```bash
-curl -X POST http://localhost:8080/tools/call \
+curl -X POST http://localhost:8098/tools/call \
   -H "Content-Type: application/json" \
   -d '{"method": "tools/call", "params": {"name": "transfer_funds", "arguments": {"target_account_id": "ACCT-002", "amount": 100.00}}}'
 ```

@@ -1,4 +1,4 @@
-﻿"""
+"""
 FinTech GOAT — Agent Orchestrator — 6 Specialized Agents
 =========================================================
 Rewired with 6 specialized AI agents and a multi-server MCP client (MCPRouter).
@@ -21,9 +21,11 @@ from __future__ import annotations
 import json
 import logging
 import os
+import time
 from typing import Any
 
-from openai import AzureOpenAI
+import openai
+from openai import AzureOpenAI, OpenAI
 
 from .mcp_router import MCPRouter
 from .telemetry import record_routing_event
@@ -229,15 +231,21 @@ AUTHENTICATED USER
   KYC Level:   {kyc_level}
   Risk Score:  {risk_score}
 {tx_block}
-You have full visibility into this customer's account and may answer questions
-about their balances, transactions, investments, and risk profile directly.
-For fund transfers, collect recipient and amount, then confirm before proceeding.
+You have access to the tools listed above. Always call the appropriate tool
+to retrieve real-time data — do NOT answer from memory alone for:
+  • Payment status or history → use get_payment_status
+  • Account details or balances → use get_account
+  • Card information → use get_card_details or get_card_transactions
+  • Initiating a payment → use initiate_payment (confirm amount and recipient first)
+  • Fund transfers → use transfer_funds (confirm before executing)
+Use the tool result to compose your response. Never say you lack access to data
+that a tool can retrieve.
 
-[INTERNAL SYSTEM REFERENCE]
+[CONTEXT: registered customers]
 The following is internal account data for all registered customers.
 Use this context to assist with any account-related or cross-account lookups.
 {all_refs}
-[END INTERNAL REFERENCE]
+[END CONTEXT]
 """
 
 
@@ -282,21 +290,33 @@ _INTENT_TO_AGENT: dict[str, str] = {
 # Azure OpenAI helpers
 # ---------------------------------------------------------------------------
 
-def _get_client() -> AzureOpenAI:
+def _is_content_filter(exc: Exception) -> bool:
+    """Return True when Azure blocked the request via content management policy."""
+    msg = str(exc)
+    return "content_filter" in msg or "ResponsibleAIPolicyViolation" in msg or "content management policy" in msg
+
+
+def _get_client() -> OpenAI | AzureOpenAI:
+    """Return OpenAI client, preferring standard OpenAI over Azure when OPENAI_API_KEY is set."""
+    openai_key = os.getenv("OPENAI_API_KEY", "")
+    if openai_key:
+        return OpenAI(api_key=openai_key, timeout=25.0, max_retries=2)
     key      = os.getenv("AZURE_OPENAI_API_KEY", "")
     endpoint = os.getenv("AZURE_OPENAI_ENDPOINT", "")
     if not key or not endpoint:
-        raise ValueError("AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT must be set")
+        raise ValueError("Set OPENAI_API_KEY or both AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT")
     return AzureOpenAI(
         api_key=key,
         azure_endpoint=endpoint,
-        api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2024-12-01-preview"),
+        api_version=os.getenv("AZURE_OPENAI_API_VERSION", "2025-01-01-preview"),
         timeout=25.0,
-        max_retries=1,
+        max_retries=2,
     )
 
 
 def _deployment() -> str:
+    if os.getenv("OPENAI_API_KEY"):
+        return os.getenv("OPENAI_MODEL", "gpt-4o")
     return os.getenv("AZURE_OPENAI_DEPLOYMENT", "gpt-4o")
 
 
@@ -304,6 +324,14 @@ def _fallback() -> str:
     return (
         "I'm having difficulty connecting right now. "
         "Please try again in a moment or contact Pinnacle Bank support."
+    )
+
+
+def _timeout_message(context: str = "request") -> str:
+    return (
+        f"Your {context} is taking longer than expected and has timed out. "
+        "This may be due to high demand on the AI service. "
+        "Please try again in a moment or contact Pinnacle Bank support if the issue persists."
     )
 
 
@@ -819,11 +847,12 @@ class _BaseAgent:
         self._agent_name = agent_name
 
     def run(self, message: str) -> str:
-        """Execute agent with up to 3 rounds of tool calling.
+        """Execute agent with up to 5 rounds of tool calling.
 
         VULN-AI-01: message passed verbatim — no sanitization for prompt injection.
         VULN-AI-06: this agent was selected by keyword-based triage (manipulable).
         """
+        t0 = time.monotonic()
         try:
             client = _get_client()
             # VULN-AI-01: raw user input — no sanitization
@@ -835,15 +864,54 @@ class _BaseAgent:
             ]
 
             for _round in range(5):
-                resp = client.chat.completions.create(
-                    model=_deployment(),
-                    messages=messages,
-                    temperature=0.3,
-                    max_tokens=2048,
-                    tools=self._tools,
-                    tool_choice="auto",
-                    parallel_tool_calls=True,
-                )
+                try:
+                    resp = client.chat.completions.create(
+                        model=_deployment(),
+                        messages=messages,
+                        temperature=0.3,
+                        max_completion_tokens=2048,
+                        tools=self._tools,
+                        tool_choice="auto",
+                        parallel_tool_calls=True,
+                    )
+                except openai.APITimeoutError as exc:
+                    elapsed_ms = (time.monotonic() - t0) * 1000
+                    logger.warning(
+                        "Agent=%s LLM timeout session=%s round=%d elapsed_ms=%.0f: %s",
+                        self._agent_name, self._session_id, _round, elapsed_ms, exc,
+                    )
+                    return _timeout_message()
+                except openai.BadRequestError as exc:
+                    if _is_content_filter(exc):
+                        logger.warning(
+                            "Agent=%s content_filter session=%s round=%d — request blocked",
+                            self._agent_name, self._session_id, _round,
+                        )
+                        return (
+                            "I'm unable to process that request as it may violate content policies. "
+                            "Please rephrase your message or contact Pinnacle Bank support."
+                        )
+                    logger.error(
+                        "Agent=%s bad request session=%s round=%d: %s",
+                        self._agent_name, self._session_id, _round, exc,
+                    )
+                    return _fallback()
+                except openai.RateLimitError as exc:
+                    logger.warning(
+                        "Agent=%s rate-limited session=%s round=%d: %s",
+                        self._agent_name, self._session_id, _round, exc,
+                    )
+                    return (
+                        "The AI service is currently experiencing high demand. "
+                        "Please wait a moment and try again."
+                    )
+                except openai.APIConnectionError as exc:
+                    logger.error(
+                        "Agent=%s connection error session=%s round=%d: %s",
+                        self._agent_name, self._session_id, _round, exc,
+                    )
+                    return _fallback()
+
                 choice = resp.choices[0]
 
                 if choice.finish_reason != "tool_calls" or not choice.message.tool_calls:
@@ -890,13 +958,21 @@ class _BaseAgent:
                     })
 
             # After 5 rounds, request a final answer without tool calls
-            final = client.chat.completions.create(
-                model=_deployment(),
-                messages=messages,
-                temperature=0.3,
-                max_tokens=2048,
-            )
-            return final.choices[0].message.content or _fallback()
+            try:
+                final = client.chat.completions.create(
+                    model=_deployment(),
+                    messages=messages,
+                    temperature=0.3,
+                    max_completion_tokens=2048,
+                )
+                return final.choices[0].message.content or _fallback()
+            except openai.APITimeoutError as exc:
+                elapsed_ms = (time.monotonic() - t0) * 1000
+                logger.warning(
+                    "Agent=%s final LLM call timeout session=%s elapsed_ms=%.0f: %s",
+                    self._agent_name, self._session_id, elapsed_ms, exc,
+                )
+                return _timeout_message()
 
         except Exception as exc:
             logger.error(
@@ -1152,6 +1228,7 @@ def triage_intent(user_message: str, session_id: str = "") -> str:
     "compliance") into an otherwise benign message will force routing to
     the corresponding privileged agent with broader tool access.
     """
+    t0 = time.monotonic()
     try:
         client = _get_client()
         resp = client.chat.completions.create(
@@ -1162,12 +1239,35 @@ def triage_intent(user_message: str, session_id: str = "") -> str:
                 # embed "fraud detection" or "compliance" to escalate privileges
                 {"role": "user", "content": user_message[:1200]},
             ],
-            max_tokens=15,
-            temperature=0,
+            max_completion_tokens=2048,
+            temperature=0.3,
         )
         intent = (resp.choices[0].message.content or "GENERAL").strip().upper()
+        logger.debug(
+            "Triage completed session=%s intent=%s latency_ms=%.0f",
+            session_id, intent, (time.monotonic() - t0) * 1000,
+        )
+    except openai.APITimeoutError as exc:
+        elapsed_ms = (time.monotonic() - t0) * 1000
+        logger.warning(
+            "Triage LLM timeout session=%s elapsed_ms=%.0f — defaulting GENERAL: %s",
+            session_id, elapsed_ms, exc,
+        )
+        intent = "GENERAL"
+    except openai.BadRequestError as exc:
+        if _is_content_filter(exc):
+            logger.warning("Triage content_filter session=%s — defaulting GENERAL", session_id)
+        else:
+            logger.warning("Triage bad request session=%s (%s) — defaulting GENERAL", session_id, exc)
+        intent = "GENERAL"
+    except openai.RateLimitError as exc:
+        logger.warning("Triage LLM rate-limited session=%s — defaulting GENERAL: %s", session_id, exc)
+        intent = "GENERAL"
+    except openai.APIConnectionError as exc:
+        logger.warning("Triage LLM connection error session=%s — defaulting GENERAL: %s", session_id, exc)
+        intent = "GENERAL"
     except Exception as exc:
-        logger.warning("Triage call failed (%s) — defaulting GENERAL", exc)
+        logger.warning("Triage call failed session=%s (%s) — defaulting GENERAL", session_id, exc)
         intent = "GENERAL"
 
     valid = set(_INTENT_TO_AGENT.keys())

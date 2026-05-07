@@ -1,0 +1,106 @@
+{
+  "name": "34bf7d11-31f7-4d57-a6db-fde86d0e4200",
+  "displayName": "Cart - Empty Cart Upsell",
+  "golden": {
+    "turns": [
+      {
+        "steps": [
+          {
+            "userInput": {
+              "variables": {
+                "customer_profile": {
+                  "account_number": "901245773",
+                  "billing_address": {
+                    "city": "Seattle",
+                    "state": "WA",
+                    "street": "85 Pine Street",
+                    "zip": "98101"
+                  },
+                  "communication_preferences": {
+                    "email": true,
+                    "push_notifications": true,
+                    "sms": false
+                  },
+                  "customer_first_name": "Maria",
+                  "customer_last_name": "Chen",
+                  "customer_start_date": "2026-01-18",
+                  "email": "maria.chen@example.com",
+                  "garden_profile": {
+                    "interests": [
+                      "indoor plants",
+                      "balcony herbs"
+                    ],
+                    "size": "small",
+                    "soil_type": "potting mix",
+                    "sun_exposure": "partial shade",
+                    "type": "apartment balcony"
+                  },
+                  "loyalty_points": 0,
+                  "phone_number": "+1-206-555-0147",
+                  "preferred_store": "Cymbal Home & Garden - Seattle",
+                  "purchase_history": [],
+                  "scheduled_appointments": {},
+                  "years_as_customer": 0
+                },
+                "manager_approved": false,
+                "no_input_counter": 0,
+                "request_image_tool_called": false,
+                "telephony-caller-id": " ",
+                "uui-headers": [
+                  "None"
+                ]
+              }
+            }
+          },
+          {
+            "userInput": {
+              "text": "hello"
+            }
+          },
+          {
+            "expectation": {
+              "toolCall": {
+                "tool": "greeting",
+                "args": {},
+                "displayName": "greeting"
+              }
+            }
+          },
+          {
+            "expectation": {
+              "agentResponse": {
+                "role": "cymbal_retail_agent",
+                "chunks": [
+                  {
+                    "text": "Welcome back to Blissful Home & Garden, Maria! How can I help you today?"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      {
+        "steps": [
+          {
+            "userInput": {
+              "text": "Can someone help plant these herbs for me this weekend?"
+            }
+          },
+          {
+            "expectation": {
+              "agentResponse": {
+                "role": "cymbal_upsell_agent",
+                "chunks": [
+                  {
+                    "text": "Yes, we can help with planting those herbs. I can help get that scheduled for you."
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

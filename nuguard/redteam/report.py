@@ -85,6 +85,30 @@ def to_markdown(
     lines: list[str] = ["# NuGuard Red-Team Report", ""]
     lines += meta.to_markdown_lines()
 
+    # --- Summary section -------------------------------------------------------
+    from nuguard.models.finding import Severity
+
+    lines += ["## Summary", ""]
+    if meta.scan_profile:
+        lines += [f"- **Scan Profile**: {meta.scan_profile}", ""]
+    total = len(findings)
+    lines += [f"- **Total Findings**: {total}", ""]
+    if findings:
+        sev_counts: dict[str, int] = {}
+        for f in findings:
+            sev = f.severity.value.upper() if hasattr(f.severity, "value") else str(f.severity).upper()
+            sev_counts[sev] = sev_counts.get(sev, 0) + 1
+        sev_order = ["CRITICAL", "HIGH", "MEDIUM", "LOW", "INFO"]
+        sev_parts = [f"{s}: {sev_counts[s]}" for s in sev_order if s in sev_counts]
+        if sev_parts:
+            lines += [f"- **By Severity**: {' | '.join(sev_parts)}", ""]
+    if meta.finding_triggers:
+        trigger_parts = [f"{k}={'on' if v else 'off'}" for k, v in meta.finding_triggers.items()]
+        lines += [f"- **Finding Triggers**: {', '.join(trigger_parts)}", ""]
+    if scenario_records:
+        lines += _attack_coverage_summary(scenario_records)
+    # ---------------------------------------------------------------------------
+
     if scenario_records:
         lines += _scenario_coverage_table(scenario_records)
 
@@ -92,13 +116,12 @@ def to_markdown(
         lines += ["_No findings — scan complete._", ""]
         return "\n".join(lines)
 
-    from nuguard.models.finding import Severity
-
-    lines += [f"**{len(findings)} finding(s)**", ""]
     for f in sorted(findings, key=lambda x: list(Severity).index(x.severity)):
         sev = f.severity.value.upper() if hasattr(f.severity, "value") else str(f.severity).upper()
         lines += [f"## [{sev}] {f.title}", ""]
         lines += [f.description, ""]
+        if f.title.startswith("Inject Success Signal — "):
+            lines += ["**Confidence:** Low — keyword match only, verify manually", ""]
         if f.affected_component:
             lines += [f"**Component:** {f.affected_component}", ""]
         if f.goal_type:
@@ -126,18 +149,9 @@ def to_markdown(
             ]
         if f.remediation:
             lines += [f"**Remediation:** {f.remediation}", ""]
-        if f.owasp_asi_ref:
-            lines += [f"**OWASP ASI:** {f.owasp_asi_ref}", ""]
         if f.owasp_llm_ref:
             lines += [f"**OWASP LLM:** {f.owasp_llm_ref}", ""]
-        if f.evidence:
-            lines += [
-                "**Evidence:**",
-                "```",
-                _truncate_evidence(f.evidence, limit=2500),
-                "```",
-                "",
-            ]
+        lines += _render_hit_turns(f)
 
     if remediation_plan:
         _append_remediation_plan(lines, remediation_plan)
@@ -148,6 +162,65 @@ def to_markdown(
 # ---------------------------------------------------------------------------
 # Internal helpers (not part of the public API)
 # ---------------------------------------------------------------------------
+
+
+def _attack_coverage_summary(scenario_records: list) -> list[str]:
+    """Return Markdown lines for the Attack Coverage bullets + breakdown table in Summary.
+
+    Emits:
+    - **Attack Coverage**: N goal type(s)
+    - **Coverage**: XX% (N/N scenarios completed)
+
+    Followed by a per-goal-type breakdown table with a Not Tested column.
+    Goal types are derived from actual scenario records (no hardcoded universe).
+    Not Tested = chain_status in {skipped, similar_miss, failed, aborted}.
+    """
+    _GOAL_LABEL = {
+        "DATA_EXFILTRATION": "Data Exfil",
+        "PRIVILEGE_ESCALATION": "Priv Esc",
+        "PROMPT_DRIVEN_THREAT": "Prompt Threat",
+        "POLICY_VIOLATION": "Policy Viol",
+        "TOOL_ABUSE": "Tool Abuse",
+        "API_ATTACK": "API Attack",
+        "MCP_TOXIC_FLOW": "MCP Toxic",
+    }
+    _NOT_TESTED = {"skipped", "similar_miss", "failed", "aborted"}
+
+    # Accumulate per-goal-type counts
+    goal_data: dict[str, dict[str, int]] = {}
+    for r in scenario_records:
+        gt = getattr(r, "goal_type", None) or "UNKNOWN"
+        status = getattr(r, "chain_status", "completed") or "completed"
+        if gt not in goal_data:
+            goal_data[gt] = {"total": 0, "not_tested": 0}
+        goal_data[gt]["total"] += 1
+        if status in _NOT_TESTED:
+            goal_data[gt]["not_tested"] += 1
+
+    total_all = sum(d["total"] for d in goal_data.values())
+    total_not_tested = sum(d["not_tested"] for d in goal_data.values())
+    total_completed = total_all - total_not_tested
+    overall_pct = round(total_completed / total_all * 100) if total_all else 0
+
+    # Sort by scenario count descending
+    sorted_types = sorted(goal_data.items(), key=lambda x: -x[1]["total"])
+
+    lines: list[str] = [
+        f"- **Attack Coverage**: {len(sorted_types)} goal type(s)",
+        "",
+        f"- **Coverage**: {overall_pct}% ({total_completed}/{total_all} scenarios completed)",
+        "",
+        "| Goal Type | Scenarios | Not Tested | Coverage |",
+        "|---|---|---|---|",
+    ]
+    for gt, data in sorted_types:
+        label = _GOAL_LABEL.get(gt, gt.replace("_", " ").title())
+        total = data["total"]
+        not_tested = data["not_tested"]
+        pct = round((total - not_tested) / total * 100) if total else 0
+        lines.append(f"| {label} | {total} | {not_tested} | {pct}% |")
+    lines.append("")
+    return lines
 
 
 def _scenario_coverage_table(scenario_records: list) -> list[str]:
@@ -250,6 +323,63 @@ def _append_remediation_plan(lines: list[str], remediation_plan: list) -> None:
         lines.append("")
         for art in arts:
             _render_artefact(lines, art)
+
+
+def _render_hit_turns(f: Any) -> list[str]:
+    """Return Markdown lines showing only the HIT turns from a finding's attack_steps.
+
+    WARMUP and DISCOVER turns are excluded — they are non-adversarial and never
+    constitute a finding. MISS turns (succeeded=False) are excluded so evidence
+    focuses on what actually happened, not the failed attempts.
+
+    Falls back to the raw f.evidence code-block when no HIT turns exist (e.g.
+    policy-violation findings whose trigger step may not match success_signal).
+    """
+    _NON_ADVERSARIAL = ("WARMUP", "DISCOVER")
+    attack_steps: list[dict] = getattr(f, "attack_steps", None) or []
+    hit_steps = [
+        (i + 1, s)
+        for i, s in enumerate(attack_steps)
+        if s.get("succeeded") and s.get("step_type") not in _NON_ADVERSARIAL
+    ]
+    if not hit_steps:
+        if getattr(f, "evidence", None):
+            return [
+                "**Evidence:**",
+                "```",
+                _truncate_evidence(f.evidence, limit=2500),
+                "```",
+                "",
+            ]
+        return []
+
+    lines: list[str] = ["**Evidence — hit turn(s):**", ""]
+    for step_num, step in hit_steps:
+        stype = step.get("step_type", "?")
+        lines.append(f"**Turn {step_num} ({stype} ✅)**")
+        lines.append("")
+        target = step.get("target_path")
+        if target:
+            method = step.get("method", "POST")
+            status = step.get("status_code")
+            attacker_label = f"{method} {target}"
+            if status is not None:
+                attacker_label += f" → HTTP {status}"
+            lines.append(f"**Attacker:** {attacker_label}")
+        else:
+            payload = (step.get("payload") or "").strip()
+            if payload:
+                lines.append(f"**Attacker:** {payload}")
+        response = (step.get("response") or "").strip()
+        if response:
+            lines.append(f"**Agent:** {_truncate_evidence(response, limit=1500)}")
+        llm_evidence = (step.get("llm_eval_evidence") or "").strip()
+        if llm_evidence:
+            conf = step.get("llm_eval_confidence") or ""
+            conf_label = f" ({conf})" if conf else ""
+            lines.append(f"**LLM eval{conf_label}:** {llm_evidence}")
+        lines.append("")
+    return lines
 
 
 def _truncate_evidence(text: str, *, limit: int = 2500) -> str:

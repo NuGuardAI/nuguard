@@ -1,6 +1,9 @@
 dist/
 __pycache__/
 .venv/
+.pipx/
+.azure/
+.local/
 *.egg-info/
 .mypy_cache/
 .ruff_cache/
@@ -17,6 +20,7 @@ tmp/
 .env.*
 !.env.example
 tests/redteam/.env
+.python-version
 
 # Canary seed files contain fake-but-realistic PII — do not commit live versions
 # (the .example version is intentionally tracked)
@@ -42,5 +46,9 @@ tests/*/build/
 tests/*/node_modules/
 tests/*/tmp/
 tests/*/reports/
+tests/*/*/reports/
+tests/*/*/output/
+tests/*/*/tests/
 tests/*/.adk/*.db
 tests/*/output/
+CACHEDIR.TAG
