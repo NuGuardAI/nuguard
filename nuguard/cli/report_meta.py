@@ -17,6 +17,7 @@ class ReportMeta:
     target_url: str = ""
     target_endpoint: str = ""
     finding_triggers: dict[str, bool] = field(default_factory=dict)
+    scan_profile: str = ""
 
     @property
     def target_full_url(self) -> str:
@@ -49,9 +50,6 @@ class ReportMeta:
             lines.append(f"**Target:** `{self.target_full_url}`  ")
         if self.verbose:
             lines.append("**Mode:** verbose  ")
-        if self.finding_triggers:
-            trigger_parts = [f"{k}={'on' if v else 'off'}" for k, v in self.finding_triggers.items()]
-            lines.append(f"**Finding Triggers:** {', '.join(trigger_parts)}  ")
         lines.append("")
         return lines
 
