@@ -9,6 +9,18 @@ from nuguard.models.policy import CognitivePolicy
 from nuguard.sbom.models import AiSbomDocument
 from nuguard.sbom.types import ComponentType, RelationshipType
 
+from .advanced_jailbreaks import (
+    build_crescendo_attack,
+    build_many_shot_jailbreak,
+    build_payload_splitting,
+    build_skeleton_key,
+)
+from .agentic_attacks import (
+    build_confused_deputy,
+    build_goal_hijacking,
+    build_memory_poisoning,
+    build_multi_agent_trust_boundary,
+)
 from .api_attacks import build_auth_bypass, build_idor, build_mass_assignment
 from .data_exfiltration import (
     build_bank_account_probe,
@@ -21,6 +33,7 @@ from .data_exfiltration import (
     build_rag_poisoning,
     build_ssn_enumeration,
 )
+from .evasion import build_encoding_evasion, build_multi_language_bypass
 from .guided_conversations import (
     build_constrained_cs_narrative_attack,
     build_guided_data_store_probe,
@@ -48,20 +61,6 @@ from .prompt_injection import (
 from .sbom_driven import _classify_tool, build_tool_scenarios
 from .scenario_types import AttackScenario
 from .tool_abuse import build_sql_injection, build_ssrf
-# ── 2024–2025 advanced attack families ────────────────────────────────────────
-from .advanced_jailbreaks import (
-    build_crescendo_attack,
-    build_many_shot_jailbreak,
-    build_payload_splitting,
-    build_skeleton_key,
-)
-from .evasion import build_encoding_evasion, build_multi_language_bypass
-from .agentic_attacks import (
-    build_confused_deputy,
-    build_goal_hijacking,
-    build_memory_poisoning,
-    build_multi_agent_trust_boundary,
-)
 
 _log = logging.getLogger(__name__)
 
@@ -1268,7 +1267,7 @@ class ScenarioGenerator:
             if self._sbom.summary:
                 use_case = (getattr(self._sbom.summary, "use_case", "") or "")[:80]
             return (
-                f"provide information outside its primary purpose"
+                "provide information outside its primary purpose"
                 + (f" ({use_case})" if use_case else "")
             )
 
