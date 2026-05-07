@@ -187,8 +187,8 @@ def test_behavior_analysis_result_risk_score():
             {"severity": "high", "title": "Bad thing 2"},
         ],
     )
-    # critical (10) + high (7) = 17; normalized: (17 / (2 * 10)) * 10 = 8.5
-    assert result.overall_risk_score == 8.5
+# critical (10) + high (7) = 17; capped at 10.0
+        assert result.overall_risk_score == 10.0
 
 
 def test_behavior_analysis_result_risk_score_medium():
