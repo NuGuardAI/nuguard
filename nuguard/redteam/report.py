@@ -26,6 +26,7 @@ def to_json(
     findings: list,
     meta: "ReportMeta | None" = None,
     remediation_plan: list | None = None,
+    scan_outcome: str = "no_findings",
 ) -> str:
     """Generate a JSON report string from red-team findings.
 
@@ -44,6 +45,7 @@ def to_json(
 
     payload: dict[str, Any] = {
         "_meta": meta.to_dict(),
+        "scan_outcome": scan_outcome,
         "findings": [f.model_dump() for f in findings],
         "remediation_plan": [a.model_dump() for a in (remediation_plan or [])],
     }
@@ -91,6 +93,19 @@ def to_markdown(
     lines += ["## Summary", ""]
     if meta.scan_profile:
         lines += [f"- **Scan Profile**: {meta.scan_profile}", ""]
+    _WEIGHTS = {"CRITICAL": 100.0, "HIGH": 70.0, "MEDIUM": 40.0, "LOW": 10.0, "INFO": 0.0}
+    if findings:
+        _scores = [
+            _WEIGHTS.get(
+                f.severity.value.upper() if hasattr(f.severity, "value") else str(f.severity).upper(),
+                10.0,
+            )
+            for f in findings
+        ]
+        _risk_score = round(sum(_scores) / len(_scores), 1)
+    else:
+        _risk_score = 0.0
+    lines += [f"- **Overall Risk Score**: {_risk_score:.1f} / 100", ""]
     total = len(findings)
     lines += [f"- **Total Findings**: {total}", ""]
     if findings:

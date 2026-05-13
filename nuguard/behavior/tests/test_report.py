@@ -80,7 +80,7 @@ def test_to_json_with_findings():
         static_findings=[{"severity": "high", "title": "Bad thing"}],
     )
     data = json.loads(to_json(result))
-    assert data["overall_risk_score"] == 7.0
+    assert data["overall_risk_score"] == 70.0
     assert len(data["static_findings"]) == 1
 
 

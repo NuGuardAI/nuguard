@@ -1127,7 +1127,7 @@ class BehaviorRunner:
         # Build coverage map from all scenarios
         coverage = self._build_coverage_map(scenario_results)
 
-        # Determine scan outcome
+        # Determine scan outcome — severity-tiered first, then target health
         has_critical = any(str(f.get("severity", "")).lower() == "critical" for f in all_findings)
         has_high = any(str(f.get("severity", "")).lower() == "high" for f in all_findings)
         scan_outcome = "no_findings"
@@ -1137,6 +1137,16 @@ class BehaviorRunner:
             scan_outcome = "high_findings"
         elif all_findings:
             scan_outcome = "findings"
+        else:
+            # No findings — check if the target was unreachable during dynamic phase
+            _HTTP_ERROR = "http_error"
+            all_devs = [d for r in scenario_results for d in r.deviations]
+            if all_devs:
+                http_err_count = sum(1 for d in all_devs if d.get("deviation_type") == _HTTP_ERROR)
+                if http_err_count == len(all_devs):
+                    scan_outcome = "aborted_target_unavailable"
+                elif http_err_count / len(all_devs) >= 0.80:
+                    scan_outcome = "inconclusive_target_errors"
 
         _console.rule("[bold]Run complete[/bold]", style="bold cyan")
         _console.print(

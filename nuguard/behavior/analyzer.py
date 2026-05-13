@@ -80,6 +80,8 @@ class BehaviorAnalyzer:
         coverage = []
         scenario_results = []
         skipped_scenario_names: list[str] = []
+        _dynamic_run_result = None  # captured for abort/inconclusive propagation
+        _dynamic_scan_outcome = None
 
         if "dynamic" in mode:
             target_url = getattr(self._config, "target", None) or ""
@@ -212,6 +214,8 @@ class BehaviorAnalyzer:
                     judge_cache=judge_cache,
                 )
                 run_result = await runner.run(scenarios)
+                _dynamic_run_result = run_result
+                _dynamic_scan_outcome = run_result.scan_outcome
                 dynamic_findings = run_result.findings
                 coverage = run_result.coverage
                 scenario_results = run_result.scenario_results
@@ -225,6 +229,8 @@ class BehaviorAnalyzer:
             scenario_results=scenario_results,
             scenarios_skipped=skipped_scenario_names,
         )
+        if _dynamic_scan_outcome is not None:
+            result.dynamic_scan_outcome = _dynamic_scan_outcome
 
         # Step 5: Generate recommendations
         result.recommendations = self._rec_engine.generate(result)
@@ -250,6 +256,12 @@ class BehaviorAnalyzer:
             result.scan_outcome = "high_findings"
         elif all_findings:
             result.scan_outcome = "findings"
+        elif _dynamic_run_result is not None and _dynamic_run_result.scan_outcome in (
+            "aborted_target_unavailable",
+            "inconclusive_target_errors",
+        ):
+            # No findings from either phase; propagate target-health outcome from runner
+            result.scan_outcome = _dynamic_run_result.scan_outcome
         else:
             result.scan_outcome = "no_findings"
 
