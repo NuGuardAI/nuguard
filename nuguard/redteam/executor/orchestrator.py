@@ -195,8 +195,12 @@ def _compute_scan_outcome(
 
     Values
     ------
-    ``passed``
-        At least one finding was raised — the target has confirmed vulnerabilities.
+    ``critical_findings``
+        At least one finding with severity CRITICAL was raised.
+    ``high_findings``
+        No critical findings, but at least one HIGH severity finding.
+    ``findings``
+        Findings exist but none are critical or high (medium / low / info).
     ``no_findings``
         Scan ran to completion but no findings were raised.
     ``inconclusive_target_errors``
@@ -209,7 +213,15 @@ def _compute_scan_outcome(
         (the circuit breaker tripped), indicating the target was unreachable.
     """
     if findings:
-        return "passed"
+        def _sev(f: object) -> str:
+            s = getattr(f, "severity", None)
+            return str(getattr(s, "value", s) or "").lower()
+        sevs = {_sev(f) for f in findings}
+        if "critical" in sevs:
+            return "critical_findings"
+        if "high" in sevs:
+            return "high_findings"
+        return "findings"
 
     # Check for full abort (circuit breaker fired on every scenario)
     if records and all(r.chain_status in ("aborted", "skipped") for r in records):
@@ -511,7 +523,7 @@ class RedteamOrchestrator:
         self.prompt_cache_hit: bool = False            # True when payloads loaded from cache
         self.llm_scenario_variants: dict[str, int] = {}  # scenario_title → variant_count
         # Scan-level outcome — populated by run()
-        # Values: passed | no_findings | inconclusive_target_errors | aborted_target_unavailable
+        # Values: critical_findings | high_findings | findings | no_findings | inconclusive_target_errors | aborted_target_unavailable
         self.scan_outcome: str = "no_findings"
 
     def _trigger_enabled(self, name: str) -> bool:

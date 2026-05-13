@@ -187,8 +187,8 @@ def test_behavior_analysis_result_risk_score():
             {"severity": "high", "title": "Bad thing 2"},
         ],
     )
-    # critical (10) + high (7) = 17; normalized: (17 / (2 * 10)) * 10 = 8.5
-    assert result.overall_risk_score == 8.5
+    # critical (100) + high (70) = 170; avg: 170 / 2 = 85.0
+    assert result.overall_risk_score == 85.0
 
 
 def test_behavior_analysis_result_risk_score_medium():
@@ -196,7 +196,7 @@ def test_behavior_analysis_result_risk_score_medium():
         intent=IntentProfile(),
         static_findings=[{"severity": "medium", "title": "medium thing"}],
     )
-    assert result.overall_risk_score == 4.0
+    assert result.overall_risk_score == 40.0
 
 
 def test_behavior_analysis_result_coverage_percentage():

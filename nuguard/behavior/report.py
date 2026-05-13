@@ -90,7 +90,19 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
     lines.append("")
     lines.append(f"- **Intent**: {result.intent.app_purpose or 'not determined'}")
     lines.append(f"- **Analysis Mode**: {mode}")
-    lines.append(f"- **Overall Risk Score**: {result.overall_risk_score:.1f} / 10")
+    _dyn_outcome = getattr(result, "dynamic_scan_outcome", None)
+    if result.static_findings and _dyn_outcome in ("aborted_target_unavailable", "inconclusive_target_errors"):
+        if _dyn_outcome == "aborted_target_unavailable":
+            lines.append(
+                "> **Note:** Dynamic scenario testing was aborted — the target was unreachable. "
+                "All scenario probes returned HTTP errors. Findings below are from static analysis only."
+            )
+        else:
+            lines.append(
+                "> **Note:** Dynamic scenario testing encountered significant target errors "
+                "and did not complete. Findings below are from static analysis only."
+            )
+    lines.append(f"- **Overall Risk Score**: {result.overall_risk_score:.1f} / 100")
     total_comp = len(result.coverage)
     exercised = sum(1 for c in result.coverage if c.exercised)
     lines.append(f"- **Coverage**: {result.coverage_percentage * 100:.0f}% ({exercised}/{total_comp} components exercised)")
@@ -529,7 +541,7 @@ def to_text(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = None) 
     # Summary panel
     summary_lines = [
         f"Intent:        {result.intent.app_purpose or 'not determined'}",
-        f"Risk Score:    {result.overall_risk_score:.1f} / 10",
+        f"Risk Score:    {result.overall_risk_score:.1f} / 100",
         f"Coverage:      {result.coverage_percentage * 100:.0f}%",
         f"Alignment:     {result.intent_alignment_score:.2f} / 5.0",
         f"Findings:      {len(result.static_findings) + len(result.dynamic_findings)}",

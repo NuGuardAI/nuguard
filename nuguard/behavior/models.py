@@ -286,12 +286,11 @@ class BehaviorAnalysisResult(BaseModel):
     @computed_field  # type: ignore[misc]
     @property
     def overall_risk_score(self) -> float:
-        """Compute overall risk score from findings.
+        """Compute overall risk score (0–100) as the weighted average severity.
 
-        Normalizes to [0, 10] as: (sum of severity weights) / (n_findings * 10).
-        Weights: critical=10, high=7, medium=4, low=1, info=0.
-        Returns the average severity scaled to 0–10, so mixed-severity sets
-        score below 10 rather than immediately pinning at the cap.
+        Weights: critical=100, high=70, medium=40, low=10, info=0.
+        Score = mean of per-finding weights, so volume and mix of severities
+        influence the score proportionally. Consistent with red-team scoring.
         """
         all_findings: list[dict[str, Any]] = [
             *self.static_findings,
@@ -299,10 +298,16 @@ class BehaviorAnalysisResult(BaseModel):
         ]
         if not all_findings:
             return 0.0
-        weights = {"critical": 10.0, "high": 7.0, "medium": 4.0, "low": 1.0, "info": 0.0}
-        total = sum(weights.get(str(f.get("severity", "low")).lower(), 1.0) for f in all_findings)
-        max_possible = len(all_findings) * 10.0
-        return round((total / max_possible) * 10.0, 2)
+        _weights = {"critical": 100.0, "high": 70.0, "medium": 40.0, "low": 10.0, "info": 0.0}
+
+        def _sev_key(raw: object) -> str:
+            # Normalise plain strings ("high", "HIGH") and enum-style strings
+            # ("Severity.HIGH") produced by str(Severity.HIGH) on Python 3.12+.
+            s = str(raw).lower()
+            return s.rsplit(".", 1)[-1] if "." in s else s
+
+        total = sum(_weights.get(_sev_key(f.get("severity", "low")), 10.0) for f in all_findings)
+        return round(total / len(all_findings), 2)
 
     broken_chains: list[str] = Field(default_factory=list)
     """Names of chained scenarios where the chain broke mid-turn."""
@@ -312,6 +317,13 @@ class BehaviorAnalysisResult(BaseModel):
 
     allowed_topics_tested: list[str] = Field(default_factory=list)
     """Allowed topics from cognitive policy that were exercised."""
+
+    dynamic_scan_outcome: str | None = None
+    """Outcome from the dynamic runner phase alone (before static findings override it).
+    Set to ``aborted_target_unavailable`` or ``inconclusive_target_errors`` when the
+    dynamic phase encountered target errors, even if static findings changed the final
+    ``scan_outcome``.
+    """
 
     @computed_field  # type: ignore[misc]
     @property

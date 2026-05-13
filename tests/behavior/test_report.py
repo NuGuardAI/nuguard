@@ -30,34 +30,34 @@ def test_risk_score_no_findings():
 
 def test_risk_score_single_critical():
     result = _make_result(dynamic_findings=[_finding("critical")])
-    assert result.overall_risk_score == 10.0
+    assert result.overall_risk_score == 100.0
 
 
 def test_risk_score_single_high():
     result = _make_result(dynamic_findings=[_finding("high")])
-    assert result.overall_risk_score == 7.0
+    assert result.overall_risk_score == 70.0
 
 
 def test_risk_score_single_medium():
     result = _make_result(dynamic_findings=[_finding("medium")])
-    assert result.overall_risk_score == 4.0
+    assert result.overall_risk_score == 40.0
 
 
 def test_risk_score_single_low():
     result = _make_result(dynamic_findings=[_finding("low")])
-    assert result.overall_risk_score == 1.0
+    assert result.overall_risk_score == 10.0
 
 
 def test_risk_score_mixed_critical_and_low():
-    # (10 + 1) / (2 * 10) * 10 = 5.5
+    # avg(100, 10) = 55.0
     result = _make_result(dynamic_findings=[_finding("critical"), _finding("low")])
-    assert result.overall_risk_score == 5.5
+    assert result.overall_risk_score == 55.0
 
 
 def test_risk_score_two_highs_below_10():
-    # 2 HIGH: (7+7)/(2*10)*10 = 7.0 — no longer capped-but-misleading 10.0
+    # avg(70, 70) = 70.0
     result = _make_result(dynamic_findings=[_finding("high"), _finding("high")])
-    assert result.overall_risk_score == 7.0
+    assert result.overall_risk_score == 70.0
 
 
 def test_risk_score_uses_static_and_dynamic():
@@ -65,8 +65,8 @@ def test_risk_score_uses_static_and_dynamic():
         static_findings=[_finding("medium")],
         dynamic_findings=[_finding("high")],
     )
-    # (4 + 7) / (2 * 10) * 10 = 5.5
-    assert result.overall_risk_score == 5.5
+    # avg(40, 70) = 55.0
+    assert result.overall_risk_score == 55.0
 
 
 def test_risk_score_info_counts_as_zero_weight():

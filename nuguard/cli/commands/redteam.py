@@ -177,7 +177,7 @@ def redteam(
         raise typer.Exit(code=1)
 
     try:
-        findings, llm_remediations, scenario_records = asyncio.run(
+        findings, llm_remediations, scenario_records, scan_outcome = asyncio.run(
             _run_redteam(
                 sbom_doc=sbom_doc,
                 sbom_path=sbom_path,
@@ -266,7 +266,7 @@ def redteam(
     )
 
     _print_findings(findings, effective_format, meta, remediation_plan=remediation_plan,
-                    scenario_records=scenario_records)
+                    scenario_records=scenario_records, scan_outcome=scan_outcome)
     if output:
         if effective_format == "markdown":
             output.write_text(
@@ -277,6 +277,7 @@ def redteam(
         else:
             payload = {
                 "_meta": meta.to_dict(),
+                "scan_outcome": scan_outcome,
                 "findings": [f.model_dump() for f in findings],
                 "remediation_plan": [a.model_dump() for a in remediation_plan],
             }
@@ -379,7 +380,7 @@ async def _run_redteam(
     turn_delay_seconds: float = 0.0,
     scenario_delay_seconds: float = 0.0,
     similar_miss_threshold: int = 4,
-) -> tuple[list, dict[str, str], list]:
+) -> tuple[list, dict[str, str], list, str]:
     """Async inner function: optionally launch the app, then run the orchestrator."""
     from nuguard.models.policy import CognitivePolicy
     from nuguard.redteam.target.canary import CanaryConfig
@@ -582,7 +583,7 @@ async def _run_orchestrator(
     turn_delay_seconds: float = 0.0,
     scenario_delay_seconds: float = 0.0,
     similar_miss_threshold: int = 4,
-) -> tuple[list, dict[str, str], list]:
+) -> tuple[list, dict[str, str], list, str]:
     from nuguard.common.llm_client import LLMClient
     from nuguard.redteam.executor.orchestrator import RedteamOrchestrator
 
@@ -642,7 +643,8 @@ async def _run_orchestrator(
             )
         ]
 
-    return findings, llm_remediations, scenario_records
+    scan_outcome = orchestrator.scan_outcome
+    return findings, llm_remediations, scenario_records, scan_outcome
 
 
 def _print_findings(
@@ -651,6 +653,7 @@ def _print_findings(
     meta: ReportMeta | None = None,
     remediation_plan: list | None = None,
     scenario_records: list | None = None,
+    scan_outcome: str = "no_findings",
 ) -> None:
     """Print findings to stdout in the requested format."""
     from nuguard.models.finding import Severity
@@ -661,6 +664,7 @@ def _print_findings(
     if format == "json":
         payload = {
             "_meta": meta.to_dict(),
+            "scan_outcome": scan_outcome,
             "findings": [f.model_dump() for f in findings],
             "remediation_plan": [a.model_dump() for a in (remediation_plan or [])],
         }
@@ -676,6 +680,7 @@ def _print_findings(
 
     if not findings:
         typer.echo(meta.to_text_line())
+        typer.echo(f"Outcome: {scan_outcome}")
         typer.echo("No findings — scan complete")
         return
 
@@ -690,6 +695,7 @@ def _print_findings(
     typer.echo(f"\n{'─' * 60}")
     typer.echo(f"  NuGuard Red-Team — {len(findings)} finding(s)")
     typer.echo(f"  {meta.to_text_line()}")
+    typer.echo(f"  Outcome: {scan_outcome}")
     typer.echo(f"{'─' * 60}")
     for f in sorted(findings, key=lambda x: list(Severity).index(x.severity)):
         colour = _SEV_COLOUR.get(f.severity, "white")
