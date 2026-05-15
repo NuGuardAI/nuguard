@@ -617,7 +617,18 @@ class RedteamOrchestrator:
 
         from nuguard.common.auth_runtime import bootstrap_auth_runtime, resolve_auth_runtime
         from nuguard.common.errors import AuthError
-        from nuguard.common.target_client_builder import resolve_auth_config_with_sbom_fallback
+        from nuguard.common.target_client_builder import (
+            resolve_auth_config_with_sbom_fallback,
+            resolve_target_url,
+        )
+
+        # Resolve the target URL before bootstrap so auth is verified against the
+        # actual backend URL, not a static-hosting frontend that has no API routes.
+        _resolved_url, _url_notes = resolve_target_url(self._target_url, self._sbom)
+        if _resolved_url and _resolved_url != self._target_url.rstrip("/"):
+            self._target_url = _resolved_url
+            for _note in _url_notes:
+                self.config_notes.append(_note)
 
         # Upgrade basic auth → login_flow when the SBOM has a login endpoint and the
         # caller has not already provided a login_flow block.
@@ -826,6 +837,7 @@ class RedteamOrchestrator:
                 app_domain=_warmup_app_domain,
                 allowed_topics=_warmup_allowed_topics,
                 turn_delay_seconds=self._turn_delay_seconds,
+                sbom=self._sbom,
             )
 
             # Build GuidedAttackExecutor when LLM is configured and guided is enabled

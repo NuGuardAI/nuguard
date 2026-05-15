@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
 if TYPE_CHECKING:
-    from nuguard.common.auth import AuthConfig, LoginFlowConfig
+    from nuguard.common.auth import AuthConfig
     from nuguard.redteam.target.client import TargetAppClient
     from nuguard.sbom.models import AiSbomDocument
 
@@ -217,6 +217,49 @@ def _none_auth() -> "AuthConfig":
 
 
 # ---------------------------------------------------------------------------
+# URL resolution (exposed separately so callers can resolve before bootstrap)
+# ---------------------------------------------------------------------------
+
+def resolve_target_url(
+    target_url: str,
+    sbom: "AiSbomDocument | None",
+) -> tuple[str, list[str]]:
+    """Resolve *target_url*, applying static-hosting fallback from the SBOM if needed.
+
+    Returns ``(resolved_url, notes)`` where *notes* is a list of human-readable
+    strings describing any automatic adjustments.  When no adjustment is needed the
+    returned URL equals *target_url* (stripped of a trailing slash) and *notes* is
+    empty.
+
+    Callers should use this before running auth bootstrap so that bootstrap targets
+    the same backend URL that ``build_target_app_client`` would resolve to.
+    """
+    notes: list[str] = []
+    url = target_url.rstrip("/") if target_url else target_url
+    if url and _is_static_hosting_url(url):
+        fallback = _fallback_url_from_sbom(sbom)
+        if fallback and fallback != url:
+            note = (
+                f"Target URL '{url}' is a static hosting site with no server-side "
+                f"API endpoints. Falling back to SBOM deployment URL '{fallback}' for "
+                f"behavior and redteam testing. Update target.url in nuguard.yaml to suppress "
+                f"this warning."
+            )
+            _log.warning("resolve_target_url: %s", note)
+            notes.append(note)
+            url = fallback
+        else:
+            note = (
+                f"Target URL '{url}' is a static hosting site with no server-side "
+                f"API endpoints, and no fallback URL was found in the SBOM. "
+                f"Tests will likely fail. Set target.url in nuguard.yaml to the backend URL."
+            )
+            _log.warning("resolve_target_url: %s", note)
+            notes.append(note)
+    return url, notes
+
+
+# ---------------------------------------------------------------------------
 # Main factory
 # ---------------------------------------------------------------------------
 
@@ -263,26 +306,12 @@ def build_target_app_client(
     resolution_notes: list[str] = []
 
     # ── 0. Static-site detection — fall back to SBOM deployment_url ────────
-    if target_url and _is_static_hosting_url(target_url):
-        fallback = _fallback_url_from_sbom(sbom)
-        if fallback and fallback != target_url.rstrip("/"):
-            note = (
-                f"Target URL '{target_url}' is a static hosting site with no server-side "
-                f"API endpoints. Falling back to SBOM deployment URL '{fallback}' for "
-                f"behavior and redteam testing. Update target.url in nuguard.yaml to suppress "
-                f"this warning."
-            )
-            _log.warning("build_target_app_client: %s", note)
-            resolution_notes.append(note)
-            target_url = fallback
-        else:
-            note = (
-                f"Target URL '{target_url}' is a static hosting site with no server-side "
-                f"API endpoints, and no fallback URL was found in the SBOM. "
-                f"Tests will likely fail. Set target.url in nuguard.yaml to the backend URL."
-            )
-            _log.warning("build_target_app_client: %s", note)
-            resolution_notes.append(note)
+    _resolved_url, _url_notes = resolve_target_url(target_url, sbom)
+    if _url_notes:
+        resolution_notes.extend(_url_notes)
+        target_url = _resolved_url
+    elif _resolved_url:
+        target_url = _resolved_url
 
     # ── 1. Framework adapter ────────────────────────────────────────────────
     framework_adapter = None
