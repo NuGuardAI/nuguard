@@ -181,10 +181,20 @@ jobs:
 
       - name: Configure CORS on Backend
         run: |
-          az webapp cors add \
+          FRONTEND_URL="${{ steps.frontend-url.outputs.FRONTEND_URL }}"
+          # Pass ALLOWED_ORIGINS to FastAPI's CORSMiddleware via app setting.
+          # Do NOT use `az webapp cors add` together with FastAPI's own CORSMiddleware —
+          # both would add Access-Control-Allow-Origin headers, causing duplicate-header
+          # rejections in browsers.  FastAPI's middleware is the single source of truth.
+          az webapp config appsettings set \
             --name ${{ env.AZURE_WEBAPP_NAME }} \
             --resource-group ${{ env.RESOURCE_GROUP }} \
-            --allowed-origins "${{ steps.frontend-url.outputs.FRONTEND_URL }}"
+            --settings ALLOWED_ORIGINS="$FRONTEND_URL,http://localhost:3250,http://localhost:3000"
+          # Clear any previously-added Azure-level CORS origins to avoid conflicts.
+          az webapp cors remove \
+            --name ${{ env.AZURE_WEBAPP_NAME }} \
+            --resource-group ${{ env.RESOURCE_GROUP }} \
+            --allowed-origins "*" || true
 
       - name: Summary
         run: |

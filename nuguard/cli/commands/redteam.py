@@ -177,7 +177,7 @@ def redteam(
         raise typer.Exit(code=1)
 
     try:
-        findings, llm_remediations, scenario_records, scan_outcome = asyncio.run(
+        findings, llm_remediations, scenario_records, scan_outcome, config_notes = asyncio.run(
             _run_redteam(
                 sbom_doc=sbom_doc,
                 sbom_path=sbom_path,
@@ -275,12 +275,14 @@ def redteam(
                 encoding="utf-8",
             )
         else:
-            payload = {
+            payload: dict = {
                 "_meta": meta.to_dict(),
                 "scan_outcome": scan_outcome,
                 "findings": [f.model_dump() for f in findings],
                 "remediation_plan": [a.model_dump() for a in remediation_plan],
             }
+            if config_notes:
+                payload["config_notes"] = config_notes
             output.write_text(json.dumps(payload, indent=2, default=str))
         typer.echo(f"Findings written to {output}")
 
@@ -380,7 +382,7 @@ async def _run_redteam(
     turn_delay_seconds: float = 0.0,
     scenario_delay_seconds: float = 0.0,
     similar_miss_threshold: int = 4,
-) -> tuple[list, dict[str, str], list, str]:
+) -> tuple[list, dict[str, str], list, str, list[str]]:
     """Async inner function: optionally launch the app, then run the orchestrator."""
     from nuguard.models.policy import CognitivePolicy
     from nuguard.redteam.target.canary import CanaryConfig
@@ -583,7 +585,7 @@ async def _run_orchestrator(
     turn_delay_seconds: float = 0.0,
     scenario_delay_seconds: float = 0.0,
     similar_miss_threshold: int = 4,
-) -> tuple[list, dict[str, str], list, str]:
+) -> tuple[list, dict[str, str], list, str, list[str]]:
     from nuguard.common.llm_client import LLMClient
     from nuguard.redteam.executor.orchestrator import RedteamOrchestrator
 
@@ -644,7 +646,10 @@ async def _run_orchestrator(
         ]
 
     scan_outcome = orchestrator.scan_outcome
-    return findings, llm_remediations, scenario_records, scan_outcome
+    config_notes: list[str] = list(getattr(orchestrator, "config_notes", []))
+    for note in config_notes:
+        typer.echo(f"\n⚠ {note}", err=True)
+    return findings, llm_remediations, scenario_records, scan_outcome, config_notes
 
 
 def _print_findings(

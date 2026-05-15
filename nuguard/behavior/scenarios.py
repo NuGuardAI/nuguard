@@ -218,7 +218,7 @@ _HAPPY_PATH_SYSTEM = (
 _HAPPY_PATH_USER_TEMPLATE = """\
 ## Application Intent
 Purpose: {app_purpose}
-Core capabilities: {capabilities}
+Capabilities (assign one per scenario): {capabilities}
 Known agents: {agents}
 Known tools: {tools}
 
@@ -236,9 +236,40 @@ Return JSON:
   ]
 }}
 Rules:
-- Each scenario must have a different starting context
+- Each scenario must exercise a DIFFERENT primary capability — do not write two scenarios
+  that start from the same user intent or cover the same task area
+- Use distinct test data in every scenario (different IDs, names, queries, parameters)
+  so no two scenarios feel like variations of the same request
+- Script Turn 2+ as logical continuations: assume the agent gave a helpful response to
+  Turn 1 and write the next turn as the natural next step a real user would take
+  (if Turn 1 establishes a context, Turn 2 should build on that context, not start fresh)
+- Do NOT write Turn 2 as an unrelated request; each scenario must read as one coherent
+  conversation thread from start to finish
+- Spread the {count} scenarios evenly across the listed capabilities to maximize coverage
 - Messages should be realistic user requests grounded in the app's purpose
 """
+
+
+def _dedup_capabilities(capabilities: list[str], max_count: int = 8) -> list[str]:
+    """Return a deduplicated capability list by collapsing near-duplicate entries.
+
+    Two capabilities are considered near-duplicates when they share more than 60%
+    of their words.  No domain-specific keywords are used — this works for any app.
+    """
+    seen: list[str] = []
+    for cap in capabilities:
+        words = set(cap.lower().split())
+        if not words:
+            continue
+        is_dup = any(
+            len(words & set(s.lower().split())) / len(words) > 0.6
+            for s in seen
+        )
+        if not is_dup:
+            seen.append(cap)
+        if len(seen) >= max_count:
+            break
+    return seen
 
 
 def _deterministic_happy_path(
@@ -286,10 +317,11 @@ async def _intent_happy_path_scenarios(
             elif nt == "TOOL":
                 tools.append(name)
 
-    count = min(len(intent.core_capabilities), 4) or 2
+    distinct_caps = _dedup_capabilities(intent.core_capabilities)
+    count = min(len(distinct_caps), 4) or 2
     prompt = _HAPPY_PATH_USER_TEMPLATE.format(
         app_purpose=intent.app_purpose,
-        capabilities=", ".join(intent.core_capabilities[:8]),
+        capabilities=", ".join(distinct_caps),
         agents=", ".join(agents[:10]) or "none",
         tools=", ".join(tools[:10]) or "none",
         count=count,
@@ -356,8 +388,9 @@ Rules:
   * Tool: "Please use {{tool_name}} to [action]?"
 - Turn 4 (optional): verification or refinement follow-up
 - goal: one sentence "Verify that {{ComponentName}} [measurable outcome]"
-- Append this exact string to EVERY message (including Turn 1): "{suffix}"
-- Do NOT emit the suffix as a standalone turn; it must be part of each message
+- Append this exact string to Turn 3 ONLY (the explicit component invocation): "{suffix}"
+- Turn 1 and Turn 2 must be plain conversation — do NOT add the suffix to them
+- Do NOT emit the suffix as a standalone turn; embed it in the Turn 3 message text
 - No two Turn 1 messages may be identical
 
 Return:

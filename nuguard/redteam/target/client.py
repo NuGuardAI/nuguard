@@ -150,6 +150,9 @@ class TargetAppClient:
         # Optional framework-specific adapter (e.g. Google ADK).  When set,
         # send() delegates body construction and response parsing to the adapter.
         self._framework_adapter: FrameworkAdapter | None = framework_adapter
+        # Populated by build_target_app_client() with human-readable notes about
+        # automatic config resolution (URL fallback, auth upgrade, etc.).
+        self.resolution_notes: list[str] = []
 
     def _parse_retry_after_seconds(self, value: str | None) -> float | None:
         if not value:

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re as _re
 from typing import TYPE_CHECKING
 
 from nuguard.common.llm_client import LLMClient
@@ -15,6 +16,7 @@ from nuguard.common.rate_limit import (
 if TYPE_CHECKING:
     from nuguard.common.auth import AuthSession
     from nuguard.redteam.target.log_reader import BufferLogReader, FileLogReader
+    from nuguard.sbom.models import AiSbomDocument
 from nuguard.models.exploit_chain import HTTP_2XX_SENTINEL, ExploitChain, ExploitStep, GoalType
 from nuguard.models.policy import CognitivePolicy
 from nuguard.redteam.llm_engine.adaptive_mutation import AdaptiveMutationStrategy
@@ -31,6 +33,37 @@ from .golden_data_filter import HitClass, classify_response
 from .id_extractor import extract_ids, generate_similar_ids
 
 _log = logging.getLogger(__name__)
+
+# Regex patterns to detect capability self-disclosures in warmup responses.
+# Mirrors _SELF_DISCLOSURE_PATTERNS in conversation_director.py so static chains
+# can harvest the same agent facts that guided conversations already capture.
+_WARMUP_DISCLOSURE_PATTERNS: list[tuple[str, str]] = [
+    (r"handled_by\s*=\s*([^\n;]+)", "Handled by"),
+    (r"tools_used\s*=\s*([^\n;]+)", "Tools used"),
+    (r"I have access to\s+([^.!?\n]{5,80})", "Has access to"),
+    (r"I can (?:look up|check|retrieve|access|read|see)\s+([^.!?\n]{5,80})", "Can access"),
+    (r"(?:our|the) system (?:stores?|tracks?|contains?|holds?)\s+([^.!?\n]{5,80})", "System stores"),
+    (r"I(?:'m| am) (?:able to|authorized to|permitted to)\s+([^.!?\n]{5,80})", "Is authorized to"),
+    (r"(?:available tools?|tool available)[:\s]+([^.!?\n]{5,80})", "Available tool"),
+]
+
+
+def _extract_warmup_disclosures(response: str) -> str:
+    """Scan a single warmup response for agent self-disclosures.
+
+    Returns a compact comma-separated string of findings (e.g.
+    "Has access to: flight reservations; Can access: seat maps"), or an
+    empty string when nothing is found.
+    """
+    findings: list[str] = []
+    for pattern, label in _WARMUP_DISCLOSURE_PATTERNS:
+        m = _re.search(pattern, response, _re.IGNORECASE)
+        if m:
+            value = m.group(1).strip().rstrip(".,;")
+            entry = f"{label}: {value}"
+            if entry not in findings:
+                findings.append(entry)
+    return "; ".join(findings[:3])
 
 
 def _mutation_variants(payload: str) -> list[str]:
@@ -159,6 +192,7 @@ class AttackExecutor:
         app_domain: str = "",
         allowed_topics: list[str] | None = None,
         turn_delay_seconds: float = 0.0,
+        sbom: "AiSbomDocument | None" = None,
     ) -> None:
         self._client = client
         self._evaluator = PolicyEvaluator(policy) if policy else None
@@ -180,6 +214,8 @@ class AttackExecutor:
         self._happy_path_llm = mutation_llm
         self._app_domain = app_domain
         self._allowed_topics = list(allowed_topics or [])
+        # SBOM reference for per-chain agent lookup (warmup personalisation).
+        self._sbom = sbom
         # Golden-data cache: once the DISCOVER step has been executed for a given
         # agent node, the response is stored here keyed by target_node_id.  All
         # subsequent chains targeting the same node skip the DISCOVER request and
@@ -282,11 +318,20 @@ class AttackExecutor:
                 last_response = result.response
                 for attempt in range(self.MAX_MUTATIONS):
                     if self._adaptive_mutator:
+                        # Pass recent conversation history and warmup disclosures so
+                        # the mutator can reference what the agent actually said rather
+                        # than generating generic follow-ups.
+                        history_pairs = [
+                            (t.prompt[:300], t.response[:300])
+                            for t in session.turns[-3:]
+                        ]
                         mutation = await self._adaptive_mutator.get_next_payload(
                             original_payload=step.payload,
                             response=last_response,
                             goal_type=chain.goal_type.value,
                             attempt=attempt,
+                            conversation_history=history_pairs or None,
+                            agent_context=session.warmup_context or None,
                         )
                     else:
                         static = _mutation_variants(step.payload)
@@ -324,12 +369,31 @@ class AttackExecutor:
             # Derive a stable variation index from the chain ID so concurrent
             # chains with identical SBOM context still produce different openers.
             variation_idx = abs(hash(chain.chain_id)) if chain.chain_id else 0
+
+            # Resolve target-agent context from the SBOM for a personalised opener.
+            agent_name: str | None = None
+            agent_description: str | None = None
+            target_node_id = chain.sbom_path[-1] if chain.sbom_path else None
+            if target_node_id and self._sbom is not None:
+                for node in getattr(self._sbom, "nodes", []):
+                    if str(getattr(node, "id", "")) == target_node_id:
+                        agent_name = getattr(node, "name", None) or None
+                        meta = getattr(node, "metadata", None)
+                        agent_description = (
+                            getattr(meta, "description", None)
+                            or getattr(node, "description", None)
+                            or None
+                        )
+                        break
+
             message = await generate_happy_path_opener(
                 self._happy_path_llm,
                 self._app_domain,
                 self._allowed_topics,
                 label=f"happy-path chain={chain.chain_id[:8]}",
                 variation_idx=variation_idx,
+                agent_name=agent_name,
+                agent_description=agent_description,
             )
         except Exception as exc:  # pragma: no cover — helper already swallows
             _log.warning("happy_path generation failed: %s — skipping warmup", exc)
@@ -353,6 +417,14 @@ class AttackExecutor:
             )
             return None
         session.add_turn(message, response, tool_calls)
+
+        # Capture agent self-disclosures from the warmup response so subsequent
+        # mutation prompts can reference what the agent actually revealed.
+        disclosures = _extract_warmup_disclosures(response)
+        if disclosures:
+            session.warmup_context = disclosures
+            _log.debug("warmup disclosures for chain %s: %s", chain.chain_id[:8], disclosures)
+
         # Log as a dedicated warmup turn so audit trails preserve it.
         self._logger.log(
             chain_id=chain.chain_id,

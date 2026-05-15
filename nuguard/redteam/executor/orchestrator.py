@@ -525,6 +525,8 @@ class RedteamOrchestrator:
         # Scan-level outcome — populated by run()
         # Values: critical_findings | high_findings | findings | no_findings | inconclusive_target_errors | aborted_target_unavailable
         self.scan_outcome: str = "no_findings"
+        # Run-level configuration notices (e.g. automatic URL resolution).
+        self.config_notes: list[str] = []
 
     def _trigger_enabled(self, name: str) -> bool:
         """Return whether a finding trigger is enabled (defaults preserve legacy behavior)."""
@@ -615,10 +617,36 @@ class RedteamOrchestrator:
 
         from nuguard.common.auth_runtime import bootstrap_auth_runtime, resolve_auth_runtime
         from nuguard.common.errors import AuthError
+        from nuguard.common.target_client_builder import (
+            resolve_auth_config_with_sbom_fallback,
+            resolve_target_url,
+        )
+
+        # Resolve the target URL before bootstrap so auth is verified against the
+        # actual backend URL, not a static-hosting frontend that has no API routes.
+        _resolved_url, _url_notes = resolve_target_url(self._target_url, self._sbom)
+        if _resolved_url and _resolved_url != self._target_url.rstrip("/"):
+            self._target_url = _resolved_url
+            for _note in _url_notes:
+                self.config_notes.append(_note)
+
+        # Upgrade basic auth → login_flow when the SBOM has a login endpoint and the
+        # caller has not already provided a login_flow block.
+        _effective_auth = self._auth_config
+        if (
+            _effective_auth is not None
+            and _effective_auth.type == "basic"
+            and _effective_auth.login_flow is None
+        ):
+            _effective_auth, _auth_note = resolve_auth_config_with_sbom_fallback(
+                _effective_auth, self._sbom
+            )
+            if _auth_note:
+                self.config_notes.append(_auth_note)
 
         auth_runtime = resolve_auth_runtime(
-            auth_config=self._auth_config,
-            headers_override=self._extra_headers if self._auth_config is None else None,
+            auth_config=_effective_auth,
+            headers_override=self._extra_headers if _effective_auth is None else None,
         )
         bootstrapper, health_report = await bootstrap_auth_runtime(
             target_url=self._target_url,
@@ -772,6 +800,12 @@ class RedteamOrchestrator:
             # so treat endpoint/payload as explicitly set to skip re-discovery.
             explicitly_set=frozenset({"target_endpoint", "chat_payload_key", "chat_response_key"}),
         )
+        for _note in (getattr(client, "resolution_notes", None) or []):
+            if isinstance(_note, str) and _note:
+                self.config_notes.append(_note)
+        # If a URL fallback was applied, sync self._target_url to the resolved URL.
+        if client.base_url != self._target_url.rstrip("/"):
+            self._target_url = client.base_url
 
         async with (
             PoisonPayloadServer(app_name=app_name or "application") as poison_server,
@@ -803,6 +837,7 @@ class RedteamOrchestrator:
                 app_domain=_warmup_app_domain,
                 allowed_topics=_warmup_allowed_topics,
                 turn_delay_seconds=self._turn_delay_seconds,
+                sbom=self._sbom,
             )
 
             # Build GuidedAttackExecutor when LLM is configured and guided is enabled
