@@ -267,6 +267,13 @@ class BehaviorRunResult(BaseModel):
     scenarios_executed: int = 0
     scan_outcome: str = "no_findings"
     coverage: list[BehaviorCoverage] = Field(default_factory=list)
+    config_notes: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Run-level configuration notices surfaced to the report, e.g. automatic "
+            "URL resolution when the configured target was a static hosting site."
+        ),
+    )
 
 
 class BehaviorAnalysisResult(BaseModel):

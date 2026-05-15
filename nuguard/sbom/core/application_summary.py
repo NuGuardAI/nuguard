@@ -35,6 +35,14 @@ _ENDPOINT_PATTERNS = [
 ]
 
 _URL_PATTERN = re.compile(r"https?://[^\s\"'`<>]+")
+# GitHub Actions env vars that encode well-known Azure hostname patterns, e.g.
+#   AZURE_WEBAPP_NAME: my-backend  →  https://my-backend.azurewebsites.net
+# The template expression ${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net is
+# filtered by _canonicalize_url, so we reconstruct the URL explicitly.
+_GHA_AZURE_WEBAPP_NAME_RE = re.compile(
+    r"AZURE_WEBAPP_NAME\s*:\s*['\"]?([A-Za-z0-9][A-Za-z0-9-]{0,59})['\"]?",
+    re.IGNORECASE,
+)
 _AWS_ACCOUNT_PATTERN = re.compile(r"\b\d{12}\b")
 _AZURE_SUB_PATTERN = re.compile(
     r"\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}\b"
@@ -372,6 +380,12 @@ def extract_deployment_context(files: Sequence[tuple[str, str]]) -> dict[str, li
         environments.extend(_ENV_PATTERN.findall(text))
         if any(hint in lower_path for hint in _DEPLOYMENT_FILE_HINTS):
             deployment_urls.extend(_URL_PATTERN.findall(text))
+            # GitHub Actions workflows rarely contain literal deployed URLs because
+            # they build them from env vars (e.g. ${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net).
+            # Reconstruct well-known Azure App Service URLs from the declared env var value.
+            if ".github/workflows/" in lower_path:
+                for m in _GHA_AZURE_WEBAPP_NAME_RE.finditer(text):
+                    deployment_urls.append(f"https://{m.group(1)}.azurewebsites.net")
 
     canonical_urls = _uniq(u for u in (_canonicalize_url(u) for u in deployment_urls) if u)
     return {

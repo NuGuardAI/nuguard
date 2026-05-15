@@ -13,7 +13,7 @@ policy:
 
 # ─── LLM settings ─────────────────────────────────────────────────────────────
 llm:
-  model: gemini/gemini-3.1-flash-lite-preview    # any LiteLLM model string (openai/gpt-4o, etc.)
+  model: gemini/gemini-3.1-flash-lite    # any LiteLLM model string (openai/gpt-4o, etc.)
   api_key: ${GEMINI_API_KEY}     # never put keys here; use env var interpolation
 
 # ─── SBOM generation ──────────────────────────────────────────────────────────
@@ -21,24 +21,26 @@ sbom_generation:
   llm: true                        # set true to enrich SBOM nodes with LLM descriptions
                                     # requires LITELLM_API_KEY to be set
 target:
-  url: http://127.0.0.1:8250   # URL of the running AI application under test (required for behavior and redteam)
-
-  # Authentication — choose one type:
+  # The SWA frontend (https://delightful-beach-0b11fc40f.3.azurestaticapps.net) is a fully
+  # static Next.js export with no server-side routes — it cannot be used as a nuguard target.
+  # The frontend bakes the backend URL into the JS bundle at build time and calls it directly.
+  # Always target the FastAPI backend for behavior and redteam testing.
+  #
+  # Backend URL is also recorded in the SBOM summary → deployment_urls so nuguard can surface
+  # it automatically (extracted from AZURE_WEBAPP_NAME in .github/workflows/deploy-azure.yml).
+  #url: http://127.0.0.1:8250   # local dev backend (pnpm dev or python -m uvicorn api:app)
+  url: https://openai-cs-agents-backend.azurewebsites.net
+  # Authentication — login_flow: POST /login → get Bearer token for subsequent requests
   auth:
-    # Option A: Bearer token (OAuth2, JWT, or custom token)
-    # type: bearer
-    # header: "Authorization: Bearer ${TARGET_TOKEN}"
-
-    # Option B: API key in a custom header
-    # type: api_key
-    # header: "X-API-Key: ${TARGET_API_KEY}"
-
-    # Option C: HTTP Basic Auth (username + password)
-    type: basic
-    username: ${APP_USERNAME}
-    password: ${APP_PASSWORD}
-    # Option D: No authentication (open endpoints, local dev)
-    # type: none
+    type: login_flow
+    login_flow:
+      endpoint: /login
+      payload:
+        username: alice
+        password: alice123
+      token_response_key: token
+      token_header: "Authorization: Bearer"
+      refresh_on_401: true
 
 # ─── Behavior mode ────────────────────────────────────────────────────────────
 # nuguard behavior exercises the AI app's happy path to verify capabilities work

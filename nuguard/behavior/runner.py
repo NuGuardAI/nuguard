@@ -376,7 +376,10 @@ class BehaviorRunner:
 
         from nuguard.common.auth_runtime import bootstrap_auth_runtime, resolve_auth_runtime
         from nuguard.common.errors import AuthError
-        from nuguard.common.target_client_builder import build_target_app_client
+        from nuguard.common.target_client_builder import (
+            build_target_app_client,
+            resolve_auth_config_with_sbom_fallback,
+        )
 
         # Build auth config from the behavior config's auth section
         auth_config = None
@@ -394,6 +397,16 @@ class BehaviorRunner:
                 )
         except Exception as exc:
             _log.debug("_build_client: could not build auth_config: %s", exc)
+
+        # Upgrade basic auth → login_flow if the SBOM has a login endpoint and the
+        # user has not already configured a login_flow block explicitly.
+        auth_config_note: str | None = None
+        if auth_config is not None and auth_config.type == "basic":
+            va2 = getattr(self._config, "auth", None)
+            if not getattr(va2, "login_flow", None):
+                auth_config, auth_config_note = resolve_auth_config_with_sbom_fallback(
+                    auth_config, self._sbom
+                )
 
         runtime = resolve_auth_runtime(auth_config=auth_config)
 
@@ -426,7 +439,7 @@ class BehaviorRunner:
             _log.debug("_build_client: bootstrap skipped: %s", exc)
             bootstrap_headers = getattr(runtime, "initial_headers", {}) or {}
 
-        return build_target_app_client(
+        client = build_target_app_client(
             target_url=target_url,
             endpoint=endpoint,
             payload_key=getattr(self._config, "chat_payload_key", "message") or "message",
@@ -439,6 +452,9 @@ class BehaviorRunner:
             adk_cfg=getattr(self._config, "adk", None),
             explicitly_set=getattr(self._config, "model_fields_set", set()),
         )
+        if auth_config_note:
+            client.resolution_notes.append(auth_config_note)
+        return client
 
     def _build_policy_evaluator(self) -> Any:
         """Build the PolicyEvaluator if a policy is available."""
@@ -1045,6 +1061,12 @@ class BehaviorRunner:
             _log.error("BehaviorRunner.run: could not build client: %s", exc)
             raise
 
+        config_notes: list[str] = []
+        for _note in (getattr(client, "resolution_notes", None) or []):
+            if isinstance(_note, str) and _note:
+                config_notes.append(_note)
+                _console.print(f"\n[bold yellow]⚠ config:[/bold yellow] {_note}\n")
+
         policy_evaluator = self._build_policy_evaluator()
 
         all_findings: list[dict] = []
@@ -1167,6 +1189,7 @@ class BehaviorRunner:
             scenarios_executed=len(scenario_results),
             scan_outcome=scan_outcome,
             coverage=coverage,
+            config_notes=config_notes,
         )
 
     def _build_coverage_map(
