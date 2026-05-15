@@ -145,7 +145,7 @@ nuguard analyze --sbom app.sbom.json --no-grype --no-trivy --min-severity high
 | `--format`, `-f` | `markdown` | `markdown` \| `sarif` \| `json` |
 | `--min-severity` | `medium` | Minimum severity to include: `critical` \| `high` \| `medium` \| `low` \| `info` |
 | `--source`, `-s` | — | Source directory for Checkov / Trivy / Semgrep path resolution |
-| `--atlas` / `--no-atlas` | on | MITRE ATLAS native graph checks (NGA-001–019) |
+| `--atlas` / `--no-atlas` | on | MITRE ATLAS native graph checks (NGA-001–018) |
 | `--osv` / `--no-osv` | on | OSV dependency CVE scan |
 | `--grype` / `--no-grype` | on | Grype CVE scan (requires `grype` on PATH) |
 | `--checkov` / `--no-checkov` | on | Checkov IaC scan (requires `checkov` on PATH) |

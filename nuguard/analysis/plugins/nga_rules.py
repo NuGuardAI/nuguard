@@ -8,21 +8,20 @@ NGA-001  PII/PHI data handled by external LLM providers        CRITICAL
 NGA-002  Insufficient guardrail coverage                        HIGH (two sub-checks)
 NGA-003  Secrets exposed as env vars or no secret store         HIGH
 NGA-004  Containers / K8s workloads running as root             HIGH
-NGA-005  AI workloads without CPU/memory resource limits        LOW
-NGA-006  Unencrypted datastore containing PII/PHI              HIGH
-NGA-007  Missing authentication on external AI API endpoint     HIGH
-NGA-008  (retired — absorbed into NGA-002 sub-check B)
-NGA-009  Overly permissive IAM role for AI workload             HIGH
-NGA-010  No network policy for AI workload in K8s               MEDIUM
-NGA-011  LLM model weight loaded from untrusted registry        HIGH
-NGA-012  Container image using latest tag                       LOW
-NGA-013  AI workload missing health check                       LOW
-NGA-014  Multiple AI agents sharing a datastore, no IAM isolation  LOW
-NGA-015  AI application has no audit logging enabled            HIGH
-NGA-016  GitHub Actions: pull_request_target with untrusted injection  HIGH
-NGA-017  GitHub Actions: GITHUB_ENV written from untrusted input  HIGH
-NGA-018  GitHub Actions: ACTIONS_RUNNER_DEBUG secret exposed    MEDIUM
-NGA-019  Agent pipeline lacks HITL approval for high-risk actions  HIGH
+NGA-005  Unencrypted datastore containing PII/PHI              HIGH
+NGA-006  Missing authentication on external AI API endpoint     HIGH
+NGA-007  Overly permissive IAM role for AI workload             HIGH
+NGA-008  LLM model weight loaded from untrusted registry        HIGH
+NGA-009  AI application has no audit logging enabled            HIGH
+NGA-010  GitHub Actions: pull_request_target with untrusted injection  HIGH
+NGA-011  GitHub Actions: GITHUB_ENV written from untrusted input  HIGH
+NGA-012  Agent pipeline lacks HITL approval for high-risk actions  HIGH
+NGA-013  No network policy for AI workload in K8s               MEDIUM
+NGA-014  GitHub Actions: ACTIONS_RUNNER_DEBUG secret exposed    MEDIUM
+NGA-015  AI workloads without CPU/memory resource limits        LOW
+NGA-016  Container image using latest tag                       LOW
+NGA-017  AI workload missing health check                       LOW
+NGA-018  Multiple AI agents sharing a datastore, no IAM isolation  LOW
 """
 
 from __future__ import annotations
@@ -45,10 +44,10 @@ _EXTERNAL_PROVIDERS = {
     "deepseek", "ai21", "amazon", "azure",
 }
 
-# ── Trusted model registries (NGA-011) ───────────────────────────────────────
+# ── Trusted model registries (NGA-008) ───────────────────────────────────────
 _DEFAULT_TRUSTED_REGISTRIES = {"huggingface.co", "ollama.ai"}
 
-# ── Irreversible tool name patterns (NGA-019) ─────────────────────────────────
+# ── Irreversible tool name patterns (NGA-012) ─────────────────────────────────
 _IRREVERSIBLE_TOOL_PATTERNS = re.compile(
     r"send[_\-]?email|delete[_\-]?|drop[_\-]?|execute[_\-]?sql|"
     r"write[_\-]?|charge[_\-]?|create[_\-]?payment|pay[_\-]?|"
@@ -56,14 +55,14 @@ _IRREVERSIBLE_TOOL_PATTERNS = re.compile(
     re.IGNORECASE,
 )
 
-# ── HITL pattern indicators in AGENT metadata (NGA-019) ──────────────────────
+# ── HITL pattern indicators in AGENT metadata (NGA-012) ──────────────────────
 _HITL_PATTERNS = {
     "interrupt", "interrupt_before", "interrupt_after",
     "human_input", "requires_action", "HumanApprovalCallbackHandler",
     "hitl", "human_in_the_loop", "human_approval",
 }
 
-# ── GitHub Actions patterns (NGA-016/017/018) ─────────────────────────────────
+# ── GitHub Actions patterns (NGA-010/011/014) ─────────────────────────────────
 _PATTERN_PR_TARGET_INJECTION = re.compile(
     r"pull_request_target.*\$\{\{.*github\.event\.pull_request\.",
     re.DOTALL,
@@ -350,39 +349,7 @@ def _rule_nga004_runs_as_root(
 # ── NGA-005 ──────────────────────────────────────────────────────────────────
 
 
-def _rule_nga005_no_resource_limits(
-    nodes: list[dict[str, Any]], summary: dict[str, Any], **_: Any
-) -> list[dict[str, Any]]:
-    """LOW — AI workloads deployed without CPU/memory resource limits."""
-    security_findings: list[str] = summary.get("security_findings") or []
-    depl_nodes = [n for n in nodes if n.get("component_type") == "DEPLOYMENT"]
-    if not depl_nodes:
-        return []
-    limited_nodes = [n for n in depl_nodes if _depl_meta(n).get("no_resource_limits") is True]
-    if not limited_nodes and "no_resource_limits" not in security_findings:
-        return []
-    affected = limited_nodes if limited_nodes else depl_nodes
-    return [
-        _finding(
-            "NGA-005", "LOW",
-            "AI workloads without resource limits",
-            f"{len(affected)} deployment node(s) have no CPU or memory resource limits "
-            "configured. Unbounded AI workloads can starve co-located services, "
-            "trigger node OOM kills, and enable denial-of-service via runaway inference "
-            "or prompt-flooding attacks.",
-            [n.get("name", "") for n in affected],
-            "Set explicit 'resources.requests' and 'resources.limits' for CPU and memory "
-            "in every K8s workload spec. For serverless deployments configure concurrency "
-            "and timeout limits. Consider LLM-specific limits such as max_tokens per "
-            "request to cap inference cost and latency.",
-        )
-    ]
-
-
-# ── NGA-006 ──────────────────────────────────────────────────────────────────
-
-
-def _rule_nga006_unencrypted_pii_datastore(
+def _rule_nga005_unencrypted_pii_datastore(
     nodes: list[dict[str, Any]], summary: dict[str, Any], **_: Any
 ) -> list[dict[str, Any]]:
     """HIGH — Unencrypted datastore containing PII/PHI."""
@@ -400,7 +367,7 @@ def _rule_nga006_unencrypted_pii_datastore(
 
     return [
         _finding(
-            "NGA-006", "HIGH",
+            "NGA-005", "HIGH",
             "Unencrypted datastore containing PII/PHI",
             f"{len(unencrypted)} datastore(s) containing PII/PHI data have "
             "'encryption_at_rest=false'. Unencrypted data stores expose sensitive data "
@@ -414,10 +381,10 @@ def _rule_nga006_unencrypted_pii_datastore(
     ]
 
 
-# ── NGA-007 ──────────────────────────────────────────────────────────────────
+# ── NGA-006 ──────────────────────────────────────────────────────────────────
 
 
-def _rule_nga007_missing_auth_on_api_endpoint(
+def _rule_nga006_missing_auth_on_api_endpoint(
     nodes: list[dict[str, Any]], edges: list[dict[str, Any]], **_: Any
 ) -> list[dict[str, Any]]:
     """HIGH — Missing authentication on external AI API endpoint."""
@@ -437,7 +404,7 @@ def _rule_nga007_missing_auth_on_api_endpoint(
 
     return [
         _finding(
-            "NGA-007", "HIGH",
+            "NGA-006", "HIGH",
             "Missing authentication on external AI API endpoint",
             f"{len(unprotected)} API endpoint(s) lack an AUTH or GUARDRAIL edge "
             "in the SBOM graph, indicating no authentication layer was detected. "
@@ -451,10 +418,10 @@ def _rule_nga007_missing_auth_on_api_endpoint(
     ]
 
 
-# ── NGA-009 ──────────────────────────────────────────────────────────────────
+# ── NGA-007 ──────────────────────────────────────────────────────────────────
 
 
-def _rule_nga009_overly_permissive_iam(
+def _rule_nga007_overly_permissive_iam(
     nodes: list[dict[str, Any]], edges: list[dict[str, Any]], **_: Any
 ) -> list[dict[str, Any]]:
     """HIGH — Overly permissive IAM role for AI workload."""
@@ -484,7 +451,7 @@ def _rule_nga009_overly_permissive_iam(
 
     return [
         _finding(
-            "NGA-009", "HIGH",
+            "NGA-007", "HIGH",
             "Overly permissive IAM role for AI workload",
             f"{len(overpermissive)} IAM role(s) attached to AI deployment(s) grant "
             "wildcard ('*') or admin-level permissions. AI workloads with excessive IAM "
@@ -498,50 +465,10 @@ def _rule_nga009_overly_permissive_iam(
     ]
 
 
-# ── NGA-010 ──────────────────────────────────────────────────────────────────
+# ── NGA-008 ──────────────────────────────────────────────────────────────────
 
 
-def _rule_nga010_no_k8s_network_policy(
-    nodes: list[dict[str, Any]], summary: dict[str, Any], **_: Any
-) -> list[dict[str, Any]]:
-    """MEDIUM — No network policy for AI workload in K8s."""
-    k8s_deployments = [
-        n for n in nodes
-        if n.get("component_type") in _DEPLOYMENT_TYPES
-        and (
-            _depl_meta(n).get("deployment_target", "").lower() in ("kubernetes", "k8s")
-            or (n.get("metadata") or {}).get("iac_format", "").lower() == "kubernetes"
-        )
-    ]
-    if not k8s_deployments:
-        return []
-
-    no_netpol = [
-        n for n in k8s_deployments
-        if not _depl_meta(n).get("has_network_policy")
-    ]
-    if not no_netpol:
-        return []
-
-    return [
-        _finding(
-            "NGA-010", "MEDIUM",
-            "No Kubernetes NetworkPolicy for AI workload",
-            f"{len(no_netpol)} K8s deployment(s) have no NetworkPolicy detected. "
-            "Without network policies, any compromised pod in the cluster can reach "
-            "AI workloads directly, enabling lateral movement and data exfiltration.",
-            [n.get("name", "") for n in no_netpol],
-            "Define Kubernetes NetworkPolicy resources that restrict ingress/egress for "
-            "AI workload pods to only required services. Default-deny all traffic and "
-            "explicitly allow only necessary communication paths.",
-        )
-    ]
-
-
-# ── NGA-011 ──────────────────────────────────────────────────────────────────
-
-
-def _rule_nga011_untrusted_model_registry(
+def _rule_nga008_untrusted_model_registry(
     nodes: list[dict[str, Any]], summary: dict[str, Any], **_: Any
 ) -> list[dict[str, Any]]:
     """HIGH — LLM model weight loaded from untrusted registry."""
@@ -575,7 +502,7 @@ def _rule_nga011_untrusted_model_registry(
 
     return [
         _finding(
-            "NGA-011", "HIGH",
+            "NGA-008", "HIGH",
             "LLM model weights loaded from untrusted registry",
             f"{len(untrusted)} model(s) are loaded from sources not in the trusted registry "
             f"allowlist ({', '.join(sorted(trusted))}) and have no checksum/digest for "
@@ -589,120 +516,7 @@ def _rule_nga011_untrusted_model_registry(
     ]
 
 
-# ── NGA-012 ──────────────────────────────────────────────────────────────────
-
-
-def _rule_nga012_latest_image_tag(
-    nodes: list[dict[str, Any]], **_: Any
-) -> list[dict[str, Any]]:
-    """LOW — Container image using 'latest' tag."""
-    latest_images = [
-        n for n in nodes
-        if n.get("component_type") in _CONTAINER_TYPES
-        and (
-            _depl_meta(n).get("image_tag", "").lower() in ("latest", "")
-            or (n.get("name", "").endswith(":latest"))
-            or (":" not in n.get("name", "") and n.get("name", ""))
-        )
-    ]
-    if not latest_images:
-        return []
-
-    return [
-        _finding(
-            "NGA-012", "LOW",
-            "Container image using 'latest' tag",
-            f"{len(latest_images)} container image(s) use the 'latest' tag or have no "
-            "explicit tag. The 'latest' tag is mutable — a registry push can silently "
-            "change the running image, breaking reproducibility and enabling supply-chain "
-            "attacks if the registry is compromised.",
-            [n.get("name", "") for n in latest_images],
-            "Pin all container images to an immutable digest (e.g. 'image@sha256:...') "
-            "or a specific semantic version tag. Use image signing (Cosign/Notary) to "
-            "verify provenance before deployment.",
-        )
-    ]
-
-
-# ── NGA-013 ──────────────────────────────────────────────────────────────────
-
-
-def _rule_nga013_missing_health_check(
-    nodes: list[dict[str, Any]], **_: Any
-) -> list[dict[str, Any]]:
-    """LOW — AI workload missing health check."""
-    no_health = [
-        n for n in nodes
-        if n.get("component_type") in (_DEPLOYMENT_TYPES | _CONTAINER_TYPES)
-        and not _depl_meta(n).get("has_health_check")
-    ]
-    if not no_health:
-        return []
-
-    return [
-        _finding(
-            "NGA-013", "LOW",
-            "AI workload missing health check",
-            f"{len(no_health)} deployment/container node(s) have no health check configured. "
-            "Without a health check, orchestration platforms cannot detect a hung or "
-            "degraded AI service and will continue routing traffic to a broken instance.",
-            [n.get("name", "") for n in no_health],
-            "Add a HEALTHCHECK instruction to Dockerfiles and configure liveness/readiness "
-            "probes in K8s pod specs. The health endpoint should verify the model is "
-            "loaded and responding within an acceptable latency threshold.",
-        )
-    ]
-
-
-# ── NGA-014 ──────────────────────────────────────────────────────────────────
-
-
-def _rule_nga014_shared_datastore_no_iam_isolation(
-    nodes: list[dict[str, Any]], edges: list[dict[str, Any]], **_: Any
-) -> list[dict[str, Any]]:
-    """LOW — Multiple AI agents sharing a single datastore with no IAM isolation."""
-    datastore_ids = {n["id"] for n in nodes if n.get("component_type") in _DATASTORE_TYPES}
-    agent_ids = {n["id"] for n in nodes if n.get("component_type") in _AGENT_TYPES}
-    iam_ids = {n["id"] for n in nodes if n.get("component_type") in _IAM_TYPES}
-
-    # Map each datastore to the set of agents that access it
-    ds_to_agents: dict[str, set[str]] = {ds_id: set() for ds_id in datastore_ids}
-    for e in edges:
-        src, tgt = e.get("source", ""), e.get("target", "")
-        if src in agent_ids and tgt in datastore_ids:
-            ds_to_agents[tgt].add(src)
-        elif tgt in agent_ids and src in datastore_ids:
-            ds_to_agents[src].add(tgt)
-
-    # Shared datastores (2+ agents), with no IAM node in graph
-    shared_no_iam = [
-        ds_id for ds_id, agents in ds_to_agents.items()
-        if len(agents) >= 2 and not iam_ids
-    ]
-    if not shared_no_iam:
-        return []
-
-    affected_names = [
-        n.get("name", ds_id)
-        for ds_id in shared_no_iam
-        for n in nodes if n["id"] == ds_id
-    ]
-    return [
-        _finding(
-            "NGA-014", "LOW",
-            "Multiple agents share a datastore with no IAM isolation",
-            f"{len(shared_no_iam)} datastore(s) are accessed by 2 or more agent(s) "
-            "with no IAM node detected to differentiate access rights. A compromised "
-            "or misbehaving agent can read or overwrite another agent's data.",
-            affected_names,
-            "Create separate IAM roles/database users with distinct permissions for each "
-            "agent. Use row-level security (RLS) or collection-level access control in "
-            "vector stores to prevent one agent's queries from returning another's data.",
-        )
-    ]
-
-
-# ── NGA-015 ──────────────────────────────────────────────────────────────────
+# ── NGA-009 ──────────────────────────────────────────────────────────────────
 
 _AUDIT_LIBS = {
     "opentelemetry", "langfuse", "arize", "whylogs",
@@ -714,7 +528,7 @@ _AUDIT_MIDDLEWARE = {
 }
 
 
-def _rule_nga015_no_audit_logging(
+def _rule_nga009_no_audit_logging(
     nodes: list[dict[str, Any]], summary: dict[str, Any], **_: Any
 ) -> list[dict[str, Any]]:
     """HIGH — AI application has no audit logging enabled."""
@@ -736,7 +550,7 @@ def _rule_nga015_no_audit_logging(
 
     return [
         _finding(
-            "NGA-015", "HIGH",
+            "NGA-009", "HIGH",
             "AI application has no audit logging enabled",
             f"{len(agent_nodes)} agent(s) detected but no audit logging evidence found "
             "(no log paths, no logging middleware, no observability library such as "
@@ -752,10 +566,10 @@ def _rule_nga015_no_audit_logging(
     ]
 
 
-# ── NGA-016 ──────────────────────────────────────────────────────────────────
+# ── NGA-010 ──────────────────────────────────────────────────────────────────
 
 
-def _rule_nga016_pr_target_injection(
+def _rule_nga010_pr_target_injection(
     nodes: list[dict[str, Any]], summary: dict[str, Any], **_: Any
 ) -> list[dict[str, Any]]:
     """HIGH — GitHub Actions: pull_request_target with untrusted context injection."""
@@ -774,7 +588,7 @@ def _rule_nga016_pr_target_injection(
 
     return [
         _finding(
-            "NGA-016", "HIGH",
+            "NGA-010", "HIGH",
             "GitHub Actions: pull_request_target with untrusted context injection",
             "A workflow uses the 'pull_request_target' trigger and references "
             "'${{ github.event.pull_request... }}' in run steps or env — this allows "
@@ -789,10 +603,10 @@ def _rule_nga016_pr_target_injection(
     ]
 
 
-# ── NGA-017 ──────────────────────────────────────────────────────────────────
+# ── NGA-011 ──────────────────────────────────────────────────────────────────
 
 
-def _rule_nga017_github_env_injection(
+def _rule_nga011_github_env_injection(
     nodes: list[dict[str, Any]], summary: dict[str, Any], **_: Any
 ) -> list[dict[str, Any]]:
     """HIGH — GitHub Actions: GITHUB_ENV written from untrusted input."""
@@ -809,7 +623,7 @@ def _rule_nga017_github_env_injection(
 
     return [
         _finding(
-            "NGA-017", "HIGH",
+            "NGA-011", "HIGH",
             "GitHub Actions: GITHUB_ENV written from untrusted input",
             "A workflow step writes to '$GITHUB_ENV' using an expression that includes "
             "untrusted input (e.g. PR title, body, or comment). This allows an attacker "
@@ -824,43 +638,10 @@ def _rule_nga017_github_env_injection(
     ]
 
 
-# ── NGA-018 ──────────────────────────────────────────────────────────────────
+# ── NGA-012 ──────────────────────────────────────────────────────────────────
 
 
-def _rule_nga018_actions_runner_debug(
-    nodes: list[dict[str, Any]], summary: dict[str, Any], **_: Any
-) -> list[dict[str, Any]]:
-    """MEDIUM — GitHub Actions: ACTIONS_RUNNER_DEBUG secret exposed."""
-    workflow_content: str = summary.get("github_actions_content") or ""
-    if not workflow_content:
-        for n in nodes:
-            wf = _node_extras(n).get("workflow_content") or ""
-            if _PATTERN_DEBUG_SECRET.search(wf):
-                workflow_content = wf
-                break
-
-    if not workflow_content or not _PATTERN_DEBUG_SECRET.search(workflow_content):
-        return []
-
-    return [
-        _finding(
-            "NGA-018", "MEDIUM",
-            "GitHub Actions: ACTIONS_RUNNER_DEBUG secret exposed",
-            "The workflow references 'ACTIONS_RUNNER_DEBUG'. When set to 'true', "
-            "this leaks verbose runner debug output to public workflow logs, including "
-            "environment variables, file contents, and potentially secrets.",
-            ["GitHub Actions workflow"],
-            "Remove 'ACTIONS_RUNNER_DEBUG' from workflow files and organisation secrets "
-            "when not actively debugging. Use GitHub's built-in 'Enable debug logging' "
-            "option in re-run settings instead of a persistent secret.",
-        )
-    ]
-
-
-# ── NGA-019 ──────────────────────────────────────────────────────────────────
-
-
-def _rule_nga019_missing_hitl(
+def _rule_nga012_missing_hitl(
     nodes: list[dict[str, Any]], edges: list[dict[str, Any]], **_: Any
 ) -> list[dict[str, Any]]:
     """HIGH — Agent pipeline lacks human-in-the-loop approval for high-risk actions."""
@@ -898,7 +679,7 @@ def _rule_nga019_missing_hitl(
 
     return [
         _finding(
-            "NGA-019", "HIGH",
+            "NGA-012", "HIGH",
             "Agent pipeline lacks HITL approval for high-risk tool actions",
             f"{len(risky_agents)} agent(s) can invoke irreversible or high-impact tools "
             "(email send, database write/delete, payment, file deletion, external API mutation) "
@@ -915,27 +696,245 @@ def _rule_nga019_missing_hitl(
     ]
 
 
+# ── NGA-013 ──────────────────────────────────────────────────────────────────
+
+
+def _rule_nga013_no_k8s_network_policy(
+    nodes: list[dict[str, Any]], summary: dict[str, Any], **_: Any
+) -> list[dict[str, Any]]:
+    """MEDIUM — No network policy for AI workload in K8s."""
+    k8s_deployments = [
+        n for n in nodes
+        if n.get("component_type") in _DEPLOYMENT_TYPES
+        and (
+            _depl_meta(n).get("deployment_target", "").lower() in ("kubernetes", "k8s")
+            or (n.get("metadata") or {}).get("iac_format", "").lower() == "kubernetes"
+        )
+    ]
+    if not k8s_deployments:
+        return []
+
+    no_netpol = [
+        n for n in k8s_deployments
+        if not _depl_meta(n).get("has_network_policy")
+    ]
+    if not no_netpol:
+        return []
+
+    return [
+        _finding(
+            "NGA-013", "MEDIUM",
+            "No Kubernetes NetworkPolicy for AI workload",
+            f"{len(no_netpol)} K8s deployment(s) have no NetworkPolicy detected. "
+            "Without network policies, any compromised pod in the cluster can reach "
+            "AI workloads directly, enabling lateral movement and data exfiltration.",
+            [n.get("name", "") for n in no_netpol],
+            "Define Kubernetes NetworkPolicy resources that restrict ingress/egress for "
+            "AI workload pods to only required services. Default-deny all traffic and "
+            "explicitly allow only necessary communication paths.",
+        )
+    ]
+
+
+# ── NGA-014 ──────────────────────────────────────────────────────────────────
+
+
+def _rule_nga014_actions_runner_debug(
+    nodes: list[dict[str, Any]], summary: dict[str, Any], **_: Any
+) -> list[dict[str, Any]]:
+    """MEDIUM — GitHub Actions: ACTIONS_RUNNER_DEBUG secret exposed."""
+    workflow_content: str = summary.get("github_actions_content") or ""
+    if not workflow_content:
+        for n in nodes:
+            wf = _node_extras(n).get("workflow_content") or ""
+            if _PATTERN_DEBUG_SECRET.search(wf):
+                workflow_content = wf
+                break
+
+    if not workflow_content or not _PATTERN_DEBUG_SECRET.search(workflow_content):
+        return []
+
+    return [
+        _finding(
+            "NGA-014", "MEDIUM",
+            "GitHub Actions: ACTIONS_RUNNER_DEBUG secret exposed",
+            "The workflow references 'ACTIONS_RUNNER_DEBUG'. When set to 'true', "
+            "this leaks verbose runner debug output to public workflow logs, including "
+            "environment variables, file contents, and potentially secrets.",
+            ["GitHub Actions workflow"],
+            "Remove 'ACTIONS_RUNNER_DEBUG' from workflow files and organisation secrets "
+            "when not actively debugging. Use GitHub's built-in 'Enable debug logging' "
+            "option in re-run settings instead of a persistent secret.",
+        )
+    ]
+
+
+# ── NGA-015 ──────────────────────────────────────────────────────────────────
+
+
+def _rule_nga015_no_resource_limits(
+    nodes: list[dict[str, Any]], summary: dict[str, Any], **_: Any
+) -> list[dict[str, Any]]:
+    """LOW — AI workloads deployed without CPU/memory resource limits."""
+    security_findings: list[str] = summary.get("security_findings") or []
+    depl_nodes = [n for n in nodes if n.get("component_type") == "DEPLOYMENT"]
+    if not depl_nodes:
+        return []
+    limited_nodes = [n for n in depl_nodes if _depl_meta(n).get("no_resource_limits") is True]
+    if not limited_nodes and "no_resource_limits" not in security_findings:
+        return []
+    affected = limited_nodes if limited_nodes else depl_nodes
+    return [
+        _finding(
+            "NGA-015", "LOW",
+            "AI workloads without resource limits",
+            f"{len(affected)} deployment node(s) have no CPU or memory resource limits "
+            "configured. Unbounded AI workloads can starve co-located services, "
+            "trigger node OOM kills, and enable denial-of-service via runaway inference "
+            "or prompt-flooding attacks.",
+            [n.get("name", "") for n in affected],
+            "Set explicit 'resources.requests' and 'resources.limits' for CPU and memory "
+            "in every K8s workload spec. For serverless deployments configure concurrency "
+            "and timeout limits. Consider LLM-specific limits such as max_tokens per "
+            "request to cap inference cost and latency.",
+        )
+    ]
+
+
+# ── NGA-016 ──────────────────────────────────────────────────────────────────
+
+
+def _rule_nga016_latest_image_tag(
+    nodes: list[dict[str, Any]], **_: Any
+) -> list[dict[str, Any]]:
+    """LOW — Container image using 'latest' tag."""
+    latest_images = [
+        n for n in nodes
+        if n.get("component_type") in _CONTAINER_TYPES
+        and (
+            _depl_meta(n).get("image_tag", "").lower() in ("latest", "")
+            or (n.get("name", "").endswith(":latest"))
+            or (":" not in n.get("name", "") and n.get("name", ""))
+        )
+    ]
+    if not latest_images:
+        return []
+
+    return [
+        _finding(
+            "NGA-016", "LOW",
+            "Container image using 'latest' tag",
+            f"{len(latest_images)} container image(s) use the 'latest' tag or have no "
+            "explicit tag. The 'latest' tag is mutable — a registry push can silently "
+            "change the running image, breaking reproducibility and enabling supply-chain "
+            "attacks if the registry is compromised.",
+            [n.get("name", "") for n in latest_images],
+            "Pin all container images to an immutable digest (e.g. 'image@sha256:...') "
+            "or a specific semantic version tag. Use image signing (Cosign/Notary) to "
+            "verify provenance before deployment.",
+        )
+    ]
+
+
+# ── NGA-017 ──────────────────────────────────────────────────────────────────
+
+
+def _rule_nga017_missing_health_check(
+    nodes: list[dict[str, Any]], **_: Any
+) -> list[dict[str, Any]]:
+    """LOW — AI workload missing health check."""
+    no_health = [
+        n for n in nodes
+        if n.get("component_type") in (_DEPLOYMENT_TYPES | _CONTAINER_TYPES)
+        and not _depl_meta(n).get("has_health_check")
+    ]
+    if not no_health:
+        return []
+
+    return [
+        _finding(
+            "NGA-017", "LOW",
+            "AI workload missing health check",
+            f"{len(no_health)} deployment/container node(s) have no health check configured. "
+            "Without a health check, orchestration platforms cannot detect a hung or "
+            "degraded AI service and will continue routing traffic to a broken instance.",
+            [n.get("name", "") for n in no_health],
+            "Add a HEALTHCHECK instruction to Dockerfiles and configure liveness/readiness "
+            "probes in K8s pod specs. The health endpoint should verify the model is "
+            "loaded and responding within an acceptable latency threshold.",
+        )
+    ]
+
+
+# ── NGA-018 ──────────────────────────────────────────────────────────────────
+
+
+def _rule_nga018_shared_datastore_no_iam_isolation(
+    nodes: list[dict[str, Any]], edges: list[dict[str, Any]], **_: Any
+) -> list[dict[str, Any]]:
+    """LOW — Multiple AI agents sharing a single datastore with no IAM isolation."""
+    datastore_ids = {n["id"] for n in nodes if n.get("component_type") in _DATASTORE_TYPES}
+    agent_ids = {n["id"] for n in nodes if n.get("component_type") in _AGENT_TYPES}
+    iam_ids = {n["id"] for n in nodes if n.get("component_type") in _IAM_TYPES}
+
+    # Map each datastore to the set of agents that access it
+    ds_to_agents: dict[str, set[str]] = {ds_id: set() for ds_id in datastore_ids}
+    for e in edges:
+        src, tgt = e.get("source", ""), e.get("target", "")
+        if src in agent_ids and tgt in datastore_ids:
+            ds_to_agents[tgt].add(src)
+        elif tgt in agent_ids and src in datastore_ids:
+            ds_to_agents[src].add(tgt)
+
+    # Shared datastores (2+ agents), with no IAM node in graph
+    shared_no_iam = [
+        ds_id for ds_id, agents in ds_to_agents.items()
+        if len(agents) >= 2 and not iam_ids
+    ]
+    if not shared_no_iam:
+        return []
+
+    affected_names = [
+        n.get("name", ds_id)
+        for ds_id in shared_no_iam
+        for n in nodes if n["id"] == ds_id
+    ]
+    return [
+        _finding(
+            "NGA-018", "LOW",
+            "Multiple agents share a datastore with no IAM isolation",
+            f"{len(shared_no_iam)} datastore(s) are accessed by 2 or more agent(s) "
+            "with no IAM node detected to differentiate access rights. A compromised "
+            "or misbehaving agent can read or overwrite another agent's data.",
+            affected_names,
+            "Create separate IAM roles/database users with distinct permissions for each "
+            "agent. Use row-level security (RLS) or collection-level access control in "
+            "vector stores to prevent one agent's queries from returning another's data.",
+        )
+    ]
+
+
 # ── Rule registry ─────────────────────────────────────────────────────────────
 
 _RULES: list[Callable[..., list[dict[str, Any]]]] = [
-    _rule_nga001_phi_to_external_llm,
-    _rule_nga002_insufficient_guardrails,
-    _rule_nga003_secrets_in_env,
-    _rule_nga004_runs_as_root,
-    _rule_nga005_no_resource_limits,
-    _rule_nga006_unencrypted_pii_datastore,
-    _rule_nga007_missing_auth_on_api_endpoint,
-    _rule_nga009_overly_permissive_iam,
-    _rule_nga010_no_k8s_network_policy,
-    _rule_nga011_untrusted_model_registry,
-    _rule_nga012_latest_image_tag,
-    _rule_nga013_missing_health_check,
-    _rule_nga014_shared_datastore_no_iam_isolation,
-    _rule_nga015_no_audit_logging,
-    _rule_nga016_pr_target_injection,
-    _rule_nga017_github_env_injection,
-    _rule_nga018_actions_runner_debug,
-    _rule_nga019_missing_hitl,
+    _rule_nga001_phi_to_external_llm,           # NGA-001 CRITICAL
+    _rule_nga002_insufficient_guardrails,        # NGA-002 HIGH
+    _rule_nga003_secrets_in_env,                 # NGA-003 HIGH
+    _rule_nga004_runs_as_root,                   # NGA-004 HIGH
+    _rule_nga005_unencrypted_pii_datastore,      # NGA-005 HIGH
+    _rule_nga006_missing_auth_on_api_endpoint,   # NGA-006 HIGH
+    _rule_nga007_overly_permissive_iam,          # NGA-007 HIGH
+    _rule_nga008_untrusted_model_registry,       # NGA-008 HIGH
+    _rule_nga009_no_audit_logging,               # NGA-009 HIGH
+    _rule_nga010_pr_target_injection,            # NGA-010 HIGH
+    _rule_nga011_github_env_injection,           # NGA-011 HIGH
+    _rule_nga012_missing_hitl,                   # NGA-012 HIGH
+    _rule_nga013_no_k8s_network_policy,          # NGA-013 MEDIUM
+    _rule_nga014_actions_runner_debug,           # NGA-014 MEDIUM
+    _rule_nga015_no_resource_limits,             # NGA-015 LOW
+    _rule_nga016_latest_image_tag,               # NGA-016 LOW
+    _rule_nga017_missing_health_check,           # NGA-017 LOW
+    _rule_nga018_shared_datastore_no_iam_isolation,  # NGA-018 LOW
 ]
 
 

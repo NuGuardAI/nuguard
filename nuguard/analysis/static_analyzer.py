@@ -259,7 +259,7 @@ class StaticAnalyzer:
     # ------------------------------------------------------------------
 
     def _run_nga(self, sbom_dict: dict[str, Any]) -> list[Finding]:
-        """Run NgaRulesPlugin (NGA-001…NGA-019) and annotate with ATLAS techniques."""
+        """Run NgaRulesPlugin (NGA-001…NGA-018) and annotate with ATLAS techniques."""
         try:
             from nuguard.analysis._atlas_data import NGA_TO_ATLAS  # noqa: PLC0415
             from nuguard.analysis.plugins.nga_rules import NgaRulesPlugin  # noqa: PLC0415

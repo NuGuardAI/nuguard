@@ -82,7 +82,7 @@ def analyze(
     """Run static analysis against the AI-SBOM.
 
     Scans the SBOM for structural security issues using NGA rules (NGA-001 to
-    NGA-019), checks dependencies against the OSV CVE database, optionally runs
+    NGA-018), checks dependencies against the OSV CVE database, optionally runs
     Grype for container/package CVEs, and annotates findings with MITRE ATLAS v2
     technique mappings.
     """
