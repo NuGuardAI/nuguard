@@ -72,6 +72,14 @@ def analyze(
     osv: bool = typer.Option(True, "--osv/--no-osv", help="Run OSV dependency CVE scan."),
     grype: bool = typer.Option(True, "--grype/--no-grype",
                                help="Run Grype CVE scan (requires grype on PATH)."),
+    grype_timeout: Optional[float] = typer.Option(
+        None, "--grype-timeout",
+        help="Per-invocation timeout for grype in seconds. [default: 300]",
+    ),
+    grype_retries: Optional[int] = typer.Option(
+        None, "--grype-retries",
+        help="Number of retry attempts when grype times out. [default: 3]",
+    ),
     checkov: bool = typer.Option(True, "--checkov/--no-checkov",
                                  help="Run Checkov IaC scan (requires checkov on PATH)."),
     trivy: bool = typer.Option(True, "--trivy/--no-trivy",
@@ -181,6 +189,8 @@ def analyze(
             atlas_config=atlas_config,
             min_severity=min_sev,
             verbose=verbose,
+            grype_timeout=grype_timeout if grype_timeout is not None else 300.0,
+            grype_retries=grype_retries if grype_retries is not None else 3,
         )
         findings = analyzer.analyze(doc)
     except Exception as exc:

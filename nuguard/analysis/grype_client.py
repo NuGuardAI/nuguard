@@ -51,10 +51,15 @@ def _grype_path() -> str | None:
     return shutil.which("grype")
 
 
-def _run_grype(target: str, timeout: float = 60.0) -> list[dict[str, Any]]:
+def _run_grype(
+    target: str,
+    timeout: float = 300.0,
+    max_retries: int = 3,
+) -> list[dict[str, Any]]:
     """Run ``grype <target> --output json --quiet`` and return parsed matches.
 
-    Returns an empty list on any error.
+    Retries up to *max_retries* times on timeout (e.g. first run while the
+    vulnerability DB is being downloaded).  Returns an empty list on all errors.
     """
     binary = _grype_path()
     if binary is None:
@@ -66,34 +71,46 @@ def _run_grype(target: str, timeout: float = 60.0) -> list[dict[str, Any]]:
 
     cmd = [binary, target, "--output", "json", "--quiet"]
     _log.debug("running: %s", " ".join(cmd))
-    try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            timeout=timeout,
-        )
-    except subprocess.TimeoutExpired:
-        _log.warning("grype timed out scanning %s (timeout=%.0fs)", target, timeout)
-        return []
-    except OSError as exc:
-        _log.warning("grype process error for %s: %s", target, exc)
-        return []
+    for attempt in range(1, max_retries + 1):
+        try:
+            result = subprocess.run(
+                cmd,
+                capture_output=True,
+                timeout=timeout,
+            )
+        except subprocess.TimeoutExpired:
+            if attempt < max_retries:
+                _log.warning(
+                    "grype timed out scanning %s (timeout=%.0fs, attempt %d/%d) — retrying",
+                    target, timeout, attempt, max_retries,
+                )
+                continue
+            _log.warning(
+                "grype timed out scanning %s (timeout=%.0fs) after %d attempts — giving up",
+                target, timeout, max_retries,
+            )
+            return []
+        except OSError as exc:
+            _log.warning("grype process error for %s: %s", target, exc)
+            return []
 
-    if result.returncode not in (0, 1):
-        # Grype exits 1 when vulnerabilities are found (strict mode off = 0)
-        stderr = result.stderr.decode(errors="replace").strip()
-        _log.warning("grype exited %d for %s%s",
-                     result.returncode, target,
-                     f": {stderr[:200]}" if stderr else "")
-        return []
+        if result.returncode not in (0, 1):
+            # Grype exits 1 when vulnerabilities are found (strict mode off = 0)
+            stderr = result.stderr.decode(errors="replace").strip()
+            _log.warning("grype exited %d for %s%s",
+                         result.returncode, target,
+                         f": {stderr[:200]}" if stderr else "")
+            return []
 
-    try:
-        data = json.loads(result.stdout)
-    except (json.JSONDecodeError, ValueError) as exc:
-        _log.warning("grype output parse error for %s: %s", target, exc)
-        return []
+        try:
+            data = json.loads(result.stdout)
+        except (json.JSONDecodeError, ValueError) as exc:
+            _log.warning("grype output parse error for %s: %s", target, exc)
+            return []
 
-    return data.get("matches") or []
+        return data.get("matches") or []
+
+    return []  # unreachable but satisfies type checker
 
 
 def _match_to_finding(match: dict[str, Any], scan_target: str) -> dict[str, Any]:
@@ -142,7 +159,8 @@ def _match_to_finding(match: dict[str, Any], scan_target: str) -> dict[str, Any]
 
 def query_grype_sbom(
     sbom_dict: dict[str, Any],
-    timeout: float = 60.0,
+    timeout: float = 300.0,
+    max_retries: int = 3,
 ) -> list[dict[str, Any]]:
     """Scan package dependencies in *sbom_dict* via Grype using a CycloneDX BOM.
 
@@ -172,7 +190,7 @@ def query_grype_sbom(
         tmp_path = tmp.name
 
     try:
-        matches = _run_grype(f"sbom:{tmp_path}", timeout=timeout)
+        matches = _run_grype(f"sbom:{tmp_path}", timeout=timeout, max_retries=max_retries)
     finally:
         Path(tmp_path).unlink(missing_ok=True)
 
@@ -183,7 +201,8 @@ def query_grype_sbom(
 
 def query_grype_images(
     container_nodes: list[dict[str, Any]],
-    timeout: float = 60.0,
+    timeout: float = 300.0,
+    max_retries: int = 3,
 ) -> list[dict[str, Any]]:
     """Scan container images referenced in *container_nodes* via Grype.
 
@@ -228,7 +247,7 @@ def query_grype_images(
     all_findings: list[dict[str, Any]] = []
     for ref in sorted(image_refs):
         _log.info("grype: scanning container image %s", ref)
-        matches = _run_grype(ref, timeout=timeout)
+        matches = _run_grype(ref, timeout=timeout, max_retries=max_retries)
         all_findings.extend(_match_to_finding(m, ref) for m in matches)
 
     _log.info("grype image scan(s): %d total finding(s) across %d image(s)",

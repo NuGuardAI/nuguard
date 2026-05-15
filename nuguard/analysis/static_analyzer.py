@@ -141,6 +141,8 @@ class StaticAnalyzer:
         atlas_config: dict[str, Any] | None = None,
         min_severity: Severity = Severity.LOW,
         verbose: bool = False,
+        grype_timeout: float = 300.0,
+        grype_retries: int = 3,
     ) -> None:
         self.enable_atlas   = enable_atlas
         self.enable_osv     = enable_osv
@@ -152,6 +154,8 @@ class StaticAnalyzer:
         self.atlas_config   = atlas_config or {}
         self.min_severity   = min_severity
         self.verbose        = verbose
+        self.grype_timeout  = grype_timeout
+        self.grype_retries  = grype_retries
         # Populated by analyze(); maps tool name → status string and optional detail
         self.tool_status: dict[str, dict[str, str]] = {}
         # Populated when verbose=True; per-rule pass/fail audit for NGA rules
@@ -323,13 +327,17 @@ class StaticAnalyzer:
             )
             from nuguard.analysis.plugins.nga_rules import _grype_to_finding  # noqa: PLC0415
 
-            raw_list = [_grype_to_finding(r) for r in query_grype_sbom(sbom_dict)]
+            raw_list = [_grype_to_finding(r) for r in query_grype_sbom(
+                sbom_dict, timeout=self.grype_timeout, max_retries=self.grype_retries,
+            )]
             container_nodes = [
                 n for n in (sbom_dict.get("nodes") or [])
                 if (n.get("component_type") or "").upper() == "CONTAINER_IMAGE"
             ]
             if container_nodes:
-                raw_list += [_grype_to_finding(r) for r in query_grype_images(container_nodes)]
+                raw_list += [_grype_to_finding(r) for r in query_grype_images(
+                    container_nodes, timeout=self.grype_timeout, max_retries=self.grype_retries,
+                )]
             findings = [_raw_to_finding(r, "grype") for r in raw_list]
             _log.info("Grype scan: %d finding(s)", len(findings))
             return findings
