@@ -34,7 +34,7 @@ _ENDPOINT_PATTERNS = [
     re.compile(r"\b(?:app|router)\.(?:get|post|put|patch|delete|use)\(\s*[\"']([^\"']+)[\"']"),
 ]
 
-_URL_PATTERN = re.compile(r"https?://[^\s\"'`<>]+")
+_URL_PATTERN = re.compile(r"https?://[^\s\"'`<>,]+")
 # GitHub Actions env vars that encode well-known Azure hostname patterns, e.g.
 #   AZURE_WEBAPP_NAME: my-backend  →  https://my-backend.azurewebsites.net
 # The template expression ${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net is

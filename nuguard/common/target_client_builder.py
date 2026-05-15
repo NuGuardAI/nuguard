@@ -62,16 +62,39 @@ def _is_static_hosting_url(url: str) -> bool:
 
 
 def _fallback_url_from_sbom(sbom: "AiSbomDocument | None") -> str | None:
-    """Return the first deployment URL from the SBOM summary, or None."""
+    """Return the best deployment URL from the SBOM summary, or None.
+
+    Prefers non-localhost HTTPS URLs over HTTP, and skips localhost/127.0.0.1
+    entries entirely when a non-local URL is available (localhost addresses are
+    only reachable from the machine running the application, not from nuguard).
+    """
     if sbom is None:
         return None
     summary = getattr(sbom, "summary", None)
     if summary is None:
         return None
+    candidates: list[str] = []
     for url in (getattr(summary, "deployment_urls", None) or []):
-        if url and isinstance(url, str):
-            return url.rstrip("/")
-    return None
+        if not url or not isinstance(url, str):
+            continue
+        url = url.rstrip("/")
+        try:
+            from urllib.parse import urlparse as _urlparse
+            host = (_urlparse(url).hostname or "").lower()
+        except Exception:
+            host = ""
+        if host in ("localhost", "127.0.0.1", "::1") or host.startswith("192.168.") or host.startswith("10."):
+            continue  # skip local-only addresses
+        candidates.append(url)
+    if not candidates:
+        # Fall back to localhost entries only if there's nothing else
+        for url in (getattr(summary, "deployment_urls", None) or []):
+            if url and isinstance(url, str):
+                return url.rstrip("/")
+        return None
+    # Prefer https over http
+    https_first = sorted(candidates, key=lambda u: (0 if u.startswith("https://") else 1))
+    return https_first[0]
 
 
 # ---------------------------------------------------------------------------
