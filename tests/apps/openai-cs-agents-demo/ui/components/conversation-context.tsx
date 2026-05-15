@@ -7,17 +7,10 @@ import { BookText } from "lucide-react";
 interface ConversationContextProps {
   context: {
     passenger_name?: string;
-    username?: string;
     confirmation_number?: string;
     seat_number?: string;
     flight_number?: string;
     account_number?: string;
-    booking_status?: string;
-    flight_status?: string;
-    gate?: string;
-    origin?: string;
-    destination?: string;
-    [key: string]: string | number | undefined;
   };
 }
 

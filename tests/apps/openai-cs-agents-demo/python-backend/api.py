@@ -1,15 +1,14 @@
-import secrets
-
-from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 from uuid import uuid4
+import secrets
 import time
 import logging
 import os
 
+from database import verify_credentials, get_user_by_account
 from main import (
     triage_agent,
     faq_agent,
@@ -18,7 +17,6 @@ from main import (
     cancellation_agent,
     create_initial_context,
 )
-from db import authenticate_user as authenticate_db_user
 
 from agents import (
     Runner,
@@ -36,7 +34,6 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 app = FastAPI()
-security = HTTPBasic()
 
 # CORS configuration - supports both local development and production
 allowed_origins = os.getenv(
@@ -54,6 +51,22 @@ app.add_middleware(
 # =========================
 # Models
 # =========================
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+class LoginResponse(BaseModel):
+    token: str
+    account_number: str
+    name: str
+    email: str
+
+class UserResponse(BaseModel):
+    account_number: str
+    name: str
+    email: str
+    username: str
 
 class ChatRequest(BaseModel):
     conversation_id: Optional[str] = None
@@ -112,24 +125,55 @@ class InMemoryConversationStore(ConversationStore):
 conversation_store = InMemoryConversationStore()
 
 # =========================
-# Helpers
+# Simple session token store
 # =========================
 
-def authenticate_request(
-    credentials: HTTPBasicCredentials = Depends(security),
-) -> Dict[str, Any]:
-    username = credentials.username
-    password = credentials.password
-    user = authenticate_db_user(username, password)
-    if user is None:
-        # Run a constant-time comparison on dummy values to keep the failure path steady.
-        secrets.compare_digest(username, "invalid")
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid username or password",
-            headers={"WWW-Authenticate": "Basic"},
-        )
-    return user
+# Maps token -> user dict {account_number, name, email, username}
+_sessions: Dict[str, Dict[str, str]] = {}
+
+def _get_session(authorization: Optional[str]) -> Optional[Dict[str, str]]:
+    """Parse 'Bearer <token>' header and return the session user dict."""
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    token = authorization[len("Bearer "):].strip()
+    return _sessions.get(token)
+
+# =========================
+# Auth Endpoints
+# =========================
+
+@app.post("/login", response_model=LoginResponse)
+async def login(req: LoginRequest):
+    user = verify_credentials(req.username, req.password)
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid username or password")
+    token = secrets.token_urlsafe(32)
+    _sessions[token] = user
+    return LoginResponse(
+        token=token,
+        account_number=user["account_number"],
+        name=user["name"],
+        email=user["email"],
+    )
+
+@app.get("/me", response_model=UserResponse)
+async def me(authorization: Optional[str] = Header(default=None)):
+    user = _get_session(authorization)
+    if not user:
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    return UserResponse(**user)
+
+@app.post("/logout")
+async def logout(authorization: Optional[str] = Header(default=None)):
+    user = _get_session(authorization)
+    if user and authorization:
+        token = authorization[len("Bearer "):].strip()
+        _sessions.pop(token, None)
+    return {"ok": True}
+
+# =========================
+# Helpers
+# =========================
 
 def _get_agent_by_name(name: str):
     """Return the agent object by name."""
@@ -158,16 +202,11 @@ def _get_guardrail_name(g) -> str:
 def _build_agents_list() -> List[Dict[str, Any]]:
     """Build a list of all available agents and their metadata."""
     def make_agent_dict(agent):
-        mcp_names = [
-            getattr(s, "name", repr(s))
-            for s in getattr(agent, "mcp_servers", [])
-        ]
         return {
             "name": agent.name,
             "description": getattr(agent, "handoff_description", ""),
             "handoffs": [getattr(h, "agent_name", getattr(h, "name", "")) for h in getattr(agent, "handoffs", [])],
             "tools": [getattr(t, "name", getattr(t, "__name__", "")) for t in getattr(agent, "tools", [])],
-            "mcp_servers": mcp_names,
             "input_guardrails": [_get_guardrail_name(g) for g in getattr(agent, "input_guardrails", [])],
         }
     return [
@@ -183,10 +222,7 @@ def _build_agents_list() -> List[Dict[str, Any]]:
 # =========================
 
 @app.post("/chat", response_model=ChatResponse)
-async def chat_endpoint(
-    req: ChatRequest,
-    current_user: Dict[str, Any] = Depends(authenticate_request),
-):
+async def chat_endpoint(req: ChatRequest, authorization: Optional[str] = Header(default=None)):
     """
     Main chat endpoint for agent orchestration.
     Handles conversation state, agent routing, and guardrail checks.
@@ -195,13 +231,18 @@ async def chat_endpoint(
     is_new = not req.conversation_id or conversation_store.get(req.conversation_id) is None
     if is_new:
         conversation_id: str = uuid4().hex
-        ctx = create_initial_context(current_user["username"])
+        ctx = create_initial_context()
+        # If an authenticated user is making the request, use their account
+        session_user = _get_session(authorization)
+        if session_user:
+            ctx.account_number = session_user["account_number"]
+            ctx.passenger_name = session_user["name"]
+            ctx.email = session_user["email"]
         current_agent_name = triage_agent.name
         state: Dict[str, Any] = {
             "input_items": [],
             "context": ctx,
             "current_agent": current_agent_name,
-            "username": current_user["username"],
         }
         if req.message.strip() == "":
             conversation_store.save(conversation_id, state)
@@ -217,11 +258,6 @@ async def chat_endpoint(
     else:
         conversation_id = req.conversation_id  # type: ignore
         state = conversation_store.get(conversation_id)
-        if state.get("username") != current_user["username"]:
-            raise HTTPException(
-                status_code=status.HTTP_403_FORBIDDEN,
-                detail="Conversation does not belong to the authenticated user",
-            )
 
     # Always start each turn from the triage agent so routing is re-evaluated for every
     # new user message (instead of "sticking" to the last specialist agent).
