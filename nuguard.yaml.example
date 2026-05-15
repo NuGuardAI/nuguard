@@ -220,7 +220,8 @@ redteam:
 
 # ─── Static analysis ──────────────────────────────────────────────────────────
 analyze:
-  min_severity: medium              # critical | high | medium | low
+  min_severity: medium              # critical | high | medium | low | info
+  nga_only: false                   # true → run only NGA-001–018, skip external scans
 
 # ─── Database ─────────────────────────────────────────────────────────────────
 database:

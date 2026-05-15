@@ -130,10 +130,12 @@ Static risk analysis from an AI-SBOM — no running application required.
 
 Runs up to six scanners in sequence: NuGuard AI structural rules (NGA), OSV CVE lookup, Grype, Checkov (IaC), Trivy (containers), and Semgrep (source). Each scanner is silently skipped when its binary is absent or has nothing to scan.
 
-NGA rules are always on and produce findings in the "NGA" family designed to identify structural risks in the AI stack of the application.
+NGA rules always run and produce findings in the "NGA" family designed to identify structural risks in the AI stack of the application. Use `--nga` to run _only_ NGA rules and skip all external tool scans.
 
 ```bash
 nuguard analyze --sbom app.sbom.json
+nuguard analyze --sbom app.sbom.json --nga                              # NGA rules only (fast)
+nuguard analyze --sbom app.sbom.json --config nuguard.yaml              # load min_severity from config
 nuguard analyze --sbom app.sbom.json --format sarif --output results.sarif
 nuguard analyze --sbom app.sbom.json --source . --llm
 nuguard analyze --sbom app.sbom.json --no-grype --no-trivy --min-severity high
@@ -142,6 +144,8 @@ nuguard analyze --sbom app.sbom.json --no-grype --no-trivy --min-severity high
 | Flag | Default | Description |
 |---|---|---|
 | `--sbom` | **required** | Path to AI-SBOM JSON |
+| `--config`, `-c` | — | Path to `nuguard.yaml`; sets `min_severity` and `nga_only` defaults (CLI flags override) |
+| `--nga` | off | NGA structural rules only (NGA-001–018); disables all external tool scans |
 | `--format`, `-f` | `markdown` | `markdown` \| `sarif` \| `json` |
 | `--min-severity` | `medium` | Minimum severity to include: `critical` \| `high` \| `medium` \| `low` \| `info` |
 | `--source`, `-s` | — | Source directory for Checkov / Trivy / Semgrep path resolution |

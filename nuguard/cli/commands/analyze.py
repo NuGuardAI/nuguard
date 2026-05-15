@@ -13,7 +13,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import typer
 
@@ -46,7 +46,15 @@ _SEV_EMOJI: dict[str, str] = {
 @analyze_app.callback(invoke_without_command=True)
 def analyze(
     ctx: typer.Context,
-    sbom: str = typer.Option(..., "--sbom", help="Path to AI-SBOM JSON file."),
+    sbom: Optional[str] = typer.Option(None, "--sbom", help="Path to AI-SBOM JSON file. Falls back to 'sbom:' in nuguard.yaml when --config is set."),
+    config: Optional[Path] = typer.Option(
+        None, "--config", "-c",
+        help="Path to nuguard.yaml config file. CLI flags override config values.",
+    ),
+    nga: bool = typer.Option(
+        False, "--nga",
+        help="Run NGA structural rules only (NGA-001–018); skip OSV, Grype, Checkov, Trivy, Semgrep, and ATLAS native checks.",
+    ),
     format: str = typer.Option(
         "markdown", "--format", "-f",
         help="Output format: markdown | sarif | json.",
@@ -55,9 +63,9 @@ def analyze(
         None, "--policy",
         help="Path to Cognitive Policy Markdown file (policy check not yet implemented).",
     ),
-    min_severity: str = typer.Option(
-        "medium", "--min-severity",
-        help="Minimum severity to report: critical | high | medium | low | info.",
+    min_severity: Optional[str] = typer.Option(
+        None, "--min-severity",
+        help="Minimum severity to report: critical | high | medium | low | info. [default: medium]",
     ),
     atlas: bool = typer.Option(True, "--atlas/--no-atlas", help="Run MITRE ATLAS native graph checks."),  # noqa: E501
     osv: bool = typer.Option(True, "--osv/--no-osv", help="Run OSV dependency CVE scan."),
@@ -85,13 +93,42 @@ def analyze(
     NGA-018), checks dependencies against the OSV CVE database, optionally runs
     Grype for container/package CVEs, and annotates findings with MITRE ATLAS v2
     technique mappings.
+
+    Use ``--config nuguard.yaml`` to load ``analyze.min_severity`` and
+    ``analyze.nga_only`` from the project config file. CLI flags always
+    override config values.
+
+    Use ``--nga`` to run only NGA structural rules (fastest mode, no external
+    tools required). Equivalent to setting ``analyze.nga_only: true`` in
+    nuguard.yaml.
     """
     if ctx.invoked_subcommand is not None:
         return
 
     # ------------------------------------------------------------------
+    # Load config and resolve effective flag values
+    # ------------------------------------------------------------------
+    from nuguard.config import load_config  # noqa: PLC0415
+    cfg = load_config(config)
+
+    # --nga: CLI flag wins; fall back to config field
+    nga = nga or cfg.analyze_nga_only
+
+    # --min-severity: CLI wins when explicitly set (non-None); else use config default
+    min_severity = min_severity or cfg.analyze_min_severity
+
+    # NGA-only mode: disable all external scans
+    if nga:
+        osv = grype = checkov = trivy = semgrep = atlas = False
+
+    # ------------------------------------------------------------------
     # Load SBOM
     # ------------------------------------------------------------------
+    sbom = sbom or cfg.sbom_path
+    if not sbom:
+        typer.echo("error: --sbom is required (or set 'sbom:' in nuguard.yaml via --config)", err=True)
+        raise typer.Exit(code=2)
+
     sbom_path = Path(sbom)
     if not sbom_path.exists():
         typer.echo(f"error: SBOM file not found: {sbom_path}", err=True)
