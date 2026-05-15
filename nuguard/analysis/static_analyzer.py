@@ -140,6 +140,7 @@ class StaticAnalyzer:
         source_path: Path | None = None,
         atlas_config: dict[str, Any] | None = None,
         min_severity: Severity = Severity.LOW,
+        verbose: bool = False,
     ) -> None:
         self.enable_atlas   = enable_atlas
         self.enable_osv     = enable_osv
@@ -150,8 +151,11 @@ class StaticAnalyzer:
         self.source_path    = source_path
         self.atlas_config   = atlas_config or {}
         self.min_severity   = min_severity
+        self.verbose        = verbose
         # Populated by analyze(); maps tool name → status string and optional detail
         self.tool_status: dict[str, dict[str, str]] = {}
+        # Populated when verbose=True; per-rule pass/fail audit for NGA rules
+        self.nga_audit: list[dict[str, Any]] = []
 
     def analyze(self, doc: AiSbomDocument) -> list[Finding]:
         """Run all detectors and return a list of ``Finding`` objects.
@@ -267,7 +271,7 @@ class StaticAnalyzer:
             plugin = NgaRulesPlugin()
             # provider="nga-rules" skips the OSV/Grype phases inside the plugin;
             # those are run separately by _run_osv() and _run_grype().
-            result = plugin.run(sbom_dict, {"provider": "nga-rules"})
+            result = plugin.run(sbom_dict, {"provider": "nga-rules", "verbose": self.verbose})
 
             findings: list[Finding] = []
             for raw in list(result.findings or []):
@@ -284,6 +288,7 @@ class StaticAnalyzer:
                     }
                 findings.append(_raw_to_finding(raw, "nga"))
 
+            self.nga_audit = list(result.details.get("rule_audit") or [])
             _log.info("NGA rules: %d finding(s)", len(findings))
             return findings
         except Exception as exc:

@@ -398,3 +398,11 @@ OUTBOUND_KEYWORDS: frozenset[str] = frozenset({
     "fetch", "email", "slack", "gmail", "calendar", "web",
     "serpapi", "tavily", "bing", "duckduckgo",
 })
+
+# keywords in tool/agent descriptions that indicate datastore access (NC-002)
+DB_ACCESS_KEYWORDS: frozenset[str] = frozenset({
+    "database", "datastore", "data store", "query", "sql", "sqlite",
+    "postgres", "postgresql", "mysql", "mongo", "mongodb", "redis",
+    "dynamodb", "cassandra", "elasticsearch", "table", "schema",
+    "record", "persist", "storage",
+})

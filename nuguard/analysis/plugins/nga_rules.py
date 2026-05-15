@@ -937,6 +937,118 @@ _RULES: list[Callable[..., list[dict[str, Any]]]] = [
     _rule_nga018_shared_datastore_no_iam_isolation,  # NGA-018 LOW
 ]
 
+# Per-rule metadata used by verbose audit mode (parallel to _RULES).
+_RULE_META: list[dict[str, str]] = [
+    {
+        "rule_id": "NGA-001", "severity": "CRITICAL",
+        "title": "PII/PHI data handled by external LLM providers",
+        "checks": "SBOM data_classification × MODEL nodes with external provider",
+        "pass_reason": "No PII/PHI data classification found, or no external MODEL provider detected",
+    },
+    {
+        "rule_id": "NGA-002", "severity": "HIGH",
+        "title": "Insufficient guardrail coverage",
+        "checks": "MODEL nodes and AGENT→API_ENDPOINT edges vs. GUARDRAIL nodes",
+        "pass_reason": "All MODEL/AGENT paths have at least one GUARDRAIL node",
+    },
+    {
+        "rule_id": "NGA-003", "severity": "HIGH",
+        "title": "Secrets or credentials exposed in environment variables",
+        "checks": "SBOM env_vars for high-entropy or secret-named values",
+        "pass_reason": "No secret-like environment variables detected in SBOM",
+    },
+    {
+        "rule_id": "NGA-004", "severity": "HIGH",
+        "title": "Container runs as root",
+        "checks": "CONTAINER_IMAGE nodes for runs_as_root flag or missing non-root user",
+        "pass_reason": "No containers detected running as root",
+    },
+    {
+        "rule_id": "NGA-005", "severity": "HIGH",
+        "title": "PII/PHI stored in unencrypted datastore",
+        "checks": "DATASTORE nodes for encryption_at_rest flag × PII/PHI data classification",
+        "pass_reason": "All datastores have encryption at rest, or no PII/PHI classification found",
+    },
+    {
+        "rule_id": "NGA-006", "severity": "HIGH",
+        "title": "API endpoint missing authentication",
+        "checks": "API_ENDPOINT nodes for missing AUTH edge coverage",
+        "pass_reason": "All API endpoints are covered by at least one AUTH node",
+    },
+    {
+        "rule_id": "NGA-007", "severity": "HIGH",
+        "title": "Overly permissive IAM role",
+        "checks": "IAM nodes for wildcard permissions or admin-level grants",
+        "pass_reason": "No IAM nodes with wildcard or admin permissions detected",
+    },
+    {
+        "rule_id": "NGA-008", "severity": "HIGH",
+        "title": "Model loaded from untrusted or unverified registry",
+        "checks": "MODEL nodes for registry source and integrity verification",
+        "pass_reason": "All MODEL nodes sourced from trusted registries with verification",
+    },
+    {
+        "rule_id": "NGA-009", "severity": "HIGH",
+        "title": "No audit logging configured",
+        "checks": "SBOM for audit_logging flag and DATASTORE/API_ENDPOINT coverage",
+        "pass_reason": "Audit logging is configured in the SBOM",
+    },
+    {
+        "rule_id": "NGA-010", "severity": "HIGH",
+        "title": "GitHub Actions pull_request_target injection risk",
+        "checks": "GitHub Actions workflow files for pull_request_target trigger with dangerous patterns",
+        "pass_reason": "No pull_request_target injection patterns found in CI workflows",
+    },
+    {
+        "rule_id": "NGA-011", "severity": "HIGH",
+        "title": "GitHub Actions environment variable injection",
+        "checks": "GitHub Actions workflow files for unsanitised env variable injection",
+        "pass_reason": "No environment variable injection patterns found in CI workflows",
+    },
+    {
+        "rule_id": "NGA-012", "severity": "HIGH",
+        "title": "Agent pipeline lacks HITL approval for high-risk tool actions",
+        "checks": "AGENT nodes with irreversible/high-impact TOOL edges for HITL approval gates",
+        "pass_reason": "All high-risk tool invocations have a human-in-the-loop approval gate",
+    },
+    {
+        "rule_id": "NGA-013", "severity": "MEDIUM",
+        "title": "Kubernetes deployment missing NetworkPolicy",
+        "checks": "Kubernetes DEPLOYMENT nodes for NetworkPolicy coverage",
+        "pass_reason": "All Kubernetes deployments have NetworkPolicy configured",
+    },
+    {
+        "rule_id": "NGA-014", "severity": "MEDIUM",
+        "title": "GitHub Actions runner debug mode enabled",
+        "checks": "GitHub Actions workflows for ACTIONS_RUNNER_DEBUG or ACTIONS_STEP_DEBUG set to true",
+        "pass_reason": "No debug mode enabled in GitHub Actions runner configuration",
+    },
+    {
+        "rule_id": "NGA-015", "severity": "LOW",
+        "title": "Container missing resource limits",
+        "checks": "CONTAINER_IMAGE / DEPLOYMENT nodes for CPU/memory resource limits",
+        "pass_reason": "All containers have CPU and memory resource limits defined",
+    },
+    {
+        "rule_id": "NGA-016", "severity": "LOW",
+        "title": "Container image uses 'latest' tag",
+        "checks": "CONTAINER_IMAGE nodes for unversioned 'latest' image tag",
+        "pass_reason": "All container images use pinned version tags",
+    },
+    {
+        "rule_id": "NGA-017", "severity": "LOW",
+        "title": "Container missing health check",
+        "checks": "CONTAINER_IMAGE / DEPLOYMENT nodes for health check configuration",
+        "pass_reason": "All containers have health checks configured",
+    },
+    {
+        "rule_id": "NGA-018", "severity": "LOW",
+        "title": "Shared datastore without IAM isolation",
+        "checks": "DATASTORE nodes shared across AGENT/TOOL boundaries for IAM isolation",
+        "pass_reason": "All shared datastores have IAM isolation or are not cross-boundary",
+    },
+]
+
 
 # ── OSV / Grype finding converters ───────────────────────────────────────────
 
@@ -1017,11 +1129,42 @@ class NgaRulesPlugin(AnalysisPlugin):
         # Phase 1: structural NGA rules
         ctx = {"nodes": nodes, "edges": edges, "summary": summary}
         findings: list[dict[str, Any]] = []
-        for rule in _RULES:
+        verbose = bool(config.get("verbose"))
+        rule_audit: list[dict[str, Any]] = []
+        for i, rule in enumerate(_RULES):
             try:
-                findings.extend(rule(**ctx))
+                rule_findings = rule(**ctx)
+                findings.extend(rule_findings)
+                if verbose:
+                    meta = _RULE_META[i]
+                    rule_audit.append({
+                        "rule_id": meta["rule_id"],
+                        "severity": meta["severity"],
+                        "title": meta["title"],
+                        "checks": meta["checks"],
+                        "status": "FAIL" if rule_findings else "PASS",
+                        "finding_count": len(rule_findings),
+                        "pass_reason": meta["pass_reason"] if not rule_findings else "",
+                        "affected": list({
+                            f.get("affected_component") or ""
+                            for f in rule_findings
+                            if f.get("affected_component")
+                        }),
+                    })
             except Exception as exc:
                 _log.warning("NGA rule %s raised an error and was skipped: %s", rule.__name__, exc)
+                if verbose:
+                    meta = _RULE_META[i]
+                    rule_audit.append({
+                        "rule_id": meta["rule_id"],
+                        "severity": meta["severity"],
+                        "title": meta["title"],
+                        "checks": meta["checks"],
+                        "status": "ERROR",
+                        "finding_count": 0,
+                        "pass_reason": f"Rule raised an error: {exc}",
+                        "affected": [],
+                    })
         _log.info("NGA structural rules: %d finding(s)", len(findings))
 
         # Phase 2: OSV dep scan
@@ -1081,5 +1224,6 @@ class NgaRulesPlugin(AnalysisPlugin):
                     "dep_advisories": len(osv_findings) + len(grype_findings),
                     **{k.lower(): v for k, v in counts.items()},
                 },
+                **({"rule_audit": rule_audit} if rule_audit else {}),
             },
         )
