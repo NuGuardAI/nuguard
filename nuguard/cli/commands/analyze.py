@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
 from typing import Any, Optional
 
@@ -82,6 +83,10 @@ def analyze(
         help="Path to app source directory for Checkov/Trivy/Semgrep scans.",
     ),
     llm: bool = typer.Option(False, "--llm", help="Enable LLM enrichment in ATLAS pass."),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v",
+        help="Show all 18 NGA rules (pass and fail) with evidence on why each passed.",
+    ),
     output: str = typer.Option(
         None, "--output", "-o",
         help="Write report to this file instead of stdout.",
@@ -175,6 +180,7 @@ def analyze(
             source_path=source_path,
             atlas_config=atlas_config,
             min_severity=min_sev,
+            verbose=verbose,
         )
         findings = analyzer.analyze(doc)
     except Exception as exc:
@@ -196,12 +202,13 @@ def analyze(
     # ------------------------------------------------------------------
     fmt = format.lower()
     tool_status = getattr(analyzer, "tool_status", {})
+    nga_audit = getattr(analyzer, "nga_audit", [])
     if fmt == "json":
-        report_text = _render_json(visible, sbom_path, tool_status)
+        report_text = _render_json(visible, sbom_path, tool_status, nga_audit)
     elif fmt == "sarif":
         report_text = _render_sarif(visible, sbom_path, tool_status)
     else:
-        report_text = _render_markdown(visible, sbom_path, min_severity, tool_status)
+        report_text = _render_markdown(visible, sbom_path, min_severity, tool_status, nga_audit)
 
     if output:
         out_path = Path(output)
@@ -246,6 +253,73 @@ def _source_tool(f: Finding) -> str:
     return prefix
 
 
+_CVE_RE = re.compile(r'\bCVE-\d{4}-\d+\b', re.IGNORECASE)
+_GHSA_RE = re.compile(r'\bGHSA-[a-z0-9]+-[a-z0-9]+-[a-z0-9]+\b', re.IGNORECASE)
+
+
+def _canonical_vuln_id(f: Finding) -> str | None:
+    """Extract a canonical CVE or GHSA identifier for cross-tool deduplication.
+
+    Returns the CVE-XXXX-XXXXX id when available (preferred), then GHSA-..., then
+    None for structural findings (NGA, ATLAS, semgrep, checkov) that are not
+    package vulnerabilities and should never be merged.
+    """
+    if _source_tool(f) in ("nga", "atlas", "semgrep", "checkov"):
+        return None
+    # CVE embedded in finding_id (trivy, grype)
+    m = _CVE_RE.search(f.finding_id)
+    if m:
+        return m.group().upper()
+    # CVE aliased in title (OSV sometimes adds "[CVE-XXXX-XXXXX]")
+    m = _CVE_RE.search(f.title or "")
+    if m:
+        return m.group().upper()
+    # CVE mentioned in description
+    m = _CVE_RE.search(f.description or "")
+    if m:
+        return m.group().upper()
+    # GHSA in finding_id (OSV primary identifier)
+    m = _GHSA_RE.search(f.finding_id)
+    if m:
+        return m.group().upper()
+    return None
+
+
+def _dedup_component_findings(
+    flist: list[Finding],
+) -> list[tuple[Finding, list[str]]]:
+    """Deduplicate findings within a component by CVE/GHSA identity.
+
+    Returns a list of (canonical_finding, [source_tool, ...]) tuples.
+    When multiple tools report the same CVE:
+      - OSV is preferred as canonical (for its osv.dev link and remediation text)
+      - All originating tool names are collected for display
+    Non-CVE findings (NGA structural rules, ATLAS, …) pass through unchanged.
+    """
+    groups: dict[str, list[Finding]] = {}
+    no_key: list[Finding] = []
+    for f in flist:
+        key = _canonical_vuln_id(f)
+        if key is None:
+            no_key.append(f)
+        else:
+            groups.setdefault(key, []).append(f)
+
+    result: list[tuple[Finding, list[str]]] = []
+    for _key, group in groups.items():
+        sources = sorted({_source_tool(f) for f in group})
+        # Prefer OSV as canonical — it carries osv.dev links and remediation guidance
+        osv_findings = [f for f in group if _source_tool(f) == "osv"]
+        canonical = osv_findings[0] if osv_findings else group[0]
+        result.append((canonical, sources))
+
+    for f in no_key:
+        result.append((f, [_source_tool(f)]))
+
+    result.sort(key=lambda x: _SEV_ORDER.get(x[0].severity.value, 99))
+    return result
+
+
 def _group_by_component(findings: list[Finding]) -> list[tuple[str, list[Finding]]]:
     """Group findings by component.
 
@@ -274,22 +348,34 @@ def _render_markdown(
     sbom_path: Path,
     min_severity: str,
     tool_status: dict[str, Any] | None = None,
+    nga_audit: list[dict[str, Any]] | None = None,
 ) -> str:
+    # Pre-compute deduplicated view used throughout the report.
+    # Dedup is per-component (same CVE from trivy+osv → one entry, OSV canonical).
+    grouped_raw = _group_by_component(findings)
+    grouped_deduped = [
+        (comp, _dedup_component_findings(flist))
+        for comp, flist in grouped_raw
+    ]
+    # Flat list of canonical findings (one per unique CVE per component)
+    deduped_all: list[Finding] = [f for _, entries in grouped_deduped for f, _ in entries]
+
     lines: list[str] = [
         "# NuGuard Static Analysis Report",
         "",
         f"**SBOM:** `{sbom_path}`  ",
         f"**Minimum severity:** {min_severity}  ",
-        f"**Total findings:** {len(findings)}  ",
+        f"**Total findings:** {len(deduped_all)} unique",
+        f"*(from {len(findings)} raw tool findings — duplicates across scanners merged)*  ",
         "",
     ]
 
     # ------------------------------------------------------------------
-    # Severity summary
+    # Severity summary (based on deduplicated findings)
     # ------------------------------------------------------------------
-    if findings:
+    if deduped_all:
         by_sev: dict[str, list[Finding]] = {}
-        for f in findings:
+        for f in deduped_all:
             by_sev.setdefault(f.severity.value, []).append(f)
 
         summary_parts: list[str] = []
@@ -303,16 +389,15 @@ def _render_markdown(
                 )
         lines += ["## Summary", ""] + [f"- {p}" for p in summary_parts] + [""]
 
-        # Top components by finding count
-        grouped = _group_by_component(findings)
-        top_n = grouped[:5]
+        # Top components by unique finding count
+        top_n = grouped_deduped[:5]
         lines += ["### Components with Most Findings", ""]
-        lines += ["| Component | Findings | Highest Severity |",
-                  "|-----------|----------|-----------------|"]
-        for comp, flist in top_n:
-            top_sev = flist[0].severity.value  # already sorted by severity
+        lines += ["| Component | Unique CVEs | Highest Severity |",
+                  "|-----------|-------------|-----------------|"]
+        for comp, entries in top_n:
+            top_sev = entries[0][0].severity.value  # sorted by severity
             emoji = _SEV_EMOJI.get(top_sev, "")
-            lines.append(f"| `{comp}` | {len(flist)} | {emoji} {top_sev.upper()} |")
+            lines.append(f"| `{comp}` | {len(entries)} | {emoji} {top_sev.upper()} |")
         lines.append("")
 
     # ------------------------------------------------------------------
@@ -334,36 +419,88 @@ def _render_markdown(
             lines.append(f"| {tool} | {icon} {st}{note} | {count} |")
         lines.append("")
 
-    if not findings:
+    if not deduped_all:
         lines += ["_No findings at or above the requested severity threshold._", ""]
-        return "\n".join(lines)
+    else:
+        # ------------------------------------------------------------------
+        # Findings grouped by component — one entry per unique CVE/GHSA.
+        # Same vulnerability reported by multiple scanners is shown once;
+        # OSV's finding is canonical (osv.dev link + remediation).
+        # ------------------------------------------------------------------
+        lines += ["## Findings", ""]
+
+        for comp, entries in grouped_deduped:
+            top_sev = entries[0][0].severity.value
+            emoji = _SEV_EMOJI.get(top_sev, "")
+            lines += [f"### {emoji} `{comp}` ({len(entries)} unique CVE(s))", ""]
+            for f, sources in entries:
+                sev_emoji = _SEV_EMOJI.get(f.severity.value, "")
+                vuln_id = _canonical_vuln_id(f) or f.finding_id
+                sources_str = ", ".join(f"`{s}`" for s in sources)
+                lines += [f"#### {sev_emoji} {vuln_id}  {f.title}", ""]
+                lines += [f"**Sources:** {sources_str}  ", ""]
+                lines += [f.description or "", ""]
+                if f.affected_component:
+                    lines += [f"**Affected:** `{_component_label(f)}`  ", ""]
+                if f.remediation:
+                    lines += [f"**Remediation:** {f.remediation}  ", ""]
+                if f.mitre_atlas_technique:
+                    lines += [f"**ATLAS Techniques:** {f.mitre_atlas_technique}  ", ""]
+                if f.references:
+                    lines += ["**References:**  ", ""]
+                    for ref in f.references:
+                        lines.append(f"- {ref}")
+                    lines.append("")
 
     # ------------------------------------------------------------------
-    # Findings grouped by component, sorted by severity within each group
+    # NGA Rule Audit (verbose mode only)
     # ------------------------------------------------------------------
-    lines += ["## Findings", ""]
-
-    for comp, flist in _group_by_component(findings):
-        top_sev = flist[0].severity.value
-        emoji = _SEV_EMOJI.get(top_sev, "")
-        lines += [f"### {emoji} `{comp}` ({len(flist)} finding(s))", ""]
-        for f in flist:
-            sev_emoji = _SEV_EMOJI.get(f.severity.value, "")
-            tool = _source_tool(f)
-            lines += [f"#### {sev_emoji} {f.finding_id}  {f.title}", ""]
-            lines += [f"**Source:** `{tool}`  ", ""]
-            lines += [f.description or "", ""]
-            if f.affected_component:
-                lines += [f"**Affected:** `{_component_label(f)}`  ", ""]
-            if f.remediation:
-                lines += [f"**Remediation:** {f.remediation}  ", ""]
-            if f.mitre_atlas_technique:
-                lines += [f"**ATLAS Techniques:** {f.mitre_atlas_technique}  ", ""]
-            if f.references:
-                lines += ["**References:**  ", ""]
-                for ref in f.references:
-                    lines.append(f"- {ref}")
-                lines.append("")
+    if nga_audit:
+        _AUDIT_SEV_EMOJI = {"CRITICAL": "🔴", "HIGH": "🟠", "MEDIUM": "🟡", "LOW": "🟢"}
+        _AUDIT_STATUS_ICON = {"PASS": "✅", "FAIL": "❌", "ERROR": "⚠️"}
+        lines += [
+            "## NGA Rule Audit", "",
+            "All 18 NGA structural rules — pass/fail status with evidence.",
+            "",
+            "| Rule | Severity | Status | Evidence |",
+            "|------|----------|--------|----------|",
+        ]
+        for entry in nga_audit:
+            rid = entry.get("rule_id", "")
+            title = entry.get("title", "")
+            sev = entry.get("severity", "")
+            status = entry.get("status", "")
+            sev_em = _AUDIT_SEV_EMOJI.get(sev, "")
+            st_icon = _AUDIT_STATUS_ICON.get(status, "❓")
+            if status == "FAIL":
+                count = entry.get("finding_count", 0)
+                affected = entry.get("affected", [])
+                detail = f"{count} finding(s)"
+                if affected:
+                    detail += f" — `{'`, `'.join(str(a) for a in affected[:3])}`"
+                    if len(affected) > 3:
+                        detail += f" +{len(affected) - 3} more"
+            else:
+                detail = entry.get("pass_reason", "")
+            lines.append(
+                f"| **{rid}** {title} | {sev_em} {sev} | {st_icon} {status} | {detail} |"
+            )
+        lines += [""]
+        # Per-rule detail for passing rules
+        pass_rules = [e for e in nga_audit if e.get("status") == "PASS"]
+        if pass_rules:
+            lines += ["### Passing Rule Details", ""]
+            for entry in pass_rules:
+                rid = entry.get("rule_id", "")
+                title = entry.get("title", "")
+                checks = entry.get("checks", "")
+                pass_reason = entry.get("pass_reason", "")
+                lines += [
+                    f"**{rid} — {title}**  ",
+                    f"- Examined: {checks}  ",
+                    f"- Result: {pass_reason}  ",
+                    "",
+                ]
 
     return "\n".join(lines)
 
@@ -372,6 +509,7 @@ def _render_json(
     findings: list[Finding],
     sbom_path: Path,
     tool_status: dict[str, Any] | None = None,
+    nga_audit: list[dict[str, Any]] | None = None,
 ) -> str:
     # Severity counts
     sev_counts: dict[str, int] = {}
@@ -390,6 +528,7 @@ def _render_json(
         "tool_status": tool_status or {},
         "by_component": by_component,
         "findings": [f.model_dump() for f in findings],
+        **({"nga_rule_audit": nga_audit} if nga_audit else {}),
     }
     return json.dumps(data, indent=2, default=str)
 
