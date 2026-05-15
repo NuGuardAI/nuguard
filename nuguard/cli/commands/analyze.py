@@ -220,14 +220,38 @@ def analyze(
 
 
 def _component_label(f: Finding) -> str:
-    """Return the display label for a finding's component."""
-    return f.affected_component or f.finding_id.rsplit("-", 1)[0]
+    """Return a normalised display label for a finding's component.
+
+    PURLs (pkg:npm/next@15.2.4) are simplified to ``name@version`` so that
+    findings from different scanners for the same package are grouped together.
+    """
+    raw = f.affected_component or f.finding_id.rsplit("-", 1)[0]
+    # Normalise PURL: pkg:npm/next@15.2.4 → next@15.2.4
+    if raw.startswith("pkg:"):
+        # strip scheme+type prefix  e.g. "pkg:npm/" or "pkg:pypi/"
+        raw = raw.split("/", 1)[-1]
+    return raw
+
+
+def _source_tool(f: Finding) -> str:
+    """Extract the originating scanner name from the finding_id prefix.
+
+    finding_id format: ``<tool>-<rest>``  e.g. ``trivy-CVE-2025-...``,
+    ``osv-GHSA-...``, ``nga-NGA-001-...``.
+    """
+    prefix = f.finding_id.split("-")[0].lower()
+    # known prefixes
+    if prefix in ("trivy", "osv", "grype", "nga", "checkov", "semgrep", "atlas"):
+        return prefix
+    return prefix
 
 
 def _group_by_component(findings: list[Finding]) -> list[tuple[str, list[Finding]]]:
-    """Group findings by component, sorted by finding count (desc), then name.
+    """Group findings by component.
 
-    Within each component group findings are sorted by severity (critical first).
+    Components are ordered by highest severity first (critical → high → …),
+    then by finding count (desc), then alphabetically.
+    Within each component findings are sorted by severity (critical first).
     """
     grouped: dict[str, list[Finding]] = {}
     for f in findings:
@@ -238,8 +262,11 @@ def _group_by_component(findings: list[Finding]) -> list[tuple[str, list[Finding
     for flist in grouped.values():
         flist.sort(key=lambda x: _SEV_ORDER.get(x.severity.value, 99))
 
-    # Sort components: most findings first, then alphabetically
-    return sorted(grouped.items(), key=lambda kv: (-len(kv[1]), kv[0]))
+    # Sort components: highest severity first, then most findings, then alphabetically
+    return sorted(
+        grouped.items(),
+        key=lambda kv: (_SEV_ORDER.get(kv[1][0].severity.value, 99), -len(kv[1]), kv[0]),
+    )
 
 
 def _render_markdown(
@@ -322,10 +349,12 @@ def _render_markdown(
         lines += [f"### {emoji} `{comp}` ({len(flist)} finding(s))", ""]
         for f in flist:
             sev_emoji = _SEV_EMOJI.get(f.severity.value, "")
+            tool = _source_tool(f)
             lines += [f"#### {sev_emoji} {f.finding_id}  {f.title}", ""]
+            lines += [f"**Source:** `{tool}`  ", ""]
             lines += [f.description or "", ""]
             if f.affected_component:
-                lines += [f"**Affected:** `{f.affected_component}`  ", ""]
+                lines += [f"**Affected:** `{_component_label(f)}`  ", ""]
             if f.remediation:
                 lines += [f"**Remediation:** {f.remediation}  ", ""]
             if f.mitre_atlas_technique:
