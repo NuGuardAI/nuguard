@@ -122,7 +122,7 @@ def _discover_login_endpoint(sbom: "AiSbomDocument") -> tuple[str, str, str] | N
     except Exception:
         return None
 
-    best: tuple[int, str, str, str] | None = None  # (score, path, user_field, pass_field)
+    best: tuple[float, str, str, str] | None = None  # (score, path, user_field, pass_field)
     for node in sbom.nodes:
         if node.component_type != NodeType.API_ENDPOINT:
             continue

@@ -382,7 +382,7 @@ async def _run_redteam(
     turn_delay_seconds: float = 0.0,
     scenario_delay_seconds: float = 0.0,
     similar_miss_threshold: int = 4,
-) -> tuple[list, dict[str, str], list, str]:
+) -> tuple[list, dict[str, str], list, str, list[str]]:
     """Async inner function: optionally launch the app, then run the orchestrator."""
     from nuguard.models.policy import CognitivePolicy
     from nuguard.redteam.target.canary import CanaryConfig
@@ -585,7 +585,7 @@ async def _run_orchestrator(
     turn_delay_seconds: float = 0.0,
     scenario_delay_seconds: float = 0.0,
     similar_miss_threshold: int = 4,
-) -> tuple[list, dict[str, str], list, str]:
+) -> tuple[list, dict[str, str], list, str, list[str]]:
     from nuguard.common.llm_client import LLMClient
     from nuguard.redteam.executor.orchestrator import RedteamOrchestrator
 
