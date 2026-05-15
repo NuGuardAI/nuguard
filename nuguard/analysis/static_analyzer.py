@@ -141,7 +141,7 @@ class StaticAnalyzer:
         atlas_config: dict[str, Any] | None = None,
         min_severity: Severity = Severity.LOW,
         verbose: bool = False,
-        grype_timeout: float = 300.0,
+        grype_timeout: float = 180.0,
         grype_retries: int = 3,
     ) -> None:
         self.enable_atlas   = enable_atlas

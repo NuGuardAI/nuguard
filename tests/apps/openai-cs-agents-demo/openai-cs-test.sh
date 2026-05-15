@@ -57,6 +57,7 @@ uv run nuguard analyze \
   -- llm \
   --atlas --osv --trivy \
   --grype --checkov \
+  -- verbose \
   --format markdown \
   -o "$SCRIPT_DIR/reports/openai-cs-analysis.md" || true
 

@@ -53,7 +53,7 @@ def _grype_path() -> str | None:
 
 def _run_grype(
     target: str,
-    timeout: float = 300.0,
+    timeout: float = 180.0,
     max_retries: int = 3,
 ) -> list[dict[str, Any]]:
     """Run ``grype <target> --output json --quiet`` and return parsed matches.
