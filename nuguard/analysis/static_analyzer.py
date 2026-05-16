@@ -140,6 +140,9 @@ class StaticAnalyzer:
         source_path: Path | None = None,
         atlas_config: dict[str, Any] | None = None,
         min_severity: Severity = Severity.LOW,
+        verbose: bool = False,
+        grype_timeout: float = 180.0,
+        grype_retries: int = 3,
     ) -> None:
         self.enable_atlas   = enable_atlas
         self.enable_osv     = enable_osv
@@ -150,8 +153,13 @@ class StaticAnalyzer:
         self.source_path    = source_path
         self.atlas_config   = atlas_config or {}
         self.min_severity   = min_severity
+        self.verbose        = verbose
+        self.grype_timeout  = grype_timeout
+        self.grype_retries  = grype_retries
         # Populated by analyze(); maps tool name → status string and optional detail
         self.tool_status: dict[str, dict[str, str]] = {}
+        # Populated when verbose=True; per-rule pass/fail audit for NGA rules
+        self.nga_audit: list[dict[str, Any]] = []
 
     def analyze(self, doc: AiSbomDocument) -> list[Finding]:
         """Run all detectors and return a list of ``Finding`` objects.
@@ -259,7 +267,7 @@ class StaticAnalyzer:
     # ------------------------------------------------------------------
 
     def _run_nga(self, sbom_dict: dict[str, Any]) -> list[Finding]:
-        """Run NgaRulesPlugin (NGA-001…NGA-019) and annotate with ATLAS techniques."""
+        """Run NgaRulesPlugin (NGA-001…NGA-018) and annotate with ATLAS techniques."""
         try:
             from nuguard.analysis._atlas_data import NGA_TO_ATLAS  # noqa: PLC0415
             from nuguard.analysis.plugins.nga_rules import NgaRulesPlugin  # noqa: PLC0415
@@ -267,7 +275,7 @@ class StaticAnalyzer:
             plugin = NgaRulesPlugin()
             # provider="nga-rules" skips the OSV/Grype phases inside the plugin;
             # those are run separately by _run_osv() and _run_grype().
-            result = plugin.run(sbom_dict, {"provider": "nga-rules"})
+            result = plugin.run(sbom_dict, {"provider": "nga-rules", "verbose": self.verbose})
 
             findings: list[Finding] = []
             for raw in list(result.findings or []):
@@ -284,6 +292,7 @@ class StaticAnalyzer:
                     }
                 findings.append(_raw_to_finding(raw, "nga"))
 
+            self.nga_audit = list(result.details.get("rule_audit") or [])
             _log.info("NGA rules: %d finding(s)", len(findings))
             return findings
         except Exception as exc:
@@ -318,13 +327,17 @@ class StaticAnalyzer:
             )
             from nuguard.analysis.plugins.nga_rules import _grype_to_finding  # noqa: PLC0415
 
-            raw_list = [_grype_to_finding(r) for r in query_grype_sbom(sbom_dict)]
+            raw_list = [_grype_to_finding(r) for r in query_grype_sbom(
+                sbom_dict, timeout=self.grype_timeout, max_retries=self.grype_retries,
+            )]
             container_nodes = [
                 n for n in (sbom_dict.get("nodes") or [])
                 if (n.get("component_type") or "").upper() == "CONTAINER_IMAGE"
             ]
             if container_nodes:
-                raw_list += [_grype_to_finding(r) for r in query_grype_images(container_nodes)]
+                raw_list += [_grype_to_finding(r) for r in query_grype_images(
+                    container_nodes, timeout=self.grype_timeout, max_retries=self.grype_retries,
+                )]
             findings = [_raw_to_finding(r, "grype") for r in raw_list]
             _log.info("Grype scan: %d finding(s)", len(findings))
             return findings

@@ -9,6 +9,7 @@ if [[ -f "$SCRIPT_DIR/.env" ]]; then
   set -o allexport
   # shellcheck source=/dev/null
   source "$SCRIPT_DIR/.env"
+  echo "Loaded environment variables from $SCRIPT_DIR/.env file."
   set +o allexport
 else
   echo "WARNING: .env not found — ensure APP_USERNAME, APP_PASSWORD, GEMINI_API_KEY are set." >&2
@@ -48,6 +49,19 @@ echo "SBOM generated successfully."
 #  -o "$SCRIPT_DIR/reports/openai-cs-policy-check.md" || true
 
 #echo "Done."
+
+echo "Static Analysis Check..."
+
+uv run nuguard analyze \
+  --config "$SCRIPT_DIR/nuguard.yaml" \
+  -- llm \
+  --atlas --osv --trivy \
+  --grype --checkov \
+  -- verbose \
+  --format markdown \
+  -o "$SCRIPT_DIR/reports/openai-cs-analysis.md" || true
+
+echo "Done."
 
 echo "---"
 echo "Running behavior analysis (static + dynamic)..."

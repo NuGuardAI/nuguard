@@ -392,6 +392,8 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
     analyze = data.get("analyze", {}) or {}
     if "min_severity" in analyze:
         flat["analyze_min_severity"] = analyze["min_severity"]
+    if "nga_only" in analyze:
+        flat["analyze_nga_only"] = analyze["nga_only"]
 
     # Output section
     output = data.get("output", {}) or {}
@@ -971,6 +973,13 @@ class NuGuardConfig(BaseSettings):
         description=(
             "Minimum severity for analysis findings: critical|high|medium|low "
             "(yaml: analyze.min_severity)."
+        ),
+    )
+    analyze_nga_only: bool = Field(
+        default=False,
+        description=(
+            "Run only NGA structural rules (NGA-001–018), skipping external tool "
+            "scans (yaml: analyze.nga_only, CLI: --nga)."
         ),
     )
 

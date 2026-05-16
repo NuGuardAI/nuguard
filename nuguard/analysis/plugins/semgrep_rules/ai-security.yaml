@@ -121,7 +121,7 @@ rules:
       category: security
       technology: [llm, ssrf]
       owasp: "LLM02: Insecure Output Handling"
-      nuguard_rule: NGA-007
+      nuguard_rule: NGA-006
 
   - id: nuguard-no-output-length-limit
     patterns:
@@ -137,7 +137,7 @@ rules:
       category: security
       technology: [openai, llm]
       owasp: "LLM04: Model Denial of Service"
-      nuguard_rule: NGA-005
+      nuguard_rule: NGA-015
 
   - id: nuguard-langchain-verbose-true
     pattern: |
@@ -152,7 +152,7 @@ rules:
       category: security
       technology: [langchain]
       owasp: "LLM06: Sensitive Information Disclosure"
-      nuguard_rule: NGA-015
+      nuguard_rule: NGA-009
 
   - id: nuguard-pickle-model-load
     patterns:
@@ -169,4 +169,4 @@ rules:
       category: security
       technology: [ml, pytorch, scikit-learn]
       owasp: "A08: Software and Data Integrity Failures"
-      nuguard_rule: NGA-011
+      nuguard_rule: NGA-008

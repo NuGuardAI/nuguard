@@ -267,35 +267,35 @@ NGA_TO_ATLAS: dict[str, list[tuple[str, str]]] = {
         ("AML.T0047", "HIGH"),    # Erode ML Model Integrity — root enables model tampering
         ("AML.T0036", "MEDIUM"),  # Develop Capabilities — root access extends attacker footprint
     ],
-    # NGA-005: No CPU/memory resource limits
+    # NGA-005: Unencrypted datastore containing PII/PHI
     "NGA-005": [
-        ("AML.T0029", "MEDIUM"),  # Denial of ML Service — unbounded resource consumption
-    ],
-    # NGA-006: Unencrypted datastore containing PII/PHI
-    "NGA-006": [
         ("AML.T0037", "HIGH"),    # Data from Information Repositories — plaintext PII at rest
         ("AML.T0024", "MEDIUM"),  # Exfiltration via ML Inference API — extracted via inference
     ],
-    # NGA-007: Missing authentication on external API endpoint
-    "NGA-007": [
+    # NGA-006: Missing authentication on external API endpoint
+    "NGA-006": [
         ("AML.T0040", "HIGH"),    # ML Model Inference API Access — unauthenticated endpoint
         ("AML.T0000", "MEDIUM"),  # Active Scanning — discoverable unauthenticated surface
         ("AML.T0016", "MEDIUM"),  # Verify Victim ML Model — probing without auth
     ],
-    # NGA-009: Overly permissive IAM role
-    "NGA-009": [
+    # NGA-007: Overly permissive IAM role
+    "NGA-007": [
         ("AML.T0036", "HIGH"),    # Develop Capabilities — excessive permissions expand blast radius
         ("AML.T0047", "MEDIUM"),  # Erode ML Model Integrity — IAM grants write access to model
     ],
-    # NGA-011: Untrusted or unverified model registry source
-    "NGA-011": [
+    # NGA-008: Untrusted or unverified model registry source
+    "NGA-008": [
         ("AML.T0010", "HIGH"),    # Acquire Public ML Artifacts — model from untrusted registry
         ("AML.T0047", "HIGH"),    # Erode ML Model Integrity — tampered/backdoored artifact
     ],
-    # NGA-019: Missing HITL for irreversible tool actions
-    "NGA-019": [
+    # NGA-012: Missing HITL for irreversible tool actions
+    "NGA-012": [
         ("AML.T0047", "HIGH"),    # Erode ML Model Integrity — irreversible action without human check
         ("AML.T0036", "MEDIUM"),  # Develop Capabilities — automated capability bypasses oversight
+    ],
+    # NGA-015: No CPU/memory resource limits
+    "NGA-015": [
+        ("AML.T0029", "MEDIUM"),  # Denial of ML Service — unbounded resource consumption
     ],
 }
 
@@ -397,4 +397,12 @@ OUTBOUND_KEYWORDS: frozenset[str] = frozenset({
     "http", "api", "request", "webhook", "search", "browser",
     "fetch", "email", "slack", "gmail", "calendar", "web",
     "serpapi", "tavily", "bing", "duckduckgo",
+})
+
+# keywords in tool/agent descriptions that indicate datastore access (NC-002)
+DB_ACCESS_KEYWORDS: frozenset[str] = frozenset({
+    "database", "datastore", "data store", "query", "sql", "sqlite",
+    "postgres", "postgresql", "mysql", "mongo", "mongodb", "redis",
+    "dynamodb", "cassandra", "elasticsearch", "table", "schema",
+    "record", "persist", "storage",
 })
