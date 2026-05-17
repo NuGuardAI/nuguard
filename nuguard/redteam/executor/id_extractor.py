@@ -10,6 +10,12 @@ _ID_PATTERNS: list[re.Pattern[str]] = [
         r'[\s_-]?(?:id|no|number|#)[\s:=]+([A-Z0-9][A-Z0-9\-]{2,19})',
         re.IGNORECASE,
     ),
+    # Labelled booking/confirmation/PNR codes: "confirmation: K7Q4MN", "PNR HN4P88", "PNR is HN4P88"
+    re.compile(
+        r'(?:confirmation|booking|reservation|pnr|record\s+locator)\s*'
+        r'(?:number|code|ref(?:erence)?|no|is|#)?\s*[:\s#]+([A-Z0-9]{4,10})\b',
+        re.IGNORECASE,
+    ),
     # Prefixed alphanumeric IDs: ACCT-0001, TEN-12345
     re.compile(r'\b([A-Z]{2,6}-\d{3,10})\b'),
     # Compact prefix+digit IDs: CUST00123456
@@ -28,6 +34,24 @@ _UUID_RE = re.compile(
 
 # Regex to split an ID into its text prefix and trailing numeric segment.
 _SPLIT_RE = re.compile(r'^(.*?)(\d+)$')
+
+# Pattern for extracting a customer/passenger/patient name (requires label prefix).
+_NAME_PATTERN = re.compile(
+    r'(?:name|customer|passenger|patient|account\s+holder)\s*[:\s]+'
+    r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)',
+    re.IGNORECASE,
+)
+
+
+def extract_customer_name(text: str) -> str:
+    """Return the first customer/passenger/patient name found in *text*.
+
+    Requires a label prefix (``name:``, ``customer:``, ``passenger:``, etc.) to
+    avoid false positives on ordinary sentences.  Returns an empty string when
+    no labelled name is present.
+    """
+    m = _NAME_PATTERN.search(text)
+    return m.group(1).strip() if m else ""
 
 
 def extract_ids(text: str) -> list[str]:

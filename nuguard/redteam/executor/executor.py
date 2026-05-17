@@ -30,7 +30,7 @@ from nuguard.redteam.target.session import AttackSession
 
 from .chain_assembler import ChainAssembler
 from .golden_data_filter import HitClass, classify_response
-from .id_extractor import extract_ids, generate_similar_ids
+from .id_extractor import extract_customer_name, extract_ids, generate_similar_ids
 
 _log = logging.getLogger(__name__)
 
@@ -160,18 +160,30 @@ def _make_discover_step(chain_id: str, target_node_id: str) -> ExploitStep:
 
 
 def _substitute_golden_tokens(payload: str, session: AttackSession) -> str:
-    """Replace ``{golden_id}`` and ``{golden_id_list}`` tokens with discovered IDs."""
-    if "{golden_id}" not in payload and "{golden_id_list}" not in payload:
+    """Replace ``{golden_id}``, ``{golden_id_list}``, and ``{golden_name}`` tokens."""
+    if (
+        "{golden_id}" not in payload
+        and "{golden_id_list}" not in payload
+        and "{golden_name}" not in payload
+    ):
         return payload
-    if not session.golden_ids:
-        fallback = "ACCT-00001"
-        return payload.replace("{golden_id}", fallback).replace(
-            "{golden_id_list}", fallback
-        )
-    primary_id = session.golden_ids[0]
-    variants = generate_similar_ids(primary_id, n=2)
-    id_list = ", ".join([primary_id] + variants) if variants else primary_id
-    return payload.replace("{golden_id}", primary_id).replace("{golden_id_list}", id_list)
+    if "{golden_id}" in payload or "{golden_id_list}" in payload:
+        if not session.golden_ids:
+            fallback = "ACCT-00001"
+            payload = payload.replace("{golden_id}", fallback).replace(
+                "{golden_id_list}", fallback
+            )
+        else:
+            primary_id = session.golden_ids[0]
+            variants = generate_similar_ids(primary_id, n=2)
+            id_list = ", ".join([primary_id] + variants) if variants else primary_id
+            payload = payload.replace("{golden_id}", primary_id).replace(
+                "{golden_id_list}", id_list
+            )
+    if "{golden_name}" in payload:
+        name = session.golden_name or "the account holder"
+        payload = payload.replace("{golden_name}", name)
+    return payload
 
 
 class AttackExecutor:
@@ -221,7 +233,7 @@ class AttackExecutor:
         # subsequent chains targeting the same node skip the DISCOVER request and
         # instead pre-seed the session from this cache, avoiding duplicate
         # "show me my account data" requests during a single redteam run.
-        self._golden_data_cache: dict[str, tuple[str, list[str]]] = {}
+        self._golden_data_cache: dict[str, tuple[str, list[str], str]] = {}
         self._turn_delay_seconds = max(0.0, turn_delay_seconds)
 
     async def run(
@@ -257,7 +269,9 @@ class AttackExecutor:
             _target_node = chain.steps[0].target_node_id
             if _target_node in self._golden_data_cache:
                 # Cache hit — seed session without sending a request
-                session.golden_data, session.golden_ids = self._golden_data_cache[_target_node]
+                session.golden_data, session.golden_ids, session.golden_name = (
+                    self._golden_data_cache[_target_node]
+                )
                 _log.debug(
                     "Golden-data cache hit for node %s — skipping DISCOVER | chain=%s",
                     _target_node, chain.chain_id,
@@ -528,11 +542,13 @@ class AttackExecutor:
         if step.step_type == "DISCOVER":
             session.golden_data = response
             session.golden_ids = extract_ids(response)
+            session.golden_name = extract_customer_name(response)
             # Populate the executor-level cache so subsequent chains targeting
             # the same agent node skip the DISCOVER request entirely.
             self._golden_data_cache[step.target_node_id] = (
                 session.golden_data,
                 session.golden_ids,
+                session.golden_name,
             )
             result.success_signal_found = False
             _log.debug(
