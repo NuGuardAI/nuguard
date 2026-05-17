@@ -1026,13 +1026,21 @@ class BehaviorRunner:
             # Accumulate deviations and findings
             scenario_deviations.extend(verdict.deviations)
             for violation in violations:
+                _vsev = violation.get("severity", "medium").lower()
                 findings.append({
                     "finding_id": str(uuid.uuid4()),
                     "title": f"Policy violation: {violation.get('type', 'unknown')}",
-                    "severity": violation.get("severity", "medium").lower(),
+                    "severity": _vsev,
                     "description": violation.get("evidence", ""),
                     "affected_component": scenario.target_component or "unknown",
                     "policy_clause": violation.get("policy_clause", ""),
+                })
+                # Mirror into scenario_deviations so run() aggregation can include
+                # these in BehaviorRunResult.findings and compute scan_outcome correctly.
+                scenario_deviations.append({
+                    "deviation_type": "policy_violation",
+                    "description": violation.get("evidence", ""),
+                    "severity": _vsev,
                 })
             if canary_hits:
                 findings.append({
@@ -1041,6 +1049,11 @@ class BehaviorRunner:
                     "severity": "critical",
                     "description": f"Canary values found in response: {canary_hits}",
                     "affected_component": scenario.target_component or "unknown",
+                })
+                scenario_deviations.append({
+                    "deviation_type": "data_leak",
+                    "description": f"Canary values found in response: {canary_hits}",
+                    "severity": "critical",
                 })
 
             turn_idx += 1
@@ -1221,7 +1234,7 @@ class BehaviorRunner:
                     all_findings.append({
                         "finding_id": str(uuid.uuid4()),
                         "title": dev.get("description", "Behavioral deviation"),
-                        "severity": dev.get("severity", "medium"),
+                        "severity": str(dev.get("severity", "medium")).lower(),
                         "description": dev.get("description", ""),
                         "affected_component": (getattr(orig, "target_component", None) or "unknown"),
                     })

@@ -73,7 +73,7 @@ class BehaviorAnalyzer:
             static_findings_objs = check_alignment(self._sbom, intent, self._policy)
             _log.info("BehaviorAnalyzer.analyze: %d static findings", len(static_findings_objs))
 
-        static_findings = [f.model_dump() for f in static_findings_objs]
+        static_findings = [f.model_dump(mode="json") for f in static_findings_objs]
 
         # Step 3: Dynamic analysis
         dynamic_findings: list[dict] = []
