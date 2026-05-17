@@ -218,6 +218,8 @@ def redteam(
                 turn_delay_seconds=cfg.redteam_turn_delay_seconds,
                 scenario_delay_seconds=cfg.redteam_scenario_delay_seconds,
                 similar_miss_threshold=cfg.redteam_similar_miss_threshold,
+                skip_discovery=cfg.redteam_skip_discovery,
+                discovery_max_turns=cfg.redteam_discovery_max_turns,
             )
         )
     except Exception as exc:
@@ -382,8 +384,9 @@ async def _run_redteam(
     turn_delay_seconds: float = 0.0,
     scenario_delay_seconds: float = 0.0,
     similar_miss_threshold: int = 4,
+    skip_discovery: bool = False,
+    discovery_max_turns: int = 3,
 ) -> tuple[list, dict[str, str], list, str, list[str]]:
-    """Async inner function: optionally launch the app, then run the orchestrator."""
     from nuguard.models.policy import CognitivePolicy
     from nuguard.redteam.target.canary import CanaryConfig
 
@@ -504,6 +507,8 @@ async def _run_redteam(
                 turn_delay_seconds=turn_delay_seconds,
                 scenario_delay_seconds=scenario_delay_seconds,
                 similar_miss_threshold=similar_miss_threshold,
+                skip_discovery=skip_discovery,
+                discovery_max_turns=discovery_max_turns,
             )
 
     # App already running — just scan
@@ -545,6 +550,8 @@ async def _run_redteam(
         turn_delay_seconds=turn_delay_seconds,
         scenario_delay_seconds=scenario_delay_seconds,
         similar_miss_threshold=similar_miss_threshold,
+        skip_discovery=skip_discovery,
+        discovery_max_turns=discovery_max_turns,
     )
 
 
@@ -585,6 +592,8 @@ async def _run_orchestrator(
     turn_delay_seconds: float = 0.0,
     scenario_delay_seconds: float = 0.0,
     similar_miss_threshold: int = 4,
+    skip_discovery: bool = False,
+    discovery_max_turns: int = 3,
 ) -> tuple[list, dict[str, str], list, str, list[str]]:
     from nuguard.common.llm_client import LLMClient
     from nuguard.redteam.executor.orchestrator import RedteamOrchestrator
@@ -629,6 +638,8 @@ async def _run_orchestrator(
         turn_delay_seconds=turn_delay_seconds,
         scenario_delay_seconds=scenario_delay_seconds,
         similar_miss_threshold=similar_miss_threshold,
+        skip_discovery=skip_discovery,
+        discovery_max_turns=discovery_max_turns,
     )
     findings = await orchestrator.run()
     llm_remediations: dict[str, str] = orchestrator.llm_remediations

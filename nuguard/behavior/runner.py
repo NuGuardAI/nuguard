@@ -56,6 +56,7 @@ if TYPE_CHECKING:
     from nuguard.behavior.models import IntentProfile
     from nuguard.common.llm_client import LLMClient
     from nuguard.models.policy import CognitivePolicy
+    from nuguard.redteam.target.discovery import DiscoveredProfile
     from nuguard.sbom.models import AiSbomDocument
 
 _log = logging.getLogger(__name__)
@@ -972,7 +973,9 @@ class BehaviorRunner:
                 and response
                 and not pending_messages  # only inject when scripted queue is now empty
             ):
-                reactive = _generate_data_reactive_turns(response, scenario, self._intent)
+                reactive = _generate_data_reactive_turns(
+                    response, scenario, self._intent, profile=self._pre_scan_profile
+                )
                 pending_messages = reactive + pending_messages
                 _log.info(
                     "behavior.data_discovery: injected %d reactive turns for scenario=%s",
@@ -1147,6 +1150,33 @@ class BehaviorRunner:
         except Exception as exc:
             _log.error("BehaviorRunner.run: could not build client: %s", exc)
             raise
+
+        # Pre-scan discovery: connect to the live agent and extract the
+        # authenticated user's real name + IDs before generating test payloads.
+        # Failures are non-fatal.
+        self._pre_scan_profile: "DiscoveredProfile | None" = None
+        try:
+            from nuguard.redteam.target.discovery import run_discovery_conversation  # noqa: PLC0415
+            from nuguard.redteam.target.session import AttackSession as _AS  # noqa: PLC0415
+            _disc_session = _AS(
+                session_id="behavior-discovery",
+                target_url=target_url or "",
+                chain_id="behavior-pre-scan",
+            )
+            _use_case = getattr(self._intent, "app_purpose", "") if self._intent else ""
+            self._pre_scan_profile = await run_discovery_conversation(
+                client,
+                _disc_session,
+                use_case=_use_case or "",
+                max_turns=2,
+            )
+            _log.info(
+                "behavior pre-scan discovery: name=%r ids=%s",
+                self._pre_scan_profile.customer_name,
+                self._pre_scan_profile.ids,
+            )
+        except Exception as _disc_exc:
+            _log.debug("behavior pre-scan discovery failed (non-fatal): %s", _disc_exc)
 
         config_notes: list[str] = []
         for _note in (getattr(client, "resolution_notes", None) or []):
@@ -1356,6 +1386,7 @@ def _generate_data_reactive_turns(
     response: str,
     scenario: BehaviorScenario,
     intent: "IntentProfile | None",
+    profile: "DiscoveredProfile | None" = None,
 ) -> list[str]:
     """Generate 2-3 follow-up turns reactive to what the agent just disclosed.
 
@@ -1408,14 +1439,19 @@ def _generate_data_reactive_turns(
     # --- Turn 3: Cross-user IDOR probe ---
     # Derive a concrete neighbour record from the first disclosed entity so the
     # probe targets an adjacent ID rather than a hardcoded fictional value.
+    # Pre-scan profile IDs take precedence over in-response extraction.
     # Falls back to the original hardcoded wording when no neighbour can be derived
     # (e.g., pure-alpha PNR codes, UUIDs, or when nothing was disclosed).
-    from nuguard.redteam.executor.id_extractor import generate_similar_ids  # noqa: PLC0415
+    from nuguard.redteam.executor.id_extractor import extract_ids, generate_similar_ids  # noqa: PLC0415
 
     _idor_neighbor: str = ""
-    if disclosed:
-        _disc_val = disclosed[0].partition("=")[2]   # e.g. "BA256" from "ref=BA256"
-        _neighbors = generate_similar_ids(_disc_val, n=1)
+    # Prefer pre-scan discovered IDs (real account data) over in-response extraction.
+    _profile_ids = list(profile.ids) if profile and profile.ids else []
+    _primary_id = _profile_ids[0] if _profile_ids else (
+        disclosed[0].partition("=")[2] if disclosed else ""
+    )
+    if _primary_id:
+        _neighbors = generate_similar_ids(_primary_id, n=1)
         if _neighbors:
             _idor_neighbor = _neighbors[0]
 

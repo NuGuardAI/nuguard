@@ -74,6 +74,46 @@ def extract_ids(text: str) -> list[str]:
     return results
 
 
+# Pattern for extracting labelled entity values from agent responses.
+# Captures pairs like "flight: BA205", "departure: 2026-08-15", "seat: 14A".
+_ENTITY_PATTERN = re.compile(
+    r'(?:flight|seat|departure|arrival|date|class|fare|route|origin|destination'
+    r'|status|price|total|amount|balance|account\s+type|plan|tier)\s*[:\s]+'
+    r'([^\n,\.;]{2,40})',
+    re.IGNORECASE,
+)
+
+# Map raw label → normalised key for entity_map
+_ENTITY_LABEL_RE = re.compile(
+    r'(flight|seat|departure|arrival|date|class|fare|route|origin|destination'
+    r'|status|price|total|amount|balance|account\s+type|plan|tier)',
+    re.IGNORECASE,
+)
+
+
+def extract_entity_map(text: str) -> dict[str, str]:
+    """Return a mapping of entity label → value extracted from *text*.
+
+    Captures labelled fields such as ``flight: BA205`` or ``departure: 2026-08-15``
+    that provide useful context for scenario grounding.  Only the *first* occurrence
+    of each normalised label is kept.
+
+    >>> extract_entity_map("Flight: BA205, Seat: 14A, Departure: 2026-08-15")
+    {'flight': 'BA205', 'seat': '14A', 'departure': '2026-08-15'}
+    """
+    result: dict[str, str] = {}
+    for m in _ENTITY_PATTERN.finditer(text):
+        full_match = m.group(0)
+        label_m = _ENTITY_LABEL_RE.match(full_match)
+        if not label_m:
+            continue
+        label = label_m.group(1).lower().replace(" ", "_")
+        value = m.group(1).strip().rstrip(".,;:")
+        if label not in result and value:
+            result[label] = value
+    return result
+
+
 def generate_similar_ids(id_value: str, n: int = 3) -> list[str]:
     """Return *n* nearby IDs by incrementing/decrementing the trailing numeric segment.
 

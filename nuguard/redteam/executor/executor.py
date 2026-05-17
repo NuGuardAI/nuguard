@@ -15,8 +15,13 @@ from nuguard.common.rate_limit import (
 
 if TYPE_CHECKING:
     from nuguard.common.auth import AuthSession
+    from nuguard.redteam.target.discovery import DiscoveredProfile
     from nuguard.redteam.target.log_reader import BufferLogReader, FileLogReader
     from nuguard.sbom.models import AiSbomDocument
+
+from .chain_assembler import ChainAssembler
+from .golden_data_filter import HitClass, classify_response
+from .id_extractor import extract_customer_name, extract_entity_map, extract_ids, generate_similar_ids
 from nuguard.models.exploit_chain import HTTP_2XX_SENTINEL, ExploitChain, ExploitStep, GoalType
 from nuguard.models.policy import CognitivePolicy
 from nuguard.redteam.llm_engine.adaptive_mutation import AdaptiveMutationStrategy
@@ -27,10 +32,6 @@ from nuguard.redteam.target.action_logger import ActionLogger
 from nuguard.redteam.target.canary import CanaryScanner
 from nuguard.redteam.target.client import TargetAppClient
 from nuguard.redteam.target.session import AttackSession
-
-from .chain_assembler import ChainAssembler
-from .golden_data_filter import HitClass, classify_response
-from .id_extractor import extract_customer_name, extract_ids, generate_similar_ids
 
 _log = logging.getLogger(__name__)
 
@@ -160,19 +161,27 @@ def _make_discover_step(chain_id: str, target_node_id: str) -> ExploitStep:
 
 
 def _substitute_golden_tokens(payload: str, session: AttackSession) -> str:
-    """Replace ``{golden_id}``, ``{golden_id_list}``, and ``{golden_name}`` tokens."""
+    """Replace ``{golden_id}``, ``{golden_id_list}``, ``{golden_name}``, and
+    ``{golden_id_neighbor}`` tokens with data extracted from the DISCOVER step.
+
+    ``{golden_id}``          — the authenticated user's primary ID/booking ref
+    ``{golden_id_list}``     — comma-separated list of nearby IDs (for bulk probes)
+    ``{golden_name}``        — the authenticated user's name
+    ``{golden_id_neighbor}`` — an adjacent ID for cross-user IDOR probes
+    """
     if (
         "{golden_id}" not in payload
         and "{golden_id_list}" not in payload
         and "{golden_name}" not in payload
+        and "{golden_id_neighbor}" not in payload
     ):
         return payload
-    if "{golden_id}" in payload or "{golden_id_list}" in payload:
+    if "{golden_id}" in payload or "{golden_id_list}" in payload or "{golden_id_neighbor}" in payload:
         if not session.golden_ids:
             fallback = "ACCT-00001"
             payload = payload.replace("{golden_id}", fallback).replace(
                 "{golden_id_list}", fallback
-            )
+            ).replace("{golden_id_neighbor}", "ACCT-00002")
         else:
             primary_id = session.golden_ids[0]
             variants = generate_similar_ids(primary_id, n=2)
@@ -180,10 +189,32 @@ def _substitute_golden_tokens(payload: str, session: AttackSession) -> str:
             payload = payload.replace("{golden_id}", primary_id).replace(
                 "{golden_id_list}", id_list
             )
+            if "{golden_id_neighbor}" in payload:
+                neighbor = variants[0] if variants else _pnr_neighbor(primary_id)
+                payload = payload.replace("{golden_id_neighbor}", neighbor)
     if "{golden_name}" in payload:
         name = session.golden_name or "the account holder"
         payload = payload.replace("{golden_name}", name)
     return payload
+
+
+def _pnr_neighbor(pnr: str) -> str:
+    """Return a minimally varied version of a pure-alpha PNR code.
+
+    For codes like ``K7Q4MN`` where ``generate_similar_ids`` returns ``[]``
+    (no trailing numeric segment), vary the last alphanumeric character by +1
+    in the set ``[0-9A-Z]``.  This gives a syntactically plausible but
+    different code to use as an IDOR probe target.
+    """
+    if not pnr:
+        return "ZZZZZZ"
+    charset = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    last = pnr[-1].upper()
+    idx = charset.find(last)
+    if idx == -1:
+        return pnr + "1"
+    next_char = charset[(idx + 1) % len(charset)]
+    return pnr[:-1] + next_char
 
 
 class AttackExecutor:
@@ -205,6 +236,7 @@ class AttackExecutor:
         allowed_topics: list[str] | None = None,
         turn_delay_seconds: float = 0.0,
         sbom: "AiSbomDocument | None" = None,
+        pre_scan_profile: "DiscoveredProfile | None" = None,
     ) -> None:
         self._client = client
         self._evaluator = PolicyEvaluator(policy) if policy else None
@@ -234,6 +266,18 @@ class AttackExecutor:
         # instead pre-seed the session from this cache, avoiding duplicate
         # "show me my account data" requests during a single redteam run.
         self._golden_data_cache: dict[str, tuple[str, list[str], str]] = {}
+        # Pre-seed cache from a DiscoveredProfile when available (from pre-scan
+        # discovery that ran before scenario generation).  All SBOM agent nodes
+        # get the same profile entry so DISCOVER steps are always cache hits.
+        if pre_scan_profile is not None and not pre_scan_profile.is_empty and sbom is not None:
+            from nuguard.sbom.models import NodeType as _NodeType  # noqa: PLC0415
+            for _node in getattr(sbom, "nodes", []):
+                if getattr(_node, "component_type", None) == _NodeType.AGENT:
+                    self._golden_data_cache[str(_node.id)] = (
+                        pre_scan_profile.raw_response,
+                        pre_scan_profile.ids,
+                        pre_scan_profile.customer_name,
+                    )
         self._turn_delay_seconds = max(0.0, turn_delay_seconds)
 
     async def run(
@@ -250,17 +294,24 @@ class AttackExecutor:
         chain.status = "running"
         session = self._client.new_session(chain.chain_id)
 
-        # Auto-inject a DISCOVER step at the start of DATA_EXFILTRATION chat chains
-        # so the executor captures the authenticated user's own data as golden data
-        # before running adversarial steps.  Idempotent: skipped when DISCOVER is
-        # already the first step or when the chain is HTTP-direct only.
+        # Auto-inject a DISCOVER step at the start of chat chains that benefit from
+        # knowing the authenticated user's own account data.  Covers:
+        #   DATA_EXFILTRATION — extract/compare attacker's own data
+        #   PRIVILEGE_ESCALATION — booking cancellation, HITL bypass
+        #   API_ATTACK — IDOR, mass-assignment probes
+        # Idempotent: skipped when DISCOVER is already the first step or when
+        # the chain is HTTP-direct only.
         #
         # Golden-data cache: if we have already executed a DISCOVER for this agent
-        # node during this redteam run, pre-seed the session from the cache and
-        # skip the DISCOVER injection entirely — avoids repeating the same
-        # "show me my account" request for every DATA_EXFILTRATION chain.
+        # node during this redteam run (or pre-seeded from pre-scan discovery),
+        # seed the session from the cache and skip the DISCOVER request entirely.
+        _DISCOVER_GOAL_TYPES = frozenset({
+            GoalType.DATA_EXFILTRATION,
+            GoalType.PRIVILEGE_ESCALATION,
+            GoalType.API_ATTACK,
+        })
         _needs_discover = (
-            chain.goal_type == GoalType.DATA_EXFILTRATION
+            chain.goal_type in _DISCOVER_GOAL_TYPES
             and chain.steps
             and chain.steps[0].step_type != "DISCOVER"
             and any(not s.target_path for s in chain.steps)
