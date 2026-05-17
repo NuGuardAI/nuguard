@@ -233,7 +233,7 @@ _DOCS_EXTENSIONS = {
 
 
 def _should_skip_path_parts(parts: tuple[str, ...]) -> bool:
-    skip_dirs = {".git", "__pycache__", "node_modules", ".tox", ".claude", "site-packages", ".mypy_cache", ".pytest_cache", ".ruff_cache", ".pytype"}
+    skip_dirs = {".git", "__pycache__", "node_modules", ".tox", ".claude", "site-packages", ".mypy_cache", ".pytest_cache", ".ruff_cache", ".pytype", "logs", "log", "reports"}
     for part in parts:
         if part in skip_dirs:
             return True
@@ -1664,6 +1664,10 @@ class AiSbomExtractor:
                 continue
             # Skip meta/tooling instruction files
             if path.name in {"CLAUDE.md", "AGENTS.md"}:
+                continue
+            # Skip NuGuard output artefacts
+            name_lower = path.name.lower()
+            if name_lower.endswith("sbom.json") or name_lower.endswith("aibom.json"):
                 continue
             try:
                 size = path.stat().st_size
