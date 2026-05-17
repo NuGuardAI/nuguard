@@ -346,7 +346,7 @@ class LLMClient:
                         yield delta
                 return
 
-            except (litellm.RateLimitError, litellm.ServiceUnavailableError) as exc:
+            except (litellm.RateLimitError, litellm.ServiceUnavailableError, litellm.APIConnectionError) as exc:
                 if _attempt < _MAX_RETRIES:
                     delay = min(_BASE_DELAY * (2 ** _attempt) + random.uniform(0, 1), _MAX_DELAY)
                     _log.warning(
@@ -404,14 +404,6 @@ class LLMClient:
             except litellm.BadRequestError as exc:
                 _log.warning(
                     "LLM bad request (model=%s label=%s): %s",
-                    self.model, label or "-", exc,
-                )
-                yield self._canned_response(prompt)
-                return
-
-            except litellm.APIConnectionError as exc:
-                _log.warning(
-                    "LLM connection error (model=%s label=%s): %s",
                     self.model, label or "-", exc,
                 )
                 yield self._canned_response(prompt)

@@ -51,6 +51,7 @@ def _install_fake_litellm(
     captured: dict[str, object],
     *,
     raise_unsupported_on_first: bool = False,
+    raise_connection_error_times: int = 0,
 ) -> None:
     call_count = 0
 
@@ -61,6 +62,8 @@ def _install_fake_litellm(
         captured["call_count"] = call_count
         if raise_unsupported_on_first and call_count == 1:
             raise _FakeUnsupportedParamsError("temperature not supported")
+        if call_count <= raise_connection_error_times:
+            raise _FakeConnectionError("Connection error.")
         return _FakeStream(["ok"])
 
     fake_module = SimpleNamespace(
@@ -208,6 +211,20 @@ def test_standard_model_keeps_temperature() -> None:
 # ---------------------------------------------------------------------------
 # UnsupportedParamsError — strip and retry fallback
 # ---------------------------------------------------------------------------
+
+
+def test_connection_error_retries_and_succeeds() -> None:
+    captured: dict[str, object] = {}
+    # Fail twice with connection errors, then succeed on the third attempt.
+    _install_fake_litellm(captured, raise_connection_error_times=2)
+    client = LLMClient(model="azure/gpt-5.4-mini", api_key="test-key")
+
+    async def _run() -> str:
+        return await client.complete("hello")
+
+    result = asyncio.run(_run())
+    assert result == "ok"
+    assert captured["call_count"] == 3
 
 
 def test_unsupported_params_error_strips_and_retries() -> None:
