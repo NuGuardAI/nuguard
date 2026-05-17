@@ -404,7 +404,7 @@ def _parse_args() -> argparse.Namespace:
 def main() -> int:
     args = _parse_args()
 
-    version = args.version or _read_pyproject_version()
+    version = args.version or _read_smithery_version()
     print(f"nuguard publish {'(dry run) ' if args.dry_run else ''}— v{version}")
     print()
 
