@@ -1,6 +1,6 @@
 [project]
 name = "nuguard"
-version = "0.4.6"
+version = "0.4.7"
 description = "AI application security — SBOM generation, vulnerability scanning, behavioral validation, and adversarial red-teaming for AI Agents"
 readme = "README.md"
 license = { text = "Apache-2.0" }
@@ -95,12 +95,8 @@ include = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-addopts = "--import-mode=importlib"
+addopts = "--import-mode=importlib --ignore=tests/apps/contact-center-ai-samples --ignore=tests/apps/ai-agents-google-adk/test_bedrock_haiku.py --ignore=tests/apps/ai-agents-google-adk/test_openai_gpt.py"
 testpaths = ["tests", "nuguard/sbom/tests"]
-collect_ignore = [
-    "tests/apps/ai-agents-google-adk/test_bedrock_haiku.py",
-    "tests/apps/ai-agents-google-adk/test_openai_gpt.py",
-]
 markers = [
     "redteam_e2e: E2E redteam scan against a live fixture app (opt-in: NUGUARD_REDTEAM_E2E=1)",
     "benchmark_redteam: Full benchmark redteam CLI scan (opt-in: NUGUARD_REDTEAM_BENCHMARK=1)",
