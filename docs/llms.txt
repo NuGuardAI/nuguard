@@ -347,3 +347,45 @@ json_str = AiSbomSerializer.to_json(doc)
 - Issues: https://github.com/NuGuardAI/nuguard-oss/issues
 - Discord: https://discord.gg/EF99Ck7a
 - NuGuard AI: https://nuguard.ai/
+
+---
+
+## 6. Claude MCP Plugin (`nuguard[mcp]`)
+
+NuGuard ships an MCP server that exposes the full security pipeline as Claude tools.
+Install with `pip install "nuguard[mcp]"` or run without installing via `uvx --from "nuguard[mcp]" nuguard-mcp`.
+
+**Claude Desktop config** (`claude_desktop_config.json`):
+```json
+{
+  "mcpServers": {
+    "nuguard": {
+      "command": "nuguard-mcp",
+      "env": { "LITELLM_API_KEY": "..." }
+    }
+  }
+}
+```
+
+Also available on the Smithery Claude marketplace (search "nuguard").
+
+### Available MCP tools
+
+| Tool | Default timeout | Purpose |
+|---|---|---|
+| `nuguard_init` | 30 s | Initialize `nuguard.yaml` in a project directory |
+| `nuguard_sbom_generate` | 300 s | Generate AI-SBOM from local source or git repo |
+| `nuguard_analyze` | 300 s | Static risk analysis on an AI-SBOM |
+| `nuguard_scan` | 600 s | Full pipeline: SBOM → analyze → policy → redteam |
+| `nuguard_behavior` | 300 s | Behavioral testing against a live AI app |
+| `nuguard_redteam` | 900 s | Adversarial red-team testing against a live AI app |
+| `nuguard_policy_check` | 60 s | Policy linting and compliance assessment |
+
+All tools accept `timeout_seconds` to override the default. Secrets (API keys) are
+passed via environment variables on the MCP server process — never as tool parameters.
+
+Set `NUGUARD_DEFAULT_CONFIG` to the absolute path of a `nuguard.yaml` to avoid
+repeating `config_path` in every tool call.
+
+See the full MCP Plugin Guide for Claude Desktop setup, Smithery configuration, all
+tool parameters, an end-to-end example scenario, and troubleshooting tips.

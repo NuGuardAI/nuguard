@@ -51,6 +51,9 @@ dev = [
     "ruff>=0.4",
     "mypy>=1.10",
 ]
+mcp = [
+    "mcp>=1.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/NuGuardAI/nuguard"
@@ -59,6 +62,7 @@ Issues = "https://github.com/NuGuardAI/nuguard/issues"
 
 [project.scripts]
 nuguard = "nuguard.cli.main:app"
+nuguard-mcp = "nuguard.mcp.__main__:main"
 
 [build-system]
 requires = ["hatchling"]
