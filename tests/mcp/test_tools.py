@@ -478,3 +478,160 @@ async def test_policy_check_raw_fallback() -> None:
 
     assert result["raw_output"] == "No gaps found."
     assert result["status"] == "ok"
+
+
+@pytest.mark.asyncio
+async def test_policy_check_sbom_flag() -> None:
+    mock = AsyncMock(return_value=_ok(parsed={}))
+
+    with patch(_RUNNER, mock):
+        await nuguard_policy_check(
+            policy="/tmp/policy.md",
+            sbom="/tmp/app.sbom.json",
+        )
+
+    args = mock.call_args.args[0]
+    assert "--sbom" in args
+    assert "/tmp/app.sbom.json" in args
+
+
+@pytest.mark.asyncio
+async def test_policy_check_output_flag() -> None:
+    mock = AsyncMock(return_value=_ok(parsed={}))
+
+    with patch(_RUNNER, mock):
+        await nuguard_policy_check(policy="/tmp/p.md", output="/tmp/report.json")
+
+    args = mock.call_args.args[0]
+    assert "--output" in args
+
+
+# ---------------------------------------------------------------------------
+# nuguard_redteam — additional flag coverage
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_redteam_requires_config() -> None:
+    import os
+
+    env = {k: v for k, v in os.environ.items() if k != "NUGUARD_DEFAULT_CONFIG"}
+    with patch.dict(os.environ, env, clear=True):
+        with patch("nuguard.mcp.server._DEFAULT_CONFIG", ""):
+            result = await nuguard_redteam(config_path="")
+
+    assert result["status"] == "error"
+
+
+@pytest.mark.asyncio
+async def test_redteam_guided_max_turns_flag(tmp_path: Path) -> None:
+    cfg = tmp_path / "nuguard.yaml"
+    cfg.write_text("")
+    mock = AsyncMock(return_value=_ok(parsed={}))
+
+    with patch(_RUNNER, mock):
+        await nuguard_redteam(config_path=str(cfg), guided_max_turns=10)
+
+    args = mock.call_args.args[0]
+    assert "--guided-max-turns" in args
+    assert "10" in args
+
+
+@pytest.mark.asyncio
+async def test_redteam_guided_concurrency_flag(tmp_path: Path) -> None:
+    cfg = tmp_path / "nuguard.yaml"
+    cfg.write_text("")
+    mock = AsyncMock(return_value=_ok(parsed={}))
+
+    with patch(_RUNNER, mock):
+        await nuguard_redteam(config_path=str(cfg), guided_concurrency=3)
+
+    args = mock.call_args.args[0]
+    assert "--guided-concurrency" in args
+    assert "3" in args
+
+
+@pytest.mark.asyncio
+async def test_redteam_scenarios_flag(tmp_path: Path) -> None:
+    cfg = tmp_path / "nuguard.yaml"
+    cfg.write_text("")
+    mock = AsyncMock(return_value=_ok(parsed={}))
+
+    with patch(_RUNNER, mock):
+        await nuguard_redteam(
+            config_path=str(cfg),
+            scenarios="prompt_injection,data_exfiltration",
+        )
+
+    args = mock.call_args.args[0]
+    assert "--scenarios" in args
+    assert "prompt_injection,data_exfiltration" in args
+
+
+@pytest.mark.asyncio
+async def test_redteam_min_impact_score_flag(tmp_path: Path) -> None:
+    cfg = tmp_path / "nuguard.yaml"
+    cfg.write_text("")
+    mock = AsyncMock(return_value=_ok(parsed={}))
+
+    with patch(_RUNNER, mock):
+        await nuguard_redteam(config_path=str(cfg), min_impact_score=5.0)
+
+    args = mock.call_args.args[0]
+    assert "--min-impact-score" in args
+    assert "5.0" in args
+
+
+# ---------------------------------------------------------------------------
+# nuguard_scan — additional flag coverage
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_scan_container_image_flag(tmp_path: Path) -> None:
+    mock = AsyncMock(return_value=_ok())
+
+    with patch(_RUNNER, mock):
+        await nuguard_scan(source=str(tmp_path), container_image="myapp:latest")
+
+    args = mock.call_args.args[0]
+    assert "--container-image" in args
+    assert "myapp:latest" in args
+
+
+# ---------------------------------------------------------------------------
+# nuguard_behavior — additional flag coverage
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_behavior_intent_flag(tmp_path: Path) -> None:
+    cfg = tmp_path / "nuguard.yaml"
+    cfg.write_text("")
+    mock = AsyncMock(return_value=_ok(parsed={}))
+
+    with patch(_RUNNER, mock):
+        await nuguard_behavior(
+            config_path=str(cfg),
+            intent="Customer service assistant for ACME Corp",
+        )
+
+    args = mock.call_args.args[0]
+    assert "--intent" in args
+    assert "Customer service assistant for ACME Corp" in args
+
+
+@pytest.mark.asyncio
+async def test_behavior_output_flag(tmp_path: Path) -> None:
+    cfg = tmp_path / "nuguard.yaml"
+    cfg.write_text("")
+    mock = AsyncMock(return_value=_ok(parsed={}))
+
+    with patch(_RUNNER, mock):
+        await nuguard_behavior(
+            config_path=str(cfg),
+            output=str(tmp_path / "behavior-report.json"),
+        )
+
+    args = mock.call_args.args[0]
+    assert "--output" in args
