@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import sys
 from types import SimpleNamespace
+from unittest.mock import patch
 
 from nuguard.common.llm_client import LLMClient, _is_reasoning_model
 
@@ -244,3 +245,34 @@ def test_unsupported_params_error_strips_and_retries() -> None:
     assert captured["call_count"] == 2
     # temperature should be absent on the retry
     assert "temperature" not in captured["kwargs"]
+
+
+# ---------------------------------------------------------------------------
+# Azure model without api_base — early warning
+# ---------------------------------------------------------------------------
+
+
+def test_azure_model_without_api_base_warns() -> None:
+    _install_fake_litellm({})
+    with patch("nuguard.common.llm_client._log") as mock_log:
+        LLMClient(model="azure/gpt-5.4-mini", api_key="test-key", api_base=None)
+    warned = any(
+        "AZURE_API_BASE" in str(call)
+        for call in mock_log.warning.call_args_list
+    )
+    assert warned, "Expected a warning about missing AZURE_API_BASE for azure/ model"
+
+
+def test_azure_model_with_api_base_no_warning() -> None:
+    _install_fake_litellm({})
+    with patch("nuguard.common.llm_client._log") as mock_log:
+        LLMClient(
+            model="azure/gpt-5.4-mini",
+            api_key="test-key",
+            api_base="https://my-resource.openai.azure.com/",
+        )
+    warned = any(
+        "AZURE_API_BASE" in str(call)
+        for call in mock_log.warning.call_args_list
+    )
+    assert not warned, "Should NOT warn when api_base is provided"

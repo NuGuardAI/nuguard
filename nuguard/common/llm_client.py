@@ -256,6 +256,21 @@ class LLMClient:
         if self.api_key is None:
             _log.debug("No API key found — LLMClient will return canned responses.")
 
+        # Azure OpenAI requires an explicit endpoint URL.  Warn early so the user
+        # gets a clear diagnostic instead of a cryptic APIConnectionError later.
+        if (
+            self.model.startswith("azure/")
+            and self.api_key is not None
+            and not (self.api_base and self.api_base.strip())
+        ):
+            _log.warning(
+                "Azure model %r requires an endpoint URL (api_base / AZURE_API_BASE). "
+                "Without it LiteLLM cannot connect and will raise APIConnectionError. "
+                "Set AZURE_API_BASE=https://<your-resource>.openai.azure.com/ or add "
+                "api_base under the llm: section of your nuguard.yaml.",
+                self.model,
+            )
+
     async def complete_stream(
         self,
         prompt: str,
