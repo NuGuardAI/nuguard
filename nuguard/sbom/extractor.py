@@ -233,7 +233,7 @@ _DOCS_EXTENSIONS = {
 
 
 def _should_skip_path_parts(parts: tuple[str, ...]) -> bool:
-    skip_dirs = {".git", "__pycache__", "node_modules", ".tox", ".claude", "site-packages"}
+    skip_dirs = {".git", "__pycache__", "node_modules", ".tox", ".claude", "site-packages", ".mypy_cache", ".pytest_cache", ".ruff_cache", ".pytype"}
     for part in parts:
         if part in skip_dirs:
             return True
