@@ -539,6 +539,13 @@ class BehaviorConfig(BaseModel):
         le=20,
         description="Max simultaneous scenario HTTP sessions.",
     )
+    isolate_scenarios: bool = Field(
+        default=True,
+        description=(
+            "Re-authenticate before each scenario to prevent cross-scenario "
+            "session-state contamination on stateful endpoints."
+        ),
+    )
     judge_concurrency: int = Field(
         default=5,
         ge=1,

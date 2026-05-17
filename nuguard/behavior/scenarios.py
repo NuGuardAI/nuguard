@@ -26,9 +26,39 @@ if TYPE_CHECKING:
     from nuguard.behavior.models import IntentProfile
     from nuguard.common.llm_client import LLMClient
     from nuguard.models.policy import CognitivePolicy, PolicyControl
+    from nuguard.redteam.target.discovery import DiscoveredProfile
     from nuguard.sbom.models import AiSbomDocument
 
 _log = logging.getLogger(__name__)
+
+
+def _profile_context_block(profile: "DiscoveredProfile | None") -> str:
+    """Return a prompt snippet describing the authenticated user's real data.
+
+    When the pre-scan discovery found real IDs / names, inject them so the
+    LLM generates scenario messages that reference *actual* account data
+    rather than fictional placeholders — making tests more realistic and
+    harder for the agent to detect as synthetic.
+    Returns an empty string when the profile is absent or empty.
+    """
+    if profile is None or profile.is_empty:
+        return ""
+    lines = [
+        "Authenticated user profile — use tokens in turn messages (substituted at runtime):",
+    ]
+    if profile.ids:
+        lines.append(f"  - Use {{golden_id}} for the primary booking/account reference  (= {profile.ids[0]})")
+        if len(profile.ids) > 1:
+            lines.append(f"  - Additional IDs: {', '.join(profile.ids[1:3])}")
+    if profile.customer_name:
+        lines.append(f"  - Use {{golden_name}} for the passenger/account-holder name  (= {profile.customer_name})")
+    for label, value in list(profile.entity_map.items())[:3]:
+        lines.append(f"  - {label.replace('_', ' ').title()}: {value}")
+    lines.append(
+        "Write turn messages with {golden_id} and {golden_name} tokens, not hard-coded values."
+    )
+    return "\n".join(lines)
+
 
 _TURN_SUFFIX = (
     " Please keep the response under 500 words and list all agents and tools "
@@ -300,6 +330,7 @@ async def _intent_happy_path_scenarios(
     intent: "IntentProfile",
     sbom: "AiSbomDocument | None",
     llm_client: "LLMClient | None",
+    pre_scan_profile: "DiscoveredProfile | None" = None,
 ) -> list[BehaviorScenario]:
     """Generate 2-4 end-to-end scenarios from IntentProfile.core_capabilities."""
     if llm_client is None or getattr(llm_client, "api_key", None) is None:
@@ -319,6 +350,7 @@ async def _intent_happy_path_scenarios(
 
     distinct_caps = _dedup_capabilities(intent.core_capabilities)
     count = min(len(distinct_caps), 4) or 2
+    profile_block = _profile_context_block(pre_scan_profile)
     prompt = _HAPPY_PATH_USER_TEMPLATE.format(
         app_purpose=intent.app_purpose,
         capabilities=", ".join(distinct_caps),
@@ -326,6 +358,8 @@ async def _intent_happy_path_scenarios(
         tools=", ".join(tools[:10]) or "none",
         count=count,
     )
+    if profile_block:
+        prompt = prompt + f"\n\n{profile_block}"
 
     try:
         raw = await llm_client.complete(prompt, system=_HAPPY_PATH_SYSTEM, label="behavior:happy_path_gen")
@@ -678,6 +712,7 @@ async def _agent_coverage_scenarios(
     intent: "IntentProfile",
     policy: "CognitivePolicy | None",
     llm_client: "LLMClient | None",
+    pre_scan_profile: "DiscoveredProfile | None" = None,
 ) -> list[BehaviorScenario]:
     """Generate one scenario per AGENT node, grounded in its description + allowed_topic."""
     allowed_topics: list[str] = list(getattr(policy, "allowed_topics", None) or [])
@@ -720,6 +755,7 @@ async def _agent_coverage_scenarios(
             scenarios.append(_deterministic_agent_scenario(name, desc, matched_topic, use_case, idx))
             continue
 
+        profile_block = _profile_context_block(pre_scan_profile)
         prompt = _AGENT_COVERAGE_USER_TEMPLATE.format(
             use_case=use_case[:120],
             allowed_topics=", ".join(allowed_topics[:8]) or "general",
@@ -728,6 +764,8 @@ async def _agent_coverage_scenarios(
             matched_topic=matched_topic[:80],
             agent_name_lower=name.lower().replace(" ", "_"),
         )
+        if profile_block:
+            prompt = prompt + f"\n\n{profile_block}"
 
         try:
             raw = await llm_client.complete(prompt, system=_AGENT_COVERAGE_SYSTEM, label="behavior:agent_coverage_gen")
@@ -1526,6 +1564,7 @@ async def build_scenarios(
     sbom: "AiSbomDocument | None" = None,
     llm_client: "LLMClient | None" = None,
     skipped_out: "list[str] | None" = None,
+    pre_scan_profile: "DiscoveredProfile | None" = None,
 ) -> list[BehaviorScenario]:
     """Build all scenarios for the configured workflows (v7).
 
@@ -1574,7 +1613,7 @@ async def build_scenarios(
 
     # --- Layer 1: Topic paths (intent_happy_path) ---
     if "intent_happy_path" in workflows:
-        happy = await _intent_happy_path_scenarios(intent, sbom, llm_client)
+        happy = await _intent_happy_path_scenarios(intent, sbom, llm_client, pre_scan_profile=pre_scan_profile)
         all_scenarios.extend(happy)
         _log.debug("build_scenarios: %d intent_happy_path scenarios", len(happy))
 
@@ -1587,7 +1626,7 @@ async def build_scenarios(
         cov_tasks = []
         cov_keys: list[str] = []
         if run_agent_cov:
-            cov_tasks.append(_agent_coverage_scenarios(sbom, intent, policy, llm_client))  # type: ignore[arg-type]
+            cov_tasks.append(_agent_coverage_scenarios(sbom, intent, policy, llm_client, pre_scan_profile=pre_scan_profile))  # type: ignore[arg-type]
             cov_keys.append("agent_coverage")
         if run_tool_cov:
             cov_tasks.append(_tool_coverage_scenarios(sbom, intent, policy, llm_client))  # type: ignore[arg-type]

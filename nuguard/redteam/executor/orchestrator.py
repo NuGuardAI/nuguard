@@ -687,6 +687,8 @@ class RedteamOrchestrator:
         # Failures are non-fatal — the run continues without a profile.
         _pre_scan_profile: "DiscoveredProfile | None" = None
         if not self._skip_discovery:
+            from nuguard.common.console import _console as _rtconsole  # noqa: PLC0415
+            _rtconsole.rule("[bold cyan]Pre-scan Discovery[/bold cyan]", style="dim cyan")
             try:
                 from nuguard.common.target_client_builder import build_target_app_client as _btac  # noqa: PLC0415
                 from nuguard.redteam.target.discovery import run_discovery_conversation  # noqa: PLC0415
@@ -725,6 +727,7 @@ class RedteamOrchestrator:
                 )
             except Exception as _disc_exc:
                 _log.warning("pre-scan discovery failed (non-fatal): %s", _disc_exc)
+                _rtconsole.print(f"  [yellow]Pre-scan discovery failed (non-fatal): {_disc_exc}[/yellow]")
                 _pre_scan_profile = None
 
         # 1. Generate scenarios from SBOM + policy.

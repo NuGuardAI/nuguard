@@ -35,23 +35,51 @@ _UUID_RE = re.compile(
 # Regex to split an ID into its text prefix and trailing numeric segment.
 _SPLIT_RE = re.compile(r'^(.*?)(\d+)$')
 
-# Pattern for extracting a customer/passenger/patient name (requires label prefix).
-_NAME_PATTERN = re.compile(
-    r'(?:name|customer|passenger|patient|account\s+holder)\s*[:\s]+'
-    r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)',
-    re.IGNORECASE,
-)
+# Patterns for extracting a customer/passenger/patient name.
+# Ordered from highest to lowest precision — first match wins.
+_NAME_PATTERNS: list[re.Pattern[str]] = [
+    # Label-prefix: "name: Alice Johnson", "passenger: Alice Johnson"
+    re.compile(
+        r'(?:name|customer|passenger|patient|account\s+holder)\s*[:\s]+'
+        r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)',
+        re.IGNORECASE,
+    ),
+    # Greeting: "Hello Alice Johnson," / "Hi Alice Johnson" / "Dear Alice Johnson,"
+    re.compile(
+        r'(?:Hello|Hi|Dear|Welcome(?:\s+back)?),?\s+'
+        r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)',
+    ),
+    # Logged-in-as / registered-to: "logged in as Alice Johnson"
+    re.compile(
+        r'(?:logged\s+in\s+as|registered\s+to|authenticated\s+as)\s+'
+        r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)',
+        re.IGNORECASE,
+    ),
+    # Contextual "for/to": "booking for Alice Johnson", "reserved for Alice Johnson"
+    re.compile(
+        r'(?:booking|reservation|flight|ticket|account)\s+(?:for|to)\s+'
+        r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)',
+        re.IGNORECASE,
+    ),
+    # Possessive: "Alice Johnson's booking", "Alice Johnson's account"
+    re.compile(
+        r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)'
+        r"'s\s+(?:booking|reservation|account|flight|ticket)",
+    ),
+]
 
 
 def extract_customer_name(text: str) -> str:
     """Return the first customer/passenger/patient name found in *text*.
 
-    Requires a label prefix (``name:``, ``customer:``, ``passenger:``, etc.) to
-    avoid false positives on ordinary sentences.  Returns an empty string when
-    no labelled name is present.
+    Tries multiple strategies (label prefix, greeting, possessive, contextual)
+    in order of precision.  Returns an empty string when no name is found.
     """
-    m = _NAME_PATTERN.search(text)
-    return m.group(1).strip() if m else ""
+    for pattern in _NAME_PATTERNS:
+        m = pattern.search(text)
+        if m:
+            return m.group(1).strip()
+    return ""
 
 
 def extract_ids(text: str) -> list[str]:

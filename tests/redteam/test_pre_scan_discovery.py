@@ -98,9 +98,10 @@ async def test_discovery_extracts_name_and_id():
 
 @pytest.mark.asyncio
 async def test_discovery_stops_early_after_first_hit():
-    """Discovery stops after the first turn that yields useful data."""
+    """Discovery stops after the first turn that yields both a name AND IDs."""
     responses = [
-        "Your booking reference is PNR12345 for John Doe.",
+        # Greeting pattern → name extracted; labelled PNR → ID extracted
+        "Hello John Doe, your booking reference is PNR12345.",
         "This second response should never be sent.",
     ]
     client = _make_client(responses)
@@ -108,9 +109,29 @@ async def test_discovery_stops_early_after_first_hit():
 
     profile = await run_discovery_conversation(client, session, use_case="travel", max_turns=3)
 
-    # Only 1 turn should have been sent
+    # Only 1 turn should have been sent — we have both name and ID
     assert profile.turns_sent == 1
     assert client.send.call_count == 1
+    assert profile.customer_name == "John Doe"
+    assert "PNR12345" in profile.ids
+
+
+@pytest.mark.asyncio
+async def test_discovery_continues_for_name_when_only_ids_found():
+    """When turn 1 yields IDs but no name, discovery continues to turn 2."""
+    responses = [
+        "Your bookings: PNR12345 (JFK→LAX), BB5678 (LAX→ORD).",  # IDs but no name
+        "Hello John Doe, here are your bookings as confirmed.",   # name extracted
+        "This third response should never be sent.",
+    ]
+    client = _make_client(responses)
+    session = _make_session()
+
+    profile = await run_discovery_conversation(client, session, use_case="travel", max_turns=3)
+
+    assert profile.turns_sent == 2
+    assert profile.customer_name == "John Doe"
+    assert "PNR12345" in profile.ids
 
 
 @pytest.mark.asyncio

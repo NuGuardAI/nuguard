@@ -66,6 +66,22 @@ def _verdict_colour(verdict: str) -> str:
     return {"PASS": "green", "PARTIAL": "yellow", "FAIL": "red"}.get(verdict, "white")
 
 
+def _substitute_behavior_tokens(message: str, profile: "Any") -> str:
+    """Replace {golden_id}, {golden_id_list}, {golden_name} tokens using the discovered profile."""
+    if not profile or not message:
+        return message
+    if "{golden_id}" not in message and "{golden_id_list}" not in message and "{golden_name}" not in message:
+        return message
+    ids: list[str] = getattr(profile, "ids", []) or []
+    primary_id = ids[0] if ids else ""
+    id_list = ", ".join(ids[:3]) if ids else ""
+    name: str = getattr(profile, "customer_name", "") or "the authenticated user"
+    message = message.replace("{golden_id}", primary_id)
+    message = message.replace("{golden_id_list}", id_list)
+    message = message.replace("{golden_name}", name)
+    return message
+
+
 def _print_turn(
     scenario_name: str,
     turn_idx: int,
@@ -732,6 +748,7 @@ class BehaviorRunner:
                 if turn_delay > 0 and turn_idx > 0:
                     await asyncio.sleep(turn_delay)
 
+                message = _substitute_behavior_tokens(message, self._pre_scan_profile)
                 response, canary_hits = await client.send(
                     message,
                     session=session,
@@ -1084,9 +1101,46 @@ class BehaviorRunner:
             deviations=scenario_deviations,
         )
 
+    async def discover(self) -> "DiscoveredProfile | None":
+        """Run pre-scan discovery against the live agent and return the profile.
+
+        Builds a temporary client, sends up to 2 discovery turns, and returns
+        the extracted :class:`~nuguard.redteam.target.discovery.DiscoveredProfile`.
+        Returns ``None`` on any failure (non-fatal).
+
+        Call this before :meth:`build_scenarios` so the discovered profile can be
+        injected into scenario prompts at generation time.
+        """
+        from nuguard.redteam.target.discovery import DiscoveredProfile, run_discovery_conversation  # noqa: PLC0415
+        from nuguard.redteam.target.session import AttackSession as _AS  # noqa: PLC0415
+
+        _console.rule("[bold cyan]Pre-scan Discovery[/bold cyan]", style="dim cyan")
+        try:
+            client = await self._build_client()
+            _target_url = getattr(self, "_resolved_target_url", None) or getattr(self._config, "target", "") or ""
+            _disc_session = _AS(
+                session_id="behavior-discovery",
+                target_url=_target_url,
+                chain_id="behavior-pre-scan",
+            )
+            _use_case = getattr(self._intent, "app_purpose", "") if self._intent else ""
+            profile = await run_discovery_conversation(
+                client, _disc_session, use_case=_use_case, max_turns=2
+            )
+            _log.info(
+                "behavior pre-scan discovery: name=%r ids=%s turns=%d",
+                profile.customer_name, profile.ids, profile.turns_sent,
+            )
+            return profile
+        except Exception as exc:
+            _log.warning("BehaviorRunner.discover failed (non-fatal): %s", exc)
+            _console.print(f"  [yellow]Pre-scan discovery failed (non-fatal): {exc}[/yellow]")
+            return None
+
     async def run(
         self,
         scenarios: list[BehaviorScenario],
+        pre_scan_profile: "DiscoveredProfile | None" = None,
     ) -> BehaviorRunResult:
         """Execute all scenarios and return a BehaviorRunResult.
 
@@ -1155,28 +1209,38 @@ class BehaviorRunner:
         # authenticated user's real name + IDs before generating test payloads.
         # Failures are non-fatal.
         self._pre_scan_profile: "DiscoveredProfile | None" = None
-        try:
-            from nuguard.redteam.target.discovery import run_discovery_conversation  # noqa: PLC0415
-            from nuguard.redteam.target.session import AttackSession as _AS  # noqa: PLC0415
-            _disc_session = _AS(
-                session_id="behavior-discovery",
-                target_url=target_url or "",
-                chain_id="behavior-pre-scan",
+        if pre_scan_profile is not None:
+            # Caller already ran discovery — reuse the profile, skip HTTP round-trip.
+            self._pre_scan_profile = pre_scan_profile
+            _console.print(
+                f"  [bold cyan]Pre-scan discovery (cached):[/bold cyan] "
+                f"name={pre_scan_profile.customer_name!r}  ids={pre_scan_profile.ids}"
             )
-            _use_case = getattr(self._intent, "app_purpose", "") if self._intent else ""
-            self._pre_scan_profile = await run_discovery_conversation(
-                client,
-                _disc_session,
-                use_case=_use_case or "",
-                max_turns=2,
-            )
-            _log.info(
-                "behavior pre-scan discovery: name=%r ids=%s",
-                self._pre_scan_profile.customer_name,
-                self._pre_scan_profile.ids,
-            )
-        except Exception as _disc_exc:
-            _log.debug("behavior pre-scan discovery failed (non-fatal): %s", _disc_exc)
+        else:
+            _console.rule("[bold cyan]Pre-scan Discovery[/bold cyan]", style="dim cyan")
+            try:
+                from nuguard.redteam.target.discovery import run_discovery_conversation  # noqa: PLC0415
+                from nuguard.redteam.target.session import AttackSession as _AS  # noqa: PLC0415
+                _disc_session = _AS(
+                    session_id="behavior-discovery",
+                    target_url=target_url or "",
+                    chain_id="behavior-pre-scan",
+                )
+                _use_case = getattr(self._intent, "app_purpose", "") if self._intent else ""
+                self._pre_scan_profile = await run_discovery_conversation(
+                    client,
+                    _disc_session,
+                    use_case=_use_case or "",
+                    max_turns=2,
+                )
+                _log.info(
+                    "behavior pre-scan discovery: name=%r ids=%s",
+                    self._pre_scan_profile.customer_name,
+                    self._pre_scan_profile.ids,
+                )
+            except Exception as _disc_exc:
+                _log.warning("behavior pre-scan discovery failed (non-fatal): %s", _disc_exc)
+                _console.print(f"  [yellow]Pre-scan discovery failed (non-fatal): {_disc_exc}[/yellow]")
 
         config_notes: list[str] = []
         for _note in (getattr(client, "resolution_notes", None) or []):
@@ -1217,6 +1281,8 @@ class BehaviorRunner:
 
         sem = asyncio.Semaphore(concurrency)
 
+        _isolate = bool(getattr(self._config, "isolate_scenarios", True))
+
         async def _run_one(i: int, scenario: object) -> "ScenarioResult | None":
             async with sem:
                 _log.info(
@@ -1228,14 +1294,18 @@ class BehaviorRunner:
                     f"[bold]{getattr(scenario, 'name', '?')}[/bold]  "
                     f"[dim]{getattr(getattr(scenario, 'scenario_type', None), 'value', getattr(scenario, 'scenario_type', ''))}[/dim]"
                 )
+                _scenario_client = await self._build_client() if _isolate else client
                 try:
-                    return await self._run_scenario(scenario, client, policy_evaluator)  # type: ignore[arg-type]
+                    return await self._run_scenario(scenario, _scenario_client, policy_evaluator)  # type: ignore[arg-type]
                 except Exception as exc:
                     _log.error(
                         "BehaviorRunner.run: scenario %s failed: %s",
                         getattr(scenario, "name", "?"), exc,
                     )
                     return None
+                finally:
+                    if _isolate:
+                        await _scenario_client.aclose()
 
         scenario_by_id = {getattr(s, "scenario_id", ""): s for s in scenarios}
         raw_results = await asyncio.gather(*(_run_one(i, s) for i, s in enumerate(scenarios)))
