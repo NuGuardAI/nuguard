@@ -42,7 +42,7 @@ Check `nuguard.yaml` for a `target.url`. If present:
 
 a. Call `nuguard_behavior` with `mode="static+dynamic"`.
 b. If behavior finds intent drift or policy violations, call `nuguard_redteam` with
-   `profile="ci"` to confirm exploitability.
+   `profile="full"` to confirm exploitability.
 
 If no target URL is configured, skip this step and note it in the report.
 
@@ -57,7 +57,7 @@ Produce a structured security report:
 **Components scanned**: `<N>` nodes · `<M>` edges · `<K>` dependencies
 
 **Executive Summary**  
-2–3 sentences. Worst-case impact in plain language. E.g.: "The customer service agent
+3-4 sentences. Worst-case impact in plain language. E.g.: "The customer service agent
 has unrestricted write access to a PII-classified database via an unauthenticated SQL
 tool, and a red-team scan confirmed cross-tenant data leakage is exploitable."
 

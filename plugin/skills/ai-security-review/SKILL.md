@@ -67,7 +67,7 @@ declares vs. what the SBOM shows is actually enforced.
 If the user provides a target URL:
 - Run `nuguard_behavior` in `static+dynamic` mode first (faster, no attack payloads)
 - If behavior finds intent drift or policy violations, escalate to `nuguard_redteam`
-  with `profile="ci"` to confirm exploitability
+  with `profile="full"` to confirm exploitability
 
 ## Reporting Style
 
