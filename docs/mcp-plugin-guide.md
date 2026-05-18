@@ -54,20 +54,20 @@ Restart Claude Desktop after saving. The NuGuard tools appear in the tools panel
 
 ### Claude Code Plugin
 
-Install the plugin directly from the NuGuard GitHub repository:
+Add NuGuard as a marketplace source, then install:
 
 ```bash
-claude plugin install github:NuGuardAI/nuguard
+claude plugin marketplace add NuGuardAI/nuguard
+claude plugin install nuguardai-nuguard
 ```
 
 This wires the MCP server automatically via the bundled `.mcp.json` — no manual config editing required.
 
-To pass your API key and config path at install time:
+Set environment variables before starting Claude Code:
 
 ```bash
-LITELLM_API_KEY=your-api-key \
-NUGUARD_DEFAULT_CONFIG=/path/to/nuguard.yaml \
-claude plugin install github:NuGuardAI/nuguard
+export LITELLM_API_KEY=your-api-key
+export NUGUARD_DEFAULT_CONFIG=/path/to/nuguard.yaml
 ```
 
 ---
