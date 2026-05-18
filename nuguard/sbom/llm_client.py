@@ -22,6 +22,17 @@ _log = logging.getLogger(__name__)
 
 _litellm_noise_suppressed = False
 
+# Reasoning / thinking models that reject temperature (or accept only temperature=1).
+# Covers OpenAI o1/o3/o4 and gpt-5 class; mirrors nuguard.common.llm_client.
+_REASONING_MODEL_FAMILIES = ("o1", "o3", "o4", "gpt-5")
+
+
+def _is_reasoning_model(model: str) -> bool:
+    """Return True for models that do not support arbitrary temperature values."""
+    _, _, name = model.rpartition("/")
+    name_lower = (name or model).lower()
+    return any(name_lower.startswith(f) for f in _REASONING_MODEL_FAMILIES)
+
 
 def _suppress_litellm_noise(litellm: Any) -> None:
     """Silence litellm's startup credential-probe warnings (one-time)."""
@@ -176,8 +187,9 @@ class LLMClient:
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-            "temperature": 0.0,
         }
+        if not _is_reasoning_model(self._model):
+            kwargs["temperature"] = 0.0
         if self._api_key:
             kwargs["api_key"] = self._api_key
         if self._api_base:
@@ -186,7 +198,11 @@ class LLMClient:
         _log.debug(
             "complete_text model=%s budget_left=%d", self._model, self._budget - self._tokens_used
         )
-        response = await litellm.acompletion(**kwargs)
+        try:
+            response = await litellm.acompletion(**kwargs)
+        except litellm.UnsupportedParamsError:
+            kwargs.pop("temperature", None)
+            response = await litellm.acompletion(**kwargs)
         tokens = self._record_usage(response)
         text: str = response.choices[0].message.content or ""
         return text, tokens
@@ -254,9 +270,10 @@ class LLMClient:
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-            "temperature": 0.0,
             "response_format": {"type": "json_object"},
         }
+        if not _is_reasoning_model(self._model):
+            kwargs["temperature"] = 0.0
         if self._api_key:
             kwargs["api_key"] = self._api_key
         if self._api_base:
@@ -267,7 +284,11 @@ class LLMClient:
             self._model,
             list(response_schema.get("properties", {}).keys()),
         )
-        response = await litellm.acompletion(**kwargs)
+        try:
+            response = await litellm.acompletion(**kwargs)
+        except litellm.UnsupportedParamsError:
+            kwargs.pop("temperature", None)
+            response = await litellm.acompletion(**kwargs)
         self._record_usage(response)
 
         raw = response.choices[0].message.content or ""

@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "nuguard": {
+      "command": "uvx",
+      "args": ["--from", "nuguard[mcp]", "nuguard-mcp"],
+      "env": {}
+    }
+  }
+}

@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from nuguard.common.auth import AuthConfig
     from nuguard.common.llm_client import LLMClient
     from nuguard.config import RedteamFindingTriggers
+    from nuguard.redteam.target.discovery import DiscoveredProfile
     from nuguard.redteam.target.log_reader import BufferLogReader, FileLogReader
 
 from nuguard.common.console import print_turn as _common_print_turn
@@ -248,6 +249,22 @@ def _finding_id(title: str) -> str:
     return slug[:80]
 
 
+_DESTRUCTIVE_KEYWORDS = frozenset({
+    "cancel", "delet", "clos", "remov", "purge", "refund",
+    "terminat", "deactiv", "wipe", "revok", "unsubscrib", "deregist",
+})
+
+
+def _is_destructive_scenario(scenario: AttackScenario) -> bool:
+    """Return True when the scenario is likely to destroy or mutate user data.
+
+    Destructive scenarios are sorted to the end of the run so non-destructive
+    scenarios execute against intact account data first.
+    """
+    text = (scenario.title + " " + scenario.description).lower()
+    return any(k in text for k in _DESTRUCTIVE_KEYWORDS)
+
+
 def _dedup_scenarios_by_opener(scenarios: list[AttackScenario]) -> list[AttackScenario]:
     """Discard scenarios with duplicate opener fingerprints before any HTTP calls are made.
 
@@ -449,6 +466,8 @@ class RedteamOrchestrator:
         turn_delay_seconds: float = 0.0,
         scenario_delay_seconds: float = 0.0,
         similar_miss_threshold: int = 4,
+        skip_discovery: bool = False,
+        discovery_max_turns: int = 3,
     ) -> None:
         self._sbom = sbom
         self._target_url = target_url
@@ -494,6 +513,8 @@ class RedteamOrchestrator:
         self._turn_delay_seconds = max(0.0, turn_delay_seconds)
         self._scenario_delay_seconds = max(0.0, scenario_delay_seconds)
         self._similar_miss_threshold = max(1, similar_miss_threshold)
+        self._skip_discovery = skip_discovery
+        self._discovery_max_turns = max(1, discovery_max_turns)
         # Auto-discover from SBOM; fall back to provided values
         self._chat_path, self._chat_payload_key, self._chat_payload_list, _discovered_response_key = (
             _discover_chat_config(sbom, chat_path, chat_payload_key, chat_payload_list)
@@ -674,6 +695,61 @@ class RedteamOrchestrator:
         if bootstrap_headers:
             effective_headers.update(bootstrap_headers)
 
+        # 0. Pre-scan discovery: connect to the live agent as the authenticated
+        # user and extract their real name + account/booking IDs.  Runs before
+        # scenario generation so the discovered profile can:
+        #   (a) inform LLM enrichment (real data in generated payloads), and
+        #   (b) pre-seed the executor's golden-data cache (DISCOVER = cache hit).
+        # Failures are non-fatal — the run continues without a profile.
+        _pre_scan_profile: "DiscoveredProfile | None" = None
+        if not self._skip_discovery:
+            from nuguard.common.console import _console as _rtconsole  # noqa: PLC0415
+            _rtconsole.rule("[bold cyan]Pre-scan Discovery[/bold cyan]", style="dim cyan")
+            try:
+                from nuguard.common.target_client_builder import (
+                    build_target_app_client as _btac,  # noqa: PLC0415
+                )
+                from nuguard.redteam.target.discovery import (
+                    run_discovery_conversation,  # noqa: PLC0415
+                )
+                from nuguard.redteam.target.session import AttackSession as _AS  # noqa: PLC0415
+                _disc_client = _btac(
+                    target_url=self._target_url,
+                    endpoint=self._chat_path,
+                    payload_key=self._chat_payload_key,
+                    payload_list=self._chat_payload_list,
+                    payload_format="json",
+                    response_key=self._chat_response_key,
+                    timeout=self._request_timeout,
+                    auth_headers=effective_headers or None,
+                    sbom=self._sbom,
+                )
+                _disc_session = _AS(
+                    session_id="pre-scan-discovery",
+                    target_url=self._target_url,
+                    chain_id="pre-scan-discovery",
+                )
+                _use_case = ""
+                if self._sbom and self._sbom.summary:
+                    _use_case = getattr(self._sbom.summary, "use_case", "") or ""
+                async with _disc_client:
+                    _pre_scan_profile = await run_discovery_conversation(
+                        _disc_client,
+                        _disc_session,
+                        use_case=_use_case,
+                        max_turns=self._discovery_max_turns,
+                    )
+                _log.info(
+                    "pre-scan discovery: name=%r ids=%s turns=%d",
+                    _pre_scan_profile.customer_name,
+                    _pre_scan_profile.ids,
+                    _pre_scan_profile.turns_sent,
+                )
+            except Exception as _disc_exc:
+                _log.warning("pre-scan discovery failed (non-fatal): %s", _disc_exc)
+                _rtconsole.print(f"  [yellow]Pre-scan discovery failed (non-fatal): {_disc_exc}[/yellow]")
+                _pre_scan_profile = None
+
         # 1. Generate scenarios from SBOM + policy.
         # When compiled controls are available, enrich the policy with their
         # boundary_prompts so the scenario generator uses the richer, LLM-crafted
@@ -725,7 +801,8 @@ class RedteamOrchestrator:
             _cache_key = _cache.cache_key(self._sbom, self._policy)
             _cache_existed = _cache.load(_cache_key) is not None
             _llm_payloads = await LLMPromptGenerator(
-                self._redteam_llm, self._sbom, self._policy
+                self._redteam_llm, self._sbom, self._policy,
+                discovered_profile=_pre_scan_profile,
             ).enrich_all(scenarios, _cache, _cache_key)
             self.prompt_cache_path = _cache.path_for(_cache_key)
             self.prompt_cache_hit = _cache_existed and bool(_llm_payloads)
@@ -838,6 +915,7 @@ class RedteamOrchestrator:
                 allowed_topics=_warmup_allowed_topics,
                 turn_delay_seconds=self._turn_delay_seconds,
                 sbom=self._sbom,
+                pre_scan_profile=_pre_scan_profile,
             )
 
             # Build GuidedAttackExecutor when LLM is configured and guided is enabled
@@ -1119,6 +1197,11 @@ class RedteamOrchestrator:
         active = [s for s in scenarios if s.chain is not None or s.guided_conversation is not None]
         if not active:
             return [], [], []
+
+        # Defer destructive scenarios (cancel, delete, close, etc.) to the end so
+        # non-destructive scenarios run against intact account data first.
+        # Stable sort preserves the impact_score ordering within each group.
+        active = sorted(active, key=_is_destructive_scenario)
 
         _log.info(
             "Running %d scenarios (concurrency=%d)", len(active), self._concurrency

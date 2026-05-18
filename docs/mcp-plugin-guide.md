@@ -7,13 +7,15 @@ The NuGuard MCP plugin exposes NuGuard's AI security capabilities — SBOM gener
 ## Table of Contents
 
 1. [Installation](#installation)
-2. [Claude Desktop Setup](#claude-desktop-setup)
-3. [Smithery (Claude Marketplace)](#smithery-claude-marketplace)
-4. [Available Tools](#available-tools)
-5. [Example Scenario](#example-scenario)
-6. [Environment Variables](#environment-variables)
-7. [Configuration File](#configuration-file)
-8. [Troubleshooting](#troubleshooting)
+2. [Quick Setup](#quick-setup)
+3. [Claude Desktop Setup](#claude-desktop-setup)
+4. [Claude Code Plugin](#claude-code-plugin)
+5. [Smithery (Claude Marketplace)](#smithery-claude-marketplace)
+6. [Available Tools](#available-tools)
+7. [Example Scenario](#example-scenario)
+8. [Environment Variables](#environment-variables)
+9. [Configuration File](#configuration-file)
+10. [Troubleshooting](#troubleshooting)
 
 ---
 
@@ -36,6 +38,41 @@ Or run directly without installing (using `uvx`):
 ```bash
 uvx --from "nuguard[mcp]" nuguard-mcp
 ```
+
+---
+
+## Quick Setup
+
+`scripts/register_mcp.py` registers `nuguard-mcp` with Claude Desktop **and** writes `.mcp.json` in the current directory (for Claude Code) without manual JSON editing.
+
+```bash
+# Register with defaults (reads LITELLM_API_KEY from environment)
+python scripts/register_mcp.py
+
+# Register with an explicit API key and config path
+python scripts/register_mcp.py \
+    --api-key sk-... \
+    --config /absolute/path/to/nuguard.yaml \
+    --redteam-model openai/gpt-4o
+
+# Preview what would be written without modifying any files
+python scripts/register_mcp.py --dry-run
+
+# Remove the nuguard entry from all targets
+python scripts/register_mcp.py --unregister
+```
+
+The script detects whether `nuguard-mcp` is on your `PATH` and uses it directly, falling back to `uvx --from "nuguard[mcp]" nuguard-mcp` if not. Restart Claude Desktop after running.
+
+| Flag | Description |
+|---|---|
+| `--api-key KEY` | Embed `LITELLM_API_KEY` in the server `env` block |
+| `--config PATH` | Embed `NUGUARD_DEFAULT_CONFIG` (default config for all tool calls) |
+| `--redteam-model MODEL` | Embed `NUGUARD_REDTEAM_LLM_MODEL` (e.g. `openai/gpt-4o`) |
+| `--dry-run` | Print changes without writing any files |
+| `--unregister` | Remove the `nuguard` entry from all targets |
+| `--skip-desktop` | Skip updating `claude_desktop_config.json` |
+| `--skip-mcp-json` | Skip writing `.mcp.json` in the current directory |
 
 ---
 
@@ -79,6 +116,50 @@ If you prefer not to install nuguard globally:
   }
 }
 ```
+
+---
+
+## Claude Code Plugin
+
+The `plugin/` directory ships a ready-to-install Claude Code plugin. It wires up the MCP server and adds five slash commands, two auto-activating skills, and an autonomous security-auditor agent.
+
+### Install the Plugin
+
+```bash
+claude plugin install /path/to/nuguard/plugin
+```
+
+Enable the plugin in Claude Code settings. Claude Code starts the `nuguard-mcp` server automatically when the plugin is active.
+
+### Slash Commands
+
+| Command | Description |
+|---|---|
+| `/nuguard-init` | Initialize `nuguard.yaml` in the current project |
+| `/nuguard-scan` | SBOM generation + static analysis in one step |
+| `/nuguard-analyze` | Static analysis on an existing SBOM |
+| `/nuguard-behavior` | Behavioral testing against a live app |
+| `/nuguard-redteam` | Adversarial red-team scan |
+
+Available flags mirror the MCP tool parameters. Run `/nuguard-redteam --help` (or any command with `--help`) to see options.
+
+### Auto-Activating Skills
+
+Two skills activate automatically based on conversation context — you do not invoke them directly:
+
+**AI Application Security Review** — activates when you ask Claude to audit, review, scan, or assess an AI application. Runs the full four-step pipeline (SBOM → analyze → policy → dynamic validation) and presents a developer-facing security brief with a findings table and prioritized fixes.
+
+**AI SBOM Analysis** — activates when you open or mention a `.sbom.json` file, or ask about what AI components an application uses. Interprets node types, edges, and risk signals, and answers questions about your AI application's component graph.
+
+### Security Auditor Agent
+
+The `security-auditor` agent runs the complete NuGuard pipeline end-to-end without stopping for confirmation between steps. Trigger it by describing your goal:
+
+> "Audit my AI app at `~/projects/my-agent`"  
+> "Find vulnerabilities in my LangChain service"  
+> "Run nuguard on this"
+
+The agent calls `nuguard_init` → `nuguard_sbom_generate` → `nuguard_analyze` → (if a target URL is configured) `nuguard_behavior` → `nuguard_redteam`, then produces a structured report with an executive summary, findings table, and top priority fixes.
 
 ---
 

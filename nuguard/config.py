@@ -256,6 +256,10 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_scenario_timeout"] = float(redteam["scenario_timeout"])
     if "similar_miss_threshold" in redteam:
         flat["redteam_similar_miss_threshold"] = int(redteam["similar_miss_threshold"])
+    if "skip_discovery" in redteam:
+        flat["redteam_skip_discovery"] = bool(redteam["skip_discovery"])
+    if "discovery_max_turns" in redteam:
+        flat["redteam_discovery_max_turns"] = int(redteam["discovery_max_turns"])
     if "prompt_cache_dir" in redteam:
         flat["redteam_prompt_cache_dir"] = str(redteam["prompt_cache_dir"])
     if "app_env" in redteam and isinstance(redteam["app_env"], dict):
@@ -535,6 +539,13 @@ class BehaviorConfig(BaseModel):
         le=20,
         description="Max simultaneous scenario HTTP sessions.",
     )
+    isolate_scenarios: bool = Field(
+        default=True,
+        description=(
+            "Re-authenticate before each scenario to prevent cross-scenario "
+            "session-state contamination on stateful endpoints."
+        ),
+    )
     judge_concurrency: int = Field(
         default=5,
         ge=1,
@@ -755,6 +766,22 @@ class NuGuardConfig(BaseSettings):
             "scenarios are suppressed (yaml: redteam.similar_miss_threshold). "
             "Prevents repeating the same failing attack angle across many scenarios. "
             "Set to 0 to disable."
+        ),
+    )
+    redteam_skip_discovery: bool = Field(
+        default=False,
+        description=(
+            "Skip the pre-scan discovery conversation (yaml: redteam.skip_discovery). "
+            "When True, NuGuard does not send warm-up turns to the target agent before "
+            "generating attack payloads. Useful for air-gapped or highly sensitive "
+            "target environments."
+        ),
+    )
+    redteam_discovery_max_turns: int = Field(
+        default=3,
+        description=(
+            "Maximum turns to send during pre-scan discovery (yaml: redteam.discovery_max_turns). "
+            "Discovery stops early when a name or ID is extracted."
         ),
     )
     redteam_prompt_cache_dir: str = Field(

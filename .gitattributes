@@ -1,0 +1,5 @@
+# Mark test fixture apps as vendored so GitHub excludes them from the
+# dependency graph and Dependabot security alerts.
+# These are intentional target apps for red-team / SBOM scanning tests —
+# some are deliberately pinned to vulnerable versions.
+tests/apps/** linguist-vendored=true

@@ -1,4 +1,4 @@
-name: Publish To PyPI
+name: Publish to PyPI and Smithery
 
 on:
   release:
@@ -7,13 +7,13 @@ on:
 
 jobs:
   build:
-    name: Build Distributions
+    name: Build distributions
     runs-on: ubuntu-latest
     permissions:
       contents: read
 
     steps:
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
       - name: Set up Python
@@ -21,7 +21,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install uv
+      - name: Set up uv
         uses: astral-sh/setup-uv@v5
 
       - name: Build distributions
@@ -33,8 +33,8 @@ jobs:
           name: python-package-distributions
           path: dist/
 
-  publish:
-    name: Publish To PyPI
+  publish-pypi:
+    name: Publish to PyPI
     needs: build
     runs-on: ubuntu-latest
     environment:
@@ -50,5 +50,35 @@ jobs:
           name: python-package-distributions
           path: dist/
 
-      - name: Publish distributions to PyPI
+      - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
+
+  publish-smithery:
+    name: Update Smithery listing
+    needs: publish-pypi
+    runs-on: ubuntu-latest
+    environment:
+      name: smithery
+      url: https://smithery.ai/server/NuGuardAI/nuguard
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install script dependencies
+        run: pip install pyyaml requests
+
+      - name: Update Smithery listing
+        env:
+          SMITHERY_API_KEY: ${{ secrets.SMITHERY_API_KEY }}
+        run: |
+          python scripts/publish_smithery.py \
+            --skip-pypi \
+            --skip-git-tag \
+            --allow-dirty \
+            --allow-branch

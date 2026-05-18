@@ -26,6 +26,7 @@ class AttackSession:
     started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     golden_data: str = ""                              # verbatim response from DISCOVER step
     golden_ids: list[str] = field(default_factory=list)  # IDs extracted from golden_data
+    golden_name: str = ""                              # customer name extracted from DISCOVER step
     warmup_context: str = ""                           # agent self-disclosures from warmup turn
 
     def add_turn(
