@@ -23,5 +23,6 @@
     "behavioral-testing",
     "mcp"
   ],
+  "commands": "./plugin/commands/",
   "mcpServers": "./.mcp.json"
 }
