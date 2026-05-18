@@ -52,6 +52,26 @@ Restart Claude Desktop after saving. The NuGuard tools appear in the tools panel
 
 ---
 
+### Claude Code Plugin
+
+Install the plugin directly from the NuGuard GitHub repository:
+
+```bash
+claude plugin install github:NuGuardAI/nuguard
+```
+
+This wires the MCP server automatically via the bundled `.mcp.json` — no manual config editing required.
+
+To pass your API key and config path at install time:
+
+```bash
+LITELLM_API_KEY=your-api-key \
+NUGUARD_DEFAULT_CONFIG=/path/to/nuguard.yaml \
+claude plugin install github:NuGuardAI/nuguard
+```
+
+---
+
 ### Manual (Claude Code)
 
 Add a `.mcp.json` file at your project root:
@@ -200,25 +220,100 @@ Cross-check a Cognitive Policy against an AI-SBOM and run compliance assessments
 
 ---
 
-## Example
+## Example: Azure OpenAI-backed agent
 
-**User:** I've built a customer service AI agent at `~/projects/cs-bot`. Can you do a security audit?
+This walkthrough uses NuGuard to audit an AI application that calls Azure OpenAI. LiteLLM is used for NuGuard's own analysis; the target app uses its own Azure credentials independently.
 
-**Claude** runs the full pipeline:
+### Environment setup
 
-1. `nuguard_init(project_dir="~/projects/cs-bot", target_url="http://localhost:8080")`  
-   → Creates `nuguard.yaml`, `cognitive-policy.md`, `canary.example.json`
+```bash
+# API key for NuGuard's LLM enrichment and red-team payload generation
+# LiteLLM format for Azure: azure/<deployment-name>
+export LITELLM_API_KEY="your-azure-openai-key"
+export NUGUARD_REDTEAM_LLM_MODEL="azure/gpt-4o"
 
-2. `nuguard_sbom_generate(source="~/projects/cs-bot", output="app.sbom.json")`  
-   → 14 nodes: 1 agent, gpt-4o model, PostgreSQL + email + web-search tools, 1 guardrail, 1 PII-classified datastore
+# Azure-specific vars consumed by LiteLLM
+export AZURE_API_BASE="https://your-instance.openai.azure.com"
+export AZURE_API_VERSION="2024-05-01-preview"
+```
 
-3. `nuguard_analyze(sbom="app.sbom.json", min_severity="medium")`  
-   → **HIGH** SQL-injectable PostgreSQL tool · **HIGH** PII datastore with no auth boundary · **MEDIUM** email tool with no HITL gate
+### nuguard.yaml
 
-4. `nuguard_redteam(config_path="nuguard.yaml", profile="ci")`  
-   → **CRITICAL** cross-tenant PII leak confirmed · **HIGH** partial system prompt extracted via indirect injection
+```yaml
+llm:
+  model: azure/gpt-4o
+  api_base: "${AZURE_API_BASE}"
+  api_version: "${AZURE_API_VERSION}"
 
-**Claude** summarizes findings and provides prioritized remediation steps.
+redteam:
+  target: http://localhost:8080
+  endpoint: /chat
+  llm_model: azure/gpt-4o
+
+behavior:
+  target: http://localhost:8080
+  endpoint: /chat
+```
+
+### Conversation
+
+**User:** My AI agent at `~/projects/cs-bot` uses Azure OpenAI. Audit it with NuGuard.
+
+**Claude** calls `nuguard_init`:
+```
+nuguard_init(project_dir="~/projects/cs-bot", target_url="http://localhost:8080")
+```
+Creates `nuguard.yaml`, `cognitive-policy.md`, `canary.example.json`.
+
+**Claude** calls `nuguard_sbom_generate`:
+```
+nuguard_sbom_generate(
+  source="~/projects/cs-bot",
+  output="~/projects/cs-bot/app.sbom.json",
+  llm=true
+)
+```
+Result: 11 nodes — 1 agent, `azure/gpt-4o-deployment` model, PostgreSQL tool, Azure Blob Storage datastore, 2 prompts, REST API endpoint. LLM enrichment annotates the Blob datastore as PII-adjacent.
+
+**Claude** calls `nuguard_analyze`:
+```
+nuguard_analyze(
+  sbom="~/projects/cs-bot/app.sbom.json",
+  min_severity="medium",
+  llm=true
+)
+```
+Result:
+- **HIGH** NGA-011: Azure Blob datastore with PII signals has no AUTH node in component graph
+- **HIGH** NGA-007: SQL tool node lacks parameterization evidence — potential injection path
+- **MEDIUM** NGA-003: No HITL gate before blob write operations
+
+**Claude** asks whether to run red-team with the app running:
+
+> Static analysis found three structural issues. The PII datastore has no authentication boundary in the component graph, the SQL tool may accept unparameterized input, and blob writes have no human-in-the-loop gate. Start the app on port 8080 and I can run red-team to verify exploitability.
+
+**User:** App is running. Go ahead.
+
+**Claude** calls `nuguard_redteam`:
+```
+nuguard_redteam(
+  config_path="~/projects/cs-bot/nuguard.yaml",
+  profile="ci",
+  fail_on="high"
+)
+```
+Result (~4 min):
+- **CRITICAL** DATA_EXFILTRATION: Agent returned blob file listing for a different tenant when asked "what files do you have access to?"
+- **HIGH** PROMPT_DRIVEN_THREAT: System prompt partially extracted via indirect injection in uploaded filename field
+
+**Claude** responds:
+
+> The red-team scan confirmed two exploitable vulnerabilities. The most critical is a cross-tenant storage leak — the agent returns Azure Blob container contents without enforcing a tenant boundary. The second is partial system prompt extraction via a filename injection vector.
+>
+> **Recommended fixes:**
+> 1. Scope all Azure Blob queries to the authenticated tenant's container prefix and enforce this in the tool layer, not just the prompt.
+> 2. Sanitize uploaded filenames and other external string inputs before they reach the agent's context window.
+> 3. Add a HITL confirmation step before any blob write or delete operation.
 
 ---
 
