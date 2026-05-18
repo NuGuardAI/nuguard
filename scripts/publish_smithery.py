@@ -51,11 +51,6 @@ try:
 except ModuleNotFoundError:
     yaml = None  # type: ignore[assignment]
 
-try:
-    import requests as _requests
-except ModuleNotFoundError:
-    _requests = None  # type: ignore[assignment]
-
 
 # ---------------------------------------------------------------------------
 # Constants
@@ -66,8 +61,8 @@ PYPROJECT = REPO_ROOT / "pyproject.toml"
 SMITHERY_YAML = REPO_ROOT / "smithery.yaml"
 INIT_PY = REPO_ROOT / "nuguard" / "__init__.py"
 
-SMITHERY_API_BASE = "https://registry.smithery.ai"
 SMITHERY_SERVER_QUALIFIED = "NuGuardAI/nuguard"
+SMITHERY_BUNDLE = REPO_ROOT / "server.mcpb"
 
 
 # ---------------------------------------------------------------------------
@@ -253,143 +248,96 @@ def publish_to_pypi(dry_run: bool) -> int:
 # Smithery publishing
 # ---------------------------------------------------------------------------
 
-def _smithery_payload(smithery_config: dict, version: str) -> dict:
-    """Build the Smithery API payload from smithery.yaml fields."""
-    start = smithery_config.get("startCommand", {})
-    config_schema = start.get("configSchema", {})
-    command_function = start.get("commandFunction", "")
-
-    tools = [
-        {"name": t["name"], "description": t.get("description", "")}
-        for t in smithery_config.get("tools", [])
-    ]
-
-    return {
-        "deploymentType": "commandFunction",
-        "version": version,
-        "configSchema": config_schema,
-        "commandFunction": command_function.strip(),
-        "serverCard": {
-            "serverInfo": {
-                "name": smithery_config.get("name", "nuguard"),
-                "version": version,
-                "description": smithery_config.get("description", "").strip(),
-                "homepage": smithery_config.get("homepage", ""),
-                "license": smithery_config.get("license", ""),
-            },
-            "tools": tools,
-        },
-    }
-
-
-def _smithery_server_exists(qualified_name: str, headers: dict) -> bool:
-    """Return True when the server listing already exists in the Smithery registry."""
-    try:
-        resp = _requests.get(
-            f"{SMITHERY_API_BASE}/servers/{qualified_name}",
-            headers=headers,
-            timeout=15,
-        )
-        return resp.status_code == 200
-    except Exception:
-        return False
-
-
-def _smithery_create_server(
-    qualified_name: str,
-    smithery_config: dict,
-    version: str,
-    headers: dict,
-) -> int:
-    """Create the server listing.  Returns 0 on success, 1 on failure."""
-    payload = {
-        "qualifiedName": qualified_name,
-        **_smithery_payload(smithery_config, version),
-    }
-    resp = _requests.post(
-        f"{SMITHERY_API_BASE}/servers",
-        headers=headers,
-        json=payload,
-        timeout=30,
-    )
-    if resp.status_code in (200, 201, 202):
-        print(f"  Smithery: server listing created — {qualified_name}")
-        return 0
-    print(f"  ERROR: could not create server listing ({resp.status_code})")
-    try:
-        print(f"  {json.dumps(resp.json(), indent=2)[:400]}")
-    except Exception:
-        print(f"  {resp.text[:300]}")
-    return 1
-
-
-def publish_to_smithery(version: str, dry_run: bool) -> int:
-    api_key = os.environ.get("SMITHERY_API_KEY", "")
-    if not api_key:
-        print(
-            "  ERROR: SMITHERY_API_KEY not set.\n"
-            "         Get your key at https://smithery.ai/account/api-keys"
-        )
-        return 1
-
-    if _requests is None:
-        print("  ERROR: 'requests' not installed — run: pip install requests")
-        return 1
+def _build_smithery_bundle(version: str) -> Path:
+    """Build server.mcpb from smithery.yaml and return the path."""
+    import zipfile
 
     try:
         smithery_config = _read_smithery_yaml()
     except RuntimeError as e:
+        raise RuntimeError(f"Could not read smithery.yaml: {e}") from e
+
+    start = smithery_config.get("startCommand", {})
+    config_schema = start.get("configSchema", {})
+
+    # Convert JSON Schema configSchema → user_config (smithery bundle format)
+    user_config: dict = {}
+    for key, prop in config_schema.get("properties", {}).items():
+        entry: dict = {"type": prop.get("type", "string")}
+        if prop.get("description"):
+            entry["description"] = prop["description"].strip()
+        if "default" in prop:
+            entry["default"] = prop["default"]
+        user_config[key] = entry
+
+    # Build env mapping that forwards user_config values as env vars
+    env = {}
+    if "litellm_api_key" in user_config:
+        env["LITELLM_API_KEY"] = "${user_config.litellm_api_key}"
+    if "nuguard_config_path" in user_config:
+        env["NUGUARD_DEFAULT_CONFIG"] = "${user_config.nuguard_config_path}"
+    if "redteam_llm_model" in user_config:
+        env["NUGUARD_REDTEAM_LLM_MODEL"] = "${user_config.redteam_llm_model}"
+
+    tools = [
+        {
+            "name": t["name"],
+            "description": t.get("description", ""),
+            "inputSchema": {"type": "object", "properties": {}},
+        }
+        for t in smithery_config.get("tools", [])
+    ]
+
+    manifest = {
+        "name": smithery_config.get("name", "nuguard"),
+        "version": version,
+        "server": {
+            "type": "binary",
+            "mcp_config": {
+                "command": "uvx",
+                "args": ["--from", "nuguard[mcp]", "nuguard-mcp"],
+                "env": env,
+            },
+        },
+        "user_config": user_config,
+        "tools": tools,
+    }
+
+    bundle_path = REPO_ROOT / "server.mcpb"
+    with zipfile.ZipFile(bundle_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("manifest.json", json.dumps(manifest, indent=2))
+
+    return bundle_path
+
+
+def publish_to_smithery(version: str, dry_run: bool) -> int:
+    print(f"Updating Smithery listing {SMITHERY_SERVER_QUALIFIED} v{version} …")
+
+    try:
+        bundle_path = _build_smithery_bundle(version)
+    except RuntimeError as e:
         print(f"  ERROR: {e}")
         return 1
 
-    payload = _smithery_payload(smithery_config, version)
-    release_url = f"{SMITHERY_API_BASE}/servers/{SMITHERY_SERVER_QUALIFIED}/releases"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-    }
+    print(f"  Built bundle: {bundle_path.name} ({bundle_path.stat().st_size} bytes)")
 
-    print(f"Updating Smithery listing {SMITHERY_SERVER_QUALIFIED} v{version} …")
+    cmd = [
+        "smithery", "mcp", "publish",
+        str(bundle_path),
+        "-n", SMITHERY_SERVER_QUALIFIED,
+    ]
 
     if dry_run:
-        print(f"  [dry-run] POST {release_url}")
-        print(f"  [dry-run] payload: {json.dumps(payload, indent=4)[:400]} …")
+        print(f"  [dry-run] {' '.join(cmd)}")
         return 0
 
-    # Ensure the server listing exists before posting a release.
-    if not _smithery_server_exists(SMITHERY_SERVER_QUALIFIED, headers):
-        print(f"  Server listing not found — creating {SMITHERY_SERVER_QUALIFIED} …")
-        rc = _smithery_create_server(SMITHERY_SERVER_QUALIFIED, smithery_config, version, headers)
-        if rc != 0:
-            return rc
+    r = _run(cmd, capture=False)
+    if r.returncode != 0:
+        print(f"  ERROR: smithery mcp publish exited {r.returncode}")
+        return r.returncode
 
-    try:
-        resp = _requests.post(release_url, headers=headers, json=payload, timeout=30)
-    except _requests.RequestException as exc:
-        print(f"  ERROR: HTTP request failed: {exc}")
-        return 1
-
-    if resp.status_code in (200, 201, 202):
-        data = resp.json() if resp.content else {}
-        deployment_id = data.get("deploymentId", data.get("id", "—"))
-        status = data.get("status", "ok")
-        print(f"  Smithery: release accepted — deploymentId={deployment_id}  status={status}")
-        mcp_url = data.get("mcpUrl") or data.get("mcpEndpointUrl")
-        if mcp_url:
-            print(f"  MCP endpoint: {mcp_url}")
-        return 0
-
-    # Non-2xx — print error and suggest fallback
-    print(f"  ERROR: Smithery API returned {resp.status_code}")
-    try:
-        print(f"  Response: {json.dumps(resp.json(), indent=2)[:600]}")
-    except Exception:
-        print(f"  Response: {resp.text[:400]}")
-    print()
-    print("  Fallback: update the Smithery listing manually at")
-    print(f"    https://smithery.ai/server/{SMITHERY_SERVER_QUALIFIED}")
-    print("  or reconnect your GitHub repo so Smithery auto-detects the smithery.yaml.")
-    return 1
+    print(f"  Smithery: published https://smithery.ai/servers/{SMITHERY_SERVER_QUALIFIED}")
+    return 0
 
 
 # ---------------------------------------------------------------------------

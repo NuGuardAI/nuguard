@@ -96,10 +96,18 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Install script dependencies
-        run: pip install pyyaml requests
+      - name: Set up Node.js (for smithery CLI)
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
 
-      - name: Update Smithery listing
+      - name: Install smithery CLI
+        run: npm install -g smithery
+
+      - name: Install script dependencies
+        run: pip install pyyaml
+
+      - name: Publish to Smithery
         env:
           SMITHERY_API_KEY: ${{ secrets.SMITHERY_API_KEY }}
         run: |
