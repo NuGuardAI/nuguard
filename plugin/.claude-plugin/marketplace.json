@@ -2,7 +2,8 @@
   "name": "nuguard",
   "owner": {
     "name": "NuGuard",
-    "url": "https://github.com/NuGuardAI"
+    "email": "info@nuguard.ai",
+    "url": "https://github.com/NuGuardAI/nuguard"
   },
   "metadata": {
     "description": "AI application security — SBOM generation, static analysis, behavioral validation, and adversarial red-team testing for AI agents and LLM-powered applications.",
@@ -30,6 +31,11 @@
         "owasp",
         "nist",
         "compliance"
+      ],
+      "commands": "./commands/",
+      "skills": [
+        "./skills/ai-security-review",
+        "./skills/sbom-analysis"
       ]
     }
   ]
