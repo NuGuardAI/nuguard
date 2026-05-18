@@ -30,6 +30,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -72,8 +73,13 @@ def _materialize_fixture(name: str) -> Path:
 
 
 def _run_nuguard(*args: str, timeout: int = 180) -> subprocess.CompletedProcess:  # type: ignore[type-arg]
+    cmd = (
+        ["uv", "run", "nuguard", *args]
+        if shutil.which("uv")
+        else [sys.executable, "-m", "nuguard.cli.main", *args]
+    )
     return subprocess.run(
-        ["uv", "run", "nuguard", *args],
+        cmd,
         cwd=str(REPO_ROOT),
         capture_output=True,
         text=True,

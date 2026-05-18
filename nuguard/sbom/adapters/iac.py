@@ -32,10 +32,11 @@ from __future__ import annotations
 
 import logging
 import re
+from bisect import bisect_right
 from typing import Any
 
-from .base import ComponentDetection
 from ..types import ComponentType
+from .base import ComponentDetection
 
 _log = logging.getLogger(__name__)
 
@@ -68,7 +69,8 @@ def _first_line(text: str, pattern: re.Pattern[str]) -> int:
     m = pattern.search(text)
     if m is None:
         return 1
-    return text[: m.start()].count("\n") + 1
+    nl_offsets = [n.start() for n in re.finditer(r"\n", text)]
+    return bisect_right(nl_offsets, m.start()) + 1
 
 
 def _uniq(lst: list[str]) -> list[str]:
@@ -550,11 +552,12 @@ class TerraformAdapter:
 
     def _iam(self, content: str, file_path: str) -> list[ComponentDetection]:
         results: list[ComponentDetection] = []
+        nl_offsets = [n.start() for n in re.finditer(r"\n", content)]
         for m in _TF_IAM_RESOURCE_RE.finditer(content):
             resource_type = m.group(1)
             resource_name = m.group(2)
             iam_type = _tf_iam_type(resource_type)
-            line = content[: m.start()].count("\n") + 1
+            line = bisect_right(nl_offsets, m.start()) + 1
 
             # Try to extract principal / role / permissions from the block
             permissions: list[str] | None = None
@@ -1049,6 +1052,7 @@ class BicepAdapter:
 
     def _iam(self, content: str, file_path: str) -> list[ComponentDetection]:
         results: list[ComponentDetection] = []
+        nl_offsets = [n.start() for n in re.finditer(r"\n", content)]
         for m in _BICEP_RESOURCE_RE.finditer(content):
             sym = m.group(1)
             rtype_full = m.group(2)
@@ -1058,7 +1062,7 @@ class BicepAdapter:
             if not iam_entry:
                 continue
             iam_type, description = iam_entry
-            line = content[: m.start()].count("\n") + 1
+            line = bisect_right(nl_offsets, m.start()) + 1
 
             # Props block — scan content after opening brace
             rest = content[m.end() :]

@@ -13,10 +13,11 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from ..base import ComponentDetection, FrameworkAdapter, RelationshipHint
-from ..models_kb import get_model_details, infer_provider
 from ...normalization import canonicalize_text
 from ...types import ComponentType
+from ..base import ComponentDetection, FrameworkAdapter, RelationshipHint
+from ..ces import extract_string_vars, resolve_template
+from ..models_kb import get_model_details, infer_provider
 
 _TEMPLATE_VAR_RE = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
 _MIN_PROMPT_LENGTH = 40
@@ -60,6 +61,16 @@ class GoogleADKPythonAdapter(FrameworkAdapter):
         for lit in parse_result.string_literals:
             if lit.context and not lit.is_docstring:
                 const_map[lit.context] = lit.value
+
+        # Merge with raw-text variable extraction so f-string variables like
+        # PROJECT, APP_ID, VERSION, DEPLOY are also available for URL resolution.
+        const_map.update(extract_string_vars(content))
+
+        # Resolve any CES/ADK deployment URLs that use variable placeholders.
+        # E.g. CES_BASE = f"https://ces.googleapis.com/v1beta/projects/{PROJECT}/..."
+        # becomes the literal URL after substitution.
+        resolved_content = resolve_template(content, const_map)
+        deployment_meta = _extract_deployment_meta(resolved_content, const_map)
 
         detected: list[ComponentDetection] = [self._framework_node(file_path)]
 
@@ -233,6 +244,7 @@ class GoogleADKPythonAdapter(FrameworkAdapter):
                 "agent_subtype": _agent_subtype(inst.class_name),
                 "has_instructions": bool(instruction),
                 **({"model": model_val} if model_val else {}),
+                **deployment_meta,
             }
             if instruction:
                 template_vars = _TEMPLATE_VAR_RE.findall(instruction)
@@ -319,3 +331,47 @@ def _clean(value: Any) -> str:
     if s.startswith("$") or s in {"<complex>", "<lambda>", "<dict>", "<list>"}:
         return ""
     return s
+
+
+# CES / ADK variable name patterns mapped to their SBOM metadata key.
+# Checked against const_map keys (case-insensitive suffix match).
+_DEPLOY_VAR_ALIASES: list[tuple[tuple[str, ...], str]] = [
+    (("project", "gcp_project", "google_project"), "ces_project"),
+    (("app_id", "appid", "app_name", "appname"), "ces_app_id"),
+    (("version", "version_id", "versionid", "app_version"), "ces_version_id"),
+    (("deploy", "deploy_id", "deployment", "deployment_id"), "ces_deployment_id"),
+    (("location", "region"), "ces_location"),
+]
+
+# Regex to capture a fully-expanded CES URL (no placeholders).
+_EXPANDED_CES_URL_RE = re.compile(
+    r"https://ces\.googleapis\.com/v1beta/projects/[A-Za-z0-9][A-Za-z0-9._-]*/[^\s\"'<>]+"
+)
+
+
+def _extract_deployment_meta(
+    resolved_content: str,
+    const_map: dict[str, str],
+) -> dict[str, Any]:
+    """Return deployment-related metadata extracted from a resolved source file.
+
+    Uses *const_map* (variable name → value) to surface CES / ADK deployment
+    variables (PROJECT, APP_ID, VERSION, DEPLOY, etc.) and any fully-expanded
+    CES URLs found after variable substitution.
+    """
+    meta: dict[str, Any] = {}
+
+    # Match variable names from const_map against known aliases
+    lower_map = {k.lower().lstrip("_"): v for k, v in const_map.items()}
+    for aliases, meta_key in _DEPLOY_VAR_ALIASES:
+        for alias in aliases:
+            if alias in lower_map:
+                meta[meta_key] = lower_map[alias]
+                break
+
+    # Capture the first expanded CES URL (after resolve_template substitution)
+    url_match = _EXPANDED_CES_URL_RE.search(resolved_content)
+    if url_match:
+        meta["ces_target_url"] = url_match.group(0)
+
+    return meta

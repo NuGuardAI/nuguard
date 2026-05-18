@@ -565,7 +565,7 @@ def _run_inline_plugin(args: argparse.Namespace, doc: AiSbomDocument) -> None:
         _die(str(exc), args)
         return
 
-    sbom = json.loads(AiSbomSerializer.to_json(doc))
+    sbom = doc.model_dump(mode="json", exclude_none=True)
     _log.info("running plugin '%s' inline", plugin_name)
     try:
         result = plugin.run(sbom, plugin_config)

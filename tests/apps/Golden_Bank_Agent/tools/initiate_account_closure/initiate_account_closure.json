@@ -1,0 +1,9 @@
+{
+  "name": "db4bda0f-7067-4db3-ae5a-00c06c5fe1fc",
+  "pythonFunction": {
+    "name": "initiate_account_closure",
+    "pythonCode": "tools/initiate_account_closure/python_function/python_code.py",
+    "description": "Initiates the process of closing a specified account.\n\nArgs:\n    account_id (str): The unique identifier of the account to be closed.\n\nReturns:\n    dict[str, Any]: A dictionary indicating the success or failure of initiating closure.\n          Example: {\"success\": True, \"message\": \"Account closure process initiated for CHK-001. Further steps will be communicated.\"}\n          Example: {\"success\": False, \"message\": \"Account CHK-001 cannot be closed due to outstanding balance.\"}"
+  },
+  "displayName": "initiate_account_closure"
+}

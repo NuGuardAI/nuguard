@@ -135,3 +135,65 @@ def test_framework_metadata_set(adapter: FastApiAdapter) -> None:
     nodes, _ = adapter.extract(Path("main.py"), FASTAPI_BASIC_SOURCE)
     for node in nodes:
         assert node.metadata.framework == "fastapi"
+
+
+# ---------------------------------------------------------------------------
+# Streaming endpoint detection
+# ---------------------------------------------------------------------------
+
+FASTAPI_STREAMING_SOURCE = """
+from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
+
+app = FastAPI()
+
+@app.post("/chat/stream")
+async def stream_chat(body: dict) -> StreamingResponse:
+    async def gen():
+        yield "Hello"
+        yield " world"
+    return StreamingResponse(gen(), media_type="text/event-stream")
+
+@app.post("/chat")
+async def chat(body: dict) -> dict:
+    return {"response": "hello"}
+"""
+
+FASTAPI_EVENTSOURCE_SOURCE = """
+from fastapi import FastAPI
+from sse_starlette.sse import EventSourceResponse
+
+app = FastAPI()
+
+@app.get("/events")
+async def sse_events() -> EventSourceResponse:
+    async def gen():
+        yield {"data": "ping"}
+    return EventSourceResponse(gen())
+"""
+
+
+def test_streaming_endpoint_has_sse_transport(adapter: FastApiAdapter) -> None:
+    """A route returning StreamingResponse gets transport='sse'."""
+    nodes, _ = adapter.extract(Path("app.py"), FASTAPI_STREAMING_SOURCE)
+    ep_nodes = [n for n in nodes if n.component_type == NodeType.API_ENDPOINT]
+    stream_ep = next((n for n in ep_nodes if "stream" in (n.metadata.endpoint or "")), None)
+    assert stream_ep is not None, "Expected a /chat/stream endpoint node"
+    assert stream_ep.metadata.transport == "sse"
+
+
+def test_non_streaming_endpoint_has_no_transport(adapter: FastApiAdapter) -> None:
+    """A plain JSON route does NOT get transport='sse'."""
+    nodes, _ = adapter.extract(Path("app.py"), FASTAPI_STREAMING_SOURCE)
+    ep_nodes = [n for n in nodes if n.component_type == NodeType.API_ENDPOINT]
+    plain_ep = next((n for n in ep_nodes if n.metadata.endpoint == "/chat"), None)
+    assert plain_ep is not None, "Expected a /chat endpoint node"
+    assert plain_ep.metadata.transport is None
+
+
+def test_event_source_response_detected(adapter: FastApiAdapter) -> None:
+    """A route returning EventSourceResponse also gets transport='sse'."""
+    nodes, _ = adapter.extract(Path("app.py"), FASTAPI_EVENTSOURCE_SOURCE)
+    ep_nodes = [n for n in nodes if n.component_type == NodeType.API_ENDPOINT]
+    assert ep_nodes, "Expected at least one API_ENDPOINT node"
+    assert ep_nodes[0].metadata.transport == "sse"

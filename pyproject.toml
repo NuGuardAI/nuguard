@@ -1,16 +1,16 @@
 [project]
 name = "nuguard"
-version = "0.2.0"
-description = "AI application security CLI — SBOM generation, static analysis, cognitive policy validation, and adversarial red-teaming for AI apps"
+version = "0.4.8"
+description = "AI application security — SBOM generation, vulnerability scanning, behavioral validation, and adversarial red-teaming for AI Agents"
 readme = "README.md"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.12"
 authors = [
-    { name = "NuGuard", email = "oss@nuguard.ai" },
+    { name = "NuGuard", email = "info@nuguard.ai" },
 ]
-keywords = ["ai", "security", "sbom", "red-team", "llm", "prompt-injection", "appsec"]
+keywords = ["ai", "security", "sbom", "red-team", "llm", "prompt-injection", "appsec", "agent"]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Intended Audience :: Information Technology",
     "License :: OSI Approved :: Apache Software License",
@@ -27,7 +27,9 @@ dependencies = [
     "jsonschema>=4.23",
     "networkx>=3.3",
     "httpx>=0.27",
-    "litellm>=1.40",
+    "litellm>=1.83.10",
+    "lxml>=6.1.0",
+    "urllib3>=2.7.0",
     "sqlalchemy>=2.0",
     "aiosqlite>=0.20",
     "asyncpg>=0.29",
@@ -43,19 +45,24 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8",
+    "pip>=26.1",
+    "pytest>=9.0.3",
     "pytest-asyncio>=0.23",
     "ruff>=0.4",
     "mypy>=1.10",
 ]
+mcp = [
+    "mcp>=1.0",
+]
 
 [project.urls]
-Homepage = "https://github.com/nuguard/nuguard-oss"
-Repository = "https://github.com/nuguard/nuguard-oss"
-Issues = "https://github.com/nuguard/nuguard-oss/issues"
+Homepage = "https://github.com/NuGuardAI/nuguard"
+Repository = "https://github.com/NuGuardAI/nuguard"
+Issues = "https://github.com/NuGuardAI/nuguard/issues"
 
 [project.scripts]
 nuguard = "nuguard.cli.main:app"
+nuguard-mcp = "nuguard.mcp.__main__:main"
 
 [build-system]
 requires = ["hatchling"]
@@ -88,6 +95,7 @@ include = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+addopts = "--import-mode=importlib --ignore=tests/apps/contact-center-ai-samples --ignore=tests/apps/ai-agents-google-adk/test_bedrock_haiku.py --ignore=tests/apps/ai-agents-google-adk/test_openai_gpt.py"
 testpaths = ["tests", "nuguard/sbom/tests"]
 markers = [
     "redteam_e2e: E2E redteam scan against a live fixture app (opt-in: NUGUARD_REDTEAM_E2E=1)",
@@ -100,6 +108,7 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
+ignore = ["E501"]
 
 [tool.mypy]
 python_version = "3.12"
@@ -108,7 +117,9 @@ warn_unused_ignores = false
 
 [dependency-groups]
 dev = [
+    "boto3>=1.42.91",
     "mypy>=1.19.1",
+    "pip-audit>=2.10.0",
     "pytest>=9.0.2",
     "pytest-asyncio>=1.3.0",
     "respx>=0.22.0",

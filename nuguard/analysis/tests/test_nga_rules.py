@@ -10,17 +10,15 @@ Rules under test:
   NGA-002  Insufficient guardrails (sub-checks A + B)             HIGH
   NGA-003  Secrets handled insecurely — env vars or no secret store HIGH
   NGA-004  Containers running as root                              HIGH
-  NGA-005  AI workloads without resource limits                    LOW
-  NGA-006  Unencrypted datastore containing PII/PHI               HIGH
-  NGA-007  Missing auth on external API endpoint                   HIGH
-  NGA-019  Missing HITL for irreversible tool actions              HIGH
+  NGA-005  Unencrypted datastore containing PII/PHI               HIGH
+  NGA-006  Missing auth on external API endpoint                   HIGH
+  NGA-012  Missing HITL for irreversible tool actions              HIGH
+  NGA-015  AI workloads without resource limits                    LOW
 """
 
 from __future__ import annotations
 
 from typing import Any
-
-import pytest
 
 from nuguard.analysis.plugins.nga_rules import (
     _RULES,
@@ -28,10 +26,10 @@ from nuguard.analysis.plugins.nga_rules import (
     _rule_nga002_insufficient_guardrails,
     _rule_nga003_secrets_in_env,
     _rule_nga004_runs_as_root,
-    _rule_nga005_no_resource_limits,
-    _rule_nga006_unencrypted_pii_datastore,
-    _rule_nga007_missing_auth_on_api_endpoint,
-    _rule_nga019_missing_hitl,
+    _rule_nga005_unencrypted_pii_datastore,
+    _rule_nga006_missing_auth_on_api_endpoint,
+    _rule_nga012_missing_hitl,
+    _rule_nga015_no_resource_limits,
 )
 
 # ---------------------------------------------------------------------------
@@ -330,24 +328,24 @@ class TestNga004:
 
 
 # ---------------------------------------------------------------------------
-# NGA-005 — AI workloads without resource limits
+# NGA-015 — AI workloads without resource limits
 # ---------------------------------------------------------------------------
 
 
-class TestNga005:
+class TestNga015:
     def _run(
         self,
         nodes: list[dict[str, Any]],
         security_findings: list[str] | None = None,
     ) -> list[dict[str, Any]]:
         summary: dict[str, Any] = {"security_findings": security_findings or []}
-        return _rule_nga005_no_resource_limits(nodes=nodes, summary=summary)
+        return _rule_nga015_no_resource_limits(nodes=nodes, summary=summary)
 
     def test_fires_on_security_finding(self) -> None:
         nodes = [_deployment_node("prod")]
         findings = self._run(nodes, security_findings=["no_resource_limits"])
         assert len(findings) == 1
-        assert findings[0]["rule_id"] == "NGA-005"
+        assert findings[0]["rule_id"] == "NGA-015"
         assert findings[0]["severity"] == "LOW"
 
     def test_fires_on_node_metadata_flag(self) -> None:
@@ -392,18 +390,18 @@ class TestNga005:
 
 
 # ---------------------------------------------------------------------------
-# NGA-006 — Unencrypted datastore containing PII/PHI
+# NGA-005 — Unencrypted datastore containing PII/PHI
 # ---------------------------------------------------------------------------
 
 
-class TestNga006:
+class TestNga005:
     def _run(
         self,
         nodes: list[dict[str, Any]],
         dc: list[str],
     ) -> list[dict[str, Any]]:
         summary: dict[str, Any] = {"data_classification": dc}
-        return _rule_nga006_unencrypted_pii_datastore(nodes=nodes, summary=summary)
+        return _rule_nga005_unencrypted_pii_datastore(nodes=nodes, summary=summary)
 
     def test_fires_on_unencrypted_pii_datastore(self) -> None:
         node = {
@@ -414,7 +412,7 @@ class TestNga006:
         }
         findings = self._run([node], dc=["PHI"])
         assert len(findings) == 1
-        assert findings[0]["rule_id"] == "NGA-006"
+        assert findings[0]["rule_id"] == "NGA-005"
         assert findings[0]["severity"] == "HIGH"
 
     def test_no_finding_if_encrypted(self) -> None:
@@ -443,17 +441,17 @@ class TestNga006:
 
 
 # ---------------------------------------------------------------------------
-# NGA-007 — Missing auth on external API endpoint
+# NGA-006 — Missing auth on external API endpoint
 # ---------------------------------------------------------------------------
 
 
-class TestNga007:
+class TestNga006:
     def _run(
         self,
         nodes: list[dict[str, Any]],
         edges: list[dict[str, Any]] | None = None,
     ) -> list[dict[str, Any]]:
-        return _rule_nga007_missing_auth_on_api_endpoint(nodes=nodes, summary={}, edges=edges or [])
+        return _rule_nga006_missing_auth_on_api_endpoint(nodes=nodes, summary={}, edges=edges or [])
 
     def test_fires_on_api_endpoint_with_no_incoming_edge(self) -> None:
         """API endpoint with no incoming edges and no_auth_required flag fires."""
@@ -465,7 +463,7 @@ class TestNga007:
         }
         findings = self._run([node])
         assert len(findings) == 1
-        assert findings[0]["rule_id"] == "NGA-007"
+        assert findings[0]["rule_id"] == "NGA-006"
         assert findings[0]["severity"] == "HIGH"
 
     def test_fires_on_api_endpoint_no_incoming_edge_at_all(self) -> None:
@@ -505,17 +503,17 @@ class TestNga007:
 
 
 # ---------------------------------------------------------------------------
-# NGA-019 — Missing HITL for irreversible tool actions
+# NGA-012 — Missing HITL for irreversible tool actions
 # ---------------------------------------------------------------------------
 
 
-class TestNga019:
+class TestNga012:
     def _run(
         self,
         nodes: list[dict[str, Any]],
         edges: list[dict[str, Any]] | None = None,
     ) -> list[dict[str, Any]]:
-        return _rule_nga019_missing_hitl(nodes=nodes, edges=edges or [], summary={})
+        return _rule_nga012_missing_hitl(nodes=nodes, edges=edges or [], summary={})
 
     def test_fires_on_agent_with_delete_tool_no_hitl(self) -> None:
         agent = _agent_node("my-agent")
@@ -523,11 +521,11 @@ class TestNga019:
         edge = {"source": "my-agent", "target": "delete-records-tool", "edge_type": "CALLS"}
         findings = self._run([agent, tool], edges=[edge])
         assert len(findings) == 1
-        assert findings[0]["rule_id"] == "NGA-019"
+        assert findings[0]["rule_id"] == "NGA-012"
         assert findings[0]["severity"] == "HIGH"
 
     def test_no_finding_when_agent_has_hitl_metadata(self) -> None:
-        """Agent with HITL pattern in metadata (e.g. 'interrupt') suppresses NGA-019."""
+        """Agent with HITL pattern in metadata (e.g. 'interrupt') suppresses NGA-012."""
         agent = {
             "id": "my-agent",
             "name": "my-agent",
@@ -560,15 +558,15 @@ class TestNga019:
 class TestRulesRegistry:
     def test_registry_contains_all_rules(self) -> None:
         names = [r.__name__ for r in _RULES]
-        # Check the first five to verify ordering
+        # Verify CRITICAL/HIGH rules at the top, then MEDIUM, then LOW
         assert names[0] == "_rule_nga001_phi_to_external_llm"
         assert names[1] == "_rule_nga002_insufficient_guardrails"
         assert names[2] == "_rule_nga003_secrets_in_env"
         assert names[3] == "_rule_nga004_runs_as_root"
-        assert names[4] == "_rule_nga005_no_resource_limits"
-        # NGA-008 is retired; verify it's absent
-        assert "_rule_nga008" not in " ".join(names)
-        # Total should be 18 rules (001-019 minus 008)
+        assert names[4] == "_rule_nga005_unencrypted_pii_datastore"
+        # NGA-019 is retired (renumbered to NGA-012); verify old name is absent
+        assert "_rule_nga019" not in " ".join(names)
+        # Rules run NGA-001 to NGA-018 with no gaps
         assert len(_RULES) == 18
 
     def test_all_rules_return_list(self) -> None:

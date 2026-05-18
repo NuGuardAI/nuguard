@@ -1,0 +1,9 @@
+{
+  "name": "b44d8ea8-7333-4437-a987-63a521479b45",
+  "pythonFunction": {
+    "name": "get_transaction_history",
+    "pythonCode": "tools/get_transaction_history/python_function/python_code.py",
+    "description": "Retrieves historical transaction data for a specified account, with optional filtering.\n\nArgs:\n    account_id (str): The unique identifier of the account.\n    start_date (Optional[str]): The start date for the transaction history in YYYY-MM-DD format.\n    end_date (Optional[str]): The end date for the transaction history in YYYY-MM-DD format.\n    category (Optional[str]): An optional category to filter transactions (e.g., \"Groceries\", \"Income\").\n\nReturns:\n    dict[str, Any]: A dictionary containing a list of transactions.\n          Example: {\"transactions\": [{\"id\": \"T001\", \"date\": \"2023-10-25\", \"description\": \"Grocery Store\", \"amount\": -75.20}]}\n          Example: {\"error\": True, \"message\": \"Invalid date format.\"}"
+  },
+  "displayName": "get_transaction_history"
+}

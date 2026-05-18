@@ -1,41 +1,44 @@
 # NuGuard CLI Reference
 
-NuGuard ships a Typer-based CLI covering the full AI application security pipeline: SBOM generation, static analysis, policy compliance, and dynamic red-team testing.
+NuGuard ships a Typer-based CLI covering the full AI application security pipeline: SBOM generation, static analysis, policy compliance, behavioral testing, and dynamic red-team testing.
 
 ## Top-Level Commands
 
 ```text
-nuguard init        Create starter project files
+nuguard init        Create a nuguard.yaml config with auto-detected defaults
 nuguard sbom        SBOM generation, validation, and management
 nuguard analyze     Static risk analysis from an AI-SBOM
 nuguard scan        Unified pipeline: SBOM → analyze → policy → redteam
 nuguard policy      Cognitive policy linting and compliance assessment
+nuguard behavior    Intent-aware behavioral analysis against a live AI application
 nuguard redteam     Dynamic adversarial testing against a live AI application
-
+nuguard target      Verify target connectivity and authentication before scanning
 ```
 
 ---
 
 ## `nuguard init`
 
-Creates three starter project files in the current directory (or `--dir`).
+Generates a `nuguard.yaml` config file with sensible defaults for the current project. Auto-detects existing SBOM files, Cognitive Policy docs, and canary seeds, and pre-fills paths so the file is ready to use with minimal editing.
 
-| File | Purpose |
-|---|---|
-| `nuguard.yaml.example` | Fully annotated config template — copy to `nuguard.yaml` |
-| `canary.example.json` | Canary seed template for red-team exfiltration detection |
-| `cognitive_policy.md` | Blank Cognitive Policy with section headers |
+Also creates companion starter files (`canary.example.json`, `cognitive-policy.md`) if they do not already exist.
 
 ```bash
-nuguard init
-nuguard init --dir ./my-project
-nuguard init --force          # overwrite existing files
+nuguard init                                    # write ./nuguard.yaml
+nuguard init --path ./config/nuguard.yaml       # write to a specific path
+nuguard init --target http://localhost:8080
+nuguard init --target http://localhost:8080 --source ./src --force
 ```
 
-| Flag | Default | Description |
-|---|---|---|
-| `--dir`, `-d` | `.` | Directory to write files into |
-| `--force` | `false` | Overwrite files that already exist |
+| Flag | Short | Default | Description |
+|---|---|---|---|
+| `--path` | `-p` | `./nuguard.yaml` | Output path for `nuguard.yaml`. Accepts a file path or a directory (writes `nuguard.yaml` inside it). |
+| `--target` | `-t` | `http://localhost:8080` | URL of the running AI application — sets `behavior.target` and `redteam.target`. |
+| `--source` | `-s` | `./` | Source code directory for SBOM generation — sets `source:` in the config. |
+| `--force` | `-f` | `false` | Overwrite files that already exist. |
+| `--dir` | `-d` | — | *(Legacy, hidden)* Directory to write all starter files into. Prefer `--path`. |
+
+**Auto-detection:** if an existing SBOM (`*.sbom.json`), policy (`cognitive_policy.md`, `policy.md`, …), or canary (`canary.json`) is found in the target directory, the generated `nuguard.yaml` pre-fills those paths and the post-init "Next steps" list skips the corresponding steps.
 
 ---
 
@@ -127,10 +130,12 @@ Static risk analysis from an AI-SBOM — no running application required.
 
 Runs up to six scanners in sequence: NuGuard AI structural rules (NGA), OSV CVE lookup, Grype, Checkov (IaC), Trivy (containers), and Semgrep (source). Each scanner is silently skipped when its binary is absent or has nothing to scan.
 
-NGA rules are always on and produce findings in the "NGA" family designed to identify structural risks in the AI stack of the application.
+NGA rules always run and produce findings in the "NGA" family designed to identify structural risks in the AI stack of the application. Use `--nga` to run _only_ NGA rules and skip all external tool scans.
 
 ```bash
 nuguard analyze --sbom app.sbom.json
+nuguard analyze --sbom app.sbom.json --nga                              # NGA rules only (fast)
+nuguard analyze --sbom app.sbom.json --config nuguard.yaml              # load min_severity from config
 nuguard analyze --sbom app.sbom.json --format sarif --output results.sarif
 nuguard analyze --sbom app.sbom.json --source . --llm
 nuguard analyze --sbom app.sbom.json --no-grype --no-trivy --min-severity high
@@ -139,10 +144,12 @@ nuguard analyze --sbom app.sbom.json --no-grype --no-trivy --min-severity high
 | Flag | Default | Description |
 |---|---|---|
 | `--sbom` | **required** | Path to AI-SBOM JSON |
+| `--config`, `-c` | — | Path to `nuguard.yaml`; sets `min_severity` and `nga_only` defaults (CLI flags override) |
+| `--nga` | off | NGA structural rules only (NGA-001–018); disables all external tool scans |
 | `--format`, `-f` | `markdown` | `markdown` \| `sarif` \| `json` |
 | `--min-severity` | `medium` | Minimum severity to include: `critical` \| `high` \| `medium` \| `low` \| `info` |
 | `--source`, `-s` | — | Source directory for Checkov / Trivy / Semgrep path resolution |
-| `--atlas` / `--no-atlas` | on | MITRE ATLAS native graph checks (NGA-001–019) |
+| `--atlas` / `--no-atlas` | on | MITRE ATLAS native graph checks (NGA-001–018) |
 | `--osv` / `--no-osv` | on | OSV dependency CVE scan |
 | `--grype` / `--no-grype` | on | Grype CVE scan (requires `grype` on PATH) |
 | `--checkov` / `--no-checkov` | on | Checkov IaC scan (requires `checkov` on PATH) |
@@ -190,6 +197,22 @@ nuguard scan --source . --llm --output-dir reports/
 Cognitive policy linting, SBOM cross-checking, and compliance assessment.
 Cognitive Policies are human-readable Markdown documents that define guardrails for AI application behavior, architecture, and components. They can be used for documentation, internal governance, or as enforceable policies in CI or runtime gates. `nuguard init` creates a `cognitive_policy.md` template with common sections.
 
+### `nuguard policy compile`
+
+Compile a Cognitive Policy Markdown document into a structured JSON controls file. The compiled JSON is consumed by `policy check` and `behavior` for faster, LLM-optional assessment.
+
+```bash
+nuguard policy compile --policy cognitive_policy.md --output policy.controls.json
+nuguard policy compile --policy policy.md --llm --output policy.controls.json
+```
+
+| Flag | Default | Description |
+|---|---|---|
+| `--policy`, `-p` | from `nuguard.yaml` | Cognitive Policy Markdown file |
+| `--config`, `-c` | `./nuguard.yaml` | Config file path |
+| `--llm` / `--no-llm` | off | LLM-assisted compilation — extracts nuanced constraints that rule-based parsing may miss |
+| `--output`, `-o` | stdout | Destination JSON file for compiled controls |
+
 ### `nuguard policy validate`
 
 Lint a Cognitive Policy Markdown file for completeness and common mistakes.
@@ -228,8 +251,10 @@ nuguard policy check
 | `--config` | `./nuguard.yaml` | Config file path |
 | `--framework` | — | `owasp-llm-top10` \| `nist-ai-rmf` \| `eu-ai-act` |
 | `--controls` | — | Custom controls JSON file |
-| `--format` | `text` | `text` \| `json` |
+| `--format` | `text` | `text` \| `json` \| `markdown` |
+| `--output`, `-o` | stdout | Write the assessment report to this file |
 | `--llm` / `--no-llm` | off | LLM fallback for controls that can't be assessed from SBOM alone |
+| `--verbose`, `-v` | off | Show all controls including PASS results with evidence |
 
 ### `nuguard policy show`
 
@@ -237,11 +262,56 @@ Display a stored cognitive policy by database ID.
 
 ---
 
+## `nuguard behavior`
+
+Intent-aware behavioral analysis against a live AI application. Runs static SBOM-policy alignment checks (no running app required) and/or dynamic behavior testing with per-turn LLM judging across five dimensions.
+
+See [behavior-guide.md](./behavior-guide.md) for a full description of the engine.
+
+```bash
+# Static + dynamic (default)
+nuguard behavior --config nuguard.yaml
+
+# Static-only alignment checks
+nuguard behavior --static
+
+# Dynamic-only with override target
+nuguard behavior --dynamic --target http://localhost:8090
+
+# Markdown report to file
+nuguard behavior --policy ./policy.md --output ./behavior-report.md --format markdown
+
+# CI gate
+nuguard behavior --mode static+dynamic --fail-on critical
+```
+
+| Flag | Short | Default | Description |
+|---|---|---|---|
+| `--config` | `-c` | `./nuguard.yaml` | Config file path |
+| `--mode` | `-m` | `static+dynamic` | `static` \| `dynamic` \| `static+dynamic` |
+| `--static` | — | off | Shorthand for `--mode static` |
+| `--dynamic` | — | off | Shorthand for `--mode dynamic` |
+| `--target` | — | from `nuguard.yaml` | Override `behavior.target` URL |
+| `--policy` | — | from `nuguard.yaml` | Cognitive Policy Markdown path |
+| `--intent` | — | from SBOM | Override app intent (one-line description) |
+| `--canary` | — | from `nuguard.yaml` | Path to `canary.json` seed file |
+| `--output` | `-o` | stdout | Write report to this file |
+| `--format` | `-f` | `text` | `text` \| `json` \| `markdown` |
+| `--fail-on` | — | `high` | Exit code 1 when any finding meets this severity: `critical` \| `high` \| `medium` \| `low` |
+| `--baseline` | — | — | Path to a previous `BehaviorAnalysisResult` JSON for regression detection |
+| `--verbose` | `-v` | off | Print detailed per-turn traces |
+
+**Static checks (BA-001 – BA-008):** deterministic SBOM × policy cross-checks; no running application or LLM required. Covers missing system-prompt controls, unenforced topic boundaries, over-permissioned tool edges, missing rate-limit controls, and more.
+
+**Dynamic judging:** each response is scored on five dimensions — `intent_alignment`, `behavioral_compliance`, `component_correctness`, `data_handling`, `escalation_compliance` — on a 1–5 scale. PASS ≥ 3.5, PARTIAL ≥ 2.0, FAIL < 2.0.
+
+---
+
 ## `nuguard redteam`
 
 Dynamic adversarial testing against a live AI application. Reads the AI-SBOM to derive an attack surface, generates and executes scenarios, and produces structured findings with OWASP/MITRE mappings.
 
-See [redteam-engine.md](./redteam-engine.md) for a complete description of how the engine works.
+See [red-teaming-guide.md](./red-teaming-guide.md) for a complete description of how the engine works.
 
 ```bash
 # Basic scan (app already running)
@@ -266,27 +336,28 @@ nuguard redteam --sbom app.sbom.json --target http://localhost:8000 \
 
 # CI gate — SARIF output, fail on high+
 nuguard redteam --sbom app.sbom.json --target $APP_URL \
-  --profile ci --format sarif --output results.sarif --fail-on high
+  --profile ci -f sarif -o results.sarif --fail-on high
 ```
 
-| Flag | Default | Description |
-|---|---|---|
-| `--sbom` | from `nuguard.yaml` | AI-SBOM JSON path |
-| `--target` | SBOM discovery | Live application URL (`http://host:port`) |
-| `--source` | — | App source directory — used for `.env` loading and `--launch` |
-| `--launch` / `--no-launch` | off | Auto-start the app from the SBOM startup command; stop it after the scan. Requires `--source` |
-| `--policy` | from `nuguard.yaml` | Cognitive Policy Markdown path |
-| `--canary` | from `nuguard.yaml` | Canary JSON file path |
-| `--profile` | `ci` | `ci` (impact ≥ 5.0 only) or `full` (all scenarios) |
-| `--scenarios` | all | Comma-separated filter: `prompt-injection`, `tool-abuse`, `privilege-escalation`, `data-exfiltration`, `policy-violation`, `mcp-toxic-flow` |
-| `--min-impact-score` | `0.0` | Exclude scenarios below this pre-score [0–10] |
-| `--guided` / `--no-guided` | on when LLM set | Adaptive multi-turn guided conversations |
-| `--guided-max-turns` | `12` | Max turns per guided conversation |
-| `--guided-concurrency` | `3` | Parallel guided conversations |
-| `--format` | `text` | `text` \| `json` \| `sarif` |
-| `--output` | — | Write findings to this file |
-| `--fail-on` | `high` | Exit code 2 if any finding meets this severity |
-| `--config` | `./nuguard.yaml` | Config file path |
+| Flag | Short | Default | Description |
+|---|---|---|---|
+| `--config` | `-c` | `./nuguard.yaml` | Config file path |
+| `--sbom` | — | from `nuguard.yaml` | AI-SBOM JSON path |
+| `--target` | — | SBOM discovery | Live application URL (`http://host:port`) |
+| `--source` | — | — | App source directory — used for `.env` loading and `--launch` |
+| `--launch` / `--no-launch` | — | off | Auto-start the app from the SBOM startup command; stop it after the scan. Requires `--source` |
+| `--policy` | — | from `nuguard.yaml` | Cognitive Policy Markdown path |
+| `--canary` | — | from `nuguard.yaml` | Canary JSON file path |
+| `--profile` | — | `ci` | `ci` (high-signal only) or `full` (all scenarios) |
+| `--scenarios` | — | all | Comma-separated filter: `prompt-injection`, `tool-abuse`, `privilege-escalation`, `data-exfiltration`, `policy-violation`, `mcp-toxic-flow` |
+| `--min-impact-score` | — | `0.0` | Exclude scenarios below this pre-score [0–10] |
+| `--guided` / `--no-guided` | — | on when LLM set | Adaptive multi-turn guided conversations (TAP + PAIR) |
+| `--guided-max-turns` | — | `12` | Max turns per guided conversation |
+| `--guided-concurrency` | — | `3` | Parallel guided conversations |
+| `--format` | `-f` | `text` | `text` \| `json` \| `markdown` \| `sarif` |
+| `--output` | `-o` | — | Write findings to this file |
+| `--fail-on` | — | `high` | Exit code 2 if any finding meets this severity |
+| `--verbose` / `--no-verbose` | `-v` / `-V` | off | Print detailed per-turn traces |
 
 **Target URL resolution order:** `--target` flag → `redteam.target` in `nuguard.yaml` → SBOM-discovered URLs (local → staging → production) → error.
 
@@ -299,15 +370,56 @@ nuguard redteam --sbom app.sbom.json --target $APP_URL \
 | `NUGUARD_REDTEAM_EVAL_LLM_MODEL` | `redteam.eval_llm.model` | Response evaluation and report generation |
 | `NUGUARD_REDTEAM_EVAL_LLM_API_KEY` | `redteam.eval_llm.api_key` | API key for the eval LLM |
 
+**Advanced YAML-only options** (set in `nuguard.yaml`, no CLI flag):
+
+| YAML key | Default | Description |
+|---|---|---|
+| `redteam.strict_outcome` | `false` | When ≥ 80% of events are 5xx/network errors, report `inconclusive_target_errors` instead of `no_findings` |
+| `redteam.emit_pytest` | `false` | Generate pytest regression tests for HIT findings (severity ≥ medium) |
+| `redteam.emit_pytest_dir` | `tests/redteam` | Directory to write generated pytest files |
+| `redteam.tree_breadth` | `0` (off) | TAP: number of tactic variants to branch per depth level |
+| `redteam.tree_max_depth` | `0` (off) | TAP: maximum tree depth before pruning non-improving paths |
+
+---
+
+## `nuguard target`
+
+Verify connectivity and authentication against a live AI application before running a full scan. Prints a status table covering identity, auth type, HTTP status, response time, and any error details.
+
+### `nuguard target verify`
+
+```bash
+# Verify using nuguard.yaml
+nuguard target verify --config nuguard.yaml
+
+# Quick spot-check with inline options
+nuguard target verify --target http://localhost:8000 \
+  --endpoint /chat \
+  --auth-header "Authorization: Bearer $TOKEN"
+
+# Verify all tenant tokens in a canary file
+nuguard target verify --config nuguard.yaml --canary canary.json
+```
+
+| Flag | Short | Default | Description |
+|---|---|---|---|
+| `--config` | `-c` | `./nuguard.yaml` | Config file path |
+| `--target` | — | from `nuguard.yaml` | Base URL of the target application |
+| `--endpoint` | — | from `nuguard.yaml` | Chat endpoint path (e.g. `/chat`, `/api/v1/agent`) |
+| `--auth-header` | — | from `nuguard.yaml` | Auth header string (e.g. `"Authorization: Bearer $TOKEN"`) |
+| `--canary` | — | from `nuguard.yaml` | Path to `canary.json` — verifies each tenant session token can authenticate |
+
+Run `nuguard target verify` before `nuguard redteam` or `nuguard behavior` to catch misconfigured endpoints, expired tokens, or firewall blocks early.
+
 ---
 
 ## Configuration File
 
-All CLI flags can be set in `nuguard.yaml`. Run `nuguard init` to create an annotated template.
+All CLI flags can be set in `nuguard.yaml`. Run `nuguard init` to generate one with auto-detected defaults.
 
 ```bash
-nuguard init            # writes nuguard.yaml.example
-cp nuguard.yaml.example nuguard.yaml
+nuguard init                          # writes ./nuguard.yaml
+nuguard init --target http://localhost:8080 --source ./src
 ```
 
 Priority order: **CLI flags > nuguard.yaml > environment variables > built-in defaults**
@@ -315,8 +427,40 @@ Priority order: **CLI flags > nuguard.yaml > environment variables > built-in de
 Secrets are never stored directly — use `${ENV_VAR}` interpolation:
 
 ```yaml
+# ─── Target application — shared by behavior and redteam ───────────────────
+target:
+  url: https://your-app.example.com
+
+  # Authentication — set once; both behavior and redteam inherit it.
+  # Override per-command with behavior.auth or redteam.auth when needed.
+  auth:
+    # Option A: Login flow (preferred when the app exposes a /login endpoint)
+    # type: login_flow
+    # login_flow:
+    #   endpoint: /api/login
+    #   payload:
+    #     username: ${APP_USERNAME}
+    #     password: ${APP_PASSWORD}
+    #   token_response_key: access_token
+    #   token_header: "Authorization: Bearer"
+
+    # Option B: Static Bearer token
+    # type: bearer
+    # header: "Authorization: Bearer ${TARGET_TOKEN}"
+
+    # Option C: API key in a custom header
+    # type: api_key
+    # header: "X-API-Key: ${TARGET_API_KEY}"
+
+    # Option D: HTTP Basic Auth
+    # type: basic
+    # username: ${APP_USERNAME}
+    # password: ${APP_PASSWORD}
+
+    # Option E: No authentication (open endpoints, local dev)
+    # type: none
+
 redteam:
-  auth_header: "Authorization: Bearer ${TARGET_TOKEN}"
   llm:
     api_key: ${NUGUARD_REDTEAM_LLM_API_KEY}
 ```
@@ -327,11 +471,13 @@ redteam:
 
 ```bash
 nuguard --help
+nuguard init --help
 nuguard sbom --help
 nuguard sbom generate --help
 nuguard analyze --help
 nuguard scan --help
 nuguard policy --help
 nuguard policy check --help
+nuguard behavior --help
 nuguard redteam --help
 ```

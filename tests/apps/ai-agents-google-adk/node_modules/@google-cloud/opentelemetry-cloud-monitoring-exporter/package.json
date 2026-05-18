@@ -1,0 +1,78 @@
+{
+  "name": "@google-cloud/opentelemetry-cloud-monitoring-exporter",
+  "version": "0.21.0",
+  "description": "OpenTelemetry Google Cloud Monitoring Exporter allows the user to send collected metrics to Google Cloud Monitoring.",
+  "main": "build/src/index.js",
+  "types": "build/src/index.d.ts",
+  "repository": "GoogleCloudPlatform/opentelemetry-operations-js",
+  "scripts": {
+    "lint": "gts lint",
+    "clean": "gts clean",
+    "precompile": "version-update.js",
+    "compile": "tsc",
+    "prepack": "npm run compile",
+    "test": "nyc ts-mocha -p tsconfig.json 'test/**/*.test.ts'",
+    "update-snapshot-tests": "SNAPSHOT_UPDATE=1 npm run test",
+    "fix": "gts fix",
+    "pretest": "npm run compile"
+  },
+  "keywords": [
+    "opentelemetry",
+    "nodejs",
+    "Monitoring",
+    "google-cloud-monitoring"
+  ],
+  "author": "Google Inc.",
+  "license": "Apache-2.0",
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "build/src/**/*.js",
+    "build/src/**/*.d.ts",
+    "doc",
+    "LICENSE",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://wombat-dressing-room.appspot.com"
+  },
+  "config": {
+    "snap-shot-it": {
+      "sortSnapshots": true
+    }
+  },
+  "devDependencies": {
+    "@google-cloud/ops-js-scripts": "^1.0.0",
+    "@opentelemetry/api": "1.9.0",
+    "@opentelemetry/core": "2.0.1",
+    "@opentelemetry/resources": "2.0.1",
+    "@opentelemetry/sdk-metrics": "2.0.1",
+    "@types/mocha": "10.0.8",
+    "@types/nock": "11.1.0",
+    "@types/node": "18.19.123",
+    "@types/sinon": "17.0.4",
+    "gts": "6.0.2",
+    "mocha": "11.7.2",
+    "nock": "13.5.6",
+    "nyc": "17.1.0",
+    "sinon": "17.0.2",
+    "snap-shot-it": "7.9.10",
+    "ts-mocha": "11.1.0",
+    "typescript": "5.0.4"
+  },
+  "dependencies": {
+    "@google-cloud/opentelemetry-resource-util": "^3.0.0",
+    "@google-cloud/precise-date": "^4.0.0",
+    "google-auth-library": "^9.0.0",
+    "googleapis": "^137.0.0"
+  },
+  "peerDependencies": {
+    "@opentelemetry/api": "^1.9.0",
+    "@opentelemetry/core": "^2.0.0",
+    "@opentelemetry/resources": "^2.0.0",
+    "@opentelemetry/sdk-metrics": "^2.0.0"
+  },
+  "gitHead": "b5d408fd0d55a88edd9a19e4d876f30d1e7a8179"
+}

@@ -1,0 +1,9 @@
+{
+  "name": "87358a34-2847-4595-bc81-0c6e9934a5e6",
+  "pythonFunction": {
+    "name": "approve_discount",
+    "pythonCode": "tools/approve_discount/python_function/python_code.py",
+    "description": "Approve the flat rate or percentage discount requested by the user."
+  },
+  "displayName": "approve_discount"
+}

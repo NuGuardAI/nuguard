@@ -24,9 +24,10 @@ from __future__ import annotations
 
 import logging
 import re
+from bisect import bisect_right
 
-from .base import ComponentDetection
 from ..types import ComponentType
+from .base import ComponentDetection
 
 _log = logging.getLogger(__name__)
 
@@ -109,6 +110,7 @@ class NginxAdapter:
     ) -> list[ComponentDetection]:
         results: list[ComponentDetection] = []
         seen: set[str] = set()
+        nl_offsets = [m.start() for m in re.finditer(r"\n", content)]
 
         for match in _PROXY_PASS_RE.finditer(content):
             url = match.group("url").rstrip("/")
@@ -117,7 +119,7 @@ class NginxAdapter:
                 continue
             seen.add(canonical)
 
-            line = content[: match.start()].count("\n") + 1
+            line = bisect_right(nl_offsets, match.start()) + 1
             _log.debug("%s:%d — nginx proxy_pass → %s", rel_path, line, url)
 
             results.append(
@@ -152,12 +154,13 @@ class NginxAdapter:
         ssl_listen_line = 1
         cert_path: str | None = None
         cert_line = 1
+        nl_offsets = [m.start() for m in re.finditer(r"\n", content)]
 
         for match in _LISTEN_RE.finditer(content):
             flags = (match.group("flags") or "").lower()
             if "ssl" in flags:
                 ssl_listen = True
-                ssl_listen_line = content[: match.start()].count("\n") + 1
+                ssl_listen_line = bisect_right(nl_offsets, match.start()) + 1
                 _log.debug(
                     "%s:%d — SSL listen detected (port=%s)",
                     rel_path,
@@ -168,7 +171,7 @@ class NginxAdapter:
 
         for match in _SSL_CERT_RE.finditer(content):
             cert_path = match.group("path")
-            cert_line = content[: match.start()].count("\n") + 1
+            cert_line = bisect_right(nl_offsets, match.start()) + 1
             _log.debug("%s:%d — ssl_certificate %s", rel_path, cert_line, cert_path)
             ssl_listen = True  # Certificate alone is sufficient evidence
             break

@@ -21,8 +21,11 @@ in the model string.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
+import random
+from collections.abc import AsyncGenerator
 from typing import Any
 
 from nuguard.common.logging import get_logger
@@ -35,6 +38,23 @@ _GEMINI_PREFIXES = ("gemini/", "google/", "vertex_ai/")
 _VERTEX_PREFIXES = ("vertex_ai/",)
 _OPENAI_PREFIXES = ("openai/", "azure/")
 _ANTHROPIC_PREFIXES = ("anthropic/", "claude/", "bedrock/anthropic")
+_BEDROCK_PREFIXES = ("bedrock/",)
+
+# Reasoning / thinking models that reject temperature (or only accept temperature=1).
+# Covers OpenAI o-series and gpt-5 class; extend as new models are released.
+_REASONING_MODEL_FAMILIES = ("o1", "o3", "o4", "gpt-5")
+
+
+def _is_reasoning_model(model: str) -> bool:
+    """Return True for models that do not support arbitrary temperature values.
+
+    These include OpenAI o1/o3/o4 and gpt-5 class models.  LiteLLM raises
+    ``UnsupportedParamsError`` when temperature is forwarded to them.
+    """
+    # Strip provider prefix ("openai/gpt-5" → "gpt-5", "azure/o3-mini" → "o3-mini")
+    _, _, name = model.rpartition("/")
+    name_lower = (name or model).lower()
+    return any(name_lower.startswith(f) for f in _REASONING_MODEL_FAMILIES)
 
 
 # ---------------------------------------------------------------------------
@@ -66,6 +86,16 @@ def _resolve_api_key(model: str) -> str | None:
 
     if any(model.startswith(p) for p in _ANTHROPIC_PREFIXES):
         for var in ("ANTHROPIC_API_KEY", "LITELLM_API_KEY"):
+            val = os.environ.get(var)
+            if val:
+                _log.debug("Using %s for model %s", var, model)
+                return val
+        return None
+
+    if any(model.startswith(p) for p in _BEDROCK_PREFIXES):
+        # AWS Bedrock API key auth — LiteLLM reads AWS_BEARER_TOKEN_BEDROCK
+        # automatically; return it here so LLMClient knows to make real calls.
+        for var in ("AWS_BEARER_TOKEN_BEDROCK", "LITELLM_API_KEY"):
             val = os.environ.get(var)
             if val:
                 _log.debug("Using %s for model %s", var, model)
@@ -122,6 +152,20 @@ def _resolve_vertex_params() -> dict[str, str]:
     return params
 
 
+def _sanitize_litellm_kwargs(kwargs: dict[str, Any]) -> dict[str, Any]:
+    """Return LiteLLM kwargs with null-like values removed.
+
+    Drops ``None`` for any key and also removes blank ``api_base`` values.
+    This avoids forwarding ``api_base=None`` into LiteLLM internals, which can
+    trigger noisy non-blocking logging errors.
+    """
+    sanitized = {k: v for k, v in kwargs.items() if v is not None}
+    api_base = sanitized.get("api_base")
+    if isinstance(api_base, str) and not api_base.strip():
+        sanitized.pop("api_base", None)
+    return sanitized
+
+
 # ---------------------------------------------------------------------------
 # LLMClient
 # ---------------------------------------------------------------------------
@@ -148,17 +192,46 @@ class LLMClient:
         api_base: str | None = None,
         budget_tokens: int | None = None,
         google_api_key: str | None = None,
+        request_timeout: float | None = None,
     ) -> None:
         self.model: str = (
             model
             or os.environ.get("LITELLM_MODEL", "")
             or _DEFAULT_MODEL
         )
+        # Bare "gemini-*" model names (no provider prefix) are ambiguous —
+        # LiteLLM routes them to Vertex AI which requires ADC / SA credentials.
+        # Auto-prefix with "gemini/" so the Gemini REST endpoint is used instead,
+        # which accepts a plain API key.
+        if self.model and not any(self.model.startswith(p) for p in _GEMINI_PREFIXES + _OPENAI_PREFIXES + _ANTHROPIC_PREFIXES + _BEDROCK_PREFIXES) and self.model.startswith("gemini-"):
+            prefixed = f"gemini/{self.model}"
+            _log.debug(
+                "Bare model name %r detected — adding 'gemini/' prefix → %r. "
+                "Use 'gemini/<name>' explicitly to suppress this.",
+                self.model,
+                prefixed,
+            )
+            self.model = prefixed
         self.api_key: str | None = api_key or _resolve_api_key(self.model)
         self.min_temperature: float | None = min_temperature
         self.api_base: str | None = api_base
         self.budget_tokens: int | None = budget_tokens
         self.google_api_key: str | None = google_api_key
+        # Per-request timeout for LLM calls (seconds).
+        # Resolution order:
+        #   1. explicit request_timeout argument
+        #   2. LLM_REQUEST_TIMEOUT env var
+        #   3. hard-coded default of 120s
+        # Set to 0 to disable entirely (no timeout).
+        _DEFAULT_LLM_TIMEOUT = 120.0
+        _env_timeout = os.environ.get("LLM_REQUEST_TIMEOUT")
+        if request_timeout is not None:
+            self.request_timeout: float | None = request_timeout if request_timeout > 0 else None
+        elif _env_timeout:
+            _parsed = float(_env_timeout)
+            self.request_timeout = _parsed if _parsed > 0 else None
+        else:
+            self.request_timeout = _DEFAULT_LLM_TIMEOUT
 
         # vertex_ai/ requires ADC or a service-account JSON.  A plain API key
         # (e.g. AQ.… from Google Cloud Console) only works with the gemini/
@@ -183,6 +256,190 @@ class LLMClient:
         if self.api_key is None:
             _log.debug("No API key found — LLMClient will return canned responses.")
 
+        # Azure OpenAI requires an explicit endpoint URL.  Warn early so the user
+        # gets a clear diagnostic instead of a cryptic APIConnectionError later.
+        if (
+            self.model.startswith("azure/")
+            and self.api_key is not None
+            and not (self.api_base and self.api_base.strip())
+        ):
+            _log.warning(
+                "Azure model %r requires an endpoint URL (api_base / AZURE_API_BASE). "
+                "Without it LiteLLM cannot connect and will raise APIConnectionError. "
+                "Set AZURE_API_BASE=https://<your-resource>.openai.azure.com/ or add "
+                "api_base under the llm: section of your nuguard.yaml.",
+                self.model,
+            )
+
+    async def complete_stream(
+        self,
+        prompt: str,
+        system: str | None = None,
+        label: str = "",
+        **kwargs: Any,
+    ) -> AsyncGenerator[str, None]:
+        """Yield response tokens as they arrive from the model.
+
+        When no API key is configured, yields the canned response as a single
+        chunk so callers that expect at least one yield still work correctly.
+
+        Args:
+            prompt: The user message.
+            system: Optional system prompt.
+            label: Human-readable context string for debug logs.
+
+        Yields:
+            Text tokens as they arrive from the streaming LLM response.
+        """
+        if self.api_key is None:
+            yield self._canned_response(prompt)
+            return
+
+        try:
+            import litellm  # type: ignore[import-untyped]
+        except ImportError as exc:
+            raise ImportError(
+                "litellm is required for LLM completions. "
+                "Install with: pip install litellm"
+            ) from exc
+
+        messages: list[dict[str, str]] = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+
+        _log.debug(
+            "LLMClient.complete_stream model=%s prompt_len=%d%s",
+            self.model,
+            len(prompt),
+            f" [{label}]" if label else "",
+        )
+        if self.min_temperature is not None and not _is_reasoning_model(self.model):
+            kwargs["temperature"] = max(
+                float(kwargs.get("temperature", self.min_temperature)),
+                self.min_temperature,
+            )
+        # Reasoning-class models (o1/o3/o4/gpt-5) reject temperature and top_p.
+        # Strip them pre-emptively to avoid UnsupportedParamsError on the first call.
+        if _is_reasoning_model(self.model):
+            kwargs.pop("temperature", None)
+            kwargs.pop("top_p", None)
+        if self.api_base:
+            kwargs.setdefault("api_base", self.api_base)
+        # Strip any None api_base that may have crept in to avoid LiteLLM
+        # logging TypeError: argument of type 'NoneType' is not iterable
+        kwargs = {k: v for k, v in kwargs.items() if not (k == "api_base" and v is None)}
+        if self.google_api_key:
+            kwargs.setdefault("vertex_credentials", self.google_api_key)
+        if any(self.model.startswith(p) for p in _VERTEX_PREFIXES):
+            for k, v in _resolve_vertex_params().items():
+                kwargs.setdefault(k, v)
+
+        kwargs = _sanitize_litellm_kwargs(kwargs)
+
+        # Apply per-request timeout so a stalled LLM call doesn't hang forever.
+        if self.request_timeout is not None:
+            kwargs.setdefault("timeout", self.request_timeout)
+
+        _MAX_RETRIES = 4
+        _BASE_DELAY = 2.0   # seconds before first retry
+        _MAX_DELAY = 60.0   # cap on any single sleep
+        _stripped_unsupported = False  # guard: strip-and-retry only once
+
+        for _attempt in range(_MAX_RETRIES + 1):
+            try:
+                stream = await litellm.acompletion(
+                    model=self.model,
+                    messages=messages,
+                    api_key=self.api_key,
+                    stream=True,
+                    **kwargs,
+                )
+                async for chunk in stream:
+                    delta: str = chunk.choices[0].delta.content or ""
+                    if delta:
+                        yield delta
+                return
+
+            except (litellm.RateLimitError, litellm.ServiceUnavailableError, litellm.APIConnectionError) as exc:
+                if _attempt < _MAX_RETRIES:
+                    delay = min(_BASE_DELAY * (2 ** _attempt) + random.uniform(0, 1), _MAX_DELAY)
+                    _log.warning(
+                        "LLM transient error (model=%s label=%s attempt=%d/%d) — "
+                        "retrying in %.1fs: %s",
+                        self.model, label or "-", _attempt + 1, _MAX_RETRIES, delay, exc,
+                    )
+                    await asyncio.sleep(delay)
+                else:
+                    _log.warning(
+                        "LLM transient error (model=%s label=%s) — "
+                        "all %d retries exhausted: %s",
+                        self.model, label or "-", _MAX_RETRIES, exc,
+                    )
+                    yield self._canned_response(prompt)
+                    return
+
+            except litellm.AuthenticationError as exc:
+                _log.warning(
+                    "LLM authentication failed (model=%s label=%s): %s",
+                    self.model, label or "-", exc,
+                )
+                if any(self.model.startswith(p) for p in _VERTEX_PREFIXES):
+                    _log.warning(
+                        "Vertex AI requires ADC or a service-account JSON. "
+                        "Set GOOGLE_APPLICATION_CREDENTIALS=/path/to/sa.json "
+                        "or switch the model to 'gemini/%s' for API-key auth.",
+                        self.model.split("/", 1)[1],
+                    )
+                yield self._canned_response(prompt)
+                return
+
+            except litellm.UnsupportedParamsError as exc:
+                # Some models (gpt-5, o-series) reject temperature/top_p entirely.
+                # Strip the offending params and retry once without counting it as a
+                # backoff attempt — the error is structural, not transient.
+                if not _stripped_unsupported:
+                    _stripped_unsupported = True
+                    removed = [p for p in ("temperature", "top_p") if p in kwargs]
+                    for p in removed:
+                        kwargs.pop(p)
+                    _log.warning(
+                        "LLM unsupported params (model=%s label=%s) — "
+                        "stripped %s and retrying: %s",
+                        self.model, label or "-", removed, exc,
+                    )
+                    continue
+                _log.warning(
+                    "LLM unsupported params (model=%s label=%s) — giving up: %s",
+                    self.model, label or "-", exc,
+                )
+                yield self._canned_response(prompt)
+                return
+
+            except litellm.BadRequestError as exc:
+                _log.warning(
+                    "LLM bad request (model=%s label=%s): %s",
+                    self.model, label or "-", exc,
+                )
+                yield self._canned_response(prompt)
+                return
+
+            except litellm.Timeout as exc:
+                _log.warning(
+                    "LLM request timed out (model=%s label=%s): %s",
+                    self.model, label or "-", exc,
+                )
+                yield self._canned_response(prompt)
+                return
+
+            except Exception as exc:
+                _log.warning(
+                    "Unexpected LLM error (model=%s label=%s): %s: %s",
+                    self.model, label or "-", type(exc).__name__, exc,
+                )
+                yield self._canned_response(prompt)
+                return
+
     async def complete(
         self,
         prompt: str,
@@ -202,106 +459,10 @@ class LLMClient:
         rate-limit, network, invalid response) returns :meth:`_canned_response`
         so callers can continue without crashing.
         """
-        if self.api_key is None:
-            return self._canned_response(prompt)
-
-        try:
-            import litellm  # type: ignore[import-untyped]
-        except ImportError as exc:
-            raise ImportError(
-                "litellm is required for LLM completions. "
-                "Install with: pip install litellm"
-            ) from exc
-
-        messages: list[dict[str, str]] = []
-        if system:
-            messages.append({"role": "system", "content": system})
-        messages.append({"role": "user", "content": prompt})
-
-        _log.debug(
-            "LLMClient.complete model=%s prompt_len=%d%s",
-            self.model,
-            len(prompt),
-            f" [{label}]" if label else "",
-        )
-        if self.min_temperature is not None:
-            kwargs["temperature"] = max(
-                float(kwargs.get("temperature", self.min_temperature)),
-                self.min_temperature,
-            )
-        if self.api_base:
-            kwargs.setdefault("api_base", self.api_base)
-        if self.google_api_key:
-            kwargs.setdefault("vertex_credentials", self.google_api_key)
-        if any(self.model.startswith(p) for p in _VERTEX_PREFIXES):
-            for k, v in _resolve_vertex_params().items():
-                kwargs.setdefault(k, v)
-
-        try:
-            response = await litellm.acompletion(
-                model=self.model,
-                messages=messages,
-                api_key=self.api_key,
-                **kwargs,
-            )
-            content: str = response.choices[0].message.content or ""
-            return content
-
-        except litellm.AuthenticationError as exc:
-            _log.warning(
-                "LLM authentication failed (model=%s label=%s): %s",
-                self.model, label or "-", exc,
-            )
-            if any(self.model.startswith(p) for p in _VERTEX_PREFIXES):
-                _log.warning(
-                    "Vertex AI requires ADC or a service-account JSON. "
-                    "Set GOOGLE_APPLICATION_CREDENTIALS=/path/to/sa.json "
-                    "or switch the model to 'gemini/%s' for API-key auth.",
-                    self.model.split("/", 1)[1],
-                )
-            return self._canned_response(prompt)
-
-        except litellm.RateLimitError as exc:
-            _log.warning(
-                "LLM rate limit reached (model=%s label=%s): %s",
-                self.model, label or "-", exc,
-            )
-            return self._canned_response(prompt)
-
-        except litellm.ServiceUnavailableError as exc:
-            _log.warning(
-                "LLM service unavailable (model=%s label=%s): %s",
-                self.model, label or "-", exc,
-            )
-            return self._canned_response(prompt)
-
-        except litellm.BadRequestError as exc:
-            _log.warning(
-                "LLM bad request (model=%s label=%s): %s",
-                self.model, label or "-", exc,
-            )
-            return self._canned_response(prompt)
-
-        except litellm.APIConnectionError as exc:
-            _log.warning(
-                "LLM connection error (model=%s label=%s): %s",
-                self.model, label or "-", exc,
-            )
-            return self._canned_response(prompt)
-
-        except litellm.Timeout as exc:
-            _log.warning(
-                "LLM request timed out (model=%s label=%s): %s",
-                self.model, label or "-", exc,
-            )
-            return self._canned_response(prompt)
-
-        except Exception as exc:
-            _log.warning(
-                "Unexpected LLM error (model=%s label=%s): %s: %s",
-                self.model, label or "-", type(exc).__name__, exc,
-            )
-            return self._canned_response(prompt)
+        chunks: list[str] = []
+        async for chunk in self.complete_stream(prompt, system, label, **kwargs):
+            chunks.append(chunk)
+        return "".join(chunks)
 
     def _canned_response(self, prompt: str) -> str:
         """Return a deterministic template response for *prompt*.
@@ -313,5 +474,5 @@ class LLMClient:
         short = prompt[:80].replace("\n", " ")
         return (
             f"[NUGUARD_CANNED_RESPONSE] Template analysis for: {short!r}. "
-            "Set LITELLM_API_KEY for LLM-enriched results."
+            "Set an API key (e.g. GEMINI_API_KEY) for LLM-enriched results."
         )

@@ -1,8 +1,6 @@
 """Unit tests for nuguard.redteam.executor.chain_assembler.ChainAssembler.sort_steps."""
 from __future__ import annotations
 
-import pytest
-
 from nuguard.models.exploit_chain import ExploitChain, ExploitStep, GoalType, ScenarioType
 from nuguard.redteam.executor.chain_assembler import ChainAssembler
 

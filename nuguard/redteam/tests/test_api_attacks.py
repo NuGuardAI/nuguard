@@ -1,24 +1,11 @@
 """Tests for direct HTTP API attack scenario builders and generator integration."""
 from __future__ import annotations
 
-from datetime import UTC, datetime
-from unittest.mock import AsyncMock, MagicMock, patch
-
-import pytest
-
-from nuguard.models.exploit_chain import GoalType, HTTP_2XX_SENTINEL, ScenarioType
 import uuid as _uuid
+from datetime import UTC, datetime
 
-from nuguard.sbom.models import (
-    AiSbomDocument,
-    Edge,
-    EdgeRelationshipType,
-    Node,
-    NodeMetadata,
-    NodeType,
-    ScanSummary,
-)
-from nuguard.redteam.executor.executor import AttackExecutor, StepResult
+from nuguard.models.exploit_chain import HTTP_2XX_SENTINEL, GoalType, ScenarioType
+from nuguard.redteam.executor.executor import StepResult
 from nuguard.redteam.scenarios.api_attacks import (
     _replace_first_id_param,
     build_auth_bypass,
@@ -26,7 +13,14 @@ from nuguard.redteam.scenarios.api_attacks import (
     build_mass_assignment,
 )
 from nuguard.redteam.scenarios.generator import ScenarioGenerator
-
+from nuguard.sbom.models import (
+    AiSbomDocument,
+    Edge,
+    Node,
+    NodeMetadata,
+    NodeType,
+    ScanSummary,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers

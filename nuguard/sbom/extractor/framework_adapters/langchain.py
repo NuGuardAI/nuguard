@@ -9,10 +9,8 @@ from __future__ import annotations
 import logging
 import uuid
 from pathlib import Path
-from typing import Any
 
 from nuguard.sbom.models import (
-    AccessType,
     Edge,
     EdgeRelationshipType,
     Node,
@@ -102,7 +100,8 @@ class LangChainAdapter:
             return [], []
 
         # Use nuguard's AST parser
-        from nuguard.sbom.ast_parser import parse as ast_parse, ParseResult
+        from nuguard.sbom.ast_parser import ParseResult
+        from nuguard.sbom.ast_parser import parse as ast_parse
 
         pr: ParseResult = ast_parse(source)
         if pr.parse_error:
@@ -141,7 +140,6 @@ class LangChainAdapter:
         # -----------------------------------------------------------------
         try:
             from nuguard.sbom.adapters.python.langgraph import LangGraphAdapter
-            from nuguard.sbom.adapters.base import RelationshipHint
             from nuguard.sbom.types import ComponentType
 
             lg_adapter = LangGraphAdapter()

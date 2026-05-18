@@ -5,13 +5,13 @@ from typing import Any
 
 from .models import ToolResult
 from .plugin_base import ToolPlugin
+from .plugins.aws_security_hub import AwsSecurityHubPlugin
 from .plugins.cyclonedx_exporter import CycloneDxExporter
 from .plugins.dependency import DependencyAnalyzerPlugin
+from .plugins.ghas_uploader import GhasUploaderPlugin
 from .plugins.license_checker import LicenseCheckerPlugin
 from .plugins.markdown_exporter import MarkdownExporterPlugin
 from .plugins.sarif_exporter import SarifExporterPlugin
-from .plugins.aws_security_hub import AwsSecurityHubPlugin
-from .plugins.ghas_uploader import GhasUploaderPlugin
 from .plugins.xray import XrayPlugin
 
 _log = logging.getLogger("toolbox.core")

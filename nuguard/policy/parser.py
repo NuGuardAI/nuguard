@@ -157,7 +157,7 @@ def parse_policy(text: str) -> CognitivePolicy:
         else:
             # Unrecognised section — keep verbatim bullet items (or all lines)
             bullets = _extract_bullets(body)
-            raw_sections[heading] = bullets if bullets else [l for l in body if l.strip()]
+            raw_sections[heading] = bullets if bullets else [line for line in body if line.strip()]
 
     return CognitivePolicy(
         allowed_topics=allowed_topics,

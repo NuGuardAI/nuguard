@@ -1,0 +1,11 @@
+{
+  "hosting": {
+    "target": "blood-donation-agent",
+    "public": "views",
+    "ignore": [
+      "firebase.json",
+      "**/.*",
+      "**/node_modules/**"
+    ]
+  }
+}

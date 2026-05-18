@@ -1,0 +1,17 @@
+{
+  "name": "1b475157-4b1d-41fe-a8c1-b80697173b32",
+  "displayName": "bad words",
+  "description": "block and redirect for bad language",
+  "enabled": true,
+  "action": {
+    "respondImmediately": {
+      "responses": [{
+        "text": "Let\u0027s keep the language clean and appropriate for this, okay? No need for that kind of stuff in the future."
+      }]
+    }
+  },
+  "contentFilter": {
+    "bannedContentsInUserInput": ["damnit", "dammit", "damn", "hell"],
+    "matchType": "WORD_BOUNDARY_STRING_MATCH"
+  }
+}

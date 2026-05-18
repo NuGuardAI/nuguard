@@ -1,0 +1,573 @@
+openapi: 3.0.0
+info:
+  title: Plant Demo Agent API
+  description: API for the plant demo agent that provides shopping cart information, product recommendations, and service quotes from the customer database.
+  version: 1.0.0
+servers:
+  - url: $env_var
+    description: Production server
+paths:
+  /get_cart_information:
+    get:
+      summary: Get Cart Information
+      description: Retrieves the current user's shopping cart information from the CRM.
+      operationId: get_cart_information
+      parameters:
+        - in: query
+          name: customer_id
+          schema:
+            type: string
+          description: Stable internal customer ID.
+        - in: query
+          name: profile_key
+          schema:
+            type: string
+          description: Demo persona key used to resolve a customer.
+        - in: query
+          name: account_number
+          schema:
+            type: string
+          description: External account number used to resolve a customer.
+      responses:
+        '200':
+          description: A successful response with the user's cart information.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetCartResponse'
+
+  /customers:resolve:
+    get:
+      summary: Resolve Customer
+      description: Resolves a customer record using a supported identifier.
+      operationId: resolve_customer
+      parameters:
+        - in: query
+          name: customer_id
+          schema:
+            type: string
+        - in: query
+          name: profile_key
+          schema:
+            type: string
+        - in: query
+          name: account_number
+          schema:
+            type: string
+        - in: query
+          name: email
+          schema:
+            type: string
+        - in: query
+          name: phone
+          schema:
+            type: string
+      responses:
+        '200':
+          description: A customer was resolved successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetCustomerResponse'
+
+  /customers/{customer_id}:
+    get:
+      summary: Get Customer
+      description: Retrieves a customer profile.
+      operationId: get_customer
+      parameters:
+        - in: path
+          name: customer_id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The requested customer profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetCustomerResponse'
+
+  /customers/{customer_id}/appointments:
+    get:
+      summary: Get Customer Appointments
+      description: Retrieves appointment history for a customer.
+      operationId: get_customer_appointments
+      parameters:
+        - in: path
+          name: customer_id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The customer's appointments.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetAppointmentsResponse'
+
+  /customers/{customer_id}/purchase-history:
+    get:
+      summary: Get Purchase History
+      description: Retrieves historical purchases for a customer.
+      operationId: get_purchase_history
+      parameters:
+        - in: path
+          name: customer_id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The customer's purchase history.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetPurchaseHistoryResponse'
+
+  /customers/{customer_id}/loyalty:
+    get:
+      summary: Get Loyalty Summary
+      description: Retrieves a customer's loyalty summary.
+      operationId: get_loyalty_summary
+      parameters:
+        - in: path
+          name: customer_id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The customer's loyalty summary.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetLoyaltyResponse'
+
+  /customers/{customer_id}/cart:
+    get:
+      summary: Get Customer Cart
+      description: Retrieves the active cart for a customer.
+      operationId: get_customer_cart
+      parameters:
+        - in: path
+          name: customer_id
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The customer's active cart.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetCustomerCartResponse'
+
+  /customers/{customer_id}/cart/items:
+    post:
+      summary: Add Cart Item
+      description: Adds an item to the customer's active cart.
+      operationId: add_cart_item
+      parameters:
+        - in: path
+          name: customer_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CartItemMutationRequest'
+      responses:
+        '200':
+          description: The updated cart.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetCustomerCartResponse'
+
+  /customers/{customer_id}/cart/items/{product_id}:
+    patch:
+      summary: Update Cart Item
+      description: Updates or removes an item in the customer's active cart.
+      operationId: update_cart_item
+      parameters:
+        - in: path
+          name: customer_id
+          required: true
+          schema:
+            type: string
+        - in: path
+          name: product_id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CartItemQuantityUpdateRequest'
+      responses:
+        '200':
+          description: The updated cart.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetCustomerCartResponse'
+
+  /get_product_recommendations:
+    get:
+      summary: Get Product Recommendations
+      description: Retrieves product recommendations for the user based on their profile and cart contents.
+      operationId: get_product_recommendations
+      responses:
+        '200':
+          description: A successful response with product recommendations.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetRecommendationsResponse'
+  
+  /get_landscaping_quote:
+    post:
+      summary: Get Landscaping Quote
+      description: Generates a quote for landscaping services.
+      operationId: get_landscaping_quote
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LandscapingQuoteRequest'
+      responses:
+        '200':
+          description: A successful response with the landscaping quote.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GetQuoteResponse'
+
+components:
+  schemas:
+    Address:
+      type: object
+      properties:
+        type:
+          type: string
+          example: billing
+        street:
+          type: string
+          example: 123 Town Lake Blvd.
+        city:
+          type: string
+          example: Austin
+        state:
+          type: string
+          example: TX
+        zip:
+          type: string
+          example: "78702"
+
+    CustomerName:
+      type: object
+      properties:
+        first_name:
+          type: string
+          example: Patrick
+        last_name:
+          type: string
+          example: Marlow
+        display_name:
+          type: string
+          example: Patrick Marlow
+
+    CustomerContact:
+      type: object
+      properties:
+        email:
+          type: string
+          example: patrick@example.com
+        phone:
+          type: string
+          example: +1-702-555-1212
+
+    CustomerMetrics:
+      type: object
+      properties:
+        customer_since:
+          type: string
+          example: 2022-06-10
+        tenure_years:
+          type: integer
+          example: 3
+        loyalty_points:
+          type: integer
+          example: 133
+
+    Customer:
+      type: object
+      properties:
+        customer_id:
+          type: string
+          example: cust-1001
+        profile_key:
+          type: string
+          example: patrick
+        status:
+          type: string
+          example: active
+        external_ids:
+          type: object
+          additionalProperties:
+            type: string
+        name:
+          $ref: '#/components/schemas/CustomerName'
+        contact:
+          $ref: '#/components/schemas/CustomerContact'
+        addresses:
+          type: array
+          items:
+            $ref: '#/components/schemas/Address'
+        preferences:
+          type: object
+          additionalProperties: true
+        segments:
+          type: array
+          items:
+            type: string
+        metrics:
+          $ref: '#/components/schemas/CustomerMetrics'
+        purchase_history:
+          type: array
+          items:
+            $ref: '#/components/schemas/PurchaseRecord'
+        appointments:
+          $ref: '#/components/schemas/CustomerAppointments'
+
+    CartItem:
+      type: object
+      properties:
+        product_id:
+          type: string
+          example: "soil-123"
+        name:
+          type: string
+          example: "Standard Potting Soil"
+        quantity:
+          type: integer
+          example: 1
+        unit_price:
+          type: number
+          format: float
+          example: 14.99
+        category:
+          type: string
+          example: soil
+    
+    CartInformation:
+      type: object
+      properties:
+        cart_id:
+          type: string
+          example: cart-1001
+        currency:
+          type: string
+          example: USD
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CartItem'
+        subtotal:
+          type: number
+          format: float
+          example: 25.98
+        estimated_tax:
+          type: number
+          format: float
+          example: 2.14
+        total:
+          type: number
+          format: float
+          example: 28.12
+
+    CartItemMutationRequest:
+      type: object
+      required:
+        - product_id
+      properties:
+        product_id:
+          type: string
+        name:
+          type: string
+        quantity:
+          type: integer
+          default: 1
+        unit_price:
+          type: number
+          format: float
+        category:
+          type: string
+
+    CartItemQuantityUpdateRequest:
+      type: object
+      required:
+        - quantity
+      properties:
+        quantity:
+          type: integer
+          example: 2
+          
+    GetCartResponse:
+      type: object
+      properties:
+        results:
+          $ref: '#/components/schemas/CartInformation'
+
+    GetCustomerCartResponse:
+      type: object
+      properties:
+        results:
+          $ref: '#/components/schemas/CartInformation'
+
+    GetCustomerResponse:
+      type: object
+      properties:
+        results:
+          $ref: '#/components/schemas/Customer'
+
+    Appointment:
+      type: object
+      properties:
+        appointment_id:
+          type: string
+        type:
+          type: string
+        status:
+          type: string
+        scheduled_date:
+          type: string
+        time_window:
+          type: string
+        location:
+          type: string
+
+    CustomerAppointments:
+      type: object
+      properties:
+        upcoming:
+          type: array
+          items:
+            $ref: '#/components/schemas/Appointment'
+        past:
+          type: array
+          items:
+            $ref: '#/components/schemas/Appointment'
+
+    GetAppointmentsResponse:
+      type: object
+      properties:
+        results:
+          $ref: '#/components/schemas/CustomerAppointments'
+
+    PurchaseRecord:
+      type: object
+      properties:
+        date:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/CartItem'
+        total_amount:
+          type: number
+          format: float
+
+    GetPurchaseHistoryResponse:
+      type: object
+      properties:
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/PurchaseRecord'
+
+    LoyaltySummary:
+      type: object
+      properties:
+        customer_id:
+          type: string
+        loyalty_points:
+          type: integer
+        tenure_years:
+          type: integer
+        status:
+          type: string
+
+    GetLoyaltyResponse:
+      type: object
+      properties:
+        results:
+          $ref: '#/components/schemas/LoyaltySummary'
+
+    RecommendationItem:
+      type: object
+      properties:
+        product_id:
+          type: string
+          example: "soil-456"
+        name:
+          type: string
+          example: "Bloom Booster Potting Mix"
+        description:
+          type: string
+          example: "Provides extra nutrients that Petunias love."
+
+    ProductRecommendations:
+      type: object
+      properties:
+        recommendations:
+          type: array
+          items:
+            $ref: '#/components/schemas/RecommendationItem'
+
+    GetRecommendationsResponse:
+      type: object
+      properties:
+        results:
+          $ref: '#/components/schemas/ProductRecommendations'
+
+    LandscapingQuoteRequest:
+      type: object
+      required:
+        - service_type
+        - amount
+      properties:
+        service_type:
+          type: string
+          description: The type of landscaping service requested.
+          example: "tree trimming"
+        amount:
+          type: integer
+          description: The quantity or area for the service.
+          example: 10
+
+    LandscapingQuote:
+      type: object
+      properties:
+        service_type:
+          type: string
+          example: "landscaping services"
+        amount:
+          type: number
+          format: float
+          example: 200.00
+          
+    GetQuoteResponse:
+      type: object
+      properties:
+        results:
+          $ref: '#/components/schemas/LandscapingQuote'

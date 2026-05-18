@@ -8,20 +8,20 @@
 }
 
 :root {
-    --bg: #0d1117;
-    --bg-surface: #161b22;
-    --bg-card: #1c2128;
-    --bg-card-alt: #21262d;
-    --border: #30363d;
-    --border-mute: #21262d;
-    --text: #f5f9ff;
-    --text-muted: #c2cdd8;
-    --text-dim: #a4b0bb;
-    --accent: #58c4dc;
-    --accent-dim: #1f4f5c;
-    --accent-glow: rgba(88, 196, 220, 0.15);
-    --green: #3fb950;
-    --green-dim: rgba(63, 185, 80, 0.12);
+    --bg: #0b1224;
+    --bg-surface: #111827;
+    --bg-card: #1e293b;
+    --bg-card-alt: #263348;
+    --border: rgba(255, 255, 255, 0.10);
+    --border-mute: rgba(255, 255, 255, 0.06);
+    --text: #f8fafc;
+    --text-muted: #9ca3af;
+    --text-dim: #6b7280;
+    --accent: #22c55e;
+    --accent-dim: rgba(34, 197, 94, 0.12);
+    --accent-glow: rgba(34, 197, 94, 0.15);
+    --green: #22c55e;
+    --green-dim: rgba(34, 197, 94, 0.12);
     --purple: #bc8cff;
     --purple-dim: rgba(188, 140, 255, 0.12);
     --orange: #ffa657;
@@ -34,7 +34,7 @@
     --radius: 10px;
     --radius-lg: 16px;
     --font: 'Inter', system-ui, sans-serif;
-    --mono: 'JetBrains Mono', 'Fira Code', monospace;
+    --mono: ui-monospace, 'SF Mono', Consolas, 'Liberation Mono', Menlo, monospace;
     --max-w: 1160px;
     --nav-h: 64px;
 }
@@ -49,6 +49,8 @@ body {
     color: var(--text);
     line-height: 1.6;
     -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    overflow-x: hidden;
 }
 
 a {
@@ -60,13 +62,46 @@ a:hover {
     text-decoration: underline;
 }
 
+/* ── Scrollbar ────────────────────────────────────────────────────────── */
+::-webkit-scrollbar {
+    width: 8px;
+}
+
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+    background: #334155;
+    border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: #475569;
+}
+
+/* ── Global transitions ───────────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+    transition-property: background-color, border-color, color, fill, stroke, opacity, box-shadow, transform;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    transition-duration: 150ms;
+}
+
+/* ── Focus ────────────────────────────────────────────────────────────── */
+:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
 /* ── Navigation ───────────────────────────────────────────────────────── */
 nav {
     position: sticky;
     top: 0;
     z-index: 100;
     height: var(--nav-h);
-    background: rgba(13, 17, 23, 0.88);
+    background: rgba(11, 18, 36, 0.88);
     backdrop-filter: blur(14px);
     border-bottom: 1px solid var(--border);
     display: flex;
@@ -87,7 +122,7 @@ nav {
 }
 
 .nav-logo {
-    height: 40px;
+    height: 20px;
     width: auto;
     display: block;
     flex-shrink: 0;
@@ -104,7 +139,6 @@ nav {
     height: 28px;
     width: auto;
     display: block;
-    opacity: 0.8;
 }
 
 .nav-links {
@@ -131,7 +165,7 @@ nav {
 
 .nav-cta {
     background: var(--accent) !important;
-    color: #0d1117 !important;
+    color: #0b1224 !important;
     font-weight: 600 !important;
     padding: 0.4rem 1rem !important;
     border-radius: var(--radius-sm);
@@ -160,8 +194,8 @@ nav {
 }
 
 .nav-cta:hover {
-    background: #7dd6e8 !important;
-    color: #0d1117 !important;
+    background: #4ade80 !important;
+    color: #0b1224 !important;
 }
 
 /* ── Layout utils ─────────────────────────────────────────────────────── */
@@ -229,7 +263,7 @@ p {
     align-items: center;
     gap: 0.4rem;
     background: var(--accent);
-    color: #0d1117;
+    color: #0b1224;
     font-weight: 600;
     font-size: 0.95rem;
     padding: 0.7rem 1.5rem;
@@ -239,7 +273,7 @@ p {
 }
 
 .btn-primary:hover {
-    background: #7dd6e8;
+    background: #4ade80;
     text-decoration: none;
     transform: translateY(-1px);
 }
@@ -314,7 +348,7 @@ p {
     position: absolute;
     inset: 0;
     background:
-        radial-gradient(ellipse 70% 60% at 20% 50%, rgba(88, 196, 220, 0.09), transparent),
+        radial-gradient(ellipse 70% 60% at 20% 50%, rgba(34, 197, 94, 0.09), transparent),
         radial-gradient(ellipse 60% 50% at 80% 20%, rgba(188, 140, 255, 0.07), transparent),
         radial-gradient(ellipse 40% 40% at 90% 85%, rgba(63, 185, 80, 0.05), transparent);
     pointer-events: none;
@@ -336,7 +370,7 @@ p {
     align-items: center;
     gap: 0.5rem;
     background: var(--accent-dim);
-    border: 1px solid rgba(88, 196, 220, 0.3);
+    border: 1px solid rgba(34, 197, 94, 0.3);
     border-radius: 999px;
     padding: 0.35rem 1rem;
     font-size: 0.78rem;
@@ -449,11 +483,11 @@ p {
     height: 1px;
     flex: 1;
     max-width: 120px;
-    background: linear-gradient(to right, transparent, rgba(88, 196, 220, 0.35));
+    background: linear-gradient(to right, transparent, rgba(34, 197, 94, 0.35));
 }
 
 .scan-demo-label::after {
-    background: linear-gradient(to left, transparent, rgba(88, 196, 220, 0.35));
+    background: linear-gradient(to left, transparent, rgba(34, 197, 94, 0.35));
 }
 
 .scan-demo-terminal {
@@ -466,7 +500,7 @@ p {
     position: absolute;
     inset: -2px;
     border-radius: calc(var(--radius-lg) + 2px);
-    background: linear-gradient(135deg, rgba(88, 196, 220, 0.22) 0%, rgba(188, 140, 255, 0.13) 50%, transparent 100%);
+    background: linear-gradient(135deg, rgba(34, 197, 94, 0.22) 0%, rgba(188, 140, 255, 0.13) 50%, transparent 100%);
     z-index: 0;
     filter: blur(1px);
 }
@@ -551,7 +585,7 @@ p {
     min-width: 28px;
     border-radius: 50%;
     background: var(--accent-dim);
-    border: 1px solid rgba(88, 196, 220, 0.3);
+    border: 1px solid rgba(34, 197, 94, 0.3);
     display: flex;
     align-items: center;
     justify-content: center;

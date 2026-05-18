@@ -1,0 +1,41 @@
+{
+  "name": "a4bf8c76-90a4-4b2b-8f31-aaee5ad030b7",
+  "displayName": "Product Recommendation - Fiddle Leaf Fig",
+  "scenario": {
+    "task": "Test the agent\u0027s ability to provide a product recommendation for a specific plant. Tell the agent you need the right kind of soil for your Fiddle Leaf Fig. Follow its suggestions to add the recommended product to your cart. Make sure to start every conversation by saying hello in some way.",
+    "scenarioExpectations": [{
+      "toolExpectation": {
+        "expectedToolCall": {
+          "tool": "get_product_recommendations",
+          "args": {
+          }
+        },
+        "mockToolResponse": {
+          "tool": "get_product_recommendations",
+          "response": {
+            "recommendations": {
+              "results": {
+                "recommendations": [{
+                  "description": "Excellent for tropical houseplants like Fiddle Leaf Figs, preventing root rot with superior drainage.",
+                  "name": "Fast-Draining Indoor Potting Mix",
+                  "product_id": "soil-flf-303"
+                }, {
+                  "description": "Formulated with a 3-1-2 NPK ratio to encourage large, healthy leaf growth.",
+                  "name": "Fiddle Leaf Fig Plant Food",
+                  "product_id": "fert-flf-404"
+                }]
+              }
+            },
+            "search_results": {
+              "answer": ["The fiddle-leaf fig (Ficus lyrata) is a broadleaf evergreen tree native to the tropical rainforests of West and Central Africa. It is a popular houseplant in many areas of the United States, growing 2 to 10 feet tall indoors. In its native habitat, it can reach 60-100 feet tall. It thrives in warm, humid conditions with bright, indirect light.\n\nThe plant is best suited for USDA Zones 10-12 for outdoor growth. It is toxic to humans, cats, and dogs if ingested, and its milky sap can irritate the skin."],
+              "search_queries": ["fiddle leaf fig native range", "Ficus lyrata USDA plants"]
+            }
+          }
+        }
+      }
+    }],
+    "maxTurns": 5,
+    "variableOverrides": {
+    }
+  }
+}

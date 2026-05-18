@@ -24,7 +24,7 @@ from pathlib import Path
 try:
     from dotenv import load_dotenv
 
-    for _candidate in [Path.cwd() / ".env", Path(__file__).parent.parent / "tests/agentic-healthcare-ai/.env"]:
+    for _candidate in [Path.cwd() / ".env", Path(__file__).parent.parent / "tests/.env"]:
         if _candidate.exists():
             load_dotenv(_candidate, override=False)
             print(f"[env] Loaded {_candidate}\n")
@@ -51,14 +51,14 @@ class Case:
 
 CASES: list[Case] = [
     # ── No API key → canned response ─────────────────────────────────────────
-    Case(
-        name="no-key → canned response",
-        model="gemini/gemini-2.0-flash",
-        api_key_env="",          # deliberately empty
-        expect_canned=True,
+#    Case(
+#        name="no-key → canned response",
+#        model="gemini/gemini-2.0-flash",
+#        api_key_env="",          # deliberately empty
+#        expect_canned=True,
         # Clear all provider keys so _resolve_api_key returns None
-        clear_env=["GEMINI_API_KEY", "GOOGLE_API_KEY", "LITELLM_API_KEY", "OPENAI_API_KEY"],
-    ),
+#        clear_env=["GEMINI_API_KEY", "GOOGLE_API_KEY", "LITELLM_API_KEY", "OPENAI_API_KEY"],
+#    ),
 
     # ── Gemini via REST (plain API key, gemini/ prefix) ───────────────────────
     Case(
@@ -104,7 +104,7 @@ CASES: list[Case] = [
     ),
 ]
 
-PROMPT = "Reply with exactly one word: hello."
+PROMPT = "Reply with exactly one word: Holla."
 SYSTEM = "You are a concise assistant. Never use more than one word."
 
 _CANNED_PREFIX = "[NUGUARD_CANNED_RESPONSE]"

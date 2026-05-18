@@ -1,0 +1,79 @@
+{
+  "name": "31846d86-1898-44ef-a899-518fbe4573af",
+  "displayName": "Simple Small Convo",
+  "golden": {
+    "turns": [{
+      "steps": [{
+        "userInput": {
+          "text": "hi"
+        }
+      }, {
+        "expectation": {
+          "agentResponse": {
+            "role": "cymbal_retail_agent",
+            "chunks": [{
+              "text": "Hello Patrick! Welcome back to Cymbal Home \u0026 Garden. How can I help you today?"
+            }]
+          }
+        }
+      }]
+    }, {
+      "steps": [{
+        "userInput": {
+          "text": "I want to buy fertilizer"
+        }
+      }, {
+        "expectation": {
+          "agentResponse": {
+            "role": "cymbal_retail_agent",
+            "chunks": [{
+              "text": "We have a great selection of fertilizers. To help me recommend the best one for you, could you tell me what type of plants you\u0027ll be fertilizing?\n"
+            }]
+          }
+        }
+      }]
+    }, {
+      "steps": [{
+        "userInput": {
+          "text": "no thanks"
+        }
+      }, {
+        "expectation": {
+          "agentResponse": {
+            "role": "cymbal_retail_agent",
+            "chunks": [{
+              "text": "Okay, no problem. Is there anything else I can help you with today?\n"
+            }]
+          }
+        }
+      }]
+    }, {
+      "steps": [{
+        "userInput": {
+          "text": "nah I\u0027m good bye"
+        }
+      }, {
+        "expectation": {
+          "agentResponse": {
+            "role": "cymbal_retail_agent",
+            "chunks": [{
+              "text": "You\u0027re welcome. Thanks for shopping with us at Cymbal Home \u0026 Garden. Have a great day!\n"
+            }]
+          }
+        }
+      }, {
+        "expectation": {
+          "toolCall": {
+            "id": "adk-69478306-beb1-48d7-9446-f17251f74ddf",
+            "tool": "end_session",
+            "args": {
+              "reason": "task_completed",
+              "session_escalated": false
+            },
+            "displayName": "end_session"
+          }
+        }
+      }]
+    }]
+  }
+}

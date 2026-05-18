@@ -52,11 +52,15 @@ nuguard analyze --sbom app.sbom.json
 nuguard analyze --sbom app.sbom.json --source .
 nuguard analyze --sbom app.sbom.json --min-severity high
 nuguard analyze --sbom app.sbom.json --output report.md
+nuguard analyze --sbom app.sbom.json --nga                   # NGA rules only (fast)
+nuguard analyze --sbom app.sbom.json --config nuguard.yaml   # load settings from config
 ```
 
 Useful options:
 
-- `--sbom`: required SBOM path
+- `--sbom`: path to AI-SBOM JSON file; can be omitted when `sbom:` is set in `nuguard.yaml` via `--config`
+- `--config`, `-c`: path to `nuguard.yaml`; loads `sbom`, `analyze.min_severity`, and `analyze.nga_only` (CLI flags override)
+- `--nga`: run only NGA structural rules (NGA-001–018); disables all external tool scans
 - `--format`: `markdown`, `json`, or `sarif`
 - `--min-severity`: `critical`, `high`, `medium`, `low`, `info`
 - `--source`: source directory used by Checkov, Trivy, and Semgrep
@@ -325,6 +329,46 @@ nuguard analyze --sbom app.sbom.json --llm
 ```
 
 This requires a working model/API key setup through the repo’s LLM configuration path.
+
+## Quick NGA-only scan
+
+When you want fast structural feedback with no external tools, use `--nga`:
+
+```bash
+nuguard analyze --sbom app.sbom.json --nga
+```
+
+This runs only the 18 NGA structural rules (NGA-001–018) and returns within seconds.
+All other scanners (OSV, Grype, Checkov, Trivy, Semgrep, ATLAS native checks) are
+disabled. ATLAS technique annotations are still included on NGA findings — they are
+produced inline by the NGA runner.
+
+To make NGA-only mode the default in a project, set `analyze.nga_only: true` in
+`nuguard.yaml`:
+
+```yaml
+analyze:
+  nga_only: true
+  min_severity: high
+```
+
+Then run with config:
+
+```bash
+nuguard analyze --sbom app.sbom.json --config nuguard.yaml
+```
+
+A `--min-severity` flag on the command line always overrides the config value.
+
+## Config file support
+
+`--config nuguard.yaml` lets you store per-project analysis defaults. Fields read
+from the `analyze:` section of `nuguard.yaml`:
+
+| Field | CLI equivalent | Description |
+|-------|---------------|-------------|
+| `min_severity` | `--min-severity` | Minimum severity threshold |
+| `nga_only` | `--nga` | Run only NGA structural rules |
 
 ## Common Troubleshooting
 

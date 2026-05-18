@@ -1,0 +1,34 @@
+{
+  "name": "2f519af5-a66e-40a4-ad77-b52cb9a96394",
+  "displayName": "Golden Bank Agent",
+  "rootAgent": "Golden Bank AI Support",
+  "loggingSettings": {
+    "conversationLoggingSettings": {
+    }
+  },
+  "guardrails": ["Safety Guardrail 1774918519560", "Prompt Guardrail 1774918519560"],
+  "variableDeclarations": [{
+    "name": "is_authenticated",
+    "description": "Variable \"is_authenticated\".",
+    "schema": {
+      "type": "STRING"
+    }
+  }, {
+    "name": "user_id",
+    "description": "Variable \"user_id\".",
+    "schema": {
+      "type": "STRING"
+    }
+  }, {
+    "name": "username",
+    "description": "Variable \"username\".",
+    "schema": {
+      "type": "STRING"
+    }
+  }],
+  "dataStoreSettings": {
+  },
+  "timeZoneSettings": {
+    "timeZone": "America/Los_Angeles"
+  }
+}

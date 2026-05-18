@@ -1,0 +1,278 @@
+Preparing Marketing Campaign Google ADK chatbot for NuGuard Testing...
+Log: /workspaces/nuguard-private/tests/apps/ai-agents-google-adk/reports/agentic-test-20260409T002546.log
+Started: 2026-04-09T00:25:46Z
+---
+[04/09/26 00:25:48] DEBUG    Loading config from                                                          
+                             /workspaces/nuguard-private/tests/apps/ai-agents-google-adk/nuguard.yaml     
+Scanning /workspaces/nuguard-private/tests/apps/ai-agents-google-adk …
+SBOM written to 
+/workspaces/nuguard-private/tests/apps/ai-agents-google-adk/reports/marketing-campaign.sbom.json (49 
+nodes, 51 edges)
+     Node Summary     
+┏━━━━━━━━━━━━┳━━━━━━━┓
+┃ Type       ┃ Count ┃
+┡━━━━━━━━━━━━╇━━━━━━━┩
+│ AGENT      │    22 │
+│ AUTH       │     1 │
+│ DATASTORE  │     1 │
+│ DEPLOYMENT │     1 │
+│ FRAMEWORK  │     2 │
+│ MODEL      │     1 │
+│ PRIVILEGE  │     1 │
+│ PROMPT     │    15 │
+│ TOOL       │     5 │
+└────────────┴───────┘
+---
+Compiling Cognitive Policy controls...
+Cognitive Policy Check...
+---
+Running behavior analysis (static + dynamic)...
+[04/09/26 00:26:15] DEBUG    Loading config from                                                          
+                             /workspaces/nuguard-private/tests/apps/ai-agents-google-adk/nuguard.yaml     
+Loaded SBOM: 
+/workspaces/nuguard-private/tests/apps/ai-agents-google-adk/reports/marketing-campaign.sbom.json
+Loaded policy: /workspaces/nuguard-private/tests/apps/ai-agents-google-adk/cognitive_policy.md
+use_llm=True but no llm_client provided; falling back to rule-based
+Running behavior analysis  mode=static+dynamic
+[04/09/26 00:26:17] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash prompt_len=1425      
+                             [behavior:intent_extraction]                                                 
+[04/09/26 00:26:19] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash prompt_len=1429      
+                             [behavior:happy_path_gen]                                                    
+[04/09/26 00:26:23] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash prompt_len=6345      
+                             [behavior:component_coverage_gen]                                            
+_run_scenario turn 1: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:26:41] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash prompt_len=3159      
+                             [behavior:judge]                                                             
+_run_scenario turn 2: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:26:44] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash prompt_len=3156      
+                             [behavior:judge]                                                             
+_run_scenario turn 3: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:26:48] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash prompt_len=3166      
+                             [behavior:judge]                                                             
+_run_scenario turn 1: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:26:52] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash prompt_len=3125      
+                             [behavior:judge]                                                             
+_run_scenario turn 2: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:26:55] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash prompt_len=3121      
+                             [behavior:judge]                                                             
+_run_scenario turn 3: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:26:59] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash prompt_len=3208      
+                             [behavior:judge]                                                             
+_run_scenario turn 1: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:27:03] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash prompt_len=3136      
+                             [behavior:judge]                                                             
+_run_scenario turn 2: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:27:06] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash prompt_len=3158      
+                             [behavior:judge]                                                             
+_run_scenario turn 3: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:27:10] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash prompt_len=3212      
+                             [behavior:judge]                                                             
+_run_scenario turn 1: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:27:14] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash prompt_len=3121      
+                             [behavior:judge]                                                             
+_run_scenario turn 2: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:27:17] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash prompt_len=3133      
+                             [behavior:judge]                                                             
+_run_scenario turn 3: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:27:20] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash prompt_len=3184      
+                             [behavior:judge]                                                             
+_run_scenario turn 1: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:27:25] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash prompt_len=3041      
+                             [behavior:judge]                                                             
+_run_scenario turn 2: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:27:28] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash prompt_len=3288      
+                             [behavior:judge]                                                             
+_run_scenario turn 3: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:27:32] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash prompt_len=3220      
+                             [behavior:judge]                                                             
+_run_scenario turn 4: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:27:35] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash prompt_len=3170      
+                             [behavior:judge]                                                             
+_run_scenario turn 1: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:27:40] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash prompt_len=3045      
+                             [behavior:judge]                                                             
+_run_scenario turn 2: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:27:43] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash prompt_len=3190      
+                             [behavior:judge]                                                             
+_run_scenario turn 3: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:27:46] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash prompt_len=3195      
+                             [behavior:judge]                                                             
+_run_scenario turn 4: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:27:50] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash prompt_len=3187      
+                             [behavior:judge]                                                             
+_run_scenario turn 1: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:27:54] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash prompt_len=3036      
+                             [behavior:judge]                                                             
+_run_scenario turn 2: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:27:58] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash prompt_len=3298      
+                             [behavior:judge]                                                             
+_run_scenario turn 3: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:28:01] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash prompt_len=3197      
+                             [behavior:judge]                                                             
+_run_scenario turn 1: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:28:06] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash prompt_len=3015      
+                             [behavior:judge]                                                             
+_run_scenario turn 2: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:28:09] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash prompt_len=3125      
+                             [behavior:judge]                                                             
+_run_scenario turn 3: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:28:13] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash prompt_len=3151      
+                             [behavior:judge]                                                             
+_run_scenario turn 1: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:28:17] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash prompt_len=3023      
+                             [behavior:judge]                                                             
+_run_scenario turn 2: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:28:21] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash prompt_len=3151      
+                             [behavior:judge]                                                             
+_run_scenario turn 3: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:28:24] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash prompt_len=3214      
+                             [behavior:judge]                                                             
+_run_scenario turn 1: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:28:28] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash prompt_len=3023      
+                             [behavior:judge]                                                             
+_run_scenario turn 2: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:28:32] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash prompt_len=3138      
+                             [behavior:judge]                                                             
+_run_scenario turn 3: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:28:35] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash prompt_len=3240      
+                             [behavior:judge]                                                             
+_run_scenario turn 1: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:28:39] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash prompt_len=3010      
+                             [behavior:judge]                                                             
+_run_scenario turn 2: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:28:43] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash prompt_len=3148      
+                             [behavior:judge]                                                             
+_run_scenario turn 3: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:28:47] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash         
+                             prompt_len=3209 [behavior:judge]                                
+_run_scenario turn 1: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:28:51] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash         
+                             prompt_len=3013 [behavior:judge]                                
+_run_scenario turn 2: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:28:54] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash         
+                             prompt_len=3211 [behavior:judge]                                
+_run_scenario turn 3: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:28:57] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash         
+                             prompt_len=3180 [behavior:judge]                                
+_run_scenario turn 1: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:29:02] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash         
+                             prompt_len=3061 [behavior:judge]                                
+_run_scenario turn 2: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:29:06] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash         
+                             prompt_len=3239 [behavior:judge]                                
+_run_scenario turn 3: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:29:09] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash         
+                             prompt_len=3195 [behavior:judge]                                
+_run_scenario turn 1: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:29:13] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash         
+                             prompt_len=3028 [behavior:judge]                                
+_run_scenario turn 2: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:29:16] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash         
+                             prompt_len=3199 [behavior:judge]                                
+_run_scenario turn 3: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:29:20] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash         
+                             prompt_len=3185 [behavior:judge]                                
+_run_scenario turn 1: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:29:24] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash         
+                             prompt_len=3022 [behavior:judge]                                
+_run_scenario turn 2: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:29:28] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash         
+                             prompt_len=3154 [behavior:judge]                                
+_run_scenario turn 3: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:29:31] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash         
+                             prompt_len=3161 [behavior:judge]                                
+_run_scenario turn 1: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:29:36] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash         
+                             prompt_len=3002 [behavior:judge]                                
+_run_scenario turn 2: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:29:39] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash         
+                             prompt_len=3147 [behavior:judge]                                
+_run_scenario turn 3: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:29:43] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash         
+                             prompt_len=3162 [behavior:judge]                                
+_run_scenario turn 1: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:29:47] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash         
+                             prompt_len=3021 [behavior:judge]                                
+_run_scenario turn 2: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:29:51] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash         
+                             prompt_len=3148 [behavior:judge]                                
+_run_scenario turn 3: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:29:54] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash         
+                             prompt_len=3171 [behavior:judge]                                
+_run_scenario turn 1: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:29:59] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash         
+                             prompt_len=3049 [behavior:judge]                                
+_run_scenario turn 2: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:30:03] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash         
+                             prompt_len=3284 [behavior:judge]                                
+_run_scenario turn 3: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:30:06] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash         
+                             prompt_len=3190 [behavior:judge]                                
+_run_scenario turn 1: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:30:11] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash         
+                             prompt_len=3028 [behavior:judge]                                
+_run_scenario turn 2: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:30:14] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash         
+                             prompt_len=3188 [behavior:judge]                                
+_run_scenario turn 3: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:30:17] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash         
+                             prompt_len=3197 [behavior:judge]                                
+_run_scenario turn 1: send failed: TargetAppClient.send() got an unexpected keyword argument 'endpoint'
+[04/09/26 00:30:22] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash         
+                             prompt_len=3061 [behavior:judge]                                
+╭──────────────────────────── Traceback (most recent call last) ────────────────────────────╮
+│ /workspaces/nuguard-private/nuguard/cli/commands/behavior.py:93 in behavior_command       │
+│                                                                                           │
+│    90 │   elif dynamic and not static:                                                    │
+│    91 │   │   effective_mode = "dynamic"                                                  │
+│    92 │                                                                                   │
+│ ❱  93 │   asyncio.run(                                                                    │
+│    94 │   │   _run_behavior(                                                              │
+│    95 │   │   │   config_path=config,                                                     │
+│    96 │   │   │   mode=effective_mode,                                                    │
+│                                                                                           │
+│ /usr/lib/python3.12/asyncio/runners.py:194 in run                                         │
+│                                                                                           │
+│   191 │   │   │   "asyncio.run() cannot be called from a running event loop")             │
+│   192 │                                                                                   │
+│   193 │   with Runner(debug=debug, loop_factory=loop_factory) as runner:                  │
+│ ❱ 194 │   │   return runner.run(main)                                                     │
+│   195                                                                                     │
+│   196                                                                                     │
+│   197 def _cancel_all_tasks(loop):                                                        │
+│                                                                                           │
+│ /usr/lib/python3.12/asyncio/runners.py:118 in run                                         │
+│                                                                                           │
+│   115 │   │                                                                               │
+│   116 │   │   self._interrupt_count = 0                                                   │
+│   117 │   │   try:                                                                        │
+│ ❱ 118 │   │   │   return self._loop.run_until_complete(task)                              │
+│   119 │   │   except exceptions.CancelledError:                                           │
+│   120 │   │   │   if self._interrupt_count > 0:                                           │
+│   121 │   │   │   │   uncancel = getattr(task, "uncancel", None)                          │
+│                                                                                           │
+│ /usr/lib/python3.12/asyncio/base_events.py:687 in run_until_complete                      │
+│                                                                                           │
+│    684 │   │   if not future.done():                                                      │
+│    685 │   │   │   raise RuntimeError('Event loop stopped before Future completed.')      │
+│    686 │   │                                                                              │
+│ ❱  687 │   │   return future.result()                                                     │
+│    688 │                                                                                  │
+│    689 │   def stop(self):                                                                │
+│    690 │   │   """Stop running the event loop.                                            │
+│                                                                                           │
+│ /workspaces/nuguard-private/nuguard/cli/commands/behavior.py:224 in _run_behavior         │
+│                                                                                           │
+│   221 │   │   raise typer.Exit(code=2)                                                    │
+│   222 │                                                                                   │
+│   223 │   # 8. Output report                                                              │
+│ ❱ 224 │   meta = ReportMeta(                                                              │
+│   225 │   │   config_path=str(config_path or ""),                                         │
+│   226 │   │   sbom_path=str(sbom_path or ""),                                             │
+│   227 │   │   policy_path=str(resolved_policy_path or ""),                                │
+╰───────────────────────────────────────────────────────────────────────────────────────────╯
+TypeError: ReportMeta.__init__() got an unexpected keyword argument 'config_path'
+---
+Done: 2026-04-09T00:30:23Z
+Log saved to: /workspaces/nuguard-private/tests/apps/ai-agents-google-adk/reports/agentic-test-20260409T002546.log
+Report:       /workspaces/nuguard-private/tests/apps/ai-agents-google-adk/reports/marketing-campaign-behavior.md

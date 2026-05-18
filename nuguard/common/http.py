@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import httpx
 
+from nuguard import __version__
+
 
 def make_http_client(timeout: float = 30.0, retries: int = 3) -> httpx.AsyncClient:
     """Create a configured async httpx client.
@@ -21,7 +23,7 @@ def make_http_client(timeout: float = 30.0, retries: int = 3) -> httpx.AsyncClie
         timeout=httpx.Timeout(timeout),
         transport=transport,
         headers={
-            "User-Agent": "nuguard/0.2.0 (https://github.com/NuGuardAI/nuguard-oss)",
+            "User-Agent": f"nuguard/{__version__} (https://github.com/NuGuardAI/nuguard-oss)",
         },
         follow_redirects=True,
     )

@@ -12,11 +12,10 @@ import operator
 from typing import Annotated, TypedDict
 
 from langchain_anthropic import ChatAnthropic
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import SystemMessage
+from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 from langgraph.prebuilt import ToolNode, create_react_agent
-
 
 # ── State ────────────────────────────────────────────────────────────────────
 

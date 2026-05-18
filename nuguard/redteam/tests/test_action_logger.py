@@ -4,8 +4,6 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-import pytest
-
 from nuguard.redteam.target.action_logger import ActionLogger
 
 
@@ -117,5 +115,5 @@ def test_jsonl_multiple_calls_write_multiple_lines(tmp_path: Path) -> None:
     logger = ActionLogger(log_path=log_file)
     _log_one(logger, chain_id="c1", step_id="s1")
     _log_one(logger, chain_id="c2", step_id="s2")
-    lines = [l for l in log_file.read_text().strip().split("\n") if l]
+    lines = [line for line in log_file.read_text().strip().split("\n") if line]
     assert len(lines) == 2

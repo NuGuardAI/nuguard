@@ -124,13 +124,19 @@ def _materialize_fixture(name: str) -> Path:
 
 
 def _nuguard_cmd(*args: str) -> list[str]:
-    """Build a nuguard CLI command using uv run."""
-    return [sys.executable, "-m", "uv", "run", "nuguard", *args]
+    """Build a nuguard CLI command.
+
+    Prefer ``uv run nuguard`` when uv is available; otherwise invoke the CLI
+    module directly with the current interpreter for local-dev environments.
+    """
+    if shutil.which("uv"):
+        return ["uv", "run", "nuguard", *args]
+    return [sys.executable, "-m", "nuguard.cli.main", *args]
 
 
 def _run_nuguard(*args: str, cwd: Path | None = None, timeout: int = 120) -> subprocess.CompletedProcess:  # type: ignore[type-arg]
     """Run a nuguard CLI command and return the completed process."""
-    cmd = ["uv", "run", "nuguard", *args]
+    cmd = _nuguard_cmd(*args)
     return subprocess.run(
         cmd,
         cwd=str(cwd or REPO_ROOT),
@@ -181,7 +187,7 @@ def test_sbom_generate_from_fixture(fixture_name: str, tmp_path: Path) -> None:
         assert sbom_out.exists(), f"SBOM output not written: {sbom_out}"
         assert sbom_out.stat().st_size > 100, f"SBOM output too small: {sbom_out}"
 
-        sbom = json.loads(sbom_out.read_text())
+        sbom = json.loads(sbom_out.read_text(encoding="utf-8"))
         nodes = sbom.get("nodes", [])
         assert len(nodes) >= 1, (
             f"SBOM for {fixture_name} has no nodes — extraction likely failed"

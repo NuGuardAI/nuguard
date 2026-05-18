@@ -49,7 +49,7 @@ def test_ddgs_direct_usage_detected(tmp_path):
     )
     doc = AiSbomExtractor().extract_from_path(tmp_path, _PY_ONLY)
     tool_nodes = [n for n in doc.nodes if n.component_type == ComponentType.TOOL]
-    assert tool_nodes, f"Expected DuckDuckGo TOOL node; got no TOOL nodes"
+    assert tool_nodes, "Expected DuckDuckGo TOOL node; got no TOOL nodes"
     adapters_seen = {n.metadata.extras.get("adapter") for n in tool_nodes}
     assert "tool_search" in adapters_seen, (
         f"Expected tool_search adapter; got adapters: {adapters_seen}"
@@ -154,7 +154,7 @@ def test_playwright_in_agent_code_detected(tmp_path):
     )
     doc = AiSbomExtractor().extract_from_path(tmp_path, _PY_ONLY)
     tool_nodes = [n for n in doc.nodes if n.component_type == ComponentType.TOOL]
-    assert tool_nodes, f"Expected Playwright TOOL node in agent code; got none"
+    assert tool_nodes, "Expected Playwright TOOL node in agent code; got none"
     adapters_seen = {n.metadata.extras.get("adapter") for n in tool_nodes}
     assert "tool_browser_automation" in adapters_seen, (
         f"Expected tool_browser_automation adapter; got: {adapters_seen}"
@@ -190,7 +190,7 @@ def test_tavily_search_detected(tmp_path):
     )
     doc = AiSbomExtractor().extract_from_path(tmp_path, _PY_ONLY)
     tool_nodes = [n for n in doc.nodes if n.component_type == ComponentType.TOOL]
-    assert tool_nodes, f"Expected Tavily TOOL node; got none"
+    assert tool_nodes, "Expected Tavily TOOL node; got none"
     adapters_seen = {n.metadata.extras.get("adapter") for n in tool_nodes}
     assert "tool_search" in adapters_seen, (
         f"Expected tool_search adapter; got: {adapters_seen}"

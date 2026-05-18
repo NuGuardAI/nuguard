@@ -12,7 +12,6 @@ import ast
 import logging
 import uuid
 from pathlib import Path
-from typing import Any
 
 from nuguard.sbom.models import Edge, EdgeRelationshipType, Node, NodeMetadata, NodeType
 
@@ -22,6 +21,12 @@ _CONFIDENCE = 0.90
 
 # Classes that map to AGENT nodes
 _AGENT_CLASSES = {"FastAPI", "APIRouter"}
+
+# Return type annotations that indicate a streaming (SSE) response.
+_STREAMING_RETURN_TYPES: frozenset[str] = frozenset({
+    "StreamingResponse",
+    "EventSourceResponse",
+})
 
 # Classes that map to AUTH nodes with their auth_type
 _AUTH_CLASSES = {
@@ -63,6 +68,19 @@ def _annotation_str(node: ast.expr) -> str:
     if isinstance(node, ast.Subscript):
         return f"{_annotation_str(node.value)}[...]"
     return ""
+
+
+def _return_type_is_streaming(func_def: ast.FunctionDef | ast.AsyncFunctionDef) -> bool:
+    """Return True when the function's return annotation indicates streaming output.
+
+    Checks the return annotation for ``StreamingResponse`` or
+    ``EventSourceResponse`` (both by name and as ``Response`` subtype unions).
+    """
+    ret = func_def.returns
+    if ret is None:
+        return False
+    ret_str = _annotation_str(ret)
+    return any(t in ret_str for t in _STREAMING_RETURN_TYPES)
 
 
 def _collect_model_schemas(tree: ast.AST) -> dict[str, dict[str, str]]:
@@ -249,6 +267,9 @@ class FastApiAdapter:
                     node, model_schemas
                 )
 
+                # Detect streaming (SSE) output from the return type annotation
+                is_streaming = _return_type_is_streaming(node)
+
                 ep_node = Node(
                     id=node_id,
                     name=func_name,
@@ -263,6 +284,7 @@ class FastApiAdapter:
                         chat_payload_key=chat_key,
                         chat_payload_list=chat_list,
                         response_text_key=resp_key,
+                        transport="sse" if is_streaming else None,
                     ),
                 )
                 nodes.append(ep_node)

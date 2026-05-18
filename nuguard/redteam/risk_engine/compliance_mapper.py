@@ -1,7 +1,7 @@
 """Maps goal types and scenario types to compliance framework references."""
 from __future__ import annotations
 
-from nuguard.models.exploit_chain import GoalType, ScenarioType
+from nuguard.models.exploit_chain import GoalType
 
 _OWASP_LLM: dict[GoalType, str] = {
     GoalType.PROMPT_DRIVEN_THREAT: "LLM01 – Prompt Injection",
@@ -11,6 +11,7 @@ _OWASP_LLM: dict[GoalType, str] = {
     GoalType.POLICY_VIOLATION: "LLM01 – Prompt Injection",
     GoalType.MCP_TOXIC_FLOW: "LLM02 – Insecure Output Handling",
     GoalType.API_ATTACK: "LLM05 – Improper Output Handling",
+    GoalType.AGENTIC_TRUST_ABUSE: "LLM08 – Excessive Agency",
 }
 
 _OWASP_ASI: dict[GoalType, str] = {
@@ -21,6 +22,7 @@ _OWASP_ASI: dict[GoalType, str] = {
     GoalType.MCP_TOXIC_FLOW: "ASI04 – Agentic Supply Chain",
     GoalType.DATA_EXFILTRATION: "ASI10 – Rogue Agents",
     GoalType.POLICY_VIOLATION: "ASI09 – Human-Agent Trust Exploitation",
+    GoalType.AGENTIC_TRUST_ABUSE: "ASI03 – Identity and Privilege Abuse",
 }
 
 

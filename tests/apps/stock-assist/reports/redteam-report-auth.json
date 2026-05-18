@@ -1,0 +1,15 @@
+{
+  "_meta": {
+    "generated_at": "2026-04-03T20:45:38-07:00",
+    "llm": null,
+    "verbose": true,
+    "target": "http://127.0.0.1:5001/api/chat/queue",
+    "finding_triggers": {
+      "canary_hits": true,
+      "policy_violations": true,
+      "critical_success_hits": true,
+      "any_inject_success": false
+    }
+  },
+  "findings": []
+}

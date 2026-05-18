@@ -1,0 +1,20 @@
+[04/14/26 11:09:28] DEBUG    Loading config from                                
+                             tests/apps/stateset-icommerce/nuguard-redteam-with-
+                             llm-openai.yaml                                    
+[04/14/26 11:09:28] INFO     Loading compiled policy controls from              
+                             /Users/ganesh/work/nuguard/nuguard-private/tests/ap
+                             ps/stateset-icommerce/cognitive_policy.json        
+[04/14/26 11:09:31] DEBUG    LLMClient.complete_stream model=openai/gpt-4.1-mini
+                             prompt_len=765 [happy-path chain=0bd245bc]         
+                    DEBUG    LLMClient.complete_stream model=openai/gpt-4.1-mini
+                             prompt_len=762 [happy-path chain=f8812f13]         
+                    DEBUG    LLMClient.complete_stream model=openai/gpt-4.1-mini
+                             prompt_len=765 [happy-path chain=8ad1e422]         
+                    DEBUG    LLMClient.complete_stream model=openai/gpt-4.1-mini
+                             prompt_len=765 [happy-path chain=ab3fa888]         
+                    DEBUG    LLMClient.complete_stream model=openai/gpt-4.1-mini
+                             prompt_len=765 [happy-path chain=b48fe20f]         
+[04/14/26 11:11:58] DEBUG    LLMClient.complete_stream model=openai/gpt-4.1     
+                             prompt_len=2288 [response-eval |                   
+                             goal=DATA_EXFILTRATION payload_len=113             
+                             response_len=870]                                  

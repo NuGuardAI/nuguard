@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
     from nuguard.common.auth import AuthConfig
+    from nuguard.config import RedteamFindingTriggers
 
 import typer
 
@@ -27,7 +28,7 @@ redteam_app = typer.Typer(
 def redteam(
     ctx: typer.Context,
     config_path: Optional[Path] = typer.Option(
-        None, "--config", help="Path to nuguard.yaml config file."
+        None, "--config", "-c", help="Path to nuguard.yaml config file."
     ),
     sbom: Optional[Path] = typer.Option(
         None, "--sbom", help="Path to AI-SBOM JSON file."
@@ -75,10 +76,10 @@ def redteam(
         help="Minimum pre-impact score [0-10] for scenario inclusion.",
     ),
     output: Optional[Path] = typer.Option(
-        None, "--output", help="Write findings JSON to this path."
+        None, "--output", "-o", help="Write findings JSON to this path."
     ),
     format: str = typer.Option(
-        "text", "--format", help="Output format: text | json | markdown | sarif."
+        "text", "--format", "-f", help="Output format: text | json | markdown | sarif."
     ),
     fail_on: str = typer.Option(
         "high",
@@ -98,6 +99,12 @@ def redteam(
     ),
     guided_concurrency: Optional[int] = typer.Option(
         None, "--guided-concurrency", help="Max parallel guided conversations (default: 3)."
+    ),
+    verbose: Optional[bool] = typer.Option(
+        None,
+        "--verbose/--no-verbose",
+        "-v/-V",
+        help="Print detailed turn traces.  Overrides verbose setting in nuguard.yaml.",
     ),
 ) -> None:
     """Run dynamic red-team testing against a live AI application.
@@ -133,6 +140,13 @@ def redteam(
     effective_guided = guided if guided is not None else cfg.redteam_guided_conversations
     effective_guided_max_turns = guided_max_turns if guided_max_turns is not None else cfg.redteam_guided_max_turns
     effective_guided_concurrency = guided_concurrency if guided_concurrency is not None else cfg.redteam_guided_concurrency
+    effective_guided_mutation_mode = cfg.redteam_guided_mutation_mode
+    effective_verbose = verbose if verbose is not None else cfg.redteam_verbose
+    finding_triggers = cfg.resolved_redteam_finding_triggers()
+    if not finding_triggers.any_enabled():
+        typer.echo(
+            "Warning: all redteam finding triggers are disabled; scans may produce empty findings by design."
+        )
 
     # Validate SBOM
     if not sbom_path or not sbom_path.exists():
@@ -163,7 +177,7 @@ def redteam(
         raise typer.Exit(code=1)
 
     try:
-        findings = asyncio.run(
+        findings, llm_remediations, scenario_records, scan_outcome, config_notes = asyncio.run(
             _run_redteam(
                 sbom_doc=sbom_doc,
                 sbom_path=sbom_path,
@@ -173,7 +187,8 @@ def redteam(
                 profile=effective_profile,
                 min_impact_score=effective_min_impact,
                 scenario_filter=effective_scenarios,
-                auth_header=cfg.redteam_auth_header,
+                auth_config=cfg.resolved_auth_config(),
+                headers_override=cfg.redteam_headers,
                 source_dir=source_dir,
                 launch=launch,
                 chat_path=cfg.target_endpoint,
@@ -183,11 +198,28 @@ def redteam(
                 guided_conversations=effective_guided,
                 guided_max_turns=effective_guided_max_turns,
                 guided_concurrency=effective_guided_concurrency,
+                guided_mutation_mode=effective_guided_mutation_mode,
+                tree_breadth=cfg.redteam_tree_breadth,
+                tree_max_depth=cfg.redteam_tree_max_depth,
                 strict_outcome=cfg.redteam_strict_outcome,
+                credentials=cfg.redteam_credentials or None,
                 redteam_llm_model=cfg.redteam_llm_model,
                 redteam_llm_api_key=cfg.redteam_llm_api_key,
-                eval_llm_model=cfg.redteam_eval_llm_model,
-                eval_llm_api_key=cfg.redteam_eval_llm_api_key,
+                redteam_llm_api_base=cfg.redteam_llm_api_base,
+                eval_llm_model=cfg.redteam_eval_llm_model or cfg.litellm_model or None,
+                eval_llm_api_key=cfg.redteam_eval_llm_api_key or cfg.litellm_api_key or None,
+                eval_llm_api_base=cfg.redteam_eval_llm_api_base,
+                prompt_cache_dir=cfg.redteam_prompt_cache_dir,
+                # ^ eval_llm falls back to top-level llm.model/api_key when redteam.eval_llm is not set
+                finding_triggers=finding_triggers,
+                verbose=effective_verbose,
+                scenario_timeout=cfg.redteam_scenario_timeout,
+                concurrency=cfg.redteam_concurrency,
+                turn_delay_seconds=cfg.redteam_turn_delay_seconds,
+                scenario_delay_seconds=cfg.redteam_scenario_delay_seconds,
+                similar_miss_threshold=cfg.redteam_similar_miss_threshold,
+                skip_discovery=cfg.redteam_skip_discovery,
+                discovery_max_turns=cfg.redteam_discovery_max_turns,
             )
         )
     except Exception as exc:
@@ -214,18 +246,81 @@ def redteam(
     llm_models = [m for m in [cfg.redteam_llm_model, cfg.redteam_eval_llm_model] if m]
     meta = ReportMeta(
         llm_models=llm_models,
-        verbose=cfg.redteam_verbose,
+        verbose=effective_verbose,
         target_url=target_url or "",
         target_endpoint=cfg.target_endpoint or "/chat",
+        finding_triggers=finding_triggers.model_dump(),
+        scan_profile=profile,
     )
-    _print_findings(findings, effective_format, meta)
+    # Synthesize per-SBOM-node remediation artefacts — best-effort, never
+    # blocks the report if it fails.  The synthesizer consults the SBOM to
+    # produce concrete system-prompt patches, guardrail specs, and
+    # architectural changes targeted at each affected component.
+    _cognitive_policy = None
+    if policy_path and policy_path.exists():
+        try:
+            from nuguard.policy.parser import parse_policy as _parse_policy  # noqa: PLC0415
+            _cognitive_policy = _parse_policy(policy_path.read_text())
+        except Exception:
+            pass
+    remediation_plan = _build_redteam_remediation_plan(
+        findings, sbom_doc, cognitive_policy=_cognitive_policy
+    )
+
+    _print_findings(findings, effective_format, meta, remediation_plan=remediation_plan,
+                    scenario_records=scenario_records, scan_outcome=scan_outcome)
     if output:
         if effective_format == "markdown":
-            output.write_text(_findings_to_markdown(findings, meta), encoding="utf-8")
+            output.write_text(
+                _findings_to_markdown(findings, meta, remediation_plan=remediation_plan,
+                                      scenario_records=scenario_records),
+                encoding="utf-8",
+            )
         else:
-            payload = {"_meta": meta.to_dict(), "findings": [f.model_dump() for f in findings]}
+            payload: dict = {
+                "_meta": meta.to_dict(),
+                "scan_outcome": scan_outcome,
+                "findings": [f.model_dump() for f in findings],
+                "remediation_plan": [a.model_dump() for a in remediation_plan],
+            }
+            if config_notes:
+                payload["config_notes"] = config_notes
             output.write_text(json.dumps(payload, indent=2, default=str))
         typer.echo(f"Findings written to {output}")
+
+        # Write machine-readable remediation plan alongside the main output
+        if llm_remediations and findings:
+            from nuguard.output.json_generator import write_remediation_plan as _write_rp
+            rp_path = output.parent / (output.stem + ".remediation-plan.json")
+            try:
+                _write_rp(
+                    findings=findings,
+                    remediations=llm_remediations,
+                    output_path=rp_path,
+                    target_url=target_url or "",
+                )
+                typer.echo(f"Remediation plan written to {rp_path}")
+            except Exception as exc:
+                _log.warning("Failed to write remediation plan: %s", exc)
+
+    # Emit pytest regression test files if configured
+    if cfg.emit_pytest and findings:
+        from pathlib import Path as _Path  # noqa: PLC0415
+
+        from nuguard.output.pytest_emitter import emit_regression_tests  # noqa: PLC0415
+        try:
+            written = emit_regression_tests(
+                findings=findings,
+                target_url=target_url or "",
+                output_dir=_Path(cfg.emit_pytest_dir),
+            )
+            if written:
+                typer.echo(
+                    f"Regression tests written to {cfg.emit_pytest_dir}/ "
+                    f"({len(written)} file(s))"
+                )
+        except Exception as exc:
+            _log.warning("Failed to emit pytest regression tests: %s", exc)
 
     # Exit code
     _fail_on_severity(findings, effective_fail_on)
@@ -259,7 +354,8 @@ async def _run_redteam(
     profile: str,
     min_impact_score: float,
     scenario_filter: list[str] | None = None,
-    auth_header: str | None = None,
+    auth_config: "AuthConfig | None" = None,
+    headers_override: dict[str, str] | None = None,
     source_dir: Path | None = None,
     launch: bool = False,
     chat_path: str = "/chat",
@@ -269,42 +365,46 @@ async def _run_redteam(
     guided_conversations: bool = True,
     guided_max_turns: int = 12,
     guided_concurrency: int = 3,
+    guided_mutation_mode: str = "hard",
+    tree_breadth: int = 0,
+    tree_max_depth: int = 0,
     strict_outcome: bool = False,
     redteam_llm_model: str | None = None,
     redteam_llm_api_key: str | None = None,
+    redteam_llm_api_base: str | None = None,
     eval_llm_model: str | None = None,
     eval_llm_api_key: str | None = None,
-) -> list:
-    """Async inner function: optionally launch the app, then run the orchestrator."""
+    eval_llm_api_base: str | None = None,
+    prompt_cache_dir: str | None = None,
+    finding_triggers: "RedteamFindingTriggers | None" = None,
+    verbose: bool = False,
+    credentials: dict[str, str] | None = None,
+    scenario_timeout: float = 300.0,
+    concurrency: int = 5,
+    turn_delay_seconds: float = 0.0,
+    scenario_delay_seconds: float = 0.0,
+    similar_miss_threshold: int = 4,
+    skip_discovery: bool = False,
+    discovery_max_turns: int = 3,
+) -> tuple[list, dict[str, str], list, str, list[str]]:
     from nuguard.models.policy import CognitivePolicy
-    from nuguard.redteam.enrichment import maybe_auto_enrich_sbom
     from nuguard.redteam.target.canary import CanaryConfig
 
     # Default behavior: auto-enrich low-confidence SBOMs before scenario generation.
-    try:
-        if hasattr(sbom_doc, "nodes") and hasattr(sbom_doc, "edges"):
-            enrichment = await maybe_auto_enrich_sbom(
-                sbom=sbom_doc,  # type: ignore[arg-type]
-                sbom_path=sbom_path,
-                target_url=target_url,
-            )
-            sbom_doc = enrichment.sbom
-            if enrichment.enriched:
-                msg = (
-                    "  SBOM auto-enrichment applied: "
-                    f"confidence {enrichment.confidence_before:.2f} -> "
-                    f"{enrichment.confidence_after:.2f}"
-                )
-                if enrichment.artifact_path:
-                    msg += f" (artifact: {enrichment.artifact_path})"
-                typer.echo(msg)
-            else:
-                _log.info(
-                    "SBOM auto-enrichment skipped (confidence %.2f)",
-                    enrichment.confidence_before,
-                )
-    except Exception as exc:
-        _log.warning("SBOM auto-enrichment failed, continuing with baseline SBOM: %s", exc)
+    if hasattr(sbom_doc, "nodes") and hasattr(sbom_doc, "edges"):
+        from nuguard.cli.common import enrich_sbom_for_run
+
+        sbom_doc = await enrich_sbom_for_run(
+            sbom=sbom_doc,  # type: ignore[arg-type]
+            sbom_path=sbom_path,
+            target_url=target_url,
+            llm_enabled=bool(redteam_llm_model or eval_llm_model),
+            llm_model=redteam_llm_model or eval_llm_model,
+            llm_api_key=redteam_llm_api_key or eval_llm_api_key,
+            llm_api_base=redteam_llm_api_base or eval_llm_api_base,
+            probe_auth_header=auth_config.header if (auth_config and auth_config.type != "none") else None,
+            log_prefix="redteam",
+        )
 
     # Load policy + compiled controls
     cognitive_policy: CognitivePolicy | None = None
@@ -339,10 +439,17 @@ async def _run_redteam(
         except Exception as exc:
             _log.warning("Could not load canary config: %s", exc)
 
-    # Resolve auth config — structured AuthConfig replaces the legacy inline header split
-    from nuguard.common.auth import AuthConfig
-    auth_config = AuthConfig.from_header_string(auth_header) if auth_header else AuthConfig(type="none")
-    extra_headers: dict[str, str] = auth_config.to_headers()
+    # Resolve auth and runtime headers with precedence:
+    # 1) explicit full header map override
+    # 2) structured/legacy auth config
+    from nuguard.common.auth_runtime import resolve_auth_runtime
+
+    auth_runtime = resolve_auth_runtime(
+        auth_config=auth_config,
+        headers_override=headers_override,
+    )
+    auth_config = auth_runtime.auth_config
+    extra_headers: dict[str, str] = auth_runtime.initial_headers
 
     # Auto-launch the app if requested
     if launch:
@@ -379,13 +486,29 @@ async def _run_redteam(
                 guided_conversations=guided_conversations,
                 guided_max_turns=guided_max_turns,
                 guided_concurrency=guided_concurrency,
+                guided_mutation_mode=guided_mutation_mode,
                 auth_config=auth_config,
+                tree_breadth=tree_breadth,
+                tree_max_depth=tree_max_depth,
                 extra_headers=extra_headers or None,
                 strict_outcome=strict_outcome,
                 redteam_llm_model=redteam_llm_model,
                 redteam_llm_api_key=redteam_llm_api_key,
+                redteam_llm_api_base=redteam_llm_api_base,
                 eval_llm_model=eval_llm_model,
                 eval_llm_api_key=eval_llm_api_key,
+                eval_llm_api_base=eval_llm_api_base,
+                prompt_cache_dir=prompt_cache_dir,
+                finding_triggers=finding_triggers,
+                verbose=verbose,
+                credentials=credentials,
+                scenario_timeout=scenario_timeout,
+                concurrency=concurrency,
+                turn_delay_seconds=turn_delay_seconds,
+                scenario_delay_seconds=scenario_delay_seconds,
+                similar_miss_threshold=similar_miss_threshold,
+                skip_discovery=skip_discovery,
+                discovery_max_turns=discovery_max_turns,
             )
 
     # App already running — just scan
@@ -406,13 +529,29 @@ async def _run_redteam(
         guided_conversations=guided_conversations,
         guided_max_turns=guided_max_turns,
         guided_concurrency=guided_concurrency,
+        guided_mutation_mode=guided_mutation_mode,
+        tree_breadth=tree_breadth,
+        tree_max_depth=tree_max_depth,
         auth_config=auth_config,
         extra_headers=extra_headers or None,
         strict_outcome=strict_outcome,
         redteam_llm_model=redteam_llm_model,
         redteam_llm_api_key=redteam_llm_api_key,
+        redteam_llm_api_base=redteam_llm_api_base,
         eval_llm_model=eval_llm_model,
         eval_llm_api_key=eval_llm_api_key,
+        eval_llm_api_base=eval_llm_api_base,
+        prompt_cache_dir=prompt_cache_dir,
+        finding_triggers=finding_triggers,
+        verbose=verbose,
+        credentials=credentials,
+        scenario_timeout=scenario_timeout,
+        concurrency=concurrency,
+        turn_delay_seconds=turn_delay_seconds,
+        scenario_delay_seconds=scenario_delay_seconds,
+        similar_miss_threshold=similar_miss_threshold,
+        skip_discovery=skip_discovery,
+        discovery_max_turns=discovery_max_turns,
     )
 
 
@@ -432,23 +571,39 @@ async def _run_orchestrator(
     guided_conversations: bool = True,
     guided_max_turns: int = 12,
     guided_concurrency: int = 3,
+    guided_mutation_mode: str = "hard",
+    tree_breadth: int = 0,
+    tree_max_depth: int = 0,
     extra_headers: dict[str, str] | None = None,
     auth_config: "AuthConfig | None" = None,
     strict_outcome: bool = False,
     redteam_llm_model: str | None = None,
     redteam_llm_api_key: str | None = None,
+    redteam_llm_api_base: str | None = None,
     eval_llm_model: str | None = None,
     eval_llm_api_key: str | None = None,
-) -> list:
+    eval_llm_api_base: str | None = None,
+    prompt_cache_dir: str | None = None,
+    finding_triggers: "RedteamFindingTriggers | None" = None,
+    verbose: bool = False,
+    credentials: dict[str, str] | None = None,
+    scenario_timeout: float = 300.0,
+    concurrency: int = 5,
+    turn_delay_seconds: float = 0.0,
+    scenario_delay_seconds: float = 0.0,
+    similar_miss_threshold: int = 4,
+    skip_discovery: bool = False,
+    discovery_max_turns: int = 3,
+) -> tuple[list, dict[str, str], list, str, list[str]]:
     from nuguard.common.llm_client import LLMClient
     from nuguard.redteam.executor.orchestrator import RedteamOrchestrator
 
     redteam_llm: LLMClient | None = None
     if redteam_llm_model:
-        redteam_llm = LLMClient(model=redteam_llm_model, api_key=redteam_llm_api_key)
+        redteam_llm = LLMClient(model=redteam_llm_model, api_key=redteam_llm_api_key, api_base=redteam_llm_api_base)
     eval_llm: LLMClient | None = None
-    if eval_llm_model:
-        eval_llm = LLMClient(model=eval_llm_model, api_key=eval_llm_api_key)
+    if eval_llm_model and eval_llm_api_key:
+        eval_llm = LLMClient(model=eval_llm_model, api_key=eval_llm_api_key, api_base=eval_llm_api_base)
 
     orchestrator = RedteamOrchestrator(
         sbom=sbom_doc,  # type: ignore[arg-type]
@@ -465,14 +620,30 @@ async def _run_orchestrator(
         guided_conversations=guided_conversations,
         guided_max_turns=guided_max_turns,
         guided_concurrency=guided_concurrency,
+        guided_mutation_mode=guided_mutation_mode,
+        tree_breadth=tree_breadth,
+        tree_max_depth=tree_max_depth,
         extra_headers=extra_headers,
         auth_config=auth_config,
         strict_outcome=strict_outcome,
         scenario_filter=scenario_filter,
         redteam_llm=redteam_llm,
         eval_llm=eval_llm,
+        prompt_cache_dir=Path(prompt_cache_dir) if prompt_cache_dir else None,
+        finding_triggers=finding_triggers,
+        verbose=verbose,
+        credentials=credentials,
+        scenario_timeout=scenario_timeout,
+        concurrency=concurrency,
+        turn_delay_seconds=turn_delay_seconds,
+        scenario_delay_seconds=scenario_delay_seconds,
+        similar_miss_threshold=similar_miss_threshold,
+        skip_discovery=skip_discovery,
+        discovery_max_turns=discovery_max_turns,
     )
     findings = await orchestrator.run()
+    llm_remediations: dict[str, str] = orchestrator.llm_remediations
+    scenario_records = orchestrator.scenario_records
 
     # Apply scenario filter if provided
     if scenario_filter:
@@ -485,10 +656,21 @@ async def _run_orchestrator(
             )
         ]
 
-    return findings
+    scan_outcome = orchestrator.scan_outcome
+    config_notes: list[str] = list(getattr(orchestrator, "config_notes", []))
+    for note in config_notes:
+        typer.echo(f"\n⚠ {note}", err=True)
+    return findings, llm_remediations, scenario_records, scan_outcome, config_notes
 
 
-def _print_findings(findings: list, format: str, meta: ReportMeta | None = None) -> None:
+def _print_findings(
+    findings: list,
+    format: str,
+    meta: ReportMeta | None = None,
+    remediation_plan: list | None = None,
+    scenario_records: list | None = None,
+    scan_outcome: str = "no_findings",
+) -> None:
     """Print findings to stdout in the requested format."""
     from nuguard.models.finding import Severity
 
@@ -496,16 +678,25 @@ def _print_findings(findings: list, format: str, meta: ReportMeta | None = None)
         meta = ReportMeta()
 
     if format == "json":
-        payload = {"_meta": meta.to_dict(), "findings": [f.model_dump() for f in findings]}
+        payload = {
+            "_meta": meta.to_dict(),
+            "scan_outcome": scan_outcome,
+            "findings": [f.model_dump() for f in findings],
+            "remediation_plan": [a.model_dump() for a in (remediation_plan or [])],
+        }
         typer.echo(json.dumps(payload, indent=2, default=str))
         return
 
     if format == "markdown":
-        typer.echo(_findings_to_markdown(findings, meta))
+        typer.echo(
+            _findings_to_markdown(findings, meta, remediation_plan=remediation_plan,
+                                  scenario_records=scenario_records)
+        )
         return
 
     if not findings:
         typer.echo(meta.to_text_line())
+        typer.echo(f"Outcome: {scan_outcome}")
         typer.echo("No findings — scan complete")
         return
 
@@ -520,6 +711,7 @@ def _print_findings(findings: list, format: str, meta: ReportMeta | None = None)
     typer.echo(f"\n{'─' * 60}")
     typer.echo(f"  NuGuard Red-Team — {len(findings)} finding(s)")
     typer.echo(f"  {meta.to_text_line()}")
+    typer.echo(f"  Outcome: {scan_outcome}")
     typer.echo(f"{'─' * 60}")
     for f in sorted(findings, key=lambda x: list(Severity).index(x.severity)):
         colour = _SEV_COLOUR.get(f.severity, "white")
@@ -533,36 +725,73 @@ def _print_findings(findings: list, format: str, meta: ReportMeta | None = None)
     typer.echo(f"\n{'─' * 60}\n")
 
 
-def _findings_to_markdown(findings: list, meta: ReportMeta | None = None) -> str:
-    """Render redteam findings as a Markdown report string."""
-    if meta is None:
-        meta = ReportMeta()
-    lines: list[str] = ["# NuGuard Red-Team Report", ""]
-    lines += meta.to_markdown_lines()
-    if not findings:
-        lines += ["_No findings — scan complete._", ""]
-        return "\n".join(lines)
+def _scenario_coverage_table(scenario_records: list) -> list[str]:
+    """Delegate to :func:`nuguard.redteam.report._scenario_coverage_table`."""
+    from nuguard.redteam.report import _scenario_coverage_table as _impl
+    return _impl(scenario_records)
 
-    from nuguard.models.finding import Severity
 
-    lines += [f"**{len(findings)} finding(s)**", ""]
-    for f in sorted(findings, key=lambda x: list(Severity).index(x.severity)):
-        sev = f.severity.value.upper() if hasattr(f.severity, "value") else str(f.severity).upper()
-        lines += [f"## [{sev}] {f.title}", ""]
-        lines += [f.description, ""]
-        if f.affected_component:
-            lines += [f"**Component:** {f.affected_component}", ""]
-        if f.goal_type:
-            lines += [f"**Type:** {f.goal_type}", ""]
-        if f.remediation:
-            lines += [f"**Remediation:** {f.remediation}", ""]
-        if f.owasp_asi_ref:
-            lines += [f"**OWASP ASI:** {f.owasp_asi_ref}", ""]
-        if f.owasp_llm_ref:
-            lines += [f"**OWASP LLM:** {f.owasp_llm_ref}", ""]
-        if f.evidence:
-            lines += ["**Evidence:**", "```", f.evidence[:500], "```", ""]
-    return "\n".join(lines)
+def _findings_to_markdown(
+    findings: list,
+    meta: ReportMeta | None = None,
+    remediation_plan: list | None = None,
+    scenario_records: list | None = None,
+) -> str:
+    """Delegate to :func:`nuguard.redteam.report.to_markdown`."""
+    from nuguard.redteam.report import to_markdown
+    return to_markdown(
+        findings,
+        meta=meta,
+        remediation_plan=remediation_plan,
+        scenario_records=scenario_records,
+    )
+
+
+def _append_remediation_plan(lines: list[str], remediation_plan: list) -> None:
+    """Delegate to :func:`nuguard.redteam.report._append_remediation_plan`."""
+    from nuguard.redteam.report import _append_remediation_plan as _impl
+    _impl(lines, remediation_plan)
+
+
+def _build_redteam_remediation_plan(
+    findings: list,
+    sbom_doc: object,
+    cognitive_policy: object | None,
+    llm_client: object | None = None,
+) -> list:
+    """Synthesize per-SBOM-node remediation artefacts from redteam findings.
+
+    Returns ``[]`` if no SBOM is available or synthesis fails — the caller
+    should treat this as a best-effort enrichment, not a hard dependency.
+    """
+    if sbom_doc is None or not findings:
+        return []
+    try:
+        from nuguard.behavior.remediation import RemediationSynthesizer
+
+        synthesizer = RemediationSynthesizer(
+            sbom=sbom_doc,  # type: ignore[arg-type]
+            policy=cognitive_policy,  # type: ignore[arg-type]
+            llm_client=llm_client,  # type: ignore[arg-type]
+        )
+        # Convert Finding objects to dicts the synthesizer's classifier
+        # understands.  ``goal_type`` is key — it lets the classifier route
+        # directly to the correct remediation handler without heuristics.
+        finding_dicts = [
+            {
+                "finding_id": f.finding_id,
+                "title": f.title,
+                "description": f.description or "",
+                "affected_component": f.affected_component or "unknown",
+                "severity": f.severity.value if hasattr(f.severity, "value") else str(f.severity),
+                "goal_type": f.goal_type or "",
+            }
+            for f in findings
+        ]
+        return synthesizer.synthesize_findings(finding_dicts)
+    except Exception as exc:
+        _log.warning("remediation synthesis failed — skipping plan: %s", exc)
+        return []
 
 
 def _fail_on_severity(findings: list, fail_on: str) -> None:

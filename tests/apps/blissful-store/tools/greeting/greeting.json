@@ -1,0 +1,10 @@
+{
+  "name": "26ddf530-3a34-47a2-a5ed-ce770cc7f586",
+  "pythonFunction": {
+    "name": "greeting",
+    "pythonCode": "tools/greeting/python_function/python_code.py",
+    "description": "A static default greeting that is sent to the user."
+  },
+  "executionType": "SYNCHRONOUS",
+  "displayName": "greeting"
+}

@@ -1,0 +1,9 @@
+{
+  "name": "e94b2e26-e08e-4e1f-a43e-89488dc47d68",
+  "pythonFunction": {
+    "name": "escalate_to_human_agent",
+    "pythonCode": "tools/escalate_to_human_agent/python_function/python_code.py",
+    "description": "Initiates an escalation to a live human agent, passing the current conversation context.\n\nArgs:\n    context_summary (str): A summary of the conversation context and the user\u0027s issue.\n\nReturns:\n    dict[str, Any]: A dictionary indicating the success or failure of the escalation.\n          Example: {\"success\": True, \"message\": \"Escalation successful. A human agent will contact you shortly.\", \"ticket_id\": \"ESCL-98765\"}\n          Example: {\"success\": False, \"message\": \"Failed to escalate. Please try again later.\"}"
+  },
+  "displayName": "escalate_to_human_agent"
+}

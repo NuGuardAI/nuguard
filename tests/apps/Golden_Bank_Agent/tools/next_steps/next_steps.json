@@ -1,0 +1,27 @@
+{
+  "name": "f881d557-56e6-4c07-8bd8-7b07c1723fc8",
+  "displayName": "next_steps",
+  "widgetTool": {
+    "name": "next_steps",
+    "description": "shows relevant next steps. E.g. after account summary show bill pay and money transfer.",
+    "widgetType": "QUICK_ACTIONS",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {
+        "actions": {
+          "type": "ARRAY",
+          "description": "Required. An ordered list of individual actions to be displayed.",
+          "items": {
+            "type": "OBJECT",
+            "properties": {
+              "content": {
+                "type": "STRING",
+                "description": "Required. The visible text content displayed on the action item (e.g., \"Explore AI tools in Google Workspace\", \"View Order\")."
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

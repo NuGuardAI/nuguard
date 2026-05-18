@@ -44,8 +44,8 @@ from __future__ import annotations
 
 import re
 
-from .base import RegexAdapter
 from ..types import ComponentType
+from .base import RegexAdapter
 
 _CT = ComponentType.PRIVILEGE
 _PRI = 150  # same priority bucket as the old generic adapter

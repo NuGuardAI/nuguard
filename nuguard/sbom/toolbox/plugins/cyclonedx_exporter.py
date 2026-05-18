@@ -15,7 +15,6 @@ from typing import Any
 
 from ...models import AiSbomDocument
 from ...serializer import AiSbomSerializer
-
 from ..models import ToolResult
 from ..plugin_base import ToolPlugin
 
@@ -69,13 +68,13 @@ def _build_vex(deps: list[dict[str, Any]], timeout: float) -> list[dict[str, Any
         return []
 
     try:
+        from cyclonedx.model import XsUri
         from cyclonedx.model.vulnerability import (
             Vulnerability,
             VulnerabilityRating,
             VulnerabilitySeverity,
             VulnerabilitySource,
         )
-        from cyclonedx.model import XsUri
         _HAS_CDX = True
     except ImportError:
         _HAS_CDX = False

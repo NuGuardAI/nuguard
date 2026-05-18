@@ -29,11 +29,11 @@ depend on ``nuguard.sbom.models`` which may trigger optional heavy dependencies
 """
 
 from nuguard.models.policy import (
+    CognitivePolicy,
     ComplianceControl,
     ComplianceResult,
     ControlEvaluation,
     ControlType,
-    CognitivePolicy,
     FrameworkRef,
     PolicyAssessmentResult,
 )

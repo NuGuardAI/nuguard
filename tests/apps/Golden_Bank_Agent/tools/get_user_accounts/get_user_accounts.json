@@ -1,0 +1,9 @@
+{
+  "name": "9d9dad2c-be52-4f67-ba0c-644026eb5f89",
+  "pythonFunction": {
+    "name": "get_user_accounts",
+    "pythonCode": "tools/get_user_accounts/python_function/python_code.py",
+    "description": "Retrieves a list of accounts associated with the authenticated user.\n\nReturns:\n    dict[str, Any]: A dictionary containing a list of user accounts.\n          Example: {\"accounts\": [{\"account_id\": \"CHK-001\", \"type\": \"Checking\", \"nickname\": \"My Checking\"}]}\n          Example: {\"error\": True, \"message\": \"User not authenticated.\"}"
+  },
+  "displayName": "get_user_accounts"
+}

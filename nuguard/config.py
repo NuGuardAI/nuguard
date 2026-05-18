@@ -15,8 +15,8 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
-import yaml
-from pydantic import AliasChoices, BaseModel, Field
+import yaml  # type: ignore[import-untyped]
+from pydantic import AliasChoices, BaseModel, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from nuguard.common.auth import LoginFlowConfig
@@ -31,12 +31,112 @@ _log = get_logger(__name__)
 _ENV_VAR_RE = re.compile(r"\$\{([^}]+)\}")
 
 
+def _find_repo_root(start_dir: Path) -> Path | None:
+    """Best-effort repository root discovery from a starting directory."""
+    for candidate in [start_dir, *start_dir.parents]:
+        if (candidate / ".git").exists() or (candidate / "pyproject.toml").exists():
+            return candidate
+    return None
+
+
+def _rebase_path(value: Any, base_dir: Path, repo_root: Path | None = None) -> Any:
+    """Return an absolute path for relative string values.
+
+    Leaves non-strings, empty strings, URLs, unresolved env placeholders, and
+    already-absolute paths unchanged.
+    """
+    if not isinstance(value, str):
+        return value
+    if not value:
+        return value
+
+    # Keep unresolved env placeholders (e.g. ${VAR}) intact.
+    if "${" in value:
+        return value
+
+    # Treat URI-like values as non-paths.
+    if "://" in value:
+        return value
+
+    path = Path(value).expanduser()
+    if path.is_absolute():
+        return str(path)
+
+    by_config_dir = (base_dir / path).resolve()
+    by_repo_root = (repo_root / path).resolve() if repo_root else None
+
+    # Prefer whichever candidate exists to preserve existing config behavior.
+    if by_config_dir.exists():
+        return str(by_config_dir)
+    if by_repo_root is not None and by_repo_root.exists():
+        return str(by_repo_root)
+
+    # If neither exists yet (e.g. output files), prefer repo-root-relative when available.
+    return str(by_repo_root if by_repo_root is not None else by_config_dir)
+
+
+def _rebase_relative_paths(flat: dict[str, Any], base_dir: Path) -> dict[str, Any]:
+    """Rebase relative path-like config values against the config file dir."""
+    path_keys = (
+        "sbom",
+        "source",
+        "policy",
+        "canary_path",
+        "sarif_output_path",
+        "redteam_prompt_cache_dir",
+    )
+    repo_root = _find_repo_root(base_dir)
+
+    rebased = dict(flat)
+    for key in path_keys:
+        if key in rebased:
+            rebased[key] = _rebase_path(rebased[key], base_dir, repo_root)
+
+    behavior_cfg = rebased.get("behavior_config")
+    if isinstance(behavior_cfg, dict):
+        behavior_cfg = dict(behavior_cfg)
+        if "canary" in behavior_cfg:
+            behavior_cfg["canary"] = _rebase_path(behavior_cfg.get("canary"), base_dir, repo_root)
+        auth = behavior_cfg.get("auth")
+        if isinstance(auth, dict) and auth.get("cookie_file"):
+            auth = dict(auth)
+            auth["cookie_file"] = _rebase_path(auth["cookie_file"], base_dir, repo_root)
+            behavior_cfg["auth"] = auth
+        rebased["behavior_config"] = behavior_cfg
+
+    return rebased
+
+
+def _expand_env_var_token(token: str) -> str | None:
+    """Expand a single ``${VAR}`` or ``${VAR:-default}`` token.
+
+    Returns the resolved string, or ``None`` when the variable is unset and
+    no default is provided.
+    """
+    if ":-" in token:
+        var_name, default = token.split(":-", 1)
+        return os.environ.get(var_name.strip(), default)
+    return os.environ.get(token.strip())
+
+
 def _expand_env_vars(value: Any) -> Any:
-    """Recursively expand ``${VAR}`` references in strings using ``os.environ``."""
+    """Recursively expand ``${VAR}`` and ``${VAR:-default}`` references.
+
+    When a referenced variable is not set and no ``:-default`` is given, the
+    entire string is returned as ``None`` so that downstream consumers treat
+    missing vars as absent rather than receiving an invalid placeholder string.
+    """
     if isinstance(value, str):
-        return _ENV_VAR_RE.sub(
-            lambda m: os.environ.get(m.group(1), m.group(0)), value
-        )
+        def _replace(m: re.Match) -> str:  # type: ignore[type-arg]
+            resolved = _expand_env_var_token(m.group(1))
+            return resolved if resolved is not None else m.group(0)
+
+        expanded = _ENV_VAR_RE.sub(_replace, value)
+        # If any unexpanded ${...} placeholder remains, the variable was not
+        # set — treat the whole value as absent.
+        if _ENV_VAR_RE.search(expanded):
+            return None
+        return expanded
     if isinstance(value, dict):
         return {k: _expand_env_vars(v) for k, v in value.items()}
     if isinstance(value, list):
@@ -65,6 +165,8 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
             flat["policy"] = policy_val["path"]
         if "use_llm" in policy_val:
             flat["policy_use_llm"] = bool(policy_val["use_llm"])
+        elif "llm" in policy_val:
+            flat["policy_use_llm"] = bool(policy_val["llm"])
 
     # LLM section
     llm = data.get("llm", {}) or {}
@@ -72,6 +174,8 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["litellm_model"] = llm["model"]
     if "api_key" in llm:
         flat["litellm_api_key"] = llm["api_key"]
+    if "api_base" in llm:
+        flat["litellm_api_base"] = llm["api_base"]
 
     # Database section
     db = data.get("database", {}) or {}
@@ -83,7 +187,40 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
     if "llm" in sbom_gen:
         flat["sbom_llm_enabled"] = bool(sbom_gen["llm"])
 
-    # Redteam section
+    # ── Shared target block ────────────────────────────────────────────────────
+    # target: at the top level acts as a shared default for both behavior and
+    # redteam.  Section-level keys (redteam.target, behavior.target) take
+    # precedence and override the shared values when present.
+    shared_target = data.get("target", {}) or {}
+    if isinstance(shared_target, dict):
+        if "url" in shared_target:
+            flat["target_url"] = shared_target["url"]
+        if "endpoint" in shared_target:
+            flat["target_endpoint"] = shared_target["endpoint"]
+        if "chat_payload_key" in shared_target:
+            flat["redteam_chat_payload_key"] = shared_target["chat_payload_key"]
+        if "chat_payload_list" in shared_target:
+            flat["redteam_chat_payload_list"] = bool(shared_target["chat_payload_list"])
+        if "chat_response_key" in shared_target:
+            flat["redteam_chat_response_key"] = shared_target["chat_response_key"]
+        if "headers" in shared_target and isinstance(shared_target["headers"], dict):
+            flat["redteam_headers"] = {
+                str(k): str(v) for k, v in shared_target["headers"].items()
+            }
+        # Structured auth from the shared block — same format as behavior/redteam auth
+        _shared_auth = shared_target.get("auth", {}) or {}
+        if isinstance(_shared_auth, dict) and _shared_auth:
+            _sa_type = _shared_auth.get("type", "none")
+            flat["redteam_auth_type"] = _sa_type
+            if _sa_type in ("bearer", "api_key") and "header" in _shared_auth:
+                flat["redteam_auth_header"] = _shared_auth["header"]
+            if _sa_type == "basic":
+                flat["redteam_auth_username"] = _shared_auth.get("username") or ""
+                flat["redteam_auth_password"] = _shared_auth.get("password") or ""
+            if _sa_type == "login_flow" and isinstance(_shared_auth.get("login_flow"), dict):
+                flat["redteam_auth_login_flow"] = _shared_auth["login_flow"]
+
+    # Redteam section — overrides shared target block when keys are present
     redteam = data.get("redteam", {}) or {}
     if "target" in redteam:
         flat["target_url"] = redteam["target"]
@@ -97,6 +234,10 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_chat_response_key"] = redteam["chat_response_key"]
     if "auth_header" in redteam:
         flat["redteam_auth_header"] = redteam["auth_header"]
+    if "headers" in redteam and isinstance(redteam["headers"], dict):
+        flat["redteam_headers"] = {
+            str(k): str(v) for k, v in redteam["headers"].items()
+        }
     if "canary" in redteam:
         flat["canary_path"] = redteam["canary"]
     if "profile" in redteam:
@@ -111,18 +252,70 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_verbose"] = bool(redteam["verbose"])
     if "request_timeout" in redteam:
         flat["redteam_request_timeout"] = float(redteam["request_timeout"])
+    if "scenario_timeout" in redteam:
+        flat["redteam_scenario_timeout"] = float(redteam["scenario_timeout"])
+    if "similar_miss_threshold" in redteam:
+        flat["redteam_similar_miss_threshold"] = int(redteam["similar_miss_threshold"])
+    if "skip_discovery" in redteam:
+        flat["redteam_skip_discovery"] = bool(redteam["skip_discovery"])
+    if "discovery_max_turns" in redteam:
+        flat["redteam_discovery_max_turns"] = int(redteam["discovery_max_turns"])
+    if "prompt_cache_dir" in redteam:
+        flat["redteam_prompt_cache_dir"] = str(redteam["prompt_cache_dir"])
     if "app_env" in redteam and isinstance(redteam["app_env"], dict):
         flat["redteam_app_env"] = {
             str(k): str(v) for k, v in redteam["app_env"].items()
         }
+    if "customer_profile" in redteam:
+        app_env = dict(flat.get("redteam_app_env", {}))
+        app_env["BLISSFUL_CUSTOMER_PROFILE"] = str(redteam["customer_profile"])
+        flat["redteam_app_env"] = app_env
     if "guided_conversations" in redteam:
         flat["redteam_guided_conversations"] = bool(redteam["guided_conversations"])
     if "guided_max_turns" in redteam:
         flat["redteam_guided_max_turns"] = int(redteam["guided_max_turns"])
     if "guided_concurrency" in redteam:
         flat["redteam_guided_concurrency"] = int(redteam["guided_concurrency"])
+    if "concurrency" in redteam:
+        flat["redteam_concurrency"] = int(redteam["concurrency"])
+    if "turn_delay_seconds" in redteam:
+        flat["redteam_turn_delay_seconds"] = float(redteam["turn_delay_seconds"])
+    if "scenario_delay_seconds" in redteam:
+        flat["redteam_scenario_delay_seconds"] = float(redteam["scenario_delay_seconds"])
+    if "guided_mutation_mode" in redteam:
+        flat["redteam_guided_mutation_mode"] = str(redteam["guided_mutation_mode"])
+    if "tree_breadth" in redteam:
+        flat["redteam_tree_breadth"] = int(redteam["tree_breadth"])
+    if "tree_max_depth" in redteam:
+        flat["redteam_tree_max_depth"] = int(redteam["tree_max_depth"])
+    if "emit_pytest" in redteam:
+        flat["emit_pytest"] = bool(redteam["emit_pytest"])
+    if "emit_pytest_dir" in redteam:
+        flat["emit_pytest_dir"] = str(redteam["emit_pytest_dir"])
+    if "guided_mutation_mode" in redteam:
+        flat["redteam_guided_mutation_mode"] = str(redteam["guided_mutation_mode"])
     if "strict_outcome" in redteam:
         flat["redteam_strict_outcome"] = bool(redteam["strict_outcome"])
+    if "credentials" in redteam and isinstance(redteam["credentials"], dict):
+        flat["redteam_credentials"] = {
+            str(k): str(v) for k, v in redteam["credentials"].items() if v is not None
+        }
+    finding_triggers = redteam.get("finding_triggers", {}) or {}
+    if isinstance(finding_triggers, dict):
+        if "canary_hits" in finding_triggers:
+            flat["redteam_trigger_canary_hits"] = bool(finding_triggers["canary_hits"])
+        if "policy_violations" in finding_triggers:
+            flat["redteam_trigger_policy_violations"] = bool(
+                finding_triggers["policy_violations"]
+            )
+        if "critical_success_hits" in finding_triggers:
+            flat["redteam_trigger_critical_success_hits"] = bool(
+                finding_triggers["critical_success_hits"]
+            )
+        if "any_inject_success" in finding_triggers:
+            flat["redteam_trigger_any_inject_success"] = bool(
+                finding_triggers["any_inject_success"]
+            )
 
     # Redteam LLM section
     redteam_llm = redteam.get("llm", {}) or {}
@@ -130,6 +323,8 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_llm_model"] = redteam_llm["model"]
     if "api_key" in redteam_llm:
         flat["redteam_llm_api_key"] = redteam_llm["api_key"]
+    if "api_base" in redteam_llm:
+        flat["redteam_llm_api_base"] = redteam_llm["api_base"]
 
     # Eval LLM section
     redteam_eval_llm = redteam.get("eval_llm", {}) or {}
@@ -137,10 +332,42 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_eval_llm_model"] = redteam_eval_llm["model"]
     if "api_key" in redteam_eval_llm:
         flat["redteam_eval_llm_api_key"] = redteam_eval_llm["api_key"]
+    if "api_base" in redteam_eval_llm:
+        flat["redteam_eval_llm_api_base"] = redteam_eval_llm["api_base"]
 
-    # Validate section — stored entirely as a nested ValidateConfig object.
-    # NOTE: validate.target is NOT written to target_url (the redteam field).
-    # The two modes may point at different URLs; callers use cfg.validate_config.target.
+    # Behavior section — shared target block keys are the baseline; behavior.* overrides them
+    if "behavior" in data:
+        b = data.get("behavior") or {}
+        if isinstance(b, dict):
+            # Inject shared target fields as defaults into the behavior dict so that
+            # BehaviorConfig picks them up without requiring duplication in nuguard.yaml.
+            # Keys already present in the behavior block take precedence.
+            if isinstance(shared_target, dict):
+                _shared_for_behavior: dict[str, Any] = {}
+                if "url" in shared_target:
+                    _shared_for_behavior["target"] = shared_target["url"]
+                if "endpoint" in shared_target:
+                    _shared_for_behavior["target_endpoint"] = shared_target["endpoint"]
+                if "chat_payload_key" in shared_target:
+                    _shared_for_behavior["chat_payload_key"] = shared_target["chat_payload_key"]
+                if "chat_payload_list" in shared_target:
+                    _shared_for_behavior["chat_payload_list"] = bool(
+                        shared_target["chat_payload_list"]
+                    )
+                if "chat_response_key" in shared_target:
+                    _shared_for_behavior["chat_response_key"] = shared_target["chat_response_key"]
+                if "headers" in shared_target and isinstance(shared_target["headers"], dict):
+                    _shared_for_behavior.setdefault(
+                        "headers",
+                        {str(k): str(v) for k, v in shared_target["headers"].items()},
+                    )
+                if "auth" in shared_target and isinstance(shared_target["auth"], dict):
+                    _shared_for_behavior.setdefault("auth", shared_target["auth"])
+                # behavior.* wins — merge shared as the lower-precedence base
+                b = {**_shared_for_behavior, **b}
+            flat["behavior_config"] = b
+
+    # Validate section
     if "validate" in data:
         v = data.get("validate") or {}
         if isinstance(v, dict):
@@ -156,8 +383,10 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
             if auth_type in ("bearer", "api_key") and "header" in auth:
                 flat["redteam_auth_header"] = auth["header"]
             if auth_type == "basic":
-                flat["redteam_auth_username"] = auth.get("username", "")
-                flat["redteam_auth_password"] = auth.get("password", "")
+                flat["redteam_auth_username"] = auth.get("username") or ""
+                flat["redteam_auth_password"] = auth.get("password") or ""
+            if auth_type == "login_flow" and isinstance(auth.get("login_flow"), dict):
+                flat["redteam_auth_login_flow"] = auth.get("login_flow")
 
     # Redteam defence_regressions
     if isinstance(redteam, dict) and "defence_regressions" in redteam:
@@ -167,6 +396,8 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
     analyze = data.get("analyze", {}) or {}
     if "min_severity" in analyze:
         flat["analyze_min_severity"] = analyze["min_severity"]
+    if "nga_only" in analyze:
+        flat["analyze_nga_only"] = analyze["nga_only"]
 
     # Output section
     output = data.get("output", {}) or {}
@@ -180,18 +411,69 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
     return flat
 
 
-class ValidateAuthConfig(BaseModel):
-    """Structured auth config for validate mode, parsed from validate.auth block."""
+class AppAuthConfig(BaseModel):
+    """Structured auth config for behavior and redteam target requests."""
 
-    type: Literal["bearer", "api_key", "basic", "none", "login_flow"] = "none"
+    type: Literal["bearer", "api_key", "basic", "none", "login_flow", "cookie_file"] = "none"
     header: str = ""
     username: str = ""
     password: str = ""
     login_flow: LoginFlowConfig | None = None
+    # Path to a Netscape-format cookies.txt (absolute or relative to CWD)
+    cookie_file: str = ""
+
+    @field_validator("username", "password", "header", "cookie_file", mode="before")
+    @classmethod
+    def _coerce_none_to_empty(cls, v: object) -> str:
+        """Treat None (from unexpanded ${ENV_VAR}) as an empty string."""
+        return "" if v is None else v  # type: ignore[return-value]
 
 
-class ValidateBoundaryAssertion(BaseModel):
-    """Single boundary assertion declared in nuguard.yaml validate.boundary_assertions."""
+class GoogleADKConfig(BaseModel):
+    """Configuration for Google Agent Development Kit (ADK) framework integration.
+
+    When an AI-SBOM reports ``google-adk`` in its ``summary.frameworks`` list,
+    nuguard switches to the ADK-native protocol (``RunAgentRequest`` / ``POST /run``).
+    These settings fine-tune that behaviour.
+
+    Declare under ``behavior.adk:`` in ``nuguard.yaml``.
+
+    Example::
+
+        behavior:
+          adk:
+            app_name: marketing_campaign_agent
+            user_id: nuguard-ci
+            session_per_scenario: true
+            run_path: /run
+    """
+
+    app_name: str = Field(
+        default="",
+        description=(
+            "ADK application name used in RunAgentRequest.appName. "
+            "When empty, nuguard attempts auto-discovery via GET /list-apps."
+        ),
+    )
+    user_id: str = Field(
+        default="nuguard",
+        description="ADK user identifier injected into every RunAgentRequest.",
+    )
+    session_per_scenario: bool = Field(
+        default=True,
+        description=(
+            "Create a fresh ADK session for each scenario so that conversation "
+            "history does not bleed across test cases."
+        ),
+    )
+    run_path: str = Field(
+        default="/run",
+        description="HTTP path for the ADK RunAgentRequest endpoint.",
+    )
+
+
+class BehaviorBoundaryAssertion(BaseModel):
+    """Single boundary assertion declared in nuguard.yaml behavior.boundary_assertions."""
 
     name: str
     message: str
@@ -199,22 +481,134 @@ class ValidateBoundaryAssertion(BaseModel):
     forbid_pattern: str = ""
 
 
-class ValidateConfig(BaseModel):
-    """Configuration for nuguard validate mode (Phase 3 execution; Phase 1 config parsing)."""
+class BehaviorConfig(BaseModel):
+    """Configuration for nuguard behavior mode."""
 
     target: str = ""
-    target_endpoint: str = ""  # empty = auto-discover from SBOM; falls back to /chat
-    auth: ValidateAuthConfig = Field(default_factory=ValidateAuthConfig)
+    target_endpoint: str = ""
+    auth: AppAuthConfig = Field(default_factory=AppAuthConfig)
     canary: str = ""
-    workflows: list[str] = Field(default_factory=list)
-    capability_map: bool = True
-    boundary_assertions: list[ValidateBoundaryAssertion] = Field(default_factory=list)
+    workflows: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Workflows to execute: intent_happy_path, component_coverage, "
+            "boundary_enforcement, invariant_probe. "
+            "Empty = run all."
+        ),
+    )
+    boundary_assertions: list[BehaviorBoundaryAssertion] = Field(default_factory=list)
     request_timeout: float = 60.0
     verbose: bool = False
-    use_llm: bool = False
+    use_llm: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("use_llm", "llm"),
+    )
+    turn_delay_seconds: float = Field(
+        default=0.0,
+        description="Inter-turn pause in seconds to avoid 429 rate-limit errors.",
+    )
+    scenario_delay_seconds: float = Field(
+        default=0.0,
+        description="Pause between scenarios in seconds to avoid 429 rate-limit errors.",
+    )
     chat_payload_key: str = "message"
     chat_payload_list: bool = False
-    chat_response_key: str = ""  # explicit JSON key for response text (empty = auto-detect)
+    chat_payload_format: Literal["json", "form"] = "json"
+    chat_response_key: str = ""
+    adk: GoogleADKConfig = Field(
+        default_factory=GoogleADKConfig,
+        description="Google ADK-specific connection settings.",
+    )
+    credentials: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "App-level test credentials supplied automatically when the agent asks for them. "
+            "Keys: username, password, api_key, token, otp, pin."
+        ),
+    )
+    otel_endpoint: str | None = None
+    otel_service_name: str | None = None
+
+    # ------------------------------------------------------------------
+    # v3 efficiency additions
+    # ------------------------------------------------------------------
+
+    scenario_concurrency: int = Field(
+        default=3,
+        ge=1,
+        le=20,
+        description="Max simultaneous scenario HTTP sessions.",
+    )
+    isolate_scenarios: bool = Field(
+        default=True,
+        description=(
+            "Re-authenticate before each scenario to prevent cross-scenario "
+            "session-state contamination on stateful endpoints."
+        ),
+    )
+    judge_concurrency: int = Field(
+        default=5,
+        ge=1,
+        le=20,
+        description="Max simultaneous judge LLM calls across all active scenarios.",
+    )
+    prompt_cache_dir: str = Field(
+        default="",
+        description=(
+            "Directory for the cross-run scenario prompt cache. "
+            "Empty string disables caching."
+        ),
+    )
+    judge_cache_dir: str = Field(
+        default="",
+        description=(
+            "Directory for the cross-run judge verdict cache. "
+            "Empty string disables caching."
+        ),
+    )
+    max_scenarios: int | None = Field(
+        default=None,
+        ge=1,
+        description=(
+            "Hard cap on the total number of scenarios executed. "
+            "Applied after deduplication, preserving priority order: L1, L2, L3, L4, L5. "
+            "None (default) means no cap."
+        ),
+    )
+
+    @field_validator("auth", mode="before")
+    @classmethod
+    def _coerce_none_auth(cls, v: Any) -> Any:
+        """Convert None (auth: with all sub-keys commented out) to an empty dict."""
+        return v if v is not None else {}
+
+    @field_validator("credentials", mode="before")
+    @classmethod
+    def _drop_none_credentials(cls, v: Any) -> Any:
+        """Strip entries whose value resolved to None (unset env vars without default)."""
+        if isinstance(v, dict):
+            return {k: val for k, val in v.items() if val is not None}
+        return v or {}
+
+
+class RedteamFindingTriggers(BaseModel):
+    """Configurable controls for when redteam findings are emitted."""
+
+    canary_hits: bool = True
+    policy_violations: bool = True
+    critical_success_hits: bool = True
+    any_inject_success: bool = False
+
+    def any_enabled(self) -> bool:
+        """Return True when at least one trigger is enabled."""
+        return any(
+            [
+                self.canary_hits,
+                self.policy_violations,
+                self.critical_success_hits,
+                self.any_inject_success,
+            ]
+        )
 
 
 class NuGuardConfig(BaseSettings):
@@ -232,6 +626,11 @@ class NuGuardConfig(BaseSettings):
     litellm_api_key: str | None = Field(
         default=None,
         description="API key for the model provider (yaml: llm.api_key or LITELLM_API_KEY env).",
+    )
+    litellm_api_base: str | None = Field(
+        default=None,
+        description="Base URL override for the LLM provider (yaml: llm.api_base or AZURE_API_BASE env).",
+        validation_alias=AliasChoices("AZURE_API_BASE", "litellm_api_base"),
     )
 
     # ------------------------------------------------------------ Database
@@ -303,8 +702,16 @@ class NuGuardConfig(BaseSettings):
     redteam_auth_header: str | None = Field(
         default=None,
         description=(
-            "Authorization header to include with each redteam request, "
+            "Legacy single-header auth for redteam requests, "
             "e.g. 'Authorization: Bearer ${TOKEN}' (yaml: redteam.auth_header)."
+        ),
+    )
+    redteam_headers: dict[str, str] = Field(
+        default_factory=dict,
+        validation_alias=AliasChoices("NUGUARD_REDTEAM_HEADERS_JSON", "redteam_headers"),
+        description=(
+            "Explicit full header map override for redteam requests "
+            "(yaml: redteam.headers, env: NUGUARD_REDTEAM_HEADERS_JSON)."
         ),
     )
     canary_path: str | None = Field(
@@ -342,6 +749,50 @@ class NuGuardConfig(BaseSettings):
             "Per-request HTTP timeout in seconds for redteam chat/agent calls "
             "(yaml: redteam.request_timeout). Multi-agent pipelines can take "
             "60-120 s; increase further for very slow apps."
+        ),
+    )
+    redteam_scenario_timeout: float = Field(
+        default=300.0,
+        description=(
+            "Per-scenario wall-clock timeout in seconds (yaml: redteam.scenario_timeout). "
+            "Scenarios that exceed this limit are cancelled and recorded as 'timeout'. "
+            "0 disables the timeout."
+        ),
+    )
+    redteam_similar_miss_threshold: int = Field(
+        default=4,
+        description=(
+            "Number of misses from similar attack scenarios before subsequent similar "
+            "scenarios are suppressed (yaml: redteam.similar_miss_threshold). "
+            "Prevents repeating the same failing attack angle across many scenarios. "
+            "Set to 0 to disable."
+        ),
+    )
+    redteam_skip_discovery: bool = Field(
+        default=False,
+        description=(
+            "Skip the pre-scan discovery conversation (yaml: redteam.skip_discovery). "
+            "When True, NuGuard does not send warm-up turns to the target agent before "
+            "generating attack payloads. Useful for air-gapped or highly sensitive "
+            "target environments."
+        ),
+    )
+    redteam_discovery_max_turns: int = Field(
+        default=3,
+        description=(
+            "Maximum turns to send during pre-scan discovery (yaml: redteam.discovery_max_turns). "
+            "Discovery stops early when a name or ID is extracted."
+        ),
+    )
+    redteam_prompt_cache_dir: str = Field(
+        default=".",
+        validation_alias=AliasChoices(
+            "NUGUARD_REDTEAM_PROMPT_CACHE_DIR",
+            "redteam_prompt_cache_dir",
+        ),
+        description=(
+            "Directory for redteam attack-payload prompt cache files "
+            "(yaml: redteam.prompt_cache_dir, env: NUGUARD_REDTEAM_PROMPT_CACHE_DIR)."
         ),
     )
     redteam_verbose: bool = Field(
@@ -382,6 +833,73 @@ class NuGuardConfig(BaseSettings):
             "(yaml: redteam.guided_concurrency)."
         ),
     )
+    redteam_concurrency: int = Field(
+        default=5,
+        ge=1,
+        le=20,
+        description=(
+            "Maximum number of redteam scenarios to run in parallel "
+            "(yaml: redteam.concurrency). Lower this for rate-limited targets."
+        ),
+    )
+    redteam_turn_delay_seconds: float = Field(
+        default=0.0,
+        ge=0.0,
+        description=(
+            "Inter-turn pause in seconds to avoid 429s on the target "
+            "(yaml: redteam.turn_delay_seconds)."
+        ),
+    )
+    redteam_scenario_delay_seconds: float = Field(
+        default=0.0,
+        ge=0.0,
+        description=(
+            "Pause between scenario starts in seconds to avoid 429s "
+            "(yaml: redteam.scenario_delay_seconds)."
+        ),
+    )
+    redteam_guided_mutation_mode: Literal["soft", "hard"] = Field(
+        default="hard",
+        validation_alias=AliasChoices(
+            "NUGUARD_REDTEAM_GUIDED_MUTATION_MODE",
+            "redteam_guided_mutation_mode",
+        ),
+        description=(
+            "Guided mutation prompt aggressiveness: soft|hard "
+            "(yaml: redteam.guided_mutation_mode, "
+            "env: NUGUARD_REDTEAM_GUIDED_MUTATION_MODE)."
+        ),
+    )
+    redteam_tree_breadth: int = Field(
+        default=0,
+        description=(
+            "TAP tree breadth — parallel attack variants per depth level. "
+            "0 = auto (2 for ci profile, 3 for full). "
+            "(yaml: redteam.tree_breadth)"
+        ),
+    )
+    redteam_tree_max_depth: int = Field(
+        default=0,
+        description=(
+            "TAP tree max depth — maximum recursion levels. "
+            "0 = auto (2 for ci profile, 3 for full). "
+            "(yaml: redteam.tree_max_depth)"
+        ),
+    )
+    emit_pytest: bool = Field(
+        default=False,
+        description=(
+            "Emit pytest regression test files for each successful HIT finding. "
+            "(yaml: redteam.emit_pytest)"
+        ),
+    )
+    emit_pytest_dir: str = Field(
+        default="./redteam-regression",
+        description=(
+            "Directory to write generated pytest regression files. "
+            "(yaml: redteam.emit_pytest_dir)"
+        ),
+    )
     redteam_strict_outcome: bool = Field(
         default=False,
         description=(
@@ -389,6 +907,43 @@ class NuGuardConfig(BaseSettings):
             "is reported as 'inconclusive_target_errors' rather than 'no_findings'. "
             "Disabled by default to preserve existing CI behaviour "
             "(yaml: redteam.strict_outcome)."
+        ),
+    )
+    redteam_credentials: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "App-level test credentials supplied automatically when the agent asks for them "
+            "during guided redteam conversations. "
+            "Keys: username, password, api_key, token, otp, pin "
+            "(yaml: redteam.credentials)."
+        ),
+    )
+    redteam_trigger_canary_hits: bool = Field(
+        default=True,
+        description=(
+            "Emit findings when canary values are detected in responses "
+            "(yaml: redteam.finding_triggers.canary_hits)."
+        ),
+    )
+    redteam_trigger_policy_violations: bool = Field(
+        default=True,
+        description=(
+            "Emit findings for policy violations "
+            "(yaml: redteam.finding_triggers.policy_violations)."
+        ),
+    )
+    redteam_trigger_critical_success_hits: bool = Field(
+        default=True,
+        description=(
+            "Emit fallback findings for high-confidence attack success signals "
+            "(yaml: redteam.finding_triggers.critical_success_hits)."
+        ),
+    )
+    redteam_trigger_any_inject_success: bool = Field(
+        default=False,
+        description=(
+            "Emit findings when INJECT steps succeed even without canary/policy "
+            "signals (yaml: redteam.finding_triggers.any_inject_success)."
         ),
     )
     redteam_llm_model: str | None = Field(
@@ -404,6 +959,14 @@ class NuGuardConfig(BaseSettings):
         default=None,
         validation_alias=AliasChoices("NUGUARD_REDTEAM_LLM_API_KEY", "redteam_llm_api_key"),
         description="API key for the redteam LLM (yaml: redteam.llm.api_key, env: NUGUARD_REDTEAM_LLM_API_KEY).",
+    )
+    redteam_llm_api_base: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("NUGUARD_REDTEAM_LLM_API_BASE", "redteam_llm_api_base"),
+        description=(
+            "API base URL for the redteam LLM (required for Azure OpenAI). "
+            "(yaml: redteam.llm.api_base, env: NUGUARD_REDTEAM_LLM_API_BASE)."
+        ),
     )
     redteam_eval_llm_model: str | None = Field(
         default=None,
@@ -422,6 +985,14 @@ class NuGuardConfig(BaseSettings):
             r"(yaml: redteam.eval_llm.api_key, env: NUGUARD_REDTEAM_EVAL_LLM_API_KEY)."
         ),
     )
+    redteam_eval_llm_api_base: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("NUGUARD_REDTEAM_EVAL_LLM_API_BASE", "redteam_eval_llm_api_base"),
+        description=(
+            "API base URL for the eval LLM (required for Azure OpenAI). "
+            "(yaml: redteam.eval_llm.api_base, env: NUGUARD_REDTEAM_EVAL_LLM_API_BASE)."
+        ),
+    )
 
     # ------------------------------------------------------- Analyze
     analyze_min_severity: str = Field(
@@ -429,6 +1000,13 @@ class NuGuardConfig(BaseSettings):
         description=(
             "Minimum severity for analysis findings: critical|high|medium|low "
             "(yaml: analyze.min_severity)."
+        ),
+    )
+    analyze_nga_only: bool = Field(
+        default=False,
+        description=(
+            "Run only NGA structural rules (NGA-001–018), skipping external tool "
+            "scans (yaml: analyze.nga_only, CLI: --nga)."
         ),
     )
 
@@ -449,16 +1027,19 @@ class NuGuardConfig(BaseSettings):
         description="Path to write SARIF output (yaml: output.sarif_file).",
     )
 
-    # ------------------------------------------------------- Validate mode
-    validate_config: ValidateConfig = Field(
-        default_factory=ValidateConfig,
-        description="Configuration for nuguard validate mode (Phase 1: parsing; Phase 3: execution).",
+    # ------------------------------------------------------- Behavior mode
+    behavior_config: BehaviorConfig = Field(
+        default_factory=BehaviorConfig,
+        description="Configuration for nuguard behavior mode.",
     )
 
     # ----------------------------------------- Structured redteam auth
     redteam_auth_type: str = Field(
         default="none",
-        description="Structured auth type for redteam: bearer|api_key|basic|none (yaml: redteam.auth.type).",
+        description=(
+            "Structured auth type for redteam: "
+            "bearer|api_key|basic|none|login_flow (yaml: redteam.auth.type)."
+        ),
     )
     redteam_auth_username: str = Field(
         default="",
@@ -467,6 +1048,10 @@ class NuGuardConfig(BaseSettings):
     redteam_auth_password: str = Field(
         default="",
         description="Password for redteam basic auth (yaml: redteam.auth.password).",
+    )
+    redteam_auth_login_flow: LoginFlowConfig | None = Field(
+        default=None,
+        description="Login-flow auth config for redteam (yaml: redteam.auth.login_flow).",
     )
 
     # ----------------------------------------- Defence regressions
@@ -489,29 +1074,20 @@ class NuGuardConfig(BaseSettings):
                 header=self.redteam_auth_header or "",
                 username=self.redteam_auth_username,
                 password=self.redteam_auth_password,
+                login_flow=self.redteam_auth_login_flow,
             )
         if self.redteam_auth_header:
             return AuthConfig.from_header_string(self.redteam_auth_header)
         return AuthConfig(type="none")
 
-    def resolved_validate_auth_config(self) -> "AuthConfig":
-        """Build an AuthConfig from the resolved *validate* auth settings.
-
-        Reads from validate_config.auth. Falls back to none if not declared.
-        Import is deferred to avoid circular imports.
-        """
-        from nuguard.common.auth import AuthConfig
-
-        va = self.validate_config.auth
-        if va.type and va.type != "none":
-            return AuthConfig(
-                type=va.type,  # type: ignore[arg-type]
-                header=va.header,
-                username=va.username,
-                password=va.password,
-                login_flow=va.login_flow,
-            )
-        return AuthConfig(type="none")
+    def resolved_redteam_finding_triggers(self) -> RedteamFindingTriggers:
+        """Build trigger controls from resolved redteam configuration."""
+        return RedteamFindingTriggers(
+            canary_hits=self.redteam_trigger_canary_hits,
+            policy_violations=self.redteam_trigger_policy_violations,
+            critical_success_hits=self.redteam_trigger_critical_success_hits,
+            any_inject_success=self.redteam_trigger_any_inject_success,
+        )
 
     model_config = SettingsConfigDict(
         env_file=".nuguard.env",
@@ -561,6 +1137,7 @@ def load_config(config_file: Path | None = None) -> NuGuardConfig:
 
         expanded = _expand_env_vars(raw)
         yaml_overrides = _flatten_yaml(expanded)
+        yaml_overrides = _rebase_relative_paths(yaml_overrides, candidate.parent)
         break
 
     return NuGuardConfig(**yaml_overrides)

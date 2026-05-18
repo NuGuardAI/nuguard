@@ -1,7 +1,7 @@
 """Template-based remediation advice generator."""
 from __future__ import annotations
 
-from nuguard.models.exploit_chain import GoalType, ScenarioType
+from nuguard.models.exploit_chain import GoalType
 
 # Per-violation-type remediations used when a policy violation is detected
 # against a scenario that has a different primary goal type (e.g. a TOPIC_BOUNDARY
@@ -27,11 +27,17 @@ _VIOLATION_TYPE_TEMPLATES: dict[str, str] = {
 _TEMPLATES: dict[GoalType, str] = {
     GoalType.PROMPT_DRIVEN_THREAT: (
         "Add an output guardrail that blocks responses containing system-prompt text. "
-        "Validate that instructions from retrieved content cannot override system instructions."
+        "Validate that instructions from retrieved content cannot override system instructions. "
+        "For non-coding agents: add a code-detection output guardrail that rejects any response "
+        "containing code blocks or programming-language constructs — agents operating outside a "
+        "coding context should never produce executable code."
     ),
     GoalType.DATA_EXFILTRATION: (
         "Add a GUARDRAIL node that filters PII/PHI field names from agent responses. "
-        "Enforce field-level access controls in the datastore query layer."
+        "Enforce field-level access controls in the datastore query layer. "
+        "Add a fictional-framing detector: refuse requests that use fictional, hypothetical, "
+        "example, or role-play framing to elicit PII-structured responses — agents should "
+        "decline to fabricate realistic user records regardless of how the request is framed."
     ),
     GoalType.PRIVILEGE_ESCALATION: (
         "Require authentication on all tools that write to datastores or execute code. "

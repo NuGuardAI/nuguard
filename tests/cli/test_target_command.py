@@ -5,7 +5,6 @@ import json
 from pathlib import Path
 
 import httpx
-import pytest
 import respx
 from typer.testing import CliRunner
 
@@ -53,8 +52,9 @@ def test_verify_ok_bearer() -> None:
 
 
 @respx.mock
-def test_verify_no_target_exits_1() -> None:
+def test_verify_no_target_exits_1(tmp_path: Path, monkeypatch) -> None:
     # No --target and no config file with redteam.target
+    monkeypatch.chdir(tmp_path)
     result = runner.invoke(app, ["target", "verify"])
     assert result.exit_code == 1
     assert "redteam.target" in result.output
@@ -131,36 +131,10 @@ def test_verify_canary_file_not_found_warns(tmp_path: Path) -> None:
     assert result.exit_code == 0, result.output
 
 
-# ── --mode tests ──────────────────────────────────────────────────────────────
+# ── --mode tests — removed (legacy mode selection no longer supported) ──────
 
 
-def test_verify_mode_invalid_exits_1() -> None:
+def test_verify_no_mode_option() -> None:
+    # --mode is no longer a supported option
     result = runner.invoke(app, ["target", "verify", "--mode", "bogus"])
-    assert result.exit_code == 1
-    assert "redteam" in result.output or "validate" in result.output
-
-
-@respx.mock
-def test_verify_mode_validate_reads_validate_target(tmp_path: Path) -> None:
-    validate_url = "http://validate.test"
-    validate_endpoint = "/chat"
-    respx.post(f"{validate_url}{validate_endpoint}").mock(return_value=httpx.Response(200))
-
-    # Write a config with validate.target
-    cfg_path = tmp_path / "nuguard.yaml"
-    cfg_path.write_text(
-        f"validate:\n  target: {validate_url}\n  target_endpoint: {validate_endpoint}\n",
-        encoding="utf-8",
-    )
-    result = runner.invoke(
-        app,
-        ["target", "verify", "--config", str(cfg_path), "--mode", "validate"],
-    )
-    assert result.exit_code == 0, result.output
-    assert "ok" in result.output
-
-
-def test_verify_mode_validate_no_target_exits_1() -> None:
-    result = runner.invoke(app, ["target", "verify", "--mode", "validate"])
-    assert result.exit_code == 1
-    assert "validate.target" in result.output
+    assert result.exit_code != 0

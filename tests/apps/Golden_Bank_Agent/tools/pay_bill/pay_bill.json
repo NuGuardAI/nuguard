@@ -1,0 +1,9 @@
+{
+  "name": "eaca3a6c-d206-4c64-bdf2-9ef0a09bdd05",
+  "pythonFunction": {
+    "name": "pay_bill",
+    "pythonCode": "tools/pay_bill/python_function/python_code.py",
+    "description": "Processes a payment to an existing biller from a specified account.\n\nArgs:\n    account_id (str): The ID of the account from which to make the payment.\n    biller_id (str): The ID of the biller to pay.\n    amount (float): The amount of money to pay.\n\nReturns:\n    dict[str, Any]: A dictionary indicating the success or failure of the bill payment.\n          Example: {\"success\": True, \"message\": \"Bill paid successfully.\", \"confirmation_id\": \"BP-67890\"}\n          Example: {\"success\": False, \"message\": \"Biller not found or invalid amount.\"}"
+  },
+  "displayName": "pay_bill"
+}

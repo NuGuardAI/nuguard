@@ -12,8 +12,9 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 import typer
 
@@ -46,7 +47,15 @@ _SEV_EMOJI: dict[str, str] = {
 @analyze_app.callback(invoke_without_command=True)
 def analyze(
     ctx: typer.Context,
-    sbom: str = typer.Option(..., "--sbom", help="Path to AI-SBOM JSON file."),
+    sbom: Optional[str] = typer.Option(None, "--sbom", help="Path to AI-SBOM JSON file. Falls back to 'sbom:' in nuguard.yaml when --config is set."),
+    config: Optional[Path] = typer.Option(
+        None, "--config", "-c",
+        help="Path to nuguard.yaml config file. CLI flags override config values.",
+    ),
+    nga: bool = typer.Option(
+        False, "--nga",
+        help="Run NGA structural rules only (NGA-001–018); skip OSV, Grype, Checkov, Trivy, Semgrep, and ATLAS native checks.",
+    ),
     format: str = typer.Option(
         "markdown", "--format", "-f",
         help="Output format: markdown | sarif | json.",
@@ -55,14 +64,22 @@ def analyze(
         None, "--policy",
         help="Path to Cognitive Policy Markdown file (policy check not yet implemented).",
     ),
-    min_severity: str = typer.Option(
-        "medium", "--min-severity",
-        help="Minimum severity to report: critical | high | medium | low | info.",
+    min_severity: Optional[str] = typer.Option(
+        None, "--min-severity",
+        help="Minimum severity to report: critical | high | medium | low | info. [default: medium]",
     ),
     atlas: bool = typer.Option(True, "--atlas/--no-atlas", help="Run MITRE ATLAS native graph checks."),  # noqa: E501
     osv: bool = typer.Option(True, "--osv/--no-osv", help="Run OSV dependency CVE scan."),
     grype: bool = typer.Option(True, "--grype/--no-grype",
                                help="Run Grype CVE scan (requires grype on PATH)."),
+    grype_timeout: Optional[float] = typer.Option(
+        None, "--grype-timeout",
+        help="Per-invocation timeout for grype in seconds. [default: 180]",
+    ),
+    grype_retries: Optional[int] = typer.Option(
+        None, "--grype-retries",
+        help="Number of retry attempts when grype times out. [default: 3]",
+    ),
     checkov: bool = typer.Option(True, "--checkov/--no-checkov",
                                  help="Run Checkov IaC scan (requires checkov on PATH)."),
     trivy: bool = typer.Option(True, "--trivy/--no-trivy",
@@ -74,6 +91,10 @@ def analyze(
         help="Path to app source directory for Checkov/Trivy/Semgrep scans.",
     ),
     llm: bool = typer.Option(False, "--llm", help="Enable LLM enrichment in ATLAS pass."),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v",
+        help="Show all 18 NGA rules (pass and fail) with evidence on why each passed.",
+    ),
     output: str = typer.Option(
         None, "--output", "-o",
         help="Write report to this file instead of stdout.",
@@ -82,16 +103,45 @@ def analyze(
     """Run static analysis against the AI-SBOM.
 
     Scans the SBOM for structural security issues using NGA rules (NGA-001 to
-    NGA-019), checks dependencies against the OSV CVE database, optionally runs
+    NGA-018), checks dependencies against the OSV CVE database, optionally runs
     Grype for container/package CVEs, and annotates findings with MITRE ATLAS v2
     technique mappings.
+
+    Use ``--config nuguard.yaml`` to load ``analyze.min_severity`` and
+    ``analyze.nga_only`` from the project config file. CLI flags always
+    override config values.
+
+    Use ``--nga`` to run only NGA structural rules (fastest mode, no external
+    tools required). Equivalent to setting ``analyze.nga_only: true`` in
+    nuguard.yaml.
     """
     if ctx.invoked_subcommand is not None:
         return
 
     # ------------------------------------------------------------------
+    # Load config and resolve effective flag values
+    # ------------------------------------------------------------------
+    from nuguard.config import load_config  # noqa: PLC0415
+    cfg = load_config(config)
+
+    # --nga: CLI flag wins; fall back to config field
+    nga = nga or cfg.analyze_nga_only
+
+    # --min-severity: CLI wins when explicitly set (non-None); else use config default
+    min_severity = min_severity or cfg.analyze_min_severity
+
+    # NGA-only mode: disable all external scans
+    if nga:
+        osv = grype = checkov = trivy = semgrep = atlas = False
+
+    # ------------------------------------------------------------------
     # Load SBOM
     # ------------------------------------------------------------------
+    sbom = sbom or cfg.sbom_path
+    if not sbom:
+        typer.echo("error: --sbom is required (or set 'sbom:' in nuguard.yaml via --config)", err=True)
+        raise typer.Exit(code=2)
+
     sbom_path = Path(sbom)
     if not sbom_path.exists():
         typer.echo(f"error: SBOM file not found: {sbom_path}", err=True)
@@ -138,6 +188,9 @@ def analyze(
             source_path=source_path,
             atlas_config=atlas_config,
             min_severity=min_sev,
+            verbose=verbose,
+            grype_timeout=grype_timeout if grype_timeout is not None else 180.0,
+            grype_retries=grype_retries if grype_retries is not None else 3,
         )
         findings = analyzer.analyze(doc)
     except Exception as exc:
@@ -159,12 +212,13 @@ def analyze(
     # ------------------------------------------------------------------
     fmt = format.lower()
     tool_status = getattr(analyzer, "tool_status", {})
+    nga_audit = getattr(analyzer, "nga_audit", [])
     if fmt == "json":
-        report_text = _render_json(visible, sbom_path, tool_status)
+        report_text = _render_json(visible, sbom_path, tool_status, nga_audit)
     elif fmt == "sarif":
         report_text = _render_sarif(visible, sbom_path, tool_status)
     else:
-        report_text = _render_markdown(visible, sbom_path, min_severity, tool_status)
+        report_text = _render_markdown(visible, sbom_path, min_severity, tool_status, nga_audit)
 
     if output:
         out_path = Path(output)
@@ -183,14 +237,105 @@ def analyze(
 
 
 def _component_label(f: Finding) -> str:
-    """Return the display label for a finding's component."""
-    return f.affected_component or f.finding_id.rsplit("-", 1)[0]
+    """Return a normalised display label for a finding's component.
+
+    PURLs (pkg:npm/next@15.2.4) are simplified to ``name@version`` so that
+    findings from different scanners for the same package are grouped together.
+    """
+    raw = f.affected_component or f.finding_id.rsplit("-", 1)[0]
+    # Normalise PURL: pkg:npm/next@15.2.4 → next@15.2.4
+    if raw.startswith("pkg:"):
+        # strip scheme+type prefix  e.g. "pkg:npm/" or "pkg:pypi/"
+        raw = raw.split("/", 1)[-1]
+    return raw
+
+
+def _source_tool(f: Finding) -> str:
+    """Extract the originating scanner name from the finding_id prefix.
+
+    finding_id format: ``<tool>-<rest>``  e.g. ``trivy-CVE-2025-...``,
+    ``osv-GHSA-...``, ``nga-NGA-001-...``.
+    """
+    prefix = f.finding_id.split("-")[0].lower()
+    # known prefixes
+    if prefix in ("trivy", "osv", "grype", "nga", "checkov", "semgrep", "atlas"):
+        return prefix
+    return prefix
+
+
+_CVE_RE = re.compile(r'\bCVE-\d{4}-\d+\b', re.IGNORECASE)
+_GHSA_RE = re.compile(r'\bGHSA-[a-z0-9]+-[a-z0-9]+-[a-z0-9]+\b', re.IGNORECASE)
+
+
+def _canonical_vuln_id(f: Finding) -> str | None:
+    """Extract a canonical CVE or GHSA identifier for cross-tool deduplication.
+
+    Returns the CVE-XXXX-XXXXX id when available (preferred), then GHSA-..., then
+    None for structural findings (NGA, ATLAS, semgrep, checkov) that are not
+    package vulnerabilities and should never be merged.
+    """
+    if _source_tool(f) in ("nga", "atlas", "semgrep", "checkov"):
+        return None
+    # CVE embedded in finding_id (trivy, grype)
+    m = _CVE_RE.search(f.finding_id)
+    if m:
+        return m.group().upper()
+    # CVE aliased in title (OSV sometimes adds "[CVE-XXXX-XXXXX]")
+    m = _CVE_RE.search(f.title or "")
+    if m:
+        return m.group().upper()
+    # CVE mentioned in description
+    m = _CVE_RE.search(f.description or "")
+    if m:
+        return m.group().upper()
+    # GHSA in finding_id (OSV primary identifier)
+    m = _GHSA_RE.search(f.finding_id)
+    if m:
+        return m.group().upper()
+    return None
+
+
+def _dedup_component_findings(
+    flist: list[Finding],
+) -> list[tuple[Finding, list[str]]]:
+    """Deduplicate findings within a component by CVE/GHSA identity.
+
+    Returns a list of (canonical_finding, [source_tool, ...]) tuples.
+    When multiple tools report the same CVE:
+      - OSV is preferred as canonical (for its osv.dev link and remediation text)
+      - All originating tool names are collected for display
+    Non-CVE findings (NGA structural rules, ATLAS, …) pass through unchanged.
+    """
+    groups: dict[str, list[Finding]] = {}
+    no_key: list[Finding] = []
+    for f in flist:
+        key = _canonical_vuln_id(f)
+        if key is None:
+            no_key.append(f)
+        else:
+            groups.setdefault(key, []).append(f)
+
+    result: list[tuple[Finding, list[str]]] = []
+    for _key, group in groups.items():
+        sources = sorted({_source_tool(f) for f in group})
+        # Prefer OSV as canonical — it carries osv.dev links and remediation guidance
+        osv_findings = [f for f in group if _source_tool(f) == "osv"]
+        canonical = osv_findings[0] if osv_findings else group[0]
+        result.append((canonical, sources))
+
+    for f in no_key:
+        result.append((f, [_source_tool(f)]))
+
+    result.sort(key=lambda x: _SEV_ORDER.get(x[0].severity.value, 99))
+    return result
 
 
 def _group_by_component(findings: list[Finding]) -> list[tuple[str, list[Finding]]]:
-    """Group findings by component, sorted by finding count (desc), then name.
+    """Group findings by component.
 
-    Within each component group findings are sorted by severity (critical first).
+    Components are ordered by highest severity first (critical → high → …),
+    then by finding count (desc), then alphabetically.
+    Within each component findings are sorted by severity (critical first).
     """
     grouped: dict[str, list[Finding]] = {}
     for f in findings:
@@ -201,8 +346,11 @@ def _group_by_component(findings: list[Finding]) -> list[tuple[str, list[Finding
     for flist in grouped.values():
         flist.sort(key=lambda x: _SEV_ORDER.get(x.severity.value, 99))
 
-    # Sort components: most findings first, then alphabetically
-    return sorted(grouped.items(), key=lambda kv: (-len(kv[1]), kv[0]))
+    # Sort components: highest severity first, then most findings, then alphabetically
+    return sorted(
+        grouped.items(),
+        key=lambda kv: (_SEV_ORDER.get(kv[1][0].severity.value, 99), -len(kv[1]), kv[0]),
+    )
 
 
 def _render_markdown(
@@ -210,22 +358,34 @@ def _render_markdown(
     sbom_path: Path,
     min_severity: str,
     tool_status: dict[str, Any] | None = None,
+    nga_audit: list[dict[str, Any]] | None = None,
 ) -> str:
+    # Pre-compute deduplicated view used throughout the report.
+    # Dedup is per-component (same CVE from trivy+osv → one entry, OSV canonical).
+    grouped_raw = _group_by_component(findings)
+    grouped_deduped = [
+        (comp, _dedup_component_findings(flist))
+        for comp, flist in grouped_raw
+    ]
+    # Flat list of canonical findings (one per unique CVE per component)
+    deduped_all: list[Finding] = [f for _, entries in grouped_deduped for f, _ in entries]
+
     lines: list[str] = [
         "# NuGuard Static Analysis Report",
         "",
         f"**SBOM:** `{sbom_path}`  ",
         f"**Minimum severity:** {min_severity}  ",
-        f"**Total findings:** {len(findings)}  ",
+        f"**Total findings:** {len(deduped_all)} unique",
+        f"*(from {len(findings)} raw tool findings — duplicates across scanners merged)*  ",
         "",
     ]
 
     # ------------------------------------------------------------------
-    # Severity summary
+    # Severity summary (based on deduplicated findings)
     # ------------------------------------------------------------------
-    if findings:
+    if deduped_all:
         by_sev: dict[str, list[Finding]] = {}
-        for f in findings:
+        for f in deduped_all:
             by_sev.setdefault(f.severity.value, []).append(f)
 
         summary_parts: list[str] = []
@@ -239,16 +399,15 @@ def _render_markdown(
                 )
         lines += ["## Summary", ""] + [f"- {p}" for p in summary_parts] + [""]
 
-        # Top components by finding count
-        grouped = _group_by_component(findings)
-        top_n = grouped[:5]
+        # Top components by unique finding count
+        top_n = grouped_deduped[:5]
         lines += ["### Components with Most Findings", ""]
-        lines += ["| Component | Findings | Highest Severity |",
-                  "|-----------|----------|-----------------|"]
-        for comp, flist in top_n:
-            top_sev = flist[0].severity.value  # already sorted by severity
+        lines += ["| Component | Unique CVEs | Highest Severity |",
+                  "|-----------|-------------|-----------------|"]
+        for comp, entries in top_n:
+            top_sev = entries[0][0].severity.value  # sorted by severity
             emoji = _SEV_EMOJI.get(top_sev, "")
-            lines.append(f"| `{comp}` | {len(flist)} | {emoji} {top_sev.upper()} |")
+            lines.append(f"| `{comp}` | {len(entries)} | {emoji} {top_sev.upper()} |")
         lines.append("")
 
     # ------------------------------------------------------------------
@@ -270,34 +429,88 @@ def _render_markdown(
             lines.append(f"| {tool} | {icon} {st}{note} | {count} |")
         lines.append("")
 
-    if not findings:
+    if not deduped_all:
         lines += ["_No findings at or above the requested severity threshold._", ""]
-        return "\n".join(lines)
+    else:
+        # ------------------------------------------------------------------
+        # Findings grouped by component — one entry per unique CVE/GHSA.
+        # Same vulnerability reported by multiple scanners is shown once;
+        # OSV's finding is canonical (osv.dev link + remediation).
+        # ------------------------------------------------------------------
+        lines += ["## Findings", ""]
+
+        for comp, entries in grouped_deduped:
+            top_sev = entries[0][0].severity.value
+            emoji = _SEV_EMOJI.get(top_sev, "")
+            lines += [f"### {emoji} `{comp}` ({len(entries)} unique CVE(s))", ""]
+            for f, sources in entries:
+                sev_emoji = _SEV_EMOJI.get(f.severity.value, "")
+                vuln_id = _canonical_vuln_id(f) or f.finding_id
+                sources_str = ", ".join(f"`{s}`" for s in sources)
+                lines += [f"#### {sev_emoji} {vuln_id}  {f.title}", ""]
+                lines += [f"**Sources:** {sources_str}  ", ""]
+                lines += [f.description or "", ""]
+                if f.affected_component:
+                    lines += [f"**Affected:** `{_component_label(f)}`  ", ""]
+                if f.remediation:
+                    lines += [f"**Remediation:** {f.remediation}  ", ""]
+                if f.mitre_atlas_technique:
+                    lines += [f"**ATLAS Techniques:** {f.mitre_atlas_technique}  ", ""]
+                if f.references:
+                    lines += ["**References:**  ", ""]
+                    for ref in f.references:
+                        lines.append(f"- {ref}")
+                    lines.append("")
 
     # ------------------------------------------------------------------
-    # Findings grouped by component, sorted by severity within each group
+    # NGA Rule Audit (verbose mode only)
     # ------------------------------------------------------------------
-    lines += ["## Findings", ""]
-
-    for comp, flist in _group_by_component(findings):
-        top_sev = flist[0].severity.value
-        emoji = _SEV_EMOJI.get(top_sev, "")
-        lines += [f"### {emoji} `{comp}` ({len(flist)} finding(s))", ""]
-        for f in flist:
-            sev_emoji = _SEV_EMOJI.get(f.severity.value, "")
-            lines += [f"#### {sev_emoji} {f.finding_id}  {f.title}", ""]
-            lines += [f.description or "", ""]
-            if f.affected_component:
-                lines += [f"**Affected:** `{f.affected_component}`  ", ""]
-            if f.remediation:
-                lines += [f"**Remediation:** {f.remediation}  ", ""]
-            if f.mitre_atlas_technique:
-                lines += [f"**ATLAS Techniques:** {f.mitre_atlas_technique}  ", ""]
-            if f.references:
-                lines += ["**References:**  ", ""]
-                for ref in f.references:
-                    lines.append(f"- {ref}")
-                lines.append("")
+    if nga_audit:
+        _AUDIT_SEV_EMOJI = {"CRITICAL": "🔴", "HIGH": "🟠", "MEDIUM": "🟡", "LOW": "🟢"}
+        _AUDIT_STATUS_ICON = {"PASS": "✅", "FAIL": "❌", "ERROR": "⚠️"}
+        lines += [
+            "## NGA Rule Audit", "",
+            "All 18 NGA structural rules — pass/fail status with evidence.",
+            "",
+            "| Rule | Severity | Status | Evidence |",
+            "|------|----------|--------|----------|",
+        ]
+        for entry in nga_audit:
+            rid = entry.get("rule_id", "")
+            title = entry.get("title", "")
+            sev = entry.get("severity", "")
+            status = entry.get("status", "")
+            sev_em = _AUDIT_SEV_EMOJI.get(sev, "")
+            st_icon = _AUDIT_STATUS_ICON.get(status, "❓")
+            if status == "FAIL":
+                count = entry.get("finding_count", 0)
+                affected = entry.get("affected", [])
+                detail = f"{count} finding(s)"
+                if affected:
+                    detail += f" — `{'`, `'.join(str(a) for a in affected[:3])}`"
+                    if len(affected) > 3:
+                        detail += f" +{len(affected) - 3} more"
+            else:
+                detail = entry.get("pass_reason", "")
+            lines.append(
+                f"| **{rid}** {title} | {sev_em} {sev} | {st_icon} {status} | {detail} |"
+            )
+        lines += [""]
+        # Per-rule detail for passing rules
+        pass_rules = [e for e in nga_audit if e.get("status") == "PASS"]
+        if pass_rules:
+            lines += ["### Passing Rule Details", ""]
+            for entry in pass_rules:
+                rid = entry.get("rule_id", "")
+                title = entry.get("title", "")
+                checks = entry.get("checks", "")
+                pass_reason = entry.get("pass_reason", "")
+                lines += [
+                    f"**{rid} — {title}**  ",
+                    f"- Examined: {checks}  ",
+                    f"- Result: {pass_reason}  ",
+                    "",
+                ]
 
     return "\n".join(lines)
 
@@ -306,6 +519,7 @@ def _render_json(
     findings: list[Finding],
     sbom_path: Path,
     tool_status: dict[str, Any] | None = None,
+    nga_audit: list[dict[str, Any]] | None = None,
 ) -> str:
     # Severity counts
     sev_counts: dict[str, int] = {}
@@ -324,6 +538,7 @@ def _render_json(
         "tool_status": tool_status or {},
         "by_component": by_component,
         "findings": [f.model_dump() for f in findings],
+        **({"nga_rule_audit": nga_audit} if nga_audit else {}),
     }
     return json.dumps(data, indent=2, default=str)
 

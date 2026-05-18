@@ -7,7 +7,6 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
-
 # ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
@@ -172,7 +171,7 @@ class CognitivePolicy(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# Compiled policy controls (derived from CognitivePolicy for validate/redteam)
+# Compiled policy controls (derived from CognitivePolicy for behavior/redteam)
 # ---------------------------------------------------------------------------
 
 
@@ -180,7 +179,7 @@ class PolicyControl(BaseModel):
     """A single testable control compiled from a CognitivePolicy.
 
     Each control represents one enforceable rule from the policy with
-    associated prompts that validate and redteam modules can use directly to
+    associated prompts that behavior and redteam modules can use directly to
     exercise the control.
     """
 

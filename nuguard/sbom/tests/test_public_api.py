@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from nuguard.sbom import AiSbomDocument, AiSbomConfig, AiSbomExtractor, AiSbomSerializer
+from nuguard.sbom import AiSbomConfig, AiSbomDocument, AiSbomExtractor, AiSbomSerializer
 
 
 def test_xelo_public_api_exports() -> None:

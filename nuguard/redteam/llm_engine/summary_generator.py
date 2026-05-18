@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import TYPE_CHECKING
 
 from nuguard.common.llm_client import LLMClient
@@ -20,6 +21,13 @@ _EXEC_SUMMARY_SYSTEM = (
 _REMEDIATION_SYSTEM = (
     "You are a security engineer writing remediation steps for a developer. "
     "Use imperative sentences. Be concrete. Max 5 steps."
+)
+
+_REMEDIATION_BATCH_SYSTEM = (
+    "You are a security engineer writing remediation steps for a developer. "
+    "You will receive multiple findings grouped by component and attack goal. "
+    "For each finding, write concise, actionable steps. "
+    "Use imperative sentences. Be concrete. Max 5 steps per finding."
 )
 
 _CODING_BRIEF_SYSTEM = (
@@ -169,6 +177,124 @@ class LLMSummaryGenerator:
         except Exception as exc:
             _log.warning("Remediation generation failed for %s: %s", finding.finding_id, exc)
             return ""
+
+    async def remediation_batch(
+        self,
+        findings: list[Finding],
+        sbom_nodes: dict[str, object],
+    ) -> dict[str, str]:
+        """Return ``{finding_id: remediation_text}`` for all findings.
+
+        Groups findings by ``(affected_component, goal_type)`` and issues one
+        LLM call per cluster.  Falls back to per-finding calls for any cluster
+        whose bulk response cannot be parsed.
+        """
+        if not findings:
+            return {}
+
+        # Group by (affected_component, goal_type)
+        clusters: dict[tuple[str, str], list[Finding]] = {}
+        for f in findings:
+            key = (f.affected_component or "unknown", f.goal_type or "unknown")
+            clusters.setdefault(key, []).append(f)
+
+        _log.info(
+            "summary-gen | remediation_batch: %d findings across %d clusters",
+            len(findings), len(clusters),
+        )
+
+        result: dict[str, str] = {}
+        for (component, goal_type), cluster_findings in clusters.items():
+            cluster_result = await self._remediation_cluster(
+                cluster_findings, component, goal_type, sbom_nodes
+            )
+            result.update(cluster_result)
+        return result
+
+    async def _remediation_cluster(
+        self,
+        findings: list[Finding],
+        component: str,
+        goal_type: str,
+        sbom_nodes: dict[str, object],
+    ) -> dict[str, str]:
+        """One LLM call for all findings in a (component, goal_type) cluster.
+
+        Parses per-finding sections from the response. Falls back to individual
+        `remediation()` calls if parsing fails or the bulk call errors.
+        """
+        if len(findings) == 1:
+            rem = await self.remediation(findings[0], sbom_nodes)
+            return {findings[0].finding_id: rem} if rem else {}
+
+        # Build combined prompt
+        finding_blocks = []
+        for i, f in enumerate(findings, 1):
+            source_file: str | None = None
+            if len(f.sbom_path) == 1:
+                node = sbom_nodes.get(f.sbom_path[0])
+                if node is not None:
+                    meta = getattr(node, "metadata", None)
+                    if meta:
+                        source_file = getattr(meta, "source_file", None)
+            evidence_text = (f.evidence or f.description or "")[:200]
+            block = [
+                f"## FINDING {i}: {f.title}",
+                f"ID: {f.finding_id}",
+                f"Severity: {f.severity}",
+                f"Evidence: {evidence_text}",
+            ]
+            if source_file:
+                block.append(f"Source file: {source_file}")
+            finding_blocks.append("\n".join(block))
+
+        prompt = (
+            f"Component: {component}\n"
+            f"Attack goal: {goal_type}\n\n"
+            + "\n\n".join(finding_blocks)
+            + "\n\n"
+            "For each finding above, write 3–5 concrete remediation steps. "
+            "Format output as:\n\n"
+            "## FINDING 1\n<steps>\n\n## FINDING 2\n<steps>\n\n..."
+            "\n\nDo NOT include the finding title or ID in your output — just the steps."
+        )
+
+        label = f"summary-gen | remediation-cluster component={component!r} n={len(findings)}"
+        try:
+            raw = await self._llm.complete(
+                prompt, system=_REMEDIATION_BATCH_SYSTEM, label=label,
+            )
+            if not raw.startswith("[NUGUARD_CANNED_RESPONSE]"):
+                # Parse sections by "## FINDING N"
+                parts = re.split(r"(?m)^## FINDING\s+\d+\s*\n?", raw)
+                # parts[0] is preamble (empty), then one section per finding
+                finding_sections = [p.strip() for p in parts if p.strip()]
+                if len(finding_sections) >= len(findings):
+                    result: dict[str, str] = {}
+                    for f, section in zip(findings, finding_sections):
+                        if section:
+                            result[f.finding_id] = section
+                    if result:
+                        _log.debug(
+                            "remediation-cluster: parsed %d/%d findings for %r/%r",
+                            len(result), len(findings), component, goal_type,
+                        )
+                        return result
+                _log.info(
+                    "remediation-cluster: parse mismatch (got %d sections for %d findings) "
+                    "— falling back for %r/%r",
+                    len(finding_sections), len(findings), component, goal_type,
+                )
+        except Exception as exc:
+            _log.warning("remediation-cluster failed for %r/%r: %s", component, goal_type, exc)
+
+        # Fallback: per-finding calls
+        result = {}
+        for f in findings:
+            rem = await self.remediation(f, sbom_nodes)
+            if rem:
+                result[f.finding_id] = rem
+        return result
 
     async def coding_agent_brief(
         self,

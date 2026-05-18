@@ -8,7 +8,7 @@ Covers:
 """
 from __future__ import annotations
 
-import pytest
+from types import SimpleNamespace
 
 from nuguard.redteam.executor.orchestrator import (
     ScenarioRecord,
@@ -16,7 +16,6 @@ from nuguard.redteam.executor.orchestrator import (
     _compute_scan_outcome,
     _tally_transport,
 )
-
 
 # ── _classify_step_transport ──────────────────────────────────────────────────
 
@@ -148,16 +147,37 @@ def _record_with_counters(
     return r
 
 
-def _fake_finding() -> object:
-    """Return a truthy stand-in for a Finding object."""
-    return object()
+def _fake_finding(severity: str = "critical") -> object:
+    """Return a Finding-like object with a .severity attribute."""
+    return SimpleNamespace(severity=SimpleNamespace(value=severity))
 
 
-def test_outcome_passed_when_findings():
-    """Any finding → passed, regardless of transport health."""
+def test_outcome_critical_findings():
+    """Critical severity finding → critical_findings."""
     records = [_record_with_counters(http_5xx=5)]
-    outcome = _compute_scan_outcome(findings=[_fake_finding()], records=records, strict=True)
-    assert outcome == "passed"
+    outcome = _compute_scan_outcome(findings=[_fake_finding("critical")], records=records, strict=True)
+    assert outcome == "critical_findings"
+
+
+def test_outcome_high_findings():
+    """High severity finding, no critical → high_findings."""
+    records = [_record_with_counters(http_2xx=5)]
+    outcome = _compute_scan_outcome(findings=[_fake_finding("high")], records=records, strict=False)
+    assert outcome == "high_findings"
+
+
+def test_outcome_findings_medium():
+    """Medium severity finding, no critical/high → findings."""
+    records = [_record_with_counters(http_2xx=5)]
+    outcome = _compute_scan_outcome(findings=[_fake_finding("medium")], records=records, strict=False)
+    assert outcome == "findings"
+
+
+def test_outcome_critical_wins_over_transport_errors():
+    """Critical finding wins even when transport is mostly errors (strict=True)."""
+    records = [_record_with_counters(http_5xx=5)]
+    outcome = _compute_scan_outcome(findings=[_fake_finding("critical")], records=records, strict=True)
+    assert outcome == "critical_findings"
 
 
 def test_outcome_no_findings_default():

@@ -1,0 +1,2 @@
+python-dotenv>=1.0,<2
+google-auth>=2.30,<3

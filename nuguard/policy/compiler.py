@@ -2,7 +2,7 @@
 
 Converts a CognitivePolicy (parsed from Markdown) into a list of
 PolicyControl objects with attached test_prompts and boundary_prompts
-that can be used directly by the validate and redteam modules.
+that can be used directly by the behavior and redteam modules.
 
 Two compilation modes:
   - Rule-based (default): deterministic, no LLM required.
@@ -13,8 +13,8 @@ Two compilation modes:
 from __future__ import annotations
 
 import json
-import re
 import logging
+import re
 from typing import TYPE_CHECKING
 
 from nuguard.models.policy import CognitivePolicy, PolicyControl
@@ -80,9 +80,18 @@ _SECTION_SEVERITY = {
 }
 
 
-def _slugify(text: str, max_len: int = 60) -> str:
-    """Return a short lower-case representation of *text* for prompt templates."""
-    return re.sub(r"\s+", " ", text.strip())[:max_len]
+def _slugify(text: str, max_len: int | None = None) -> str:
+    """Return a message-safe short form of *text* for prompt templates.
+
+    Truncates at a word boundary (not mid-word) and strips trailing
+    punctuation so the result can be embedded cleanly in a sentence.
+    """
+    cleaned = re.sub(r"\s+", " ", text.strip())
+    if max_len is not None and max_len > 0 and len(cleaned) > max_len:
+        truncated = cleaned[:max_len]
+        last_space = truncated.rfind(" ")
+        cleaned = truncated[:last_space] if last_space > 0 else truncated
+    return cleaned.rstrip(".,;:")
 
 
 def _rule_based_controls(policy: CognitivePolicy) -> list[PolicyControl]:
@@ -193,9 +202,9 @@ async def _llm_controls(text: str, llm_client: "LLMClient") -> list[PolicyContro
         label="policy-compile",
     )
 
-    # Canned response means no API key is configured — skip JSON parse entirely
+    # Canned response means the LLM was unavailable (no key, connection error, etc.)
     if response.startswith("[NUGUARD_CANNED_RESPONSE]"):
-        _log.warning("No LLM API key configured; falling back to rule-based policy compilation")
+        _log.warning("LLM unavailable; falling back to rule-based policy compilation")
         policy = parse_policy(text)
         return _rule_based_controls(policy)
 
@@ -254,7 +263,7 @@ async def compile_controls(
         llm_client: LLMClient instance.  Required when *use_llm* is True.
 
     Returns:
-        List of PolicyControl instances ready for validate / redteam use.
+        List of PolicyControl instances ready for behavior / redteam use.
     """
     if use_llm and llm_client is not None:
         return await _llm_controls(text, llm_client)

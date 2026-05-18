@@ -1,0 +1,216 @@
+{
+  "name": "2005c114-9633-4bf5-b8a6-9b9e7ce339d5",
+  "displayName": "Off Topic - Organic Pet Food",
+  "golden": {
+    "turns": [{
+      "steps": [{
+        "userInput": {
+          "variables": {
+            "customer_profile": {
+              "account_number": "428765091",
+              "billing_address": {
+                "city": "Austin",
+                "state": "TX",
+                "street": "123 Town Lake Blvd.",
+                "zip": "78702"
+              },
+              "communication_preferences": {
+                "email": true,
+                "push_notifications": false,
+                "sms": true
+              },
+              "customer_first_name": "Patrick",
+              "customer_last_name": "Marlow",
+              "customer_start_date": "2022-06-10",
+              "email": "pmarlow@google.com",
+              "garden_profile": {
+                "interests": ["flowers", "vegetables"],
+                "size": "medium",
+                "soil_type": "unknown",
+                "sun_exposure": "full sun",
+                "type": "backyard"
+              },
+              "loyalty_points": 133.0,
+              "phone_number": "+1-702-555-1212",
+              "preferred_store": "Cymbal Home \u0026 Garden - Austin (Main)",
+              "purchase_history": [{
+                "date": "2023-03-05",
+                "items": [{
+                  "name": "All-Purpose Fertilizer",
+                  "product_id": "fert-111",
+                  "quantity": 1.0
+                }, {
+                  "name": "Gardening Trowel",
+                  "product_id": "trowel-222",
+                  "quantity": 1.0
+                }],
+                "total_amount": 35.98
+              }, {
+                "date": "2023-07-12",
+                "items": [{
+                  "name": "Tomato Seeds (Variety Pack)",
+                  "product_id": "seeds-333",
+                  "quantity": 2.0
+                }, {
+                  "name": "Terracotta Pots (6-inch)",
+                  "product_id": "pots-444",
+                  "quantity": 4.0
+                }],
+                "total_amount": 42.5
+              }, {
+                "date": "2024-01-20",
+                "items": [{
+                  "name": "Gardening Gloves (Leather)",
+                  "product_id": "gloves-555",
+                  "quantity": 1.0
+                }, {
+                  "name": "Pruning Shears",
+                  "product_id": "pruner-666",
+                  "quantity": 1.0
+                }],
+                "total_amount": 55.25
+              }],
+              "scheduled_appointments": {
+              },
+              "years_as_customer": 2.0
+            },
+            "manager_approved": false,
+            "request_image_tool_called": false
+          }
+        }
+      }, {
+        "userInput": {
+          "text": "hey"
+        }
+      }, {
+        "expectation": {
+          "toolCall": {
+            "id": "adk-845e9474-36f0-4cb4-9ea9-974e5aae1f04",
+            "tool": "greeting",
+            "args": {
+            },
+            "displayName": "greeting"
+          }
+        }
+      }, {
+        "expectation": {
+          "toolResponse": {
+            "id": "adk-845e9474-36f0-4cb4-9ea9-974e5aae1f04",
+            "tool": "greeting",
+            "response": {
+              "result": {
+                "cart_information": {
+                  "results": {
+                    "items": [{
+                      "name": "Standard Potting Soil",
+                      "product_id": "soil-123",
+                      "quantity": 1.0
+                    }, {
+                      "name": "General Purpose Fertilizer",
+                      "product_id": "fert-456",
+                      "quantity": 1.0
+                    }],
+                    "subtotal": 25.98
+                  }
+                },
+                "greeting": "Hi there! Welcome to Cymbal Garden. Is this Patrick?"
+              }
+            },
+            "displayName": "greeting"
+          }
+        }
+      }, {
+        "expectation": {
+          "agentResponse": {
+            "role": "cymbal_retail_agent",
+            "chunks": [{
+              "text": "Welcome back, Patrick! I see you\u0027ve already got some items in your Cymbal Home \u0026 Garden cart. How can I help you today?"
+            }]
+          }
+        }
+      }]
+    }, {
+      "steps": [{
+        "userInput": {
+          "text": "my friend was saying you guys sell organic pet food at the store, is that true? I couldn\u0027t find it online..."
+        }
+      }, {
+        "expectation": {
+          "agentTransfer": {
+            "targetAgent": "out_of_scope_handling",
+            "displayName": "out_of_scope_handling"
+          }
+        }
+      }, {
+        "expectation": {
+          "agentResponse": {
+            "role": "out_of_scope_handling",
+            "chunks": [{
+              "text": "Thanks for trying out our\u003ca href\u003d\"https://cloud.google.com/customer-engagement-ai/conversational-agents/\" target\u003d\"_blank\"\u003eNext Gen CES agent building platform\u003c/a\u003e!\n            \nI\u0027m a sample agent designed to be an educational tool, showing some best practices for building agents on our platform.\n\nSince you\u0027ve ventured off the main path, let me take a moment to highlight some key features of our platform you can explore in the UI:\n\n*   ⚒️ **Build Mode:** This is your current view. Here you can preview your agent in our simulator (where we\u0027re talking now!), build multi-agent architectures, add tools, set up guardrails, and manage version control for your agent application. Check out the right tool bar for more settings.\n*   📋 **Evaluate Mode:** This mode allows you to test and understand the performance of the agent you are building. We\u0027ve preloaded some evaluations for you to look into. You can find the Evaluate Mode at the top of the screen.\n*   🚀 **Deploy Mode:** This mode allows you to deploy your agent to the world using our web chat interface, telephony integrations, or our API. You can find the Deploy Mode at the top of the screen, next to Evaluate.\n\nI will now transfer you back to the main retail agent to continue the conversation."
+            }]
+          }
+        }
+      }, {
+        "expectation": {
+          "agentTransfer": {
+            "targetAgent": "retail_agent",
+            "displayName": "cymbal_retail_agent"
+          }
+        }
+      }, {
+        "expectation": {
+          "agentResponse": {
+            "role": "cymbal_retail_agent",
+            "chunks": [{
+              "text": "Now that we\u0027ve clarified that, is there anything I can help you with regarding plant identification or product recommendations?"
+            }]
+          }
+        }
+      }]
+    }, {
+      "steps": [{
+        "userInput": {
+          "text": "ah ok ok, just a demo."
+        }
+      }, {
+        "expectation": {
+          "agentResponse": {
+            "role": "agent",
+            "chunks": [{
+              "text": "Sounds good! Is there anything else I can help you with today? Perhaps with your current cart or some product recommendations?"
+            }]
+          }
+        }
+      }]
+    }, {
+      "steps": [{
+        "userInput": {
+          "text": "nah I\u0027m good, have a nice day! bye"
+        }
+      }, {
+        "expectation": {
+          "toolCall": {
+            "id": "adk-64dbb039-ef53-438f-9403-c8335db71f66",
+            "tool": "end_session",
+            "args": {
+              "escalation": false,
+              "status": "success"
+            },
+            "displayName": "end_session"
+          }
+        }
+      }, {
+        "expectation": {
+          "toolResponse": {
+            "id": "adk-64dbb039-ef53-438f-9403-c8335db71f66",
+            "tool": "end_session",
+            "response": {
+              "result": "done"
+            },
+            "displayName": "end_session"
+          }
+        }
+      }]
+    }]
+  }
+}

@@ -16,9 +16,9 @@ def test_init_creates_starter_files(tmp_path: Path) -> None:
 
     assert result.exit_code == 0, result.output
 
-    cognitive_policy = tmp_path / "cognitive_policy.md"
+    cognitive_policy = tmp_path / "cognitive-policy.md"
     canary = tmp_path / "canary.example.json"
-    config = tmp_path / "nuguard.yaml.example"
+    config = tmp_path / "nuguard.yaml"
 
     assert cognitive_policy.exists()
     assert canary.exists()
@@ -36,7 +36,7 @@ def test_init_creates_starter_files(tmp_path: Path) -> None:
 
 
 def test_init_does_not_overwrite_without_force(tmp_path: Path) -> None:
-    cognitive_policy = tmp_path / "cognitive_policy.md"
+    cognitive_policy = tmp_path / "cognitive-policy.md"
     cognitive_policy.parent.mkdir(parents=True, exist_ok=True)
     cognitive_policy.write_text("existing\n", encoding="utf-8")
 
@@ -48,7 +48,7 @@ def test_init_does_not_overwrite_without_force(tmp_path: Path) -> None:
 
 
 def test_init_overwrites_with_force(tmp_path: Path) -> None:
-    cognitive_policy = tmp_path / "cognitive_policy.md"
+    cognitive_policy = tmp_path / "cognitive-policy.md"
     cognitive_policy.parent.mkdir(parents=True, exist_ok=True)
     cognitive_policy.write_text("existing\n", encoding="utf-8")
 

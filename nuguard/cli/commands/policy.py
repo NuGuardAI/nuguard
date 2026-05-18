@@ -55,7 +55,7 @@ def compile_policy(
 ) -> None:
     """Compile a cognitive policy Markdown file into structured JSON controls.
 
-    The resulting JSON is the canonical control list used by ``nuguard validate``
+    The resulting JSON is the canonical control list used by ``nuguard behavior``
     and ``nuguard redteam`` for consistent, reproducible treatment of policy rules.
     """
     from nuguard.config import load_config
@@ -257,11 +257,12 @@ def check(
     from nuguard.sbom.extractor.serializer import AiSbomSerializer
 
     # Fall back to nuguard.yaml for --sbom and --policy when not provided on CLI
-    cfg = load_config(config_file)
-    if sbom is None and cfg.sbom_path:
-        sbom = Path(cfg.sbom_path)
-    if policy is None and cfg.policy_path:
-        policy = Path(cfg.policy_path)
+    if config_file is not None:
+        cfg = load_config(config_file)
+        if sbom is None and cfg.sbom_path:
+            sbom = Path(cfg.sbom_path)
+        if policy is None and cfg.policy_path:
+            policy = Path(cfg.policy_path)
 
     if not sbom and not policy:
         _err_console.print("Provide --policy and/or --sbom (or set them in nuguard.yaml).")

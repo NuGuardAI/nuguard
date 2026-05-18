@@ -10,9 +10,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from ..base import ComponentDetection, FrameworkAdapter
 from ...normalization import canonicalize_text
 from ...types import ComponentType
+from ..base import ComponentDetection, FrameworkAdapter
 
 
 class GuardrailsAIAdapter(FrameworkAdapter):

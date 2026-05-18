@@ -282,7 +282,7 @@ def _deployment_details(nodes: list[dict[str, Any]]) -> list[str]:
             technologies.setdefault(matched, []).append(loc_str)
 
         for tech, locs in technologies.items():
-            loc_list = ", ".join(l for l in locs if l)
+            loc_list = ", ".join(loc for loc in locs if loc)
             lines.append(f"- `{tech}` — {loc_list}" if loc_list else f"- `{tech}`")
 
         tiers = extras.get("detected_by_tiers") or []

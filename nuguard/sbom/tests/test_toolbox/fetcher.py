@@ -4,13 +4,14 @@ GitHub repository fetching utilities for benchmark evaluation.
 This module handles fetching files from GitHub repositories
 for running asset discovery against ground truth datasets.
 """
-import os
-import httpx
-import base64
 import asyncio
-from typing import List, Optional, Tuple
-from dataclasses import dataclass, field
+import base64
 import logging
+import os
+from dataclasses import dataclass, field
+from typing import List, Optional, Tuple
+
+import httpx
 
 logger = logging.getLogger(__name__)
 

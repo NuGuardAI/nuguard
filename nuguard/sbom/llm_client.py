@@ -22,6 +22,17 @@ _log = logging.getLogger(__name__)
 
 _litellm_noise_suppressed = False
 
+# Reasoning / thinking models that reject temperature (or accept only temperature=1).
+# Covers OpenAI o1/o3/o4 and gpt-5 class; mirrors nuguard.common.llm_client.
+_REASONING_MODEL_FAMILIES = ("o1", "o3", "o4", "gpt-5")
+
+
+def _is_reasoning_model(model: str) -> bool:
+    """Return True for models that do not support arbitrary temperature values."""
+    _, _, name = model.rpartition("/")
+    name_lower = (name or model).lower()
+    return any(name_lower.startswith(f) for f in _REASONING_MODEL_FAMILIES)
+
 
 def _suppress_litellm_noise(litellm: Any) -> None:
     """Silence litellm's startup credential-probe warnings (one-time)."""
@@ -176,8 +187,9 @@ class LLMClient:
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-            "temperature": 0.0,
         }
+        if not _is_reasoning_model(self._model):
+            kwargs["temperature"] = 0.0
         if self._api_key:
             kwargs["api_key"] = self._api_key
         if self._api_base:
@@ -186,7 +198,11 @@ class LLMClient:
         _log.debug(
             "complete_text model=%s budget_left=%d", self._model, self._budget - self._tokens_used
         )
-        response = await litellm.acompletion(**kwargs)
+        try:
+            response = await litellm.acompletion(**kwargs)
+        except litellm.UnsupportedParamsError:
+            kwargs.pop("temperature", None)
+            response = await litellm.acompletion(**kwargs)
         tokens = self._record_usage(response)
         text: str = response.choices[0].message.content or ""
         return text, tokens
@@ -254,9 +270,10 @@ class LLMClient:
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-            "temperature": 0.0,
             "response_format": {"type": "json_object"},
         }
+        if not _is_reasoning_model(self._model):
+            kwargs["temperature"] = 0.0
         if self._api_key:
             kwargs["api_key"] = self._api_key
         if self._api_base:
@@ -267,7 +284,11 @@ class LLMClient:
             self._model,
             list(response_schema.get("properties", {}).keys()),
         )
-        response = await litellm.acompletion(**kwargs)
+        try:
+            response = await litellm.acompletion(**kwargs)
+        except litellm.UnsupportedParamsError:
+            kwargs.pop("temperature", None)
+            response = await litellm.acompletion(**kwargs)
         self._record_usage(response)
 
         raw = response.choices[0].message.content or ""
@@ -286,3 +307,63 @@ class LLMClient:
         except json.JSONDecodeError as exc:
             _log.warning("complete_structured: JSON parse failed: %s", exc)
             return {}
+
+
+async def enrich_node_descriptions(
+    nodes: list,  # list[Node] — avoid circular import
+    llm_client: "LLMClient",
+) -> None:
+    """Use LLM to write descriptions for AGENT/TOOL nodes missing or short ones.
+
+    Mutates nodes in-place. Skips nodes where description is already >30 chars.
+    Called from AiSbomExtractor._llm_enrich() after other enrichment steps.
+    """
+    _SYSTEM = (
+        "You are an AI security analyst writing concise descriptions for AI system components."
+    )
+    for node in nodes:
+        component_type = getattr(node, "component_type", None)
+        # Accept both enum and string representations
+        ct_str = str(getattr(component_type, "value", component_type)) if component_type is not None else ""
+        if ct_str not in ("AGENT", "TOOL"):
+            continue
+
+        meta = getattr(node, "metadata", None)
+        if meta is None:
+            continue
+
+        description = getattr(meta, "description", None) or ""
+        if len(description) >= 30:
+            continue  # already has a sufficient description
+
+        # Stop early if budget is nearly exhausted
+        if llm_client.tokens_used >= llm_client._budget * 0.9:
+            _log.debug("enrich_node_descriptions: budget threshold reached, stopping early")
+            break
+
+        name = getattr(node, "name", "") or ""
+        framework = getattr(meta, "framework", None) or "unknown"
+        excerpt = (getattr(meta, "system_prompt_excerpt", None) or "")[:300]
+        parameters = getattr(meta, "parameters", None) or []
+        param_names = ", ".join(p.name for p in parameters if p.name)
+
+        user_prompt = (
+            f"Component name: {name}\n"
+            f"Type: {ct_str}\n"
+            f"Framework: {framework}\n"
+            f"System prompt excerpt: {excerpt}\n"
+            f"Parameters: {param_names}\n\n"
+            "Write a single sentence (15-40 words) describing what this component does. "
+            "Reply with ONLY the description text."
+        )
+
+        try:
+            text, _ = await llm_client.complete_text(system=_SYSTEM, user=user_prompt)
+            text = text.strip()
+            if text:
+                meta.description = text[:200]
+                _log.debug("enrich_node_descriptions: set description for %s (%s)", name, ct_str)
+        except Exception as exc:
+            _log.warning(
+                "enrich_node_descriptions: failed for node %s (%s): %s", name, ct_str, exc
+            )

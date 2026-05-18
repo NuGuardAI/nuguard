@@ -1,6 +1,10 @@
 dist/
+server.mcpb
 __pycache__/
 .venv/
+.pipx/
+.azure/
+.local/
 *.egg-info/
 .mypy_cache/
 .ruff_cache/
@@ -11,13 +15,13 @@ __pycache__/
 build/
 .eggs/
 tmp/
-*.log
+/*.log
 *.bak
 .env
 .env.*
+!.env.example
 tests/redteam/.env
-tests/output/
-docs/llm-runs/
+.python-version
 
 # Canary seed files contain fake-but-realistic PII — do not commit live versions
 # (the .example version is intentionally tracked)
@@ -26,3 +30,26 @@ canary.local.json
 
 # Test run artifacts (E2E outputs, scan reports)
 tests/output/
+/reports/
+/redteam-report.json
+/*.sbom.json
+/*.sbom.enriched.json
+# Local nuguard.yaml overrides at repo root or in test run dirs — not in tests/apps/
+/nuguard.yaml
+tests/redteam/nuguard.yaml
+tests/cli/nuguard.yaml
+tests/*/.venv/
+tests/*/dist/
+tests/*/__pycache__/
+tests/*/.mypy_cache/
+tests/*/.ruff_cache/
+tests/*/build/
+tests/*/node_modules/
+tests/*/tmp/
+tests/*/reports/
+tests/*/*/reports/
+tests/*/*/output/
+tests/*/*/tests/
+tests/*/.adk/*.db
+tests/*/output/
+CACHEDIR.TAG

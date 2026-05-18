@@ -1,0 +1,17 @@
+{
+  "default_profile": "patrick",
+  "profiles": {
+    "patrick": {
+      "label": "Patrick"
+    },
+    "new_customer": {
+      "label": "New Customer"
+    },
+    "high_value": {
+      "label": "High Value"
+    },
+    "anonymous": {
+      "label": "Anonymous"
+    }
+  }
+}

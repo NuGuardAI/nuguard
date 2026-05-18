@@ -245,8 +245,8 @@ def print_terminal_report(
         w(f"  Address the {len(crit_high)} CRITICAL/HIGH finding(s) first.")
         for rid in rule_ids[:3]:
             w(f"  • {rid}: see remediation guidance in findings output")
-        w(f"  Full report: nuguard-reports/report.md")
-        w(f"  SARIF:       nuguard-reports/findings.sarif  (upload to GitHub Code Scanning)")
+        w("  Full report: nuguard-reports/report.md")
+        w("  SARIF:       nuguard-reports/findings.sarif  (upload to GitHub Code Scanning)")
         w()
 
     # ── Footer ────────────────────────────────────────────────────────────────

@@ -16,9 +16,9 @@ from __future__ import annotations
 from typing import Any
 
 from nuguard.common.logging import get_logger
+from nuguard.policy.scoring import safe_float
 from nuguard.sbom.models import AiSbomDocument, Node
 from nuguard.sbom.types import ComponentType
-from nuguard.policy.scoring import safe_float
 
 _log = get_logger(__name__)
 

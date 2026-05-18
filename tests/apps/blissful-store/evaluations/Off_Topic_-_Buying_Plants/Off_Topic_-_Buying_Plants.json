@@ -1,0 +1,127 @@
+{
+  "name": "d10ab47c-2fe5-4ce7-b452-9560dc6b9228",
+  "displayName": "Off Topic - Buying Plants",
+  "golden": {
+    "turns": [{
+      "steps": [{
+        "userInput": {
+          "text": "hi"
+        }
+      }, {
+        "expectation": {
+          "toolCall": {
+            "id": "adk-fc02eca4-64f2-40c2-a921-c494edca932c",
+            "tool": "greeting",
+            "args": {
+            },
+            "displayName": "greeting"
+          }
+        }
+      }, {
+        "expectation": {
+          "toolResponse": {
+            "id": "adk-fc02eca4-64f2-40c2-a921-c494edca932c",
+            "tool": "greeting",
+            "response": {
+              "result": {
+                "cart_information": {
+                  "results": {
+                    "items": [{
+                      "name": "Standard Potting Soil",
+                      "product_id": "soil-123",
+                      "quantity": 1.0
+                    }, {
+                      "name": "General Purpose Fertilizer",
+                      "product_id": "fert-456",
+                      "quantity": 1.0
+                    }],
+                    "subtotal": 25.98
+                  }
+                },
+                "greeting": "Hi there! Welcome to Cymbal Garden. Is this Patrick?"
+              }
+            },
+            "displayName": "greeting"
+          }
+        }
+      }, {
+        "expectation": {
+          "agentResponse": {
+            "role": "cymbal_retail_agent",
+            "chunks": [{
+              "text": "Welcome back, Patrick! I see you\u0027ve already got some items in your Cymbal Home \u0026 Garden cart. How can I help you today?"
+            }]
+          }
+        }
+      }]
+    }, {
+      "steps": [{
+        "userInput": {
+          "text": "I want to buy a plant"
+        }
+      }, {
+        "expectation": {
+          "agentTransfer": {
+            "targetAgent": "out_of_scope_handling",
+            "displayName": "out_of_scope_handling"
+          }
+        }
+      }, {
+        "expectation": {
+          "agentResponse": {
+            "role": "out_of_scope_handling",
+            "chunks": [{
+              "text": "Thanks for trying out \u003ca href\u003d\" https://docs.cloud.google.com/customer-engagement-ai/conversational-agents/ps\" target\u003d\"_blank\"\u003eCX Agent Studio\u003c/a\u003e!\u003cbr\u003e\n\nI\u0027m a sample agent designed to be an educational tool, showing some best practices for building agents on our platform.\n\nSince you\u0027ve ventured off the main path, let me take a moment to highlight some key features of our platform you can explore in the UI:\n\n*   ⚒️ **Build Mode:** This is your current view. Here you can preview your agent in our simulator (where we\u0027re talking now!), build multi-agent architectures, add tools, set up guardrails, and manage version control for your agent application. Check out the right tool bar for more settings.\n*   📋 **Evaluate Mode:** This mode allows you to test and understand the performance of the agent you are building. We\u0027ve preloaded some evaluations for you to look into. You can find the Evaluate Mode at the top of the screen.\n*   🚀 **Deploy Mode:** This mode allows you to deploy your agent to the world using our web chat interface, telephony integrations, or our API. You can find the Deploy Mode at the top of the screen, next to Evaluate.\n\nI will now transfer you back to the main retail agent to continue the conversation."
+            }]
+          }
+        }
+      }, {
+        "expectation": {
+          "agentTransfer": {
+            "targetAgent": "retail_agent",
+            "displayName": "cymbal_retail_agent"
+          }
+        }
+      }, {
+        "expectation": {
+          "agentResponse": {
+            "role": "cymbal_retail_agent",
+            "chunks": [{
+              "text": "Now that we\u0027ve clarified that, is there anything I can help you with regarding plant identification or product recommendations?"
+            }]
+          }
+        }
+      }]
+    }, {
+      "steps": [{
+        "userInput": {
+          "text": "no"
+        }
+      }, {
+        "expectation": {
+          "agentResponse": {
+            "role": "cymbal_retail_agent",
+            "chunks": [{
+              "text": "Okay, no problem. Feel free to come back any time.\n"
+            }]
+          }
+        }
+      }, {
+        "expectation": {
+          "toolCall": {
+            "id": "adk-32f2b741-ff1d-4687-9615-002b6118be03",
+            "tool": "end_session",
+            "args": {
+              "params": {
+                "status": "abandoned"
+              },
+              "reason": "customer_request",
+              "session_escalated": false
+            },
+            "displayName": "end_session"
+          }
+        }
+      }]
+    }]
+  }
+}

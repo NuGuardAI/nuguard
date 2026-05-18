@@ -15,10 +15,12 @@ This module mirrors the Python ast_parser.py structure for consistency.
 """
 
 import re
-import structlog
-from typing import List, Optional, Dict, Any, Set, Tuple
+from bisect import bisect_right
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any, Dict, List, Optional, Set, Tuple
+
+import structlog
 
 logger = structlog.get_logger()
 
@@ -406,6 +408,7 @@ class TypeScriptParser:
     def _extract_jsdoc_comments(source: str) -> List[TSJSDocComment]:
         """Extract JSDoc/TSDoc block comments (/** ... */) from source."""
         comments: List[TSJSDocComment] = []
+        nl_offsets = [n.start() for n in re.finditer(r"\n", source)]
         pattern = re.compile(r"/\*\*(.*?)\*/", re.DOTALL)
         for m in pattern.finditer(source):
             raw = m.group(1)
@@ -415,8 +418,8 @@ class TypeScriptParser:
             if not text:
                 continue
 
-            line_start = source[: m.start()].count("\n") + 1
-            line_end = source[: m.end()].count("\n") + 1
+            line_start = bisect_right(nl_offsets, m.start()) + 1
+            line_end = bisect_right(nl_offsets, m.end() - 1) + 1
 
             # Extract @tags
             tags: Dict[str, str] = {}
@@ -503,6 +506,7 @@ class TypeScriptParser:
     ) -> TSSymbolTable:
         """Build a basic symbol table using regex patterns."""
         table = TSSymbolTable()
+        nl_offsets = [n.start() for n in re.finditer(r"\n", source)]
         for obj in object_literals:
             if obj.variable_name:
                 table._object_entries[obj.variable_name] = obj.properties
@@ -519,7 +523,7 @@ class TypeScriptParser:
                 raw_value=m.group(0),
                 scope="module",
                 kind="const",
-                line_number=source[: m.start()].count("\n") + 1,
+                line_number=bisect_right(nl_offsets, m.start()) + 1,
             )
 
         # const/let/var NAME = number
@@ -534,7 +538,7 @@ class TypeScriptParser:
                 raw_value=val,
                 scope="module",
                 kind="const",
-                line_number=source[: m.start()].count("\n") + 1,
+                line_number=bisect_right(nl_offsets, m.start()) + 1,
             )
 
         # this.NAME = "value"
@@ -549,7 +553,7 @@ class TypeScriptParser:
                 raw_value=m.group(0),
                 scope="module",
                 kind="field",
-                line_number=source[: m.start()].count("\n") + 1,
+                line_number=bisect_right(nl_offsets, m.start()) + 1,
             )
 
         # this.NAME = identifier (reference)
@@ -565,7 +569,7 @@ class TypeScriptParser:
                     raw_value=ref,
                     scope="module",
                     kind="field",
-                    line_number=source[: m.start()].count("\n") + 1,
+                    line_number=bisect_right(nl_offsets, m.start()) + 1,
                 )
 
         return table
@@ -1530,12 +1534,13 @@ class TypeScriptParser:
             return last_func
 
         # Find template literals (backticks) across the full source
+        nl_offsets = [n.start() for n in re.finditer(r"\n", source)]
         for match in TEMPLATE_LITERAL_PATTERN.finditer(source):
             value = match.group(1)
             if len(value) > 50:  # Only long strings
                 # Calculate line number
                 pos = match.start()
-                line_num = source[:pos].count("\n") + 1
+                line_num = bisect_right(nl_offsets, pos) + 1
 
                 # Try to find variable context from the line
                 line_start = source.rfind("\n", 0, pos) + 1

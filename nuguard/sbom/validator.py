@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 import jsonschema
 
 from nuguard.common.errors import ValidationError
+
 from .schema import get_schema
 
 

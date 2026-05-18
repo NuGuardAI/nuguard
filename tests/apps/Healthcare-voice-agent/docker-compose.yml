@@ -1,0 +1,33 @@
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_DB: healthcare
+      POSTGRES_USER: fastapi_user
+      POSTGRES_PASSWORD: yourpassword
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./sql:/docker-entrypoint-initdb.d/sql
+      - ./init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        - VITE_GEMINI_API_KEY=${VITE_GEMINI_API_KEY}
+    ports:
+      - "8080:8080"
+    environment:
+      - DB_HOST=db
+      - DB_NAME=healthcare
+      - DB_USER=fastapi_user
+      - DB_PASSWORD=yourpassword
+      - DB_PORT=5432
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - VITE_GEMINI_API_KEY=${VITE_GEMINI_API_KEY}
+      - FRONTEND_ORIGIN=*
+    depends_on:
+      - db

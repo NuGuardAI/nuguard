@@ -80,18 +80,19 @@ import asyncio
 import logging
 from typing import Any, cast
 
-from nuguard.analysis.models import AnalysisResult
-from nuguard.analysis.plugin_base import AnalysisPlugin
 from nuguard.analysis._atlas_data import (
     ATLAS_VERSION,
+    DB_ACCESS_KEYWORDS,
+    EXTERNAL_PROVIDERS,
     MITIGATIONS,
     NATIVE_CHECKS,
+    NGA_TO_ATLAS,
     OUTBOUND_KEYWORDS,
     TACTICS,
     TECHNIQUES,
-    NGA_TO_ATLAS,
-    EXTERNAL_PROVIDERS,
 )
+from nuguard.analysis.models import AnalysisResult
+from nuguard.analysis.plugin_base import AnalysisPlugin
 
 _log = logging.getLogger("analysis.plugins.atlas")
 
@@ -444,15 +445,16 @@ class AtlasAnnotatorPlugin(AnalysisPlugin):
 
         findings: list[dict[str, Any]] = []
 
-        # Build fast lookup structures
-        nodes_by_id = {n.get("id", ""): n for n in nodes}
+        # Build fast lookup structures.  Normalize IDs to strings — model_dump()
+        # may emit UUID objects rather than str when called without mode="json".
+        nodes_by_id: dict[str, dict[str, Any]] = {str(n.get("id", "")): n for n in nodes}
         node_types_by_id: dict[str, str] = {
-            n.get("id", ""): (n.get("component_type") or "").upper() for n in nodes
+            str(n.get("id", "")): (n.get("component_type") or "").upper() for n in nodes
         }
         adjacency: dict[str, set[str]] = {}
         for edge in edges:
-            src = edge.get("source") or edge.get("from") or ""
-            tgt = edge.get("target") or edge.get("to") or ""
+            src = str(edge.get("source") or edge.get("from") or "")
+            tgt = str(edge.get("target") or edge.get("to") or "")
             if src and tgt:
                 adjacency.setdefault(src, set()).add(tgt)
 
@@ -461,7 +463,9 @@ class AtlasAnnotatorPlugin(AnalysisPlugin):
             type_sets.setdefault(ntype, set()).add(nid)
 
         findings += self._check_nc001_external_model_no_hash(nodes, type_sets)
-        findings += self._check_nc002_unguarded_datastore(type_sets, adjacency, node_types_by_id)
+        findings += self._check_nc002_unguarded_datastore(
+            type_sets, adjacency, node_types_by_id, nodes_by_id
+        )
         findings += self._check_nc003_model_deployment_no_auth(
             type_sets, adjacency, node_types_by_id, nodes_by_id
         )
@@ -480,17 +484,21 @@ class AtlasAnnotatorPlugin(AnalysisPlugin):
         affected: list[str] = []
 
         for nid in type_sets.get("MODEL", set()):
-            node = next((n for n in nodes if n.get("id") == nid), {})
+            node = next((n for n in nodes if str(n.get("id", "")) == nid), {})
             name = node.get("name", nid)
+            meta = node.get("metadata") or {}
+            extras = meta.get("extras") or {}
             provider = (
-                node.get("provider") or node.get("metadata", {}).get("provider") or ""
+                node.get("provider")
+                or meta.get("provider")
+                or extras.get("provider")
+                or ""
             ).lower()
-            extras = (node.get("metadata") or {}).get("extras") or {}
             has_external = any(p in provider for p in EXTERNAL_PROVIDERS)
             has_hash = bool(extras.get("integrity_hash"))
             if has_external and not has_hash:
                 affected.append(name)
-                _log.debug("NC-001: external model '%s' has no integrity_hash", name)
+                _log.debug("NC-001: external model '%s' (provider=%s) has no integrity_hash", name, provider)
 
         if not affected:
             return []
@@ -503,6 +511,7 @@ class AtlasAnnotatorPlugin(AnalysisPlugin):
         type_sets: dict[str, set[str]],
         adjacency: dict[str, set[str]],
         node_types_by_id: dict[str, str],
+        nodes_by_id: dict[str, dict[str, Any]],
     ) -> list[dict[str, Any]]:
         check = NATIVE_CHECKS[1]  # ATLAS-NC-002
         affected: list[str] = []
@@ -530,10 +539,28 @@ class AtlasAnnotatorPlugin(AnalysisPlugin):
                     break
                 if nid in datastore_ids:
                     reached_ds.add(nid)
+                elif ntype == "TOOL" and not reached_ds:
+                    # TOOL→DATASTORE edges are often absent from SBOMs; fall back
+                    # to description-based heuristic: if the tool description mentions
+                    # database/query patterns and datastores exist, treat as reached.
+                    tool_node = nodes_by_id.get(nid, {})
+                    tmeta = tool_node.get("metadata") or {}
+                    textras = tmeta.get("extras") or {}
+                    tool_text = " ".join(filter(None, [
+                        tool_node.get("name", ""),
+                        tmeta.get("description", ""),
+                        textras.get("description", ""),
+                    ])).lower()
+                    if any(kw in tool_text for kw in DB_ACCESS_KEYWORDS):
+                        reached_ds.update(datastore_ids)
+                        _log.debug("NC-002: tool '%s' suggests datastore access (keyword match)", nid)
                 queue.extend(adjacency.get(nid, set()) - visited)
 
             if reached_ds and not guarded:
-                affected.extend(reached_ds)
+                # Use node names in affected list, not raw IDs
+                for ds_id in reached_ds:
+                    name = nodes_by_id.get(ds_id, {}).get("name") or str(ds_id)
+                    affected.append(name)
                 _log.debug(
                     "NC-002: %s can reach datastore(s) %s without guardrail",
                     src,
@@ -570,29 +597,25 @@ class AtlasAnnotatorPlugin(AnalysisPlugin):
                 affected.append(name)
                 _log.debug("NC-003: model '%s' has no AUTH node in SBOM", name)
         else:
-            for mid in model_ids:
-                visited: set[str] = {mid}
-                queue = list(adjacency.get(mid, set()))
-                reached_deploy = False
-                passed_auth = False
-
-                while queue:
-                    nid = queue.pop()
-                    if nid in visited:
-                        continue
-                    visited.add(nid)
-                    ntype = node_types_by_id.get(nid, "")
-                    if ntype == "AUTH":
-                        passed_auth = True
-                        break
-                    if nid in deploy_ids:
-                        reached_deploy = True
-                    queue.extend(adjacency.get(nid, set()) - visited)
-
-                if reached_deploy and not passed_auth:
-                    name = nodes_by_id.get(mid, {}).get("name", mid)
-                    affected.append(name)
-                    _log.debug("NC-003: model '%s' reaches DEPLOYMENT without AUTH", name)
+            # SBOMs don't carry MODEL→DEPLOYMENT edges; instead check whether every
+            # API_ENDPOINT is protected by at least one AUTH node via AUTH→API_ENDPOINT
+            # edges. An unprotected endpoint means the model is accessible without auth.
+            api_endpoint_ids = type_sets.get("API_ENDPOINT", set())
+            if api_endpoint_ids:
+                protected: set[str] = set()
+                for auth_id in auth_ids:
+                    for target in adjacency.get(auth_id, set()):
+                        if node_types_by_id.get(target) == "API_ENDPOINT":
+                            protected.add(target)
+                unprotected = api_endpoint_ids - protected
+                if unprotected:
+                    for mid in model_ids:
+                        name = nodes_by_id.get(mid, {}).get("name", mid)
+                        affected.append(name)
+                        _log.debug(
+                            "NC-003: model '%s' — %d unprotected API_ENDPOINT(s) found",
+                            name, len(unprotected),
+                        )
 
         affected = list(dict.fromkeys(affected))
         if not affected:
@@ -612,14 +635,30 @@ class AtlasAnnotatorPlugin(AnalysisPlugin):
         candidate_ids = type_sets.get("AGENT", set()) | type_sets.get("TOOL", set())
 
         for nid in candidate_ids:
-            node = next((n for n in nodes if n.get("id") == nid), {})
+            node = next((n for n in nodes if str(n.get("id", "")) == nid), {})
+            meta = node.get("metadata") or {}
+            extras = meta.get("extras") or {}
             name = (node.get("name") or nid).lower()
-            description = (node.get("description") or "").lower()
+            # Check all description fields — top-level is often empty; rich text lives
+            # in metadata.description (LLM-enriched) or metadata.extras.description.
+            description = (
+                node.get("description")
+                or meta.get("description")
+                or extras.get("description")
+                or ""
+            ).lower()
             combined = name + " " + description
-            if any(kw in combined for kw in OUTBOUND_KEYWORDS):
+            has_keyword = any(kw in combined for kw in OUTBOUND_KEYWORDS)
+            # Also check explicit risk flags set during SBOM enrichment.
+            has_flag = bool(
+                meta.get("accepts_external_url")
+                or meta.get("reads_external_content")
+                or meta.get("ssrf_possible")
+            )
+            if has_keyword or has_flag:
                 display = node.get("name", nid)
                 affected.append(display)
-                _log.debug("NC-004: outbound-capable node '%s'", display)
+                _log.debug("NC-004: outbound-capable node '%s' (keyword=%s flag=%s)", display, has_keyword, has_flag)
 
         if not affected:
             return []

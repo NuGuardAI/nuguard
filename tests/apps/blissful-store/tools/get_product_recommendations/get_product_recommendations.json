@@ -1,0 +1,10 @@
+{
+  "name": "a4eb53a5-de4d-4f81-9de0-7eb24e28454d",
+  "pythonFunction": {
+    "name": "get_product_recommendations",
+    "pythonCode": "tools/get_product_recommendations/python_function/python_code.py",
+    "description": "Performs a lookup on the flower or plant details and then provides recommendations based on that information."
+  },
+  "executionType": "SYNCHRONOUS",
+  "displayName": "get_product_recommendations"
+}

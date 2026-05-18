@@ -13,10 +13,10 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from ..base import ComponentDetection, FrameworkAdapter, RelationshipHint
-from ..models_kb import get_model_details, infer_provider
 from ...normalization import canonicalize_text
 from ...types import ComponentType
+from ..base import ComponentDetection, FrameworkAdapter, RelationshipHint
+from ..models_kb import get_model_details, infer_provider
 
 _TEMPLATE_VAR_RE = re.compile(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}")
 

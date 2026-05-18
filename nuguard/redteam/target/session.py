@@ -24,6 +24,10 @@ class AttackSession:
     turns: list[TurnRecord] = field(default_factory=list)
     evidence: dict[str, str] = field(default_factory=dict)  # step_id → response text
     started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    golden_data: str = ""                              # verbatim response from DISCOVER step
+    golden_ids: list[str] = field(default_factory=list)  # IDs extracted from golden_data
+    golden_name: str = ""                              # customer name extracted from DISCOVER step
+    warmup_context: str = ""                           # agent self-disclosures from warmup turn
 
     def add_turn(
         self, prompt: str, response: str, tool_calls: list[dict] | None = None

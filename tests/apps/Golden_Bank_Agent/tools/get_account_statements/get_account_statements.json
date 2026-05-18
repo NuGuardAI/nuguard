@@ -1,0 +1,9 @@
+{
+  "name": "530266d9-3cd3-4d04-84e4-140f9033221a",
+  "pythonFunction": {
+    "name": "get_account_statements",
+    "pythonCode": "tools/get_account_statements/python_function/python_code.py",
+    "description": "Retrieves a list of available monthly account statements for a given account and year.\n\nArgs:\n    account_id (str): The unique identifier of the account.\n    year (Optional[int]): The year for which to retrieve statements. Defaults to the current year.\n\nReturns:\n    dict[str, Any]: A dictionary containing a list of statements with their month, year, and a download URL.\n          Example: {\"statements\": [{\"month\": \"October\", \"year\": 2023, \"url\": \"https://mockbank.com/statements/CHK-001-2023-10.pdf\"}]}\n          Example: {\"error\": True, \"message\": \"No statements found for the specified year.\"}"
+  },
+  "displayName": "get_account_statements"
+}

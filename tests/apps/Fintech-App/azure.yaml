@@ -1,0 +1,121 @@
+# azure.yaml — Azure Developer CLI (azd) manifest
+# FinTech GOAT (Goat of All Threats) — Deliberately Vulnerable AI Application
+# FOR SECURITY RESEARCH AND RED-TEAM TESTING ONLY. DO NOT DEPLOY TO PRODUCTION.
+
+name: fintech-goat
+
+metadata:
+  template: fintech-goat@0.0.1
+  description: >
+    Deliberately vulnerable FinTech AI application for NuGuard red-team testing.
+    Contains intentional OWASP LLM Top-10 and OWASP API Top-10 vulnerabilities.
+    Architecture: 6 AI sub-agents, 21 MCP microservices, 27+ intentional vulns.
+
+infra:
+  provider: bicep
+  path: infra
+  module: main
+
+pipeline:
+  provider: github
+
+services:
+  # ── Core banking MCP server (legacy — transfer_funds, fetch_market_report) ──
+  mcp-banking-server:
+    project: src/mcp_server
+    language: py
+    host: containerapp
+    docker:
+      path: Dockerfile
+      context: .
+
+  # ── Account management (VULN-MCP-03: list_all_accounts, no auth) ──────────
+  mcp-accounts:
+    project: src/mcp-accounts
+    language: py
+    host: containerapp
+    docker:
+      path: Dockerfile
+      context: .
+
+  # ── Fraud detection (VULN-MCP-10: whitelist bypasses all fraud checks) ────
+  mcp-fraud:
+    project: src/mcp-fraud
+    language: py
+    host: containerapp
+    docker:
+      path: Dockerfile
+      context: .
+
+  # ── Market data (VULN-MCP-07: SSRF via fetch_external_feed) ──────────────
+  mcp-market-data:
+    project: src/mcp-market-data
+    language: py
+    host: containerapp
+    docker:
+      path: Dockerfile
+      context: .
+
+  # ── Notifications (VULN-MCP-14: OTP plaintext; VULN-MCP-15: broadcast) ───
+  mcp-notifications:
+    project: src/mcp-notifications
+    language: py
+    host: containerapp
+    docker:
+      path: Dockerfile
+      context: .
+
+  # ── Admin (VULN-MCP-20/21/22: PII dump, priv escalation, plaintext pw) ───
+  mcp-admin:
+    project: src/mcp-admin
+    language: py
+    host: containerapp
+    docker:
+      path: Dockerfile
+      context: .
+
+  # ── Data export (VULN-MCP-23/24: unbounded transaction stream) ───────────
+  mcp-data-export:
+    project: src/mcp-data-export
+    language: py
+    host: containerapp
+    docker:
+      path: Dockerfile
+      context: .
+
+  # ── Internal bridge (VULN-MCP-25/26: SSRF / lateral movement) ────────────
+  mcp-internal-bridge:
+    project: src/mcp-internal-bridge
+    language: py
+    host: containerapp
+    docker:
+      path: Dockerfile
+      context: .
+
+  # ── Compliance (VULN-MCP-13: override_compliance, no auth) ───────────────
+  mcp-compliance:
+    project: src/mcp-compliance
+    language: py
+    host: containerapp
+    docker:
+      path: Dockerfile
+      context: .
+
+  # ── AI orchestrator (6 AI sub-agents: Nova, FraudGuard, CreditAdvisor, ───
+  # ── ComplianceOfficer, WealthManager, RiskAnalyst) ────────────────────────
+  agent-orchestrator:
+    project: src/orchestrator
+    language: py
+    host: containerapp
+    docker:
+      path: Dockerfile
+      context: .
+
+  # ── Frontend SPA (nginx reverse proxy to orchestrator) ───────────────────
+  frontend-ui:
+    project: src/frontend
+    language: js
+    host: containerapp
+    docker:
+      path: Dockerfile
+      context: .

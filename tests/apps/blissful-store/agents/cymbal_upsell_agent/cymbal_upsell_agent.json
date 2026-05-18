@@ -1,0 +1,15 @@
+{
+  "name": "9ca4a18b-585a-4dd0-a4a2-6c79f56cf1b9",
+  "displayName": "cymbal_upsell_agent",
+  "description": "Handles all upsell transactions, assisting users with quotes, scheduling additional services and updating CRM.",
+  "instruction": "agents/cymbal_upsell_agent/instruction.txt",
+  "tools": ["update_salesforce_crm", "get_available_planting_times", "apply_discount_to_service", "approve_discount", "end_session", "schedule_planting_service"],
+  "beforeToolCallbacks": [{
+    "pythonCode": "agents/cymbal_upsell_agent/before_tool_callbacks/before_tool_callbacks_01/python_code.py",
+    "description": "Handles discount approval logic checks to ensure the approval follows standard process."
+  }],
+  "toolsets": [{
+    "toolset": "crm_service",
+    "toolIds": ["get_landscaping_quote", "get_cart_information", "get_product_recommendations"]
+  }]
+}

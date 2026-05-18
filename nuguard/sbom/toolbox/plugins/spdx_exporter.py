@@ -24,9 +24,9 @@ from pathlib import Path
 from typing import Any
 
 from ...models import AiSbomDocument, Node
+from ...types import ComponentType, RelationshipType
 from ..models import ToolResult
 from ..plugin_base import ToolPlugin
-from ...types import ComponentType, RelationshipType
 
 _log = logging.getLogger("toolbox.plugins.spdx")
 

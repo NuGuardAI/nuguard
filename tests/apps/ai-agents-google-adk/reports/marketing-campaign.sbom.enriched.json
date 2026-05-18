@@ -1,0 +1,3789 @@
+{
+  "schema_version": "1.4.0",
+  "generated_at": "2026-04-22T22:28:54Z",
+  "generator": "nuguard",
+  "target": "/workspaces/nuguard-private/tests/apps/ai-agents-google-adk",
+  "nodes": [
+    {
+      "id": "f805c6b1-ff05-42af-8bcd-d1beffd64f0d",
+      "name": "AdCopyWriter",
+      "component_type": "AGENT",
+      "confidence": 0.8832000000000001,
+      "metadata": {
+        "framework": "google-adk",
+        "description": "The AdCopyWriter agent leverages the Google Ads API to automatically generate and refine advertising copy based on provided keywords, target audience, and performance metrics.",
+        "injection_risk_score": 0.1,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "google_adk_adcopywriter",
+          "adapter": "google_adk",
+          "evidence_count": 1,
+          "framework": "google-adk",
+          "agent_subtype": "llm",
+          "has_instructions": false,
+          "model": "gemini-2.0-flash",
+          "confidence_breakdown": {
+            "regex_confidence": 0.92,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:google-adk",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.736,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.8832
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.92,
+          "detail": "google_adk: LlmAgent(name='AdCopyWriter')",
+          "location": {
+            "path": "marketing_campaign_agent/agent.py",
+            "line": 44
+          }
+        }
+      ]
+    },
+    {
+      "id": "fbbf7686-c48e-4fa8-9587-14b0ef57d5a2",
+      "name": "AdviceGeneratorAgent",
+      "component_type": "AGENT",
+      "confidence": 0.8832000000000001,
+      "metadata": {
+        "framework": "google-adk",
+        "description": "You are a helpful AI assistant that provides initial guidance based on a recommended consultant type and identified user issues.\n\nBased on the provided input {problem_analysis_result} generate the fol",
+        "injection_risk_score": 0.1,
+        "system_prompt_excerpt": "\nYou are a helpful AI assistant that provides initial guidance based on a recommended consultant type and identified user issues.\n\nBased on the provided input {problem_analysis_result} generate the following in a structured JSON format:\n1.  'suitability_explanation': A brief (1-2 sentences) explanation of why a the suggested consultation type is suitable for these issues.\n2.  'key_questions_to_consider': 2-3 insightful questions the user might want to reflect on or ask the consultant.\n3.  'initi",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "google_adk_advicegeneratoragent",
+          "adapter": "google_adk",
+          "evidence_count": 1,
+          "framework": "google-adk",
+          "agent_subtype": "llm",
+          "has_instructions": true,
+          "model": "gemini-2.0-flash",
+          "instructions_preview": "\nYou are a helpful AI assistant that provides initial guidance based on a recommended consultant type and identified user issues.\n\nBased on the provided input {problem_analysis_result} generate the following in a structured JSON format:\n1.  'suitability_explanation': A brief (1-2 sentences) explanation of why a the suggested consultation type is suitable for these issues.\n2.  'key_questions_to_consider': 2-3 insightful questions the user might want to reflect on or ask the consultant.\n3.  'initi",
+          "is_template": true,
+          "template_variables": [
+            "problem_analysis_result"
+          ],
+          "confidence_breakdown": {
+            "regex_confidence": 0.92,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:google-adk",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.736,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.8832
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.92,
+          "detail": "google_adk: LlmAgent(name='AdviceGeneratorAgent')",
+          "location": {
+            "path": "structured_output/agent.py",
+            "line": 70
+          }
+        }
+      ]
+    },
+    {
+      "id": "19257021-7cc2-45dd-a0ca-202e02e75a62",
+      "name": "CampaignBriefFormatter",
+      "component_type": "AGENT",
+      "confidence": 0.8832000000000001,
+      "metadata": {
+        "framework": "google-adk",
+        "description": "The CampaignBriefFormatter agent transforms a user's campaign objectives and requirements into a structured brief that is easily understood and utilized by other agents in the ad campaign creation pro",
+        "injection_risk_score": 0.1,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "google_adk_campaignbriefformatter",
+          "adapter": "google_adk",
+          "evidence_count": 1,
+          "framework": "google-adk",
+          "agent_subtype": "llm",
+          "has_instructions": false,
+          "model": "gemini-2.0-flash",
+          "confidence_breakdown": {
+            "regex_confidence": 0.92,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:google-adk",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.736,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.8832
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.92,
+          "detail": "google_adk: LlmAgent(name='CampaignBriefFormatter')",
+          "location": {
+            "path": "marketing_campaign_agent/agent.py",
+            "line": 63
+          }
+        }
+      ]
+    },
+    {
+      "id": "e34187a4-18cd-40ef-8daa-0a414222c4a3",
+      "name": "currency_converter_agent",
+      "component_type": "AGENT",
+      "confidence": 0.8832000000000001,
+      "metadata": {
+        "framework": "google-adk",
+        "description": "You are a currency converter. When asked to convert currency, use the convert_currency_tool. Based on the tool's output (look for 'result_summary' or 'error_message' in the tool's returned dictionary)",
+        "injection_risk_score": 0.1,
+        "system_prompt_excerpt": "You are a currency converter. When asked to convert currency, use the convert_currency_tool. Based on the tool's output (look for 'result_summary' or 'error_message' in the tool's returned dictionary), provide a clear and concise answer to the user.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "google_adk_currency_converter_agent",
+          "adapter": "google_adk",
+          "evidence_count": 1,
+          "framework": "google-adk",
+          "agent_subtype": "llm",
+          "has_instructions": true,
+          "model": "gemini-2.0-flash",
+          "instructions_preview": "You are a currency converter. When asked to convert currency, use the convert_currency_tool. Based on the tool's output (look for 'result_summary' or 'error_message' in the tool's returned dictionary), provide a clear and concise answer to the user.",
+          "is_template": false,
+          "template_variables": [],
+          "confidence_breakdown": {
+            "regex_confidence": 0.92,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:google-adk",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.736,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.8832
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.92,
+          "detail": "google_adk: LlmAgent(name='currency_converter_agent')",
+          "location": {
+            "path": "agents_and_callbacks/example_05_tool_response_transformation_caching/agent.py",
+            "line": 204
+          }
+        }
+      ]
+    },
+    {
+      "id": "10f6ee27-7d56-4dab-99db-3e25cf059077",
+      "name": "input_sanitizer_agent",
+      "component_type": "AGENT",
+      "confidence": 0.8832000000000001,
+      "metadata": {
+        "framework": "google-adk",
+        "description": "You are a helpful general knowledge assistant.",
+        "injection_risk_score": 0.1,
+        "system_prompt_excerpt": "You are a helpful general knowledge assistant.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "google_adk_input_sanitizer_agent",
+          "adapter": "google_adk",
+          "evidence_count": 1,
+          "framework": "google-adk",
+          "agent_subtype": "llm",
+          "has_instructions": true,
+          "model": "gemini-2.0-flash",
+          "instructions_preview": "You are a helpful general knowledge assistant.",
+          "is_template": false,
+          "template_variables": [],
+          "confidence_breakdown": {
+            "regex_confidence": 0.92,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:google-adk",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.736,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.8832
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.92,
+          "detail": "google_adk: LlmAgent(name='input_sanitizer_agent')",
+          "location": {
+            "path": "agents_and_callbacks/example_02_model_input_sanitization/agent.py",
+            "line": 53
+          }
+        }
+      ]
+    },
+    {
+      "id": "7832af28-8244-4a91-a9fa-75d20e3013ac",
+      "name": "InstagramReelScriptAgent",
+      "component_type": "AGENT",
+      "confidence": 0.9568000000000002,
+      "metadata": {
+        "framework": "google-adk",
+        "description": "You are an Instagram reel script generator. You will be given a topic with researched summary from \"research_summary\" output, and you will generate a script for an Instagram reel about it.\n    The scr",
+        "injection_risk_score": 0.1,
+        "system_prompt_excerpt": "\n    You are an Instagram reel script generator. You will be given a topic with researched summary from \"research_summary\" output, and you will generate a script for an Instagram reel about it.\n    The script should be engaging, fast paced, and relevant to the topic.\n    The script should have a primary hook, which grabs the attention of the audience.\n    The script should have a call to action at the end.\n",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "google_adk_instagramreelscriptagent",
+          "adapter": "google_adk",
+          "evidence_count": 2,
+          "framework": "google-adk",
+          "agent_subtype": "llm",
+          "has_instructions": true,
+          "instructions_preview": "\n    You are an Instagram reel script generator. You will be given a topic with researched summary from \"research_summary\" output, and you will generate a script for an Instagram reel about it.\n    The script should be engaging, fast paced, and relevant to the topic.\n    The script should have a primary hook, which grabs the attention of the audience.\n    The script should have a call to action at the end.\n",
+          "is_template": false,
+          "template_variables": [],
+          "confidence_breakdown": {
+            "regex_confidence": 0.92,
+            "llm_confidence": 0.0,
+            "evidence_count": 4,
+            "evidence_sources": [
+              "framework:google-adk",
+              "evidence:0",
+              "evidence:1",
+              "confidence:high"
+            ],
+            "base_confidence": 0.736,
+            "evidence_multiplier": 1.3,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.9568
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.92,
+          "detail": "google_adk: Agent(name='InstagramReelScriptAgent')",
+          "location": {
+            "path": "deploying_agents/social_posts_agent/agent.py",
+            "line": 56
+          }
+        },
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.92,
+          "detail": "google_adk: Agent(name='InstagramReelScriptAgent')",
+          "location": {
+            "path": "multi_model/agent.py",
+            "line": 48
+          }
+        }
+      ]
+    },
+    {
+      "id": "0751013d-9549-4f0d-879a-01e2d788a0ce",
+      "name": "lifecycle_logger_agent",
+      "component_type": "AGENT",
+      "confidence": 0.8832000000000001,
+      "metadata": {
+        "framework": "google-adk",
+        "description": "You are an echo agent. Repeat the user's message.",
+        "injection_risk_score": 0.1,
+        "system_prompt_excerpt": "You are an echo agent. Repeat the user's message.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "google_adk_lifecycle_logger_agent",
+          "adapter": "google_adk",
+          "evidence_count": 1,
+          "framework": "google-adk",
+          "agent_subtype": "llm",
+          "has_instructions": true,
+          "model": "gemini-2.0-flash",
+          "instructions_preview": "You are an echo agent. Repeat the user's message.",
+          "is_template": false,
+          "template_variables": [],
+          "confidence_breakdown": {
+            "regex_confidence": 0.92,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:google-adk",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.736,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.8832
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.92,
+          "detail": "google_adk: LlmAgent(name='lifecycle_logger_agent')",
+          "location": {
+            "path": "agents_and_callbacks/example_01_agent_lifecycle_logging/agent.py",
+            "line": 45
+          }
+        }
+      ]
+    },
+    {
+      "id": "55de0a2e-859a-4809-8f0e-68454c752fe3",
+      "name": "LinkedInPostsAgent",
+      "component_type": "AGENT",
+      "confidence": 0.9568000000000002,
+      "metadata": {
+        "framework": "google-adk",
+        "description": "You are a LinkedIn post generator. You will be given a topic with researched summary from \"research_summary\" output, and you will generate a LinkedIn post about it.\n        The post should be professi",
+        "injection_risk_score": 0.1,
+        "system_prompt_excerpt": "\n    You are a LinkedIn post generator. You will be given a topic with researched summary from \"research_summary\" output, and you will generate a LinkedIn post about it.\n        The post should be professional, engaging, and relevant to the topic.\n        The post should have a primary hook, not more than 60 characters.\n        The post should have a line break after the hook.\n        The post should have a post-hook that is either supporting the hook or completely inverse of the hook to grab at",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "google_adk_linkedinpostsagent",
+          "adapter": "google_adk",
+          "evidence_count": 2,
+          "framework": "google-adk",
+          "agent_subtype": "llm",
+          "has_instructions": true,
+          "instructions_preview": "\n    You are a LinkedIn post generator. You will be given a topic with researched summary from \"research_summary\" output, and you will generate a LinkedIn post about it.\n        The post should be professional, engaging, and relevant to the topic.\n        The post should have a primary hook, not more than 60 characters.\n        The post should have a line break after the hook.\n        The post should have a post-hook that is either supporting the hook or completely inverse of the hook to grab at",
+          "is_template": false,
+          "template_variables": [],
+          "confidence_breakdown": {
+            "regex_confidence": 0.92,
+            "llm_confidence": 0.0,
+            "evidence_count": 4,
+            "evidence_sources": [
+              "framework:google-adk",
+              "evidence:0",
+              "evidence:1",
+              "confidence:high"
+            ],
+            "base_confidence": 0.736,
+            "evidence_multiplier": 1.3,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.9568
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.92,
+          "detail": "google_adk: Agent(name='LinkedInPostsAgent')",
+          "location": {
+            "path": "deploying_agents/social_posts_agent/agent.py",
+            "line": 33
+          }
+        },
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.92,
+          "detail": "google_adk: Agent(name='LinkedInPostsAgent')",
+          "location": {
+            "path": "multi_model/agent.py",
+            "line": 25
+          }
+        }
+      ]
+    },
+    {
+      "id": "e52871e1-7a2d-4e59-ae20-4b5b1748acc0",
+      "name": "MarketingCampaignAssistant",
+      "component_type": "AGENT",
+      "confidence": 0.8832000000000001,
+      "metadata": {
+        "framework": "google-adk",
+        "description": "MarketingCampaignAssistant agent",
+        "injection_risk_score": 0.1,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "google_adk_marketingcampaignassistant",
+          "adapter": "google_adk",
+          "evidence_count": 1,
+          "framework": "google-adk",
+          "agent_subtype": "sequential",
+          "has_instructions": false,
+          "confidence_breakdown": {
+            "regex_confidence": 0.92,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:google-adk",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.736,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.8832
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.92,
+          "detail": "google_adk: SequentialAgent(name='MarketingCampaignAssistant')",
+          "location": {
+            "path": "marketing_campaign_agent/agent.py",
+            "line": 70
+          }
+        }
+      ]
+    },
+    {
+      "id": "6838caa4-025e-41da-b05a-96e3ff30b549",
+      "name": "MarketResearcher",
+      "component_type": "AGENT",
+      "confidence": 0.8832000000000001,
+      "metadata": {
+        "framework": "google-adk",
+        "description": "The MarketResearcher agent analyzes current market trends and competitor strategies to provide data-driven insights that inform product development and marketing decisions.",
+        "injection_risk_score": 0.1,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "google_adk_marketresearcher",
+          "adapter": "google_adk",
+          "evidence_count": 1,
+          "framework": "google-adk",
+          "agent_subtype": "llm",
+          "has_instructions": false,
+          "model": "gemini-2.0-flash",
+          "confidence_breakdown": {
+            "regex_confidence": 0.92,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:google-adk",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.736,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.8832
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.92,
+          "detail": "google_adk: LlmAgent(name='MarketResearcher')",
+          "location": {
+            "path": "marketing_campaign_agent/agent.py",
+            "line": 24
+          }
+        }
+      ]
+    },
+    {
+      "id": "a2de7fe6-eecb-466a-bca5-c3d8d842e06f",
+      "name": "meeting_scheduler_agent",
+      "component_type": "AGENT",
+      "confidence": 0.8832000000000001,
+      "metadata": {
+        "framework": "google-adk",
+        "description": "You are a meeting scheduling assistant. When asked to schedule a meeting, gather the date (YYYY-MM-DD), topic, attendees (as a list), and a time preference (e.g., '10:00 AM', 'afternoon', 'morning').",
+        "injection_risk_score": 0.1,
+        "system_prompt_excerpt": "You are a meeting scheduling assistant. When asked to schedule a meeting, gather the date (YYYY-MM-DD), topic, attendees (as a list), and a time preference (e.g., '10:00 AM', 'afternoon', 'morning'). Then use the 'schedule_meeting_tool'.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "google_adk_meeting_scheduler_agent",
+          "adapter": "google_adk",
+          "evidence_count": 1,
+          "framework": "google-adk",
+          "agent_subtype": "llm",
+          "has_instructions": true,
+          "model": "gemini-2.0-flash",
+          "instructions_preview": "You are a meeting scheduling assistant. When asked to schedule a meeting, gather the date (YYYY-MM-DD), topic, attendees (as a list), and a time preference (e.g., '10:00 AM', 'afternoon', 'morning'). Then use the 'schedule_meeting_tool'.",
+          "is_template": false,
+          "template_variables": [],
+          "confidence_breakdown": {
+            "regex_confidence": 0.92,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:google-adk",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.736,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.8832
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.92,
+          "detail": "google_adk: LlmAgent(name='meeting_scheduler_agent')",
+          "location": {
+            "path": "agents_and_callbacks/example_04_tool_arg_validation_modification/agent.py",
+            "line": 73
+          }
+        }
+      ]
+    },
+    {
+      "id": "c6e406e4-129b-448b-b059-7bd2e1f068dd",
+      "name": "MessagingStrategist",
+      "component_type": "AGENT",
+      "confidence": 0.8832000000000001,
+      "metadata": {
+        "framework": "google-adk",
+        "description": "The MessagingStrategist agent determines the optimal communication approach, including tone, content, and channel, to effectively convey information and achieve desired outcomes in interactions with u",
+        "injection_risk_score": 0.1,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "google_adk_messagingstrategist",
+          "adapter": "google_adk",
+          "evidence_count": 1,
+          "framework": "google-adk",
+          "agent_subtype": "llm",
+          "has_instructions": false,
+          "model": "gemini-2.0-flash",
+          "confidence_breakdown": {
+            "regex_confidence": 0.92,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:google-adk",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.736,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.8832
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.92,
+          "detail": "google_adk: LlmAgent(name='MessagingStrategist')",
+          "location": {
+            "path": "marketing_campaign_agent/agent.py",
+            "line": 33
+          }
+        }
+      ]
+    },
+    {
+      "id": "580eed84-1f88-4ac6-982d-7beb88e72c41",
+      "name": "PostAgent",
+      "component_type": "AGENT",
+      "confidence": 0.8832000000000001,
+      "metadata": {
+        "framework": "google-adk",
+        "description": "You are a helpful assistant that can respond about the user and their post preferences.\n\n    The information about the user and their post preferences is given in the state context.\n    Name: {user_na",
+        "injection_risk_score": 0.1,
+        "system_prompt_excerpt": "\n        You are a helpful assistant that can respond about the user and their post preferences.\n\n    The information about the user and their post preferences is given in the state context.\n    Name: {user_name}\n    Post Preferences: {user_post_preferences}\n",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "google_adk_postagent",
+          "adapter": "google_adk",
+          "evidence_count": 1,
+          "framework": "google-adk",
+          "agent_subtype": "llm",
+          "has_instructions": true,
+          "instructions_preview": "\n        You are a helpful assistant that can respond about the user and their post preferences.\n\n    The information about the user and their post preferences is given in the state context.\n    Name: {user_name}\n    Post Preferences: {user_post_preferences}\n",
+          "is_template": true,
+          "template_variables": [
+            "user_name",
+            "user_post_preferences"
+          ],
+          "confidence_breakdown": {
+            "regex_confidence": 0.92,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:google-adk",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.736,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.8832
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.92,
+          "detail": "google_adk: Agent(name='PostAgent')",
+          "location": {
+            "path": "sessions_and_agents/agent.py",
+            "line": 9
+          }
+        }
+      ]
+    },
+    {
+      "id": "06fb18ba-03d0-45ed-adde-fadb038d9d03",
+      "name": "PostsAgent",
+      "component_type": "AGENT",
+      "confidence": 0.9568000000000002,
+      "metadata": {
+        "framework": "google-adk",
+        "description": "An agent that generates social media posts by using the linkedIn and Instagram agents",
+        "injection_risk_score": 0.1,
+        "system_prompt_excerpt": "An agent that generates social media posts by using the linkedIn and Instagram agents",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "google_adk_postsagent",
+          "adapter": "google_adk",
+          "evidence_count": 2,
+          "framework": "google-adk",
+          "agent_subtype": "parallel",
+          "has_instructions": true,
+          "instructions_preview": "An agent that generates social media posts by using the linkedIn and Instagram agents",
+          "is_template": false,
+          "template_variables": [],
+          "confidence_breakdown": {
+            "regex_confidence": 0.92,
+            "llm_confidence": 0.0,
+            "evidence_count": 4,
+            "evidence_sources": [
+              "framework:google-adk",
+              "evidence:0",
+              "evidence:1",
+              "confidence:high"
+            ],
+            "base_confidence": 0.736,
+            "evidence_multiplier": 1.3,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.9568
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.92,
+          "detail": "google_adk: ParallelAgent(name='PostsAgent')",
+          "location": {
+            "path": "deploying_agents/social_posts_agent/agent.py",
+            "line": 69
+          }
+        },
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.92,
+          "detail": "google_adk: ParallelAgent(name='PostsAgent')",
+          "location": {
+            "path": "multi_model/agent.py",
+            "line": 61
+          }
+        }
+      ]
+    },
+    {
+      "id": "cfda587e-d2cf-4cfc-a097-e4de1529ceef",
+      "name": "PostsMergerAgent",
+      "component_type": "AGENT",
+      "confidence": 0.9568000000000002,
+      "metadata": {
+        "framework": "google-adk",
+        "description": "You are an AI Assistant responsible for combining linkedin and instagram reels script into a structured output.\n\nYour primary task is to merge the posts generated by the LinkedIn and Instagram agents",
+        "injection_risk_score": 0.1,
+        "system_prompt_excerpt": "\n        You are an AI Assistant responsible for combining linkedin and instagram reels script into a structured output.\n\nYour primary task is to merge the posts generated by the LinkedIn and Instagram agents into a single output. Clearly mentioning the platform for each post.\n        Input Summaries:\n        - LinkedIn Post: {linkedIn_post}\n        - Instagram Reels Script: {instagram_reel_script}\n\n        Output Format:\n        - LinkedIn Post: {linkedIn_post}\n        - Instagram Post: {instag",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "google_adk_postsmergeragent",
+          "adapter": "google_adk",
+          "evidence_count": 2,
+          "framework": "google-adk",
+          "agent_subtype": "llm",
+          "has_instructions": true,
+          "instructions_preview": "\n        You are an AI Assistant responsible for combining linkedin and instagram reels script into a structured output.\n\nYour primary task is to merge the posts generated by the LinkedIn and Instagram agents into a single output. Clearly mentioning the platform for each post.\n        Input Summaries:\n        - LinkedIn Post: {linkedIn_post}\n        - Instagram Reels Script: {instagram_reel_script}\n\n        Output Format:\n        - LinkedIn Post: {linkedIn_post}\n        - Instagram Post: {instag",
+          "is_template": true,
+          "template_variables": [
+            "linkedIn_post",
+            "instagram_reel_script",
+            "linkedIn_post",
+            "instagram_reel_script"
+          ],
+          "confidence_breakdown": {
+            "regex_confidence": 0.92,
+            "llm_confidence": 0.0,
+            "evidence_count": 4,
+            "evidence_sources": [
+              "framework:google-adk",
+              "evidence:0",
+              "evidence:1",
+              "confidence:high"
+            ],
+            "base_confidence": 0.736,
+            "evidence_multiplier": 1.3,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.9568
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.92,
+          "detail": "google_adk: Agent(name='PostsMergerAgent')",
+          "location": {
+            "path": "deploying_agents/social_posts_agent/agent.py",
+            "line": 75
+          }
+        },
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.92,
+          "detail": "google_adk: Agent(name='PostsMergerAgent')",
+          "location": {
+            "path": "multi_model/agent.py",
+            "line": 67
+          }
+        }
+      ]
+    },
+    {
+      "id": "f2b75cc4-c6c5-4d9c-ba52-a9390d4862cc",
+      "name": "ProblemAnalyzerAgent",
+      "component_type": "AGENT",
+      "confidence": 0.8832000000000001,
+      "metadata": {
+        "framework": "google-adk",
+        "description": "You are an expert AI assistant that analyzes user queries to understand their core problem and recommend an appropriate type of consultant.\nBased on the user's query, identify the primary issues the u",
+        "injection_risk_score": 0.1,
+        "system_prompt_excerpt": "\nYou are an expert AI assistant that analyzes user queries to understand their core problem and recommend an appropriate type of consultant.\nBased on the user's query, identify the primary issues the user is facing.\nThen, determine the most suitable consultant type\nOutput a JSON object with the recommended 'consultant_type' and a concise 'identified_issues_summary'.\nIf the query is too vague or doesn't clearly fit a specialist, recommend 'general_helper'.\nFocus on the main problem.\n",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "google_adk_problemanalyzeragent",
+          "adapter": "google_adk",
+          "evidence_count": 1,
+          "framework": "google-adk",
+          "agent_subtype": "llm",
+          "has_instructions": true,
+          "model": "gemini-2.0-flash",
+          "instructions_preview": "\nYou are an expert AI assistant that analyzes user queries to understand their core problem and recommend an appropriate type of consultant.\nBased on the user's query, identify the primary issues the user is facing.\nThen, determine the most suitable consultant type\nOutput a JSON object with the recommended 'consultant_type' and a concise 'identified_issues_summary'.\nIf the query is too vague or doesn't clearly fit a specialist, recommend 'general_helper'.\nFocus on the main problem.\n",
+          "is_template": false,
+          "template_variables": [],
+          "confidence_breakdown": {
+            "regex_confidence": 0.92,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:google-adk",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.736,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.8832
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.92,
+          "detail": "google_adk: LlmAgent(name='ProblemAnalyzerAgent')",
+          "location": {
+            "path": "structured_output/agent.py",
+            "line": 46
+          }
+        }
+      ]
+    },
+    {
+      "id": "83d2d6f4-5f3c-4eba-8cff-3e791bf177ff",
+      "name": "ResearchAgent",
+      "component_type": "AGENT",
+      "confidence": 0.9568000000000002,
+      "metadata": {
+        "framework": "google-adk",
+        "description": "You are a research assistant. You will be given a topic and you will research on it. Then you will provide a summary of the research.",
+        "injection_risk_score": 0.1,
+        "system_prompt_excerpt": "\n    You are a research assistant. You will be given a topic and you will research on it. Then you will provide a summary of the research.\n",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "google_adk_researchagent",
+          "adapter": "google_adk",
+          "evidence_count": 2,
+          "framework": "google-adk",
+          "agent_subtype": "llm",
+          "has_instructions": true,
+          "instructions_preview": "\n    You are a research assistant. You will be given a topic and you will research on it. Then you will provide a summary of the research.\n",
+          "is_template": false,
+          "template_variables": [],
+          "confidence_breakdown": {
+            "regex_confidence": 0.92,
+            "llm_confidence": 0.0,
+            "evidence_count": 4,
+            "evidence_sources": [
+              "framework:google-adk",
+              "evidence:0",
+              "evidence:1",
+              "confidence:high"
+            ],
+            "base_confidence": 0.736,
+            "evidence_multiplier": 1.3,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.9568
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.92,
+          "detail": "google_adk: Agent(name='ResearchAgent')",
+          "location": {
+            "path": "deploying_agents/social_posts_agent/agent.py",
+            "line": 22
+          }
+        },
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.92,
+          "detail": "google_adk: Agent(name='ResearchAgent')",
+          "location": {
+            "path": "multi_model/agent.py",
+            "line": 14
+          }
+        }
+      ]
+    },
+    {
+      "id": "675a2e4b-bbe3-4f43-81da-c7e539a8c4c5",
+      "name": "SocialMediaAgent",
+      "component_type": "AGENT",
+      "confidence": 0.9568000000000002,
+      "metadata": {
+        "framework": "google-adk",
+        "description": "An agent that generates social media posts by using the research agent and the posts agent",
+        "injection_risk_score": 0.1,
+        "system_prompt_excerpt": "An agent that generates social media posts by using the research agent and the posts agent",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "google_adk_socialmediaagent",
+          "adapter": "google_adk",
+          "evidence_count": 2,
+          "framework": "google-adk",
+          "agent_subtype": "sequential",
+          "has_instructions": true,
+          "instructions_preview": "An agent that generates social media posts by using the research agent and the posts agent",
+          "is_template": false,
+          "template_variables": [],
+          "confidence_breakdown": {
+            "regex_confidence": 0.92,
+            "llm_confidence": 0.0,
+            "evidence_count": 4,
+            "evidence_sources": [
+              "framework:google-adk",
+              "evidence:0",
+              "evidence:1",
+              "confidence:high"
+            ],
+            "base_confidence": 0.736,
+            "evidence_multiplier": 1.3,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.9568
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.92,
+          "detail": "google_adk: SequentialAgent(name='SocialMediaAgent')",
+          "location": {
+            "path": "deploying_agents/social_posts_agent/agent.py",
+            "line": 93
+          }
+        },
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.92,
+          "detail": "google_adk: SequentialAgent(name='SocialMediaAgent')",
+          "location": {
+            "path": "multi_model/agent.py",
+            "line": 85
+          }
+        }
+      ]
+    },
+    {
+      "id": "70554089-8ad6-43be-9402-bf9eaa6b0854",
+      "name": "StructuredConsultationAgent",
+      "component_type": "AGENT",
+      "confidence": 0.8832000000000001,
+      "metadata": {
+        "framework": "google-adk",
+        "description": "StructuredConsultationAgent agent",
+        "injection_risk_score": 0.1,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "google_adk_structuredconsultationagent",
+          "adapter": "google_adk",
+          "evidence_count": 1,
+          "framework": "google-adk",
+          "agent_subtype": "sequential",
+          "has_instructions": false,
+          "confidence_breakdown": {
+            "regex_confidence": 0.92,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:google-adk",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.736,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.8832
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.92,
+          "detail": "google_adk: SequentialAgent(name='StructuredConsultationAgent')",
+          "location": {
+            "path": "structured_output/agent.py",
+            "line": 79
+          }
+        }
+      ]
+    },
+    {
+      "id": "1c9e7efe-5a54-4082-9fab-2475091f1213",
+      "name": "tools_agent",
+      "component_type": "AGENT",
+      "confidence": 0.8832000000000001,
+      "metadata": {
+        "framework": "google-adk",
+        "description": "You are a helpful assistant that can use the following tools:\n  - get_current_date_and_time: Returns the current date and time.\n  - get_randomuser_from_ramdomuserme: Returns a random user from randomu",
+        "injection_risk_score": 0.1,
+        "system_prompt_excerpt": "\n  You are a helpful assistant that can use the following tools:\n  - get_current_date_and_time: Returns the current date and time.\n  - get_randomuser_from_ramdomuserme: Returns a random user from randomuser.me API.\n",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "google_adk_tools_agent",
+          "adapter": "google_adk",
+          "evidence_count": 1,
+          "framework": "google-adk",
+          "agent_subtype": "llm",
+          "has_instructions": true,
+          "model": "gemini-2.0-flash",
+          "instructions_preview": "\n  You are a helpful assistant that can use the following tools:\n  - get_current_date_and_time: Returns the current date and time.\n  - get_randomuser_from_ramdomuserme: Returns a random user from randomuser.me API.\n",
+          "is_template": false,
+          "template_variables": [],
+          "confidence_breakdown": {
+            "regex_confidence": 0.92,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:google-adk",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.736,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.8832
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.92,
+          "detail": "google_adk: Agent(name='tools_agent')",
+          "location": {
+            "path": "tools_agent/agent.py",
+            "line": 37
+          }
+        }
+      ]
+    },
+    {
+      "id": "9e8db5a8-1ed9-4625-9573-4b7ac0efa393",
+      "name": "travel_response_enhancer_agent",
+      "component_type": "AGENT",
+      "confidence": 0.8832000000000001,
+      "metadata": {
+        "framework": "google-adk",
+        "description": "You are a helpful travel assistant.\nIf a user asks to book a flight, confirm the booking with made-up details including a flight number (e.g., BA245, AF1800), origin city, destination city, and date (",
+        "injection_risk_score": 0.1,
+        "system_prompt_excerpt": "You are a helpful travel assistant.\nIf a user asks to book a flight, confirm the booking with made-up details including a flight number (e.g., BA245, AF1800), origin city, destination city, and date (YYYY-MM-DD format).\nIf a user asks about policies, provide a general answer.\nExample of flight booking confirmation: \"Okay, I've booked flight BA245 from London to Paris on 2025-12-25 for you.\"\n",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "google_adk_travel_response_enhancer_agent",
+          "adapter": "google_adk",
+          "evidence_count": 1,
+          "framework": "google-adk",
+          "agent_subtype": "llm",
+          "has_instructions": true,
+          "model": "gemini-2.0-flash",
+          "instructions_preview": "You are a helpful travel assistant.\nIf a user asks to book a flight, confirm the booking with made-up details including a flight number (e.g., BA245, AF1800), origin city, destination city, and date (YYYY-MM-DD format).\nIf a user asks about policies, provide a general answer.\nExample of flight booking confirmation: \"Okay, I've booked flight BA245 from London to Paris on 2025-12-25 for you.\"\n",
+          "is_template": false,
+          "template_variables": [],
+          "confidence_breakdown": {
+            "regex_confidence": 0.92,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:google-adk",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.736,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.8832
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.92,
+          "detail": "google_adk: LlmAgent(name='travel_response_enhancer_agent')",
+          "location": {
+            "path": "agents_and_callbacks/example_03_model_response_enchancement/agent.py",
+            "line": 72
+          }
+        }
+      ]
+    },
+    {
+      "id": "43d4b9a1-75a9-4e99-8b56-7d31987ccbbf",
+      "name": "VisualSuggester",
+      "component_type": "AGENT",
+      "confidence": 0.8832000000000001,
+      "metadata": {
+        "framework": "google-adk",
+        "description": "VisualSuggester agent",
+        "injection_risk_score": 0.1,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "google_adk_visualsuggester",
+          "adapter": "google_adk",
+          "evidence_count": 1,
+          "framework": "google-adk",
+          "agent_subtype": "llm",
+          "has_instructions": false,
+          "model": "gemini-2.0-flash",
+          "confidence_breakdown": {
+            "regex_confidence": 0.92,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:google-adk",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.736,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.8832
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.92,
+          "detail": "google_adk: LlmAgent(name='VisualSuggester')",
+          "location": {
+            "path": "marketing_campaign_agent/agent.py",
+            "line": 53
+          }
+        }
+      ]
+    },
+    {
+      "id": "db7fdab9-5cde-40c3-809d-af29ff85692f",
+      "name": "generic",
+      "component_type": "AUTH",
+      "confidence": 0.9296000000000001,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "auth_generic",
+          "adapter": "auth_runtime",
+          "evidence_count": 14,
+          "detected_by_tiers": [
+            "code",
+            "iac"
+          ],
+          "confidence_breakdown": {
+            "regex_confidence": 0.83,
+            "llm_confidence": 0.0,
+            "evidence_count": 6,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3",
+              "evidence:4",
+              "confidence:high"
+            ],
+            "base_confidence": 0.664,
+            "evidence_multiplier": 1.4,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.9296
+          },
+          "description_source": "none"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.8,
+          "detail": "auth_generic: authorization",
+          "location": {
+            "path": "tests/output/redteam-prompts-19d5f204cac7c274.json",
+            "line": 1576
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "auth_generic: authentication",
+          "location": {
+            "path": "reports/marketing-campaign-redteam.remediation-plan.json",
+            "line": 90
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "auth_runtime: load_dotenv(",
+          "location": {
+            "path": "test_adk_api.py",
+            "line": 36
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "auth_runtime: load_dotenv(",
+          "location": {
+            "path": "test_bedrock_haiku.py",
+            "line": 8
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "auth_generic: api_key",
+          "location": {
+            "path": "test_bedrock_haiku.py",
+            "line": 59
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "auth_runtime: load_dotenv(",
+          "location": {
+            "path": "test_openai_gpt.py",
+            "line": 8
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "auth_generic: api_key",
+          "location": {
+            "path": "test_openai_gpt.py",
+            "line": 59
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "auth_runtime: load_dotenv(",
+          "location": {
+            "path": "deploying_agents/cleanup.py",
+            "line": 6
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "auth_runtime: load_dotenv(",
+          "location": {
+            "path": "deploying_agents/deploy.py",
+            "line": 5
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "auth_runtime: load_dotenv(",
+          "location": {
+            "path": "deploying_agents/run-flow.py",
+            "line": 7
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "auth_runtime: load_dotenv(",
+          "location": {
+            "path": "deploying_agents/social_posts_agent/agent.py",
+            "line": 5
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "auth_runtime: load_dotenv(",
+          "location": {
+            "path": "marketing_campaign_agent/agent.py",
+            "line": 5
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "auth_runtime: load_dotenv(",
+          "location": {
+            "path": "multi_model/agent.py",
+            "line": 5
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "auth_runtime: load_dotenv(",
+          "location": {
+            "path": "sessions_and_agents/agent.py",
+            "line": 5
+          }
+        }
+      ]
+    },
+    {
+      "id": "9877f914-ee79-4639-bf19-c7a1b7e83c6d",
+      "name": "sqlite",
+      "component_type": "DATASTORE",
+      "confidence": 0.9880000000000001,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "pfi_fields": [],
+        "extras": {
+          "canonical_name": "sqlite",
+          "adapter": "datastore_generic",
+          "evidence_count": 3,
+          "normalizer": "datastore",
+          "confidence_breakdown": {
+            "regex_confidence": 0.95,
+            "llm_confidence": 0.0,
+            "evidence_count": 4,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "confidence:high"
+            ],
+            "base_confidence": 0.76,
+            "evidence_multiplier": 1.3,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.988
+          },
+          "description_source": "none"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "datastore_generic: sqlite",
+          "location": {
+            "path": "tests/output/redteam-prompts-19d5f204cac7c274.json",
+            "line": 1361
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "datastore_generic: SQLite",
+          "location": {
+            "path": "serve.sh",
+            "line": 57
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "datastore_generic: sqlite",
+          "location": {
+            "path": "reports/marketing-campaign-redteam.remediation-plan.json",
+            "line": 66
+          }
+        }
+      ]
+    },
+    {
+      "id": "ded28104-e185-41fd-9238-182f012acf5d",
+      "name": "generic",
+      "component_type": "DEPLOYMENT",
+      "confidence": 1.0,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "deployment_generic",
+          "adapter": "deployment_generic",
+          "evidence_count": 4,
+          "detected_by_tiers": [
+            "code",
+            "iac"
+          ],
+          "confidence_breakdown": {
+            "regex_confidence": 0.98,
+            "llm_confidence": 0.0,
+            "evidence_count": 5,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3",
+              "confidence:high"
+            ],
+            "base_confidence": 0.784,
+            "evidence_multiplier": 1.4,
+            "validation_penalty": 0.0,
+            "final_confidence": 1.0
+          },
+          "description_source": "none"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "deployment_generic: deployment",
+          "location": {
+            "path": "deploying_agents/actions.py",
+            "line": 23
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.75,
+          "detail": "deployment_generic: deployment",
+          "location": {
+            "path": "tests/output/redteam-prompts-19d5f204cac7c274.json",
+            "line": 3738
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "deployment_generic: Deployment",
+          "location": {
+            "path": "deploying_agents/cleanup.py",
+            "line": 45
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "deployment_generic: deployment",
+          "location": {
+            "path": "deploying_agents/run-flow.py",
+            "line": 42
+          }
+        }
+      ]
+    },
+    {
+      "id": "7a4faa83-73ca-4303-a22e-b8113e730bab",
+      "name": "framework:google_adk",
+      "component_type": "FRAMEWORK",
+      "confidence": 1.0,
+      "metadata": {
+        "framework": "google_adk",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "framework_google_adk",
+          "adapter": "google_adk",
+          "evidence_count": 12,
+          "framework": "google_adk",
+          "confidence_breakdown": {
+            "regex_confidence": 0.95,
+            "llm_confidence": 0.0,
+            "evidence_count": 7,
+            "evidence_sources": [
+              "framework:google_adk",
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3",
+              "evidence:4",
+              "confidence:high"
+            ],
+            "base_confidence": 0.76,
+            "evidence_multiplier": 1.4,
+            "validation_penalty": 0.0,
+            "final_confidence": 1.0
+          },
+          "description_source": "none"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_import",
+          "confidence": 0.95,
+          "detail": "google_adk: import google_adk",
+          "location": {
+            "path": "agents_and_callbacks/example_01_agent_lifecycle_logging/agent.py"
+          }
+        },
+        {
+          "kind": "ast_import",
+          "confidence": 0.95,
+          "detail": "google_adk: import google_adk",
+          "location": {
+            "path": "agents_and_callbacks/example_02_model_input_sanitization/agent.py"
+          }
+        },
+        {
+          "kind": "ast_import",
+          "confidence": 0.95,
+          "detail": "google_adk: import google_adk",
+          "location": {
+            "path": "agents_and_callbacks/example_03_model_response_enchancement/agent.py"
+          }
+        },
+        {
+          "kind": "ast_import",
+          "confidence": 0.95,
+          "detail": "google_adk: import google_adk",
+          "location": {
+            "path": "agents_and_callbacks/example_04_tool_arg_validation_modification/agent.py"
+          }
+        },
+        {
+          "kind": "ast_import",
+          "confidence": 0.95,
+          "detail": "google_adk: import google_adk",
+          "location": {
+            "path": "agents_and_callbacks/example_05_tool_response_transformation_caching/agent.py"
+          }
+        },
+        {
+          "kind": "ast_import",
+          "confidence": 0.95,
+          "detail": "google_adk: import google_adk",
+          "location": {
+            "path": "deploying_agents/social_posts_agent/agent.py"
+          }
+        },
+        {
+          "kind": "ast_import",
+          "confidence": 0.95,
+          "detail": "google_adk: import google_adk",
+          "location": {
+            "path": "marketing_campaign_agent/agent.py"
+          }
+        },
+        {
+          "kind": "ast_import",
+          "confidence": 0.95,
+          "detail": "google_adk: import google_adk",
+          "location": {
+            "path": "multi_model/agent.py"
+          }
+        },
+        {
+          "kind": "ast_import",
+          "confidence": 0.95,
+          "detail": "google_adk: import google_adk",
+          "location": {
+            "path": "sessions_and_agents/agent.py"
+          }
+        },
+        {
+          "kind": "ast_import",
+          "confidence": 0.95,
+          "detail": "google_adk: import google_adk",
+          "location": {
+            "path": "sessions_and_agents/run_agent_with_session.py"
+          }
+        },
+        {
+          "kind": "ast_import",
+          "confidence": 0.95,
+          "detail": "google_adk: import google_adk",
+          "location": {
+            "path": "structured_output/agent.py"
+          }
+        },
+        {
+          "kind": "ast_import",
+          "confidence": 0.95,
+          "detail": "google_adk: import google_adk",
+          "location": {
+            "path": "tools_agent/agent.py"
+          }
+        }
+      ]
+    },
+    {
+      "id": "3e305295-40ac-4a9d-9647-9ede256d8137",
+      "name": "framework:llm_clients",
+      "component_type": "FRAMEWORK",
+      "confidence": 1.0,
+      "metadata": {
+        "framework": "llm_clients",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "framework_llm_clients",
+          "adapter": "llm_clients",
+          "evidence_count": 10,
+          "framework": "llm_clients",
+          "confidence_breakdown": {
+            "regex_confidence": 0.95,
+            "llm_confidence": 0.0,
+            "evidence_count": 7,
+            "evidence_sources": [
+              "framework:llm_clients",
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3",
+              "evidence:4",
+              "confidence:high"
+            ],
+            "base_confidence": 0.76,
+            "evidence_multiplier": 1.4,
+            "validation_penalty": 0.0,
+            "final_confidence": 1.0
+          },
+          "description_source": "none"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_import",
+          "confidence": 0.95,
+          "detail": "llm_clients: import llm_clients",
+          "location": {
+            "path": "agents_and_callbacks/example_01_agent_lifecycle_logging/agent.py"
+          }
+        },
+        {
+          "kind": "ast_import",
+          "confidence": 0.95,
+          "detail": "llm_clients: import llm_clients",
+          "location": {
+            "path": "agents_and_callbacks/example_02_model_input_sanitization/agent.py"
+          }
+        },
+        {
+          "kind": "ast_import",
+          "confidence": 0.95,
+          "detail": "llm_clients: import llm_clients",
+          "location": {
+            "path": "agents_and_callbacks/example_03_model_response_enchancement/agent.py"
+          }
+        },
+        {
+          "kind": "ast_import",
+          "confidence": 0.95,
+          "detail": "llm_clients: import llm_clients",
+          "location": {
+            "path": "agents_and_callbacks/example_04_tool_arg_validation_modification/agent.py"
+          }
+        },
+        {
+          "kind": "ast_import",
+          "confidence": 0.95,
+          "detail": "llm_clients: import llm_clients",
+          "location": {
+            "path": "agents_and_callbacks/example_05_tool_response_transformation_caching/agent.py"
+          }
+        },
+        {
+          "kind": "ast_import",
+          "confidence": 0.95,
+          "detail": "llm_clients: import llm_clients",
+          "location": {
+            "path": "deploying_agents/actions.py"
+          }
+        },
+        {
+          "kind": "ast_import",
+          "confidence": 0.95,
+          "detail": "llm_clients: import llm_clients",
+          "location": {
+            "path": "deploying_agents/cleanup.py"
+          }
+        },
+        {
+          "kind": "ast_import",
+          "confidence": 0.95,
+          "detail": "llm_clients: import llm_clients",
+          "location": {
+            "path": "deploying_agents/deploy.py"
+          }
+        },
+        {
+          "kind": "ast_import",
+          "confidence": 0.95,
+          "detail": "llm_clients: import llm_clients",
+          "location": {
+            "path": "deploying_agents/run-flow.py"
+          }
+        },
+        {
+          "kind": "ast_import",
+          "confidence": 0.95,
+          "detail": "llm_clients: import llm_clients",
+          "location": {
+            "path": "sessions_and_agents/run_agent_with_session.py"
+          }
+        }
+      ]
+    },
+    {
+      "id": "a1d3ce83-c6ad-4049-93f7-29b75ace250d",
+      "name": "gemini-2.0-flash",
+      "component_type": "MODEL",
+      "confidence": 1.0,
+      "metadata": {
+        "framework": "google-adk",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "gemini_2_0_flash",
+          "adapter": "google_adk",
+          "evidence_count": 16,
+          "provider": "google",
+          "framework": "google-adk",
+          "version": "2.0-flash",
+          "api_endpoint": "https://generativelanguage.googleapis.com",
+          "model_card_url": "https://ai.google.dev/gemini-api/docs/models/gemini-2.0-flash",
+          "model_family": "gemini",
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 7,
+            "evidence_sources": [
+              "framework:google-adk",
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3",
+              "evidence:4",
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.4,
+            "validation_penalty": 0.0,
+            "final_confidence": 1.0
+          },
+          "description_source": "none"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.9,
+          "detail": "google_adk: Agent(model='gemini-2.0-flash')",
+          "location": {
+            "path": "agents_and_callbacks/example_01_agent_lifecycle_logging/agent.py",
+            "line": 45
+          }
+        },
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.9,
+          "detail": "google_adk: Agent(model='gemini-2.0-flash')",
+          "location": {
+            "path": "agents_and_callbacks/example_02_model_input_sanitization/agent.py",
+            "line": 53
+          }
+        },
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.9,
+          "detail": "google_adk: Agent(model='gemini-2.0-flash')",
+          "location": {
+            "path": "agents_and_callbacks/example_03_model_response_enchancement/agent.py",
+            "line": 72
+          }
+        },
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.9,
+          "detail": "google_adk: Agent(model='gemini-2.0-flash')",
+          "location": {
+            "path": "agents_and_callbacks/example_04_tool_arg_validation_modification/agent.py",
+            "line": 73
+          }
+        },
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.9,
+          "detail": "google_adk: Agent(model='gemini-2.0-flash')",
+          "location": {
+            "path": "agents_and_callbacks/example_05_tool_response_transformation_caching/agent.py",
+            "line": 204
+          }
+        },
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.9,
+          "detail": "google_adk: Agent(model='gemini-2.0-flash')",
+          "location": {
+            "path": "marketing_campaign_agent/agent.py",
+            "line": 24
+          }
+        },
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.9,
+          "detail": "google_adk: Agent(model='gemini-2.0-flash')",
+          "location": {
+            "path": "structured_output/agent.py",
+            "line": 46
+          }
+        },
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.9,
+          "detail": "google_adk: Agent(model='gemini-2.0-flash')",
+          "location": {
+            "path": "tools_agent/agent.py",
+            "line": 37
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "model_generic: gemini-2.0",
+          "location": {
+            "path": "marketing_campaign_agent/agent.py",
+            "line": 7
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "model_generic: gemini-2.0",
+          "location": {
+            "path": "structured_output/agent.py",
+            "line": 48
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "model_generic: gemini-2.0",
+          "location": {
+            "path": "agents_and_callbacks/example_01_agent_lifecycle_logging/agent.py",
+            "line": 48
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "model_generic: gemini-2.0",
+          "location": {
+            "path": "agents_and_callbacks/example_02_model_input_sanitization/agent.py",
+            "line": 55
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "model_generic: gemini-2.0",
+          "location": {
+            "path": "agents_and_callbacks/example_03_model_response_enchancement/agent.py",
+            "line": 71
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "model_generic: gemini-2.0",
+          "location": {
+            "path": "agents_and_callbacks/example_04_tool_arg_validation_modification/agent.py",
+            "line": 75
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "model_generic: gemini-2.0",
+          "location": {
+            "path": "agents_and_callbacks/example_05_tool_response_transformation_caching/agent.py",
+            "line": 202
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "model_generic: gemini-2.0",
+          "location": {
+            "path": "tools_agent/agent.py",
+            "line": 41
+          }
+        }
+      ]
+    },
+    {
+      "id": "93d282ad-54a9-4497-9cf3-72d471f655ae",
+      "name": "GPT-5.4",
+      "component_type": "MODEL",
+      "confidence": 0.44000000000000006,
+      "metadata": {
+        "description": "GPT-5.4 is a large language model.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "gpt_5_4",
+          "adapter": "model_generic",
+          "evidence_count": 1,
+          "normalizer": "model-name",
+          "llm_soft_rejected": true,
+          "llm_verification_reason": "The file is a test file. The model name is likely a placeholder or test value.",
+          "confidence_breakdown": {
+            "regex_confidence": 0.55,
+            "llm_confidence": 0.0,
+            "evidence_count": 1,
+            "evidence_sources": [
+              "evidence:0"
+            ],
+            "base_confidence": 0.44,
+            "evidence_multiplier": 1.0,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.44
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "model_generic: GPT-5.4",
+          "location": {
+            "path": "test_openai_gpt.py",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "9c1c9102-fd09-462d-bbe6-e75ef79b88dd",
+      "name": "openai/gpt-5.4",
+      "component_type": "MODEL",
+      "confidence": 0.44000000000000006,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "openai_gpt_5_4",
+          "adapter": "model_generic",
+          "evidence_count": 1,
+          "normalizer": "model-name",
+          "confidence_breakdown": {
+            "regex_confidence": 0.55,
+            "llm_confidence": 0.0,
+            "evidence_count": 1,
+            "evidence_sources": [
+              "evidence:0"
+            ],
+            "base_confidence": 0.44,
+            "evidence_multiplier": 1.0,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.44
+          },
+          "description_source": "none"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "model_generic: openai/gpt-5.4",
+          "location": {
+            "path": "test_openai_gpt.py",
+            "line": 56
+          }
+        }
+      ]
+    },
+    {
+      "id": "543e8a85-33bd-4b60-8151-a7e2189aac5d",
+      "name": "network_out",
+      "component_type": "PRIVILEGE",
+      "confidence": 0.48,
+      "metadata": {
+        "privilege_scope": "network_out",
+        "description": "Network_out is a PRIVILEGE component enabling outbound network connections via urllib.request.urlopen.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "privilege_network_out",
+          "adapter": "privilege_network_out",
+          "evidence_count": 1,
+          "privilege_scope": "network_out",
+          "confidence_breakdown": {
+            "regex_confidence": 0.6,
+            "llm_confidence": 0.0,
+            "evidence_count": 1,
+            "evidence_sources": [
+              "evidence:0"
+            ],
+            "base_confidence": 0.48,
+            "evidence_multiplier": 1.0,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.48
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "privilege_network_out: urllib.request.urlopen(",
+          "location": {
+            "path": "test_adk_api.py",
+            "line": 118
+          }
+        }
+      ]
+    },
+    {
+      "id": "482ae406-b412-4f29-8a4f-2c2db0bb6039",
+      "name": "rbac",
+      "component_type": "PRIVILEGE",
+      "confidence": 0.84,
+      "metadata": {
+        "privilege_scope": "rbac",
+        "description": "RBAC implements role-based access control, enforcing least privilege principles.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "privilege_rbac",
+          "adapter": "privilege_rbac",
+          "evidence_count": 1,
+          "privilege_scope": "rbac",
+          "description": "Enforce the principle of least privilege; grant the component only the minimal data access permissions required for its intended function.",
+          "llm_verified": true,
+          "llm_verification_reason": "The remediation plan suggests enforcing the principle of least privilege, which is related to RBAC.",
+          "llm_confidence": 0.7,
+          "confidence_breakdown": {
+            "regex_confidence": 0.7,
+            "llm_confidence": 0.7,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "llm:verified",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.7,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.84
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.7,
+          "detail": "privilege_rbac: least privilege",
+          "location": {
+            "path": "reports/marketing-campaign-redteam.remediation-plan.json",
+            "line": 71
+          }
+        }
+      ]
+    },
+    {
+      "id": "719933fe-a672-4d77-a914-a222ec3835ca",
+      "name": "AdviceGeneratorAgent Instructions",
+      "component_type": "PROMPT",
+      "confidence": 0.7744000000000001,
+      "metadata": {
+        "description": "A prompt provides instructions for an AdviceGeneratorAgent, instantiated using Google ADK.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "google_adk_advicegeneratoragent_instructions",
+          "adapter": "google_adk",
+          "evidence_count": 1,
+          "role": "system",
+          "content": "\nYou are a helpful AI assistant that provides initial guidance based on a recommended consultant type and identified user issues.\n\nBased on the provided input {problem_analysis_result} generate the following in a structured JSON format:\n1.  'suitability_explanation': A brief (1-2 sentences) explanation of why a the suggested consultation type is suitable for these issues.\n2.  'key_questions_to_consider': 2-3 insightful questions the user might want to reflect on or ask the consultant.\n3.  'initial_actionable_steps': 1-2 very general, safe, and constructive initial steps or resources the user could explore.\n    - For 'psychologist', 'psychiatrist', 'therapist': Suggest things like \"Consider journaling your feelings\" or \"Look into mindfulness exercises.\" AVOID DIAGNOSING OR PRESCRIBING.\n    - For 'nutritionist': Suggest \"Start by tracking your current eating habits for a few days\" or \"Explore resources on balanced diets from reputable health organizations.\" AVOID SPECIFIC DIET PLANS.\n    - For 'personal_trainer': Suggest \"Think about your fitness goals\" or \"Consider starting with a 10-15 minute daily walk.\" AVOID SPECIFIC WORKOUT ROUTINES.\n    - For 'financial_advisor': Suggest \"Gather information about your current income and expenses\" or \"Identify your short-term and long-term financial goals.\" AVOID SPECIFIC INVESTMENT ADVICE.\n    - For other coaches: Provide general questions about goals and initial small steps.\n    - For 'general_helper': Suggest clarifying their needs further or seeking general problem-solving resources.\n4.  'disclaimer': Always include the standard disclaimer: \"This is AI-generated guidance and not a substitute for professional advice. Please consult with a qualified professional for your specific needs.\"\n",
+          "char_count": 1757,
+          "is_template": true,
+          "template_variables": [
+            "problem_analysis_result"
+          ],
+          "confidence_breakdown": {
+            "regex_confidence": 0.88,
+            "llm_confidence": 0.0,
+            "evidence_count": 2,
+            "evidence_sources": [
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.704,
+            "evidence_multiplier": 1.1,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.7744
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.88,
+          "detail": "google_adk: ast_instantiation",
+          "location": {
+            "path": "structured_output/agent.py",
+            "line": 70
+          }
+        }
+      ]
+    },
+    {
+      "id": "6997b795-b331-4cfd-8d86-b4354cf34455",
+      "name": "currency_converter_agent Instructions",
+      "component_type": "PROMPT",
+      "confidence": 0.7744000000000001,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "google_adk_currency_converter_agent_instructions",
+          "adapter": "google_adk",
+          "evidence_count": 1,
+          "role": "system",
+          "content": "You are a currency converter. When asked to convert currency, use the convert_currency_tool. Based on the tool's output (look for 'result_summary' or 'error_message' in the tool's returned dictionary), provide a clear and concise answer to the user.",
+          "char_count": 249,
+          "is_template": false,
+          "template_variables": [],
+          "confidence_breakdown": {
+            "regex_confidence": 0.88,
+            "llm_confidence": 0.0,
+            "evidence_count": 2,
+            "evidence_sources": [
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.704,
+            "evidence_multiplier": 1.1,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.7744
+          },
+          "description_source": "none"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.88,
+          "detail": "google_adk: ast_instantiation",
+          "location": {
+            "path": "agents_and_callbacks/example_05_tool_response_transformation_caching/agent.py",
+            "line": 204
+          }
+        }
+      ]
+    },
+    {
+      "id": "7d30cc34-04a3-4c94-b65d-456d262450f4",
+      "name": "input_sanitizer_agent Instructions",
+      "component_type": "PROMPT",
+      "confidence": 0.7744000000000001,
+      "metadata": {
+        "description": "This prompt provides instructions for the input_sanitizer_agent, instantiated from an abstract syntax tree.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "google_adk_input_sanitizer_agent_instructions",
+          "adapter": "google_adk",
+          "evidence_count": 1,
+          "role": "system",
+          "content": "You are a helpful general knowledge assistant.",
+          "char_count": 46,
+          "is_template": false,
+          "template_variables": [],
+          "confidence_breakdown": {
+            "regex_confidence": 0.88,
+            "llm_confidence": 0.0,
+            "evidence_count": 2,
+            "evidence_sources": [
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.704,
+            "evidence_multiplier": 1.1,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.7744
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.88,
+          "detail": "google_adk: ast_instantiation",
+          "location": {
+            "path": "agents_and_callbacks/example_02_model_input_sanitization/agent.py",
+            "line": 53
+          }
+        }
+      ]
+    },
+    {
+      "id": "94971854-3c2c-442c-acc5-21123d88942b",
+      "name": "InstagramReelScriptAgent Instructions",
+      "component_type": "PROMPT",
+      "confidence": 0.8448000000000001,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "google_adk_instagramreelscriptagent_instructions",
+          "adapter": "google_adk",
+          "evidence_count": 2,
+          "role": "system",
+          "content": "\n    You are an Instagram reel script generator. You will be given a topic with researched summary from \"research_summary\" output, and you will generate a script for an Instagram reel about it.\n    The script should be engaging, fast paced, and relevant to the topic.\n    The script should have a primary hook, which grabs the attention of the audience.\n    The script should have a call to action at the end.\n",
+          "char_count": 410,
+          "is_template": false,
+          "template_variables": [],
+          "confidence_breakdown": {
+            "regex_confidence": 0.88,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "confidence:high"
+            ],
+            "base_confidence": 0.704,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.8448
+          },
+          "description_source": "none"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.88,
+          "detail": "google_adk: ast_instantiation",
+          "location": {
+            "path": "deploying_agents/social_posts_agent/agent.py",
+            "line": 56
+          }
+        },
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.88,
+          "detail": "google_adk: ast_instantiation",
+          "location": {
+            "path": "multi_model/agent.py",
+            "line": 48
+          }
+        }
+      ]
+    },
+    {
+      "id": "9f1528d6-ff33-42d8-90cf-e41eeeb02606",
+      "name": "lifecycle_logger_agent Instructions",
+      "component_type": "PROMPT",
+      "confidence": 0.7744000000000001,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "google_adk_lifecycle_logger_agent_instructions",
+          "adapter": "google_adk",
+          "evidence_count": 1,
+          "role": "system",
+          "content": "You are an echo agent. Repeat the user's message.",
+          "char_count": 49,
+          "is_template": false,
+          "template_variables": [],
+          "confidence_breakdown": {
+            "regex_confidence": 0.88,
+            "llm_confidence": 0.0,
+            "evidence_count": 2,
+            "evidence_sources": [
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.704,
+            "evidence_multiplier": 1.1,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.7744
+          },
+          "description_source": "none"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.88,
+          "detail": "google_adk: ast_instantiation",
+          "location": {
+            "path": "agents_and_callbacks/example_01_agent_lifecycle_logging/agent.py",
+            "line": 45
+          }
+        }
+      ]
+    },
+    {
+      "id": "aa57214f-01ee-497d-af85-5aa9ae8c6d8d",
+      "name": "LinkedInPostsAgent Instructions",
+      "component_type": "PROMPT",
+      "confidence": 0.8448000000000001,
+      "metadata": {
+        "description": "A prompt used to guide the LinkedInPostsAgent in generating relevant and engaging LinkedIn posts.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "google_adk_linkedinpostsagent_instructions",
+          "adapter": "google_adk",
+          "evidence_count": 2,
+          "role": "system",
+          "content": "\n    You are a LinkedIn post generator. You will be given a topic with researched summary from \"research_summary\" output, and you will generate a LinkedIn post about it.\n        The post should be professional, engaging, and relevant to the topic.\n        The post should have a primary hook, not more than 60 characters.\n        The post should have a line break after the hook.\n        The post should have a post-hook that is either supporting the hook or completely inverse of the hook to grab attention.\n\n        The post should be in a conversational tone and should be easy to read.\n        There should be bullet points in the post to make it easy to read.\n        There should be actionable items in the post to make it easy to follow.\n\n        At the end of the post, there should be a question to engage the audience.\n        Finally, ask the audience to share their thoughts in the comments. And to repost.\n        Use emojis to make the post more engaging.\n        Use hashtags to make the post more discoverable.\n",
+          "char_count": 1027,
+          "is_template": false,
+          "template_variables": [],
+          "confidence_breakdown": {
+            "regex_confidence": 0.88,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "confidence:high"
+            ],
+            "base_confidence": 0.704,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.8448
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.88,
+          "detail": "google_adk: ast_instantiation",
+          "location": {
+            "path": "deploying_agents/social_posts_agent/agent.py",
+            "line": 33
+          }
+        },
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.88,
+          "detail": "google_adk: ast_instantiation",
+          "location": {
+            "path": "multi_model/agent.py",
+            "line": 25
+          }
+        }
+      ]
+    },
+    {
+      "id": "95a17ddf-b30c-4938-9f00-812d992ffe0d",
+      "name": "meeting_scheduler_agent Instructions",
+      "component_type": "PROMPT",
+      "confidence": 0.7744000000000001,
+      "metadata": {
+        "description": "Meeting_scheduler_agent Instructions is a PROMPT component instantiated using Google ADK.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "google_adk_meeting_scheduler_agent_instructions",
+          "adapter": "google_adk",
+          "evidence_count": 1,
+          "role": "system",
+          "content": "You are a meeting scheduling assistant. When asked to schedule a meeting, gather the date (YYYY-MM-DD), topic, attendees (as a list), and a time preference (e.g., '10:00 AM', 'afternoon', 'morning'). Then use the 'schedule_meeting_tool'.",
+          "char_count": 237,
+          "is_template": false,
+          "template_variables": [],
+          "confidence_breakdown": {
+            "regex_confidence": 0.88,
+            "llm_confidence": 0.0,
+            "evidence_count": 2,
+            "evidence_sources": [
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.704,
+            "evidence_multiplier": 1.1,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.7744
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.88,
+          "detail": "google_adk: ast_instantiation",
+          "location": {
+            "path": "agents_and_callbacks/example_04_tool_arg_validation_modification/agent.py",
+            "line": 73
+          }
+        }
+      ]
+    },
+    {
+      "id": "3239e9b1-498a-4846-9291-168c620f48ae",
+      "name": "PostAgent Instructions",
+      "component_type": "PROMPT",
+      "confidence": 0.7744000000000001,
+      "metadata": {
+        "description": "PostAgent Instructions is a prompt used to guide the behavior of a post agent.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "google_adk_postagent_instructions",
+          "adapter": "google_adk",
+          "evidence_count": 1,
+          "role": "system",
+          "content": "\n        You are a helpful assistant that can respond about the user and their post preferences.\n\n    The information about the user and their post preferences is given in the state context.\n    Name: {user_name}\n    Post Preferences: {user_post_preferences}\n",
+          "char_count": 259,
+          "is_template": true,
+          "template_variables": [
+            "user_name",
+            "user_post_preferences"
+          ],
+          "confidence_breakdown": {
+            "regex_confidence": 0.88,
+            "llm_confidence": 0.0,
+            "evidence_count": 2,
+            "evidence_sources": [
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.704,
+            "evidence_multiplier": 1.1,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.7744
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.88,
+          "detail": "google_adk: ast_instantiation",
+          "location": {
+            "path": "sessions_and_agents/agent.py",
+            "line": 9
+          }
+        }
+      ]
+    },
+    {
+      "id": "86f98d57-30c6-4291-a4d4-7bcc00762096",
+      "name": "PostsAgent Instructions",
+      "component_type": "PROMPT",
+      "confidence": 0.8448000000000001,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "google_adk_postsagent_instructions",
+          "adapter": "google_adk",
+          "evidence_count": 2,
+          "role": "system",
+          "content": "An agent that generates social media posts by using the linkedIn and Instagram agents",
+          "char_count": 85,
+          "is_template": false,
+          "template_variables": [],
+          "confidence_breakdown": {
+            "regex_confidence": 0.88,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "confidence:high"
+            ],
+            "base_confidence": 0.704,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.8448
+          },
+          "description_source": "none"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.88,
+          "detail": "google_adk: ast_instantiation",
+          "location": {
+            "path": "deploying_agents/social_posts_agent/agent.py",
+            "line": 69
+          }
+        },
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.88,
+          "detail": "google_adk: ast_instantiation",
+          "location": {
+            "path": "multi_model/agent.py",
+            "line": 61
+          }
+        }
+      ]
+    },
+    {
+      "id": "38cc77e9-47e5-4df3-a3a3-0a47fcfe791c",
+      "name": "PostsMergerAgent Instructions",
+      "component_type": "PROMPT",
+      "confidence": 0.8448000000000001,
+      "metadata": {
+        "description": "PostsMergerAgent Instructions is a prompt component, evidenced by its instantiation in Google ADK.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "google_adk_postsmergeragent_instructions",
+          "adapter": "google_adk",
+          "evidence_count": 2,
+          "role": "system",
+          "content": "\n        You are an AI Assistant responsible for combining linkedin and instagram reels script into a structured output.\n\nYour primary task is to merge the posts generated by the LinkedIn and Instagram agents into a single output. Clearly mentioning the platform for each post.\n        Input Summaries:\n        - LinkedIn Post: {linkedIn_post}\n        - Instagram Reels Script: {instagram_reel_script}\n\n        Output Format:\n        - LinkedIn Post: {linkedIn_post}\n        - Instagram Post: {instagram_reel_script}\n",
+          "char_count": 517,
+          "is_template": true,
+          "template_variables": [
+            "linkedIn_post",
+            "instagram_reel_script",
+            "linkedIn_post",
+            "instagram_reel_script"
+          ],
+          "confidence_breakdown": {
+            "regex_confidence": 0.88,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "confidence:high"
+            ],
+            "base_confidence": 0.704,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.8448
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.88,
+          "detail": "google_adk: ast_instantiation",
+          "location": {
+            "path": "deploying_agents/social_posts_agent/agent.py",
+            "line": 75
+          }
+        },
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.88,
+          "detail": "google_adk: ast_instantiation",
+          "location": {
+            "path": "multi_model/agent.py",
+            "line": 67
+          }
+        }
+      ]
+    },
+    {
+      "id": "57e264c1-ccda-4a0e-b4aa-c7523a658bb1",
+      "name": "ProblemAnalyzerAgent Instructions",
+      "component_type": "PROMPT",
+      "confidence": 0.7744000000000001,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "google_adk_problemanalyzeragent_instructions",
+          "adapter": "google_adk",
+          "evidence_count": 1,
+          "role": "system",
+          "content": "\nYou are an expert AI assistant that analyzes user queries to understand their core problem and recommend an appropriate type of consultant.\nBased on the user's query, identify the primary issues the user is facing.\nThen, determine the most suitable consultant type\nOutput a JSON object with the recommended 'consultant_type' and a concise 'identified_issues_summary'.\nIf the query is too vague or doesn't clearly fit a specialist, recommend 'general_helper'.\nFocus on the main problem.\n",
+          "char_count": 487,
+          "is_template": false,
+          "template_variables": [],
+          "confidence_breakdown": {
+            "regex_confidence": 0.88,
+            "llm_confidence": 0.0,
+            "evidence_count": 2,
+            "evidence_sources": [
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.704,
+            "evidence_multiplier": 1.1,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.7744
+          },
+          "description_source": "none"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.88,
+          "detail": "google_adk: ast_instantiation",
+          "location": {
+            "path": "structured_output/agent.py",
+            "line": 46
+          }
+        }
+      ]
+    },
+    {
+      "id": "b64857de-9bb6-45e2-a1d7-9f89e4f3b44c",
+      "name": "ResearchAgent Instructions",
+      "component_type": "PROMPT",
+      "confidence": 0.8448000000000001,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "google_adk_researchagent_instructions",
+          "adapter": "google_adk",
+          "evidence_count": 2,
+          "role": "system",
+          "content": "\n    You are a research assistant. You will be given a topic and you will research on it. Then you will provide a summary of the research.\n",
+          "char_count": 139,
+          "is_template": false,
+          "template_variables": [],
+          "confidence_breakdown": {
+            "regex_confidence": 0.88,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "confidence:high"
+            ],
+            "base_confidence": 0.704,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.8448
+          },
+          "description_source": "none"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.88,
+          "detail": "google_adk: ast_instantiation",
+          "location": {
+            "path": "deploying_agents/social_posts_agent/agent.py",
+            "line": 22
+          }
+        },
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.88,
+          "detail": "google_adk: ast_instantiation",
+          "location": {
+            "path": "multi_model/agent.py",
+            "line": 14
+          }
+        }
+      ]
+    },
+    {
+      "id": "2146b4e1-b4b8-448a-98e3-0f6d3ed9ba55",
+      "name": "SocialMediaAgent Instructions",
+      "component_type": "PROMPT",
+      "confidence": 0.8448000000000001,
+      "metadata": {
+        "description": "SocialMediaAgent Instructions is a PROMPT component instantiated using the Google ADK.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "google_adk_socialmediaagent_instructions",
+          "adapter": "google_adk",
+          "evidence_count": 2,
+          "role": "system",
+          "content": "An agent that generates social media posts by using the research agent and the posts agent",
+          "char_count": 90,
+          "is_template": false,
+          "template_variables": [],
+          "confidence_breakdown": {
+            "regex_confidence": 0.88,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "confidence:high"
+            ],
+            "base_confidence": 0.704,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.8448
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.88,
+          "detail": "google_adk: ast_instantiation",
+          "location": {
+            "path": "deploying_agents/social_posts_agent/agent.py",
+            "line": 93
+          }
+        },
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.88,
+          "detail": "google_adk: ast_instantiation",
+          "location": {
+            "path": "multi_model/agent.py",
+            "line": 85
+          }
+        }
+      ]
+    },
+    {
+      "id": "172f4e87-b186-4aba-9f40-187968227db6",
+      "name": "tools_agent Instructions",
+      "component_type": "PROMPT",
+      "confidence": 0.7744000000000001,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "google_adk_tools_agent_instructions",
+          "adapter": "google_adk",
+          "evidence_count": 1,
+          "role": "system",
+          "content": "\n  You are a helpful assistant that can use the following tools:\n  - get_current_date_and_time: Returns the current date and time.\n  - get_randomuser_from_ramdomuserme: Returns a random user from randomuser.me API.\n",
+          "char_count": 215,
+          "is_template": false,
+          "template_variables": [],
+          "confidence_breakdown": {
+            "regex_confidence": 0.88,
+            "llm_confidence": 0.0,
+            "evidence_count": 2,
+            "evidence_sources": [
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.704,
+            "evidence_multiplier": 1.1,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.7744
+          },
+          "description_source": "none"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.88,
+          "detail": "google_adk: ast_instantiation",
+          "location": {
+            "path": "tools_agent/agent.py",
+            "line": 37
+          }
+        }
+      ]
+    },
+    {
+      "id": "aebfdc3c-46db-4b95-be9a-fcaaf5b2ce64",
+      "name": "travel_response_enhancer_agent Instructions",
+      "component_type": "PROMPT",
+      "confidence": 0.7744000000000001,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "google_adk_travel_response_enhancer_agent_instructions",
+          "adapter": "google_adk",
+          "evidence_count": 1,
+          "role": "system",
+          "content": "You are a helpful travel assistant.\nIf a user asks to book a flight, confirm the booking with made-up details including a flight number (e.g., BA245, AF1800), origin city, destination city, and date (YYYY-MM-DD format).\nIf a user asks about policies, provide a general answer.\nExample of flight booking confirmation: \"Okay, I've booked flight BA245 from London to Paris on 2025-12-25 for you.\"\n",
+          "char_count": 394,
+          "is_template": false,
+          "template_variables": [],
+          "confidence_breakdown": {
+            "regex_confidence": 0.88,
+            "llm_confidence": 0.0,
+            "evidence_count": 2,
+            "evidence_sources": [
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.704,
+            "evidence_multiplier": 1.1,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.7744
+          },
+          "description_source": "none"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.88,
+          "detail": "google_adk: ast_instantiation",
+          "location": {
+            "path": "agents_and_callbacks/example_03_model_response_enchancement/agent.py",
+            "line": 72
+          }
+        }
+      ]
+    },
+    {
+      "id": "078ed429-74d4-42c1-b6d0-0543a78c21c7",
+      "name": "SYSTEM_PROMPT",
+      "component_type": "PROMPT",
+      "confidence": 0.616,
+      "metadata": {
+        "description": "SYSTEM_PROMPT is a text prompt used by the application, identified through regex and AST constant analysis.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "system_prompt",
+          "adapter": "python_prompt_const",
+          "evidence_count": 6,
+          "role": "system",
+          "content": "You are an expert AI red-team security researcher specializing in adversarial testing of large language model (LLM) applications.\n\nYour role is to generate realistic, targeted red-team test prompts that probe for specific vulnerabilities in AI systems. For each scenario you receive, produce 3 distinct adversarial prompts that an attacker might use. Each prompt should be concrete, creative, and directly exploit the described attack surface.\n\nFormat your response as a numbered list:\n1. <prompt>\n2. <prompt>\n3. <prompt>\n\nDo not add commentary outside the numbered list.",
+          "char_count": 571,
+          "is_template": false,
+          "template_variables": [],
+          "llm_soft_rejected": true,
+          "llm_verification_reason": "This appears to be a report generated by a red teaming exercise, not a prompt itself. The context describes findings related to prompt injection vulnerabilities, but the JSON snippet doesn't contain the actual prompt.",
+          "confidence_breakdown": {
+            "regex_confidence": 0.55,
+            "llm_confidence": 0.0,
+            "evidence_count": 5,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3",
+              "evidence:4"
+            ],
+            "base_confidence": 0.44,
+            "evidence_multiplier": 1.4,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.616
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "prompt_generic: regex",
+          "location": {
+            "path": "reports/marketing-campaign-redteam.remediation-plan.json",
+            "line": 102
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "prompt_generic: regex",
+          "location": {
+            "path": "tests/output/redteam-prompts-19d5f204cac7c274.json",
+            "line": 2600
+          }
+        },
+        {
+          "kind": "ast_constant",
+          "confidence": 0.8,
+          "detail": "python_prompt_const: ast_constant",
+          "location": {
+            "path": "test_bedrock_haiku.py",
+            "line": 12
+          }
+        },
+        {
+          "kind": "ast_constant",
+          "confidence": 0.8,
+          "detail": "python_prompt_const: ast_constant",
+          "location": {
+            "path": "test_openai_gpt.py",
+            "line": 12
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.7,
+          "detail": "prompt_generic: regex",
+          "location": {
+            "path": "test_bedrock_haiku.py",
+            "line": 12
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.7,
+          "detail": "prompt_generic: regex",
+          "location": {
+            "path": "test_openai_gpt.py",
+            "line": 12
+          }
+        }
+      ]
+    },
+    {
+      "id": "e539c727-da6c-4600-a17b-c12d8bc44cb3",
+      "name": "convert_currency_tool",
+      "component_type": "TOOL",
+      "confidence": 0.8160000000000001,
+      "metadata": {
+        "framework": "google-adk",
+        "description": "This tool converts a given amount from one currency to another, using real-time exchange rates to provide an accurate conversion based on the specified currencies and amount.",
+        "high_privilege": false,
+        "sql_injectable": false,
+        "ssrf_possible": false,
+        "accepts_external_url": false,
+        "reads_external_content": false,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "google_adk_tool_convert_currency_tool",
+          "adapter": "google_adk",
+          "evidence_count": 1,
+          "framework": "google-adk",
+          "tool_type": "python_function",
+          "confidence_breakdown": {
+            "regex_confidence": 0.85,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:google-adk",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.68,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.816
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.85,
+          "detail": "google_adk: tools=[..., convert_currency_tool, ...]",
+          "location": {
+            "path": "agents_and_callbacks/example_05_tool_response_transformation_caching/agent.py",
+            "line": 204
+          }
+        }
+      ]
+    },
+    {
+      "id": "3a0cc8ca-62c5-462c-80e9-a9a3e7d3dfa0",
+      "name": "get_current_date_and_time",
+      "component_type": "TOOL",
+      "confidence": 0.8160000000000001,
+      "metadata": {
+        "framework": "google-adk",
+        "description": "get_current_date_and_time is a TOOL component within the google-adk framework.",
+        "high_privilege": false,
+        "sql_injectable": false,
+        "ssrf_possible": false,
+        "accepts_external_url": false,
+        "reads_external_content": false,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "google_adk_tool_get_current_date_and_time",
+          "adapter": "google_adk",
+          "evidence_count": 1,
+          "framework": "google-adk",
+          "tool_type": "python_function",
+          "confidence_breakdown": {
+            "regex_confidence": 0.85,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:google-adk",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.68,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.816
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.85,
+          "detail": "google_adk: tools=[..., get_current_date_and_time, ...]",
+          "location": {
+            "path": "tools_agent/agent.py",
+            "line": 37
+          }
+        }
+      ]
+    },
+    {
+      "id": "0837c632-8f5e-438e-a3c7-c2080c72a3f2",
+      "name": "get_randomuser_from_ramdomuserme",
+      "component_type": "TOOL",
+      "confidence": 1.0,
+      "metadata": {
+        "framework": "google-adk",
+        "description": "A tool that returns a random user from randomuser.me API.",
+        "high_privilege": false,
+        "sql_injectable": false,
+        "ssrf_possible": false,
+        "accepts_external_url": false,
+        "reads_external_content": false,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "google_adk_tool_get_randomuser_from_ramdomuserme",
+          "adapter": "google_adk",
+          "evidence_count": 1,
+          "framework": "google-adk",
+          "tool_type": "python_function",
+          "description": "A tool that returns a random user from randomuser.me API.",
+          "llm_verified": true,
+          "llm_verification_reason": "The code snippet shows `get_randomuser_from_ramdomuserme` being used as a tool for an agent. This is production code.",
+          "llm_confidence": 1.0,
+          "confidence_breakdown": {
+            "regex_confidence": 1.0,
+            "llm_confidence": 1.0,
+            "evidence_count": 4,
+            "evidence_sources": [
+              "llm:verified",
+              "framework:google-adk",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 1.0,
+            "evidence_multiplier": 1.3,
+            "validation_penalty": 0.0,
+            "final_confidence": 1.0
+          },
+          "description_source": "original_sbom"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.85,
+          "detail": "google_adk: tools=[..., get_randomuser_from_ramdomuserme, ...]",
+          "location": {
+            "path": "tools_agent/agent.py",
+            "line": 37
+          }
+        }
+      ]
+    },
+    {
+      "id": "36d741fb-46f0-48ad-87f4-97988c731b15",
+      "name": "google_search",
+      "component_type": "TOOL",
+      "confidence": 1.0,
+      "metadata": {
+        "framework": "google-adk",
+        "description": "The `google_search` tool leverages the Google Search API via the google-adk framework to retrieve information from the internet based on a user-provided query, enabling the AI to access and synthesize",
+        "high_privilege": false,
+        "sql_injectable": false,
+        "ssrf_possible": false,
+        "accepts_external_url": false,
+        "reads_external_content": false,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "google_adk_tool_google_search",
+          "adapter": "google_adk",
+          "evidence_count": 3,
+          "framework": "google-adk",
+          "tool_type": "python_function",
+          "description": "Tool that allows the agent to perform Google searches.",
+          "llm_verified": true,
+          "llm_verification_reason": "The code snippet shows the instantiation of an Agent with `google_search` as a tool. This is production code and `google_search` is a tool available to the agent.",
+          "llm_confidence": 1.0,
+          "confidence_breakdown": {
+            "regex_confidence": 1.0,
+            "llm_confidence": 1.0,
+            "evidence_count": 6,
+            "evidence_sources": [
+              "llm:verified",
+              "framework:google-adk",
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "confidence:high"
+            ],
+            "base_confidence": 1.0,
+            "evidence_multiplier": 1.4,
+            "validation_penalty": 0.0,
+            "final_confidence": 1.0
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.85,
+          "detail": "google_adk: tools=[..., google_search, ...]",
+          "location": {
+            "path": "deploying_agents/social_posts_agent/agent.py",
+            "line": 22
+          }
+        },
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.85,
+          "detail": "google_adk: tools=[..., google_search, ...]",
+          "location": {
+            "path": "marketing_campaign_agent/agent.py",
+            "line": 24
+          }
+        },
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.85,
+          "detail": "google_adk: tools=[..., google_search, ...]",
+          "location": {
+            "path": "multi_model/agent.py",
+            "line": 14
+          }
+        }
+      ]
+    },
+    {
+      "id": "54da996f-69cd-4869-b84f-4c7fcc6e243e",
+      "name": "schedule_meeting_tool",
+      "component_type": "TOOL",
+      "confidence": 0.8160000000000001,
+      "metadata": {
+        "framework": "google-adk",
+        "high_privilege": false,
+        "sql_injectable": false,
+        "ssrf_possible": false,
+        "accepts_external_url": false,
+        "reads_external_content": false,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "google_adk_tool_schedule_meeting_tool",
+          "adapter": "google_adk",
+          "evidence_count": 1,
+          "framework": "google-adk",
+          "tool_type": "python_function",
+          "confidence_breakdown": {
+            "regex_confidence": 0.85,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:google-adk",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.68,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.816
+          },
+          "description_source": "none"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.85,
+          "detail": "google_adk: tools=[..., schedule_meeting_tool, ...]",
+          "location": {
+            "path": "agents_and_callbacks/example_04_tool_arg_validation_modification/agent.py",
+            "line": 73
+          }
+        }
+      ]
+    },
+    {
+      "id": "6ae8d830-59d2-4518-9537-633f8f8a1aab",
+      "name": "workspace_connector",
+      "component_type": "TOOL",
+      "confidence": 0.44000000000000006,
+      "metadata": {
+        "high_privilege": false,
+        "sql_injectable": false,
+        "ssrf_possible": false,
+        "accepts_external_url": false,
+        "reads_external_content": false,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "tool_workspace_connector",
+          "adapter": "tool_workspace_connector",
+          "evidence_count": 1,
+          "confidence_breakdown": {
+            "regex_confidence": 0.55,
+            "llm_confidence": 0.0,
+            "evidence_count": 1,
+            "evidence_sources": [
+              "evidence:0"
+            ],
+            "base_confidence": 0.44,
+            "evidence_multiplier": 1.0,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.44
+          },
+          "description_source": "none"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "tool_workspace_connector: Dropbox",
+          "location": {
+            "path": "tests/output/redteam-prompts-19d5f204cac7c274.json",
+            "line": 315
+          }
+        }
+      ]
+    },
+    {
+      "id": "81887355-c465-5de3-b14d-c1cace8887f2",
+      "name": "/health API",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.6,
+      "metadata": {
+        "endpoint": "/health",
+        "method": "GET",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "source": "runtime_probe",
+          "description_source": "none"
+        }
+      },
+      "evidence": []
+    }
+  ],
+  "edges": [
+    {
+      "source": "0751013d-9549-4f0d-879a-01e2d788a0ce",
+      "target": "a1d3ce83-c6ad-4049-93f7-29b75ace250d",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "0751013d-9549-4f0d-879a-01e2d788a0ce",
+      "target": "9f1528d6-ff33-42d8-90cf-e41eeeb02606",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "10f6ee27-7d56-4dab-99db-3e25cf059077",
+      "target": "a1d3ce83-c6ad-4049-93f7-29b75ace250d",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "10f6ee27-7d56-4dab-99db-3e25cf059077",
+      "target": "7d30cc34-04a3-4c94-b65d-456d262450f4",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "9e8db5a8-1ed9-4625-9573-4b7ac0efa393",
+      "target": "a1d3ce83-c6ad-4049-93f7-29b75ace250d",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "9e8db5a8-1ed9-4625-9573-4b7ac0efa393",
+      "target": "aebfdc3c-46db-4b95-be9a-fcaaf5b2ce64",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "a2de7fe6-eecb-466a-bca5-c3d8d842e06f",
+      "target": "a1d3ce83-c6ad-4049-93f7-29b75ace250d",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "a2de7fe6-eecb-466a-bca5-c3d8d842e06f",
+      "target": "54da996f-69cd-4869-b84f-4c7fcc6e243e",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "a2de7fe6-eecb-466a-bca5-c3d8d842e06f",
+      "target": "95a17ddf-b30c-4938-9f00-812d992ffe0d",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "e34187a4-18cd-40ef-8daa-0a414222c4a3",
+      "target": "a1d3ce83-c6ad-4049-93f7-29b75ace250d",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "e34187a4-18cd-40ef-8daa-0a414222c4a3",
+      "target": "e539c727-da6c-4600-a17b-c12d8bc44cb3",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "e34187a4-18cd-40ef-8daa-0a414222c4a3",
+      "target": "6997b795-b331-4cfd-8d86-b4354cf34455",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "83d2d6f4-5f3c-4eba-8cff-3e791bf177ff",
+      "target": "36d741fb-46f0-48ad-87f4-97988c731b15",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "83d2d6f4-5f3c-4eba-8cff-3e791bf177ff",
+      "target": "b64857de-9bb6-45e2-a1d7-9f89e4f3b44c",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "55de0a2e-859a-4809-8f0e-68454c752fe3",
+      "target": "aa57214f-01ee-497d-af85-5aa9ae8c6d8d",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "7832af28-8244-4a91-a9fa-75d20e3013ac",
+      "target": "94971854-3c2c-442c-acc5-21123d88942b",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "06fb18ba-03d0-45ed-adde-fadb038d9d03",
+      "target": "86f98d57-30c6-4291-a4d4-7bcc00762096",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "cfda587e-d2cf-4cfc-a097-e4de1529ceef",
+      "target": "38cc77e9-47e5-4df3-a3a3-0a47fcfe791c",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "675a2e4b-bbe3-4f43-81da-c7e539a8c4c5",
+      "target": "83d2d6f4-5f3c-4eba-8cff-3e791bf177ff",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "675a2e4b-bbe3-4f43-81da-c7e539a8c4c5",
+      "target": "06fb18ba-03d0-45ed-adde-fadb038d9d03",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "675a2e4b-bbe3-4f43-81da-c7e539a8c4c5",
+      "target": "cfda587e-d2cf-4cfc-a097-e4de1529ceef",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "675a2e4b-bbe3-4f43-81da-c7e539a8c4c5",
+      "target": "2146b4e1-b4b8-448a-98e3-0f6d3ed9ba55",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "6838caa4-025e-41da-b05a-96e3ff30b549",
+      "target": "a1d3ce83-c6ad-4049-93f7-29b75ace250d",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "6838caa4-025e-41da-b05a-96e3ff30b549",
+      "target": "36d741fb-46f0-48ad-87f4-97988c731b15",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "c6e406e4-129b-448b-b059-7bd2e1f068dd",
+      "target": "a1d3ce83-c6ad-4049-93f7-29b75ace250d",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "f805c6b1-ff05-42af-8bcd-d1beffd64f0d",
+      "target": "a1d3ce83-c6ad-4049-93f7-29b75ace250d",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "43d4b9a1-75a9-4e99-8b56-7d31987ccbbf",
+      "target": "a1d3ce83-c6ad-4049-93f7-29b75ace250d",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "19257021-7cc2-45dd-a0ca-202e02e75a62",
+      "target": "a1d3ce83-c6ad-4049-93f7-29b75ace250d",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "580eed84-1f88-4ac6-982d-7beb88e72c41",
+      "target": "3239e9b1-498a-4846-9291-168c620f48ae",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "f2b75cc4-c6c5-4d9c-ba52-a9390d4862cc",
+      "target": "a1d3ce83-c6ad-4049-93f7-29b75ace250d",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "f2b75cc4-c6c5-4d9c-ba52-a9390d4862cc",
+      "target": "57e264c1-ccda-4a0e-b4aa-c7523a658bb1",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "fbbf7686-c48e-4fa8-9587-14b0ef57d5a2",
+      "target": "a1d3ce83-c6ad-4049-93f7-29b75ace250d",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "fbbf7686-c48e-4fa8-9587-14b0ef57d5a2",
+      "target": "719933fe-a672-4d77-a914-a222ec3835ca",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "1c9e7efe-5a54-4082-9fab-2475091f1213",
+      "target": "a1d3ce83-c6ad-4049-93f7-29b75ace250d",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "1c9e7efe-5a54-4082-9fab-2475091f1213",
+      "target": "3a0cc8ca-62c5-462c-80e9-a9a3e7d3dfa0",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "1c9e7efe-5a54-4082-9fab-2475091f1213",
+      "target": "0837c632-8f5e-438e-a3c7-c2080c72a3f2",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "1c9e7efe-5a54-4082-9fab-2475091f1213",
+      "target": "172f4e87-b186-4aba-9f40-187968227db6",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "e52871e1-7a2d-4e59-ae20-4b5b1748acc0",
+      "target": "e539c727-da6c-4600-a17b-c12d8bc44cb3",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "e52871e1-7a2d-4e59-ae20-4b5b1748acc0",
+      "target": "3a0cc8ca-62c5-462c-80e9-a9a3e7d3dfa0",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "e52871e1-7a2d-4e59-ae20-4b5b1748acc0",
+      "target": "0837c632-8f5e-438e-a3c7-c2080c72a3f2",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "e52871e1-7a2d-4e59-ae20-4b5b1748acc0",
+      "target": "36d741fb-46f0-48ad-87f4-97988c731b15",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "e52871e1-7a2d-4e59-ae20-4b5b1748acc0",
+      "target": "54da996f-69cd-4869-b84f-4c7fcc6e243e",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "e52871e1-7a2d-4e59-ae20-4b5b1748acc0",
+      "target": "93d282ad-54a9-4497-9cf3-72d471f655ae",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "e52871e1-7a2d-4e59-ae20-4b5b1748acc0",
+      "target": "a1d3ce83-c6ad-4049-93f7-29b75ace250d",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "e52871e1-7a2d-4e59-ae20-4b5b1748acc0",
+      "target": "9c1c9102-fd09-462d-bbe6-e75ef79b88dd",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "70554089-8ad6-43be-9402-bf9eaa6b0854",
+      "target": "e539c727-da6c-4600-a17b-c12d8bc44cb3",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "70554089-8ad6-43be-9402-bf9eaa6b0854",
+      "target": "3a0cc8ca-62c5-462c-80e9-a9a3e7d3dfa0",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "70554089-8ad6-43be-9402-bf9eaa6b0854",
+      "target": "0837c632-8f5e-438e-a3c7-c2080c72a3f2",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "70554089-8ad6-43be-9402-bf9eaa6b0854",
+      "target": "36d741fb-46f0-48ad-87f4-97988c731b15",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "70554089-8ad6-43be-9402-bf9eaa6b0854",
+      "target": "54da996f-69cd-4869-b84f-4c7fcc6e243e",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "70554089-8ad6-43be-9402-bf9eaa6b0854",
+      "target": "93d282ad-54a9-4497-9cf3-72d471f655ae",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "70554089-8ad6-43be-9402-bf9eaa6b0854",
+      "target": "a1d3ce83-c6ad-4049-93f7-29b75ace250d",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "70554089-8ad6-43be-9402-bf9eaa6b0854",
+      "target": "9c1c9102-fd09-462d-bbe6-e75ef79b88dd",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "7a4faa83-73ca-4303-a22e-b8113e730bab",
+      "target": "a1d3ce83-c6ad-4049-93f7-29b75ace250d",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "7a4faa83-73ca-4303-a22e-b8113e730bab",
+      "target": "93d282ad-54a9-4497-9cf3-72d471f655ae",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "7a4faa83-73ca-4303-a22e-b8113e730bab",
+      "target": "9c1c9102-fd09-462d-bbe6-e75ef79b88dd",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "3e305295-40ac-4a9d-9647-9ede256d8137",
+      "target": "a1d3ce83-c6ad-4049-93f7-29b75ace250d",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "3e305295-40ac-4a9d-9647-9ede256d8137",
+      "target": "93d282ad-54a9-4497-9cf3-72d471f655ae",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "3e305295-40ac-4a9d-9647-9ede256d8137",
+      "target": "9c1c9102-fd09-462d-bbe6-e75ef79b88dd",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "f805c6b1-ff05-42af-8bcd-d1beffd64f0d",
+      "target": "e539c727-da6c-4600-a17b-c12d8bc44cb3",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "f805c6b1-ff05-42af-8bcd-d1beffd64f0d",
+      "target": "3a0cc8ca-62c5-462c-80e9-a9a3e7d3dfa0",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "f805c6b1-ff05-42af-8bcd-d1beffd64f0d",
+      "target": "0837c632-8f5e-438e-a3c7-c2080c72a3f2",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "f805c6b1-ff05-42af-8bcd-d1beffd64f0d",
+      "target": "36d741fb-46f0-48ad-87f4-97988c731b15",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "f805c6b1-ff05-42af-8bcd-d1beffd64f0d",
+      "target": "54da996f-69cd-4869-b84f-4c7fcc6e243e",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "f805c6b1-ff05-42af-8bcd-d1beffd64f0d",
+      "target": "6ae8d830-59d2-4518-9537-633f8f8a1aab",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "e539c727-da6c-4600-a17b-c12d8bc44cb3",
+      "target": "9877f914-ee79-4639-bf19-c7a1b7e83c6d",
+      "relationship_type": "ACCESSES",
+      "access_type": "readwrite"
+    }
+  ],
+  "deps": [
+    {
+      "name": "google-adk",
+      "version_spec": "==1.28.0",
+      "purl": "pkg:pypi/google-adk@1.28.0",
+      "group": "runtime",
+      "source_file": "requirements.txt"
+    },
+    {
+      "name": "google-generativeai",
+      "version_spec": "",
+      "purl": "pkg:pypi/google-generativeai",
+      "group": "runtime",
+      "source_file": "requirements.txt"
+    },
+    {
+      "name": "python-dotenv",
+      "version_spec": "",
+      "purl": "pkg:pypi/python-dotenv",
+      "group": "runtime",
+      "source_file": "requirements.txt"
+    },
+    {
+      "name": "litellm",
+      "version_spec": "",
+      "purl": "pkg:pypi/litellm",
+      "group": "runtime",
+      "source_file": "requirements.txt"
+    },
+    {
+      "name": "pydantic",
+      "version_spec": "",
+      "purl": "pkg:pypi/pydantic",
+      "group": "runtime",
+      "source_file": "requirements.txt"
+    },
+    {
+      "name": "google-cloud-aiplatform",
+      "version_spec": "[adk,agent_engines]",
+      "purl": "pkg:pypi/google-cloud-aiplatform",
+      "group": "runtime",
+      "source_file": "requirements.txt"
+    },
+    {
+      "name": "@google/adk",
+      "version_spec": "^0.6.1",
+      "purl": "pkg:npm/%40google/adk@0.6.1",
+      "group": "runtime",
+      "source_file": "package.json"
+    }
+  ],
+  "summary": {
+    "use_case": "This application uses 22 agents to automate marketing tasks, including ad copy generation, market research, and social media post creation, supporting image uploads. It leverages search-based retrieval to inform its outputs, potentially serving marketing teams and content creators. The system does not support voice or video modalities.",
+    "frameworks": [
+      "google-adk",
+      "google_adk"
+    ],
+    "modalities": [
+      "TEXT",
+      "IMAGE"
+    ],
+    "modality_support": {
+      "text": true,
+      "voice": false,
+      "image": true,
+      "video": false
+    },
+    "api_endpoints": [],
+    "deployment_platforms": [
+      "GCP",
+      "Azure",
+      "AWS"
+    ],
+    "regions": [
+      "us-central1",
+      "Asia-Pacific"
+    ],
+    "environments": [
+      "development",
+      "test",
+      "dev",
+      "qa",
+      "stage",
+      "production"
+    ],
+    "deployment_urls": [],
+    "iac_accounts": [
+      "72b66cf0-9c93-4a95-bda0-05cba3d79175",
+      "7d976869-2e50-490e-89d7-000e3e752ee5",
+      "70d242f3-d6de-41db-a2e5-2afd2a5ef49f",
+      "687e485b-84e8-40f0-b41d-099c83313fd7",
+      "0a196bcc-7dad-4e11-9ebc-45b8b98489d7",
+      "83470a78-e641-468d-adfa-0749a522f371",
+      "2e97635f-44e0-40fa-a8f1-9953f0236c61",
+      "96c6cda1-3a56-4bb2-b748-533652ec9d8a",
+      "9043c78d-38bd-4704-9a63-15ad26db68c4",
+      "4df55164-b6c4-443d-af6d-c2c1f6d1cf9e",
+      "6ca8c6c3-765d-44c8-9003-94bbe6ca093a",
+      "6fd6a1ec-6499-4b7f-9d6f-f58ac7fa5c04",
+      "78486e2b-2d75-4309-b1a0-785c8e618439",
+      "567e3af4-432f-4238-bdee-386518a60425",
+      "7732ab3a-dc01-4428-a1bb-2c8ad6b56148",
+      "3ec5cd39-90cb-4718-a691-b8f471297175",
+      "b536b5a5-204c-45a1-aa84-c32385410ccd",
+      "a91cccba-288a-40e1-9ea6-01f9969c212d",
+      "f0bb0334-4ea0-4c56-b20a-fdac90cbdd13",
+      "679a6886-159a-4dd9-81cf-b52b6a170a6e",
+      "1df69e99-d7bd-45e2-b73c-c27ac498a7ce",
+      "d51c7f70-a5da-4b33-8045-a9609388d619",
+      "f5dd847a-8980-4577-b918-28596232b8b0",
+      "1c77223a-4275-4497-a5bd-ed4ed93222bb",
+      "5d5a1b3e-cfa1-44ee-88b3-99e077dd3e04",
+      "5b96cf15-a308-4e52-a004-312b4ceca2d0",
+      "825c6c1c-0e94-41e1-9856-fe6af51cbb7f",
+      "26dacf2e-6271-4f2f-bb94-92ed57c5419c",
+      "957c0725-5600-48fa-8616-ce32e0cf0ffa",
+      "3339c34a-3978-419b-8809-0ab3ea748d81",
+      "fa157915-dd41-4479-b259-ba889a4d4739",
+      "28155600-c390-4f6d-bce4-284c13a18353",
+      "81785a48-f111-4cbd-acd4-89c692254206",
+      "edfff517-a371-4aa8-b70e-33a390cc0d39",
+      "03892d34-bab5-4599-819e-42dcdb789110",
+      "3968b406-f3a1-4920-9467-48a0f76061b7",
+      "0da99cbb-696c-4ac5-96ac-dd2f1e99ab57",
+      "8c6ec6c8-f084-49df-9da2-20c44d776b77",
+      "4702a371-87c5-4e25-8003-2f7f411f37f2",
+      "34e6e825-3ce8-4287-a088-0444a896db0a",
+      "52055a11-50ff-4772-86ac-5183b5e2bdbd",
+      "0ebb93ff-2981-415d-8cf3-e06b57dc5f30",
+      "3d6ac323-d6aa-40b2-acd0-4c17f147dce6",
+      "6d2294d2-0335-4801-bdc5-1bece8b849ec",
+      "56eb6fad-6515-4ca2-8784-b02c4ea3faba",
+      "os.environ.get",
+      "PROJECT_ID"
+    ],
+    "node_counts": {
+      "AGENT": 22,
+      "AUTH": 1,
+      "DATASTORE": 1,
+      "DEPLOYMENT": 1,
+      "FRAMEWORK": 2,
+      "MODEL": 3,
+      "PRIVILEGE": 2,
+      "PROMPT": 16,
+      "TOOL": 6,
+      "API_ENDPOINT": 1
+    },
+    "secret_stores": [],
+    "availability_zones": [],
+    "encryption_at_rest_coverage": false,
+    "security_findings": [],
+    "iam_principals": [],
+    "service_accounts": [],
+    "data_classification": [],
+    "classified_tables": [],
+    "startup_commands": [],
+    "env_files": [],
+    "env_var_keys": [],
+    "staging_urls": [],
+    "production_urls": [],
+    "log_paths": [
+      "$SCRIPT_DIR/reports/agentic-test-$(date +%Y%m%dT%H%M%S).log"
+    ],
+    "uses_streaming": true,
+    "streaming_endpoints": [
+      "/run_sse"
+    ]
+  },
+  "relationship_graph_md": "## Component Relationship Graph\n\n```mermaid\nflowchart LR\n    AdCopyWriter_f805c6[\"\ud83e\udd16 AdCopyWriter\"]\n    AdviceGeneratorAgent_fbbf76[\"\ud83e\udd16 AdviceGeneratorAgent\"]\n    CampaignBriefFormatter_192570[\"\ud83e\udd16 CampaignBriefFormatter\"]\n    currency_converter_agent_e34187[\"\ud83e\udd16 currency_converter_agent\"]\n    input_sanitizer_agent_10f6ee[\"\ud83e\udd16 input_sanitizer_agent\"]\n    InstagramReelScriptAgent_7832af[\"\ud83e\udd16 InstagramReelScriptAgent\"]\n    lifecycle_logger_agent_075101[\"\ud83e\udd16 lifecycle_logger_agent\"]\n    LinkedInPostsAgent_55de0a[\"\ud83e\udd16 LinkedInPostsAgent\"]\n    MarketingCampaignAssistant_e52871[\"\ud83e\udd16 MarketingCampaignAssistant\"]\n    MarketResearcher_6838ca[\"\ud83e\udd16 MarketResearcher\"]\n    meeting_scheduler_agent_a2de7f[\"\ud83e\udd16 meeting_scheduler_agent\"]\n    MessagingStrategist_c6e406[\"\ud83e\udd16 MessagingStrategist\"]\n    PostAgent_580eed[\"\ud83e\udd16 PostAgent\"]\n    PostsAgent_06fb18[\"\ud83e\udd16 PostsAgent\"]\n    PostsMergerAgent_cfda58[\"\ud83e\udd16 PostsMergerAgent\"]\n    ProblemAnalyzerAgent_f2b75c[\"\ud83e\udd16 ProblemAnalyzerAgent\"]\n    ResearchAgent_83d2d6[\"\ud83e\udd16 ResearchAgent\"]\n    SocialMediaAgent_675a2e[\"\ud83e\udd16 SocialMediaAgent\"]\n    StructuredConsultationAgent_705540[\"\ud83e\udd16 StructuredConsultationAgent\"]\n    tools_agent_1c9e7e[\"\ud83e\udd16 tools_agent\"]\n    travel_response_enhancer_agent_9e8db5[\"\ud83e\udd16 travel_response_enhancer_agent\"]\n    VisualSuggester_43d4b9[\"\ud83e\udd16 VisualSuggester\"]\n    sqlite_9877f9[(\"\ud83d\uddc4 sqlite\")]\n    framework_google_adk_7a4faa[/\"\u2699 framework:google_adk\"/]\n    framework_llm_clients_3e3052[/\"\u2699 framework:llm_clients\"/]\n    gemini_2_0_flash_a1d3ce[(\"\ud83e\udde0 gemini-2.0-flash\")]\n    GPT_5_4_93d282[(\"\ud83e\udde0 GPT-5.4\")]\n    openai_gpt_5_4_9c1c91[(\"\ud83e\udde0 openai/gpt-5.4\")]\n    AdviceGeneratorAgent_Instructions_719933>\"\ud83d\udcac AdviceGeneratorAgent Instructions\"]\n    currency_converter_agent_Instructions_6997b7>\"\ud83d\udcac currency_converter_agent Instructions\"]\n    input_sanitizer_agent_Instructions_7d30cc>\"\ud83d\udcac input_sanitizer_agent Instructions\"]\n    InstagramReelScriptAgent_Instructions_949718>\"\ud83d\udcac InstagramReelScriptAgent Instructions\"]\n    lifecycle_logger_agent_Instructions_9f1528>\"\ud83d\udcac lifecycle_logger_agent Instructions\"]\n    LinkedInPostsAgent_Instructions_aa5721>\"\ud83d\udcac LinkedInPostsAgent Instructions\"]\n    meeting_scheduler_agent_Instructions_95a17d>\"\ud83d\udcac meeting_scheduler_agent Instructions\"]\n    PostAgent_Instructions_3239e9>\"\ud83d\udcac PostAgent Instructions\"]\n    PostsAgent_Instructions_86f98d>\"\ud83d\udcac PostsAgent Instructions\"]\n    PostsMergerAgent_Instructions_38cc77>\"\ud83d\udcac PostsMergerAgent Instructions\"]\n    ProblemAnalyzerAgent_Instructions_57e264>\"\ud83d\udcac ProblemAnalyzerAgent Instructions\"]\n    ResearchAgent_Instructions_b64857>\"\ud83d\udcac ResearchAgent Instructions\"]\n    SocialMediaAgent_Instructions_2146b4>\"\ud83d\udcac SocialMediaAgent Instructions\"]\n    tools_agent_Instructions_172f4e>\"\ud83d\udcac tools_agent Instructions\"]\n    travel_response_enhancer_agent_Instructions_aebfdc>\"\ud83d\udcac travel_response_enhancer_agent Instructi\"]\n    SYSTEM_PROMPT_078ed4>\"\ud83d\udcac SYSTEM_PROMPT\"]\n    convert_currency_tool_e539c7(\"\ud83d\udd27 convert_currency_tool\")\n    get_current_date_and_time_3a0cc8(\"\ud83d\udd27 get_current_date_and_time\")\n    get_randomuser_from_ramdomuserme_0837c6(\"\ud83d\udd27 get_randomuser_from_ramdomuserme\")\n    google_search_36d741(\"\ud83d\udd27 google_search\")\n    schedule_meeting_tool_54da99(\"\ud83d\udd27 schedule_meeting_tool\")\n    workspace_connector_6ae8d8(\"\ud83d\udd27 workspace_connector\")\n\n    lifecycle_logger_agent_075101 -->|uses| gemini_2_0_flash_a1d3ce\n    lifecycle_logger_agent_075101 -->|uses| lifecycle_logger_agent_Instructions_9f1528\n    input_sanitizer_agent_10f6ee -->|uses| gemini_2_0_flash_a1d3ce\n    input_sanitizer_agent_10f6ee -->|uses| input_sanitizer_agent_Instructions_7d30cc\n    travel_response_enhancer_agent_9e8db5 -->|uses| gemini_2_0_flash_a1d3ce\n    travel_response_enhancer_agent_9e8db5 -->|uses| travel_response_enhancer_agent_Instructions_aebfdc\n    meeting_scheduler_agent_a2de7f -->|uses| gemini_2_0_flash_a1d3ce\n    meeting_scheduler_agent_a2de7f -->|calls| schedule_meeting_tool_54da99\n    meeting_scheduler_agent_a2de7f -->|uses| meeting_scheduler_agent_Instructions_95a17d\n    currency_converter_agent_e34187 -->|uses| gemini_2_0_flash_a1d3ce\n    currency_converter_agent_e34187 -->|calls| convert_currency_tool_e539c7\n    currency_converter_agent_e34187 -->|uses| currency_converter_agent_Instructions_6997b7\n    ResearchAgent_83d2d6 -->|calls| google_search_36d741\n    ResearchAgent_83d2d6 -->|uses| ResearchAgent_Instructions_b64857\n    LinkedInPostsAgent_55de0a -->|uses| LinkedInPostsAgent_Instructions_aa5721\n    InstagramReelScriptAgent_7832af -->|uses| InstagramReelScriptAgent_Instructions_949718\n    PostsAgent_06fb18 -->|uses| PostsAgent_Instructions_86f98d\n    PostsMergerAgent_cfda58 -->|uses| PostsMergerAgent_Instructions_38cc77\n    SocialMediaAgent_675a2e -->|calls| ResearchAgent_83d2d6\n    SocialMediaAgent_675a2e -->|calls| PostsAgent_06fb18\n    SocialMediaAgent_675a2e -->|calls| PostsMergerAgent_cfda58\n    SocialMediaAgent_675a2e -->|uses| SocialMediaAgent_Instructions_2146b4\n    MarketResearcher_6838ca -->|uses| gemini_2_0_flash_a1d3ce\n    MarketResearcher_6838ca -->|calls| google_search_36d741\n    MessagingStrategist_c6e406 -->|uses| gemini_2_0_flash_a1d3ce\n    AdCopyWriter_f805c6 -->|uses| gemini_2_0_flash_a1d3ce\n    VisualSuggester_43d4b9 -->|uses| gemini_2_0_flash_a1d3ce\n    CampaignBriefFormatter_192570 -->|uses| gemini_2_0_flash_a1d3ce\n    PostAgent_580eed -->|uses| PostAgent_Instructions_3239e9\n    ProblemAnalyzerAgent_f2b75c -->|uses| gemini_2_0_flash_a1d3ce\n    ProblemAnalyzerAgent_f2b75c -->|uses| ProblemAnalyzerAgent_Instructions_57e264\n    AdviceGeneratorAgent_fbbf76 -->|uses| gemini_2_0_flash_a1d3ce\n    AdviceGeneratorAgent_fbbf76 -->|uses| AdviceGeneratorAgent_Instructions_719933\n    tools_agent_1c9e7e -->|uses| gemini_2_0_flash_a1d3ce\n    tools_agent_1c9e7e -->|calls| get_current_date_and_time_3a0cc8\n    tools_agent_1c9e7e -->|calls| get_randomuser_from_ramdomuserme_0837c6\n    tools_agent_1c9e7e -->|uses| tools_agent_Instructions_172f4e\n    MarketingCampaignAssistant_e52871 -->|calls| convert_currency_tool_e539c7\n    MarketingCampaignAssistant_e52871 -->|calls| get_current_date_and_time_3a0cc8\n    MarketingCampaignAssistant_e52871 -->|calls| get_randomuser_from_ramdomuserme_0837c6\n    MarketingCampaignAssistant_e52871 -->|calls| google_search_36d741\n    MarketingCampaignAssistant_e52871 -->|calls| schedule_meeting_tool_54da99\n    MarketingCampaignAssistant_e52871 -->|uses| GPT_5_4_93d282\n    MarketingCampaignAssistant_e52871 -->|uses| gemini_2_0_flash_a1d3ce\n    MarketingCampaignAssistant_e52871 -->|uses| openai_gpt_5_4_9c1c91\n    StructuredConsultationAgent_705540 -->|calls| convert_currency_tool_e539c7\n    StructuredConsultationAgent_705540 -->|calls| get_current_date_and_time_3a0cc8\n    StructuredConsultationAgent_705540 -->|calls| get_randomuser_from_ramdomuserme_0837c6\n    StructuredConsultationAgent_705540 -->|calls| google_search_36d741\n    StructuredConsultationAgent_705540 -->|calls| schedule_meeting_tool_54da99\n    StructuredConsultationAgent_705540 -->|uses| GPT_5_4_93d282\n    StructuredConsultationAgent_705540 -->|uses| gemini_2_0_flash_a1d3ce\n    StructuredConsultationAgent_705540 -->|uses| openai_gpt_5_4_9c1c91\n    framework_google_adk_7a4faa -->|uses| gemini_2_0_flash_a1d3ce\n    framework_google_adk_7a4faa -->|uses| GPT_5_4_93d282\n    framework_google_adk_7a4faa -->|uses| openai_gpt_5_4_9c1c91\n    framework_llm_clients_3e3052 -->|uses| gemini_2_0_flash_a1d3ce\n    framework_llm_clients_3e3052 -->|uses| GPT_5_4_93d282\n    framework_llm_clients_3e3052 -->|uses| openai_gpt_5_4_9c1c91\n\n    classDef agent    fill:#4A90D9,stroke:#2C6FAC,color:#fff\n    classDef tool     fill:#7ED321,stroke:#5A9A18,color:#fff\n    classDef model    fill:#9B59B6,stroke:#7D3C98,color:#fff\n    classDef prompt   fill:#F39C12,stroke:#D68910,color:#fff\n    classDef guard    fill:#E74C3C,stroke:#C0392B,color:#fff\n    classDef store    fill:#1ABC9C,stroke:#17A589,color:#fff\n    classDef fw       fill:#95A5A6,stroke:#717D7E,color:#fff\n    classDef endpoint fill:#3498DB,stroke:#2471A3,color:#fff\n    class AdCopyWriter_f805c6,AdviceGeneratorAgent_fbbf76,CampaignBriefFormatter_192570,currency_converter_agent_e34187,input_sanitizer_agent_10f6ee,InstagramReelScriptAgent_7832af,lifecycle_logger_agent_075101,LinkedInPostsAgent_55de0a,MarketingCampaignAssistant_e52871,MarketResearcher_6838ca,meeting_scheduler_agent_a2de7f,MessagingStrategist_c6e406,PostAgent_580eed,PostsAgent_06fb18,PostsMergerAgent_cfda58,ProblemAnalyzerAgent_f2b75c,ResearchAgent_83d2d6,SocialMediaAgent_675a2e,StructuredConsultationAgent_705540,tools_agent_1c9e7e,travel_response_enhancer_agent_9e8db5,VisualSuggester_43d4b9 agent\n    class convert_currency_tool_e539c7,get_current_date_and_time_3a0cc8,get_randomuser_from_ramdomuserme_0837c6,google_search_36d741,schedule_meeting_tool_54da99,workspace_connector_6ae8d8 tool\n    class gemini_2_0_flash_a1d3ce,GPT_5_4_93d282,openai_gpt_5_4_9c1c91 model\n    class AdviceGeneratorAgent_Instructions_719933,currency_converter_agent_Instructions_6997b7,input_sanitizer_agent_Instructions_7d30cc,InstagramReelScriptAgent_Instructions_949718,lifecycle_logger_agent_Instructions_9f1528,LinkedInPostsAgent_Instructions_aa5721,meeting_scheduler_agent_Instructions_95a17d,PostAgent_Instructions_3239e9,PostsAgent_Instructions_86f98d,PostsMergerAgent_Instructions_38cc77,ProblemAnalyzerAgent_Instructions_57e264,ResearchAgent_Instructions_b64857,SocialMediaAgent_Instructions_2146b4,tools_agent_Instructions_172f4e,travel_response_enhancer_agent_Instructions_aebfdc,SYSTEM_PROMPT_078ed4 prompt\n    class sqlite_9877f9 store\n    class framework_google_adk_7a4faa,framework_llm_clients_3e3052 fw\n```",
+  "_enrichment_cache_key": "7d0d294c56da13dcec3635a139c52b381512cfc66eadadd95b4f333579e9e60c"
+}

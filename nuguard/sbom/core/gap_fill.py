@@ -39,8 +39,7 @@ import logging
 from pathlib import Path
 from typing import Any
 
-from ..models import AiSbomDocument, Evidence, Node, NodeMetadata
-from ..models import SourceLocation
+from ..models import AiSbomDocument, Evidence, Node, NodeMetadata, SourceLocation
 from ..types import ComponentType
 
 _log = logging.getLogger(__name__)
@@ -327,7 +326,7 @@ _GAP_FILL_SKIP_PATH_PARTS: frozenset[str] = frozenset(
 def _is_gap_fill_source_file(path: str) -> bool:
     """Return True only if *path* is a code file suitable for gap-fill context.
 
-    Excludes documentation (\.md, \*.rst …), test directories, example
+    Excludes documentation (.md, *.rst …), test directories, example
     directories, and deployment-guide files whose descriptive prose consistently
     causes the LLM to hallucinate components that are only *mentioned*, not
     *used*, in the codebase.

@@ -7,8 +7,11 @@ from pathlib import Path
 import pytest
 import yaml
 
-from nuguard.config import NuGuardConfig, ValidateConfig, _flatten_yaml
-
+from nuguard.config import (
+    NuGuardConfig,
+    _flatten_yaml,
+    load_config,
+)
 
 # ── _flatten_yaml helpers ────────────────────────────────────────────────────
 
@@ -50,6 +53,33 @@ class TestFlattenYamlValidateSection:
         assert flat["validate_config"]["auth"]["type"] == "bearer"
 
 
+class TestGuidedMutationModeConfig:
+    def test_flatten_yaml_guided_mutation_mode(self) -> None:
+        flat = _flatten("""
+            redteam:
+              guided_mutation_mode: soft
+        """)
+        assert flat["redteam_guided_mutation_mode"] == "soft"
+
+    def test_env_guided_mutation_mode(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("NUGUARD_REDTEAM_GUIDED_MUTATION_MODE", "soft")
+        cfg = NuGuardConfig()
+        assert cfg.redteam_guided_mutation_mode == "soft"
+
+
+class TestRedteamPromptCacheDirConfig:
+    def test_flatten_yaml_redteam_prompt_cache_dir(self) -> None:
+        flat = _flatten("""
+            redteam:
+              prompt_cache_dir: ./tmp/redteam-cache
+        """)
+        assert flat["redteam_prompt_cache_dir"] == "./tmp/redteam-cache"
+
+    def test_default_redteam_prompt_cache_dir(self) -> None:
+        cfg = NuGuardConfig()
+        assert cfg.redteam_prompt_cache_dir == "."
+
+
 class TestFlattenYamlRedteamAuth:
     def test_bearer_block(self) -> None:
         flat = _flatten("""
@@ -75,6 +105,26 @@ class TestFlattenYamlRedteamAuth:
         assert flat["redteam_auth_username"] == "alice"
         assert flat["redteam_auth_password"] == "secret"
 
+        def test_login_flow_block(self) -> None:
+                flat = _flatten("""
+                        redteam:
+                            target: http://app.test
+                            auth:
+                                type: login_flow
+                                login_flow:
+                                    endpoint: /login
+                                    method: POST
+                                    payload:
+                                        username: alice
+                                        password: secret
+                                    token_response_key: data.token
+                                    token_header: "Authorization: Bearer"
+                                    refresh_on_401: true
+                """)
+                assert flat["redteam_auth_type"] == "login_flow"
+                assert flat["redteam_auth_login_flow"]["endpoint"] == "/login"
+                assert flat["redteam_auth_login_flow"]["token_response_key"] == "data.token"
+
     def test_legacy_auth_header_string_still_works(self) -> None:
         flat = _flatten("""
             redteam:
@@ -84,6 +134,17 @@ class TestFlattenYamlRedteamAuth:
         assert flat["redteam_auth_header"] == "Authorization: Bearer legacytok"
         # structured auth_type not set from legacy path
         assert "redteam_auth_type" not in flat
+
+        def test_explicit_headers_override_block(self) -> None:
+                flat = _flatten("""
+                        redteam:
+                            target: http://app.test
+                            headers:
+                                Authorization: "Bearer token-from-json"
+                                X-Tenant-Id: tenant-1
+                """)
+                assert flat["redteam_headers"]["Authorization"] == "Bearer token-from-json"
+                assert flat["redteam_headers"]["X-Tenant-Id"] == "tenant-1"
 
     def test_defence_regressions_parsed(self) -> None:
         flat = _flatten("""
@@ -121,6 +182,25 @@ class TestResolvedAuthConfig:
         assert auth.type == "basic"
         assert "Authorization" in auth.to_headers()
 
+    def test_login_flow_structured(self) -> None:
+        from nuguard.common.auth import LoginFlowConfig
+
+        cfg = self._cfg(
+            redteam_auth_type="login_flow",
+            redteam_auth_login_flow=LoginFlowConfig(
+                endpoint="/login",
+                method="POST",
+                payload={"username": "alice", "password": "secret"},
+                token_response_key="access_token",
+                token_header="Authorization: Bearer",
+                refresh_on_401=True,
+            ),
+        )
+        auth = cfg.resolved_auth_config()
+        assert auth.type == "login_flow"
+        assert auth.login_flow is not None
+        assert auth.login_flow.endpoint == "/login"
+
     def test_fallback_to_legacy_header_string(self) -> None:
         cfg = self._cfg(redteam_auth_header="Authorization: Bearer legacytok")
         auth = cfg.resolved_auth_config()
@@ -132,22 +212,251 @@ class TestResolvedAuthConfig:
         assert auth.type == "none"
         assert auth.to_headers() == {}
 
+    def test_header_override_field_is_preserved(self) -> None:
+        cfg = self._cfg(
+            redteam_headers={
+                "Authorization": "Bearer override-token",
+                "X-Tenant-Id": "tenant-2",
+            }
+        )
+        assert cfg.redteam_headers["Authorization"] == "Bearer override-token"
+        assert cfg.redteam_headers["X-Tenant-Id"] == "tenant-2"
 
-class TestResolvedValidateAuthConfig:
-    def _cfg_with_validate(self, validate_dict: dict) -> NuGuardConfig:
-        return NuGuardConfig(validate_config=ValidateConfig(**validate_dict))  # type: ignore[arg-type]
 
-    def test_bearer(self) -> None:
-        from nuguard.config import ValidateAuthConfig
+class TestLoadConfigPathResolution:
+    def test_rebases_relative_paths_against_config_dir(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        cfg_dir = tmp_path / "fixtures" / "stateset"
+        cfg_dir.mkdir(parents=True)
 
-        cfg = self._cfg_with_validate({
-            "auth": ValidateAuthConfig(type="bearer", header="Authorization: Bearer vtok")
-        })
-        auth = cfg.resolved_validate_auth_config()
-        assert auth.type == "bearer"
-        assert auth.to_headers() == {"Authorization": "Bearer vtok"}
+        config_file = cfg_dir / "nuguard.yaml"
+        config_file.write_text(
+            textwrap.dedent(
+                """
+                sbom: reports/app.sbom.json
+                source: ../source-dir
+                policy:
+                  path: cognitive_policy.md
+                redteam:
+                  canary: canary.json
+                output:
+                  sarif_file: reports/findings.sarif
+                """
+            ),
+            encoding="utf-8",
+        )
 
-    def test_none_when_not_configured(self) -> None:
-        cfg = NuGuardConfig()
-        auth = cfg.resolved_validate_auth_config()
-        assert auth.type == "none"
+        # Run from a different cwd to ensure resolution is based on config dir.
+        monkeypatch.chdir(tmp_path)
+        cfg = load_config(config_file)
+
+        assert cfg.sbom_path == str((cfg_dir / "reports" / "app.sbom.json").resolve())
+        assert cfg.source_path == str((cfg_dir / ".." / "source-dir").resolve())
+        assert cfg.policy_path == str((cfg_dir / "cognitive_policy.md").resolve())
+        assert cfg.canary_path == str((cfg_dir / "canary.json").resolve())
+        assert cfg.sarif_output_path == str(
+            (cfg_dir / "reports" / "findings.sarif").resolve()
+        )
+
+    def test_prefers_repo_root_when_repo_relative_path_exists(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        repo_root = tmp_path / "repo"
+        cfg_dir = repo_root / "tests" / "apps" / "stateset"
+        cfg_dir.mkdir(parents=True)
+
+        # Mark this as repository root for config path resolution.
+        (repo_root / "pyproject.toml").write_text("[project]\nname='demo'\n", encoding="utf-8")
+
+        sbom_rel = Path("tests/apps/stateset/reports/app.sbom.json")
+        sbom_abs = (repo_root / sbom_rel)
+        sbom_abs.parent.mkdir(parents=True)
+        sbom_abs.write_text("{}", encoding="utf-8")
+
+        config_file = cfg_dir / "nuguard.yaml"
+        config_file.write_text(
+            textwrap.dedent(
+                """
+                sbom: tests/apps/stateset/reports/app.sbom.json
+                """
+            ),
+            encoding="utf-8",
+        )
+
+        monkeypatch.chdir(tmp_path)
+        cfg = load_config(config_file)
+
+        assert cfg.sbom_path == str(sbom_abs.resolve())
+
+
+# ── Shared target: block ─────────────────────────────────────────────────────
+
+
+class TestSharedTargetBlock:
+    """top-level target: block propagates to both redteam and behavior config."""
+
+    def test_target_url_set_from_shared_block(self) -> None:
+        flat = _flatten("""
+            target:
+              url: http://shared.test
+        """)
+        assert flat["target_url"] == "http://shared.test"
+
+    def test_redteam_target_overrides_shared_url(self) -> None:
+        flat = _flatten("""
+            target:
+              url: http://shared.test
+            redteam:
+              target: http://redteam-override.test
+        """)
+        assert flat["target_url"] == "http://redteam-override.test"
+
+    def test_behavior_target_overrides_shared_url(self) -> None:
+        flat = _flatten("""
+            target:
+              url: http://shared.test
+            behavior:
+              target: http://behavior-override.test
+        """)
+        # behavior_config dict carries the behavior-level override
+        assert flat["behavior_config"]["target"] == "http://behavior-override.test"
+        # target_url (redteam) still resolves to shared
+        assert flat["target_url"] == "http://shared.test"
+
+    def test_shared_endpoint_propagates_to_redteam(self) -> None:
+        flat = _flatten("""
+            target:
+              url: http://shared.test
+              endpoint: /api/chat
+        """)
+        assert flat["target_endpoint"] == "/api/chat"
+
+    def test_redteam_endpoint_overrides_shared_endpoint(self) -> None:
+        flat = _flatten("""
+            target:
+              url: http://shared.test
+              endpoint: /api/chat
+            redteam:
+              target_endpoint: /api/redteam
+        """)
+        assert flat["target_endpoint"] == "/api/redteam"
+
+    def test_shared_chat_payload_key_propagates(self) -> None:
+        flat = _flatten("""
+            target:
+              url: http://shared.test
+              chat_payload_key: phrases
+              chat_payload_list: true
+              chat_response_key: prognosis
+        """)
+        assert flat["redteam_chat_payload_key"] == "phrases"
+        assert flat["redteam_chat_payload_list"] is True
+        assert flat["redteam_chat_response_key"] == "prognosis"
+
+    def test_shared_headers_propagate_to_redteam(self) -> None:
+        flat = _flatten("""
+            target:
+              url: http://shared.test
+              headers:
+                X-Tenant-Id: tenant-1
+                X-Custom: value
+        """)
+        assert flat["redteam_headers"]["X-Tenant-Id"] == "tenant-1"
+        assert flat["redteam_headers"]["X-Custom"] == "value"
+
+    def test_shared_bearer_auth_propagates(self) -> None:
+        flat = _flatten("""
+            target:
+              url: http://shared.test
+              auth:
+                type: bearer
+                header: "Authorization: Bearer shared-tok"
+        """)
+        assert flat["redteam_auth_type"] == "bearer"
+        assert flat["redteam_auth_header"] == "Authorization: Bearer shared-tok"
+
+    def test_redteam_auth_overrides_shared_auth(self) -> None:
+        flat = _flatten("""
+            target:
+              url: http://shared.test
+              auth:
+                type: bearer
+                header: "Authorization: Bearer shared-tok"
+            redteam:
+              auth:
+                type: bearer
+                header: "Authorization: Bearer redteam-tok"
+        """)
+        assert flat["redteam_auth_header"] == "Authorization: Bearer redteam-tok"
+
+    def test_shared_login_flow_auth_propagates(self) -> None:
+        flat = _flatten("""
+            target:
+              url: http://shared.test
+              auth:
+                type: login_flow
+                login_flow:
+                  endpoint: /api/login
+                  method: POST
+                  payload:
+                    username: alice
+                    password: secret
+                  token_response_key: access_token
+                  token_header: "Authorization: Bearer"
+                  refresh_on_401: true
+        """)
+        assert flat["redteam_auth_type"] == "login_flow"
+        assert flat["redteam_auth_login_flow"]["endpoint"] == "/api/login"
+        assert flat["redteam_auth_login_flow"]["token_response_key"] == "access_token"
+
+    def test_shared_auth_injected_into_behavior_config(self) -> None:
+        flat = _flatten("""
+            target:
+              url: http://shared.test
+              auth:
+                type: bearer
+                header: "Authorization: Bearer shared-tok"
+            behavior:
+              llm: true
+        """)
+        # behavior_config should have the shared auth as a default
+        assert flat["behavior_config"]["auth"]["type"] == "bearer"
+        assert flat["behavior_config"]["auth"]["header"] == "Authorization: Bearer shared-tok"
+
+    def test_behavior_auth_overrides_shared_auth_in_behavior_config(self) -> None:
+        flat = _flatten("""
+            target:
+              url: http://shared.test
+              auth:
+                type: bearer
+                header: "Authorization: Bearer shared-tok"
+            behavior:
+              auth:
+                type: api_key
+                header: "X-API-Key: behavior-key"
+        """)
+        assert flat["behavior_config"]["auth"]["type"] == "api_key"
+        assert flat["behavior_config"]["auth"]["header"] == "X-API-Key: behavior-key"
+
+    def test_shared_url_injected_into_behavior_config_as_target(self) -> None:
+        flat = _flatten("""
+            target:
+              url: http://shared.test
+            behavior:
+              llm: true
+        """)
+        assert flat["behavior_config"]["target"] == "http://shared.test"
+
+    def test_no_target_block_leaves_target_url_unset(self) -> None:
+        flat = _flatten("""
+            redteam:
+              profile: ci
+        """)
+        assert "target_url" not in flat
+
+    def test_empty_target_block_is_harmless(self) -> None:
+        flat = _flatten("""
+            target: {}
+        """)
+        assert "target_url" not in flat

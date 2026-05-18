@@ -1,0 +1,64 @@
+Preparing Marketing Campaign Google ADK chatbot for NuGuard Testing...
+Log: /workspaces/nuguard-private/tests/apps/ai-agents-google-adk/reports/agentic-test-20260409T002248.log
+Started: 2026-04-09T00:22:48Z
+---
+[04/09/26 00:22:50] DEBUG    Loading config from                                                          
+                             /workspaces/nuguard-private/tests/apps/ai-agents-google-adk/nuguard.yaml     
+Scanning /workspaces/nuguard-private/tests/apps/ai-agents-google-adk …
+SBOM written to 
+/workspaces/nuguard-private/tests/apps/ai-agents-google-adk/reports/marketing-campaign.sbom.json (49 
+nodes, 51 edges)
+     Node Summary     
+┏━━━━━━━━━━━━┳━━━━━━━┓
+┃ Type       ┃ Count ┃
+┡━━━━━━━━━━━━╇━━━━━━━┩
+│ AGENT      │    22 │
+│ AUTH       │     1 │
+│ DATASTORE  │     1 │
+│ DEPLOYMENT │     1 │
+│ FRAMEWORK  │     2 │
+│ MODEL      │     1 │
+│ PRIVILEGE  │     1 │
+│ PROMPT     │    15 │
+│ TOOL       │     5 │
+└────────────┴───────┘
+---
+Compiling Cognitive Policy controls...
+Cognitive Policy Check...
+---
+Running behavior analysis (static + dynamic)...
+[04/09/26 00:23:17] DEBUG    Loading config from                                                          
+                             /workspaces/nuguard-private/tests/apps/ai-agents-google-adk/nuguard.yaml     
+Loaded SBOM: 
+/workspaces/nuguard-private/tests/apps/ai-agents-google-adk/reports/marketing-campaign.sbom.json
+Loaded policy: /workspaces/nuguard-private/tests/apps/ai-agents-google-adk/cognitive_policy.md
+use_llm=True but no llm_client provided; falling back to rule-based
+Running behavior analysis  mode=static+dynamic
+[04/09/26 00:23:19] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash prompt_len=1425      
+                             [behavior:intent_extraction]                                                 
+[04/09/26 00:23:20] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash prompt_len=1365      
+                             [behavior:happy_path_gen]                                                    
+[04/09/26 00:23:25] DEBUG    LLMClient.complete_stream model=gemini/gemini-2.0-flash prompt_len=6264      
+                             [behavior:component_coverage_gen]                                            
+BehaviorRunner.run: could not build client: TargetAppClient.__init__() got an unexpected keyword argument 'target_url'
+Error: Behavior analysis failed: TargetAppClient.__init__() got an unexpected keyword argument 
+'target_url'
+Behavior analysis failed
+Traceback (most recent call last):
+  File "/workspaces/nuguard-private/nuguard/cli/commands/behavior.py", line 217, in _run_behavior
+    result = await analyzer.analyze(mode=mode)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspaces/nuguard-private/nuguard/behavior/analyzer.py", line 106, in analyze
+    run_result = await runner.run(scenarios)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspaces/nuguard-private/nuguard/behavior/runner.py", line 427, in run
+    client = await self._build_client()
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspaces/nuguard-private/nuguard/behavior/runner.py", line 146, in _build_client
+    return TargetAppClient(
+           ^^^^^^^^^^^^^^^^
+TypeError: TargetAppClient.__init__() got an unexpected keyword argument 'target_url'
+---
+Done: 2026-04-09T00:23:47Z
+Log saved to: /workspaces/nuguard-private/tests/apps/ai-agents-google-adk/reports/agentic-test-20260409T002248.log
+Report:       /workspaces/nuguard-private/tests/apps/ai-agents-google-adk/reports/marketing-campaign-behavior.md

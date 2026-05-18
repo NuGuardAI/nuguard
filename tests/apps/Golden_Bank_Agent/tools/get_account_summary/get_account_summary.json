@@ -1,0 +1,9 @@
+{
+  "name": "e4e88260-0320-4b59-9082-10ab1f3e00a0",
+  "pythonFunction": {
+    "name": "get_account_summary",
+    "pythonCode": "tools/get_account_summary/python_function/python_code.py",
+    "description": "Retrieves the summary details for a specific account, including balance, limit, and status.\n\nArgs:\n    account_id (str): The unique identifier of the account.\n\nReturns:\n    dict[str, Any]: A dictionary containing the account summary.\n          Example: {\"balance\": 1500.75, \"limit\": 5000.00, \"status\": \"Active\"}\n          Example: {\"error\": True, \"message\": \"Account not found or unauthorized.\"}"
+  },
+  "displayName": "get_account_summary"
+}

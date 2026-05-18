@@ -1,0 +1,6 @@
+google-adk==1.28.0
+google-generativeai
+python-dotenv
+litellm
+pydantic
+google-cloud-aiplatform[adk,agent_engines]

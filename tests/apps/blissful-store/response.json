@@ -1,0 +1,501 @@
+{
+  "outputs": [
+    {
+      "text": "Welcome back, Patrick! I see you've already got some items in your Cymbal Home & Garden cart. How can I help you today?",
+      "turnCompleted": true,
+      "turnIndex": 1,
+      "diagnosticInfo": {
+        "messages": [
+          {
+            "role": "user",
+            "chunks": [
+              {
+                "defaultVariables": {
+                  "customer_profile": {
+                    "account_number": "428765091",
+                    "billing_address": {
+                      "city": "Austin",
+                      "state": "TX",
+                      "street": "123 Town Lake Blvd.",
+                      "zip": "78702"
+                    },
+                    "communication_preferences": {
+                      "email": true,
+                      "push_notifications": false,
+                      "sms": true
+                    },
+                    "customer_first_name": "Patrick",
+                    "customer_last_name": "Marlow",
+                    "customer_start_date": "2022-06-10",
+                    "email": "pmarlow@google.com",
+                    "garden_profile": {
+                      "interests": [
+                        "flowers",
+                        "vegetables"
+                      ],
+                      "size": "medium",
+                      "soil_type": "unknown",
+                      "sun_exposure": "full sun",
+                      "type": "backyard"
+                    },
+                    "loyalty_points": 133,
+                    "phone_number": "+1-702-555-1212",
+                    "preferred_store": "Cymbal Home & Garden - Austin (Main)",
+                    "purchase_history": [
+                      {
+                        "date": "2023-03-05",
+                        "items": [
+                          {
+                            "name": "All-Purpose Fertilizer",
+                            "product_id": "fert-111",
+                            "quantity": 1
+                          },
+                          {
+                            "name": "Gardening Trowel",
+                            "product_id": "trowel-222",
+                            "quantity": 1
+                          }
+                        ],
+                        "total_amount": 35.98
+                      },
+                      {
+                        "date": "2023-07-12",
+                        "items": [
+                          {
+                            "name": "Tomato Seeds (Variety Pack)",
+                            "product_id": "seeds-333",
+                            "quantity": 2
+                          },
+                          {
+                            "name": "Terracotta Pots (6-inch)",
+                            "product_id": "pots-444",
+                            "quantity": 4
+                          }
+                        ],
+                        "total_amount": 42.5
+                      },
+                      {
+                        "date": "2024-01-20",
+                        "items": [
+                          {
+                            "name": "Gardening Gloves (Leather)",
+                            "product_id": "gloves-555",
+                            "quantity": 1
+                          },
+                          {
+                            "name": "Pruning Shears",
+                            "product_id": "pruner-666",
+                            "quantity": 1
+                          }
+                        ],
+                        "total_amount": 55.25
+                      }
+                    ],
+                    "scheduled_appointments": {},
+                    "years_as_customer": 2
+                  },
+                  "no_input_counter": 0,
+                  "current_date": "2026-03-31[America/Los_Angeles]",
+                  "uui-headers": [
+                    "None"
+                  ],
+                  "request_image_tool_called": false,
+                  "telephony-caller-id": " ",
+                  "manager_approved": false
+                }
+              }
+            ],
+            "eventTime": "2026-03-31T07:42:12.149Z"
+          },
+          {
+            "role": "user",
+            "chunks": [
+              {
+                "text": "what can you help with"
+              }
+            ],
+            "eventTime": "2026-03-31T07:42:12.149Z"
+          },
+          {
+            "role": "cymbal_retail_agent",
+            "chunks": [
+              {
+                "toolCall": {
+                  "id": "adk-c79a6ed6-d240-4f87-938a-5fa2d491b369",
+                  "tool": "projects/platform-dev-2025/locations/us/apps/dfe2a521-59d6-459a-8358-cedc73f1a92e/tools/26ddf530-3a34-47a2-a5ed-ce770cc7f586",
+                  "args": {},
+                  "displayName": "greeting"
+                }
+              }
+            ],
+            "eventTime": "2026-03-31T07:42:13.341Z"
+          },
+          {
+            "role": "cymbal_retail_agent",
+            "chunks": [
+              {
+                "toolResponse": {
+                  "id": "adk-c79a6ed6-d240-4f87-938a-5fa2d491b369",
+                  "tool": "projects/platform-dev-2025/locations/us/apps/dfe2a521-59d6-459a-8358-cedc73f1a92e/tools/26ddf530-3a34-47a2-a5ed-ce770cc7f586",
+                  "response": {
+                    "result": {
+                      "greeting": "Hi there! Welcome to Cymbal Garden! Is this Patrick?",
+                      "cart_information": {
+                        "results": {
+                          "items": [
+                            {
+                              "name": "Standard Potting Soil",
+                              "product_id": "soil-123",
+                              "quantity": 1
+                            },
+                            {
+                              "name": "General Purpose Fertilizer",
+                              "product_id": "fert-456",
+                              "quantity": 1
+                            }
+                          ],
+                          "subtotal": 25.98
+                        }
+                      }
+                    }
+                  },
+                  "displayName": "greeting"
+                }
+              }
+            ],
+            "eventTime": "2026-03-31T07:42:13.430Z"
+          },
+          {
+            "role": "cymbal_retail_agent",
+            "chunks": [
+              {
+                "text": "Welcome back, Patrick! I see you've already got some items in your Cymbal Home & Garden cart. How can I help you today?"
+              }
+            ],
+            "eventTime": "2026-03-31T07:42:14.363Z"
+          }
+        ],
+        "rootSpan": {
+          "name": "root",
+          "startTime": "2026-03-31T07:42:11.990362Z",
+          "endTime": "2026-03-31T07:42:14.370022Z",
+          "attributes": {
+            "perceived latency (ms)": 2380,
+            "[debug] agent start latency (ms)": 159,
+            "input types": [
+              "variables",
+              "text"
+            ],
+            "connection index": 1,
+            "deployment": "projects/platform-dev-2025/locations/us/apps/dfe2a521-59d6-459a-8358-cedc73f1a92e/deployments/95a08aa7-8453-4439-8218-a9ba77dfdf47",
+            "version": "projects/115983574051/locations/us/apps/dfe2a521-59d6-459a-8358-cedc73f1a92e/versions/5317c9ed-d32c-4c34-9f5a-db08cb1f4bb1"
+          },
+          "childSpans": [
+            {
+              "name": "Guardrail",
+              "startTime": "2026-03-31T07:42:12.150354Z",
+              "endTime": "2026-03-31T07:42:12.593410Z",
+              "attributes": {
+                "agent": "cymbal_retail_agent",
+                "stage": "AfterModel",
+                "name": "Prompt Guardrail 1757021081696",
+                "type": "LlmPolicy",
+                "triggered": false,
+                "reason": "The user is asking a general question about the AI's capabilities, which does not fall under any malicious categories.",
+                "model": "gemini-2.5-flash-lite"
+              },
+              "duration": "0.443056s"
+            },
+            {
+              "name": "Guardrail",
+              "startTime": "2026-03-31T07:42:12.150361Z",
+              "endTime": "2026-03-31T07:42:12.150557Z",
+              "attributes": {
+                "agent": "cymbal_retail_agent",
+                "stage": "BeforeModel",
+                "name": "bad words",
+                "type": "ContentFilter",
+                "triggered": false,
+                "reason": "User input doesn't match any of: [damnit, dammit, damn, hell]"
+              },
+              "duration": "0.000196s"
+            },
+            {
+              "name": "Callback",
+              "startTime": "2026-03-31T07:42:12.150635Z",
+              "endTime": "2026-03-31T07:42:12.168364Z",
+              "attributes": {
+                "agent": "cymbal_retail_agent",
+                "stage": "BeforeModel",
+                "description": "Inspect user input for any malicious content not covered by built-in Guardrails. This is a manual implementation of a guardrail to show how callbacks can be used to perform this task.",
+                "stdout": "BEFORE MODEL COUNTER: 0.0\n",
+                "[debug] detailed latency": {
+                  "sandbox init latency (ms)": 1,
+                  "total code execution latency (ms)": 12,
+                  "waiting for external calls (ms)": 0
+                }
+              },
+              "duration": "0.017729s"
+            },
+            {
+              "name": "LLM",
+              "startTime": "2026-03-31T07:42:12.168640Z",
+              "endTime": "2026-03-31T07:42:12.871087Z",
+              "attributes": {
+                "agent": "cymbal_retail_agent",
+                "time to first chunk (ms)": 699,
+                "[debug] prefill queue wait time (ms)": 244,
+                "[debug] prefill time (ms)": 81,
+                "[debug] decode queue time (ms)": 21,
+                "[debug] decode time to first token (ms)": 94,
+                "model": "gemini-2.5-flash-001",
+                "input token count": 4830,
+                "output token count": 15,
+                "thought token count": 0
+              },
+              "duration": "0.702447s"
+            },
+            {
+              "name": "Guardrail",
+              "startTime": "2026-03-31T07:42:12.871598Z",
+              "endTime": "2026-03-31T07:42:13.334964Z",
+              "attributes": {
+                "agent": "cymbal_retail_agent",
+                "stage": "AfterModel",
+                "name": "French Fries Policy",
+                "type": "LlmPolicy",
+                "triggered": false,
+                "reason": "The user is asking a general question about the assistant's capabilities, and the assistant has not adopted any inappropriate persona or used out-of-context phrases.",
+                "model": "gemini-2.5-flash-lite"
+              },
+              "duration": "0.463366s"
+            },
+            {
+              "name": "Callback",
+              "startTime": "2026-03-31T07:42:13.335141Z",
+              "endTime": "2026-03-31T07:42:13.341680Z",
+              "attributes": {
+                "agent": "cymbal_retail_agent",
+                "stage": "AfterModel",
+                "description": "Ensure proper tool calling for certain scenarios.",
+                "stdout": "user_content=Content(parts=[Part(function_call=None, function_response=None, text='what can you help with', inline_data=None)], role='user') invocation_id='e-52e4d31c-c497-47ff-847b-837583e4d6c8' agent_name='cymbal_retail_agent' session_id='test_session_5adb8980' state={'customer_profile': {'account_number': '428765091', 'billing_address': {'city': 'Austin', 'state': 'TX', 'street': '123 Town Lake Blvd.', 'zip': '78702'}, 'communication_preferences': {'email': True, 'push_notifications': False, 'sms': True}, 'customer_first_name': 'Patrick', 'customer_last_name': 'Marlow', 'customer_start_date': '2022-06-10', 'email': 'pmarlow@google.com', 'garden_profile': {'interests': ['flowers', 'vegetables'], 'size': 'medium', 'soil_type': 'unknown', 'sun_exposure': 'full sun', 'type': 'backyard'}, 'loyalty_points': 133.0, 'phone_number': '+1-702-555-1212', 'preferred_store': 'Cymbal Home & Garden - Austin (Main)', 'purchase_history': [{'date': '2023-03-05', 'items': [{'name': 'All-Purpose Fertilizer', 'product_id': 'fert-111', 'quantity': 1.0}, {'name': 'Gardening Trowel', 'product_id': 'trowel-222', 'quantity': 1.0}], 'total_amount': 35.98}, {'date': '2023-07-12', 'items': [{'name': 'Tomato Seeds (Variety Pack)', 'product_id': 'seeds-333', 'quantity': 2.0}, {'name': 'Terracotta Pots (6-inch)', 'product_id': 'pots-444', 'quantity': 4.0}], 'total_amount': 42.5}, {'date': '2024-01-20', 'items': [{'name': 'Gardening Gloves (Leather)', 'product_id': 'gloves-555', 'quantity': 1.0}, {'name': 'Pruning Shears', 'product_id': 'pruner-666', 'quantity': 1.0}], 'total_amount': 55.25}], 'scheduled_appointments': {}, 'years_as_customer': 2.0}, 'no_input_counter': 0.0, 'current_date': '2026-03-31[America/Los_Angeles]', 'uui-headers': ['None'], 'request_image_tool_called': False, 'telephony-caller-id': ' ', 'manager_approved': False} actions=EventActions(skip_summarization=None, state_delta={}, artifact_delta={}, transfer_to_agent=None, escalate=None, requested_auth_configs={}, end_invocation=None) events=[Event(id='a9d321a5-52fe-47ba-b6c0-b2f946599c3d', author='user', timestamp=1774942932149, invocation_id='test_session_5adb8980', content=None, actions=EventActions(skip_summarization=None, state_delta={}, artifact_delta={}, transfer_to_agent=None, escalate=None, requested_auth_configs={}, end_invocation=None), long_running_tool_ids=None, partial=None, turn_complete=None, error_code=None, error_message=None, interrupted=None, branch=None, grounding_metadata=None), Event(id='81cd78a0-cb6b-4440-925d-00b4252d3ab8', author='user', timestamp=1774942932149, invocation_id='e-52e4d31c-c497-47ff-847b-837583e4d6c8', content=Content(parts=[Part(function_call=None, function_response=None, text='what can you help with', inline_data=None)], role='user'), actions=EventActions(skip_summarization=None, state_delta={}, artifact_delta={}, transfer_to_agent=None, escalate=None, requested_auth_configs={}, end_invocation=None), long_running_tool_ids=None, partial=None, turn_complete=None, error_code=None, error_message=None, interrupted=None, branch=None, grounding_metadata=None)] streaming_stage=None\n",
+                "[debug] detailed latency": {
+                  "sandbox init latency (ms)": 0,
+                  "total code execution latency (ms)": 2,
+                  "waiting for external calls (ms)": 0
+                }
+              },
+              "duration": "0.006539s"
+            },
+            {
+              "name": "Tool",
+              "startTime": "2026-03-31T07:42:13.342075Z",
+              "endTime": "2026-03-31T07:42:13.425686Z",
+              "attributes": {
+                "stdout": "['None']\n",
+                "[debug] detailed latency": {
+                  "sandbox init latency (ms)": 0,
+                  "total code execution latency (ms)": 79,
+                  "waiting for external calls (ms)": 75
+                },
+                "agent": "cymbal_retail_agent",
+                "name": "greeting",
+                "tool call id": "adk-c79a6ed6-d240-4f87-938a-5fa2d491b369",
+                "type": "PythonFunctionTool",
+                "args": {},
+                "response": {
+                  "result": {
+                    "greeting": "Hi there! Welcome to Cymbal Garden! Is this Patrick?",
+                    "cart_information": {
+                      "results": {
+                        "items": [
+                          {
+                            "name": "Standard Potting Soil",
+                            "product_id": "soil-123",
+                            "quantity": 1
+                          },
+                          {
+                            "name": "General Purpose Fertilizer",
+                            "product_id": "fert-456",
+                            "quantity": 1
+                          }
+                        ],
+                        "subtotal": 25.98
+                      }
+                    }
+                  }
+                }
+              },
+              "childSpans": [
+                {
+                  "name": "Tool",
+                  "startTime": "2026-03-31T07:42:13.346498Z",
+                  "endTime": "2026-03-31T07:42:13.420685Z",
+                  "attributes": {
+                    "[debug] trawler requestor id": "harpoon-ces",
+                    "[debug] trawler reply data id": "-2670194807771387268",
+                    "agent": "ToolExecutionAgent",
+                    "name": "crm_service_get_cart_information",
+                    "tool call id": "parent-span-f5711aa9-1019-432b-81aa-44d654a5d10f-tool-execution-7ffcf1f0-0447-4c53-8574-a59a6a2f5e80",
+                    "type": "OpenApiTool",
+                    "args": {},
+                    "response": {
+                      "results": {
+                        "items": [
+                          {
+                            "name": "Standard Potting Soil",
+                            "product_id": "soil-123",
+                            "quantity": 1
+                          },
+                          {
+                            "name": "General Purpose Fertilizer",
+                            "product_id": "fert-456",
+                            "quantity": 1
+                          }
+                        ],
+                        "subtotal": 25.98
+                      }
+                    }
+                  },
+                  "duration": "0.074187s"
+                }
+              ],
+              "duration": "0.083611s"
+            },
+            {
+              "name": "Callback",
+              "startTime": "2026-03-31T07:42:13.425798Z",
+              "endTime": "2026-03-31T07:42:13.430323Z",
+              "attributes": {
+                "agent": "cymbal_retail_agent",
+                "stage": "AfterTool",
+                "description": "Sets the flag for image upload tool after it has been properly used.",
+                "stdout": "{'result': {'greeting': 'Hi there! Welcome to Cymbal Garden! Is this Patrick?', 'cart_information': {'results': {'items': [{'name': 'Standard Potting Soil', 'product_id': 'soil-123', 'quantity': 1.0}, {'name': 'General Purpose Fertilizer', 'product_id': 'fert-456', 'quantity': 1.0}], 'subtotal': 25.98}}}}\n",
+                "[debug] detailed latency": {
+                  "sandbox init latency (ms)": 0,
+                  "total code execution latency (ms)": 1,
+                  "waiting for external calls (ms)": 0
+                }
+              },
+              "duration": "0.004525s"
+            },
+            {
+              "name": "Guardrail",
+              "startTime": "2026-03-31T07:42:13.431049Z",
+              "endTime": "2026-03-31T07:42:13.760503Z",
+              "attributes": {
+                "agent": "cymbal_retail_agent",
+                "stage": "AfterModel",
+                "name": "Prompt Guardrail 1757021081696",
+                "type": "LlmPolicy",
+                "triggered": false,
+                "reason": "The user is asking a general question about the AI's capabilities, which does not fall under any malicious categories.",
+                "model": "gemini-2.5-flash-lite"
+              },
+              "duration": "0.329454s"
+            },
+            {
+              "name": "Guardrail",
+              "startTime": "2026-03-31T07:42:13.431056Z",
+              "endTime": "2026-03-31T07:42:13.431200Z",
+              "attributes": {
+                "agent": "cymbal_retail_agent",
+                "stage": "BeforeModel",
+                "name": "bad words",
+                "type": "ContentFilter",
+                "triggered": false,
+                "reason": "User input doesn't match any of: [damnit, dammit, damn, hell]"
+              },
+              "duration": "0.000144s"
+            },
+            {
+              "name": "Callback",
+              "startTime": "2026-03-31T07:42:13.431245Z",
+              "endTime": "2026-03-31T07:42:13.437356Z",
+              "attributes": {
+                "agent": "cymbal_retail_agent",
+                "stage": "BeforeModel",
+                "description": "Inspect user input for any malicious content not covered by built-in Guardrails. This is a manual implementation of a guardrail to show how callbacks can be used to perform this task.",
+                "stdout": "BEFORE MODEL COUNTER: 0.0\n",
+                "[debug] detailed latency": {
+                  "sandbox init latency (ms)": 0,
+                  "total code execution latency (ms)": 2,
+                  "waiting for external calls (ms)": 0
+                }
+              },
+              "duration": "0.006111s"
+            },
+            {
+              "name": "LLM",
+              "startTime": "2026-03-31T07:42:13.437606Z",
+              "endTime": "2026-03-31T07:42:14.021484Z",
+              "attributes": {
+                "agent": "cymbal_retail_agent",
+                "time to first chunk (ms)": 580,
+                "[debug] prefill queue wait time (ms)": 16,
+                "[debug] prefill time (ms)": 97,
+                "[debug] decode queue time (ms)": 9,
+                "[debug] decode time to first token (ms)": 69,
+                "model": "gemini-2.5-flash-001",
+                "input token count": 4953,
+                "output token count": 30,
+                "thought token count": 0
+              },
+              "duration": "0.583878s"
+            },
+            {
+              "name": "Guardrail",
+              "startTime": "2026-03-31T07:42:14.022020Z",
+              "endTime": "2026-03-31T07:42:14.356289Z",
+              "attributes": {
+                "agent": "cymbal_retail_agent",
+                "stage": "AfterModel",
+                "name": "French Fries Policy",
+                "type": "LlmPolicy",
+                "triggered": false,
+                "reason": "The agent's response is a standard, friendly greeting that is on-topic for a home and garden assistant. It does not adopt an inappropriate persona or include out-of-context phrases.",
+                "model": "gemini-2.5-flash-lite"
+              },
+              "duration": "0.334269s"
+            },
+            {
+              "name": "Callback",
+              "startTime": "2026-03-31T07:42:14.356466Z",
+              "endTime": "2026-03-31T07:42:14.362874Z",
+              "attributes": {
+                "agent": "cymbal_retail_agent",
+                "stage": "AfterModel",
+                "description": "Ensure proper tool calling for certain scenarios.",
+                "stdout": "user_content=Content(parts=[Part(function_call=None, function_response=None, text='what can you help with', inline_data=None)], role='user') invocation_id='e-52e4d31c-c497-47ff-847b-837583e4d6c8' agent_name='cymbal_retail_agent' session_id='test_session_5adb8980' state={'telephony-caller-id': ' ', 'customer_profile': {'account_number': '428765091', 'billing_address': {'city': 'Austin', 'state': 'TX', 'street': '123 Town Lake Blvd.', 'zip': '78702'}, 'communication_preferences': {'email': True, 'push_notifications': False, 'sms': True}, 'customer_first_name': 'Patrick', 'customer_last_name': 'Marlow', 'customer_start_date': '2022-06-10', 'email': 'pmarlow@google.com', 'garden_profile': {'interests': ['flowers', 'vegetables'], 'size': 'medium', 'soil_type': 'unknown', 'sun_exposure': 'full sun', 'type': 'backyard'}, 'loyalty_points': 133.0, 'phone_number': '+1-702-555-1212', 'preferred_store': 'Cymbal Home & Garden - Austin (Main)', 'purchase_history': [{'date': '2023-03-05', 'items': [{'name': 'All-Purpose Fertilizer', 'product_id': 'fert-111', 'quantity': 1.0}, {'name': 'Gardening Trowel', 'product_id': 'trowel-222', 'quantity': 1.0}], 'total_amount': 35.98}, {'date': '2023-07-12', 'items': [{'name': 'Tomato Seeds (Variety Pack)', 'product_id': 'seeds-333', 'quantity': 2.0}, {'name': 'Terracotta Pots (6-inch)', 'product_id': 'pots-444', 'quantity': 4.0}], 'total_amount': 42.5}, {'date': '2024-01-20', 'items': [{'name': 'Gardening Gloves (Leather)', 'product_id': 'gloves-555', 'quantity': 1.0}, {'name': 'Pruning Shears', 'product_id': 'pruner-666', 'quantity': 1.0}], 'total_amount': 55.25}], 'scheduled_appointments': {}, 'years_as_customer': 2.0}, 'uui-headers': ['None'], 'request_image_tool_called': False, 'manager_approved': False, 'no_input_counter': 0.0, 'current_date': '2026-03-31[America/Los_Angeles]'} actions=EventActions(skip_summarization=None, state_delta={}, artifact_delta={}, transfer_to_agent=None, escalate=None, requested_auth_configs={}, end_invocation=None) events=[Event(id='a9d321a5-52fe-47ba-b6c0-b2f946599c3d', author='user', timestamp=1774942932149, invocation_id='test_session_5adb8980', content=None, actions=EventActions(skip_summarization=None, state_delta={}, artifact_delta={}, transfer_to_agent=None, escalate=None, requested_auth_configs={}, end_invocation=None), long_running_tool_ids=None, partial=None, turn_complete=None, error_code=None, error_message=None, interrupted=None, branch=None, grounding_metadata=None), Event(id='81cd78a0-cb6b-4440-925d-00b4252d3ab8', author='user', timestamp=1774942932149, invocation_id='e-52e4d31c-c497-47ff-847b-837583e4d6c8', content=Content(parts=[Part(function_call=None, function_response=None, text='what can you help with', inline_data=None)], role='user'), actions=EventActions(skip_summarization=None, state_delta={}, artifact_delta={}, transfer_to_agent=None, escalate=None, requested_auth_configs={}, end_invocation=None), long_running_tool_ids=None, partial=None, turn_complete=None, error_code=None, error_message=None, interrupted=None, branch=None, grounding_metadata=None), Event(id='eb08bfdc-2e4b-44b3-be0c-1cd93d553f52', author='cymbal_retail_agent', timestamp=1774942933341, invocation_id='e-52e4d31c-c497-47ff-847b-837583e4d6c8', content=Content(parts=[Part(function_call=FunctionCall(id='adk-c79a6ed6-d240-4f87-938a-5fa2d491b369', args={}, name='greeting'), function_response=None, text=None, inline_data=None)], role='model'), actions=EventActions(skip_summarization=None, state_delta={}, artifact_delta={}, transfer_to_agent=None, escalate=None, requested_auth_configs={}, end_invocation=None), long_running_tool_ids=None, partial=None, turn_complete=None, error_code=None, error_message=None, interrupted=None, branch=None, grounding_metadata=None), Event(id='46896a3c-800b-4223-904c-7dc1f3ce9435', author='cymbal_retail_agent', timestamp=1774942933430, invocation_id='e-52e4d31c-c497-47ff-847b-837583e4d6c8', content=Content(parts=[Part(function_call=None, function_response=FunctionResponse(will_continue=None, id='adk-c79a6ed6-d240-4f87-938a-5fa2d491b369', name='greeting', response={'result': {'greeting': 'Hi there! Welcome to Cymbal Garden! Is this Patrick?', 'cart_information': {'results': {'items': [{'name': 'Standard Potting Soil', 'product_id': 'soil-123', 'quantity': 1.0}, {'name': 'General Purpose Fertilizer', 'product_id': 'fert-456', 'quantity': 1.0}], 'subtotal': 25.98}}}}), text=None, inline_data=None)], role='user'), actions=EventActions(skip_summarization=None, state_delta={}, artifact_delta={}, transfer_to_agent=None, escalate=None, requested_auth_configs={}, end_invocation=None), long_running_tool_ids=None, partial=None, turn_complete=None, error_code=None, error_message=None, interrupted=None, branch=None, grounding_metadata=None)] streaming_stage=None\n--- DEBUG ---\nMODEL TEXT: Welcome back, Patrick! I see you've already got some items in your Cymbal Home & Garden cart. How can I help you today?\n",
+                "[debug] detailed latency": {
+                  "sandbox init latency (ms)": 0,
+                  "total code execution latency (ms)": 2,
+                  "waiting for external calls (ms)": 0
+                }
+              },
+              "duration": "0.006408s"
+            },
+            {
+              "name": "Callback",
+              "startTime": "2026-03-31T07:42:14.363268Z",
+              "endTime": "2026-03-31T07:42:14.368466Z",
+              "attributes": {
+                "agent": "cymbal_retail_agent",
+                "stage": "AfterAgent",
+                "description": "Tracks the user inactivity signal and increments the counter if there is no input. Clears the counter if the user is speaking again.",
+                "stdout": "CONTENT parts=[Part(function_call=None, function_response=None, text='what can you help with', inline_data=None)] role='user'\nCOUNTER: 0.0\n",
+                "[debug] detailed latency": {
+                  "sandbox init latency (ms)": 0,
+                  "total code execution latency (ms)": 1,
+                  "waiting for external calls (ms)": 0
+                }
+              },
+              "duration": "0.005198s"
+            }
+          ],
+          "duration": "2.379660s"
+        }
+      }
+    }
+  ]
+}

@@ -16,6 +16,8 @@ class ReportMeta:
     verbose: bool = False
     target_url: str = ""
     target_endpoint: str = ""
+    finding_triggers: dict[str, bool] = field(default_factory=dict)
+    scan_profile: str = ""
 
     @property
     def target_full_url(self) -> str:
@@ -34,6 +36,8 @@ class ReportMeta:
         }
         if self.target_full_url:
             d["target"] = self.target_full_url
+        if self.finding_triggers:
+            d["finding_triggers"] = self.finding_triggers
         return d
 
     def to_markdown_lines(self) -> list[str]:
@@ -56,4 +60,7 @@ class ReportMeta:
             parts.append(f"Target: {self.target_full_url}")
         if self.verbose:
             parts.append("Mode: verbose")
+        if self.finding_triggers:
+            trigger_parts = [f"{k}={'on' if v else 'off'}" for k, v in self.finding_triggers.items()]
+            parts.append(f"Triggers: {', '.join(trigger_parts)}")
         return "  |  ".join(parts)

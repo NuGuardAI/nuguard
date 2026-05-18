@@ -9,11 +9,10 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
-from nuguard.config import load_config
-from nuguard.common.errors import TargetUnavailableError
 from nuguard.common.auth import AuthConfig
-from nuguard.common.bootstrap import AuthBootstrapper
-from nuguard.models.health_report import TargetHealthReport
+from nuguard.common.auth_runtime import bootstrap_auth_runtime, resolve_auth_runtime
+from nuguard.common.errors import TargetUnavailableError
+from nuguard.config import load_config
 from nuguard.redteam.target.canary import CanaryConfig
 
 target_app = typer.Typer(name="target", help="Target connectivity and auth verification.")
@@ -26,10 +25,6 @@ def verify_command(
         Path | None,
         typer.Option("--config", "-c", help="Path to nuguard.yaml"),
     ] = None,
-    mode: Annotated[
-        str,
-        typer.Option("--mode", help="Which config section to verify: redteam or validate"),
-    ] = "redteam",
     target: Annotated[
         str | None,
         typer.Option("--target", help="Target base URL (overrides nuguard.yaml)"),
@@ -53,25 +48,18 @@ def verify_command(
     and reports HTTP status, response time, and auth result. Exits non-zero if any
     non-skipped credential fails.
 
-    Use --mode to select which nuguard.yaml section drives the check:
-      --mode redteam   (default) reads redteam.target and redteam.auth
-      --mode validate  reads validate.target and validate.auth
+    Reads redteam.target and redteam.auth from nuguard.yaml.
 
     Examples:
         nuguard target verify
-        nuguard target verify --mode validate
         nuguard target verify --target http://localhost:3000 --auth-header "Authorization: Bearer $TOKEN"
         nuguard target verify --config nuguard.yaml --canary canary.json
     """
-    if mode not in ("redteam", "validate"):
-        console.print(f"[red]Error:[/red] --mode must be 'redteam' or 'validate', got '{mode}'")
-        raise typer.Exit(code=1)
-    asyncio.run(_verify_async(config, mode, target, endpoint, auth_header, canary))
+    asyncio.run(_verify_async(config, target, endpoint, auth_header, canary))
 
 
 async def _verify_async(
     config_path: Path | None,
-    mode: str,
     target_override: str | None,
     endpoint_override: str | None,
     auth_header_override: str | None,
@@ -80,37 +68,29 @@ async def _verify_async(
     # Load config
     cfg = load_config(config_path)
 
-    # Resolve target URL and auth from the selected mode section
-    target_url: str | None
-    if mode == "validate":
-        target_url = target_override or cfg.validate_config.target
-        ep = endpoint_override or cfg.validate_config.target_endpoint or "/chat"
-        if auth_header_override:
-            auth = AuthConfig.from_header_string(auth_header_override)
-        else:
-            auth = cfg.resolved_validate_auth_config()
-        mode_label = "validate"
+    # Resolve target URL and auth from redteam config
+    target_url: str | None = target_override or cfg.target_url
+    ep = endpoint_override or cfg.target_endpoint or "/chat"
+    if auth_header_override:
+        auth = AuthConfig.from_header_string(auth_header_override)
+        auth_runtime = resolve_auth_runtime(auth_config=auth)
     else:
-        target_url = target_override or cfg.target_url
-        ep = endpoint_override or cfg.target_endpoint or "/chat"
-        if auth_header_override:
-            auth = AuthConfig.from_header_string(auth_header_override)
-        else:
-            auth = cfg.resolved_auth_config()
-        mode_label = "redteam"
+        auth_runtime = resolve_auth_runtime(
+            auth_config=cfg.resolved_auth_config(),
+            headers_override=cfg.redteam_headers,
+        )
+
+    auth = auth_runtime.auth_config
 
     if not target_url:
-        section = "validate.target" if mode == "validate" else "redteam.target"
-        console.print(f"[red]Error:[/red] No target URL. Set {section} in nuguard.yaml or pass --target.")
+        console.print("[red]Error:[/red] No target URL. Set redteam.target in nuguard.yaml or pass --target.")
         raise typer.Exit(code=1)
 
     # Load canary (for tenant token verification)
-    # Prefer explicit --canary flag, then mode-specific config, then top-level canary_path.
+    # Prefer explicit --canary flag, then top-level canary_path.
     canary_config: CanaryConfig | None = None
     if canary_path:
         canary_file: Path | None = canary_path
-    elif mode == "validate" and cfg.validate_config.canary:
-        canary_file = Path(cfg.validate_config.canary)
     elif cfg.canary_path:
         canary_file = Path(cfg.canary_path)
     else:
@@ -121,7 +101,7 @@ async def _verify_async(
     elif canary_file:
         console.print(f"[yellow]Warning:[/yellow] canary file not found: {canary_file}")
 
-    console.print(f"\n[bold]NuGuard Target Verify[/bold]  (mode: {mode_label})")
+    console.print("\n[bold]NuGuard Target Verify[/bold]")
     console.print(f"  Target:   {target_url}{ep}")
     console.print(f"  Auth:     {auth.type}")
     if canary_config:
@@ -131,13 +111,12 @@ async def _verify_async(
 
     # Run bootstrap
     try:
-        bootstrapper = AuthBootstrapper(
+        _, report = await bootstrap_auth_runtime(
             target_url=target_url,
             endpoint=ep,
-            default_auth=auth,
+            auth_config=auth,
             canary_config=canary_config,
         )
-        report: TargetHealthReport = await bootstrapper.run()
     except TargetUnavailableError as exc:
         console.print(f"[red]✗ Target unavailable:[/red] {exc}")
         raise typer.Exit(code=2)

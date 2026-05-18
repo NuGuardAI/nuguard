@@ -1,0 +1,9 @@
+{
+  "name": "2f9e2909-8a94-4f74-9f7f-b42b219c52b4",
+  "pythonFunction": {
+    "name": "authenticate_user",
+    "pythonCode": "tools/authenticate_user/python_function/python_code.py",
+    "description": "Authenticates a user with the provided username and password.\n\nArgs:\n    username (str): The user\u0027s login username.\n    password (str): The user\u0027s login password.\n\nReturns:\n    dict[str, Any]: A dictionary indicating authentication success, a message,\n                    a token, and the user_id if successful.\n          Example: {\"success\": True, \"message\": \"Authentication successful.\", \"token\": \"abc123xyz\", \"user_id\": \"user_123\"}\n          Example: {\"success\": False, \"message\": \"Invalid username or password.\"}"
+  },
+  "displayName": "authenticate_user"
+}

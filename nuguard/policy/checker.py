@@ -408,9 +408,4 @@ def check_policy_against_sbom(
                 searched=["AUTH nodes: none found in SBOM"],
             ))
 
-    _log.debug(
-        "check_policy_against_sbom: %d gaps, %d passed",
-        len(result.gaps),
-        len(result.passed),
-    )
     return result

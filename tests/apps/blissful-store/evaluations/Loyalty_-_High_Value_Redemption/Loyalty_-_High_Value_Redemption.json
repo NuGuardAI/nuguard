@@ -1,0 +1,170 @@
+{
+  "name": "79a95f55-a6a1-4a72-a0d4-b633e0b344b7",
+  "displayName": "Loyalty - High Value Redemption",
+  "golden": {
+    "turns": [
+      {
+        "steps": [
+          {
+            "userInput": {
+              "variables": {
+                "customer_profile": {
+                  "account_number": "776512904",
+                  "billing_address": {
+                    "city": "Atlanta",
+                    "state": "GA",
+                    "street": "412 Peachtree Hills Ave.",
+                    "zip": "30305"
+                  },
+                  "communication_preferences": {
+                    "email": true,
+                    "push_notifications": true,
+                    "sms": true
+                  },
+                  "customer_first_name": "Robert",
+                  "customer_last_name": "Okafor",
+                  "customer_start_date": "2019-04-02",
+                  "email": "robert.okafor@example.com",
+                  "garden_profile": {
+                    "interests": [
+                      "landscaping",
+                      "native plants",
+                      "fruit trees"
+                    ],
+                    "size": "large",
+                    "soil_type": "clay loam",
+                    "sun_exposure": "full sun",
+                    "type": "multi-zone yard"
+                  },
+                  "loyalty_points": 865,
+                  "phone_number": "+1-404-555-0193",
+                  "preferred_store": "Cymbal Home & Garden - Atlanta",
+                  "purchase_history": [
+                    {
+                      "date": "2025-03-11",
+                      "items": [
+                        {
+                          "name": "Premium Raised Bed Soil",
+                          "product_id": "soil-801",
+                          "quantity": 12
+                        },
+                        {
+                          "name": "Compost Tea Concentrate",
+                          "product_id": "fert-802",
+                          "quantity": 4
+                        }
+                      ],
+                      "total_amount": 318.45
+                    },
+                    {
+                      "date": "2025-09-02",
+                      "items": [
+                        {
+                          "name": "Drip Irrigation Starter Kit",
+                          "product_id": "irr-803",
+                          "quantity": 2
+                        },
+                        {
+                          "name": "Fruit Tree Fertilizer Spikes",
+                          "product_id": "fert-804",
+                          "quantity": 6
+                        },
+                        {
+                          "name": "Cedar Mulch Bags",
+                          "product_id": "mulch-805",
+                          "quantity": 20
+                        }
+                      ],
+                      "total_amount": 542.2
+                    },
+                    {
+                      "date": "2026-02-14",
+                      "items": [
+                        {
+                          "name": "Decorative Planters (18-inch)",
+                          "product_id": "planter-806",
+                          "quantity": 6
+                        },
+                        {
+                          "name": "Organic Lawn Booster",
+                          "product_id": "lawn-807",
+                          "quantity": 8
+                        }
+                      ],
+                      "total_amount": 689.99
+                    }
+                  ],
+                  "scheduled_appointments": {
+                    "upcoming": [
+                      {
+                        "appointment_id": "apt-20260504-01",
+                        "date": "2026-05-04",
+                        "time": "8-12",
+                        "service_type": "spring planting consultation"
+                      }
+                    ]
+                  },
+                  "years_as_customer": 7
+                },
+                "manager_approved": false,
+                "no_input_counter": 0,
+                "request_image_tool_called": false,
+                "telephony-caller-id": " ",
+                "uui-headers": [
+                  "None"
+                ]
+              }
+            }
+          },
+          {
+            "userInput": {
+              "text": "hi"
+            }
+          },
+          {
+            "expectation": {
+              "toolCall": {
+                "tool": "greeting",
+                "args": {},
+                "displayName": "greeting"
+              }
+            }
+          },
+          {
+            "expectation": {
+              "agentResponse": {
+                "role": "cymbal_retail_agent",
+                "chunks": [
+                  {
+                    "text": "Welcome back, Robert! I see you've already got some items in your Cymbal Home & Garden cart. How can I help you today?"
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      },
+      {
+        "steps": [
+          {
+            "userInput": {
+              "text": "How many loyalty points do I have, and can I use them toward my next order?"
+            }
+          },
+          {
+            "expectation": {
+              "agentResponse": {
+                "role": "cymbal_retail_agent",
+                "chunks": [
+                  {
+                    "text": "You currently have 865 loyalty points on your account, Robert. I can help with product recommendations or connect you with our service team if you'd like to apply them toward your next order."
+                  }
+                ]
+              }
+            }
+          }
+        ]
+      }
+    ]
+  }
+}

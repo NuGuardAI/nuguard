@@ -10,7 +10,7 @@ And a login-flow auth type for apps that issue short-lived JWTs:
     login_flow  — POST /login with credentials, extract token, attach as Bearer.
                   AuthSession handles token acquisition and 401-triggered refresh.
 
-Both validate and redteam modules use AuthSession — it is initialised once
+Both behavior and redteam modules use AuthSession — it is initialised once
 by AuthBootstrapper before any scenarios run.
 """
 from __future__ import annotations
@@ -51,6 +51,10 @@ class LoginFlowConfig(BaseModel):
     endpoint: str = "/login"
     method: Literal["POST", "GET"] = "POST"
 
+    # Optional override for the host that serves the login endpoint.
+    # When omitted, AuthSession uses the target base URL.
+    base_url: str | None = None
+
     # Key/value pairs sent in the login request body.
     # Values are resolved from ${ENV_VAR} by the config loader before this
     # model is built.
@@ -72,10 +76,63 @@ class LoginFlowConfig(BaseModel):
 # AuthConfig
 # ---------------------------------------------------------------------------
 
+_HTTPONLY_PREFIX = "#HttpOnly_"
+
+
+def _parse_netscape_cookies(path: str) -> str:
+    """Parse a Netscape-format cookies.txt file into a Cookie header value.
+
+    The Netscape cookie format uses 7 tab-separated columns per line::
+
+        domain  include_subdomains  path  secure  expiry  name  value
+
+    Lines starting with '#' are treated as comments and ignored, **except**
+    for curl's ``#HttpOnly_<domain>`` prefix which marks HttpOnly cookies —
+    those are parsed normally after stripping the prefix.
+
+    The function returns a semicolon-joined ``name=value`` string suitable
+    for the ``Cookie:`` HTTP header, e.g. ``"session=abc; csrf=xyz"``.
+
+    Raises:
+        FileNotFoundError: if *path* does not exist.
+    """
+    import os
+
+    if not os.path.exists(path):
+        raise FileNotFoundError(
+            f"auth.cookie_file: file not found at {path!r}. "
+            "Generate it with: curl --cookie-jar <file> <login-url>"
+        )
+
+    pairs: list[str] = []
+    with open(path, encoding="utf-8") as fh:
+        for raw_line in fh:
+            line = raw_line.strip()
+            if not line:
+                continue
+            # curl writes HttpOnly cookies with a "#HttpOnly_<domain>" prefix
+            # instead of the bare domain — strip it so the line parses normally.
+            if line.startswith(_HTTPONLY_PREFIX):
+                line = line[len(_HTTPONLY_PREFIX):]
+            elif line.startswith("#"):
+                continue
+            parts = line.split("\t")
+            if len(parts) == 7:  # noqa: PLR2004  (standard Netscape column count)
+                name, value = parts[5], parts[6]
+                pairs.append(f"{name}={value}")
+            else:
+                _log.debug(
+                    "_parse_netscape_cookies: skipping malformed line in %r: %r",
+                    path,
+                    line[:80],
+                )
+    return "; ".join(pairs)
+
+
 class AuthConfig(BaseModel):
     """Structured auth configuration parsed from nuguard.yaml auth block."""
 
-    type: Literal["bearer", "api_key", "basic", "none", "login_flow"] = "none"
+    type: Literal["bearer", "api_key", "basic", "none", "login_flow", "cookie_file"] = "none"
 
     # bearer / api_key: full header string e.g. "Authorization: Bearer tok"
     header: str = ""
@@ -88,6 +145,10 @@ class AuthConfig(BaseModel):
     # login_flow: populated when type="login_flow"
     login_flow: LoginFlowConfig | None = None
 
+    # cookie_file: path to a Netscape-format cookies.txt (absolute or relative
+    # to the directory where nuguard is invoked)
+    cookie_file: str = ""
+
     @model_validator(mode="after")
     def _validate_fields(self) -> "AuthConfig":
         if self.type == "bearer" and not self.header:
@@ -98,6 +159,11 @@ class AuthConfig(BaseModel):
             raise ValueError("auth.type=basic requires auth.username and auth.password")
         if self.type == "login_flow" and self.login_flow is None:
             raise ValueError("auth.type=login_flow requires auth.login_flow block")
+        if self.type == "cookie_file" and not self.cookie_file:
+            raise ValueError(
+                "auth.type=cookie_file requires auth.cookie_file to be set "
+                "to the path of a Netscape-format cookies.txt"
+            )
         return self
 
     def to_headers(self) -> dict[str, str]:
@@ -116,6 +182,9 @@ class AuthConfig(BaseModel):
                 f"{self.username}:{self.password}".encode()
             ).decode()
             return {"Authorization": f"Basic {credential}"}
+        if self.type == "cookie_file":
+            cookie_value = _parse_netscape_cookies(self.cookie_file)
+            return {"Cookie": cookie_value} if cookie_value else {}
         # login_flow: token not yet acquired — use AuthSession
         return {}
 
@@ -146,7 +215,7 @@ class AuthConfig(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# AuthSession — stateful token holder used by validate and redteam
+# AuthSession — stateful token holder used by behavior and redteam
 # ---------------------------------------------------------------------------
 
 def _extract_nested(data: dict[str, Any], key_path: str) -> str | None:
@@ -161,7 +230,7 @@ def _extract_nested(data: dict[str, Any], key_path: str) -> str | None:
 
 
 class AuthSession:
-    """Stateful auth session shared by validate and redteam.
+    """Stateful auth session shared by behavior and redteam.
 
     Wraps an AuthConfig and manages token acquisition for login_flow auth.
     For static auth types (bearer, api_key, basic, none) it is a thin
@@ -239,7 +308,11 @@ class AuthSession:
         lf = self._config.login_flow
         assert lf is not None  # always true when type == login_flow
 
-        url = f"{self._base_url}{lf.endpoint}"
+        login_base_url = (lf.base_url or self._base_url).rstrip("/")
+        if lf.endpoint.startswith(("http://", "https://")):
+            url = lf.endpoint
+        else:
+            url = f"{login_base_url}{lf.endpoint}"
         _log.debug("AuthSession: logging in via %s %s", lf.method, url)
 
         try:

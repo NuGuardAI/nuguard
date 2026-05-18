@@ -11,14 +11,13 @@ Validates all new adapters added to improve coverage of:
 
 from __future__ import annotations
 
-
 import pytest
 
 from nuguard.sbom.config import AiSbomConfig
 from nuguard.sbom.extractor import AiSbomExtractor
 from nuguard.sbom.models import AiSbomDocument
+from nuguard.sbom.tests.conftest import APPS, nodes
 from nuguard.sbom.types import ComponentType
-from conftest import APPS, nodes
 
 MILO = APPS / "milo_style"
 

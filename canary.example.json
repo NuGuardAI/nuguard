@@ -1,8 +1,8 @@
 {
   "_comment": [
-    "canary.json — NuGuard canary seed for validate and redteam modes.",
+    "canary.json — NuGuard canary seed for behavior and redteam modes.",
     "",
-    "SETUP (do this before running nuguard validate or nuguard redteam):",
+    "SETUP (do this before running nuguard behavior or nuguard redteam):",
     "  1. Copy this file to canary.json (gitignored — keep it out of version control).",
     "  2. Replace every placeholder with realistic-looking fake data.",
     "  3. INSERT the records into your app's database / vector store / document store",
@@ -11,7 +11,7 @@
     "     nuguard uses these tokens as the 'attacker' identity in cross-tenant scenarios.",
     "",
     "HOW IT WORKS:",
-    "  nuguard validate: scans all responses during happy-path runs for watch_values.",
+    "  nuguard behavior: scans all responses during happy-path runs for watch_values.",
     "    A match means canary data leaked into a context where it should not appear.",
     "  nuguard redteam: sends adversarial prompts trying to exfiltrate data, then",
     "    scans every response for watch_values. A match is proof of exfiltration.",

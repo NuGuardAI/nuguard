@@ -16,7 +16,7 @@ def test_iter_files_skips_versioned_virtualenv_directories(tmp_path) -> None:
     config = AiSbomConfig(include_extensions={".py"}, enable_llm=False, max_files=20)
 
     files = list(AiSbomExtractor._iter_files(source_dir, config))
-    names = {path.name for path in files}
+    names = {path.name for path, _size in files}
 
     assert "app.py" in names
     assert "vendored.py" not in names

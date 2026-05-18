@@ -15,6 +15,8 @@ import logging
 import re
 from typing import Any
 
+from ...normalization import canonicalize_text
+from ...types import ComponentType
 from ..base import ComponentDetection, FrameworkAdapter
 from ..models_kb import (
     ALL_LLM_CLASSES,
@@ -23,8 +25,6 @@ from ..models_kb import (
     get_model_details,
     infer_provider,
 )
-from ...normalization import canonicalize_text
-from ...types import ComponentType
 
 _log = logging.getLogger(__name__)
 

@@ -34,20 +34,20 @@ import tempfile
 import time
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Tuple, Any
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from dotenv import load_dotenv
 
+from .fetcher import fetch_repo_for_benchmark
 from .schemas import (
+    BenchmarkSuiteResult,
+    DiscoveredAsset,
+    ExpectedCounts,
     GroundTruth,
     GroundTruthAsset,
-    ExpectedCounts,
-    DiscoveredAsset,
     ScanEvaluationResult,
     TypeMetrics,
-    BenchmarkSuiteResult,
 )
-from .fetcher import fetch_repo_for_benchmark
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
@@ -708,8 +708,8 @@ async def run_discovery_pipeline(
         use_llm: When True, enables LLM enrichment (reads model/key config from env).
     """
     del detected_frameworks
-    from nuguard.sbom.extractor import AiSbomExtractor
     from nuguard.sbom.config import AiSbomConfig
+    from nuguard.sbom.extractor import AiSbomExtractor
 
     if use_llm:
         logger.info("  LLM enrichment enabled for this scan")
@@ -896,8 +896,8 @@ def _run_local_folder_discovery(
     Returns:
         Tuple of (discovered assets, full SBOM dict for toolbox plugins).
     """
-    from nuguard.sbom.extractor import AiSbomExtractor
     from nuguard.sbom.config import AiSbomConfig
+    from nuguard.sbom.extractor import AiSbomExtractor
 
     extractor = AiSbomExtractor()
     config = AiSbomConfig(enable_llm=use_llm)

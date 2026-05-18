@@ -1,0 +1,1129 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Golden Bank — Your Trusted Financial Partner</title>
+
+
+  <style>
+    /* ── Reset & tokens ────────────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --gold:        #C9A84C;
+      --gold-light:  #E8C96A;
+      --gold-dark:   #9B7A2E;
+      --navy:        #0D1B2A;
+      --navy-mid:    #1A2E45;
+      --navy-light:  #243B55;
+      --white:       #FFFFFF;
+      --off-white:   #F7F4EE;
+      --text-dark:   #1A1A2E;
+      --text-mid:    #4A5568;
+      --text-light:  #718096;
+      --border:      #E2D9C5;
+      --shadow-sm:   0 1px 3px rgba(0,0,0,.08);
+      --shadow-md:   0 4px 16px rgba(0,0,0,.12);
+      --shadow-lg:   0 12px 40px rgba(0,0,0,.18);
+      --radius:      12px;
+      --font:        'Segoe UI', system-ui, -apple-system, sans-serif;
+    }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family: var(--font);
+      color: var(--text-dark);
+      background: var(--white);
+      line-height: 1.6;
+    }
+
+    a { color: inherit; text-decoration: none; }
+    img { display: block; max-width: 100%; }
+
+    /* ── Utilities ─────────────────────────────────────────────────────── */
+    .container { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 12px 28px; border-radius: 50px; font-weight: 600;
+      font-size: 0.95rem; cursor: pointer; border: none; transition: all .2s;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--gold), var(--gold-dark));
+      color: var(--navy); box-shadow: 0 4px 14px rgba(201,168,76,.35);
+    }
+    .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(201,168,76,.45); }
+    .btn-outline {
+      background: transparent; color: var(--white);
+      border: 2px solid rgba(255,255,255,.6);
+    }
+    .btn-outline:hover { background: rgba(255,255,255,.1); border-color: var(--white); }
+    .section-label {
+      font-size: 0.8rem; font-weight: 700; letter-spacing: .12em;
+      text-transform: uppercase; color: var(--gold-dark); margin-bottom: 12px;
+    }
+    .section-title {
+      font-size: clamp(1.6rem, 3vw, 2.4rem); font-weight: 700;
+      color: var(--navy); line-height: 1.25; margin-bottom: 16px;
+    }
+    .section-sub {
+      font-size: 1.05rem; color: var(--text-mid); max-width: 560px;
+    }
+
+    /* ── Nav ───────────────────────────────────────────────────────────── */
+    nav {
+      position: sticky; top: 0; z-index: 100;
+      background: var(--navy); border-bottom: 1px solid var(--navy-light);
+      box-shadow: var(--shadow-md);
+    }
+    .nav-inner {
+      display: flex; align-items: center; justify-content: space-between;
+      height: 68px;
+    }
+    .nav-logo {
+      display: flex; align-items: center; gap: 12px;
+    }
+    .logo-mark {
+      width: 38px; height: 38px; border-radius: 8px;
+      background: linear-gradient(135deg, var(--gold), var(--gold-dark));
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 900; font-size: 1.1rem; color: var(--navy);
+    }
+    .logo-text { font-size: 1.2rem; font-weight: 700; color: var(--white); }
+    .logo-text span { color: var(--gold); }
+    .nav-links {
+      display: flex; align-items: center; gap: 32px; list-style: none;
+    }
+    .nav-links a {
+      color: rgba(255,255,255,.75); font-size: 0.92rem; font-weight: 500;
+      transition: color .15s;
+    }
+    .nav-links a:hover { color: var(--gold-light); }
+    .nav-actions { display: flex; gap: 12px; align-items: center; }
+    .btn-nav-signin {
+      padding: 8px 20px; border-radius: 50px; font-weight: 600;
+      font-size: 0.88rem; border: 1px solid rgba(255,255,255,.3);
+      color: var(--white); background: transparent; cursor: pointer;
+      transition: all .2s;
+    }
+    .btn-nav-signin:hover { border-color: var(--gold); color: var(--gold); }
+    .btn-nav-open {
+      padding: 8px 20px; border-radius: 50px; font-weight: 600;
+      font-size: 0.88rem; background: var(--gold); color: var(--navy);
+      border: none; cursor: pointer; transition: all .2s;
+    }
+    .btn-nav-open:hover { background: var(--gold-light); }
+
+    /* ── Hero ──────────────────────────────────────────────────────────── */
+    .hero {
+      background: linear-gradient(135deg, var(--navy) 0%, var(--navy-mid) 50%, #1E3A5F 100%);
+      padding: 100px 0 80px; position: relative; overflow: hidden;
+    }
+    .hero::before {
+      content: ''; position: absolute; inset: 0;
+      background: radial-gradient(ellipse at 70% 50%, rgba(201,168,76,.12) 0%, transparent 65%);
+    }
+    .hero-grid {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: center;
+      position: relative;
+    }
+    .hero-eyebrow {
+      display: inline-flex; align-items: center; gap: 8px;
+      background: rgba(201,168,76,.15); border: 1px solid rgba(201,168,76,.3);
+      border-radius: 50px; padding: 6px 16px; margin-bottom: 24px;
+      color: var(--gold-light); font-size: 0.85rem; font-weight: 600;
+    }
+    .hero-eyebrow::before {
+      content: ''; width: 6px; height: 6px; border-radius: 50%;
+      background: var(--gold); animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; } 50% { opacity: .4; }
+    }
+    .hero h1 {
+      font-size: clamp(2rem, 4.5vw, 3.4rem); font-weight: 800; color: var(--white);
+      line-height: 1.15; margin-bottom: 20px;
+    }
+    .hero h1 em {
+      font-style: normal; color: var(--gold);
+      display: block;
+    }
+    .hero-sub {
+      color: rgba(255,255,255,.72); font-size: 1.1rem; margin-bottom: 36px; max-width: 480px;
+    }
+    .hero-actions { display: flex; gap: 14px; flex-wrap: wrap; }
+    .hero-stats {
+      display: flex; gap: 32px; margin-top: 48px; padding-top: 32px;
+      border-top: 1px solid rgba(255,255,255,.12);
+    }
+    .hero-stat-value {
+      font-size: 1.8rem; font-weight: 800; color: var(--gold);
+    }
+    .hero-stat-label { font-size: 0.82rem; color: rgba(255,255,255,.55); margin-top: 2px; }
+
+    /* Card mockup */
+    .hero-visual { position: relative; }
+    .bank-card-wrap {
+      perspective: 1000px;
+    }
+    .bank-card {
+      width: 100%; max-width: 380px; margin: 0 auto;
+      background: linear-gradient(135deg, #1A3A5C 0%, #0D1B2A 60%, #2A1A00 100%);
+      border-radius: 20px; padding: 32px; box-shadow: var(--shadow-lg);
+      position: relative; overflow: hidden;
+      transform: rotateY(-8deg) rotateX(4deg);
+      border: 1px solid rgba(201,168,76,.25);
+    }
+    .bank-card::before {
+      content: ''; position: absolute;
+      width: 280px; height: 280px; border-radius: 50%;
+      background: radial-gradient(circle, rgba(201,168,76,.15) 0%, transparent 70%);
+      top: -80px; right: -60px;
+    }
+    .bank-card::after {
+      content: ''; position: absolute;
+      width: 180px; height: 180px; border-radius: 50%;
+      background: radial-gradient(circle, rgba(201,168,76,.1) 0%, transparent 70%);
+      bottom: -40px; left: -30px;
+    }
+    .card-chip {
+      width: 48px; height: 36px; border-radius: 6px;
+      background: linear-gradient(135deg, var(--gold), var(--gold-dark));
+      margin-bottom: 32px; position: relative;
+    }
+    .card-chip::after {
+      content: ''; position: absolute; inset: 8px 6px;
+      border: 1px solid rgba(255,255,255,.3); border-radius: 3px;
+    }
+    .card-number {
+      font-size: 1.3rem; letter-spacing: .2em; color: rgba(255,255,255,.9);
+      font-family: 'Courier New', monospace; margin-bottom: 24px;
+    }
+    .card-bottom {
+      display: flex; justify-content: space-between; align-items: flex-end;
+    }
+    .card-holder { font-size: 0.78rem; text-transform: uppercase;
+      letter-spacing: .1em; color: rgba(255,255,255,.5); margin-bottom: 4px; }
+    .card-name { font-size: 1rem; color: var(--white); font-weight: 600; }
+    .card-logo {
+      font-size: 1.4rem; font-weight: 900;
+      background: linear-gradient(135deg, var(--gold), var(--gold-light));
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+    }
+
+    /* Floating feature badges */
+    .card-badge {
+      position: absolute; background: var(--white); border-radius: 12px;
+      padding: 10px 14px; box-shadow: var(--shadow-md);
+      display: flex; align-items: center; gap: 10px;
+      font-size: 0.82rem; font-weight: 600; color: var(--text-dark);
+      white-space: nowrap;
+    }
+    .card-badge .icon {
+      width: 32px; height: 32px; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center; font-size: 1rem;
+    }
+    .badge-1 { top: -20px; right: -20px; }
+    .badge-1 .icon { background: #E8F5E9; }
+    .badge-2 { bottom: 30px; right: -32px; }
+    .badge-2 .icon { background: #E3F2FD; }
+    .badge-3 { bottom: -20px; left: -20px; }
+    .badge-3 .icon { background: #FFF8E1; }
+
+    /* ── Quick Access ──────────────────────────────────────────────────── */
+    .quick-access { background: var(--off-white); padding: 56px 0; }
+    .quick-grid {
+      display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px;
+    }
+    .quick-card {
+      background: var(--white); border-radius: var(--radius); padding: 28px 24px;
+      border: 1px solid var(--border); text-align: center;
+      transition: all .2s; cursor: pointer;
+    }
+    .quick-card:hover {
+      transform: translateY(-3px); box-shadow: var(--shadow-md);
+      border-color: var(--gold);
+    }
+    .quick-icon {
+      width: 56px; height: 56px; border-radius: 14px; margin: 0 auto 16px;
+      display: flex; align-items: center; justify-content: center; font-size: 1.5rem;
+    }
+    .quick-card h3 { font-size: 0.95rem; font-weight: 700; color: var(--navy); margin-bottom: 4px; }
+    .quick-card p { font-size: 0.82rem; color: var(--text-light); }
+
+    /* ── Services ──────────────────────────────────────────────────────── */
+    .services { padding: 96px 0; }
+    .services-header { text-align: center; margin-bottom: 60px; }
+    .services-header .section-sub { margin: 0 auto; }
+    .services-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 28px;
+    }
+    .service-card {
+      background: var(--white); border-radius: var(--radius);
+      padding: 32px; border: 1px solid var(--border);
+      transition: all .25s;
+    }
+    .service-card:hover {
+      box-shadow: var(--shadow-md); border-color: rgba(201,168,76,.4);
+      transform: translateY(-2px);
+    }
+    .service-icon {
+      width: 52px; height: 52px; border-radius: 12px; margin-bottom: 20px;
+      display: flex; align-items: center; justify-content: center; font-size: 1.4rem;
+    }
+    .service-card h3 { font-size: 1.05rem; font-weight: 700; color: var(--navy); margin-bottom: 8px; }
+    .service-card p { font-size: 0.9rem; color: var(--text-mid); line-height: 1.6; }
+    .service-link {
+      margin-top: 16px; display: inline-flex; align-items: center; gap: 6px;
+      font-size: 0.88rem; font-weight: 600; color: var(--gold-dark);
+    }
+    .service-link:hover { gap: 10px; }
+
+    /* ── AI Banner ─────────────────────────────────────────────────────── */
+    .ai-banner {
+      background: linear-gradient(135deg, var(--navy) 0%, var(--navy-mid) 100%);
+      padding: 80px 0; position: relative; overflow: hidden;
+    }
+    .ai-banner::before {
+      content: ''; position: absolute; inset: 0;
+      background: radial-gradient(ellipse at 30% 50%, rgba(201,168,76,.12) 0%, transparent 60%);
+    }
+    .ai-inner {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 60px; align-items: center;
+      position: relative;
+    }
+    .ai-inner .section-title { color: var(--white); }
+    .ai-inner .section-sub { color: rgba(255,255,255,.65); }
+    .ai-features { list-style: none; margin: 24px 0 36px; }
+    .ai-features li {
+      display: flex; align-items: center; gap: 12px;
+      padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,.08);
+      font-size: 0.92rem; color: rgba(255,255,255,.8);
+    }
+    .ai-features li:last-child { border-bottom: none; }
+    .ai-features li::before {
+      content: '✓'; width: 22px; height: 22px; border-radius: 50%;
+      background: rgba(201,168,76,.2); color: var(--gold);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.75rem; font-weight: 700; flex-shrink: 0;
+    }
+
+    /* Chat preview mockup */
+    .chat-preview {
+      background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.12);
+      border-radius: 20px; padding: 24px; backdrop-filter: blur(10px);
+    }
+    .chat-preview-header {
+      display: flex; align-items: center; gap: 12px; margin-bottom: 20px;
+      padding-bottom: 16px; border-bottom: 1px solid rgba(255,255,255,.1);
+    }
+    .chat-avatar {
+      width: 40px; height: 40px; border-radius: 10px;
+      background: linear-gradient(135deg, var(--gold), var(--gold-dark));
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.1rem;
+    }
+    .chat-preview-name { font-weight: 700; color: var(--white); font-size: 0.95rem; }
+    .chat-preview-status { font-size: 0.78rem; color: var(--gold-light); }
+    .chat-msg {
+      margin-bottom: 14px; display: flex; flex-direction: column;
+    }
+    .chat-msg.agent { align-items: flex-start; }
+    .chat-msg.user  { align-items: flex-end; }
+    .chat-bubble {
+      padding: 10px 16px; border-radius: 16px; font-size: 0.85rem;
+      max-width: 85%; line-height: 1.5;
+    }
+    .chat-msg.agent .chat-bubble {
+      background: rgba(255,255,255,.1); color: rgba(255,255,255,.9);
+      border-bottom-left-radius: 4px;
+    }
+    .chat-msg.user .chat-bubble {
+      background: linear-gradient(135deg, var(--gold), var(--gold-dark));
+      color: var(--navy); border-bottom-right-radius: 4px; font-weight: 500;
+    }
+    .chat-typing {
+      display: flex; gap: 4px; align-items: center; padding: 10px 16px;
+      background: rgba(255,255,255,.08); border-radius: 16px; border-bottom-left-radius: 4px;
+      width: fit-content;
+    }
+    .chat-typing span {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: rgba(255,255,255,.5); animation: typing 1.2s infinite;
+    }
+    .chat-typing span:nth-child(2) { animation-delay: .2s; }
+    .chat-typing span:nth-child(3) { animation-delay: .4s; }
+    @keyframes typing {
+      0%, 80%, 100% { opacity: .3; transform: scale(.8); }
+      40% { opacity: 1; transform: scale(1); }
+    }
+
+    /* ── Rates ─────────────────────────────────────────────────────────── */
+    .rates { background: var(--off-white); padding: 80px 0; }
+    .rates-header { margin-bottom: 48px; }
+    .rates-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr); gap: 24px;
+    }
+    .rate-card {
+      background: var(--white); border-radius: var(--radius); padding: 32px;
+      border: 1px solid var(--border); position: relative; overflow: hidden;
+    }
+    .rate-card.featured {
+      border-color: var(--gold); box-shadow: 0 0 0 1px var(--gold);
+    }
+    .rate-badge {
+      position: absolute; top: 16px; right: 16px;
+      background: var(--gold); color: var(--navy); font-size: 0.72rem;
+      font-weight: 700; padding: 3px 10px; border-radius: 50px;
+    }
+    .rate-type { font-size: 0.8rem; font-weight: 600; color: var(--text-light);
+      text-transform: uppercase; letter-spacing: .08em; margin-bottom: 8px; }
+    .rate-name { font-size: 1.05rem; font-weight: 700; color: var(--navy); margin-bottom: 16px; }
+    .rate-value {
+      font-size: 2.8rem; font-weight: 800; color: var(--gold-dark);
+      line-height: 1; margin-bottom: 4px;
+    }
+    .rate-value span { font-size: 1.1rem; font-weight: 600; }
+    .rate-apy { font-size: 0.8rem; color: var(--text-light); margin-bottom: 20px; }
+    .rate-features { list-style: none; }
+    .rate-features li {
+      font-size: 0.85rem; color: var(--text-mid); padding: 6px 0;
+      border-bottom: 1px solid var(--border); display: flex; align-items: center; gap: 8px;
+    }
+    .rate-features li:last-child { border-bottom: none; }
+    .rate-features li::before { content: '·'; color: var(--gold); font-size: 1.2rem; }
+
+    /* ── Security ──────────────────────────────────────────────────────── */
+    .security { padding: 96px 0; }
+    .security-inner {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 80px; align-items: center;
+    }
+    .security-badges {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 16px;
+    }
+    .sec-badge {
+      background: var(--off-white); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 20px; text-align: center;
+    }
+    .sec-badge-icon { font-size: 2rem; margin-bottom: 8px; }
+    .sec-badge-name { font-size: 0.85rem; font-weight: 700; color: var(--navy); }
+    .sec-badge-desc { font-size: 0.75rem; color: var(--text-light); margin-top: 4px; }
+    .security-points { margin: 24px 0 32px; }
+    .security-point {
+      display: flex; gap: 16px; padding: 16px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .security-point:last-child { border-bottom: none; }
+    .sp-icon {
+      width: 40px; height: 40px; border-radius: 10px; flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center; font-size: 1.1rem;
+      background: linear-gradient(135deg, rgba(201,168,76,.15), rgba(201,168,76,.05));
+    }
+    .sp-title { font-weight: 700; color: var(--navy); margin-bottom: 3px; font-size: 0.95rem; }
+    .sp-desc { font-size: 0.85rem; color: var(--text-mid); }
+
+    /* ── Footer ────────────────────────────────────────────────────────── */
+    footer {
+      background: var(--navy); color: rgba(255,255,255,.6);
+      padding: 64px 0 32px;
+    }
+    .footer-grid {
+      display: grid; grid-template-columns: 2fr 1fr 1fr 1fr; gap: 48px;
+      margin-bottom: 48px;
+    }
+    .footer-brand p {
+      font-size: 0.88rem; line-height: 1.7; margin: 12px 0 20px;
+      color: rgba(255,255,255,.5);
+    }
+    .footer-heading {
+      font-size: 0.8rem; font-weight: 700; text-transform: uppercase;
+      letter-spacing: .1em; color: var(--gold-light); margin-bottom: 16px;
+    }
+    .footer-links { list-style: none; }
+    .footer-links li { margin-bottom: 10px; }
+    .footer-links a {
+      font-size: 0.88rem; color: rgba(255,255,255,.55); transition: color .15s;
+    }
+    .footer-links a:hover { color: var(--gold-light); }
+    .footer-bottom {
+      display: flex; justify-content: space-between; align-items: center;
+      padding-top: 24px; border-top: 1px solid rgba(255,255,255,.1);
+      font-size: 0.8rem;
+    }
+    .footer-legal { display: flex; gap: 20px; }
+    .footer-legal a { color: rgba(255,255,255,.45); transition: color .15s; }
+    .footer-legal a:hover { color: rgba(255,255,255,.8); }
+    .fdic-badge {
+      background: rgba(255,255,255,.08); border: 1px solid rgba(255,255,255,.15);
+      border-radius: 6px; padding: 4px 12px; font-size: 0.78rem; font-weight: 700;
+      color: rgba(255,255,255,.7); letter-spacing: .05em;
+    }
+
+    /* ── Responsive ────────────────────────────────────────────────────── */
+    @media (max-width: 960px) {
+      .hero-grid, .ai-inner, .security-inner { grid-template-columns: 1fr; }
+      .hero-visual { display: none; }
+      .services-grid { grid-template-columns: repeat(2, 1fr); }
+      .quick-grid { grid-template-columns: repeat(2, 1fr); }
+      .footer-grid { grid-template-columns: 1fr 1fr; }
+      .nav-links { display: none; }
+    }
+    @media (max-width: 640px) {
+      .services-grid, .rates-grid, .security-badges { grid-template-columns: 1fr; }
+      .quick-grid { grid-template-columns: repeat(2, 1fr); }
+      .footer-grid { grid-template-columns: 1fr; }
+      .footer-bottom { flex-direction: column; gap: 12px; text-align: center; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Navigation ─────────────────────────────────────────────────────────── -->
+<nav>
+  <div class="container nav-inner">
+    <a href="#" class="nav-logo">
+      <div class="logo-mark">G</div>
+      <span class="logo-text">Golden <span>Bank</span></span>
+    </a>
+    <ul class="nav-links">
+      <li><a href="#services">Services</a></li>
+      <li><a href="#rates">Rates</a></li>
+      <li><a href="#security">Security</a></li>
+      <li><a href="#locations">Locations</a></li>
+      <li><a href="#contact">Contact</a></li>
+    </ul>
+    <div class="nav-actions">
+      <button class="btn-nav-signin">Sign In</button>
+      <button class="btn-nav-open" data-open-chat>Chat with Us</button>
+    </div>
+  </div>
+</nav>
+
+<!-- ── Hero ───────────────────────────────────────────────────────────────── -->
+<section class="hero">
+  <div class="container hero-grid">
+    <div>
+      <div class="hero-eyebrow">AI-Powered Banking Support — Available 24/7</div>
+      <h1>Banking Built for <em>Your Future</em></h1>
+      <p class="hero-sub">
+        Intelligent, secure, and always available. Golden Bank combines decades of
+        trusted financial expertise with AI-powered support so you can bank on
+        your terms.
+      </p>
+      <div class="hero-actions">
+        <button class="btn btn-primary">Open an Account</button>
+        <button class="btn btn-outline">Explore Services</button>
+      </div>
+      <div class="hero-stats">
+        <div>
+          <div class="hero-stat-value">$48B+</div>
+          <div class="hero-stat-label">Assets Under Management</div>
+        </div>
+        <div>
+          <div class="hero-stat-value">2.4M</div>
+          <div class="hero-stat-label">Happy Customers</div>
+        </div>
+        <div>
+          <div class="hero-stat-value">99.9%</div>
+          <div class="hero-stat-label">Uptime Guarantee</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="hero-visual">
+      <div class="bank-card-wrap">
+        <div class="bank-card">
+          <div class="card-chip"></div>
+          <div class="card-number">•••• •••• •••• 4829</div>
+          <div class="card-bottom">
+            <div>
+              <div class="card-holder">Card Holder</div>
+              <div class="card-name">Alex Johnson</div>
+            </div>
+            <div class="card-logo">GB</div>
+          </div>
+
+          <!-- Floating badges -->
+          <div class="card-badge badge-1">
+            <div class="icon">✅</div>
+            <div>Balance: <strong>$12,450.00</strong></div>
+          </div>
+          <div class="card-badge badge-2">
+            <div class="icon">🔒</div>
+            <div>Bank-grade<br><strong>Encryption</strong></div>
+          </div>
+          <div class="card-badge badge-3">
+            <div class="icon">⚡</div>
+            <div>Instant<br><strong>Transfers</strong></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Quick Access ────────────────────────────────────────────────────────── -->
+<section class="quick-access">
+  <div class="container">
+    <div class="quick-grid">
+      <div class="quick-card">
+        <div class="quick-icon" style="background:#FFF8E1;">💳</div>
+        <h3>Check Balance</h3>
+        <p>View account balances and summaries</p>
+      </div>
+      <div class="quick-card">
+        <div class="quick-icon" style="background:#E8F5E9;">↔️</div>
+        <h3>Transfer Funds</h3>
+        <p>Move money between accounts instantly</p>
+      </div>
+      <div class="quick-card">
+        <div class="quick-icon" style="background:#E3F2FD;">🧾</div>
+        <h3>Pay Bills</h3>
+        <p>Schedule and manage bill payments</p>
+      </div>
+      <div class="quick-card">
+        <div class="quick-icon" style="background:#FCE4EC;">📍</div>
+        <h3>Find ATMs</h3>
+        <p>Locate branches and ATMs near you</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Services ───────────────────────────────────────────────────────────── -->
+<section class="services" id="services">
+  <div class="container">
+    <div class="services-header">
+      <div class="section-label">What We Offer</div>
+      <h2 class="section-title">Complete Banking, One Platform</h2>
+      <p class="section-sub">
+        From everyday banking to long-term financial planning — everything you
+        need in one secure, intelligent platform.
+      </p>
+    </div>
+    <div class="services-grid">
+      <div class="service-card">
+        <div class="service-icon" style="background:#FFF8E1;">🏦</div>
+        <h3>Checking Accounts</h3>
+        <p>No monthly fees, no minimum balance. Earn cashback on everyday purchases with our smart checking account.</p>
+        <a href="#" class="service-link">Learn more →</a>
+      </div>
+      <div class="service-card">
+        <div class="service-icon" style="background:#E8F5E9;">💰</div>
+        <h3>High-Yield Savings</h3>
+        <p>Grow your money faster with industry-leading APY rates. FDIC insured up to $250,000.</p>
+        <a href="#" class="service-link">Learn more →</a>
+      </div>
+      <div class="service-card">
+        <div class="service-icon" style="background:#E3F2FD;">🏠</div>
+        <h3>Home Loans</h3>
+        <p>Competitive rates and flexible terms on mortgages and home equity lines of credit.</p>
+        <a href="#" class="service-link">Learn more →</a>
+      </div>
+      <div class="service-card">
+        <div class="service-icon" style="background:#F3E5F5;">📊</div>
+        <h3>Investments</h3>
+        <p>Diversify your portfolio with managed investment accounts, IRAs, and commission-free trading.</p>
+        <a href="#" class="service-link">Learn more →</a>
+      </div>
+      <div class="service-card">
+        <div class="service-icon" style="background:#FCE4EC;">💳</div>
+        <h3>Credit Cards</h3>
+        <p>Premium rewards cards with travel benefits, zero foreign transaction fees, and fraud protection.</p>
+        <a href="#" class="service-link">Learn more →</a>
+      </div>
+      <div class="service-card">
+        <div class="service-icon" style="background:#E0F7FA;">🏢</div>
+        <h3>Business Banking</h3>
+        <p>Payroll, merchant services, business loans, and dedicated relationship managers for your business.</p>
+        <a href="#" class="service-link">Learn more →</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── AI Support Banner ───────────────────────────────────────────────────── -->
+<section class="ai-banner" id="contact">
+  <div class="container ai-inner">
+    <div>
+      <div class="section-label" style="color: var(--gold-light);">24/7 AI Support</div>
+      <h2 class="section-title">Meet Your Golden Bank AI Assistant</h2>
+      <p class="section-sub">
+        Our AI support agent handles everything from balance inquiries and fund
+        transfers to bill payments and branch locations — instantly, securely,
+        and around the clock.
+      </p>
+      <ul class="ai-features">
+        <li>Check account balances and transaction history</li>
+        <li>Transfer funds between accounts in seconds</li>
+        <li>Pay bills and manage billers</li>
+        <li>Find ATMs and branches near you</li>
+        <li>Escalate to a human agent when needed</li>
+        <li>Credentials are never displayed — passwords are always masked</li>
+      </ul>
+      <button class="btn btn-primary" data-open-chat>
+        💬 Chat with Golden Bank AI
+      </button>
+    </div>
+
+    <div class="chat-preview">
+      <div class="chat-preview-header">
+        <div class="chat-avatar">🏦</div>
+        <div>
+          <div class="chat-preview-name">Golden Bank AI Support</div>
+          <div class="chat-preview-status">● Online — avg. reply &lt; 3s</div>
+        </div>
+      </div>
+
+      <div class="chat-msg agent">
+        <div class="chat-bubble">
+          Hello! I'm your Golden Bank AI assistant. How can I help you today?
+        </div>
+      </div>
+      <div class="chat-msg user">
+        <div class="chat-bubble">What's my checking account balance?</div>
+      </div>
+      <div class="chat-msg agent">
+        <div class="chat-bubble">
+          To keep your account safe, I'll need to verify your identity first.
+          Please provide your username.
+        </div>
+      </div>
+      <div class="chat-msg user">
+        <div class="chat-bubble">testuser</div>
+      </div>
+      <div class="chat-msg agent">
+        <div class="chat-bubble">
+          Thank you. Please enter your password (it will not be displayed).
+        </div>
+      </div>
+      <div class="chat-msg user">
+        <div class="chat-bubble">••••••••</div>
+      </div>
+      <div class="chat-msg agent">
+        <div class="chat-typing">
+          <span></span><span></span><span></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Rates ───────────────────────────────────────────────────────────────── -->
+<section class="rates" id="rates">
+  <div class="container">
+    <div class="rates-header">
+      <div class="section-label">Current Rates</div>
+      <h2 class="section-title">Rates That Work For You</h2>
+    </div>
+    <div class="rates-grid">
+      <div class="rate-card">
+        <div class="rate-type">Savings</div>
+        <div class="rate-name">High-Yield Savings Account</div>
+        <div class="rate-value">4.<span>75</span>%</div>
+        <div class="rate-apy">Annual Percentage Yield (APY)</div>
+        <ul class="rate-features">
+          <li>No monthly maintenance fee</li>
+          <li>FDIC insured up to $250,000</li>
+          <li>$0 minimum balance</li>
+          <li>Mobile deposit included</li>
+        </ul>
+      </div>
+      <div class="rate-card featured">
+        <div class="rate-badge">Most Popular</div>
+        <div class="rate-type">Checking</div>
+        <div class="rate-name">Golden Premium Checking</div>
+        <div class="rate-value">2.<span>10</span>%</div>
+        <div class="rate-apy">Annual Percentage Yield (APY)</div>
+        <ul class="rate-features">
+          <li>1.5% cashback on purchases</li>
+          <li>Free wire transfers</li>
+          <li>ATM fees reimbursed worldwide</li>
+          <li>Overdraft protection</li>
+        </ul>
+      </div>
+      <div class="rate-card">
+        <div class="rate-type">Mortgage</div>
+        <div class="rate-name">30-Year Fixed Mortgage</div>
+        <div class="rate-value">6.<span>49</span>%</div>
+        <div class="rate-apy">Annual Percentage Rate (APR)</div>
+        <ul class="rate-features">
+          <li>No origination fee</li>
+          <li>Rate lock for 60 days</li>
+          <li>Online pre-approval in minutes</li>
+          <li>Down payment from 3%</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Security ────────────────────────────────────────────────────────────── -->
+<section class="security" id="security">
+  <div class="container security-inner">
+    <div>
+      <div class="section-label">Your Protection, Our Priority</div>
+      <h2 class="section-title">Bank-Grade Security, Always</h2>
+      <p class="section-sub">
+        We employ multiple layers of security to keep your money and data safe
+        — from the moment you log in to every transaction you make.
+      </p>
+      <div class="security-points">
+        <div class="security-point">
+          <div class="sp-icon">🔐</div>
+          <div>
+            <div class="sp-title">256-bit AES Encryption</div>
+            <div class="sp-desc">All data is encrypted in transit and at rest using military-grade standards.</div>
+          </div>
+        </div>
+        <div class="security-point">
+          <div class="sp-icon">📱</div>
+          <div>
+            <div class="sp-title">Multi-Factor Authentication</div>
+            <div class="sp-desc">Biometric, SMS, and authenticator app support for every login.</div>
+          </div>
+        </div>
+        <div class="security-point">
+          <div class="sp-icon">🛡️</div>
+          <div>
+            <div class="sp-title">Real-Time Fraud Detection</div>
+            <div class="sp-desc">AI-powered monitoring flags suspicious activity and alerts you instantly.</div>
+          </div>
+        </div>
+      </div>
+      <button class="btn btn-primary">Learn About Security</button>
+    </div>
+    <div class="security-badges">
+      <div class="sec-badge">
+        <div class="sec-badge-icon">🏛️</div>
+        <div class="sec-badge-name">FDIC Insured</div>
+        <div class="sec-badge-desc">Up to $250,000 per depositor</div>
+      </div>
+      <div class="sec-badge">
+        <div class="sec-badge-icon">🔒</div>
+        <div class="sec-badge-name">PCI-DSS</div>
+        <div class="sec-badge-desc">Level 1 certified compliance</div>
+      </div>
+      <div class="sec-badge">
+        <div class="sec-badge-icon">✅</div>
+        <div class="sec-badge-name">SOC 2 Type II</div>
+        <div class="sec-badge-desc">Independently audited annually</div>
+      </div>
+      <div class="sec-badge">
+        <div class="sec-badge-icon">🌐</div>
+        <div class="sec-badge-name">ISO 27001</div>
+        <div class="sec-badge-desc">Information security certified</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ── Footer ─────────────────────────────────────────────────────────────── -->
+<footer id="locations">
+  <div class="container">
+    <div class="footer-grid">
+      <div class="footer-brand">
+        <div class="nav-logo">
+          <div class="logo-mark">G</div>
+          <span class="logo-text" style="color:var(--white);">Golden <span>Bank</span></span>
+        </div>
+        <p>Your trusted financial partner since 1987. FDIC insured, community focused, technology driven.</p>
+        <div style="display:flex; gap:12px;">
+          <a href="#" style="color:rgba(255,255,255,.4); font-size:1.2rem;">𝕏</a>
+          <a href="#" style="color:rgba(255,255,255,.4); font-size:1.2rem;">in</a>
+          <a href="#" style="color:rgba(255,255,255,.4); font-size:1.2rem;">f</a>
+        </div>
+      </div>
+      <div>
+        <div class="footer-heading">Personal</div>
+        <ul class="footer-links">
+          <li><a href="#">Checking Accounts</a></li>
+          <li><a href="#">Savings Accounts</a></li>
+          <li><a href="#">Credit Cards</a></li>
+          <li><a href="#">Home Loans</a></li>
+          <li><a href="#">Auto Loans</a></li>
+        </ul>
+      </div>
+      <div>
+        <div class="footer-heading">Business</div>
+        <ul class="footer-links">
+          <li><a href="#">Business Checking</a></li>
+          <li><a href="#">Merchant Services</a></li>
+          <li><a href="#">Business Loans</a></li>
+          <li><a href="#">Payroll Services</a></li>
+          <li><a href="#">Treasury Management</a></li>
+        </ul>
+      </div>
+      <div>
+        <div class="footer-heading">Support</div>
+        <ul class="footer-links">
+          <li><a href="#">Help Center</a></li>
+          <li><a href="#">Find a Branch</a></li>
+          <li><a href="#">ATM Locator</a></li>
+          <li><a href="#">Security Center</a></li>
+          <li><a href="#">1-800-GOLDEN-1</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <div>© 2026 Golden Bank. All rights reserved.</div>
+      <div class="footer-legal">
+        <a href="#">Privacy Policy</a>
+        <a href="#">Terms of Service</a>
+        <a href="#">Accessibility</a>
+        <a href="#">Cookie Preferences</a>
+      </div>
+      <div class="fdic-badge">FDIC INSURED</div>
+    </div>
+  </div>
+</footer>
+
+<!-- ── Golden Bank AI Chatbot (custom UI → /chat proxy) ───────────────────── -->
+<style>
+  #gb-chat-fab {
+    position: fixed; bottom: 28px; right: 28px; z-index: 1000;
+    width: 60px; height: 60px; border-radius: 50%; border: none; cursor: pointer;
+    background: linear-gradient(135deg, #C9A84C, #9B7A2E);
+    box-shadow: 0 4px 20px rgba(201,168,76,.5);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.6rem; transition: transform .2s, box-shadow .2s;
+  }
+  #gb-chat-fab:hover { transform: scale(1.08); box-shadow: 0 6px 28px rgba(201,168,76,.65); }
+
+  #gb-chat-panel {
+    position: fixed; bottom: 100px; right: 28px; z-index: 1000;
+    width: 380px; max-height: 560px;
+    background: #fff; border-radius: 20px;
+    box-shadow: 0 12px 48px rgba(0,0,0,.22);
+    display: none; flex-direction: column; overflow: hidden;
+  }
+  #gb-chat-panel.open { display: flex; }
+
+  #gb-chat-header {
+    background: linear-gradient(135deg, #0D1B2A, #1A2E45);
+    padding: 16px 20px; display: flex; align-items: center; gap: 12px;
+  }
+  #gb-chat-header .avatar {
+    width: 38px; height: 38px; border-radius: 10px;
+    background: linear-gradient(135deg, #C9A84C, #9B7A2E);
+    display: flex; align-items: center; justify-content: center; font-size: 1.1rem;
+  }
+  #gb-chat-header .info { flex: 1; }
+  #gb-chat-header .name { font-weight: 700; color: #fff; font-size: .95rem; }
+  #gb-chat-header .status { font-size: .75rem; color: #E8C96A; }
+  #gb-chat-close {
+    background: none; border: none; cursor: pointer;
+    color: rgba(255,255,255,.6); font-size: 1.3rem; line-height: 1;
+    padding: 4px; transition: color .15s;
+  }
+  #gb-chat-close:hover { color: #fff; }
+  #gb-chat-reset {
+    background: none; border: none; cursor: pointer;
+    color: rgba(255,255,255,.5); font-size: .75rem; margin-right: 4px;
+    transition: color .15s;
+  }
+  #gb-chat-reset:hover { color: #E8C96A; }
+
+  #gb-chat-messages {
+    flex: 1; overflow-y: auto; padding: 16px;
+    display: flex; flex-direction: column; gap: 10px;
+    background: #F7F4EE;
+  }
+  .gb-msg { display: flex; flex-direction: column; }
+  .gb-msg.agent { align-items: flex-start; }
+  .gb-msg.user  { align-items: flex-end; }
+  .gb-bubble {
+    max-width: 82%; padding: 10px 14px; border-radius: 16px;
+    font-size: .88rem; line-height: 1.55; white-space: pre-wrap;
+  }
+  .gb-msg.agent .gb-bubble {
+    background: #fff; color: #1A1A2E;
+    border: 1px solid #E2D9C5; border-bottom-left-radius: 4px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.06);
+  }
+  .gb-msg.user .gb-bubble {
+    background: linear-gradient(135deg, #C9A84C, #9B7A2E);
+    color: #0D1B2A; font-weight: 500; border-bottom-right-radius: 4px;
+  }
+  .gb-typing { display: flex; gap: 4px; align-items: center; padding: 10px 14px; }
+  .gb-typing span {
+    width: 7px; height: 7px; border-radius: 50%; background: #C9A84C;
+    animation: gbdot 1.2s infinite;
+  }
+  .gb-typing span:nth-child(2) { animation-delay: .2s; }
+  .gb-typing span:nth-child(3) { animation-delay: .4s; }
+  @keyframes gbdot {
+    0%,80%,100% { opacity:.3; transform:scale(.8); }
+    40% { opacity:1; transform:scale(1); }
+  }
+
+  #gb-chat-input-row {
+    display: flex; gap: 8px; padding: 12px 16px;
+    border-top: 1px solid #E2D9C5; background: #fff;
+  }
+  #gb-chat-input {
+    flex: 1; border: 1px solid #E2D9C5; border-radius: 24px;
+    padding: 10px 16px; font-size: .9rem; outline: none;
+    font-family: inherit; resize: none; max-height: 100px;
+    transition: border-color .15s;
+  }
+  #gb-chat-input:focus { border-color: #C9A84C; }
+  #gb-chat-send {
+    width: 40px; height: 40px; border-radius: 50%; border: none; cursor: pointer;
+    background: linear-gradient(135deg, #C9A84C, #9B7A2E);
+    color: #0D1B2A; font-size: 1rem; display: flex;
+    align-items: center; justify-content: center;
+    transition: transform .15s; flex-shrink: 0; align-self: flex-end;
+  }
+  #gb-chat-send:hover { transform: scale(1.1); }
+  #gb-chat-send:disabled { opacity: .5; cursor: default; transform: none; }
+</style>
+
+<!-- Floating action button -->
+<button id="gb-chat-fab" title="Chat with Golden Bank AI">💬</button>
+
+<!-- Chat panel -->
+<div id="gb-chat-panel">
+  <div id="gb-chat-header">
+    <div class="avatar">🏦</div>
+    <div class="info">
+      <div class="name">Golden Bank AI Support</div>
+      <div class="status" id="gb-status">● Online</div>
+    </div>
+    <button id="gb-chat-reset" title="New conversation">↺ New</button>
+    <button id="gb-chat-close" title="Close">✕</button>
+  </div>
+  <div id="gb-chat-messages"></div>
+  <div id="gb-chat-input-row">
+    <textarea id="gb-chat-input" rows="1" placeholder="Type a message…"></textarea>
+    <button id="gb-chat-send">➤</button>
+  </div>
+</div>
+
+<script>
+  // ── State ──────────────────────────────────────────────────────────────────
+  let _sessionId = _newSessionId();
+  let _busy = false;
+
+  function _newSessionId() {
+    return "gb-" + Math.random().toString(36).slice(2, 12);
+  }
+
+  // ── DOM refs ───────────────────────────────────────────────────────────────
+  const panel    = document.getElementById("gb-chat-panel");
+  const fab      = document.getElementById("gb-chat-fab");
+  const messages = document.getElementById("gb-chat-messages");
+  const input    = document.getElementById("gb-chat-input");
+  const sendBtn  = document.getElementById("gb-chat-send");
+  const statusEl = document.getElementById("gb-status");
+
+  // ── Open / close ───────────────────────────────────────────────────────────
+  function openChat() {
+    panel.classList.add("open");
+    if (!messages.children.length) _greet();
+    input.focus();
+  }
+  function closeChat() { panel.classList.remove("open"); }
+
+  fab.addEventListener("click", openChat);
+  document.getElementById("gb-chat-close").addEventListener("click", closeChat);
+  document.getElementById("gb-chat-reset").addEventListener("click", () => {
+    _sessionId = _newSessionId();
+    messages.innerHTML = "";
+    _greet();
+  });
+
+  // Wire page-level [data-open-chat] buttons (nav + AI section)
+  document.addEventListener("click", (e) => {
+    if (e.target.closest("[data-open-chat]")) openChat();
+  });
+
+  // ── Greeting ───────────────────────────────────────────────────────────────
+  async function _greet() {
+    const reply = await _send("hi");
+    _addMsg("agent", reply);
+  }
+
+  // ── Message rendering ──────────────────────────────────────────────────────
+  function _addMsg(role, text) {
+    const div = document.createElement("div");
+    div.className = `gb-msg ${role}`;
+    const bubble = document.createElement("div");
+    bubble.className = "gb-bubble";
+    bubble.textContent = text;
+    div.appendChild(bubble);
+    messages.appendChild(div);
+    messages.scrollTop = messages.scrollHeight;
+    return div;
+  }
+
+  function _showTyping() {
+    const div = document.createElement("div");
+    div.className = "gb-msg agent";
+    div.id = "gb-typing";
+    div.innerHTML = '<div class="gb-bubble gb-typing"><span></span><span></span><span></span></div>';
+    messages.appendChild(div);
+    messages.scrollTop = messages.scrollHeight;
+  }
+
+  function _removeTyping() {
+    document.getElementById("gb-typing")?.remove();
+  }
+
+  // ── API call ───────────────────────────────────────────────────────────────
+  async function _send(message) {
+    const resp = await fetch("/chat", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: _sessionId, message }),
+    });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || "Server error");
+    return data.reply;
+  }
+
+  // ── Submit ─────────────────────────────────────────────────────────────────
+  async function _submit() {
+    const text = input.value.trim();
+    if (!text || _busy) return;
+    _busy = true;
+    sendBtn.disabled = true;
+    input.value = "";
+    input.style.height = "";
+
+    _addMsg("user", text);
+    _showTyping();
+    statusEl.textContent = "● Thinking…";
+
+    try {
+      const reply = await _send(text);
+      _removeTyping();
+      _addMsg("agent", reply);
+      statusEl.textContent = "● Online";
+    } catch (err) {
+      _removeTyping();
+      _addMsg("agent", "Sorry, something went wrong. Please try again.");
+      statusEl.textContent = "● Online";
+      console.error(err);
+    } finally {
+      _busy = false;
+      sendBtn.disabled = false;
+      input.focus();
+    }
+  }
+
+  sendBtn.addEventListener("click", _submit);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); _submit(); }
+  });
+
+  // Auto-resize textarea
+  input.addEventListener("input", () => {
+    input.style.height = "auto";
+    input.style.height = Math.min(input.scrollHeight, 100) + "px";
+  });
+</script>
+
+</body>
+</html>

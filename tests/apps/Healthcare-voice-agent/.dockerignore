@@ -1,0 +1,10 @@
+node_modules
+dist
+backend/node_modules
+.git
+.env
+backend/.env
+*.log
+docker-compose.yml
+host_local.sh
+init-db.sh

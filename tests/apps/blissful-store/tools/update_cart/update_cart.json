@@ -1,0 +1,10 @@
+{
+  "name": "a9373927-7f25-4b2c-b52b-c24ae3f6f402",
+  "pythonFunction": {
+    "name": "update_cart",
+    "pythonCode": "tools/update_cart/python_function/python_code.py",
+    "description": "Update the user\u0027s cart based on their selections."
+  },
+  "executionType": "SYNCHRONOUS",
+  "displayName": "update_cart"
+}

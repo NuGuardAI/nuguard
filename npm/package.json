@@ -1,0 +1,32 @@
+{
+  "name": "nuguard",
+  "version": "0.4.8",
+  "description": "AI Application Security — SBOM generation, static analysis, behavioral validation, and adversarial red-team testing for AI agents and LLM-powered applications.",
+  "keywords": [
+    "mcp",
+    "ai-security",
+    "sbom",
+    "red-team",
+    "llm",
+    "ai-agents"
+  ],
+  "homepage": "https://github.com/NuGuardAI/nuguard",
+  "bugs": {
+    "url": "https://github.com/NuGuardAI/nuguard/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/NuGuardAI/nuguard.git"
+  },
+  "license": "Apache-2.0",
+  "author": "NuGuard <info@nuguard.ai>",
+  "bin": {
+    "nuguard-mcp": "bin/nuguard-mcp.js"
+  },
+  "files": [
+    "bin/"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
+}

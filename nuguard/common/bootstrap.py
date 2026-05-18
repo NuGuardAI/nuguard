@@ -53,7 +53,7 @@ class AuthBootstrapper:
         self._canary = canary_config
         self._run_id = run_id or str(uuid.uuid4())
         self._timeout = timeout if timeout is not None else BOOTSTRAP_TIMEOUT
-        # Initialised during run() — exposed so validate/redteam can share it
+        # Initialised during run() — exposed so behavior/redteam can share it
         self._session: AuthSession | None = None
 
     @property
@@ -64,7 +64,7 @@ class AuthBootstrapper:
     def session(self) -> AuthSession:
         """The resolved AuthSession for the default credential.
 
-        Available after run() completes.  Both validate and redteam runners
+        Available after run() completes.  Both behavior and redteam runners
         call bootstrapper.run() before sending any requests, then use
         bootstrapper.session.headers() on every outbound call.
 
@@ -186,6 +186,32 @@ class AuthBootstrapper:
 
             if resp.status_code in (401, 403):
                 detail = resp.text[:200] if resp.text else ""
+                content_type = resp.headers.get("content-type", "")
+                body_prefix = (resp.text or "").lstrip()[:15].lower()
+                body_is_html = (
+                    "text/html" in content_type
+                    or body_prefix.startswith("<!doctype")
+                    or body_prefix.startswith("<html")
+                )
+                # A 403 with an HTML body is a hosting-platform error page (e.g. Azure
+                # "Web App - Unavailable", Cloudflare gateway error) — not a real auth
+                # rejection.  Route it to target_unavailable so callers get an accurate
+                # "service is down" message rather than a false "bad credentials" error.
+                if resp.status_code == 403 and body_is_html:
+                    logger.warning(
+                        "bootstrap target_unavailable (403 HTML page): identity=%s — "
+                        "server returned an HTML error page, service may be down",
+                        identity,
+                    )
+                    return CredentialCheckResult(
+                        identity=identity,
+                        auth_type=auth_type,
+                        endpoint=self.full_url,
+                        status="target_unavailable",
+                        http_status_code=resp.status_code,
+                        response_time_ms=elapsed_ms,
+                        error_detail=detail,
+                    )
                 logger.warning(
                     "bootstrap auth_failed: identity=%s status=%d",
                     identity,
