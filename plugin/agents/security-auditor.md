@@ -16,10 +16,32 @@ produce a developer-ready findings report, and recommend specific code-level fix
 Run these steps autonomously. Do not ask for confirmation between steps unless you hit
 an unrecoverable error.
 
+### 0. Load project config
+
+Read `.claude/nuguard.local.md` if it exists and extract the following fields from the
+YAML frontmatter. Use these values as defaults for every tool call that follows:
+
+| Field | Maps to |
+|---|---|
+| `llm_api_key` | set `LITELLM_API_KEY` env context; pass `llm=true` when present |
+| `llm_model` | `nuguard.yaml` `llm.model` |
+| `llm_api_base` | `nuguard.yaml` `llm.api_base` |
+| `llm_api_version` | `nuguard.yaml` `llm.api_version` |
+| `target_url` | `target` parameter on behavior / redteam calls |
+| `chat_endpoint` | `nuguard.yaml` `behavior.endpoint` / `redteam.endpoint` |
+| `auth_type` | informs which auth fields to use below |
+| `auth_token` | bearer token for target app |
+| `auth_api_key_header` + `auth_api_key_value` | API key header for target app |
+| `auth_username` + `auth_password` | basic auth for target app |
+
+If `.claude/nuguard.local.md` does not exist, prompt the user to run `/nuguard-config`
+first, then continue with any values the user provides inline.
+
 ### 1. Setup
 
 Check whether `nuguard.yaml` exists in the project directory. If not, call `nuguard_init`
-with `project_dir="."` to create it. Note any auto-detected files.
+with `project_dir="."`, `target_url` from config (if present), to create it. Note any
+auto-detected files.
 
 ### 2. Generate AI-SBOM
 

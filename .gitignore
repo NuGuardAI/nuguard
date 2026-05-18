@@ -28,6 +28,9 @@ tests/redteam/.env
 canary.json
 canary.local.json
 
+# Plugin user config — contains credentials, never commit
+.claude/*.local.md
+
 # Test run artifacts (E2E outputs, scan reports)
 tests/output/
 /reports/
