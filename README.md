@@ -43,7 +43,13 @@ If these tools are not installed, the corresponding checks can be skipped or may
 
 ## Installation
 
-For production use, install the package from PyPI with: 
+**MCP server (Claude / Cursor / Windsurf):** [smithery.ai/servers/NuGuardAI/nuguard](https://smithery.ai/servers/NuGuardAI/nuguard)
+
+```bash
+smithery mcp add NuGuardAI/nuguard
+```
+
+**Python CLI:**
 
 ```bash
 pip install nuguard
