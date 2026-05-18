@@ -1,5 +1,5 @@
 {
-  "name": "nuguardai-nuguard",
+  "name": "nuguard",
   "owner": {
     "name": "NuGuard",
     "url": "https://github.com/NuGuardAI"
@@ -11,7 +11,7 @@
   },
   "plugins": [
     {
-      "name": "nuguardai-nuguard",
+      "name": "nuguard",
       "source": "./",
       "description": "AI application security — generate an AI Bill of Materials (AI-SBOM), run static analysis, behavioral validation, and adversarial red-team testing for AI agents and LLM-powered applications.",
       "version": "0.4.8",

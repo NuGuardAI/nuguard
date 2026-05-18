@@ -1,5 +1,5 @@
 {
-  "id": "nuguardai-nuguard",
+  "id": "nuguard",
   "version": "0.4.8",
   "format": "claude-plugin",
   "source": ".claude-plugin/plugin.json",

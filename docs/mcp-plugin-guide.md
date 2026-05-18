@@ -58,7 +58,7 @@ Add NuGuard as a marketplace source, then install:
 
 ```bash
 claude plugin marketplace add NuGuardAI/nuguard
-claude plugin install nuguardai-nuguard
+claude plugin install nuguard
 ```
 
 This wires the MCP server automatically via the bundled `.mcp.json` — no manual config editing required.
