@@ -2085,6 +2085,13 @@ def _dedup_by_location(
             # gets its own node in the SBOM.
             if winner[0] == ComponentType.FRAMEWORK and winner[1] != loser[1]:
                 continue
+            # FRAMEWORK nodes with different canonical names are distinct
+            # frameworks even when detected on the same source line (e.g. a
+            # comment mentioning both "autogen" and "crewai" triggers both regex
+            # adapters at the same line).  Keep them separate so each framework
+            # gets its own node in the SBOM.
+            if winner[0] == ComponentType.FRAMEWORK and winner[1] != loser[1]:
+                continue
             # Absorb evidence so the winner node reflects all source locations
             node_map[winner].evidence.extend(node_map[loser].evidence)
             keys_to_remove.add(loser)

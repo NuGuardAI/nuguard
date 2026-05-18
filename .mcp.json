@@ -1,3 +1,9 @@
 {
-  "mcpServers": {}
+  "mcpServers": {
+    "nuguard": {
+      "type": "stdio",
+      "command": "uvx",
+      "args": ["--from", "nuguard[mcp]", "nuguard-mcp"]
+    }
+  }
 }
