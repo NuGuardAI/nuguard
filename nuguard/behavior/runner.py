@@ -62,6 +62,25 @@ if TYPE_CHECKING:
 _log = logging.getLogger(__name__)
 
 
+_DESTRUCTIVE_KEYWORDS = frozenset({
+    "cancel", "delet", "clos", "remov", "purge", "refund",
+    "terminat", "deactiv", "wipe", "revok", "unsubscrib", "deregist",
+})
+
+
+def _is_destructive_scenario(scenario: object) -> bool:
+    """Return True when the scenario is likely to destroy or mutate user data.
+
+    Destructive scenarios (cancellations, deletions, account closure, etc.) are
+    deferred to the end of the run so earlier scenarios still have live data.
+    """
+    text = " ".join(filter(None, [
+        getattr(scenario, "name", ""),
+        getattr(scenario, "goal", "") or "",
+    ])).lower()
+    return any(k in text for k in _DESTRUCTIVE_KEYWORDS)
+
+
 def _verdict_colour(verdict: str) -> str:
     return {"PASS": "green", "PARTIAL": "yellow", "FAIL": "red"}.get(verdict, "white")
 
@@ -1306,6 +1325,10 @@ class BehaviorRunner:
                 finally:
                     if _isolate:
                         await _scenario_client.aclose()
+
+        # Defer destructive scenarios (cancel, delete, close, etc.) to the end
+        # so earlier scenarios still have live data to work with.
+        scenarios = sorted(scenarios, key=_is_destructive_scenario)
 
         scenario_by_id = {getattr(s, "scenario_id", ""): s for s in scenarios}
         raw_results = await asyncio.gather(*(_run_one(i, s) for i, s in enumerate(scenarios)))

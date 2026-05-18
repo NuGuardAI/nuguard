@@ -249,6 +249,22 @@ def _finding_id(title: str) -> str:
     return slug[:80]
 
 
+_DESTRUCTIVE_KEYWORDS = frozenset({
+    "cancel", "delet", "clos", "remov", "purge", "refund",
+    "terminat", "deactiv", "wipe", "revok", "unsubscrib", "deregist",
+})
+
+
+def _is_destructive_scenario(scenario: AttackScenario) -> bool:
+    """Return True when the scenario is likely to destroy or mutate user data.
+
+    Destructive scenarios are sorted to the end of the run so non-destructive
+    scenarios execute against intact account data first.
+    """
+    text = (scenario.title + " " + scenario.description).lower()
+    return any(k in text for k in _DESTRUCTIVE_KEYWORDS)
+
+
 def _dedup_scenarios_by_opener(scenarios: list[AttackScenario]) -> list[AttackScenario]:
     """Discard scenarios with duplicate opener fingerprints before any HTTP calls are made.
 
@@ -1177,6 +1193,11 @@ class RedteamOrchestrator:
         active = [s for s in scenarios if s.chain is not None or s.guided_conversation is not None]
         if not active:
             return [], [], []
+
+        # Defer destructive scenarios (cancel, delete, close, etc.) to the end so
+        # non-destructive scenarios run against intact account data first.
+        # Stable sort preserves the impact_score ordering within each group.
+        active = sorted(active, key=_is_destructive_scenario)
 
         _log.info(
             "Running %d scenarios (concurrency=%d)", len(active), self._concurrency
