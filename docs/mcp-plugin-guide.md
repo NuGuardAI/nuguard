@@ -21,6 +21,10 @@ The NuGuard MCP plugin exposes NuGuard's AI security capabilities — SBOM gener
 
 ## Installation
 
+Choose the installation method that best fits your environment:
+
+### Python (pip / uvx)
+
 The MCP server is bundled in the `nuguard` package as the optional `mcp` extra.
 
 ```bash
@@ -37,6 +41,25 @@ Or run directly without installing (using `uvx`):
 
 ```bash
 uvx --from "nuguard[mcp]" nuguard-mcp
+```
+
+### Node.js (npm / npx)
+
+A thin npm wrapper is available for environments where Node.js is preferred or where Smithery requires an npm-backed entry point. It delegates to `uvx` internally, so `uv` must be installed ([astral.sh/uv](https://docs.astral.sh/uv/getting-started/installation/)).
+
+```bash
+# Run without installing (recommended for one-off use)
+npx nuguard nuguard-mcp
+
+# Or install globally
+npm install -g nuguard
+nuguard-mcp
+```
+
+Install `uv` if it is not already present:
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
 ---
@@ -117,6 +140,24 @@ If you prefer not to install nuguard globally:
 }
 ```
 
+### Using npx (Node.js)
+
+If Node.js and `uv` are available but Python is not on your PATH:
+
+```json
+{
+  "mcpServers": {
+    "nuguard": {
+      "command": "npx",
+      "args": ["nuguard", "nuguard-mcp"],
+      "env": {
+        "LITELLM_API_KEY": "your-api-key-here"
+      }
+    }
+  }
+}
+```
+
 ---
 
 ## Claude Code Plugin
@@ -165,7 +206,21 @@ The agent calls `nuguard_init` → `nuguard_sbom_generate` → `nuguard_analyze`
 
 ## Smithery (Claude Marketplace)
 
-NuGuard is published on [Smithery](https://smithery.ai/), the Claude marketplace for MCP servers. Install it with one click, then configure:
+NuGuard is published on [Smithery](https://smithery.ai/server/NuGuardAI/nuguard) as an npm-backed MCP server. The Smithery listing launches `nuguard-mcp` via the `nuguard` npm package, which delegates to `uvx` internally — no manual Python setup required on the host.
+
+### Install via Smithery CLI
+
+```bash
+# Add to Claude Code
+smithery mcp add NuGuardAI/nuguard --client claude-code
+
+# Add to Claude Desktop
+smithery mcp add NuGuardAI/nuguard --client claude
+```
+
+### Install via Smithery UI
+
+Open the [NuGuard listing](https://smithery.ai/server/NuGuardAI/nuguard) and click **Connect**. Configure the optional settings:
 
 | Setting | Description |
 |---|---|
