@@ -706,8 +706,12 @@ class RedteamOrchestrator:
             from nuguard.common.console import _console as _rtconsole  # noqa: PLC0415
             _rtconsole.rule("[bold cyan]Pre-scan Discovery[/bold cyan]", style="dim cyan")
             try:
-                from nuguard.common.target_client_builder import build_target_app_client as _btac  # noqa: PLC0415
-                from nuguard.redteam.target.discovery import run_discovery_conversation  # noqa: PLC0415
+                from nuguard.common.target_client_builder import (
+                    build_target_app_client as _btac,  # noqa: PLC0415
+                )
+                from nuguard.redteam.target.discovery import (
+                    run_discovery_conversation,  # noqa: PLC0415
+                )
                 from nuguard.redteam.target.session import AttackSession as _AS  # noqa: PLC0415
                 _disc_client = _btac(
                     target_url=self._target_url,

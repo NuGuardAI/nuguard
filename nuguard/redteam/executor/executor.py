@@ -19,9 +19,6 @@ if TYPE_CHECKING:
     from nuguard.redteam.target.log_reader import BufferLogReader, FileLogReader
     from nuguard.sbom.models import AiSbomDocument
 
-from .chain_assembler import ChainAssembler
-from .golden_data_filter import HitClass, classify_response
-from .id_extractor import extract_customer_name, extract_entity_map, extract_ids, generate_similar_ids
 from nuguard.models.exploit_chain import HTTP_2XX_SENTINEL, ExploitChain, ExploitStep, GoalType
 from nuguard.models.policy import CognitivePolicy
 from nuguard.redteam.llm_engine.adaptive_mutation import AdaptiveMutationStrategy
@@ -32,6 +29,14 @@ from nuguard.redteam.target.action_logger import ActionLogger
 from nuguard.redteam.target.canary import CanaryScanner
 from nuguard.redteam.target.client import TargetAppClient
 from nuguard.redteam.target.session import AttackSession
+
+from .chain_assembler import ChainAssembler
+from .golden_data_filter import HitClass, classify_response
+from .id_extractor import (
+    extract_customer_name,
+    extract_ids,
+    generate_similar_ids,
+)
 
 _log = logging.getLogger(__name__)
 

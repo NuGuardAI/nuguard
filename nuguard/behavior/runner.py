@@ -1130,7 +1130,9 @@ class BehaviorRunner:
         Call this before :meth:`build_scenarios` so the discovered profile can be
         injected into scenario prompts at generation time.
         """
-        from nuguard.redteam.target.discovery import DiscoveredProfile, run_discovery_conversation  # noqa: PLC0415
+        from nuguard.redteam.target.discovery import (  # noqa: PLC0415
+            run_discovery_conversation,
+        )
         from nuguard.redteam.target.session import AttackSession as _AS  # noqa: PLC0415
 
         _console.rule("[bold cyan]Pre-scan Discovery[/bold cyan]", style="dim cyan")
@@ -1238,7 +1240,9 @@ class BehaviorRunner:
         else:
             _console.rule("[bold cyan]Pre-scan Discovery[/bold cyan]", style="dim cyan")
             try:
-                from nuguard.redteam.target.discovery import run_discovery_conversation  # noqa: PLC0415
+                from nuguard.redteam.target.discovery import (
+                    run_discovery_conversation,  # noqa: PLC0415
+                )
                 from nuguard.redteam.target.session import AttackSession as _AS  # noqa: PLC0415
                 _disc_session = _AS(
                     session_id="behavior-discovery",
@@ -1535,7 +1539,9 @@ def _generate_data_reactive_turns(
     # Pre-scan profile IDs take precedence over in-response extraction.
     # Falls back to the original hardcoded wording when no neighbour can be derived
     # (e.g., pure-alpha PNR codes, UUIDs, or when nothing was disclosed).
-    from nuguard.redteam.executor.id_extractor import extract_ids, generate_similar_ids  # noqa: PLC0415
+    from nuguard.redteam.executor.id_extractor import (  # noqa: PLC0415
+        generate_similar_ids,
+    )
 
     _idor_neighbor: str = ""
     # Prefer pre-scan discovered IDs (real account data) over in-response extraction.
