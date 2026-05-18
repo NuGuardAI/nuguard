@@ -591,6 +591,44 @@ class BehaviorConfig(BaseModel):
         return v or {}
 
 
+class ValidateBoundaryAssertion(BaseModel):
+    """Single boundary assertion declared in nuguard.yaml validate.boundary_assertions."""
+
+    name: str
+    message: str
+    expect: Literal["refused"] = "refused"
+    forbid_pattern: str = ""
+
+
+class ValidateConfig(BaseModel):
+    """Configuration for nuguard validate mode."""
+
+    target: str = ""
+    target_endpoint: str = ""
+    auth: AppAuthConfig = Field(default_factory=AppAuthConfig)
+    canary: str = ""
+    workflows: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Workflows to execute: capability_probe, happy_path, policy_compliance, "
+            "agent_routing, boundary_assertion. Empty = run all."
+        ),
+    )
+    boundary_assertions: list[ValidateBoundaryAssertion] = Field(default_factory=list)
+    request_timeout: float = 60.0
+    verbose: bool = False
+    chat_payload_key: str = "message"
+    chat_payload_list: bool = False
+    chat_payload_format: Literal["json", "form"] = "json"
+    chat_response_key: str = ""
+
+    @field_validator("auth", mode="before")
+    @classmethod
+    def _coerce_none_auth(cls, v: Any) -> Any:
+        """Convert None (auth: with all sub-keys commented out) to an empty dict."""
+        return v if v is not None else {}
+
+
 class RedteamFindingTriggers(BaseModel):
     """Configurable controls for when redteam findings are emitted."""
 
@@ -1033,6 +1071,12 @@ class NuGuardConfig(BaseSettings):
         description="Configuration for nuguard behavior mode.",
     )
 
+    # ------------------------------------------------------- Validate mode
+    validate_config: ValidateConfig = Field(
+        default_factory=ValidateConfig,
+        description="Configuration for nuguard validate mode.",
+    )
+
     # ----------------------------------------- Structured redteam auth
     redteam_auth_type: str = Field(
         default="none",
@@ -1078,6 +1122,21 @@ class NuGuardConfig(BaseSettings):
             )
         if self.redteam_auth_header:
             return AuthConfig.from_header_string(self.redteam_auth_header)
+        return AuthConfig(type="none")
+
+    def resolved_validate_auth_config(self) -> "AuthConfig":
+        """Build an AuthConfig from the resolved *validate* auth settings."""
+        from nuguard.common.auth import AuthConfig  # noqa: PLC0415
+
+        vc_auth = self.validate_config.auth
+        if vc_auth.type and vc_auth.type != "none":
+            return AuthConfig(
+                type=vc_auth.type,  # type: ignore[arg-type]
+                header=vc_auth.header or "",
+                username=vc_auth.username,
+                password=vc_auth.password,
+                login_flow=vc_auth.login_flow,
+            )
         return AuthConfig(type="none")
 
     def resolved_redteam_finding_triggers(self) -> RedteamFindingTriggers:

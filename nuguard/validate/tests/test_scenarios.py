@@ -1,8 +1,6 @@
 """Tests for nuguard.validate.scenarios — scenario builder."""
 from __future__ import annotations
 
-import pytest
-
 from nuguard.config import ValidateBoundaryAssertion, ValidateConfig
 from nuguard.models.validate import ValidateScenarioType
 from nuguard.validate.scenarios import build_scenarios

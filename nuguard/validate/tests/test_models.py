@@ -1,16 +1,12 @@
 """Tests for nuguard.models.validate."""
 from __future__ import annotations
 
-import pytest
-
 from nuguard.models.validate import (
     CapabilityEntry,
     CapabilityMap,
     TurnPolicyRecord,
     ValidateFindingType,
     ValidateRunResult,
-    ValidateScenario,
-    ValidateScenarioType,
 )
 
 

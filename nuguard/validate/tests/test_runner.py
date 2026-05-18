@@ -1,13 +1,13 @@
 """Tests for ValidateRunner — mocked HTTP, no live target."""
 from __future__ import annotations
 
+import httpx
 import pytest
 import respx
-import httpx
 
 from nuguard.common.auth import AuthConfig
 from nuguard.config import ValidateBoundaryAssertion, ValidateConfig
-from nuguard.models.validate import ValidateFindingType, ValidateScenarioType
+from nuguard.models.validate import ValidateFindingType
 
 
 def _make_config(**kwargs) -> ValidateConfig:
