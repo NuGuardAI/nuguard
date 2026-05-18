@@ -2,10 +2,8 @@
 name: AI Application Security Review
 description: >
   Activate when the user asks to audit, review, scan, or assess the security of an AI
-  application, agent, chatbot, or LLM-powered system. Also activate when the user mentions
-  prompt injection, data exfiltration, guardrail bypass, red-teaming, AI SBOM, cognitive
-  policy, OWASP LLM Top 10, NIST AI RMF, or EU AI Act compliance.
-version: 1.0.0
+  application, agent, chatbot, or LLM-powered system. Also activate when the user mentions prompt injection, data exfiltration, guardrail bypass, red-teaming, AI SBOM, cognitive policy, OWASP LLM Top 10, NIST AI RMF, or EU AI Act compliance.
+version: 0.4.8
 ---
 
 You are conducting an AI application security review using NuGuard's pipeline.
@@ -41,9 +39,26 @@ Use `nuguard_analyze` on the generated SBOM. Focus your interpretation on:
 
 For each finding, map it to the OWASP LLM Top 10 item it corresponds to (LLM01–LLM10).
 
-### Step 3 — Policy Assessment (if policy file present)
+### Step 3 — Config and Policy Initialization
 
-If a `cognitive-policy.md` exists, use `nuguard_policy_check` with `--sbom` and the
+Before running the policy check, ensure `nuguard.yaml` and `cognitive-policy.md` exist
+in the project directory. Use `nuguard_init` to create them if they are missing:
+
+```
+nuguard_init(project_dir="<project_dir>")
+```
+
+`nuguard_init` creates:
+- `nuguard.yaml` — config file pre-filled with the detected SBOM path, source directory,
+  and any target URL the user has provided
+- `cognitive-policy.md` — starter policy document with sensible defaults the user can
+  refine to match their application's intended behavior
+- `canary.example.json` — template for seeding canary values before red-team runs
+
+If `nuguard.yaml` or `cognitive-policy.md` already exist, skip this step (pass
+`force=false`, the default).
+
+Once both files exist, run `nuguard_policy_check` with the policy and SBOM paths and the
 relevant compliance `--framework`. Explain gaps in plain language — what the policy
 declares vs. what the SBOM shows is actually enforced.
 
