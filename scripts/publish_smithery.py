@@ -282,6 +282,47 @@ def _smithery_payload(smithery_config: dict, version: str) -> dict:
     }
 
 
+def _smithery_server_exists(qualified_name: str, headers: dict) -> bool:
+    """Return True when the server listing already exists in the Smithery registry."""
+    try:
+        resp = _requests.get(
+            f"{SMITHERY_API_BASE}/servers/{qualified_name}",
+            headers=headers,
+            timeout=15,
+        )
+        return resp.status_code == 200
+    except Exception:
+        return False
+
+
+def _smithery_create_server(
+    qualified_name: str,
+    smithery_config: dict,
+    version: str,
+    headers: dict,
+) -> int:
+    """Create the server listing.  Returns 0 on success, 1 on failure."""
+    payload = {
+        "qualifiedName": qualified_name,
+        **_smithery_payload(smithery_config, version),
+    }
+    resp = _requests.post(
+        f"{SMITHERY_API_BASE}/servers",
+        headers=headers,
+        json=payload,
+        timeout=30,
+    )
+    if resp.status_code in (200, 201, 202):
+        print(f"  Smithery: server listing created — {qualified_name}")
+        return 0
+    print(f"  ERROR: could not create server listing ({resp.status_code})")
+    try:
+        print(f"  {json.dumps(resp.json(), indent=2)[:400]}")
+    except Exception:
+        print(f"  {resp.text[:300]}")
+    return 1
+
+
 def publish_to_smithery(version: str, dry_run: bool) -> int:
     api_key = os.environ.get("SMITHERY_API_KEY", "")
     if not api_key:
@@ -302,7 +343,7 @@ def publish_to_smithery(version: str, dry_run: bool) -> int:
         return 1
 
     payload = _smithery_payload(smithery_config, version)
-    url = f"{SMITHERY_API_BASE}/servers/{SMITHERY_SERVER_QUALIFIED}/releases"
+    release_url = f"{SMITHERY_API_BASE}/servers/{SMITHERY_SERVER_QUALIFIED}/releases"
     headers = {
         "Authorization": f"Bearer {api_key}",
         "Content-Type": "application/json",
@@ -311,17 +352,24 @@ def publish_to_smithery(version: str, dry_run: bool) -> int:
     print(f"Updating Smithery listing {SMITHERY_SERVER_QUALIFIED} v{version} …")
 
     if dry_run:
-        print(f"  [dry-run] POST {url}")
+        print(f"  [dry-run] POST {release_url}")
         print(f"  [dry-run] payload: {json.dumps(payload, indent=4)[:400]} …")
         return 0
 
+    # Ensure the server listing exists before posting a release.
+    if not _smithery_server_exists(SMITHERY_SERVER_QUALIFIED, headers):
+        print(f"  Server listing not found — creating {SMITHERY_SERVER_QUALIFIED} …")
+        rc = _smithery_create_server(SMITHERY_SERVER_QUALIFIED, smithery_config, version, headers)
+        if rc != 0:
+            return rc
+
     try:
-        resp = _requests.post(url, headers=headers, json=payload, timeout=30)
+        resp = _requests.post(release_url, headers=headers, json=payload, timeout=30)
     except _requests.RequestException as exc:
         print(f"  ERROR: HTTP request failed: {exc}")
         return 1
 
-    if resp.status_code in (200, 202):
+    if resp.status_code in (200, 201, 202):
         data = resp.json() if resp.content else {}
         deployment_id = data.get("deploymentId", data.get("id", "—"))
         status = data.get("status", "ok")
