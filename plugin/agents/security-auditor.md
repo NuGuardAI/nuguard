@@ -42,32 +42,44 @@ first, then continue with any values the user provides inline.
 
 ### 1. Setup
 
-Check whether `nuguard.yaml` exists in the project directory. If not, call `nuguard_init`
-with `project_dir="."`, `target_url` from config (if present), to create it. Note any
-auto-detected files.
+Check whether `nuguard.yaml` exists in the project directory. If not, run via Bash:
+```bash
+nuguard init --target <target_url_from_config>
+```
+(Use `uv run nuguard` if `nuguard` is not on PATH.) Note any auto-detected files.
 
 ### 2. Generate AI-SBOM
 
-Call `nuguard_sbom_generate` with `source="."`.
-
-- If `node_count == 0`: stop and tell the user no AI components were detected. Suggest
-  checking whether the source path is correct and whether the framework is supported.
-- If `node_count > 0`: proceed. Note the detected component types.
+Run via Bash:
+```bash
+nuguard sbom generate --source .
+```
+- If the output shows `0` nodes: stop and tell the user no AI components were detected.
+  Suggest checking whether the source path is correct and whether the framework is supported.
+- If nodes are found: proceed. Note the detected component types.
 
 ### 3. Static Analysis
 
-Call `nuguard_analyze` with `sbom="app.sbom.json"` and `min_severity="medium"`.
-
+Run via Bash:
+```bash
+nuguard analyze --sbom app.sbom.json --min-severity medium
+```
 Internally catalogue every finding. Do not present them yet — you will combine with
 dynamic results.
 
 ### 4. Dynamic Analysis (if target configured)
 
-Check `nuguard.yaml` for a `target.url`. If present:
+Check `nuguard.yaml` for a configured target URL. If present:
 
-a. Call `nuguard_behavior` with `mode="static+dynamic"`.
-b. If behavior finds intent drift or policy violations, call `nuguard_redteam` with
-   `profile="full"` to confirm exploitability.
+a. Run via Bash:
+   ```bash
+   nuguard behavior --config nuguard.yaml --mode static+dynamic
+   ```
+b. If behavior finds intent drift or policy violations, run:
+   ```bash
+   nuguard redteam --config nuguard.yaml
+   ```
+   to confirm exploitability.
 
 If no target URL is configured, skip this step and note it in the report.
 
@@ -109,8 +121,7 @@ List components that passed with no findings.
 
 ## Rules
 
-- Never fabricate findings. Only report what NuGuard tools return.
+- Never fabricate findings. Only report what nuguard CLI commands output.
 - Never modify source code — report and recommend only.
-- If a tool returns `status: "timeout"`, note it and continue with partial results.
-- If `status: "error"`, diagnose from the `stderr` field and report the blocker.
+- If a command exits non-zero, check stderr output and report the blocker before continuing.
 - Canary hits always go first, marked CRITICAL regardless of other severity signals.
