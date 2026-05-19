@@ -6,17 +6,133 @@ NuGuard's MCP server exposes AI security tools — SBOM generation, static analy
 
 ## Installation
 
-### Smithery (recommended)
+Choose the method that matches your environment. All methods expose the same seven tools.
 
-The easiest way to install NuGuard for Claude Code or Claude Desktop:
+---
+
+### Claude Code plugin (recommended)
+
+The plugin installs the MCP server and wires slash commands, agents, and skills in one step — no manual config editing required.
+
+**From the Claude Code UI:** open the plugin marketplace, search for **NuGuard**, and click **Install**.
+
+**From the terminal:**
+
+```bash
+claude plugin add NuGuardAI/nuguard
+```
+
+The bundled `.mcp.json` starts the server via `npx -y nuguard`, which auto-detects the best available Python runtime (see [How the launcher picks a runtime](#how-the-launcher-picks-a-runtime) below). No separate tool installation is required if you have Node.js or Python.
+
+After installation, run the configuration wizard once per project:
+
+```
+/nuguard-config
+```
+
+The wizard collects your LLM API key, model, target URL, and auth details, then writes them to `.claude/nuguard.local.md` (project-local, gitignored). Every NuGuard command and the AI security-review skill read this file automatically — you never need to repeat credentials.
+
+---
+
+### pip (fastest if you already have Python)
+
+Install the package once, then the MCP server is available everywhere with no extra tooling:
+
+```bash
+pip install "nuguard[mcp]"
+```
+
+For Claude Desktop, add to your config file:
+
+- **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+- **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "nuguard": {
+      "command": "nuguard-mcp",
+      "env": {
+        "LITELLM_API_KEY": "your-api-key-here",
+        "NUGUARD_DEFAULT_CONFIG": "/absolute/path/to/nuguard.yaml"
+      }
+    }
+  }
+}
+```
+
+For Claude Code (project-local), add a `.mcp.json` at your project root:
+
+```json
+{
+  "mcpServers": {
+    "nuguard": {
+      "type": "stdio",
+      "command": "nuguard-mcp"
+    }
+  }
+}
+```
+
+Restart Claude Desktop or reload the Claude Code window after saving. The NuGuard tools appear in the tools panel (hammer icon).
+
+> **Tip:** Using a virtual environment? Activate it first, or point directly to the venv's binary:
+> ```json
+> { "command": "/path/to/.venv/bin/nuguard-mcp" }
+> ```
+
+---
+
+### npx (no Python required)
+
+If you have Node.js (which includes `npx`) but not Python, `npx` downloads and runs the wrapper on first use with no interactive prompts:
+
+For Claude Desktop:
+
+```json
+{
+  "mcpServers": {
+    "nuguard": {
+      "command": "npx",
+      "args": ["-y", "nuguard"],
+      "env": {
+        "LITELLM_API_KEY": "your-api-key-here",
+        "NUGUARD_DEFAULT_CONFIG": "/absolute/path/to/nuguard.yaml"
+      }
+    }
+  }
+}
+```
+
+For Claude Code:
+
+```json
+{
+  "mcpServers": {
+    "nuguard": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "nuguard"]
+    }
+  }
+}
+```
+
+The npm wrapper uses the same runtime detection waterfall as the plugin (see below), so it will use pip-installed nuguard if present, or install it automatically.
+
+---
+
+### Smithery
+
+If you use Smithery to manage your MCP servers:
 
 ```bash
 smithery mcp add NuGuardAI/nuguard
 ```
 
-Or open the listing at [smithery.ai/servers/NuGuardAI/nuguard](https://smithery.ai/servers/NuGuardAI/nuguard) and click **Connect**.
+Or open [smithery.ai/servers/NuGuardAI/nuguard](https://smithery.ai/servers/NuGuardAI/nuguard) and click **Connect**.
 
-During install, Smithery asks for three optional settings:
+During install, Smithery prompts for three optional settings:
 
 | Setting | Description |
 |---|---|
@@ -28,10 +144,9 @@ Secrets are passed as environment variables to the `nuguard-mcp` process and nev
 
 ---
 
-### Manual (Claude Desktop)
+### uvx (uv users)
 
-Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or
-`%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+If you use [uv](https://docs.astral.sh/uv/), you can run the MCP server directly without a permanent install:
 
 ```json
 {
@@ -40,61 +155,25 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) o
       "command": "uvx",
       "args": ["--from", "nuguard[mcp]", "nuguard-mcp"],
       "env": {
-        "LITELLM_API_KEY": "your-api-key-here",
-        "NUGUARD_DEFAULT_CONFIG": "/absolute/path/to/nuguard.yaml"
+        "LITELLM_API_KEY": "your-api-key-here"
       }
     }
   }
 }
 ```
 
-Restart Claude Desktop after saving. The NuGuard tools appear in the tools panel (hammer icon).
-
 ---
 
-### Claude Code Plugin
+### How the launcher picks a runtime
 
-Add NuGuard as a marketplace source, then install:
+When started via `npx -y nuguard` (the plugin default), the launcher checks in order:
 
-```bash
-claude plugin marketplace add NuGuardAI/nuguard
-claude plugin install nuguard
-```
+1. `nuguard-mcp` already on `PATH` — uses it directly (zero setup, fastest)
+2. `python3` / `python` with `nuguard` importable — runs `python -m nuguard.mcp`
+3. `uvx` on `PATH` — runs `uvx --from nuguard[mcp] nuguard-mcp`
+4. Any Python available — runs `pip install nuguard[mcp]` silently, then starts the server
 
-This wires the MCP server automatically via the bundled `.mcp.json` — no manual config editing required.
-
-After installation, run the configuration wizard inside Claude Code to store your credentials for the project:
-
-```
-/nuguard-config
-```
-
-The wizard asks for your LLM API key, model, target URL, and auth details, then writes them to `.claude/nuguard.local.md` (project-local, not committed). All NuGuard commands and the security-review skill read this file automatically so you don't need to repeat credentials on every call.
-
----
-
-### Manual (Claude Code)
-
-Add a `.mcp.json` file at your project root:
-
-```json
-{
-  "mcpServers": {
-    "nuguard": {
-      "type": "stdio",
-      "command": "uvx",
-      "args": ["--from", "nuguard[mcp]", "nuguard-mcp"]
-    }
-  }
-}
-```
-
-Set environment variables in your shell or `.env`:
-
-```bash
-export LITELLM_API_KEY=your-api-key-here
-export NUGUARD_DEFAULT_CONFIG=/absolute/path/to/nuguard.yaml
-```
+Steps 1 and 2 require nothing extra if nuguard is already pip-installed. Step 3 and 4 handle fresh environments automatically.
 
 ---
 
@@ -381,9 +460,28 @@ export NUGUARD_DEFAULT_CONFIG=/home/me/projects/cs-bot/nuguard.yaml
 ## Troubleshooting
 
 **Tools don't appear in Claude Desktop**  
-Restart Claude Desktop after editing `claude_desktop_config.json`. On macOS, Claude Desktop does not inherit shell PATH — use the absolute path to `uvx` if needed:
+Restart Claude Desktop after editing `claude_desktop_config.json`. On macOS and Windows, Claude Desktop does not inherit your shell PATH, so relative command names may not resolve. Use the absolute path to whichever binary you chose:
+
 ```json
-{ "command": "/usr/local/bin/uvx" }
+{ "command": "/usr/local/bin/nuguard-mcp" }
+```
+```json
+{ "command": "/usr/local/bin/npx", "args": ["-y", "nuguard"] }
+```
+
+Find the absolute path with `which nuguard-mcp` (macOS/Linux) or `where nuguard-mcp` (Windows).
+
+**`nuguard-mcp: no suitable Python runtime found`**  
+The `npx` launcher could not find Python or uvx. Install one of:
+```bash
+pip install "nuguard[mcp]"      # recommended — also installs the nuguard-mcp binary
+```
+or install [uv](https://docs.astral.sh/uv/) and the launcher will use `uvx` automatically.
+
+**`nuguard-mcp` not found after `pip install nuguard[mcp]`**  
+pip installed into a virtual environment whose `bin/` directory is not on your PATH. Either activate the venv before starting Claude Desktop, or use the absolute path:
+```json
+{ "command": "/path/to/.venv/bin/nuguard-mcp" }
 ```
 
 **`nuguard_redteam` times out**  
@@ -393,7 +491,7 @@ The default timeout is 900 s. For large `profile=full` scans pass `timeout_secon
 Check the `stderr` field in the response. Common causes: `sbom` path doesn't exist, `config_path` points to a directory, or `LITELLM_API_KEY` is not set when `llm=true`.
 
 **Grype / Checkov / Trivy not running**  
-These are optional. Install them or disable them per-call:
+These are optional external tools. Install them or disable them per-call:
 ```
 nuguard_analyze(sbom="...", enable_grype=false, enable_trivy=false)
 ```
