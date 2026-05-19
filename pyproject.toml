@@ -105,6 +105,11 @@ markers = [
 
 [tool.ruff]
 line-length = 100
+exclude = [
+    "nuguard/**/tests/fixtures",
+    "tests",
+    "tmp",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
