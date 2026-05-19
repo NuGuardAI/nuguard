@@ -16,7 +16,7 @@
 
 # ── Server framework ────────────────────────────────────────────────────────
 fastmcp>=2.0.0
-uvicorn[standard]>=0.24.0
+uvicorn[standard]>=0.47.0
 
 # ── Async task queue (Celery 5 — upgraded from deprecated 3.x) ────────────────
 celery[redis]>=5.4.0
