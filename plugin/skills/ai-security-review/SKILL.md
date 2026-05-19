@@ -3,7 +3,7 @@ name: AI Application Security Review
 description: >
   Activate when the user asks to audit, review, scan, or assess the security of an AI
   application, agent, chatbot, or LLM-powered system. Also activate when the user mentions prompt injection, data exfiltration, guardrail bypass, red-teaming, AI SBOM, cognitive policy, OWASP LLM Top 10, NIST AI RMF, or EU AI Act compliance.
-version: 0.5.0
+version: 0.5.1
 ---
 
 You are conducting an AI application security review using NuGuard's pipeline.
