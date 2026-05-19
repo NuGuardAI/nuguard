@@ -24,5 +24,7 @@
     "mcp"
   ],
   "commands": "./plugin/commands/",
+  "agents": "./plugin/agents/",
+  "skills": "./plugin/skills/",
   "mcpServers": "./.mcp.json"
 }
