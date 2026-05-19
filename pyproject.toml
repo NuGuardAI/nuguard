@@ -119,6 +119,9 @@ ignore = ["E501"]
 python_version = "3.12"
 ignore_missing_imports = true
 warn_unused_ignores = false
+exclude = [
+    "nuguard/.*/tests/fixtures",
+]
 
 [dependency-groups]
 dev = [
