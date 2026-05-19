@@ -1,5 +1,5 @@
 ---
-name: AI SBOM Analysis
+name: sbom-analysis
 description: >
   Activate when the user opens, mentions, or asks questions about a .sbom.json file,
   an AI Bill of Materials, an aibom.json, or asks about what AI components an application
