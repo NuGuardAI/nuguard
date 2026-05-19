@@ -50,10 +50,18 @@ if (rootPlugin) {
   else if (rootPlugin.version !== VERSION) fail(`.claude-plugin/plugin.json version ${rootPlugin.version} ≠ ${VERSION}`);
   else ok(`version = ${rootPlugin.version}`);
 
-  if (!rootPlugin.commands) warn('.claude-plugin/plugin.json has no commands field');
-  else checkExists(rootPlugin.commands.replace(/^\.\//, ''), 'commands path');
+  // agents/commands/skills must NOT be string paths — auto-discovered via symlinks at root
+  for (const field of ['agents', 'commands', 'skills']) {
+    if (rootPlugin[field]) fail(`.claude-plugin/plugin.json must not declare "${field}" as a string path — use root symlinks for auto-discovery`);
+  }
 
   if (rootPlugin.mcpServers) checkExists(rootPlugin.mcpServers.replace(/^\.\//, ''), 'mcpServers path');
+}
+
+// Root symlinks enable convention-based auto-discovery
+console.log('\n[2b] Root auto-discovery symlinks');
+for (const link of ['agents', 'commands', 'skills']) {
+  checkExists(link, `root ${link} symlink`);
 }
 
 // ── 3. plugin/.claude-plugin/plugin.json ─────────────────────────────────────

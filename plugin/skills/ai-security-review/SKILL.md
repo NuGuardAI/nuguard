@@ -27,8 +27,8 @@ then continue with any values provided in the conversation.
 
 ### Step 1 — Inventory (AI-SBOM)
 
-Use the `nuguard_sbom_generate` MCP tool to scan the application source. The SBOM is
-the foundation: every subsequent step works from the components detected here.
+Run `nuguard sbom generate --source .` via Bash (use `uv run nuguard` if `nuguard` is not on PATH).
+The SBOM is the foundation: every subsequent step works from the components detected here.
 
 Key things to surface from the SBOM summary:
 - Which AI frameworks are in use (LangChain, OpenAI Agents SDK, CrewAI, etc.)
@@ -39,7 +39,7 @@ Key things to surface from the SBOM summary:
 
 ### Step 2 — Static Risk Analysis
 
-Use `nuguard_analyze` on the generated SBOM. Focus your interpretation on:
+Run `nuguard analyze --sbom app.sbom.json --min-severity medium` via Bash. Focus your interpretation on:
 
 **High-priority NGA rules to highlight:**
 - NGA-001: Agent without any guardrail node
@@ -55,10 +55,10 @@ For each finding, map it to the OWASP LLM Top 10 item it corresponds to (LLM01�
 ### Step 3 — Config and Policy Initialization
 
 Before running the policy check, ensure `nuguard.yaml` and `cognitive-policy.md` exist
-in the project directory. Use `nuguard_init` to create them if they are missing:
+in the project directory. If missing, run via Bash:
 
-```
-nuguard_init(project_dir="<project_dir>")
+```bash
+nuguard init
 ```
 
 `nuguard_init` creates:
@@ -71,16 +71,14 @@ nuguard_init(project_dir="<project_dir>")
 If `nuguard.yaml` or `cognitive-policy.md` already exist, skip this step (pass
 `force=false`, the default).
 
-Once both files exist, run `nuguard_policy_check` with the policy and SBOM paths and the
-relevant compliance `--framework`. Explain gaps in plain language — what the policy
-declares vs. what the SBOM shows is actually enforced.
+Once both files exist, run `nuguard policy check --policy cognitive-policy.md --sbom app.sbom.json` via Bash.
+Explain gaps in plain language — what the policy declares vs. what the SBOM shows is actually enforced.
 
 ### Step 4 — Dynamic Validation (if live target available)
 
 If the user provides a target URL:
-- Run `nuguard_behavior` in `static+dynamic` mode first (faster, no attack payloads)
-- If behavior finds intent drift or policy violations, escalate to `nuguard_redteam`
-  with `profile="full"` to confirm exploitability
+- Run `nuguard behavior --config nuguard.yaml --mode static+dynamic` via Bash first (faster, no attack payloads)
+- If behavior finds intent drift or policy violations, escalate to `nuguard redteam --config nuguard.yaml` to confirm exploitability
 
 ## Reporting Style
 

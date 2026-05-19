@@ -1,27 +1,39 @@
 ---
 name: nuguard-scan
 description: Full NuGuard security scan — SBOM generation → static analysis → findings report
+allowed-tools: ["Bash"]
 ---
 
 Run a complete NuGuard security scan on the current project and present a structured findings report.
 
-Steps:
-1. **Check for nuguard.yaml** — if not present, call `nuguard_init` first with `project_dir="."` so the user has a config file.
+## Steps
 
-2. **Generate the AI-SBOM** — call `nuguard_sbom_generate` with `source="."` and `output="app.sbom.json"`.
-   - Report: number of nodes detected (agents, models, tools, datastores, guardrails) and edge count.
-   - If `node_count == 0`, warn the user and stop — there are no AI components to analyse.
+1. **Detect nuguard** — check `which nuguard 2>/dev/null`. Use `nuguard` if on PATH, otherwise `uv run nuguard`.
 
-3. **Static analysis** — call `nuguard_analyze` with `sbom="app.sbom.json"` and `min_severity="medium"`.
-   - Use `nga_only=true` unless the user explicitly asked for external tool scans.
+2. **Check for nuguard.yaml** — if not present, run `nuguard init` first so the user has a config file.
 
-4. **Present findings** — group by severity (critical → high → medium), showing for each:
+3. **Run the unified scan** via Bash:
+   ```bash
+   nuguard scan --source . --steps sbom,analyze
+   ```
+   Flag mapping:
+   - `--source PATH` (default `.`)
+   - `--steps sbom,analyze` (default; add `policy,redteam` if user explicitly requests them)
+   - `--policy PATH` if `--policy` was supplied
+   - `--target URL` if `--target` was supplied (required for `redteam` step)
+   - `--min-severity LEVEL` (default `medium`)
+   - `--fail-on LEVEL` (default `high`)
+   - `--llm` if user passed `--llm`
+   - `--config PATH` if `--config` was supplied
+   - `--full` → set `--steps sbom,analyze,policy,redteam`
+
+4. **Present findings** — group by severity (critical → high → medium). For each finding:
    - Rule ID and title
    - Affected component
    - One-sentence remediation
 
-5. **Summary line** — e.g. "Found 3 findings: 0 critical · 2 high · 1 medium."
+5. **Summary line** — e.g. `Found 3 findings: 0 critical · 2 high · 1 medium.`
 
-If the user passed `--full`, pass `nga_only=false` to enable all external scanners (Grype, Checkov, Trivy, Semgrep).
-If the user passed `--policy PATH`, pass `policy=PATH` to `nuguard_analyze`.
-If the user passed `--min-severity LEVEL`, use that value instead of `"medium"`.
+6. **Report artefacts** — list the output files written (`app.sbom.json`, `findings.json`, `findings.sarif`, `report.md`).
+
+Available flags: `--source PATH`, `--steps LIST`, `--policy PATH`, `--target URL`, `--min-severity LEVEL`, `--fail-on LEVEL`, `--llm`, `--full`, `--config PATH`

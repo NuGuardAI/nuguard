@@ -1,6 +1,6 @@
 [project]
 name = "nuguard"
-version = "0.5.1"
+version = "0.5.2"
 description = "AI application security — SBOM generation, vulnerability scanning, behavioral validation, and adversarial red-teaming for AI Agents"
 readme = "README.md"
 license = { text = "Apache-2.0" }
@@ -105,6 +105,11 @@ markers = [
 
 [tool.ruff]
 line-length = 100
+exclude = [
+    "nuguard/**/tests/fixtures",
+    "tests",
+    "tmp",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
@@ -114,6 +119,9 @@ ignore = ["E501"]
 python_version = "3.12"
 ignore_missing_imports = true
 warn_unused_ignores = false
+exclude = [
+    "nuguard/.*/tests/fixtures",
+]
 
 [dependency-groups]
 dev = [

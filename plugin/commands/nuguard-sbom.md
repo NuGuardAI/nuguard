@@ -1,9 +1,10 @@
 ---
 name: nuguard-sbom
 description: Generate an AI Bill of Materials (AI-SBOM) from source code or a git repository
+allowed-tools: ["Bash"]
 ---
 
-Generate an AI-SBOM for the current project (or a specified source) and summarise the detected components.
+Generate an AI-SBOM for the current project and summarise the detected components.
 
 ## Usage
 
@@ -13,26 +14,30 @@ Generate an AI-SBOM for the current project (or a specified source) and summaris
 
 ## Steps
 
-1. **Determine the source** — use `--source PATH` if provided, otherwise default to `"."`.
-   If `--repo URL` is provided, use `from_repo` instead of `source` (with `--ref` defaulting to `"main"`).
+1. **Detect nuguard** — check `which nuguard 2>/dev/null`. Use `nuguard` if on PATH, otherwise `uv run nuguard`.
 
-2. **Generate the SBOM** — call `nuguard_sbom_generate` with the resolved source/repo and
-   `output` (default: `"app.sbom.json"`). Pass `llm=true` if `--llm` flag is set.
+2. **Determine the source**:
+   - `--source PATH` provided → pass `--source PATH`
+   - `--repo URL` provided → pass `--from-repo URL` (plus `--ref`, default `main`)
+   - Neither → default to `--source .`
 
-3. **Report the component inventory** — present a concise summary:
-   - Total node count broken down by type: agents, models, tools, datastores, guardrails,
-     prompts, API endpoints, MCP servers
-   - Total edge count
-   - Any nodes carrying risk metadata (`sql_injectable`, `ssrf_possible`, `high_privilege`,
-     `pii_classification`, `no_auth`)
-   - Framework(s) detected (LangChain, OpenAI Agents SDK, CrewAI, Google ADK, etc.)
+3. **Run via Bash**:
+   ```bash
+   nuguard sbom generate --source . --output app.sbom.json
+   # with repo:
+   nuguard sbom generate --from-repo URL --ref BRANCH --output app.sbom.json
+   # add --llm if user passed --llm
+   ```
 
-4. **Flag zero-node results** — if `node_count == 0`, tell the user why the extractor found
-   nothing (wrong path, unsupported framework, no Python/TypeScript source detected) and
-   suggest fixes before stopping.
+4. **Report the component inventory**:
+   - Node count by type: agents, models, tools, datastores, guardrails, prompts, API endpoints, MCP servers
+   - Edge count
+   - Any nodes carrying risk metadata: `sql_injectable`, `ssrf_possible`, `high_privilege`, `pii_classification`, `no_auth`
+   - Frameworks detected
 
-5. **Next step hint** — remind the user they can run `/nuguard-analyze` to scan the generated
-   SBOM for security risks, or `/nuguard-scan` to run the full pipeline in one step.
+5. **Flag zero-node results** — if no nodes found, explain why (wrong path, unsupported framework) and stop.
+
+6. **Next step hint** — suggest `/nuguard-analyze` or `/nuguard-scan` for the full pipeline.
 
 ## Examples
 
