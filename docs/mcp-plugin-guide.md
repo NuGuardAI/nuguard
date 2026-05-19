@@ -6,7 +6,14 @@ NuGuard's MCP server exposes AI security tools — SBOM generation, static analy
 
 ## Installation
 
-Choose the method that matches your environment. All methods expose the same seven tools.
+Choose the method that matches your environment:
+
+| I'm using… | Recommended method |
+|---|---|
+| Claude Code (CLI or IDE extension) | [Claude Code plugin](#claude-code-plugin-recommended) |
+| Claude Desktop (macOS / Windows app) | [pip](#pip-fastest-if-you-already-have-python), [npx](#npx-no-python-required), or [uvx](#uvx-uv-users) |
+| Smithery to manage MCP servers | [Smithery](#smithery) |
+| CI / scripting / no Claude UI | [pip](#pip-fastest-if-you-already-have-python) or [uvx](#uvx-uv-users) |
 
 ---
 
@@ -31,6 +38,12 @@ After installation, run the configuration wizard once per project:
 ```
 
 The wizard collects your LLM API key, model, target URL, and auth details, then writes them to `.claude/nuguard.local.md` (project-local, gitignored). Every NuGuard command and the AI security-review skill read this file automatically — you never need to repeat credentials.
+
+**What you get beyond just MCP tools:**
+- `/nuguard-scan`, `/nuguard-redteam`, `/nuguard-config`, `/nuguard-init` slash commands
+- `ai-security-review` and `sbom-analysis` skills that Claude invokes automatically
+- `security-auditor` agent for autonomous end-to-end audits
+- Credentials stored per-project in `.claude/nuguard.local.md`, never globally
 
 ---
 
@@ -141,6 +154,8 @@ During install, Smithery prompts for three optional settings:
 | `redteam_llm_model` | LiteLLM model for red-team payload generation (e.g. `openai/gpt-4o`) |
 
 Secrets are passed as environment variables to the `nuguard-mcp` process and never travel through Claude's context.
+
+> **Note:** Smithery provisions only the seven MCP tools. Slash commands, skills, and the security-auditor agent require the Claude Code plugin.
 
 ---
 

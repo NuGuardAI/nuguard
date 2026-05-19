@@ -10,5 +10,15 @@
   "homepage": "https://nuguard.ai/docs/doc.html?page=mcp-plugin-guide",
   "repository": "https://github.com/NuGuardAI/nuguard",
   "license": "Apache-2.0",
-  "keywords": ["security", "ai agents", "ai security", "ai application", "sbom", "red-team", "prompt-injection", "appsec"]
+  "keywords": [
+    "security",
+    "ai agents",
+    "ai security",
+    "ai application",
+    "sbom",
+    "red-team",
+    "prompt-injection",
+    "appsec"
+  ],
+  "agents": "./agents/"
 }
