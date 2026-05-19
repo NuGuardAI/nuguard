@@ -63,12 +63,13 @@ claude plugin install nuguard
 
 This wires the MCP server automatically via the bundled `.mcp.json` — no manual config editing required.
 
-Set environment variables before starting Claude Code:
+After installation, run the configuration wizard inside Claude Code to store your credentials for the project:
 
-```bash
-export LITELLM_API_KEY=your-api-key
-export NUGUARD_DEFAULT_CONFIG=/path/to/nuguard.yaml
 ```
+/nuguard-config
+```
+
+The wizard asks for your LLM API key, model, target URL, and auth details, then writes them to `.claude/nuguard.local.md` (project-local, not committed). All NuGuard commands and the security-review skill read this file automatically so you don't need to repeat credentials on every call.
 
 ---
 
@@ -94,6 +95,49 @@ Set environment variables in your shell or `.env`:
 export LITELLM_API_KEY=your-api-key-here
 export NUGUARD_DEFAULT_CONFIG=/absolute/path/to/nuguard.yaml
 ```
+
+---
+
+## Configuration
+
+### Quick setup with the Claude Code plugin
+
+If you installed via the Claude Code Plugin, run the interactive wizard once per project:
+
+```
+/nuguard-config
+```
+
+It collects:
+
+| Setting | Required | Description |
+|---|---|---|
+| LLM API key | Yes | Used for SBOM enrichment, analysis, and red-team payload generation |
+| Model name | No | Default: `gemini/gemini-2.0-flash`. Any LiteLLM model string |
+| API base URL | No | Required for Azure OpenAI or self-hosted models |
+| API version | No | Required for Azure OpenAI (e.g. `2024-05-01-preview`) |
+| Target URL | Yes | Base URL of the running AI application |
+| Chat endpoint | No | Default: `/chat` |
+| Auth type | No | `none` \| `bearer_token` \| `api_key` \| `basic` |
+| Auth credentials | Conditional | Token, API key header/value, or username + password |
+
+Settings are saved to `.claude/nuguard.local.md` — a project-local file that is never committed (already in `.gitignore`). Re-run `/nuguard-config` any time to update values.
+
+### Using a nuguard.yaml (all install methods)
+
+For Smithery, manual Claude Desktop, or manual Claude Code installs, create `nuguard.yaml` in your project directory. Run the wizard or use the template from `nuguard.yaml.example`. The NUGUARD_DEFAULT_CONFIG environment variable tells the MCP server where to find it:
+
+```bash
+export NUGUARD_DEFAULT_CONFIG=/absolute/path/to/nuguard.yaml
+```
+
+To generate `nuguard.yaml` from your Claude Code plugin config:
+
+```
+/nuguard-init
+```
+
+This reads `.claude/nuguard.local.md` and creates `nuguard.yaml`, `cognitive-policy.md`, and `canary.example.json` in the current directory.
 
 ---
 

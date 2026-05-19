@@ -1,0 +1,33 @@
+---
+# LLM settings — used for SBOM enrichment, analysis, and red-team payload generation
+llm_api_key: "your-api-key-here"
+llm_model: "gemini/gemini-2.0-flash"
+llm_api_base: ""
+llm_api_version: ""
+
+# Target application
+target_url: "http://localhost:8080"
+chat_endpoint: "/chat"
+
+# Auth type: none | bearer_token | api_key | basic
+auth_type: "bearer_token"
+
+# Bearer token (auth_type: bearer_token)
+auth_token: ""
+
+# API key header (auth_type: api_key)
+auth_api_key_header: "X-API-Key"
+auth_api_key_value: ""
+
+# Basic auth (auth_type: basic)
+auth_username: ""
+auth_password: ""
+---
+
+# NuGuard Project Config
+
+Copy this file to `.claude/nuguard.local.md` and fill in your values,
+or run `/nuguard-config` to be guided through the setup interactively.
+
+Do not commit `.claude/nuguard.local.md` — it contains credentials.
+This example file is safe to commit.

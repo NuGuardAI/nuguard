@@ -2,11 +2,12 @@
   "name": "nuguard",
   "owner": {
     "name": "NuGuard",
-    "url": "https://github.com/NuGuardAI"
+    "email": "info@nuguard.ai",
+    "url": "https://github.com/NuGuardAI/nuguard"
   },
   "metadata": {
     "description": "AI application security — SBOM generation, static analysis, behavioral validation, and adversarial red-team testing for AI agents and LLM-powered applications.",
-    "version": "0.4.8",
+    "version": "0.5.0",
     "repository": "https://github.com/NuGuardAI/nuguard"
   },
   "plugins": [
@@ -14,7 +15,7 @@
       "name": "nuguard",
       "source": "./",
       "description": "AI application security — generate an AI Bill of Materials (AI-SBOM), run static analysis, behavioral validation, and adversarial red-team testing for AI agents and LLM-powered applications.",
-      "version": "0.4.8",
+      "version": "0.5.0",
       "category": "security",
       "tags": [
         "ai-security",
@@ -30,6 +31,11 @@
         "owasp",
         "nist",
         "compliance"
+      ],
+      "commands": "./commands/",
+      "skills": [
+        "./skills/ai-security-review",
+        "./skills/sbom-analysis"
       ]
     }
   ]
