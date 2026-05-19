@@ -6,15 +6,49 @@ NuGuard's MCP server exposes AI security tools — SBOM generation, static analy
 
 ## Installation
 
-### Smithery (recommended)
+Choose the path that matches your environment:
 
-The easiest way to install NuGuard for Claude Code or Claude Desktop:
+| I'm using… | Recommended method |
+|---|---|
+| Claude Code (CLI or IDE extension) | [Claude Code Plugin](#claude-code-plugin-recommended-for-claude-code) |
+| Claude Desktop (macOS / Windows app) | [Smithery](#smithery-recommended-for-claude-desktop) or [Manual config](#manual-claude-desktop) |
+| CI / scripting / no Claude UI | [Manual `.mcp.json`](#manual-claude-code) |
+
+---
+
+### Claude Code Plugin (recommended for Claude Code)
+
+Two commands wire up the MCP server, commands, and skills in one step — no JSON editing, no env vars to set manually:
+
+```bash
+claude plugin marketplace add NuGuardAI/nuguard
+claude plugin install nuguard
+```
+
+Then run the configuration wizard once per project inside Claude Code:
+
+```
+/nuguard-config
+```
+
+The wizard prompts for your LLM API key, model, target URL, and auth details, then writes everything to `.claude/nuguard.local.md` — a project-local file that is never committed. All NuGuard commands and the security-review skill read this file automatically, so you never repeat credentials on every call.
+
+**What you get beyond just MCP tools:**
+- `/nuguard-scan`, `/nuguard-redteam`, `/nuguard-config`, `/nuguard-init` slash commands
+- `ai-security-review` and `sbom-analysis` skills that Claude invokes automatically
+- Credentials stored per-project, not globally
+
+---
+
+### Smithery (recommended for Claude Desktop)
+
+Smithery is the easiest path for Claude Desktop, where there is no plugin system. It handles process management and credential storage through its own UI:
 
 ```bash
 smithery mcp add NuGuardAI/nuguard
 ```
 
-Or open the listing at [smithery.ai/servers/NuGuardAI/nuguard](https://smithery.ai/servers/NuGuardAI/nuguard) and click **Connect**.
+Or open [smithery.ai/servers/NuGuardAI/nuguard](https://smithery.ai/servers/NuGuardAI/nuguard) and click **Connect**.
 
 During install, Smithery asks for three optional settings:
 
@@ -26,12 +60,16 @@ During install, Smithery asks for three optional settings:
 
 Secrets are passed as environment variables to the `nuguard-mcp` process and never travel through Claude's context.
 
+> **Note:** Smithery gives you only the MCP tools. Slash commands and skills require the Claude Code Plugin.
+
 ---
 
 ### Manual (Claude Desktop)
 
-Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) or
-`%APPDATA%\Claude\claude_desktop_config.json` (Windows):
+If you prefer not to use Smithery, edit the Claude Desktop config file directly.
+
+macOS: `~/Library/Application Support/Claude/claude_desktop_config.json`  
+Windows: `%APPDATA%\Claude\claude_desktop_config.json`
 
 ```json
 {
@@ -48,34 +86,13 @@ Edit `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS) o
 }
 ```
 
-Restart Claude Desktop after saving. The NuGuard tools appear in the tools panel (hammer icon).
-
----
-
-### Claude Code Plugin
-
-Add NuGuard as a marketplace source, then install:
-
-```bash
-claude plugin marketplace add NuGuardAI/nuguard
-claude plugin install nuguard
-```
-
-This wires the MCP server automatically via the bundled `.mcp.json` — no manual config editing required.
-
-After installation, run the configuration wizard inside Claude Code to store your credentials for the project:
-
-```
-/nuguard-config
-```
-
-The wizard asks for your LLM API key, model, target URL, and auth details, then writes them to `.claude/nuguard.local.md` (project-local, not committed). All NuGuard commands and the security-review skill read this file automatically so you don't need to repeat credentials on every call.
+Restart Claude Desktop after saving. NuGuard tools appear in the tools panel (hammer icon).
 
 ---
 
 ### Manual (Claude Code)
 
-Add a `.mcp.json` file at your project root:
+For CI pipelines, shared dev containers, or projects where you want to commit the MCP config to the repo, drop a `.mcp.json` at your project root:
 
 ```json
 {
@@ -89,12 +106,14 @@ Add a `.mcp.json` file at your project root:
 }
 ```
 
-Set environment variables in your shell or `.env`:
+Set credentials in your shell profile or `.env`:
 
 ```bash
 export LITELLM_API_KEY=your-api-key-here
 export NUGUARD_DEFAULT_CONFIG=/absolute/path/to/nuguard.yaml
 ```
+
+> **Note:** This method gives you MCP tools only. You won't get slash commands or skills unless you also install the plugin.
 
 ---
 

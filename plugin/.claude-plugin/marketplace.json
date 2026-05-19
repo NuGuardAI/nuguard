@@ -33,6 +33,7 @@
         "compliance"
       ],
       "commands": "./commands/",
+      "agents": "./agents/",
       "skills": [
         "./skills/ai-security-review",
         "./skills/sbom-analysis"
