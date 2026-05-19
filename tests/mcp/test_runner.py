@@ -82,7 +82,9 @@ async def test_run_success_json() -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_passes_nuguard_as_executable() -> None:
+async def test_run_uses_sys_executable() -> None:
+    """Subprocess must use sys.executable so nuguard CLI is always reachable,
+    even inside a uvx-isolated environment where 'nuguard' is not on PATH."""
     proc = _make_proc()
 
     with patch("nuguard.mcp._runner.asyncio.create_subprocess_exec", new_callable=AsyncMock) as mock_exec:
@@ -90,9 +92,12 @@ async def test_run_passes_nuguard_as_executable() -> None:
         await run_nuguard_command(["sbom", "generate"])
 
     call_args = mock_exec.call_args
-    assert call_args.args[0] == "nuguard"
-    assert call_args.args[1] == "sbom"
-    assert call_args.args[2] == "generate"
+    import sys as _sys
+    assert call_args.args[0] == _sys.executable
+    assert call_args.args[1] == "-m"
+    assert call_args.args[2] == "nuguard.cli.main"
+    assert call_args.args[3] == "sbom"
+    assert call_args.args[4] == "generate"
 
 
 @pytest.mark.asyncio

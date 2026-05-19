@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import inspect
+
 import pytest
 
 from nuguard.mcp.server import mcp
+from nuguard.mcp.__main__ import main
 
 _EXPECTED_TOOLS = {
     "nuguard_init",
@@ -68,3 +71,17 @@ async def test_analyze_tool_has_sbom_param(tools) -> None:
 async def test_redteam_tool_has_profile_param(tools) -> None:
     redteam = next(t for t in tools if t.name == "nuguard_redteam")
     assert "profile" in redteam.inputSchema.get("properties", {})
+
+
+# ---------------------------------------------------------------------------
+# Transport — main() must call mcp.run with transport="stdio"
+# ---------------------------------------------------------------------------
+
+def test_main_calls_run_with_stdio_transport() -> None:
+    """main() must explicitly request stdio transport so Smithery / Claude Code
+    don't accidentally fall through to an SSE or HTTP listener."""
+    from unittest.mock import patch, MagicMock
+    mock_run = MagicMock()
+    with patch("nuguard.mcp.server.mcp.run", mock_run):
+        main()
+    mock_run.assert_called_once_with(transport="stdio")
