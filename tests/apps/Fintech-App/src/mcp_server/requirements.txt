@@ -19,7 +19,7 @@ fastmcp>=2.0.0
 uvicorn[standard]>=0.24.0
 
 # ── Async task queue (Celery 5 — upgraded from deprecated 3.x) ────────────────
-celery[redis]>=5.4.0
+celery[redis]>=5.6.3
 kombu>=5.3.0
 
 # ── HTTP client (DELIBERATELY VULNERABLE) ───────────────────────────────────
