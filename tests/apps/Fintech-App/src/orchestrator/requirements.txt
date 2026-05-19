@@ -20,7 +20,7 @@ websockets>=12.0
 #   - PAL chain uses Python exec() without sandboxing
 #   - Known CVE-2023-29374: arbitrary code execution via PythonREPLTool
 langchain==0.0.300
-openai>=1.47.0           # Modern SDK — agents.py uses AzureOpenAI directly
+openai>=2.37.0           # Modern SDK — agents.py uses AzureOpenAI directly
 
 # ── LangChain ecosystem sub-packages (NEW API — used by model_provider.py) ───
 # These are used alongside the old langchain==0.0.300 in separate modules,
