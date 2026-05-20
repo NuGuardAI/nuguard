@@ -590,6 +590,7 @@ class BehaviorRunner:
         policy_evaluator: Any,
     ) -> ScenarioResult:
         """Execute a single scenario and return a ScenarioResult."""
+        verbose = bool(getattr(self._config, "verbose", False))
         run_id = str(uuid.uuid4())
         verdicts: list[dict] = []
         turn_records: list[TurnRecord] = []
@@ -846,14 +847,15 @@ class BehaviorRunner:
                     }],
                     latency_ms=latency_ms,
                 )
-                _print_turn(
-                    scenario_name=scenario.name,
-                    turn_idx=turn_idx + 1,
-                    url=target_url + scenario_endpoint,
-                    request=message,
-                    response="",
-                    verdict=_fail_verdict,
-                )
+                if verbose:
+                    _print_turn(
+                        scenario_name=scenario.name,
+                        turn_idx=turn_idx + 1,
+                        url=target_url + scenario_endpoint,
+                        request=message,
+                        response="",
+                        verdict=_fail_verdict,
+                    )
                 turn_records.append(TurnRecord(
                     turn=turn_idx + 1,
                     prompt=message,
@@ -972,14 +974,15 @@ class BehaviorRunner:
             )
 
             # Print turn to console and log verdict
-            _print_turn(
-                scenario_name=scenario.name,
-                turn_idx=turn_idx + 1,
-                url=target_url + scenario_endpoint,
-                request=message,
-                response=response or "",
-                verdict=verdict,
-            )
+            if verbose:
+                _print_turn(
+                    scenario_name=scenario.name,
+                    turn_idx=turn_idx + 1,
+                    url=target_url + scenario_endpoint,
+                    request=message,
+                    response=response or "",
+                    verdict=verdict,
+                )
             _log.info(
                 "behavior.verdict: scenario=%s  turn=%d  verdict=%s  score=%.2f  agents=%s  tools=%s",
                 scenario.name,
