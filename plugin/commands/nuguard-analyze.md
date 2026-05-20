@@ -19,7 +19,7 @@ Run static risk analysis on an AI-SBOM and explain the findings.
    ```
    Flag mapping:
    - `--min-severity LEVEL` (default `medium`)
-   - `--nga` if `--nga-only` flag passed (skips OSV/Grype/Checkov/Trivy/Semgrep)
+   - `--nga` if `--nga` flag passed (skips OSV/Grype/Checkov/Trivy/Semgrep)
    - `--no-atlas` if `--no-atlas` flag passed
    - `--config PATH` if `--config` supplied
    - `--format markdown` (default; use `--format json` for machine-readable output)
@@ -32,4 +32,4 @@ Run static risk analysis on an AI-SBOM and explain the findings.
 
 5. **Severity summary table** at the end.
 
-Available flags: `--sbom PATH`, `--min-severity LEVEL`, `--nga-only`, `--no-atlas`, `--config PATH`, `--format FORMAT`
+Available flags: `--sbom PATH`, `--min-severity LEVEL`, `--nga`, `--no-atlas`, `--config PATH`, `--format FORMAT`

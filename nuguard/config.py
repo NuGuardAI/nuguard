@@ -197,6 +197,9 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
             flat["target_url"] = shared_target["url"]
         if "endpoint" in shared_target:
             flat["target_endpoint"] = shared_target["endpoint"]
+        elif "target_endpoint" in shared_target:
+            # Accept target_endpoint as an alias for endpoint in the shared target block
+            flat["target_endpoint"] = shared_target["target_endpoint"]
         if "chat_payload_key" in shared_target:
             flat["redteam_chat_payload_key"] = shared_target["chat_payload_key"]
         if "chat_payload_list" in shared_target:
@@ -348,6 +351,8 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
                     _shared_for_behavior["target"] = shared_target["url"]
                 if "endpoint" in shared_target:
                     _shared_for_behavior["target_endpoint"] = shared_target["endpoint"]
+                elif "target_endpoint" in shared_target:
+                    _shared_for_behavior["target_endpoint"] = shared_target["target_endpoint"]
                 if "chat_payload_key" in shared_target:
                     _shared_for_behavior["chat_payload_key"] = shared_target["chat_payload_key"]
                 if "chat_payload_list" in shared_target:

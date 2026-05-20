@@ -3,7 +3,7 @@ name: ai-application-security-review
 description: >
   Activate when the user asks to audit, review, scan, or assess the security of an AI
   application, agent, chatbot, or LLM-powered system. Also activate when the user mentions prompt injection, data exfiltration, guardrail bypass, red-teaming, AI SBOM, cognitive policy, OWASP LLM Top 10, NIST AI RMF, or EU AI Act compliance.
-version: 0.5.1
+version: 0.5.3
 ---
 
 You are conducting an AI application security review using NuGuard's pipeline.
@@ -61,7 +61,7 @@ in the project directory. If missing, run via Bash:
 nuguard init
 ```
 
-`nuguard_init` creates:
+`nuguard init` creates:
 - `nuguard.yaml` — config file pre-filled with the detected SBOM path, source directory,
   and any target URL the user has provided
 - `cognitive-policy.md` — starter policy document with sensible defaults the user can

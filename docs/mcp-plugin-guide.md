@@ -19,7 +19,7 @@ Choose the method that matches your environment:
 
 ### Claude Code plugin (recommended)
 
-The plugin installs the MCP server and wires slash commands, agents, and skills in one step — no manual config editing required.
+The plugin wires slash commands, agents, and skills in one step — no manual config editing required.
 
 **From the Claude Code UI:** open the plugin marketplace, search for **NuGuard**, and click **Install**.
 
@@ -29,8 +29,6 @@ The plugin installs the MCP server and wires slash commands, agents, and skills 
 claude plugin add NuGuardAI/nuguard
 ```
 
-The bundled `.mcp.json` starts the server via `npx -y nuguard`, which auto-detects the best available Python runtime (see [How the launcher picks a runtime](#how-the-launcher-picks-a-runtime) below). No separate tool installation is required if you have Node.js or Python.
-
 After installation, run the configuration wizard once per project:
 
 ```
@@ -39,7 +37,7 @@ After installation, run the configuration wizard once per project:
 
 The wizard collects your LLM API key, model, target URL, and auth details, then writes them to `.claude/nuguard.local.md` (project-local, gitignored). Every NuGuard command and the AI security-review skill read this file automatically — you never need to repeat credentials.
 
-**What you get beyond just MCP tools:**
+**What's included:**
 - `/nuguard-scan`, `/nuguard-redteam`, `/nuguard-config`, `/nuguard-init` slash commands
 - `ai-security-review` and `sbom-analysis` skills that Claude invokes automatically
 - `security-auditor` agent for autonomous end-to-end audits
@@ -179,19 +177,6 @@ If you use [uv](https://docs.astral.sh/uv/), you can run the MCP server directly
 
 ---
 
-### How the launcher picks a runtime
-
-When started via `npx -y nuguard` (the plugin default), the launcher checks in order:
-
-1. `nuguard-mcp` already on `PATH` — uses it directly (zero setup, fastest)
-2. `python3` / `python` with `nuguard` importable — runs `python -m nuguard.mcp`
-3. `uvx` on `PATH` — runs `uvx --from nuguard[mcp] nuguard-mcp`
-4. Any Python available — runs `pip install nuguard[mcp]` silently, then starts the server
-
-Steps 1 and 2 require nothing extra if nuguard is already pip-installed. Step 3 and 4 handle fresh environments automatically.
-
----
-
 ## Configuration
 
 ### Quick setup with the Claude Code plugin
@@ -219,7 +204,7 @@ Settings are saved to `.claude/nuguard.local.md` — a project-local file that i
 
 ### Using a nuguard.yaml (all install methods)
 
-For Smithery, manual Claude Desktop, or manual Claude Code installs, create `nuguard.yaml` in your project directory. Run the wizard or use the template from `nuguard.yaml.example`. The NUGUARD_DEFAULT_CONFIG environment variable tells the MCP server where to find it:
+For Smithery or manual Claude Desktop installs, create `nuguard.yaml` in your project directory. Run the wizard or use the template from `nuguard.yaml.example`. The NUGUARD_DEFAULT_CONFIG environment variable tells the MCP server where to find it:
 
 ```bash
 export NUGUARD_DEFAULT_CONFIG=/absolute/path/to/nuguard.yaml

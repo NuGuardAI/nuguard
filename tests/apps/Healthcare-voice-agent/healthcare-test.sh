@@ -81,3 +81,18 @@ echo "---"
 echo "Done: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 echo "Log saved to: $LOG_FILE"
 echo "Report:       $SCRIPT_DIR/reports/healthcare-behavior.md"
+
+echo "---"
+echo "Running red-team analysis ..."
+
+# redteam exits 2 when findings are present — expected in testing; treat as non-fatal.
+# --mode static+dynamic: runs SBOM×Policy alignment checks then live intent-aware probing.
+uv run nuguard redteam \
+  --config "$SCRIPT_DIR/nuguard.yaml" \
+  --format markdown \
+  -o "$SCRIPT_DIR/reports/healthcare-redteam.md" || true
+
+echo "---"
+echo "Done: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+echo "Log saved to: $LOG_FILE"
+echo "Report:       $SCRIPT_DIR/reports/healthcare-redteam.md"
