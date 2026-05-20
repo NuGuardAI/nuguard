@@ -40,6 +40,22 @@ _OPENAI_PREFIXES = ("openai/", "azure/")
 _ANTHROPIC_PREFIXES = ("anthropic/", "claude/", "bedrock/anthropic")
 _BEDROCK_PREFIXES = ("bedrock/",)
 
+# Reasoning / thinking models that reject temperature (or only accept temperature=1).
+# Covers OpenAI o-series and gpt-5 class; extend as new models are released.
+_REASONING_MODEL_FAMILIES = ("o1", "o3", "o4", "gpt-5")
+
+
+def _is_reasoning_model(model: str) -> bool:
+    """Return True for models that do not support arbitrary temperature values.
+
+    These include OpenAI o1/o3/o4 and gpt-5 class models.  LiteLLM raises
+    ``UnsupportedParamsError`` when temperature is forwarded to them.
+    """
+    # Strip provider prefix ("openai/gpt-5" → "gpt-5", "azure/o3-mini" → "o3-mini")
+    _, _, name = model.rpartition("/")
+    name_lower = (name or model).lower()
+    return any(name_lower.startswith(f) for f in _REASONING_MODEL_FAMILIES)
+
 
 # ---------------------------------------------------------------------------
 # Key / credential helpers
@@ -240,6 +256,21 @@ class LLMClient:
         if self.api_key is None:
             _log.debug("No API key found — LLMClient will return canned responses.")
 
+        # Azure OpenAI requires an explicit endpoint URL.  Warn early so the user
+        # gets a clear diagnostic instead of a cryptic APIConnectionError later.
+        if (
+            self.model.startswith("azure/")
+            and self.api_key is not None
+            and not (self.api_base and self.api_base.strip())
+        ):
+            _log.warning(
+                "Azure model %r requires an endpoint URL (api_base / AZURE_API_BASE). "
+                "Without it LiteLLM cannot connect and will raise APIConnectionError. "
+                "Set AZURE_API_BASE=https://<your-resource>.openai.azure.com/ or add "
+                "api_base under the llm: section of your nuguard.yaml.",
+                self.model,
+            )
+
     async def complete_stream(
         self,
         prompt: str,
@@ -283,11 +314,16 @@ class LLMClient:
             len(prompt),
             f" [{label}]" if label else "",
         )
-        if self.min_temperature is not None:
+        if self.min_temperature is not None and not _is_reasoning_model(self.model):
             kwargs["temperature"] = max(
                 float(kwargs.get("temperature", self.min_temperature)),
                 self.min_temperature,
             )
+        # Reasoning-class models (o1/o3/o4/gpt-5) reject temperature and top_p.
+        # Strip them pre-emptively to avoid UnsupportedParamsError on the first call.
+        if _is_reasoning_model(self.model):
+            kwargs.pop("temperature", None)
+            kwargs.pop("top_p", None)
         if self.api_base:
             kwargs.setdefault("api_base", self.api_base)
         # Strip any None api_base that may have crept in to avoid LiteLLM
@@ -308,6 +344,7 @@ class LLMClient:
         _MAX_RETRIES = 4
         _BASE_DELAY = 2.0   # seconds before first retry
         _MAX_DELAY = 60.0   # cap on any single sleep
+        _stripped_unsupported = False  # guard: strip-and-retry only once
 
         for _attempt in range(_MAX_RETRIES + 1):
             try:
@@ -324,7 +361,7 @@ class LLMClient:
                         yield delta
                 return
 
-            except (litellm.RateLimitError, litellm.ServiceUnavailableError) as exc:
+            except (litellm.RateLimitError, litellm.ServiceUnavailableError, litellm.APIConnectionError) as exc:
                 if _attempt < _MAX_RETRIES:
                     delay = min(_BASE_DELAY * (2 ** _attempt) + random.uniform(0, 1), _MAX_DELAY)
                     _log.warning(
@@ -357,17 +394,31 @@ class LLMClient:
                 yield self._canned_response(prompt)
                 return
 
-            except litellm.BadRequestError as exc:
+            except litellm.UnsupportedParamsError as exc:
+                # Some models (gpt-5, o-series) reject temperature/top_p entirely.
+                # Strip the offending params and retry once without counting it as a
+                # backoff attempt — the error is structural, not transient.
+                if not _stripped_unsupported:
+                    _stripped_unsupported = True
+                    removed = [p for p in ("temperature", "top_p") if p in kwargs]
+                    for p in removed:
+                        kwargs.pop(p)
+                    _log.warning(
+                        "LLM unsupported params (model=%s label=%s) — "
+                        "stripped %s and retrying: %s",
+                        self.model, label or "-", removed, exc,
+                    )
+                    continue
                 _log.warning(
-                    "LLM bad request (model=%s label=%s): %s",
+                    "LLM unsupported params (model=%s label=%s) — giving up: %s",
                     self.model, label or "-", exc,
                 )
                 yield self._canned_response(prompt)
                 return
 
-            except litellm.APIConnectionError as exc:
+            except litellm.BadRequestError as exc:
                 _log.warning(
-                    "LLM connection error (model=%s label=%s): %s",
+                    "LLM bad request (model=%s label=%s): %s",
                     self.model, label or "-", exc,
                 )
                 yield self._canned_response(prompt)

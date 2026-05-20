@@ -1,0 +1,8 @@
+{
+  "name": "nuguard-workspace",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "sync-marketplace": "node scripts/sync-marketplace.js"
+  }
+}

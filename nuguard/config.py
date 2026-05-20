@@ -256,6 +256,10 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_scenario_timeout"] = float(redteam["scenario_timeout"])
     if "similar_miss_threshold" in redteam:
         flat["redteam_similar_miss_threshold"] = int(redteam["similar_miss_threshold"])
+    if "skip_discovery" in redteam:
+        flat["redteam_skip_discovery"] = bool(redteam["skip_discovery"])
+    if "discovery_max_turns" in redteam:
+        flat["redteam_discovery_max_turns"] = int(redteam["discovery_max_turns"])
     if "prompt_cache_dir" in redteam:
         flat["redteam_prompt_cache_dir"] = str(redteam["prompt_cache_dir"])
     if "app_env" in redteam and isinstance(redteam["app_env"], dict):
@@ -535,6 +539,13 @@ class BehaviorConfig(BaseModel):
         le=20,
         description="Max simultaneous scenario HTTP sessions.",
     )
+    isolate_scenarios: bool = Field(
+        default=True,
+        description=(
+            "Re-authenticate before each scenario to prevent cross-scenario "
+            "session-state contamination on stateful endpoints."
+        ),
+    )
     judge_concurrency: int = Field(
         default=5,
         ge=1,
@@ -578,6 +589,44 @@ class BehaviorConfig(BaseModel):
         if isinstance(v, dict):
             return {k: val for k, val in v.items() if val is not None}
         return v or {}
+
+
+class ValidateBoundaryAssertion(BaseModel):
+    """Single boundary assertion declared in nuguard.yaml validate.boundary_assertions."""
+
+    name: str
+    message: str
+    expect: Literal["refused"] = "refused"
+    forbid_pattern: str = ""
+
+
+class ValidateConfig(BaseModel):
+    """Configuration for nuguard validate mode."""
+
+    target: str = ""
+    target_endpoint: str = ""
+    auth: AppAuthConfig = Field(default_factory=AppAuthConfig)
+    canary: str = ""
+    workflows: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Workflows to execute: capability_probe, happy_path, policy_compliance, "
+            "agent_routing, boundary_assertion. Empty = run all."
+        ),
+    )
+    boundary_assertions: list[ValidateBoundaryAssertion] = Field(default_factory=list)
+    request_timeout: float = 60.0
+    verbose: bool = False
+    chat_payload_key: str = "message"
+    chat_payload_list: bool = False
+    chat_payload_format: Literal["json", "form"] = "json"
+    chat_response_key: str = ""
+
+    @field_validator("auth", mode="before")
+    @classmethod
+    def _coerce_none_auth(cls, v: Any) -> Any:
+        """Convert None (auth: with all sub-keys commented out) to an empty dict."""
+        return v if v is not None else {}
 
 
 class RedteamFindingTriggers(BaseModel):
@@ -755,6 +804,22 @@ class NuGuardConfig(BaseSettings):
             "scenarios are suppressed (yaml: redteam.similar_miss_threshold). "
             "Prevents repeating the same failing attack angle across many scenarios. "
             "Set to 0 to disable."
+        ),
+    )
+    redteam_skip_discovery: bool = Field(
+        default=False,
+        description=(
+            "Skip the pre-scan discovery conversation (yaml: redteam.skip_discovery). "
+            "When True, NuGuard does not send warm-up turns to the target agent before "
+            "generating attack payloads. Useful for air-gapped or highly sensitive "
+            "target environments."
+        ),
+    )
+    redteam_discovery_max_turns: int = Field(
+        default=3,
+        description=(
+            "Maximum turns to send during pre-scan discovery (yaml: redteam.discovery_max_turns). "
+            "Discovery stops early when a name or ID is extracted."
         ),
     )
     redteam_prompt_cache_dir: str = Field(
@@ -1006,6 +1071,12 @@ class NuGuardConfig(BaseSettings):
         description="Configuration for nuguard behavior mode.",
     )
 
+    # ------------------------------------------------------- Validate mode
+    validate_config: ValidateConfig = Field(
+        default_factory=ValidateConfig,
+        description="Configuration for nuguard validate mode.",
+    )
+
     # ----------------------------------------- Structured redteam auth
     redteam_auth_type: str = Field(
         default="none",
@@ -1051,6 +1122,21 @@ class NuGuardConfig(BaseSettings):
             )
         if self.redteam_auth_header:
             return AuthConfig.from_header_string(self.redteam_auth_header)
+        return AuthConfig(type="none")
+
+    def resolved_validate_auth_config(self) -> "AuthConfig":
+        """Build an AuthConfig from the resolved *validate* auth settings."""
+        from nuguard.common.auth import AuthConfig  # noqa: PLC0415
+
+        vc_auth = self.validate_config.auth
+        if vc_auth.type and vc_auth.type != "none":
+            return AuthConfig(
+                type=vc_auth.type,  # type: ignore[arg-type]
+                header=vc_auth.header or "",
+                username=vc_auth.username,
+                password=vc_auth.password,
+                login_flow=vc_auth.login_flow,
+            )
         return AuthConfig(type="none")
 
     def resolved_redteam_finding_triggers(self) -> RedteamFindingTriggers:

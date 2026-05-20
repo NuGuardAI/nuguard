@@ -8,8 +8,9 @@ Handoff: researcher → writer when synthesis is complete.
 """
 from __future__ import annotations
 
-from agents import Agent, Runner, handoff
 from agents.tool import function_tool
+
+from agents import Agent, Runner, handoff
 
 # ── Tools ────────────────────────────────────────────────────────────────────
 

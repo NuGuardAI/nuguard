@@ -1,0 +1,43 @@
+version: 2
+
+updates:
+  # Monitor the root Python package only
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    ignore:
+      # test fixture apps are deliberately pinned / vendored — see .gitattributes
+      - dependency-name: "*"
+        update-types: ["version-update:semver-patch"]
+
+  # Fintech-App orchestrator — ecosystem sub-packages only; langchain==0.0.300 is
+  # intentionally pinned as a vulnerable test fixture (see TRACKING.md)
+  - package-ecosystem: "pip"
+    directory: "/tests/apps/Fintech-App/src/orchestrator"
+    schedule:
+      interval: "monthly"
+    ignore:
+      - dependency-name: "langchain"
+        versions: ["*"]
+
+  # Fintech-App MCP server — urllib3/requests/SQLAlchemy are intentional VULN-03
+  - package-ecosystem: "pip"
+    directory: "/tests/apps/Fintech-App/src/mcp_server"
+    schedule:
+      interval: "monthly"
+    ignore:
+      - dependency-name: "urllib3"
+        versions: ["*"]
+      - dependency-name: "requests"
+        versions: ["*"]
+      - dependency-name: "SQLAlchemy"
+        versions: ["*"]
+
+  # Monitor GitHub Actions workflows
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5

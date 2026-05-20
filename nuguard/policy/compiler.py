@@ -202,9 +202,9 @@ async def _llm_controls(text: str, llm_client: "LLMClient") -> list[PolicyContro
         label="policy-compile",
     )
 
-    # Canned response means no API key is configured — skip JSON parse entirely
+    # Canned response means the LLM was unavailable (no key, connection error, etc.)
     if response.startswith("[NUGUARD_CANNED_RESPONSE]"):
-        _log.warning("No LLM API key configured; falling back to rule-based policy compilation")
+        _log.warning("LLM unavailable; falling back to rule-based policy compilation")
         policy = parse_policy(text)
         return _rule_based_controls(policy)
 

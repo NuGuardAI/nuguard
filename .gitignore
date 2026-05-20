@@ -1,4 +1,5 @@
 dist/
+server.mcpb
 __pycache__/
 .venv/
 .pipx/
@@ -26,6 +27,9 @@ tests/redteam/.env
 # (the .example version is intentionally tracked)
 canary.json
 canary.local.json
+
+# Plugin user config — contains credentials, never commit
+.claude/*.local.md
 
 # Test run artifacts (E2E outputs, scan reports)
 tests/output/

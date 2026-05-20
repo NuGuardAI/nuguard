@@ -5,7 +5,7 @@ Covers:
 - 3-tier hit classification (golden_data_filter)
 - DISCOVER step auto-injection and golden-data storage (executor)
 - Account ID probe builder (data_exfiltration)
-- {golden_id} / {golden_id_list} token substitution (executor)
+- {golden_id} / {golden_id_list} / {golden_name} token substitution (executor)
 """
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ import pytest
 
 from nuguard.models.exploit_chain import ExploitChain, ExploitStep, GoalType, ScenarioType
 from nuguard.redteam.executor.golden_data_filter import HitClass, classify_response
-from nuguard.redteam.executor.id_extractor import extract_ids, generate_similar_ids
+from nuguard.redteam.executor.id_extractor import extract_customer_name, extract_ids, generate_similar_ids
 from nuguard.redteam.executor.executor import _substitute_golden_tokens
 from nuguard.redteam.scenarios.data_exfiltration import build_account_id_probe
 from nuguard.redteam.target.session import AttackSession
@@ -323,3 +323,53 @@ def test_substitute_golden_id_with_multiple_ids():
     result = _substitute_golden_tokens("Request {golden_id}", session)
     # Should use the first ID
     assert "ACCT-1001" in result
+
+
+# ── New tests: PNR/confirmation code extraction and {golden_name} ─────────────
+
+
+def test_extract_ids_labelled_confirmation_code():
+    """Labelled confirmation codes like 'confirmation: K7Q4MN' should be captured."""
+    text = "Your booking is confirmed. Confirmation code: K7Q4MN. Have a safe flight!"
+    ids = extract_ids(text)
+    assert "K7Q4MN" in ids
+
+
+def test_extract_ids_labelled_pnr():
+    """Labelled PNR codes like 'PNR HN4P88' should be captured."""
+    text = "Your PNR is HN4P88. Please use it at the check-in counter."
+    ids = extract_ids(text)
+    assert "HN4P88" in ids
+
+
+def test_extract_customer_name_basic():
+    """extract_customer_name should return the labelled passenger name."""
+    text = "Passenger: Alice Johnson. Seat 14A. Flight BA205."
+    name = extract_customer_name(text)
+    assert name == "Alice Johnson"
+
+
+def test_extract_customer_name_no_label_returns_empty():
+    """Unlabelled names in plain prose must NOT be extracted (no false positives)."""
+    text = "Alice Johnson is flying today on flight BA205."
+    name = extract_customer_name(text)
+    assert name == ""
+
+
+def test_golden_name_token_substitution():
+    """{golden_name} is replaced with session.golden_name when present."""
+    session = _make_session(golden_ids=["ACCT-1001"])
+    session.golden_name = "Alice Johnson"
+    result = _substitute_golden_tokens("Hello {golden_name}, your ID is {golden_id}.", session)
+    assert "Alice Johnson" in result
+    assert "ACCT-1001" in result
+    assert "{golden_name}" not in result
+
+
+def test_golden_name_token_fallback_when_empty():
+    """{golden_name} falls back to 'the account holder' when golden_name is empty."""
+    session = _make_session(golden_ids=["ACCT-1001"])
+    session.golden_name = ""
+    result = _substitute_golden_tokens("Dear {golden_name},", session)
+    assert "the account holder" in result
+    assert "{golden_name}" not in result

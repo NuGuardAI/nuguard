@@ -242,7 +242,7 @@ _SCRIPT_EXTENSIONS = {".sh", ".bash", ".zsh", ".fish", ".ps1"}
 
 
 def _should_skip_path_parts(parts: tuple[str, ...]) -> bool:
-    skip_dirs = {".git", "__pycache__", "node_modules", ".tox", ".claude", "site-packages"}
+    skip_dirs = {".git", "__pycache__", "node_modules", ".tox", ".claude", "site-packages", ".mypy_cache", ".pytest_cache", ".ruff_cache", ".pytype", "logs", "log", "reports"}
     for part in parts:
         if part in skip_dirs:
             return True
@@ -2077,6 +2077,13 @@ def _dedup_by_location(
             # multiple imports on one line → multiple FAISS stores) and must
             # both be kept.
             if not (has_regex_evidence.get(winner, False) or has_regex_evidence.get(loser, False)):
+                continue
+            # FRAMEWORK nodes with different canonical names are distinct
+            # frameworks even when detected on the same source line (e.g. a
+            # comment mentioning both "autogen" and "crewai" triggers both regex
+            # adapters at the same line).  Keep them separate so each framework
+            # gets its own node in the SBOM.
+            if winner[0] == ComponentType.FRAMEWORK and winner[1] != loser[1]:
                 continue
             # FRAMEWORK nodes with different canonical names are distinct
             # frameworks even when detected on the same source line (e.g. a

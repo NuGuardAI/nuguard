@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "nuguard": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "nuguard"]
+    }
+  }
+}

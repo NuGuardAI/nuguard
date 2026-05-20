@@ -1,0 +1,97 @@
+# Smithery manifest — Claude marketplace MCP server
+# https://smithery.ai/docs/config
+name: nuguard
+version: "0.5.2"
+description: |
+  AI Application Security — generate an AI Bill of Materials (AI-SBOM), run static
+  analysis, behavioral validation, and adversarial red-team testing for AI agents
+  and LLM-powered applications.
+author: NuGuard <info@nuguard.ai>
+homepage: https://github.com/NuGuardAI/nuguard
+license: Apache-2.0
+
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    required: []
+    properties:
+      litellm_api_key:
+        type: string
+        description: >
+          LLM API key forwarded as LITELLM_API_KEY. Required for LLM-enriched SBOM
+          generation and static analysis. Accepts any LiteLLM-compatible key
+          (Gemini, OpenAI, Azure, Anthropic, etc.).
+        default: ""
+      nuguard_config_path:
+        type: string
+        description: >
+          Absolute path to a nuguard.yaml config file. When set, all tools use this
+          as the default config without requiring config_path on every call.
+        default: ""
+      redteam_llm_model:
+        type: string
+        description: >
+          LiteLLM model string for red-team attack payload generation.
+          Examples: openai/gpt-4o, gemini/gemini-2.0-flash, anthropic/claude-opus-4-7.
+          Use an uncensored or permissive model for best red-team coverage.
+        default: ""
+  commandFunction: |
+    (config) => ({
+      command: "uvx",
+      args: ["--from", "nuguard[mcp]", "nuguard-mcp"],
+      env: {
+        ...(config.litellm_api_key
+          ? { LITELLM_API_KEY: config.litellm_api_key }
+          : {}),
+        ...(config.nuguard_config_path
+          ? { NUGUARD_DEFAULT_CONFIG: config.nuguard_config_path }
+          : {}),
+        ...(config.redteam_llm_model
+          ? { NUGUARD_REDTEAM_LLM_MODEL: config.redteam_llm_model }
+          : {}),
+      }
+    })
+
+tools:
+  - name: nuguard_init
+    description: >
+      Initialize nuguard.yaml with auto-detected defaults (SBOM path, policy file,
+      canary seed). Also creates companion starter files (canary.example.json,
+      cognitive-policy.md).
+
+  - name: nuguard_sbom_generate
+    description: >
+      Generate an AI Bill of Materials (AI-SBOM) from Python or TypeScript source
+      code, or by cloning a git repository. Detects agents, models, tools, datastores,
+      guardrails, MCP servers, and API endpoints.
+
+  - name: nuguard_analyze
+    description: >
+      Run static risk analysis on an AI-SBOM. Evaluates 18 NGA structural rules plus
+      MITRE ATLAS mapping, OSV / Grype CVE scans, Checkov IaC, Trivy container scans,
+      and Semgrep AI-security rules.
+
+  - name: nuguard_scan
+    description: >
+      Run the full unified security scan pipeline: SBOM generation → static analysis →
+      policy check → red-team (optional). Writes sbom.json, findings.json,
+      findings.sarif, and report.md to an output directory.
+
+  - name: nuguard_behavior
+    description: >
+      Run intent-aware behavioral testing against a live AI application endpoint.
+      Static mode checks SBOM–policy alignment; dynamic mode sends probe conversations
+      and judges each turn for intent drift, policy violations, and data leakage.
+
+  - name: nuguard_redteam
+    description: >
+      Run adversarial red-team testing against a live AI application. Generates exploit
+      scenarios from the AI-SBOM and executes them to discover prompt injection, data
+      exfiltration, privilege escalation, policy bypass, and MCP toxic-flow
+      vulnerabilities.
+
+  - name: nuguard_policy_check
+    description: >
+      Cross-check a Cognitive Policy document against an AI-SBOM and run compliance
+      framework assessments (OWASP LLM Top 10, NIST AI RMF, EU AI Act).

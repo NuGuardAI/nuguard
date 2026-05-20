@@ -10,6 +10,12 @@ _ID_PATTERNS: list[re.Pattern[str]] = [
         r'[\s_-]?(?:id|no|number|#)[\s:=]+([A-Z0-9][A-Z0-9\-]{2,19})',
         re.IGNORECASE,
     ),
+    # Labelled booking/confirmation/PNR codes: "confirmation: K7Q4MN", "PNR HN4P88", "PNR is HN4P88"
+    re.compile(
+        r'(?:confirmation|booking|reservation|pnr|record\s+locator)\s*'
+        r'(?:number|code|ref(?:erence)?|no|is|#)?\s*[:\s#]+([A-Z0-9]{4,10})\b',
+        re.IGNORECASE,
+    ),
     # Prefixed alphanumeric IDs: ACCT-0001, TEN-12345
     re.compile(r'\b([A-Z]{2,6}-\d{3,10})\b'),
     # Compact prefix+digit IDs: CUST00123456
@@ -28,6 +34,52 @@ _UUID_RE = re.compile(
 
 # Regex to split an ID into its text prefix and trailing numeric segment.
 _SPLIT_RE = re.compile(r'^(.*?)(\d+)$')
+
+# Patterns for extracting a customer/passenger/patient name.
+# Ordered from highest to lowest precision — first match wins.
+_NAME_PATTERNS: list[re.Pattern[str]] = [
+    # Label-prefix: "name: Alice Johnson", "passenger: Alice Johnson"
+    re.compile(
+        r'(?:name|customer|passenger|patient|account\s+holder)\s*[:\s]+'
+        r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)',
+        re.IGNORECASE,
+    ),
+    # Greeting: "Hello Alice Johnson," / "Hi Alice Johnson" / "Dear Alice Johnson,"
+    re.compile(
+        r'(?:Hello|Hi|Dear|Welcome(?:\s+back)?),?\s+'
+        r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)',
+    ),
+    # Logged-in-as / registered-to: "logged in as Alice Johnson"
+    re.compile(
+        r'(?:logged\s+in\s+as|registered\s+to|authenticated\s+as)\s+'
+        r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)',
+        re.IGNORECASE,
+    ),
+    # Contextual "for/to": "booking for Alice Johnson", "reserved for Alice Johnson"
+    re.compile(
+        r'(?:booking|reservation|flight|ticket|account)\s+(?:for|to)\s+'
+        r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)',
+        re.IGNORECASE,
+    ),
+    # Possessive: "Alice Johnson's booking", "Alice Johnson's account"
+    re.compile(
+        r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)'
+        r"'s\s+(?:booking|reservation|account|flight|ticket)",
+    ),
+]
+
+
+def extract_customer_name(text: str) -> str:
+    """Return the first customer/passenger/patient name found in *text*.
+
+    Tries multiple strategies (label prefix, greeting, possessive, contextual)
+    in order of precision.  Returns an empty string when no name is found.
+    """
+    for pattern in _NAME_PATTERNS:
+        m = pattern.search(text)
+        if m:
+            return m.group(1).strip()
+    return ""
 
 
 def extract_ids(text: str) -> list[str]:
@@ -48,6 +100,46 @@ def extract_ids(text: str) -> list[str]:
                 results.append(value)
 
     return results
+
+
+# Pattern for extracting labelled entity values from agent responses.
+# Captures pairs like "flight: BA205", "departure: 2026-08-15", "seat: 14A".
+_ENTITY_PATTERN = re.compile(
+    r'(?:flight|seat|departure|arrival|date|class|fare|route|origin|destination'
+    r'|status|price|total|amount|balance|account\s+type|plan|tier)\s*[:\s]+'
+    r'([^\n,\.;]{2,40})',
+    re.IGNORECASE,
+)
+
+# Map raw label → normalised key for entity_map
+_ENTITY_LABEL_RE = re.compile(
+    r'(flight|seat|departure|arrival|date|class|fare|route|origin|destination'
+    r'|status|price|total|amount|balance|account\s+type|plan|tier)',
+    re.IGNORECASE,
+)
+
+
+def extract_entity_map(text: str) -> dict[str, str]:
+    """Return a mapping of entity label → value extracted from *text*.
+
+    Captures labelled fields such as ``flight: BA205`` or ``departure: 2026-08-15``
+    that provide useful context for scenario grounding.  Only the *first* occurrence
+    of each normalised label is kept.
+
+    >>> extract_entity_map("Flight: BA205, Seat: 14A, Departure: 2026-08-15")
+    {'flight': 'BA205', 'seat': '14A', 'departure': '2026-08-15'}
+    """
+    result: dict[str, str] = {}
+    for m in _ENTITY_PATTERN.finditer(text):
+        full_match = m.group(0)
+        label_m = _ENTITY_LABEL_RE.match(full_match)
+        if not label_m:
+            continue
+        label = label_m.group(1).lower().replace(" ", "_")
+        value = m.group(1).strip().rstrip(".,;:")
+        if label not in result and value:
+            result[label] = value
+    return result
 
 
 def generate_similar_ids(id_value: str, n: int = 3) -> list[str]:

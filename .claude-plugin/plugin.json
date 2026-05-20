@@ -1,0 +1,27 @@
+{
+  "id": "nuguard",
+  "name": "nuguard",
+  "version": "0.5.2",
+  "description": "AI application security for Claude — generate an AI Bill of Materials (AI-SBOM), run static analysis, behavioral validation, and adversarial red-team testing for AI agents and LLM-powered applications.",
+  "author": {
+    "name": "NuGuard",
+    "email": "info@nuguard.ai",
+    "url": "https://nuguard.ai"
+  },
+  "homepage": "https://github.com/NuGuardAI/nuguard",
+  "repository": "https://github.com/NuGuardAI/nuguard",
+  "license": "Apache-2.0",
+  "keywords": [
+    "ai-security",
+    "sbom",
+    "red-team",
+    "llm",
+    "ai-agents",
+    "prompt-injection",
+    "appsec",
+    "vulnerability-scanning",
+    "behavioral-testing",
+    "mcp"
+  ],
+  "mcpServers": "./.mcp.json"
+}

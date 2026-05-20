@@ -54,10 +54,10 @@ echo "Static Analysis Check..."
 
 uv run nuguard analyze \
   --config "$SCRIPT_DIR/nuguard.yaml" \
-  -- llm \
+  --llm \
   --atlas --osv --trivy \
   --grype --checkov \
-  -- verbose \
+  --verbose \
   --format markdown \
   -o "$SCRIPT_DIR/reports/openai-cs-analysis.md" || true
 

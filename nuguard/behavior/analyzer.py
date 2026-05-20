@@ -73,7 +73,7 @@ class BehaviorAnalyzer:
             static_findings_objs = check_alignment(self._sbom, intent, self._policy)
             _log.info("BehaviorAnalyzer.analyze: %d static findings", len(static_findings_objs))
 
-        static_findings = [f.model_dump() for f in static_findings_objs]
+        static_findings = [f.model_dump(mode="json") for f in static_findings_objs]
 
         # Step 3: Dynamic analysis
         dynamic_findings: list[dict] = []
@@ -95,34 +95,6 @@ class BehaviorAnalyzer:
                 scenario_cache = BehaviorPromptCache(cache_dir=prompt_cache_dir or None)
                 cache_key = scenario_cache.cache_key(self._sbom, self._policy)
 
-                scenarios = scenario_cache.load(cache_key)
-                if scenarios is None:
-                    # Build scenarios (LLM layers run in parallel — v3)
-                    scenarios = await build_scenarios(
-                        config=self._config,
-                        intent=intent,
-                        policy=self._policy,
-                        controls=self._controls,
-                        sbom=self._sbom,
-                        llm_client=self._llm,
-                        skipped_out=skipped_scenario_names,
-                    )
-                    scenario_cache.save(cache_key, scenarios)
-                _log.info("BehaviorAnalyzer.analyze: %d scenarios to execute", len(scenarios))
-
-                # ----------------------------------------------------------------
-                # v3: judge verdict cache — skip repeat LLM judge calls
-                # ----------------------------------------------------------------
-                judge_cache_dir = getattr(self._config, "judge_cache_dir", "") or ""
-                judge_cache = None
-                if judge_cache_dir:
-                    from nuguard.behavior.judge_cache import JudgeCache
-                    judge_cache = JudgeCache(
-                        cache_dir=judge_cache_dir,
-                        sbom_key=cache_key,
-                    )
-
-                # Run scenarios
                 # ── Endpoint auto-discovery ─────────────────────────────
                 # When target_endpoint is not configured, attempt to infer
                 # it from SBOM metadata (zero-I/O) then fall back to a live
@@ -205,6 +177,21 @@ class BehaviorAnalyzer:
                                 target_url,
                             )
 
+                # ── Judge verdict cache ──────────────────────────────────
+                # v3: skip repeat LLM judge calls on warm runs
+                judge_cache_dir = getattr(self._config, "judge_cache_dir", "") or ""
+                judge_cache = None
+                if judge_cache_dir:
+                    from nuguard.behavior.judge_cache import JudgeCache
+                    judge_cache = JudgeCache(
+                        cache_dir=judge_cache_dir,
+                        sbom_key=cache_key,
+                    )
+
+                # ── Create runner early so we can run pre-scan discovery ─
+                # Discovery happens BEFORE scenario generation so the
+                # discovered user profile (name + IDs) can be injected into
+                # the LLM prompts that generate scenario messages.
                 runner = BehaviorRunner(
                     config=self._config,
                     sbom=self._sbom,
@@ -213,7 +200,35 @@ class BehaviorAnalyzer:
                     llm_client=self._llm,
                     judge_cache=judge_cache,
                 )
-                run_result = await runner.run(scenarios)
+                pre_scan_profile = await runner.discover()
+
+                # ── Scenario cache / build ───────────────────────────────
+                # v3: skip LLM generation on warm runs.
+                # NOTE: we intentionally bypass the cache when a non-empty
+                # profile was discovered so that scenario messages are
+                # personalised with real user data on every fresh run.
+                scenarios = None
+                if pre_scan_profile is None or pre_scan_profile.is_empty:
+                    scenarios = scenario_cache.load(cache_key)
+                if scenarios is None:
+                    # Build scenarios (LLM layers run in parallel — v3)
+                    scenarios = await build_scenarios(
+                        config=self._config,
+                        intent=intent,
+                        policy=self._policy,
+                        controls=self._controls,
+                        sbom=self._sbom,
+                        llm_client=self._llm,
+                        skipped_out=skipped_scenario_names,
+                        pre_scan_profile=pre_scan_profile,
+                    )
+                    # Only cache when there is no personalised profile so
+                    # the cached scenarios are reusable across sessions.
+                    if pre_scan_profile is None or pre_scan_profile.is_empty:
+                        scenario_cache.save(cache_key, scenarios)
+                _log.info("BehaviorAnalyzer.analyze: %d scenarios to execute", len(scenarios))
+
+                run_result = await runner.run(scenarios, pre_scan_profile=pre_scan_profile)
                 _dynamic_run_result = run_result
                 _dynamic_scan_outcome = run_result.scan_outcome
                 dynamic_findings = run_result.findings
