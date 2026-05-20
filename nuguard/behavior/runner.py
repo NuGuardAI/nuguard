@@ -971,6 +971,14 @@ class BehaviorRunner:
                             "policy_clause": str(v.policy_clause),
                         }
                         for v in policy_violations
+                        # For data-probe turns (expect_refused), the correct agent
+                        # behaviour is a refusal that won't contain topic keywords.
+                        # Skip the Tier-2 allowed_topics overlap violation here —
+                        # it is not meaningful when a refusal IS the right answer.
+                        if not (
+                            scenario.expect_refused
+                            and str(v.policy_clause) == "allowed_topics (no overlap)"
+                        )
                     ]
                 except Exception as exc:
                     _log.debug("_run_scenario: policy evaluation failed: %s", exc)

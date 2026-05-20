@@ -26,12 +26,24 @@ def _response_overlaps_topic(response_lower: str, topic: str) -> bool:
     Words shorter than 4 characters are ignored to avoid spurious matches on
     stop-words.  If the topic has no meaningful words (all short), falls back
     to a plain substring check.
+
+    Uses bidirectional matching: topic words are searched in the response AND
+    response words are searched in the topic text.  This handles natural word-form
+    variations (e.g. "cancellation" in a response matching "cancellations" in a topic)
+    without requiring a stemming library.
     """
-    topic_words = re.sub(r"[^\w\s]", " ", topic.lower()).split()
-    meaningful = [w for w in topic_words if len(w) >= 4]
-    if not meaningful:
-        return topic.strip().lower() in response_lower
-    return any(w in response_lower for w in meaningful)
+    topic_lower = topic.lower()
+    topic_words = re.sub(r"[^\w\s]", " ", topic_lower).split()
+    meaningful_topic = [w for w in topic_words if len(w) >= 4]
+    if not meaningful_topic:
+        return topic_lower.strip() in response_lower
+    # Forward: topic keywords appear in response
+    if any(w in response_lower for w in meaningful_topic):
+        return True
+    # Reverse: response keywords appear in topic text (catches "cancellation" → "cancellations")
+    response_words = re.sub(r"[^\w\s]", " ", response_lower).split()
+    meaningful_response = [w for w in response_words if len(w) >= 4]
+    return any(w in topic_lower for w in meaningful_response)
 
 
 def detect_topic_violations(
