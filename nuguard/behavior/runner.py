@@ -697,6 +697,10 @@ class BehaviorRunner:
         # Track the last agent response so _adapt_message can generate contextual probes.
         response: str = ""
 
+        # Coverage stall detection: if two consecutive coverage batches make zero progress, exit early.
+        _coverage_stall_count: int = 0
+        _uncovered_prev: frozenset[str] = frozenset()
+
         while turn_idx < max_turns:
             # Determine next message
             message: str | None = None
@@ -744,6 +748,19 @@ class BehaviorRunner:
                 uncovered = coverage_state.uncovered_agents | coverage_state.uncovered_tools
                 if not uncovered:
                     break
+                _uncovered_frozen = frozenset(uncovered)
+                if coverage_turns_used > 0 and _uncovered_frozen == _uncovered_prev:
+                    _coverage_stall_count += 1
+                    if _coverage_stall_count >= 2:
+                        _log.info(
+                            "_run_scenario: coverage stall (no progress for 2 batches), "
+                            "stopping early for scenario=%s uncovered=%s",
+                            scenario.name, list(uncovered)[:4],
+                        )
+                        break
+                else:
+                    _coverage_stall_count = 0
+                _uncovered_prev = _uncovered_frozen
                 last_response = session.last_response
                 coverage_messages = await generate_coverage_turns(
                     uncovered=uncovered,
