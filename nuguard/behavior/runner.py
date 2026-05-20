@@ -735,7 +735,12 @@ class BehaviorRunner:
 
             # 3. Coverage follow-up — sent clean without _adapt_message so the
             #    focused component question is not contaminated by PII/hook probes.
-            elif coverage_turns_used < _adaptive_coverage_cap(self._config):
+            #    Invariant probes run only their scripted turns; coverage turns are
+            #    irrelevant for boundary checks and produce duplicative requests.
+            elif (
+                scenario.scenario_type != BehaviorScenarioType.INVARIANT_PROBE
+                and coverage_turns_used < _adaptive_coverage_cap(self._config)
+            ):
                 uncovered = coverage_state.uncovered_agents | coverage_state.uncovered_tools
                 if not uncovered:
                     break
