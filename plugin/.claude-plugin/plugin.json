@@ -1,13 +1,13 @@
 {
   "name": "nuguard",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "description": "AI Application Security — SBOM generation, static analysis, behavioral testing, and adversarial red-teaming for AI agents and LLM-powered applications.",
   "author": {
     "name": "NuGuard",
     "email": "info@nuguard.ai",
     "url": "https://nuguard.ai"
   },
-  "homepage": "https://nuguard.ai/docs/doc.html?page=mcp-plugin-guide",
+  "homepage": "https://nuguard.ai/docs/doc.html?page=claude-plugin-guide",
   "repository": "https://github.com/NuGuardAI/nuguard",
   "license": "Apache-2.0",
   "keywords": [
@@ -20,5 +20,10 @@
     "prompt-injection",
     "appsec"
   ],
-  "agents": "./agents/"
+  "commands": "./commands/",
+  "agents": "./agents/",
+  "skills": [
+    "./skills/ai-security-review",
+    "./skills/sbom-analysis"
+  ]
 }

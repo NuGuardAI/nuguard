@@ -35,6 +35,6 @@ Run adversarial red-team testing against a live AI application and produce an ac
 
 5. **Summary** — total findings by severity, which scenario families fired, which were clean.
 
-6. If the command times out, suggest increasing `redteam.scenario_timeout` in `nuguard.yaml` or using `nuguard redteam run --profile ci`.
+6. If the command times out, suggest increasing `redteam.scenario_timeout` in `nuguard.yaml` or using `nuguard redteam --profile ci`.
 
 Available flags: `--config PATH`, `--sbom PATH`, `--target URL`, `--policy PATH`, `--fail-on LEVEL`

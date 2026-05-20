@@ -32,4 +32,4 @@ Initialise NuGuard configuration for this project.
 The command creates up to three files:
 - `nuguard.yaml` — main config (target URL, SBOM path, auth, scan settings)
 - `canary.example.json` — template for seeding canary values before red-team
-- `cognitive_policy.md` — blank policy template with required section headings
+- `cognitive-policy.md` — blank policy template with required section headings
