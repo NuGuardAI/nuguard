@@ -12,6 +12,7 @@ _OWASP_LLM: dict[GoalType, str] = {
     GoalType.MCP_TOXIC_FLOW: "LLM02 – Insecure Output Handling",
     GoalType.API_ATTACK: "LLM05 – Improper Output Handling",
     GoalType.AGENTIC_TRUST_ABUSE: "LLM08 – Excessive Agency",
+    GoalType.RECON_INFERENCE: "LLM06 – Sensitive Information Disclosure",
 }
 
 _OWASP_ASI: dict[GoalType, str] = {
@@ -23,6 +24,7 @@ _OWASP_ASI: dict[GoalType, str] = {
     GoalType.DATA_EXFILTRATION: "ASI10 – Rogue Agents",
     GoalType.POLICY_VIOLATION: "ASI09 – Human-Agent Trust Exploitation",
     GoalType.AGENTIC_TRUST_ABUSE: "ASI03 – Identity and Privilege Abuse",
+    GoalType.RECON_INFERENCE: "ASI08 – Prompt Inference and Reconnaissance",
 }
 
 
