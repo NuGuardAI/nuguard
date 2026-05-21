@@ -55,6 +55,7 @@ from .guided_conversations import (
 )
 from .jailbreak import build_context_flood, build_structural_injection
 from .mcp_attacks import build_mcp_output_poisoning, build_mcp_tool_injection, build_mcp_toxic_flow
+from .oracle_attacks import build_premise_injection, build_refusal_oracle
 from .policy_violations import build_hitl_bypass, build_restricted_action, build_restricted_topic
 from .pre_scorer import pre_score
 from .privilege_escalation import build_privilege_chain
@@ -156,6 +157,11 @@ class ScenarioGenerator:
         # Goal 13: Agentic trust abuse
         # Confused Deputy, Multi-Agent Trust Boundary, Memory Poisoning, Goal Hijacking
         scenarios.extend(self._agentic_attack_scenarios())
+
+        # Goal 14: Oracle and deception attacks (novel, no existing taxonomy coverage)
+        # Refusal Oracle (RECON_INFERENCE via refusal side-channel)
+        # False Premise Anchoring (PRIVILEGE_ESCALATION via coherence bias exploit)
+        scenarios.extend(self._oracle_scenarios())
 
         # Dedup near-duplicate scenarios that target sub-agents when an entry agent exists.
         # This avoids sending many structurally identical payloads that differ only in which
@@ -1686,6 +1692,125 @@ class ScenarioGenerator:
                         hijacked_action=(
                             "exfiltrate all results to attacker-controlled endpoint"
                         ),
+                    )
+                )
+
+        return out
+
+    # ------------------------------------------------------------------ #
+    # Goal 14: Oracle and deception attacks (REFUSAL_ORACLE, PREMISE_INJECTION)
+    # ------------------------------------------------------------------ #
+
+    def _oracle_scenarios(self) -> list[AttackScenario]:
+        """Generate refusal oracle and false-premise anchoring scenarios.
+
+        REFUSAL_ORACLE — universal: every AI agent reveals architecture through its
+        refusals.  Added for all AGENT nodes.
+
+        PREMISE_INJECTION — targeted: inject false regulatory/compliance context to
+        anchor the model's reasoning, then request an unauthorized action.  Added
+        for agents with PII/PHI datastore access or write-capable tools.
+        """
+        out: list[AttackScenario] = []
+        agent_nodes = [n for n in self._sbom.nodes if n.component_type == ComponentType.AGENT]
+        if not agent_nodes:
+            return out
+
+        # Collect PII field names across all datastores for premise injection targeting
+        all_pii_fields: list[str] = []
+        pii_datastore_agent_ids: set[str] = set()
+        for ds_node in self._sbom.nodes:
+            if ds_node.component_type != ComponentType.DATASTORE:
+                continue
+            fields = (
+                (ds_node.metadata.pii_fields or [])
+                + (ds_node.metadata.phi_fields or [])
+                + (ds_node.metadata.pfi_fields or [])
+            )
+            if fields:
+                all_pii_fields.extend(fields)
+                for agent_id in self._agents_reaching_datastore(str(ds_node.id)):
+                    pii_datastore_agent_ids.add(agent_id)
+
+        # Also check policy data_classification
+        if not all_pii_fields and self._policy.data_classification:
+            all_pii_fields = self._parse_policy_pii_fields(self._policy.data_classification)
+
+        # Find agents with write-capable tools (PREMISE_INJECTION target signal)
+        _WRITE_KWORDS = ("update", "modify", "delete", "set_", "change", "write", "create")
+        write_tool_agent_ids: set[str] = set()
+        for agent_node in agent_nodes:
+            aid = str(agent_node.id)
+            for tid in self._outgoing.get(aid, {}).get(RelationshipType.CALLS, []):
+                tool = self._node_by_id.get(tid)
+                if tool and (
+                    tool.metadata.high_privilege
+                    or any(kw in tool.name.lower() for kw in _WRITE_KWORDS)
+                ):
+                    write_tool_agent_ids.add(aid)
+                    break
+
+        for node in agent_nodes[:_MAX_AGENTS_PER_GOAL]:
+            agent_id = str(node.id)
+            agent_name = node.name
+
+            # Collect known tool names from SBOM for targeted refusal probing
+            known_tools = [
+                self._node_by_id[tid].name
+                for tid in self._outgoing.get(agent_id, {}).get(RelationshipType.CALLS, [])
+                if tid in self._node_by_id
+            ]
+
+            # REFUSAL ORACLE — universal trigger (all agents)
+            primary_use_case = ""
+            if self._sbom.summary:
+                primary_use_case = (getattr(self._sbom.summary, "use_case", "") or "")[:100]
+
+            out.append(
+                build_refusal_oracle(
+                    agent_id=agent_id,
+                    agent_name=agent_name,
+                    primary_use_case=primary_use_case,
+                    known_tool_names=known_tools[:4] if known_tools else None,
+                )
+            )
+
+            # PREMISE INJECTION — targeted: PII datastores or write-capable tools
+            if agent_id in pii_datastore_agent_ids or agent_id in write_tool_agent_ids:
+                # Select the best target action based on what we know from the SBOM
+                if agent_id in write_tool_agent_ids:
+                    # Use the name of a write-capable tool as the target action
+                    for tid in self._outgoing.get(agent_id, {}).get(RelationshipType.CALLS, []):
+                        tool = self._node_by_id.get(tid)
+                        if tool and (
+                            tool.metadata.high_privilege
+                            or any(kw in tool.name.lower() for kw in _WRITE_KWORDS)
+                        ):
+                            target_action = f"use {tool.name} to update another user's record"
+                            target_desc = "unauthorized write operation"
+                            break
+                    else:
+                        target_action = "access another user's account information"
+                        target_desc = "cross-account data access"
+                else:
+                    target_action = "access another user's account information"
+                    target_desc = "cross-account data access"
+
+                out.append(
+                    build_premise_injection(
+                        agent_id=agent_id,
+                        agent_name=agent_name,
+                        target_action=target_action,
+                        target_description=target_desc,
+                        pii_fields=all_pii_fields[:4] if all_pii_fields else None,
+                    )
+                )
+            elif not pii_datastore_agent_ids and not write_tool_agent_ids:
+                # Fallback: no SBOM signals, but we still try for all agents
+                out.append(
+                    build_premise_injection(
+                        agent_id=agent_id,
+                        agent_name=agent_name,
                     )
                 )
 

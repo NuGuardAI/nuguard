@@ -7,7 +7,8 @@
   },
   "metadata": {
     "description": "AI application security — SBOM generation, static analysis, behavioral validation, and adversarial red-team testing for AI agents and LLM-powered applications.",
-    "version": "0.5.3"
+    "version": "0.5.3",
+    "repository": "https://github.com/NuGuardAI/nuguard"
   },
   "plugins": [
     {
