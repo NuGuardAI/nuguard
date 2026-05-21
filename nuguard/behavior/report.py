@@ -19,6 +19,10 @@ if TYPE_CHECKING:
 
 _log = logging.getLogger(__name__)
 
+# Finding types produced by gap aggregation — rendered in the Gap Summary section,
+# excluded from the Dynamic Analysis Findings section.
+_GAP_FINDING_TYPES = frozenset({"CAPABILITY_GAP", "INTENT_MISALIGNMENT", "TOOL_CHAIN_BROKEN"})
+
 
 def to_json(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = None) -> str:
     """Generate JSON report string.
@@ -342,11 +346,40 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
                     lines.append("")
             shown += 1
 
-    # Dynamic Findings
-    if result.dynamic_findings:
+    # Behavioral Gap Summary — findings promoted from LLM-generated gap strings
+    gap_findings = [f for f in result.dynamic_findings if f.get("finding_type") in _GAP_FINDING_TYPES]
+    if gap_findings:
+        total_occurrences = sum(int(f.get("occurrence_count", 1)) for f in gap_findings)
+        unique_components = {f.get("affected_component", "unknown") for f in gap_findings}
+        lines.append("## Behavioral Gap Summary")
+        lines.append("")
+        lines.append(
+            f"> {total_occurrences} gap observations aggregated into {len(gap_findings)} finding(s)"
+            f" across {len(unique_components)} component(s)."
+        )
+        lines.append("")
+        for ftype in ("CAPABILITY_GAP", "INTENT_MISALIGNMENT", "TOOL_CHAIN_BROKEN", "POLICY_VIOLATION"):
+            type_findings = [f for f in gap_findings if f.get("finding_type") == ftype]
+            if not type_findings:
+                continue
+            label = ftype.replace("_", " ").title()
+            lines.append(f"### {label}")
+            lines.append("")
+            lines.append("| Component | Occurrences | Sample Gaps |")
+            lines.append("|---|---|---|")
+            for gf in type_findings:
+                comp = gf.get("affected_component", "unknown")
+                count = gf.get("occurrence_count", 1)
+                sample = "; ".join(str(g)[:120] for g in (gf.get("gap_texts") or [gf.get("description", "")])[:3])
+                lines.append(f"| {comp} | {count} | {sample} |")
+            lines.append("")
+
+    # Dynamic Analysis Findings (policy violations, canary hits — not gap aggregates)
+    policy_findings = [f for f in result.dynamic_findings if f.get("finding_type") not in _GAP_FINDING_TYPES]
+    if policy_findings:
         lines.append("## Dynamic Analysis Findings")
         lines.append("")
-        for finding in result.dynamic_findings:
+        for finding in policy_findings:
             render_finding_block(lines, finding, heading_level="###")
 
     # Recommendations

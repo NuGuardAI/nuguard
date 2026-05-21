@@ -158,6 +158,17 @@ class RecommendationEngine:
                 related_findings=[finding_id],
             )
 
+        # Tool chain broken
+        if "TOOL_CHAIN_BROKEN" in title.upper() or "tool chain" in title.lower():
+            return Recommendation(
+                component=component,
+                recommendation_type="tool_config",
+                description=f"Repair broken tool invocation chain in {component}",
+                rationale=description,
+                priority=_severity_to_priority(severity),
+                related_findings=[finding_id],
+            )
+
         # Generic finding → low priority recommendation
         if description:
             return Recommendation(
