@@ -85,19 +85,48 @@ def _verdict_colour(verdict: str) -> str:
     return {"PASS": "green", "PARTIAL": "yellow", "FAIL": "red"}.get(verdict, "white")
 
 
-def _substitute_behavior_tokens(message: str, profile: "Any") -> str:
-    """Replace {golden_id}, {golden_id_list}, {golden_name} tokens using the discovered profile."""
-    if not profile or not message:
+# Synthetic placeholder codes the LLM sometimes inserts when no real ID is available.
+# When a real booking reference is known, these are replaced so the agent can look it up.
+_FAKE_BOOKING_CODES: frozenset[str] = frozenset({"ABC123", "AB12CD", "XYZ789", "AA0000"})
+
+
+def _substitute_behavior_tokens(
+    message: str,
+    profile: "Any",
+    local_tokens: "dict[str, str] | None" = None,
+) -> str:
+    """Replace {golden_id}, {golden_id_list}, {golden_name} tokens using the discovered profile.
+
+    local_tokens takes precedence over profile values and holds booking codes captured
+    live from agent responses during the scenario run.  When a real ID is known,
+    synthetic placeholder codes (e.g. ABC123) are also replaced so the agent can find
+    the actual reservation.
+    """
+    if not message:
         return message
-    if "{golden_id}" not in message and "{golden_id_list}" not in message and "{golden_name}" not in message:
-        return message
-    ids: list[str] = getattr(profile, "ids", []) or []
+    local_tokens = local_tokens or {}
+    # Resolve primary ID: prefer live-captured local token over discovery profile
+    if local_tokens.get("golden_id"):
+        ids: list[str] = [local_tokens["golden_id"]]
+    elif profile:
+        ids = getattr(profile, "ids", []) or []
+    else:
+        ids = []
     primary_id = ids[0] if ids else ""
     id_list = ", ".join(ids[:3]) if ids else ""
-    name: str = getattr(profile, "customer_name", "") or "the authenticated user"
+    name: str = (
+        local_tokens.get("golden_name")
+        or (getattr(profile, "customer_name", "") if profile else "")
+        or "the authenticated user"
+    )
     message = message.replace("{golden_id}", primary_id)
     message = message.replace("{golden_id_list}", id_list)
     message = message.replace("{golden_name}", name)
+    # Replace known synthetic placeholders so the agent can look up the real booking
+    if primary_id:
+        for fake in _FAKE_BOOKING_CODES:
+            if fake in message:
+                message = message.replace(fake, primary_id)
     return message
 
 
@@ -697,6 +726,11 @@ class BehaviorRunner:
         # Track the last agent response so _adapt_message can generate contextual probes.
         response: str = ""
 
+        # Per-scenario live token capture: real booking codes extracted from agent responses.
+        # Overrides the pre-scan discovery profile for {golden_id} substitution and also
+        # replaces synthetic placeholder codes (e.g. ABC123) in subsequent scripted messages.
+        _local_tokens: dict[str, str] = {}
+
         # Coverage stall detection: if two consecutive coverage batches make zero progress, exit early.
         _coverage_stall_count: int = 0
         _uncovered_prev: frozenset[str] = frozenset()
@@ -790,7 +824,7 @@ class BehaviorRunner:
                 if turn_delay > 0 and turn_idx > 0:
                     await asyncio.sleep(turn_delay)
 
-                message = _substitute_behavior_tokens(message, self._pre_scan_profile)
+                message = _substitute_behavior_tokens(message, self._pre_scan_profile, local_tokens=_local_tokens)
                 response, canary_hits = await client.send(
                     message,
                     session=session,
@@ -953,6 +987,20 @@ class BehaviorRunner:
                             "_run_scenario: queuing inter-turn %s reply for scenario=%s turn=%d",
                             conf_type, scenario.name, turn_idx + 1,
                         )
+
+            # Dynamic golden-id capture: extract real booking codes from agent responses so
+            # that subsequent scripted turns use them instead of synthetic placeholders.
+            # Only capture once per scenario (first good ID wins); IDs revealed later in
+            # the same session override the initial capture if they look more specific.
+            if response and not _local_tokens.get("golden_id"):
+                from nuguard.redteam.executor.id_extractor import extract_ids as _eid  # noqa: PLC0415, I001
+                _cand_ids = _eid(response)
+                if _cand_ids:
+                    _local_tokens["golden_id"] = _cand_ids[0]
+                    _log.debug(
+                        "_run_scenario: captured golden_id=%r from turn %d for scenario=%s",
+                        _cand_ids[0], turn_idx + 1, scenario.name,
+                    )
 
             # Policy evaluation
             violations: list[dict] = []

@@ -82,11 +82,25 @@ def extract_customer_name(text: str) -> str:
     return ""
 
 
+# Common English words that the ID patterns can incorrectly match.
+_ID_STOP_WORDS: frozenset[str] = frozenset({
+    "reference", "references", "details", "contact", "number", "system",
+    "record", "records", "account", "accounts", "booking", "bookings",
+    "flight", "flights", "ticket", "tickets", "please", "provide",
+    "confirm", "request", "itinerary", "service", "support", "status",
+    "cancel", "cancellation", "information", "passenger", "profile",
+})
+
+# Airline/railway flight-number pattern: 2–3 letters + hyphen + 2–5 digits (e.g. DL-401, UA-892).
+# These look like IDs but are route codes, not booking references.
+_FLIGHT_NUMBER_RE = re.compile(r'^[A-Z]{2,3}-\d{2,5}$', re.IGNORECASE)
+
+
 def extract_ids(text: str) -> list[str]:
     """Return deduplicated IDs found in *text*, ordered by pattern specificity.
 
     Labelled IDs (e.g. ``account_id: ACCT-1001``) appear before bare tokens.
-    UUIDs appear last.  Stop-words like single-letter tokens are excluded.
+    UUIDs appear last.  Stop-words and airline flight-number formats are excluded.
     """
     seen: set[str] = set()
     results: list[str] = []
@@ -95,6 +109,12 @@ def extract_ids(text: str) -> list[str]:
         for match in pattern.finditer(text):
             value = match.group(1)
             upper = value.upper()
+            # Exclude common English words that are not real IDs
+            if value.lower() in _ID_STOP_WORDS:
+                continue
+            # Exclude airline/train flight numbers (e.g. DL-401, UA-892)
+            if _FLIGHT_NUMBER_RE.match(value):
+                continue
             if upper not in seen:
                 seen.add(upper)
                 results.append(value)
