@@ -12,7 +12,6 @@ import logging
 from typing import TYPE_CHECKING, Any
 
 from nuguard.output.report_shared import (
-    _render_artefact,
     _truncate_evidence,
     render_finding_block,
     render_remediation_plan_section,

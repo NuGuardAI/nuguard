@@ -8,7 +8,6 @@ from typing import TYPE_CHECKING, Any
 
 from nuguard.output.report_shared import (
     _norm_sev,
-    _render_artefact,
     _truncate_evidence,
     render_finding_block,
     render_remediation_plan_section,
