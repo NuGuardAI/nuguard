@@ -11,6 +11,13 @@ import json
 import logging
 from typing import TYPE_CHECKING, Any
 
+from nuguard.output.report_shared import (
+    _render_artefact,
+    _truncate_evidence,
+    render_finding_block,
+    render_remediation_plan_section,
+)
+
 if TYPE_CHECKING:
     from nuguard.cli.report_meta import ReportMeta
 
@@ -132,44 +139,22 @@ def to_markdown(
         return "\n".join(lines)
 
     for f in sorted(findings, key=lambda x: list(Severity).index(x.severity)):
-        sev = f.severity.value.upper() if hasattr(f.severity, "value") else str(f.severity).upper()
-        lines += [f"## [{sev}] {f.title}", ""]
-        lines += [f.description, ""]
+        render_finding_block(lines, f, heading_level="##")
         if f.title.startswith("Inject Success Signal — "):
             lines += ["**Confidence:** Low — keyword match only, verify manually", ""]
-        if f.affected_component:
-            lines += [f"**Component:** {f.affected_component}", ""]
-        if f.goal_type:
-            lines += [f"**Type:** {f.goal_type}", ""]
         # Progress score (1–5 rubric)
         scores = getattr(f, "scores", None) or {}
         progress = scores.get("goal_progress")
         if progress is not None:
             lines += [f"**Progress score:** {progress}/5", ""]
-        # One-sentence reasoning from the judge
-        reasoning = getattr(f, "reasoning", "") or ""
-        if reasoning:
-            lines += [f"**Finding reasoning:** {reasoning}", ""]
         # Named success indicator
         success_indicator = getattr(f, "success_indicator", None)
         if success_indicator:
             lines += [f"**Success indicator:** `{success_indicator}`", ""]
-        # Evidence quote — exact substring proving the breach
-        evidence_quote = getattr(f, "evidence_quote", "") or ""
-        if evidence_quote:
-            lines += [
-                "**Evidence quote:**",
-                "> " + evidence_quote.replace("\n", "\n> "),
-                "",
-            ]
-        if f.remediation:
-            lines += [f"**Remediation:** {f.remediation}", ""]
-        if f.owasp_llm_ref:
-            lines += [f"**OWASP LLM:** {f.owasp_llm_ref}", ""]
         lines += _render_hit_turns(f)
 
     if remediation_plan:
-        _append_remediation_plan(lines, remediation_plan)
+        render_remediation_plan_section(lines, remediation_plan)
 
     return "\n".join(lines)
 
@@ -317,29 +302,6 @@ def _scenario_coverage_table(scenario_records: list) -> list[str]:
     return lines
 
 
-def _append_remediation_plan(lines: list[str], remediation_plan: list) -> None:
-    """Append a Remediation Plan section to *lines*, grouped by SBOM node."""
-    from nuguard.behavior.report import _render_artefact
-
-    lines.append("## Remediation Plan")
-    lines.append("")
-    lines.append(
-        "Concrete, SBOM-node-specific remediations generated from the findings "
-        "above. Apply in priority order."
-    )
-    lines.append("")
-
-    by_component: dict[str, list] = {}
-    for art in remediation_plan:
-        by_component.setdefault(art.component, []).append(art)
-
-    for comp, arts in by_component.items():
-        lines.append(f"### {comp}")
-        lines.append("")
-        for art in arts:
-            _render_artefact(lines, art)
-
-
 def _render_hit_turns(f: Any) -> list[str]:
     """Return Markdown lines showing only the HIT turns from a finding's attack_steps.
 
@@ -397,16 +359,3 @@ def _render_hit_turns(f: Any) -> list[str]:
     return lines
 
 
-def _truncate_evidence(text: str, *, limit: int = 2500) -> str:
-    """Trim *text* to ``limit`` chars at a newline/word boundary."""
-    if len(text) <= limit:
-        return text
-    cut = text[:limit]
-    window = max(200, limit // 5)
-    last_nl = cut.rfind("\n", limit - window)
-    if last_nl != -1:
-        return cut[:last_nl] + "\n… (truncated)"
-    last_sp = cut.rfind(" ", limit - 80)
-    if last_sp != -1:
-        return cut[:last_sp] + " … (truncated)"
-    return cut + "… (truncated)"

@@ -1172,7 +1172,10 @@ class BehaviorRunner:
                 deviations=[d for d in verdict.deviations],
             )
             turn_records.append(turn_record)
-            verdicts.append(verdict.to_dict())
+            v_dict = verdict.to_dict()
+            v_dict["user_message"] = message or ""
+            v_dict["agent_response"] = response or ""
+            verdicts.append(v_dict)
 
             # Accumulate deviations and findings
             scenario_deviations.extend(verdict.deviations)
