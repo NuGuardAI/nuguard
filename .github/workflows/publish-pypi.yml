@@ -59,7 +59,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: npm
-      url: https://www.npmjs.com/package/nuguard
+      url: https://www.npmjs.com/package/@nuguardai/nuguard
     permissions:
       contents: read
 
