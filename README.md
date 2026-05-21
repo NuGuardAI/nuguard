@@ -43,12 +43,6 @@ If these tools are not installed, the corresponding checks can be skipped or may
 
 ## Installation
 
-**MCP server (Claude / Cursor / Windsurf):** [smithery.ai/servers/NuGuardAI/nuguard](https://smithery.ai/servers/NuGuardAI/nuguard)
-
-```bash
-smithery mcp add NuGuardAI/nuguard
-```
-
 **Python CLI:**
 
 ```bash
@@ -73,6 +67,9 @@ Or, from the virtual environment:
 . .venv/bin/activate
 nuguard --help
 ```
+
+### Claude users can use plugin commands.
+Follow the instructions in [docs/plugin-guide.md](docs/plugin-guide.md) to set up the NuGuard plugin for Claude and use it to run commands like `/nuguard-sbom`, `/nuguard-analyze`, and `/nuguard-redteam` directly from your conversations with Claude.
 
 ## Quick Start
 

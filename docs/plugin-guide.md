@@ -43,6 +43,12 @@ The wizard collects your LLM API key, model, target URL, and auth details, then 
 - `security-auditor` agent for autonomous end-to-end audits
 - Credentials stored per-project in `.claude/nuguard.local.md`, never globally
 
+**Tip:** If you have multiple projects, run `/nuguard-config` in each one to set project-specific targets and credentials. The slash commands will always use the config from the current project context.
+
+**Example usage:**
+```use nuguard to generate an SBOM for this project and analyze it for security risks```
+```
+
 ---
 
 ### uv or pip
