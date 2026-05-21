@@ -283,8 +283,8 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
         for cov in result.coverage:
             ex = "Yes" if cov.exercised else "No"
             wp = "Yes" if cov.exercised_within_policy else ("No" if cov.exercised else "-")
-            devs = len(cov.deviations)
-            lines.append(f"| {cov.component_name} | {cov.node_type} | {ex} | {wp} | {devs} |")
+            dev_count = len(cov.deviations)
+            lines.append(f"| {cov.component_name} | {cov.node_type} | {ex} | {wp} | {dev_count} |")
         lines.append("")
 
     # Deviations — grouped by scenario → turn, with full turn evidence
