@@ -98,4 +98,12 @@ nuguard redteam \
   --format markdown
 ```
 
+## 7. Run from Claude (Plugin)
 
+NuGuard integrates directly into Claude Code and Claude Desktop. Install the plugin once and run the full pipeline — SBOM, analysis, behavior, and red-team — from the chat interface.
+
+```bash
+claude plugin add NuGuardAI/nuguard
+```
+
+See the [Plugin Guide](plugin-guide.md) for Claude Code slash commands, agents, and Claude Desktop / npx setup.
