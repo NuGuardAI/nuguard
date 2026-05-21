@@ -26,7 +26,13 @@ The plugin wires slash commands, agents, and skills in one step — no manual co
 **From the terminal:**
 
 ```bash
-claude plugin add NuGuardAI/nuguard
+claude plugin marketplace add NuGuardAI/nuguard
+claude plugin install nuguard
+```
+**From the Claude Code:**
+```
+/plugin marketplace add NuGuardAI/nuguard
+/plugin install nuguard
 ```
 
 After installation, run the configuration wizard once per project:
