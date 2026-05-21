@@ -323,7 +323,6 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
             evidence_quote = finding.get("evidence_quote") or finding.get("evidence") or ""
             reasoning = finding.get("reasoning") or ""
             policy_clause = finding.get("policy_clause") or ""
-            # For behavior dynamic findings, description IS the evidence text
             evidence_text = evidence_quote or (desc if desc and desc != title else "")
             lines.append(f"### [{sev}] {title}")
             if comp:
@@ -335,8 +334,6 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
             if policy_clause:
                 lines.append(f"**Policy Clause:** {policy_clause}")
                 lines.append("")
-            # Always render description as evidence (even when it matches the title)
-            evidence_text = evidence_quote or desc
             if evidence_text:
                 lines.append("**Evidence:**")
                 lines.append("```")

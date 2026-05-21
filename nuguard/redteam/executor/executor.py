@@ -27,7 +27,7 @@ from nuguard.redteam.llm_engine.response_evaluator import LLMResponseEvaluator
 from nuguard.redteam.policy_engine.evaluator import PolicyEvaluator, PolicyViolation
 from nuguard.redteam.target.action_logger import ActionLogger
 from nuguard.redteam.target.canary import CanaryScanner
-from nuguard.redteam.target.client import TargetAppClient
+from nuguard.redteam.target.client import TargetAppClient, TargetUnavailableError
 from nuguard.redteam.target.session import AttackSession
 
 from .chain_assembler import ChainAssembler
@@ -226,6 +226,7 @@ class AttackExecutor:
     """Executes an ExploitChain step-by-step, collecting evidence."""
 
     MAX_MUTATIONS = 3
+    MAX_CONSECUTIVE_FAILURES = 3
 
     def __init__(
         self,
@@ -338,6 +339,7 @@ class AttackExecutor:
 
         steps = ChainAssembler.sort_steps(chain)
         results: list[StepResult] = []
+        _consecutive_failures = 0
 
         # Warmup turn — legitimate on-topic message that primes the agent
         # session with realistic context.  Skipped when:
@@ -364,8 +366,35 @@ class AttackExecutor:
             if self._turn_delay_seconds > 0 and results:
                 await asyncio.sleep(self._turn_delay_seconds)
 
-            result = await self._execute_step(step, session, chain)
+            try:
+                result = await self._execute_step(step, session, chain)
+            except TargetUnavailableError:
+                _log.warning(
+                    "Chain %s: target unavailable at step %s — resetting circuit breaker and aborting chain",
+                    chain.chain_id, step.step_id,
+                )
+                self._client.reset_circuit_breaker()
+                chain.status = "aborted"
+                break
             results.append(result)
+
+            # Track consecutive HTTP / network errors (mirrors behavior runner).
+            # 429 rate-limit responses do not count — the target is alive.
+            # Reset on any genuine reply.
+            if (
+                result.response.startswith("[HTTP ")
+                or result.response.startswith("[REQUEST_ERROR:")
+            ) and not is_rate_limited(result.response):
+                _consecutive_failures += 1
+                if _consecutive_failures >= self.MAX_CONSECUTIVE_FAILURES:
+                    _log.warning(
+                        "Chain %s aborted after %d consecutive request failures",
+                        chain.chain_id, _consecutive_failures,
+                    )
+                    chain.status = "aborted"
+                    break
+            else:
+                _consecutive_failures = 0
 
             if result.success_signal_found:
                 session.add_evidence(step.step_id, result.response)
@@ -407,9 +436,18 @@ class AttackExecutor:
                         static = _mutation_variants(step.payload)
                         mutation = static[attempt % len(static)]
 
-                    result = await self._execute_step_with_payload(
-                        step, mutation, session, chain
-                    )
+                    try:
+                        result = await self._execute_step_with_payload(
+                            step, mutation, session, chain
+                        )
+                    except TargetUnavailableError:
+                        _log.warning(
+                            "Chain %s: target unavailable during mutation attempt %d — resetting circuit breaker and aborting chain",
+                            chain.chain_id, attempt,
+                        )
+                        self._client.reset_circuit_breaker()
+                        chain.status = "aborted"
+                        break
                     last_response = result.response
                     if result.success_signal_found:
                         session.add_evidence(step.step_id, result.response)
@@ -480,6 +518,13 @@ class AttackExecutor:
         )
         try:
             response, tool_calls = await self._client.send(message, session)
+        except TargetUnavailableError:
+            _log.warning(
+                "happy_path warmup: target unavailable for chain=%s — resetting circuit breaker",
+                chain.chain_id,
+            )
+            self._client.reset_circuit_breaker()
+            return None
         except Exception as exc:
             _log.warning(
                 "happy_path warmup send failed chain=%s: %s",

@@ -19,6 +19,15 @@ from nuguard.models.policy import CognitivePolicy
 
 _log = get_logger(__name__)
 
+# Common 3-char English words that carry no domain signal.
+# Used in the short-word reverse check to avoid spurious matches.
+_SHORT_STOP_WORDS: frozenset[str] = frozenset({
+    "and", "the", "for", "but", "can", "not", "are", "was", "has",
+    "had", "its", "all", "any", "one", "two", "you", "our", "his",
+    "her", "may", "get", "set", "use", "new", "old", "out", "off",
+    "via", "per", "due", "fee", "tax", "ref", "yes", "now", "too",
+})
+
 
 def _response_overlaps_topic(response_lower: str, topic: str) -> bool:
     """Return True when *response_lower* has meaningful word-level overlap with *topic*.
@@ -43,7 +52,15 @@ def _response_overlaps_topic(response_lower: str, topic: str) -> bool:
     # Reverse: response keywords appear in topic text (catches "cancellation" → "cancellations")
     response_words = re.sub(r"[^\w\s]", " ", response_lower).split()
     meaningful_response = [w for w in response_words if len(w) >= 4]
-    return any(w in topic_lower for w in meaningful_response)
+    if any(w in topic_lower for w in meaningful_response):
+        return True
+    # Short domain words (3 chars, non-stopword) — catches "bag" → "baggage", "fee" handled above
+    meaningful_response_short = [
+        w for w in response_words if len(w) == 3 and w not in _SHORT_STOP_WORDS
+    ]
+    return bool(meaningful_response_short and any(
+        w in topic_lower for w in meaningful_response_short
+    ))
 
 
 def detect_topic_violations(
@@ -98,7 +115,10 @@ def detect_topic_violations(
         )
         if not matched_any_allowed:
             _log.debug(
-                "topic_boundary Tier-2: response has no overlap with allowed topics"
+                "topic_boundary Tier-2: response has no overlap with allowed topics "
+                "snippet=%r allowed=%r",
+                response[:120],
+                policy.allowed_topics,
             )
             violations.append(
                 {

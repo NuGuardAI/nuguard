@@ -68,6 +68,19 @@ _DESTRUCTIVE_KEYWORDS = frozenset({
 })
 
 
+def _make_short_title(violation_type: str, policy_clause: str) -> str:
+    """Return a ≤15-word finding title for a policy violation."""
+    if violation_type == "topic_boundary":
+        if "restricted" in policy_clause.lower():
+            return "Response mentions a restricted topic"
+        return "Response outside allowed topics"
+    if violation_type == "restricted_action":
+        comp = policy_clause.replace("restricted_topics:", "").strip()
+        return f"Restricted action: {comp}"[:80]
+    words = (policy_clause or violation_type).replace("_", " ").split()
+    return " ".join(words[:15]) or "Policy violation"
+
+
 def _is_destructive_scenario(scenario: object) -> bool:
     """Return True when the scenario is likely to destroy or mutate user data.
 
@@ -137,6 +150,7 @@ def _print_turn(
     request: str,
     response: str,
     verdict: "TurnVerdict",
+    violations: "list[dict] | None" = None,
 ) -> None:
     """Print a single behavior turn's request/response/verdict to the console."""
     colour = _verdict_colour(verdict.verdict)
@@ -160,6 +174,13 @@ def _print_turn(
         sev = str(dev.get("severity", "")).upper()
         desc = dev.get("description", "")
         result_lines.append(f"  [bold red]deviation [{sev}]:[/bold red] {desc}")
+    for v in violations or []:
+        sev = str(v.get("severity", "")).upper()
+        clause = v.get("policy_clause", "")
+        evidence = v.get("evidence", "")
+        result_lines.append(
+            f"  [bold red]policy violation [{sev}]:[/bold red] {clause} — {evidence[:120]}"
+        )
     _common_print_turn(
         module="behavior",
         scenario_name=scenario_name,
@@ -911,6 +932,7 @@ class BehaviorRunner:
                         request=message,
                         response="",
                         verdict=_fail_verdict,
+                        violations=[],
                     )
                 turn_records.append(TurnRecord(
                     turn=turn_idx + 1,
@@ -1031,6 +1053,14 @@ class BehaviorRunner:
                 except Exception as exc:
                     _log.debug("_run_scenario: policy evaluation failed: %s", exc)
 
+            if violations:
+                _log.warning(
+                    "behavior.policy_violations: scenario=%s turn=%d  %s",
+                    scenario.name,
+                    turn_idx + 1,
+                    [(v.get("severity"), v.get("policy_clause", "")[:80]) for v in violations],
+                )
+
             # Judge the turn
             verdict: TurnVerdict = await self._judge.judge_turn(
                 turn=turn_idx + 1,
@@ -1060,6 +1090,7 @@ class BehaviorRunner:
                     request=message,
                     response=response or "",
                     verdict=verdict,
+                    violations=violations,
                 )
             _log.info(
                 "behavior.verdict: scenario=%s  turn=%d  verdict=%s  score=%.2f  agents=%s  tools=%s",
@@ -1159,6 +1190,10 @@ class BehaviorRunner:
                 # these in BehaviorRunResult.findings and compute scan_outcome correctly.
                 scenario_deviations.append({
                     "deviation_type": "policy_violation",
+                    "title": _make_short_title(
+                        violation.get("type", "policy_violation"),
+                        violation.get("policy_clause", ""),
+                    ),
                     "description": violation.get("evidence", ""),
                     "severity": _vsev,
                 })
@@ -1431,17 +1466,29 @@ class BehaviorRunner:
         scenario_by_id = {getattr(s, "scenario_id", ""): s for s in scenarios}
         raw_results = await asyncio.gather(*(_run_one(i, s) for i, s in enumerate(scenarios)))
 
+        seen_findings: set[tuple[str, str, str]] = set()
         for run_result in raw_results:
             if run_result is None:
                 continue
             scenario_results.append(run_result)
             orig = scenario_by_id.get(run_result.scenario_id)
-            # Extract findings from scenario deviations
+            # Extract findings from scenario deviations, deduplicating across scenarios
             for dev in run_result.deviations:
                 if isinstance(dev, dict) and dev.get("deviation_type") in ("policy_violation", "data_leak"):
+                    dedup_key = (
+                        dev.get("deviation_type", ""),
+                        dev.get("severity", ""),
+                        dev.get("description", "")[:80],
+                    )
+                    if dedup_key in seen_findings:
+                        continue
+                    seen_findings.add(dedup_key)
                     all_findings.append({
                         "finding_id": str(uuid.uuid4()),
-                        "title": dev.get("description", "Behavioral deviation"),
+                        "title": dev.get("title") or _make_short_title(
+                            dev.get("deviation_type", "policy_violation"),
+                            dev.get("description", ""),
+                        ),
                         "severity": str(dev.get("severity", "medium")).lower(),
                         "description": dev.get("description", ""),
                         "affected_component": (getattr(orig, "target_component", None) or "unknown"),
