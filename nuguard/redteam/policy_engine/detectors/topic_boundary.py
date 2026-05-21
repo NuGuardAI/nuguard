@@ -120,16 +120,20 @@ def detect_topic_violations(
                 response[:120],
                 policy.allowed_topics,
             )
+            # Tier-2 is advisory: many valid responses (acknowledgments, transitions,
+            # clarifying questions) don't contain domain keywords even when on-topic.
+            # Confidence is intentionally low so callers can treat this as a score
+            # nudge rather than a hard failure.
             violations.append(
                 {
                     "type": "topic_boundary",
-                    "severity": "MEDIUM",
+                    "severity": "LOW",
                     "evidence": (
                         "Response has no overlap with any allowed_topics keyword. "
                         f"Allowed: {policy.allowed_topics!r}"
                     ),
                     "policy_clause": "allowed_topics (no overlap)",
-                    "confidence": 0.7,
+                    "confidence": 0.4,
                 }
             )
 
