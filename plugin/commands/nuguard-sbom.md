@@ -14,7 +14,7 @@ Generate an AI-SBOM for the current project and summarise the detected component
 
 ## Steps
 
-1. **Detect nuguard** — check `which nuguard 2>/dev/null`. Use `nuguard` if on PATH, otherwise `uv run nuguard`.
+1. **Detect nuguard** — check `which uv 2>/dev/null`. If `uv` is present, use `uv run nuguard`. Otherwise check `which nuguard 2>/dev/null`; if on PATH use `nuguard`. If neither is available, run `pip install nuguard` first.
 
 2. **Determine the source**:
    - `--source PATH` provided → pass `--source PATH`

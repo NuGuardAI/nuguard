@@ -20,7 +20,7 @@ Read `.claude/nuguard.local.md`.
 
 ### 1. Detect nuguard
 
-Check `which nuguard 2>/dev/null`. Use `nuguard` if on PATH, otherwise `uv run nuguard`.
+Check `which uv 2>/dev/null`. If `uv` is present, use `uv run nuguard`. Otherwise check `which nuguard 2>/dev/null`; if on PATH use `nuguard`. If neither is available, run `pip install nuguard` first.
 
 ### 2. Resolve config
 

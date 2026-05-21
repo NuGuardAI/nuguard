@@ -89,7 +89,7 @@ If `nuguard.yaml` does **not** exist in the current directory, create it now via
 nuguard init --target <target_url>
 ```
 
-(Use `uv run nuguard` if `nuguard` is not on PATH. Omit `--target` if no target URL was provided.)
+(If `nuguard` is not on PATH: use `uv run nuguard` if `uv` is present, otherwise run `pip install nuguard` first. Omit `--target` if no target URL was provided.)
 
 Then — whether the file was just created or already existed — patch these values into `nuguard.yaml`
 using the Read and Edit tools:

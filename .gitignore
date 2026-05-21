@@ -55,4 +55,5 @@ tests/*/*/output/
 tests/*/*/tests/
 tests/*/.adk/*.db
 tests/*/output/
+tests/benchmark/
 CACHEDIR.TAG

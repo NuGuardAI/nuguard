@@ -7,7 +7,7 @@
     "email": "info@nuguard.ai",
     "url": "https://nuguard.ai"
   },
-  "homepage": "https://nuguard.ai/docs/doc.html?page=claude-plugin-guide",
+  "homepage": "https://nuguard.ai/docs/doc.html?page=plugin-guide",
   "repository": "https://github.com/NuGuardAI/nuguard",
   "license": "Apache-2.0",
   "keywords": [
@@ -21,7 +21,9 @@
     "appsec"
   ],
   "commands": "./commands/",
-  "agents": "./agents/",
+  "agents": [
+    "./agents/security-auditor.md"
+  ],
   "skills": [
     "./skills/ai-security-review",
     "./skills/sbom-analysis"
