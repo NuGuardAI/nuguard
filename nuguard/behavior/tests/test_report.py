@@ -10,7 +10,8 @@ from nuguard.behavior.models import (
     Recommendation,
     ScenarioResult,
 )
-from nuguard.behavior.report import _norm_sev, to_json, to_markdown
+from nuguard.behavior.report import to_json, to_markdown
+from nuguard.output.report_shared import _norm_sev
 
 # ---------------------------------------------------------------------------
 # Helpers

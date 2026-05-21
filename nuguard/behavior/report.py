@@ -6,6 +6,13 @@ import logging
 import re
 from typing import TYPE_CHECKING, Any
 
+from nuguard.output.report_shared import (
+    _norm_sev,
+    _truncate_evidence,
+    render_finding_block,
+    render_remediation_plan_section,
+)
+
 if TYPE_CHECKING:
     from nuguard.behavior.models import BehaviorAnalysisResult
     from nuguard.cli.report_meta import ReportMeta
@@ -46,15 +53,6 @@ def to_json(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = None) 
         }
     return json.dumps(data, indent=2, default=str)
 
-
-def _norm_sev(raw: object) -> str:
-    """Normalize a severity value to a plain uppercase string (e.g. HIGH, CRITICAL).
-
-    Handles both plain strings (``'high'``, ``'HIGH'``) and enum-style strings
-    (``'Severity.HIGH'``, ``'SEVERITY.HIGH'``) produced by ``str(Severity.HIGH)``.
-    """
-    s = str(raw).upper()
-    return s.split(".")[-1] if "." in s else s
 
 
 def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = None) -> str:
@@ -241,7 +239,7 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
                         ta = f"{scores.get('topic_alignment'):.1f}" if isinstance(scores.get("topic_alignment"), (int, float)) else "-"
                         os_ = f"{v.get('overall_score'):.2f}" if isinstance(v.get("overall_score"), (int, float)) else "-"
                         gaps_raw = v.get("gaps") or []
-                        gaps_str = ("; ".join(str(g) for g in gaps_raw[:2]))[:60] or "-"
+                        gaps_str = ("; ".join(str(g) for g in gaps_raw))[:300] or "-"
                         lines.append(f"| {t} | {verdict} | {ci} | {rv} | {ta} | {os_} | {gaps_str} |")
                     lines.append("")
 
@@ -259,8 +257,8 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
                                 evidence_lines.append(f"> **User:** {str(user_msg)[:200]}")
                             if agent_resp:
                                 evidence_lines.append(f"> **Agent:** {str(agent_resp)[:200]}")
-                            if gaps_raw:
-                                evidence_lines.append(f"> **Gap:** {str(gaps_raw[0])[:150]}")
+                            for gap in gaps_raw:
+                                evidence_lines.append(f"> **Gap:** {str(gap)[:400]}")
                             evidence_lines.append("")
                     if evidence_lines:
                         lines.append("**Evidence (FAIL turns):**")
@@ -285,70 +283,71 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
         for cov in result.coverage:
             ex = "Yes" if cov.exercised else "No"
             wp = "Yes" if cov.exercised_within_policy else ("No" if cov.exercised else "-")
-            devs = len(cov.deviations)
-            lines.append(f"| {cov.component_name} | {cov.node_type} | {ex} | {wp} | {devs} |")
+            dev_count = len(cov.deviations)
+            lines.append(f"| {cov.component_name} | {cov.node_type} | {ex} | {wp} | {dev_count} |")
         lines.append("")
 
-    # Deviations
-    all_deviations: list[dict] = []
+    # Deviations — grouped by scenario → turn, with full turn evidence
+    dev_turns: list[tuple[str, dict]] = []  # (scenario_name, verdict_dict)
     for sr in result.scenario_results:
-        for dev in sr.deviations:
-            if isinstance(dev, dict):
-                all_deviations.append({**dev, "scenario": sr.scenario_name})
+        for v in sr.verdicts:
+            if v.get("deviations"):
+                dev_turns.append((sr.scenario_name, v))
 
-    if all_deviations:
+    if dev_turns:
         lines.append("## Deviations")
         lines.append("")
-        for dev in all_deviations[:20]:  # Cap display
-            dtype = dev.get("deviation_type", "unknown")
-            desc = dev.get("description", "")
-            sev = _norm_sev(dev.get("severity", ""))
-            scenario = dev.get("scenario", "")
-            lines.append(f"### [{sev}] {dtype}: {desc}")
-            if scenario:
-                lines.append(f"*Scenario*: {scenario}")
-            lines.append("")
+        shown = 0
+        for scenario_name, v in dev_turns:
+            if shown >= 20:
+                remaining = len(dev_turns) - shown
+                lines.append(f"_… {remaining} more deviation turn(s) omitted._")
+                lines.append("")
+                break
+            turn = v.get("turn", "?")
+            verdict_label = v.get("verdict", "FAIL")
+            score = v.get("overall_score")
+            score_str = f" — Score: {score:.2f}" if isinstance(score, (int, float)) else ""
+            user_msg = v.get("user_message") or ""
+            agent_resp = v.get("agent_response") or ""
+            gaps = v.get("gaps") or []
+            devs = v.get("deviations") or []
+
+            for dev in devs:
+                dtype = dev.get("deviation_type", "unknown")
+                desc = dev.get("description", "")
+                sev = _norm_sev(dev.get("severity", ""))
+                lines.append(f"### [{sev}] {dtype}")
+                lines.append("")
+                lines.append(desc)
+                lines.append("")
+                lines.append(f"*Scenario*: {scenario_name} — Turn {turn} ({verdict_label}{score_str})")
+                lines.append("")
+                if user_msg or agent_resp:
+                    lines.append(f"**Evidence — Turn {turn} ({verdict_label}):**")
+                    lines.append("")
+                    if user_msg:
+                        lines.append("> **User:** " + _truncate_evidence(user_msg, limit=400).replace("\n", " "))
+                    if agent_resp:
+                        lines.append("> **Agent:** " + _truncate_evidence(agent_resp, limit=800).replace("\n", " "))
+                    lines.append("")
+                if gaps:
+                    lines.append("**Gaps:**")
+                    for gap in gaps:
+                        lines.append(f"- {gap}")
+                    lines.append("")
+                hint = _deviation_remediation_hint(dtype, desc)
+                if hint:
+                    lines.append(f"**Remediation:** {hint}")
+                    lines.append("")
+            shown += 1
 
     # Dynamic Findings
     if result.dynamic_findings:
         lines.append("## Dynamic Analysis Findings")
         lines.append("")
         for finding in result.dynamic_findings:
-            title = finding.get("title", "")
-            sev = _norm_sev(finding.get("severity", ""))
-            comp = finding.get("affected_component", "")
-            desc = finding.get("description", "")
-            owasp_asi_ref = finding.get("owasp_asi_ref") or ""
-            owasp_llm_ref = finding.get("owasp_llm_ref") or ""
-            evidence_quote = finding.get("evidence_quote") or finding.get("evidence") or ""
-            reasoning = finding.get("reasoning") or ""
-            policy_clause = finding.get("policy_clause") or ""
-            # For behavior dynamic findings, description IS the evidence text
-            evidence_text = evidence_quote or (desc if desc and desc != title else "")
-            lines.append(f"### [{sev}] {title}")
-            if comp:
-                lines.append(f"**Affected Component:** {comp}")
-            lines.append("")
-            if reasoning:
-                lines.append(f"**Finding:** {reasoning}")
-                lines.append("")
-            if policy_clause:
-                lines.append(f"**Policy Clause:** {policy_clause}")
-                lines.append("")
-            # Always render description as evidence (even when it matches the title)
-            evidence_text = evidence_quote or desc
-            if evidence_text:
-                lines.append("**Evidence:**")
-                lines.append("```")
-                lines.append(evidence_text[:500])
-                lines.append("```")
-                lines.append("")
-            if owasp_llm_ref:
-                lines.append(f"**OWASP LLM:** {owasp_llm_ref}")
-                lines.append("")
-            if owasp_asi_ref:
-                lines.append(f"**OWASP ASI:** {owasp_asi_ref}")
-                lines.append("")
+            render_finding_block(lines, finding, heading_level="###")
 
     # Recommendations
     if result.recommendations:
@@ -364,26 +363,45 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
 
     # Remediation Plan
     if result.remediation_plan:
-        lines.append("## Remediation Plan")
-        lines.append("")
-        lines.append(
-            "Concrete, SBOM-node-specific remediations generated from findings above. "
-            "Apply in priority order."
-        )
-        lines.append("")
-
-        # Group by component
-        by_component: dict[str, list] = {}
-        for art in result.remediation_plan:
-            by_component.setdefault(art.component, []).append(art)
-
-        for comp, arts in by_component.items():
-            lines.append(f"### {comp}")
-            lines.append("")
-            for art in arts:
-                _render_artefact(lines, art)
+        render_remediation_plan_section(lines, result.remediation_plan)
 
     return "\n".join(lines)
+
+
+def _deviation_remediation_hint(deviation_type: str, description: str) -> str:
+    """Return a short, template-based remediation hint for a deviation."""
+    desc_lower = description.lower()
+    if deviation_type == "intent_misalignment":
+        return (
+            "Tighten the system prompt's allowed-topic definition so the agent does not "
+            "refuse or deflect requests that fall within the declared scope."
+        )
+    if deviation_type == "capability_gap":
+        if "not exercised" in desc_lower or "component not exercised" in desc_lower:
+            return (
+                "Update the agent's routing or system prompt to ensure the required component "
+                "is invoked for this request type."
+            )
+        if "invalid response" in desc_lower or "refusal" in desc_lower or "refused" in desc_lower:
+            return (
+                "Fix error-handling logic or system prompt instructions so the agent "
+                "provides a substantive response rather than refusing a valid request."
+            )
+        return (
+            "Review the agent's system prompt and tool configuration to close this "
+            "capability gap."
+        )
+    if deviation_type == "policy_violation":
+        return (
+            "Align the agent's system prompt with the cognitive policy, or update the "
+            "policy to reflect the intended allowed topics."
+        )
+    if deviation_type == "no_response":
+        return (
+            "Investigate why the target returned an empty response and add appropriate "
+            "error handling or retry logic."
+        )
+    return "Review the agent's system prompt and configuration to address this deviation."
 
 
 def _scenario_coverage_table(scenario_results: list[Any]) -> list[str]:
@@ -449,80 +467,6 @@ def _scenario_coverage_table(scenario_results: list[Any]) -> list[str]:
     )
     lines.append("")
     return lines
-
-
-def _render_artefact(lines: list[str], art: Any) -> None:  # noqa: ANN401
-    """Render one RemediationArtefact as Markdown bullets."""
-    from nuguard.behavior.models import RemediationArtefactType
-
-    atype = art.artefact_type
-    priority_badge = f"[{art.priority.upper()}]"
-    finding_ref = f" *(findings: {', '.join(art.finding_ids)})*" if art.finding_ids else ""
-
-    if atype == RemediationArtefactType.SYSTEM_PROMPT_PATCH:
-        loc = f" — `{art.patch_location}`" if art.patch_location else ""
-        lines.append(f"**{priority_badge} System Prompt Patch — {art.patch_section or 'Security Rules'}{loc}**{finding_ref}")
-        lines.append("")
-        if art.patch_text:
-            lines.append("```")
-            lines.append(art.patch_text.strip())
-            lines.append("```")
-        privilege_notes = _privilege_notes(art)
-        if privilege_notes:
-            lines.append(privilege_notes)
-        lines.append(f"*Rationale*: {art.rationale}")
-        lines.append("")
-
-    elif atype in (
-        RemediationArtefactType.INPUT_GUARDRAIL,
-        RemediationArtefactType.OUTPUT_GUARDRAIL,
-    ):
-        label = "Input Guardrail" if atype == RemediationArtefactType.INPUT_GUARDRAIL else "Output Guardrail"
-        lines.append(f"**{priority_badge} {label} — `{art.guardrail_name or 'unnamed'}`**{finding_ref}")
-        lines.append("")
-        lines.append(f"- **Type**: `{art.guardrail_type or 'unspecified'}`")
-        if art.guardrail_trigger:
-            lines.append(f"- **Trigger**: `{art.guardrail_trigger}`")
-        if art.guardrail_action:
-            lines.append(f"- **Action**: `{art.guardrail_action}`")
-        if art.guardrail_message:
-            lines.append(f"- **Message**: _{art.guardrail_message}_")
-        privilege_notes = _privilege_notes(art)
-        if privilege_notes:
-            lines.append(privilege_notes)
-        lines.append(f"- **Rationale**: {art.rationale}")
-        lines.append("")
-
-    elif atype == RemediationArtefactType.ARCHITECTURAL_CHANGE:
-        lines.append(f"**{priority_badge} Architectural Change — {art.change_description or 'see details'}**{finding_ref}")
-        lines.append("")
-        if art.change_detail:
-            for detail_line in art.change_detail.splitlines():
-                lines.append(detail_line)
-        if art.edge_to_remove:
-            lines.append(f"- **Remove CALLS edge**: `{art.edge_to_remove[0]}` → `{art.edge_to_remove[1]}`")
-        privilege_notes = _privilege_notes(art)
-        if privilege_notes:
-            lines.append(privilege_notes)
-        lines.append("")
-        lines.append(f"*Rationale*: {art.rationale}")
-        lines.append("")
-
-    else:
-        lines.append(f"**{priority_badge} {art.artefact_type.value}** — {art.rationale}{finding_ref}")
-        lines.append("")
-
-
-def _privilege_notes(art: Any) -> str:
-    """Return a privilege-context note line or empty string."""
-    parts: list[str] = []
-    if art.privilege_scope:
-        parts.append(f"privilege: `{art.privilege_scope}`")
-    if art.requires_auth:
-        parts.append("requires authentication")
-    if art.requires_hitl:
-        parts.append("requires HITL approval")
-    return ("- **Access controls**: " + ", ".join(parts)) if parts else ""
 
 
 def to_text(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = None) -> None:

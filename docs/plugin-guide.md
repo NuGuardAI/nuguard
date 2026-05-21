@@ -1,6 +1,6 @@
-# NuGuard MCP Server
+# NuGuard Plugin Guide
 
-NuGuard's MCP server exposes AI security tools — SBOM generation, static analysis, behavioral testing, and adversarial red-teaming — directly to Claude. Ask Claude to audit your AI application and it will orchestrate the full pipeline, interpret findings, and recommend fixes without you leaving the chat.
+NuGuard exposes AI security tools — SBOM generation, static analysis, behavioral testing, and adversarial red-teaming — directly to Claude. Ask Claude to audit your AI application and it will orchestrate the full pipeline, interpret findings, and recommend fixes without you leaving the chat.
 
 ---
 
@@ -11,9 +11,9 @@ Choose the method that matches your environment:
 | I'm using… | Recommended method |
 |---|---|
 | Claude Code (CLI or IDE extension) | [Claude Code plugin](#claude-code-plugin-recommended) |
-| Claude Desktop (macOS / Windows app) | [pip](#pip-fastest-if-you-already-have-python), [npx](#npx-no-python-required), or [uvx](#uvx-uv-users) |
-| Smithery to manage MCP servers | [Smithery](#smithery) |
-| CI / scripting / no Claude UI | [pip](#pip-fastest-if-you-already-have-python) or [uvx](#uvx-uv-users) |
+| Claude Desktop (macOS / Windows app) | [uv](#uv-or-pip), [pip](#uv-or-pip), or [npx](#npx-no-python-required) |
+| Smithery | [Smithery](#smithery) |
+| CI / scripting / no Claude UI | [uv or pip](#uv-or-pip) |
 
 ---
 
@@ -43,11 +43,25 @@ The wizard collects your LLM API key, model, target URL, and auth details, then 
 - `security-auditor` agent for autonomous end-to-end audits
 - Credentials stored per-project in `.claude/nuguard.local.md`, never globally
 
+**Tip:** If you have multiple projects, run `/nuguard-config` in each one to set project-specific targets and credentials. The slash commands will always use the config from the current project context.
+
+**Example usage:**
+```use nuguard to generate an SBOM for this project and analyze it for security risks```
+```
+
 ---
 
-### pip (fastest if you already have Python)
+### uv or pip
 
-Install the package once, then the MCP server is available everywhere with no extra tooling:
+Install the package once, then NuGuard is available everywhere with no extra tooling.
+
+If you have [uv](https://docs.astral.sh/uv/) (recommended):
+
+```bash
+uv pip install "nuguard[mcp]"
+```
+
+Otherwise, use pip:
 
 ```bash
 pip install "nuguard[mcp]"
@@ -135,7 +149,7 @@ The npm wrapper uses the same runtime detection waterfall as the plugin (see bel
 
 ### Smithery
 
-If you use Smithery to manage your MCP servers:
+If you use Smithery:
 
 ```bash
 smithery mcp add NuGuardAI/nuguard
@@ -153,13 +167,13 @@ During install, Smithery prompts for three optional settings:
 
 Secrets are passed as environment variables to the `nuguard-mcp` process and never travel through Claude's context.
 
-> **Note:** Smithery provisions only the seven MCP tools. Slash commands, skills, and the security-auditor agent require the Claude Code plugin.
+> **Note:** Smithery provisions only the seven NuGuard tools. Slash commands, skills, and the security-auditor agent require the Claude Code plugin.
 
 ---
 
 ### uvx (uv users)
 
-If you use [uv](https://docs.astral.sh/uv/), you can run the MCP server directly without a permanent install:
+If you use [uv](https://docs.astral.sh/uv/), you can run NuGuard directly without a permanent install:
 
 ```json
 {
@@ -204,7 +218,7 @@ Settings are saved to `.claude/nuguard.local.md` — a project-local file that i
 
 ### Using a nuguard.yaml (all install methods)
 
-For Smithery or manual Claude Desktop installs, create `nuguard.yaml` in your project directory. Run the wizard or use the template from `nuguard.yaml.example`. The NUGUARD_DEFAULT_CONFIG environment variable tells the MCP server where to find it:
+For Smithery or manual Claude Desktop installs, create `nuguard.yaml` in your project directory. Run the wizard or use the template from `nuguard.yaml.example`. The NUGUARD_DEFAULT_CONFIG environment variable tells NuGuard where to find it:
 
 ```bash
 export NUGUARD_DEFAULT_CONFIG=/absolute/path/to/nuguard.yaml
@@ -474,7 +488,8 @@ Find the absolute path with `which nuguard-mcp` (macOS/Linux) or `where nuguard-
 **`nuguard-mcp: no suitable Python runtime found`**  
 The `npx` launcher could not find Python or uvx. Install one of:
 ```bash
-pip install "nuguard[mcp]"      # recommended — also installs the nuguard-mcp binary
+uv pip install "nuguard[mcp]"   # recommended if you have uv
+pip install "nuguard[mcp]"      # alternative — also installs the nuguard-mcp binary
 ```
 or install [uv](https://docs.astral.sh/uv/) and the launcher will use `uvx` automatically.
 

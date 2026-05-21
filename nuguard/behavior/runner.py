@@ -68,6 +68,19 @@ _DESTRUCTIVE_KEYWORDS = frozenset({
 })
 
 
+def _make_short_title(violation_type: str, policy_clause: str) -> str:
+    """Return a ≤15-word finding title for a policy violation."""
+    if violation_type == "topic_boundary":
+        if "restricted" in policy_clause.lower():
+            return "Response mentions a restricted topic"
+        return "Response outside allowed topics"
+    if violation_type == "restricted_action":
+        comp = policy_clause.replace("restricted_topics:", "").strip()
+        return f"Restricted action: {comp}"[:80]
+    words = (policy_clause or violation_type).replace("_", " ").split()
+    return " ".join(words[:15]) or "Policy violation"
+
+
 def _is_destructive_scenario(scenario: object) -> bool:
     """Return True when the scenario is likely to destroy or mutate user data.
 
@@ -85,19 +98,48 @@ def _verdict_colour(verdict: str) -> str:
     return {"PASS": "green", "PARTIAL": "yellow", "FAIL": "red"}.get(verdict, "white")
 
 
-def _substitute_behavior_tokens(message: str, profile: "Any") -> str:
-    """Replace {golden_id}, {golden_id_list}, {golden_name} tokens using the discovered profile."""
-    if not profile or not message:
+# Synthetic placeholder codes the LLM sometimes inserts when no real ID is available.
+# When a real booking reference is known, these are replaced so the agent can look it up.
+_FAKE_BOOKING_CODES: frozenset[str] = frozenset({"ABC123", "AB12CD", "XYZ789", "AA0000"})
+
+
+def _substitute_behavior_tokens(
+    message: str,
+    profile: "Any",
+    local_tokens: "dict[str, str] | None" = None,
+) -> str:
+    """Replace {golden_id}, {golden_id_list}, {golden_name} tokens using the discovered profile.
+
+    local_tokens takes precedence over profile values and holds booking codes captured
+    live from agent responses during the scenario run.  When a real ID is known,
+    synthetic placeholder codes (e.g. ABC123) are also replaced so the agent can find
+    the actual reservation.
+    """
+    if not message:
         return message
-    if "{golden_id}" not in message and "{golden_id_list}" not in message and "{golden_name}" not in message:
-        return message
-    ids: list[str] = getattr(profile, "ids", []) or []
+    local_tokens = local_tokens or {}
+    # Resolve primary ID: prefer live-captured local token over discovery profile
+    if local_tokens.get("golden_id"):
+        ids: list[str] = [local_tokens["golden_id"]]
+    elif profile:
+        ids = getattr(profile, "ids", []) or []
+    else:
+        ids = []
     primary_id = ids[0] if ids else ""
     id_list = ", ".join(ids[:3]) if ids else ""
-    name: str = getattr(profile, "customer_name", "") or "the authenticated user"
+    name: str = (
+        local_tokens.get("golden_name")
+        or (getattr(profile, "customer_name", "") if profile else "")
+        or "the authenticated user"
+    )
     message = message.replace("{golden_id}", primary_id)
     message = message.replace("{golden_id_list}", id_list)
     message = message.replace("{golden_name}", name)
+    # Replace known synthetic placeholders so the agent can look up the real booking
+    if primary_id:
+        for fake in _FAKE_BOOKING_CODES:
+            if fake in message:
+                message = message.replace(fake, primary_id)
     return message
 
 
@@ -108,6 +150,7 @@ def _print_turn(
     request: str,
     response: str,
     verdict: "TurnVerdict",
+    violations: "list[dict] | None" = None,
 ) -> None:
     """Print a single behavior turn's request/response/verdict to the console."""
     colour = _verdict_colour(verdict.verdict)
@@ -131,6 +174,13 @@ def _print_turn(
         sev = str(dev.get("severity", "")).upper()
         desc = dev.get("description", "")
         result_lines.append(f"  [bold red]deviation [{sev}]:[/bold red] {desc}")
+    for v in violations or []:
+        sev = str(v.get("severity", "")).upper()
+        clause = v.get("policy_clause", "")
+        evidence = v.get("evidence", "")
+        result_lines.append(
+            f"  [bold red]policy violation [{sev}]:[/bold red] {clause} — {evidence[:120]}"
+        )
     _common_print_turn(
         module="behavior",
         scenario_name=scenario_name,
@@ -590,6 +640,7 @@ class BehaviorRunner:
         policy_evaluator: Any,
     ) -> ScenarioResult:
         """Execute a single scenario and return a ScenarioResult."""
+        verbose = bool(getattr(self._config, "verbose", False))
         run_id = str(uuid.uuid4())
         verdicts: list[dict] = []
         turn_records: list[TurnRecord] = []
@@ -696,6 +747,15 @@ class BehaviorRunner:
         # Track the last agent response so _adapt_message can generate contextual probes.
         response: str = ""
 
+        # Per-scenario live token capture: real booking codes extracted from agent responses.
+        # Overrides the pre-scan discovery profile for {golden_id} substitution and also
+        # replaces synthetic placeholder codes (e.g. ABC123) in subsequent scripted messages.
+        _local_tokens: dict[str, str] = {}
+
+        # Coverage stall detection: if two consecutive coverage batches make zero progress, exit early.
+        _coverage_stall_count: int = 0
+        _uncovered_prev: frozenset[str] = frozenset()
+
         while turn_idx < max_turns:
             # Determine next message
             message: str | None = None
@@ -734,10 +794,28 @@ class BehaviorRunner:
 
             # 3. Coverage follow-up — sent clean without _adapt_message so the
             #    focused component question is not contaminated by PII/hook probes.
-            elif coverage_turns_used < _adaptive_coverage_cap(self._config):
+            #    Invariant probes run only their scripted turns; coverage turns are
+            #    irrelevant for boundary checks and produce duplicative requests.
+            elif (
+                scenario.scenario_type != BehaviorScenarioType.INVARIANT_PROBE
+                and coverage_turns_used < _adaptive_coverage_cap(self._config)
+            ):
                 uncovered = coverage_state.uncovered_agents | coverage_state.uncovered_tools
                 if not uncovered:
                     break
+                _uncovered_frozen = frozenset(uncovered)
+                if coverage_turns_used > 0 and _uncovered_frozen == _uncovered_prev:
+                    _coverage_stall_count += 1
+                    if _coverage_stall_count >= 2:
+                        _log.info(
+                            "_run_scenario: coverage stall (no progress for 2 batches), "
+                            "stopping early for scenario=%s uncovered=%s",
+                            scenario.name, list(uncovered)[:4],
+                        )
+                        break
+                else:
+                    _coverage_stall_count = 0
+                _uncovered_prev = _uncovered_frozen
                 last_response = session.last_response
                 coverage_messages = await generate_coverage_turns(
                     uncovered=uncovered,
@@ -767,7 +845,7 @@ class BehaviorRunner:
                 if turn_delay > 0 and turn_idx > 0:
                     await asyncio.sleep(turn_delay)
 
-                message = _substitute_behavior_tokens(message, self._pre_scan_profile)
+                message = _substitute_behavior_tokens(message, self._pre_scan_profile, local_tokens=_local_tokens)
                 response, canary_hits = await client.send(
                     message,
                     session=session,
@@ -846,14 +924,16 @@ class BehaviorRunner:
                     }],
                     latency_ms=latency_ms,
                 )
-                _print_turn(
-                    scenario_name=scenario.name,
-                    turn_idx=turn_idx + 1,
-                    url=target_url + scenario_endpoint,
-                    request=message,
-                    response="",
-                    verdict=_fail_verdict,
-                )
+                if verbose:
+                    _print_turn(
+                        scenario_name=scenario.name,
+                        turn_idx=turn_idx + 1,
+                        url=target_url + scenario_endpoint,
+                        request=message,
+                        response="",
+                        verdict=_fail_verdict,
+                        violations=[],
+                    )
                 turn_records.append(TurnRecord(
                     turn=turn_idx + 1,
                     prompt=message,
@@ -930,6 +1010,20 @@ class BehaviorRunner:
                             conf_type, scenario.name, turn_idx + 1,
                         )
 
+            # Dynamic golden-id capture: extract real booking codes from agent responses so
+            # that subsequent scripted turns use them instead of synthetic placeholders.
+            # Only capture once per scenario (first good ID wins); IDs revealed later in
+            # the same session override the initial capture if they look more specific.
+            if response and not _local_tokens.get("golden_id"):
+                from nuguard.redteam.executor.id_extractor import extract_ids as _eid  # noqa: PLC0415, I001
+                _cand_ids = _eid(response)
+                if _cand_ids:
+                    _local_tokens["golden_id"] = _cand_ids[0]
+                    _log.debug(
+                        "_run_scenario: captured golden_id=%r from turn %d for scenario=%s",
+                        _cand_ids[0], turn_idx + 1, scenario.name,
+                    )
+
             # Policy evaluation
             violations: list[dict] = []
             if policy_evaluator is not None and response:
@@ -947,9 +1041,25 @@ class BehaviorRunner:
                             "policy_clause": str(v.policy_clause),
                         }
                         for v in policy_violations
+                        # For data-probe turns (expect_refused), the correct agent
+                        # behaviour is a refusal that won't contain topic keywords.
+                        # Skip the Tier-2 allowed_topics overlap violation here —
+                        # it is not meaningful when a refusal IS the right answer.
+                        if not (
+                            scenario.expect_refused
+                            and str(v.policy_clause) == "allowed_topics (no overlap)"
+                        )
                     ]
                 except Exception as exc:
                     _log.debug("_run_scenario: policy evaluation failed: %s", exc)
+
+            if violations:
+                _log.warning(
+                    "behavior.policy_violations: scenario=%s turn=%d  %s",
+                    scenario.name,
+                    turn_idx + 1,
+                    [(v.get("severity"), v.get("policy_clause", "")[:80]) for v in violations],
+                )
 
             # Judge the turn
             verdict: TurnVerdict = await self._judge.judge_turn(
@@ -972,14 +1082,16 @@ class BehaviorRunner:
             )
 
             # Print turn to console and log verdict
-            _print_turn(
-                scenario_name=scenario.name,
-                turn_idx=turn_idx + 1,
-                url=target_url + scenario_endpoint,
-                request=message,
-                response=response or "",
-                verdict=verdict,
-            )
+            if verbose:
+                _print_turn(
+                    scenario_name=scenario.name,
+                    turn_idx=turn_idx + 1,
+                    url=target_url + scenario_endpoint,
+                    request=message,
+                    response=response or "",
+                    verdict=verdict,
+                    violations=violations,
+                )
             _log.info(
                 "behavior.verdict: scenario=%s  turn=%d  verdict=%s  score=%.2f  agents=%s  tools=%s",
                 scenario.name,
@@ -1060,7 +1172,10 @@ class BehaviorRunner:
                 deviations=[d for d in verdict.deviations],
             )
             turn_records.append(turn_record)
-            verdicts.append(verdict.to_dict())
+            v_dict = verdict.to_dict()
+            v_dict["user_message"] = message or ""
+            v_dict["agent_response"] = response or ""
+            verdicts.append(v_dict)
 
             # Accumulate deviations and findings
             scenario_deviations.extend(verdict.deviations)
@@ -1078,6 +1193,10 @@ class BehaviorRunner:
                 # these in BehaviorRunResult.findings and compute scan_outcome correctly.
                 scenario_deviations.append({
                     "deviation_type": "policy_violation",
+                    "title": _make_short_title(
+                        violation.get("type", "policy_violation"),
+                        violation.get("policy_clause", ""),
+                    ),
                     "description": violation.get("evidence", ""),
                     "severity": _vsev,
                 })
@@ -1350,17 +1469,29 @@ class BehaviorRunner:
         scenario_by_id = {getattr(s, "scenario_id", ""): s for s in scenarios}
         raw_results = await asyncio.gather(*(_run_one(i, s) for i, s in enumerate(scenarios)))
 
+        seen_findings: set[tuple[str, str, str]] = set()
         for run_result in raw_results:
             if run_result is None:
                 continue
             scenario_results.append(run_result)
             orig = scenario_by_id.get(run_result.scenario_id)
-            # Extract findings from scenario deviations
+            # Extract findings from scenario deviations, deduplicating across scenarios
             for dev in run_result.deviations:
                 if isinstance(dev, dict) and dev.get("deviation_type") in ("policy_violation", "data_leak"):
+                    dedup_key = (
+                        dev.get("deviation_type", ""),
+                        dev.get("severity", ""),
+                        dev.get("description", "")[:80],
+                    )
+                    if dedup_key in seen_findings:
+                        continue
+                    seen_findings.add(dedup_key)
                     all_findings.append({
                         "finding_id": str(uuid.uuid4()),
-                        "title": dev.get("description", "Behavioral deviation"),
+                        "title": dev.get("title") or _make_short_title(
+                            dev.get("deviation_type", "policy_violation"),
+                            dev.get("description", ""),
+                        ),
                         "severity": str(dev.get("severity", "medium")).lower(),
                         "description": dev.get("description", ""),
                         "affected_component": (getattr(orig, "target_component", None) or "unknown"),

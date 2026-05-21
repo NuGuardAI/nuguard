@@ -748,9 +748,9 @@ def _findings_to_markdown(
 
 
 def _append_remediation_plan(lines: list[str], remediation_plan: list) -> None:
-    """Delegate to :func:`nuguard.redteam.report._append_remediation_plan`."""
-    from nuguard.redteam.report import _append_remediation_plan as _impl
-    _impl(lines, remediation_plan)
+    """Delegate to :func:`nuguard.output.report_shared.render_remediation_plan_section`."""
+    from nuguard.output.report_shared import render_remediation_plan_section
+    render_remediation_plan_section(lines, remediation_plan)
 
 
 def _build_redteam_remediation_plan(
