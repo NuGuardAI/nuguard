@@ -93,7 +93,7 @@ def test_hitl_with_approval_signal_no_violation() -> None:
     assert hitl_violations == []
 
 
-def test_allowed_topics_not_matching_response_creates_medium_violation() -> None:
+def test_allowed_topics_not_matching_response_creates_low_violation() -> None:
     policy = _make_policy(allowed_topics=["finance", "banking"])
     evaluator = PolicyEvaluator(policy)
     violations = evaluator.evaluate(
@@ -102,7 +102,7 @@ def test_allowed_topics_not_matching_response_creates_medium_violation() -> None
         tool_calls=[],
     )
     topic_violations = [v for v in violations if v.type == "topic_boundary"]
-    assert any(v.severity == "MEDIUM" for v in topic_violations)
+    assert any(v.severity == "LOW" for v in topic_violations)
 
 
 def test_allowed_topics_match_in_response_no_medium_violation() -> None:
