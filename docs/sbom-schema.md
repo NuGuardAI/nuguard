@@ -38,20 +38,7 @@ Schema URI: `https://nuguard.ai/schemas/aibom/1.4.0/aibom.schema.json`
 
 ---
 
-## Node
-
-A detected AI-related component.
-
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `id` | UUID string | — | Stable UUID for edge references (auto-generated) |
-| `name` | string | **yes** | Display name of the component |
-| `component_type` | ComponentType | **yes** | One of the values listed below |
-| `confidence` | float [0, 1] | **yes** | Extraction confidence |
-| `metadata` | NodeMetadata | — | Typed + open-ended metadata (see below) |
-| `evidence` | Evidence[] | — | Detection evidence entries |
-
-### ComponentType values
+## AI-SBOM Node, ComponentType values
 
 | Value | What it represents |
 |---|---|
@@ -69,44 +56,11 @@ A detected AI-related component.
 | `CONTAINER_IMAGE` | A Docker or OCI container image |
 | `IAM` | An IAM role, policy, service account, or managed identity |
 
-### Example node
-
-```json
-{
-  "id": "11111111-1111-1111-1111-111111111111",
-  "name": "support-agent",
-  "component_type": "AGENT",
-  "confidence": 0.98,
-  "metadata": {
-    "framework": "openai-agents",
-    "system_prompt_excerpt": "You are a customer support assistant.",
-    "injection_risk_score": 0.72,
-    "extras": { "adapter": "openai_agents" }
-  },
-  "evidence": [
-    {
-      "kind": "ast",
-      "confidence": 0.98,
-      "detail": "openai_agents: agent instantiation",
-      "location": { "path": "app/agents.py", "line": 12 }
-    }
-  ]
-}
-```
-
 ---
 
 ## NodeMetadata
 
 All fields are optional (null by default). Fields are populated by whichever adapter detected the node; unused fields are omitted from the JSON output.
-
-### General fields (any node type)
-
-| Field | Type | Description |
-|---|---|---|
-| `framework` | string | Agentic framework, e.g. `"langgraph"`, `"crewai"`, `"mcp-server"` |
-| `description` | string | Human-readable description. For TOOL nodes: from docstring. For AGENT nodes: role/purpose description. Used by the redteam test generator to craft payloads. |
-| `extras` | object | Adapter-specific key/value pairs (provider, model_family, version, …) |
 
 ### AGENT fields
 
@@ -295,15 +249,6 @@ A directed relationship between two nodes.
 | `write` | Write-only access |
 | `readwrite` | Both read and write access |
 
-```json
-{
-  "source": "11111111-1111-1111-1111-111111111111",
-  "target": "22222222-2222-2222-2222-222222222222",
-  "relationship_type": "ACCESSES",
-  "access_type": "readwrite"
-}
-```
-
 ---
 
 ## PackageDep
@@ -317,16 +262,6 @@ A single declared package dependency from a manifest file.
 | `purl` | string | **yes** | Package URL, e.g. `"pkg:pypi/openai@1.70.0"` |
 | `group` | string | **yes** | Dependency group: `"main"`, `"dev"`, `"optional"` |
 | `source_file` | string | **yes** | Manifest file the dep was extracted from, e.g. `"pyproject.toml"` |
-
-```json
-{
-  "name": "openai",
-  "version_spec": ">=1.70,<2.0",
-  "purl": "pkg:pypi/openai@1.70.0",
-  "group": "main",
-  "source_file": "pyproject.toml"
-}
-```
 
 ---
 
@@ -393,41 +328,6 @@ Scan-level metadata derived during extraction. Always populated when `nuguard sb
 | `env_var_keys` | string[] | Sorted list of environment variable *keys* across all dotenv files (values are intentionally omitted from the SBOM) |
 | `log_paths` | string[] | Log file paths discovered during scanning (relative to app root) |
 
-### Example summary
-
-```json
-{
-  "use_case": "Customer support assistant with tool access",
-  "frameworks": ["openai-agents"],
-  "modalities": ["TEXT"],
-  "modality_support": {"text": true, "voice": false},
-  "api_endpoints": ["/chat", "/health"],
-  "node_counts": {"AGENT": 1, "TOOL": 3, "API_ENDPOINT": 2},
-  "uses_streaming": false,
-  "streaming_endpoints": [],
-  "local_url": "http://localhost:8000",
-  "staging_urls": [],
-  "production_urls": ["https://api.example.com"],
-  "deployment_platforms": ["AWS"],
-  "regions": ["us-east-1"],
-  "data_classification": ["PII"],
-  "classified_tables": ["users"],
-  "startup_commands": [
-    {"command": "uv run python -m app.main", "source": "pyproject.toml", "label": "dev"}
-  ],
-  "env_files": [".env"],
-  "env_var_keys": ["OPENAI_API_KEY", "DATABASE_URL"],
-  "security_findings": [],
-  "iac_accounts": [],
-  "secret_stores": ["aws_secrets_manager"],
-  "encryption_at_rest_coverage": true,
-  "availability_zones": ["us-east-1a", "us-east-1b"],
-  "iam_principals": ["arn:aws:iam::123456789012:role/AppRole"],
-  "service_accounts": [],
-  "iac_security_summary": null
-}
-```
-
 ---
 
 ## Validation
@@ -441,3 +341,9 @@ nuguard sbom schema
 ```
 
 The `test_committed_schema_matches_models` test enforces that the committed `aibom.schema.json` always matches `AiSbomDocument.model_json_schema()`.
+
+---
+
+## Example
+
+A complete, real-world AI-SBOM produced by `nuguard sbom generate` is available at [`docs/sample-sbom.json`](sample-sbom.json).
