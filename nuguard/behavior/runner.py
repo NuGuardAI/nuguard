@@ -1295,6 +1295,7 @@ class BehaviorRunner:
             total_turns=turn_idx,
             coverage_turns=coverage_turns_used,
             deviations=scenario_deviations,
+            matched_topic=getattr(scenario, "matched_topic", None),
         )
 
     async def discover(self) -> "DiscoveredProfile | None":

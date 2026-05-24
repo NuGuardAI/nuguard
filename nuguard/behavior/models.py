@@ -170,6 +170,7 @@ class ScenarioResult(BaseModel):
     total_turns: int = 0
     coverage_turns: int = 0
     deviations: list[dict] = Field(default_factory=list)
+    matched_topic: str | None = None
 
 
 class Recommendation(BaseModel):
