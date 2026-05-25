@@ -12,7 +12,6 @@ from typing import Any
 
 from nuguard.output.report_shared import _truncate_evidence
 
-
 # ---------------------------------------------------------------------------
 # Response display helper
 # ---------------------------------------------------------------------------
