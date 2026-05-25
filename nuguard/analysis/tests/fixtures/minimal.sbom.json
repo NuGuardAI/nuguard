@@ -1,0 +1,9 @@
+{
+  "schema_version": "1.4.0",
+  "generated_at": "2024-01-01T00:00:00+00:00",
+  "generator": "nuguard",
+  "target": "test-fixture",
+  "nodes": [],
+  "edges": [],
+  "deps": []
+}
