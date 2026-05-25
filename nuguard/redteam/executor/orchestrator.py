@@ -1424,8 +1424,17 @@ class RedteamOrchestrator:
         ]
 
         # Build attack_steps from turn records for the JSON report
+        # Renderer-compatible fields (step_type, succeeded, payload, response) mirror
+        # the static chain schema so _render_hit_turns() can display these turns.
         attack_steps = [
             {
+                # Renderer-compatible fields (mirrors static chain attack_steps schema)
+                "step_type": "GUIDED_TURN",
+                "succeeded": t.progress_score >= 5,   # ConversationDirector.SUCCESS_SCORE
+                "payload": t.attacker_message,
+                "response": t.agent_response,          # already extracted text, not raw JSON
+                "llm_eval_evidence": t.evidence_quote,
+                # Rich metadata preserved for JSON report
                 "turn": t.turn,
                 "tactic": t.tactic_used,
                 "attacker_message": t.attacker_message[:400],
@@ -1525,8 +1534,9 @@ class RedteamOrchestrator:
             else:
                 detail["payload"] = step.payload
             if sr.response:
-                raw = sr.response
-                detail["response"] = raw[:2000] + (" …[truncated]" if len(raw) > 2000 else "")
+                from nuguard.output.validation_report import _clean_response_for_display
+                cleaned = _clean_response_for_display(sr.response)
+                detail["response"] = cleaned[:2000] + (" …[truncated]" if len(cleaned) > 2000 else "")
             else:
                 detail["response"] = ""
             if sr.tool_calls:

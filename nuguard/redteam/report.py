@@ -16,6 +16,12 @@ from nuguard.output.report_shared import (
     render_finding_block,
     render_remediation_plan_section,
 )
+from nuguard.output.validation_report import (
+    _clean_response_for_display,
+    extract_redteam_scenario_details,
+    render_scenario_details_section,
+    render_validation_summary_bullets,
+)
 
 if TYPE_CHECKING:
     from nuguard.cli.report_meta import ReportMeta
@@ -126,8 +132,22 @@ def to_markdown(
     if meta.finding_triggers:
         trigger_parts = [f"{k}={'on' if v else 'off'}" for k, v in meta.finding_triggers.items()]
         lines += [f"- **Finding Triggers**: {', '.join(trigger_parts)}", ""]
+    _scenario_details = None
     if scenario_records:
         lines += _attack_coverage_summary(scenario_records)
+        _scenario_details = extract_redteam_scenario_details(scenario_records)
+        _passed = sum(1 for d in _scenario_details if d.status == "PASS")
+        _type_breakdown: dict[str, int] = {}
+        for d in _scenario_details:
+            _type_breakdown[d.goal_or_type] = _type_breakdown.get(d.goal_or_type, 0) + 1
+        render_validation_summary_bullets(
+            lines,
+            total_scenarios=len(_scenario_details),
+            passed_scenarios=_passed,
+            failed_scenarios=len(_scenario_details) - _passed,
+            total_turns=sum(len(d.turns) for d in _scenario_details),
+            type_breakdown=_type_breakdown,
+        )
     # ---------------------------------------------------------------------------
 
     if scenario_records:
@@ -154,6 +174,9 @@ def to_markdown(
 
     if remediation_plan:
         render_remediation_plan_section(lines, remediation_plan)
+
+    if _scenario_details:
+        render_scenario_details_section(lines, _scenario_details)
 
     return "\n".join(lines)
 
@@ -332,7 +355,7 @@ def _render_hit_turns(f: Any) -> list[str]:
     lines: list[str] = ["**Evidence — hit turn(s):**", ""]
     for step_num, step in hit_steps:
         stype = step.get("step_type", "?")
-        lines.append(f"**Turn {step_num} ({stype} ✅)**")
+        lines.append(f"_Turn {step_num} ({stype}):_")
         lines.append("")
         target = step.get("target_path")
         if target:
@@ -341,19 +364,22 @@ def _render_hit_turns(f: Any) -> list[str]:
             attacker_label = f"{method} {target}"
             if status is not None:
                 attacker_label += f" → HTTP {status}"
-            lines.append(f"**Attacker:** {attacker_label}")
+            lines.append(f"> **Attacker:** {attacker_label}")
         else:
             payload = (step.get("payload") or "").strip()
             if payload:
-                lines.append(f"**Attacker:** {payload}")
-        response = (step.get("response") or "").strip()
+                lines.append(f"> **Attacker:** {payload}")
+        response = _clean_response_for_display((step.get("response") or "").strip())
         if response:
-            lines.append(f"**Agent:** {_truncate_evidence(response, limit=1500)}")
+            truncated = _truncate_evidence(response, limit=1500)
+            lines.append("> **Response:**")
+            for resp_line in truncated.splitlines():
+                lines.append(f"> {resp_line}")
         llm_evidence = (step.get("llm_eval_evidence") or "").strip()
         if llm_evidence:
             conf = step.get("llm_eval_confidence") or ""
             conf_label = f" ({conf})" if conf else ""
-            lines.append(f"**LLM eval{conf_label}:** {llm_evidence}")
+            lines.append(f"> **LLM eval{conf_label}:** {llm_evidence}")
         lines.append("")
     return lines
 

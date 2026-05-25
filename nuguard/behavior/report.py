@@ -12,6 +12,12 @@ from nuguard.output.report_shared import (
     render_finding_block,
     render_remediation_plan_section,
 )
+from nuguard.output.validation_report import (
+    extract_behavior_scenario_details,
+    render_behavior_coverage_evidence,
+    render_scenario_details_section,
+    render_validation_summary_bullets,
+)
 
 if TYPE_CHECKING:
     from nuguard.behavior.models import BehaviorAnalysisResult
@@ -134,7 +140,24 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
     sev_parts = [f"{s}: {sev_counts[s]}" for s in sev_order if s in sev_counts]
     if sev_parts:
         lines.append(f"- **By Severity**: {' | '.join(sev_parts)}")
-    lines.append("")
+
+    _scenario_details = None
+    if result.scenario_results:
+        _scenario_details = extract_behavior_scenario_details(result.scenario_results)
+        _passed = sum(1 for d in _scenario_details if d.status == "PASS")
+        _type_breakdown: dict[str, int] = {}
+        for d in _scenario_details:
+            _type_breakdown[d.scenario_type] = _type_breakdown.get(d.scenario_type, 0) + 1
+        render_validation_summary_bullets(
+            lines,
+            total_scenarios=len(_scenario_details),
+            passed_scenarios=_passed,
+            failed_scenarios=len(_scenario_details) - _passed,
+            total_turns=sum(len(d.turns) for d in _scenario_details),
+            type_breakdown=_type_breakdown,
+        )
+    else:
+        lines.append("")
 
     # Scenario Coverage table — placed right after Summary so it's the first thing readers see
     if result.scenario_results:
@@ -290,6 +313,8 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
             dev_count = len(cov.deviations)
             lines.append(f"| {cov.component_name} | {cov.node_type} | {ex} | {wp} | {dev_count} |")
         lines.append("")
+        if result.scenario_results:
+            render_behavior_coverage_evidence(lines, result.coverage, result.scenario_results)
 
     # Deviations — grouped by scenario → turn, with full turn evidence
     dev_turns: list[tuple[str, dict]] = []  # (scenario_name, verdict_dict)
@@ -382,21 +407,41 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
         for finding in policy_findings:
             render_finding_block(lines, finding, heading_level="###")
 
-    # Recommendations
-    if result.recommendations:
-        lines.append("## Recommendations")
+    # Recommendations & Remediation Plan — merged into a single section
+    if result.recommendations or result.remediation_plan:
+        lines.append("## Recommendations & Remediation Plan")
         lines.append("")
-        for rec in result.recommendations:
-            lines.append(f"### [{rec.priority.upper()}] {rec.recommendation_type}: {rec.description}")
-            if rec.component and rec.component != "unknown":
-                lines.append(f"*Component*: {rec.component}")
-            lines.append("")
-            lines.append(f"*Rationale*: {rec.rationale}")
-            lines.append("")
+        if result.recommendations:
+            for rec in result.recommendations:
+                lines.append(f"### [{rec.priority.upper()}] {rec.recommendation_type}: {rec.description}")
+                if rec.component and rec.component != "unknown":
+                    lines.append(f"*Component*: {rec.component}")
+                lines.append("")
+                lines.append(f"*Rationale*: {rec.rationale}")
+                lines.append("")
+        if result.remediation_plan:
+            if result.recommendations:
+                lines.append("### Remediation Artefacts")
+                lines.append("")
+                lines.append(
+                    "Concrete, SBOM-node-specific remediations generated from the findings "
+                    "above. Apply in priority order."
+                )
+                lines.append("")
+                from nuguard.output.report_shared import _render_artefact
+                by_component: dict[str, list] = {}
+                for art in result.remediation_plan:
+                    by_component.setdefault(art.component, []).append(art)
+                for comp, arts in by_component.items():
+                    lines.append(f"#### {comp}")
+                    lines.append("")
+                    for art in arts:
+                        _render_artefact(lines, art)
+            else:
+                render_remediation_plan_section(lines, result.remediation_plan)
 
-    # Remediation Plan
-    if result.remediation_plan:
-        render_remediation_plan_section(lines, result.remediation_plan)
+    if _scenario_details:
+        render_scenario_details_section(lines, _scenario_details)
 
     return "\n".join(lines)
 
