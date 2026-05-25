@@ -176,7 +176,7 @@ def to_markdown(
         render_remediation_plan_section(lines, remediation_plan)
 
     if _scenario_details:
-        render_scenario_details_section(lines, _scenario_details)
+        render_scenario_details_section(lines, _scenario_details, truncate_limit=2500)
 
     return "\n".join(lines)
 
