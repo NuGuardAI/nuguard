@@ -621,8 +621,8 @@ nuguard redteam \
   --policy ./policy.md \
   --canary ./canary.json \
   --profile full \
-  --format json \
-  --output findings.json
+  --format markdown \
+  --output redteam-report.md
 ```
 
 ### Auto-launch the app during scan
@@ -683,17 +683,17 @@ nuguard redteam \
 
 ## Configuration Reference
 
-All flags can be set in `nuguard.yaml` under the `redteam:` section.  Run `nuguard init` to generate an annotated template.
+**Target URL and auth** are configured in the shared `target:` block and inherited by both `behavior` and `redteam`. Override in the `redteam:` section only when redteam needs different values from behavior. All other redteam-specific flags live under `redteam:`. Run `nuguard init` to generate an annotated template.
 
 | CLI flag | YAML key | Env var | Default | Description |
 |---|---|---|---|---|
-| `--target` | `redteam.target` | — | SBOM discovery | URL of the live AI application |
-| — | `redteam.target_endpoint` | — | `/chat` | Chat endpoint path appended to target URL |
-| — | `redteam.chat_payload_key` | — | `message` | JSON key for the chat message in the POST body |
-| — | `redteam.chat_payload_list` | — | `false` | Send message value as a list instead of a string |
-| — | `redteam.headers` | `NUGUARD_REDTEAM_HEADERS_JSON` | `{}` | Explicit full header map override (highest precedence) |
-| — | `redteam.auth` | — | `type: none` | Structured auth config: `bearer`, `api_key`, `basic`, `login_flow`, or `none` |
-| — | `redteam.auth_header` | — | — | Legacy shorthand header string (fallback when `redteam.auth` is not set) |
+| `--target` | `target.url` / `redteam.target` (override) | — | SBOM discovery | Base URL of the live AI application. Set once in the shared `target:` block; use `redteam.target` only when redteam needs a different URL than behavior |
+| — | `target.endpoint` / `redteam.target_endpoint` (override) | — | `/chat` | Chat endpoint path appended to the base URL |
+| — | `target.chat_payload_key` / `redteam.chat_payload_key` (override) | — | `message` | JSON key for the chat message in the POST body |
+| — | `target.chat_payload_list` / `redteam.chat_payload_list` (override) | — | `false` | Send message value as a list instead of a string |
+| — | `target.headers` / `redteam.headers` (override) | `NUGUARD_REDTEAM_HEADERS_JSON` | `{}` | Extra HTTP headers added to every request |
+| — | `target.auth` / `redteam.auth` (override) | — | `type: none` | Structured auth config: `bearer`, `api_key`, `basic`, `login_flow`, or `none`. Set in `target.auth` for shared credentials; override in `redteam.auth` when redteam needs separate credentials |
+| — | `redteam.auth_header` | — | — | Legacy shorthand header string (fallback when neither `target.auth` nor `redteam.auth` is set) |
 | `--profile` | `redteam.profile` | — | `ci` | `ci` (impact ≥ 5.0) or `full` (all scenarios) |
 | `--scenarios` | `redteam.scenarios` | — | all | Scenario type filter (list in YAML, comma-separated on CLI) |
 | `--min-impact-score` | `redteam.min_impact_score` | — | `0.0` | Exclude scenarios below this pre-score |
@@ -744,20 +744,27 @@ The same trigger controls are enforced in both static-chain and guided-conversat
 
 ```yaml
 sbom: ./sbom.json
-policy: ./policy.md
+policy:
+  path: ./policy.md
 
-redteam:
-  target: http://localhost:8000
-  target_endpoint: /chat          # default; change to /api/v1/agent etc.
-  chat_payload_key: message       # JSON key for the attack message
-  # chat_payload_list: false      # set true if the app expects a list value
+llm:
+  model: gemini/gemini-2.0-flash    # eval LLM for report summaries (any capable model)
+  # api_key: ${LITELLM_API_KEY}
 
-  # Highest-precedence full header override
+# ── Shared target — used by both behavior and redteam ───────────────────────
+# Set URL and auth once here; both commands pick them up automatically.
+# Override in redteam: below only when redteam needs different values.
+target:
+  url: http://localhost:8000
+  endpoint: /chat               # default; change to /api/v1/agent etc.
+  chat_payload_key: message     # JSON key for the attack message
+  # chat_payload_list: false    # set true if the app expects a list value
+
+  # Extra HTTP headers added to every request (behavior + redteam)
   # headers:
-  #   Authorization: "Bearer ${API_TOKEN}"
   #   X-Tenant-Id: "tenant-1"
 
-  # Preferred structured auth
+  # Structured auth — shared by behavior and redteam
   auth:
     type: login_flow
     login_flow:
@@ -769,8 +776,22 @@ redteam:
       token_header: "Authorization: Bearer"
       refresh_on_401: true
 
-  # Legacy shorthand still supported
-  # auth_header: "Authorization: Bearer ${API_TOKEN}"
+  # Other auth options:
+  # type: bearer
+  # header: "Authorization: Bearer ${TARGET_TOKEN}"
+  #
+  # type: api_key
+  # header: "X-API-Key: ${TARGET_API_KEY}"
+  #
+  # type: none
+
+redteam:
+  # Override target URL or auth for redteam only (optional — omit to inherit target:)
+  # target: http://staging.example.com
+  # target_endpoint: /api/chat
+  # auth:
+  #   type: bearer
+  #   header: "Authorization: Bearer ${REDTEAM_TOKEN}"
 
   profile: full
   canary: ./canary.json
@@ -801,7 +822,7 @@ redteam:
     critical_success_hits: true
     any_inject_success: false
 
-  # Redteam LLM — attack payload generation (must be uncensored)
+  # Redteam LLM — attack payload generation (must tolerate adversarial content)
   llm:
     model: openrouter/meta-llama/llama-3.3-70b-instruct
     api_key: ${NUGUARD_REDTEAM_LLM_API_KEY}
