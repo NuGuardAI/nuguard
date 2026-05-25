@@ -384,9 +384,6 @@ def render_behavior_coverage_evidence(
             lines.append("")
 
     # Cognitive Policy Topic Coverage
-    all_topics: list[str] = []
-    for cov_item in coverage:
-        pass  # topics come from scenario matched_topic, not coverage model
     topics_from_scenarios = sorted(topic_first.keys())
     untested_topics: list[str] = []
 
