@@ -656,6 +656,28 @@ class BehaviorRunner:
             _log.debug("_build_policy_evaluator: %s", exc)
             return None
 
+    @staticmethod
+    def _turn_record_to_attack_step(tr: TurnRecord) -> dict:
+        """Serialize a TurnRecord into the standard attack_steps dict schema."""
+        return {
+            "step_type": "BEHAVIOR_TURN",
+            "turn": tr.turn,
+            "succeeded": tr.passed,
+            "payload": tr.prompt,
+            "response": tr.response,
+            "verdict": tr.verdict,
+            "overall_score": tr.overall_score,
+            "scores": tr.scores,
+            "violations": tr.violations,
+            "canary_hits": tr.canary_hits,
+            "gaps": tr.gaps,
+            "deviations": tr.deviations,
+            "agents_mentioned": tr.agents_mentioned,
+            "tools_mentioned": tr.tools_mentioned,
+            "latency_ms": tr.latency_ms,
+            "is_coverage_turn": tr.is_coverage_turn,
+        }
+
     async def _run_scenario(
         self,
         scenario: BehaviorScenario,
@@ -1244,6 +1266,7 @@ class BehaviorRunner:
                     ),
                     "description": violation.get("evidence", ""),
                     "severity": _vsev,
+                    "attack_step": self._turn_record_to_attack_step(turn_record),
                 })
             if canary_hits:
                 findings.append({
@@ -1257,6 +1280,7 @@ class BehaviorRunner:
                     "deviation_type": "data_leak",
                     "description": f"Canary values found in response: {canary_hits}",
                     "severity": "critical",
+                    "attack_step": self._turn_record_to_attack_step(turn_record),
                 })
 
             turn_idx += 1
@@ -1532,6 +1556,7 @@ class BehaviorRunner:
                     if dedup_key in seen_findings:
                         continue
                     seen_findings.add(dedup_key)
+                    _attack_step = dev.get("attack_step")
                     all_findings.append({
                         "finding_id": str(uuid.uuid4()),
                         "title": dev.get("title") or _make_short_title(
@@ -1541,12 +1566,14 @@ class BehaviorRunner:
                         "severity": str(dev.get("severity", "medium")).lower(),
                         "description": dev.get("description", ""),
                         "affected_component": (getattr(orig, "target_component", None) or "unknown"),
+                        "attack_steps": [_attack_step] if _attack_step else [],
                     })
 
         # Aggregate gap strings from all scenario verdicts into bucketed findings.
         # Buckets are keyed by (finding_type, affected_component); each bucket that
         # accumulates >= _GAP_FINDING_MIN_OCCURRENCES gap instances becomes one finding.
         _gap_buckets: dict[tuple[str, str], list[str]] = {}
+        _gap_buck_verdicts: dict[tuple[str, str], list[dict]] = {}
         for run_result in [r for r in raw_results if r is not None]:
             orig = scenario_by_id.get(run_result.scenario_id)
             component = (getattr(orig, "target_component", None) or "unknown")
@@ -1557,6 +1584,7 @@ class BehaviorRunner:
                     ftype, _ = _classify_gap(gap_text)
                     bucket_key = (ftype, component)
                     _gap_buckets.setdefault(bucket_key, []).append(gap_text.strip())
+                    _gap_buck_verdicts.setdefault(bucket_key, []).append(v_dict)
 
         for (ftype, component), gap_list in _gap_buckets.items():
             if len(gap_list) < _GAP_FINDING_MIN_OCCURRENCES:
@@ -1572,6 +1600,21 @@ class BehaviorRunner:
             if dedup_key in seen_findings:
                 continue
             seen_findings.add(dedup_key)
+            bucket_verdicts = _gap_buck_verdicts.get((ftype, component), [])[:5]
+            gap_attack_steps = [
+                {
+                    "step_type": "BEHAVIOR_TURN",
+                    "turn": v.get("turn", 0),
+                    "succeeded": v.get("verdict") == "PASS",
+                    "payload": v.get("user_message") or v.get("prompt") or "",
+                    "response": v.get("agent_response") or v.get("response") or "",
+                    "verdict": v.get("verdict", ""),
+                    "overall_score": v.get("overall_score", 0.0),
+                    "scores": v.get("scores", {}),
+                    "gaps": v.get("gaps", []),
+                }
+                for v in bucket_verdicts
+            ]
             all_findings.append({
                 "finding_id": str(uuid.uuid4()),
                 "title": f"{ftype.replace('_', ' ').title()}: {component}",
@@ -1581,6 +1624,7 @@ class BehaviorRunner:
                 "finding_type": ftype,
                 "occurrence_count": len(gap_list),
                 "gap_texts": unique_gaps,
+                "attack_steps": gap_attack_steps,
             })
 
         # Flush judge cache to disk once all scenarios are done (v3).

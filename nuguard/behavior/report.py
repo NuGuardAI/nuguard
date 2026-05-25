@@ -406,6 +406,7 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
         lines.append("")
         for finding in policy_findings:
             render_finding_block(lines, finding, heading_level="###")
+            _render_behavior_attack_steps(lines, finding)
 
     # Recommendations & Remediation Plan — merged into a single section
     if result.recommendations or result.remediation_plan:
@@ -444,6 +445,36 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
         render_scenario_details_section(lines, _scenario_details)
 
     return "\n".join(lines)
+
+
+def _render_behavior_attack_steps(lines: list[str], finding: dict) -> None:
+    """Append evidence lines for behavior findings that carry attack_steps."""
+    steps = finding.get("attack_steps") or []
+    if not steps:
+        return
+    hit_steps = [s for s in steps if s.get("succeeded") and s.get("step_type") == "BEHAVIOR_TURN"]
+    if not hit_steps:
+        return
+    lines.append("**Evidence — triggering turn(s):**")
+    lines.append("")
+    for step in hit_steps:
+        t = step.get("turn", "?")
+        verdict = step.get("verdict", "")
+        lines.append(f"_Turn {t} ({verdict}):_")
+        lines.append("")
+        payload = (step.get("payload") or "").strip()
+        if payload:
+            lines.append(f"> **User:** {payload[:400]}")
+        response = (step.get("response") or "").strip()
+        if response:
+            from nuguard.output.validation_report import _clean_response_for_display
+            lines.append(f"> **Agent:** {_clean_response_for_display(response)[:800]}")
+        for v in step.get("violations") or []:
+            lines.append(f"> **Violation:** {v.get('type', '')} — {v.get('evidence', '')[:200]}")
+        canary_hits = step.get("canary_hits") or []
+        if canary_hits:
+            lines.append(f"> **Canary hit:** {', '.join(str(h) for h in canary_hits)}")
+        lines.append("")
 
 
 def _deviation_remediation_hint(deviation_type: str, description: str) -> str:
