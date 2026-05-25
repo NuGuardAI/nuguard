@@ -379,7 +379,7 @@ def render_behavior_coverage_evidence(
                 lines.append("> **Request:** " + _truncate_evidence(req, limit=300).replace("\n", " "))
             if resp:
                 clean_resp = _clean_response_for_display(resp)
-                lines.append("> **Response:** " + _truncate_evidence(clean_resp, limit=400).replace("\n", " "))
+                lines.append("> **Response:** " + _truncate_evidence(clean_resp, limit=800).replace("\n", " "))
             lines.append("")
 
     # Cognitive Policy Topic Coverage
