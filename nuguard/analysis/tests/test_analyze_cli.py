@@ -18,10 +18,9 @@ runner = CliRunner()
 # Helpers
 # ---------------------------------------------------------------------------
 
-_REPO_ROOT = Path(__file__).parents[3]  # /workspaces/nuguard
+_FIXTURE_DIR = Path(__file__).parent / "fixtures"
 
-_SBOM_PATH = str(_REPO_ROOT / "tests/apps/openai-cs-agents-demo/openai-cs.sbom.json")
-_CONFIG_PATH = str(_REPO_ROOT / "tests/apps/openai-cs-agents-demo/nuguard.yaml")
+_SBOM_PATH = str(_FIXTURE_DIR / "minimal.sbom.json")
 
 _PATCH_ANALYZER = "nuguard.analysis.static_analyzer.StaticAnalyzer"
 
@@ -43,10 +42,12 @@ def _make_mock_analyzer() -> MagicMock:
 
 
 class TestSbomFromConfig:
-    def test_sbom_resolved_from_config(self) -> None:
+    def test_sbom_resolved_from_config(self, tmp_path: Path) -> None:
         """--sbom can be omitted when config file has 'sbom:' key."""
+        cfg = tmp_path / "nuguard.yaml"
+        cfg.write_text(f"sbom: {_SBOM_PATH}\n")
         with patch(_PATCH_ANALYZER, return_value=_make_mock_analyzer()):
-            result = _invoke("--config", _CONFIG_PATH, "--nga")
+            result = _invoke("--config", str(cfg), "--nga")
         assert result.exit_code in (0, 1), result.output
 
     def test_missing_sbom_no_config_errors(self) -> None:

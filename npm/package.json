@@ -24,9 +24,14 @@
     "nuguard-mcp": "bin/nuguard-mcp.js"
   },
   "files": [
-    "bin/"
+    "bin/",
+    "README.md"
   ],
   "engines": {
     "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   }
 }
