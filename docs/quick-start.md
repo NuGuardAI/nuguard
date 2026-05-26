@@ -20,21 +20,22 @@ Check the CLI:
 nuguard --help
 ```
 
-## 1. Initialize a Starter Cognitive Policy With `nuguard init`
+## 1. Initialize With `nuguard init`
 
-Create a blank starter `cognitive_policy.md` with the recognized policy section headers:
-
-```bash
-nuguard init
-```
-
-To write it somewhere else:
+Create `nuguard.yaml`, `cognitive-policy.md`, and `canary.example.json` with sensible defaults:
 
 ```bash
-nuguard init --path ./docs/cognitive_policy.md
+nuguard init --target http://localhost:8080
 ```
 
-To overwrite an existing file:
+Pass `--llm` to have the LLM draft a concise `cognitive-policy.md` from your app's context
+instead of writing a blank template (requires `LITELLM_API_KEY`):
+
+```bash
+nuguard init --target http://localhost:8080 --llm
+```
+
+To overwrite existing files:
 
 ```bash
 nuguard init --force

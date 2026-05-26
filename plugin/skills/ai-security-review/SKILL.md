@@ -57,14 +57,18 @@ Before running the policy check, ensure `nuguard.yaml` and `cognitive-policy.md`
 in the project directory. If missing, run via Bash:
 
 ```bash
+# With LLM available: drafts a concise cognitive policy (5–6 topics per section)
+nuguard init --llm
+
+# Without LLM: writes blank section headings for manual fill-in
 nuguard init
 ```
 
 `nuguard init` creates:
 - `nuguard.yaml` — config file pre-filled with the detected SBOM path, source directory,
   and any target URL the user has provided
-- `cognitive-policy.md` — starter policy document with sensible defaults the user can
-  refine to match their application's intended behavior
+- `cognitive-policy.md` — when `--llm` is passed, a concise LLM-drafted policy with
+  5–6 allowed and restricted topics tailored to the application; otherwise blank headings
 - `canary.example.json` — template for seeding canary values before red-team runs
 
 If `nuguard.yaml` or `cognitive-policy.md` already exist, skip this step (pass

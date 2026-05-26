@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Optional
 
@@ -388,6 +389,11 @@ def init_command(
         "-f",
         help="Overwrite files that already exist.",
     ),
+    use_llm: bool = typer.Option(
+        False,
+        "--llm/--no-llm",
+        help="Use an LLM to draft cognitive-policy.md with sensible defaults (requires LITELLM_API_KEY).",
+    ),
 ) -> None:
     """Create a nuguard.yaml config file with sensible defaults for this project.
 
@@ -404,6 +410,7 @@ def init_command(
       nuguard init --path ./config/nuguard.yaml # write to a specific path
       nuguard init --target http://localhost:8080
       nuguard init --target http://localhost:8080 --source ./src --force
+      nuguard init --target http://localhost:8080 --llm  # draft policy with LLM
     """
     # Resolve output directory and nuguard.yaml path
     if path is not None:
@@ -446,9 +453,22 @@ def init_command(
         created.append(str(yaml_dest))
 
     # ── Companion files ───────────────────────────────────────────────────────
+    # Build cognitive policy content — use LLM draft when --llm is set.
+    if use_llm:
+        from nuguard.common.llm_client import LLMClient
+        from nuguard.policy.compiler import draft_policy
+        app_desc = f"AI application at {target_url}"
+        if source_dir and source_dir != "./":
+            app_desc += f" (source: {source_dir})"
+        policy_content = asyncio.run(
+            draft_policy(app_description=app_desc, llm_client=LLMClient())
+        )
+    else:
+        policy_content = _COGNITIVE_POLICY_TEMPLATE
+
     companions: list[tuple[str, str]] = [
         ("canary.example.json", _CANARY_EXAMPLE_JSON),
-        ("cognitive-policy.md", _COGNITIVE_POLICY_TEMPLATE),
+        ("cognitive-policy.md", policy_content),
     ]
     for filename, content in companions:
         dest = base_dir / filename

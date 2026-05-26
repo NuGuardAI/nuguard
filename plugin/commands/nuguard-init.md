@@ -32,6 +32,8 @@ Flag mapping:
 - `--source PATH` if the user supplied a source directory
 - `--force` if the user passed `--force` (overwrites existing files)
 - `--path PATH` to write `nuguard.yaml` to a specific location (default: `./nuguard.yaml`)
+- `--llm` if `llm_api_key` is present in the config — causes the CLI to draft `cognitive-policy.md`
+  with concise, app-specific defaults (5–6 allowed and restricted topics each) instead of a blank template
 
 Omit `--target` if no target URL is available.
 
@@ -67,4 +69,4 @@ Remind the user they can pass `--force` to overwrite.
 The command creates up to three files:
 - `nuguard.yaml` — main config (target URL, SBOM path, auth, scan settings)
 - `canary.example.json` — template for seeding canary values before red-team
-- `cognitive-policy.md` — blank policy template with required section headings
+- `cognitive-policy.md` — policy template; blank headings by default, or a concise LLM-drafted policy (5–6 allowed and restricted topics) when `--llm` is passed

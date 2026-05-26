@@ -28,6 +28,7 @@ nuguard init                                    # write ./nuguard.yaml
 nuguard init --path ./config/nuguard.yaml       # write to a specific path
 nuguard init --target http://localhost:8080
 nuguard init --target http://localhost:8080 --source ./src --force
+nuguard init --target http://localhost:8080 --llm   # LLM-drafted cognitive policy
 ```
 
 | Flag | Short | Default | Description |
@@ -36,6 +37,7 @@ nuguard init --target http://localhost:8080 --source ./src --force
 | `--target` | `-t` | `http://localhost:8080` | URL of the running AI application — sets `behavior.target` and `redteam.target`. |
 | `--source` | `-s` | `./` | Source code directory for SBOM generation — sets `source:` in the config. |
 | `--force` | `-f` | `false` | Overwrite files that already exist. |
+| `--llm` / `--no-llm` | — | `false` | Use an LLM to draft `cognitive-policy.md` with concise, app-specific defaults (5–6 allowed and restricted topics each). Requires `LITELLM_API_KEY`. Without this flag a blank template is written instead. |
 | `--dir` | `-d` | — | *(Legacy, hidden)* Directory to write all starter files into. Prefer `--path`. |
 
 **Auto-detection:** if an existing SBOM (`*.sbom.json`), policy (`cognitive_policy.md`, `policy.md`, …), or canary (`canary.json`) is found in the target directory, the generated `nuguard.yaml` pre-fills those paths and the post-init "Next steps" list skips the corresponding steps.
