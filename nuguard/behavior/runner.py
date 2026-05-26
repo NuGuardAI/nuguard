@@ -32,7 +32,11 @@ import uuid
 from typing import TYPE_CHECKING, Any
 
 from nuguard.behavior._utils import is_not_used_response
-from nuguard.behavior.coverage import CoverageState, generate_coverage_turns
+from nuguard.behavior.coverage import (
+    NON_EXERCISABLE_NODE_TYPES,
+    CoverageState,
+    generate_coverage_turns,
+)
 from nuguard.behavior.judge import BehaviorJudge, TurnVerdict
 from nuguard.behavior.models import (
     BehaviorCoverage,
@@ -527,8 +531,9 @@ class BehaviorRunner:
             for node in getattr(sbom, "nodes", []):
                 ct = getattr(node, "component_type", None)
                 nt = (getattr(ct, "value", None) or str(ct) or "").upper()
+                if nt in NON_EXERCISABLE_NODE_TYPES:
+                    continue
                 name = str(getattr(node, "name", None) or getattr(node, "id", ""))
-                # Description: try node.description, fall back to metadata fields
                 meta = getattr(node, "metadata", None)
                 desc = (
                     getattr(node, "description", None)
