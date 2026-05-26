@@ -1,6 +1,6 @@
 [project]
 name = "nuguard"
-version = "0.5.6"
+version = "0.5.7"
 description = "AI application security — SBOM generation, vulnerability scanning, behavioral validation, and adversarial red-teaming for AI Agents"
 readme = "README.md"
 license = { text = "Apache-2.0" }
@@ -25,14 +25,8 @@ dependencies = [
     "pydantic-settings>=2.3",
     "PyYAML>=6.0",
     "jsonschema>=4.23",
-    "networkx>=3.3",
     "httpx>=0.27",
     "litellm>=1.83.10",
-    "lxml>=6.1.0",
-    "urllib3>=2.7.0",
-    "sqlalchemy>=2.0",
-    "aiosqlite>=0.20",
-    "asyncpg>=0.29",
     "rich>=13.0",
     "structlog>=25.5.0",
     "cyclonedx-bom>=7.2.2",
@@ -40,7 +34,6 @@ dependencies = [
     "tree-sitter-javascript>=0.23",
     "tree-sitter-typescript>=0.23",
     "python-dotenv>=1.0",
-    "google-cloud-aiplatform>=1.60",
 ]
 
 [project.optional-dependencies]
@@ -53,6 +46,13 @@ dev = [
 ]
 mcp = [
     "mcp>=1.0",
+]
+spdx = [
+    "pyshacl>=0.25",
+    "rdflib>=7.0",
+]
+secrets = [
+    "cryptography>=42.0",
 ]
 
 [project.urls]
@@ -95,7 +95,7 @@ include = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-addopts = "--import-mode=importlib --ignore=tests/apps/contact-center-ai-samples --ignore=tests/apps/ai-agents-google-adk/test_bedrock_haiku.py --ignore=tests/apps/ai-agents-google-adk/test_openai_gpt.py"
+addopts = "--import-mode=importlib --ignore=tests/apps/contact-center-ai-samples --ignore=tests/apps/blissful-store --ignore=tests/apps/ai-agents-google-adk/test_bedrock_haiku.py --ignore=tests/apps/ai-agents-google-adk/test_openai_gpt.py"
 testpaths = ["tests", "nuguard/sbom/tests"]
 markers = [
     "redteam_e2e: E2E redteam scan against a live fixture app (opt-in: NUGUARD_REDTEAM_E2E=1)",
@@ -126,6 +126,7 @@ exclude = [
 [dependency-groups]
 dev = [
     "boto3>=1.42.91",
+    "mcp>=1.0",
     "mypy>=1.19.1",
     "pip-audit>=2.10.0",
     "pytest>=9.0.2",

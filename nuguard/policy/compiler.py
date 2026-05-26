@@ -58,6 +58,103 @@ Rules:
 """
 
 # ---------------------------------------------------------------------------
+# Skeleton template (blank headings — fallback when no LLM available)
+# ---------------------------------------------------------------------------
+
+_COGNITIVE_POLICY_SKELETON = """\
+# Cognitive Policy
+
+## Allowed Topics
+
+## Restricted Topics
+
+## Restricted Actions
+
+## HITL Triggers
+
+## Data Classification
+
+## Rate Limits
+"""
+
+# ---------------------------------------------------------------------------
+# System prompt for LLM-based cognitive policy drafting
+# ---------------------------------------------------------------------------
+
+_DRAFT_SYSTEM_PROMPT = """\
+You are a security policy writer for AI applications.  Given an application description and
+an optional list of detected components (agents, tools, datastores), write a Cognitive Policy
+in Markdown.
+
+Rules:
+- Keep every section simple, clear, and concise — one short line per item.
+- Allowed Topics: 5-6 items maximum.  List only topics the app is designed to handle.
+- Restricted Topics: 5-6 items maximum.  Name only the most important off-limits areas.
+- Restricted Actions: 3-5 items.  Focus on high-impact actions the app must refuse.
+- HITL Triggers: 2-4 items.  Only scenarios that genuinely require human review.
+- Data Classification: 2-3 items.  Name sensitive data types present in the SBOM.
+- Rate Limits: omit or add 1-2 entries only if rate limiting is clearly needed.
+- Do not pad sections.  Fewer, precise entries are better than many vague ones.
+- Use the exact heading names shown below — the parser depends on them.
+- Return ONLY the Markdown document, no commentary or code fences.
+
+Output format:
+# Cognitive Policy
+
+## Allowed Topics
+- <item>
+
+## Restricted Topics
+- <item>
+
+## Restricted Actions
+- <item>
+
+## HITL Triggers
+- <item>
+
+## Data Classification
+- <item>
+
+## Rate Limits
+"""
+
+
+async def draft_policy(
+    app_description: str,
+    sbom_context: str = "",
+    llm_client: "LLMClient | None" = None,
+) -> str:
+    """Generate a draft cognitive-policy.md from application context using an LLM.
+
+    Args:
+        app_description: Short description of what the application does.
+        sbom_context:    Optional summary of detected SBOM components.
+        llm_client:      LLMClient instance; returns the blank skeleton when None.
+
+    Returns:
+        Markdown string ready to write to cognitive-policy.md.
+    """
+    if llm_client is None or not getattr(llm_client, "api_key", None):
+        return _COGNITIVE_POLICY_SKELETON
+
+    user_prompt = f"Application: {app_description}"
+    if sbom_context:
+        user_prompt += f"\n\nDetected components:\n{sbom_context}"
+
+    try:
+        result = await llm_client.complete(
+            user_prompt,
+            system=_DRAFT_SYSTEM_PROMPT,
+            label="policy-draft",
+        )
+        return result.strip()
+    except Exception as exc:
+        _log.warning("draft_policy: LLM call failed (%s), returning skeleton", exc)
+        return _COGNITIVE_POLICY_SKELETON
+
+
+# ---------------------------------------------------------------------------
 # Rule-based compilation
 # ---------------------------------------------------------------------------
 
