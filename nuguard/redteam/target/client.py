@@ -440,6 +440,7 @@ class TargetAppClient:
             text = (
                 data.get("response")
                 or data.get("content")
+                or data.get("text")
                 or data.get("message", {}).get("content", "")
                 or ""
             )
@@ -667,6 +668,7 @@ class TargetAppClient:
                             text = (
                                 data.get("response")
                                 or data.get("content")
+                                or data.get("text")
                                 or data.get("message", {}).get("content", "")
                                 or ""
                             )
