@@ -792,6 +792,10 @@ class AiSbomExtractor:
         # Dockerfiles) are kept because they legitimately describe components.
         _suppress_non_code_model_datastore(node_map)
 
+        # Improve 'generic' display names for AUTH/DEPLOYMENT nodes to reflect
+        # the dominant technology keyword found in the evidence.
+        _improve_generic_node_names(node_map)
+
         # Build nodes + edges
         for key in sorted(node_map.keys(), key=lambda v: (v[0].value, v[1])):
             acc = node_map[key]
@@ -2167,6 +2171,73 @@ def _dedup_by_location(
 
     for k in keys_to_remove:
         del node_map[k]
+
+
+# ---------------------------------------------------------------------------
+# Auth / deployment name improvement
+# ---------------------------------------------------------------------------
+
+# Ordered rules: first matching rule wins.  Checked against evidence snippets
+# so that the most prominent tech keyword in the evidence determines the name.
+_AUTH_NAME_RULES: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"\bjwt\b", re.IGNORECASE), "jwt_auth"),
+    (re.compile(r"\bbearer\b", re.IGNORECASE), "bearer_auth"),
+    (re.compile(r"\boauth2?\b", re.IGNORECASE), "oauth_auth"),
+    (re.compile(r"\b(api[_-]?key|apikey)\b", re.IGNORECASE), "api_key_auth"),
+    (re.compile(r"\b(bcrypt|passlib|argon2|pbkdf2|scrypt)\b", re.IGNORECASE), "password_auth"),
+    (re.compile(r"\b(session[_.]cookie|cookie[_.]jar|csrf[_.]token)\b", re.IGNORECASE), "session_auth"),
+]
+
+_DEPLOY_NAME_RULES: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"\bgcloud\b", re.IGNORECASE), "gcloud_deployment"),
+    (re.compile(r"\bgsutil\b", re.IGNORECASE), "gcloud_deployment"),
+    (re.compile(r"\b(kubectl|kubernetes|kustomize|skaffold|argocd|fluxcd)\b", re.IGNORECASE), "kubernetes_deployment"),
+    (re.compile(r"\b(az\s+(?:login|group|webapp|container|acr|aks|functionapp)|azure[_-]cli|azd)\b", re.IGNORECASE), "azure_deployment"),
+    (re.compile(r"\baws\s+(?:ec2|s3|lambda|ecs|eks|rds|cloudformation|deploy|ecr)\b", re.IGNORECASE), "aws_deployment"),
+    (re.compile(r"\b(terraform|pulumi|cdktf)\b", re.IGNORECASE), "terraform_deployment"),
+    (re.compile(r"\bansible\b", re.IGNORECASE), "ansible_deployment"),
+    (re.compile(r"\bhelm\b", re.IGNORECASE), "helm_deployment"),
+    (re.compile(r"\bheroku\b", re.IGNORECASE), "heroku_deployment"),
+    (re.compile(r"\bvercel\b", re.IGNORECASE), "vercel_deployment"),
+    (re.compile(r"\bnetlify\b", re.IGNORECASE), "netlify_deployment"),
+    (re.compile(r"\b(docker|compose)\b", re.IGNORECASE), "docker_deployment"),
+    (re.compile(r"\b(nginx|gunicorn|uvicorn|caddy|traefik)\b", re.IGNORECASE), "server_deployment"),
+]
+
+
+def _improve_generic_node_names(
+    node_map: dict[tuple[ComponentType, str], _NodeAccumulator],
+) -> None:
+    """Rename AUTH/DEPLOYMENT nodes named 'generic' to a more descriptive label.
+
+    Scans each node's evidence detail strings (e.g. "auth_generic: Bearer",
+    "deployment_generic: gcloud") and applies ordered rules to derive a human-
+    readable name such as 'bearer_auth' or 'gcloud_deployment'.
+    """
+    for (ct, _canon), acc in node_map.items():
+        if acc.display_name != "generic":
+            continue
+        if ct == ComponentType.AUTH:
+            rules = _AUTH_NAME_RULES
+        elif ct == ComponentType.DEPLOYMENT:
+            rules = _DEPLOY_NAME_RULES
+        else:
+            continue
+        # Collect all evidence snippets (the part after the adapter prefix).
+        snippets = [
+            ev.detail.split(":", 1)[-1].strip() if ":" in ev.detail else ev.detail
+            for ev in acc.evidence
+        ]
+        for pattern, new_name in rules:
+            if any(pattern.search(s) for s in snippets):
+                _log.debug(
+                    "generic_name_improve: %s %r → %r",
+                    ct.value,
+                    acc.canonical_name,
+                    new_name,
+                )
+                acc.display_name = new_name
+                break
 
 
 def _suppress_generic_tech_regex_datastore(
