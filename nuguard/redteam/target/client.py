@@ -309,15 +309,31 @@ class TargetAppClient:
         data: dict | list | str = {}
         for attempt in range(self._max_429_retries + 1):
             try:
+                session_id: str = ""
                 if self._framework_adapter is not None:
                     # Framework-aware path: delegate body construction + session mgmt.
                     # Pass the AttackSession's ID as the scenario key so concurrent
                     # scenarios each maintain their own server-side ADK session.
                     scenario_key = str(session.session_id) if session.session_id else ""
-                    session_id = await self._framework_adapter.ensure_session(
-                        self._client, scenario_key
-                    )
+                    try:
+                        session_id = await self._framework_adapter.ensure_session(
+                            self._client, scenario_key
+                        )
+                    except RuntimeError as _adk_err:
+                        # When the target does not expose /list-apps (e.g. it wraps ADK
+                        # behind a custom REST endpoint), silently drop the ADK adapter
+                        # and fall through to the generic HTTP POST path below.
+                        if "app_name could not be determined" in str(_adk_err):
+                            _log.warning(
+                                "ADK adapter could not resolve app_name "
+                                "(target does not expose /list-apps) — "
+                                "falling back to generic HTTP POST adapter"
+                            )
+                            self._framework_adapter = None
+                        else:
+                            raise
 
+                if self._framework_adapter is not None:
                     # GoogleCESAdapter manages its own HTTP transport to ces.googleapis.com.
                     # Detect it by type to avoid calling send() on mocks or other adapters.
                     try:
