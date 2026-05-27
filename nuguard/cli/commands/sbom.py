@@ -235,10 +235,17 @@ def _do_generate(
     from nuguard.config import load_config  # noqa: PLC0415
     cfg = load_config(config_file)
 
-    # Fall back to nuguard.yaml's source field when --source is not provided
+    # Fall back to nuguard.yaml's source field when --source is not provided.
+    # If source: is a URL (https://github.com/…) treat it as --from-repo so it
+    # is cloned rather than being passed to Path() — which would collapse the
+    # double slash and silently scan a non-existent local path.
     if source is None and from_repo is None:
         if cfg.source_path:
-            source = Path(cfg.source_path)
+            sp = cfg.source_path
+            if sp.startswith("https://") or sp.startswith("http://"):
+                from_repo = sp
+            else:
+                source = Path(sp)
 
     if source is None and from_repo is None:
         _err_console.print(

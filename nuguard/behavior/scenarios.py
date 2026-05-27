@@ -252,6 +252,9 @@ Capabilities (assign one per scenario): {capabilities}
 Known agents: {agents}
 Known tools: {tools}
 
+## Cognitive Policy — Allowed Topics
+{allowed_topics}
+
 ## Instructions
 Generate {count} end-to-end test scenarios that exercise the core capabilities.
 Each scenario should have 2-4 turns representing a realistic user journey.
@@ -277,6 +280,11 @@ Rules:
   conversation thread from start to finish
 - Spread the {count} scenarios evenly across the listed capabilities to maximize coverage
 - Messages should be realistic user requests grounded in the app's purpose
+- ONLY generate scenarios that fall within the allowed topics listed above
+- Ground every scenario in this application's specific domain — broad topic labels like
+  "web search queries" mean queries a user of THIS app would make, not general internet
+  searches (e.g. a car assistant's search scenarios should cover traffic, fuel stations,
+  route info — not flights, banking, or other unrelated domains)
 """
 
 
@@ -330,6 +338,7 @@ async def _intent_happy_path_scenarios(
     intent: "IntentProfile",
     sbom: "AiSbomDocument | None",
     llm_client: "LLMClient | None",
+    policy: "CognitivePolicy | None" = None,
     pre_scan_profile: "DiscoveredProfile | None" = None,
 ) -> list[BehaviorScenario]:
     """Generate 2-4 end-to-end scenarios from IntentProfile.core_capabilities."""
@@ -350,6 +359,14 @@ async def _intent_happy_path_scenarios(
 
     distinct_caps = _dedup_capabilities(intent.core_capabilities)
     count = min(len(distinct_caps), 4) or 2
+
+    allowed_topics_list = list(getattr(policy, "allowed_topics", None) or []) if policy else []
+    allowed_topics_str = (
+        "\n".join(f"- {t}" for t in allowed_topics_list)
+        if allowed_topics_list
+        else "- Any topic relevant to the application's stated purpose"
+    )
+
     profile_block = _profile_context_block(pre_scan_profile)
     prompt = _HAPPY_PATH_USER_TEMPLATE.format(
         app_purpose=intent.app_purpose,
@@ -357,6 +374,7 @@ async def _intent_happy_path_scenarios(
         agents=", ".join(agents[:10]) or "none",
         tools=", ".join(tools[:10]) or "none",
         count=count,
+        allowed_topics=allowed_topics_str,
     )
     if profile_block:
         prompt = prompt + f"\n\n{profile_block}"
@@ -1663,7 +1681,7 @@ async def build_scenarios(
 
     # --- Layer 1: Topic paths (intent_happy_path) ---
     if "intent_happy_path" in workflows:
-        happy = await _intent_happy_path_scenarios(intent, sbom, llm_client, pre_scan_profile=pre_scan_profile)
+        happy = await _intent_happy_path_scenarios(intent, sbom, llm_client, policy=policy, pre_scan_profile=pre_scan_profile)
         all_scenarios.extend(happy)
         _log.debug("build_scenarios: %d intent_happy_path scenarios", len(happy))
 

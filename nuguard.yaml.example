@@ -2,11 +2,27 @@
 # Config for nuguard behavior and nuguard redteam.
 # Commit this file. Secrets live in environment variables — use ${ENV_VAR} syntax here.
 #
-# Priority order (highest wins): CLI flags > nuguard.yaml > env vars > built-in defaults
+# Priority order (highest wins): CLI flags > env vars > .nuguard.env file > nuguard.yaml > built-in defaults
 
 # ─── Project file paths ───────────────────────────────────────────────────────
 sbom: ./app.sbom.json               # path to pre-generated AI-SBOM JSON
+
+# source: can be a local directory OR a GitHub repository URL.
+# A GitHub URL is automatically treated as --from-repo and cloned before scanning.
+#   Local:  source: ./
+#   Remote: source: https://github.com/org/repo
 source: ./                          # generate SBOM from source dir (alternative to sbom:)
+
+# ─── GitHub repository (optional) ─────────────────────────────────────────────
+# Used when source: is a GitHub URL or when running nuguard sbom generate --from-repo.
+# token: is resolved from ${GITHUB_TOKEN} (or GH_TOKEN) in the environment.
+# This block is informational — the CLI picks the token from the environment directly.
+# github:
+#   owner: org
+#   repo: my-ai-app
+#   branch: main                    # ref to scan (branch, tag, or commit SHA)
+#   token: ${GITHUB_TOKEN}          # never hard-code tokens; always use ${ENV_VAR}
+
 policy:
   path: ./cognitive-policy.md       # Cognitive Policy Markdown to enforce during behavior/redteam
   llm: false                        # set true to compile richer test/boundary prompts with LLM
@@ -18,7 +34,7 @@ llm:
 
 # ─── SBOM generation ──────────────────────────────────────────────────────────
 sbom_generation:
-  llm: false                        # set true to enrich SBOM nodes with LLM descriptions
+  llm: true                        # set true to enrich SBOM nodes with LLM descriptions
                                     # requires LITELLM_API_KEY to be set
 
 # ─── Target application — shared by behavior and redteam ──────────────────────

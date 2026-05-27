@@ -21,19 +21,19 @@ LOG_FILE="$SCRIPT_DIR/reports/agentic-test-$(date +%Y%m%dT%H%M%S).log"
 # Tee all output (stdout + stderr) to the log file, keeping console output live.
 exec > >(tee -a "$LOG_FILE") 2>&1
 
-echo "Preparing Pinnacle Bank Agent for NuGuard Testing..."
+echo "Preparing Gemini Auto for NuGuard Testing..."
 echo "Log: $LOG_FILE"
 echo "Started: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 echo "---"
 
-echo "Preparing Pinnacle Bank Agent for NuGuard Testing..."
+echo "Preparing Gemini Auto for NuGuard Testing..."
 
-uv run nuguard sbom generate \
-  --config "$SCRIPT_DIR/nuguard-sbom-azure.yaml" \
-  --format json \
-  -o "$SCRIPT_DIR/pinnacle-bank.sbom.json"
+#uv run nuguard sbom generate \
+#  --config "$SCRIPT_DIR/nuguard-sbom-azure.yaml" \
+#  --format json \
+#  -o "$SCRIPT_DIR/gemini-auto.sbom.json"
 
-echo "SBOM generated successfully."
+#echo "SBOM generated successfully."
 
 #echo "Compiling Cognitive Policy controls..."
 
@@ -45,25 +45,25 @@ echo "SBOM generated successfully."
 #uv run nuguard policy check \
 #  --config "$SCRIPT_DIR/nuguard.yaml" \
 #  --format markdown \
-#  -o "$SCRIPT_DIR/reports/pinnacle-bank-policy-check.md" || true
+#  -o "$SCRIPT_DIR/reports/gemini-auto-policy-check.md" || true
 
 #echo "Done."
 
 echo "---"
-echo "Running behavior analysis (static + dynamic)..."
+#echo "Running behavior analysis (static + dynamic)..."
 
 # behavior exits 2 when findings are present — expected in testing; treat as non-fatal.
 # --mode static+dynamic: runs SBOM×Policy alignment checks then live intent-aware probing.
-uv run nuguard behavior \
-  --config "$SCRIPT_DIR/nuguard-sbom-azure.yaml" \
-  --mode static+dynamic \
-  --format markdown \
-  -o "$SCRIPT_DIR/reports/pinnacle-bank-behavior.md" || true
+#uv run nuguard behavior \
+#  --config "$SCRIPT_DIR/nuguard-sbom-azure.yaml" \
+#  --mode static+dynamic \
+#  --format markdown \
+#  -o "$SCRIPT_DIR/reports/gemini-auto-behavior.md" || true
 
 echo "---"
-echo "Done: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-echo "Log saved to: $LOG_FILE"
-echo "Report:       $SCRIPT_DIR/reports/pinnacle-bank-behavior.md"
+#echo "Done: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+#echo "Log saved to: $LOG_FILE"
+#echo "Report:       $SCRIPT_DIR/reports/gemini-auto-behavior.md"
 
 echo "---"
 echo "Running redteam tests ..."
@@ -72,7 +72,7 @@ echo "Running redteam tests ..."
 uv run nuguard redteam \
   --config "$SCRIPT_DIR/nuguard-sbom-azure.yaml" \
   --format markdown \
-  --output "$SCRIPT_DIR/reports/pinnacle-bank-redteam.md" || true
+  --output "$SCRIPT_DIR/reports/gemini-auto-redteam.md" || true
 
 # Wait for the tee log-capture background process to flush all output before exiting.
 # Without this, the exec > >(tee) pipe may close before the last lines reach the log file.

@@ -1,4 +1,10 @@
-source: ../Fintech-App
+source: https://github.com/NuGuardAI/Fintech-App
+github:
+  owner: NuGuardAI
+  repo: Fintech-App
+  branch: main
+  token: ${GITHUB_TOKEN}
+  
 policy:
   path: cognitive_policy.md
   llm: true

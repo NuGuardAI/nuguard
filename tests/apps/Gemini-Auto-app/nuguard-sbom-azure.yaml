@@ -1,12 +1,12 @@
-source: https://github.com/NuGuardAI/Fintech-App
+source: https://github.com/NuGuardAI/Gemini-Car-Assistant
 github:
   owner: NuGuardAI
-  repo: Fintech-App
+  repo: Gemini-Car-Assistant
   branch: main
   token: ${GITHUB_TOKEN}
 
 policy:
-  path: tests/apps/pinnacle-bank-app/cognitive_policy.md
+  path: ./cognitive_policy.md
   llm: true
 
 llm:
@@ -17,24 +17,65 @@ llm:
 sbom_generation:
   llm: true
 
-# ─── Behavior mode ────────────────────────────────────────────────────────────
-sbom: tests/apps/pinnacle-bank-app/pinnacle-bank.sbom.json
-behavior:
-  # Required: URL of the running Pinnacle Bank AI application under test
-  target: https://frontend-ui.agreeablesky-8c7ba25f.eastus.azurecontainerapps.io
-
-  # Path of the chat/agent endpoint on the target
-  target_endpoint: /api/chat
-
-  # Request body shape
-  chat_payload_key: message
-  chat_payload_list: false
-
-  # Authentication
+target:
+  # The SWA frontend (https://delightful-beach-0b11fc40f.3.azurestaticapps.net) is a fully
+  # static Next.js export with no server-side routes — it cannot be used as a nuguard target.
+  # The frontend bakes the backend URL into the JS bundle at build time and calls it directly.
+  # Always target the FastAPI backend for behavior and redteam testing.
+  #
+  # Backend URL is also recorded in the SBOM summary → deployment_urls so nuguard can surface
+  # it automatically (extracted from AZURE_WEBAPP_NAME in .github/workflows/deploy-azure.yml).
+  #url: http://127.0.0.1:8250   # local dev backend (pnpm dev or python -m uvicorn api:app)
+  url: https://gemini-auto-pilot-g354nq34la-wl.a.run.app/
+  # Authentication — login_flow: POST /login → get Bearer token for subsequent requests
+  #auth:
+  #  type: login_flow
+  #  login_flow:
+  #    endpoint: /login
+  #    payload:
+  #      username: alice
+  #      password: alice123
+  #    token_response_key: token
+  #    token_header: "Authorization: Bearer"
+  #    refresh_on_401: true
+  #auth:
+  #  type: basic
+  #  username: alice
+  #  password: alice123
   auth:
     type: none
-    # type: bearer
-    # header: "Authorization: Bearer ${TARGET_TOKEN}"
+
+  # The /api/agent/chat endpoint requires vehicleState and language in every request.
+  # Without these fields the server throws: "Cannot read properties of undefined (reading 'fuel')"
+  # target_endpoint is intentionally omitted — it is auto-discovered from
+  # summary.api_endpoints in the SBOM ("/api/agent/chat").
+  # Required fields discovered by probing the live endpoint:
+  #   vehicleState.fuel, .tirePressure, .music.playing, .weather.temp are mandatory
+  #   — the server throws 'Cannot read properties of undefined' for each missing one.
+  #   language / googleAccessToken are optional but included for fidelity.
+  #chat_payload_extras:
+  #  vehicleState:
+  #    fuel: 75
+  #    temp: 21
+  #    tirePressure: [32, 32, 32, 32]   # any array; server reads [0]
+  #    battery: 85
+  #    destination: null
+  #      stops: []
+  #      navMetadata: null
+  #      music:
+  #        playing: false                 # required; track/artist/provider optional
+  #        track: ""
+  #        artist: ""
+  #        provider: simulated
+  #      weather:
+  #        temp: 22                       # required; condition optional
+  #        condition: sunny
+  #  language: en-US
+  #  googleAccessToken: null
+
+# ─── Behavior mode ────────────────────────────────────────────────────────────
+sbom: ./gemini-auto.sbom.json
+behavior:
 
   # Use LLM for intent-aware scenario generation and per-turn judging
   llm: true
@@ -83,10 +124,6 @@ behavior:
 
 # ─── Red team mode ────────────────────────────────────────────────────────────
 redteam:
-  target: https://frontend-ui.agreeablesky-8c7ba25f.eastus.azurecontainerapps.io
-  target_endpoint: /api/chat
-  chat_payload_key: message
-  chat_payload_list: false
 
   llm:
     model: azure/gpt-5.4-mini
@@ -97,9 +134,6 @@ redteam:
     model: azure/gpt-5.4-mini
     api_key: ${AZURE_OPENAI_KEY}
     api_base: ${AZURE_OPENAI_ENDPOINT}
-
-  auth:
-    type: none
 
   profile: full
   scenarios:

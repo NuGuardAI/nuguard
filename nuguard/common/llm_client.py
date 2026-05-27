@@ -32,7 +32,7 @@ from nuguard.common.logging import get_logger
 
 _log = get_logger(__name__)
 
-_DEFAULT_MODEL = "gemini/gemini-2.0-flash"
+_DEFAULT_MODEL = "gemini/gemini-3.1-flash-lite"
 
 _GEMINI_PREFIXES = ("gemini/", "google/", "vertex_ai/")
 _VERTEX_PREFIXES = ("vertex_ai/",)

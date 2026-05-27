@@ -10,6 +10,7 @@
       "component_type": "API_ENDPOINT",
       "confidence": 0.8360000000000001,
       "metadata": {
+        "description": "Generic chat API endpoint handling POST requests to /api/chat.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -28,7 +29,8 @@
             "evidence_multiplier": 1.1,
             "validation_penalty": 0.0,
             "final_confidence": 0.836
-          }
+          },
+          "description_source": "llm_generated"
         }
       },
       "evidence": [
@@ -53,6 +55,7 @@
         "endpoint": "0.0.0.0:8080",
         "transport": "sse",
         "server_name": "fintech-accounts",
+        "description": "Server-sent events API endpoint exposed by an MCP server on 0.0.0.0:8080.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -81,7 +84,8 @@
             "evidence_multiplier": 1.4,
             "validation_penalty": 0.0,
             "final_confidence": 0.9856
-          }
+          },
+          "description_source": "llm_generated"
         }
       },
       "evidence": [
@@ -273,6 +277,7 @@
       "component_type": "AUTH",
       "confidence": 1.0,
       "metadata": {
+        "description": "JWT-based authentication component used for verifying and authorizing access tokens.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -299,7 +304,8 @@
             "evidence_multiplier": 1.4,
             "validation_penalty": 0.0,
             "final_confidence": 1.0
-          }
+          },
+          "description_source": "llm_generated"
         }
       },
       "evidence": [
@@ -585,6 +591,7 @@
         "image_tag": "1.25-alpine",
         "registry": "docker.io",
         "base_image": "nginx:1.25-alpine",
+        "description": "Alpine-based NGINX 1.25 container image used as the application runtime and web server.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -612,7 +619,8 @@
             "evidence_multiplier": 1.1,
             "validation_penalty": 0.0,
             "final_confidence": 0.8712
-          }
+          },
+          "description_source": "llm_generated"
         }
       },
       "evidence": [
@@ -637,6 +645,7 @@
         "image_tag": "20-alpine",
         "registry": "docker.io",
         "base_image": "node:20-alpine",
+        "description": "Alpine-based Node.js 20 container image used as the builder stage in a Dockerfile.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -664,7 +673,8 @@
             "evidence_multiplier": 1.1,
             "validation_penalty": 0.0,
             "final_confidence": 0.8712
-          }
+          },
+          "description_source": "llm_generated"
         }
       },
       "evidence": [
@@ -689,6 +699,7 @@
         "image_tag": "3.11-slim",
         "registry": "docker.io",
         "base_image": "python:3.11-slim",
+        "description": "Minimal Python 3.11 slim container image used as a lightweight base runtime environment.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -720,7 +731,8 @@
             "evidence_multiplier": 1.4,
             "validation_penalty": 0.0,
             "final_confidence": 1.0
-          }
+          },
+          "description_source": "llm_generated"
         }
       },
       "evidence": [
@@ -930,8 +942,10 @@
       "component_type": "DATASTORE",
       "confidence": 1.0,
       "metadata": {
+        "description": "Redis is an in-memory data store used for caching, message brokering, and fast key-value access.",
         "request_body_schema": {},
         "chat_payload_list": false,
+        "pfi_fields": [],
         "extras": {
           "canonical_name": "redis",
           "adapter": "datastore_generic",
@@ -957,7 +971,8 @@
             "evidence_multiplier": 1.4,
             "validation_penalty": 0.0,
             "final_confidence": 1.0
-          }
+          },
+          "description_source": "llm_generated"
         }
       },
       "evidence": [
@@ -1113,8 +1128,10 @@
       "component_type": "DATASTORE",
       "confidence": 0.44000000000000006,
       "metadata": {
+        "description": "SQLite is a lightweight embedded relational database engine used for local data storage in applications and devices.",
         "request_body_schema": {},
         "chat_payload_list": false,
+        "pfi_fields": [],
         "extras": {
           "canonical_name": "sqlite",
           "adapter": "datastore_generic",
@@ -1131,7 +1148,8 @@
             "evidence_multiplier": 1.0,
             "validation_penalty": 0.0,
             "final_confidence": 0.44
-          }
+          },
+          "description_source": "llm_generated"
         }
       },
       "evidence": [
@@ -1154,6 +1172,7 @@
       "metadata": {
         "deployment_target": "azure",
         "cloud_region": "eastus",
+        "description": "Azure East US Bicep deployment template used by azd to provision infrastructure and configure Nginx.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -1184,7 +1203,8 @@
             "evidence_multiplier": 1.4,
             "validation_penalty": 0.0,
             "final_confidence": 0.9856
-          }
+          },
+          "description_source": "llm_generated"
         }
       },
       "evidence": [
@@ -1377,6 +1397,7 @@
       "confidence": 0.7744000000000001,
       "metadata": {
         "deployment_target": "azure",
+        "description": "Bicep deployment component with unspecified Azure region.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -1403,7 +1424,8 @@
             "evidence_multiplier": 1.1,
             "validation_penalty": 0.0,
             "final_confidence": 0.7744
-          }
+          },
+          "description_source": "llm_generated"
         }
       },
       "evidence": [
@@ -1425,6 +1447,7 @@
       "confidence": 0.7744000000000001,
       "metadata": {
         "deployment_target": "azure",
+        "description": "Azure Bicep deployment template with unspecified region used for infrastructure provisioning.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -1451,7 +1474,8 @@
             "evidence_multiplier": 1.1,
             "validation_penalty": 0.0,
             "final_confidence": 0.7744
-          }
+          },
+          "description_source": "llm_generated"
         }
       },
       "evidence": [
@@ -1473,6 +1497,7 @@
       "confidence": 0.7744000000000001,
       "metadata": {
         "deployment_target": "azure",
+        "description": "Bicep deployment component targeting Azure with an unspecified region.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -1499,7 +1524,8 @@
             "evidence_multiplier": 1.1,
             "validation_penalty": 0.0,
             "final_confidence": 0.7744
-          }
+          },
+          "description_source": "llm_generated"
         }
       },
       "evidence": [
@@ -1521,6 +1547,7 @@
       "confidence": 0.7744000000000001,
       "metadata": {
         "deployment_target": "azure",
+        "description": "Azure Bicep deployment component with unspecified region.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -1547,7 +1574,8 @@
             "evidence_multiplier": 1.1,
             "validation_penalty": 0.0,
             "final_confidence": 0.7744
-          }
+          },
+          "description_source": "llm_generated"
         }
       },
       "evidence": [
@@ -1568,6 +1596,7 @@
       "component_type": "DEPLOYMENT",
       "confidence": 0.7920000000000001,
       "metadata": {
+        "description": "Deployment exposure for TCP port 80, indicating the container listens for HTTP traffic.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -1589,7 +1618,8 @@
             "evidence_multiplier": 1.1,
             "validation_penalty": 0.0,
             "final_confidence": 0.792
-          }
+          },
+          "description_source": "llm_generated"
         }
       },
       "evidence": [
@@ -1610,6 +1640,7 @@
       "component_type": "DEPLOYMENT",
       "confidence": 0.7920000000000001,
       "metadata": {
+        "description": "Deployment exposes TCP port 8001 for the containerized service.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -1631,7 +1662,8 @@
             "evidence_multiplier": 1.1,
             "validation_penalty": 0.0,
             "final_confidence": 0.792
-          }
+          },
+          "description_source": "llm_generated"
         }
       },
       "evidence": [
@@ -1652,6 +1684,7 @@
       "component_type": "DEPLOYMENT",
       "confidence": 1.0,
       "metadata": {
+        "description": "Deployment configuration exposing TCP port 8080 for the containerized application.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -1677,7 +1710,8 @@
             "evidence_multiplier": 1.4,
             "validation_penalty": 0.0,
             "final_confidence": 1.0
-          }
+          },
+          "description_source": "llm_generated"
         }
       },
       "evidence": [
@@ -1879,6 +1913,7 @@
       "confidence": 0.9880000000000001,
       "metadata": {
         "framework": "langchain",
+        "description": "LangChain framework for building applications with language models, imported as a dependency by LangGraph.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -1900,7 +1935,8 @@
             "evidence_multiplier": 1.3,
             "validation_penalty": 0.0,
             "final_confidence": 0.988
-          }
+          },
+          "description_source": "llm_generated"
         }
       },
       "evidence": [
@@ -1929,6 +1965,7 @@
       "confidence": 0.616,
       "metadata": {
         "framework": "langgraph",
+        "description": "LangGraph is a framework for building stateful, multi-step LLM applications and agent workflows.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -1952,7 +1989,8 @@
             "evidence_multiplier": 1.4,
             "validation_penalty": 0.0,
             "final_confidence": 0.616
-          }
+          },
+          "description_source": "llm_generated"
         }
       },
       "evidence": [
@@ -2001,6 +2039,7 @@
       "confidence": 1.0,
       "metadata": {
         "framework": "mcp_server",
+        "description": "MCP server framework used to build and run the fintech-accounts service.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -2027,7 +2066,8 @@
             "validation_penalty": 0.0,
             "final_confidence": 1.0
           },
-          "description": "fintech-accounts provides 12 tools including apply_for_loan, approve_loan, broadcast_all_users, bulk_export, and bulk_export_all_customers over SSE transport with no auth."
+          "description": "fintech-accounts provides 12 tools including apply_for_loan, approve_loan, broadcast_all_users, bulk_export, and bulk_export_all_customers over SSE transport with no auth.",
+          "description_source": "llm_generated"
         }
       },
       "evidence": [
@@ -2215,6 +2255,7 @@
       "component_type": "MODEL",
       "confidence": 1.0,
       "metadata": {
+        "description": "Cohere command-r-plus large language model for generating and understanding natural language text.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -2242,7 +2283,8 @@
             "evidence_multiplier": 1.4,
             "validation_penalty": 0.0,
             "final_confidence": 1.0
-          }
+          },
+          "description_source": "llm_generated"
         }
       },
       "evidence": [
@@ -2416,6 +2458,7 @@
       "component_type": "MODEL",
       "confidence": 1.0,
       "metadata": {
+        "description": "OpenAI GPT-4o multimodal generative AI model for text and image understanding and generation.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -2448,7 +2491,8 @@
             "evidence_multiplier": 1.4,
             "validation_penalty": 0.0,
             "final_confidence": 1.0
-          }
+          },
+          "description_source": "llm_generated"
         }
       },
       "evidence": [
@@ -2551,6 +2595,7 @@
       "confidence": 0.44000000000000006,
       "metadata": {
         "privilege_scope": "filesystem_write",
+        "description": "Grants permission to open and write output files on the filesystem.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -2569,7 +2614,8 @@
             "evidence_multiplier": 1.0,
             "validation_penalty": 0.0,
             "final_confidence": 0.44
-          }
+          },
+          "description_source": "llm_generated"
         }
       },
       "evidence": [
@@ -2591,6 +2637,7 @@
       "confidence": 0.528,
       "metadata": {
         "privilege_scope": "network_out",
+        "description": "Allows outgoing network requests, including POSTing data to webhook URLs.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -2613,7 +2660,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.528
-          }
+          },
+          "description_source": "llm_generated"
         }
       },
       "evidence": [
@@ -2653,6 +2701,7 @@
       "confidence": 0.616,
       "metadata": {
         "privilege_scope": "rbac",
+        "description": "RBAC privilege component controlling access permissions and helping prevent privilege escalation through role-based access control.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -2681,7 +2730,8 @@
             "evidence_multiplier": 1.4,
             "validation_penalty": 0.0,
             "final_confidence": 0.616
-          }
+          },
+          "description_source": "llm_generated"
         }
       },
       "evidence": [
@@ -2810,6 +2860,7 @@
       "component_type": "PROMPT",
       "confidence": 1.0,
       "metadata": {
+        "description": "Generic prompt component matching regex-based patterns for input classification or processing.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -2836,7 +2887,8 @@
             "evidence_multiplier": 1.4,
             "validation_penalty": 0.0,
             "final_confidence": 1.0
-          }
+          },
+          "description_source": "llm_generated"
         }
       },
       "evidence": [
@@ -2952,7 +3004,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -3005,7 +3058,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -3058,7 +3112,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -3111,7 +3166,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -3164,7 +3220,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -3217,7 +3274,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -3270,7 +3328,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -3323,7 +3382,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -3376,7 +3436,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -3429,7 +3490,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -3482,7 +3544,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -3535,7 +3598,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -3588,7 +3652,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -3641,7 +3706,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -3694,7 +3760,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -3717,7 +3784,7 @@
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-documents",
-        "description": "Deletes a specified document through the MCP server tool, removing it from the system’s managed document store.",
+        "description": "Deletes a specified document through the MCP server tool, removing it from the system\u2019s managed document store.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -3747,7 +3814,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -3800,7 +3868,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -3853,7 +3922,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -3906,7 +3976,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -3959,7 +4030,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -4012,7 +4084,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -4065,7 +4138,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -4118,7 +4192,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -4171,7 +4246,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -4224,7 +4300,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -4277,7 +4354,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -4330,7 +4408,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -4383,7 +4462,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -4436,7 +4516,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -4489,7 +4570,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -4542,7 +4624,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -4595,7 +4678,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -4648,7 +4732,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -4671,7 +4756,7 @@
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-reporting",
-        "description": "Retrieves a concise summary of a customer’s key information, likely aggregating account details, status, and recent activity for quick review.",
+        "description": "Retrieves a concise summary of a customer\u2019s key information, likely aggregating account details, status, and recent activity for quick review.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -4701,7 +4786,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -4754,7 +4840,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -4807,7 +4894,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -4860,7 +4948,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -4913,7 +5002,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -4966,7 +5056,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -5019,7 +5110,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -5072,7 +5164,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -5125,7 +5218,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -5178,7 +5272,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -5231,7 +5326,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -5284,7 +5380,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -5337,7 +5434,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -5390,7 +5488,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -5443,7 +5542,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -5496,7 +5596,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -5549,7 +5650,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -5602,7 +5704,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -5655,7 +5758,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -5708,7 +5812,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -5761,7 +5866,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -5814,7 +5920,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -5867,7 +5974,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -5920,7 +6028,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -5973,7 +6082,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -6026,7 +6136,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -6079,7 +6190,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -6132,7 +6244,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -6185,7 +6298,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -6238,7 +6352,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -6291,7 +6406,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -6344,7 +6460,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -6397,7 +6514,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -6450,7 +6568,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -6503,7 +6622,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -6556,7 +6676,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -6609,7 +6730,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -6662,7 +6784,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -6715,7 +6838,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -6768,7 +6892,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -6791,7 +6916,7 @@
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-accounts",
-        "description": "Updates an account’s status in the system, likely enabling, disabling, or otherwise changing its operational state based on supplied parameters.",
+        "description": "Updates an account\u2019s status in the system, likely enabling, disabling, or otherwise changing its operational state based on supplied parameters.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -6821,7 +6946,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -6874,7 +7000,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -6927,7 +7054,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -6980,7 +7108,8 @@
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 0.8832
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -7026,7 +7155,8 @@
             "evidence_multiplier": 1.0,
             "validation_penalty": 0.0,
             "final_confidence": 0.44
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -7079,7 +7209,8 @@
             "evidence_multiplier": 1.4,
             "validation_penalty": 0.0,
             "final_confidence": 1.0
-          }
+          },
+          "description_source": "enriched_existing"
         }
       },
       "evidence": [
@@ -7174,6 +7305,295 @@
           }
         }
       ]
+    },
+    {
+      "id": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "name": "Fintech App Assistant",
+      "component_type": "AGENT",
+      "confidence": 0.55,
+      "metadata": {
+        "description": "An AI assistant component that supports fintech application tasks and user interactions.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "source": "auto_enrichment",
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": []
+    },
+    {
+      "id": "eeb3ea51-f90f-4897-909c-25f00d47b3cd",
+      "name": "/api/health API",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.55,
+      "metadata": {
+        "endpoint": "/api/health",
+        "method": "GET",
+        "description": "GET /api/health endpoint that returns application health status.",
+        "accepts_user_input": false,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "source": "auto_enrichment",
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": []
+    },
+    {
+      "id": "4a0e279d-42fc-4106-b265-153faa384a87",
+      "name": "/api/auth/login API",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.55,
+      "metadata": {
+        "endpoint": "/api/auth/login",
+        "method": "GET",
+        "description": "Authentication login API endpoint at /api/auth/login handling GET requests for user login access.",
+        "accepts_user_input": false,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "source": "auto_enrichment",
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": []
+    },
+    {
+      "id": "5bd48116-8d5d-4d8d-a586-c1b5aa64d0f4",
+      "name": "/api/auth/refresh API",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.55,
+      "metadata": {
+        "endpoint": "/api/auth/refresh",
+        "method": "GET",
+        "description": "GET endpoint /api/auth/refresh that refreshes authentication tokens.",
+        "accepts_user_input": false,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "source": "auto_enrichment",
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": []
+    },
+    {
+      "id": "6cc4574b-f434-4808-aa41-abdaafa66e46",
+      "name": "/api/auth/profile API",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.55,
+      "metadata": {
+        "endpoint": "/api/auth/profile",
+        "method": "GET",
+        "description": "GET /api/auth/profile endpoint that retrieves the authenticated user's profile information.",
+        "accepts_user_input": false,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "source": "auto_enrichment",
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": []
+    },
+    {
+      "id": "05b79530-a966-48b2-b67d-65ef030399e9",
+      "name": "/api/debug/config API",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.55,
+      "metadata": {
+        "endpoint": "/api/debug/config",
+        "method": "GET",
+        "description": "Authenticated GET endpoint at /api/debug/config that returns debug configuration details.",
+        "auth_required": true,
+        "accepts_user_input": false,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "source": "auto_enrichment",
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": []
+    },
+    {
+      "id": "d1e60ad6-f525-4ebf-b8cb-8d582796a17d",
+      "name": "/api/chat/history/{session_id} API",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.55,
+      "metadata": {
+        "endpoint": "/api/chat/history/{session_id}",
+        "method": "POST",
+        "description": "Authenticated POST API endpoint that retrieves chat history for a specified session_id.",
+        "auth_required": true,
+        "accepts_user_input": true,
+        "request_body_schema": {},
+        "chat_payload_key": "message",
+        "chat_payload_list": false,
+        "response_text_key": "response",
+        "extras": {
+          "source": "auto_enrichment",
+          "probe_post_405": true,
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": []
+    },
+    {
+      "id": "80d87422-3eed-4b96-acfe-61f7eec5b66c",
+      "name": "/api/webhooks/register API",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.55,
+      "metadata": {
+        "endpoint": "/api/webhooks/register",
+        "method": "GET",
+        "description": "HTTP GET endpoint /api/webhooks/register for registering webhooks.",
+        "accepts_user_input": false,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "source": "auto_enrichment",
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": []
+    },
+    {
+      "id": "c816cda6-1399-44a7-88b7-03023548ac86",
+      "name": "/api/account API",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.55,
+      "metadata": {
+        "endpoint": "/api/account",
+        "method": "GET",
+        "description": "GET /api/account API endpoint that retrieves account information.",
+        "accepts_user_input": false,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "source": "auto_enrichment",
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": []
+    },
+    {
+      "id": "47b66716-a78c-4464-8340-7f5354727b58",
+      "name": "/api/users/search API",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.55,
+      "metadata": {
+        "endpoint": "/api/users/search",
+        "method": "GET",
+        "description": "GET API endpoint that searches users via /api/users/search.",
+        "accepts_user_input": false,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "source": "auto_enrichment",
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": []
+    },
+    {
+      "id": "31082212-92cb-4ec4-b6db-f4eca1e8f21f",
+      "name": "/api/account/export API",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.55,
+      "metadata": {
+        "endpoint": "/api/account/export",
+        "method": "GET",
+        "description": "GET endpoint /api/account/export that exports account data from the API.",
+        "accepts_user_input": false,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "source": "auto_enrichment",
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": []
+    },
+    {
+      "id": "b563974b-3e29-4224-9df6-e06a26d0aef5",
+      "name": "/api/account/link-external API",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.55,
+      "metadata": {
+        "endpoint": "/api/account/link-external",
+        "method": "GET",
+        "description": "GET API endpoint /api/account/link-external for linking an external account to a user account.",
+        "accepts_user_input": false,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "source": "auto_enrichment",
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": []
+    },
+    {
+      "id": "183df6fb-93ef-41cc-82ab-9bd29cea98d8",
+      "name": "/api/agents API",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.55,
+      "metadata": {
+        "endpoint": "/api/agents",
+        "method": "GET",
+        "description": "GET /api/agents endpoint that retrieves agent resources from the API.",
+        "accepts_user_input": false,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "source": "auto_enrichment",
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": []
+    },
+    {
+      "id": "84fbb4f5-df44-4c74-b22f-edb8614f5193",
+      "name": "/api/tools API",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.55,
+      "metadata": {
+        "endpoint": "/api/tools",
+        "method": "GET",
+        "description": "GET /api/tools API endpoint that retrieves tools-related data.",
+        "accepts_user_input": false,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "source": "auto_enrichment",
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": []
+    },
+    {
+      "id": "38d80d43-c26d-454c-9982-2c33bdacd53a",
+      "name": "/api/chat API",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.55,
+      "metadata": {
+        "endpoint": "/api/chat",
+        "method": "POST",
+        "description": "POST /api/chat API endpoint that receives chat requests for processing.",
+        "accepts_user_input": true,
+        "request_body_schema": {},
+        "chat_payload_key": "message",
+        "chat_payload_list": false,
+        "response_text_key": "response",
+        "extras": {
+          "source": "auto_enrichment",
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": []
     }
   ],
   "edges": [
@@ -7336,6 +7756,412 @@
       "source": "7663c514-f4e8-4f9b-8cd8-d08162c46da9",
       "target": "63cd7781-ee2e-4673-a2db-4d6a2fd02fe1",
       "relationship_type": "PROTECTS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "f1e03a87-11b3-4845-82f0-53d7284f6fd7",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "1aed0011-c2a2-44b2-a0d9-237e7094a907",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "1672903e-d15a-4b3a-a5b4-bb1a95abc967",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "776ff2f7-619c-432f-aaf4-8eee4691dbfc",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "c8278060-12c2-47bf-aaaa-cb484ec52ec4",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "f339d76b-9b51-4d01-9eb1-6f72a5283b6e",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "6b2b3cc6-df01-4d23-b57e-4fe50b62f57f",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "1555ab3a-15ae-4aa4-a1fe-18b08eeb9135",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "1cad2f0e-bc10-4a7d-942b-d69ba37fc8a1",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "58d58f34-3df6-4b23-a8fd-ed2760439274",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "2b9a22f7-7c70-4f0d-8ee9-8784e0a76e1e",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "d74f4c83-2551-46ca-a1f0-f5aaf71df075",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "1f25ef0b-7dbe-4810-9b6d-6fb508feba8a",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "d63f3d8a-2a68-488b-8fab-7010d4c8de5e",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "d90db3b6-e19d-4df7-a532-d0d455fae8e6",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "b988ae60-140d-4043-89c3-ce82459d229b",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "5479d73a-d8cd-4d6a-97c5-cb9206ae5966",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "6272c746-15a1-4f5c-a9ac-4ed9d7b5ec34",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "5b65af17-2ba8-4e57-aaf0-6d64aa64a559",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "73c780e7-7aa7-4de7-9de4-1c9cc5ce499f",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "7afc3c66-7793-4909-baa6-f7ea9e9d79b3",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "9a225daf-6f01-4c28-9176-68d57282f3e5",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "7af2baa2-d498-42eb-91ea-172e8331e6f8",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "247909ea-2b41-46a8-81be-b30b93ad0626",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "ac274234-27d9-4979-8721-929c99deb117",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "52f7fde9-4398-4b35-8fcc-8e8aac543923",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "37bac92e-5aaf-4be2-b9d7-04d8f24c28a8",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "579bdd96-201c-4dc6-b08e-067a47b4ab0f",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "9c4e93c7-71fd-4d9c-9285-c4505b97af35",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "e5793d0c-3a69-4d8f-a8ed-fa411d940249",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "cd7cc275-28ae-47c4-add5-75ca7eced2f4",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "76359b40-0244-494b-9b45-59ed9dec86f3",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "633c11d9-ca4e-458c-ab90-f503ae5ce3fd",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "0cb59e2f-9aa6-4f09-95f5-bb169c8c4331",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "d840b84d-0c64-40a5-85d7-6b19d09d6778",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "abea1244-f0bb-43a3-afe3-ee0c352571cb",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "99e31988-a1f2-43b3-a606-794491fcfecd",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "85f0d325-d6cb-4ad4-ac49-190fa9f2bae0",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "0027d1b1-c03c-45c8-9e8b-aa1a9c2e51c7",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "9bb3b293-aab6-4bf2-a4e8-4c3aa9c6a5e9",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "3a2469cd-a7a0-43c4-8e27-9d7ecb1b64de",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "99560bf3-2212-43cc-8d89-dbaebb428b19",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "5a9dc6a8-0508-40da-a135-f8a9d8ee1a68",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "88bcd6de-da65-44df-98c4-f4641d2f213d",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "19f8feb4-3f9d-4b3a-b3d5-0846b41cf3c5",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "e2d26e65-733f-429c-90f3-65328ebe482f",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "72c6480e-f9db-4294-9d34-a64f0988c68e",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "92fc72ab-9fff-4f0e-9902-f02604b59ce4",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "21ff3df2-3178-45d9-88de-3d2fcc99a86d",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "2a8e455b-3915-4c55-8f17-4ba6b3f43311",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "13ebb446-5ba8-4c09-9270-4f6379603835",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "21ef32c2-1ab0-4f72-ab3f-bcf7d5fe8621",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "8da88448-ef0f-4ca8-8574-6ac746cb694f",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "f737b256-f5ab-490e-a425-f3a34f145f5a",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "78620519-c491-4da9-909b-4ae4f5ea823c",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "616f245f-e509-43e8-ba44-309ab26b8939",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "16bf4842-aa9a-4165-b607-b9777a642a6b",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "332ce24b-fb4b-41cd-838f-b3d66356364a",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "6f01a844-2d2f-43ea-bfe9-ae31497bb35c",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "44f8a361-2b0f-491e-b1ba-d909a415a783",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "612df3a1-3c06-4c9a-b83b-f471f5a573bd",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "f1638459-bcbc-4210-9744-c96d42bd9acc",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "d56fda45-cabf-42a4-b4bc-d121aa017cc1",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "e97b43aa-a3e7-4a8b-8a5a-05f6f551f79f",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "7127f254-0a26-49f0-9a89-256ed8c0c9d4",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "94d4ddd7-4360-4a6b-ae9f-73bcb073b47f",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "c96dbd55-4b62-4e9f-bfe9-d8e71830cd98",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "b9331a7f-8498-4b5f-bba2-9439e7bf505d",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "f5ecb96d-006c-4949-97a0-f197bd036f02",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "93142e93-4f5a-43c4-8db2-b4df06a9bf37",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "190bf49b-f2f0-4020-b583-d6f2e9b993d4",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "f4828acf-6423-4089-86fb-e30d2af79dc8",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "07aa59ba-1ea6-4444-8cc3-0b39c5bb9737",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "ae97d670-5520-448d-9d9b-0636b87c443a",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "5ccb86cc-3f4f-4583-bead-be9d7f95ea54",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "8703c3b7-82aa-4048-8288-a1cdab2bb367",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "33731bb3-15f0-4237-a2c7-846b30d084b9",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "cd84dadb-1b74-47e8-9216-44d9b0c1ae33",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "da00a830-f4fd-44ec-9008-6f8e3cd17492",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "ec11816c-7144-4dcb-b855-9fb01589e218",
+      "target": "4fe011e3-8073-4296-ad97-63373f81a76a",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "1aed0011-c2a2-44b2-a0d9-237e7094a907",
+      "target": "35f40b77-1481-47bb-8b79-e189ff296ab6",
+      "relationship_type": "ACCESSES",
+      "access_type": "readwrite"
     }
   ],
   "deps": [
@@ -7924,7 +8750,7 @@
       "Destination"
     ],
     "node_counts": {
-      "API_ENDPOINT": 2,
+      "API_ENDPOINT": 16,
       "AUTH": 1,
       "CONTAINER_IMAGE": 3,
       "DATASTORE": 2,
@@ -7933,7 +8759,8 @@
       "MODEL": 2,
       "PRIVILEGE": 3,
       "PROMPT": 1,
-      "TOOL": 79
+      "TOOL": 79,
+      "AGENT": 1
     },
     "secret_stores": [],
     "availability_zones": [],
@@ -7962,5 +8789,6 @@
       "0.0.0.0:8080"
     ]
   },
-  "relationship_graph_md": "## Component Relationship Graph\n\n- **Orchestration / model use**\n  - `framework:langchain`, `langgraph`, and `fintech-accounts` all **use** the same two models: **`command-r-plus`** and **`gpt-4o`**.\n  - The graph does not show any other agent-to-tool or agent-to-datastore links.\n\n- **Auth / guardrails**\n  - A generic **AUTH** component **protects** both the **`0.0.0.0:8080 (sse)` API endpoint** and a **generic API endpoint**.\n  - No other guardrail, policy, or authorization relationships are shown for tools or datastores.\n\n- **Data stores**\n  - **`redis`** and **`sqlite`** are present as datastores, but the graph shows **no connections** to them.\n  - This means no explicit data-flow path to persistence is shown in the diagram.\n\n- **Tools**\n  - Many tools are listed, including high-impact financial/admin actions such as `approve_loan`, `delete_user`, `grant_admin_role`, `override_compliance`, `transfer_funds`, `export_customer_data`, and `stream_all_transactions`.\n  - **All tools show no connections**, so the graph does **not** show which framework or agent invokes them, or whether any are protected.\n\n- **Notable security observations**\n  - There is **guardrail coverage for the API endpoints**, but **no visible guardrails around the tools**.\n  - Several tools imply access to **sensitive customer, compliance, payment, audit, and admin data/actions**, yet the graph shows **no explicit access controls** or datastore bindings for them.\n  - External/data-exfiltration-type capabilities are present (`fetch_external_feed`, `fetch_market_report`, `browser_automation`, `export_customer_data`), but again **no connections or restrictions are shown**.\n\n```mermaid\nflowchart LR\n    generic_63cd77([\"🌐 generic\"])\n    0_0_0_0_8080__sse__521796([\"🌐 0.0.0.0:8080 (sse)\"])\n    redis_35f40b[(\"🗄 redis\")]\n    sqlite_3e949e[(\"🗄 sqlite\")]\n    framework_langchain_73d8c6[/\"⚙ framework:langchain\"/]\n    langgraph_30c35b[/\"⚙ langgraph\"/]\n    fintech_accounts_be8dd0[/\"⚙ fintech-accounts\"/]\n    command_r_plus_f1e03a[(\"🧠 command-r-plus\")]\n    gpt_4o_bbf1b7[(\"🧠 gpt-4o\")]\n    generic_c5c874>\"💬 generic\"]\n    apply_for_loan_1aed00(\"🔧 apply_for_loan\")\n    approve_loan_167290(\"🔧 approve_loan\")\n    broadcast_all_users_776ff2(\"🔧 broadcast_all_users\")\n    bulk_export_c82780(\"🔧 bulk_export\")\n    bulk_export_all_customers_f339d7(\"🔧 bulk_export_all_customers\")\n    buy_asset_6b2b3c(\"🔧 buy_asset\")\n    buy_crypto_1555ab(\"🔧 buy_crypto\")\n    call_internal_service_1cad2f(\"🔧 call_internal_service\")\n    cancel_payment_58d58f(\"🔧 cancel_payment\")\n    cancel_task_2b9a22(\"🔧 cancel_task\")\n    check_sanctions_d74f4c(\"🔧 check_sanctions\")\n    check_transaction_limits_1f25ef(\"🔧 check_transaction_limits\")\n    convert_funds_d63f3d(\"🔧 convert_funds\")\n    create_document_d90db3(\"🔧 create_document\")\n    delete_audit_entry_b988ae(\"🔧 delete_audit_entry\")\n    delete_document_5479d7(\"🔧 delete_document\")\n    delete_user_6272c7(\"🔧 delete_user\")\n    export_all_audit_logs_5b65af(\"🔧 export_all_audit_logs\")\n    export_customer_data_73c780(\"🔧 export_customer_data\")\n    fetch_external_feed_7afc3c(\"🔧 fetch_external_feed\")\n    fetch_market_report_9a225d(\"🔧 fetch_market_report\")\n    file_suspicious_activity_report_7af2ba(\"🔧 file_suspicious_activity_report\")\n    flag_transaction_247909(\"🔧 flag_transaction\")\n    freeze_card_ac2742(\"🔧 freeze_card\")\n    generate_report_52f7fd(\"🔧 generate_report\")\n    get_account_37bac9(\"🔧 get_account\")\n    get_admin_actions_579bdd(\"🔧 get_admin_actions\")\n    get_all_kyc_statuses_9c4e93(\"🔧 get_all_kyc_statuses\")\n    get_audit_log_e5793d(\"🔧 get_audit_log\")\n    get_available_assets_cd7cc2(\"🔧 get_available_assets\")\n    get_card_details_76359b(\"🔧 get_card_details\")\n    get_card_transactions_633c11(\"🔧 get_card_transactions\")\n    get_crypto_price_0cb59e(\"🔧 get_crypto_price\")\n    get_customer_summary_d840b8(\"🔧 get_customer_summary\")\n    get_document_abea12(\"🔧 get_document\")\n    get_exchange_rate_99e319(\"🔧 get_exchange_rate\")\n    get_flagged_transactions_85f0d3(\"🔧 get_flagged_transactions\")\n    get_fraud_score_0027d1(\"🔧 get_fraud_score\")\n    get_high_risk_accounts_9bb3b2(\"🔧 get_high_risk_accounts\")\n    get_kyc_status_3a2469(\"🔧 get_kyc_status\")\n    get_loan_details_99560b(\"🔧 get_loan_details\")\n    get_market_summary_5a9dc6(\"🔧 get_market_summary\")\n    get_notification_history_88bcd6(\"🔧 get_notification_history\")\n    get_payment_status_19f8fe(\"🔧 get_payment_status\")\n    get_pending_compliance_items_e2d26e(\"🔧 get_pending_compliance_items\")\n    get_portfolio_72c648(\"🔧 get_portfolio\")\n    get_price_92fc72(\"🔧 get_price\")\n    get_regulatory_report_21ff3d(\"🔧 get_regulatory_report\")\n    get_regulatory_requirements_2a8e45(\"🔧 get_regulatory_requirements\")\n    get_service_health_13ebb4(\"🔧 get_service_health\")\n    get_wallet_address_21ef32(\"🔧 get_wallet_address\")\n    grant_admin_role_8da884(\"🔧 grant_admin_role\")\n    initiate_payment_f737b2(\"🔧 initiate_payment\")\n    invoke_admin_api_786205(\"🔧 invoke_admin_api\")\n    list_all_accounts_616f24(\"🔧 list_all_accounts\")\n    list_all_users_16bf48(\"🔧 list_all_users\")\n    list_customer_documents_332ce2(\"🔧 list_customer_documents\")\n    list_scheduled_tasks_6f01a8(\"🔧 list_scheduled_tasks\")\n    list_supported_currencies_44f8a3(\"🔧 list_supported_currencies\")\n    override_compliance_612df3(\"🔧 override_compliance\")\n    override_kyc_f16384(\"🔧 override_kyc\")\n    reject_loan_d56fda(\"🔧 reject_loan\")\n    reset_user_password_e97b43(\"🔧 reset_user_password\")\n    run_task_immediately_7127f2(\"🔧 run_task_immediately\")\n    schedule_task_94d4dd(\"🔧 schedule_task\")\n    sell_asset_c96dbd(\"🔧 sell_asset\")\n    send_alert_b9331a(\"🔧 send_alert\")\n    send_otp_f5ecb9(\"🔧 send_otp\")\n    stream_all_transactions_93142e(\"🔧 stream_all_transactions\")\n    submit_kyc_document_190bf4(\"🔧 submit_kyc_document\")\n    transfer_crypto_f4828a(\"🔧 transfer_crypto\")\n    transfer_funds_07aa59(\"🔧 transfer_funds\")\n    unfreeze_card_ae97d6(\"🔧 unfreeze_card\")\n    update_account_status_5ccb86(\"🔧 update_account_status\")\n    view_user_sessions_8703c3(\"🔧 view_user_sessions\")\n    waive_aml_check_33731b(\"🔧 waive_aml_check\")\n    whitelist_account_cd84da(\"🔧 whitelist_account\")\n    browser_automation_da00a8(\"🔧 browser_automation\")\n    generic_4fe011(\"🔧 generic\")\n\n    framework_langchain_73d8c6 -->|uses| command_r_plus_f1e03a\n    framework_langchain_73d8c6 -->|uses| gpt_4o_bbf1b7\n    langgraph_30c35b -->|uses| command_r_plus_f1e03a\n    langgraph_30c35b -->|uses| gpt_4o_bbf1b7\n    fintech_accounts_be8dd0 -->|uses| command_r_plus_f1e03a\n    fintech_accounts_be8dd0 -->|uses| gpt_4o_bbf1b7\n\n    classDef agent    fill:#4A90D9,stroke:#2C6FAC,color:#fff\n    classDef tool     fill:#7ED321,stroke:#5A9A18,color:#fff\n    classDef model    fill:#9B59B6,stroke:#7D3C98,color:#fff\n    classDef prompt   fill:#F39C12,stroke:#D68910,color:#fff\n    classDef guard    fill:#E74C3C,stroke:#C0392B,color:#fff\n    classDef store    fill:#1ABC9C,stroke:#17A589,color:#fff\n    classDef fw       fill:#95A5A6,stroke:#717D7E,color:#fff\n    classDef endpoint fill:#3498DB,stroke:#2471A3,color:#fff\n    class apply_for_loan_1aed00,approve_loan_167290,broadcast_all_users_776ff2,bulk_export_c82780,bulk_export_all_customers_f339d7,buy_asset_6b2b3c,buy_crypto_1555ab,call_internal_service_1cad2f,cancel_payment_58d58f,cancel_task_2b9a22,check_sanctions_d74f4c,check_transaction_limits_1f25ef,convert_funds_d63f3d,create_document_d90db3,delete_audit_entry_b988ae,delete_document_5479d7,delete_user_6272c7,export_all_audit_logs_5b65af,export_customer_data_73c780,fetch_external_feed_7afc3c,fetch_market_report_9a225d,file_suspicious_activity_report_7af2ba,flag_transaction_247909,freeze_card_ac2742,generate_report_52f7fd,get_account_37bac9,get_admin_actions_579bdd,get_all_kyc_statuses_9c4e93,get_audit_log_e5793d,get_available_assets_cd7cc2,get_card_details_76359b,get_card_transactions_633c11,get_crypto_price_0cb59e,get_customer_summary_d840b8,get_document_abea12,get_exchange_rate_99e319,get_flagged_transactions_85f0d3,get_fraud_score_0027d1,get_high_risk_accounts_9bb3b2,get_kyc_status_3a2469,get_loan_details_99560b,get_market_summary_5a9dc6,get_notification_history_88bcd6,get_payment_status_19f8fe,get_pending_compliance_items_e2d26e,get_portfolio_72c648,get_price_92fc72,get_regulatory_report_21ff3d,get_regulatory_requirements_2a8e45,get_service_health_13ebb4,get_wallet_address_21ef32,grant_admin_role_8da884,initiate_payment_f737b2,invoke_admin_api_786205,list_all_accounts_616f24,list_all_users_16bf48,list_customer_documents_332ce2,list_scheduled_tasks_6f01a8,list_supported_currencies_44f8a3,override_compliance_612df3,override_kyc_f16384,reject_loan_d56fda,reset_user_password_e97b43,run_task_immediately_7127f2,schedule_task_94d4dd,sell_asset_c96dbd,send_alert_b9331a,send_otp_f5ecb9,stream_all_transactions_93142e,submit_kyc_document_190bf4,transfer_crypto_f4828a,transfer_funds_07aa59,unfreeze_card_ae97d6,update_account_status_5ccb86,view_user_sessions_8703c3,waive_aml_check_33731b,whitelist_account_cd84da,browser_automation_da00a8,generic_4fe011 tool\n    class command_r_plus_f1e03a,gpt_4o_bbf1b7 model\n    class generic_c5c874 prompt\n    class redis_35f40b,sqlite_3e949e store\n    class framework_langchain_73d8c6,langgraph_30c35b,fintech_accounts_be8dd0 fw\n    class generic_63cd77,0_0_0_0_8080__sse__521796 endpoint\n```"
+  "relationship_graph_md": "## Component Relationship Graph\n\n- **Orchestration / model use**\n  - `framework:langchain`, `langgraph`, and `fintech-accounts` all **use** the same two models: **`command-r-plus`** and **`gpt-4o`**.\n  - The graph does not show any other agent-to-tool or agent-to-datastore links.\n\n- **Auth / guardrails**\n  - A generic **AUTH** component **protects** both the **`0.0.0.0:8080 (sse)` API endpoint** and a **generic API endpoint**.\n  - No other guardrail, policy, or authorization relationships are shown for tools or datastores.\n\n- **Data stores**\n  - **`redis`** and **`sqlite`** are present as datastores, but the graph shows **no connections** to them.\n  - This means no explicit data-flow path to persistence is shown in the diagram.\n\n- **Tools**\n  - Many tools are listed, including high-impact financial/admin actions such as `approve_loan`, `delete_user`, `grant_admin_role`, `override_compliance`, `transfer_funds`, `export_customer_data`, and `stream_all_transactions`.\n  - **All tools show no connections**, so the graph does **not** show which framework or agent invokes them, or whether any are protected.\n\n- **Notable security observations**\n  - There is **guardrail coverage for the API endpoints**, but **no visible guardrails around the tools**.\n  - Several tools imply access to **sensitive customer, compliance, payment, audit, and admin data/actions**, yet the graph shows **no explicit access controls** or datastore bindings for them.\n  - External/data-exfiltration-type capabilities are present (`fetch_external_feed`, `fetch_market_report`, `browser_automation`, `export_customer_data`), but again **no connections or restrictions are shown**.\n\n```mermaid\nflowchart LR\n    generic_63cd77([\"\ud83c\udf10 generic\"])\n    0_0_0_0_8080__sse__521796([\"\ud83c\udf10 0.0.0.0:8080 (sse)\"])\n    redis_35f40b[(\"\ud83d\uddc4 redis\")]\n    sqlite_3e949e[(\"\ud83d\uddc4 sqlite\")]\n    framework_langchain_73d8c6[/\"\u2699 framework:langchain\"/]\n    langgraph_30c35b[/\"\u2699 langgraph\"/]\n    fintech_accounts_be8dd0[/\"\u2699 fintech-accounts\"/]\n    command_r_plus_f1e03a[(\"\ud83e\udde0 command-r-plus\")]\n    gpt_4o_bbf1b7[(\"\ud83e\udde0 gpt-4o\")]\n    generic_c5c874>\"\ud83d\udcac generic\"]\n    apply_for_loan_1aed00(\"\ud83d\udd27 apply_for_loan\")\n    approve_loan_167290(\"\ud83d\udd27 approve_loan\")\n    broadcast_all_users_776ff2(\"\ud83d\udd27 broadcast_all_users\")\n    bulk_export_c82780(\"\ud83d\udd27 bulk_export\")\n    bulk_export_all_customers_f339d7(\"\ud83d\udd27 bulk_export_all_customers\")\n    buy_asset_6b2b3c(\"\ud83d\udd27 buy_asset\")\n    buy_crypto_1555ab(\"\ud83d\udd27 buy_crypto\")\n    call_internal_service_1cad2f(\"\ud83d\udd27 call_internal_service\")\n    cancel_payment_58d58f(\"\ud83d\udd27 cancel_payment\")\n    cancel_task_2b9a22(\"\ud83d\udd27 cancel_task\")\n    check_sanctions_d74f4c(\"\ud83d\udd27 check_sanctions\")\n    check_transaction_limits_1f25ef(\"\ud83d\udd27 check_transaction_limits\")\n    convert_funds_d63f3d(\"\ud83d\udd27 convert_funds\")\n    create_document_d90db3(\"\ud83d\udd27 create_document\")\n    delete_audit_entry_b988ae(\"\ud83d\udd27 delete_audit_entry\")\n    delete_document_5479d7(\"\ud83d\udd27 delete_document\")\n    delete_user_6272c7(\"\ud83d\udd27 delete_user\")\n    export_all_audit_logs_5b65af(\"\ud83d\udd27 export_all_audit_logs\")\n    export_customer_data_73c780(\"\ud83d\udd27 export_customer_data\")\n    fetch_external_feed_7afc3c(\"\ud83d\udd27 fetch_external_feed\")\n    fetch_market_report_9a225d(\"\ud83d\udd27 fetch_market_report\")\n    file_suspicious_activity_report_7af2ba(\"\ud83d\udd27 file_suspicious_activity_report\")\n    flag_transaction_247909(\"\ud83d\udd27 flag_transaction\")\n    freeze_card_ac2742(\"\ud83d\udd27 freeze_card\")\n    generate_report_52f7fd(\"\ud83d\udd27 generate_report\")\n    get_account_37bac9(\"\ud83d\udd27 get_account\")\n    get_admin_actions_579bdd(\"\ud83d\udd27 get_admin_actions\")\n    get_all_kyc_statuses_9c4e93(\"\ud83d\udd27 get_all_kyc_statuses\")\n    get_audit_log_e5793d(\"\ud83d\udd27 get_audit_log\")\n    get_available_assets_cd7cc2(\"\ud83d\udd27 get_available_assets\")\n    get_card_details_76359b(\"\ud83d\udd27 get_card_details\")\n    get_card_transactions_633c11(\"\ud83d\udd27 get_card_transactions\")\n    get_crypto_price_0cb59e(\"\ud83d\udd27 get_crypto_price\")\n    get_customer_summary_d840b8(\"\ud83d\udd27 get_customer_summary\")\n    get_document_abea12(\"\ud83d\udd27 get_document\")\n    get_exchange_rate_99e319(\"\ud83d\udd27 get_exchange_rate\")\n    get_flagged_transactions_85f0d3(\"\ud83d\udd27 get_flagged_transactions\")\n    get_fraud_score_0027d1(\"\ud83d\udd27 get_fraud_score\")\n    get_high_risk_accounts_9bb3b2(\"\ud83d\udd27 get_high_risk_accounts\")\n    get_kyc_status_3a2469(\"\ud83d\udd27 get_kyc_status\")\n    get_loan_details_99560b(\"\ud83d\udd27 get_loan_details\")\n    get_market_summary_5a9dc6(\"\ud83d\udd27 get_market_summary\")\n    get_notification_history_88bcd6(\"\ud83d\udd27 get_notification_history\")\n    get_payment_status_19f8fe(\"\ud83d\udd27 get_payment_status\")\n    get_pending_compliance_items_e2d26e(\"\ud83d\udd27 get_pending_compliance_items\")\n    get_portfolio_72c648(\"\ud83d\udd27 get_portfolio\")\n    get_price_92fc72(\"\ud83d\udd27 get_price\")\n    get_regulatory_report_21ff3d(\"\ud83d\udd27 get_regulatory_report\")\n    get_regulatory_requirements_2a8e45(\"\ud83d\udd27 get_regulatory_requirements\")\n    get_service_health_13ebb4(\"\ud83d\udd27 get_service_health\")\n    get_wallet_address_21ef32(\"\ud83d\udd27 get_wallet_address\")\n    grant_admin_role_8da884(\"\ud83d\udd27 grant_admin_role\")\n    initiate_payment_f737b2(\"\ud83d\udd27 initiate_payment\")\n    invoke_admin_api_786205(\"\ud83d\udd27 invoke_admin_api\")\n    list_all_accounts_616f24(\"\ud83d\udd27 list_all_accounts\")\n    list_all_users_16bf48(\"\ud83d\udd27 list_all_users\")\n    list_customer_documents_332ce2(\"\ud83d\udd27 list_customer_documents\")\n    list_scheduled_tasks_6f01a8(\"\ud83d\udd27 list_scheduled_tasks\")\n    list_supported_currencies_44f8a3(\"\ud83d\udd27 list_supported_currencies\")\n    override_compliance_612df3(\"\ud83d\udd27 override_compliance\")\n    override_kyc_f16384(\"\ud83d\udd27 override_kyc\")\n    reject_loan_d56fda(\"\ud83d\udd27 reject_loan\")\n    reset_user_password_e97b43(\"\ud83d\udd27 reset_user_password\")\n    run_task_immediately_7127f2(\"\ud83d\udd27 run_task_immediately\")\n    schedule_task_94d4dd(\"\ud83d\udd27 schedule_task\")\n    sell_asset_c96dbd(\"\ud83d\udd27 sell_asset\")\n    send_alert_b9331a(\"\ud83d\udd27 send_alert\")\n    send_otp_f5ecb9(\"\ud83d\udd27 send_otp\")\n    stream_all_transactions_93142e(\"\ud83d\udd27 stream_all_transactions\")\n    submit_kyc_document_190bf4(\"\ud83d\udd27 submit_kyc_document\")\n    transfer_crypto_f4828a(\"\ud83d\udd27 transfer_crypto\")\n    transfer_funds_07aa59(\"\ud83d\udd27 transfer_funds\")\n    unfreeze_card_ae97d6(\"\ud83d\udd27 unfreeze_card\")\n    update_account_status_5ccb86(\"\ud83d\udd27 update_account_status\")\n    view_user_sessions_8703c3(\"\ud83d\udd27 view_user_sessions\")\n    waive_aml_check_33731b(\"\ud83d\udd27 waive_aml_check\")\n    whitelist_account_cd84da(\"\ud83d\udd27 whitelist_account\")\n    browser_automation_da00a8(\"\ud83d\udd27 browser_automation\")\n    generic_4fe011(\"\ud83d\udd27 generic\")\n\n    framework_langchain_73d8c6 -->|uses| command_r_plus_f1e03a\n    framework_langchain_73d8c6 -->|uses| gpt_4o_bbf1b7\n    langgraph_30c35b -->|uses| command_r_plus_f1e03a\n    langgraph_30c35b -->|uses| gpt_4o_bbf1b7\n    fintech_accounts_be8dd0 -->|uses| command_r_plus_f1e03a\n    fintech_accounts_be8dd0 -->|uses| gpt_4o_bbf1b7\n\n    classDef agent    fill:#4A90D9,stroke:#2C6FAC,color:#fff\n    classDef tool     fill:#7ED321,stroke:#5A9A18,color:#fff\n    classDef model    fill:#9B59B6,stroke:#7D3C98,color:#fff\n    classDef prompt   fill:#F39C12,stroke:#D68910,color:#fff\n    classDef guard    fill:#E74C3C,stroke:#C0392B,color:#fff\n    classDef store    fill:#1ABC9C,stroke:#17A589,color:#fff\n    classDef fw       fill:#95A5A6,stroke:#717D7E,color:#fff\n    classDef endpoint fill:#3498DB,stroke:#2471A3,color:#fff\n    class apply_for_loan_1aed00,approve_loan_167290,broadcast_all_users_776ff2,bulk_export_c82780,bulk_export_all_customers_f339d7,buy_asset_6b2b3c,buy_crypto_1555ab,call_internal_service_1cad2f,cancel_payment_58d58f,cancel_task_2b9a22,check_sanctions_d74f4c,check_transaction_limits_1f25ef,convert_funds_d63f3d,create_document_d90db3,delete_audit_entry_b988ae,delete_document_5479d7,delete_user_6272c7,export_all_audit_logs_5b65af,export_customer_data_73c780,fetch_external_feed_7afc3c,fetch_market_report_9a225d,file_suspicious_activity_report_7af2ba,flag_transaction_247909,freeze_card_ac2742,generate_report_52f7fd,get_account_37bac9,get_admin_actions_579bdd,get_all_kyc_statuses_9c4e93,get_audit_log_e5793d,get_available_assets_cd7cc2,get_card_details_76359b,get_card_transactions_633c11,get_crypto_price_0cb59e,get_customer_summary_d840b8,get_document_abea12,get_exchange_rate_99e319,get_flagged_transactions_85f0d3,get_fraud_score_0027d1,get_high_risk_accounts_9bb3b2,get_kyc_status_3a2469,get_loan_details_99560b,get_market_summary_5a9dc6,get_notification_history_88bcd6,get_payment_status_19f8fe,get_pending_compliance_items_e2d26e,get_portfolio_72c648,get_price_92fc72,get_regulatory_report_21ff3d,get_regulatory_requirements_2a8e45,get_service_health_13ebb4,get_wallet_address_21ef32,grant_admin_role_8da884,initiate_payment_f737b2,invoke_admin_api_786205,list_all_accounts_616f24,list_all_users_16bf48,list_customer_documents_332ce2,list_scheduled_tasks_6f01a8,list_supported_currencies_44f8a3,override_compliance_612df3,override_kyc_f16384,reject_loan_d56fda,reset_user_password_e97b43,run_task_immediately_7127f2,schedule_task_94d4dd,sell_asset_c96dbd,send_alert_b9331a,send_otp_f5ecb9,stream_all_transactions_93142e,submit_kyc_document_190bf4,transfer_crypto_f4828a,transfer_funds_07aa59,unfreeze_card_ae97d6,update_account_status_5ccb86,view_user_sessions_8703c3,waive_aml_check_33731b,whitelist_account_cd84da,browser_automation_da00a8,generic_4fe011 tool\n    class command_r_plus_f1e03a,gpt_4o_bbf1b7 model\n    class generic_c5c874 prompt\n    class redis_35f40b,sqlite_3e949e store\n    class framework_langchain_73d8c6,langgraph_30c35b,fintech_accounts_be8dd0 fw\n    class generic_63cd77,0_0_0_0_8080__sse__521796 endpoint\n```",
+  "_enrichment_cache_key": "622203d7c0ce360d0c8c127e0c26300c710ef745079dea339aa0a811810fa0b3"
 }

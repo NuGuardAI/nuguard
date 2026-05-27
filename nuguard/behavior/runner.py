@@ -607,6 +607,7 @@ class BehaviorRunner:
                 endpoint=endpoint or "/chat",
                 auth_config=runtime.auth_config,
                 run_id=str(_uuid.uuid4()),
+                probe_payload_extras=getattr(self._config, "chat_payload_extras", None) or None,
             )
             for line in health_report.summary_lines():
                 _log.info("behavior bootstrap %s", line)
@@ -639,6 +640,7 @@ class BehaviorRunner:
             sbom=self._sbom,
             adk_cfg=getattr(self._config, "adk", None),
             explicitly_set=getattr(self._config, "model_fields_set", set()),
+            payload_extras=getattr(self._config, "chat_payload_extras", None) or None,
         )
         # Prepend pre-bootstrap URL notes (already resolved above) so they appear
         # first; build_target_app_client won't re-add them since the URL matches.

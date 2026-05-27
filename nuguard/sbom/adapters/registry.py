@@ -55,6 +55,7 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         LLMClientsAdapter,
         MCPServerAdapter,
         OpenAIAgentsAdapter,
+        PythonDatastoreAdapter,
         SemanticKernelAdapter,
     )
     from .typescript import (
@@ -86,6 +87,7 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         BedrockAgentCoreAdapter(),
         GoogleADKPythonAdapter(),
         MCPServerAdapter(),
+        PythonDatastoreAdapter(),
         FastAPIAdapter(),
         FlaskAdapter(),
         # TypeScript / JavaScript adapters

@@ -71,8 +71,23 @@ async def test_default_credential_auth_failed_403() -> None:
 
 @pytest.mark.anyio
 @respx.mock
-async def test_default_credential_target_unavailable_500() -> None:
+async def test_default_credential_500_treated_as_ok() -> None:
+    # HTTP 500 means the server is running but crashed on our minimal probe body
+    # (e.g. a missing required field triggers a JS/Python TypeError).  The server
+    # IS reachable so bootstrap should treat this as connectivity-ok, not
+    # target_unavailable.  Actual scenario payloads use the full chat_payload_extras.
     respx.post(FULL_URL).mock(return_value=httpx.Response(500))
+    report = await _bootstrapper().run()
+    assert report.all_ok is True
+    assert report.checks[0].status == "ok"
+    assert report.checks[0].http_status_code == 500
+
+
+@pytest.mark.anyio
+@respx.mock
+async def test_default_credential_target_unavailable_502() -> None:
+    # HTTP 502 Bad Gateway means the upstream/proxy couldn't reach the server.
+    respx.post(FULL_URL).mock(return_value=httpx.Response(502))
     with pytest.raises(TargetUnavailableError):
         await _bootstrapper().run()
 
