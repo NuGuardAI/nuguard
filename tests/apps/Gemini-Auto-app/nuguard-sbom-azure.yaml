@@ -77,6 +77,11 @@ target:
 sbom: ./gemini-auto.sbom.json
 behavior:
 
+  # Disable the ADK-native protocol adapter. The target wraps ADK behind a
+  # custom Express route (/api/agent/chat) and does not expose /run or /list-apps.
+  adk:
+    enabled: false
+
   # Use LLM for intent-aware scenario generation and per-turn judging
   llm: true
 

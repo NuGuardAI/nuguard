@@ -182,7 +182,7 @@ _MODEL_CALL_RE = re.compile(
     r"|generateContent|getGenerativeModel|getTextEmbeddingModel)\b"
 )
 
-_ENV_DEFAULT_RE = re.compile(r"process\.env\.\w+\s*\|\|\s*['\"`]([^'\"`]+)['\"`]")
+_ENV_DEFAULT_RE = re.compile(r"process\.env\.\w+\s*\|\|\s*['\"`]([^'\"`\s,]+)")
 
 
 def _normalize_model(raw: str) -> str:

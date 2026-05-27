@@ -48,7 +48,8 @@ _MODEL_CLASSES = {"GenerativeModel", "ChatModel", "VertexAI"}
 _CREATE_TOOLS_RE = re.compile(r"^create([A-Z][a-zA-Z]+)Tools$")
 
 # Normalizes model names like `process.env.X || 'gemini-2.0-flash'` → 'gemini-2.0-flash'
-_ENV_DEFAULT_RE = re.compile(r"process\.env\.\w+\s*\|\|\s*['\"`]([^'\"`]+)['\"`]")
+# The closing quote is optional because _clean() may have already stripped it.
+_ENV_DEFAULT_RE = re.compile(r"process\.env\.\w+\s*\|\|\s*['\"`]([^'\"`\s,]+)")
 
 
 def _normalize_model(raw: str) -> str:
