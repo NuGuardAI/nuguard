@@ -89,6 +89,32 @@ def _sbom_post_paths(sbom: "AiSbomDocument") -> list[str]:
 
         scored.append((score, path))
 
+    # Supplement with paths from summary.api_endpoints when no API_ENDPOINT nodes
+    # are present (e.g. SBOM was generated without full static analysis).
+    if not scored:
+        summary = getattr(sbom, "summary", None)
+        raw_api_eps = getattr(summary, "api_endpoints", None) if summary is not None else None
+        if isinstance(raw_api_eps, (list, tuple)):
+            seen: set[str] = set()
+            for p in raw_api_eps:
+                p = str(p).strip()
+                # Skip wildcards and non-path entries
+                if not p or not p.startswith("/") or "{" in p or p == "/*":
+                    continue
+                if _EXCLUDE_PATTERNS.search(p):
+                    continue
+                if p not in seen:
+                    seen.add(p)
+                    path_l = p.lower()
+                    score = 0
+                    for token in ("chat", "agent", "run", "message", "query",
+                                   "complete", "infer", "generate", "respond",
+                                   "converse", "talk", "assistant", "llm", "ai"):
+                        if token in path_l:
+                            score += 2
+                            break
+                    scored.append((score, p))
+
     # Sort descending by score, then alphabetically for determinism
     scored.sort(key=lambda x: (-x[0], x[1]))
     return [p for _, p in scored]
@@ -354,6 +380,32 @@ def discover_chat_config_from_sbom(
             best[1], best[2], best[3], best[5], best[4],
         )
         return best[1], best[2], best[3], best[5]
+
+    # No API_ENDPOINT nodes — fall back to summary.api_endpoints when available.
+    summary = getattr(sbom, "summary", None)
+    raw_api_eps = getattr(summary, "api_endpoints", None) if summary is not None else None
+    if isinstance(raw_api_eps, (list, tuple)):
+        chat_tokens = ("chat", "agent", "run", "message", "query", "complete",
+                       "infer", "generate", "respond", "converse", "talk",
+                       "assistant", "llm", "ai")
+        best_path: str | None = None
+        best_score = -1
+        for p in raw_api_eps:
+            p = str(p).strip()
+            if not p or not p.startswith("/") or "{" in p or p == "/*":
+                continue
+            p_l = p.lower()
+            score = sum(2 for tok in chat_tokens if tok in p_l)
+            if p_l.startswith("/api/"):
+                score += 1
+            if score > best_score:
+                best_score = score
+                best_path = p
+        if best_path and best_score > 0:
+            _log.info(
+                "SBOM summary.api_endpoints fallback — using chat path %s", best_path,
+            )
+            return best_path, chat_payload_key, chat_payload_list, None
 
     return chat_path, chat_payload_key, chat_payload_list, None
 

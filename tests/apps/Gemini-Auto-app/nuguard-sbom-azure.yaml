@@ -47,7 +47,8 @@ target:
 
   # The /api/agent/chat endpoint requires vehicleState and language in every request.
   # Without these fields the server throws: "Cannot read properties of undefined (reading 'fuel')"
-  target_endpoint: /api/agent/chat
+  # target_endpoint is intentionally omitted — it is auto-discovered from
+  # summary.api_endpoints in the SBOM ("/api/agent/chat").
   chat_payload_extras:
     vehicleState:
       fuel: 75
