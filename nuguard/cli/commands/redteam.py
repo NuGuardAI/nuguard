@@ -387,6 +387,7 @@ async def _run_redteam(
     similar_miss_threshold: int = 4,
     skip_discovery: bool = False,
     discovery_max_turns: int = 3,
+    chat_payload_extras: dict[str, Any] | None = None,
 ) -> tuple[list, dict[str, str], list, str, list[str]]:
     from nuguard.models.policy import CognitivePolicy
     from nuguard.redteam.target.canary import CanaryConfig
