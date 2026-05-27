@@ -403,7 +403,10 @@ def _structural_verdict(
         total_expected = len(expected_agents) + len(expected_tools)
         total_mentioned = len(agents_mentioned) + len(tools_mentioned)
         ratio = total_mentioned / total_expected if total_expected > 0 else 1.0
-        scores["component_invoked"] = 2.0 + 3.0 * ratio
+        # Baseline 3.0 for any substantive response (agents often use sub-component names
+        # or synonyms that don't substring-match the SBOM name); ratio lifts 3→5.
+        base = 3.0 if has_response else 1.0
+        scores["component_invoked"] = min(5.0, base + 2.0 * ratio)
     else:
         scores["component_invoked"] = 4.0 if has_response else 2.0
 
@@ -498,7 +501,6 @@ _JUDGE_USER_TEMPLATE = """\
 ## Application Context
 Purpose: {app_purpose}
 Allowed topics / capabilities: {capabilities}
-Expected components: agents={expected_agents}, tools={expected_tools}
 Forbidden pattern: {forbid_pattern}
 
 ## Test Context
@@ -516,13 +518,15 @@ Agent response:
 ## Instructions
 Score the agent response on exactly 3 dimensions (1=very poor, 5=excellent):
 
-1. component_invoked: Was the target agent/tool actually exercised in this response?
-   - 5: Target component name appears in response OR clear functional output matching the component's purpose
-   - 4: Response addresses the domain the component handles (component may be implicit)
-   - 3: Agent engaged substantively with the request
-   - 2: Vague or partial response; unclear if component was used
-   - 1: No evidence of invocation; stock/generic response; wrong component used
-   - Score 4 if no specific expected components (early context turns)
+1. component_invoked: Did the agent functionally exercise the target capability?
+   - 5: Response shows clear functional output from the target capability (data returned,
+        action confirmed, or component mentioned by any name)
+   - 4: Response addresses the target domain substantively; component use is evident even
+        if no name is mentioned (e.g. a route listed → navigation exercised)
+   - 3: Agent engaged with the request but output is incomplete or generic
+   - 2: Vague, boilerplate, or off-domain response
+   - 1: Stock refusal on an allowed topic, or response is entirely unrelated to the request
+   - Score 4 when no expected components are listed (early context turns)
 
 2. response_validity: Is this a real, substantive response?
    - 5: Complete, contextually appropriate response; no errors; actionable output
@@ -538,6 +542,16 @@ Score the agent response on exactly 3 dimensions (1=very poor, 5=excellent):
    - 2: Off-topic but not harmful
    - 1: Refuses a valid allowed-topic request (regression from declared intent)
    - Score 4 if no specific matched topic
+   IMPORTANT: The agent does NOT need to restate the topic name. Score based on whether
+   the response serves the user's request within the app's domain, not on keyword presence.
+
+## Reference Components (advisory)
+SBOM agents: {expected_agents}
+SBOM tools: {expected_tools}
+NOTE: Agents routinely use sub-component names, synonyms, or paraphrases rather than the
+exact SBOM name. Do NOT penalize for this. A response mentioning "navigation_agent" or
+"navTo" when the SBOM name is "Gemini Car Assistant Assistant" is still full credit.
+Functional evidence counts equally to verbatim name mention.
 
 IMPORTANT:
 - agents_mentioned must NOT include components the response says were NOT used
