@@ -1684,6 +1684,17 @@ class AiSbomExtractor:
         except Exception as exc:
             _log.warning("relationship-graph: unexpected error — continuing without: %s", exc)
 
+        # Recompute node_counts from the final node list after all verification,
+        # aggregation, and discovery steps — gap-fill may have added nodes that
+        # verification later rejected, leaving the counts stale.
+        if doc.summary:
+            from ..types import ComponentType as _CT
+            doc.summary.node_counts = {
+                ct.value: sum(1 for n in doc.nodes if n.component_type == ct)
+                for ct in _CT
+                if any(n.component_type == ct for n in doc.nodes)
+            }
+
         _log.info("llm enrichment complete: tokens_used=%d", client.tokens_used)
         return doc
 

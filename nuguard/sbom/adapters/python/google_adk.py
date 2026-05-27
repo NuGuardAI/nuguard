@@ -32,6 +32,14 @@ _AGENT_CLASSES = {
 }
 _MODEL_CLASSES = {"Gemini", "ChatModel", "GenerativeModel"}
 
+# Matches factory functions like create_navigation_tools, create_weather_tools, etc.
+_CREATE_TOOLS_RE = re.compile(r"^create_([a-z][a-z0-9_]+)_tools$")
+
+# Normalizes Python env-var-with-default: os.environ.get("VAR", "default") or os.getenv("VAR", "default")
+_PY_ENV_DEFAULT_RE = re.compile(
+    r'os\.(?:environ\.get|getenv)\s*\(\s*["\'][^"\']+["\']\s*,\s*["\']([^"\']+)["\']'
+)
+
 
 class GoogleADKPythonAdapter(FrameworkAdapter):
     """Adapter for the Google ADK Python SDK (google.adk)."""
@@ -293,6 +301,74 @@ class GoogleADKPythonAdapter(FrameworkAdapter):
                     )
                 )
 
+        # --- Factory-function tool detection: create_xxx_tools() call pattern ---
+        # Detects e.g. `tools = create_navigation_tools()` or `create_weather_tools(agent)`
+        seen_factory_caps: set[str] = set()
+        for call in parse_result.function_calls:
+            fn = call.function_name
+            m = _CREATE_TOOLS_RE.match(fn)
+            if not m:
+                continue
+            capability = m.group(1)
+            if capability in seen_factory_caps:
+                continue
+            seen_factory_caps.add(capability)
+            display = f"{capability.replace('_', ' ')} tools"
+            tool_canon = canonicalize_text(f"{capability}_tools")
+            detected.append(
+                ComponentDetection(
+                    component_type=ComponentType.TOOL,
+                    canonical_name=tool_canon,
+                    display_name=display,
+                    adapter_name=self.name,
+                    priority=self.priority,
+                    confidence=0.80,
+                    metadata={
+                        "creation_method": fn,
+                        "framework": "google-adk",
+                    },
+                    file_path=file_path,
+                    line=call.line,
+                    snippet=f"{fn}(...)",
+                    evidence_kind="ast_call",
+                )
+            )
+
+        # --- Agent fallback: Runner(agent=...) without explicit Agent(...) instantiation ---
+        if not any(d.component_type == ComponentType.AGENT for d in detected):
+            for inst in parse_result.instantiations:
+                if inst.class_name != "Runner":
+                    continue
+                agent_ref = inst.args.get("agent") or (
+                    inst.positional_args[0] if inst.positional_args else None
+                )
+                if agent_ref and isinstance(agent_ref, str) and agent_ref.startswith("$"):
+                    agent_name = agent_ref[1:]
+                elif agent_ref and isinstance(agent_ref, str):
+                    agent_name = _clean(agent_ref) or "agent"
+                else:
+                    agent_name = inst.assigned_to or "agent"
+                agent_canon = canonicalize_text(f"google_adk:{agent_name}")
+                detected.append(
+                    ComponentDetection(
+                        component_type=ComponentType.AGENT,
+                        canonical_name=agent_canon,
+                        display_name=agent_name,
+                        adapter_name=self.name,
+                        priority=self.priority,
+                        confidence=0.78,
+                        metadata={
+                            "agent_type": "generic",
+                            "framework": "google-adk",
+                        },
+                        file_path=file_path,
+                        line=inst.line,
+                        snippet=f"Runner(agent={agent_name!r})",
+                        evidence_kind="ast_instantiation",
+                    )
+                )
+                break  # one AGENT fallback per file
+
         return detected
 
 
@@ -320,8 +396,24 @@ def _resolve_const(value: Any, const_map: dict[str, str]) -> str:
     if isinstance(value, str) and value.startswith("$"):
         # Variable reference — look up in module-level constants
         var_name = value[1:]
-        return const_map.get(var_name, "")
+        resolved = const_map.get(var_name, "")
+        if resolved:
+            return resolved
+        # Fallback: check if const_map has an os.environ.get-style value for this var
+        return ""
     return _clean(value)
+
+
+def _normalize_model_py(raw: str, source: str = "") -> str:
+    """Extract model name from os.environ.get/os.getenv with a string default."""
+    if not raw:
+        return raw
+    # Try matching against the source snippet if raw is a placeholder
+    if raw in ("<complex>", "") and source:
+        m = _PY_ENV_DEFAULT_RE.search(source)
+        if m:
+            return m.group(1)
+    return raw
 
 
 def _clean(value: Any) -> str:
