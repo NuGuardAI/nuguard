@@ -677,6 +677,7 @@ class RedteamOrchestrator:
             auth_config=auth_runtime.auth_config,
             canary_config=self._canary_config,
             run_id=str(_uuid.uuid4()),
+            probe_payload_extras=self._chat_payload_extras or None,
         )
         self.health_report = health_report
         for line in health_report.summary_lines():

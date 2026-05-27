@@ -607,6 +607,7 @@ class BehaviorRunner:
                 endpoint=endpoint or "/chat",
                 auth_config=runtime.auth_config,
                 run_id=str(_uuid.uuid4()),
+                probe_payload_extras=getattr(self._config, "chat_payload_extras", None) or None,
             )
             for line in health_report.summary_lines():
                 _log.info("behavior bootstrap %s", line)

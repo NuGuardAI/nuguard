@@ -71,6 +71,7 @@ async def bootstrap_auth_runtime(
     canary_config: CanaryConfig | None = None,
     run_id: str | None = None,
     timeout: float | None = None,
+    probe_payload_extras: dict[str, object] | None = None,
 ) -> tuple[AuthBootstrapper, TargetHealthReport]:
     """Run shared auth bootstrap and return both bootstrapper and report."""
     bootstrapper = AuthBootstrapper(
@@ -80,6 +81,7 @@ async def bootstrap_auth_runtime(
         canary_config=canary_config,
         run_id=run_id,
         timeout=timeout,
+        probe_payload_extras=probe_payload_extras or None,
     )
     report = await bootstrapper.run()
     return bootstrapper, report

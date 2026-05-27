@@ -46,6 +46,7 @@ class AuthBootstrapper:
         canary_config: CanaryConfig | None = None,
         run_id: str | None = None,
         timeout: float | None = None,
+        probe_payload_extras: dict[str, object] | None = None,
     ) -> None:
         self._target_url = target_url.rstrip("/")
         self._endpoint = endpoint
@@ -53,6 +54,7 @@ class AuthBootstrapper:
         self._canary = canary_config
         self._run_id = run_id or str(uuid.uuid4())
         self._timeout = timeout if timeout is not None else BOOTSTRAP_TIMEOUT
+        self._probe_payload_extras: dict[str, object] = probe_payload_extras or {}
         # Initialised during run() — exposed so behavior/redteam can share it
         self._session: AuthSession | None = None
 
@@ -158,8 +160,10 @@ class AuthBootstrapper:
             **headers,
         }
         # Minimal well-formed payload — enough to get an auth decision from the server.
-        # Does NOT need to produce a meaningful AI response; just needs a 2xx vs 4xx.
-        probe_body = {"message": "ping"}
+        # Does NOT need to produce a meaningful AI response; just needs a 2xx vs 4xx/5xx.
+        # Extra static fields (chat_payload_extras) are merged in so apps that crash on
+        # missing required fields (e.g. vehicleState) don't trip the target_unavailable check.
+        probe_body = {**self._probe_payload_extras, "message": "ping"}
         start = time.monotonic()
 
         try:
@@ -246,7 +250,26 @@ class AuthBootstrapper:
                     response_time_ms=elapsed_ms,
                 )
 
-            # 5xx → server is returning errors; treat as target_unavailable
+            if resp.status_code == 500:
+                # HTTP 500 means the server ran but crashed on our minimal probe body
+                # (e.g. a missing required field triggers a JS/Python TypeError).
+                # The server IS reachable — treat it the same as 422: payload mismatch,
+                # not an infrastructure failure.  Actual scenario payloads use the full
+                # chat_payload_extras and will produce meaningful responses.
+                logger.debug(
+                    "bootstrap ok (500 — likely probe payload mismatch): identity=%s",
+                    identity,
+                )
+                return CredentialCheckResult(
+                    identity=identity,
+                    auth_type=auth_type,
+                    endpoint=self.full_url,
+                    status="ok",
+                    http_status_code=resp.status_code,
+                    response_time_ms=elapsed_ms,
+                )
+
+            # 502/503/504/5xx → gateway or server is down; treat as target_unavailable
             detail = f"HTTP {resp.status_code}"
             logger.warning(
                 "bootstrap target_unavailable: identity=%s %s", identity, detail
