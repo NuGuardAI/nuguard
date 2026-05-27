@@ -1424,8 +1424,14 @@ class AiSbomExtractor:
         seen_edges: set[tuple[Any, Any, str]] = set()
         for acc in node_map.values():
             for hint in acc.relationships:
-                src_id = canonical_to_id.get(hint.source_canonical)
-                tgt_id = canonical_to_id.get(hint.target_canonical)
+                # Hints may store raw canonical names (colons) while the node
+                # lookup map uses canonicalized names (underscores). Try both.
+                src_id = canonical_to_id.get(hint.source_canonical) or canonical_to_id.get(
+                    canonicalize_text(hint.source_canonical)
+                )
+                tgt_id = canonical_to_id.get(hint.target_canonical) or canonical_to_id.get(
+                    canonicalize_text(hint.target_canonical)
+                )
                 if src_id is None or tgt_id is None:
                     continue
                 rel = rel_type_map.get(hint.relationship_type, RelationshipType.USES)
@@ -1435,41 +1441,82 @@ class AiSbomExtractor:
                 seen_edges.add(edge_key)
                 doc.edges.append(Edge(source=src_id, target=tgt_id, relationship_type=rel))
 
-        # Fallback: connect agents to tools/models they have no explicit link to
+        # Fallback edge inference — fills in edges not covered by explicit hints.
         by_type: dict[ComponentType, list[Node]] = {}
         for node in doc.nodes:
             by_type.setdefault(node.component_type, []).append(node)
 
-        agent_ids_with_edges: set[Any] = {e.source for e in doc.edges}
+        def _add_edge(src_id: Any, tgt_id: Any, rel: str) -> None:
+            key = (src_id, tgt_id, rel)
+            if key in seen_edges:
+                return
+            seen_edges.add(key)
+            doc.edges.append(
+                Edge(
+                    source=src_id,
+                    target=tgt_id,
+                    relationship_type=rel_type_map.get(rel, RelationshipType.USES),
+                )
+            )
 
+        # Build framework name/adapter → id map for metadata-based fallbacks.
+        fw_name_to_id: dict[str, Any] = {}
+        for fw in by_type.get(ComponentType.FRAMEWORK, []):
+            fw_meta_name = fw.metadata.framework or ""
+            if fw_meta_name:
+                fw_name_to_id.setdefault(fw_meta_name, fw.id)
+            fw_name_to_id.setdefault(fw.name, fw.id)
+            adapter_name = fw.metadata.extras.get("adapter", "")
+            if adapter_name:
+                fw_name_to_id.setdefault(adapter_name, fw.id)
+
+        model_ids: set[Any] = {n.id for n in by_type.get(ComponentType.MODEL, [])}
+
+        # Track which agents already have tool vs. model edges separately so
+        # the fallback can add only what is missing.
+        agent_ids_with_tool_edges: set[Any] = set()
+        agent_ids_with_model_edges: set[Any] = set()
+        for e in doc.edges:
+            if e.relationship_type == RelationshipType.CALLS and e.target in {
+                n.id for n in by_type.get(ComponentType.TOOL, [])
+            }:
+                agent_ids_with_tool_edges.add(e.source)
+            if e.relationship_type == RelationshipType.USES and e.target in model_ids:
+                agent_ids_with_model_edges.add(e.source)
+
+        # Fallback: AGENT → TOOL (CALLS) for agents with no tool edges
         for agent in by_type.get(ComponentType.AGENT, []):
-            if agent.id in agent_ids_with_edges:
-                continue  # Already has explicit edges
-
+            if agent.id in agent_ids_with_tool_edges:
+                continue
             for tool in sorted(by_type.get(ComponentType.TOOL, []), key=lambda n: n.name)[:5]:
-                key = (agent.id, tool.id, "CALLS")
-                if key not in seen_edges:
-                    seen_edges.add(key)
-                    doc.edges.append(
-                        Edge(
-                            source=agent.id,
-                            target=tool.id,
-                            relationship_type=RelationshipType.CALLS,
-                        )
-                    )
-            for model in sorted(by_type.get(ComponentType.MODEL, []), key=lambda n: n.name)[:3]:
-                key = (agent.id, model.id, "USES")
-                if key not in seen_edges:
-                    seen_edges.add(key)
-                    doc.edges.append(
-                        Edge(
-                            source=agent.id,
-                            target=model.id,
-                            relationship_type=RelationshipType.USES,
-                        )
-                    )
+                _add_edge(agent.id, tool.id, "CALLS")
 
-        # Fallback: connect frameworks to models when no explicit edges exist.
+        # Fallback: AGENT → MODEL (USES) for agents with no model edges
+        for agent in by_type.get(ComponentType.AGENT, []):
+            if agent.id in agent_ids_with_model_edges:
+                continue
+            for model in sorted(
+                by_type.get(ComponentType.MODEL, []), key=lambda n: -n.confidence
+            )[:3]:
+                _add_edge(agent.id, model.id, "USES")
+
+        # Fallback: FRAMEWORK → AGENT (CALLS) via shared metadata.framework
+        for agent in by_type.get(ComponentType.AGENT, []):
+            fw_name = agent.metadata.framework or ""
+            fw_id = fw_name_to_id.get(fw_name)
+            if fw_id:
+                _add_edge(fw_id, agent.id, "CALLS")
+
+        # Fallback: FRAMEWORK → TOOL (CALLS) via shared metadata.framework.
+        # Covers cases where hint resolution already added explicit CALLS edges
+        # (e.g. MCP tools) — _add_edge is idempotent so duplicate keys are skipped.
+        for tool in by_type.get(ComponentType.TOOL, []):
+            fw_name = tool.metadata.framework or ""
+            fw_id = fw_name_to_id.get(fw_name)
+            if fw_id:
+                _add_edge(fw_id, tool.id, "CALLS")
+
+        # Fallback: FRAMEWORK → MODEL (USES) for frameworks with no outgoing edges.
         # Covers custom-orchestrator apps (no AGENT nodes) where LLM provider
         # config was detected from YAML / regex without explicit AST hints.
         frameworks_with_outgoing: set[Any] = {e.source for e in doc.edges}
@@ -1480,16 +1527,20 @@ class AiSbomExtractor:
                 by_type.get(ComponentType.MODEL, []),
                 key=lambda n: -n.confidence,
             )[:5]:
-                key = (fw.id, model.id, "USES")
-                if key not in seen_edges:
-                    seen_edges.add(key)
-                    doc.edges.append(
-                        Edge(
-                            source=fw.id,
-                            target=model.id,
-                            relationship_type=RelationshipType.USES,
-                        )
-                    )
+                _add_edge(fw.id, model.id, "USES")
+
+        # Fallback: AGENT → DATASTORE (ACCESSES) transitively via CALLS chain.
+        # Requires TOOL→DATASTORE ACCESSES edges (from adapter hints or
+        # PythonDatastoreAdapter same-file detection).
+        tool_to_datastores: dict[Any, list[Any]] = {}
+        for e in doc.edges:
+            if e.relationship_type == RelationshipType.ACCESSES:
+                tool_to_datastores.setdefault(e.source, []).append(e.target)
+
+        for e in doc.edges:
+            if e.relationship_type == RelationshipType.CALLS:
+                for ds_id in tool_to_datastores.get(e.target, []):
+                    _add_edge(e.source, ds_id, "ACCESSES")
 
         # Structural edges: DEPLOYMENT → CONTAINER_IMAGE (DEPLOYS)
         for dep in by_type.get(ComponentType.DEPLOYMENT, []):

@@ -1,0 +1,1304 @@
+{
+  "schema_version": "1.4.0",
+  "generated_at": "2026-05-27T03:06:08Z",
+  "generator": "nuguard",
+  "target": "https://github.com/NuGuardAI/Gemini-Car-Assistant",
+  "nodes": [
+    {
+      "id": "b39fc0e2-4ce4-4748-b161-537455646c69",
+      "name": "generic",
+      "component_type": "AUTH",
+      "confidence": 1.0,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "auth_generic",
+          "adapter": "auth_generic",
+          "evidence_count": 10,
+          "detected_by_tiers": [
+            "code",
+            "iac"
+          ],
+          "confidence_breakdown": {
+            "regex_confidence": 0.98,
+            "llm_confidence": 0.0,
+            "evidence_count": 6,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3",
+              "evidence:4",
+              "confidence:high"
+            ],
+            "base_confidence": 0.784,
+            "evidence_multiplier": 1.4,
+            "validation_penalty": 0.0,
+            "final_confidence": 1.0
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "auth_generic: Bearer",
+          "location": {
+            "path": "agent/tools/communication.ts",
+            "line": 29
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "auth_generic: OAuth",
+          "location": {
+            "path": "src/services/google-apis.ts",
+            "line": 3
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "auth_generic: OAuth",
+          "location": {
+            "path": "src/services/google-auth.ts",
+            "line": 2
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "auth_generic: API_KEY",
+          "location": {
+            "path": "agent/agents.ts",
+            "line": 13
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "auth_generic: apiKey",
+          "location": {
+            "path": "agent/tools/navigation.ts",
+            "line": 7
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "auth_generic: apiKey",
+          "location": {
+            "path": "agent/tools/search.ts",
+            "line": 6
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "auth_generic: apiKey",
+          "location": {
+            "path": "agent/tools/weather.ts",
+            "line": 16
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "auth_generic: API_KEY",
+          "location": {
+            "path": "src/components/RealMap.tsx",
+            "line": 4
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "auth_generic: Authenticate",
+          "location": {
+            "path": ".github/workflows/deploy.yml",
+            "line": 25
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "auth_generic: OAuth",
+          "location": {
+            "path": "src/services/media.ts",
+            "line": 18
+          }
+        }
+      ]
+    },
+    {
+      "id": "b800319e-337f-42d7-9252-e4ed9cf44674",
+      "name": "node:20-slim",
+      "component_type": "CONTAINER_IMAGE",
+      "confidence": 0.8712000000000001,
+      "metadata": {
+        "image_name": "node",
+        "image_tag": "20-slim",
+        "registry": "docker.io",
+        "base_image": "node:20-slim",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "container_image_node_20_slim",
+          "adapter": "dockerfile",
+          "evidence_count": 1,
+          "base_image": "node:20-slim",
+          "image_name": "node",
+          "image_tag": "20-slim",
+          "image_digest": null,
+          "registry": "docker.io",
+          "dockerfile": "Dockerfile",
+          "runs_as_root": null,
+          "has_health_check": null,
+          "multi_stage_build": true,
+          "security_findings": [
+            "secrets_in_build_args"
+          ],
+          "confidence_breakdown": {
+            "regex_confidence": 0.99,
+            "llm_confidence": 0.0,
+            "evidence_count": 2,
+            "evidence_sources": [
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.792,
+            "evidence_multiplier": 1.1,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.8712
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "dockerfile",
+          "confidence": 0.99,
+          "detail": "dockerfile: FROM node:20-slim AS builder",
+          "location": {
+            "path": "Dockerfile",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "2bfdbf65-c44c-475c-9a54-5b56d132f44c",
+      "name": "generic",
+      "component_type": "DEPLOYMENT",
+      "confidence": 1.0,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "deployment_generic",
+          "adapter": "deployment_generic",
+          "evidence_count": 3,
+          "detected_by_tiers": [
+            "code",
+            "iac"
+          ],
+          "confidence_breakdown": {
+            "regex_confidence": 0.98,
+            "llm_confidence": 0.0,
+            "evidence_count": 4,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "confidence:high"
+            ],
+            "base_confidence": 0.784,
+            "evidence_multiplier": 1.3,
+            "validation_penalty": 0.0,
+            "final_confidence": 1.0
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "deployment_generic: gcloud",
+          "location": {
+            "path": ".github/workflows/deploy.yml",
+            "line": 31
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "deployment_generic: compose",
+          "location": {
+            "path": "agent/tools/communication.ts",
+            "line": 49
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "deployment_generic: render",
+          "location": {
+            "path": "src/main.tsx",
+            "line": 6
+          }
+        }
+      ]
+    },
+    {
+      "id": "ad8fa7fe-6615-4997-9c66-60e56ded1b2b",
+      "name": "Deploy to Cloud Run",
+      "component_type": "DEPLOYMENT",
+      "confidence": 0.8360000000000001,
+      "metadata": {
+        "deployment_target": "github-actions",
+        "secret_store": "github_actions_secret",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "deployment_github_actions_deploy_to_cloud_run",
+          "adapter": "github_actions",
+          "evidence_count": 1,
+          "iac_format": "github_actions",
+          "deployment_target": "github-actions",
+          "workflow_triggers": [
+            "push",
+            "workflow_dispatch"
+          ],
+          "runners": [
+            "ubuntu-latest"
+          ],
+          "environments": [],
+          "cloud_providers": [
+            "gcp"
+          ],
+          "cloud_region": null,
+          "uses_oidc": true,
+          "secret_store": "github_actions_secret",
+          "ha_mode": null,
+          "runs_as_root": null,
+          "has_health_check": null,
+          "has_resource_limits": null,
+          "confidence_breakdown": {
+            "regex_confidence": 0.95,
+            "llm_confidence": 0.0,
+            "evidence_count": 2,
+            "evidence_sources": [
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.76,
+            "evidence_multiplier": 1.1,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.836
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "iac",
+          "confidence": 0.95,
+          "detail": "github_actions: GitHub Actions: Deploy to Cloud Run triggers=['push', 'workflow_dispatch']",
+          "location": {
+            "path": ".github/workflows/deploy.yml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "3af1eb27-7fb8-407c-a05c-2fef62d3262f",
+      "name": "Port 3000",
+      "component_type": "DEPLOYMENT",
+      "confidence": 0.7920000000000001,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "deployment_port_3000",
+          "adapter": "dockerfile",
+          "evidence_count": 1,
+          "port": 3000,
+          "protocol": "tcp",
+          "source": "dockerfile_expose",
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 2,
+            "evidence_sources": [
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.1,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.792
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "dockerfile",
+          "confidence": 0.9,
+          "detail": "dockerfile: EXPOSE 3000\nCMD",
+          "location": {
+            "path": "Dockerfile",
+            "line": 29
+          }
+        }
+      ]
+    },
+    {
+      "id": "2d7bca48-e937-4fe4-86df-0bdb0f97d1cc",
+      "name": "framework:google_adk_ts",
+      "component_type": "FRAMEWORK",
+      "confidence": 1.0,
+      "metadata": {
+        "framework": "google_adk_ts",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "framework_google_adk_ts",
+          "adapter": "google_adk_ts",
+          "evidence_count": 8,
+          "framework": "google_adk_ts",
+          "language": "typescript",
+          "confidence_breakdown": {
+            "regex_confidence": 0.95,
+            "llm_confidence": 0.0,
+            "evidence_count": 7,
+            "evidence_sources": [
+              "framework:google_adk_ts",
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3",
+              "evidence:4",
+              "confidence:high"
+            ],
+            "base_confidence": 0.76,
+            "evidence_multiplier": 1.4,
+            "validation_penalty": 0.0,
+            "final_confidence": 1.0
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_import",
+          "confidence": 0.95,
+          "detail": "google_adk_ts: import google_adk_ts",
+          "location": {
+            "path": "agent/agents.ts"
+          }
+        },
+        {
+          "kind": "ast_import",
+          "confidence": 0.95,
+          "detail": "google_adk_ts: import google_adk_ts",
+          "location": {
+            "path": "agent/runner.ts"
+          }
+        },
+        {
+          "kind": "ast_import",
+          "confidence": 0.95,
+          "detail": "google_adk_ts: import google_adk_ts",
+          "location": {
+            "path": "agent/tools/climate.ts"
+          }
+        },
+        {
+          "kind": "ast_import",
+          "confidence": 0.95,
+          "detail": "google_adk_ts: import google_adk_ts",
+          "location": {
+            "path": "agent/tools/communication.ts"
+          }
+        },
+        {
+          "kind": "ast_import",
+          "confidence": 0.95,
+          "detail": "google_adk_ts: import google_adk_ts",
+          "location": {
+            "path": "agent/tools/media.ts"
+          }
+        },
+        {
+          "kind": "ast_import",
+          "confidence": 0.95,
+          "detail": "google_adk_ts: import google_adk_ts",
+          "location": {
+            "path": "agent/tools/navigation.ts"
+          }
+        },
+        {
+          "kind": "ast_import",
+          "confidence": 0.95,
+          "detail": "google_adk_ts: import google_adk_ts",
+          "location": {
+            "path": "agent/tools/search.ts"
+          }
+        },
+        {
+          "kind": "ast_import",
+          "confidence": 0.95,
+          "detail": "google_adk_ts: import google_adk_ts",
+          "location": {
+            "path": "agent/tools/weather.ts"
+          }
+        }
+      ]
+    },
+    {
+      "id": "441b10a8-d97a-42d9-a669-0d8417d5c883",
+      "name": "llm_clients_ts",
+      "component_type": "FRAMEWORK",
+      "confidence": 0.8840000000000001,
+      "metadata": {
+        "framework": "google",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "framework_llm_clients_ts",
+          "adapter": "llm_clients_ts",
+          "evidence_count": 2,
+          "framework": "google",
+          "client_class": "GoogleGenAI",
+          "language": "typescript",
+          "confidence_breakdown": {
+            "regex_confidence": 0.85,
+            "llm_confidence": 0.0,
+            "evidence_count": 4,
+            "evidence_sources": [
+              "framework:google",
+              "evidence:0",
+              "evidence:1",
+              "confidence:high"
+            ],
+            "base_confidence": 0.68,
+            "evidence_multiplier": 1.3,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.884
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.85,
+          "detail": "llm_clients_ts: new GoogleGenAI({ apiKey })",
+          "location": {
+            "path": "agent/tools/navigation.ts",
+            "line": 9
+          }
+        },
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.85,
+          "detail": "llm_clients_ts: new GoogleGenAI({ apiKey })",
+          "location": {
+            "path": "agent/tools/search.ts",
+            "line": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": "6d4d593a-2003-480b-a7fc-3b756c0f1fc8",
+      "name": "gcp-identity-deploy",
+      "component_type": "IAM",
+      "confidence": 0.8184000000000001,
+      "metadata": {
+        "iam_type": "service_account",
+        "principal": "gcp-identity-deploy",
+        "permissions": [
+          "contents:read",
+          "id-token:write"
+        ],
+        "iam_scope": "project",
+        "trust_principals": [
+          "github-actions"
+        ],
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "iam_gha_gcp_gcp_identity_deploy",
+          "adapter": "github_actions",
+          "evidence_count": 1,
+          "iac_format": "github_actions",
+          "iam_type": "service_account",
+          "principal": "gcp-identity-deploy",
+          "iam_scope": "project",
+          "permissions": [
+            "contents:read",
+            "id-token:write"
+          ],
+          "trust_principals": [
+            "github-actions"
+          ],
+          "cloud_provider": "gcp",
+          "step_action": "google-github-actions/auth",
+          "confidence_breakdown": {
+            "regex_confidence": 0.93,
+            "llm_confidence": 0.0,
+            "evidence_count": 2,
+            "evidence_sources": [
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.744,
+            "evidence_multiplier": 1.1,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.8184
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "iac",
+          "confidence": 0.93,
+          "detail": "github_actions: GHA OIDC gcp: gcp-identity-deploy",
+          "location": {
+            "path": ".github/workflows/deploy.yml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "8ca5738d-c282-4698-ad4e-66878cc9c131",
+      "name": "gemini-2.0",
+      "component_type": "MODEL",
+      "confidence": 0.44000000000000006,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "gemini_2_0",
+          "adapter": "model_generic",
+          "evidence_count": 1,
+          "normalizer": "model-name",
+          "confidence_breakdown": {
+            "regex_confidence": 0.55,
+            "llm_confidence": 0.0,
+            "evidence_count": 1,
+            "evidence_sources": [
+              "evidence:0"
+            ],
+            "base_confidence": 0.44,
+            "evidence_multiplier": 1.0,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.44
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "model_generic: gemini-2.0",
+          "location": {
+            "path": "agent/tools/navigation.ts",
+            "line": 22
+          }
+        }
+      ]
+    },
+    {
+      "id": "7f65bac1-604f-40bb-b71e-99c4a97c8a34",
+      "name": "gemini-3.1",
+      "component_type": "MODEL",
+      "confidence": 0.528,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "gemini_3_1",
+          "adapter": "model_generic",
+          "evidence_count": 3,
+          "normalizer": "model-name",
+          "confidence_breakdown": {
+            "regex_confidence": 0.55,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2"
+            ],
+            "base_confidence": 0.44,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.528
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "model_generic: gemini-3.1",
+          "location": {
+            "path": "vite.config.ts",
+            "line": 13
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "model_generic: gemini-3.1",
+          "location": {
+            "path": "agent/agents.ts",
+            "line": 12
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "model_generic: gemini-3.1",
+          "location": {
+            "path": "agent/tools/search.ts",
+            "line": 13
+          }
+        }
+      ]
+    },
+    {
+      "id": "5153c647-9365-40d7-834c-2f14d98800ca",
+      "name": "MODEL",
+      "component_type": "MODEL",
+      "confidence": 0.8448000000000001,
+      "metadata": {
+        "framework": "google",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "model",
+          "adapter": "llm_clients_ts",
+          "evidence_count": 1,
+          "framework": "google",
+          "api_call": "ai.models.generateContent",
+          "provider": "google",
+          "model_card_url": "https://ai.google.dev/gemini-api/docs/models",
+          "api_endpoint": "https://generativelanguage.googleapis.com",
+          "language": "typescript",
+          "confidence_breakdown": {
+            "regex_confidence": 0.88,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:google",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.704,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.8448
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.88,
+          "detail": "llm_clients_ts: ai.models.generateContent({\n            model: MODEL,\n            contents: [{ role: 'user', parts: ",
+          "location": {
+            "path": "agent/tools/search.ts",
+            "line": 28
+          }
+        }
+      ]
+    },
+    {
+      "id": "fdf6e95e-393d-4932-8e86-db001f8d5a43",
+      "name": "process.env.VITE_GEMINI_MODEL || 'gemini-2.0-flash",
+      "component_type": "MODEL",
+      "confidence": 0.8448000000000001,
+      "metadata": {
+        "framework": "google",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "process_env_vite_gemini_model_gemini_2_0_flash",
+          "adapter": "llm_clients_ts",
+          "evidence_count": 1,
+          "framework": "google",
+          "api_call": "ai.models.generateContent",
+          "provider": "google",
+          "model_card_url": "https://ai.google.dev/gemini-api/docs/models",
+          "api_endpoint": "https://generativelanguage.googleapis.com",
+          "language": "typescript",
+          "confidence_breakdown": {
+            "regex_confidence": 0.88,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:google",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.704,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.8448
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.88,
+          "detail": "llm_clients_ts: ai.models.generateContent({\n      model: process.env.VITE_GEMINI_MODEL || 'gemini-2.0-flash',\n      ",
+          "location": {
+            "path": "agent/tools/navigation.ts",
+            "line": 21
+          }
+        }
+      ]
+    },
+    {
+      "id": "a3d1b441-339b-4a2e-89ba-654f36f3145d",
+      "name": "email_out",
+      "component_type": "PRIVILEGE",
+      "confidence": 0.4840000000000001,
+      "metadata": {
+        "privilege_scope": "email_out",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "privilege_email_out",
+          "adapter": "privilege_email_out",
+          "evidence_count": 2,
+          "privilege_scope": "email_out",
+          "llm_soft_rejected": true,
+          "llm_verification_reason": "The snippet only shows a TypeScript interface and a comment about fetching emails; it does not show a concrete privileged action such as sending email, and it is not evidence of an AI-related node. The detected name 'email_out' appears unsupported by the provided context.",
+          "confidence_breakdown": {
+            "regex_confidence": 0.55,
+            "llm_confidence": 0.0,
+            "evidence_count": 2,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1"
+            ],
+            "base_confidence": 0.44,
+            "evidence_multiplier": 1.1,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.484
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.7,
+          "detail": "privilege_email_out: EmailMessage",
+          "location": {
+            "path": "src/services/google-apis.ts",
+            "line": 134
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "privilege_email_out: EmailMessage",
+          "location": {
+            "path": "src/services/agent-types.ts",
+            "line": 23
+          }
+        }
+      ]
+    },
+    {
+      "id": "2a0b8bee-89b5-4d06-ac54-b8c1d19741f5",
+      "name": "filesystem_write",
+      "component_type": "PRIVILEGE",
+      "confidence": 0.44000000000000006,
+      "metadata": {
+        "privilege_scope": "filesystem_write",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "privilege_filesystem_write",
+          "adapter": "privilege_filesystem_write",
+          "evidence_count": 1,
+          "privilege_scope": "filesystem_write",
+          "confidence_breakdown": {
+            "regex_confidence": 0.55,
+            "llm_confidence": 0.0,
+            "evidence_count": 1,
+            "evidence_sources": [
+              "evidence:0"
+            ],
+            "base_confidence": 0.44,
+            "evidence_multiplier": 1.0,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.44
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "privilege_filesystem_write: open('service.yaml', 'w')",
+          "location": {
+            "path": ".github/workflows/deploy.yml",
+            "line": 92
+          }
+        }
+      ]
+    },
+    {
+      "id": "421fa5f9-6289-463f-b507-a02cd74969fb",
+      "name": "System Instruction",
+      "component_type": "PROMPT",
+      "confidence": 1.0,
+      "metadata": {
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "system_instruction",
+          "adapter": "prompt_ts",
+          "evidence_count": 1,
+          "is_template": false,
+          "is_template_literal": false,
+          "template_variables": [],
+          "injection_risk_score": 0.0,
+          "role": "system",
+          "context": "systemInstruction",
+          "enclosing_function": null,
+          "content": "You are a concise web search assistant. Summarize the answer in 2-3 sentences. Driver-safe: no markdown, no bullet points.",
+          "language": "typescript",
+          "description": "System instruction prompt passed to the generative model to act as a concise web search assistant, limiting output to 2-3 sentences without markdown or bullet points.",
+          "llm_verified": true,
+          "llm_verification_reason": "Concrete production code in an application file creates a GenAI request with a hard-coded systemInstruction prompt, so this is a real PROMPT node.",
+          "llm_confidence": 0.98,
+          "confidence_breakdown": {
+            "regex_confidence": 0.98,
+            "llm_confidence": 0.98,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "llm:verified",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.98,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 1.0
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_string_literal",
+          "confidence": 0.65,
+          "detail": "prompt_ts: ast_string_literal",
+          "location": {
+            "path": "agent/tools/search.ts",
+            "line": 34
+          }
+        }
+      ]
+    },
+    {
+      "id": "43806426-aae9-4f13-bf17-e211607a2fcf",
+      "name": "Weather Tools",
+      "component_type": "TOOL",
+      "confidence": 0.592,
+      "metadata": {
+        "description": "Provides weather-related tool functions to retrieve forecasts, current conditions, and other meteorological data for use by the system.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "weather-tools",
+          "adapter": "gap_fill",
+          "evidence_files": [
+            "agent/agents.ts"
+          ],
+          "source_tier": "llm",
+          "description": "In `agent/agents.ts`, the agent imports and registers `createWeatherTools` (`import { createWeatherTools } from './tools/weather.js';`), which is a tool package used by the agent.",
+          "confidence_breakdown": {
+            "regex_confidence": 0.74,
+            "llm_confidence": 0.0,
+            "evidence_count": 1,
+            "evidence_sources": [
+              "confidence:high"
+            ],
+            "base_confidence": 0.592,
+            "evidence_multiplier": 1.0,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.592
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "llm_discovery",
+          "confidence": 0.74,
+          "detail": "In `agent/agents.ts`, the agent imports and registers `createWeatherTools` (`import { createWeatherTools } from './tools/weather.js';`), which is a tool package used by the agent.",
+          "location": {
+            "path": "agent/agents.ts"
+          }
+        }
+      ]
+    },
+    {
+      "id": "cd892210-77ed-48a9-a944-6c58024cbbfc",
+      "name": "Search Tools",
+      "component_type": "TOOL",
+      "confidence": 0.592,
+      "metadata": {
+        "description": "Provides search capabilities that let the system query external or internal sources to retrieve relevant information, documents, or results based on user input.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "search-tools",
+          "adapter": "gap_fill",
+          "evidence_files": [
+            "agent/agents.ts"
+          ],
+          "source_tier": "llm",
+          "description": "In `agent/agents.ts`, the agent imports and registers `createSearchTools` (`import { createSearchTools } from './tools/search.js';`), showing agent tool usage.",
+          "confidence_breakdown": {
+            "regex_confidence": 0.74,
+            "llm_confidence": 0.0,
+            "evidence_count": 1,
+            "evidence_sources": [
+              "confidence:high"
+            ],
+            "base_confidence": 0.592,
+            "evidence_multiplier": 1.0,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.592
+          }
+        }
+      },
+      "evidence": [
+        {
+          "kind": "llm_discovery",
+          "confidence": 0.74,
+          "detail": "In `agent/agents.ts`, the agent imports and registers `createSearchTools` (`import { createSearchTools } from './tools/search.js';`), showing agent tool usage.",
+          "location": {
+            "path": "agent/agents.ts"
+          }
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "source": "2d7bca48-e937-4fe4-86df-0bdb0f97d1cc",
+      "target": "5153c647-9365-40d7-834c-2f14d98800ca",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "2d7bca48-e937-4fe4-86df-0bdb0f97d1cc",
+      "target": "fdf6e95e-393d-4932-8e86-db001f8d5a43",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "2d7bca48-e937-4fe4-86df-0bdb0f97d1cc",
+      "target": "8ca5738d-c282-4698-ad4e-66878cc9c131",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "2d7bca48-e937-4fe4-86df-0bdb0f97d1cc",
+      "target": "7f65bac1-604f-40bb-b71e-99c4a97c8a34",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "441b10a8-d97a-42d9-a669-0d8417d5c883",
+      "target": "5153c647-9365-40d7-834c-2f14d98800ca",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "441b10a8-d97a-42d9-a669-0d8417d5c883",
+      "target": "fdf6e95e-393d-4932-8e86-db001f8d5a43",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "441b10a8-d97a-42d9-a669-0d8417d5c883",
+      "target": "8ca5738d-c282-4698-ad4e-66878cc9c131",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "441b10a8-d97a-42d9-a669-0d8417d5c883",
+      "target": "7f65bac1-604f-40bb-b71e-99c4a97c8a34",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "2bfdbf65-c44c-475c-9a54-5b56d132f44c",
+      "target": "b800319e-337f-42d7-9252-e4ed9cf44674",
+      "relationship_type": "DEPLOYS"
+    },
+    {
+      "source": "ad8fa7fe-6615-4997-9c66-60e56ded1b2b",
+      "target": "b800319e-337f-42d7-9252-e4ed9cf44674",
+      "relationship_type": "DEPLOYS"
+    },
+    {
+      "source": "3af1eb27-7fb8-407c-a05c-2fef62d3262f",
+      "target": "b800319e-337f-42d7-9252-e4ed9cf44674",
+      "relationship_type": "DEPLOYS"
+    },
+    {
+      "source": "6d4d593a-2003-480b-a7fc-3b756c0f1fc8",
+      "target": "2bfdbf65-c44c-475c-9a54-5b56d132f44c",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "6d4d593a-2003-480b-a7fc-3b756c0f1fc8",
+      "target": "ad8fa7fe-6615-4997-9c66-60e56ded1b2b",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "6d4d593a-2003-480b-a7fc-3b756c0f1fc8",
+      "target": "3af1eb27-7fb8-407c-a05c-2fef62d3262f",
+      "relationship_type": "USES"
+    }
+  ],
+  "deps": [
+    {
+      "name": "@google/adk",
+      "version_spec": "^1.1.0",
+      "purl": "pkg:npm/%40google/adk@1.1.0",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "@google/genai",
+      "version_spec": "^1.29.0",
+      "purl": "pkg:npm/%40google/genai@1.29.0",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "@tailwindcss/vite",
+      "version_spec": "^4.1.14",
+      "purl": "pkg:npm/%40tailwindcss/vite@4.1.14",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "@vis.gl/react-google-maps",
+      "version_spec": "^1.8.3",
+      "purl": "pkg:npm/%40vis.gl/react-google-maps@1.8.3",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "@vitejs/plugin-react",
+      "version_spec": "^5.0.4",
+      "purl": "pkg:npm/%40vitejs/plugin-react@5.0.4",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "dotenv",
+      "version_spec": "^17.2.3",
+      "purl": "pkg:npm/dotenv@17.2.3",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "express",
+      "version_spec": "^4.21.2",
+      "purl": "pkg:npm/express@4.21.2",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "lucide-react",
+      "version_spec": "^0.546.0",
+      "purl": "pkg:npm/lucide-react@0.546.0",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "motion",
+      "version_spec": "^12.23.24",
+      "purl": "pkg:npm/motion@12.23.24",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "react",
+      "version_spec": "^19.0.1",
+      "purl": "pkg:npm/react@19.0.1",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "react-dom",
+      "version_spec": "^19.0.1",
+      "purl": "pkg:npm/react-dom@19.0.1",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "tsx",
+      "version_spec": "^4.21.0",
+      "purl": "pkg:npm/tsx@4.21.0",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "vite",
+      "version_spec": "^6.2.3",
+      "purl": "pkg:npm/vite@6.2.3",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "zod",
+      "version_spec": "^4.4.3",
+      "purl": "pkg:npm/zod@4.4.3",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "@types/express",
+      "version_spec": "^4.17.21",
+      "purl": "pkg:npm/%40types/express@4.17.21",
+      "group": "dev",
+      "source_file": "package.json"
+    },
+    {
+      "name": "@types/node",
+      "version_spec": "^22.14.0",
+      "purl": "pkg:npm/%40types/node@22.14.0",
+      "group": "dev",
+      "source_file": "package.json"
+    },
+    {
+      "name": "autoprefixer",
+      "version_spec": "^10.4.21",
+      "purl": "pkg:npm/autoprefixer@10.4.21",
+      "group": "dev",
+      "source_file": "package.json"
+    },
+    {
+      "name": "concurrently",
+      "version_spec": "^9.2.1",
+      "purl": "pkg:npm/concurrently@9.2.1",
+      "group": "dev",
+      "source_file": "package.json"
+    },
+    {
+      "name": "tailwindcss",
+      "version_spec": "^4.1.14",
+      "purl": "pkg:npm/tailwindcss@4.1.14",
+      "group": "dev",
+      "source_file": "package.json"
+    },
+    {
+      "name": "typescript",
+      "version_spec": "~5.8.2",
+      "purl": "pkg:npm/typescript@5.8.2",
+      "group": "dev",
+      "source_file": "package.json"
+    }
+  ],
+  "summary": {
+    "use_case": "This application appears to be a general-purpose agentic AI workflow built with google_adk_ts and deployed to Cloud Run, serving users who need concise web-search-style assistance. It supports text and voice input, but not images or video, and is configured to use Google Gemini models with weather and search tool packages plus email and filesystem write privileges; no MCP server is indicated.",
+    "frameworks": [
+      "google_adk_ts"
+    ],
+    "modalities": [
+      "TEXT",
+      "VOICE"
+    ],
+    "modality_support": {
+      "text": true,
+      "voice": true,
+      "image": false,
+      "video": false
+    },
+    "api_endpoints": [
+      "*",
+      "/api/agent/chat"
+    ],
+    "deployment_platforms": [
+      "Azure",
+      "AWS",
+      "GCP",
+      "GitHub Actions"
+    ],
+    "regions": [
+      "us-west2",
+      "us-west2-docker"
+    ],
+    "environments": [
+      "dev",
+      "development",
+      "production",
+      "test"
+    ],
+    "deployment_urls": [],
+    "iac_accounts": [
+      "platform-dev-2025"
+    ],
+    "node_counts": {
+      "AUTH": 1,
+      "CONTAINER_IMAGE": 1,
+      "DEPLOYMENT": 3,
+      "FRAMEWORK": 2,
+      "IAM": 1,
+      "MODEL": 4,
+      "PRIVILEGE": 2,
+      "PROMPT": 1,
+      "TOOL": 6
+    },
+    "secret_stores": [
+      "github_actions_secret"
+    ],
+    "availability_zones": [],
+    "encryption_at_rest_coverage": false,
+    "security_findings": [
+      "secrets_in_build_args"
+    ],
+    "iam_principals": [
+      "gcp-identity-deploy"
+    ],
+    "service_accounts": [
+      "gcp-identity-deploy"
+    ],
+    "iac_security_summary": "## Security Briefing\n\n### 1) Deployment posture\n- **Cloud provider:** GCP only.\n- **Deployment mechanism:** GitHub Actions workflow named **“Deploy to Cloud Run”**.\n- **Triggers:** `push` and `workflow_dispatch`, which means deployments can be initiated both automatically and manually.\n- **Regions / HA / resilience:** No regions, zones, or multi-region/HA topology are defined in the provided data. Availability zone coverage is empty, so resilience posture cannot be confirmed. The deployment appears to be a single-path Cloud Run delivery with no explicit redundancy controls visible.\n\n### 2) Secret management\n- **Secret store in use:** `github_actions_secret`.\n- **Risk signal:** `secrets_in_build_args` is present, indicating secrets are being passed via build arguments. This is a common plaintext leakage path because build args can be surfaced in logs, image history, cache metadata, or CI debug output.\n- **Assessment:** Secret handling is present, but the build process shows exposure risk. No evidence of dedicated cloud secret manager usage is provided.\n\n### 3) Encryption\n- **Encryption at rest coverage:** `false`.\n- **Key management:** No key management system, KMS integration, or customer-managed encryption key configuration is shown.\n- **Assessment:** There is no visible evidence that stored artifacts, runtime data, or persisted secrets are protected with explicit at-rest encryption controls in the IaC data provided.\n\n### 4) IAM / least-privilege\n- **Service account:** `gcp-identity-deploy` on GCP.\n- **Trust relationship:** Trusted by `github-actions` via OIDC, which is preferable to long-lived static credentials.\n- **Permissions shown:** `contents:read` and `id-token:write`.\n- **Assessment:** The visible permissions are relatively narrow and consistent with OIDC-based deployment. However, no conditions, environment restrictions, or repository/workflow scoping are shown on the trust policy. The IAM scope is `project`, but no broader GCP roles are enumerated, so over-permission cannot be fully assessed from the provided data.\n\n### 5) CI/CD security\n- **Runner:** `ubuntu-latest` on GitHub-hosted runners.\n- **OIDC:** Enabled (`uses_oidc: true`), which reduces reliance on stored cloud credentials.\n- **Workflow trigger surface:** `push` and `workflow_dispatch` increase execution surface; manual dispatch especially should be tightly controlled.\n- **Assessment:** CI/CD is using a standard cloud-hosted runner and OIDC, but the workflow trigger set is broader than a purely release-gated pipeline. No environment protection or approval gates are defined.\n\n### 6) Container security\n- **Base image:** `node:20-slim`.\n- **Root user / health checks / resource limits:** Not specified in the provided data.\n- **Assessment:** No evidence of non-root execution, health checks, or CPU/memory limits is present. The slim base image reduces image footprint but does not by itself address runtime hardening.\n\n### 7) Key risks and prioritized recommendations\n1. **Eliminate secrets in build args.** Move sensitive values to GitHub Actions secrets or, preferably, a cloud secret manager and inject them at runtime; ensure build logs and image layers cannot expose them.\n2. **Add explicit encryption-at-rest controls.** Define storage/data encryption posture and, if applicable, integrate KMS/CMEK for persistent artifacts and secret material.\n3. **Harden CI/CD and runtime boundaries.** Restrict `workflow_dispatch`, add environment approvals/branch protections, and confirm container hardening (non-root user, health checks, and resource limits) before production rollout.",
+    "data_classification": [],
+    "classified_tables": [],
+    "startup_commands": [
+      {
+        "command": "npm run dev",
+        "source": "package.json",
+        "label": "dev"
+      },
+      {
+        "command": "npm run start",
+        "source": "package.json",
+        "label": "start"
+      },
+      {
+        "command": "npm run preview",
+        "source": "package.json",
+        "label": "start"
+      }
+    ],
+    "env_files": [],
+    "env_var_keys": [],
+    "local_url": "http://localhost:3000",
+    "staging_urls": [],
+    "production_urls": [],
+    "log_paths": [],
+    "uses_streaming": false,
+    "streaming_endpoints": []
+  },
+  "relationship_graph_md": "## Component Relationship Graph\n\n- **Frameworks / orchestration**\n  - `framework:google_adk_ts` and `llm_clients_ts` both **use models** directly.\n  - The models shown are `MODEL`, `process.env.VITE_GEMINI_MODEL || 'gemini-2.0-flash'`, `gemini-2.0`, and `gemini-3.1`.\n\n- **Data flow**\n  - The graph shows **framework-to-model** relationships only.\n  - No connections are shown from the prompt or tools into the frameworks, so the diagram does not indicate how prompts or tool outputs are routed.\n\n- **Tools**\n  - `Weather Tools` and `Search Tools` are present, but **have no connections**.\n  - Based on the graph, these tools appear **unmanaged/unused in the shown wiring**, with no visible orchestration or guardrails around them.\n\n- **Guardrails / policy coverage**\n  - `System Instruction` is present, but it has **no connections**, so there is no visible enforcement path from the instruction to the model or tools.\n  - The graph does **not show any explicit safety, approval, filtering, or sandboxing controls**.\n\n- **Security observations**\n  - **No datastore connections** are shown, so there is no visible access to sensitive internal data stores.\n  - The main visible risk pattern is **missing connection/guardrail coverage** for the listed tools and system instruction.\n\n```mermaid\nflowchart LR\n    framework_google_adk_ts_2d7bca[/\"⚙ framework:google_adk_ts\"/]\n    llm_clients_ts_441b10[/\"⚙ llm_clients_ts\"/]\n    gemini_2_0_8ca573[(\"🧠 gemini-2.0\")]\n    gemini_3_1_7f65ba[(\"🧠 gemini-3.1\")]\n    MODEL_5153c6[(\"🧠 MODEL\")]\n    process_env_VITE_GEMINI_MODEL_____gemini_2_0_flash_fdf6e9[(\"🧠 process.env.VITE_GEMINI_MODEL || 'gemini\")]\n    System_Instruction_421fa5>\"💬 System Instruction\"]\n    Weather_Tools_438064(\"🔧 Weather Tools\")\n    Search_Tools_cd8922(\"🔧 Search Tools\")\n\n    framework_google_adk_ts_2d7bca -->|uses| MODEL_5153c6\n    framework_google_adk_ts_2d7bca -->|uses| process_env_VITE_GEMINI_MODEL_____gemini_2_0_flash_fdf6e9\n    framework_google_adk_ts_2d7bca -->|uses| gemini_2_0_8ca573\n    framework_google_adk_ts_2d7bca -->|uses| gemini_3_1_7f65ba\n    llm_clients_ts_441b10 -->|uses| MODEL_5153c6\n    llm_clients_ts_441b10 -->|uses| process_env_VITE_GEMINI_MODEL_____gemini_2_0_flash_fdf6e9\n    llm_clients_ts_441b10 -->|uses| gemini_2_0_8ca573\n    llm_clients_ts_441b10 -->|uses| gemini_3_1_7f65ba\n\n    classDef agent    fill:#4A90D9,stroke:#2C6FAC,color:#fff\n    classDef tool     fill:#7ED321,stroke:#5A9A18,color:#fff\n    classDef model    fill:#9B59B6,stroke:#7D3C98,color:#fff\n    classDef prompt   fill:#F39C12,stroke:#D68910,color:#fff\n    classDef guard    fill:#E74C3C,stroke:#C0392B,color:#fff\n    classDef store    fill:#1ABC9C,stroke:#17A589,color:#fff\n    classDef fw       fill:#95A5A6,stroke:#717D7E,color:#fff\n    classDef endpoint fill:#3498DB,stroke:#2471A3,color:#fff\n    class Weather_Tools_438064,Search_Tools_cd8922 tool\n    class gemini_2_0_8ca573,gemini_3_1_7f65ba,MODEL_5153c6,process_env_VITE_GEMINI_MODEL_____gemini_2_0_flash_fdf6e9 model\n    class System_Instruction_421fa5 prompt\n    class framework_google_adk_ts_2d7bca,llm_clients_ts_441b10 fw\n```"
+}
