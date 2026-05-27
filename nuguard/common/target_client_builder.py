@@ -299,6 +299,7 @@ def build_target_app_client(
     sbom: "AiSbomDocument | None" = None,
     adk_cfg: Any = None,
     explicitly_set: frozenset[str] | set[str] = frozenset(),
+    payload_extras: dict[str, Any] | None = None,
 ) -> "TargetAppClient":
     """Build a :class:`TargetAppClient` with SBOM-assisted config resolution.
 
@@ -405,6 +406,7 @@ def build_target_app_client(
         chat_payload_format=payload_format,
         chat_response_key=response_key,
         framework_adapter=framework_adapter,
+        chat_payload_extras=payload_extras or None,
     )
     client.resolution_notes = resolution_notes
     return client

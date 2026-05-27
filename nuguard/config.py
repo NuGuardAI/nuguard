@@ -206,6 +206,8 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
             flat["redteam_chat_payload_list"] = bool(shared_target["chat_payload_list"])
         if "chat_response_key" in shared_target:
             flat["redteam_chat_response_key"] = shared_target["chat_response_key"]
+        if "chat_payload_extras" in shared_target and isinstance(shared_target["chat_payload_extras"], dict):
+            flat["redteam_chat_payload_extras"] = shared_target["chat_payload_extras"]
         if "headers" in shared_target and isinstance(shared_target["headers"], dict):
             flat["redteam_headers"] = {
                 str(k): str(v) for k, v in shared_target["headers"].items()
@@ -235,6 +237,8 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_chat_payload_list"] = bool(redteam["chat_payload_list"])
     if "chat_response_key" in redteam:
         flat["redteam_chat_response_key"] = redteam["chat_response_key"]
+    if "chat_payload_extras" in redteam and isinstance(redteam["chat_payload_extras"], dict):
+        flat["redteam_chat_payload_extras"] = redteam["chat_payload_extras"]
     if "auth_header" in redteam:
         flat["redteam_auth_header"] = redteam["auth_header"]
     if "headers" in redteam and isinstance(redteam["headers"], dict):
@@ -361,6 +365,8 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
                     )
                 if "chat_response_key" in shared_target:
                     _shared_for_behavior["chat_response_key"] = shared_target["chat_response_key"]
+                if "chat_payload_extras" in shared_target and isinstance(shared_target["chat_payload_extras"], dict):
+                    _shared_for_behavior.setdefault("chat_payload_extras", shared_target["chat_payload_extras"])
                 if "headers" in shared_target and isinstance(shared_target["headers"], dict):
                     _shared_for_behavior.setdefault(
                         "headers",
@@ -520,6 +526,13 @@ class BehaviorConfig(BaseModel):
     chat_payload_list: bool = False
     chat_payload_format: Literal["json", "form"] = "json"
     chat_response_key: str = ""
+    chat_payload_extras: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Extra static JSON fields merged into every chat POST body "
+            "(e.g. vehicleState, language). The message key always takes precedence."
+        ),
+    )
     adk: GoogleADKConfig = Field(
         default_factory=GoogleADKConfig,
         description="Google ADK-specific connection settings.",
@@ -740,6 +753,15 @@ class NuGuardConfig(BaseSettings):
         description=(
             "JSON key to extract response text from the target's reply body "
             "(yaml: redteam.chat_response_key). Empty string = auto-detect."
+        ),
+    )
+    redteam_chat_payload_extras: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Extra static JSON fields merged into every redteam chat POST body "
+            "(yaml: redteam.chat_payload_extras or target.chat_payload_extras). "
+            "Useful for apps that require additional context fields such as vehicleState "
+            "or language alongside the message. The message key always takes precedence."
         ),
     )
     redteam_auth_header: str | None = Field(

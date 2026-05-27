@@ -639,6 +639,7 @@ class BehaviorRunner:
             sbom=self._sbom,
             adk_cfg=getattr(self._config, "adk", None),
             explicitly_set=getattr(self._config, "model_fields_set", set()),
+            payload_extras=getattr(self._config, "chat_payload_extras", None) or None,
         )
         # Prepend pre-bootstrap URL notes (already resolved above) so they appear
         # first; build_target_app_client won't re-add them since the URL matches.

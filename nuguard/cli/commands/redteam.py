@@ -4,7 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
     from nuguard.common.auth import AuthConfig
@@ -195,6 +195,7 @@ def redteam(
                 chat_payload_key=cfg.redteam_chat_payload_key,
                 chat_payload_list=cfg.redteam_chat_payload_list,
                 chat_response_key=cfg.redteam_chat_response_key or None,
+                chat_payload_extras=cfg.redteam_chat_payload_extras or None,
                 guided_conversations=effective_guided,
                 guided_max_turns=effective_guided_max_turns,
                 guided_concurrency=effective_guided_concurrency,
@@ -483,6 +484,7 @@ async def _run_redteam(
                 chat_payload_key=chat_payload_key,
                 chat_payload_list=chat_payload_list,
                 chat_response_key=chat_response_key,
+                chat_payload_extras=chat_payload_extras,
                 guided_conversations=guided_conversations,
                 guided_max_turns=guided_max_turns,
                 guided_concurrency=guided_concurrency,
@@ -526,6 +528,7 @@ async def _run_redteam(
         chat_payload_key=chat_payload_key,
         chat_payload_list=chat_payload_list,
         chat_response_key=chat_response_key,
+        chat_payload_extras=chat_payload_extras,
         guided_conversations=guided_conversations,
         guided_max_turns=guided_max_turns,
         guided_concurrency=guided_concurrency,
@@ -568,6 +571,7 @@ async def _run_orchestrator(
     chat_payload_key: str = "message",
     chat_payload_list: bool = False,
     chat_response_key: str | None = None,
+    chat_payload_extras: dict[str, Any] | None = None,
     guided_conversations: bool = True,
     guided_max_turns: int = 12,
     guided_concurrency: int = 3,
@@ -617,6 +621,7 @@ async def _run_orchestrator(
         chat_payload_key=chat_payload_key,
         chat_payload_list=chat_payload_list,
         chat_response_key=chat_response_key,
+        chat_payload_extras=chat_payload_extras or None,
         guided_conversations=guided_conversations,
         guided_max_turns=guided_max_turns,
         guided_concurrency=guided_concurrency,

@@ -109,6 +109,7 @@ class TargetAppClient:
         retry_429_backoff_cap_seconds: float = DEFAULT_429_BACKOFF_CAP_SECONDS,
         default_headers: dict[str, str] | None = None,
         framework_adapter: "FrameworkAdapter | None" = None,
+        chat_payload_extras: dict[str, Any] | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self._chat_path = chat_path
@@ -117,6 +118,7 @@ class TargetAppClient:
         self._chat_payload_format = (
             chat_payload_format if chat_payload_format in ("json", "form") else "json"
         )
+        self._chat_payload_extras: dict[str, Any] = chat_payload_extras or {}
         self._chat_response_key = chat_response_key  # explicit key overrides auto-detection
         # Lazily-detected response key: set on the first successful dict response when
         # no explicit key is configured.  Avoids returning raw JSON to judges.
@@ -341,6 +343,10 @@ class TargetAppClient:
                     # server can correlate subsequent turns within the same conversation.
                     if self._session_context:
                         body.update(self._session_context)
+                    # Merge static extra fields (e.g. vehicleState, language) declared in
+                    # chat_payload_extras — the message key always takes precedence.
+                    if self._chat_payload_extras:
+                        body = {**self._chat_payload_extras, **body}
                     chat_path = self._chat_path
 
                 if self._chat_payload_format == "form":
@@ -581,6 +587,8 @@ class TargetAppClient:
                 body = {self._chat_payload_key: value}
                 if self._session_context:
                     body.update(self._session_context)
+                if self._chat_payload_extras:
+                    body = {**self._chat_payload_extras, **body}
                 chat_path = self._chat_path
 
             t_start = time.monotonic()

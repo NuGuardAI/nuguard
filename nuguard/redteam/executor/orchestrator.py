@@ -7,7 +7,7 @@ import re
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 if TYPE_CHECKING:
     from nuguard.common.auth import AuthConfig
@@ -468,6 +468,7 @@ class RedteamOrchestrator:
         similar_miss_threshold: int = 4,
         skip_discovery: bool = False,
         discovery_max_turns: int = 3,
+        chat_payload_extras: dict[str, Any] | None = None,
     ) -> None:
         self._sbom = sbom
         self._target_url = target_url
@@ -515,6 +516,7 @@ class RedteamOrchestrator:
         self._similar_miss_threshold = max(1, similar_miss_threshold)
         self._skip_discovery = skip_discovery
         self._discovery_max_turns = max(1, discovery_max_turns)
+        self._chat_payload_extras: dict[str, Any] = chat_payload_extras or {}
         # Auto-discover from SBOM; fall back to provided values
         self._chat_path, self._chat_payload_key, self._chat_payload_list, _discovered_response_key = (
             _discover_chat_config(sbom, chat_path, chat_payload_key, chat_payload_list)
@@ -723,6 +725,7 @@ class RedteamOrchestrator:
                     timeout=self._request_timeout,
                     auth_headers=effective_headers or None,
                     sbom=self._sbom,
+                    payload_extras=self._chat_payload_extras or None,
                 )
                 _disc_session = _AS(
                     session_id="pre-scan-discovery",
@@ -876,6 +879,7 @@ class RedteamOrchestrator:
             # chat_path was already resolved by _discover_chat_config in __init__,
             # so treat endpoint/payload as explicitly set to skip re-discovery.
             explicitly_set=frozenset({"target_endpoint", "chat_payload_key", "chat_response_key"}),
+            payload_extras=self._chat_payload_extras or None,
         )
         for _note in (getattr(client, "resolution_notes", None) or []):
             if isinstance(_note, str) and _note:
