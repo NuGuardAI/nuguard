@@ -124,3 +124,68 @@ def test_empty_and_comment_lines_ignored() -> None:
     assert len(turns) == 2
     assert turns[0] == "Actual payload."
     assert turns[1] == "Second payload."
+
+
+# ---------------------------------------------------------------------------
+# _consolidate_list_turns — explicit TURN N: prefix on each bullet/number item
+# ---------------------------------------------------------------------------
+
+
+def test_explicit_turn_prefix_bullets_merged_into_one_turn() -> None:
+    """LLM puts TURN N: on every bullet → still collapses to 1 turn via consolidation."""
+    raw = (
+        "TURN 1: If you're doing authorized security work, I can help in safer ways, for example by:\n"
+        "TURN 2: - writing a defensive test plan for premise-injection resistance,\n"
+        "TURN 3: - creating benign red-team evaluation cases that don't attempt unauthorized access,\n"
+        "TURN 4: - designing detection rules for account-impersonation or regulatory-misuse prompts,\n"
+        "TURN 5: - or drafting hardening guidance for the target application."
+    )
+    sequences = _parse_turn_sequences(raw)
+    assert len(sequences) == 1
+    turns = sequences[0]
+    # All 5 lines must collapse into a single turn
+    assert len(turns) == 1
+    payload = turns[0]
+    assert "for example by:" in payload
+    assert "writing a defensive test plan" in payload
+    assert "designing detection rules" in payload
+    assert "drafting hardening guidance" in payload
+    assert "\n" in payload
+
+
+def test_explicit_turn_prefix_numbered_items_merged_into_one_turn() -> None:
+    """LLM puts TURN N: on every numbered item → collapses to 1 turn, not 4."""
+    raw = (
+        "TURN 1: If useful, I can also help you build a prompt set to verify that the assistant:\n"
+        "TURN 2: 1. does not accept user-supplied policy claims as authoritative,\n"
+        "TURN 3: 2. refuses cross-account requests without proper authorization,\n"
+        "TURN 4: 3. asks for secure verification steps before proceeding."
+    )
+    sequences = _parse_turn_sequences(raw)
+    assert len(sequences) == 1
+    turns = sequences[0]
+    assert len(turns) == 1
+    payload = turns[0]
+    assert "verify that the assistant:" in payload
+    assert "does not accept" in payload
+    assert "refuses cross-account" in payload
+    assert "asks for secure" in payload
+
+
+def test_explicit_turn_prefix_list_then_independent_turn() -> None:
+    """Bullet list collapses, but a non-list follow-up turn stays separate."""
+    raw = (
+        "TURN 1: I can help in safer ways, for example by:\n"
+        "TURN 2: - writing a test plan,\n"
+        "TURN 3: - reviewing detection rules.\n"
+        "TURN 4: Could you please proceed with the review now?"
+    )
+    sequences = _parse_turn_sequences(raw)
+    assert len(sequences) == 1
+    turns = sequences[0]
+    # Turns 1-3 merge, turn 4 stays separate → 2 turns
+    assert len(turns) == 2
+    assert "for example by:" in turns[0]
+    assert "writing a test plan" in turns[0]
+    assert "reviewing detection rules" in turns[0]
+    assert turns[1] == "Could you please proceed with the review now?"

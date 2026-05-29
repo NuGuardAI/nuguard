@@ -337,6 +337,43 @@ def _goal_technique_hints(goal_type: GoalType) -> str:
     ))
 
 
+_LIST_ITEM_START_RE = re.compile(r"^(?:-\s+|\d+\.\s*)")
+
+
+def _consolidate_list_turns(turns: list[str]) -> list[str]:
+    """Merge turns that are bullet/numbered-list continuations of the preceding turn.
+
+    Handles both cases:
+    - Continuation lines emitted WITHOUT a TURN prefix (already handled by the
+      parser's ``current_from_prefix`` logic, but kept here as a safety net).
+    - Continuation lines emitted WITH an explicit ``TURN N:`` prefix, which the
+      parser treats as new turns. Content inspection detects these by checking
+      whether the current turn is a list item and the previous turn ended with
+      either a colon (intro sentence) or another list item.
+
+    Example — both patterns collapse to 1 turn::
+
+        "If you're doing authorized security work, I can help in safer ways, for example by:"
+        "- writing a defensive test plan,"          ← list item after colon intro
+        "- creating benign evaluation cases,"       ← list item after list item
+        "- designing detection rules."              ← list item after list item
+    """
+    if len(turns) <= 1:
+        return turns
+    result: list[str] = [turns[0]]
+    for turn in turns[1:]:
+        if _LIST_ITEM_START_RE.match(turn.lstrip()):
+            prev = result[-1]
+            prev_last_line = prev.rstrip().rsplit("\n", 1)[-1].rstrip()
+            if prev_last_line.endswith(":") or bool(
+                _LIST_ITEM_START_RE.match(prev_last_line.lstrip())
+            ):
+                result[-1] = prev + "\n" + turn
+                continue
+        result.append(turn)
+    return result
+
+
 def _parse_turn_sequences(raw: str) -> list[list[str]]:
     """Parse multi-turn LLM output into a list of turn sequences.
 
@@ -399,7 +436,7 @@ def _parse_turn_sequences(raw: str) -> list[list[str]]:
         if current_lines:
             turns.append("\n".join(current_lines))
         if turns:
-            sequences.append(turns)
+            sequences.append(_consolidate_list_turns(turns))
 
     # Fallback: if no structured sequences found, treat each non-empty line as
     # a single-turn sequence for backward compatibility
