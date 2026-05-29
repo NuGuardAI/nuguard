@@ -47,6 +47,7 @@ def to_json(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = None) 
         "overall_risk_score": result.overall_risk_score,
         "coverage_percentage": result.coverage_percentage,
         "intent_alignment_score": result.intent_alignment_score,
+        "llm_executive_summary": result.llm_executive_summary,
         "intent": result.intent.model_dump(),
         "static_findings": result.static_findings,
         "dynamic_findings": result.dynamic_findings,
@@ -96,6 +97,9 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
 
     lines.append("## Summary")
     lines.append("")
+    if result.llm_executive_summary:
+        lines.append(result.llm_executive_summary)
+        lines.append("")
     lines.append(f"- **Intent**: {result.intent.app_purpose or 'not determined'}")
     lines.append(f"- **Analysis Mode**: {mode}")
     _dyn_outcome = getattr(result, "dynamic_scan_outcome", None)

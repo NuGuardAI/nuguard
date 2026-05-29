@@ -1,16 +1,16 @@
 {
   "schema_version": "1.4.0",
-  "generated_at": "2026-05-27T07:01:14Z",
+  "generated_at": "2026-05-29T16:59:53Z",
   "generator": "nuguard",
   "target": "https://github.com/NuGuardAI/Gemini-Car-Assistant",
   "nodes": [
     {
-      "id": "bfdf8c11-0dc7-4977-baed-df0aedcaf519",
+      "id": "c3ec3d27-746c-428d-b55b-a4162d9e4f05",
       "name": "bearer_auth",
       "component_type": "AUTH",
       "confidence": 1.0,
       "metadata": {
-        "description": "Authentication component that supports Bearer and OAuth authorization schemes for securing API requests.",
+        "description": "Provides bearer token authentication support for HTTP requests, including OAuth-based authorization handling.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -135,7 +135,7 @@
       ]
     },
     {
-      "id": "1ec4aab6-beb0-4f11-a5c4-bf3229b858bc",
+      "id": "d6f00021-8774-447c-9fef-80b2e354c347",
       "name": "node:20-slim",
       "component_type": "CONTAINER_IMAGE",
       "confidence": 0.8712000000000001,
@@ -144,7 +144,7 @@
         "image_tag": "20-slim",
         "registry": "docker.io",
         "base_image": "node:20-slim",
-        "description": "Official Node.js 20 slim container image used as the build stage base image.",
+        "description": "Official Node.js 20 slim container image used as a builder base image.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -192,12 +192,12 @@
       ]
     },
     {
-      "id": "b6c26676-8e80-43e0-80b8-37233fc3a42d",
+      "id": "fb1bdf13-ea2b-4681-8c5a-b21179093444",
       "name": "gcloud_deployment",
       "component_type": "DEPLOYMENT",
       "confidence": 1.0,
       "metadata": {
-        "description": "Deployment configuration for gcloud, compose, and render environments.",
+        "description": "Deployment configuration for gcloud, Docker Compose, and Render environments.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -257,14 +257,14 @@
       ]
     },
     {
-      "id": "766e9bee-3082-4839-8378-12df0f755032",
+      "id": "dd7dba6e-1ae4-450d-b009-c8d528b86f64",
       "name": "Deploy to Cloud Run",
       "component_type": "DEPLOYMENT",
       "confidence": 0.8360000000000001,
       "metadata": {
         "deployment_target": "github-actions",
         "secret_store": "github_actions_secret",
-        "description": "GitHub Actions workflow that deploys to Cloud Run on push and manual workflow dispatch triggers.",
+        "description": "GitHub Actions workflow that deploys applications to Google Cloud Run on push or manual dispatch triggers.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -320,12 +320,12 @@
       ]
     },
     {
-      "id": "12744a8c-9d77-473b-aaf4-ef1a2217aed9",
+      "id": "bda17267-ae02-436b-b0b5-d6d53321ab47",
       "name": "Port 3000",
       "component_type": "DEPLOYMENT",
       "confidence": 0.7920000000000001,
       "metadata": {
-        "description": "Docker deployment exposes port 3000 for the application process.",
+        "description": "Exposes TCP port 3000 for the containerized application runtime.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -364,13 +364,13 @@
       ]
     },
     {
-      "id": "e1ff10ad-102f-44a5-a28b-6e459c1825d6",
+      "id": "2c4a2e07-4b77-4b34-89fb-8ebe58a4613d",
       "name": "framework:google_adk_ts",
       "component_type": "FRAMEWORK",
       "confidence": 1.0,
       "metadata": {
         "framework": "google_adk_ts",
-        "description": "TypeScript framework google_adk_ts used as an application development kit, identified by imports referencing google_adk_ts.",
+        "description": "TypeScript framework for importing and using Google ADK components in applications.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -468,13 +468,13 @@
       ]
     },
     {
-      "id": "6556d8f4-844a-4d73-8eb9-ec9172474390",
+      "id": "3ab88c90-5afb-4a7c-9965-6c8e2e61fa70",
       "name": "llm_clients_ts",
       "component_type": "FRAMEWORK",
       "confidence": 0.8840000000000001,
       "metadata": {
         "framework": "google",
-        "description": "TypeScript framework for initializing Google GenAI clients with an API key.",
+        "description": "TypeScript framework component that uses GoogleGenAI with an API key to access Google generative AI services.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -524,7 +524,7 @@
       ]
     },
     {
-      "id": "f9b4ff34-f0be-416c-9bfc-03086f8a85f3",
+      "id": "831a5ebb-b963-482c-a413-6ed7f5c9ed59",
       "name": "gcp-identity-deploy",
       "component_type": "IAM",
       "confidence": 0.8184000000000001,
@@ -539,7 +539,7 @@
         "trust_principals": [
           "github-actions"
         ],
-        "description": "GitHub Actions OIDC-based IAM component for deploying to Google Cloud Platform using the gcp-identity-deploy identity.",
+        "description": "GitHub Actions OIDC IAM configuration for deploying to Google Cloud Platform using the gcp-identity-deploy identity.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -588,13 +588,13 @@
       ]
     },
     {
-      "id": "304ea4df-5255-42b5-9a81-7a9a8daf5610",
+      "id": "2735e6fd-cbba-4062-a18c-5a7799c461f9",
       "name": "gemini-2.0-flash",
       "component_type": "MODEL",
       "confidence": 0.9152000000000001,
       "metadata": {
         "framework": "google",
-        "description": "Google Gemini 2.0 Flash language model used for generative AI content creation via the Gemini API.",
+        "description": "Google Gemini 2.0 Flash generative AI model used for content generation via Google AI APIs.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -647,12 +647,12 @@
       ]
     },
     {
-      "id": "69c698ee-ed95-48bb-8d56-9ee010b3c299",
+      "id": "575751b0-e2de-42f4-a679-19292cfa3f76",
       "name": "gemini-3.1",
       "component_type": "MODEL",
       "confidence": 0.528,
       "metadata": {
-        "description": "Gemini 3.1 is a machine learning model component identified by the generic model name gemini-3.1.",
+        "description": "Gemini 3.1 is a model component identified by the generic model name gemini-3.1.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -708,13 +708,13 @@
       ]
     },
     {
-      "id": "8c790770-034c-49e9-9d75-0397714dc8a5",
+      "id": "546add40-f5d7-43a6-b2a2-3496048f5340",
       "name": "MODEL",
       "component_type": "MODEL",
       "confidence": 0.8448000000000001,
       "metadata": {
         "framework": "google",
-        "description": "Google model identifier used by ai.models.generateContent to select the target LLM for content generation.",
+        "description": "Google model identifier used by the generateContent API to select the language model for content generation.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -757,13 +757,13 @@
       ]
     },
     {
-      "id": "ab22ccc4-aacc-4040-83d9-ac40da1f4948",
+      "id": "3e0f6e62-edeb-4773-921b-2b9fced81479",
       "name": "email_out",
       "component_type": "PRIVILEGE",
       "confidence": 0.4840000000000001,
       "metadata": {
         "privilege_scope": "email_out",
-        "description": "Privilege granting permission to send outbound email messages.",
+        "description": "Privilege allowing the system to send outgoing email messages.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -772,7 +772,7 @@
           "evidence_count": 2,
           "privilege_scope": "email_out",
           "llm_soft_rejected": true,
-          "llm_verification_reason": "The provided context only shows a comment/docstring for a function that fetches emails; it does not demonstrate an outbound email-sending capability or any AI-related privileged action. As shown, this is not verifiable as a production PRIVILEGE node.",
+          "llm_verification_reason": "The provided context only shows a TypeScript interface and a comment for fetching emails; there is no concrete email-sending implementation, AI functionality, or privileged action visible here. The detected name 'email_out' is not supported by the shown code.",
           "confidence_breakdown": {
             "regex_confidence": 0.55,
             "llm_confidence": 0.0,
@@ -811,13 +811,13 @@
       ]
     },
     {
-      "id": "33395384-065a-4b39-b951-d6ced738bb44",
+      "id": "b238578e-460d-4379-b690-4e33fa0d18ad",
       "name": "filesystem_write",
       "component_type": "PRIVILEGE",
       "confidence": 0.44000000000000006,
       "metadata": {
         "privilege_scope": "filesystem_write",
-        "description": "Privilege allowing write access to the filesystem, evidenced by opening service.yaml in write mode.",
+        "description": "Privilege allowing write access to filesystem files, evidenced by opening service.yaml in write mode.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -853,12 +853,12 @@
       ]
     },
     {
-      "id": "5540e3d9-807e-44e2-9dfe-609da61e0bfd",
+      "id": "0a454d29-345e-47c6-84c9-af3b35c1ae6d",
       "name": "System Instruction",
       "component_type": "PROMPT",
       "confidence": 1.0,
       "metadata": {
-        "description": "A prompt component containing system-level instructions embedded as an AST string literal.",
+        "description": "System instruction prompt defining assistant behavior and response constraints.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -874,9 +874,9 @@
           "enclosing_function": null,
           "content": "You are a concise web search assistant. Summarize the answer in 2-3 sentences. Driver-safe: no markdown, no bullet points.",
           "language": "typescript",
-          "description": "System prompt passed to the AI model to instruct it to act as a concise web search assistant and return a 2-3 sentence, driver-safe answer without markdown or bullet points.",
+          "description": "System prompt instructing the web search assistant to answer concisely in 2-3 sentences without markdown or bullet points.",
           "llm_verified": true,
-          "llm_verification_reason": "Concrete production code in an application file configures a model call with a systemInstruction prompt used at runtime.",
+          "llm_verification_reason": "Concrete production code in an application file invoking Gemini content generation with a systemInstruction prompt; not a test or mock.",
           "llm_confidence": 0.97,
           "confidence_breakdown": {
             "regex_confidence": 0.97,
@@ -908,13 +908,13 @@
       ]
     },
     {
-      "id": "8acbba94-ca1e-4b1a-9196-58c7a474c0eb",
+      "id": "9af910e0-9a34-4881-8886-f607951f337c",
       "name": "climate tools",
       "component_type": "TOOL",
       "confidence": 0.4840000000000001,
       "metadata": {
         "framework": "google-adk",
-        "description": "Provides tools for accessing and manipulating climate-related data and functions, enabling the system to retrieve, analyze, or act on environmental and weather information.",
+        "description": "Provides climate-related tools for retrieving, processing, or analyzing weather and environmental data within the Google ADK framework.",
         "high_privilege": false,
         "sql_injectable": false,
         "ssrf_possible": false,
@@ -930,7 +930,7 @@
           "framework": "google-adk",
           "language": "typescript",
           "llm_soft_rejected": true,
-          "llm_verification_reason": "The provided context is only an import statement ('import { createClimateTools } from './tools/climate.js'') with no evidence of concrete runtime usage or AI-specific tool behavior in production code.",
+          "llm_verification_reason": "The provided context is only an import statement for createClimateTools with no evidence of concrete runtime usage or actual tool instantiation in production code. This is insufficient to verify a real TOOL node.",
           "confidence_breakdown": {
             "regex_confidence": 0.55,
             "llm_confidence": 0.0,
@@ -959,13 +959,13 @@
       ]
     },
     {
-      "id": "c8952b54-8b85-486e-81a7-1c01ba6cedec",
+      "id": "bc4cbb64-e20d-4778-92d5-7e3b27567eaf",
       "name": "communication tools",
       "component_type": "TOOL",
       "confidence": 0.4840000000000001,
       "metadata": {
         "framework": "google-adk",
-        "description": "Provides communication tools that enable the system to send, receive, and manage messages or interactions with users and external services within the Google ADK framework.",
+        "description": "Provides the agent with communication capabilities for sending and receiving messages, enabling interaction with users or other systems through the Google ADK framework.",
         "high_privilege": false,
         "sql_injectable": false,
         "ssrf_possible": false,
@@ -981,7 +981,7 @@
           "framework": "google-adk",
           "language": "typescript",
           "llm_soft_rejected": true,
-          "llm_verification_reason": "Only an import statement is shown; no concrete tool definition or usage is present, so this is not sufficient to verify a production AI tool node.",
+          "llm_verification_reason": "This is only an import statement for createCommunicationTools, with no shown concrete usage or instantiation in production code. By the provided criteria, imports alone should be rejected.",
           "confidence_breakdown": {
             "regex_confidence": 0.55,
             "llm_confidence": 0.0,
@@ -1010,13 +1010,13 @@
       ]
     },
     {
-      "id": "66ae4118-d1d5-4fcc-886c-8ee29bc549a4",
+      "id": "72c06e3c-f009-4790-a137-03fab8665c49",
       "name": "media tools",
       "component_type": "TOOL",
       "confidence": 0.4840000000000001,
       "metadata": {
         "framework": "google-adk",
-        "description": "Provides media handling utilities for processing, transforming, or generating audio, image, and video content within the Google ADK workflow.",
+        "description": "Provides multimedia processing utilities for handling media inputs and outputs, such as generating, transforming, analyzing, or retrieving audio, image, and video assets within the Google ADK framewor",
         "high_privilege": false,
         "sql_injectable": false,
         "ssrf_possible": false,
@@ -1032,7 +1032,7 @@
           "framework": "google-adk",
           "language": "typescript",
           "llm_soft_rejected": true,
-          "llm_verification_reason": "Only an import statement is shown; there is no evidence of concrete tool definition or usage in production code, so this is not enough to verify a real TOOL node.",
+          "llm_verification_reason": "Only a bare import statement is shown, with no evidence that the tool is instantiated or used in production code. This is insufficient to verify a real AI-related TOOL node.",
           "confidence_breakdown": {
             "regex_confidence": 0.55,
             "llm_confidence": 0.0,
@@ -1061,13 +1061,13 @@
       ]
     },
     {
-      "id": "2a340cba-461a-4da8-8eb5-450238f856b2",
+      "id": "b5944198-3b60-4045-a0bf-7d8605c2d3c5",
       "name": "navigation tools",
       "component_type": "TOOL",
       "confidence": 0.4840000000000001,
       "metadata": {
         "framework": "google-adk",
-        "description": "Navigation tools provide the agent with functions to move between pages, routes, or UI states, enabling it to follow links, open destinations, and control application navigation.",
+        "description": "Navigation tools provide the agent with functions to inspect, open, and move between pages or locations in the application, enabling guided traversal and context-aware interaction.",
         "high_privilege": false,
         "sql_injectable": false,
         "ssrf_possible": false,
@@ -1083,7 +1083,7 @@
           "framework": "google-adk",
           "language": "typescript",
           "llm_soft_rejected": true,
-          "llm_verification_reason": "Only an import statement is shown, with no evidence of concrete usage or production instantiation of a navigation tool. This is insufficient to verify a real TOOL node.",
+          "llm_verification_reason": "The provided context is only an import statement for createNavigationTools with no concrete usage or instantiation shown, so this is not enough to verify a real production TOOL node.",
           "confidence_breakdown": {
             "regex_confidence": 0.55,
             "llm_confidence": 0.0,
@@ -1112,13 +1112,13 @@
       ]
     },
     {
-      "id": "023bbeea-c63b-4bfd-87f5-6b84f7edf64d",
+      "id": "6e88eb5a-2559-44f1-b7a8-91d634300479",
       "name": "search tools",
       "component_type": "TOOL",
       "confidence": 0.7680000000000001,
       "metadata": {
         "framework": "google-adk",
-        "description": "Provides search capabilities that retrieve relevant information from external sources or indexed data to support the system\u2019s responses and reasoning.",
+        "description": "Provides search-related tool capabilities for retrieving and querying information from external sources within the Google ADK framework.",
         "high_privilege": false,
         "sql_injectable": false,
         "ssrf_possible": false,
@@ -1162,13 +1162,13 @@
       ]
     },
     {
-      "id": "3b683185-0ea4-4690-a1e5-5d9c8eb05fdc",
+      "id": "775fdd02-3c1e-41a8-9d71-732136e79807",
       "name": "weather tools",
       "component_type": "TOOL",
       "confidence": 0.7680000000000001,
       "metadata": {
         "framework": "google-adk",
-        "description": "Provides weather-related tool functions for retrieving current conditions, forecasts, and related meteorological information within a Google ADK workflow.",
+        "description": "Provides weather-related tool functions within the Google ADK framework, enabling the system to retrieve and use current or forecast weather information.",
         "high_privilege": false,
         "sql_injectable": false,
         "ssrf_possible": false,
@@ -1212,13 +1212,13 @@
       ]
     },
     {
-      "id": "db215c69-8e0f-4f48-bf76-5b05fabd4873",
+      "id": "610e0be8-c015-4d0c-b43b-ce366d49e0e4",
       "name": "Gemini Car Assistant Assistant",
       "component_type": "AGENT",
       "confidence": 0.55,
       "metadata": {
         "endpoint": "/chat/message",
-        "description": "AI chat agent handling car assistant messages through the /chat/message endpoint.",
+        "description": "Agent that handles chat messages for the Gemini Car Assistant through the /chat/message endpoint.",
         "accepts_user_input": true,
         "request_body_schema": {},
         "chat_payload_key": "message",
@@ -1231,14 +1231,14 @@
       "evidence": []
     },
     {
-      "id": "268a2ed4-6476-45f2-8fd0-ff45a55e8ee1",
+      "id": "47863bcf-bf3c-4b5b-bc2b-2f1c7cc8d96e",
       "name": "* API",
       "component_type": "API_ENDPOINT",
       "confidence": 0.55,
       "metadata": {
         "endpoint": "*",
         "method": "GET",
-        "description": "Wildcard GET API endpoint matching any path in the service.",
+        "description": "Wildcard GET API endpoint used to retrieve resources or data for all matching routes.",
         "accepts_user_input": false,
         "request_body_schema": {},
         "chat_payload_list": false,
@@ -1250,19 +1250,19 @@
       "evidence": []
     },
     {
-      "id": "d563ca85-f1e2-4547-97d6-84f17618f67f",
+      "id": "e6becbfa-bc5b-47fc-a04c-0dd450fbb2cf",
       "name": "/api/agent/chat API",
       "component_type": "API_ENDPOINT",
       "confidence": 0.55,
       "metadata": {
         "endpoint": "/api/agent/chat",
         "method": "POST",
-        "description": "POST API endpoint /api/agent/chat that accepts agent chat requests.",
+        "description": "POST API endpoint /api/agent/chat that receives chat requests for an agent.",
         "accepts_user_input": true,
         "request_body_schema": {},
         "chat_payload_key": "message",
         "chat_payload_list": false,
-        "response_text_key": "response",
+        "response_text_key": "text",
         "extras": {
           "source": "auto_enrichment",
           "description_source": "llm_generated"
@@ -1278,7 +1278,7 @@
       "metadata": {
         "endpoint": "/health",
         "method": "GET",
-        "description": "GET /health endpoint that returns service health status for monitoring and availability checks.",
+        "description": "GET /health endpoint providing health status checks for the service.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -1296,7 +1296,7 @@
       "metadata": {
         "endpoint": "/chat",
         "method": "POST",
-        "description": "POST /chat API endpoint that accepts chat requests.",
+        "description": "POST /chat endpoint that accepts chat requests and returns generated chat responses.",
         "accepts_user_input": true,
         "request_body_schema": {},
         "chat_payload_key": "message",
@@ -1316,7 +1316,7 @@
       "metadata": {
         "endpoint": "/chat/message",
         "method": "POST",
-        "description": "POST API endpoint /chat/message that accepts chat message requests for processing and response generation.",
+        "description": "POST endpoint for sending chat messages to the /chat/message API.",
         "accepts_user_input": true,
         "request_body_schema": {},
         "chat_payload_key": "message",
@@ -1336,7 +1336,7 @@
       "metadata": {
         "endpoint": "/api*",
         "method": "GET",
-        "description": "GET API endpoint matching /api* path pattern for retrieving resource data.",
+        "description": "GET API endpoint matching /api* for retrieving application resources or data.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -1354,7 +1354,7 @@
       "metadata": {
         "endpoint": "/api/health",
         "method": "GET",
-        "description": "GET /api/health endpoint that returns application health status.",
+        "description": "GET /api/health health-check API endpoint that returns service status.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -1371,11 +1371,9 @@
       "confidence": 0.6,
       "metadata": {
         "endpoint": "/api/chat",
-        "method": "POST",
-        "description": "POST /api/chat endpoint that accepts chat requests and returns generated responses.",
-        "accepts_user_input": true,
+        "method": "GET",
+        "description": "GET /api/chat API endpoint that retrieves chat-related data or resources.",
         "request_body_schema": {},
-        "chat_payload_key": "message",
         "chat_payload_list": false,
         "extras": {
           "source": "runtime_probe",
@@ -1387,98 +1385,98 @@
   ],
   "edges": [
     {
-      "source": "e1ff10ad-102f-44a5-a28b-6e459c1825d6",
-      "target": "304ea4df-5255-42b5-9a81-7a9a8daf5610",
+      "source": "2c4a2e07-4b77-4b34-89fb-8ebe58a4613d",
+      "target": "2735e6fd-cbba-4062-a18c-5a7799c461f9",
       "relationship_type": "USES"
     },
     {
-      "source": "e1ff10ad-102f-44a5-a28b-6e459c1825d6",
-      "target": "8c790770-034c-49e9-9d75-0397714dc8a5",
+      "source": "2c4a2e07-4b77-4b34-89fb-8ebe58a4613d",
+      "target": "546add40-f5d7-43a6-b2a2-3496048f5340",
       "relationship_type": "USES"
     },
     {
-      "source": "e1ff10ad-102f-44a5-a28b-6e459c1825d6",
-      "target": "69c698ee-ed95-48bb-8d56-9ee010b3c299",
+      "source": "2c4a2e07-4b77-4b34-89fb-8ebe58a4613d",
+      "target": "575751b0-e2de-42f4-a679-19292cfa3f76",
       "relationship_type": "USES"
     },
     {
-      "source": "6556d8f4-844a-4d73-8eb9-ec9172474390",
-      "target": "304ea4df-5255-42b5-9a81-7a9a8daf5610",
+      "source": "3ab88c90-5afb-4a7c-9965-6c8e2e61fa70",
+      "target": "2735e6fd-cbba-4062-a18c-5a7799c461f9",
       "relationship_type": "USES"
     },
     {
-      "source": "6556d8f4-844a-4d73-8eb9-ec9172474390",
-      "target": "8c790770-034c-49e9-9d75-0397714dc8a5",
+      "source": "3ab88c90-5afb-4a7c-9965-6c8e2e61fa70",
+      "target": "546add40-f5d7-43a6-b2a2-3496048f5340",
       "relationship_type": "USES"
     },
     {
-      "source": "6556d8f4-844a-4d73-8eb9-ec9172474390",
-      "target": "69c698ee-ed95-48bb-8d56-9ee010b3c299",
+      "source": "3ab88c90-5afb-4a7c-9965-6c8e2e61fa70",
+      "target": "575751b0-e2de-42f4-a679-19292cfa3f76",
       "relationship_type": "USES"
     },
     {
-      "source": "b6c26676-8e80-43e0-80b8-37233fc3a42d",
-      "target": "1ec4aab6-beb0-4f11-a5c4-bf3229b858bc",
+      "source": "fb1bdf13-ea2b-4681-8c5a-b21179093444",
+      "target": "d6f00021-8774-447c-9fef-80b2e354c347",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "766e9bee-3082-4839-8378-12df0f755032",
-      "target": "1ec4aab6-beb0-4f11-a5c4-bf3229b858bc",
+      "source": "dd7dba6e-1ae4-450d-b009-c8d528b86f64",
+      "target": "d6f00021-8774-447c-9fef-80b2e354c347",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "12744a8c-9d77-473b-aaf4-ef1a2217aed9",
-      "target": "1ec4aab6-beb0-4f11-a5c4-bf3229b858bc",
+      "source": "bda17267-ae02-436b-b0b5-d6d53321ab47",
+      "target": "d6f00021-8774-447c-9fef-80b2e354c347",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "f9b4ff34-f0be-416c-9bfc-03086f8a85f3",
-      "target": "b6c26676-8e80-43e0-80b8-37233fc3a42d",
+      "source": "831a5ebb-b963-482c-a413-6ed7f5c9ed59",
+      "target": "fb1bdf13-ea2b-4681-8c5a-b21179093444",
       "relationship_type": "USES"
     },
     {
-      "source": "f9b4ff34-f0be-416c-9bfc-03086f8a85f3",
-      "target": "766e9bee-3082-4839-8378-12df0f755032",
+      "source": "831a5ebb-b963-482c-a413-6ed7f5c9ed59",
+      "target": "dd7dba6e-1ae4-450d-b009-c8d528b86f64",
       "relationship_type": "USES"
     },
     {
-      "source": "f9b4ff34-f0be-416c-9bfc-03086f8a85f3",
-      "target": "12744a8c-9d77-473b-aaf4-ef1a2217aed9",
+      "source": "831a5ebb-b963-482c-a413-6ed7f5c9ed59",
+      "target": "bda17267-ae02-436b-b0b5-d6d53321ab47",
       "relationship_type": "USES"
     },
     {
-      "source": "db215c69-8e0f-4f48-bf76-5b05fabd4873",
-      "target": "304ea4df-5255-42b5-9a81-7a9a8daf5610",
+      "source": "610e0be8-c015-4d0c-b43b-ce366d49e0e4",
+      "target": "2735e6fd-cbba-4062-a18c-5a7799c461f9",
       "relationship_type": "USES"
     },
     {
-      "source": "db215c69-8e0f-4f48-bf76-5b05fabd4873",
-      "target": "8acbba94-ca1e-4b1a-9196-58c7a474c0eb",
+      "source": "610e0be8-c015-4d0c-b43b-ce366d49e0e4",
+      "target": "9af910e0-9a34-4881-8886-f607951f337c",
       "relationship_type": "CALLS"
     },
     {
-      "source": "db215c69-8e0f-4f48-bf76-5b05fabd4873",
-      "target": "c8952b54-8b85-486e-81a7-1c01ba6cedec",
+      "source": "610e0be8-c015-4d0c-b43b-ce366d49e0e4",
+      "target": "bc4cbb64-e20d-4778-92d5-7e3b27567eaf",
       "relationship_type": "CALLS"
     },
     {
-      "source": "db215c69-8e0f-4f48-bf76-5b05fabd4873",
-      "target": "66ae4118-d1d5-4fcc-886c-8ee29bc549a4",
+      "source": "610e0be8-c015-4d0c-b43b-ce366d49e0e4",
+      "target": "72c06e3c-f009-4790-a137-03fab8665c49",
       "relationship_type": "CALLS"
     },
     {
-      "source": "db215c69-8e0f-4f48-bf76-5b05fabd4873",
-      "target": "2a340cba-461a-4da8-8eb5-450238f856b2",
+      "source": "610e0be8-c015-4d0c-b43b-ce366d49e0e4",
+      "target": "b5944198-3b60-4045-a0bf-7d8605c2d3c5",
       "relationship_type": "CALLS"
     },
     {
-      "source": "db215c69-8e0f-4f48-bf76-5b05fabd4873",
-      "target": "023bbeea-c63b-4bfd-87f5-6b84f7edf64d",
+      "source": "610e0be8-c015-4d0c-b43b-ce366d49e0e4",
+      "target": "6e88eb5a-2559-44f1-b7a8-91d634300479",
       "relationship_type": "CALLS"
     },
     {
-      "source": "db215c69-8e0f-4f48-bf76-5b05fabd4873",
-      "target": "3b683185-0ea4-4690-a1e5-5d9c8eb05fdc",
+      "source": "610e0be8-c015-4d0c-b43b-ce366d49e0e4",
+      "target": "775fdd02-3c1e-41a8-9d71-732136e79807",
       "relationship_type": "CALLS"
     }
   ],
@@ -1625,7 +1623,7 @@
     }
   ],
   "summary": {
-    "use_case": "This application appears to be a web search assistant that uses six Google ADK tool integrations for retrieval-oriented tasks, with support for text and voice input/output. It serves users needing concise search-based answers and includes capabilities grouped around climate, communication, media, navigation, search, and weather; images and video are not supported.",
+    "use_case": "This application appears to be a search-based retrieval assistant that uses Google ADK tool integrations to help users find information and likely support related tasks such as navigation, communication, media handling, climate, and weather queries. It serves end users who need concise answers from search and connected tools, and it supports text and voice input/output but does not support images or video. No MCP server is indicated.",
     "frameworks": [
       "google_adk_ts",
       "google-adk"
@@ -1691,7 +1689,7 @@
     "service_accounts": [
       "gcp-identity-deploy"
     ],
-    "iac_security_summary": "## Security Briefing\n\n### 1) Deployment posture\n- **Cloud provider:** GCP is the only detected cloud provider.\n- **Deployment model:** A GitHub Actions workflow named **\u201cDeploy to Cloud Run\u201d** deploys to GCP Cloud Run.\n- **Regions / HA / resilience:** No region, multi-region, or zone configuration was detected. The infrastructure data shows **no availability zones** and no explicit high-availability or failover setup.\n- **Exposure:** A deployment node named **\u201cPort 3000\u201d** indicates the application listens on port 3000, but no ingress controls are visible in the provided data.\n\n### 2) Secret management\n- **Secret store in use:** `github_actions_secret`\n- **Risk signal:** `secrets_in_build_args` was detected, which indicates a plaintext-secret exposure risk during image build or CI execution.\n- **Assessment:** Secret storage is present in GitHub Actions secrets, but the configuration still shows a likely path for secrets to be passed via build arguments, which is weaker than runtime injection and can leak into build logs, image layers, or cache metadata.\n\n### 3) Encryption\n- **Encryption-at-rest coverage:** `false`\n- **Key management:** No KMS, CMEK, or other key-management mechanism was detected.\n- **Assessment:** There is no evidence of encryption-at-rest coverage in the supplied configuration, so storage and artifact encryption posture is not demonstrated.\n\n### 4) IAM / least-privilege\n- **Service account:** `gcp-identity-deploy`\n- **Trust relationship:** The GCP service account trusts **`github-actions`**.\n- **Permissions:** `contents:read` and `id-token:write`\n- **Assessment:**  \n  - The permissions shown are narrowly scoped for OIDC-based deployment, which is a good baseline.\n  - However, IAM scope is **project-level**, and no finer-grained restrictions are visible in the provided data.\n  - No environment protections or additional trust conditions were detected.\n- **Risk note:** The absence of additional constraints means the effective blast radius is governed by the project-level service account binding.\n\n### 5) CI/CD security\n- **Runner:** `ubuntu-latest`\n- **Triggers:** `push` and `workflow_dispatch`\n- **OIDC:** Enabled (`uses_oidc: true`)\n- **Assessment:**  \n  - OIDC is preferred over long-lived cloud credentials.\n  - `workflow_dispatch` expands manual invocation surface.\n  - `push` means deployments may be triggered automatically by repository changes.\n  - No environment protection rules were detected, and no self-hosted runner controls are present; the workflow uses GitHub-hosted infrastructure.\n\n### 6) Container security\n- **Base image:** `node:20-slim`\n- **Root container / health checks / resource limits:** Not evidenced in the supplied data.\n- **Assessment:** There is no visibility into whether the container runs as root, includes health checks, or enforces CPU/memory limits. These controls are not shown and should be verified in the Dockerfile and deployment spec.\n\n### 7) Top risks and recommendations\n1. **Eliminate secret exposure in build arguments**\n   - Replace build-arg secret usage with runtime secret injection or mounted secrets.\n   - Ensure secrets do not appear in build logs, layers, or cache.\n\n2. **Define encryption-at-rest and key management**\n   - Enable and document encryption-at-rest for all relevant storage/services.\n   - If applicable, use CMEK/KMS and confirm key rotation/access controls.\n\n3. **Tighten deployment and container controls**\n   - Add explicit resource limits, health checks, and non-root execution in the container spec.\n   - Add deployment environment protections and confirm the GitHub Actions trust conditions are constrained as tightly as possible for the GCP service account.",
+    "iac_security_summary": "## Security briefing\n\n### 1) Deployment posture\n- **Cloud provider:** GCP only.\n- **Deployment mechanism:** GitHub Actions workflow named **\u201cDeploy to Cloud Run\u201d** deploys to **Cloud Run**.\n- **Regions / zones:** No region, zone, or multi-region configuration is present in the provided data.\n- **HA / resilience:** No explicit high-availability, failover, or redundancy configuration is detected. The configuration shown does not indicate multiple instances, zones, or regional replication.\n\n### 2) Secret management\n- **Secret store in use:** `github_actions_secret`.\n- **Risk signal:** `secrets_in_build_args` is present, indicating secrets may be passed through build arguments.\n- **Security impact:** Build args are commonly exposed in image metadata, build logs, or CI traces depending on tooling and logging settings. This is a plaintext-exposure risk and should be treated as sensitive.\n\n### 3) Encryption\n- **Encryption-at-rest coverage:** `false`.\n- **Key management:** No KMS, CMEK, or other key-management configuration is shown.\n- **Security impact:** Based on the provided data, there is no evidence of at-rest encryption coverage being enforced or explicitly configured for the application stack.\n\n### 4) IAM / least privilege\n- **Service account:** `gcp-identity-deploy` (project-scoped).\n- **Trust model:** The service account trusts **`github-actions`** and uses **OIDC** (`id-token:write`).\n- **Permissions observed:** `contents:read`, `id-token:write`.\n- **Assessment:** The permissions shown are minimal for GitHub Actions federation and source access. No obvious over-permission is visible in the supplied data.\n- **Caution:** The service account is project-scoped, so the actual risk depends on any attached GCP IAM roles, which are not provided here.\n\n### 5) CI/CD security\n- **Runner:** `ubuntu-latest` hosted GitHub runner.\n- **OIDC:** Enabled, which is preferable to long-lived cloud credentials.\n- **Workflow triggers:** `push` and `workflow_dispatch`.\n  - `push` increases the attack surface to every commit reaching the triggering branch.\n  - `workflow_dispatch` introduces manual execution risk and requires strict access control on repository permissions.\n- **Security note:** No environment protection rules are configured (`environments: []`), so there is no evidence of deployment gating, approvals, or environment-scoped secrets.\n\n### 6) Container security\n- **Base image:** `node:20-slim`.\n- **Root container:** Not explicitly indicated, so root/non-root execution cannot be confirmed from the provided data.\n- **Health checks:** No health check is shown.\n- **Resource limits:** No CPU/memory limits are shown.\n- **Security impact:** Missing health checks and resource limits reduce runtime resilience and can make abuse or failure conditions harder to detect/contain.\n\n### 7) Top risks and recommendations\n1. **Eliminate secrets in build args**\n   - Replace build-arg secret passing with CI secret injection patterns or runtime secret delivery.\n   - Verify logs, build cache, and image metadata do not expose sensitive values.\n\n2. **Define encryption and key management explicitly**\n   - Enable/verify at-rest encryption for all persisted data stores.\n   - If data sensitivity warrants it, use CMEK/KMS and document key ownership, rotation, and access controls.\n\n3. **Harden CI/CD and deployment controls**\n   - Add environment protections/approvals for production deployments.\n   - Restrict `workflow_dispatch` usage to approved maintainers.\n   - Pin runner and action versions where possible, and review the effective GCP IAM roles granted to `gcp-identity-deploy`.",
     "data_classification": [],
     "classified_tables": [],
     "startup_commands": [
@@ -1722,6 +1720,6 @@
       "/run_sse"
     ]
   },
-  "relationship_graph_md": "## Component Relationship Graph\n\n- **Frameworks and models**\n  - `framework:google_adk_ts` and `llm_clients_ts` both use the models `gemini-2.0-flash`, `gemini-3.1`, and a generic `MODEL` node.\n  - The graph shows **model access through frameworks**, not direct user-to-model connections.\n\n- **Prompts / guardrails**\n  - `System Instruction` is present as a prompt component, but it has **no connections** to any framework, model, or tool in the graph.\n  - This means the graph does **not show any enforced prompt-to-execution guardrail path**.\n\n- **Tools available**\n  - The system includes these tool groups: **climate, communication, media, navigation, search, and weather**.\n  - All listed tools have **no connections** in the graph, so no agent/framework is shown orchestrating them.\n\n- **Data flow / reachable resources**\n  - No databases, storage systems, or external data stores are shown.\n  - No tool calls, retrieval paths, or external API/data-access flows are visible.\n\n- **Security observations**\n  - The main visible risk pattern is **unguarded tool presence**: tools exist but are not shown as controlled by any framework or prompt policy.\n  - There is also **missing guardrail coverage in the graph**, since the `System Instruction` is disconnected.\n  - Because the graph lacks tool orchestration edges, it is not possible to confirm any access controls or restrictions from this view.\n\n```mermaid\nflowchart LR\n    framework_google_adk_ts_e1ff10[/\"\u2699 framework:google_adk_ts\"/]\n    llm_clients_ts_6556d8[/\"\u2699 llm_clients_ts\"/]\n    gemini_2_0_flash_304ea4[(\"\ud83e\udde0 gemini-2.0-flash\")]\n    gemini_3_1_69c698[(\"\ud83e\udde0 gemini-3.1\")]\n    MODEL_8c7907[(\"\ud83e\udde0 MODEL\")]\n    System_Instruction_5540e3>\"\ud83d\udcac System Instruction\"]\n    climate_tools_8acbba(\"\ud83d\udd27 climate tools\")\n    communication_tools_c8952b(\"\ud83d\udd27 communication tools\")\n    media_tools_66ae41(\"\ud83d\udd27 media tools\")\n    navigation_tools_2a340c(\"\ud83d\udd27 navigation tools\")\n    search_tools_023bbe(\"\ud83d\udd27 search tools\")\n    weather_tools_3b6831(\"\ud83d\udd27 weather tools\")\n\n    framework_google_adk_ts_e1ff10 -->|uses| gemini_2_0_flash_304ea4\n    framework_google_adk_ts_e1ff10 -->|uses| MODEL_8c7907\n    framework_google_adk_ts_e1ff10 -->|uses| gemini_3_1_69c698\n    llm_clients_ts_6556d8 -->|uses| gemini_2_0_flash_304ea4\n    llm_clients_ts_6556d8 -->|uses| MODEL_8c7907\n    llm_clients_ts_6556d8 -->|uses| gemini_3_1_69c698\n\n    classDef agent    fill:#4A90D9,stroke:#2C6FAC,color:#fff\n    classDef tool     fill:#7ED321,stroke:#5A9A18,color:#fff\n    classDef model    fill:#9B59B6,stroke:#7D3C98,color:#fff\n    classDef prompt   fill:#F39C12,stroke:#D68910,color:#fff\n    classDef guard    fill:#E74C3C,stroke:#C0392B,color:#fff\n    classDef store    fill:#1ABC9C,stroke:#17A589,color:#fff\n    classDef fw       fill:#95A5A6,stroke:#717D7E,color:#fff\n    classDef endpoint fill:#3498DB,stroke:#2471A3,color:#fff\n    class climate_tools_8acbba,communication_tools_c8952b,media_tools_66ae41,navigation_tools_2a340c,search_tools_023bbe,weather_tools_3b6831 tool\n    class gemini_2_0_flash_304ea4,gemini_3_1_69c698,MODEL_8c7907 model\n    class System_Instruction_5540e3 prompt\n    class framework_google_adk_ts_e1ff10,llm_clients_ts_6556d8 fw\n```",
-  "_enrichment_cache_key": "ea2e2dc3412e46e9fdbcd5e11fc081f8a4e5d2a7b6a865309d962feb9d6c1c53"
+  "relationship_graph_md": "## Component Relationship Graph\n\n- **Core frameworks:** The system uses two framework components, **`framework:google_adk_ts`** and **`llm_clients_ts`**, both of which connect to the same set of models: **`gemini-2.0-flash`**, **`gemini-3.1`**, and a generic **`MODEL`** node.\n- **Prompting:** **`System Instruction`** is present as a prompt component, but it has **no connections** shown to frameworks, models, or tools.\n- **Tools present:** The graph lists six tool groups \u2014 **climate**, **communication**, **media**, **navigation**, **search**, and **weather** \u2014 but **none are connected** to any framework or model.\n- **Data flow visible in the graph:** The only explicit flows are **framework \u2192 model** usage relationships. No agent-to-tool, tool-to-data-store, or tool-to-external-system paths are shown.\n- **Security observations:**\n  - The tool components appear **unwired / unguarded in the graph**, since there is no visible orchestration or access control path.\n  - There is **no evidence of datastore access** or sensitive data exposure in the relationships provided.\n  - Because no guardrail or policy connections are shown, **coverage for tool use and prompt enforcement is not visible** from this graph alone.\n\n```mermaid\nflowchart LR\n    framework_google_adk_ts_2c4a2e[/\"\u2699 framework:google_adk_ts\"/]\n    llm_clients_ts_3ab88c[/\"\u2699 llm_clients_ts\"/]\n    gemini_2_0_flash_2735e6[(\"\ud83e\udde0 gemini-2.0-flash\")]\n    gemini_3_1_575751[(\"\ud83e\udde0 gemini-3.1\")]\n    MODEL_546add[(\"\ud83e\udde0 MODEL\")]\n    System_Instruction_0a454d>\"\ud83d\udcac System Instruction\"]\n    climate_tools_9af910(\"\ud83d\udd27 climate tools\")\n    communication_tools_bc4cbb(\"\ud83d\udd27 communication tools\")\n    media_tools_72c06e(\"\ud83d\udd27 media tools\")\n    navigation_tools_b59441(\"\ud83d\udd27 navigation tools\")\n    search_tools_6e88eb(\"\ud83d\udd27 search tools\")\n    weather_tools_775fdd(\"\ud83d\udd27 weather tools\")\n\n    framework_google_adk_ts_2c4a2e -->|uses| gemini_2_0_flash_2735e6\n    framework_google_adk_ts_2c4a2e -->|uses| MODEL_546add\n    framework_google_adk_ts_2c4a2e -->|uses| gemini_3_1_575751\n    llm_clients_ts_3ab88c -->|uses| gemini_2_0_flash_2735e6\n    llm_clients_ts_3ab88c -->|uses| MODEL_546add\n    llm_clients_ts_3ab88c -->|uses| gemini_3_1_575751\n\n    classDef agent    fill:#4A90D9,stroke:#2C6FAC,color:#fff\n    classDef tool     fill:#7ED321,stroke:#5A9A18,color:#fff\n    classDef model    fill:#9B59B6,stroke:#7D3C98,color:#fff\n    classDef prompt   fill:#F39C12,stroke:#D68910,color:#fff\n    classDef guard    fill:#E74C3C,stroke:#C0392B,color:#fff\n    classDef store    fill:#1ABC9C,stroke:#17A589,color:#fff\n    classDef fw       fill:#95A5A6,stroke:#717D7E,color:#fff\n    classDef endpoint fill:#3498DB,stroke:#2471A3,color:#fff\n    class climate_tools_9af910,communication_tools_bc4cbb,media_tools_72c06e,navigation_tools_b59441,search_tools_6e88eb,weather_tools_775fdd tool\n    class gemini_2_0_flash_2735e6,gemini_3_1_575751,MODEL_546add model\n    class System_Instruction_0a454d prompt\n    class framework_google_adk_ts_2c4a2e,llm_clients_ts_3ab88c fw\n```",
+  "_enrichment_cache_key": "bfc4004f4a31ed403186936c9d5a5b50376fc19d098f0f04ca9dfcab52671595"
 }

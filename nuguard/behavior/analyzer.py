@@ -280,6 +280,28 @@ class BehaviorAnalyzer:
         else:
             result.scan_outcome = "no_findings"
 
+        # Step 7: LLM executive summary (opt-in — only when llm_client is configured)
+        if self._llm and all_findings:
+            try:
+                from nuguard.redteam.llm_engine.summary_generator import LLMSummaryGenerator
+                frameworks: list[str] = []
+                if self._sbom and self._sbom.summary:
+                    frameworks = list(getattr(self._sbom.summary, "frameworks_detected", None) or [])
+                summary_gen = LLMSummaryGenerator(self._llm)
+                result.llm_executive_summary = await summary_gen.behavior_executive_summary(
+                    target_url=getattr(self._config, "target", "") or "",
+                    app_purpose=intent.app_purpose,
+                    risk_score=result.overall_risk_score,
+                    coverage_pct=result.coverage_percentage,
+                    alignment_score=result.intent_alignment_score,
+                    scenarios_run=len(result.scenario_results),
+                    static_findings=static_findings,
+                    dynamic_findings=dynamic_findings,
+                    frameworks=frameworks,
+                )
+            except Exception as exc:
+                _log.warning("Behavior executive summary generation failed: %s", exc)
+
         _log.info(
             "BehaviorAnalyzer.analyze: complete — outcome=%s, risk=%.1f, coverage=%.0f%%",
             result.scan_outcome,

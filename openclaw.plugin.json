@@ -1,6 +1,6 @@
 {
   "id": "nuguard",
-  "version": "0.5.8",
+  "version": "0.5.9",
   "format": "claude-plugin",
   "source": ".claude-plugin/plugin.json",
   "hostTargets": [
