@@ -97,7 +97,8 @@ class ScenarioGenerator:
         from nuguard.redteam.catalog.capability import CapabilityDetector
         self._caps = CapabilityDetector(sbom, self._policy).build()
         # Coverage report produced by the last generate_from_catalog() call.
-        self.last_coverage = None
+        from nuguard.redteam.catalog.coverage import CoverageReport as _CR
+        self.last_coverage: _CR | None = None
 
     def generate(self, with_guided: bool = False) -> list[AttackScenario]:
         """Generate all attack scenarios sorted by impact score descending.

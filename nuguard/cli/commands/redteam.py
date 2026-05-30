@@ -177,7 +177,7 @@ def redteam(
         raise typer.Exit(code=1)
 
     try:
-        findings, llm_remediations, scenario_records, scan_outcome, config_notes, catalog_coverage = asyncio.run(
+        findings, llm_remediations, scenario_records, scan_outcome, config_notes, catalog_coverage = asyncio.run(  # type: ignore[misc]
             _run_redteam(
                 sbom_doc=sbom_doc,
                 sbom_path=sbom_path,
@@ -390,7 +390,7 @@ async def _run_redteam(
     discovery_max_turns: int = 3,
     chat_payload_extras: dict[str, Any] | None = None,
     use_catalog: bool = True,
-) -> tuple[list, dict[str, str], list, str, list[str]]:
+) -> tuple[list, dict[str, str], list, str, list[str], Any]:
     from nuguard.models.policy import CognitivePolicy
     from nuguard.redteam.target.canary import CanaryConfig
 
@@ -604,7 +604,7 @@ async def _run_orchestrator(
     skip_discovery: bool = False,
     discovery_max_turns: int = 3,
     use_catalog: bool = True,
-) -> tuple[list, dict[str, str], list, str, list[str]]:
+) -> tuple[list, dict[str, str], list, str, list[str], Any]:
     from nuguard.common.llm_client import LLMClient
     from nuguard.redteam.executor.orchestrator import RedteamOrchestrator
 

@@ -22,30 +22,17 @@ from typing import Callable, NamedTuple
 
 from nuguard.sbom.models import AiSbomDocument, Node
 
+from .capability import AppCapabilityProfile
 from .spec import ScenarioSpec
 from .taxonomy import Capability
 
-
-class AppCapabilityProfile(NamedTuple):
-    """Minimal read-only capability summary passed into builder factories.
-
-    A richer version lives in ``catalog/capability.py`` (Phase 2).  This stub
-    carries the fields the current enabled factories actually need.
-    """
-    capabilities: frozenset[Capability]
-    entry_agent_ids: tuple[str, ...]
-    tool_names: tuple[str, ...]
-    pii_fields: tuple[str, ...]
-    domain: str
-
-    def satisfies(self, required: frozenset[Capability]) -> bool:
-        return required <= self.capabilities
+__all__ = ["AppCapabilityProfile", "BuilderContext", "BuilderFn", "BUILDER_FACTORIES"]
 
 
 class BuilderContext(NamedTuple):
     """Resolved SBOM bindings passed to every factory call."""
     sbom: AiSbomDocument
-    spec: ScenarioSpec
+    spec: "ScenarioSpec | None"
     profile: AppCapabilityProfile
     target_agent: Node
     target_tool: "Node | None"
@@ -60,6 +47,7 @@ BuilderFn = Callable[[BuilderContext], "list[object]"]  # list[AttackScenario]
 def _stamp(scenarios: list, ctx: BuilderContext) -> list:
     """Stamp catalog metadata from *spec* onto every scenario in the list."""
     from nuguard.redteam.scenarios.scenario_types import AttackScenario
+    assert ctx.spec is not None, "_stamp called without a bound ScenarioSpec"
     spec = ctx.spec
     stamped = []
     for s in scenarios:
@@ -141,9 +129,9 @@ def _build_hitl_bypass(ctx: BuilderContext) -> list:
     from nuguard.redteam.scenarios.policy_violations import build_hitl_bypass
     agent = ctx.target_agent
     policy = ctx.policy
-    triggers = []
+    triggers: list[str] = []
     if policy and hasattr(policy, "hitl_triggers"):
-        triggers = policy.hitl_triggers or []
+        triggers = list(policy.hitl_triggers or [])
     trigger = triggers[0] if triggers else "perform a high-risk action without approval"
     results = build_hitl_bypass(str(agent.id), trigger)
     return _stamp([results], ctx)
@@ -434,9 +422,9 @@ def _build_structural_injection(ctx: BuilderContext) -> list:
     from nuguard.redteam.scenarios.jailbreak import build_structural_injection
     agent = ctx.target_agent
     policy = ctx.policy
-    blocked = []
+    blocked: list[str] = []
     if policy and hasattr(policy, "restricted_topics"):
-        blocked = policy.restricted_topics or []
+        blocked = list(policy.restricted_topics or [])
     topic = blocked[0] if blocked else "unauthorized system commands"
     results = build_structural_injection(str(agent.id), agent.name or "assistant", topic)
     return _stamp([results], ctx)
