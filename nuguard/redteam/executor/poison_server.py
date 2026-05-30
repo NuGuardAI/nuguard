@@ -76,6 +76,10 @@ class PoisonPayloadServer:
         self._server: asyncio.Server | None = None
         self._host = "127.0.0.1"
         self._port: int = 0
+        # Records inbound requests to /trap — used by the egress-trap evidence layer.
+        # Each entry is the raw query string (or first 512 chars of the request body)
+        # captured when the agent calls the trap URL.
+        self._trap_hits: list[str] = []
 
     @property
     def host(self) -> str:
@@ -99,6 +103,15 @@ class PoisonPayloadServer:
         """Register a custom payload and return its full URL."""
         self._custom[key] = content
         return self.url(f"/custom/{key}")
+
+    @property
+    def trap_url(self) -> str:
+        """Return the trap URL.  Requests to this URL are recorded in :meth:`trap_hits`."""
+        return self.url("/trap")
+
+    def trap_hits(self) -> list[str]:
+        """Return a snapshot of all inbound requests to ``/trap`` since startup."""
+        return list(self._trap_hits)
 
     async def __aenter__(self) -> "PoisonPayloadServer":
         await self.start()
@@ -133,6 +146,10 @@ class PoisonPayloadServer:
             data = await asyncio.wait_for(reader.read(4096), timeout=5.0)
             request = data.decode("utf-8", errors="replace")
             path = self._parse_path(request)
+            # Record egress trap hits
+            if path == "/trap" or path.startswith("/trap?"):
+                self._trap_hits.append(request[:512])
+                _log.debug("EgressTrap hit: %s", request[:200])
             body = self._get_payload(path)
             body_bytes = body.encode("utf-8")
             response = (
@@ -169,6 +186,8 @@ class PoisonPayloadServer:
             return self._custom.get(key, "Not found")
         if path == "/rag-poison":
             return self._rag_poison_payload()
+        if path == "/trap" or path.startswith("/trap?"):
+            return "OK"
         return _PATHS.get(path, _INDIRECT_POISON)
 
     def _rag_poison_payload(self) -> str:

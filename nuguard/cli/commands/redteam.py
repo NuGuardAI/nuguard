@@ -177,7 +177,7 @@ def redteam(
         raise typer.Exit(code=1)
 
     try:
-        findings, llm_remediations, scenario_records, scan_outcome, config_notes = asyncio.run(
+        findings, llm_remediations, scenario_records, scan_outcome, config_notes, catalog_coverage = asyncio.run(
             _run_redteam(
                 sbom_doc=sbom_doc,
                 sbom_path=sbom_path,
@@ -274,7 +274,8 @@ def redteam(
         if effective_format == "markdown":
             output.write_text(
                 _findings_to_markdown(findings, meta, remediation_plan=remediation_plan,
-                                      scenario_records=scenario_records),
+                                      scenario_records=scenario_records,
+                                      catalog_coverage=catalog_coverage),
                 encoding="utf-8",
             )
         else:
@@ -388,6 +389,7 @@ async def _run_redteam(
     skip_discovery: bool = False,
     discovery_max_turns: int = 3,
     chat_payload_extras: dict[str, Any] | None = None,
+    use_catalog: bool = True,
 ) -> tuple[list, dict[str, str], list, str, list[str]]:
     from nuguard.models.policy import CognitivePolicy
     from nuguard.redteam.target.canary import CanaryConfig
@@ -512,6 +514,7 @@ async def _run_redteam(
                 similar_miss_threshold=similar_miss_threshold,
                 skip_discovery=skip_discovery,
                 discovery_max_turns=discovery_max_turns,
+                use_catalog=use_catalog,
             )
 
     # App already running — just scan
@@ -556,6 +559,7 @@ async def _run_redteam(
         similar_miss_threshold=similar_miss_threshold,
         skip_discovery=skip_discovery,
         discovery_max_turns=discovery_max_turns,
+        use_catalog=use_catalog,
     )
 
 
@@ -599,6 +603,7 @@ async def _run_orchestrator(
     similar_miss_threshold: int = 4,
     skip_discovery: bool = False,
     discovery_max_turns: int = 3,
+    use_catalog: bool = True,
 ) -> tuple[list, dict[str, str], list, str, list[str]]:
     from nuguard.common.llm_client import LLMClient
     from nuguard.redteam.executor.orchestrator import RedteamOrchestrator
@@ -646,10 +651,13 @@ async def _run_orchestrator(
         similar_miss_threshold=similar_miss_threshold,
         skip_discovery=skip_discovery,
         discovery_max_turns=discovery_max_turns,
+        use_catalog=use_catalog,
     )
+
     findings = await orchestrator.run()
     llm_remediations: dict[str, str] = orchestrator.llm_remediations
     scenario_records = orchestrator.scenario_records
+    catalog_coverage = getattr(orchestrator, "catalog_coverage", None)
 
     # Apply scenario filter if provided
     if scenario_filter:
@@ -666,7 +674,7 @@ async def _run_orchestrator(
     config_notes: list[str] = list(getattr(orchestrator, "config_notes", []))
     for note in config_notes:
         typer.echo(f"\n⚠ {note}", err=True)
-    return findings, llm_remediations, scenario_records, scan_outcome, config_notes
+    return findings, llm_remediations, scenario_records, scan_outcome, config_notes, catalog_coverage
 
 
 def _print_findings(
@@ -742,6 +750,7 @@ def _findings_to_markdown(
     meta: ReportMeta | None = None,
     remediation_plan: list | None = None,
     scenario_records: list | None = None,
+    catalog_coverage: object | None = None,
 ) -> str:
     """Delegate to :func:`nuguard.redteam.report.to_markdown`."""
     from nuguard.redteam.report import to_markdown
@@ -750,6 +759,7 @@ def _findings_to_markdown(
         meta=meta,
         remediation_plan=remediation_plan,
         scenario_records=scenario_records,
+        catalog_coverage=catalog_coverage,
     )
 
 

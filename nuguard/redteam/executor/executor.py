@@ -24,11 +24,11 @@ from nuguard.models.exploit_chain import HTTP_2XX_SENTINEL, ExploitChain, Exploi
 from nuguard.models.policy import CognitivePolicy
 from nuguard.redteam.llm_engine.adaptive_mutation import AdaptiveMutationStrategy
 from nuguard.redteam.llm_engine.happy_path import generate_happy_path_opener
+from nuguard.redteam.llm_engine.refusal_patterns import HARD_REFUSAL_TOKENS
 from nuguard.redteam.llm_engine.response_evaluator import LLMResponseEvaluator
 from nuguard.redteam.policy_engine.evaluator import PolicyEvaluator, PolicyViolation
 from nuguard.redteam.target.action_logger import ActionLogger
 from nuguard.redteam.target.canary import CanaryScanner
-from nuguard.redteam.llm_engine.refusal_patterns import HARD_REFUSAL_TOKENS
 from nuguard.redteam.target.client import TargetAppClient, TargetUnavailableError
 from nuguard.redteam.target.session import AttackSession
 
@@ -205,6 +205,15 @@ class StepResult:
         self.llm_eval_confidence: str = ""
         # Set when golden-data filter suppresses a keyword hit as own-account data
         self.golden_data_suppressed: bool = False
+        # Phase 3: catalog evidence layers
+        # Populated by tool_trace_judge after canary scanning
+        self.tool_trace_findings: list[str] = []
+        self.tool_trace_hit: bool = False
+        # Populated by artifact_scanner for covert-exfil scenarios
+        self.artifact_findings: list[str] = []
+        self.artifact_hit: bool = False
+        # Egress-trap hits (set by orchestrator after scenario completes)
+        self.egress_trap_hits: list[str] = []
 
 
 def _make_discover_step(chain_id: str, target_node_id: str) -> ExploitStep:
@@ -751,6 +760,34 @@ class AttackExecutor:
             result.canary_hits = (
                 self._canary.scan(response) + self._canary.scan_decoded(response)
             )
+
+        # Tool-call trace judge (catalog Phase 3: T/M/G/B series evidence)
+        if result.tool_calls:
+            from nuguard.redteam.executor.tool_trace_judge import judge_tool_calls
+            _trace = judge_tool_calls(
+                tool_calls=result.tool_calls,
+                response_text=response,
+                step_description=step.description,
+            )
+            if _trace.any_hit:
+                result.tool_trace_findings = _trace.details
+                result.tool_trace_hit = True
+
+        # Artifact scanner (catalog Phase 3: C01/C02/C07 covert exfil evidence)
+        if step.step_type == "INJECT":
+            from nuguard.redteam.executor.artifact_scanner import scan_response
+            _artifacts = scan_response(
+                response_text=response,
+                canary_values=result.canary_hits or (
+                    list(self._canary.watch_values) if self._canary and hasattr(self._canary, "watch_values") else []
+                ),
+            )
+            if _artifacts.any_hit:
+                result.artifact_findings = _artifacts.details
+                result.artifact_hit = True
+                if _artifacts.canary_in_url and not result.canary_hits:
+                    # Promote to canary tier — canary embedded in a URL
+                    result.canary_hits = ["canary-in-url"]
 
         # Refusal suppression: suppress keyword hit when the response is a hard
         # refusal and no canary data was leaked. Prevents false positives from

@@ -152,17 +152,31 @@ def _build_hitl_bypass(ctx: BuilderContext) -> list:
 def _build_mass_assignment(ctx: BuilderContext) -> list:
     from nuguard.redteam.scenarios.api_attacks import build_mass_assignment
     agent = ctx.target_agent
-    # Mass assignment needs an API_ENDPOINT node; fall back to agent node
     target = ctx.target_tool or agent
-    results = build_mass_assignment(str(target.id), target.name or "endpoint")
+    # build_mass_assignment requires a path parameter; use a generic one
+    results = build_mass_assignment(str(target.id), target.name or "endpoint", path="/api/users")
     return _stamp([results], ctx)
 
 
 def _build_indirect_injection(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.prompt_injection import build_indirect_injection
+    from nuguard.redteam.catalog.taxonomy import DeliveryChannel
+    from nuguard.redteam.scenarios.indirect_injection import (
+        build_indirect_email_injection,
+        build_indirect_search_injection,
+        build_indirect_tool_output_injection,
+        build_indirect_web_injection,
+    )
     agent = ctx.target_agent
     tool_names = list(ctx.profile.tool_names[:3]) if ctx.profile.tool_names else []
-    results = build_indirect_injection(str(agent.id), agent.name or "assistant", tool_names)
+    channel = ctx.spec.delivery_channel if ctx.spec else None
+    if channel == DeliveryChannel.SEARCH_RESULT:
+        results = build_indirect_search_injection(str(agent.id), agent.name or "assistant", tool_names)
+    elif channel == DeliveryChannel.EMAIL:
+        results = build_indirect_email_injection(str(agent.id), agent.name or "assistant", tool_names)
+    elif channel == DeliveryChannel.TOOL_OUTPUT:
+        results = build_indirect_tool_output_injection(str(agent.id), agent.name or "assistant", tool_names)
+    else:
+        results = build_indirect_web_injection(str(agent.id), agent.name or "assistant", tool_names)
     return _stamp([results], ctx)
 
 
@@ -201,6 +215,161 @@ def _build_memory_poisoning(ctx: BuilderContext) -> list:
     from nuguard.redteam.scenarios.agentic_attacks import build_memory_poisoning
     agent = ctx.target_agent
     results = build_memory_poisoning(str(agent.id), agent.name or "assistant")
+    return _stamp([results], ctx)
+
+
+def _build_profile_poisoning(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.memory_persistence import build_profile_field_poisoning
+    agent = ctx.target_agent
+    results = build_profile_field_poisoning(str(agent.id), agent.name or "assistant")
+    return _stamp([results], ctx)
+
+
+def _build_memory_auth_drift(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.memory_persistence import build_memory_auth_drift
+    agent = ctx.target_agent
+    results = build_memory_auth_drift(str(agent.id), agent.name or "assistant")
+    return _stamp([results], ctx)
+
+
+# ── Authorization builders ─────────────────────────────────────────────────
+
+def _build_bola_read(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.authorization import build_bola_read
+    agent = ctx.target_agent
+    pii = list(ctx.profile.pii_fields[:1]) if ctx.profile.pii_fields else ["account"]
+    results = build_bola_read(str(agent.id), agent.name or "assistant", pii[0])
+    return _stamp([results], ctx)
+
+
+def _build_bola_write(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.authorization import build_bola_write
+    agent = ctx.target_agent
+    pii = list(ctx.profile.pii_fields[:1]) if ctx.profile.pii_fields else ["account"]
+    results = build_bola_write(str(agent.id), agent.name or "assistant", pii[0])
+    return _stamp([results], ctx)
+
+
+def _build_bfla(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.authorization import build_bfla
+    agent = ctx.target_agent
+    tool = ctx.target_tool
+    priv_fn = tool.name if tool else "admin management console"
+    results = build_bfla(str(agent.id), agent.name or "assistant", priv_fn)
+    return _stamp([results], ctx)
+
+
+def _build_rbac_override(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.authorization import build_rbac_override
+    agent = ctx.target_agent
+    results = build_rbac_override(str(agent.id), agent.name or "assistant")
+    return _stamp([results], ctx)
+
+
+def _build_false_verification(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.authorization import build_false_verification
+    agent = ctx.target_agent
+    results = build_false_verification(str(agent.id), agent.name or "assistant")
+    return _stamp([results], ctx)
+
+
+def _build_debug_admin(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.authorization import build_debug_admin_exposure
+    agent = ctx.target_agent
+    results = build_debug_admin_exposure(str(agent.id), agent.name or "assistant")
+    return _stamp([results], ctx)
+
+
+# ── Covert exfiltration builders ────────────────────────────────────────────
+
+def _build_markdown_image(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.covert_exfiltration import build_markdown_image_exfil
+    agent = ctx.target_agent
+    results = build_markdown_image_exfil(str(agent.id), agent.name or "assistant")
+    return _stamp([results], ctx)
+
+
+def _build_markdown_link(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.covert_exfiltration import build_markdown_link_exfil
+    agent = ctx.target_agent
+    results = build_markdown_link_exfil(str(agent.id), agent.name or "assistant")
+    return _stamp([results], ctx)
+
+
+def _build_url_encoding(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.covert_exfiltration import build_url_encoding_exfil
+    agent = ctx.target_agent
+    results = build_url_encoding_exfil(str(agent.id), agent.name or "assistant")
+    return _stamp([results], ctx)
+
+
+def _build_invisible_unicode(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.covert_exfiltration import build_invisible_unicode_exfil
+    agent = ctx.target_agent
+    results = build_invisible_unicode_exfil(str(agent.id), agent.name or "assistant")
+    return _stamp([results], ctx)
+
+
+def _build_telemetry_pretext(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.covert_exfiltration import build_telemetry_pretext_exfil
+    agent = ctx.target_agent
+    results = build_telemetry_pretext_exfil(str(agent.id), agent.name or "assistant")
+    return _stamp([results], ctx)
+
+
+# ── Multi-agent trust builders ───────────────────────────────────────────────
+
+def _build_agent_impersonation(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.multi_agent import build_agent_impersonation
+    agent = ctx.target_agent
+    results = build_agent_impersonation(str(agent.id), agent.name or "assistant")
+    return _stamp([results], ctx)
+
+
+def _build_approval_spoof(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.multi_agent import build_approval_spoof
+    agent = ctx.target_agent
+    results = build_approval_spoof(str(agent.id), agent.name or "assistant")
+    return _stamp([results], ctx)
+
+
+def _build_subagent_injection(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.multi_agent import build_subagent_output_injection
+    agent = ctx.target_agent
+    results = build_subagent_output_injection(str(agent.id), agent.name or "assistant")
+    return _stamp([results], ctx)
+
+
+# ── Business logic builders ──────────────────────────────────────────────────
+
+def _build_false_action_claim(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.business_logic import build_false_action_claim
+    agent = ctx.target_agent
+    tool_names = list(ctx.profile.tool_names[:1]) if ctx.profile.tool_names else []
+    action = f"use the {tool_names[0]} tool to perform an action" if tool_names else "send an email to all users"
+    results = build_false_action_claim(str(agent.id), agent.name or "assistant", action)
+    return _stamp([results], ctx)
+
+
+def _build_out_of_domain_advice(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.business_logic import build_out_of_domain_advice
+    agent = ctx.target_agent
+    domain = "medical" if ctx.profile.domain in ("healthcare", "general") else "financial"
+    results = build_out_of_domain_advice(str(agent.id), agent.name or "assistant", domain)
+    return _stamp([results], ctx)
+
+
+def _build_hallucinated_authority(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.business_logic import build_hallucinated_authority
+    agent = ctx.target_agent
+    results = build_hallucinated_authority(str(agent.id), agent.name or "assistant")
+    return _stamp([results], ctx)
+
+
+def _build_resource_exhaustion(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.business_logic import build_resource_exhaustion
+    agent = ctx.target_agent
+    results = build_resource_exhaustion(str(agent.id), agent.name or "assistant")
     return _stamp([results], ctx)
 
 
@@ -286,8 +455,14 @@ def _build_refusal_oracle(ctx: BuilderContext) -> list:
 def _build_system_prompt_extraction(ctx: BuilderContext) -> list:
     from nuguard.redteam.scenarios.prompt_injection import build_system_prompt_extraction
     agent = ctx.target_agent
-    # system_prompt_excerpt — optional arg; skip if not in signature
-    results = build_system_prompt_extraction(str(agent.id), agent.name or "assistant")
+    excerpt = ""
+    if agent.metadata:
+        excerpt = agent.metadata.system_prompt_excerpt or ""
+    results = build_system_prompt_extraction(
+        agent_id=str(agent.id),
+        agent_name=agent.name or "assistant",
+        system_prompt_excerpt=excerpt,
+    )
     return _stamp([results], ctx)
 
 
@@ -304,14 +479,14 @@ BUILDER_FACTORIES: dict[str, BuilderFn] = {
     "aggregated_pii":       _stub("aggregated_pii"),
     "history_disclosure":   _stub("history_disclosure"),
     # ── Covert exfiltration ───────────────────────────────────────────────
-    "markdown_image":       _stub("markdown_image"),
-    "markdown_link":        _stub("markdown_link"),
-    "url_encoding":         _stub("url_encoding"),
+    "markdown_image":       _build_markdown_image,
+    "markdown_link":        _build_markdown_link,
+    "url_encoding":         _build_url_encoding,
     "base64_exfil":         _build_base64_exfil,
     "structured_smuggling": _build_structured_smuggling,
     "metadata_smuggling":   _build_metadata_smuggling,
-    "invisible_unicode":    _stub("invisible_unicode"),
-    "telemetry_pretext":    _stub("telemetry_pretext"),
+    "invisible_unicode":    _build_invisible_unicode,
+    "telemetry_pretext":    _build_telemetry_pretext,
     # ── Destructive actions ───────────────────────────────────────────────
     "destructive_send":     _stub("destructive_send"),
     "destructive_mutate":   _stub("destructive_mutate"),
@@ -322,14 +497,14 @@ BUILDER_FACTORIES: dict[str, BuilderFn] = {
     "disable_safety":       _stub("disable_safety"),
     "persistent_task":      _stub("persistent_task"),
     # ── Authorization ─────────────────────────────────────────────────────
-    "bola_read":            _stub("bola_read"),
-    "bola_write":           _stub("bola_write"),
-    "bfla":                 _stub("bfla"),
-    "rbac_override":        _stub("rbac_override"),
-    "false_verification":   _stub("false_verification"),
+    "bola_read":            _build_bola_read,
+    "bola_write":           _build_bola_write,
+    "bfla":                 _build_bfla,
+    "rbac_override":        _build_rbac_override,
+    "false_verification":   _build_false_verification,
     "hitl_bypass":          _build_hitl_bypass,
     "mass_assignment":      _build_mass_assignment,
-    "debug_admin":          _stub("debug_admin"),
+    "debug_admin":          _build_debug_admin,
     # ── Indirect injection ────────────────────────────────────────────────
     "indirect_injection":   _build_indirect_injection,
     # ── MCP / tool poisoning ──────────────────────────────────────────────
@@ -343,18 +518,18 @@ BUILDER_FACTORIES: dict[str, BuilderFn] = {
     "mcp_cross_server":     _stub("mcp_cross_server"),
     # ── Memory / persistence ──────────────────────────────────────────────
     "memory_poisoning":     _build_memory_poisoning,
-    "profile_poisoning":    _stub("profile_poisoning"),
+    "profile_poisoning":    _build_profile_poisoning,
     "cross_session_backdoor": _stub("cross_session_backdoor"),
     "false_identity":       _stub("false_identity"),
     "summary_poisoning":    _stub("summary_poisoning"),
-    "memory_auth_drift":    _stub("memory_auth_drift"),
+    "memory_auth_drift":    _build_memory_auth_drift,
     # ── Multi-agent trust ─────────────────────────────────────────────────
     "confused_deputy":      _build_confused_deputy,
-    "subagent_injection":   _stub("subagent_injection"),
+    "subagent_injection":   _build_subagent_injection,
     "handoff_priv_esc":     _stub("handoff_priv_esc"),
-    "agent_impersonation":  _stub("agent_impersonation"),
+    "agent_impersonation":  _build_agent_impersonation,
     "planner_executor":     _stub("planner_executor"),
-    "approval_spoof":       _stub("approval_spoof"),
+    "approval_spoof":       _build_approval_spoof,
     # ── Jailbreak ─────────────────────────────────────────────────────────
     "crescendo":            _build_crescendo,
     "many_shot":            _build_many_shot,
@@ -370,11 +545,11 @@ BUILDER_FACTORIES: dict[str, BuilderFn] = {
     "refusal_oracle":       _build_refusal_oracle,
     "system_prompt_extraction": _build_system_prompt_extraction,
     # ── Business logic ────────────────────────────────────────────────────
-    "false_action_claim":   _stub("false_action_claim"),
-    "out_of_domain_advice": _stub("out_of_domain_advice"),
+    "false_action_claim":   _build_false_action_claim,
+    "out_of_domain_advice": _build_out_of_domain_advice,
     "fraud_workflow":       _stub("fraud_workflow"),
-    "resource_exhaustion":  _stub("resource_exhaustion"),
-    "hallucinated_authority": _stub("hallucinated_authority"),
+    "resource_exhaustion":  _build_resource_exhaustion,
+    "hallucinated_authority": _build_hallucinated_authority,
     # ── Coding agents ─────────────────────────────────────────────────────
     "repo_injection":       _stub("repo_injection"),
     "shell_injection":      _stub("shell_injection"),

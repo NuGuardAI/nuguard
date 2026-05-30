@@ -249,6 +249,8 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["canary_path"] = redteam["canary"]
     if "profile" in redteam:
         flat["redteam_profile"] = redteam["profile"]
+    if "use_catalog" in redteam:
+        flat["redteam_use_catalog"] = bool(redteam["use_catalog"])
     if "min_impact_score" in redteam:
         flat["min_impact_score"] = float(redteam["min_impact_score"])
     if "scenarios" in redteam:
@@ -654,6 +656,8 @@ class RedteamFindingTriggers(BaseModel):
     policy_violations: bool = True
     critical_success_hits: bool = True
     any_inject_success: bool = False
+    # Phase 3 catalog evidence layers
+    tool_trace_hits: bool = True
 
     def any_enabled(self) -> bool:
         """Return True when at least one trigger is enabled."""
@@ -663,6 +667,7 @@ class RedteamFindingTriggers(BaseModel):
                 self.policy_violations,
                 self.critical_success_hits,
                 self.any_inject_success,
+                self.tool_trace_hits,
             ]
         )
 
@@ -785,7 +790,18 @@ class NuGuardConfig(BaseSettings):
     )
     redteam_profile: str = Field(
         default="ci",
-        description="Scan profile: 'ci' (fast, ≥5 impact) or 'full' (all scenarios) (yaml: redteam.profile).",
+        description=(
+            "Scan profile: 'ci' (fast, ≥5 impact), 'standard' (≥3 impact, ~30 scenarios), "
+            "or 'full' (all scenarios, ≥50 on rich SBOMs) (yaml: redteam.profile)."
+        ),
+    )
+    redteam_use_catalog: bool = Field(
+        default=True,
+        description=(
+            "When True, supplement legacy scenario generation with the stable-ID catalog "
+            "(docs/llm-runs/Red-team-new-design.md).  Disable for legacy-only runs "
+            "(yaml: redteam.use_catalog)."
+        ),
     )
     min_impact_score: float = Field(
         default=0.0,

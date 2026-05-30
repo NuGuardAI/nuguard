@@ -93,6 +93,11 @@ class ScenarioGenerator:
             self._outgoing.setdefault(str(edge.source), {}).setdefault(
                 edge.relationship_type, []
             ).append(str(edge.target))
+        # Capability profile — built once, reused by generate_from_catalog()
+        from nuguard.redteam.catalog.capability import CapabilityDetector
+        self._caps = CapabilityDetector(sbom, self._policy).build()
+        # Coverage report produced by the last generate_from_catalog() call.
+        self.last_coverage = None
 
     def generate(self, with_guided: bool = False) -> list[AttackScenario]:
         """Generate all attack scenarios sorted by impact score descending.
@@ -196,6 +201,54 @@ class ScenarioGenerator:
                 # Cap at 12 to keep prompt budget bounded.
                 sc.target_tool_names = tool_names[:12]
         _log.info("Generated %d attack scenarios (guided=%s)", len(scenarios), with_guided)
+        return scenarios
+
+    def generate_from_catalog(
+        self,
+        scan_profile: str = "full",
+        with_guided: bool = True,
+    ) -> list[AttackScenario]:
+        """Generate scenarios from the stable-ID scenario catalog.
+
+        Uses capability-aware selection: only specs whose
+        ``required_capabilities`` are satisfied by the target's
+        :class:`AppCapabilityProfile` are instantiated.  Returns scenarios
+        sorted by ``impact_score`` descending, capped to the profile target.
+
+        Also populates ``self.last_coverage`` with a :class:`CoverageReport`.
+        """
+        from nuguard.redteam.catalog.selector import select_scenarios
+        scenarios, coverage = select_scenarios(
+            sbom=self._sbom,
+            profile=self._caps,
+            scan_profile=scan_profile,
+            policy=self._policy,
+            with_guided=with_guided,
+        )
+        self.last_coverage = coverage
+        # Backfill target_tool_names (same post-processing as generate())
+        for sc in scenarios:
+            if sc.target_tool_names:
+                continue
+            tool_names: list[str] = []
+            seen: set[str] = set()
+            for node_id in sc.target_node_ids:
+                for tid in self._outgoing.get(node_id, {}).get(RelationshipType.CALLS, []):
+                    n = self._node_by_id.get(tid)
+                    if n is None:
+                        continue
+                    if n.component_type != ComponentType.TOOL:
+                        continue
+                    if n.name and n.name not in seen:
+                        seen.add(n.name)
+                        tool_names.append(n.name)
+            if tool_names:
+                sc.target_tool_names = tool_names[:12]
+        _log.info(
+            "Catalog generated %d scenarios (profile=%s, guided=%s, categories=%d)",
+            len(scenarios), scan_profile, with_guided,
+            coverage.categories_covered_count,
+        )
         return scenarios
 
     # ------------------------------------------------------------------ #
