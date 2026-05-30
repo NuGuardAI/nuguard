@@ -24,7 +24,7 @@ from __future__ import annotations
 import re
 
 from nuguard.common.logging import get_logger
-from nuguard.models.policy import CognitivePolicy
+from nuguard.models.policy import CognitivePolicy, HitlToolCondition
 
 _log = get_logger(__name__)
 
@@ -52,6 +52,9 @@ _HEADING_RE = re.compile(r"^#{1,6}\s+(.+)", re.MULTILINE)
 _BULLET_RE = re.compile(r"^[-*]\s+(.+)")
 # key: value pair (for rate_limits)
 _KV_RE = re.compile(r"^(.+?)\s*:\s*(.+)")
+# tool-scoped HITL trigger: single word/identifier followed by colon, e.g. "discount_tool: amount > 10%"
+# Requires the left-hand side to be a plausible tool name (word chars, hyphens, spaces ≤ 4 words)
+_TOOL_CONDITION_RE = re.compile(r"^([\w][\w\-\.]{0,49})\s*:\s*(.{3,})$")
 
 
 def _strip_heading(text: str) -> str:
@@ -67,6 +70,39 @@ def _extract_bullets(lines: list[str]) -> list[str]:
         if m:
             items.append(m.group(1).strip())
     return items
+
+
+def _parse_hitl_triggers(
+    bullets: list[str],
+) -> tuple[list[str], list[HitlToolCondition]]:
+    """Split HITL bullet items into plain keyword triggers and tool-scoped conditions.
+
+    A bullet is treated as a tool-scoped condition when it matches the pattern
+    ``tool_name: condition description``, where ``tool_name`` is a single
+    identifier (word chars, hyphens, dots).  All other bullets are treated as
+    plain keyword triggers matched against the prompt text at runtime.
+
+    Returns:
+        Tuple of (keyword_triggers, tool_conditions).
+    """
+    keyword_triggers: list[str] = []
+    tool_conditions: list[HitlToolCondition] = []
+    for item in bullets:
+        m = _TOOL_CONDITION_RE.match(item.strip())
+        if m:
+            tool_name = m.group(1).strip()
+            condition = m.group(2).strip()
+            tool_conditions.append(
+                HitlToolCondition(tool_name=tool_name, condition=condition)
+            )
+            _log.debug(
+                "hitl_triggers: parsed tool-scoped condition tool=%r condition=%r",
+                tool_name,
+                condition,
+            )
+        else:
+            keyword_triggers.append(item)
+    return keyword_triggers, tool_conditions
 
 
 def _parse_rate_limits(lines: list[str]) -> dict[str, int]:
@@ -113,6 +149,7 @@ def parse_policy(text: str) -> CognitivePolicy:
     restricted_topics: list[str] = []
     restricted_actions: list[str] = []
     hitl_triggers: list[str] = []
+    hitl_tool_conditions: list[HitlToolCondition] = []
     data_classification: list[str] = []
     rate_limits: dict[str, int] = {}
     raw_sections: dict[str, list[str]] = {}
@@ -149,7 +186,9 @@ def parse_policy(text: str) -> CognitivePolicy:
         elif field == "restricted_actions":
             restricted_actions.extend(_extract_bullets(body))
         elif field == "hitl_triggers":
-            hitl_triggers.extend(_extract_bullets(body))
+            kw, tool_conds = _parse_hitl_triggers(_extract_bullets(body))
+            hitl_triggers.extend(kw)
+            hitl_tool_conditions.extend(tool_conds)
         elif field == "data_classification":
             data_classification.extend(_extract_bullets(body))
         elif field == "rate_limits":
@@ -164,6 +203,7 @@ def parse_policy(text: str) -> CognitivePolicy:
         restricted_topics=restricted_topics,
         restricted_actions=restricted_actions,
         hitl_triggers=hitl_triggers,
+        hitl_tool_conditions=hitl_tool_conditions,
         data_classification=data_classification,
         rate_limits=rate_limits,
         raw_sections=raw_sections,

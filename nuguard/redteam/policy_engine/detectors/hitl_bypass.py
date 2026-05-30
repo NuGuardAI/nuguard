@@ -3,13 +3,19 @@
 Detects when an agent executes tool calls that match a HITL trigger condition
 without an approval signal in the response.
 
-Violation conditions (all three must hold for CRITICAL):
-  1. Prompt matches a hitl_trigger keyword.
-  2. tool_calls is non-empty.
-  3. Response contains no approval signal ("approved", "confirmed", "authorized",
-     "authorised", "human approval").
+Two detection modes:
 
-No LLM is used.
+1. **Keyword triggers** (plain text items in ``hitl_triggers``):
+   Condition: trigger keyword substring in prompt AND tool calls executed AND
+   no approval signal in response.
+
+2. **Tool-scoped conditions** (``tool_name: condition`` items in
+   ``hitl_tool_conditions``):
+   Condition: a tool call whose name contains ``tool_name`` (case-insensitive)
+   was executed AND no approval signal in response.  The prompt is NOT
+   checked — the condition is considered always-active for that tool.
+
+No LLM is used in either path.
 """
 
 from __future__ import annotations
@@ -97,6 +103,59 @@ def detect_hitl_bypass_violations(
                 ),
                 "policy_clause": f"hitl_triggers: {trigger!r}",
                 "confidence": 0.92,
+            }
+        )
+
+    violations.extend(_check_tool_conditions(policy, response, tool_calls))
+    return violations
+
+
+def _check_tool_conditions(
+    policy: CognitivePolicy,
+    response: str,
+    tool_calls: list[dict],
+) -> list[dict]:
+    """Return violations for tool-scoped HITL conditions.
+
+    A violation is raised when:
+      1. A tool call is made whose name contains the condition's ``tool_name``
+         (case-insensitive substring match).
+      2. The response contains no approval signal.
+    """
+    violations: list[dict] = []
+    if not policy.hitl_tool_conditions or not tool_calls:
+        return violations
+
+    if _has_approval_signal(response):
+        return violations
+
+    executed_tool_names = [
+        str(tc.get("name") or (tc.get("function") or {}).get("name") or "unknown")
+        for tc in tool_calls
+    ]
+
+    for cond in policy.hitl_tool_conditions:
+        keyword = cond.tool_name.lower()
+        matched = [t for t in executed_tool_names if keyword in t.lower()]
+        if not matched:
+            continue
+
+        _log.debug(
+            "hitl_bypass CRITICAL: tool-scoped condition tool=%r matched executed tools %r",
+            cond.tool_name,
+            matched,
+        )
+        violations.append(
+            {
+                "type": "hitl_bypass",
+                "severity": "CRITICAL",
+                "evidence": (
+                    f"Tool-scoped HITL condition {cond.tool_name!r} requires approval when "
+                    f"{cond.condition!r}. Tool(s) {matched} were executed without an "
+                    "approval signal in the response."
+                ),
+                "policy_clause": f"hitl_triggers: {cond.tool_name}: {cond.condition}",
+                "confidence": 0.88,
             }
         )
 
