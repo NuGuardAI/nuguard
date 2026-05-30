@@ -461,6 +461,14 @@ class GoogleADKConfig(BaseModel):
             run_path: /run
     """
 
+    enabled: bool = Field(
+        default=True,
+        description=(
+            "Set false to disable the ADK adapter entirely and use generic HTTP POST. "
+            "Use when the target wraps ADK internally but exposes a custom REST API "
+            "(not the standard /apps/{name}/users/{uid}/sessions ADK endpoints)."
+        ),
+    )
     app_name: str = Field(
         default="",
         description=(

@@ -535,6 +535,14 @@ def test_make_framework_adapter_uses_defaults_without_config() -> None:
     assert adapter.user_id == "nuguard"
 
 
+def test_make_framework_adapter_disabled_returns_none() -> None:
+    """adk.enabled=false must skip ADK adapter and return None (custom REST API case)."""
+    sbom = _make_sbom(frameworks=["google-adk"])
+    cfg = _make_adk_config(app_name="")
+    cfg.enabled = False
+    assert make_framework_adapter(sbom, cfg) is None
+
+
 def test_make_framework_adapter_reads_adk_app_name_from_sbom_extras() -> None:
     """Factory must read adk_app_name from SBOM node extras to bypass /list-apps."""
     summary = MagicMock()

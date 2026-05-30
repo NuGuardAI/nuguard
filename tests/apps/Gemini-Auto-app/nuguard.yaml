@@ -83,15 +83,15 @@ behavior:
   # Verbose output: include full per-turn traces in behavior report
   verbose: true
 
-  # Workflows to run:
+  # Workflows to run (v7+):
   #   intent_happy_path    — exercises declared capabilities on happy paths
   #   component_coverage   — one multi-turn scenario per SBOM tool/agent node
-  #   boundary_enforcement — verifies the app correctly refuses out-of-scope requests
   #   invariant_probe      — probes behavioral invariants and policy constraints
+  # Note: boundary_enforcement was removed in v7; boundary testing is now handled
+  # by nuguard redteam. boundary_assertions below still run via invariant_probe.
   workflows:
     - intent_happy_path
     - component_coverage
-    - boundary_enforcement
     - invariant_probe
 
   # Boundary assertions: requests the app MUST refuse
@@ -122,6 +122,13 @@ behavior:
   # Hard cap on total scenarios executed (comment out to run all)
   max_scenarios: 30
 
+  # Google ADK adapter: Gemini Car Assistant wraps ADK internally but exposes a
+  # custom FastAPI endpoint (/api/agent/chat), NOT the standard ADK REST API
+  # (/apps/{name}/users/{uid}/sessions). Disable the adapter so nuguard uses
+  # generic HTTP POST directly, without the /list-apps resolution attempt.
+  adk:
+    enabled: false
+
 # ─── Red team mode ────────────────────────────────────────────────────────────
 redteam:
 
@@ -136,13 +143,18 @@ redteam:
     api_base: ${AZURE_OPENAI_ENDPOINT}
 
   profile: full
-  scenarios:
-    - prompt-injection
-    - tool-abuse
-    - privilege-escalation
-    - data-exfiltration
-    - policy-violation
-    - mcp-toxic-flow
+
+  # Stable-ID scenario catalog (84 scenarios across 12 attack categories).
+  # Set false to run the legacy SBOM-only generator without catalog scenarios.
+  use_catalog: true
+
+  #scenarios:
+  #  - prompt-injection
+  #  - tool-abuse
+  #  - privilege-escalation
+  #  - data-exfiltration
+  #  - policy-violation
+  #  - mcp-toxic-flow
 
   min_impact_score: 0.0
 

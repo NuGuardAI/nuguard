@@ -113,6 +113,14 @@ def make_framework_adapter(
     if not (detected_frameworks & ADK_FRAMEWORK_NAMES):
         return None
 
+    # Allow explicit opt-out when the target wraps ADK with a custom REST API.
+    if adk_config is not None and not getattr(adk_config, "enabled", True):
+        _log.info(
+            "make_framework_adapter: ADK adapter disabled via adk.enabled=false — "
+            "using generic HTTP POST"
+        )
+        return None
+
     _log.info(
         "make_framework_adapter: detected Google ADK (frameworks=%s) — creating GoogleADKAdapter",
         detected_frameworks & ADK_FRAMEWORK_NAMES,
