@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from nuguard.redteam.target.log_reader import BufferLogReader, FileLogReader
 
 from nuguard.common.turn_helpers import handle_mid_turn_interrupts
+from nuguard.redteam.executor.executor import _substitute_golden_tokens
 from nuguard.redteam.executor.attribution import (
     AttributionRecord,
     parse_handled_by,
@@ -196,6 +197,9 @@ class GuidedAttackExecutor:
             # Mark log reader position before the request
             if self._app_log_reader:
                 self._app_log_reader.mark()
+
+            # Substitute {golden_id} / {golden_name} etc. tokens before sending
+            message = _substitute_golden_tokens(message, session)
 
             # Send to target
             try:
