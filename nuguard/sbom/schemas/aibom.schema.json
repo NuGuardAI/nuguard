@@ -1391,7 +1391,7 @@
   },
   "$id": "https://nuguard.ai/schemas/aibom/1.4.0/aibom.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "AI Bill of Materials document produced by Xelo.\n\nThis is the canonical output format.  Use ``AiSbomSerializer.to_json()``\nto serialise and ``AiSbomDocument.model_validate()`` to parse and validate.",
+  "description": "AI Bill of Materials document produced by NuGuard.\n\nThis is the canonical output format.  Use ``AiSbomSerializer.to_json()``\nto serialise and ``AiSbomDocument.model_validate()`` to parse and validate.",
   "properties": {
     "schema_version": {
       "default": "1.4.0",

@@ -24,7 +24,7 @@ from nuguard.sbom.extractor import AiSbomExtractor
 from nuguard.sbom.extractor.config import AiSbomConfig
 from nuguard.sbom.parser import parse_sbom
 from nuguard.sbom.tests.test_toolbox.evaluate import (
-    _convert_xelo_ground_truth_to_legacy,
+    _convert_nuguard_ground_truth_to_legacy,
     evaluate_discovery,
     export_discovered_assets_csv,
 )
@@ -57,7 +57,7 @@ def load_ground_truth(repo_name: str) -> GroundTruth:
         raise FileNotFoundError(f"Ground truth not found: {path}")
     data = json.loads(path.read_text(encoding="utf-8"))
     if isinstance(data, dict) and "schema_version" in data and "nodes" in data:
-        data = _convert_xelo_ground_truth_to_legacy(repo_name, data)
+        data = _convert_nuguard_ground_truth_to_legacy(repo_name, data)
     return GroundTruth.model_validate(data)
 
 

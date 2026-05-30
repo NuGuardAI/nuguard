@@ -1,7 +1,7 @@
-"""Xelo data models.
+"""NuGuard data models.
 
 All public types are Pydantic ``BaseModel`` subclasses.  The JSON schema
-exported by the CLI (``xelo schema``) is generated directly from these models
+exported by the CLI (``nuguard schema``) is generated directly from these models
 so schema and code can never drift.
 """
 
@@ -620,7 +620,7 @@ class ScanSummary(BaseModel):
 
 
 class AiSbomDocument(BaseModel):
-    """AI Bill of Materials document produced by Xelo.
+    """AI Bill of Materials document produced by NuGuard.
 
     This is the canonical output format.  Use ``AiSbomSerializer.to_json()``
     to serialise and ``AiSbomDocument.model_validate()`` to parse and validate.

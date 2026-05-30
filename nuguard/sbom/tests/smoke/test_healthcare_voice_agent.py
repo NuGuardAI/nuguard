@@ -1,7 +1,7 @@
 """
 Smoke test: NuGuardAI/Healthcare-voice-agent
 
-Clones the public repository and asserts that Xelo correctly extracts the
+Clones the public repository and asserts that NuGuard correctly extracts the
 AI Bill of Materials for a real-world healthcare AI application:
 
 Architecture under test
@@ -104,7 +104,7 @@ def _adapters(doc: AiSbomDocument) -> set[str]:
 
 
 class TestFrameworkDetection:
-    """Xelo should detect both the Python LangGraph and Google GenAI (JS) frameworks."""
+    """NuGuard should detect both the Python LangGraph and Google GenAI (JS) frameworks."""
 
     @skip_if_offline
     def test_detects_langgraph_framework(self, doc: AiSbomDocument) -> None:

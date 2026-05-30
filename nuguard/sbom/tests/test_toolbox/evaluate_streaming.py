@@ -32,8 +32,8 @@ BENCHMARK_DIR = Path(__file__).parent / "repos"
 SERVICE_URL = "http://localhost:8003"
 
 
-def _convert_xelo_ground_truth_to_legacy(repo_name: str, payload: dict) -> dict:
-    """Convert Xelo-native ground truth to legacy asset-list format used by this script."""
+def _convert_nuguard_ground_truth_to_legacy(repo_name: str, payload: dict) -> dict:
+    """Convert NuGuard-native ground truth to legacy asset-list format used by this script."""
     nodes = payload.get("nodes", []) if isinstance(payload.get("nodes"), list) else []
     assets: List[dict] = []
     for node in nodes:
@@ -106,7 +106,7 @@ def load_ground_truth(repo_name: str) -> Optional[dict]:
     with open(gt_path, encoding='utf-8') as f:
         data = json.load(f)
     if isinstance(data, dict) and "schema_version" in data and "nodes" in data:
-        return _convert_xelo_ground_truth_to_legacy(repo_name, data)
+        return _convert_nuguard_ground_truth_to_legacy(repo_name, data)
     return data
 
 

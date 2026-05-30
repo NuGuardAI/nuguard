@@ -1,6 +1,6 @@
-"""Agno Framework TypeScript/JavaScript Adapter for Xelo SBOM.
+"""Agno Framework TypeScript/JavaScript Adapter for NuGuard SBOM.
 
-Parsing is performed by ``xelo.core.ts_parser`` (tree-sitter when
+Parsing is performed by ``nuguard.core.ts_parser`` (tree-sitter when
 available, regex fallback otherwise).
 
 Agno is primarily a Python framework, but TypeScript/JavaScript projects

@@ -1,4 +1,4 @@
-"""xelo.core — low-level parsing and enrichment utilities.
+"""nuguard.core — low-level parsing and enrichment utilities.
 
 Active modules
 --------------

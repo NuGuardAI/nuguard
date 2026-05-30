@@ -1,4 +1,4 @@
-"""Google ADK (Agent Development Kit) Python adapter for Xelo SBOM.
+"""Google ADK (Agent Development Kit) Python adapter for NuGuard SBOM.
 
 Detects usage of the ``google.adk`` Python SDK:
 - ``Agent(name=..., model=..., tools=[...])`` → AGENT + MODEL + TOOL refs

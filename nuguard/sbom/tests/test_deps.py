@@ -1,4 +1,4 @@
-"""Tests for xelo.deps — DependencyScanner.
+"""Tests for nuguard.deps — DependencyScanner.
 
 Validates parsing of the four manifest formats present in the real-world
 fixture apps created for test_scenarios.py:

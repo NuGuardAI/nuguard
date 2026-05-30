@@ -77,7 +77,7 @@ class TestBomStructure:
         tools = bom["metadata"]["tools"]
         assert tools
         tool = tools[0]
-        assert tool.get("vendor") == "Xelo"
+        assert tool.get("vendor") == "NuGuard"
         assert tool.get("name")
         assert tool.get("version")
 
@@ -192,7 +192,7 @@ class TestModelExternalReferences:
             c
             for c in ml_comps
             if any(
-                p.get("name") == "xelo:provider" and p.get("value") == "openai"
+                p.get("name") == "nuguard:provider" and p.get("value") == "openai"
                 for p in c.get("properties", [])
             )
         ]
@@ -209,7 +209,7 @@ class TestModelExternalReferences:
             c
             for c in ml_comps
             if any(
-                p.get("name") == "xelo:provider" and p.get("value") == "anthropic"
+                p.get("name") == "nuguard:provider" and p.get("value") == "anthropic"
                 for p in c.get("properties", [])
             )
         ]
@@ -222,7 +222,7 @@ class TestModelExternalReferences:
 
 
 # ---------------------------------------------------------------------------
-# Xelo properties on AI components
+# NuGuard properties on AI components
 # ---------------------------------------------------------------------------
 
 
@@ -232,23 +232,23 @@ class TestVelaProperties:
         return _cdx("research_assistant")
 
     def test_all_components_have_component_type_property(self, bom: dict[str, Any]) -> None:
-        # Only AI components carry xelo:component_type; dep library components have purl instead
+        # Only AI components carry nuguard:component_type; dep library components have purl instead
         ai_comps = [c for c in bom["components"] if not c.get("purl")]
         for comp in ai_comps:
             props = {p["name"]: p["value"] for p in comp.get("properties", [])}
-            assert "xelo:component_type" in props, (
-                f"Component {comp['name']!r} missing xelo:component_type property"
+            assert "nuguard:component_type" in props, (
+                f"Component {comp['name']!r} missing nuguard:component_type property"
             )
 
     def test_all_components_have_confidence_property(self, bom: dict[str, Any]) -> None:
-        # Only AI components carry xelo:confidence; dep library components do not
+        # Only AI components carry nuguard:confidence; dep library components do not
         ai_comps = [c for c in bom["components"] if not c.get("purl")]
         for comp in ai_comps:
             props = {p["name"]: p["value"] for p in comp.get("properties", [])}
-            assert "xelo:confidence" in props, (
-                f"Component {comp['name']!r} missing xelo:confidence property"
+            assert "nuguard:confidence" in props, (
+                f"Component {comp['name']!r} missing nuguard:confidence property"
             )
-            confidence = float(props["xelo:confidence"])
+            confidence = float(props["nuguard:confidence"])
             assert 0.0 < confidence <= 1.0
 
     def test_model_components_have_provider_property(self, bom: dict[str, Any]) -> None:
@@ -257,10 +257,10 @@ class TestVelaProperties:
         enriched = [
             c
             for c in ml_comps
-            if any(p["name"] == "xelo:provider" for p in c.get("properties", []))
+            if any(p["name"] == "nuguard:provider" for p in c.get("properties", []))
         ]
         assert enriched, (
-            f"Expected at least one ML model with xelo:provider property; "
+            f"Expected at least one ML model with nuguard:provider property; "
             f"got models: {[c['name'] for c in ml_comps]}"
         )
 
@@ -306,15 +306,15 @@ class TestDepComponents:
         dep_comps = [c for c in bom_with_deps["components"] if c.get("purl")]
         for comp in dep_comps:
             prop_names = {p["name"] for p in comp.get("properties", [])}
-            assert "xelo:dep_group" in prop_names, (
-                f"Dep {comp['name']!r} missing xelo:dep_group property"
+            assert "nuguard:dep_group" in prop_names, (
+                f"Dep {comp['name']!r} missing nuguard:dep_group property"
             )
 
     def test_dep_has_source_file_property(self, bom_with_deps: dict[str, Any]) -> None:
         dep_comps = [c for c in bom_with_deps["components"] if c.get("purl")]
         for comp in dep_comps:
             prop_names = {p["name"] for p in comp.get("properties", [])}
-            assert "xelo:source_file" in prop_names
+            assert "nuguard:source_file" in prop_names
 
     def test_langgraph_dep_present(self, bom_with_deps: dict[str, Any]) -> None:
         dep_names = {c["name"] for c in bom_with_deps["components"] if c.get("purl")}
@@ -382,7 +382,7 @@ class TestRagPipelineCycloneDx:
             for c in bom["components"]
             if c["type"] == "machine-learning-model"
             and any(
-                p["name"] == "xelo:provider" and p["value"] == "anthropic"
+                p["name"] == "nuguard:provider" and p["value"] == "anthropic"
                 for p in c.get("properties", [])
             )
         ]
@@ -402,7 +402,7 @@ class TestCodeReviewCrewCycloneDx:
         adapter_props = set()
         for comp in app_comps:
             for p in comp.get("properties", []):
-                if p["name"] == "xelo:adapter":
+                if p["name"] == "nuguard:adapter":
                     adapter_props.add(p["value"])
         assert "crewai" in adapter_props or "autogen" in adapter_props, (
             f"Expected crewai or autogen adapter in application components, got: {adapter_props}"
@@ -413,7 +413,7 @@ class TestCodeReviewCrewCycloneDx:
         providers = set()
         for comp in ml_comps:
             for p in comp.get("properties", []):
-                if p["name"] == "xelo:provider":
+                if p["name"] == "nuguard:provider":
                     providers.add(p["value"])
         assert "anthropic" in providers or "openai" in providers, (
             f"Expected multi-provider models, got: {providers}"

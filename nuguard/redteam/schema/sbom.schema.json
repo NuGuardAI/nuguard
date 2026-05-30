@@ -1,23 +1,23 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://nuguard.ai/schemas/sbom.schema.json",
-  "title": "Xelo AI-SBOM",
-  "description": "Xelo AI Software Bill of Materials ingested by NuGuard. Stored as JSONB in redteam_sboms.sbom. Schema aligned with Xelo aibom.schema.json v1.3.0 — https://github.com/NuGuardAI/xelo/blob/main/docs/aibom-schema.md.",
+  "title": "NuGuard AI-SBOM",
+  "description": "NuGuard AI Software Bill of Materials ingested by NuGuard. Stored as JSONB in redteam_sboms.sbom. Schema aligned with NuGuard aibom.schema.json v1.3.0 — https://github.com/NuGuardAI/nuguard/blob/main/docs/aibom-schema.md.",
   "type": "object",
   "required": ["schema_version", "nodes"],
   "properties": {
     "schema_version": {
       "type": "string",
-      "description": "Xelo SBOM schema semver, e.g. '1.3.0'."
+      "description": "NuGuard SBOM schema semver, e.g. '1.3.0'."
     },
     "generated_at": {
       "type": "string",
       "format": "date-time",
-      "description": "UTC timestamp when Xelo produced this document."
+      "description": "UTC timestamp when NuGuard produced this document."
     },
     "generator": {
       "type": "string",
-      "description": "Always 'xelo'."
+      "description": "Always 'nuguard'."
     },
     "target": {
       "type": "string",
@@ -54,7 +54,7 @@
         "name": { "type": "string" },
         "component_type": {
           "$ref": "shared-types.schema.json#/definitions/ComponentType",
-          "description": "Xelo component classification. Maps to NuGuard NodeType via mapping/mapping-rules.json."
+          "description": "NuGuard component classification. Maps to NuGuard NodeType via mapping/mapping-rules.json."
         },
         "confidence": {
           "type": "number",
@@ -66,7 +66,7 @@
         "evidence": {
           "type": "array",
           "items": { "$ref": "#/definitions/Evidence" },
-          "description": "One or more detection evidence items explaining why Xelo identified this node."
+          "description": "One or more detection evidence items explaining why NuGuard identified this node."
         }
       }
     },
@@ -207,7 +207,7 @@
     "Evidence": {
       "type": "object",
       "required": ["kind", "confidence"],
-      "description": "Detection evidence item explaining how Xelo found this node.",
+      "description": "Detection evidence item explaining how NuGuard found this node.",
       "properties": {
         "kind": {
           "type": "string",
@@ -260,7 +260,7 @@
 
     "ScanSummary": {
       "type": "object",
-      "description": "Xelo scan-level roll-up metadata.",
+      "description": "NuGuard scan-level roll-up metadata.",
       "properties": {
         "use_case": { "type": "string", "description": "Natural-language description of what the app does." },
         "frameworks": { "type": "array", "items": { "type": "string" }, "description": "Detected framework names, e.g. ['langgraph', 'openai_agents']." },

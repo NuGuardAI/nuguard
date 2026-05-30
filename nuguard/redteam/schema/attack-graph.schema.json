@@ -2,7 +2,7 @@
   "$schema": "http://json-schema.org/draft-07/schema#",
   "$id": "https://nuguard.ai/schemas/attack-graph.schema.json",
   "title": "NuGuard Attack Surface Graph",
-  "description": "Enriched Attack Surface Graph derived from a Xelo AI-SBOM. Stored as JSONB in attack_graphs.graph using networkx node_link_data serialization. Identity fields (id, test_id, test_name, created_at) are promoted Postgres columns on attack_graphs and are NOT repeated here.",
+  "description": "Enriched Attack Surface Graph derived from a NuGuard AI-SBOM. Stored as JSONB in attack_graphs.graph using networkx node_link_data serialization. Identity fields (id, test_id, test_name, created_at) are promoted Postgres columns on attack_graphs and are NOT repeated here.",
   "type": "object",
   "required": ["nodes", "edges"],
   "properties": {

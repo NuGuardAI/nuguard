@@ -106,7 +106,7 @@ components:
           example: customer-support-chatbot
         sbom:
           type: object
-          description: Xelo AI-SBOM JSON object (pinned schema version required).
+          description: NuGuard AI-SBOM JSON object (pinned schema version required).
 
     SBOMUploadResponse:
       type: object
@@ -965,7 +965,7 @@ paths:
 
 tags:
   - name: SBOM
-    description: Upload and retrieve Xelo AI-SBOM files and derived Attack Surface Graphs.
+    description: Upload and retrieve NuGuard AI-SBOM files and derived Attack Surface Graphs.
   - name: Policies
     description: Upload and retrieve Cognitive Policy Markdown files.
   - name: Tests

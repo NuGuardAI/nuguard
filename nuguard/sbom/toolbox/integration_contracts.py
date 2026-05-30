@@ -26,7 +26,7 @@ class XrayConfig(BaseModel):
 class AwsSecurityHubConfig(BaseModel):
     region: str = Field(min_length=1, max_length=32)
     aws_account_id: str = Field(pattern=r"^\d{12}$")
-    product_arn_suffix: str = Field(default="xelo-toolbox", min_length=1, max_length=64)
+    product_arn_suffix: str = Field(default="nuguard-toolbox", min_length=1, max_length=64)
     profile: str | None = None
     timeout: float = Field(default=15.0, ge=1.0, le=60.0)
     retries: int = Field(default=2, ge=0, le=5)

@@ -109,7 +109,7 @@ nuguard sbom plugin run markdown_export --sbom app.sbom.json
 
 | Plugin name | Output | Description |
 |---|---|---|
-| `cyclonedx_export` | CycloneDX 1.6 JSON | Standard BOM with xelo:* properties and optional VEX vulnerabilities |
+| `cyclonedx_export` | CycloneDX 1.6 JSON | Standard BOM with nuguard:* properties and optional VEX vulnerabilities |
 | `cyclonedx_ext_export` | CycloneDX 1.6 JSON | Extended BOM with `modelCard`, `services`, `compositions`, and `nuguard:*` properties |
 | `spdx_export` | SPDX 3.0.1 JSON-LD | SPDX 3.0.1 export with `ai_AIPackage`, `dataset_Dataset`, and relationship graph |
 | `sarif_export` | SARIF 2.1.0 JSON | Vulnerability findings export for GitHub Code Scanning |

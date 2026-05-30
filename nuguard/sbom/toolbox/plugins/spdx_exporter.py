@@ -11,7 +11,7 @@ Produces output aligned with the NuGuardAI SPDX 3.0.1 reference format:
   * ``software_Sbom`` has ``element`` list + ``software_sbomType``
   * Packages use ``software_packageVersion``, ``releaseTime``, ``suppliedBy``
   * Relationship elements with ``completeness: "complete"``
-  * xelo: extension properties for AI-security metadata (namespace retained for SPDX compatibility)
+  * nuguard: extension properties for AI-security metadata (namespace retained for SPDX compatibility)
 """
 
 from __future__ import annotations
@@ -34,7 +34,7 @@ _log = logging.getLogger("toolbox.plugins.spdx")
 
 _SPDX3_SPEC_VERSION = "3.0.1"
 _SPDX3_CONTEXT_URL = "https://spdx.org/rdf/3.0.1/spdx-context.jsonld"
-_XELO_NS = "https://nuguard.ai/spdx-ext/xelo/1.0/"
+_NUGUARD_NS = "https://nuguard.ai/spdx-ext/nuguard/1.0/"
 
 # Namespace-prefixed type names
 _TYPE_SPDX_DOC = "SpdxDocument"
@@ -138,7 +138,7 @@ class SpdxExporter(ToolPlugin):
                 tmp_path = tmp.name
             try:
                 conforms, report = validate_spdx3_jsonld(tmp_path)
-                details["_xelo_validation"] = {"conforms": conforms, "report": report}
+                details["_nuguard_validation"] = {"conforms": conforms, "report": report}
                 _log.info("SHACL validation conforms=%s", conforms)
             finally:
                 Path(tmp_path).unlink(missing_ok=True)
@@ -288,17 +288,17 @@ def _convert_dict(
     if doc.summary:
         s = doc.summary
         if s.frameworks:
-            sbom_elem["xelo:frameworks"] = s.frameworks
+            sbom_elem["nuguard:frameworks"] = s.frameworks
         if s.modalities:
-            sbom_elem["xelo:modalities"] = s.modalities
+            sbom_elem["nuguard:modalities"] = s.modalities
         if s.security_findings:
-            sbom_elem["xelo:securityFindings"] = s.security_findings
+            sbom_elem["nuguard:securityFindings"] = s.security_findings
         if s.deployment_platforms:
-            sbom_elem["xelo:deploymentPlatforms"] = s.deployment_platforms
+            sbom_elem["nuguard:deploymentPlatforms"] = s.deployment_platforms
         if s.use_case:
-            sbom_elem["xelo:useCase"] = s.use_case
+            sbom_elem["nuguard:useCase"] = s.use_case
         if s.node_counts:
-            sbom_elem["xelo:nodeCountsByType"] = s.node_counts
+            sbom_elem["nuguard:nodeCountsByType"] = s.node_counts
 
     graph.append(sbom_elem)
 
@@ -307,8 +307,8 @@ def _convert_dict(
     id_map: dict[str, str] = {}
     for elem in graph:
         if elem.get("type") in (_TYPE_AI_PKG, _TYPE_PKG, _TYPE_DATASET) and "spdxId" in elem:
-            # Reverse lookup: we stored the uuid in xelo:nodeId
-            node_id_val = elem.get("xelo:nodeId")
+            # Reverse lookup: we stored the uuid in nuguard:nodeId
+            node_id_val = elem.get("nuguard:nodeId")
             if node_id_val:
                 id_map[node_id_val] = elem["spdxId"]
 
@@ -336,7 +336,7 @@ def _convert_dict(
         sbom_elem["element"] = list(component_ids) + rel_ids
 
     return {
-        "@context": [_SPDX3_CONTEXT_URL, {"xelo": _XELO_NS}],
+        "@context": [_SPDX3_CONTEXT_URL, {"nuguard": _NUGUARD_NS}],
         "@graph": graph,
     }
 
@@ -376,10 +376,10 @@ def _node_to_element(
         "software_primaryPurpose": purpose,
         "releaseTime": created,
         "suppliedBy": supplied_by,
-        # xelo:nodeId lets us resolve edges later
-        "xelo:nodeId": str(node.id),
-        "xelo:componentType": node.component_type.value,
-        "xelo:confidence": node.confidence,
+        # nuguard:nodeId lets us resolve edges later
+        "nuguard:nodeId": str(node.id),
+        "nuguard:componentType": node.component_type.value,
+        "nuguard:confidence": node.confidence,
     }
 
     if node.component_type == ComponentType.MODEL:
@@ -391,14 +391,14 @@ def _node_to_element(
     elif node.component_type == ComponentType.AGENT:
         elem["ai_autonomyType"] = "yes"
         if meta.framework:
-            elem["xelo:framework"] = meta.framework
+            elem["nuguard:framework"] = meta.framework
 
     elif node.component_type == ComponentType.DATASTORE:
         if meta.datastore_type:
             elem["dataset_datasetType"] = meta.datastore_type
-            elem["xelo:datasetType"] = meta.datastore_type
+            elem["nuguard:datasetType"] = meta.datastore_type
         if meta.data_classification:
-            elem["xelo:dataClassification"] = json.dumps(meta.data_classification)
+            elem["nuguard:dataClassification"] = json.dumps(meta.data_classification)
 
     else:
         _add_package_extensions(elem, node)
@@ -430,35 +430,35 @@ def _add_package_extensions(element: dict[str, Any], node: Node) -> None:
     meta = node.metadata
     if node.component_type == ComponentType.PROMPT and node.evidence:
         loc = node.evidence[0].location
-        element["xelo:promptRef"] = f"{loc.path}:{loc.line or 0}"
+        element["nuguard:promptRef"] = f"{loc.path}:{loc.line or 0}"
     elif node.component_type == ComponentType.AUTH:
         if meta.auth_type:
-            element["xelo:authType"] = meta.auth_type
+            element["nuguard:authType"] = meta.auth_type
         if meta.auth_class:
-            element["xelo:authClass"] = meta.auth_class
+            element["nuguard:authClass"] = meta.auth_class
     elif node.component_type == ComponentType.PRIVILEGE:
         if meta.privilege_scope:
-            element["xelo:privilegeScope"] = meta.privilege_scope
+            element["nuguard:privilegeScope"] = meta.privilege_scope
     elif node.component_type == ComponentType.IAM:
         if meta.iam_type:
-            element["xelo:iamType"] = meta.iam_type
+            element["nuguard:iamType"] = meta.iam_type
         if meta.principal:
-            element["xelo:principal"] = meta.principal
+            element["nuguard:principal"] = meta.principal
     elif node.component_type == ComponentType.API_ENDPOINT:
         if meta.endpoint:
-            element["xelo:endpoint"] = meta.endpoint
+            element["nuguard:endpoint"] = meta.endpoint
         if meta.transport:
-            element["xelo:transport"] = meta.transport
+            element["nuguard:transport"] = meta.transport
         if meta.method:
-            element["xelo:method"] = meta.method
+            element["nuguard:method"] = meta.method
     elif node.component_type == ComponentType.DEPLOYMENT:
         if meta.deployment_target:
-            element["xelo:deploymentTarget"] = meta.deployment_target
+            element["nuguard:deploymentTarget"] = meta.deployment_target
     elif node.component_type == ComponentType.CONTAINER_IMAGE:
         if meta.base_image:
             element["software_packageVersion"] = meta.base_image
         if meta.image_digest:
-            element["xelo:imageDigest"] = meta.image_digest
+            element["nuguard:imageDigest"] = meta.image_digest
 
 
 def _dep_to_element(

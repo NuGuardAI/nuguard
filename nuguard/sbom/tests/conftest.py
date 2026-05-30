@@ -1,4 +1,4 @@
-"""Shared helpers for all Xelo tests.
+"""Shared helpers for all NuGuard tests.
 
 Import these directly in test modules::
 

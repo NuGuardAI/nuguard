@@ -1,4 +1,4 @@
-# Contributing to Xelo
+# Contributing to NuGuard
 
 Thanks for contributing. This project accepts issues and pull requests from the community.
 

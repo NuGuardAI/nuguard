@@ -147,21 +147,21 @@ class AiSbomSerializer:
             extras = node.metadata.extras
 
             props: list[dict[str, str]] = [
-                {"name": "xelo:component_type", "value": node.component_type.value},
-                {"name": "xelo:confidence", "value": f"{node.confidence:.2f}"},
+                {"name": "nuguard:component_type", "value": node.component_type.value},
+                {"name": "nuguard:confidence", "value": f"{node.confidence:.2f}"},
             ]
             if extras.get("adapter"):
-                props.append({"name": "xelo:adapter", "value": str(extras["adapter"])})
+                props.append({"name": "nuguard:adapter", "value": str(extras["adapter"])})
             if extras.get("provider"):
-                props.append({"name": "xelo:provider", "value": str(extras["provider"])})
+                props.append({"name": "nuguard:provider", "value": str(extras["provider"])})
             if extras.get("model_family"):
-                props.append({"name": "xelo:model_family", "value": str(extras["model_family"])})
+                props.append({"name": "nuguard:model_family", "value": str(extras["model_family"])})
             dc = node.metadata.data_classification or extras.get("data_classification")
             if dc and isinstance(dc, list):
-                props.append({"name": "xelo:data_classification", "value": ",".join(dc)})
+                props.append({"name": "nuguard:data_classification", "value": ",".join(dc)})
             ct = node.metadata.classified_tables or extras.get("classified_tables")
             if ct and isinstance(ct, list):
-                props.append({"name": "xelo:classified_tables", "value": ",".join(ct)})
+                props.append({"name": "nuguard:classified_tables", "value": ",".join(ct)})
             cf = node.metadata.classified_fields or extras.get("classified_fields")
             if cf and isinstance(cf, dict):
                 # Compact representation: "table:field1,field2;table2:field3"
@@ -169,7 +169,7 @@ class AiSbomSerializer:
                     f"{tbl}:{','.join(flds) if isinstance(flds, list) else ','.join(sorted(flds))}"
                     for tbl, flds in sorted(cf.items())
                 )
-                props.append({"name": "xelo:classified_fields", "value": cf_str})
+                props.append({"name": "nuguard:classified_fields", "value": cf_str})
 
             component: dict[str, Any] = {
                 "bom-ref": str(node.id),
@@ -208,15 +208,15 @@ class AiSbomSerializer:
                 "name": dep.name,
                 "purl": dep.purl,
                 "properties": [
-                    {"name": "xelo:dep_group", "value": dep.group},
-                    {"name": "xelo:source_file", "value": dep.source_file},
+                    {"name": "nuguard:dep_group", "value": dep.group},
+                    {"name": "nuguard:source_file", "value": dep.source_file},
                 ],
             }
             if dep.version:
                 dep_entry["version"] = dep.version
             if dep.version_spec and dep.version_spec != f"=={dep.version}":
                 dep_entry["properties"].append(
-                    {"name": "xelo:version_spec", "value": dep.version_spec}
+                    {"name": "nuguard:version_spec", "value": dep.version_spec}
                 )
             dep_components.append(dep_entry)
 
@@ -238,7 +238,7 @@ class AiSbomSerializer:
                 "timestamp": doc.generated_at.isoformat(),
                 "tools": [
                     {
-                        "vendor": "Xelo",
+                        "vendor": "NuGuard",
                         "name": doc.generator,
                         "version": __version__,
                     }
