@@ -136,6 +136,23 @@ def make_framework_adapter(
     # Only computed when app_name is not already explicitly set.
     sbom_app_candidates: list[str] = []
     if not app_name:
+        # Prefer adk_app_name captured from Runner(app_name=...) during SBOM scan.
+        # This avoids the /list-apps runtime call entirely when the source was scanned.
+        for node in getattr(sbom, "nodes", []) or []:
+            _ctype = str(getattr(getattr(node, "component_type", None), "value", "") or "")
+            if _ctype != "AGENT":
+                continue
+            _meta = getattr(node, "metadata", None)
+            _sbom_adk_name = (getattr(_meta, "extras", None) or {}).get("adk_app_name", "")
+            if _sbom_adk_name and isinstance(_sbom_adk_name, str):
+                app_name = _sbom_adk_name.strip()
+                _log.info(
+                    "make_framework_adapter: using adk_app_name %r from SBOM node %r",
+                    app_name,
+                    node.name,
+                )
+                break
+    if not app_name:
         sbom_app_candidates = _extract_agent_source_dirs(sbom)
         if sbom_app_candidates:
             _log.debug(

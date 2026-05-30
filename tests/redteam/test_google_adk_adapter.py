@@ -533,6 +533,44 @@ def test_make_framework_adapter_uses_defaults_without_config() -> None:
     adapter = make_framework_adapter(sbom, None)
     assert isinstance(adapter, GoogleADKAdapter)
     assert adapter.user_id == "nuguard"
+
+
+def test_make_framework_adapter_reads_adk_app_name_from_sbom_extras() -> None:
+    """Factory must read adk_app_name from SBOM node extras to bypass /list-apps."""
+    summary = MagicMock()
+    summary.frameworks = ["google-adk"]
+    sbom = MagicMock()
+    sbom.summary = summary
+
+    node = MagicMock()
+    node.component_type.value = "AGENT"
+    node.metadata.extras = {"adk_app_name": "car_app"}
+    node.name = "car_agent"
+    sbom.nodes = [node]
+
+    adapter = make_framework_adapter(sbom, None)
+    assert isinstance(adapter, GoogleADKAdapter)
+    assert adapter.app_name == "car_app"
+    # When app_name is resolved from SBOM, sbom_app_candidates should be empty
+    assert adapter._sbom_app_candidates == []
+
+
+def test_make_framework_adapter_yaml_config_wins_over_sbom_extras() -> None:
+    """Explicit adk.app_name in nuguard.yaml must take priority over SBOM adk_app_name."""
+    summary = MagicMock()
+    summary.frameworks = ["google-adk"]
+    sbom = MagicMock()
+    sbom.summary = summary
+
+    node = MagicMock()
+    node.component_type.value = "AGENT"
+    node.metadata.extras = {"adk_app_name": "sbom_name"}
+    sbom.nodes = [node]
+
+    cfg = _make_adk_config(app_name="yaml_name")
+    adapter = make_framework_adapter(sbom, cfg)
+    assert isinstance(adapter, GoogleADKAdapter)
+    assert adapter.app_name == "yaml_name"
     assert adapter.run_path == "/run"
 
 

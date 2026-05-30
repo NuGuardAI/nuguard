@@ -133,11 +133,17 @@ redteam:
   # chat_payload_key: message      # JSON key for the message (default: message)
   # chat_payload_list: false       # wrap message value in a list (default: false)
 
+  # Google ADK apps: nuguard reads adk_app_name from the SBOM when it is set
+  # during 'nuguard sbom generate' (extracted from Runner(app_name=...) in source).
+  # Set this manually only when the SBOM is unavailable or the app name has changed.
+  # adk:
+  #   app_name: my-agent-app       # bypasses the /list-apps auto-discovery call
+
   # Scan profile:
   #   ci       — fast; only scenarios with pre-impact score ≥ 5, capped at ~20 (default)
   #   standard — balanced; score ≥ 3, capped at ~40 scenarios
   #   full     — all capability-gated scenarios; ≥ 50 on feature-rich targets
-  profile: ci
+  profile: full
 
   # Stable-ID scenario catalog (84 scenarios across 12 attack categories).
   # Set false to run the legacy SBOM-only generator without catalog scenarios.
@@ -220,7 +226,8 @@ redteam:
     any_inject_success: false       # optional aggressive fallback for successful INJECT steps (env: REDTEAM_TRIGGER_ANY_INJECT_SUCCESS)
     tool_trace_hits: true           # emit findings when tool-call traces reveal destructive actions
                                     # or toxic source→sink flows (catalog Phase 3 evidence layer)
-  # LLM for attack-payload generation (must tolerate adversarial content)
+  
+  # LLM for attack-payload generation (NOTE: must tolerate adversarial content)
   llm:
     model: ${NUGUARD_REDTEAM_LLM_MODEL}
     # api_key: ${NUGUARD_REDTEAM_LLM_API_KEY}
@@ -247,11 +254,6 @@ redteam:
 analyze:
   min_severity: medium              # critical | high | medium | low | info
   nga_only: false                   # true → run only NGA-001–018, skip external scans
-
-# ─── Database ─────────────────────────────────────────────────────────────────
-database:
-  # url: ${DATABASE_URL}            # SQLAlchemy async URL (postgresql+asyncpg://...)
-  # omit for SQLite default at ~/.nuguard/nuguard.db
 
 # ─── Output ───────────────────────────────────────────────────────────────────
 output:

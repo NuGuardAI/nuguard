@@ -348,6 +348,16 @@ class GoogleADKPythonAdapter(FrameworkAdapter):
                     agent_name = _clean(agent_ref) or "agent"
                 else:
                     agent_name = inst.assigned_to or "agent"
+                # Capture app_name kwarg from Runner(agent=..., app_name="my-app").
+                # Stored in extras["adk_app_name"] so the redteam factory can pass
+                # it directly to GoogleADKAdapter, bypassing the /list-apps call.
+                runner_app_name = _clean(inst.args.get("app_name") or "")
+                runner_meta: dict[str, Any] = {
+                    "agent_type": "generic",
+                    "framework": "google-adk",
+                }
+                if runner_app_name:
+                    runner_meta["adk_app_name"] = runner_app_name
                 agent_canon = canonicalize_text(f"google_adk:{agent_name}")
                 detected.append(
                     ComponentDetection(
@@ -357,10 +367,7 @@ class GoogleADKPythonAdapter(FrameworkAdapter):
                         adapter_name=self.name,
                         priority=self.priority,
                         confidence=0.78,
-                        metadata={
-                            "agent_type": "generic",
-                            "framework": "google-adk",
-                        },
+                        metadata=runner_meta,
                         file_path=file_path,
                         line=inst.line,
                         snippet=f"Runner(agent={agent_name!r})",
