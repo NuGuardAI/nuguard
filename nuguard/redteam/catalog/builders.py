@@ -1,0 +1,385 @@
+"""Catalog builder factories.
+
+Each entry in ``BUILDER_FACTORIES`` maps a ``builder_key`` (from
+:class:`ScenarioSpec`) to a ``BuilderFn`` that synthesises one or more
+:class:`AttackScenario` objects from SBOM context.
+
+Factories for *enabled* specs are thin adapters over the existing per-family
+builders in ``nuguard/redteam/scenarios/``.  They call those builders and then
+stamp catalog taxonomy metadata (``catalog_id``, ``category``,
+``delivery_channel``, etc.) onto each returned scenario so findings reports can
+surface stable IDs and OWASP mappings.
+
+Factories for *disabled* specs (``enabled=False``) raise :class:`NotImplementedError`
+at call time — they are never called by the selector in the current phase.
+
+``BuilderContext`` carries the resolved SBOM bindings that factories need without
+re-reading the graph.
+"""
+from __future__ import annotations
+
+from typing import Callable, NamedTuple
+
+from nuguard.sbom.models import AiSbomDocument, Node
+
+from .spec import ScenarioSpec
+from .taxonomy import Capability
+
+
+class AppCapabilityProfile(NamedTuple):
+    """Minimal read-only capability summary passed into builder factories.
+
+    A richer version lives in ``catalog/capability.py`` (Phase 2).  This stub
+    carries the fields the current enabled factories actually need.
+    """
+    capabilities: frozenset[Capability]
+    entry_agent_ids: tuple[str, ...]
+    tool_names: tuple[str, ...]
+    pii_fields: tuple[str, ...]
+    domain: str
+
+    def satisfies(self, required: frozenset[Capability]) -> bool:
+        return required <= self.capabilities
+
+
+class BuilderContext(NamedTuple):
+    """Resolved SBOM bindings passed to every factory call."""
+    sbom: AiSbomDocument
+    spec: ScenarioSpec
+    profile: AppCapabilityProfile
+    target_agent: Node
+    target_tool: "Node | None"
+    policy: "object | None"  # CognitivePolicy | None — avoid heavy import
+
+
+# Factory signature ────────────────────────────────────────────────────────────
+# A factory may return multiple scenarios (e.g. one per entry agent/tool pair).
+BuilderFn = Callable[[BuilderContext], "list[object]"]  # list[AttackScenario]
+
+
+def _stamp(scenarios: list, ctx: BuilderContext) -> list:
+    """Stamp catalog metadata from *spec* onto every scenario in the list."""
+    from nuguard.redteam.scenarios.scenario_types import AttackScenario
+    spec = ctx.spec
+    stamped = []
+    for s in scenarios:
+        if not isinstance(s, AttackScenario):
+            continue
+        stamped.append(s.model_copy(update={
+            "catalog_id": spec.id,
+            "category": spec.category.value,
+            "delivery_channel": spec.delivery_channel,
+            "source_trust": spec.source_trust,
+            "sink_type": spec.sink_type,
+            "evidence_types": list(spec.evidence_types),
+            "safe_execution": spec.safe_execution,
+            "required_capabilities": [c.value for c in spec.required_capabilities],
+            "expected_control": spec.expected_control,
+        }))
+    return stamped
+
+
+def _stub(key: str) -> BuilderFn:
+    """Return a factory that raises NotImplementedError for unimplemented specs."""
+    def _not_implemented(ctx: BuilderContext) -> list:
+        raise NotImplementedError(
+            f"Catalog builder '{key}' is not yet implemented. "
+            "This spec has enabled=False and should not be called by the selector."
+        )
+    _not_implemented.__name__ = f"_stub_{key}"
+    return _not_implemented
+
+
+# ── Implemented builders (thin adapters) ─────────────────────────────────────
+
+def _build_direct_pii(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.data_exfiltration import build_base64_exfiltration
+    agent = ctx.target_agent
+    results = build_base64_exfiltration(
+        str(agent.id), agent.name or "assistant",
+        target_field="user profile" if not ctx.profile.pii_fields else ctx.profile.pii_fields[0],
+    )
+    return _stamp([results], ctx)
+
+
+def _build_cross_tenant(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.data_exfiltration import build_cross_tenant_exfiltration
+    agent = ctx.target_agent
+    results = build_cross_tenant_exfiltration(str(agent.id), agent.name or "assistant")
+    return _stamp([results], ctx)
+
+
+def _build_account_id_probe(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.data_exfiltration import build_account_id_probe
+    agent = ctx.target_agent
+    results = build_account_id_probe(str(agent.id), agent.name or "assistant")
+    return _stamp([results], ctx)
+
+
+def _build_base64_exfil(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.data_exfiltration import build_base64_exfiltration
+    agent = ctx.target_agent
+    results = build_base64_exfiltration(str(agent.id), agent.name or "assistant")
+    return _stamp([results], ctx)
+
+
+def _build_structured_smuggling(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.data_exfiltration import build_json_xml_exfiltration
+    agent = ctx.target_agent
+    results = build_json_xml_exfiltration(str(agent.id), agent.name or "assistant")
+    return _stamp([results], ctx)
+
+
+def _build_metadata_smuggling(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.data_exfiltration import build_document_embedded_exfiltration
+    agent = ctx.target_agent
+    results = build_document_embedded_exfiltration(str(agent.id), agent.name or "assistant")
+    return _stamp([results], ctx)
+
+
+def _build_hitl_bypass(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.policy_violations import build_hitl_bypass
+    agent = ctx.target_agent
+    policy = ctx.policy
+    triggers = []
+    if policy and hasattr(policy, "hitl_triggers"):
+        triggers = policy.hitl_triggers or []
+    trigger = triggers[0] if triggers else "perform a high-risk action without approval"
+    results = build_hitl_bypass(str(agent.id), trigger)
+    return _stamp([results], ctx)
+
+
+def _build_mass_assignment(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.api_attacks import build_mass_assignment
+    agent = ctx.target_agent
+    # Mass assignment needs an API_ENDPOINT node; fall back to agent node
+    target = ctx.target_tool or agent
+    results = build_mass_assignment(str(target.id), target.name or "endpoint")
+    return _stamp([results], ctx)
+
+
+def _build_indirect_injection(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.prompt_injection import build_indirect_injection
+    agent = ctx.target_agent
+    tool_names = list(ctx.profile.tool_names[:3]) if ctx.profile.tool_names else []
+    results = build_indirect_injection(str(agent.id), agent.name or "assistant", tool_names)
+    return _stamp([results], ctx)
+
+
+def _build_mcp_tool_injection(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.mcp_attacks import build_mcp_tool_injection
+    agent = ctx.target_agent
+    tool = ctx.target_tool
+    tool_name = (tool.name if tool else None) or "external_mcp_tool"
+    results = build_mcp_tool_injection(str(agent.id), agent.name or "assistant", tool_name)
+    return _stamp([results], ctx)
+
+
+def _build_mcp_output_poisoning(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.mcp_attacks import build_mcp_output_poisoning
+    agent = ctx.target_agent
+    tool = ctx.target_tool
+    tool_name = (tool.name if tool else None) or "external_mcp_tool"
+    results = build_mcp_output_poisoning(str(agent.id), agent.name or "assistant", tool_name)
+    return _stamp([results], ctx)
+
+
+def _build_mcp_toxic_flow(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.mcp_attacks import build_mcp_toxic_flow
+    agent = ctx.target_agent
+    tool = ctx.target_tool
+    if tool is None:
+        return []
+    results = build_mcp_toxic_flow(
+        str(agent.id), agent.name or "assistant",
+        str(tool.id), tool.name or "write_tool",
+    )
+    return _stamp([results], ctx)
+
+
+def _build_memory_poisoning(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.agentic_attacks import build_memory_poisoning
+    agent = ctx.target_agent
+    results = build_memory_poisoning(str(agent.id), agent.name or "assistant")
+    return _stamp([results], ctx)
+
+
+def _build_confused_deputy(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.agentic_attacks import build_confused_deputy
+    agent = ctx.target_agent
+    tool_name = ctx.profile.tool_names[0] if ctx.profile.tool_names else "privileged_tool"
+    results = build_confused_deputy(str(agent.id), agent.name or "assistant", tool_name)
+    return _stamp([results], ctx)
+
+
+def _build_crescendo(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.advanced_jailbreaks import build_crescendo_attack
+    agent = ctx.target_agent
+    results = build_crescendo_attack(str(agent.id), agent.name or "assistant")
+    return _stamp([results], ctx)
+
+
+def _build_many_shot(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.advanced_jailbreaks import build_many_shot_jailbreak
+    agent = ctx.target_agent
+    results = build_many_shot_jailbreak(str(agent.id), agent.name or "assistant")
+    return _stamp([results], ctx)
+
+
+def _build_skeleton_key(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.advanced_jailbreaks import build_skeleton_key
+    agent = ctx.target_agent
+    results = build_skeleton_key(str(agent.id), agent.name or "assistant")
+    return _stamp([results], ctx)
+
+
+def _build_payload_splitting(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.advanced_jailbreaks import build_payload_splitting
+    agent = ctx.target_agent
+    results = build_payload_splitting(str(agent.id), agent.name or "assistant")
+    return _stamp([results], ctx)
+
+
+def _build_multi_language(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.evasion import build_multi_language_bypass
+    agent = ctx.target_agent
+    results = build_multi_language_bypass(str(agent.id), agent.name or "assistant")
+    return _stamp([results], ctx)
+
+
+def _build_encoding_evasion(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.evasion import build_encoding_evasion
+    agent = ctx.target_agent
+    results = build_encoding_evasion(str(agent.id), agent.name or "assistant")
+    return _stamp([results], ctx)
+
+
+def _build_context_flood(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.jailbreak import build_context_flood
+    agent = ctx.target_agent
+    results = build_context_flood(str(agent.id), agent.name or "assistant")
+    return _stamp([results], ctx)
+
+
+def _build_structural_injection(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.jailbreak import build_structural_injection
+    agent = ctx.target_agent
+    policy = ctx.policy
+    blocked = []
+    if policy and hasattr(policy, "restricted_topics"):
+        blocked = policy.restricted_topics or []
+    topic = blocked[0] if blocked else "unauthorized system commands"
+    results = build_structural_injection(str(agent.id), agent.name or "assistant", topic)
+    return _stamp([results], ctx)
+
+
+def _build_refusal_oracle(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.oracle_attacks import build_refusal_oracle
+    agent = ctx.target_agent
+    results = build_refusal_oracle(
+        str(agent.id), agent.name or "assistant",
+        known_tool_names=list(ctx.profile.tool_names),
+    )
+    return _stamp([results], ctx)
+
+
+def _build_system_prompt_extraction(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.prompt_injection import build_system_prompt_extraction
+    agent = ctx.target_agent
+    # system_prompt_excerpt — optional arg; skip if not in signature
+    results = build_system_prompt_extraction(str(agent.id), agent.name or "assistant")
+    return _stamp([results], ctx)
+
+
+# ── Registry ──────────────────────────────────────────────────────────────────
+
+BUILDER_FACTORIES: dict[str, BuilderFn] = {
+    # ── Data exfiltration ──────────────────────────────────────────────────
+    "direct_pii":           _build_direct_pii,
+    "cross_tenant":         _build_cross_tenant,
+    "account_id_probe":     _build_account_id_probe,
+    "cross_session_leak":   _stub("cross_session_leak"),
+    "private_doc":          _stub("private_doc"),
+    "rag_citation":         _stub("rag_citation"),
+    "aggregated_pii":       _stub("aggregated_pii"),
+    "history_disclosure":   _stub("history_disclosure"),
+    # ── Covert exfiltration ───────────────────────────────────────────────
+    "markdown_image":       _stub("markdown_image"),
+    "markdown_link":        _stub("markdown_link"),
+    "url_encoding":         _stub("url_encoding"),
+    "base64_exfil":         _build_base64_exfil,
+    "structured_smuggling": _build_structured_smuggling,
+    "metadata_smuggling":   _build_metadata_smuggling,
+    "invisible_unicode":    _stub("invisible_unicode"),
+    "telemetry_pretext":    _stub("telemetry_pretext"),
+    # ── Destructive actions ───────────────────────────────────────────────
+    "destructive_send":     _stub("destructive_send"),
+    "destructive_mutate":   _stub("destructive_mutate"),
+    "unsafe_navigation":    _stub("unsafe_navigation"),
+    "unsafe_device":        _stub("unsafe_device"),
+    "unsafe_transaction":   _stub("unsafe_transaction"),
+    "mass_notification":    _stub("mass_notification"),
+    "disable_safety":       _stub("disable_safety"),
+    "persistent_task":      _stub("persistent_task"),
+    # ── Authorization ─────────────────────────────────────────────────────
+    "bola_read":            _stub("bola_read"),
+    "bola_write":           _stub("bola_write"),
+    "bfla":                 _stub("bfla"),
+    "rbac_override":        _stub("rbac_override"),
+    "false_verification":   _stub("false_verification"),
+    "hitl_bypass":          _build_hitl_bypass,
+    "mass_assignment":      _build_mass_assignment,
+    "debug_admin":          _stub("debug_admin"),
+    # ── Indirect injection ────────────────────────────────────────────────
+    "indirect_injection":   _build_indirect_injection,
+    # ── MCP / tool poisoning ──────────────────────────────────────────────
+    "mcp_tool_injection":   _build_mcp_tool_injection,
+    "mcp_shadow_tool":      _stub("mcp_shadow_tool"),
+    "mcp_output_poisoning": _build_mcp_output_poisoning,
+    "mcp_toxic_flow":       _build_mcp_toxic_flow,
+    "credential_overreach": _stub("credential_overreach"),
+    "ssrf":                 _stub("ssrf"),
+    "tool_discovery_leak":  _stub("tool_discovery_leak"),
+    "mcp_cross_server":     _stub("mcp_cross_server"),
+    # ── Memory / persistence ──────────────────────────────────────────────
+    "memory_poisoning":     _build_memory_poisoning,
+    "profile_poisoning":    _stub("profile_poisoning"),
+    "cross_session_backdoor": _stub("cross_session_backdoor"),
+    "false_identity":       _stub("false_identity"),
+    "summary_poisoning":    _stub("summary_poisoning"),
+    "memory_auth_drift":    _stub("memory_auth_drift"),
+    # ── Multi-agent trust ─────────────────────────────────────────────────
+    "confused_deputy":      _build_confused_deputy,
+    "subagent_injection":   _stub("subagent_injection"),
+    "handoff_priv_esc":     _stub("handoff_priv_esc"),
+    "agent_impersonation":  _stub("agent_impersonation"),
+    "planner_executor":     _stub("planner_executor"),
+    "approval_spoof":       _stub("approval_spoof"),
+    # ── Jailbreak ─────────────────────────────────────────────────────────
+    "crescendo":            _build_crescendo,
+    "many_shot":            _build_many_shot,
+    "skeleton_key":         _build_skeleton_key,
+    "fictional_framing":    _stub("fictional_framing"),
+    "payload_splitting":    _build_payload_splitting,
+    "false_policy_premise": _stub("false_policy_premise"),
+    # ── Evasion ───────────────────────────────────────────────────────────
+    "multi_language":       _build_multi_language,
+    "encoding_evasion":     _build_encoding_evasion,
+    "context_flood":        _build_context_flood,
+    "structural_injection": _build_structural_injection,
+    "refusal_oracle":       _build_refusal_oracle,
+    "system_prompt_extraction": _build_system_prompt_extraction,
+    # ── Business logic ────────────────────────────────────────────────────
+    "false_action_claim":   _stub("false_action_claim"),
+    "out_of_domain_advice": _stub("out_of_domain_advice"),
+    "fraud_workflow":       _stub("fraud_workflow"),
+    "resource_exhaustion":  _stub("resource_exhaustion"),
+    "hallucinated_authority": _stub("hallucinated_authority"),
+    # ── Coding agents ─────────────────────────────────────────────────────
+    "repo_injection":       _stub("repo_injection"),
+    "shell_injection":      _stub("shell_injection"),
+    "secret_file_read":     _stub("secret_file_read"),
+    "sandbox_escape":       _stub("sandbox_escape"),
+    "delayed_ci_exfil":     _stub("delayed_ci_exfil"),
+    "verifier_sabotage":    _stub("verifier_sabotage"),
+}

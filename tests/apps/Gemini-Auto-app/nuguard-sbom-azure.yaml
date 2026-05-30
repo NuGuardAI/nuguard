@@ -136,13 +136,13 @@ redteam:
     api_base: ${AZURE_OPENAI_ENDPOINT}
 
   profile: full
-  scenarios:
-    - prompt-injection
-    - tool-abuse
-    - privilege-escalation
-    - data-exfiltration
-    - policy-violation
-    - mcp-toxic-flow
+  #scenarios:
+  #  - prompt-injection
+  #  - tool-abuse
+  #  - privilege-escalation
+  #  - data-exfiltration
+  #  - policy-violation
+  #  - mcp-toxic-flow
 
   min_impact_score: 0.0
 

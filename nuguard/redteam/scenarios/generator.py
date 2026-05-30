@@ -172,6 +172,29 @@ class ScenarioGenerator:
 
         # Sort by impact score descending
         scenarios.sort(key=lambda s: s.impact_score, reverse=True)
+        # Populate target_tool_names from the SBOM CALLS graph so the LLM prompt
+        # builder can name specific tools (Gmail, Calendar, etc.) in variants.
+        # Done once at the end so every scenario type is covered uniformly.
+        for sc in scenarios:
+            if sc.target_tool_names:
+                continue
+            tool_names: list[str] = []
+            seen: set[str] = set()
+            for node_id in sc.target_node_ids:
+                for tid in self._outgoing.get(node_id, {}).get(
+                    RelationshipType.CALLS, []
+                ):
+                    n = self._node_by_id.get(tid)
+                    if n is None:
+                        continue
+                    if n.component_type != ComponentType.TOOL:
+                        continue
+                    if n.name and n.name not in seen:
+                        seen.add(n.name)
+                        tool_names.append(n.name)
+            if tool_names:
+                # Cap at 12 to keep prompt budget bounded.
+                sc.target_tool_names = tool_names[:12]
         _log.info("Generated %d attack scenarios (guided=%s)", len(scenarios), with_guided)
         return scenarios
 

@@ -72,7 +72,10 @@ class PromptValidationGateConfig:
     max_turns: int = _env_int("NUGUARD_REDTEAM_PROMPT_GATE_MAX_TURNS", 3)
     min_turn_chars: int = _env_int("NUGUARD_REDTEAM_PROMPT_GATE_MIN_TURN_CHARS", 16)
     min_relevance_score: float = _env_float("NUGUARD_REDTEAM_PROMPT_GATE_MIN_RELEVANCE", 0.12)
-    max_similarity: float = _env_float("NUGUARD_REDTEAM_PROMPT_GATE_MAX_SIMILARITY", 0.96)
+    max_similarity: float = _env_float("NUGUARD_REDTEAM_PROMPT_GATE_MAX_SIMILARITY", 0.80)
+    max_jaccard_overlap: float = _env_float(
+        "NUGUARD_REDTEAM_PROMPT_GATE_MAX_JACCARD_OVERLAP", 0.70
+    )
     keep_best_effort_when_empty: bool = _env_bool(
         "NUGUARD_REDTEAM_PROMPT_GATE_KEEP_BEST_EFFORT", True
     )
@@ -103,6 +106,7 @@ class PromptValidationGate:
             "duplicate_exact": 0,
             "low_relevance": 0,
             "duplicate_near": 0,
+            "duplicate_semantic": 0,
         }
 
         # Pass 1: structural + relevance + exact dedup
@@ -129,18 +133,33 @@ class PromptValidationGate:
             seen_exact.add(norm)
             kept.append(seq)
 
-        # Pass 2: near-duplicate dedup across already-kept sequences
+        # Pass 2: near-duplicate dedup across already-kept sequences.
+        # Two layers: SequenceMatcher ratio (lexical surface), then Jaccard token
+        # overlap (semantic — catches paraphrases the surface ratio misses such
+        # as "keep responses easy to parse" vs "make replies compact and machine-
+        # friendly").
         deduped: list[list[str]] = []
+        deduped_tokens: list[set[str]] = []
         for seq in kept:
+            flat = self._flatten(seq)
             if any(
-                SequenceMatcher(None, self._flatten(seq), self._flatten(prev)).ratio()
+                SequenceMatcher(None, flat, self._flatten(prev)).ratio()
                 >= self._cfg.max_similarity
                 for prev in deduped
             ):
                 dropped += 1
                 drop_reasons["duplicate_near"] += 1
                 continue
+            seq_tokens = set(_tokenize(flat))
+            if seq_tokens and any(
+                self._jaccard(seq_tokens, prev_tokens) >= self._cfg.max_jaccard_overlap
+                for prev_tokens in deduped_tokens
+            ):
+                dropped += 1
+                drop_reasons["duplicate_semantic"] += 1
+                continue
             deduped.append(seq)
+            deduped_tokens.append(seq_tokens)
 
         if not deduped and self._cfg.keep_best_effort_when_empty and original:
             best = max(original, key=lambda s: self._relevance(self._flatten(s), anchors))
@@ -174,6 +193,12 @@ class PromptValidationGate:
     @staticmethod
     def _flatten(sequence: list[str]) -> str:
         return " ".join(turn.strip() for turn in sequence if turn and turn.strip())
+
+    @staticmethod
+    def _jaccard(a: set[str], b: set[str]) -> float:
+        if not a or not b:
+            return 0.0
+        return len(a & b) / len(a | b)
 
     def _relevance(self, flat_text: str, anchor_tokens: set[str]) -> float:
         if not anchor_tokens:
