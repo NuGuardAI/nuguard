@@ -134,11 +134,18 @@ redteam:
   # chat_payload_list: false       # wrap message value in a list (default: false)
 
   # Scan profile:
-  #   ci   — fast; only scenarios with pre-impact score ≥ 5 (default)
-  #   full — all scenarios regardless of score
+  #   ci       — fast; only scenarios with pre-impact score ≥ 5, capped at ~20 (default)
+  #   standard — balanced; score ≥ 3, capped at ~40 scenarios
+  #   full     — all capability-gated scenarios; ≥ 50 on feature-rich targets
   profile: ci
 
-  # Scenario types to run (omit section to run all):
+  # Stable-ID scenario catalog (84 scenarios across 12 attack categories).
+  # Set false to run the legacy SBOM-only generator without catalog scenarios.
+  use_catalog: true
+
+  # Scenario types to run (omit section to run all).
+  # These filter the legacy builder families; the catalog uses capability gating
+  # instead (see use_catalog above).
   scenarios:
     - prompt-injection
     - tool-abuse
@@ -211,6 +218,8 @@ redteam:
     policy_violations: true         # emit findings when policy evaluator detects violations (env: REDTEAM_TRIGGER_POLICY_VIOLATIONS)
     critical_success_hits: true     # emit fallback findings for high-confidence success signals (env: REDTEAM_TRIGGER_CRITICAL_SUCCESS_HITS)
     any_inject_success: false       # optional aggressive fallback for successful INJECT steps (env: REDTEAM_TRIGGER_ANY_INJECT_SUCCESS)
+    tool_trace_hits: true           # emit findings when tool-call traces reveal destructive actions
+                                    # or toxic source→sink flows (catalog Phase 3 evidence layer)
   # LLM for attack-payload generation (must tolerate adversarial content)
   llm:
     model: ${NUGUARD_REDTEAM_LLM_MODEL}
