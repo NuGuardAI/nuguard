@@ -24,7 +24,6 @@ from nuguard.sbom.models import AiSbomDocument, Node
 
 from .capability import AppCapabilityProfile
 from .spec import ScenarioSpec
-from .taxonomy import Capability
 
 __all__ = ["AppCapabilityProfile", "BuilderContext", "BuilderFn", "BUILDER_FACTORIES"]
 

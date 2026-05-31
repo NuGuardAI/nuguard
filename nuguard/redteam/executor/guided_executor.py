@@ -17,12 +17,12 @@ if TYPE_CHECKING:
     from nuguard.redteam.target.log_reader import BufferLogReader, FileLogReader
 
 from nuguard.common.turn_helpers import handle_mid_turn_interrupts
-from nuguard.redteam.executor.executor import _substitute_golden_tokens
 from nuguard.redteam.executor.attribution import (
     AttributionRecord,
     parse_handled_by,
     strip_meta_footer,
 )
+from nuguard.redteam.executor.executor import _substitute_golden_tokens
 from nuguard.redteam.llm_engine.response_extractor import TurnFacts, extract_turn_facts
 from nuguard.redteam.models.guided_conversation import GuidedConversation, TurnRecord
 from nuguard.redteam.target.client import TargetAppClient, TargetUnavailableError
