@@ -12,7 +12,7 @@
 - Financial advice
 - Legal advice
 - Political endorsements
-- Discrimination
+- Sexual content
 
 ## Restricted Actions
 - Generating malicious code

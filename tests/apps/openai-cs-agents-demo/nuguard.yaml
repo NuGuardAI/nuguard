@@ -114,6 +114,10 @@ redteam:
   #   full — all scenarios regardless of score
   profile: full
 
+  # Stable-ID scenario catalog (84 scenarios across 12 attack categories).
+  # Set false to run the legacy SBOM-only generator without catalog scenarios.
+  use_catalog: true
+  
   # Scenario types to run (omit section to run all):
   #scenarios:
   #  - prompt-injection
