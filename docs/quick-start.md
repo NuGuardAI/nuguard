@@ -1,6 +1,6 @@
 # NuGuard Quick Start
 
-This guide gets you from a fresh checkout to a starter cognitive policy, a first SBOM, a static analysis report, a policy check, and a red-team run.
+This guide gets you to a starter behavioral policy, a first SBOM, a static analysis report, a policy check, and a red-team run.
 
 ## Prerequisites
 
