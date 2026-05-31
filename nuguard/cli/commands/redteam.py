@@ -64,6 +64,14 @@ def redteam(
     canary: Optional[Path] = typer.Option(
         None, "--canary", help="Path to canary JSON file."
     ),
+    catalog: Optional[Path] = typer.Option(
+        None,
+        "--catalog",
+        help=(
+            "Path to a custom scenario catalog YAML file. Replaces the built-in catalog. "
+            "Generate a starting file with: nuguard redteam catalog-export"
+        ),
+    ),
     profile: str = typer.Option(
         "ci", "--profile", help="Scan profile: ci (fast, safe) or full."
     ),
@@ -124,6 +132,9 @@ def redteam(
     policy_path = policy or (Path(cfg.policy_path) if cfg.policy_path else None)
     target_url = target or cfg.target_url
     canary_path = canary or (Path(cfg.canary_path) if cfg.canary_path else None)
+    catalog_path = catalog or (
+        Path(cfg.redteam_catalog_path) if cfg.redteam_catalog_path else None
+    )
     _source_path_val = getattr(cfg, "source_path", None)
     source_dir = source or (Path(str(_source_path_val)) if _source_path_val else None)
     # CLI flag takes precedence; fall back to config default
@@ -147,6 +158,28 @@ def redteam(
         typer.echo(
             "Warning: all redteam finding triggers are disabled; scans may produce empty findings by design."
         )
+
+    # Load custom catalog if provided
+    custom_catalog = None
+    if catalog_path:
+        import yaml as _yaml  # noqa: PLC0415
+
+        from nuguard.redteam.catalog.loader import load_catalog_yaml  # noqa: PLC0415
+
+        try:
+            custom_catalog = load_catalog_yaml(catalog_path)
+            typer.echo(
+                f"  Custom catalog: {len(custom_catalog)} scenarios from {catalog_path}"
+            )
+        except FileNotFoundError:
+            typer.echo(f"Error: catalog file not found: {catalog_path}", err=True)
+            raise typer.Exit(code=1)
+        except _yaml.YAMLError as exc:
+            typer.echo(f"Error: malformed catalog YAML in {catalog_path}: {exc}", err=True)
+            raise typer.Exit(code=1)
+        except ValueError as exc:
+            typer.echo(str(exc), err=True)
+            raise typer.Exit(code=1)
 
     # Validate SBOM
     if not sbom_path or not sbom_path.exists():
@@ -221,6 +254,7 @@ def redteam(
                 similar_miss_threshold=cfg.redteam_similar_miss_threshold,
                 skip_discovery=cfg.redteam_skip_discovery,
                 discovery_max_turns=cfg.redteam_discovery_max_turns,
+                catalog=custom_catalog,
             )
         )
     except Exception as exc:
@@ -390,6 +424,7 @@ async def _run_redteam(
     discovery_max_turns: int = 3,
     chat_payload_extras: dict[str, Any] | None = None,
     use_catalog: bool = True,
+    catalog: "tuple | None" = None,
 ) -> tuple[list, dict[str, str], list, str, list[str], Any]:
     from nuguard.models.policy import CognitivePolicy
     from nuguard.redteam.target.canary import CanaryConfig
@@ -515,6 +550,7 @@ async def _run_redteam(
                 skip_discovery=skip_discovery,
                 discovery_max_turns=discovery_max_turns,
                 use_catalog=use_catalog,
+                catalog=catalog,
             )
 
     # App already running — just scan
@@ -560,6 +596,7 @@ async def _run_redteam(
         skip_discovery=skip_discovery,
         discovery_max_turns=discovery_max_turns,
         use_catalog=use_catalog,
+        catalog=catalog,
     )
 
 
@@ -604,6 +641,7 @@ async def _run_orchestrator(
     skip_discovery: bool = False,
     discovery_max_turns: int = 3,
     use_catalog: bool = True,
+    catalog: "tuple | None" = None,
 ) -> tuple[list, dict[str, str], list, str, list[str], Any]:
     from nuguard.common.llm_client import LLMClient
     from nuguard.redteam.executor.orchestrator import RedteamOrchestrator
@@ -652,6 +690,7 @@ async def _run_orchestrator(
         skip_discovery=skip_discovery,
         discovery_max_turns=discovery_max_turns,
         use_catalog=use_catalog,
+        catalog=catalog,
     )
 
     findings = await orchestrator.run()
@@ -833,3 +872,36 @@ def _fail_on_severity(findings: list, fail_on: str) -> None:
                 raise typer.Exit(code=2)
         except ValueError:
             pass
+
+
+@redteam_app.command(name="catalog-export")
+def catalog_export(
+    output: Optional[Path] = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help="Write the catalog YAML to this path. Prints to stdout when omitted.",
+    ),
+) -> None:
+    """Export the built-in scenario catalog to YAML for customization.
+
+    The exported file can be edited and passed back via --catalog to replace
+    the built-in catalog with a custom set of scenarios.
+
+    Common customizations:
+      - Set enabled: false to skip specific scenarios
+      - Adjust base_impact (0-10) to change selection priority under --profile ci/standard
+      - Modify expected_control or success_signal descriptions
+      - Add new entries with a unique id and a registered builder_key
+    """
+    from nuguard.redteam.catalog.loader import export_catalog_yaml
+    from nuguard.redteam.catalog.registry import SCENARIO_CATALOG
+
+    yaml_text = export_catalog_yaml(SCENARIO_CATALOG, path=output)
+    if output:
+        typer.echo(
+            f"Catalog exported: {len(SCENARIO_CATALOG)} scenarios → {output}\n"
+            f"Edit the file and run: nuguard redteam --catalog {output} ..."
+        )
+    else:
+        typer.echo(yaml_text, nl=False)

@@ -315,6 +315,15 @@ Dynamic adversarial testing against a live AI application. Reads the AI-SBOM to 
 
 See [red-teaming-guide.md](./red-teaming-guide.md) for a complete description of how the engine works.
 
+### Subcommands
+
+| Subcommand | Description |
+|---|---|
+| *(default)* | Run the red-team scan |
+| `catalog-export` | Export the built-in scenario catalog to YAML for customization |
+
+### `nuguard redteam` (scan)
+
 ```bash
 # Basic scan (app already running)
 nuguard redteam --sbom app.sbom.json --target http://localhost:8000
@@ -336,6 +345,10 @@ nuguard redteam --sbom app.sbom.json --target http://localhost:8000 \
 nuguard redteam --sbom app.sbom.json --target http://localhost:8000 \
   --scenarios prompt-injection,data-exfiltration
 
+# Scan with a custom scenario catalog
+nuguard redteam --sbom app.sbom.json --target http://localhost:8000 \
+  --catalog ./my-catalog.yaml --profile full
+
 # CI gate — SARIF output, fail on high+
 nuguard redteam --sbom app.sbom.json --target $APP_URL \
   --profile ci -f sarif -o results.sarif --fail-on high
@@ -350,6 +363,7 @@ nuguard redteam --sbom app.sbom.json --target $APP_URL \
 | `--launch` / `--no-launch` | — | off | Auto-start the app from the SBOM startup command; stop it after the scan. Requires `--source` |
 | `--policy` | — | from `nuguard.yaml` | Cognitive Policy Markdown path |
 | `--canary` | — | from `nuguard.yaml` | Canary JSON file path |
+| `--catalog` | — | built-in catalog | Path to a custom scenario catalog YAML. Replaces the built-in 84-scenario catalog. Generate with `nuguard redteam catalog-export` |
 | `--profile` | — | `ci` | `ci` (high-signal only) or `full` (all scenarios) |
 | `--scenarios` | — | all | Comma-separated filter: `prompt-injection`, `tool-abuse`, `privilege-escalation`, `data-exfiltration`, `policy-violation`, `mcp-toxic-flow` |
 | `--min-impact-score` | — | `0.0` | Exclude scenarios below this pre-score [0–10] |
@@ -360,6 +374,30 @@ nuguard redteam --sbom app.sbom.json --target $APP_URL \
 | `--output` | `-o` | — | Write findings to this file |
 | `--fail-on` | — | `high` | Exit code 2 if any finding meets this severity |
 | `--verbose` / `--no-verbose` | `-v` / `-V` | off | Print detailed per-turn traces |
+
+### `nuguard redteam catalog-export`
+
+Export the full built-in scenario catalog to a YAML file for review or customization.  The exported file can be edited and passed back with `--catalog` to replace the built-in catalog for a scan.
+
+```bash
+# Write to a file
+nuguard redteam catalog-export --output my-catalog.yaml
+
+# Print to stdout (pipe to less or grep)
+nuguard redteam catalog-export
+```
+
+| Flag | Short | Default | Description |
+|---|---|---|---|
+| `--output` | `-o` | stdout | Write the YAML to this path instead of printing |
+
+Common edits after exporting:
+
+- Set `enabled: false` on a scenario to skip it entirely.
+- Lower `base_impact` below the profile threshold (e.g. `< 5.0` for `--profile ci`) to exclude it from fast scans without disabling it globally.
+- Edit `expected_control` or `success_signal` to match your application's specific behavior.
+
+See [Customizing the Catalog](./red-teaming-guide.md#customizing-the-catalog) in the red-teaming guide for a full walkthrough.
 
 **Target URL resolution order:** `--target` flag → `redteam.target` in `nuguard.yaml` → SBOM-discovered URLs (local → staging → production) → error.
 
@@ -376,6 +414,8 @@ nuguard redteam --sbom app.sbom.json --target $APP_URL \
 
 | YAML key | Default | Description |
 |---|---|---|
+| `redteam.catalog_path` | — | Path to a custom scenario catalog YAML (same as `--catalog`). Relative paths resolved from the config file directory. |
+| `redteam.use_catalog` | `true` | Include catalog scenarios. Set `false` to use only the SBOM-driven generator. |
 | `redteam.strict_outcome` | `false` | When ≥ 80% of events are 5xx/network errors, report `inconclusive_target_errors` instead of `no_findings` |
 | `redteam.emit_pytest` | `false` | Generate pytest regression tests for HIT findings (severity ≥ medium) |
 | `redteam.emit_pytest_dir` | `tests/redteam` | Directory to write generated pytest files |

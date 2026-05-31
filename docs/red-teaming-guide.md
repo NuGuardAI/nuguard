@@ -16,6 +16,7 @@ If you have access to a staging environment with realistic data, you can run the
 4. [Attack Goal Taxonomy](#attack-goal-taxonomy)
 5. [Scenario Generation](#scenario-generation)
 6. [Scenario Catalog](#scenario-catalog)
+   - [Customizing the Catalog](#customizing-the-catalog)
 7. [Canary Seeds](#canary-seeds)
    - [Why Use Canaries](#why-use-canaries)
    - [Canary File Format](#canary-file-format)
@@ -291,6 +292,68 @@ Every scan produces a catalog coverage report alongside the findings. The report
 - Which scenarios were skipped and why (`skipped_by_capability`, `disabled_placeholder`, `below_impact_threshold`)
 
 To see the full coverage table, run with `--format markdown` or inspect `catalog_coverage` in the JSON output.
+
+### Customizing the Catalog
+
+The scenario catalog can be exported to a YAML file, edited, and fed back into `nuguard redteam` with the `--catalog` flag.  This lets you disable specific scenarios, adjust impact scores, or tweak control descriptions — without modifying the NuGuard source code.
+
+**Export the built-in catalog:**
+
+```bash
+nuguard redteam catalog-export --output my-catalog.yaml
+```
+
+This writes all 84 scenario specs to `my-catalog.yaml`.  The file has a human-readable header explaining each field.
+
+**Edit the catalog:**
+
+Common customizations:
+
+```yaml
+scenarios:
+  # Disable a scenario entirely
+  - id: D01
+    enabled: false
+    # ... rest of fields unchanged
+
+  # Lower a scenario's impact so it's excluded from --profile ci (threshold ≥ 5.0)
+  - id: C04
+    base_impact: 2.0
+    # ...
+
+  # Adjust the expected control description for your policy
+  - id: J02
+    expected_control: "Reject any request that references internal tooling by name."
+    # ...
+```
+
+Each entry in the YAML maps directly to a `ScenarioSpec`.  All enum fields (`goal_type`, `delivery_channel`, `required_capabilities`, etc.) are validated on load — a typo produces a clear error naming the field and the offending value.
+
+**Run with a custom catalog:**
+
+```bash
+nuguard redteam \
+  --sbom ./sbom.json \
+  --target http://localhost:8000 \
+  --catalog ./my-catalog.yaml \
+  --profile full
+```
+
+Or set it in `nuguard.yaml` so it applies automatically:
+
+```yaml
+redteam:
+  catalog_path: ./my-catalog.yaml
+```
+
+**Validation behavior:**
+
+- Invalid enum values → `ValueError` with the entry ID, field name, and the bad value.
+- Duplicate IDs → `ValueError` listing the conflicting entries.
+- Unknown `builder_key` → `UserWarning` only (not an error), because you may reference builders shipped in a newer version of NuGuard.
+- The scan exits with code 1 before starting if the catalog file cannot be loaded.
+
+> **Note:** A custom catalog **replaces** the built-in catalog entirely.  To add a scenario without removing others, export the full catalog and append your entry to the YAML list before passing it back.  The built-in catalog is always re-exportable with `catalog-export`.
 
 ---
 
@@ -757,6 +820,23 @@ nuguard redteam \
   --fail-on high   # exit code 2 if any HIGH or CRITICAL finding
 ```
 
+### Export and customize the scenario catalog
+
+```bash
+# Export the full 84-scenario catalog to YAML
+nuguard redteam catalog-export --output my-catalog.yaml
+
+# Print the catalog to stdout (pipe to less, grep, etc.)
+nuguard redteam catalog-export
+
+# Scan with a custom catalog
+nuguard redteam \
+  --sbom ./sbom.json \
+  --target http://localhost:8000 \
+  --catalog ./my-catalog.yaml \
+  --profile full
+```
+
 ### SARIF output (GitHub Code Scanning)
 
 ```bash
@@ -784,6 +864,7 @@ nuguard redteam \
 | — | `redteam.auth_header` | — | — | Legacy shorthand header string (fallback when neither `target.auth` nor `redteam.auth` is set) |
 | `--profile` | `redteam.profile` | — | `ci` | `ci` (top-20, impact ≥ 5.0), `standard` (top-40, impact ≥ 3.0), or `full` (all matching catalog scenarios) |
 | — | `redteam.use_catalog` | — | `true` | Include catalog scenarios in the run. Set `false` to use only the SBOM-driven generator. |
+| `--catalog` | `redteam.catalog_path` | — | — | Path to a custom scenario catalog YAML. Replaces the built-in 84-scenario catalog. Generate a starting file with `nuguard redteam catalog-export`. |
 | `--scenarios` | `redteam.scenarios` | — | all | Scenario type filter (list in YAML, comma-separated on CLI) |
 | `--min-impact-score` | `redteam.min_impact_score` | — | `0.0` | Exclude scenarios below this pre-score |
 | `--canary` | `redteam.canary` | — | — | Path to canary JSON config |
@@ -884,6 +965,7 @@ redteam:
 
   profile: full
   canary: ./canary.json
+  # catalog_path: ./my-catalog.yaml  # custom scenario catalog (optional)
   request_timeout: 120
 
   # Run only these attack families (omit to run all)
