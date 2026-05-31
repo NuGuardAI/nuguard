@@ -290,6 +290,7 @@ class BehaviorAnalysisResult(BaseModel):
     recommendations: list[Recommendation] = Field(default_factory=list)
     remediation_plan: list[RemediationArtefact] = Field(default_factory=list)
     scan_outcome: str = "no_findings"
+    llm_executive_summary: str | None = None
 
     @computed_field  # type: ignore[misc]
     @property

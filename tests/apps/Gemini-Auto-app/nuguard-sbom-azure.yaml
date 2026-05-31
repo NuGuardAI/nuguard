@@ -135,14 +135,18 @@ redteam:
     api_key: ${AZURE_OPENAI_KEY}
     api_base: ${AZURE_OPENAI_ENDPOINT}
 
+  # Stable-ID scenario catalog (84 scenarios across 12 attack categories).
+  # Set false to run the legacy SBOM-only generator without catalog scenarios.
+  use_catalog: true
+  
   profile: full
-  scenarios:
-    - prompt-injection
-    - tool-abuse
-    - privilege-escalation
-    - data-exfiltration
-    - policy-violation
-    - mcp-toxic-flow
+  #scenarios:
+  #  - prompt-injection
+  #  - tool-abuse
+  #  - privilege-escalation
+  #  - data-exfiltration
+  #  - policy-violation
+  #  - mcp-toxic-flow
 
   min_impact_score: 0.0
 

@@ -1,6 +1,6 @@
 """GitHub Advanced Security (GHAS) Code Scanning upload plugin.
 
-Builds a SARIF 2.1.0 document from Xelo SBOM findings and uploads it to
+Builds a SARIF 2.1.0 document from NuGuard SBOM findings and uploads it to
 GitHub Code Scanning via the REST API.  After upload, findings appear in
 the repository's **Security → Code scanning** tab and are annotated on
 pull requests and commits automatically by GitHub.
@@ -21,7 +21,7 @@ Config keys
   ref             Git ref  e.g. ``refs/heads/main``                (required)
   commit_sha      40-character hexadecimal commit SHA              (required)
   github_api_url  Base URL for the API                             (default: https://api.github.com)
-  provider        Vulnerability scan provider                      (default: xelo-rules)
+  provider        Vulnerability scan provider                      (default: nuguard-rules)
   timeout         HTTP timeout in seconds                          (default: 15.0)
   retries         Number of retry attempts                         (default: 2)
 """
@@ -60,11 +60,11 @@ class GhasUploaderPlugin(ToolPlugin):
             cfg.github_repo,
             cfg.ref,
             cfg.commit_sha[:8] + "...",
-            config.get("provider", "xelo-rules"),
+            config.get("provider", "nuguard-rules"),
         )
 
         # ── Build SARIF from the vulnerability scanner ──────────────────
-        provider = config.get("provider", "xelo-rules")
+        provider = config.get("provider", "nuguard-rules")
         try:
             sarif_doc = self._build_sarif(sbom, provider, config)
         except Exception as exc:
@@ -97,7 +97,7 @@ class GhasUploaderPlugin(ToolPlugin):
             "commit_sha": cfg.commit_sha,
             "ref":        cfg.ref,
             "sarif":      encoded,
-            "tool_name":  "xelo-toolbox",
+            "tool_name":  "nuguard-toolbox",
         }
 
         _log.info("uploading SARIF to %s", url)

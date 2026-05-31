@@ -1,20 +1,20 @@
-"""xelo configuration.
+"""nuguard configuration.
 
 Environment variables
 ---------------------
-XELO_LLM                  Set to "1" / "true" to enable LLM enrichment
-XELO_LLM_MODEL            LLM model string passed to litellm (default: gpt-4o-mini)
-XELO_LLM_API_KEY          API key for the LLM provider
-XELO_LLM_API_BASE         Base URL for the LLM provider
-XELO_LLM_BUDGET_TOKENS    Max tokens to spend on LLM enrichment (default: 50000)
+NUGUARD_LLM                  Set to "1" / "true" to enable LLM enrichment
+NUGUARD_LLM_MODEL            LLM model string passed to litellm (default: gpt-4o-mini)
+NUGUARD_LLM_API_KEY          API key for the LLM provider
+NUGUARD_LLM_API_BASE         Base URL for the LLM provider
+NUGUARD_LLM_BUDGET_TOKENS    Max tokens to spend on LLM enrichment (default: 50000)
 
 Legacy aliases (still accepted for backwards compatibility)
 -----------------------------------------------------------
-AISBOM_ENABLE_LLM         → XELO_LLM
-AISBOM_LLM_MODEL          → XELO_LLM_MODEL
-AISBOM_LLM_API_KEY        → XELO_LLM_API_KEY
-AISBOM_LLM_API_BASE       → XELO_LLM_API_BASE
-AISBOM_LLM_BUDGET_TOKENS  → XELO_LLM_BUDGET_TOKENS
+AISBOM_ENABLE_LLM         → NUGUARD_LLM
+AISBOM_LLM_MODEL          → NUGUARD_LLM_MODEL
+AISBOM_LLM_API_KEY        → NUGUARD_LLM_API_KEY
+AISBOM_LLM_API_BASE       → NUGUARD_LLM_API_BASE
+AISBOM_LLM_BUDGET_TOKENS  → NUGUARD_LLM_BUDGET_TOKENS
 """
 
 from __future__ import annotations
@@ -56,7 +56,7 @@ def _get(primary: str, *aliases: str) -> str | None:
 
 
 def _default_enable_llm() -> bool:
-    raw = _get("XELO_LLM", "AISBOM_ENABLE_LLM")
+    raw = _get("NUGUARD_LLM", "AISBOM_ENABLE_LLM")
     if raw is not None:
         normalized = raw.strip().lower()
         return normalized in {"1", "true", "yes", "on"}
@@ -64,19 +64,19 @@ def _default_enable_llm() -> bool:
 
 
 def _default_llm_model() -> str:
-    return _get("XELO_LLM_MODEL", "AISBOM_LLM_MODEL") or "gpt-4o-mini"
+    return _get("NUGUARD_LLM_MODEL", "AISBOM_LLM_MODEL") or "gpt-4o-mini"
 
 
 def _default_llm_api_key() -> str | None:
-    return _get("XELO_LLM_API_KEY", "AISBOM_LLM_API_KEY")
+    return _get("NUGUARD_LLM_API_KEY", "AISBOM_LLM_API_KEY")
 
 
 def _default_llm_api_base() -> str | None:
-    return _get("XELO_LLM_API_BASE", "AISBOM_LLM_API_BASE")
+    return _get("NUGUARD_LLM_API_BASE", "AISBOM_LLM_API_BASE")
 
 
 def _default_budget_tokens() -> int:
-    raw = _get("XELO_LLM_BUDGET_TOKENS", "AISBOM_LLM_BUDGET_TOKENS")
+    raw = _get("NUGUARD_LLM_BUDGET_TOKENS", "AISBOM_LLM_BUDGET_TOKENS")
     if raw:
         try:
             return int(raw)

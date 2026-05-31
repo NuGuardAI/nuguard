@@ -1,6 +1,6 @@
-"""Google ADK (Agent Development Kit) TypeScript Adapter for Xelo SBOM.
+"""Google ADK (Agent Development Kit) TypeScript Adapter for NuGuard SBOM.
 
-Parsing is performed by ``xelo.core.ts_parser`` (tree-sitter when
+Parsing is performed by ``nuguard.core.ts_parser`` (tree-sitter when
 available, regex fallback otherwise).
 
 Supports:

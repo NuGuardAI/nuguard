@@ -24,6 +24,9 @@ if TYPE_CHECKING:
 
 _log = logging.getLogger(__name__)
 
+# Dedup set: emit the ADK app_name fallback warning at most once per base URL.
+_adk_fallback_warned: set[str] = set()
+
 DEFAULT_TIMEOUT = 30.0
 
 
@@ -324,11 +327,19 @@ class TargetAppClient:
                         # behind a custom REST endpoint), silently drop the ADK adapter
                         # and fall through to the generic HTTP POST path below.
                         if "app_name could not be determined" in str(_adk_err):
-                            _log.warning(
-                                "ADK adapter could not resolve app_name "
-                                "(target does not expose /list-apps) — "
-                                "falling back to generic HTTP POST adapter"
-                            )
+                            _base = self.base_url or ""
+                            if _base not in _adk_fallback_warned:
+                                _adk_fallback_warned.add(_base)
+                                _log.warning(
+                                    "ADK adapter could not resolve app_name "
+                                    "(target does not expose GET /list-apps and "
+                                    "the SBOM contains no adk_app_name). "
+                                    "Falling back to generic HTTP POST — "
+                                    "multi-turn session fidelity may be reduced. "
+                                    "Fix: run 'nuguard sbom generate' against the source "
+                                    "so app_name is captured from Runner(app_name=...), "
+                                    "or set 'adk.app_name: <name>' in nuguard.yaml."
+                                )
                             self._framework_adapter = None
                         else:
                             raise

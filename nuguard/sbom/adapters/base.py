@@ -170,7 +170,7 @@ class FrameworkAdapter:
         self,
         content: str,
         file_path: str,
-        parse_result: Any,  # xelo.ast_parser.ParseResult
+        parse_result: Any,  # nuguard.ast_parser.ParseResult
     ) -> list[ComponentDetection]:
         """Extract component detections from *file_path*.
 

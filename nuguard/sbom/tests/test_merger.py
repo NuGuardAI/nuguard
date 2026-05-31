@@ -3,7 +3,7 @@
 Validates the full two-phase pipeline from the reference architecture:
 
   Phase 1 — Standard SBOM: cyclonedx-py CLI (or dep-scanner fallback)
-  Phase 2 — AI-BOM:        Xelo AST extractors
+  Phase 2 — AI-BOM:        NuGuard AST extractors
   Merge   — Normalization: unified CycloneDX 1.6 BOM with aibom:* enrichment
 """
 

@@ -966,11 +966,13 @@ class AiSbomExtractor:
             self._clone_repo(url=url, ref=ref, dest=repo_dir)
             return self.extract_from_path(repo_dir, config, source_ref=display_url, branch=ref)
 
-        with tempfile.TemporaryDirectory(prefix="xelo_") as temp_dir:
+        with tempfile.TemporaryDirectory(prefix="nuguard_clone_", ignore_cleanup_errors=True) as temp_dir:
             repo_dir = Path(temp_dir) / "repo" / app_name
             repo_dir.mkdir(parents=True, exist_ok=True)
             self._clone_repo(url=url, ref=ref, dest=repo_dir)
-            return self.extract_from_path(repo_dir, config, source_ref=display_url, branch=ref)
+            doc = self.extract_from_path(repo_dir, config, source_ref=display_url, branch=ref)
+        _log.debug("Deleted cloned repo temp dir: %s", temp_dir)
+        return doc
 
     # ------------------------------------------------------------------
     # Internal helpers

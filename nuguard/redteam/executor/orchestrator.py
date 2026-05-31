@@ -469,6 +469,7 @@ class RedteamOrchestrator:
         skip_discovery: bool = False,
         discovery_max_turns: int = 3,
         chat_payload_extras: dict[str, Any] | None = None,
+        use_catalog: bool = True,
     ) -> None:
         self._sbom = sbom
         self._target_url = target_url
@@ -476,6 +477,7 @@ class RedteamOrchestrator:
         self._policy_controls = policy_controls  # compiled PolicyControl list
         self._canary_config = canary_config
         self._profile = profile
+        self._use_catalog = use_catalog
         self._min_impact = min_impact_score
         self._log_path = log_path
         self._request_timeout = request_timeout
@@ -558,6 +560,8 @@ class RedteamOrchestrator:
             "policy_violations": True,
             "critical_success_hits": True,
             "any_inject_success": False,
+            # Phase 3 catalog evidence layers (default on)
+            "tool_trace_hits": True,
         }
         if self._finding_triggers is None:
             return defaults.get(name, False)
@@ -771,6 +775,35 @@ class RedteamOrchestrator:
         generator = ScenarioGenerator(self._sbom, effective_policy)
         all_scenarios = generator.generate(with_guided=_with_guided)
 
+        # 1b. Catalog scenarios — merged in when use_catalog=True.
+        # The catalog is capability-aware and handles its own profile filtering,
+        # so we merge after the legacy filter to avoid double-capping.
+        _use_catalog = getattr(self, "_use_catalog", True)
+        self.catalog_coverage = None
+        if _use_catalog:
+            try:
+                catalog_scenarios = generator.generate_from_catalog(
+                    scan_profile=self._profile,
+                    with_guided=_with_guided,
+                )
+                self.catalog_coverage = generator.last_coverage
+                # Merge catalog scenarios, keeping existing legacy ones first
+                existing_keys = {
+                    (s.goal_type, s.scenario_type, tuple(s.target_node_ids))
+                    for s in all_scenarios
+                }
+                for s in catalog_scenarios:
+                    key = (s.goal_type, s.scenario_type, tuple(s.target_node_ids))
+                    if key not in existing_keys:
+                        all_scenarios.append(s)
+                _log.info(
+                    "Merged %d catalog scenarios (coverage: %d categories)",
+                    len(catalog_scenarios),
+                    self.catalog_coverage.categories_covered_count if self.catalog_coverage else 0,
+                )
+            except Exception as exc:
+                _log.warning("Catalog generation failed (non-fatal): %s", exc)
+
         # 2. Filter by profile and impact score (before enrichment — avoids wasting LLM calls)
         if self._profile == "ci":
             # ci profile: only high-impact scenarios (score >= 5.0)
@@ -778,6 +811,10 @@ class RedteamOrchestrator:
                 s
                 for s in all_scenarios
                 if s.impact_score >= max(self._min_impact, 5.0)
+            ]
+        elif self._profile == "standard":
+            scenarios = [
+                s for s in all_scenarios if s.impact_score >= max(self._min_impact, 3.0)
             ]
         else:
             scenarios = [
@@ -1684,6 +1721,50 @@ class RedteamOrchestrator:
                     evidence=f"Canary values found: {canary_hits} | Attack steps: {step_summary}",
                 )
             )
+
+        # Tool-trace findings (Phase 3: catalog T/M/G/B series evidence)
+        if self._trigger_enabled("tool_trace_hits"):
+            tool_trace_details: list[str] = []
+            artifact_details: list[str] = []
+            for sr in step_results:
+                tool_trace_details.extend(sr.tool_trace_findings)
+                artifact_details.extend(sr.artifact_findings)
+            if tool_trace_details and not findings:
+                trace_title = f"Tool-Call Trace Finding — {scenario.title}"
+                findings.append(
+                    Finding(
+                        **_base,
+                        finding_id=_finding_id(trace_title),
+                        title=trace_title,
+                        severity=goal_sev,
+                        description=(
+                            f"Tool-call trace analysis detected suspicious tool invocation: "
+                            f"{'; '.join(tool_trace_details[:3])}"
+                        ),
+                        remediation=remediation_generator.generate(
+                            scenario.goal_type, scenario.title
+                        ),
+                        evidence=f"Tool trace: {'; '.join(tool_trace_details[:5])} | Steps: {step_summary}",
+                    )
+                )
+            if artifact_details and not findings:
+                artifact_title = f"Covert Artifact Finding — {scenario.title}"
+                findings.append(
+                    Finding(
+                        **_base,
+                        finding_id=_finding_id(artifact_title),
+                        title=artifact_title,
+                        severity=goal_sev,
+                        description=(
+                            f"Artifact scanner detected covert exfiltration artifact: "
+                            f"{'; '.join(artifact_details[:3])}"
+                        ),
+                        remediation=remediation_generator.generate(
+                            scenario.goal_type, scenario.title
+                        ),
+                        evidence=f"Artifact: {'; '.join(artifact_details[:5])} | Steps: {step_summary}",
+                    )
+                )
 
         # Policy violation findings
         if self._trigger_enabled("policy_violations"):

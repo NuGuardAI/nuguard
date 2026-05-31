@@ -8,7 +8,7 @@ Key Features:
 - Cost-aware: stops when budget exceeded
 - Configurable: can be disabled via environment variable
 - Caches results for identical code patterns
-- Works with xelo.models.Node (standalone, no backend dependency)
+- Works with nuguard.models.Node (standalone, no backend dependency)
 """
 
 from __future__ import annotations

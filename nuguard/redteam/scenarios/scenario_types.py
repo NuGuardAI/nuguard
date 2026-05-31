@@ -6,6 +6,13 @@ from typing import TYPE_CHECKING
 from pydantic import BaseModel, Field
 
 from nuguard.models.exploit_chain import ExploitChain, GoalType, ScenarioType
+from nuguard.redteam.catalog.taxonomy import (
+    DeliveryChannel,
+    EvidenceType,
+    SafeExecution,
+    SinkType,
+    SourceTrust,
+)
 
 if TYPE_CHECKING:
     from nuguard.redteam.models.guided_conversation import GuidedConversation
@@ -18,8 +25,29 @@ class AttackScenario(BaseModel):
     title: str
     description: str
     target_node_ids: list[str] = Field(default_factory=list)
+    # Names of tools reachable from the target agent (CALLS edges in the SBOM).
+    # Populated by the scenario generator and passed into the LLM prompt builder
+    # so generated variants can name specific tools (e.g. Gmail, Calendar) rather
+    # than emit generic "show me account data" framings.
+    target_tool_names: list[str] = Field(default_factory=list)
     precondition_summary: str = ""
     impact_score: float = 0.0
+    # ── Catalog taxonomy (docs/llm-runs/Red-team-new-design.md) ──────────────
+    # Populated when a scenario is produced by the catalog builder factories.
+    # All optional/defaulted so the dozens of direct AttackScenario(...) call
+    # sites in the legacy per-family builders remain valid unchanged.
+    catalog_id: str = ""                       # stable ID e.g. "C01" / "T03"
+    category: str = ""                         # ScenarioCategory.value
+    delivery_channel: DeliveryChannel | None = None
+    source_trust: SourceTrust | None = None
+    sink_type: SinkType | None = None
+    evidence_types: list[EvidenceType] = Field(default_factory=list)
+    safe_execution: SafeExecution | None = None
+    required_capabilities: list[str] = Field(default_factory=list)
+    expected_control: str = ""
+    # Set when a catalog spec was matched but could not be instantiated (e.g.
+    # a required app feature is absent); surfaced in the coverage report.
+    skipped_reason: str = ""
     # Static chain (pre-built payloads) — mutually exclusive with guided_conversation.
     chain: ExploitChain | None = None
     # Dynamic guided conversation — generated in real time from agent responses.

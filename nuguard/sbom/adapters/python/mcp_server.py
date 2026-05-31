@@ -1,4 +1,4 @@
-"""MCP (Model Context Protocol) server adapter for Xelo SBOM.
+"""MCP (Model Context Protocol) server adapter for NuGuard SBOM.
 
 Detects usage of the ``mcp`` / ``fastmcp`` Python SDK:
 - ``FastMCP("server-name", ...)`` instantiation → FRAMEWORK node

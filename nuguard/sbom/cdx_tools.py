@@ -133,7 +133,7 @@ class CycloneDxGenerator:
             )
         else:
             _log.warning(
-                "cyclonedx-py not available (install with: pip install xelo[cdx]); "
+                "cyclonedx-py not available (install with: pip install nuguard[cdx]); "
                 "using shallow dep-scanner fallback"
             )
 

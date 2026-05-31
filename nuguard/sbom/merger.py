@@ -23,7 +23,7 @@ Merge strategy
 
 aibom:* property conventions (Appendix B of reference arch)
 ------------------------------------------------------------
-- ``aibom:componentType``   — Xelo component type (AGENT, MODEL, etc.)
+- ``aibom:componentType``   — NuGuard component type (AGENT, MODEL, etc.)
 - ``aibom:agentFramework``  — framework adapter name (langgraph, crewai, …)
 - ``aibom:promptHash``      — sha256 of prompt content (PROMPT nodes)
 - ``aibom:toolRiskCategory``— risk category for TOOL nodes
@@ -52,7 +52,7 @@ from .types import ComponentType
 
 _VERSION = __version__
 
-# Map Xelo types to CycloneDX component types
+# Map NuGuard types to CycloneDX component types
 _CDX_TYPE: dict[ComponentType, str] = {
     ComponentType.AGENT: "application",
     ComponentType.FRAMEWORK: "application",

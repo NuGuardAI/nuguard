@@ -185,7 +185,7 @@ class AgnoAdapter(FrameworkAdapter):
             prompt_canon = canonicalize_text(f"agno:{prompt_display.lower()}")
 
             # Wire an explicit USES edge from the agent to its prompt so that
-            # xelo's relationship-building stage creates the agent_uses_prompt edge.
+            # nuguard's relationship-building stage creates the agent_uses_prompt edge.
             if instructions and len(instructions) >= _MIN_INSTRUCTION_LENGTH:
                 rels.append(
                     RelationshipHint(

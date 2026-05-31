@@ -1,4 +1,4 @@
-"""TypeScript/JavaScript Framework Adapters for Xelo SBOM.
+"""TypeScript/JavaScript Framework Adapters for NuGuard SBOM.
 
 Supports detection of AI frameworks in TypeScript and JavaScript code:
 - LangGraph.js / LangChain.js

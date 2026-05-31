@@ -79,7 +79,7 @@ NODE_TYPE_TO_BENCHMARK_TYPE: Dict[str, str] = {
     "privilege": "PRIVILEGE",
 }
 
-XeloComponentToAssetType: Dict[str, str] = {
+NuGuardComponentToAssetType: Dict[str, str] = {
     "AGENT": "AGENT",
     "MODEL": "MODEL",
     "TOOL": "TOOL",
@@ -91,8 +91,8 @@ XeloComponentToAssetType: Dict[str, str] = {
 }
 
 
-def _convert_xelo_ground_truth_to_legacy(repo_name: str, payload: Dict[str, Any]) -> Dict[str, Any]:
-    """Convert Xelo-native ground truth JSON into legacy benchmark GroundTruth shape."""
+def _convert_nuguard_ground_truth_to_legacy(repo_name: str, payload: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert NuGuard-native ground truth JSON into legacy benchmark GroundTruth shape."""
     nodes = payload.get("nodes", []) if isinstance(payload.get("nodes"), list) else []
     edges = payload.get("edges", []) if isinstance(payload.get("edges"), list) else []
 
@@ -118,7 +118,7 @@ def _convert_xelo_ground_truth_to_legacy(repo_name: str, payload: Dict[str, Any]
     counts: Dict[str, int] = {}
     for node in nodes:
         component_type = str(node.get("component_type") or node.get("type") or "").upper()
-        mapped_type = XeloComponentToAssetType.get(component_type)
+        mapped_type = NuGuardComponentToAssetType.get(component_type)
         if not mapped_type:
             continue
 
@@ -199,11 +199,11 @@ def _convert_xelo_ground_truth_to_legacy(repo_name: str, payload: Dict[str, Any]
         "subfolder": None,
         "commit_sha": None,
         "annotated_at": annotated_at,
-        "annotator": "xelo-ground-truth",
+        "annotator": "nuguard-ground-truth",
         "frameworks": frameworks,
         "assets": assets,
         "expected_counts": expected_counts,
-        "notes": "Converted from Xelo-native ground truth JSON",
+        "notes": "Converted from NuGuard-native ground truth JSON",
         "skip": False,
         "skip_reason": None,
     }
@@ -288,7 +288,7 @@ def load_ground_truth(repo_name: str) -> GroundTruth:
     with open(gt_path, "r", encoding="utf-8") as f:
         data = json.load(f)
     if isinstance(data, dict) and "schema_version" in data and "nodes" in data:
-        data = _convert_xelo_ground_truth_to_legacy(repo_name, data)
+        data = _convert_nuguard_ground_truth_to_legacy(repo_name, data)
 
     return GroundTruth.model_validate(data)
 
@@ -700,11 +700,11 @@ async def run_discovery_pipeline(
     files: List[Tuple[str, str]], detected_frameworks: List[str], use_llm: bool = False
 ) -> List[DiscoveredAsset]:
     """
-    Run local benchmark discovery using the Xelo AiSbomExtractor.
+    Run local benchmark discovery using the NuGuard AiSbomExtractor.
 
     Args:
         files: List of (path, content) tuples
-        detected_frameworks: Retained for compatibility; unused by Xelo extractor
+        detected_frameworks: Retained for compatibility; unused by NuGuard extractor
         use_llm: When True, enables LLM enrichment (reads model/key config from env).
     """
     del detected_frameworks
@@ -724,7 +724,7 @@ async def run_discovery_pipeline(
         extractor = AiSbomExtractor()
         config = AiSbomConfig(enable_llm=use_llm)
         doc = extractor.extract_from_path(temp_dir, config, source_ref="benchmark-local")
-        return _convert_xelo_nodes_to_discovered_assets(doc.nodes, evidence_source="xelo_local")
+        return _convert_nuguard_nodes_to_discovered_assets(doc.nodes, evidence_source="nuguard_local")
     finally:
         shutil.rmtree(temp_dir, ignore_errors=True)
 
@@ -887,7 +887,7 @@ def _run_local_folder_discovery(
     folder_path: str, use_llm: bool = False
 ) -> Tuple[List[DiscoveredAsset], Dict[str, Any]]:
     """
-    Run local folder extraction using the Xelo AiSbomExtractor.
+    Run local folder extraction using the NuGuard AiSbomExtractor.
 
     Args:
         folder_path: Path to the folder to scan.
@@ -904,18 +904,18 @@ def _run_local_folder_discovery(
     if use_llm:
         logger.info("  LLM enrichment enabled for this scan")
     doc = extractor.extract_from_path(folder_path, config, source_ref=folder_path)
-    discovered = _convert_xelo_nodes_to_discovered_assets(
-        doc.nodes, evidence_source="xelo_local_folder"
+    discovered = _convert_nuguard_nodes_to_discovered_assets(
+        doc.nodes, evidence_source="nuguard_local_folder"
     )
     sbom_dict: Dict[str, Any] = doc.model_dump(mode="json")
     return discovered, sbom_dict
 
 
-def _convert_xelo_nodes_to_discovered_assets(
+def _convert_nuguard_nodes_to_discovered_assets(
     nodes: List[Any],
     evidence_source: str,
 ) -> List[DiscoveredAsset]:
-    """Convert Xelo AiSbomDocument Node objects to benchmark DiscoveredAsset entries."""
+    """Convert NuGuard AiSbomDocument Node objects to benchmark DiscoveredAsset entries."""
     discovered: List[DiscoveredAsset] = []
     seen: Set[Tuple[str, str, str]] = set()
 
@@ -923,7 +923,7 @@ def _convert_xelo_nodes_to_discovered_assets(
         # component_type is a ComponentType enum; .value gives uppercase string e.g. "AGENT"
         ct = getattr(node, "component_type", None)
         node_type_raw = str(getattr(ct, "value", ct) or "").strip()
-        mapped_type = XeloComponentToAssetType.get(node_type_raw.upper())
+        mapped_type = NuGuardComponentToAssetType.get(node_type_raw.upper())
         if not mapped_type:
             continue
 
@@ -1376,13 +1376,13 @@ def main():
         "--enable-llm",
         dest="enable_llm",
         action="store_true",
-        help="Enable LLM enrichment (mirrors the xelo CLI --enable-llm flag). Requires AISBOM_LLM_MODEL and a matching API key.",
+        help="Enable LLM enrichment (mirrors the nuguard CLI --enable-llm flag). Requires AISBOM_LLM_MODEL and a matching API key.",
     )
     parser.add_argument(
         "--mode",
         choices=["api", "local"],
         default="api",
-        help="Discovery mode: api (uses cached files + local Xelo extractor) or local (same pipeline). Default: api.",
+        help="Discovery mode: api (uses cached files + local NuGuard extractor) or local (same pipeline). Default: api.",
     )
     parser.add_argument(
         "--data-service-url",
@@ -1393,8 +1393,8 @@ def main():
     parser.add_argument(
         "--asset-service-url",
         type=str,
-        default=os.getenv("XELO_SERVICE_URL", "http://localhost:8004"),
-        help="Xelo service base URL (reserved for future remote mode).",
+        default=os.getenv("NUGUARD_SERVICE_URL", "http://localhost:8004"),
+        help="NuGuard service base URL (reserved for future remote mode).",
     )
     parser.add_argument(
         "--auth-token",
@@ -1426,7 +1426,7 @@ def main():
     parser.add_argument(
         "--plugin-llm-model",
         type=str,
-        default=os.getenv("XELO_LLM_MODEL", ""),
+        default=os.getenv("NUGUARD_LLM_MODEL", ""),
         help=(
             "litellm model string for PolicyAssessmentPlugin (e.g. gpt-4o-mini). "
             "When set, policy assessment runs automatically for each NuGuard Standard "
@@ -1436,13 +1436,13 @@ def main():
     parser.add_argument(
         "--plugin-llm-api-key",
         type=str,
-        default=os.getenv("XELO_LLM_API_KEY") or None,
+        default=os.getenv("NUGUARD_LLM_API_KEY") or None,
         help="API key for the LLM provider used by policy assessment.",
     )
     parser.add_argument(
         "--plugin-llm-api-base",
         type=str,
-        default=os.getenv("XELO_LLM_API_BASE") or None,
+        default=os.getenv("NUGUARD_LLM_API_BASE") or None,
         help="Base URL override for the LLM provider used by policy assessment.",
     )
 

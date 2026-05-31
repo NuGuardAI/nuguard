@@ -22,6 +22,7 @@ from nuguard.redteam.executor.attribution import (
     parse_handled_by,
     strip_meta_footer,
 )
+from nuguard.redteam.executor.executor import _substitute_golden_tokens
 from nuguard.redteam.llm_engine.response_extractor import TurnFacts, extract_turn_facts
 from nuguard.redteam.models.guided_conversation import GuidedConversation, TurnRecord
 from nuguard.redteam.target.client import TargetAppClient, TargetUnavailableError
@@ -196,6 +197,9 @@ class GuidedAttackExecutor:
             # Mark log reader position before the request
             if self._app_log_reader:
                 self._app_log_reader.mark()
+
+            # Substitute {golden_id} / {golden_name} etc. tokens before sending
+            message = _substitute_golden_tokens(message, session)
 
             # Send to target
             try:

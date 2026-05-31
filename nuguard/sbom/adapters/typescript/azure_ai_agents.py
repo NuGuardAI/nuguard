@@ -1,6 +1,6 @@
-"""Azure AI Agent Service TypeScript/JavaScript Adapter for Xelo SBOM.
+"""Azure AI Agent Service TypeScript/JavaScript Adapter for NuGuard SBOM.
 
-Parsing is performed by ``xelo.core.ts_parser`` (tree-sitter when
+Parsing is performed by ``nuguard.core.ts_parser`` (tree-sitter when
 available, regex fallback otherwise).
 
 Supports the ``@azure/ai-agents`` and ``@azure/ai-projects`` npm packages:

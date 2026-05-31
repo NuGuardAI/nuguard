@@ -1,4 +1,4 @@
-"""Python-specific framework adapters for Xelo SBOM extraction."""
+"""Python-specific framework adapters for NuGuard SBOM extraction."""
 
 from .agno import AgnoAdapter
 from .autogen import AutoGenAdapter

@@ -67,7 +67,7 @@ class XrayPlugin(ToolPlugin):
             "metadata": {
                 "tenant_id":     cfg.tenant_id,
                 "application_id": cfg.application_id,
-                "source":        "xelo-toolbox",
+                "source":        "nuguard-toolbox",
                 "tool":          "xray_submit",
             },
         }

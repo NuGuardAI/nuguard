@@ -1,4 +1,4 @@
-"""nuguard.sbom — AI SBOM generator (absorbed from xelo)."""
+"""nuguard.sbom — AI SBOM generator (absorbed from nuguard)."""
 
 from importlib.metadata import PackageNotFoundError, version
 

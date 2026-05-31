@@ -1,15 +1,15 @@
 """AWS Security Hub findings push plugin.
 
-Translates Xelo SBOM vulnerability findings (XELO-xxx structural rules and
+Translates NuGuard SBOM vulnerability findings (NUGUARD-xxx structural rules and
 CVE advisories) into Amazon Security Finding Format (ASFF) and imports them
 into AWS Security Hub via ``boto3``.
 
 Findings are produced by the built-in VulnerabilityScannerPlugin using
-the provider specified in config (default: ``xelo-rules`` — offline,
+the provider specified in config (default: ``nuguard-rules`` — offline,
 structural rules only).
 
 Requires:
-    pip install "xelo-toolbox[aws]"   # installs boto3
+    pip install "nuguard-toolbox[aws]"   # installs boto3
 
 Credentials are resolved by the standard boto3 chain:
     1. Environment variables (AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY)
@@ -20,9 +20,9 @@ Config keys
 -----------
   region              AWS region                                  (required)
   aws_account_id      12-digit AWS account ID                     (required)
-  product_arn_suffix  Product ARN identifier suffix               (default: xelo-toolbox)
+  product_arn_suffix  Product ARN identifier suffix               (default: nuguard-toolbox)
   profile             AWS named credential profile                (optional)
-  provider            Vulnerability scan provider                 (default: xelo-rules)
+  provider            Vulnerability scan provider                 (default: nuguard-rules)
   timeout             Network timeout for OSV requests (seconds)  (default: 15.0)
   grype_timeout       Grype subprocess timeout (seconds)          (default: 60.0)
 """
@@ -85,7 +85,7 @@ class AwsSecurityHubPlugin(ToolPlugin):
         if boto3 is None:
             raise ImportError(
                 "boto3 is required for the AWS Security Hub plugin. "
-                'Install it with: pip install "xelo-toolbox[aws]"'
+                'Install it with: pip install "nuguard-toolbox[aws]"'
             )
 
         cfg = AwsSecurityHubConfig.model_validate(config)
@@ -93,12 +93,12 @@ class AwsSecurityHubPlugin(ToolPlugin):
             "starting Security Hub push (region=%s, account=%s, provider=%s, profile=%s)",
             cfg.region,
             cfg.aws_account_id,
-            config.get("provider", "xelo-rules"),
+            config.get("provider", "nuguard-rules"),
             cfg.profile or "<default chain>",
         )
 
         # ── Collect findings via the vulnerability scanner ──────────────────
-        provider = config.get("provider", "xelo-rules")
+        provider = config.get("provider", "nuguard-rules")
         try:
             findings = self._collect_findings(sbom, provider, config)
         except Exception as exc:
@@ -245,7 +245,7 @@ class AwsSecurityHubPlugin(ToolPlugin):
         """Return a stable, deterministic finding ID (SHA-256 prefix)."""
         key = f"{account_id}/{rule_id}/{','.join(sorted(affected))}"
         digest = hashlib.sha256(key.encode()).hexdigest()[:16]
-        return f"{account_id}/xelo-toolbox/{rule_id}/{digest}"
+        return f"{account_id}/nuguard-toolbox/{rule_id}/{digest}"
 
     @classmethod
     def _to_asff(
@@ -257,7 +257,7 @@ class AwsSecurityHubPlugin(ToolPlugin):
         now: str,
         sbom_id: str,
     ) -> dict[str, Any]:
-        """Convert a single Xelo finding dict to an ASFF record."""
+        """Convert a single NuGuard finding dict to an ASFF record."""
         rule_id: str = finding.get("rule_id", "UNKNOWN")
         severity: str = finding.get("severity", "MEDIUM")
         affected: list[str] = finding.get("affected", [])
@@ -269,7 +269,7 @@ class AwsSecurityHubPlugin(ToolPlugin):
             "SchemaVersion": "2018-10-08",
             "Id": cls._finding_id(rule_id, affected, account_id),
             "ProductArn": product_arn,
-            "GeneratorId": f"xelo-toolbox/{rule_id}",
+            "GeneratorId": f"nuguard-toolbox/{rule_id}",
             "AwsAccountId": account_id,
             "Types": [asff_type],
             "CreatedAt": now,
@@ -288,7 +288,7 @@ class AwsSecurityHubPlugin(ToolPlugin):
             "Resources": [
                 {
                     "Type": "Other",
-                    "Id": f"xelo-sbom/{sbom_id}",
+                    "Id": f"nuguard-sbom/{sbom_id}",
                     "Region": region,
                     "Details": {
                         "Other": {

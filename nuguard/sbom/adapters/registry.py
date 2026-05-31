@@ -24,7 +24,7 @@ def intake_candidates() -> tuple[IntakeCandidate, ...]:
         candidates.append(
             IntakeCandidate(
                 adapter_name=spec.adapter_name,
-                source_path=f"xelo.adapters.frameworks:{spec.adapter_name}",
+                source_path=f"nuguard.adapters.frameworks:{spec.adapter_name}",
                 status=spec.status,
                 priority=spec.priority,
             )

@@ -230,6 +230,27 @@ class TestPythonADKRunnerFallback:
         assert agents[0].confidence == 0.78
         assert agents[0].evidence_kind == "ast_instantiation"
 
+    def test_runner_app_name_kwarg_captured_in_metadata(self) -> None:
+        """Runner(app_name=...) must be stored in metadata so redteam can bypass /list-apps."""
+        code = (
+            "from google.adk.runners import Runner\n"
+            "\n"
+            "runner = Runner(agent=my_agent, app_name='car_app')\n"
+        )
+        agents = _by_type(_py_extract(code), ComponentType.AGENT)
+        assert agents, "Expected AGENT fallback from Runner(agent=...)"
+        assert agents[0].metadata.get("adk_app_name") == "car_app"
+
+    def test_runner_without_app_name_has_no_adk_app_name_metadata(self) -> None:
+        code = (
+            "from google.adk.runners import Runner\n"
+            "\n"
+            "runner = Runner(agent=my_agent)\n"
+        )
+        agents = _by_type(_py_extract(code), ComponentType.AGENT)
+        assert agents, "Expected AGENT fallback"
+        assert "adk_app_name" not in agents[0].metadata
+
 
 # ---------------------------------------------------------------------------
 # Python ADK — Model name normalization
