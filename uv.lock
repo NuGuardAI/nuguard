@@ -1425,7 +1425,7 @@ wheels = [
 
 [[package]]
 name = "nuguard"
-version = "0.5.10"
+version = "0.5.9"
 source = { editable = "." }
 dependencies = [
     { name = "cyclonedx-bom" },
