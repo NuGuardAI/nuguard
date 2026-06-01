@@ -1,14 +1,18 @@
 # NuGuard Open Source
 
-NuGuard is an open source AI application security CLI. It can generate an AI-focused SBOM from source code, run static security analysis, lint cognitive policy documents, test live AI app behavior, and red-team a live AI app with scenario-driven adversarial testing.
+NuGuard is an open source AI application security toolkit. Its goal is to provide the most extensive redteaming and behavioral validation of Agentic AI applications. 
+
+AI developers can focus on building their applications while NuGuard continuously tests and validates them against a wide range of security risks, including prompt injection, tool misuse, data exfiltration, and more.
+
 
 ## What It Does
 
 - Generate an AI-SBOM from a local codebase or Git repo
-- Analyze the SBOM for structural AI security risks and dependency issues
-- Cross-check a cognitive policy against the SBOM
-- Perform static and dynamic behavioral testing against a live AI application endpoint
-- Red-team a running AI application with custom-built scenarios based on the AI-SBOM and the cognitive policy. This includes prompt injection, tool abuse, data exfiltration, and related attack scenarios that exercise the various sub-agents, tools, and capabilities of the target system.
+- Analyze the SBOM for structural AI security risks and supply-chain issues
+- Propose an AI behavioral policy based on the SBOM
+- Perform static and runtime behavioral testing purpose built around the AI-SBOM and the behavioral policy
+- Red-team a sandboxed AI application: most extensive and updated catalog of attack vectors plus custom-built scenarios. This includes prompt injection, tool abuse, data exfiltration, and related attack scenarios that exercise the various sub-agents, tools, and capabilities of the target system.
+- Automated remediation suggestions for findings, including code snippets and policy adjustments
 - Export findings in text, JSON, Markdown, and SARIF-oriented workflows
 
 ## Current CLI Surface
@@ -22,24 +26,10 @@ Implemented and usable today:
 - `nuguard behavior`
 - `nuguard redteam`
 
-Present but still stubbed / not yet implemented:
-
-- `nuguard seed`
-- `nuguard report`
-
 ## Requirements
 
 - Python 3.12+
 - `uv` for the recommended local workflow
-
-Optional external tools used by some analysis paths:
-
-- `grype`
-- `checkov`
-- `trivy`
-- `semgrep`
-
-If these tools are not installed, the corresponding checks can be skipped or may report as unavailable depending on the command path.
 
 ## Installation
 
@@ -158,17 +148,6 @@ NuGuard can watch for seeded canary values during dynamic testing to produce hig
 
 More detail is available in [`docs/redteam-engine.md`](docs/redteam-engine.md).
 
-## Common Commands
-
-```bash
-nuguard --help
-nuguard sbom --help
-nuguard analyze --help
-nuguard policy --help
-nuguard behavior --help
-nuguard redteam --help
-nuguard scan --help
-```
 
 ## Development
 

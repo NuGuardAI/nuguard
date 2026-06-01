@@ -84,6 +84,7 @@ def _rebase_relative_paths(flat: dict[str, Any], base_dir: Path) -> dict[str, An
         "canary_path",
         "sarif_output_path",
         "redteam_prompt_cache_dir",
+        "redteam_catalog_path",
     )
     repo_root = _find_repo_root(base_dir)
 
@@ -251,6 +252,8 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_profile"] = redteam["profile"]
     if "use_catalog" in redteam:
         flat["redteam_use_catalog"] = bool(redteam["use_catalog"])
+    if "catalog_path" in redteam:
+        flat["redteam_catalog_path"] = str(redteam["catalog_path"])
     if "min_impact_score" in redteam:
         flat["min_impact_score"] = float(redteam["min_impact_score"])
     if "scenarios" in redteam:
@@ -809,6 +812,14 @@ class NuGuardConfig(BaseSettings):
             "When True, supplement legacy scenario generation with the stable-ID catalog "
             "(docs/llm-runs/Red-team-new-design.md).  Disable for legacy-only runs "
             "(yaml: redteam.use_catalog)."
+        ),
+    )
+    redteam_catalog_path: str | None = Field(
+        default=None,
+        description=(
+            "Path to a custom catalog YAML file. When set, replaces the built-in "
+            "scenario catalog. Generate a starting file with: "
+            "nuguard redteam catalog-export (yaml: redteam.catalog_path)."
         ),
     )
     min_impact_score: float = Field(

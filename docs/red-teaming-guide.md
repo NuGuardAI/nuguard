@@ -15,24 +15,26 @@ If you have access to a staging environment with realistic data, you can run the
 3. [Target Resolution](#target-resolution)
 4. [Attack Goal Taxonomy](#attack-goal-taxonomy)
 5. [Scenario Generation](#scenario-generation)
-6. [Canary Seeds](#canary-seeds)
+6. [Scenario Catalog](#scenario-catalog)
+   - [Customizing the Catalog](#customizing-the-catalog)
+7. [Canary Seeds](#canary-seeds)
    - [Why Use Canaries](#why-use-canaries)
    - [Canary File Format](#canary-file-format)
    - [Setup Workflow](#setup-workflow)
    - [Detection Mechanics](#detection-mechanics)
-7. [Execution Modes](#execution-modes)
+8. [Execution Modes](#execution-modes)
    - [Static Chain Execution](#static-chain-execution)
    - [Guided (Adaptive) Conversations](#guided-adaptive-conversations)
-8. [Attack Techniques](#attack-techniques)
-9. [LLM Augmentation Layer](#llm-augmentation-layer)
-   - [TAP Tree Exploration](#tap-tree-exploration-rt-016)
-   - [PAIR Feedback Loop](#pair-feedback-loop-rt-017)
-10. [Success Detection](#success-detection)
-11. [HTTP Status Code Handling](#http-status-code-handling)
-12. [Findings and Severity Scoring](#findings-and-severity-scoring)
-13. [Key Commands](#key-commands)
-14. [Configuration Reference](#configuration-reference)
-15. [nuguard.yaml Example](#nuguardyaml-example)
+9. [Attack Techniques](#attack-techniques)
+10. [LLM Augmentation Layer](#llm-augmentation-layer)
+    - [TAP Tree Exploration](#tap-tree-exploration-rt-016)
+    - [PAIR Feedback Loop](#pair-feedback-loop-rt-017)
+11. [Success Detection](#success-detection)
+12. [HTTP Status Code Handling](#http-status-code-handling)
+13. [Findings and Severity Scoring](#findings-and-severity-scoring)
+14. [Key Commands](#key-commands)
+15. [Configuration Reference](#configuration-reference)
+16. [nuguard.yaml Example](#nuguardyaml-example)
 
 ---
 
@@ -41,11 +43,14 @@ If you have access to a staging environment with realistic data, you can run the
 ```
 AI-SBOM + Cognitive Policy (opt)
         │
-        ▼
-Scenario Generator         ← SBOM signals → Attack Scenarios, pre-scored and prioritized
+        ├── Scenario Catalog ──────── 84 stable scenarios across 12 categories
+        │     Capability filtering        capability-gated; skipped scenarios recorded
+        │     Builder factories           SBOM-specific payloads (agent names, PII fields, tools)
+        │
+        └── SBOM-driven Generator ─── direct signal → scenario mapping (see Scenario Generation)
         │
         ▼
-LLM driven Enrichment     ← (optional) generate attack variants; cached by SBOM+policy hash
+LLM-driven Enrichment     ← (optional) generate attack variants; cached by SBOM+policy hash
         │
         ▼
 Redteam Orchestrator       ← concurrent dispatch
@@ -170,6 +175,13 @@ If no GoalType is specified in the nuguard.yaml configuration, all the scenario 
 
 ## Scenario Generation
 
+NuGuard uses two complementary sources to build the scenario list for each scan:
+
+1. **The scenario catalog** (primary) — 84 stable, research-backed scenarios across 12 categories, capability-gated and customised for the target at build time. See [Scenario Catalog](#scenario-catalog) for details.
+2. **SBOM-driven generator** (supplementary) — reads SBOM signals directly and emits additional scenarios for patterns not yet in the catalog.
+
+Both sources merge into a single deduplicated scenario list before execution. The SBOM-driven mappings are documented below for reference.
+
 `ScenarioGenerator.generate()` reads the SBOM and emits an `AttackScenario` list:
 
 ```
@@ -203,6 +215,145 @@ SBOM nodes / edges
 ```
 
 Scenarios are returned sorted by `impact_score` descending.  The generator never creates scenarios for node types that don't exist in the SBOM — if an app has no MCP nodes, no MCP scenarios are generated.
+
+---
+
+## Scenario Catalog
+
+In addition to the SBOM-driven scenario generator, NuGuard maintains a **stable scenario catalog** of 84 research-backed attack scenarios across 12 categories. The catalog is the primary source of scenarios for production scans.
+
+### Catalog Size and Coverage
+
+| Category | Stable scenarios |
+|---|---|
+| Authorization Failures | 8 |
+| Business Logic and Safety | 5 |
+| Covert Exfiltration | 8 |
+| Data Exfiltration | 8 |
+| Evasion and Robustness | 6 |
+| Indirect Prompt Injection | 8 |
+| Jailbreak and Policy Bypass | 6 |
+| MCP and Tool Poisoning | 8 |
+| Memory and Persistence | 6 |
+| Multi-Agent Trust Abuse | 6 |
+| Destructive Tool Actions | 8 |
+| Coding and Automation Agents | 6 |
+| **Total** | **84** |
+
+Of the 84 catalog entries, **52 are currently active** (builders fully wired). The remaining 32 are registered as capability-skipped placeholders — they appear in coverage reports as gaps and will be activated in future releases as test fixtures are added. All 84 IDs are stable and snapshot-tested; existing IDs are never reused.
+
+### How NuGuard Customises Catalog Scenarios for Your Application
+
+The catalog holds *specs*, not payloads. Before a scenario runs, NuGuard customises it for the specific target in three steps:
+
+**Step 1 — Capability filtering**
+
+Each catalog spec declares `required_capabilities` (e.g. `sensitive_context`, `web_fetch`, `mcp_server`, `memory_store`). `CapabilityDetector` reads the AI-SBOM once and produces an `AppCapabilityProfile` that lists every capability the target application has. A catalog scenario is only generated when the target satisfies all of its required capabilities. Scenarios for capabilities the target lacks are recorded as `skipped_by_capability` in the coverage report with a clear reason.
+
+The most common capability gates:
+
+| Capability | What triggers it | Example scenarios gated on it |
+|---|---|---|
+| `sensitive_context` | PII/PHI/PFI datastore in SBOM | Data exfiltration, IDOR, cross-tenant |
+| `chat` | Any agent chat endpoint | Jailbreak, prompt injection, evasion |
+| `write_sink` | Tool with write/delete/send privilege | Destructive tool actions, business logic |
+| `mcp_server` | MCP node in SBOM | MCP poisoning and toxic flow |
+| `external_egress_sink` | Web-fetch or email tool | Covert exfiltration, SSRF |
+| `memory_store` | Long-term memory or profile service | Memory persistence, cross-session leak |
+| `multi_agent` | Agent graph with handoffs | Multi-agent trust abuse |
+| `web_fetch` | URL-fetching tool | Indirect injection via web content |
+
+**Step 2 — Builder factories**
+
+Each spec maps to a `builder_key` that references a factory function in `BUILDER_FACTORIES`. The factory receives a `BuilderContext` containing the SBOM, the capability profile, the optional cognitive policy, and the app's tool/agent node index. It emits one or more concrete `AttackScenario` objects with fully-formed payloads derived from real SBOM signals — agent names, tool descriptions, PII field names, and restricted topics from the policy are all injected into scenario text at build time.
+
+**Step 3 — LLM payload enrichment (optional)**
+
+When a redteam LLM is configured (`redteam.llm.model`), `LLMPromptGenerator` generates additional payload *variants* for each scenario before execution. Variants are cached by SBOM + policy hash so re-runs on the same app skip generation. Each variant is a 2–3 turn sequence that escalates gradually: innocent context-building → gentle probe → offensive payload. This is the layer that makes payloads feel natural and application-specific rather than generic red-team templates.
+
+### Scan Profiles and Catalog Coverage
+
+The `--profile` flag controls how many catalog scenarios are executed:
+
+| Profile | Catalog cap | Impact threshold | Typical use |
+|---|---|---|---|
+| `ci` | 20 scenarios | ≥ 5.0 / 10.0 | Pull-request gate; fast feedback |
+| `standard` | 40 scenarios | ≥ 3.0 / 10.0 | Pre-release staging scan |
+| `full` | All matching | ≥ 0.0 | Comprehensive audit |
+
+The `full` profile runs every catalog scenario that the target's capability profile satisfies, with no count cap. The `ci` profile prioritises high-impact scenarios and runs within 60 s for most applications.
+
+### Coverage Report
+
+Every scan produces a catalog coverage report alongside the findings. The report shows:
+
+- How many of the 84 catalog scenarios applied to this target (matched capabilities)
+- How many were executed per category
+- Which scenarios were skipped and why (`skipped_by_capability`, `disabled_placeholder`, `below_impact_threshold`)
+
+To see the full coverage table, run with `--format markdown` or inspect `catalog_coverage` in the JSON output.
+
+### Customizing the Catalog
+
+The scenario catalog can be exported to a YAML file, edited, and fed back into `nuguard redteam` with the `--catalog` flag.  This lets you disable specific scenarios, adjust impact scores, or tweak control descriptions — without modifying the NuGuard source code.
+
+**Export the built-in catalog:**
+
+```bash
+nuguard redteam catalog-export --output my-catalog.yaml
+```
+
+This writes all 84 scenario specs to `my-catalog.yaml`.  The file has a human-readable header explaining each field.
+
+**Edit the catalog:**
+
+Common customizations:
+
+```yaml
+scenarios:
+  # Disable a scenario entirely
+  - id: D01
+    enabled: false
+    # ... rest of fields unchanged
+
+  # Lower a scenario's impact so it's excluded from --profile ci (threshold ≥ 5.0)
+  - id: C04
+    base_impact: 2.0
+    # ...
+
+  # Adjust the expected control description for your policy
+  - id: J02
+    expected_control: "Reject any request that references internal tooling by name."
+    # ...
+```
+
+Each entry in the YAML maps directly to a `ScenarioSpec`.  All enum fields (`goal_type`, `delivery_channel`, `required_capabilities`, etc.) are validated on load — a typo produces a clear error naming the field and the offending value.
+
+**Run with a custom catalog:**
+
+```bash
+nuguard redteam \
+  --sbom ./sbom.json \
+  --target http://localhost:8000 \
+  --catalog ./my-catalog.yaml \
+  --profile full
+```
+
+Or set it in `nuguard.yaml` so it applies automatically:
+
+```yaml
+redteam:
+  catalog_path: ./my-catalog.yaml
+```
+
+**Validation behavior:**
+
+- Invalid enum values → `ValueError` with the entry ID, field name, and the bad value.
+- Duplicate IDs → `ValueError` listing the conflicting entries.
+- Unknown `builder_key` → `UserWarning` only (not an error), because you may reference builders shipped in a newer version of NuGuard.
+- The scan exits with code 1 before starting if the catalog file cannot be loaded.
+
+> **Note:** A custom catalog **replaces** the built-in catalog entirely.  To add a scenario without removing others, export the full catalog and append your entry to the YAML list before passing it back.  The built-in catalog is always re-exportable with `catalog-export`.
 
 ---
 
@@ -657,7 +808,7 @@ nuguard redteam \
   --scenarios prompt-injection,data-exfiltration
 ```
 
-Valid `--scenarios` values: `prompt-injection`, `tool-abuse`, `privilege-escalation`, `data-exfiltration`, `policy-violation`, `mcp-toxic-flow`
+Valid `--scenarios` values: `prompt-injection`, `tool-abuse`, `privilege-escalation`, `data-exfiltration`, `policy-violation`, `mcp-toxic-flow`. You can also pass stable catalog IDs directly (e.g. `--scenarios D01,C03,J02`).
 
 ### CI gate — fail on high severity
 
@@ -667,6 +818,23 @@ nuguard redteam \
   --target $APP_URL \
   --profile ci \
   --fail-on high   # exit code 2 if any HIGH or CRITICAL finding
+```
+
+### Export and customize the scenario catalog
+
+```bash
+# Export the full 84-scenario catalog to YAML
+nuguard redteam catalog-export --output my-catalog.yaml
+
+# Print the catalog to stdout (pipe to less, grep, etc.)
+nuguard redteam catalog-export
+
+# Scan with a custom catalog
+nuguard redteam \
+  --sbom ./sbom.json \
+  --target http://localhost:8000 \
+  --catalog ./my-catalog.yaml \
+  --profile full
 ```
 
 ### SARIF output (GitHub Code Scanning)
@@ -694,7 +862,9 @@ nuguard redteam \
 | — | `target.headers` / `redteam.headers` (override) | `NUGUARD_REDTEAM_HEADERS_JSON` | `{}` | Extra HTTP headers added to every request |
 | — | `target.auth` / `redteam.auth` (override) | — | `type: none` | Structured auth config: `bearer`, `api_key`, `basic`, `login_flow`, or `none`. Set in `target.auth` for shared credentials; override in `redteam.auth` when redteam needs separate credentials |
 | — | `redteam.auth_header` | — | — | Legacy shorthand header string (fallback when neither `target.auth` nor `redteam.auth` is set) |
-| `--profile` | `redteam.profile` | — | `ci` | `ci` (impact ≥ 5.0) or `full` (all scenarios) |
+| `--profile` | `redteam.profile` | — | `ci` | `ci` (top-20, impact ≥ 5.0), `standard` (top-40, impact ≥ 3.0), or `full` (all matching catalog scenarios) |
+| — | `redteam.use_catalog` | — | `true` | Include catalog scenarios in the run. Set `false` to use only the SBOM-driven generator. |
+| `--catalog` | `redteam.catalog_path` | — | — | Path to a custom scenario catalog YAML. Replaces the built-in 84-scenario catalog. Generate a starting file with `nuguard redteam catalog-export`. |
 | `--scenarios` | `redteam.scenarios` | — | all | Scenario type filter (list in YAML, comma-separated on CLI) |
 | `--min-impact-score` | `redteam.min_impact_score` | — | `0.0` | Exclude scenarios below this pre-score |
 | `--canary` | `redteam.canary` | — | — | Path to canary JSON config |
@@ -795,6 +965,7 @@ redteam:
 
   profile: full
   canary: ./canary.json
+  # catalog_path: ./my-catalog.yaml  # custom scenario catalog (optional)
   request_timeout: 120
 
   # Run only these attack families (omit to run all)

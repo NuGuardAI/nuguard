@@ -21,7 +21,7 @@ from nuguard.sbom.models import AiSbomDocument
 
 from .builders import BUILDER_FACTORIES, AppCapabilityProfile, BuilderContext
 from .coverage import CoverageReport
-from .registry import SCENARIO_CATALOG
+from .spec import ScenarioSpec
 from .taxonomy import ScenarioCategory
 
 _log = logging.getLogger(__name__)
@@ -45,6 +45,7 @@ def select_scenarios(
     scan_profile: str = "full",
     policy: object | None = None,
     with_guided: bool = True,
+    catalog: tuple[ScenarioSpec, ...] | None = None,
 ) -> tuple[list, CoverageReport]:
     """Return ``(scenarios, coverage)`` for the current target.
 
@@ -62,6 +63,13 @@ def select_scenarios(
         When False, guided-conversation specs are skipped (consistent with the
         legacy ``with_guided=False`` path).
     """
+
+    active_catalog: tuple[ScenarioSpec, ...]
+    if catalog is None:
+        from .registry import SCENARIO_CATALOG
+        active_catalog = SCENARIO_CATALOG
+    else:
+        active_catalog = catalog
 
     cap = _PROFILE_CAPS.get(scan_profile, 9999)
     min_impact = _PROFILE_MIN_IMPACT.get(scan_profile, 0.0)
@@ -94,7 +102,7 @@ def select_scenarios(
     skipped: list[tuple[str, str, str]] = []
     category_counts: dict[str, int] = defaultdict(int)
 
-    for spec in SCENARIO_CATALOG:
+    for spec in active_catalog:
         # --- capability gate ----
         if not profile.satisfies(spec.required_capabilities):
             missing = spec.required_capabilities - profile.capabilities

@@ -208,6 +208,7 @@ class ScenarioGenerator:
         self,
         scan_profile: str = "full",
         with_guided: bool = True,
+        catalog: "tuple | None" = None,
     ) -> list[AttackScenario]:
         """Generate scenarios from the stable-ID scenario catalog.
 
@@ -217,6 +218,13 @@ class ScenarioGenerator:
         sorted by ``impact_score`` descending, capped to the profile target.
 
         Also populates ``self.last_coverage`` with a :class:`CoverageReport`.
+
+        Parameters
+        ----------
+        catalog:
+            Optional custom catalog tuple. When provided, substitutes the
+            built-in ``SCENARIO_CATALOG``. Pass the result of
+            :func:`nuguard.redteam.catalog.loader.load_catalog_yaml`.
         """
         from nuguard.redteam.catalog.selector import select_scenarios
         scenarios, coverage = select_scenarios(
@@ -225,6 +233,7 @@ class ScenarioGenerator:
             scan_profile=scan_profile,
             policy=self._policy,
             with_guided=with_guided,
+            catalog=catalog,
         )
         self.last_coverage = coverage
         # Backfill target_tool_names (same post-processing as generate())
