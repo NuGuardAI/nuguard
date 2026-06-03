@@ -149,6 +149,11 @@ redteam:
   # Set false to run the legacy SBOM-only generator without catalog scenarios.
   use_catalog: true
 
+  # Custom scenario catalog — export the built-in catalog as a starting point,
+  # edit it, then point here to use your customised version:
+  #   nuguard redteam catalog-export --output my-catalog.yaml
+  # catalog: ./my-catalog.yaml
+
   # Scenario types to run (omit section to run all).
   # These filter the legacy builder families; the catalog uses capability gating
   # instead (see use_catalog above).
