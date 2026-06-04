@@ -186,6 +186,7 @@ class AuthBootstrapper:
                     status="ok",
                     http_status_code=resp.status_code,
                     response_time_ms=elapsed_ms,
+                    response_text=resp.text[:500] if resp.text else "",
                 )
 
             if resp.status_code in (401, 403):

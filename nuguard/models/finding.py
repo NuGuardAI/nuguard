@@ -40,3 +40,5 @@ class Finding(BaseModel):
     scores: dict[str, int | None] = Field(default_factory=dict)  # 1-5 rubric scores
     # Redteam step-level detail — each entry describes one executed attack step
     attack_steps: list[dict] = Field(default_factory=list)
+    # Post-finding verification probe result (None = not run, True = reproduced, False = unconfirmed)
+    verified: bool | None = None

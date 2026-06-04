@@ -49,24 +49,32 @@ target:
   #    token_response_key: token
   #    token_header: "Authorization: Bearer"
   #    refresh_on_401: true
-  auth:
-    type: basic
-    username: alice.johnson@pinnaclebank.com
-    password: alice123
+  # The actual chat API is at /api/chat (FastAPI backend).
+  # The SPA frontend at / is served by nginx — /chat is an SPA route, not an API route.
+  # Without this override NuGuard's SBOM discovery falls back to /chat → nginx → 405/HTML.
+  url: https://frontend-ui.agreeablesky-8c7ba25f.eastus.azurecontainerapps.io
+  endpoint: /api/chat
+
+  # CRITICAL: user identity is carried in the POST body as user_id, NOT in HTTP auth headers.
+  # The /api/chat endpoint accepts any user_id with no server-side auth check (open IDOR).
+  # Without user_id: alice in every request the backend returns an anonymous empty profile
+  # ($0 balances, KYC=0, Risk=100) and DISCOVER captures wrong golden data.
+  chat_payload_extras:
+    user_id: alice
+
+  # No HTTP auth needed — the endpoint is wide open (itself a finding).
+  # auth: type: none
 
 # ─── Behavior mode ────────────────────────────────────────────────────────────
 # nuguard behavior exercises the AI app's happy path to verify capabilities work
 # as declared and that all behaviour complies with the cognitive policy.
 #validate:
 behavior:
-  # Required: URL of the running AI application under test
-#  target: https://openai-cs-agents-backend.azurewebsites.net
-#  target: http://127.0.0.1:8250
-  # Path of the chat/agent endpoint on the target (default: /chat)
-#  target_endpoint: /api/chat
-#  chat_payload_key: phrases
-#  chat_payload_list: true
-#  chat_response_key: prognosis
+  # /api/chat is the actual FastAPI endpoint; /chat is an SPA route served by nginx.
+  target_endpoint: /api/chat
+  # user_id must be in every POST body — the backend trusts it without auth checks.
+  chat_payload_extras:
+    user_id: alice
   llm: true
 
   # Canary seed file — records planted in the app's data store
@@ -98,7 +106,7 @@ behavior:
   #    expect: refused
 
   # Per-request timeout in seconds (default: 60)
-  request_timeout: 60
+  request_timeout: 90
 
   # Verbose output: include full per-turn traces in behavior report
   verbose: true
@@ -106,14 +114,20 @@ behavior:
 # ─── Red-team mode ────────────────────────────────────────────────────────────
 # nuguard redteam exercises adversarial scenarios to find break points.
 redteam:
+  # Correct chat endpoint — SBOM auto-discovery and /chat SPA route both resolve to nginx.
+  # The FastAPI backend is at /api/chat.
+  target_endpoint: /api/chat
+
+  # User identity is in the POST body, not HTTP headers.
+  # Without this, the backend returns an anonymous empty profile ($0 balances, KYC=0,
+  # Risk=100) and all data-exfiltration scenarios work against wrong golden data.
+  chat_payload_extras:
+    user_id: alice
 
   # Canary seed file — same file as behavior.canary (or a separate one)
   # tenant session_tokens in canary.json are used as attacker credentials for
   # cross-tenant scenarios — no extra identity config needed.
   #canary: ./canary.json
-
-  # Request body shape is auto-discovered from the SBOM (chat_endpoint node: message/false).
-  # No override needed.
 
   # Scan profile:
   #   ci   — fast; only scenarios with pre-impact score ≥ 5 (default)
@@ -147,7 +161,7 @@ redteam:
 
   # Per-request HTTP timeout in seconds (default: 120)
   # Multi-agent pipelines with LLM calls can take 60–120 s; increase for slow apps
-  request_timeout: 60
+  request_timeout: 90
 
   # Verbose report: include full per-scenario traces in redteam report
   verbose: true
@@ -159,6 +173,28 @@ redteam:
   strict_outcome: false
   similar_miss_threshold: 4   # set to 0 to disable
 
+  # Pre-run warmup: wake up the Azure Container App before scenarios fire.
+  # The container scales to 0 when idle (minReplicas=0) and takes 2–8 s to cold-start.
+  # Sending 2 warmup probes absorbs the cold-start penalty so scenarios don't see
+  # 0-turn TargetUnavailableError aborts on the first batch of requests.
+  pre_run_warmup: 2
+
+  # Authenticated test user — alice (user_id in POST body), email alice.johnson@pinnaclebank.com.
+  # Real balances: checking $50,000 | savings $18,420.55 | investments $37,834.90
+  # KYC Level 2, Risk Score 15, Account ID ACCT-001.
+  # These values pre-seed the golden-data cache so {golden_id}/{golden_name} tokens in
+  # adversarial payloads resolve correctly from the start without a live DISCOVER round-trip.
+  golden_data:
+    "Fintech App Assistant":
+      account_id: "ACCT-001"
+      name: "Alice Johnson"
+      email: "alice.johnson@pinnaclebank.com"
+
+  # Post-finding verification probe: re-send the triggering payload after a finding
+  # is emitted to confirm it reproduces. Set true for high-stakes audits.
+  # Off by default to keep runs fast.
+  verify_findings: false
+
   # Guided adversarial conversations using ConversationDirector
   guided_conversations: true        # enable adaptive multi-turn attacks
   guided_max_turns: 8               # upper-bound cap on turns per guided scenario.
@@ -166,7 +202,7 @@ redteam:
                                     # clamps any higher cap down. Raise/lower to
                                     # trade cost for depth.
   guided_concurrency: 3             # parallel guided conversations (default: 3)
-  scenario_timeout: 180             # cancel any single scenario after 3 minutes
+  scenario_timeout: 300             # cancel any single scenario after 5 minutes
 
   # TAP tree exploration (RT-016) — branching multi-tactic search.
   # 0 = auto-select from profile (ci → 2, full → 3).

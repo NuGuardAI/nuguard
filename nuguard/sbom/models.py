@@ -395,6 +395,17 @@ class NodeMetadata(BaseModel):
         default=None,
         description="Inferred primary response text field in the response body",
     )
+    context_payload_fields: dict[str, str] | None = Field(
+        default=None,
+        description=(
+            "Non-chat context fields detected in the POST request body schema, "
+            "mapping field_name → kind. "
+            "kind='identity': static per user (user_id, tenant_id, account_id…) — "
+            "auto-injected from login response or requires explicit config. "
+            "kind='session': dynamic per conversation (session_id, thread_id…) — "
+            "auto-generated as UUID for the first request per scenario."
+        ),
+    )
     # Datastore risk attributes (complement classified_fields for flat redteam lookups)
     pii_fields: list[str] | None = Field(
         default=None,

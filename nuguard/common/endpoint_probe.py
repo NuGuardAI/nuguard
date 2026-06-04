@@ -120,6 +120,46 @@ def _sbom_post_paths(sbom: "AiSbomDocument") -> list[str]:
     return [p for _, p in scored]
 
 
+def is_empty_session_response(response_text: str) -> bool:
+    """Return True when *response_text* looks like an anonymous or empty-user session.
+
+    These heuristics are intentionally broad — this is a warning signal for the
+    caller to emit a config note, never a hard rejection.  Covers common patterns
+    across banking, healthcare, travel, and generic AI apps.
+    """
+    if not response_text:
+        return False
+    text = response_text.lower()
+
+    # Zero monetary balances (banking / fintech apps)
+    if re.search(r"\$0\.00", response_text) and "balance" in text:
+        return True
+    # KYC level 0 — unverified identity
+    if re.search(r"kyc.{0,20}level.{0,5}0", text) or re.search(r"kyc.{0,5}:\s*0", text):
+        return True
+    # Account ID is "UNKNOWN" or "null"
+    if re.search(r"\bunknown\b", text) and any(
+        w in text for w in ("account", "id", "user", "profile")
+    ):
+        return True
+    # Explicit "no data" / "no account" / "no profile" phrases
+    if re.search(r"no\s+(data|records?|account|profile|transaction).{0,30}(file|found|available)", text):
+        return True
+    # Try JSON: if every numeric top-level value is 0 and string values are empty
+    try:
+        import json as _json  # noqa: PLC0415
+        data = _json.loads(response_text)
+        if isinstance(data, dict) and data:
+            nums = [v for v in data.values() if isinstance(v, (int, float))]
+            strs = [v for v in data.values() if isinstance(v, str)]
+            if nums and all(v == 0 for v in nums) and all(not v.strip() for v in strs if v):
+                return True
+    except Exception:
+        pass
+
+    return False
+
+
 async def probe_chat_endpoints(
     target_url: str,
     sbom: "AiSbomDocument",
@@ -128,6 +168,7 @@ async def probe_chat_endpoints(
     known_payload_key: str | None = None,
     known_payload_list: bool = False,
     known_response_key: str | None = None,
+    probe_payload_extras: "dict[str, object] | None" = None,
 ) -> tuple[str, str, bool] | None:
     """Probe SBOM POST endpoints and return the first chat-capable one.
 
@@ -205,7 +246,10 @@ async def probe_chat_endpoints(
             _log.info("endpoint_probe: trying %s%s", base, path)
             for pay_key, pay_list in payload_shapes:
                 value: object = [_TEST_MESSAGE] if pay_list else _TEST_MESSAGE
-                body = {pay_key: value}
+                body: dict[str, object] = {}
+                if probe_payload_extras:
+                    body.update(probe_payload_extras)
+                body[pay_key] = value
                 try:
                     resp = await client.post(path, content=json.dumps(body))
                 except Exception as exc:

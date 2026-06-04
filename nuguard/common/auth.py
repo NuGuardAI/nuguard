@@ -229,6 +229,18 @@ def _extract_nested(data: dict[str, Any], key_path: str) -> str | None:
     return str(current) if current is not None else None
 
 
+# Fields in a login response that carry static user identity (same across all requests).
+_LOGIN_IDENTITY_FIELDS = frozenset({
+    "user_id", "userId", "uid", "sub", "account_id", "accountId",
+    "id", "username", "login",
+})
+# Fields in a login response that carry a dynamic session/conversation scope.
+_LOGIN_SESSION_FIELDS = frozenset({
+    "session_id", "sessionId", "conversation_id", "conversationId",
+    "thread_id", "threadId", "chat_id", "chatId",
+})
+
+
 class AuthSession:
     """Stateful auth session shared by behavior and redteam.
 
@@ -254,6 +266,9 @@ class AuthSession:
         self._token: str | None = None
         self._token_header_name: str = "Authorization"
         self._token_header_value_prefix: str = "Bearer"
+        # Extra fields extracted from the login response body (identity + session fields).
+        # Populated by _do_login(); callers use login_response_extras() to read them.
+        self._login_response_extras: dict[str, str] = {}
 
         if config.type == "login_flow" and config.login_flow:
             raw = config.login_flow.token_header
@@ -286,6 +301,18 @@ class AuthSession:
             )
             return {self._token_header_name: value}
         return self._config.to_headers()
+
+    def login_response_extras(self) -> dict[str, str]:
+        """Return identity/session fields extracted from the login response body.
+
+        For login_flow auth, this dict may contain fields like ``user_id`` or
+        ``session_id`` that the app returned alongside the auth token.  For all
+        other auth types this always returns an empty dict.
+
+        Callers (e.g. session_resolver) can merge these into ``chat_payload_extras``
+        so body-carried user identity is set automatically without explicit config.
+        """
+        return dict(self._login_response_extras)
 
     async def refresh_if_needed(self) -> bool:
         """Re-execute login on 401 if the config permits it.
@@ -357,6 +384,22 @@ class AuthSession:
                 url,
                 lf.token_response_key,
             )
+
+            # Capture identity / session fields from the login response so callers
+            # can inject them into subsequent chat request bodies automatically.
+            extras: dict[str, str] = {}
+            if isinstance(body, dict):
+                for field, val in body.items():
+                    if not isinstance(val, str) or not val:
+                        continue
+                    if field in _LOGIN_IDENTITY_FIELDS or field in _LOGIN_SESSION_FIELDS:
+                        extras[field] = val
+            if extras:
+                self._login_response_extras = extras
+                _log.debug(
+                    "AuthSession: extracted context fields from login response: %s",
+                    list(extras.keys()),
+                )
 
         except httpx.TimeoutException:
             _log.warning(

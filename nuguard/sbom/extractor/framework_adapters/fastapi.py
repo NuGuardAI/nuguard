@@ -136,14 +136,48 @@ def _infer_response_text_key(fields: dict[str, str]) -> str | None:
     return None
 
 
+# Mirrors the sets in fastapi_adapter.py and flask_adapter.py — keep in sync.
+_IDENTITY_FIELD_NAMES = frozenset({
+    "user_id", "userId", "tenant_id", "tenantId",
+    "account_id", "accountId", "customer_id", "customerId",
+    "org_id", "orgId", "organization_id", "organizationId",
+    "workspace_id", "workspaceId", "project_id", "projectId",
+    "subscription_id", "subscriptionId", "user", "username", "login",
+})
+
+_SESSION_FIELD_NAMES = frozenset({
+    "session_id", "sessionId", "conversation_id", "conversationId",
+    "thread_id", "threadId", "chat_id", "chatId", "request_id", "requestId",
+})
+
+
+def _infer_context_payload_fields(
+    fields: dict[str, str],
+    chat_key: str | None,
+) -> dict[str, str]:
+    """Return ``{field_name: kind}`` for identity/session body fields, excluding the chat field."""
+    result: dict[str, str] = {}
+    lower_identity = {f.lower() for f in _IDENTITY_FIELD_NAMES}
+    lower_session = {f.lower() for f in _SESSION_FIELD_NAMES}
+    for name in fields:
+        if name == chat_key:
+            continue
+        nl = name.lower()
+        if name in _IDENTITY_FIELD_NAMES or nl in lower_identity:
+            result[name] = "identity"
+        elif name in _SESSION_FIELD_NAMES or nl in lower_session:
+            result[name] = "session"
+    return result
+
+
 def _extract_endpoint_schema(
     func_def: ast.FunctionDef | ast.AsyncFunctionDef,
     model_schemas: dict[str, dict[str, str]],
-) -> tuple[dict[str, str], str | None, bool, str | None]:
+) -> tuple[dict[str, str], str | None, bool, str | None, dict[str, str]]:
     """Extract request body schema from a function's parameter type annotations.
 
     Looks for a parameter typed as a known Pydantic model.
-    Returns ``(schema_dict, chat_payload_key, chat_payload_list, response_text_key)``.
+    Returns ``(schema_dict, chat_payload_key, chat_payload_list, response_text_key, context_fields)``.
     """
     for arg in func_def.args.args:
         if arg.annotation is None:
@@ -161,8 +195,9 @@ def _extract_endpoint_schema(
                 ret_name = ret.id if isinstance(ret, ast.Name) else None
                 if ret_name and ret_name in model_schemas:
                     resp_key = _infer_response_text_key(model_schemas[ret_name])
-            return fields, key, is_list, resp_key
-    return {}, None, False, None
+            ctx_fields = _infer_context_payload_fields(fields, key)
+            return fields, key, is_list, resp_key, ctx_fields
+    return {}, None, False, None, {}
 
 
 class FastApiAdapter:
@@ -263,7 +298,7 @@ class FastApiAdapter:
                     endpoint_auth_type = _extract_security_auth_type(decorator, auth_vars)
 
                 # Discover request body schema from Pydantic model parameter
-                schema, chat_key, chat_list, resp_key = _extract_endpoint_schema(
+                schema, chat_key, chat_list, resp_key, ctx_fields = _extract_endpoint_schema(
                     node, model_schemas
                 )
 
@@ -285,6 +320,7 @@ class FastApiAdapter:
                         chat_payload_list=chat_list,
                         response_text_key=resp_key,
                         transport="sse" if is_streaming else None,
+                        context_payload_fields=ctx_fields or None,
                     ),
                 )
                 nodes.append(ep_node)

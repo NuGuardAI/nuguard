@@ -1,16 +1,16 @@
 {
   "schema_version": "1.4.0",
-  "generated_at": "2026-06-03T20:56:05Z",
+  "generated_at": "2026-06-04T17:57:32Z",
   "generator": "nuguard",
   "target": "https://github.com/NuGuardAI/Fintech-App",
   "nodes": [
     {
-      "id": "91023854-939b-4767-8a18-7a1bf221e20b",
+      "id": "67de81e7-2367-4f2f-ae19-0f237b11fe1c",
       "name": "generic",
       "component_type": "API_ENDPOINT",
       "confidence": 0.8360000000000001,
       "metadata": {
-        "description": "Generic chat API endpoint handling POST requests to /api/chat for conversational interactions.",
+        "description": "Generic chat API endpoint handling POST requests to /api/chat.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -46,7 +46,7 @@
       ]
     },
     {
-      "id": "937af13b-100f-48c1-b3e6-e8926aca933c",
+      "id": "316bd6e4-37ff-4c57-b28b-b8f736eb6448",
       "name": "0.0.0.0:8080 (sse)",
       "component_type": "API_ENDPOINT",
       "confidence": 0.9856,
@@ -55,7 +55,7 @@
         "endpoint": "0.0.0.0:8080",
         "transport": "sse",
         "server_name": "fintech-accounts",
-        "description": "SSE API endpoint exposed by an MCP server on 0.0.0.0:8080 for server-sent event transport.",
+        "description": "Server-Sent Events API endpoint exposed by an MCP server on 0.0.0.0:8080.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -272,12 +272,12 @@
       ]
     },
     {
-      "id": "df25dc28-4d81-4f64-909a-4eb510447f8a",
+      "id": "d2bc23ed-8c05-4b66-a3c0-408b358c50f0",
       "name": "jwt_auth",
       "component_type": "AUTH",
       "confidence": 1.0,
       "metadata": {
-        "description": "JWT-based authentication component that validates and processes JSON Web Tokens for access control.",
+        "description": "JWT-based authentication component that validates JSON Web Tokens for securing access.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -582,7 +582,7 @@
       ]
     },
     {
-      "id": "e4a951b8-06b7-44b4-bc0c-05187b4718b4",
+      "id": "33d60ca0-ce66-4c58-8af9-bde3a068d3a0",
       "name": "nginx:1.25-alpine",
       "component_type": "CONTAINER_IMAGE",
       "confidence": 0.8712000000000001,
@@ -591,7 +591,7 @@
         "image_tag": "1.25-alpine",
         "registry": "docker.io",
         "base_image": "nginx:1.25-alpine",
-        "description": "Alpine-based NGINX 1.25 container image used as the application runtime environment.",
+        "description": "Alpine-based NGINX 1.25 container image used as a web server runtime.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -636,7 +636,7 @@
       ]
     },
     {
-      "id": "038a6e2c-22e7-4e3b-929b-111f65161081",
+      "id": "be26b5ca-49a9-49ea-a34b-48c733e11b26",
       "name": "node:20-alpine",
       "component_type": "CONTAINER_IMAGE",
       "confidence": 0.8712000000000001,
@@ -645,7 +645,7 @@
         "image_tag": "20-alpine",
         "registry": "docker.io",
         "base_image": "node:20-alpine",
-        "description": "Alpine-based Node.js 20 container image used as the build stage for the application.",
+        "description": "Alpine-based Node.js 20 container image used as a builder stage.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -690,7 +690,7 @@
       ]
     },
     {
-      "id": "a46187ca-003c-4e7a-be46-ffd17f63bf15",
+      "id": "0bf36cd7-1b33-4047-9475-8cdfc58bcdc1",
       "name": "python:3.11-slim",
       "component_type": "CONTAINER_IMAGE",
       "confidence": 1.0,
@@ -699,7 +699,7 @@
         "image_tag": "3.11-slim",
         "registry": "docker.io",
         "base_image": "python:3.11-slim",
-        "description": "Official Python 3.11 slim Docker container image providing a minimal runtime environment for Python applications.",
+        "description": "Official slim Debian-based Python 3.11 container image for running Python applications with reduced image size.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -937,14 +937,14 @@
       ]
     },
     {
-      "id": "23a811e0-b965-4685-85b0-fbd98f4b4917",
+      "id": "46a4567b-6f0b-4f9f-ab30-9f631bb73616",
       "name": "sqlalchemy",
       "component_type": "DATASTORE",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "python_datastores",
         "datastore_type": "relational",
-        "description": "Python SQL toolkit and ORM library for creating engines and interacting with relational databases.",
+        "description": "Python SQL toolkit and ORM for creating engines and interacting with relational databases.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "pfi_fields": [],
@@ -985,12 +985,12 @@
       ]
     },
     {
-      "id": "3813d207-fdbd-4ecc-b746-44dcfd115ac2",
+      "id": "2d4f12b7-2bdd-4d7d-8398-2a56d4c21ef6",
       "name": "redis",
       "component_type": "DATASTORE",
       "confidence": 1.0,
       "metadata": {
-        "description": "Redis is an in-memory data store used for caching, messaging, and fast key-value persistence.",
+        "description": "Redis is an in-memory data store used for caching, messaging, and fast key-value storage.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "pfi_fields": [],
@@ -1171,12 +1171,12 @@
       ]
     },
     {
-      "id": "770573d2-bce6-47c9-bd1a-e17a5b1b2b76",
+      "id": "fb4a26fa-c3ce-41ed-9431-de71fff4d5c7",
       "name": "sqlite",
       "component_type": "DATASTORE",
       "confidence": 0.44000000000000006,
       "metadata": {
-        "description": "SQLite is a lightweight embedded relational database engine used for local data storage in applications.",
+        "description": "SQLite is an embedded relational database engine used for lightweight local data storage in applications.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "pfi_fields": [],
@@ -1213,14 +1213,14 @@
       ]
     },
     {
-      "id": "64727cbf-481c-4f96-be87-885ed8f16d79",
+      "id": "62a9996d-904a-45ac-81a3-9b29f7574a86",
       "name": "bicep:azure:eastus",
       "component_type": "DEPLOYMENT",
       "confidence": 0.9856,
       "metadata": {
         "deployment_target": "azure",
         "cloud_region": "eastus",
-        "description": "Azure East US deployment component for provisioning resources via Bicep with azd and nginx-related deployment configuration.",
+        "description": "Azure deployment component for the eastus region, associated with azd and nginx deployment artifacts.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -1439,13 +1439,13 @@
       ]
     },
     {
-      "id": "e2d86803-1b19-4eb3-adec-e07b9e1cc1cb",
+      "id": "7237946b-bb93-4c14-a466-e18946072aa1",
       "name": "bicep:azure:unknown-region",
       "component_type": "DEPLOYMENT",
       "confidence": 0.7744000000000001,
       "metadata": {
         "deployment_target": "azure",
-        "description": "Bicep deployment component targeting an unspecified Azure region.",
+        "description": "Bicep deployment component with unspecified Azure region.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -1489,13 +1489,13 @@
       ]
     },
     {
-      "id": "1d400f6a-f9a8-4468-ade1-1b4151a1d12c",
+      "id": "c32940dc-e7b6-43f6-a56a-a1161d8feba8",
       "name": "bicep:azure:unknown-region",
       "component_type": "DEPLOYMENT",
       "confidence": 0.7744000000000001,
       "metadata": {
         "deployment_target": "azure",
-        "description": "Bicep deployment component with no specified Azure region.",
+        "description": "Bicep deployment component with unspecified Azure region.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -1539,13 +1539,13 @@
       ]
     },
     {
-      "id": "6fa362ee-7179-4be9-a849-186d9abd6fb7",
+      "id": "ba5711e0-f3e9-4be4-99e4-c63cd467796e",
       "name": "bicep:azure:unknown-region",
       "component_type": "DEPLOYMENT",
       "confidence": 0.7744000000000001,
       "metadata": {
         "deployment_target": "azure",
-        "description": "Bicep deployment component with unspecified Azure region.",
+        "description": "Azure Bicep deployment component with unspecified region.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -1589,13 +1589,13 @@
       ]
     },
     {
-      "id": "d4b27797-e841-42fb-8489-c2ba6b34354c",
+      "id": "fbb80afa-33d0-4cce-a6f7-57eb9d911dd6",
       "name": "bicep:azure:unknown-region",
       "component_type": "DEPLOYMENT",
       "confidence": 0.7744000000000001,
       "metadata": {
         "deployment_target": "azure",
-        "description": "Azure Bicep deployment component with unspecified region.",
+        "description": "Bicep deployment component with no specified Azure region.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -1639,12 +1639,12 @@
       ]
     },
     {
-      "id": "214abae5-f2e1-4134-89eb-d7cd84d7cd2d",
+      "id": "49f7d68e-39f0-4c33-b5fe-10e2d38478a8",
       "name": "Port 80",
       "component_type": "DEPLOYMENT",
       "confidence": 0.7920000000000001,
       "metadata": {
-        "description": "Deployment exposure of TCP port 80 for HTTP traffic.",
+        "description": "Exposes TCP port 80 for HTTP traffic in the container deployment.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -1683,12 +1683,12 @@
       ]
     },
     {
-      "id": "ee23764d-9653-41b1-8cf1-4eea4d25d059",
+      "id": "749d61b9-e983-408e-b9d6-39b121fe50b9",
       "name": "Port 8001",
       "component_type": "DEPLOYMENT",
       "confidence": 0.7920000000000001,
       "metadata": {
-        "description": "Deployment configuration exposing TCP port 8001 for the containerized service.",
+        "description": "Deployment configuration exposing TCP port 8001 for the containerized application.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -1727,12 +1727,12 @@
       ]
     },
     {
-      "id": "50569d48-e4e5-4113-bfd2-16a658662c5a",
+      "id": "b084d5fb-0547-49af-a773-d83e9c68bcba",
       "name": "Port 8080",
       "component_type": "DEPLOYMENT",
       "confidence": 1.0,
       "metadata": {
-        "description": "Deployment configuration exposing TCP port 8080 for the containerized application.",
+        "description": "Deployment exposes TCP port 8080 for application access and runtime communication.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -1955,13 +1955,13 @@
       ]
     },
     {
-      "id": "2e739aa5-6e25-448f-896c-24e7deb69b18",
+      "id": "6d6de7dd-74a5-425f-a0ed-799b0108fd10",
       "name": "framework:langchain",
       "component_type": "FRAMEWORK",
       "confidence": 0.9880000000000001,
       "metadata": {
         "framework": "langchain",
-        "description": "LangChain framework component imported by LangGraph for language model application orchestration and chaining.",
+        "description": "LangChain framework for building applications with language models and related orchestration components.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -2007,13 +2007,13 @@
       ]
     },
     {
-      "id": "053c493c-5798-40db-a700-dc1966f63c3c",
+      "id": "63826b0b-fe6c-49bc-af82-540d2816fadb",
       "name": "langgraph",
       "component_type": "FRAMEWORK",
       "confidence": 0.616,
       "metadata": {
         "framework": "langgraph",
-        "description": "LangGraph is a framework for building stateful, graph-based LLM applications with orchestrated agent workflows and tool integrations.",
+        "description": "LangGraph is a framework for building stateful, multi-step language model applications and workflows.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -2081,13 +2081,13 @@
       ]
     },
     {
-      "id": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
+      "id": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
       "name": "fintech-accounts",
       "component_type": "FRAMEWORK",
       "confidence": 1.0,
       "metadata": {
         "framework": "mcp_server",
-        "description": "MCP server framework used by fintech-accounts to expose account-related functionality as server-side capabilities.",
+        "description": "Python MCP server framework component used by fintech-accounts to provide server-side Model Context Protocol functionality.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -2114,7 +2114,7 @@
             "validation_penalty": 0.0,
             "final_confidence": 1.0
           },
-          "description": "fintech-accounts exposes 12 tools including apply_for_loan, approve_loan, broadcast_all_users, bulk_export, and buy_asset over SSE transport with no auth configured.",
+          "description": "fintech-accounts exposes 12 tools including apply_for_loan, approve_loan, broadcast_all_users, bulk_export, and bulk_export_all_customers over sse transport with no auth.",
           "description_source": "llm_generated"
         }
       },
@@ -2298,12 +2298,12 @@
       ]
     },
     {
-      "id": "35fb67e2-af44-47fd-acaf-e50369c3e6e4",
+      "id": "9f25d0dd-270b-4b7d-86c1-37891408e79f",
       "name": "command-r-plus",
       "component_type": "MODEL",
       "confidence": 1.0,
       "metadata": {
-        "description": "Command-R-Plus is a generative language model component used for text-based AI inference and response generation.",
+        "description": "Cohere Command R+ is a large language model for advanced conversational and retrieval-augmented generation tasks.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -2501,12 +2501,12 @@
       ]
     },
     {
-      "id": "cc1cd0a7-d802-403f-90c8-af7eb1bb91a9",
+      "id": "998a007d-fe3e-4e0a-9389-819ad8e7cc9f",
       "name": "gpt-4o",
       "component_type": "MODEL",
       "confidence": 1.0,
       "metadata": {
-        "description": "OpenAI GPT-4o multimodal generative model for text and image understanding and generation.",
+        "description": "OpenAI GPT-4o multimodal generative language model for text and image understanding and generation.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -2518,13 +2518,13 @@
             "iac"
           ],
           "normalizer": "model-name",
-          "description": "LLM model identifier passed to OpenAI chat completions for generating responses in the frontend AI client.",
+          "description": "OpenAI chat completion model used by the application to generate text responses via the OpenAI API.",
           "llm_verified": true,
-          "llm_verification_reason": "Concrete production code dynamically instantiates the OpenAI client and calls chat.completions.create with model 'gpt-4o', which is an actual LLM model name used at runtime.",
-          "llm_confidence": 0.99,
+          "llm_verification_reason": "Concrete production code dynamically instantiates the OpenAI client and calls chat.completions.create with model 'gpt-4o'; this is real AI model usage, not a test or stub.",
+          "llm_confidence": 0.98,
           "confidence_breakdown": {
-            "regex_confidence": 0.99,
-            "llm_confidence": 0.99,
+            "regex_confidence": 0.98,
+            "llm_confidence": 0.98,
             "evidence_count": 7,
             "evidence_sources": [
               "llm:verified",
@@ -2535,7 +2535,7 @@
               "evidence:4",
               "confidence:high"
             ],
-            "base_confidence": 0.99,
+            "base_confidence": 0.98,
             "evidence_multiplier": 1.4,
             "validation_penalty": 0.0,
             "final_confidence": 1.0
@@ -2637,13 +2637,13 @@
       ]
     },
     {
-      "id": "62268efb-03b5-43bb-ab18-930f940ac53b",
+      "id": "13be3be9-3183-4bf1-be73-4fe4909dcf8f",
       "name": "filesystem_write",
       "component_type": "PRIVILEGE",
       "confidence": 0.44000000000000006,
       "metadata": {
         "privilege_scope": "filesystem_write",
-        "description": "Grants permission to open and write files to a specified output path.",
+        "description": "Privilege allowing the component to open and write to filesystem paths for output file creation or modification.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -2679,13 +2679,13 @@
       ]
     },
     {
-      "id": "5e2258cb-a8f2-4b7f-b1fc-b069d2bf1541",
+      "id": "b122acc5-bae3-4c06-8316-20c53215f83d",
       "name": "network_out",
       "component_type": "PRIVILEGE",
       "confidence": 0.528,
       "metadata": {
         "privilege_scope": "network_out",
-        "description": "Privilege allowing outbound network requests via HTTP POST to a webhook URL.",
+        "description": "Allows outbound network access by sending HTTP POST requests to a webhook URL.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -2694,7 +2694,7 @@
           "evidence_count": 3,
           "privilege_scope": "network_out",
           "llm_soft_rejected": true,
-          "llm_verification_reason": "This is in a test file (mcp_test_suite.py) and the code is a test helper that makes an outbound HTTP POST for testing, not a production AI privilege node.",
+          "llm_verification_reason": "This is in a test file (mcp_test_suite.py) and the code shown is a test helper making outbound HTTP requests, not production AI application code.",
           "confidence_breakdown": {
             "regex_confidence": 0.55,
             "llm_confidence": 0.0,
@@ -2743,13 +2743,13 @@
       ]
     },
     {
-      "id": "a7dd11f8-5b5b-4ba4-a06e-28f41506da36",
+      "id": "90152d2d-1c82-4fbb-9aa5-720fabd38640",
       "name": "rbac",
       "component_type": "PRIVILEGE",
       "confidence": 0.616,
       "metadata": {
         "privilege_scope": "rbac",
-        "description": "Role-based access control privilege governing permissions and restricting access, with relevance to access control and privilege escalation mitigation.",
+        "description": "RBAC privilege provides role-based access control to restrict permissions and reduce unauthorized privilege escalation.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -2762,7 +2762,7 @@
           ],
           "privilege_scope": "rbac",
           "llm_soft_rejected": true,
-          "llm_verification_reason": "This is an SPDX JSON test result/artifact entry under nuguard-test-results, not production application code. The 'rbac' label appears as a package/node classification in generated SBOM data, not a concrete privileged capability implementation.",
+          "llm_verification_reason": "This appears to be an SPDX test-results JSON entry under nuguard-test-results, not production application code. The node name 'rbac' is a generic permission concept and no concrete AI-related privileged operation is shown in the snippet.",
           "confidence_breakdown": {
             "regex_confidence": 0.55,
             "llm_confidence": 0.0,
@@ -2903,12 +2903,12 @@
       ]
     },
     {
-      "id": "7a023ac7-f7e7-49d7-8a80-020b853b6eda",
+      "id": "c04266da-7c40-46ec-ac0a-098eb183a3b8",
       "name": "generic",
       "component_type": "PROMPT",
       "confidence": 1.0,
       "metadata": {
-        "description": "Generic prompt component used for regex-based processing and matching.",
+        "description": "Generic prompt component identified by regex-based evidence matching.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -3015,14 +3015,14 @@
       ]
     },
     {
-      "id": "a4407b73-71d8-44db-8174-47bf976b8e86",
+      "id": "3d3950c1-ee03-4e79-8306-c9c9a460c77b",
       "name": "apply_for_loan",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-loans",
-        "description": "Submits a loan application by collecting applicant and financial details, validating required information, and sending the request to the lending workflow for review.",
+        "description": "Submits a loan application using provided applicant and financial details, creating a formal request for lender review and approval within the loan processing system.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -3069,14 +3069,14 @@
       ]
     },
     {
-      "id": "5f968dad-03fa-4210-9a0a-cea90101d58f",
+      "id": "168e79b4-3d05-4f82-a625-85e58f95285a",
       "name": "approve_loan",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-loans",
-        "description": "Approves or rejects loan applications by evaluating submitted applicant and financial information against lending criteria, then returning the approval decision.",
+        "description": "Approves or denies loan applications by evaluating submitted borrower information and returning a lending decision.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -3123,14 +3123,14 @@
       ]
     },
     {
-      "id": "bbfa3274-3c86-4f23-b6a2-9da6bc62149e",
+      "id": "c8ea7817-b311-4288-bd32-7e136e693de9",
       "name": "broadcast_all_users",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-notifications",
-        "description": "Broadcasts a message or notification to all users connected to the system, enabling system-wide announcements or alerts through the MCP server tool.",
+        "description": "Broadcasts a message or notification to all users through the MCP server, enabling system-wide announcements or updates.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -3177,14 +3177,14 @@
       ]
     },
     {
-      "id": "e8f39411-903c-415f-9b7f-dfe205b49baf",
+      "id": "e2d7a1bc-a868-4d78-8baa-41f981e89d86",
       "name": "bulk_export",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-data-export",
-        "description": "Exports large sets of data from the system in bulk, likely packaging and delivering records efficiently for downstream use or backup operations.",
+        "description": "Exports large volumes of data from connected sources in bulk, packaging records for downstream processing, migration, or backup workflows.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -3231,14 +3231,14 @@
       ]
     },
     {
-      "id": "678e27ef-a270-4393-88a6-7fe9ce625483",
+      "id": "dd54abb7-9ff0-4861-89f6-24b717046f5c",
       "name": "bulk_export_all_customers",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-reporting",
-        "description": "Exports data for all customers in bulk, likely generating a comprehensive downloadable dataset or report for administrative or integration purposes.",
+        "description": "Exports data for all customers in bulk from the system, likely to support administrative backup, migration, or reporting workflows.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -3285,14 +3285,14 @@
       ]
     },
     {
-      "id": "e94d9d69-ecd4-41d0-a681-7472febe8d74",
+      "id": "5162133a-8ac2-42d2-8bdb-b5cb8c323ccc",
       "name": "buy_asset",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-investments",
-        "description": "Executes an asset purchase action through the MCP server, handling the necessary parameters to buy a specified asset within the connected system.",
+        "description": "Purchases a specified asset through the MCP server tool, likely handling asset selection, transaction execution, and returning the purchase result or confirmation.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -3339,14 +3339,14 @@
       ]
     },
     {
-      "id": "f4579b7a-3fa8-438b-aa70-432c5229c220",
+      "id": "487b486b-4ab4-49dd-9fc9-5f49fc789a42",
       "name": "buy_crypto",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-crypto",
-        "description": "Allows users to purchase cryptocurrency through the MCP server by initiating and processing crypto buy transactions, likely handling order details and payment execution.",
+        "description": "Executes cryptocurrency purchase operations through the MCP server, likely handling trade execution and related transaction actions based on provided inputs.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -3393,14 +3393,14 @@
       ]
     },
     {
-      "id": "8782271c-100a-4367-bce0-c96f47da2bea",
+      "id": "e9bd8a28-cfe4-4520-a8a7-70987ede1f1c",
       "name": "call_internal_service",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-internal-bridge",
-        "description": "Calls an internal service through the MCP server to perform backend operations or retrieve internal data on behalf of the AI system.",
+        "description": "Invokes an internal service through the MCP server to perform backend operations and return results to the system.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -3447,14 +3447,14 @@
       ]
     },
     {
-      "id": "91aa5ae5-2da3-4c92-81ca-36c5c5e74360",
+      "id": "2bf35c43-50d0-415d-967b-6da4eed5657e",
       "name": "cancel_payment",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-payments",
-        "description": "Cancels a payment transaction in the payment system, reversing or voiding the charge when the payment has not been completed or must be stopped.",
+        "description": "Cancels a payment transaction through the MCP server, likely reversing or voiding the specified payment and returning the cancellation status.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -3501,14 +3501,14 @@
       ]
     },
     {
-      "id": "840ce3bf-c789-4ece-a10d-a19b332e54dc",
+      "id": "416daa4c-8773-4957-ac21-4b89f7a2a6cf",
       "name": "cancel_task",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-scheduler",
-        "description": "Cancels a previously submitted task within the MCP server, stopping its execution or processing if it is still running or pending.",
+        "description": "Cancels a previously submitted task, terminating its execution or pending processing within the MCP server workflow.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -3555,14 +3555,14 @@
       ]
     },
     {
-      "id": "ba08c89c-1035-4693-9ef6-e3e2702dabe5",
+      "id": "68fe9a74-c309-403a-8276-e212e7ad2ed6",
       "name": "check_sanctions",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-aml",
-        "description": "Checks whether a person, organization, or entity appears on sanctions lists or other restricted-party screening sources, returning match results for compliance and risk assessment.",
+        "description": "Checks whether a person, organization, or entity appears on sanctions lists or other restricted-party databases before allowing further processing or transactions.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -3609,14 +3609,14 @@
       ]
     },
     {
-      "id": "0bea8874-851e-4743-87b0-71593d829841",
+      "id": "5fda1520-f7b8-4cbf-b213-c06893b5131f",
       "name": "check_transaction_limits",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-compliance",
-        "description": "Checks whether a proposed transaction complies with predefined limits such as amount, frequency, or risk thresholds before allowing it to proceed.",
+        "description": "Checks whether a transaction complies with configured limits, such as amount, frequency, or account constraints, before allowing it to proceed.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -3663,14 +3663,14 @@
       ]
     },
     {
-      "id": "03eaf3d0-0131-47a0-8e35-377857afb026",
+      "id": "50854f45-d092-4312-aa63-3efe28f06fee",
       "name": "convert_funds",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-fx",
-        "description": "Converts funds between supported currencies or accounts, applying any required exchange rates, transfer logic, and validation to complete the transaction safely.",
+        "description": "Converts an amount from one currency or fund denomination to another using current or specified exchange rates, returning the equivalent value for financial calculations.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -3717,14 +3717,14 @@
       ]
     },
     {
-      "id": "f902fd79-7822-4a72-b122-1c4210287f84",
+      "id": "20506bde-b545-4f4e-9828-b01e79af3ac5",
       "name": "create_document",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-documents",
-        "description": "Creates a new document resource in the MCP server, initializing it from provided content or metadata so it can be stored, accessed, and further edited by client tools.",
+        "description": "Creates a new document in the connected workspace or content system, initializing it with provided parameters and returning the created document\u2019s details or identifier.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -3771,14 +3771,14 @@
       ]
     },
     {
-      "id": "860fe568-ad0e-4c41-a626-fe9c0a5c5537",
+      "id": "52d836b5-e693-4ec1-ab75-7e45d2ef8102",
       "name": "delete_audit_entry",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-audit",
-        "description": "Deletes a specified audit log entry from the system, removing its recorded record of an action or event.",
+        "description": "Deletes a specified audit log entry from the MCP server\u2019s audit records, removing that record from further review or tracking.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -3825,14 +3825,14 @@
       ]
     },
     {
-      "id": "686dcc02-9fea-44a0-bc51-43a4a189eb6e",
+      "id": "e4c4ba97-2263-4af2-802f-cc3a6509c897",
       "name": "delete_document",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-documents",
-        "description": "Deletes a specified document from the connected MCP server, removing it from storage or availability based on the provided document identifier.",
+        "description": "Deletes a specified document from the connected system or data store, removing it from availability for future access or retrieval.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -3879,14 +3879,14 @@
       ]
     },
     {
-      "id": "350b781b-2f80-4c6c-b50f-6c424badd1b7",
+      "id": "aeded983-0091-4027-998f-54a6b40b50cb",
       "name": "delete_user",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-admin",
-        "description": "Deletes a specified user account from the system via the MCP server tool.",
+        "description": "Deletes a specified user account from the system, removing the user\u2019s access and associated records as supported by the MCP server tool.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -3933,14 +3933,14 @@
       ]
     },
     {
-      "id": "a4a66a05-3ff2-49a2-8454-19dcb1c41c18",
+      "id": "50237d8b-7306-4073-b94a-2f5bf6ee6045",
       "name": "export_all_audit_logs",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-audit",
-        "description": "Exports all audit log entries from the system, enabling bulk retrieval of activity records for review, analysis, or compliance purposes.",
+        "description": "Exports all audit logs from the system, likely for compliance, investigation, or archival purposes.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -3987,14 +3987,14 @@
       ]
     },
     {
-      "id": "9358a498-d815-4354-956c-9f94b86e0484",
+      "id": "e6a7b27f-6d94-4d27-9a3c-fbd3b03eb025",
       "name": "export_customer_data",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-data-export",
-        "description": "Exports customer data from the system, likely via the MCP server tool, to enable retrieval or transfer of customer records for downstream use.",
+        "description": "Exports customer data from the system via the MCP server tool, likely packaging and returning requested customer records for downstream use or integration.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -4041,14 +4041,14 @@
       ]
     },
     {
-      "id": "5eee521a-c36f-4d7f-9bf7-6b7a10b867f2",
+      "id": "7ab9c851-7be4-44db-a311-581574f202cc",
       "name": "fetch_external_feed",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-market-data",
-        "description": "Retrieves external feed data from an MCP server tool, likely fetching and returning updates or records from a specified outside source.",
+        "description": "Fetches an external feed through the MCP server, retrieving and returning its latest content or updates for downstream processing.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -4095,14 +4095,14 @@
       ]
     },
     {
-      "id": "303541ff-bc2d-4943-a767-129328d34c28",
+      "id": "391e7cfb-8a31-4c64-ba48-885096cb8088",
       "name": "fetch_market_report",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-banking",
-        "description": "Fetches market reports from the MCP server for analysis, retrieving relevant report data based on provided parameters.",
+        "description": "Retrieves a market report from an MCP server tool, likely fetching current or requested financial market analysis data for downstream use.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -4149,14 +4149,14 @@
       ]
     },
     {
-      "id": "35361282-03c2-4a8b-8e72-e2c8fb6186ac",
+      "id": "98566e66-6d2c-47e3-8f76-7c8b47589325",
       "name": "file_suspicious_activity_report",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-aml",
-        "description": "Generates a report summarizing suspicious file activity, highlighting anomalous access patterns, potential malware indicators, and other file-related security concerns for investigation.",
+        "description": "Generates a report summarizing suspicious file activity, including notable events, anomalies, and indicators that may warrant further investigation.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -4203,14 +4203,14 @@
       ]
     },
     {
-      "id": "37e0b5a6-7f31-485e-8689-98f215c3b05a",
+      "id": "786d30c6-57f4-4a1e-9729-c353e7ca5a1c",
       "name": "flag_transaction",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-fraud",
-        "description": "Flags a transaction for review or follow-up, typically marking it in the system so downstream processes can investigate, monitor, or apply additional controls.",
+        "description": "Flags a transaction for review or further handling, likely marking it as suspicious, important, or requiring additional processing within the system.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -4257,14 +4257,14 @@
       ]
     },
     {
-      "id": "d030be1e-40af-4354-9312-771d545aba0c",
+      "id": "e8655435-ed3a-4fc5-847d-21f5d01e093d",
       "name": "freeze_card",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-cards",
-        "description": "Freezes a card to prevent further transactions or use, typically for security, fraud response, or account control purposes.",
+        "description": "Freezes a payment card by invoking the MCP server tool, preventing further transactions or usage until it is unfrozen.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -4311,14 +4311,14 @@
       ]
     },
     {
-      "id": "b42b0269-47a7-483b-9e9b-1efc720d1688",
+      "id": "b85d8e27-22b4-43b8-9d28-723f480661e3",
       "name": "generate_report",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-reporting",
-        "description": "Generates a report by collecting relevant data, organizing it into a structured format, and returning the completed report for use within the MCP server workflow.",
+        "description": "Generates a report from available data or findings, formatting results into a structured output for review, sharing, or downstream processing.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -4365,14 +4365,14 @@
       ]
     },
     {
-      "id": "77703142-9fe3-4e40-8497-184f6da1938c",
+      "id": "a52d0001-77b7-4797-bdde-335d084d6063",
       "name": "get_account",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-accounts",
-        "description": "Retrieves account details for a specified account, likely returning information such as identifiers, status, and related metadata from the connected system.",
+        "description": "Retrieves account details for the currently authenticated user or a specified account, returning structured account information for use by the application.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -4419,14 +4419,14 @@
       ]
     },
     {
-      "id": "20c4d380-a23c-44a8-b923-b02418f13689",
+      "id": "d80a21aa-e6bc-4628-b1ae-f7365ece70cf",
       "name": "get_admin_actions",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-audit",
-        "description": "Retrieves administrative actions and related records from the system for inspection, management, or auditing purposes.",
+        "description": "Retrieves the administrative actions available in the system, likely for inspection or control by privileged users.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -4473,14 +4473,14 @@
       ]
     },
     {
-      "id": "0f0bba21-d459-4dc3-a312-2ebf221cb53e",
+      "id": "5fb8f226-4227-4855-a05a-2a74fad13793",
       "name": "get_all_kyc_statuses",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-kyc",
-        "description": "Retrieves all available KYC status records from the connected MCP server, returning the full set of verification statuses for downstream review or processing.",
+        "description": "Retrieves all available KYC status records from the MCP server, likely for reviewing customer verification states across the system.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -4527,14 +4527,14 @@
       ]
     },
     {
-      "id": "e2efc3bc-b185-430d-9fb8-9df7de7afeef",
+      "id": "638e1d27-a1d5-48cd-915a-5f098ff6b2ee",
       "name": "get_audit_log",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-audit",
-        "description": "Retrieves audit log records from the system, enabling review of historical actions, events, and changes for monitoring, troubleshooting, and compliance purposes.",
+        "description": "Retrieves audit log records from the MCP server for reviewing system activity, changes, or events over time.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -4581,14 +4581,14 @@
       ]
     },
     {
-      "id": "02956c04-9461-4add-9cd5-ad65a0700228",
+      "id": "262619ba-94b3-4698-bbc3-aebef1e778c9",
       "name": "get_available_assets",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-investments",
-        "description": "Lists available assets exposed by the MCP server, returning their identifiers and related metadata so other components can discover and select usable resources.",
+        "description": "Retrieves the set of assets currently available through the MCP server for use by the system or client.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -4635,14 +4635,14 @@
       ]
     },
     {
-      "id": "27ed68ec-759e-4c15-95a5-0d2727171bef",
+      "id": "b43392f8-8db2-4f99-99dd-0d0292c5217b",
       "name": "get_card_details",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-cards",
-        "description": "Retrieves detailed information about a specified card, such as its metadata, configuration, status, or other associated attributes, for use by the MCP server.",
+        "description": "Retrieves detailed information for a specified card, likely including its attributes, status, and related metadata, so other components can inspect or use card data.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -4689,14 +4689,14 @@
       ]
     },
     {
-      "id": "44f07b2a-cc6b-4e90-80e7-4e9a5927ae39",
+      "id": "e33d2d0c-b29b-4998-afbe-7e65fe7b760c",
       "name": "get_card_transactions",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-cards",
-        "description": "Retrieves transaction records for a specified payment card, typically returning recent activity and associated details for review or analysis.",
+        "description": "Retrieves transaction records for a specified card, typically returning details such as dates, merchants, amounts, and statuses for account review or analysis.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -4743,14 +4743,14 @@
       ]
     },
     {
-      "id": "55fd1bc4-4269-4dc7-ab7e-7583f348f318",
+      "id": "1b28a75b-3c5c-4ef5-9bc4-b58db0865631",
       "name": "get_crypto_price",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-crypto",
-        "description": "Retrieves the current price of a specified cryptocurrency from an external market data source for use by the host system.",
+        "description": "Fetches the current market price for a specified cryptocurrency asset, likely by querying an external data source through the MCP server tool interface.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -4797,14 +4797,14 @@
       ]
     },
     {
-      "id": "067e665f-03ae-41ab-9bc6-7b070f123413",
+      "id": "6ef45c18-f0cb-4a4c-b79b-ee9f3b1569d6",
       "name": "get_customer_summary",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-reporting",
-        "description": "Retrieves a concise summary of a customer\u2019s account information, status, and relevant details for use by the host application.",
+        "description": "Retrieves a concise summary of a customer\u2019s key information, status, and relevant account details for quick review within the MCP server.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -4851,14 +4851,14 @@
       ]
     },
     {
-      "id": "513150dd-38d4-4742-8746-a779733d601d",
+      "id": "5918e486-15e8-4e6c-be97-f6aaf4091093",
       "name": "get_document",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-documents",
-        "description": "Retrieves a specified document from the MCP server so other components can read or process its contents.",
+        "description": "Retrieves a document by identifier from the MCP server and returns its contents for use by the AI system.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -4905,14 +4905,14 @@
       ]
     },
     {
-      "id": "a0c9a311-e46d-447a-b96b-3d8e583b710a",
+      "id": "91547053-7e9d-47b2-ab67-0b79f2e4ab29",
       "name": "get_exchange_rate",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-fx",
-        "description": "Retrieves the current exchange rate between specified currencies, likely via an external financial data source, for use in currency conversion or market information tasks.",
+        "description": "Retrieves the current exchange rate between specified currencies, enabling the system to convert monetary values using up-to-date foreign exchange data.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -4959,14 +4959,14 @@
       ]
     },
     {
-      "id": "0ff5fba1-1790-45e0-b7c0-14bee3542e58",
+      "id": "c36af15b-267e-4d10-af4e-4a62db54321e",
       "name": "get_flagged_transactions",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-fraud",
-        "description": "Retrieves transactions that have been flagged for review or potential fraud, returning the relevant transaction records for further analysis.",
+        "description": "Retrieves transactions that have been flagged for review, allowing the system to inspect potentially suspicious or policy-relevant activity.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -5013,14 +5013,14 @@
       ]
     },
     {
-      "id": "a3299a72-5740-4e5e-9812-5c1be9d47e65",
+      "id": "d9fcecdc-a9c9-4f9a-adae-f78b85d950fd",
       "name": "get_fraud_score",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-fraud",
-        "description": "Computes a fraud risk score for a given entity or transaction by evaluating relevant signals and returning a numeric assessment to support downstream decision-making.",
+        "description": "Returns a fraud risk score for a given input, likely assessing transactions or entities for suspicious behavior using server-side evaluation logic.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -5067,14 +5067,14 @@
       ]
     },
     {
-      "id": "37030b44-2f71-4aee-8a0c-0ef11ab9ccf3",
+      "id": "a4adfb0e-124c-47fe-a51a-0f9eb258649b",
       "name": "get_high_risk_accounts",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-aml",
-        "description": "Retrieves accounts flagged as high risk from the connected system, likely for review, monitoring, or fraud investigation workflows.",
+        "description": "Retrieves a list of high-risk user accounts from the connected system, typically for monitoring, investigation, or security review purposes.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -5121,14 +5121,14 @@
       ]
     },
     {
-      "id": "e41194bc-1fc2-4c6c-943d-4f7e8209dd38",
+      "id": "e72d50d0-e3e6-43be-954d-ec50c30f3b31",
       "name": "get_kyc_status",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-kyc",
-        "description": "Retrieves the current KYC verification status for a user or account, returning whether identity checks are pending, approved, failed, or otherwise incomplete.",
+        "description": "Retrieves the current KYC verification status for a specified customer or account from the MCP server.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -5175,14 +5175,14 @@
       ]
     },
     {
-      "id": "84d46e63-9fce-4b62-bae7-8b3bf4ae6f83",
+      "id": "7b5fab55-c402-4467-b440-a264ac07c78f",
       "name": "get_loan_details",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-loans",
-        "description": "Retrieves detailed information for a specified loan, such as balance, status, terms, and payment history, from the loan management system.",
+        "description": "Retrieves detailed information about a specific loan, such as balance, status, terms, and repayment data, for use by the MCP server.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -5229,14 +5229,14 @@
       ]
     },
     {
-      "id": "cf5c0d8e-f5d1-443f-8aad-b948aa596f7a",
+      "id": "f89f1d51-4826-404d-978e-4ee1d00a9420",
       "name": "get_market_summary",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-market-data",
-        "description": "Retrieves a concise market summary from the MCP server, likely aggregating current market data into a brief overview for downstream use.",
+        "description": "Retrieves a concise summary of current market conditions, aggregating key financial indicators and trends for downstream analysis or display.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -5283,14 +5283,14 @@
       ]
     },
     {
-      "id": "d0578ed5-de34-40fd-9be5-cfed867cc7c4",
+      "id": "41f6cee5-a8f1-49a8-aa76-0f334a72acdc",
       "name": "get_notification_history",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-notifications",
-        "description": "Retrieves the history of notifications, returning past alert or message records for review and analysis.",
+        "description": "Retrieves a user's notification history from the system, returning past alerts or messages for review and auditing.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -5337,14 +5337,14 @@
       ]
     },
     {
-      "id": "71f1cfa7-89fc-4356-b5fa-7ad7b4a21bd0",
+      "id": "b00a86fd-33d6-42d7-967a-054a8d334317",
       "name": "get_payment_status",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-payments",
-        "description": "Retrieves the current status of a payment transaction, such as pending, completed, failed, or refunded, for use in payment tracking and customer support.",
+        "description": "Retrieves the current status of a payment transaction, returning information such as completion, pending, failed, or refunded state.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -5391,14 +5391,14 @@
       ]
     },
     {
-      "id": "d66b7731-5c0b-4080-bb9c-8c5d4074488c",
+      "id": "84f779b3-74b2-4628-b90d-192a1e23c799",
       "name": "get_pending_compliance_items",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-compliance",
-        "description": "Retrieves compliance items that are still pending review or resolution, typically for monitoring, reporting, or workflow prioritization.",
+        "description": "Retrieves compliance items that are still pending review, action, or resolution so they can be tracked and processed further.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -5445,14 +5445,14 @@
       ]
     },
     {
-      "id": "b5ce873c-f23a-41b9-9ec0-d508dc77eaf6",
+      "id": "d3c72993-9fbc-4d39-8e06-2d0388c6c547",
       "name": "get_portfolio",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-investments",
-        "description": "Retrieves a portfolio's current holdings, positions, and related account details from the connected brokerage or investment system for use by the AI agent.",
+        "description": "Retrieves portfolio information, likely returning holdings, allocation, or account summary data for a specified portfolio.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -5499,14 +5499,14 @@
       ]
     },
     {
-      "id": "a6692854-0126-4cac-9df0-29c32cc10c19",
+      "id": "1b27d56a-dee0-415d-8d6c-dd9290f3b43c",
       "name": "get_price",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-market-data",
-        "description": "Retrieves the current price for a requested asset or item from the connected pricing service.",
+        "description": "Retrieves the current price for a specified asset, product, or service through the MCP server tool.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -5553,14 +5553,14 @@
       ]
     },
     {
-      "id": "57414548-46fc-40c6-a00f-069c2dbb6b79",
+      "id": "3a92629d-1408-4b5b-afd4-6a99ebb0517e",
       "name": "get_regulatory_report",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-reporting",
-        "description": "Retrieves a regulatory report by querying the MCP server for relevant compliance, legal, or policy information and returns the report contents for downstream use.",
+        "description": "Retrieves a regulatory report from the MCP server, likely assembling compliance-related data into a structured report for review or downstream processing.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -5607,14 +5607,14 @@
       ]
     },
     {
-      "id": "10255f85-9f6b-434a-93f6-b6f2c77c1058",
+      "id": "d044fb11-e494-401b-9a36-94ebaf30bf1e",
       "name": "get_regulatory_requirements",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-compliance",
-        "description": "Retrieves applicable regulatory requirements for a given context, helping the system identify relevant compliance obligations from authoritative sources.",
+        "description": "Retrieves relevant regulatory requirements and compliance obligations for a given context, helping the system align outputs or actions with applicable legal and policy constraints.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -5661,14 +5661,14 @@
       ]
     },
     {
-      "id": "9a85382b-a498-4173-8a4d-601392379cc8",
+      "id": "e265f53b-765d-43cf-a970-d90d3f768ed0",
       "name": "get_service_health",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-internal-bridge",
-        "description": "Retrieves the current health status and operational details of a specified service, helping monitor availability and diagnose issues.",
+        "description": "Returns the health status of the specified service, enabling callers to check whether it is running properly and responsive.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -5715,14 +5715,14 @@
       ]
     },
     {
-      "id": "4bb5a586-e405-44d2-94f5-74a24ca0867a",
+      "id": "b1a4ab98-2d98-4777-8a5a-87f68a0abcea",
       "name": "get_wallet_address",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-crypto",
-        "description": "Retrieves the wallet address associated with the connected account for use in blockchain transactions and identity verification.",
+        "description": "Retrieves the wallet address associated with the current account or context, enabling downstream components to identify the user's blockchain address.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -5769,14 +5769,14 @@
       ]
     },
     {
-      "id": "4d4d8a90-0a06-431c-98b6-fe81ca33033c",
+      "id": "0559957e-81ad-4cc7-8de8-457dc932cdc4",
       "name": "grant_admin_role",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-admin",
-        "description": "Grants administrative privileges to a specified user or account within the system, enabling elevated management actions and access to restricted administrative functions.",
+        "description": "Grants an administrative role to a specified user or account, enabling elevated permissions and management capabilities within the system.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -5823,14 +5823,14 @@
       ]
     },
     {
-      "id": "687be44b-ff27-44fc-9ff3-eab1ad58ed48",
+      "id": "fa5bc012-cee1-433b-b0c1-b2c8669c56f3",
       "name": "initiate_payment",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-payments",
-        "description": "Initiates a payment transaction by collecting the required payment details and submitting them through the MCP server tool for processing.",
+        "description": "Initiates a payment transaction by validating required details and submitting the payment request through the MCP server tool.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -5877,14 +5877,14 @@
       ]
     },
     {
-      "id": "7611d0e0-560a-4110-b623-558b411b06ba",
+      "id": "cfeb61b0-ecf8-499d-ac9f-3c2c4b8e52c4",
       "name": "invoke_admin_api",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-internal-bridge",
-        "description": "Invokes administrative API endpoints through the MCP server to perform privileged management actions, such as configuration changes, resource control, or operational oversight.",
+        "description": "Invokes administrative API operations through the MCP server tool interface, enabling authorized management tasks and privileged system actions.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -5931,14 +5931,14 @@
       ]
     },
     {
-      "id": "de6c79a6-7b62-446e-a4ef-a24dcba51f19",
+      "id": "9b285a9f-dd94-4f7f-90c4-04830bd4b590",
       "name": "list_all_accounts",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-accounts",
-        "description": "Lists all available user accounts from the connected system, returning account identifiers and related metadata for use by other tools or workflows.",
+        "description": "Lists all available user accounts in the connected system or service, returning account identifiers and related metadata for administrative review or selection.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -5985,14 +5985,14 @@
       ]
     },
     {
-      "id": "9f245612-a321-430c-8285-46e48dbd878a",
+      "id": "b3cd1ae9-d472-4d0f-b216-7ed1569e4b50",
       "name": "list_all_users",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-admin",
-        "description": "Lists all users available in the system, returning their user records or identifiers for inspection or further processing.",
+        "description": "Returns a list of all users known to the system, enabling inspection or enumeration of user accounts through the MCP server tool interface.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -6039,14 +6039,14 @@
       ]
     },
     {
-      "id": "795db8fe-ecbb-4ab6-9e15-95f1cb979bf9",
+      "id": "28bfdf5c-6610-4a1a-b81e-e998fb6b8336",
       "name": "list_customer_documents",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-documents",
-        "description": "Lists and returns the documents associated with a customer, enabling retrieval of customer-specific records through the MCP server tool.",
+        "description": "Retrieves a customer\u2019s stored documents and associated metadata from the MCP server for viewing, search, or downstream processing.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -6093,14 +6093,14 @@
       ]
     },
     {
-      "id": "e254f1ea-3a9e-4691-85d9-6e82a89d587f",
+      "id": "e7ec323b-414c-4263-9fc1-e690e1ad80d6",
       "name": "list_scheduled_tasks",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-scheduler",
-        "description": "Lists scheduled tasks available in the system, returning task details such as timing, status, and associated metadata for inspection or management.",
+        "description": "Lists scheduled tasks in the system, returning details such as task names, execution timing, and status for inspection or automation.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -6147,14 +6147,14 @@
       ]
     },
     {
-      "id": "85d1c384-2393-477a-b10d-517a1335f93f",
+      "id": "a7d6c2aa-c26b-434c-86d2-25c7bae2af32",
       "name": "list_supported_currencies",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-fx",
-        "description": "Returns the set of currencies supported by the system or service, enabling clients to query available currency codes before creating transactions or performing currency-dependent operations.",
+        "description": "Returns a list of currencies supported by the system, enabling clients to discover valid currency codes for transactions or display options.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -6201,14 +6201,14 @@
       ]
     },
     {
-      "id": "d8ff7b4d-0a15-4aff-8d23-30d64f8d2ff4",
+      "id": "06186313-1d76-449a-bc30-aaa48605d990",
       "name": "override_compliance",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-compliance",
-        "description": "Provides a mechanism for reviewing and overriding compliance decisions, enabling authorized users or systems to supersede default policy outcomes within the MCP server environment.",
+        "description": "Overrides or bypasses compliance checks and policy enforcement controls, allowing the system to proceed despite restrictions or failed validations.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -6255,14 +6255,14 @@
       ]
     },
     {
-      "id": "e8ef4499-a9cf-41ff-8577-72a4739d57cf",
+      "id": "b51efc7c-7569-4a6f-827f-d7f156146ac4",
       "name": "override_kyc",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-kyc",
-        "description": "Overrides Know Your Customer (KYC) verification checks in the MCP server, allowing administrative bypass or adjustment of customer identity validation workflows.",
+        "description": "Overrides or bypasses KYC verification workflows by supplying alternate approval outcomes or modified identity checks within the MCP server tool.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -6309,14 +6309,14 @@
       ]
     },
     {
-      "id": "9f27e374-aba6-44ff-bab6-28458e950246",
+      "id": "4d822911-0a75-45b1-ad8e-dadcb5f23a5f",
       "name": "reject_loan",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-loans",
-        "description": "Evaluates loan applications and returns a rejection decision when applicant criteria, such as creditworthiness or eligibility, do not meet required lending standards.",
+        "description": "Evaluates a loan application and rejects it when the applicant fails eligibility, risk, or policy checks.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -6363,14 +6363,14 @@
       ]
     },
     {
-      "id": "0ba497c3-855f-4684-9578-47a26201cb71",
+      "id": "956f0dd1-39f1-43ff-8967-55d37b98a515",
       "name": "reset_user_password",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-admin",
-        "description": "Resets a user\u2019s password in the system, typically by generating or setting a new credential and updating the account securely.",
+        "description": "Resets a user's password through the MCP server, typically by validating the request and updating the account credentials to enable secure account recovery.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -6417,14 +6417,14 @@
       ]
     },
     {
-      "id": "fb7abfd2-231a-4033-af1b-e39519457776",
+      "id": "19147671-edc7-4ea1-aaa7-ed97bffd8327",
       "name": "run_task_immediately",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-scheduler",
-        "description": "Executes a specified task immediately through the MCP server, bypassing scheduling delays and triggering the task\u2019s actions right away.",
+        "description": "Executes a specified task immediately through the MCP server, triggering its processing without delay or scheduling.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -6471,14 +6471,14 @@
       ]
     },
     {
-      "id": "51df82b9-cf1d-417a-a4c5-a3311701ac44",
+      "id": "70ec50a6-787d-4b79-8c24-b34af9c7a47f",
       "name": "schedule_task",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-scheduler",
-        "description": "Schedules a task to run at a specified time or interval within the MCP server framework, enabling deferred or recurring execution of actions.",
+        "description": "Schedules a task to run later or at a specified time within the MCP server environment, handling delayed execution requests for the system.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -6525,14 +6525,14 @@
       ]
     },
     {
-      "id": "e72c9294-ac4c-4d98-b3bf-508838af7946",
+      "id": "96e01f0c-cb0e-4aa1-8597-4b75984897f8",
       "name": "sell_asset",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-investments",
-        "description": "Executes asset sale operations through the MCP server, enabling the system to submit, manage, and complete requests to sell specified assets.",
+        "description": "Sells a specified asset through the connected MCP server, handling the transaction request to convert the asset into proceeds.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -6579,14 +6579,14 @@
       ]
     },
     {
-      "id": "cf483b96-b8fc-4db3-9dcf-ec94061ce240",
+      "id": "7230af8e-d1ce-424c-bb94-515105ca2e8a",
       "name": "send_alert",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-notifications",
-        "description": "Sends an alert notification through the MCP server, typically to report important events, warnings, or incidents to connected monitoring or messaging systems.",
+        "description": "Sends an alert or notification through the MCP server, likely to inform users or systems about important events, errors, or status changes.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -6633,14 +6633,14 @@
       ]
     },
     {
-      "id": "00184499-fb7f-4c48-919c-fc546be997ca",
+      "id": "4aac4098-0fe2-43ba-8e6c-2866528241e8",
       "name": "send_otp",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-notifications",
-        "description": "Sends a one-time password to a user\u2019s registered contact method for authentication, verification, or account recovery workflows.",
+        "description": "Sends a one-time password to a user for authentication or verification, typically via email, SMS, or another delivery channel.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -6687,14 +6687,14 @@
       ]
     },
     {
-      "id": "46768fd5-d47e-4a0b-afaa-c2339a3a351a",
+      "id": "20ecc715-8c31-48c5-ad87-6d697e78aa82",
       "name": "stream_all_transactions",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-data-export",
-        "description": "Streams all transaction records from the connected data source for retrieval, monitoring, or downstream processing.",
+        "description": "Streams all transactions from the connected data source in real time or batches for downstream processing, monitoring, or analysis.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -6741,14 +6741,14 @@
       ]
     },
     {
-      "id": "b8f29523-31f8-4e91-b28c-c3c581a73329",
+      "id": "b5d8bbe2-e74a-4fe8-bfc8-ac1aafeb1e91",
       "name": "submit_kyc_document",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-kyc",
-        "description": "Uploads a customer\u2019s KYC document to the verification system so identity checks can be completed and compliance records updated.",
+        "description": "Submits a customer's KYC document through the MCP server workflow for identity verification and compliance processing.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -6795,14 +6795,14 @@
       ]
     },
     {
-      "id": "9de6fad5-0b35-46c2-a9f3-1e5724ff521d",
+      "id": "79710ed1-8411-4dbe-9a0b-d737c96a5d91",
       "name": "transfer_crypto",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-crypto",
-        "description": "Transfers cryptocurrency by interfacing with the MCP server, likely handling wallet, transaction, and network interactions for sending or moving digital assets.",
+        "description": "Transfers cryptocurrency by initiating and managing blockchain-based transaction requests through the MCP server tool interface.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -6849,14 +6849,14 @@
       ]
     },
     {
-      "id": "821cd121-819f-44be-a70c-91e237f243dd",
+      "id": "26b7c407-d227-45c7-bfbe-67ccaccb7619",
       "name": "transfer_funds",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-banking",
-        "description": "Transfers money between accounts or payment destinations, likely validating details and executing the requested fund movement within the connected financial system.",
+        "description": "Transfers money between accounts through the MCP server, using provided parameters to initiate and process fund movement securely.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -6903,14 +6903,14 @@
       ]
     },
     {
-      "id": "6f7858f1-a4ca-4c93-81cb-69c6ac95f2bc",
+      "id": "f8d0cff0-071a-461f-916e-4582f09e2e14",
       "name": "unfreeze_card",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-cards",
-        "description": "Unfreezes a card account or payment card so it can be used again after being temporarily blocked or suspended.",
+        "description": "Unfreezes a previously frozen card or account state, restoring it to active use after validation or authorization.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -6957,14 +6957,14 @@
       ]
     },
     {
-      "id": "6f89aeee-af96-4ab2-aa37-f4e70f8123d4",
+      "id": "22773eb5-a392-4038-a98b-8eed4116a6c6",
       "name": "update_account_status",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-accounts",
-        "description": "Updates an account\u2019s status in the system, typically enabling, disabling, or otherwise changing its operational state.",
+        "description": "Updates an account\u2019s status in the system, such as activating, suspending, or closing it, based on the provided input parameters.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -7011,14 +7011,14 @@
       ]
     },
     {
-      "id": "4e65f2d0-189c-4140-b077-56e1b8884e17",
+      "id": "90548222-b066-4104-8dfc-9aae178113a0",
       "name": "view_user_sessions",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-admin",
-        "description": "Retrieves and displays a user\u2019s active and past sessions, helping inspect login activity, session status, and related session metadata for account monitoring or support.",
+        "description": "Lists and retrieves a user\u2019s active and past sessions, allowing inspection of session history and associated metadata.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -7065,14 +7065,14 @@
       ]
     },
     {
-      "id": "1f084e60-01c7-4cab-8308-2fb1a1e36e23",
+      "id": "57dc5f48-2caa-4cd2-aa4d-a037b7fcbae5",
       "name": "waive_aml_check",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-aml",
-        "description": "Bypasses or marks as waived the anti-money-laundering compliance check for a transaction or account within the system.",
+        "description": "Checks or bypasses anti-money-laundering verification requirements for a transaction or user workflow, allowing processing to continue when an AML review is waived.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -7119,14 +7119,14 @@
       ]
     },
     {
-      "id": "95ad0ad3-9fae-4668-b67e-6d830e7706e8",
+      "id": "7c67c917-a364-4886-843c-1f0ea4d749bf",
       "name": "whitelist_account",
       "component_type": "TOOL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "mcp-server",
         "server_name": "fintech-fraud",
-        "description": "Allows authorized users to add an account to an approved whitelist, typically enabling that account to bypass restrictions or gain access within the system.",
+        "description": "Checks whether a specified account is on an approved whitelist, allowing the system to verify access or eligibility before proceeding with related actions.",
         "no_auth_required": true,
         "high_privilege": false,
         "sql_injectable": false,
@@ -7173,12 +7173,12 @@
       ]
     },
     {
-      "id": "d62adba6-013a-44f2-873e-2e95aa30e988",
+      "id": "6ad07860-fc50-492b-989f-656ecebe5966",
       "name": "browser_automation",
       "component_type": "TOOL",
       "confidence": 0.44000000000000006,
       "metadata": {
-        "description": "Automates web browser interactions such as navigating pages, clicking elements, filling forms, and extracting information from websites.",
+        "description": "Automates browser interactions such as navigating pages, clicking elements, filling forms, and extracting web content to support tasks that require web-based actions.",
         "high_privilege": false,
         "sql_injectable": false,
         "ssrf_possible": false,
@@ -7191,7 +7191,7 @@
           "adapter": "tool_browser_automation",
           "evidence_count": 1,
           "llm_soft_rejected": true,
-          "llm_verification_reason": "This appears in an end-to-end test file and the provided context is a docstring describing Playwright browser automation, not a production AI-related tool.",
+          "llm_verification_reason": "This is in an end-to-end test file and the provided context is only documentation/docstring for Playwright browser automation, not a production AI tool.",
           "confidence_breakdown": {
             "regex_confidence": 0.55,
             "llm_confidence": 0.0,
@@ -7220,12 +7220,12 @@
       ]
     },
     {
-      "id": "15d28e5b-9fb3-41d4-b30c-31e3c1350360",
+      "id": "1829750d-461c-4cd6-9446-7c7cc460a1c8",
       "name": "generic",
       "component_type": "TOOL",
       "confidence": 1.0,
       "metadata": {
-        "description": "A generic tool component that performs unspecified actions within the system, with behavior and parameters determined by the surrounding framework or implementation.",
+        "description": "A generic tool component that performs unspecified utility functions within the system, with behavior and inputs not otherwise described.",
         "high_privilege": false,
         "sql_injectable": false,
         "ssrf_possible": false,
@@ -7355,12 +7355,12 @@
       ]
     },
     {
-      "id": "6df62307-5598-411b-8b8b-4ae5990d3224",
+      "id": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
       "name": "Fintech App Assistant",
       "component_type": "AGENT",
       "confidence": 0.55,
       "metadata": {
-        "description": "Software agent that assists fintech application users with guided interactions, task automation, and contextual support.",
+        "description": "An AI agent that assists fintech app users with financial workflows, account-related queries, and task guidance.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -7371,14 +7371,14 @@
       "evidence": []
     },
     {
-      "id": "3e18692d-b662-425b-a73f-915923692c61",
+      "id": "c49c4a7e-4893-485f-af1e-759b4f4981b0",
       "name": "/api/health API",
       "component_type": "API_ENDPOINT",
       "confidence": 0.55,
       "metadata": {
         "endpoint": "/api/health",
         "method": "GET",
-        "description": "GET /api/health endpoint that returns application health status for monitoring and uptime checks.",
+        "description": "GET /api/health endpoint used to return service health status.",
         "accepts_user_input": false,
         "request_body_schema": {},
         "chat_payload_list": false,
@@ -7390,14 +7390,14 @@
       "evidence": []
     },
     {
-      "id": "02a6b5ec-be06-4be1-a241-8251851bcac7",
+      "id": "56a6e3e0-8098-4811-a6e4-b4b35655e408",
       "name": "/api/auth/login API",
       "component_type": "API_ENDPOINT",
       "confidence": 0.55,
       "metadata": {
         "endpoint": "/api/auth/login",
         "method": "GET",
-        "description": "API endpoint for handling GET requests to /api/auth/login for user authentication login operations.",
+        "description": "Authentication API endpoint that handles login requests at /api/auth/login using the GET method.",
         "accepts_user_input": false,
         "request_body_schema": {},
         "chat_payload_list": false,
@@ -7409,14 +7409,14 @@
       "evidence": []
     },
     {
-      "id": "1b4a0fb1-0ae2-4bb0-b4dc-d255866ec43c",
+      "id": "47fa97ec-0508-4732-a0ae-533a04f173a8",
       "name": "/api/auth/refresh API",
       "component_type": "API_ENDPOINT",
       "confidence": 0.55,
       "metadata": {
         "endpoint": "/api/auth/refresh",
         "method": "GET",
-        "description": "Provides a GET endpoint at /api/auth/refresh to refresh authentication state or tokens.",
+        "description": "GET /api/auth/refresh endpoint that refreshes authentication credentials or session tokens for the application.",
         "accepts_user_input": false,
         "request_body_schema": {},
         "chat_payload_list": false,
@@ -7429,33 +7429,14 @@
       "evidence": []
     },
     {
-      "id": "cbdc4ba6-15fb-495d-bbd2-475163d2859d",
+      "id": "9b611853-d347-4b21-bb63-0bd8a962702a",
       "name": "/api/auth/profile API",
       "component_type": "API_ENDPOINT",
       "confidence": 0.55,
       "metadata": {
         "endpoint": "/api/auth/profile",
         "method": "GET",
-        "description": "GET /api/auth/profile endpoint that returns the authenticated user's profile information.",
-        "accepts_user_input": false,
-        "request_body_schema": {},
-        "chat_payload_list": false,
-        "extras": {
-          "source": "auto_enrichment",
-          "description_source": "llm_generated"
-        }
-      },
-      "evidence": []
-    },
-    {
-      "id": "31ff00b7-162b-4be0-9b77-f62b9d838873",
-      "name": "/api/debug/config API",
-      "component_type": "API_ENDPOINT",
-      "confidence": 0.55,
-      "metadata": {
-        "endpoint": "/api/debug/config",
-        "method": "GET",
-        "description": "GET /api/debug/config endpoint returns configuration debugging information.",
+        "description": "GET API endpoint /api/auth/profile that retrieves the authenticated user\u2019s profile information.",
         "accepts_user_input": false,
         "request_body_schema": {},
         "chat_payload_list": false,
@@ -7468,14 +7449,34 @@
       "evidence": []
     },
     {
-      "id": "fd89b78c-b2e9-4f4f-ac04-7d6de67d234f",
+      "id": "b2d5a884-36b9-4c2e-b76b-5a51dc48d5f7",
+      "name": "/api/debug/config API",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.55,
+      "metadata": {
+        "endpoint": "/api/debug/config",
+        "method": "GET",
+        "description": "GET API endpoint that returns configuration debug information from /api/debug/config.",
+        "accepts_user_input": false,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "source": "auto_enrichment",
+          "probe_get_404": true,
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": []
+    },
+    {
+      "id": "e005f939-82e9-4a76-b046-c062862f4aae",
       "name": "/api/chat/history/{session_id} API",
       "component_type": "API_ENDPOINT",
       "confidence": 0.55,
       "metadata": {
         "endpoint": "/api/chat/history/{session_id}",
         "method": "POST",
-        "description": "POST endpoint that retrieves chat history for the specified session_id.",
+        "description": "POST API endpoint that stores or retrieves chat history for a specified session_id.",
         "accepts_user_input": true,
         "request_body_schema": {},
         "chat_payload_key": "message",
@@ -7490,14 +7491,14 @@
       "evidence": []
     },
     {
-      "id": "16519d22-b340-45ce-aa14-69192e5f84d5",
+      "id": "2042929b-c289-4f1b-8460-bc8cf4209712",
       "name": "/api/webhooks/register API",
       "component_type": "API_ENDPOINT",
       "confidence": 0.55,
       "metadata": {
         "endpoint": "/api/webhooks/register",
         "method": "GET",
-        "description": "HTTP GET API endpoint for registering webhooks at /api/webhooks/register.",
+        "description": "HTTP GET endpoint that retrieves webhook registration information at /api/webhooks/register.",
         "accepts_user_input": false,
         "request_body_schema": {},
         "chat_payload_list": false,
@@ -7510,14 +7511,14 @@
       "evidence": []
     },
     {
-      "id": "bc33056b-fec7-43b0-8c68-a4354efb97d6",
+      "id": "901be700-8a76-427f-ac28-38cd3e51f69d",
       "name": "/api/account API",
       "component_type": "API_ENDPOINT",
       "confidence": 0.55,
       "metadata": {
         "endpoint": "/api/account",
         "method": "GET",
-        "description": "GET /api/account endpoint that retrieves account information.",
+        "description": "GET /api/account API endpoint that retrieves account information.",
         "accepts_user_input": false,
         "request_body_schema": {},
         "chat_payload_list": false,
@@ -7530,14 +7531,14 @@
       "evidence": []
     },
     {
-      "id": "3298e721-e871-48fc-a735-56e71d16826a",
+      "id": "1e0beb6c-6938-4ed5-96dd-d27e90fee9a7",
       "name": "/api/users/search API",
       "component_type": "API_ENDPOINT",
       "confidence": 0.55,
       "metadata": {
         "endpoint": "/api/users/search",
         "method": "GET",
-        "description": "GET API endpoint for searching users via /api/users/search.",
+        "description": "GET API endpoint at /api/users/search that retrieves user search results.",
         "accepts_user_input": false,
         "request_body_schema": {},
         "chat_payload_list": false,
@@ -7550,14 +7551,14 @@
       "evidence": []
     },
     {
-      "id": "146a1dab-894d-4ab2-9e6f-015c9c1f01dd",
+      "id": "193dffa6-6cb7-4af0-8566-48a92b454d8f",
       "name": "/api/account/export API",
       "component_type": "API_ENDPOINT",
       "confidence": 0.55,
       "metadata": {
         "endpoint": "/api/account/export",
         "method": "GET",
-        "description": "GET API endpoint for exporting account data from /api/account/export.",
+        "description": "GET API endpoint at /api/account/export for exporting account data.",
         "accepts_user_input": false,
         "request_body_schema": {},
         "chat_payload_list": false,
@@ -7569,14 +7570,14 @@
       "evidence": []
     },
     {
-      "id": "3881ca74-b3ee-4349-9383-839d1f2139eb",
+      "id": "88f73a10-a03d-4eb9-85bb-a6dfc0e1016c",
       "name": "/api/account/link-external API",
       "component_type": "API_ENDPOINT",
       "confidence": 0.55,
       "metadata": {
         "endpoint": "/api/account/link-external",
         "method": "GET",
-        "description": "GET API endpoint at /api/account/link-external for linking an external account to a user account.",
+        "description": "GET API endpoint for linking an external account at /api/account/link-external.",
         "accepts_user_input": false,
         "request_body_schema": {},
         "chat_payload_list": false,
@@ -7588,14 +7589,14 @@
       "evidence": []
     },
     {
-      "id": "0623734b-1829-43bd-bc22-aa85ce371193",
+      "id": "c72488dd-1a7c-4012-8033-4d643edd0b05",
       "name": "/api/agents API",
       "component_type": "API_ENDPOINT",
       "confidence": 0.55,
       "metadata": {
         "endpoint": "/api/agents",
         "method": "GET",
-        "description": "GET /api/agents API endpoint that returns agent-related data.",
+        "description": "GET /api/agents endpoint that retrieves agent resources from the API.",
         "accepts_user_input": false,
         "request_body_schema": {},
         "chat_payload_list": false,
@@ -7607,14 +7608,14 @@
       "evidence": []
     },
     {
-      "id": "03325f3e-20c3-40bc-846d-9f9a4e395f37",
+      "id": "eae42495-7e46-497a-abd4-ad2e75ba1196",
       "name": "/api/tools API",
       "component_type": "API_ENDPOINT",
       "confidence": 0.55,
       "metadata": {
         "endpoint": "/api/tools",
         "method": "GET",
-        "description": "GET /api/tools API endpoint that retrieves tools-related data.",
+        "description": "GET /api/tools endpoint returns tool-related data from the API.",
         "accepts_user_input": false,
         "request_body_schema": {},
         "chat_payload_list": false,
@@ -7626,14 +7627,14 @@
       "evidence": []
     },
     {
-      "id": "8ff6b82b-7a3f-4495-bd99-46c796024188",
+      "id": "2be0a634-c403-4a80-90e6-114e933813f2",
       "name": "/api/chat API",
       "component_type": "API_ENDPOINT",
       "confidence": 0.55,
       "metadata": {
         "endpoint": "/api/chat",
         "method": "POST",
-        "description": "POST /api/chat endpoint that accepts chat requests and returns generated responses.",
+        "description": "POST API endpoint /api/chat for sending chat requests to the application.",
         "accepts_user_input": true,
         "request_body_schema": {},
         "chat_payload_key": "message",
@@ -7649,948 +7650,948 @@
   ],
   "edges": [
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "77703142-9fe3-4e40-8497-184f6da1938c",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "a52d0001-77b7-4797-bdde-335d084d6063",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "de6c79a6-7b62-446e-a4ef-a24dcba51f19",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "9b285a9f-dd94-4f7f-90c4-04830bd4b590",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "6f89aeee-af96-4ab2-aa37-f4e70f8123d4",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "22773eb5-a392-4038-a98b-8eed4116a6c6",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "937af13b-100f-48c1-b3e6-e8926aca933c",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "316bd6e4-37ff-4c57-b28b-b8f736eb6448",
       "relationship_type": "USES"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "9f245612-a321-430c-8285-46e48dbd878a",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "b3cd1ae9-d472-4d0f-b216-7ed1569e4b50",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "4d4d8a90-0a06-431c-98b6-fe81ca33033c",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "0559957e-81ad-4cc7-8de8-457dc932cdc4",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "0ba497c3-855f-4684-9578-47a26201cb71",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "956f0dd1-39f1-43ff-8967-55d37b98a515",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "4e65f2d0-189c-4140-b077-56e1b8884e17",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "90548222-b066-4104-8dfc-9aae178113a0",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "350b781b-2f80-4c6c-b50f-6c424badd1b7",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "aeded983-0091-4027-998f-54a6b40b50cb",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "ba08c89c-1035-4693-9ef6-e3e2702dabe5",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "68fe9a74-c309-403a-8276-e212e7ad2ed6",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "35361282-03c2-4a8b-8e72-e2c8fb6186ac",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "98566e66-6d2c-47e3-8f76-7c8b47589325",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "1f084e60-01c7-4cab-8308-2fb1a1e36e23",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "57dc5f48-2caa-4cd2-aa4d-a037b7fcbae5",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "37030b44-2f71-4aee-8a0c-0ef11ab9ccf3",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "a4adfb0e-124c-47fe-a51a-0f9eb258649b",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "e2efc3bc-b185-430d-9fb8-9df7de7afeef",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "638e1d27-a1d5-48cd-915a-5f098ff6b2ee",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "a4a66a05-3ff2-49a2-8454-19dcb1c41c18",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "50237d8b-7306-4073-b94a-2f5bf6ee6045",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "860fe568-ad0e-4c41-a626-fe9c0a5c5537",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "52d836b5-e693-4ec1-ab75-7e45d2ef8102",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "20c4d380-a23c-44a8-b923-b02418f13689",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "d80a21aa-e6bc-4628-b1ae-f7365ece70cf",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "27ed68ec-759e-4c15-95a5-0d2727171bef",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "b43392f8-8db2-4f99-99dd-0d0292c5217b",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "44f07b2a-cc6b-4e90-80e7-4e9a5927ae39",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "e33d2d0c-b29b-4998-afbe-7e65fe7b760c",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "d030be1e-40af-4354-9312-771d545aba0c",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "e8655435-ed3a-4fc5-847d-21f5d01e093d",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "6f7858f1-a4ca-4c93-81cb-69c6ac95f2bc",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "f8d0cff0-071a-461f-916e-4582f09e2e14",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "0bea8874-851e-4743-87b0-71593d829841",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "5fda1520-f7b8-4cbf-b213-c06893b5131f",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "10255f85-9f6b-434a-93f6-b6f2c77c1058",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "d044fb11-e494-401b-9a36-94ebaf30bf1e",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "d8ff7b4d-0a15-4aff-8d23-30d64f8d2ff4",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "06186313-1d76-449a-bc30-aaa48605d990",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "d66b7731-5c0b-4080-bb9c-8c5d4074488c",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "84f779b3-74b2-4628-b90d-192a1e23c799",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "55fd1bc4-4269-4dc7-ab7e-7583f348f318",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "1b28a75b-3c5c-4ef5-9bc4-b58db0865631",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "4bb5a586-e405-44d2-94f5-74a24ca0867a",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "b1a4ab98-2d98-4777-8a5a-87f68a0abcea",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "f4579b7a-3fa8-438b-aa70-432c5229c220",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "487b486b-4ab4-49dd-9fc9-5f49fc789a42",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "9de6fad5-0b35-46c2-a9f3-1e5724ff521d",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "79710ed1-8411-4dbe-9a0b-d737c96a5d91",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "9358a498-d815-4354-956c-9f94b86e0484",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "e6a7b27f-6d94-4d27-9a3c-fbd3b03eb025",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "46768fd5-d47e-4a0b-afaa-c2339a3a351a",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "20ecc715-8c31-48c5-ad87-6d697e78aa82",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "e8f39411-903c-415f-9b7f-dfe205b49baf",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "e2d7a1bc-a868-4d78-8baa-41f981e89d86",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "513150dd-38d4-4742-8746-a779733d601d",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "5918e486-15e8-4e6c-be97-f6aaf4091093",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "795db8fe-ecbb-4ab6-9e15-95f1cb979bf9",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "28bfdf5c-6610-4a1a-b81e-e998fb6b8336",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "f902fd79-7822-4a72-b122-1c4210287f84",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "20506bde-b545-4f4e-9828-b01e79af3ac5",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "686dcc02-9fea-44a0-bc51-43a4a189eb6e",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "e4c4ba97-2263-4af2-802f-cc3a6509c897",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "a3299a72-5740-4e5e-9812-5c1be9d47e65",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "d9fcecdc-a9c9-4f9a-adae-f78b85d950fd",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "37e0b5a6-7f31-485e-8689-98f215c3b05a",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "786d30c6-57f4-4a1e-9729-c353e7ca5a1c",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "95ad0ad3-9fae-4668-b67e-6d830e7706e8",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "7c67c917-a364-4886-843c-1f0ea4d749bf",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "0ff5fba1-1790-45e0-b7c0-14bee3542e58",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "c36af15b-267e-4d10-af4e-4a62db54321e",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "a0c9a311-e46d-447a-b96b-3d8e583b710a",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "91547053-7e9d-47b2-ab67-0b79f2e4ab29",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "03eaf3d0-0131-47a0-8e35-377857afb026",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "50854f45-d092-4312-aa63-3efe28f06fee",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "85d1c384-2393-477a-b10d-517a1335f93f",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "a7d6c2aa-c26b-434c-86d2-25c7bae2af32",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "8782271c-100a-4367-bce0-c96f47da2bea",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "e9bd8a28-cfe4-4520-a8a7-70987ede1f1c",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "9a85382b-a498-4173-8a4d-601392379cc8",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "e265f53b-765d-43cf-a970-d90d3f768ed0",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "7611d0e0-560a-4110-b623-558b411b06ba",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "cfeb61b0-ecf8-499d-ac9f-3c2c4b8e52c4",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "b5ce873c-f23a-41b9-9ec0-d508dc77eaf6",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "d3c72993-9fbc-4d39-8e06-2d0388c6c547",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "e94d9d69-ecd4-41d0-a681-7472febe8d74",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "5162133a-8ac2-42d2-8bdb-b5cb8c323ccc",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "e72c9294-ac4c-4d98-b3bf-508838af7946",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "96e01f0c-cb0e-4aa1-8597-4b75984897f8",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "02956c04-9461-4add-9cd5-ad65a0700228",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "262619ba-94b3-4698-bbc3-aebef1e778c9",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "e41194bc-1fc2-4c6c-943d-4f7e8209dd38",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "e72d50d0-e3e6-43be-954d-ec50c30f3b31",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "b8f29523-31f8-4e91-b28c-c3c581a73329",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "b5d8bbe2-e74a-4fe8-bfc8-ac1aafeb1e91",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "e8ef4499-a9cf-41ff-8577-72a4739d57cf",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "b51efc7c-7569-4a6f-827f-d7f156146ac4",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "0f0bba21-d459-4dc3-a312-2ebf221cb53e",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "5fb8f226-4227-4855-a05a-2a74fad13793",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "a4407b73-71d8-44db-8174-47bf976b8e86",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "3d3950c1-ee03-4e79-8306-c9c9a460c77b",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "84d46e63-9fce-4b62-bae7-8b3bf4ae6f83",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "7b5fab55-c402-4467-b440-a264ac07c78f",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "5f968dad-03fa-4210-9a0a-cea90101d58f",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "168e79b4-3d05-4f82-a625-85e58f95285a",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "9f27e374-aba6-44ff-bab6-28458e950246",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "4d822911-0a75-45b1-ad8e-dadcb5f23a5f",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "a6692854-0126-4cac-9df0-29c32cc10c19",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "1b27d56a-dee0-415d-8d6c-dd9290f3b43c",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "5eee521a-c36f-4d7f-9bf7-6b7a10b867f2",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "7ab9c851-7be4-44db-a311-581574f202cc",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "cf5c0d8e-f5d1-443f-8aad-b948aa596f7a",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "f89f1d51-4826-404d-978e-4ee1d00a9420",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "cf483b96-b8fc-4db3-9dcf-ec94061ce240",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "7230af8e-d1ce-424c-bb94-515105ca2e8a",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "00184499-fb7f-4c48-919c-fc546be997ca",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "4aac4098-0fe2-43ba-8e6c-2866528241e8",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "bbfa3274-3c86-4f23-b6a2-9da6bc62149e",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "c8ea7817-b311-4288-bd32-7e136e693de9",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "d0578ed5-de34-40fd-9be5-cfed867cc7c4",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "41f6cee5-a8f1-49a8-aa76-0f334a72acdc",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "687be44b-ff27-44fc-9ff3-eab1ad58ed48",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "fa5bc012-cee1-433b-b0c1-b2c8669c56f3",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "71f1cfa7-89fc-4356-b5fa-7ad7b4a21bd0",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "b00a86fd-33d6-42d7-967a-054a8d334317",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "91aa5ae5-2da3-4c92-81ca-36c5c5e74360",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "2bf35c43-50d0-415d-967b-6da4eed5657e",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "b42b0269-47a7-483b-9e9b-1efc720d1688",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "b85d8e27-22b4-43b8-9d28-723f480661e3",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "067e665f-03ae-41ab-9bc6-7b070f123413",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "6ef45c18-f0cb-4a4c-b79b-ee9f3b1569d6",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "678e27ef-a270-4393-88a6-7fe9ce625483",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "dd54abb7-9ff0-4861-89f6-24b717046f5c",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "57414548-46fc-40c6-a00f-069c2dbb6b79",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "3a92629d-1408-4b5b-afd4-6a99ebb0517e",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "51df82b9-cf1d-417a-a4c5-a3311701ac44",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "70ec50a6-787d-4b79-8c24-b34af9c7a47f",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "e254f1ea-3a9e-4691-85d9-6e82a89d587f",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "e7ec323b-414c-4263-9fc1-e690e1ad80d6",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "840ce3bf-c789-4ece-a10d-a19b332e54dc",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "416daa4c-8773-4957-ac21-4b89f7a2a6cf",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "fb7abfd2-231a-4033-af1b-e39519457776",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "19147671-edc7-4ea1-aaa7-ed97bffd8327",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "821cd121-819f-44be-a70c-91e237f243dd",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "26b7c407-d227-45c7-bfbe-67ccaccb7619",
       "relationship_type": "CALLS"
     },
     {
-      "source": "d0aa8f8a-ed05-4dc6-ac9a-0a249ebc759a",
-      "target": "303541ff-bc2d-4943-a767-129328d34c28",
+      "source": "12cb7b58-bcf3-4a36-b4d3-07ec15f85b1a",
+      "target": "391e7cfb-8a31-4c64-ba48-885096cb8088",
       "relationship_type": "CALLS"
     },
     {
-      "source": "2e739aa5-6e25-448f-896c-24e7deb69b18",
-      "target": "35fb67e2-af44-47fd-acaf-e50369c3e6e4",
+      "source": "6d6de7dd-74a5-425f-a0ed-799b0108fd10",
+      "target": "9f25d0dd-270b-4b7d-86c1-37891408e79f",
       "relationship_type": "USES"
     },
     {
-      "source": "2e739aa5-6e25-448f-896c-24e7deb69b18",
-      "target": "cc1cd0a7-d802-403f-90c8-af7eb1bb91a9",
+      "source": "6d6de7dd-74a5-425f-a0ed-799b0108fd10",
+      "target": "998a007d-fe3e-4e0a-9389-819ad8e7cc9f",
       "relationship_type": "USES"
     },
     {
-      "source": "053c493c-5798-40db-a700-dc1966f63c3c",
-      "target": "35fb67e2-af44-47fd-acaf-e50369c3e6e4",
+      "source": "63826b0b-fe6c-49bc-af82-540d2816fadb",
+      "target": "9f25d0dd-270b-4b7d-86c1-37891408e79f",
       "relationship_type": "USES"
     },
     {
-      "source": "053c493c-5798-40db-a700-dc1966f63c3c",
-      "target": "cc1cd0a7-d802-403f-90c8-af7eb1bb91a9",
+      "source": "63826b0b-fe6c-49bc-af82-540d2816fadb",
+      "target": "998a007d-fe3e-4e0a-9389-819ad8e7cc9f",
       "relationship_type": "USES"
     },
     {
-      "source": "64727cbf-481c-4f96-be87-885ed8f16d79",
-      "target": "e4a951b8-06b7-44b4-bc0c-05187b4718b4",
+      "source": "62a9996d-904a-45ac-81a3-9b29f7574a86",
+      "target": "33d60ca0-ce66-4c58-8af9-bde3a068d3a0",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "64727cbf-481c-4f96-be87-885ed8f16d79",
-      "target": "038a6e2c-22e7-4e3b-929b-111f65161081",
+      "source": "62a9996d-904a-45ac-81a3-9b29f7574a86",
+      "target": "be26b5ca-49a9-49ea-a34b-48c733e11b26",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "64727cbf-481c-4f96-be87-885ed8f16d79",
-      "target": "a46187ca-003c-4e7a-be46-ffd17f63bf15",
+      "source": "62a9996d-904a-45ac-81a3-9b29f7574a86",
+      "target": "0bf36cd7-1b33-4047-9475-8cdfc58bcdc1",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "e2d86803-1b19-4eb3-adec-e07b9e1cc1cb",
-      "target": "e4a951b8-06b7-44b4-bc0c-05187b4718b4",
+      "source": "7237946b-bb93-4c14-a466-e18946072aa1",
+      "target": "33d60ca0-ce66-4c58-8af9-bde3a068d3a0",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "e2d86803-1b19-4eb3-adec-e07b9e1cc1cb",
-      "target": "038a6e2c-22e7-4e3b-929b-111f65161081",
+      "source": "7237946b-bb93-4c14-a466-e18946072aa1",
+      "target": "be26b5ca-49a9-49ea-a34b-48c733e11b26",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "e2d86803-1b19-4eb3-adec-e07b9e1cc1cb",
-      "target": "a46187ca-003c-4e7a-be46-ffd17f63bf15",
+      "source": "7237946b-bb93-4c14-a466-e18946072aa1",
+      "target": "0bf36cd7-1b33-4047-9475-8cdfc58bcdc1",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "1d400f6a-f9a8-4468-ade1-1b4151a1d12c",
-      "target": "e4a951b8-06b7-44b4-bc0c-05187b4718b4",
+      "source": "c32940dc-e7b6-43f6-a56a-a1161d8feba8",
+      "target": "33d60ca0-ce66-4c58-8af9-bde3a068d3a0",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "1d400f6a-f9a8-4468-ade1-1b4151a1d12c",
-      "target": "038a6e2c-22e7-4e3b-929b-111f65161081",
+      "source": "c32940dc-e7b6-43f6-a56a-a1161d8feba8",
+      "target": "be26b5ca-49a9-49ea-a34b-48c733e11b26",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "1d400f6a-f9a8-4468-ade1-1b4151a1d12c",
-      "target": "a46187ca-003c-4e7a-be46-ffd17f63bf15",
+      "source": "c32940dc-e7b6-43f6-a56a-a1161d8feba8",
+      "target": "0bf36cd7-1b33-4047-9475-8cdfc58bcdc1",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "6fa362ee-7179-4be9-a849-186d9abd6fb7",
-      "target": "e4a951b8-06b7-44b4-bc0c-05187b4718b4",
+      "source": "ba5711e0-f3e9-4be4-99e4-c63cd467796e",
+      "target": "33d60ca0-ce66-4c58-8af9-bde3a068d3a0",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "6fa362ee-7179-4be9-a849-186d9abd6fb7",
-      "target": "038a6e2c-22e7-4e3b-929b-111f65161081",
+      "source": "ba5711e0-f3e9-4be4-99e4-c63cd467796e",
+      "target": "be26b5ca-49a9-49ea-a34b-48c733e11b26",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "6fa362ee-7179-4be9-a849-186d9abd6fb7",
-      "target": "a46187ca-003c-4e7a-be46-ffd17f63bf15",
+      "source": "ba5711e0-f3e9-4be4-99e4-c63cd467796e",
+      "target": "0bf36cd7-1b33-4047-9475-8cdfc58bcdc1",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "d4b27797-e841-42fb-8489-c2ba6b34354c",
-      "target": "e4a951b8-06b7-44b4-bc0c-05187b4718b4",
+      "source": "fbb80afa-33d0-4cce-a6f7-57eb9d911dd6",
+      "target": "33d60ca0-ce66-4c58-8af9-bde3a068d3a0",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "d4b27797-e841-42fb-8489-c2ba6b34354c",
-      "target": "038a6e2c-22e7-4e3b-929b-111f65161081",
+      "source": "fbb80afa-33d0-4cce-a6f7-57eb9d911dd6",
+      "target": "be26b5ca-49a9-49ea-a34b-48c733e11b26",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "d4b27797-e841-42fb-8489-c2ba6b34354c",
-      "target": "a46187ca-003c-4e7a-be46-ffd17f63bf15",
+      "source": "fbb80afa-33d0-4cce-a6f7-57eb9d911dd6",
+      "target": "0bf36cd7-1b33-4047-9475-8cdfc58bcdc1",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "214abae5-f2e1-4134-89eb-d7cd84d7cd2d",
-      "target": "e4a951b8-06b7-44b4-bc0c-05187b4718b4",
+      "source": "49f7d68e-39f0-4c33-b5fe-10e2d38478a8",
+      "target": "33d60ca0-ce66-4c58-8af9-bde3a068d3a0",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "214abae5-f2e1-4134-89eb-d7cd84d7cd2d",
-      "target": "038a6e2c-22e7-4e3b-929b-111f65161081",
+      "source": "49f7d68e-39f0-4c33-b5fe-10e2d38478a8",
+      "target": "be26b5ca-49a9-49ea-a34b-48c733e11b26",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "214abae5-f2e1-4134-89eb-d7cd84d7cd2d",
-      "target": "a46187ca-003c-4e7a-be46-ffd17f63bf15",
+      "source": "49f7d68e-39f0-4c33-b5fe-10e2d38478a8",
+      "target": "0bf36cd7-1b33-4047-9475-8cdfc58bcdc1",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "ee23764d-9653-41b1-8cf1-4eea4d25d059",
-      "target": "e4a951b8-06b7-44b4-bc0c-05187b4718b4",
+      "source": "749d61b9-e983-408e-b9d6-39b121fe50b9",
+      "target": "33d60ca0-ce66-4c58-8af9-bde3a068d3a0",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "ee23764d-9653-41b1-8cf1-4eea4d25d059",
-      "target": "038a6e2c-22e7-4e3b-929b-111f65161081",
+      "source": "749d61b9-e983-408e-b9d6-39b121fe50b9",
+      "target": "be26b5ca-49a9-49ea-a34b-48c733e11b26",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "ee23764d-9653-41b1-8cf1-4eea4d25d059",
-      "target": "a46187ca-003c-4e7a-be46-ffd17f63bf15",
+      "source": "749d61b9-e983-408e-b9d6-39b121fe50b9",
+      "target": "0bf36cd7-1b33-4047-9475-8cdfc58bcdc1",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "50569d48-e4e5-4113-bfd2-16a658662c5a",
-      "target": "e4a951b8-06b7-44b4-bc0c-05187b4718b4",
+      "source": "b084d5fb-0547-49af-a773-d83e9c68bcba",
+      "target": "33d60ca0-ce66-4c58-8af9-bde3a068d3a0",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "50569d48-e4e5-4113-bfd2-16a658662c5a",
-      "target": "038a6e2c-22e7-4e3b-929b-111f65161081",
+      "source": "b084d5fb-0547-49af-a773-d83e9c68bcba",
+      "target": "be26b5ca-49a9-49ea-a34b-48c733e11b26",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "50569d48-e4e5-4113-bfd2-16a658662c5a",
-      "target": "a46187ca-003c-4e7a-be46-ffd17f63bf15",
+      "source": "b084d5fb-0547-49af-a773-d83e9c68bcba",
+      "target": "0bf36cd7-1b33-4047-9475-8cdfc58bcdc1",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "df25dc28-4d81-4f64-909a-4eb510447f8a",
-      "target": "937af13b-100f-48c1-b3e6-e8926aca933c",
+      "source": "d2bc23ed-8c05-4b66-a3c0-408b358c50f0",
+      "target": "316bd6e4-37ff-4c57-b28b-b8f736eb6448",
       "relationship_type": "PROTECTS"
     },
     {
-      "source": "df25dc28-4d81-4f64-909a-4eb510447f8a",
-      "target": "91023854-939b-4767-8a18-7a1bf221e20b",
+      "source": "d2bc23ed-8c05-4b66-a3c0-408b358c50f0",
+      "target": "67de81e7-2367-4f2f-ae19-0f237b11fe1c",
       "relationship_type": "PROTECTS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "35fb67e2-af44-47fd-acaf-e50369c3e6e4",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "9f25d0dd-270b-4b7d-86c1-37891408e79f",
       "relationship_type": "USES"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "a4407b73-71d8-44db-8174-47bf976b8e86",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "3d3950c1-ee03-4e79-8306-c9c9a460c77b",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "5f968dad-03fa-4210-9a0a-cea90101d58f",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "168e79b4-3d05-4f82-a625-85e58f95285a",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "bbfa3274-3c86-4f23-b6a2-9da6bc62149e",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "c8ea7817-b311-4288-bd32-7e136e693de9",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "e8f39411-903c-415f-9b7f-dfe205b49baf",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "e2d7a1bc-a868-4d78-8baa-41f981e89d86",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "678e27ef-a270-4393-88a6-7fe9ce625483",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "dd54abb7-9ff0-4861-89f6-24b717046f5c",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "e94d9d69-ecd4-41d0-a681-7472febe8d74",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "5162133a-8ac2-42d2-8bdb-b5cb8c323ccc",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "f4579b7a-3fa8-438b-aa70-432c5229c220",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "487b486b-4ab4-49dd-9fc9-5f49fc789a42",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "8782271c-100a-4367-bce0-c96f47da2bea",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "e9bd8a28-cfe4-4520-a8a7-70987ede1f1c",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "91aa5ae5-2da3-4c92-81ca-36c5c5e74360",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "2bf35c43-50d0-415d-967b-6da4eed5657e",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "840ce3bf-c789-4ece-a10d-a19b332e54dc",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "416daa4c-8773-4957-ac21-4b89f7a2a6cf",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "ba08c89c-1035-4693-9ef6-e3e2702dabe5",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "68fe9a74-c309-403a-8276-e212e7ad2ed6",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "0bea8874-851e-4743-87b0-71593d829841",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "5fda1520-f7b8-4cbf-b213-c06893b5131f",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "03eaf3d0-0131-47a0-8e35-377857afb026",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "50854f45-d092-4312-aa63-3efe28f06fee",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "f902fd79-7822-4a72-b122-1c4210287f84",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "20506bde-b545-4f4e-9828-b01e79af3ac5",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "860fe568-ad0e-4c41-a626-fe9c0a5c5537",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "52d836b5-e693-4ec1-ab75-7e45d2ef8102",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "686dcc02-9fea-44a0-bc51-43a4a189eb6e",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "e4c4ba97-2263-4af2-802f-cc3a6509c897",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "350b781b-2f80-4c6c-b50f-6c424badd1b7",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "aeded983-0091-4027-998f-54a6b40b50cb",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "a4a66a05-3ff2-49a2-8454-19dcb1c41c18",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "50237d8b-7306-4073-b94a-2f5bf6ee6045",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "9358a498-d815-4354-956c-9f94b86e0484",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "e6a7b27f-6d94-4d27-9a3c-fbd3b03eb025",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "5eee521a-c36f-4d7f-9bf7-6b7a10b867f2",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "7ab9c851-7be4-44db-a311-581574f202cc",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "303541ff-bc2d-4943-a767-129328d34c28",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "391e7cfb-8a31-4c64-ba48-885096cb8088",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "35361282-03c2-4a8b-8e72-e2c8fb6186ac",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "98566e66-6d2c-47e3-8f76-7c8b47589325",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "37e0b5a6-7f31-485e-8689-98f215c3b05a",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "786d30c6-57f4-4a1e-9729-c353e7ca5a1c",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "d030be1e-40af-4354-9312-771d545aba0c",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "e8655435-ed3a-4fc5-847d-21f5d01e093d",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "b42b0269-47a7-483b-9e9b-1efc720d1688",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "b85d8e27-22b4-43b8-9d28-723f480661e3",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "77703142-9fe3-4e40-8497-184f6da1938c",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "a52d0001-77b7-4797-bdde-335d084d6063",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "20c4d380-a23c-44a8-b923-b02418f13689",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "d80a21aa-e6bc-4628-b1ae-f7365ece70cf",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "0f0bba21-d459-4dc3-a312-2ebf221cb53e",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "5fb8f226-4227-4855-a05a-2a74fad13793",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "e2efc3bc-b185-430d-9fb8-9df7de7afeef",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "638e1d27-a1d5-48cd-915a-5f098ff6b2ee",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "02956c04-9461-4add-9cd5-ad65a0700228",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "262619ba-94b3-4698-bbc3-aebef1e778c9",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "27ed68ec-759e-4c15-95a5-0d2727171bef",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "b43392f8-8db2-4f99-99dd-0d0292c5217b",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "44f07b2a-cc6b-4e90-80e7-4e9a5927ae39",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "e33d2d0c-b29b-4998-afbe-7e65fe7b760c",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "55fd1bc4-4269-4dc7-ab7e-7583f348f318",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "1b28a75b-3c5c-4ef5-9bc4-b58db0865631",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "067e665f-03ae-41ab-9bc6-7b070f123413",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "6ef45c18-f0cb-4a4c-b79b-ee9f3b1569d6",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "513150dd-38d4-4742-8746-a779733d601d",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "5918e486-15e8-4e6c-be97-f6aaf4091093",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "a0c9a311-e46d-447a-b96b-3d8e583b710a",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "91547053-7e9d-47b2-ab67-0b79f2e4ab29",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "0ff5fba1-1790-45e0-b7c0-14bee3542e58",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "c36af15b-267e-4d10-af4e-4a62db54321e",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "a3299a72-5740-4e5e-9812-5c1be9d47e65",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "d9fcecdc-a9c9-4f9a-adae-f78b85d950fd",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "37030b44-2f71-4aee-8a0c-0ef11ab9ccf3",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "a4adfb0e-124c-47fe-a51a-0f9eb258649b",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "e41194bc-1fc2-4c6c-943d-4f7e8209dd38",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "e72d50d0-e3e6-43be-954d-ec50c30f3b31",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "84d46e63-9fce-4b62-bae7-8b3bf4ae6f83",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "7b5fab55-c402-4467-b440-a264ac07c78f",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "cf5c0d8e-f5d1-443f-8aad-b948aa596f7a",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "f89f1d51-4826-404d-978e-4ee1d00a9420",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "d0578ed5-de34-40fd-9be5-cfed867cc7c4",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "41f6cee5-a8f1-49a8-aa76-0f334a72acdc",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "71f1cfa7-89fc-4356-b5fa-7ad7b4a21bd0",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "b00a86fd-33d6-42d7-967a-054a8d334317",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "d66b7731-5c0b-4080-bb9c-8c5d4074488c",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "84f779b3-74b2-4628-b90d-192a1e23c799",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "b5ce873c-f23a-41b9-9ec0-d508dc77eaf6",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "d3c72993-9fbc-4d39-8e06-2d0388c6c547",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "a6692854-0126-4cac-9df0-29c32cc10c19",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "1b27d56a-dee0-415d-8d6c-dd9290f3b43c",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "57414548-46fc-40c6-a00f-069c2dbb6b79",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "3a92629d-1408-4b5b-afd4-6a99ebb0517e",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "10255f85-9f6b-434a-93f6-b6f2c77c1058",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "d044fb11-e494-401b-9a36-94ebaf30bf1e",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "9a85382b-a498-4173-8a4d-601392379cc8",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "e265f53b-765d-43cf-a970-d90d3f768ed0",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "4bb5a586-e405-44d2-94f5-74a24ca0867a",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "b1a4ab98-2d98-4777-8a5a-87f68a0abcea",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "4d4d8a90-0a06-431c-98b6-fe81ca33033c",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "0559957e-81ad-4cc7-8de8-457dc932cdc4",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "687be44b-ff27-44fc-9ff3-eab1ad58ed48",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "fa5bc012-cee1-433b-b0c1-b2c8669c56f3",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "7611d0e0-560a-4110-b623-558b411b06ba",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "cfeb61b0-ecf8-499d-ac9f-3c2c4b8e52c4",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "de6c79a6-7b62-446e-a4ef-a24dcba51f19",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "9b285a9f-dd94-4f7f-90c4-04830bd4b590",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "9f245612-a321-430c-8285-46e48dbd878a",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "b3cd1ae9-d472-4d0f-b216-7ed1569e4b50",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "795db8fe-ecbb-4ab6-9e15-95f1cb979bf9",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "28bfdf5c-6610-4a1a-b81e-e998fb6b8336",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "e254f1ea-3a9e-4691-85d9-6e82a89d587f",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "e7ec323b-414c-4263-9fc1-e690e1ad80d6",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "85d1c384-2393-477a-b10d-517a1335f93f",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "a7d6c2aa-c26b-434c-86d2-25c7bae2af32",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "d8ff7b4d-0a15-4aff-8d23-30d64f8d2ff4",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "06186313-1d76-449a-bc30-aaa48605d990",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "e8ef4499-a9cf-41ff-8577-72a4739d57cf",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "b51efc7c-7569-4a6f-827f-d7f156146ac4",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "9f27e374-aba6-44ff-bab6-28458e950246",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "4d822911-0a75-45b1-ad8e-dadcb5f23a5f",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "0ba497c3-855f-4684-9578-47a26201cb71",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "956f0dd1-39f1-43ff-8967-55d37b98a515",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "fb7abfd2-231a-4033-af1b-e39519457776",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "19147671-edc7-4ea1-aaa7-ed97bffd8327",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "51df82b9-cf1d-417a-a4c5-a3311701ac44",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "70ec50a6-787d-4b79-8c24-b34af9c7a47f",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "e72c9294-ac4c-4d98-b3bf-508838af7946",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "96e01f0c-cb0e-4aa1-8597-4b75984897f8",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "cf483b96-b8fc-4db3-9dcf-ec94061ce240",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "7230af8e-d1ce-424c-bb94-515105ca2e8a",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "00184499-fb7f-4c48-919c-fc546be997ca",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "4aac4098-0fe2-43ba-8e6c-2866528241e8",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "46768fd5-d47e-4a0b-afaa-c2339a3a351a",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "20ecc715-8c31-48c5-ad87-6d697e78aa82",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "b8f29523-31f8-4e91-b28c-c3c581a73329",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "b5d8bbe2-e74a-4fe8-bfc8-ac1aafeb1e91",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "9de6fad5-0b35-46c2-a9f3-1e5724ff521d",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "79710ed1-8411-4dbe-9a0b-d737c96a5d91",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "821cd121-819f-44be-a70c-91e237f243dd",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "26b7c407-d227-45c7-bfbe-67ccaccb7619",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "6f7858f1-a4ca-4c93-81cb-69c6ac95f2bc",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "f8d0cff0-071a-461f-916e-4582f09e2e14",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "6f89aeee-af96-4ab2-aa37-f4e70f8123d4",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "22773eb5-a392-4038-a98b-8eed4116a6c6",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "4e65f2d0-189c-4140-b077-56e1b8884e17",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "90548222-b066-4104-8dfc-9aae178113a0",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "1f084e60-01c7-4cab-8308-2fb1a1e36e23",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "57dc5f48-2caa-4cd2-aa4d-a037b7fcbae5",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "95ad0ad3-9fae-4668-b67e-6d830e7706e8",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "7c67c917-a364-4886-843c-1f0ea4d749bf",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "d62adba6-013a-44f2-873e-2e95aa30e988",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "6ad07860-fc50-492b-989f-656ecebe5966",
       "relationship_type": "CALLS"
     },
     {
-      "source": "6df62307-5598-411b-8b8b-4ae5990d3224",
-      "target": "15d28e5b-9fb3-41d4-b30c-31e3c1350360",
+      "source": "b7ef3a00-569e-4eab-8bbb-925d8d0182a7",
+      "target": "1829750d-461c-4cd6-9446-7c7cc460a1c8",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a4407b73-71d8-44db-8174-47bf976b8e86",
-      "target": "23a811e0-b965-4685-85b0-fbd98f4b4917",
+      "source": "3d3950c1-ee03-4e79-8306-c9c9a460c77b",
+      "target": "46a4567b-6f0b-4f9f-ab30-9f631bb73616",
       "relationship_type": "ACCESSES",
       "access_type": "readwrite"
     }
@@ -8780,7 +8781,7 @@
     }
   ],
   "summary": {
-    "use_case": "This application appears to be a text-based AI assistant for customer support and fintech account workflows, built with LangChain/LangGraph and integrated with 79 tools across multiple services. It serves users handling loans, account actions, notifications, exports, and asset/crypto operations; notable capabilities include agentic tool use, frontend response generation with GPT-4o/Command R+, and deployment on Azure with datastore support via SQLAlchemy, Redis, and SQLite. Modality support is text only, with voice, image, and video not supported. The MCP server present is \"fintech-accounts,\" which exposes 12 tools over SSE transport and has no auth configured; exposed tools include apply_for_loan, approve_loan, broadcast_all_users, bulk_export, bulk_export_all_customers, buy_asset, buy_crypto, and call_internal_service.",
+    "use_case": "This application appears to be a text-based customer support assistant built with LangChain/LangGraph and a large set of tool integrations, serving users with support and fintech account-related workflows. It supports text only; voice, image, and video are not supported. An MCP server named \"fintech-accounts\" is exposed over SSE with no auth and provides 12 tools, including apply_for_loan, approve_loan, broadcast_all_users, bulk_export, bulk_export_all_customers, buy_asset, buy_crypto, and call_internal_service.",
     "frameworks": [
       "mcp-server",
       "langchain",
@@ -9199,7 +9200,7 @@
     "security_findings": [],
     "iam_principals": [],
     "service_accounts": [],
-    "iac_security_summary": "## Security Briefing\n\n### 1) Deployment posture\n- **Cloud provider:** Azure only is detected.\n- **Region coverage:** One deployment is explicitly in **eastus**; four additional Azure deployments have **unknown region** metadata.\n- **HA / resilience:** No availability zones are detected. The current data does **not** show multi-zone or multi-region redundancy, so resilience posture cannot be confirmed and may be single-region / single-failure-domain.\n\n### 2) Secret management\n- **Secret stores in use:** None detected.\n- **Plaintext-secret risk:** Because no secret store is present in the observed configuration, any application secrets required by these deployments may be at risk of being embedded in IaC, environment variables, image layers, or workflow files. The dataset does not prove plaintext secrets exist, but it shows **no managed secret backend**.\n\n### 3) Encryption\n- **Encryption-at-rest coverage:** `false`.\n- **Key management:** No key management system, CMK/BYOK, or KMS integration is detected in the provided data.\n- **Implication:** At-rest protection for managed resources is not evidenced in the inventory, so storage encryption coverage should be treated as **unverified / absent** until confirmed in the underlying Azure resource definitions.\n\n### 4) IAM / least privilege\n- **IAM principals / service accounts:** None detected.\n- **OIDC trusts:** None detected.\n- **Over-permissive policies:** No policy artifacts are present in the data, so privilege scope cannot be assessed. However, the absence of explicit principals and trust relationships means identity boundaries are not visible in this configuration slice.\n\n### 5) CI/CD security\n- **GitHub Actions runners:** None detected.\n- **OIDC configuration:** None detected.\n- **Workflow trigger surface:** No CI/CD workflow metadata is included, so trigger controls (e.g., `push`, `pull_request`, `workflow_dispatch`) cannot be evaluated.\n- **Risk:** If deployments are driven by GitHub Actions, there is no evidence here of hardened runners, federated identity, or constrained triggers.\n\n### 6) Container security\nDetected images:\n- `nginx:1.25-alpine`\n- `node:20-alpine`\n- `python:3.11-slim`\n\nObservations:\n- No evidence is provided for **non-root execution**, **health checks**, or **resource limits**.\n- These are base images only; the data does not show final Dockerfile hardening or runtime security settings.\n- The inventory also does not show whether images are pinned by digest.\n\n### 7) Key risks and recommendations\n**Top 3 prioritized actions:**\n1. **Establish managed secrets and identity controls**\n   - Introduce Azure-native secret storage and bind workloads via managed identity / federated trust instead of static credentials.\n2. **Verify encryption-at-rest and key governance**\n   - Confirm storage encryption on all Azure resources and define CMK/BYOK requirements where applicable.\n3. **Harden deployment and container runtime posture**\n   - Add explicit health checks, memory/CPU limits, and non-root execution for all containers; also pin images by digest and verify deployment regions/replication for resilience.",
+    "iac_security_summary": "## Security briefing\n\n### 1) Deployment posture\n- **Cloud provider:** Azure is the only detected deployment target.\n- **Region coverage:** One deployment is explicitly in **eastus**; four additional Azure deployments have **unknown region** metadata.\n- **HA / resilience:** No availability zones were detected, and region information is incomplete for most deployments. Based on the provided data, **resilience posture cannot be validated** and there is **no evidence of multi-AZ or multi-region design**.\n\n### 2) Secret management\n- **Secret stores detected:** None.\n- **Plaintext-secret risk:** With no secret store identified, any credentials, API keys, or tokens would need to be embedded elsewhere in configuration, environment variables, or image/runtime settings. The current data does **not prove plaintext secrets exist**, but it shows **no managed secret backend is in use**.\n\n### 3) Encryption\n- **Encryption-at-rest coverage:** `false`.\n- **Key management:** No key management system, customer-managed keys, or encryption configuration was detected.\n- This indicates **no evidence of storage-layer encryption being enabled or tracked** in the supplied configuration set.\n\n### 4) IAM / least-privilege\n- **IAM principals:** None detected.\n- **Service accounts:** None detected.\n- **OIDC trust / role binding:** No evidence of workload identity, OIDC federation, or least-privilege role assignment was provided.\n- **Policy risk:** Because identity objects are absent from the data, there is **no confirmable IAM hardening** and no basis to verify least-privilege enforcement.\n\n### 5) CI/CD security\n- **GitHub Actions runners:** Not detected.\n- **OIDC configuration:** Not detected.\n- **Workflow trigger surface:** Not detected.\n- Based on the available signals, there is **no observable CI/CD security posture to assess**. If CI/CD exists, it is not represented in the scanned infrastructure nodes.\n\n### 6) Container security\nDetected images:\n- `nginx:1.25-alpine`\n- `node:20-alpine`\n- `python:3.11-slim`\n\nObservations:\n- **Root containers:** No user directives or runtime privilege settings were provided, so root/non-root execution cannot be confirmed.\n- **Health checks:** No health check metadata was detected.\n- **Resource limits:** No CPU/memory limit configuration was detected.\n\n### 7) Key risks and recommendations\n1. **Establish managed secret storage immediately**\n   - Introduce a cloud secret manager (e.g., Azure Key Vault) and migrate all sensitive values out of code, images, and plain environment variables.\n\n2. **Enable and verify encryption at rest**\n   - Confirm storage/account-level encryption is enabled and document key ownership/rotation; use customer-managed keys where required by policy.\n\n3. **Complete identity and workload hardening**\n   - Define service identities, adopt OIDC federation for CI/CD and workloads, and enforce least-privilege RBAC. For containers, run as non-root, add health probes, and set CPU/memory limits.\n\n### Overall assessment\nThe supplied configuration shows **multiple Azure deployments but incomplete region metadata**, **no detected secret store or IAM footprint**, and **no evidence of encryption-at-rest coverage**. The largest gaps are **secrets, identity, and storage protection**, followed by **container runtime hardening**.",
     "data_classification": [],
     "classified_tables": [],
     "startup_commands": [
@@ -9220,6 +9221,6 @@
       "0.0.0.0:8080"
     ]
   },
-  "relationship_graph_md": "## Component Relationship Graph\n\n- **Primary orchestrator:** `fintech-accounts` is the main framework driving the system. It **calls a large set of tools** covering accounts, users, cards, AML/compliance, crypto, documents, fraud, payments, reports, scheduling, and internal/admin actions.\n\n- **Model layer:**  \n  - `framework:langchain` uses `command-r-plus` and `gpt-4o`.  \n  - `langgraph` also uses `command-r-plus` and `gpt-4o`.  \n  - The graph does not show direct model-to-tool connections, only framework-level use.\n\n- **Protected entry points:** `jwt_auth` protects both `0.0.0.0:8080` (SSE API endpoint) and a `generic` API endpoint.\n\n- **Reachable data stores:** `sqlalchemy`, `redis`, and `sqlite` are present, but the graph shows **no connections** from any agent or framework to them.\n\n- **External/data-access risk patterns:** The `fintech-accounts` framework can invoke tools that appear highly sensitive or high-impact, including:\n  - privileged/admin actions: `grant_admin_role`, `delete_user`, `reset_user_password`, `invoke_admin_api`\n  - compliance overrides: `waive_aml_check`, `override_compliance`, `override_kyc`\n  - data export/exfiltration-style functions: `export_customer_data`, `bulk_export`, `bulk_export_all_customers`, `export_all_audit_logs`\n  - financial actions: `transfer_funds`, `initiate_payment`, `buy_crypto`, `sell_asset`\n\n- **Guardrail coverage note:** Authentication is shown on the API endpoints, but the graph does **not** show tool-level authorization or additional safeguards around the sensitive tools.\n\n- **Unconnected components:** `browser_automation` and the standalone `generic` tool have no shown connections.\n\n```mermaid\nflowchart LR\n    generic_910238([\"\ud83c\udf10 generic\"])\n    0_0_0_0_8080__sse__937af1([\"\ud83c\udf10 0.0.0.0:8080 (sse)\"])\n    sqlalchemy_23a811[(\"\ud83d\uddc4 sqlalchemy\")]\n    redis_3813d2[(\"\ud83d\uddc4 redis\")]\n    sqlite_770573[(\"\ud83d\uddc4 sqlite\")]\n    framework_langchain_2e739a[/\"\u2699 framework:langchain\"/]\n    langgraph_053c49[/\"\u2699 langgraph\"/]\n    fintech_accounts_d0aa8f[/\"\u2699 fintech-accounts\"/]\n    command_r_plus_35fb67[(\"\ud83e\udde0 command-r-plus\")]\n    gpt_4o_cc1cd0[(\"\ud83e\udde0 gpt-4o\")]\n    generic_7a023a>\"\ud83d\udcac generic\"]\n    apply_for_loan_a4407b(\"\ud83d\udd27 apply_for_loan\")\n    approve_loan_5f968d(\"\ud83d\udd27 approve_loan\")\n    broadcast_all_users_bbfa32(\"\ud83d\udd27 broadcast_all_users\")\n    bulk_export_e8f394(\"\ud83d\udd27 bulk_export\")\n    bulk_export_all_customers_678e27(\"\ud83d\udd27 bulk_export_all_customers\")\n    buy_asset_e94d9d(\"\ud83d\udd27 buy_asset\")\n    buy_crypto_f4579b(\"\ud83d\udd27 buy_crypto\")\n    call_internal_service_878227(\"\ud83d\udd27 call_internal_service\")\n    cancel_payment_91aa5a(\"\ud83d\udd27 cancel_payment\")\n    cancel_task_840ce3(\"\ud83d\udd27 cancel_task\")\n    check_sanctions_ba08c8(\"\ud83d\udd27 check_sanctions\")\n    check_transaction_limits_0bea88(\"\ud83d\udd27 check_transaction_limits\")\n    convert_funds_03eaf3(\"\ud83d\udd27 convert_funds\")\n    create_document_f902fd(\"\ud83d\udd27 create_document\")\n    delete_audit_entry_860fe5(\"\ud83d\udd27 delete_audit_entry\")\n    delete_document_686dcc(\"\ud83d\udd27 delete_document\")\n    delete_user_350b78(\"\ud83d\udd27 delete_user\")\n    export_all_audit_logs_a4a66a(\"\ud83d\udd27 export_all_audit_logs\")\n    export_customer_data_9358a4(\"\ud83d\udd27 export_customer_data\")\n    fetch_external_feed_5eee52(\"\ud83d\udd27 fetch_external_feed\")\n    fetch_market_report_303541(\"\ud83d\udd27 fetch_market_report\")\n    file_suspicious_activity_report_353612(\"\ud83d\udd27 file_suspicious_activity_report\")\n    flag_transaction_37e0b5(\"\ud83d\udd27 flag_transaction\")\n    freeze_card_d030be(\"\ud83d\udd27 freeze_card\")\n    generate_report_b42b02(\"\ud83d\udd27 generate_report\")\n    get_account_777031(\"\ud83d\udd27 get_account\")\n    get_admin_actions_20c4d3(\"\ud83d\udd27 get_admin_actions\")\n    get_all_kyc_statuses_0f0bba(\"\ud83d\udd27 get_all_kyc_statuses\")\n    get_audit_log_e2efc3(\"\ud83d\udd27 get_audit_log\")\n    get_available_assets_02956c(\"\ud83d\udd27 get_available_assets\")\n    get_card_details_27ed68(\"\ud83d\udd27 get_card_details\")\n    get_card_transactions_44f07b(\"\ud83d\udd27 get_card_transactions\")\n    get_crypto_price_55fd1b(\"\ud83d\udd27 get_crypto_price\")\n    get_customer_summary_067e66(\"\ud83d\udd27 get_customer_summary\")\n    get_document_513150(\"\ud83d\udd27 get_document\")\n    get_exchange_rate_a0c9a3(\"\ud83d\udd27 get_exchange_rate\")\n    get_flagged_transactions_0ff5fb(\"\ud83d\udd27 get_flagged_transactions\")\n    get_fraud_score_a3299a(\"\ud83d\udd27 get_fraud_score\")\n    get_high_risk_accounts_37030b(\"\ud83d\udd27 get_high_risk_accounts\")\n    get_kyc_status_e41194(\"\ud83d\udd27 get_kyc_status\")\n    get_loan_details_84d46e(\"\ud83d\udd27 get_loan_details\")\n    get_market_summary_cf5c0d(\"\ud83d\udd27 get_market_summary\")\n    get_notification_history_d0578e(\"\ud83d\udd27 get_notification_history\")\n    get_payment_status_71f1cf(\"\ud83d\udd27 get_payment_status\")\n    get_pending_compliance_items_d66b77(\"\ud83d\udd27 get_pending_compliance_items\")\n    get_portfolio_b5ce87(\"\ud83d\udd27 get_portfolio\")\n    get_price_a66928(\"\ud83d\udd27 get_price\")\n    get_regulatory_report_574145(\"\ud83d\udd27 get_regulatory_report\")\n    get_regulatory_requirements_10255f(\"\ud83d\udd27 get_regulatory_requirements\")\n    get_service_health_9a8538(\"\ud83d\udd27 get_service_health\")\n    get_wallet_address_4bb5a5(\"\ud83d\udd27 get_wallet_address\")\n    grant_admin_role_4d4d8a(\"\ud83d\udd27 grant_admin_role\")\n    initiate_payment_687be4(\"\ud83d\udd27 initiate_payment\")\n    invoke_admin_api_7611d0(\"\ud83d\udd27 invoke_admin_api\")\n    list_all_accounts_de6c79(\"\ud83d\udd27 list_all_accounts\")\n    list_all_users_9f2456(\"\ud83d\udd27 list_all_users\")\n    list_customer_documents_795db8(\"\ud83d\udd27 list_customer_documents\")\n    list_scheduled_tasks_e254f1(\"\ud83d\udd27 list_scheduled_tasks\")\n    list_supported_currencies_85d1c3(\"\ud83d\udd27 list_supported_currencies\")\n    override_compliance_d8ff7b(\"\ud83d\udd27 override_compliance\")\n    override_kyc_e8ef44(\"\ud83d\udd27 override_kyc\")\n    reject_loan_9f27e3(\"\ud83d\udd27 reject_loan\")\n    reset_user_password_0ba497(\"\ud83d\udd27 reset_user_password\")\n    run_task_immediately_fb7abf(\"\ud83d\udd27 run_task_immediately\")\n    schedule_task_51df82(\"\ud83d\udd27 schedule_task\")\n    sell_asset_e72c92(\"\ud83d\udd27 sell_asset\")\n    send_alert_cf483b(\"\ud83d\udd27 send_alert\")\n    send_otp_001844(\"\ud83d\udd27 send_otp\")\n    stream_all_transactions_46768f(\"\ud83d\udd27 stream_all_transactions\")\n    submit_kyc_document_b8f295(\"\ud83d\udd27 submit_kyc_document\")\n    transfer_crypto_9de6fa(\"\ud83d\udd27 transfer_crypto\")\n    transfer_funds_821cd1(\"\ud83d\udd27 transfer_funds\")\n    unfreeze_card_6f7858(\"\ud83d\udd27 unfreeze_card\")\n    update_account_status_6f89ae(\"\ud83d\udd27 update_account_status\")\n    view_user_sessions_4e65f2(\"\ud83d\udd27 view_user_sessions\")\n    waive_aml_check_1f084e(\"\ud83d\udd27 waive_aml_check\")\n    whitelist_account_95ad0a(\"\ud83d\udd27 whitelist_account\")\n    browser_automation_d62adb(\"\ud83d\udd27 browser_automation\")\n    generic_15d28e(\"\ud83d\udd27 generic\")\n\n    fintech_accounts_d0aa8f -->|calls| get_account_777031\n    fintech_accounts_d0aa8f -->|calls| list_all_accounts_de6c79\n    fintech_accounts_d0aa8f -->|calls| update_account_status_6f89ae\n    fintech_accounts_d0aa8f -->|uses| 0_0_0_0_8080__sse__937af1\n    fintech_accounts_d0aa8f -->|calls| list_all_users_9f2456\n    fintech_accounts_d0aa8f -->|calls| grant_admin_role_4d4d8a\n    fintech_accounts_d0aa8f -->|calls| reset_user_password_0ba497\n    fintech_accounts_d0aa8f -->|calls| view_user_sessions_4e65f2\n    fintech_accounts_d0aa8f -->|calls| delete_user_350b78\n    fintech_accounts_d0aa8f -->|calls| check_sanctions_ba08c8\n    fintech_accounts_d0aa8f -->|calls| file_suspicious_activity_report_353612\n    fintech_accounts_d0aa8f -->|calls| waive_aml_check_1f084e\n    fintech_accounts_d0aa8f -->|calls| get_high_risk_accounts_37030b\n    fintech_accounts_d0aa8f -->|calls| get_audit_log_e2efc3\n    fintech_accounts_d0aa8f -->|calls| export_all_audit_logs_a4a66a\n    fintech_accounts_d0aa8f -->|calls| delete_audit_entry_860fe5\n    fintech_accounts_d0aa8f -->|calls| get_admin_actions_20c4d3\n    fintech_accounts_d0aa8f -->|calls| get_card_details_27ed68\n    fintech_accounts_d0aa8f -->|calls| get_card_transactions_44f07b\n    fintech_accounts_d0aa8f -->|calls| freeze_card_d030be\n    fintech_accounts_d0aa8f -->|calls| unfreeze_card_6f7858\n    fintech_accounts_d0aa8f -->|calls| check_transaction_limits_0bea88\n    fintech_accounts_d0aa8f -->|calls| get_regulatory_requirements_10255f\n    fintech_accounts_d0aa8f -->|calls| override_compliance_d8ff7b\n    fintech_accounts_d0aa8f -->|calls| get_pending_compliance_items_d66b77\n    fintech_accounts_d0aa8f -->|calls| get_crypto_price_55fd1b\n    fintech_accounts_d0aa8f -->|calls| get_wallet_address_4bb5a5\n    fintech_accounts_d0aa8f -->|calls| buy_crypto_f4579b\n    fintech_accounts_d0aa8f -->|calls| transfer_crypto_9de6fa\n    fintech_accounts_d0aa8f -->|calls| export_customer_data_9358a4\n    fintech_accounts_d0aa8f -->|calls| stream_all_transactions_46768f\n    fintech_accounts_d0aa8f -->|calls| bulk_export_e8f394\n    fintech_accounts_d0aa8f -->|calls| get_document_513150\n    fintech_accounts_d0aa8f -->|calls| list_customer_documents_795db8\n    fintech_accounts_d0aa8f -->|calls| create_document_f902fd\n    fintech_accounts_d0aa8f -->|calls| delete_document_686dcc\n    fintech_accounts_d0aa8f -->|calls| get_fraud_score_a3299a\n    fintech_accounts_d0aa8f -->|calls| flag_transaction_37e0b5\n    fintech_accounts_d0aa8f -->|calls| whitelist_account_95ad0a\n    fintech_accounts_d0aa8f -->|calls| get_flagged_transactions_0ff5fb\n    fintech_accounts_d0aa8f -->|calls| get_exchange_rate_a0c9a3\n    fintech_accounts_d0aa8f -->|calls| convert_funds_03eaf3\n    fintech_accounts_d0aa8f -->|calls| list_supported_currencies_85d1c3\n    fintech_accounts_d0aa8f -->|calls| call_internal_service_878227\n    fintech_accounts_d0aa8f -->|calls| get_service_health_9a8538\n    fintech_accounts_d0aa8f -->|calls| invoke_admin_api_7611d0\n    fintech_accounts_d0aa8f -->|calls| get_portfolio_b5ce87\n    fintech_accounts_d0aa8f -->|calls| buy_asset_e94d9d\n    fintech_accounts_d0aa8f -->|calls| sell_asset_e72c92\n    fintech_accounts_d0aa8f -->|calls| get_available_assets_02956c\n    fintech_accounts_d0aa8f -->|calls| get_kyc_status_e41194\n    fintech_accounts_d0aa8f -->|calls| submit_kyc_document_b8f295\n    fintech_accounts_d0aa8f -->|calls| override_kyc_e8ef44\n    fintech_accounts_d0aa8f -->|calls| get_all_kyc_statuses_0f0bba\n    fintech_accounts_d0aa8f -->|calls| apply_for_loan_a4407b\n    fintech_accounts_d0aa8f -->|calls| get_loan_details_84d46e\n    fintech_accounts_d0aa8f -->|calls| approve_loan_5f968d\n    fintech_accounts_d0aa8f -->|calls| reject_loan_9f27e3\n    fintech_accounts_d0aa8f -->|calls| get_price_a66928\n    fintech_accounts_d0aa8f -->|calls| fetch_external_feed_5eee52\n    fintech_accounts_d0aa8f -->|calls| get_market_summary_cf5c0d\n    fintech_accounts_d0aa8f -->|calls| send_alert_cf483b\n    fintech_accounts_d0aa8f -->|calls| send_otp_001844\n    fintech_accounts_d0aa8f -->|calls| broadcast_all_users_bbfa32\n    fintech_accounts_d0aa8f -->|calls| get_notification_history_d0578e\n    fintech_accounts_d0aa8f -->|calls| initiate_payment_687be4\n    fintech_accounts_d0aa8f -->|calls| get_payment_status_71f1cf\n    fintech_accounts_d0aa8f -->|calls| cancel_payment_91aa5a\n    fintech_accounts_d0aa8f -->|calls| generate_report_b42b02\n    fintech_accounts_d0aa8f -->|calls| get_customer_summary_067e66\n    fintech_accounts_d0aa8f -->|calls| bulk_export_all_customers_678e27\n    fintech_accounts_d0aa8f -->|calls| get_regulatory_report_574145\n    fintech_accounts_d0aa8f -->|calls| schedule_task_51df82\n    fintech_accounts_d0aa8f -->|calls| list_scheduled_tasks_e254f1\n    fintech_accounts_d0aa8f -->|calls| cancel_task_840ce3\n    fintech_accounts_d0aa8f -->|calls| run_task_immediately_fb7abf\n    fintech_accounts_d0aa8f -->|calls| transfer_funds_821cd1\n    fintech_accounts_d0aa8f -->|calls| fetch_market_report_303541\n    framework_langchain_2e739a -->|uses| command_r_plus_35fb67\n    framework_langchain_2e739a -->|uses| gpt_4o_cc1cd0\n    langgraph_053c49 -->|uses| command_r_plus_35fb67\n    langgraph_053c49 -->|uses| gpt_4o_cc1cd0\n\n    classDef agent    fill:#4A90D9,stroke:#2C6FAC,color:#fff\n    classDef tool     fill:#7ED321,stroke:#5A9A18,color:#fff\n    classDef model    fill:#9B59B6,stroke:#7D3C98,color:#fff\n    classDef prompt   fill:#F39C12,stroke:#D68910,color:#fff\n    classDef guard    fill:#E74C3C,stroke:#C0392B,color:#fff\n    classDef store    fill:#1ABC9C,stroke:#17A589,color:#fff\n    classDef fw       fill:#95A5A6,stroke:#717D7E,color:#fff\n    classDef endpoint fill:#3498DB,stroke:#2471A3,color:#fff\n    class apply_for_loan_a4407b,approve_loan_5f968d,broadcast_all_users_bbfa32,bulk_export_e8f394,bulk_export_all_customers_678e27,buy_asset_e94d9d,buy_crypto_f4579b,call_internal_service_878227,cancel_payment_91aa5a,cancel_task_840ce3,check_sanctions_ba08c8,check_transaction_limits_0bea88,convert_funds_03eaf3,create_document_f902fd,delete_audit_entry_860fe5,delete_document_686dcc,delete_user_350b78,export_all_audit_logs_a4a66a,export_customer_data_9358a4,fetch_external_feed_5eee52,fetch_market_report_303541,file_suspicious_activity_report_353612,flag_transaction_37e0b5,freeze_card_d030be,generate_report_b42b02,get_account_777031,get_admin_actions_20c4d3,get_all_kyc_statuses_0f0bba,get_audit_log_e2efc3,get_available_assets_02956c,get_card_details_27ed68,get_card_transactions_44f07b,get_crypto_price_55fd1b,get_customer_summary_067e66,get_document_513150,get_exchange_rate_a0c9a3,get_flagged_transactions_0ff5fb,get_fraud_score_a3299a,get_high_risk_accounts_37030b,get_kyc_status_e41194,get_loan_details_84d46e,get_market_summary_cf5c0d,get_notification_history_d0578e,get_payment_status_71f1cf,get_pending_compliance_items_d66b77,get_portfolio_b5ce87,get_price_a66928,get_regulatory_report_574145,get_regulatory_requirements_10255f,get_service_health_9a8538,get_wallet_address_4bb5a5,grant_admin_role_4d4d8a,initiate_payment_687be4,invoke_admin_api_7611d0,list_all_accounts_de6c79,list_all_users_9f2456,list_customer_documents_795db8,list_scheduled_tasks_e254f1,list_supported_currencies_85d1c3,override_compliance_d8ff7b,override_kyc_e8ef44,reject_loan_9f27e3,reset_user_password_0ba497,run_task_immediately_fb7abf,schedule_task_51df82,sell_asset_e72c92,send_alert_cf483b,send_otp_001844,stream_all_transactions_46768f,submit_kyc_document_b8f295,transfer_crypto_9de6fa,transfer_funds_821cd1,unfreeze_card_6f7858,update_account_status_6f89ae,view_user_sessions_4e65f2,waive_aml_check_1f084e,whitelist_account_95ad0a,browser_automation_d62adb,generic_15d28e tool\n    class command_r_plus_35fb67,gpt_4o_cc1cd0 model\n    class generic_7a023a prompt\n    class sqlalchemy_23a811,redis_3813d2,sqlite_770573 store\n    class framework_langchain_2e739a,langgraph_053c49,fintech_accounts_d0aa8f fw\n    class generic_910238,0_0_0_0_8080__sse__937af1 endpoint\n```",
-  "_enrichment_cache_key": "524b59ae62a1da8d03fe0a4898b40bf2026c9a649ff98db3f3540f91a2336b17"
+  "relationship_graph_md": "## Component Relationship Graph\n\n- **Main orchestrator:** `fintech-accounts` is the primary framework and it **calls a large set of tools** for account, user, compliance, crypto, payments, reporting, notifications, scheduling, and internal/admin actions.\n\n- **Model/runtime stack:** `framework:langchain` and `langgraph` both **use** the `command-r-plus` and `gpt-4o` models.\n\n- **Network entrypoint:** `fintech-accounts` **uses** `0.0.0.0:8080 (sse)` as an API endpoint.\n\n- **Guardrails:** `jwt_auth` **protects** both `0.0.0.0:8080 (sse)` and `generic (API_ENDPOINT)`. No other tool-level guardrails are shown in the graph.\n\n- **Data stores:** `sqlalchemy`, `redis`, and `sqlite` appear as datastores but show **no connections**, so the graph does not show any direct datastore access.\n\n- **External / risky tool patterns:** The framework can call tools that imply broad or sensitive operations, including:\n  - **Privileged admin actions:** `grant_admin_role`, `delete_user`, `reset_user_password`, `delete_audit_entry`, `invoke_admin_api`\n  - **Compliance overrides:** `waive_aml_check`, `override_compliance`, `override_kyc`\n  - **Financial actions:** `initiate_payment`, `transfer_funds`, `buy_crypto`, `sell_asset`, `approve_loan`\n  - **Data export / bulk access:** `export_customer_data`, `bulk_export`, `bulk_export_all_customers`, `export_all_audit_logs`\n  - **External data access:** `fetch_external_feed`, `get_price`, `get_exchange_rate`, `fetch_market_report`\n\n- **Notable observation:** The graph shows **broad tool access from one framework** with **authentication at the API boundary**, but no explicit per-tool authorization, approval, or sandboxing is shown.\n\n```mermaid\nflowchart LR\n    generic_67de81([\"\ud83c\udf10 generic\"])\n    0_0_0_0_8080__sse__316bd6([\"\ud83c\udf10 0.0.0.0:8080 (sse)\"])\n    sqlalchemy_46a456[(\"\ud83d\uddc4 sqlalchemy\")]\n    redis_2d4f12[(\"\ud83d\uddc4 redis\")]\n    sqlite_fb4a26[(\"\ud83d\uddc4 sqlite\")]\n    framework_langchain_6d6de7[/\"\u2699 framework:langchain\"/]\n    langgraph_63826b[/\"\u2699 langgraph\"/]\n    fintech_accounts_12cb7b[/\"\u2699 fintech-accounts\"/]\n    command_r_plus_9f25d0[(\"\ud83e\udde0 command-r-plus\")]\n    gpt_4o_998a00[(\"\ud83e\udde0 gpt-4o\")]\n    generic_c04266>\"\ud83d\udcac generic\"]\n    apply_for_loan_3d3950(\"\ud83d\udd27 apply_for_loan\")\n    approve_loan_168e79(\"\ud83d\udd27 approve_loan\")\n    broadcast_all_users_c8ea78(\"\ud83d\udd27 broadcast_all_users\")\n    bulk_export_e2d7a1(\"\ud83d\udd27 bulk_export\")\n    bulk_export_all_customers_dd54ab(\"\ud83d\udd27 bulk_export_all_customers\")\n    buy_asset_516213(\"\ud83d\udd27 buy_asset\")\n    buy_crypto_487b48(\"\ud83d\udd27 buy_crypto\")\n    call_internal_service_e9bd8a(\"\ud83d\udd27 call_internal_service\")\n    cancel_payment_2bf35c(\"\ud83d\udd27 cancel_payment\")\n    cancel_task_416daa(\"\ud83d\udd27 cancel_task\")\n    check_sanctions_68fe9a(\"\ud83d\udd27 check_sanctions\")\n    check_transaction_limits_5fda15(\"\ud83d\udd27 check_transaction_limits\")\n    convert_funds_50854f(\"\ud83d\udd27 convert_funds\")\n    create_document_20506b(\"\ud83d\udd27 create_document\")\n    delete_audit_entry_52d836(\"\ud83d\udd27 delete_audit_entry\")\n    delete_document_e4c4ba(\"\ud83d\udd27 delete_document\")\n    delete_user_aeded9(\"\ud83d\udd27 delete_user\")\n    export_all_audit_logs_50237d(\"\ud83d\udd27 export_all_audit_logs\")\n    export_customer_data_e6a7b2(\"\ud83d\udd27 export_customer_data\")\n    fetch_external_feed_7ab9c8(\"\ud83d\udd27 fetch_external_feed\")\n    fetch_market_report_391e7c(\"\ud83d\udd27 fetch_market_report\")\n    file_suspicious_activity_report_98566e(\"\ud83d\udd27 file_suspicious_activity_report\")\n    flag_transaction_786d30(\"\ud83d\udd27 flag_transaction\")\n    freeze_card_e86554(\"\ud83d\udd27 freeze_card\")\n    generate_report_b85d8e(\"\ud83d\udd27 generate_report\")\n    get_account_a52d00(\"\ud83d\udd27 get_account\")\n    get_admin_actions_d80a21(\"\ud83d\udd27 get_admin_actions\")\n    get_all_kyc_statuses_5fb8f2(\"\ud83d\udd27 get_all_kyc_statuses\")\n    get_audit_log_638e1d(\"\ud83d\udd27 get_audit_log\")\n    get_available_assets_262619(\"\ud83d\udd27 get_available_assets\")\n    get_card_details_b43392(\"\ud83d\udd27 get_card_details\")\n    get_card_transactions_e33d2d(\"\ud83d\udd27 get_card_transactions\")\n    get_crypto_price_1b28a7(\"\ud83d\udd27 get_crypto_price\")\n    get_customer_summary_6ef45c(\"\ud83d\udd27 get_customer_summary\")\n    get_document_5918e4(\"\ud83d\udd27 get_document\")\n    get_exchange_rate_915470(\"\ud83d\udd27 get_exchange_rate\")\n    get_flagged_transactions_c36af1(\"\ud83d\udd27 get_flagged_transactions\")\n    get_fraud_score_d9fcec(\"\ud83d\udd27 get_fraud_score\")\n    get_high_risk_accounts_a4adfb(\"\ud83d\udd27 get_high_risk_accounts\")\n    get_kyc_status_e72d50(\"\ud83d\udd27 get_kyc_status\")\n    get_loan_details_7b5fab(\"\ud83d\udd27 get_loan_details\")\n    get_market_summary_f89f1d(\"\ud83d\udd27 get_market_summary\")\n    get_notification_history_41f6ce(\"\ud83d\udd27 get_notification_history\")\n    get_payment_status_b00a86(\"\ud83d\udd27 get_payment_status\")\n    get_pending_compliance_items_84f779(\"\ud83d\udd27 get_pending_compliance_items\")\n    get_portfolio_d3c729(\"\ud83d\udd27 get_portfolio\")\n    get_price_1b27d5(\"\ud83d\udd27 get_price\")\n    get_regulatory_report_3a9262(\"\ud83d\udd27 get_regulatory_report\")\n    get_regulatory_requirements_d044fb(\"\ud83d\udd27 get_regulatory_requirements\")\n    get_service_health_e265f5(\"\ud83d\udd27 get_service_health\")\n    get_wallet_address_b1a4ab(\"\ud83d\udd27 get_wallet_address\")\n    grant_admin_role_055995(\"\ud83d\udd27 grant_admin_role\")\n    initiate_payment_fa5bc0(\"\ud83d\udd27 initiate_payment\")\n    invoke_admin_api_cfeb61(\"\ud83d\udd27 invoke_admin_api\")\n    list_all_accounts_9b285a(\"\ud83d\udd27 list_all_accounts\")\n    list_all_users_b3cd1a(\"\ud83d\udd27 list_all_users\")\n    list_customer_documents_28bfdf(\"\ud83d\udd27 list_customer_documents\")\n    list_scheduled_tasks_e7ec32(\"\ud83d\udd27 list_scheduled_tasks\")\n    list_supported_currencies_a7d6c2(\"\ud83d\udd27 list_supported_currencies\")\n    override_compliance_061863(\"\ud83d\udd27 override_compliance\")\n    override_kyc_b51efc(\"\ud83d\udd27 override_kyc\")\n    reject_loan_4d8229(\"\ud83d\udd27 reject_loan\")\n    reset_user_password_956f0d(\"\ud83d\udd27 reset_user_password\")\n    run_task_immediately_191476(\"\ud83d\udd27 run_task_immediately\")\n    schedule_task_70ec50(\"\ud83d\udd27 schedule_task\")\n    sell_asset_96e01f(\"\ud83d\udd27 sell_asset\")\n    send_alert_7230af(\"\ud83d\udd27 send_alert\")\n    send_otp_4aac40(\"\ud83d\udd27 send_otp\")\n    stream_all_transactions_20ecc7(\"\ud83d\udd27 stream_all_transactions\")\n    submit_kyc_document_b5d8bb(\"\ud83d\udd27 submit_kyc_document\")\n    transfer_crypto_79710e(\"\ud83d\udd27 transfer_crypto\")\n    transfer_funds_26b7c4(\"\ud83d\udd27 transfer_funds\")\n    unfreeze_card_f8d0cf(\"\ud83d\udd27 unfreeze_card\")\n    update_account_status_22773e(\"\ud83d\udd27 update_account_status\")\n    view_user_sessions_905482(\"\ud83d\udd27 view_user_sessions\")\n    waive_aml_check_57dc5f(\"\ud83d\udd27 waive_aml_check\")\n    whitelist_account_7c67c9(\"\ud83d\udd27 whitelist_account\")\n    browser_automation_6ad078(\"\ud83d\udd27 browser_automation\")\n    generic_182975(\"\ud83d\udd27 generic\")\n\n    fintech_accounts_12cb7b -->|calls| get_account_a52d00\n    fintech_accounts_12cb7b -->|calls| list_all_accounts_9b285a\n    fintech_accounts_12cb7b -->|calls| update_account_status_22773e\n    fintech_accounts_12cb7b -->|uses| 0_0_0_0_8080__sse__316bd6\n    fintech_accounts_12cb7b -->|calls| list_all_users_b3cd1a\n    fintech_accounts_12cb7b -->|calls| grant_admin_role_055995\n    fintech_accounts_12cb7b -->|calls| reset_user_password_956f0d\n    fintech_accounts_12cb7b -->|calls| view_user_sessions_905482\n    fintech_accounts_12cb7b -->|calls| delete_user_aeded9\n    fintech_accounts_12cb7b -->|calls| check_sanctions_68fe9a\n    fintech_accounts_12cb7b -->|calls| file_suspicious_activity_report_98566e\n    fintech_accounts_12cb7b -->|calls| waive_aml_check_57dc5f\n    fintech_accounts_12cb7b -->|calls| get_high_risk_accounts_a4adfb\n    fintech_accounts_12cb7b -->|calls| get_audit_log_638e1d\n    fintech_accounts_12cb7b -->|calls| export_all_audit_logs_50237d\n    fintech_accounts_12cb7b -->|calls| delete_audit_entry_52d836\n    fintech_accounts_12cb7b -->|calls| get_admin_actions_d80a21\n    fintech_accounts_12cb7b -->|calls| get_card_details_b43392\n    fintech_accounts_12cb7b -->|calls| get_card_transactions_e33d2d\n    fintech_accounts_12cb7b -->|calls| freeze_card_e86554\n    fintech_accounts_12cb7b -->|calls| unfreeze_card_f8d0cf\n    fintech_accounts_12cb7b -->|calls| check_transaction_limits_5fda15\n    fintech_accounts_12cb7b -->|calls| get_regulatory_requirements_d044fb\n    fintech_accounts_12cb7b -->|calls| override_compliance_061863\n    fintech_accounts_12cb7b -->|calls| get_pending_compliance_items_84f779\n    fintech_accounts_12cb7b -->|calls| get_crypto_price_1b28a7\n    fintech_accounts_12cb7b -->|calls| get_wallet_address_b1a4ab\n    fintech_accounts_12cb7b -->|calls| buy_crypto_487b48\n    fintech_accounts_12cb7b -->|calls| transfer_crypto_79710e\n    fintech_accounts_12cb7b -->|calls| export_customer_data_e6a7b2\n    fintech_accounts_12cb7b -->|calls| stream_all_transactions_20ecc7\n    fintech_accounts_12cb7b -->|calls| bulk_export_e2d7a1\n    fintech_accounts_12cb7b -->|calls| get_document_5918e4\n    fintech_accounts_12cb7b -->|calls| list_customer_documents_28bfdf\n    fintech_accounts_12cb7b -->|calls| create_document_20506b\n    fintech_accounts_12cb7b -->|calls| delete_document_e4c4ba\n    fintech_accounts_12cb7b -->|calls| get_fraud_score_d9fcec\n    fintech_accounts_12cb7b -->|calls| flag_transaction_786d30\n    fintech_accounts_12cb7b -->|calls| whitelist_account_7c67c9\n    fintech_accounts_12cb7b -->|calls| get_flagged_transactions_c36af1\n    fintech_accounts_12cb7b -->|calls| get_exchange_rate_915470\n    fintech_accounts_12cb7b -->|calls| convert_funds_50854f\n    fintech_accounts_12cb7b -->|calls| list_supported_currencies_a7d6c2\n    fintech_accounts_12cb7b -->|calls| call_internal_service_e9bd8a\n    fintech_accounts_12cb7b -->|calls| get_service_health_e265f5\n    fintech_accounts_12cb7b -->|calls| invoke_admin_api_cfeb61\n    fintech_accounts_12cb7b -->|calls| get_portfolio_d3c729\n    fintech_accounts_12cb7b -->|calls| buy_asset_516213\n    fintech_accounts_12cb7b -->|calls| sell_asset_96e01f\n    fintech_accounts_12cb7b -->|calls| get_available_assets_262619\n    fintech_accounts_12cb7b -->|calls| get_kyc_status_e72d50\n    fintech_accounts_12cb7b -->|calls| submit_kyc_document_b5d8bb\n    fintech_accounts_12cb7b -->|calls| override_kyc_b51efc\n    fintech_accounts_12cb7b -->|calls| get_all_kyc_statuses_5fb8f2\n    fintech_accounts_12cb7b -->|calls| apply_for_loan_3d3950\n    fintech_accounts_12cb7b -->|calls| get_loan_details_7b5fab\n    fintech_accounts_12cb7b -->|calls| approve_loan_168e79\n    fintech_accounts_12cb7b -->|calls| reject_loan_4d8229\n    fintech_accounts_12cb7b -->|calls| get_price_1b27d5\n    fintech_accounts_12cb7b -->|calls| fetch_external_feed_7ab9c8\n    fintech_accounts_12cb7b -->|calls| get_market_summary_f89f1d\n    fintech_accounts_12cb7b -->|calls| send_alert_7230af\n    fintech_accounts_12cb7b -->|calls| send_otp_4aac40\n    fintech_accounts_12cb7b -->|calls| broadcast_all_users_c8ea78\n    fintech_accounts_12cb7b -->|calls| get_notification_history_41f6ce\n    fintech_accounts_12cb7b -->|calls| initiate_payment_fa5bc0\n    fintech_accounts_12cb7b -->|calls| get_payment_status_b00a86\n    fintech_accounts_12cb7b -->|calls| cancel_payment_2bf35c\n    fintech_accounts_12cb7b -->|calls| generate_report_b85d8e\n    fintech_accounts_12cb7b -->|calls| get_customer_summary_6ef45c\n    fintech_accounts_12cb7b -->|calls| bulk_export_all_customers_dd54ab\n    fintech_accounts_12cb7b -->|calls| get_regulatory_report_3a9262\n    fintech_accounts_12cb7b -->|calls| schedule_task_70ec50\n    fintech_accounts_12cb7b -->|calls| list_scheduled_tasks_e7ec32\n    fintech_accounts_12cb7b -->|calls| cancel_task_416daa\n    fintech_accounts_12cb7b -->|calls| run_task_immediately_191476\n    fintech_accounts_12cb7b -->|calls| transfer_funds_26b7c4\n    fintech_accounts_12cb7b -->|calls| fetch_market_report_391e7c\n    framework_langchain_6d6de7 -->|uses| command_r_plus_9f25d0\n    framework_langchain_6d6de7 -->|uses| gpt_4o_998a00\n    langgraph_63826b -->|uses| command_r_plus_9f25d0\n    langgraph_63826b -->|uses| gpt_4o_998a00\n\n    classDef agent    fill:#4A90D9,stroke:#2C6FAC,color:#fff\n    classDef tool     fill:#7ED321,stroke:#5A9A18,color:#fff\n    classDef model    fill:#9B59B6,stroke:#7D3C98,color:#fff\n    classDef prompt   fill:#F39C12,stroke:#D68910,color:#fff\n    classDef guard    fill:#E74C3C,stroke:#C0392B,color:#fff\n    classDef store    fill:#1ABC9C,stroke:#17A589,color:#fff\n    classDef fw       fill:#95A5A6,stroke:#717D7E,color:#fff\n    classDef endpoint fill:#3498DB,stroke:#2471A3,color:#fff\n    class apply_for_loan_3d3950,approve_loan_168e79,broadcast_all_users_c8ea78,bulk_export_e2d7a1,bulk_export_all_customers_dd54ab,buy_asset_516213,buy_crypto_487b48,call_internal_service_e9bd8a,cancel_payment_2bf35c,cancel_task_416daa,check_sanctions_68fe9a,check_transaction_limits_5fda15,convert_funds_50854f,create_document_20506b,delete_audit_entry_52d836,delete_document_e4c4ba,delete_user_aeded9,export_all_audit_logs_50237d,export_customer_data_e6a7b2,fetch_external_feed_7ab9c8,fetch_market_report_391e7c,file_suspicious_activity_report_98566e,flag_transaction_786d30,freeze_card_e86554,generate_report_b85d8e,get_account_a52d00,get_admin_actions_d80a21,get_all_kyc_statuses_5fb8f2,get_audit_log_638e1d,get_available_assets_262619,get_card_details_b43392,get_card_transactions_e33d2d,get_crypto_price_1b28a7,get_customer_summary_6ef45c,get_document_5918e4,get_exchange_rate_915470,get_flagged_transactions_c36af1,get_fraud_score_d9fcec,get_high_risk_accounts_a4adfb,get_kyc_status_e72d50,get_loan_details_7b5fab,get_market_summary_f89f1d,get_notification_history_41f6ce,get_payment_status_b00a86,get_pending_compliance_items_84f779,get_portfolio_d3c729,get_price_1b27d5,get_regulatory_report_3a9262,get_regulatory_requirements_d044fb,get_service_health_e265f5,get_wallet_address_b1a4ab,grant_admin_role_055995,initiate_payment_fa5bc0,invoke_admin_api_cfeb61,list_all_accounts_9b285a,list_all_users_b3cd1a,list_customer_documents_28bfdf,list_scheduled_tasks_e7ec32,list_supported_currencies_a7d6c2,override_compliance_061863,override_kyc_b51efc,reject_loan_4d8229,reset_user_password_956f0d,run_task_immediately_191476,schedule_task_70ec50,sell_asset_96e01f,send_alert_7230af,send_otp_4aac40,stream_all_transactions_20ecc7,submit_kyc_document_b5d8bb,transfer_crypto_79710e,transfer_funds_26b7c4,unfreeze_card_f8d0cf,update_account_status_22773e,view_user_sessions_905482,waive_aml_check_57dc5f,whitelist_account_7c67c9,browser_automation_6ad078,generic_182975 tool\n    class command_r_plus_9f25d0,gpt_4o_998a00 model\n    class generic_c04266 prompt\n    class sqlalchemy_46a456,redis_2d4f12,sqlite_fb4a26 store\n    class framework_langchain_6d6de7,langgraph_63826b,fintech_accounts_12cb7b fw\n    class generic_67de81,0_0_0_0_8080__sse__316bd6 endpoint\n```",
+  "_enrichment_cache_key": "0962f415c90b6f1eb26a36f76a0a4b9ee4a18d87e2e8051be3ccfe9d8fe62dbb"
 }

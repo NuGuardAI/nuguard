@@ -957,6 +957,12 @@ class AiSbomExtractor:
                     node.metadata.request_body_schema = {
                         str(k): str(v) for k, v in _rbs.items()
                     }
+                _cpf = acc.metadata.get("context_payload_fields")
+                if isinstance(_cpf, dict) and _cpf:
+                    existing = node.metadata.context_payload_fields or {}
+                    merged = {str(k): str(v) for k, v in _cpf.items()}
+                    merged.update(existing)  # existing node values win on conflict
+                    node.metadata.context_payload_fields = merged
             # server_name for all MCP FRAMEWORK/TOOL nodes
             if acc.metadata.get("framework") == "mcp-server":
                 if acc.metadata.get("server_name"):

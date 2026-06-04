@@ -48,6 +48,21 @@ _PROMPT_FIELD_NAMES = {
 
 _RESPONSE_FIELD_NAMES = {"response", "content", "answer", "text", "reply", "message", "output"}
 
+# Static identity fields — same value for all requests; sourced from login response or config.
+_IDENTITY_FIELD_NAMES = frozenset({
+    "user_id", "userId", "tenant_id", "tenantId",
+    "account_id", "accountId", "customer_id", "customerId",
+    "org_id", "orgId", "organization_id", "organizationId",
+    "workspace_id", "workspaceId", "project_id", "projectId",
+    "subscription_id", "subscriptionId", "user", "username", "login",
+})
+
+# Dynamic session fields — change per conversation; auto-generated as UUID when missing.
+_SESSION_FIELD_NAMES = frozenset({
+    "session_id", "sessionId", "conversation_id", "conversationId",
+    "thread_id", "threadId", "chat_id", "chatId", "request_id", "requestId",
+})
+
 _CONFIDENCE = 0.90
 
 
@@ -116,11 +131,32 @@ def _infer_response_text_key(fields: dict[str, str]) -> str | None:
     return None
 
 
+def _infer_context_payload_fields(
+    fields: dict[str, str],
+    chat_key: str | None,
+) -> dict[str, str]:
+    """Return ``{field_name: kind}`` for non-chat context fields in a POST body schema.
+
+    ``kind`` is ``'identity'`` (static per user — user_id, tenant_id, etc.) or
+    ``'session'`` (dynamic per conversation — session_id, thread_id, etc.).
+    The chat field is excluded.
+    """
+    result: dict[str, str] = {}
+    for name in fields:
+        if name == chat_key:
+            continue
+        if name in _IDENTITY_FIELD_NAMES or name.lower() in {f.lower() for f in _IDENTITY_FIELD_NAMES}:
+            result[name] = "identity"
+        elif name in _SESSION_FIELD_NAMES or name.lower() in {f.lower() for f in _SESSION_FIELD_NAMES}:
+            result[name] = "session"
+    return result
+
+
 def _extract_endpoint_schema(
     func_def: ast.FunctionDef | ast.AsyncFunctionDef,
     model_schemas: dict[str, dict[str, str]],
-) -> tuple[dict[str, str], str | None, bool, str | None]:
-    """Return ``(schema_dict, chat_payload_key, chat_payload_list, response_text_key)``."""
+) -> tuple[dict[str, str], str | None, bool, str | None, dict[str, str]]:
+    """Return ``(schema_dict, chat_payload_key, chat_payload_list, response_text_key, context_fields)``."""
     for arg in func_def.args.args:
         if arg.annotation is None:
             continue
@@ -136,8 +172,9 @@ def _extract_endpoint_schema(
                 ret_name = ret.id if isinstance(ret, ast.Name) else None
                 if ret_name and ret_name in model_schemas:
                     resp_key = _infer_response_text_key(model_schemas[ret_name])
-            return fields, key, is_list, resp_key
-    return {}, None, False, None
+            ctx_fields = _infer_context_payload_fields(fields, key)
+            return fields, key, is_list, resp_key, ctx_fields
+    return {}, None, False, None, {}
 
 
 def _extract_depends_auth_type(
@@ -291,7 +328,7 @@ class FastAPIAdapter(FrameworkAdapter):
                 if ep_auth is None:
                     ep_auth = _extract_security_auth_type(decorator, auth_vars)
 
-                schema, chat_key, chat_list, resp_key = _extract_endpoint_schema(
+                schema, chat_key, chat_list, resp_key, ctx_fields = _extract_endpoint_schema(
                     node, model_schemas
                 )
 
@@ -310,6 +347,8 @@ class FastAPIAdapter(FrameworkAdapter):
                     metadata["chat_payload_list"] = chat_list
                 if resp_key:
                     metadata["response_text_key"] = resp_key
+                if ctx_fields:
+                    metadata["context_payload_fields"] = ctx_fields
 
                 ep_detection = ComponentDetection(
                     component_type=ComponentType.API_ENDPOINT,

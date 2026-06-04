@@ -52,9 +52,11 @@ from nuguard.common.console import _console
 from nuguard.common.console import print_turn as _common_print_turn
 from nuguard.common.rate_limit import (
     SCENARIO_MAX_RATE_LIMIT_RETRIES,
+    TRANSIENT_ERROR_RETRY_DELAYS,
     is_rate_limited,
     scenario_rate_limit_backoff,
 )
+from nuguard.redteam.llm_engine.refusal_patterns import APP_TRANSIENT_ERROR_PATTERNS
 
 if TYPE_CHECKING:
     from nuguard.behavior.models import IntentProfile
@@ -628,6 +630,24 @@ class BehaviorRunner:
             _log.debug("_build_client: bootstrap skipped: %s", exc)
             bootstrap_headers = getattr(runtime, "initial_headers", {}) or {}
 
+        # Merge login-response identity/session fields and SBOM context hints
+        # into chat_payload_extras so the correct user identity is sent in every
+        # request (covers apps like Pinnacle Bank where user_id is a body field).
+        from nuguard.common.session_resolver import (  # noqa: PLC0415
+            _merge_login_response_extras,
+            apply_sbom_context_hints,
+        )
+        _config_extras: dict = dict(getattr(self._config, "chat_payload_extras", None) or {})
+        _merged_extras, _login_notes = _merge_login_response_extras(
+            self._auth_session, _config_extras
+        )
+        _login_extras = self._auth_session.login_response_extras() if self._auth_session else {}
+        _merged_extras, _hint_notes = apply_sbom_context_hints(
+            self._sbom, endpoint or "/chat", _merged_extras, _login_extras
+        ) if self._sbom is not None else (_merged_extras, [])
+        for _note in _login_notes + _hint_notes:
+            _log.info("behavior _build_client: %s", _note)
+
         client = build_target_app_client(
             target_url=target_url,
             endpoint=endpoint,
@@ -640,7 +660,7 @@ class BehaviorRunner:
             sbom=self._sbom,
             adk_cfg=getattr(self._config, "adk", None),
             explicitly_set=getattr(self._config, "model_fields_set", set()),
-            payload_extras=getattr(self._config, "chat_payload_extras", None) or None,
+            payload_extras=_merged_extras or None,
         )
         # Prepend pre-bootstrap URL notes (already resolved above) so they appear
         # first; build_target_app_client won't re-add them since the URL matches.
@@ -648,6 +668,7 @@ class BehaviorRunner:
             client.resolution_notes = _url_notes + client.resolution_notes
         if auth_config_note:
             client.resolution_notes.append(auth_config_note)
+        client.resolution_notes.extend(_login_notes + _hint_notes)
         # Keep resolved URL in sync with what the client resolved (e.g. framework adapter).
         self._resolved_target_url = client.base_url
         return client
@@ -774,6 +795,12 @@ class BehaviorRunner:
         # recorded as FAIL.
         _rate_limit_retries: int = 0
         _rate_limit_retry_message: str | None = None
+        # Transient-error warm-up state — tracks retries for app-level cold-start
+        # errors (HTTP 200 but the orchestrator returned a connection-failure fallback).
+        # Each retry waits TRANSIENT_ERROR_RETRY_DELAYS[attempt] seconds to let
+        # the target container finish its cold-start.
+        _transient_retry_idx: int = 0
+        _transient_retry_message: str | None = None
 
         # v5: per-turn response context for reactive message adaptation
         last_turn_context: TurnContext | None = None
@@ -816,6 +843,12 @@ class BehaviorRunner:
             if _rate_limit_retry_message is not None:
                 message = _rate_limit_retry_message
                 _rate_limit_retry_message = None
+
+            # 0a2. Transient-error warm-up retry — replay the same message after
+            #      waiting for the cold-starting container to become available.
+            elif _transient_retry_message is not None:
+                message = _transient_retry_message
+                _transient_retry_message = None
 
             # 0b. Inter-turn confirmation reply — takes priority over new messages.
             #     Sent as-is (no _adapt_message) so the agent receives a clean "yes".
@@ -925,11 +958,38 @@ class BehaviorRunner:
                 # Treat any HTTP error response as a failure so the circuit
                 # breaker also fires for persistent 4xx (e.g. 405, 400, 422)
                 # which the TargetAppClient returns as strings, not exceptions.
+                # Also handle app-level transient errors (HTTP 200 but the backend
+                # returned a connection-failure fallback, e.g. MCP cold-start on
+                # Azure Container Apps): retry after a warm-up delay so the
+                # container has time to finish starting before the next attempt.
+                # Only count as a failure once all warm-up retries are exhausted.
                 if response.startswith("[HTTP ") or response.startswith("[REQUEST_ERROR:"):
                     send_error = response
+                elif any(pat in response.lower() for pat in APP_TRANSIENT_ERROR_PATTERNS):
+                    if _transient_retry_idx < len(TRANSIENT_ERROR_RETRY_DELAYS):
+                        delay_s = TRANSIENT_ERROR_RETRY_DELAYS[_transient_retry_idx]
+                        _transient_retry_idx += 1
+                        _transient_retry_message = message
+                        _console.print(
+                            f"  [yellow]⏳ Target transient error (cold-start?) — "
+                            f"waiting {delay_s:.0f}s before retry "
+                            f"({_transient_retry_idx}/{len(TRANSIENT_ERROR_RETRY_DELAYS)})[/yellow]"
+                        )
+                        _log.info(
+                            "_run_scenario: transient error detected, waiting %.0fs | "
+                            "scenario=%s turn=%d retry=%d",
+                            delay_s, scenario.name, turn_idx + 1, _transient_retry_idx,
+                        )
+                        await asyncio.sleep(delay_s)
+                        continue
+                    else:
+                        # All warm-up retries exhausted — count as failure.
+                        _transient_retry_idx = 0
+                        send_error = response
                 else:
                     consecutive_failures = 0  # reset only on a real reply
                     _rate_limit_retries = 0   # reset on successful reply
+                    _transient_retry_idx = 0  # reset on a genuine response
             except Exception as exc:
                 send_error = str(exc)
                 _log.warning("_run_scenario turn %d: send failed: %s", turn_idx + 1, exc)

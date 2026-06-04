@@ -35,6 +35,20 @@ _PROMPT_FIELD_NAMES = {
     "transcript", "question", "content", "msg",
 }
 
+# Mirrors the same sets in fastapi_adapter — keep in sync.
+_IDENTITY_FIELD_NAMES = frozenset({
+    "user_id", "userId", "tenant_id", "tenantId",
+    "account_id", "accountId", "customer_id", "customerId",
+    "org_id", "orgId", "organization_id", "organizationId",
+    "workspace_id", "workspaceId", "project_id", "projectId",
+    "subscription_id", "subscriptionId", "user", "username", "login",
+})
+
+_SESSION_FIELD_NAMES = frozenset({
+    "session_id", "sessionId", "conversation_id", "conversationId",
+    "thread_id", "threadId", "chat_id", "chatId", "request_id", "requestId",
+})
+
 _CONFIDENCE = 0.90
 
 
@@ -95,12 +109,16 @@ def _parse_route_decorator(
     return receiver, path_str, methods
 
 
-def _infer_chat_payload_key(
-    func_def: ast.FunctionDef | ast.AsyncFunctionDef,
-) -> str | None:
-    """Scan function body for request payload .get("key") patterns."""
-    candidates: list[str] = []
+_REQUEST_ACCESSORS = frozenset({
+    "json", "form", "values", "data", "payload", "body", "json_data", "request_data",
+})
 
+
+def _collect_body_keys(
+    func_def: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> list[str]:
+    """Return all keys accessed via request.json.get("key") and similar patterns."""
+    candidates: list[str] = []
     for node in ast.walk(func_def):
         if not isinstance(node, ast.Call):
             continue
@@ -115,30 +133,45 @@ def _infer_chat_payload_key(
         key = first_arg.value
         if not key:
             continue
-
         receiver = func.value
         receiver_name = ""
         if isinstance(receiver, ast.Name):
             receiver_name = receiver.id
         elif isinstance(receiver, ast.Attribute):
             receiver_name = receiver.attr
-
-        if receiver_name in (
-            "json",
-            "form",
-            "values",
-            "data",
-            "payload",
-            "body",
-            "json_data",
-            "request_data",
-        ):
+        if receiver_name in _REQUEST_ACCESSORS:
             candidates.append(key)
+    return candidates
 
+
+def _infer_chat_payload_key(
+    func_def: ast.FunctionDef | ast.AsyncFunctionDef,
+) -> str | None:
+    """Scan function body for request payload .get("key") patterns."""
+    candidates = _collect_body_keys(func_def)
     for key in candidates:
         if key in _PROMPT_FIELD_NAMES:
             return key
     return candidates[0] if candidates else None
+
+
+def _infer_context_payload_fields(
+    func_def: ast.FunctionDef | ast.AsyncFunctionDef,
+    chat_key: str | None,
+) -> dict[str, str]:
+    """Return ``{field_name: kind}`` for identity/session body fields in a Flask handler."""
+    result: dict[str, str] = {}
+    lower_identity = {f.lower() for f in _IDENTITY_FIELD_NAMES}
+    lower_session = {f.lower() for f in _SESSION_FIELD_NAMES}
+    for name in _collect_body_keys(func_def):
+        if name == chat_key:
+            continue
+        nl = name.lower()
+        if name in _IDENTITY_FIELD_NAMES or nl in lower_identity:
+            result[name] = "identity"
+        elif name in _SESSION_FIELD_NAMES or nl in lower_session:
+            result[name] = "session"
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -258,8 +291,10 @@ class FlaskAdapter(FrameworkAdapter):
                 canon = f"flask:endpoint:{method}:{path_str}"
 
                 chat_key: str | None = None
+                ctx_fields: dict[str, str] = {}
                 if "POST" in [m.upper() for m in methods]:
                     chat_key = _infer_chat_payload_key(node)
+                    ctx_fields = _infer_context_payload_fields(node, chat_key)
 
                 metadata: dict[str, Any] = {
                     "framework": "flask",
@@ -269,6 +304,8 @@ class FlaskAdapter(FrameworkAdapter):
                     metadata["endpoint"] = path_str
                 if chat_key:
                     metadata["chat_payload_key"] = chat_key
+                if ctx_fields:
+                    metadata["context_payload_fields"] = ctx_fields
 
                 ep_detection = ComponentDetection(
                     component_type=ComponentType.API_ENDPOINT,

@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 from nuguard.common.llm_client import LLMClient
 from nuguard.common.rate_limit import (
     SCENARIO_MAX_RATE_LIMIT_RETRIES,
+    TRANSIENT_ERROR_RETRY_DELAYS,
     is_rate_limited,
     scenario_rate_limit_backoff,
 )
@@ -24,7 +25,7 @@ from nuguard.models.exploit_chain import HTTP_2XX_SENTINEL, ExploitChain, Exploi
 from nuguard.models.policy import CognitivePolicy
 from nuguard.redteam.llm_engine.adaptive_mutation import AdaptiveMutationStrategy
 from nuguard.redteam.llm_engine.happy_path import generate_happy_path_opener
-from nuguard.redteam.llm_engine.refusal_patterns import HARD_REFUSAL_TOKENS
+from nuguard.redteam.llm_engine.refusal_patterns import APP_TRANSIENT_ERROR_PATTERNS, HARD_REFUSAL_TOKENS
 from nuguard.redteam.llm_engine.response_evaluator import LLMResponseEvaluator
 from nuguard.redteam.policy_engine.evaluator import PolicyEvaluator, PolicyViolation
 from nuguard.redteam.target.action_logger import ActionLogger
@@ -438,24 +439,60 @@ class AttackExecutor:
             if self._turn_delay_seconds > 0 and results:
                 await asyncio.sleep(self._turn_delay_seconds)
 
-            try:
-                result = await self._execute_step(step, session, chain)
-            except TargetUnavailableError:
-                _log.warning(
-                    "Chain %s: target unavailable at step %s — resetting circuit breaker and aborting chain",
-                    chain.chain_id, step.step_id,
+            # Execute the step, with warm-up retries for app-level transient
+            # errors (Azure Container Apps minReplicas=0 cold-start: the
+            # orchestrator catches the MCP connection failure and returns HTTP 200
+            # "difficulty connecting" within 2-8 s).  Waiting gives the container
+            # time to finish starting before the next attempt.  Real HTTP/network
+            # errors are NOT retried here — they go straight to the circuit breaker.
+            _step_aborted = False
+            _transient_retry_idx = 0
+            while True:
+                try:
+                    result = await self._execute_step(step, session, chain)
+                except TargetUnavailableError:
+                    _log.warning(
+                        "Chain %s: target unavailable at step %s — resetting circuit breaker and aborting chain",
+                        chain.chain_id, step.step_id,
+                    )
+                    self._client.reset_circuit_breaker()
+                    chain.status = "aborted"
+                    _step_aborted = True
+                    break
+                _resp_lower_step = result.response.lower()
+                _is_step_transient = (
+                    any(pat in _resp_lower_step for pat in APP_TRANSIENT_ERROR_PATTERNS)
+                    and not result.response.startswith(("[HTTP ", "[REQUEST_ERROR:"))
+                    and not is_rate_limited(result.response)
                 )
-                self._client.reset_circuit_breaker()
-                chain.status = "aborted"
+                if _is_step_transient and _transient_retry_idx < len(TRANSIENT_ERROR_RETRY_DELAYS):
+                    delay_s = TRANSIENT_ERROR_RETRY_DELAYS[_transient_retry_idx]
+                    _transient_retry_idx += 1
+                    _log.info(
+                        "Chain %s step %s: transient error — waiting %.0fs "
+                        "(warm-up retry %d/%d)",
+                        chain.chain_id, step.step_id, delay_s,
+                        _transient_retry_idx, len(TRANSIENT_ERROR_RETRY_DELAYS),
+                    )
+                    await asyncio.sleep(delay_s)
+                    continue
+                break
+
+            if _step_aborted:
                 break
             results.append(result)
 
             # Track consecutive HTTP / network errors (mirrors behavior runner).
             # 429 rate-limit responses do not count — the target is alive.
+            # Also treat app-level transient error responses (HTTP 200 but the
+            # backend returned a connection-failure fallback message) the same
+            # as HTTP errors so chains abort after repeated cold-start failures.
             # Reset on any genuine reply.
+            _resp_lower_run = result.response.lower()
             if (
                 result.response.startswith("[HTTP ")
                 or result.response.startswith("[REQUEST_ERROR:")
+                or any(pat in _resp_lower_run for pat in APP_TRANSIENT_ERROR_PATTERNS)
             ) and not is_rate_limited(result.response):
                 _consecutive_failures += 1
                 if _consecutive_failures >= self.MAX_CONSECUTIVE_FAILURES:
@@ -856,6 +893,22 @@ class AttackExecutor:
         # is available, override the keyword-based success_signal_found with the
         # LLM's verdict.  Falls back to keyword result if the LLM is unavailable.
         is_client_error = response.startswith(("[REQUEST_ERROR:", "[HTTP "))
+        # Detect app-level transient errors: the target returned HTTP 200 but the
+        # response body is a backend connection-failure fallback (e.g. an orchestrator
+        # catching an MCP cold-start exception).  Treat identically to is_client_error —
+        # skip LLM eval, skip policy evaluation, and force success_signal_found=False
+        # so these responses never inflate findings.
+        _resp_lower = response.lower()
+        is_app_transient_error = (
+            not is_client_error
+            and any(pat in _resp_lower for pat in APP_TRANSIENT_ERROR_PATTERNS)
+        )
+        if is_app_transient_error:
+            result.success_signal_found = False
+            _log.debug(
+                "App transient error detected — skipping eval | chain=%s step=%s",
+                chain.chain_id, step.step_id,
+            )
         if step.use_llm_eval and not self._response_evaluator:
             _log.warning(
                 "LLM eval requested (step=%s) but no eval_llm is configured — "
@@ -863,7 +916,7 @@ class AttackExecutor:
                 "or NUGUARD_REDTEAM_EVAL_LLM_MODEL env var to enable LLM evaluation.",
                 step.step_id,
             )
-        if step.use_llm_eval and self._response_evaluator and not is_client_error:
+        if step.use_llm_eval and self._response_evaluator and not is_client_error and not is_app_transient_error:
             llm_eval = await self._response_evaluator.evaluate(
                 goal_type=chain.goal_type.value,
                 payload=payload,
@@ -890,6 +943,8 @@ class AttackExecutor:
         # Also skip when the response is a synthetic client-side error marker
         # (produced by TargetAppClient when the HTTP request itself fails) —
         # these are not real agent responses and must not be policy-evaluated.
+        # Similarly, skip for app-level transient errors to avoid false-positive
+        # policy violations on backend connection-failure fallback messages.
         is_http_error = (
             result.http_status_code is not None and result.http_status_code >= 400
         )
@@ -898,6 +953,7 @@ class AttackExecutor:
             and not step.target_path
             and not is_http_error
             and not is_client_error
+            and not is_app_transient_error
         ):
             result.policy_violations = self._evaluator.evaluate(
                 prompt=payload,
