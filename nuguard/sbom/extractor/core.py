@@ -33,7 +33,7 @@ import tempfile
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from ..adapters.base import (
     AdapterMatch,
@@ -221,6 +221,197 @@ def _extract_python_prompt_constants(
     return detections
 
 
+def _run_prompt_detector(
+    source: str,
+    rel_path: str,
+) -> "list[ComponentDetection]":
+    """Run :class:`PromptDetector` and convert results to ``ComponentDetection`` objects.
+
+    The ``PromptDetector`` returns ``Node`` objects; this bridge function
+    re-packages them so they flow through the standard ``_merge_detection``
+    pipeline (dedup, tier classification, evidence tracking).
+    """
+    from ..adapters.base import ComponentDetection  # noqa: PLC0415
+    from ..normalization import canonicalize_text  # noqa: PLC0415
+    from ..types import ComponentType  # noqa: PLC0415
+    from .prompt_detector import PromptDetector  # noqa: PLC0415
+
+    path = Path(rel_path)
+    try:
+        nodes = PromptDetector().detect(path, source)
+    except Exception:
+        return []
+
+    detections: list[ComponentDetection] = []
+    for node in nodes:
+        extras = node.metadata.extras if node.metadata else {}
+        content = extras.get("content", "")
+        detections.append(
+            ComponentDetection(
+                component_type=ComponentType.PROMPT,
+                canonical_name=canonicalize_text(node.name.lower()),
+                display_name=node.name,
+                adapter_name="prompt_detector",
+                priority=40,
+                confidence=node.confidence,
+                metadata={
+                    "role": "system",
+                    "content": content,
+                    "char_count": len(content),
+                    "is_template": extras.get("is_template", False),
+                    "injection_risk_score": extras.get("injection_risk_score", 0.0),
+                },
+                file_path=rel_path,
+                line=0,
+                snippet=content[:80] + ("..." if len(content) > 80 else ""),
+                evidence_kind="ast_prompt_detector",
+            )
+        )
+    return detections
+
+
+_PROMPT_DICT_NAME_RE = re.compile(
+    r"(?:prompt|persona|instruction|system_message)",
+    re.IGNORECASE,
+)
+_MIN_PROMPT_DICT_VALUE_LENGTH = 120
+
+
+def _extract_python_prompt_dicts(
+    source: str,
+    rel_path: str,
+) -> "list[ComponentDetection]":
+    """Detect prompt strings stored as values in module-level Python dicts.
+
+    Targets patterns like ``PROMPT_REGISTRY = {"key": "long prompt..."}``,
+    including the ``" ".join([...])`` fragment pattern.
+    """
+    import ast as _ast  # noqa: PLC0415
+
+    from ..adapters.base import ComponentDetection  # noqa: PLC0415
+    from ..normalization import canonicalize_text  # noqa: PLC0415
+    from ..types import ComponentType  # noqa: PLC0415
+
+    try:
+        tree = _ast.parse(source)
+    except SyntaxError:
+        return []
+
+    # First pass: collect module-level list/tuple string constants so that
+    # ``" ".join(_FRAGMENTS)`` can be resolved when the join argument is a
+    # variable reference rather than an inline list literal.
+    _module_lists: dict[str, list[str]] = {}
+    for node in _ast.iter_child_nodes(tree):
+        if isinstance(node, _ast.Assign) and len(node.targets) == 1:
+            t = node.targets[0]
+            if isinstance(t, _ast.Name) and isinstance(node.value, (_ast.List, _ast.Tuple)):
+                parts = []
+                for elt in node.value.elts:
+                    if isinstance(elt, _ast.Constant) and isinstance(elt.value, str):
+                        parts.append(elt.value)
+                    else:
+                        parts = []
+                        break
+                if parts:
+                    _module_lists[t.id] = parts
+
+    detections: list[ComponentDetection] = []
+
+    for node in _ast.iter_child_nodes(tree):
+        targets: list[str] = []
+        value: _ast.expr | None = None
+
+        if isinstance(node, _ast.Assign):
+            for t in node.targets:
+                if isinstance(t, _ast.Name):
+                    targets.append(t.id)
+            value = node.value
+        elif isinstance(node, _ast.AnnAssign) and isinstance(node.target, _ast.Name):
+            targets.append(node.target.id)
+            value = node.value
+
+        if not targets or value is None or not isinstance(value, _ast.Dict):
+            continue
+
+        for var_name in targets:
+            if not _PROMPT_DICT_NAME_RE.search(var_name):
+                continue
+
+            for dk, dv in zip(value.keys, value.values):
+                dict_key = dk.value if isinstance(dk, _ast.Constant) and isinstance(dk.value, str) else None
+                if dict_key is None:
+                    continue
+
+                prompt_text = _resolve_dict_value(dv, _module_lists)
+                if prompt_text is None or len(prompt_text) < _MIN_PROMPT_DICT_VALUE_LENGTH:
+                    continue
+
+                canon = canonicalize_text(f"{var_name}_{dict_key}".lower())
+                template_vars = re.findall(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}", prompt_text)
+                detections.append(
+                    ComponentDetection(
+                        component_type=ComponentType.PROMPT,
+                        canonical_name=canon,
+                        display_name=f"{var_name}[{dict_key}]",
+                        adapter_name="python_prompt_dict",
+                        priority=45,
+                        confidence=0.82,
+                        metadata={
+                            "role": "system" if "system" in dict_key.lower() else "unspecified",
+                            "content": prompt_text[:500],
+                            "char_count": len(prompt_text),
+                            "is_template": bool(template_vars),
+                            "template_variables": template_vars,
+                            "dict_name": var_name,
+                            "dict_key": dict_key,
+                        },
+                        file_path=rel_path,
+                        line=getattr(dk, "lineno", 0),
+                        snippet=prompt_text[:80] + ("..." if len(prompt_text) > 80 else ""),
+                        evidence_kind="ast_dict_value",
+                    )
+                )
+
+    return detections
+
+
+def _resolve_dict_value(
+    node: Any,
+    module_lists: dict[str, list[str]] | None = None,
+) -> str | None:
+    """Extract a string from an AST node, handling ``" ".join([...])``."""
+    import ast as _ast  # noqa: PLC0415
+
+    if isinstance(node, _ast.Constant) and isinstance(node.value, str):
+        return node.value
+
+    if isinstance(node, _ast.JoinedStr):
+        return None
+
+    # " ".join([...]) or " ".join(variable)
+    if isinstance(node, _ast.Call) and isinstance(node.func, _ast.Attribute):
+        if (
+            node.func.attr == "join"
+            and isinstance(node.func.value, _ast.Constant)
+            and isinstance(node.func.value.value, str)
+            and node.args
+        ):
+            sep = node.func.value.value
+            arg = node.args[0]
+            if isinstance(arg, (_ast.List, _ast.Tuple)):
+                parts: list[str] = []
+                for elt in arg.elts:
+                    if isinstance(elt, _ast.Constant) and isinstance(elt.value, str):
+                        parts.append(elt.value)
+                    else:
+                        return None
+                return sep.join(parts)
+            if isinstance(arg, _ast.Name) and module_lists and arg.id in module_lists:
+                return sep.join(module_lists[arg.id])
+
+    return None
+
+
 _IAC_EXTENSIONS = {".tf", ".tfvars", ".hcl", ".bicep", ".jinja", ".yaml", ".yml", ".json"}
 # Bicep and Jinja IaC-specific extensions (not processed by the generic YAML phase)
 _BICEP_EXTENSIONS = {".bicep"}
@@ -242,7 +433,7 @@ _SCRIPT_EXTENSIONS = {".sh", ".bash", ".zsh", ".fish", ".ps1"}
 
 
 def _should_skip_path_parts(parts: tuple[str, ...]) -> bool:
-    skip_dirs = {".git", "__pycache__", "node_modules", ".tox", ".claude", "site-packages", ".mypy_cache", ".pytest_cache", ".ruff_cache", ".pytype", "logs", "log", "reports"}
+    skip_dirs = {".git", "__pycache__", "node_modules", ".tox", ".claude", "site-packages", ".mypy_cache", ".pytest_cache", ".ruff_cache", ".pytype", "logs", "log", "reports", "nuguard-test-results", "test-results"}
     for part in parts:
         if part in skip_dirs:
             return True
@@ -327,6 +518,29 @@ class _NodeAccumulator:
     # Source-tier tracking (populated by _merge_detection)
     source_tiers: set[str] = field(default_factory=set)
     best_tier_rank: int = 99  # 0=code, 1=iac, 2=docs; 99=uninitialised
+
+
+def _load_gitignore_matcher(root: Path) -> "Callable[[str], bool] | None":
+    """Return a predicate that matches paths against the repo's ``.gitignore``.
+
+    Returns ``None`` when no ``.gitignore`` exists or the ``pathspec`` library
+    is unavailable (graceful degradation).
+    """
+    gitignore_path = root / ".gitignore"
+    if not gitignore_path.is_file():
+        return None
+    try:
+        import pathspec  # noqa: PLC0415
+    except ImportError:
+        _log.debug(".gitignore found but pathspec not installed; skipping")
+        return None
+    try:
+        patterns = gitignore_path.read_text(encoding="utf-8", errors="ignore")
+        spec = pathspec.PathSpec.from_lines("gitwildmatch", patterns.splitlines())
+        return spec.match_file  # type: ignore[return-value]
+    except Exception as exc:
+        _log.warning("failed to parse .gitignore: %s", exc)
+        return None
 
 
 class AiSbomExtractor:
@@ -545,6 +759,15 @@ class AiSbomExtractor:
                         # prompt-only modules (e.g. prompts.py with no langchain imports)
                         # are still processed.
                         for det in _extract_python_prompt_constants(parse_result, rel_path):
+                            self._merge_detection(node_map, det)
+
+                        # Phase 1a″: PromptDetector — system-prompt variables,
+                        # f-string prompts, and dict-based {role: "system"} messages.
+                        for det in _run_prompt_detector(content, rel_path):
+                            self._merge_detection(node_map, det)
+
+                        # Phase 1a‴: dict-based prompt stores (PROMPT_REGISTRY, etc.)
+                        for det in _extract_python_prompt_dicts(content, rel_path):
                             self._merge_detection(node_map, det)
 
             # Phase 1b: SQL schema — data classification
@@ -1970,6 +2193,9 @@ class AiSbomExtractor:
 
     @staticmethod
     def _iter_files(root: Path, config: AiSbomConfig) -> Iterator[tuple[Path, int]]:
+        import fnmatch as _fnmatch  # noqa: PLC0415
+
+        _gitignore_match = _load_gitignore_matcher(root) if getattr(config, "honor_gitignore", True) else None
         count = 0
         for dirpath, dirnames, filenames in os.walk(root):
             # Keep traversal deterministic and prune irrelevant dirs early.
@@ -2000,6 +2226,27 @@ class AiSbomExtractor:
                 if name_lower in {"cognitive_policy.md", "cognitive_policy.json"}:
                     continue
                 if name_lower.endswith("sbom.json") or name_lower.endswith("aibom.json"):
+                    continue
+                if name_lower.endswith(".sbom.enriched.json"):
+                    continue
+                if name_lower.startswith("redteam-prompts-"):
+                    continue
+                if name_lower.startswith("nuguard-sbom-") and suffix in {".yaml", ".yml"}:
+                    continue
+                if name_lower in {"mcp_test_results.json", "canary.json"}:
+                    continue
+                # User-configured exclude patterns
+                if config.exclude_patterns:
+                    _rel = str(path.relative_to(root))
+                    if any(
+                        _fnmatch.fnmatch(_rel, pat) or _fnmatch.fnmatch(filename, pat)
+                        for pat in config.exclude_patterns
+                    ):
+                        continue
+                # .gitignore support
+                if _gitignore_match is not None and _gitignore_match(
+                    str(path.relative_to(root))
+                ):
                     continue
                 try:
                     size = path.stat().st_size
