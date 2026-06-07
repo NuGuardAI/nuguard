@@ -561,6 +561,28 @@ def extract_iac_security_context(nodes: Sequence[Node]) -> dict[str, Any]:
         "security_findings": security_findings,
         "iam_principals": _uniq(iam_principals),
         "service_accounts": _uniq(service_accounts),
+        "github_actions_content": "\n---\n".join(
+            meta.extras.get("workflow_content", "")
+            for node in nodes
+            for meta in [node.metadata]
+            if meta.extras.get("iac_format") == "github_actions"
+            and meta.extras.get("workflow_content")
+        ),
+        "workflow_security_findings": list({
+            (f["rule_signal"], f.get("line", 0)): f
+            for node in nodes
+            for meta in [node.metadata]
+            if meta.extras.get("iac_format") == "github_actions"
+            for f in meta.extras.get("workflow_security_findings", [])
+        }.values()),
+        "k8s_network_policy_namespaces": sorted({
+            meta.extras.get("k8s_namespace", "")
+            for node in nodes
+            for meta in [node.metadata]
+            if meta.extras.get("iac_format") == "kubernetes"
+            and meta.extras.get("is_network_policy_namespace") is True
+            and meta.extras.get("k8s_namespace")
+        }),
     }
 
 

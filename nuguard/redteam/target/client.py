@@ -294,6 +294,31 @@ class TargetAppClient:
             )
         self._consecutive_errors = 0
 
+    def set_chat_endpoint(
+        self,
+        path: str,
+        payload_key: str,
+        payload_list: bool = False,
+        response_key: str | None = None,
+    ) -> None:
+        """Replace the configured chat endpoint without rebuilding the client.
+
+        Used for endpoint rotation when the primary endpoint returns 405/404.
+        Resets the circuit breaker so the new path starts with a clean slate.
+        """
+        _log.info(
+            "set_chat_endpoint: rotating from %s → %s (key=%s)",
+            self._chat_path, path, payload_key,
+        )
+        self._chat_path = path
+        self._chat_payload_key = payload_key
+        self._chat_payload_list = payload_list
+        if response_key is not None:
+            self._chat_response_key = response_key
+        # Clear auto-detected response key so it is re-detected for the new endpoint
+        self._detected_response_key = None
+        self.reset_circuit_breaker()
+
     def update_default_headers(self, headers: dict[str, str] | None) -> None:
         """Merge headers into the default client headers for subsequent requests."""
         if not headers:

@@ -1414,8 +1414,13 @@ class BehaviorRunner:
                 chain_id="behavior-pre-scan",
             )
             _use_case = getattr(self._intent, "app_purpose", "") if self._intent else ""
+            from nuguard.common.endpoint_probe import (  # noqa: PLC0415
+                discover_chat_candidates_from_sbom as _disc_candidates,
+            )
+            _disc_fallbacks = list(_disc_candidates(self._sbom)[1:]) if self._sbom else []
             profile = await run_discovery_conversation(
-                client, _disc_session, use_case=_use_case, max_turns=2
+                client, _disc_session, use_case=_use_case, max_turns=2,
+                fallback_endpoints=_disc_fallbacks[:4],
             )
             _log.info(
                 "behavior pre-scan discovery: name=%r ids=%s turns=%d",
@@ -1495,9 +1500,12 @@ class BehaviorRunner:
             _log.error("BehaviorRunner.run: could not build client: %s", exc)
             raise
 
+        # Reset endpoint rotation state for this run.
+        self._rotated_chat_endpoint: "tuple[str, str, bool, str | None] | None" = None
+
         # Pre-scan discovery: connect to the live agent and extract the
         # authenticated user's real name + IDs before generating test payloads.
-        # Failures are non-fatal.
+        # On HTTP 405/404, rotate through ranked SBOM candidates before giving up.
         self._pre_scan_profile: "DiscoveredProfile | None" = None
         if pre_scan_profile is not None:
             # Caller already ran discovery — reuse the profile, skip HTTP round-trip.
@@ -1509,6 +1517,9 @@ class BehaviorRunner:
         else:
             _console.rule("[bold cyan]Pre-scan Discovery[/bold cyan]", style="dim cyan")
             try:
+                from nuguard.common.endpoint_probe import (  # noqa: PLC0415
+                    discover_chat_candidates_from_sbom as _discover_candidates,
+                )
                 from nuguard.redteam.target.discovery import (
                     run_discovery_conversation,  # noqa: PLC0415
                 )
@@ -1519,11 +1530,13 @@ class BehaviorRunner:
                     chain_id="behavior-pre-scan",
                 )
                 _use_case = getattr(self._intent, "app_purpose", "") if self._intent else ""
+                _sbom_fallbacks = list(_discover_candidates(self._sbom)[1:]) if self._sbom else []
                 self._pre_scan_profile = await run_discovery_conversation(
                     client,
                     _disc_session,
                     use_case=_use_case or "",
                     max_turns=2,
+                    fallback_endpoints=_sbom_fallbacks[:4],
                 )
                 _log.info(
                     "behavior pre-scan discovery: name=%r ids=%s",
@@ -1533,6 +1546,83 @@ class BehaviorRunner:
             except Exception as _disc_exc:
                 _log.warning("behavior pre-scan discovery failed (non-fatal): %s", _disc_exc)
                 _console.print(f"  [yellow]Pre-scan discovery failed (non-fatal): {_disc_exc}[/yellow]")
+
+        # Pre-flight endpoint validation: send a single test request to verify the
+        # configured chat endpoint is reachable before launching all scenarios.
+        # On 405/404, rotate through ranked SBOM candidates then fall back to live
+        # probing.  Abort the run cleanly if no working endpoint is found.
+        _preflight_ok = True
+        try:
+            from nuguard.common.endpoint_probe import (  # noqa: PLC0415
+                discover_chat_candidates_from_sbom as _dcandidates,
+            )
+            from nuguard.common.endpoint_probe import (
+                probe_chat_endpoints as _probe,
+            )
+            from nuguard.redteam.target.session import AttackSession as _PF_AS  # noqa: PLC0415
+            _pf_session = _PF_AS(
+                session_id="preflight",
+                target_url=target_url or "",
+                chain_id="behavior-preflight",
+            )
+            _pf_resp, _ = await client.send("Hello", _pf_session)
+            if _pf_resp.startswith("[HTTP 405]") or _pf_resp.startswith("[HTTP 404]"):
+                _log.warning(
+                    "Pre-flight: chat endpoint returned %s — attempting rotation",
+                    _pf_resp[:15],
+                )
+                _remaining = list(_dcandidates(self._sbom)[1:]) if self._sbom else []
+                _rotated = False
+                for _ep in _remaining:
+                    client.set_chat_endpoint(_ep[0], _ep[1], _ep[2], _ep[3])
+                    _pf_r2, _ = await client.send("Hello", _pf_session)
+                    if not _pf_r2.startswith("[HTTP 405]") and not _pf_r2.startswith("[HTTP 404]"):
+                        _log.info("Pre-flight: rotated to working endpoint %s", _ep[0])
+                        _console.print(f"  [cyan]Endpoint rotated → {_ep[0]}[/cyan]")
+                        self._rotated_chat_endpoint = _ep
+                        _rotated = True
+                        break
+                if not _rotated and self._sbom is not None:
+                    # Live probe as last resort
+                    _bootstrap_hdrs: dict[str, str] = getattr(self._auth_session, "headers", lambda: {})() if self._auth_session else {}
+                    try:
+                        _probed = await _probe(target_url, self._sbom, auth_headers=_bootstrap_hdrs)
+                        if _probed:
+                            client.set_chat_endpoint(_probed[0], _probed[1], _probed[2])
+                            _log.info("Pre-flight: live probe found working endpoint %s", _probed[0])
+                            _console.print(f"  [cyan]Live probe → {_probed[0]}[/cyan]")
+                            self._rotated_chat_endpoint = (_probed[0], _probed[1], _probed[2], None)
+                            _rotated = True
+                    except Exception as _pe:
+                        _log.warning("Pre-flight live probe failed: %s", _pe)
+                if not _rotated:
+                    _console.print(
+                        "[bold red]⚠ Chat endpoint unreachable — all SBOM candidates and live "
+                        "probe returned 405/404.\n"
+                        "Check 'target_endpoint' in nuguard.yaml or re-run "
+                        "'nuguard sbom generate'.[/bold red]"
+                    )
+                    _log.error(
+                        "BehaviorRunner.run: aborting — no working chat endpoint found"
+                    )
+                    _preflight_ok = False
+        except Exception as _pf_exc:
+            _log.debug("Pre-flight check failed (non-fatal): %s", _pf_exc)
+
+        if not _preflight_ok:
+            return BehaviorRunResult(
+                run_id=run_id,
+                findings=[],
+                turn_records=[],
+                scenario_results=[],
+                scenarios_executed=0,
+                scan_outcome="aborted_endpoint_unreachable",
+                coverage=[],
+                config_notes=[
+                    "Chat endpoint unreachable: all SBOM candidates and live probe "
+                    "returned 405/404. Check 'target_endpoint' in nuguard.yaml.",
+                ],
+            )
 
         config_notes: list[str] = []
         for _note in (getattr(client, "resolution_notes", None) or []):
@@ -1575,8 +1665,19 @@ class BehaviorRunner:
 
         _isolate = bool(getattr(self._config, "isolate_scenarios", True))
 
+        # Run-level abort: if _RUN_ABORT_THRESHOLD consecutive scenarios each fail
+        # on their very first turn with HTTP 405, the chat endpoint is broken and
+        # we abort to avoid wasting time on hundreds of doomed scenarios.
+        _RUN_ABORT_THRESHOLD = 5
+        _abort_run = asyncio.Event()
+        _first_turn_405_count = 0
+        _abort_lock = asyncio.Lock()
+
         async def _run_one(i: int, scenario: object) -> "ScenarioResult | None":
+            nonlocal _first_turn_405_count
             async with sem:
+                if _abort_run.is_set():
+                    return None
                 _log.info(
                     "BehaviorRunner.run: executing scenario %d/%d: %s",
                     i + 1, len(scenarios), getattr(scenario, "name", "?"),
@@ -1587,8 +1688,37 @@ class BehaviorRunner:
                     f"[dim]{getattr(getattr(scenario, 'scenario_type', None), 'value', getattr(scenario, 'scenario_type', ''))}[/dim]"
                 )
                 _scenario_client = await self._build_client() if _isolate else client
+                # Apply any endpoint rotation discovered during pre-flight so each
+                # isolated scenario client uses the correct (non-broken) endpoint.
+                if _isolate and self._rotated_chat_endpoint:
+                    _scenario_client.set_chat_endpoint(*self._rotated_chat_endpoint)
                 try:
-                    return await self._run_scenario(scenario, _scenario_client, policy_evaluator)  # type: ignore[arg-type]
+                    result = await self._run_scenario(scenario, _scenario_client, policy_evaluator)  # type: ignore[arg-type]
+                    # Check if the first verdict was a first-turn 405 failure.
+                    _first_verdict = (result.verdicts if result else None or [][:1])
+                    _first_v = _first_verdict[0] if _first_verdict else None
+                    _is_first_turn_405 = (
+                        _first_v is not None
+                        and "[HTTP 405]" in str(_first_v.get("reasoning", ""))
+                    )
+                    async with _abort_lock:
+                        if _is_first_turn_405:
+                            _first_turn_405_count += 1
+                            if _first_turn_405_count >= _RUN_ABORT_THRESHOLD:
+                                _abort_run.set()
+                                _log.error(
+                                    "BehaviorRunner.run: aborting — %d consecutive "
+                                    "scenarios failed with HTTP 405 on first turn",
+                                    _first_turn_405_count,
+                                )
+                                _console.print(
+                                    f"[bold red]⚠ Aborting run: {_first_turn_405_count} "
+                                    "consecutive scenarios got HTTP 405 on the chat endpoint. "
+                                    "Check 'target_endpoint' in nuguard.yaml.[/bold red]"
+                                )
+                        else:
+                            _first_turn_405_count = 0
+                    return result
                 except Exception as exc:
                     _log.error(
                         "BehaviorRunner.run: scenario %s failed: %s",

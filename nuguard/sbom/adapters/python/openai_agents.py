@@ -151,6 +151,41 @@ class OpenAIAgentsAdapter(FrameworkAdapter):
                             )
                         )
 
+            # Agent handoffs: handoffs=[var_name, ...] → DELEGATES_TO edges
+            handoffs_raw = args.get("handoffs") or []
+            if isinstance(handoffs_raw, list):
+                for ref in handoffs_raw:
+                    if isinstance(ref, str) and ref.startswith("$"):
+                        target_name = ref[1:]  # strip "$" AST variable-ref prefix
+                        target_canon = canonicalize_text(f"openai_agents:{target_name}")
+                        rels.append(
+                            RelationshipHint(
+                                source_canonical=canon,
+                                source_type=ComponentType.AGENT,
+                                target_canonical=target_canon,
+                                target_type=ComponentType.AGENT,
+                                relationship_type="DELEGATES_TO",
+                            )
+                        )
+
+            # Guardrail bindings: input_guardrails=[var, ...] → PROTECTS edges
+            for _gk in ("input_guardrails", "output_guardrails"):
+                guardrail_refs = args.get(_gk) or []
+                if isinstance(guardrail_refs, list):
+                    for ref in guardrail_refs:
+                        if isinstance(ref, str) and ref.startswith("$"):
+                            g_name = ref[1:]
+                            g_canon = canonicalize_text(f"openai_agents:guardrail:{g_name}")
+                            rels.append(
+                                RelationshipHint(
+                                    source_canonical=g_canon,
+                                    source_type=ComponentType.GUARDRAIL,
+                                    target_canonical=canon,
+                                    target_type=ComponentType.AGENT,
+                                    relationship_type="PROTECTS",
+                                )
+                            )
+
             # If instructions is a function reference, find string literals from that function
             instructions_raw = args.get("instructions") or args.get("system_prompt", "")
             if (
@@ -260,11 +295,12 @@ class OpenAIAgentsAdapter(FrameworkAdapter):
                     or f"tool_{call.line}"
                 )
                 tool_canon = canonicalize_text(f"openai_agents:tool:{tool_name}")
+                _tool_display = tool_name.replace("_", " ").title()
                 detected.append(
                     ComponentDetection(
                         component_type=ComponentType.TOOL,
                         canonical_name=tool_canon,
-                        display_name=tool_name,
+                        display_name=_tool_display,
                         adapter_name=self.name,
                         priority=self.priority,
                         confidence=0.85,

@@ -1052,8 +1052,13 @@ class AiSbomExtractor:
             if len(acc.source_tiers) > 1:
                 acc.confidence = min(0.99, acc.confidence + 0.03 * (len(acc.source_tiers) - 1))
 
+            _raw_display = acc.display_name
+            # Normalize display names that are raw variable identifiers
+            if " " not in _raw_display:
+                from ..normalization import normalize_display_name as _norm_dn
+                _raw_display = _norm_dn(_raw_display, acc.component_type)
             node = Node(
-                name=acc.display_name,
+                name=_raw_display,
                 component_type=acc.component_type,
                 confidence=acc.confidence,
             )
@@ -1203,6 +1208,10 @@ class AiSbomExtractor:
                     node.metadata.request_body_schema = {
                         str(k): str(v) for k, v in _rbs.items()
                     }
+                    node.metadata.request_schema = dict(_rbs)
+                _resp_schema = acc.metadata.get("response_body_schema")
+                if isinstance(_resp_schema, dict) and _resp_schema:
+                    node.metadata.response_schema = dict(_resp_schema)
                 _cpf = acc.metadata.get("context_payload_fields")
                 if isinstance(_cpf, dict) and _cpf:
                     existing = node.metadata.context_payload_fields or {}
@@ -1281,6 +1290,20 @@ class AiSbomExtractor:
                 _rl = acc.metadata.get("has_resource_limits")
                 if _rl is not None:
                     node.metadata.has_resource_limits = bool(_rl)
+                _hnp = acc.metadata.get("has_network_policy")
+                if _hnp is not None:
+                    node.metadata.has_network_policy = bool(_hnp)
+            # MODEL node typed fields (source_url, integrity_hash, checksum)
+            if acc.component_type == ComponentType.MODEL:
+                _su = acc.metadata.get("source_url")
+                if _su:
+                    node.metadata.source_url = str(_su)
+                _ih = acc.metadata.get("integrity_hash")
+                if _ih:
+                    node.metadata.integrity_hash = str(_ih)
+                _cs = acc.metadata.get("checksum")
+                if _cs:
+                    node.metadata.checksum = str(_cs)
             # IAM node typed fields
             if acc.component_type == ComponentType.IAM:
                 _it = acc.metadata.get("iam_type")
@@ -1327,6 +1350,10 @@ class AiSbomExtractor:
             doc.nodes.append(node)
 
         self._resolve_edges(doc, node_map)
+
+        # Deduplicate DEPLOYMENT nodes: merge github-actions workflow nodes into
+        # the cloud-provider service nodes they deploy to.
+        _dedup_deployment_nodes(doc)
 
         # Phase CES: scan for Google Customer Engagement Suite deployments.
         # Runs after the main AST/regex loop so CES nodes can be appended.
@@ -1726,6 +1753,7 @@ class AiSbomExtractor:
             "ACCESSES": RelationshipType.ACCESSES,
             "PROTECTS": RelationshipType.PROTECTS,
             "DEPLOYS": RelationshipType.DEPLOYS,
+            "DELEGATES_TO": RelationshipType.DELEGATES_TO,
         }
 
         # Process explicit relationship hints
@@ -1747,7 +1775,14 @@ class AiSbomExtractor:
                 if edge_key in seen_edges:
                     continue
                 seen_edges.add(edge_key)
-                doc.edges.append(Edge(source=src_id, target=tgt_id, relationship_type=rel))
+                doc.edges.append(
+                    Edge(
+                        source=src_id,
+                        target=tgt_id,
+                        relationship_type=rel,
+                        access_type=getattr(hint, "access_type", None),
+                    )
+                )
 
         # Fallback edge inference — fills in edges not covered by explicit hints.
         by_type: dict[ComponentType, list[Node]] = {}
@@ -2308,7 +2343,8 @@ class AiSbomExtractor:
                 if path.name in {"CLAUDE.md", "AGENTS.md"}:
                     continue
                 # Skip NuGuard-specific config, policy, and output files
-                if path.name == "nuguard.yaml":
+                # Match any nuguard-prefixed config/output file, not just exact "nuguard.yaml"
+                if path.name.lower().startswith("nuguard") and suffix in {".yaml", ".yml", ".json"}:
                     continue
                 name_lower = path.name.lower()
                 if name_lower in {"cognitive_policy.md", "cognitive_policy.json"}:
@@ -2684,3 +2720,86 @@ def _suppress_non_code_model_datastore(
 
 def stable_id(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _dedup_deployment_nodes(doc: "AiSbomDocument") -> None:  # noqa: F821
+    """Merge GitHub Actions workflow DEPLOYMENT nodes into the cloud-provider
+    service nodes they deploy to, avoiding duplicate Azure/GHA entries.
+
+    When the same deployment is described by both a GitHub Actions workflow
+    node (deployment_target=github-actions) and one or more cloud-provider
+    nodes (deployment_target=azure, aws, gcp), the GHA node is merged into
+    the cloud node: CI/CD metadata (triggers, runners) is copied across, then
+    the GHA node is removed.
+    """
+    from ..types import ComponentType as _CT  # local import
+
+    deployment_nodes = [n for n in doc.nodes if n.component_type == _CT.DEPLOYMENT]
+
+    # Build index: deployment_target → list of nodes
+    by_target: dict[str, list] = {}
+    for node in deployment_nodes:
+        target = node.metadata.extras.get("deployment_target", "unknown")
+        by_target.setdefault(target, []).append(node)
+
+    gha_nodes = by_target.get("github-actions", [])
+    generic_nodes = by_target.get("unknown", []) + [
+        n for n in deployment_nodes
+        if n.metadata.extras.get("adapter") == "deployment_generic"
+    ]
+    nodes_to_remove = []
+
+    # Remove generic deployment nodes when real IaC nodes already cover the same platform
+    real_iac_targets = {
+        t for t in by_target
+        if t not in ("unknown", "github-actions")
+        and any(
+            n.metadata.extras.get("adapter") != "deployment_generic"
+            for n in by_target[t]
+        )
+    }
+    gha_cloud_providers: set[str] = set()
+    for gha in gha_nodes:
+        gha_cloud_providers.update(gha.metadata.extras.get("cloud_providers") or [])
+
+    for generic_node in generic_nodes:
+        # Drop generic nodes when a real IaC node covers the same cloud, or when there
+        # are GHA nodes that already represent the deployment CI/CD pipeline
+        if real_iac_targets or gha_nodes:
+            if generic_node not in nodes_to_remove:
+                nodes_to_remove.append(generic_node)
+
+    # Merge GitHub Actions workflow nodes into the cloud-provider nodes they deploy to
+    for gha_node in gha_nodes:
+        if gha_node in nodes_to_remove:
+            continue
+        cloud_providers: list[str] = gha_node.metadata.extras.get("cloud_providers") or []
+        for provider in cloud_providers:
+            cloud_nodes = [
+                n for n in by_target.get(provider, [])
+                if n not in nodes_to_remove
+                and n.metadata.extras.get("adapter") != "deployment_generic"
+            ]
+            if len(cloud_nodes) == 1:
+                # Merge CI/CD metadata from the GHA workflow node into the cloud node
+                target_node = cloud_nodes[0]
+                gha_extras = gha_node.metadata.extras
+                target_extras = target_node.metadata.extras
+                for key in ("workflow_triggers", "runners", "uses_oidc", "secret_store"):
+                    if key not in target_extras and gha_extras.get(key) is not None:
+                        target_extras[key] = gha_extras[key]
+                # Merge evidence (deduplicated)
+                existing_locs = {
+                    (e.location.path if e.location else None) for e in target_node.evidence
+                }
+                for ev in gha_node.evidence:
+                    ev_path = ev.location.path if ev.location else None
+                    if ev_path not in existing_locs:
+                        target_node.evidence.append(ev)
+                        existing_locs.add(ev_path)
+                nodes_to_remove.append(gha_node)
+                break  # only merge into one cloud node per GHA node
+
+    for node in nodes_to_remove:
+        if node in doc.nodes:
+            doc.nodes.remove(node)

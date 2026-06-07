@@ -145,6 +145,7 @@ async def run_discovery_conversation(
     session: "AttackSession",
     use_case: str = "",
     max_turns: int = 3,
+    fallback_endpoints: "list[tuple[str, str, bool, str | None]] | None" = None,
 ) -> DiscoveredProfile:
     """Send up to *max_turns* messages to the live agent and extract the
     authenticated user's real name, IDs, and booking/account references.
@@ -159,6 +160,10 @@ async def run_discovery_conversation(
         use_case: Short description of the application purpose (from SBOM summary).
                   Drives domain-specific opener selection.
         max_turns: Maximum HTTP turns to attempt (default 3).
+        fallback_endpoints: Optional ranked list of ``(path, key, list, resp_key)``
+            tuples to rotate through when the primary endpoint returns 405/404.
+            Each fallback is tried once per turn; on success the client's chat
+            endpoint is updated in place for subsequent turns.
 
     Returns:
         :class:`DiscoveredProfile` — empty when nothing was extracted.
@@ -166,6 +171,7 @@ async def run_discovery_conversation(
     messages = _domain_messages(use_case)[:max_turns]
     profile = DiscoveredProfile()
     all_responses: list[str] = []
+    _fallbacks: list[tuple[str, str, bool, str | None]] = list(fallback_endpoints or [])
 
     for i, message in enumerate(messages):
         _log.info("discovery turn %d/%d: %s", i + 1, len(messages), message[:80])
@@ -176,6 +182,23 @@ async def run_discovery_conversation(
             break
 
         profile.turns_sent += 1
+
+        # On 405/404: rotate to next candidate endpoint before giving up
+        if _fallbacks and (
+            response.startswith("[HTTP 405]") or response.startswith("[HTTP 404]")
+        ):
+            next_ep = _fallbacks.pop(0)
+            _log.info(
+                "discovery: %s on current endpoint — rotating to %s (key=%s)",
+                response[:15], next_ep[0], next_ep[1],
+            )
+            client.set_chat_endpoint(next_ep[0], next_ep[1], next_ep[2], next_ep[3])
+            try:
+                response, _ = await client.send(message, session=session)
+                profile.turns_sent += 1
+            except Exception as exc:
+                _log.info("discovery turn %d (rotated endpoint) failed: %s", i + 1, exc)
+                break
 
         if not response or response.startswith("[HTTP ") or response.startswith("[REQUEST_ERROR:"):
             _log.info("discovery turn %d: non-usable response (%s)", i + 1, response[:60])

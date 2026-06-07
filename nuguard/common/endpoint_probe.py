@@ -49,6 +49,17 @@ _PROBE_PAYLOADS: list[tuple[str, bool]] = [
 
 _TEST_MESSAGE = "Hello, this is a connectivity test."
 
+# Payload keys that are definitively NOT conversational chat keys.
+# These appear in domain-specific endpoints (banking transfers, healthcare orders, etc.)
+# and must not be treated as the primary chat message field.
+_RUNTIME_NON_CHAT_KEYS: frozenset[str] = frozenset({
+    "from_account_id", "to_account_id", "amount", "card_id", "account_id",
+    "patient_id", "order_id", "booking_reference", "flight_number",
+    "transaction_id", "payment_id", "notification_id",
+    "recipient_account", "source_account", "debit_account", "credit_account",
+    "transfer_amount", "beneficiary_id", "invoice_id", "claim_id",
+})
+
 
 def _sbom_post_paths(sbom: "AiSbomDocument") -> list[str]:
     """Return POST endpoint paths from the SBOM, scored by chat-likelihood."""
@@ -307,24 +318,20 @@ async def probe_chat_endpoints(
     return None
 
 
-def discover_chat_config_from_sbom(
+def discover_chat_candidates_from_sbom(
     sbom: "AiSbomDocument",
     chat_path: str = "",
     chat_payload_key: str = "message",
     chat_payload_list: bool = False,
-) -> tuple[str, str, bool, str | None]:
-    """Auto-discover chat endpoint config from SBOM API_ENDPOINT node metadata.
+) -> list[tuple[str, str, bool, str | None]]:
+    """Return all chat-capable SBOM endpoints sorted by score descending.
 
-    Looks for a POST endpoint whose metadata has ``chat_payload_key`` set.
-    Falls back to framework-convention inference (e.g. LangGraph ``phrases``/
-    list semantics) when the node lacks an explicit payload key.  Falls back
-    to the provided defaults if nothing is found.
+    Each element is ``(path, payload_key, payload_list, response_key)``.
+    Returns an empty list when no candidates are found — callers should then
+    fall back to :func:`probe_chat_endpoints` for live HTTP discovery.
 
-    Returns ``(chat_path, chat_payload_key, chat_payload_list, response_text_key)``.
-    ``response_text_key`` is ``None`` when not determinable from the SBOM.
-
-    This function is zero-I/O (no network calls).  Use :func:`probe_chat_endpoints`
-    for live HTTP probing when the SBOM lacks sufficient metadata.
+    This function is zero-I/O.  See :func:`discover_chat_config_from_sbom` for
+    the single-winner convenience wrapper.
     """
     from nuguard.sbom.models import NodeType  # noqa: PLC0415
 
@@ -354,6 +361,10 @@ def discover_chat_config_from_sbom(
         # ── Resolve payload key ────────────────────────────────────────────
         inferred_response_key: str | None = meta.response_text_key or None
         if meta.chat_payload_key:
+            if meta.chat_payload_key in _RUNTIME_NON_CHAT_KEYS:
+                # Domain-specific key (financial, medical, etc.) — not a chat endpoint.
+                # Skip so that summary.api_endpoints fallback can find the real one.
+                continue
             payload_key = meta.chat_payload_key
             payload_list = bool(meta.chat_payload_list)
         elif has_langgraph and any(
@@ -417,13 +428,43 @@ def discover_chat_config_from_sbom(
             (score, discovered_path, payload_key, payload_list, node.name, inferred_response_key)
         )
 
+    if not candidates:
+        return []
+
+    # Sort descending by score, then alphabetically for determinism
+    candidates.sort(key=lambda item: (-item[0], item[1]))
+    _log.info(
+        "SBOM chat candidates (%d): %s",
+        len(candidates),
+        [(c[1], c[2]) for c in candidates[:5]],
+    )
+    return [(c[1], c[2], c[3], c[5]) for c in candidates]
+
+
+def discover_chat_config_from_sbom(
+    sbom: "AiSbomDocument",
+    chat_path: str = "",
+    chat_payload_key: str = "message",
+    chat_payload_list: bool = False,
+) -> tuple[str, str, bool, str | None]:
+    """Auto-discover the best chat endpoint config from SBOM API_ENDPOINT node metadata.
+
+    Returns ``(chat_path, chat_payload_key, chat_payload_list, response_text_key)``.
+    ``response_text_key`` is ``None`` when not determinable from the SBOM.
+
+    This function is zero-I/O (no network calls).  Use :func:`probe_chat_endpoints`
+    for live HTTP probing when the SBOM lacks sufficient metadata.  Use
+    :func:`discover_chat_candidates_from_sbom` when you need the full ranked list
+    for endpoint rotation.
+    """
+    candidates = discover_chat_candidates_from_sbom(sbom, chat_path, chat_payload_key, chat_payload_list)
     if candidates:
-        best = max(candidates, key=lambda item: item[0])
+        best = candidates[0]
         _log.info(
-            "SBOM auto-discovered chat config: path=%s key=%s list=%s response_key=%s (node=%s)",
-            best[1], best[2], best[3], best[5], best[4],
+            "SBOM auto-discovered chat config: path=%s key=%s list=%s response_key=%s",
+            best[0], best[1], best[2], best[3],
         )
-        return best[1], best[2], best[3], best[5]
+        return best
 
     # No API_ENDPOINT nodes — fall back to summary.api_endpoints when available.
     summary = getattr(sbom, "summary", None)

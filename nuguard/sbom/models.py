@@ -595,6 +595,30 @@ class NodeMetadata(BaseModel):
         default=None,
         description="Total lines of source code across the files where this component is defined",
     )
+    request_schema: dict[str, Any] | None = Field(
+        default=None,
+        description="Request body JSON schema for API endpoints, keyed by Pydantic model class name",
+    )
+    response_schema: dict[str, Any] | None = Field(
+        default=None,
+        description="Response body JSON schema for API endpoints, keyed by Pydantic model class name",
+    )
+    has_network_policy: bool | None = Field(
+        default=None,
+        description="K8s workload: True when covered by a NetworkPolicy resource in the same namespace",
+    )
+    source_url: str | None = Field(
+        default=None,
+        description="Model artifact origin URL (HuggingFace repo, local path, or API base endpoint)",
+    )
+    integrity_hash: str | None = Field(
+        default=None,
+        description="Model artifact SHA-256 or git revision hash for supply-chain verification",
+    )
+    checksum: str | None = Field(
+        default=None,
+        description="Model artifact checksum (md5, sha1, sha256) as a hex string",
+    )
     extras: dict[str, Any] = Field(
         default_factory=dict,
         description="Adapter-specific key/value pairs (provider, model_family, version, …)",
@@ -814,6 +838,28 @@ class ScanSummary(BaseModel):
     testing: TestingDetail | None = Field(
         default=None,
         description="App-wide testing and CI/CD posture summary",
+    )
+    github_actions_content: str = Field(
+        default="",
+        description=(
+            "Raw concatenation of all detected GitHub Actions workflow YAML files, "
+            "separated by '\n---\n'. Used by NGA-010/011/014 regex rules as a fallback "
+            "when structured workflow_security_findings are not available."
+        ),
+    )
+    workflow_security_findings: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description=(
+            "Structured security findings emitted by GitHubActionsAdapter during SBOM extraction. "
+            "Each dict has keys: {rule_signal, path, line, snippet, confidence}."
+        ),
+    )
+    k8s_network_policy_namespaces: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Kubernetes namespaces that have at least one NetworkPolicy resource detected. "
+            "Populated by K8sAdapter. Used by NGA-013 to assert cross-file coverage."
+        ),
     )
 
 

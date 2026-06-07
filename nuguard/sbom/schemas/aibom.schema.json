@@ -1475,6 +1475,86 @@
           "description": "Total lines of source code across the files where this component is defined",
           "title": "Loc"
         },
+        "request_schema": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Request body JSON schema for API endpoints, keyed by Pydantic model class name",
+          "title": "Request Schema"
+        },
+        "response_schema": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Response body JSON schema for API endpoints, keyed by Pydantic model class name",
+          "title": "Response Schema"
+        },
+        "has_network_policy": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "K8s workload: True when covered by a NetworkPolicy resource in the same namespace",
+          "title": "Has Network Policy"
+        },
+        "source_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Model artifact origin URL (HuggingFace repo, local path, or API base endpoint)",
+          "title": "Source Url"
+        },
+        "integrity_hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Model artifact SHA-256 or git revision hash for supply-chain verification",
+          "title": "Integrity Hash"
+        },
+        "checksum": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Model artifact checksum (md5, sha1, sha256) as a hex string",
+          "title": "Checksum"
+        },
         "extras": {
           "additionalProperties": true,
           "description": "Adapter-specific key/value pairs (provider, model_family, version, \u2026)",
@@ -1610,7 +1690,8 @@
         "CALLS",
         "ACCESSES",
         "PROTECTS",
-        "DEPLOYS"
+        "DEPLOYS",
+        "DELEGATES_TO"
       ],
       "title": "RelationshipType",
       "type": "string"
@@ -1945,6 +2026,29 @@
           ],
           "default": null,
           "description": "App-wide testing and CI/CD posture summary"
+        },
+        "github_actions_content": {
+          "default": "",
+          "description": "Raw concatenation of all detected GitHub Actions workflow YAML files, separated by '\n---\n'. Used by NGA-010/011/014 regex rules as a fallback when structured workflow_security_findings are not available.",
+          "title": "Github Actions Content",
+          "type": "string"
+        },
+        "workflow_security_findings": {
+          "description": "Structured security findings emitted by GitHubActionsAdapter during SBOM extraction. Each dict has keys: {rule_signal, path, line, snippet, confidence}.",
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Workflow Security Findings",
+          "type": "array"
+        },
+        "k8s_network_policy_namespaces": {
+          "description": "Kubernetes namespaces that have at least one NetworkPolicy resource detected. Populated by K8sAdapter. Used by NGA-013 to assert cross-file coverage.",
+          "items": {
+            "type": "string"
+          },
+          "title": "K8S Network Policy Namespaces",
+          "type": "array"
         }
       },
       "title": "ScanSummary",

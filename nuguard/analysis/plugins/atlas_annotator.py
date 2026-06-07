@@ -456,6 +456,12 @@ class AtlasAnnotatorPlugin(AnalysisPlugin):
             src = str(edge.get("source") or edge.get("from") or "")
             tgt = str(edge.get("target") or edge.get("to") or "")
             if src and tgt:
+                # Skip read-only ACCESSES edges: NC-002 only cares about write-capable paths
+                if (
+                    edge.get("relationship_type") == "ACCESSES"
+                    and edge.get("access_type") == "read"
+                ):
+                    continue
                 adjacency.setdefault(src, set()).add(tgt)
 
         type_sets: dict[str, set[str]] = {}
@@ -495,7 +501,13 @@ class AtlasAnnotatorPlugin(AnalysisPlugin):
                 or ""
             ).lower()
             has_external = any(p in provider for p in EXTERNAL_PROVIDERS)
-            has_hash = bool(extras.get("integrity_hash"))
+            has_hash = bool(
+                meta.get("integrity_hash")              # typed field (models.NodeMetadata)
+                or meta.get("checksum")                 # typed field (models.NodeMetadata)
+                or extras.get("integrity_hash")         # legacy extras path
+                or meta.get("digest")
+                or extras.get("digest")
+            )
             if has_external and not has_hash:
                 affected.append(name)
                 _log.debug("NC-001: external model '%s' (provider=%s) has no integrity_hash", name, provider)

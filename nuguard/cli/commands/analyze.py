@@ -509,8 +509,20 @@ def _render_markdown(
                     f"**{rid} — {title}**  ",
                     f"- Examined: {checks}  ",
                     f"- Result: {pass_reason}  ",
-                    "",
                 ]
+                evidence: dict[str, Any] = entry.get("pass_evidence") or {}
+                if evidence:
+                    lines.append("- Evidence:  ")
+                    for key, val in evidence.items():
+                        label = key.replace("_", " ")
+                        if isinstance(val, list):
+                            val_str = ", ".join(f"`{x}`" for x in val) if val else "none"
+                        elif isinstance(val, bool):
+                            val_str = str(val).lower()
+                        else:
+                            val_str = str(val)
+                        lines.append(f"  - {label}: {val_str}  ")
+                lines.append("")
 
     return "\n".join(lines)
 

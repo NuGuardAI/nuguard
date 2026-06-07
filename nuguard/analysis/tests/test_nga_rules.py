@@ -28,7 +28,12 @@ from nuguard.analysis.plugins.nga_rules import (
     _rule_nga004_runs_as_root,
     _rule_nga005_unencrypted_pii_datastore,
     _rule_nga006_missing_auth_on_api_endpoint,
+    _rule_nga009_no_audit_logging,
+    _rule_nga010_pr_target_injection,
+    _rule_nga011_github_env_injection,
     _rule_nga012_missing_hitl,
+    _rule_nga013_no_k8s_network_policy,
+    _rule_nga014_actions_runner_debug,
     _rule_nga015_no_resource_limits,
 )
 
@@ -594,3 +599,316 @@ class TestRulesRegistry:
             for finding in rule(nodes=nodes, edges=[], summary=summary):
                 missing = required - finding.keys()
                 assert not missing, f"{rule.__name__} finding missing keys: {missing}"
+
+
+# ---------------------------------------------------------------------------
+# NGA-009 — AI application has no audit logging enabled (instrumentation path)
+# ---------------------------------------------------------------------------
+
+
+class TestNga009Instrumentation:
+    def _run(
+        self,
+        nodes: list[dict[str, Any]],
+        summary: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        return _rule_nga009_no_audit_logging(nodes=nodes, summary=summary or {})
+
+    def test_passes_with_instrumentation_summary(self) -> None:
+        """Agents present but summary['instrumentation'] is truthy → no finding."""
+        nodes = [_agent_node("orchestrator")]
+        summary: dict[str, Any] = {"instrumentation": {"opentelemetry": True}}
+        findings = self._run(nodes, summary)
+        assert findings == []
+
+    def test_fails_without_any_logging(self) -> None:
+        """Agents present, no log paths / audit libs / instrumentation → finding returned."""
+        nodes = [_agent_node("orchestrator")]
+        summary: dict[str, Any] = {"log_paths": [], "frameworks": [], "instrumentation": {}}
+        findings = self._run(nodes, summary)
+        assert len(findings) == 1
+        assert findings[0]["rule_id"] == "NGA-009"
+        assert findings[0]["severity"] == "HIGH"
+        assert "orchestrator" in findings[0]["affected"]
+
+
+# ---------------------------------------------------------------------------
+# NGA-010 — GitHub Actions: pull_request_target with untrusted context injection
+# ---------------------------------------------------------------------------
+
+
+class TestNga010StructuredFindings:
+    def _run(
+        self,
+        nodes: list[dict[str, Any]] | None = None,
+        summary: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        return _rule_nga010_pr_target_injection(nodes=nodes or [], summary=summary or {})
+
+    def test_fires_from_structured_findings(self) -> None:
+        """Structured finding with rule_signal NGA-010 → finding with path/line in description."""
+        summary: dict[str, Any] = {
+            "workflow_security_findings": [
+                {
+                    "rule_signal": "NGA-010",
+                    "path": "ci.yml",
+                    "line": 5,
+                    "snippet": "pull_request_target...${{ github.event.pull_request.head.sha }}",
+                    "confidence": 0.9,
+                }
+            ]
+        }
+        findings = self._run(summary=summary)
+        assert len(findings) == 1
+        assert findings[0]["rule_id"] == "NGA-010"
+        assert "ci.yml" in findings[0]["description"]
+        assert "line 5" in findings[0]["description"]
+
+    def test_fires_from_raw_content_fallback(self) -> None:
+        """No structured findings but github_actions_content has injection pattern → finding."""
+        summary: dict[str, Any] = {
+            "github_actions_content": (
+                "on:\n  pull_request_target:\njobs:\n  build:\n    steps:\n"
+                "      - run: echo ${{ github.event.pull_request.head.sha }}"
+            )
+        }
+        findings = self._run(summary=summary)
+        assert len(findings) == 1
+        assert findings[0]["rule_id"] == "NGA-010"
+
+    def test_passes_when_no_workflow(self) -> None:
+        """No structured findings and no raw content → empty list."""
+        findings = self._run(summary={})
+        assert findings == []
+
+
+# ---------------------------------------------------------------------------
+# NGA-011 — GitHub Actions: GITHUB_ENV written from untrusted input
+# ---------------------------------------------------------------------------
+
+
+class TestNga011StructuredFindings:
+    def _run(
+        self,
+        nodes: list[dict[str, Any]] | None = None,
+        summary: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        return _rule_nga011_github_env_injection(nodes=nodes or [], summary=summary or {})
+
+    def test_fires_from_structured_findings(self) -> None:
+        """Structured finding with rule_signal NGA-011 → finding with path/line in description."""
+        summary: dict[str, Any] = {
+            "workflow_security_findings": [
+                {
+                    "rule_signal": "NGA-011",
+                    "path": "deploy.yml",
+                    "line": 12,
+                    "snippet": 'echo "${{ github.event.issue.title }}" >> $GITHUB_ENV',
+                    "confidence": 0.9,
+                }
+            ]
+        }
+        findings = self._run(summary=summary)
+        assert len(findings) == 1
+        assert findings[0]["rule_id"] == "NGA-011"
+        assert "deploy.yml" in findings[0]["description"]
+        assert "line 12" in findings[0]["description"]
+
+    def test_fires_from_raw_content_fallback(self) -> None:
+        """No structured findings but github_actions_content has env injection → finding."""
+        summary: dict[str, Any] = {
+            "github_actions_content": (
+                'echo "${{ github.event.issue.title }}" >> $GITHUB_ENV'
+            )
+        }
+        findings = self._run(summary=summary)
+        assert len(findings) == 1
+        assert findings[0]["rule_id"] == "NGA-011"
+
+    def test_passes_when_no_workflow(self) -> None:
+        """No structured findings and no raw content → empty list."""
+        findings = self._run(summary={})
+        assert findings == []
+
+
+# ---------------------------------------------------------------------------
+# NGA-013 — No Kubernetes NetworkPolicy for AI workload
+# ---------------------------------------------------------------------------
+
+
+def _k8s_deployment_node(
+    name: str = "ai-service",
+    namespace: str = "default",
+    has_network_policy: bool | None = None,
+) -> dict[str, Any]:
+    """Return a minimal K8s DEPLOYMENT node dict as seen by the analysis layer."""
+    meta: dict[str, Any] = {
+        "deployment_target": "kubernetes",
+        "extras": {"k8s_namespace": namespace},
+    }
+    if has_network_policy is not None:
+        meta["has_network_policy"] = has_network_policy
+    return {
+        "id": name,
+        "name": name,
+        "component_type": "DEPLOYMENT",
+        "metadata": meta,
+    }
+
+
+def _k8s_marker_node(namespace: str = "default") -> dict[str, Any]:
+    """Return a NetworkPolicy marker node dict as emitted by K8sAdapter (after serialization)."""
+    return {
+        "id": f"netpol:k8s:{namespace}",
+        "name": f"NetworkPolicy:{namespace}",
+        "component_type": "DEPLOYMENT",
+        "metadata": {
+            # iac_format at top-level tests the is_network_policy_namespace filter
+            "iac_format": "kubernetes",
+            "extras": {
+                "is_network_policy_namespace": True,
+                "k8s_namespace": namespace,
+            },
+        },
+    }
+
+
+class TestNga013CrossFileNetworkPolicy:
+    def _run(
+        self,
+        nodes: list[dict[str, Any]],
+        summary: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        return _rule_nga013_no_k8s_network_policy(nodes=nodes, summary=summary or {})
+
+    def test_passes_with_node_has_network_policy(self) -> None:
+        """K8s DEPLOYMENT node with has_network_policy=True → no finding."""
+        nodes = [_k8s_deployment_node("ai-service", "prod", has_network_policy=True)]
+        findings = self._run(nodes)
+        assert findings == []
+
+    def test_passes_with_summary_namespace(self) -> None:
+        """Workload namespace in summary['k8s_network_policy_namespaces'] → no finding."""
+        nodes = [_k8s_deployment_node("ai-service", "prod")]
+        summary: dict[str, Any] = {"k8s_network_policy_namespaces": ["prod"]}
+        findings = self._run(nodes, summary)
+        assert findings == []
+
+    def test_fails_without_any_coverage(self) -> None:
+        """K8s DEPLOYMENT with no same-file policy and namespace not in summary → finding."""
+        nodes = [_k8s_deployment_node("ai-service", "default")]
+        findings = self._run(nodes)
+        assert len(findings) == 1
+        assert findings[0]["rule_id"] == "NGA-013"
+        assert findings[0]["severity"] == "MEDIUM"
+        assert "ai-service" in findings[0]["affected"]
+
+    def test_ignores_marker_nodes(self) -> None:
+        """Only a NetworkPolicy marker node (is_network_policy_namespace=True) → no workloads → empty."""
+        nodes = [_k8s_marker_node("prod")]
+        findings = self._run(nodes)
+        assert findings == []
+
+
+# ---------------------------------------------------------------------------
+# NGA-014 — GitHub Actions: ACTIONS_RUNNER_DEBUG secret exposed
+# ---------------------------------------------------------------------------
+
+
+class TestNga014StructuredFindings:
+    def _run(
+        self,
+        nodes: list[dict[str, Any]] | None = None,
+        summary: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        return _rule_nga014_actions_runner_debug(nodes=nodes or [], summary=summary or {})
+
+    def test_fires_from_structured_findings(self) -> None:
+        """Structured finding with rule_signal NGA-014 → finding with path/line in description."""
+        summary: dict[str, Any] = {
+            "workflow_security_findings": [
+                {
+                    "rule_signal": "NGA-014",
+                    "path": "debug.yml",
+                    "line": 8,
+                    "snippet": "ACTIONS_RUNNER_DEBUG: ${{ secrets.ACTIONS_RUNNER_DEBUG }}",
+                    "confidence": 0.9,
+                }
+            ]
+        }
+        findings = self._run(summary=summary)
+        assert len(findings) == 1
+        assert findings[0]["rule_id"] == "NGA-014"
+        assert "debug.yml" in findings[0]["description"]
+        assert "line 8" in findings[0]["description"]
+
+    def test_fires_from_raw_content_fallback(self) -> None:
+        """No structured findings but github_actions_content references ACTIONS_RUNNER_DEBUG → finding."""
+        summary: dict[str, Any] = {
+            "github_actions_content": "env:\n  ACTIONS_RUNNER_DEBUG: true\n"
+        }
+        findings = self._run(summary=summary)
+        assert len(findings) == 1
+        assert findings[0]["rule_id"] == "NGA-014"
+
+    def test_passes_when_no_workflow(self) -> None:
+        """No structured findings and no raw content → empty list."""
+        findings = self._run(summary={})
+        assert findings == []
+
+
+# ---------------------------------------------------------------------------
+# NGA-015 — AI workloads without resource limits (_has_no_limits asymmetry fix)
+# ---------------------------------------------------------------------------
+
+
+class TestNga015ResourceLimitsAsymmetry:
+    def _run(
+        self,
+        nodes: list[dict[str, Any]],
+        security_findings: list[str] | None = None,
+    ) -> list[dict[str, Any]]:
+        summary: dict[str, Any] = {"security_findings": security_findings or []}
+        return _rule_nga015_no_resource_limits(nodes=nodes, summary=summary)
+
+    def test_fires_when_has_resource_limits_false(self) -> None:
+        """DEPLOYMENT with metadata.has_resource_limits=False triggers NGA-015."""
+        nodes = [
+            {
+                "id": "svc",
+                "name": "svc",
+                "component_type": "DEPLOYMENT",
+                "metadata": {"has_resource_limits": False},
+            }
+        ]
+        findings = self._run(nodes)
+        assert len(findings) == 1
+        assert findings[0]["rule_id"] == "NGA-015"
+        assert "svc" in findings[0]["affected"]
+
+    def test_fires_when_no_resource_limits_true(self) -> None:
+        """DEPLOYMENT with extras.no_resource_limits=True triggers NGA-015."""
+        nodes = [
+            {
+                "id": "svc",
+                "name": "svc",
+                "component_type": "DEPLOYMENT",
+                "metadata": {"extras": {"no_resource_limits": True}},
+            }
+        ]
+        findings = self._run(nodes)
+        assert len(findings) == 1
+        assert findings[0]["rule_id"] == "NGA-015"
+
+    def test_passes_when_has_resource_limits_true(self) -> None:
+        """DEPLOYMENT with metadata.has_resource_limits=True → no finding."""
+        nodes = [
+            {
+                "id": "svc",
+                "name": "svc",
+                "component_type": "DEPLOYMENT",
+                "metadata": {"has_resource_limits": True},
+            }
+        ]
+        findings = self._run(nodes)
+        assert findings == []

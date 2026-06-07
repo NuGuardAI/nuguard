@@ -75,6 +75,17 @@ _PROMPT_FIELD_NAMES = {
 
 _RESPONSE_FIELD_NAMES = {"response", "content", "answer", "text", "reply", "message", "output"}
 
+# Domain-specific request body keys that are clearly NOT conversational message fields.
+# Endpoints whose only candidate chat key is in this set should not be marked as
+# chat endpoints — doing so causes pre-scan discovery to hit financial/medical
+# transaction routes instead of the actual AI chat endpoint.
+_NON_CHAT_PAYLOAD_KEYS = frozenset({
+    "from_account_id", "to_account_id", "amount", "card_id", "account_id",
+    "patient_id", "order_id", "booking_reference", "flight_number",
+    "user_id", "transaction_id", "payment_id", "notification_id",
+    "recipient_account", "source_account", "debit_account", "credit_account",
+})
+
 # Static identity fields — same value for all requests; sourced from login response or config.
 _IDENTITY_FIELD_NAMES = frozenset({
     "user_id", "userId", "tenant_id", "tenantId",
@@ -182,8 +193,15 @@ def _infer_context_payload_fields(
 def _extract_endpoint_schema(
     func_def: ast.FunctionDef | ast.AsyncFunctionDef,
     model_schemas: dict[str, dict[str, str]],
-) -> tuple[dict[str, str], str | None, bool, str | None, dict[str, str]]:
-    """Return ``(schema_dict, chat_payload_key, chat_payload_list, response_text_key, context_fields)``."""
+) -> tuple[dict[str, str], str | None, bool, str | None, dict[str, str], dict[str, str]]:
+    """Return ``(req_schema, chat_payload_key, chat_payload_list, response_text_key, context_fields, resp_schema)``."""
+    req_schema: dict[str, str] = {}
+    resp_schema: dict[str, str] = {}
+    chat_key: str | None = None
+    chat_list: bool = False
+    resp_key: str | None = None
+    ctx_fields: dict[str, str] = {}
+
     for arg in func_def.args.args:
         if arg.annotation is None:
             continue
@@ -191,17 +209,19 @@ def _extract_endpoint_schema(
         if isinstance(arg.annotation, ast.Name):
             type_name = arg.annotation.id
         if type_name and type_name in model_schemas:
-            fields = model_schemas[type_name]
-            key, is_list = _infer_chat_payload_key(fields)
-            resp_key: str | None = None
-            ret = func_def.returns
-            if ret is not None:
-                ret_name = ret.id if isinstance(ret, ast.Name) else None
-                if ret_name and ret_name in model_schemas:
-                    resp_key = _infer_response_text_key(model_schemas[ret_name])
-            ctx_fields = _infer_context_payload_fields(fields, key)
-            return fields, key, is_list, resp_key, ctx_fields
-    return {}, None, False, None, {}
+            req_schema = model_schemas[type_name]
+            chat_key, chat_list = _infer_chat_payload_key(req_schema)
+            ctx_fields = _infer_context_payload_fields(req_schema, chat_key)
+            break
+
+    ret = func_def.returns
+    if ret is not None:
+        ret_name = ret.id if isinstance(ret, ast.Name) else None
+        if ret_name and ret_name in model_schemas:
+            resp_schema = model_schemas[ret_name]
+            resp_key = _infer_response_text_key(resp_schema)
+
+    return req_schema, chat_key, chat_list, resp_key, ctx_fields, resp_schema
 
 
 def _extract_depends_auth_type(
@@ -298,10 +318,26 @@ class FastAPIAdapter(FrameworkAdapter):
                 # Emit as FRAMEWORK so they appear in the infrastructure section
                 # rather than polluting the AI agent list.
                 canon = f"fastapi:framework:{file_path}:{var_name}"
+                # Prefer the app's title= kwarg; fall back to framework name for generic vars
+                _title_kw: str | None = next(
+                    (
+                        str(kw.value.value)
+                        for kw in call.keywords
+                        if kw.arg == "title"
+                        and isinstance(kw.value, ast.Constant)
+                        and isinstance(kw.value.value, str)
+                    ),
+                    None,
+                )
+                _generic_vars = {"app", "api", "server", "router", "application"}
+                _fw_display = (
+                    _title_kw
+                    or (class_name if var_name.lower() in _generic_vars else var_name)
+                )
                 detections.append(ComponentDetection(
                     component_type=ComponentType.FRAMEWORK,
                     canonical_name=canon,
-                    display_name=var_name,
+                    display_name=_fw_display,
                     adapter_name=self.name,
                     priority=self.priority,
                     confidence=_CONFIDENCE,
@@ -361,9 +397,21 @@ class FastAPIAdapter(FrameworkAdapter):
                 if ep_auth is None:
                     ep_auth = _extract_security_auth_type(decorator, auth_vars)
 
-                schema, chat_key, chat_list, resp_key, ctx_fields = _extract_endpoint_schema(
+                schema, chat_key, chat_list, resp_key, ctx_fields, resp_schema = _extract_endpoint_schema(
                     node, model_schemas
                 )
+
+                # Also extract response_model= kwarg from the route decorator itself
+                # (FastAPI convention: @app.post("/path", response_model=MyModel))
+                if not resp_schema and isinstance(decorator, ast.Call):
+                    for _kw in decorator.keywords:
+                        if _kw.arg == "response_model" and isinstance(_kw.value, ast.Name):
+                            _resp_model_name = _kw.value.id
+                            if _resp_model_name in model_schemas:
+                                resp_schema = model_schemas[_resp_model_name]
+                                if not resp_key:
+                                    resp_key = _infer_response_text_key(resp_schema)
+                            break
 
                 metadata: dict[str, Any] = {
                     "framework": "fastapi",
@@ -375,7 +423,9 @@ class FastAPIAdapter(FrameworkAdapter):
                     metadata["auth_type"] = ep_auth
                 if schema:
                     metadata["request_body_schema"] = schema
-                if chat_key:
+                if resp_schema:
+                    metadata["response_body_schema"] = resp_schema
+                if chat_key and chat_key not in _NON_CHAT_PAYLOAD_KEYS:
                     metadata["chat_payload_key"] = chat_key
                     metadata["chat_payload_list"] = chat_list
                 if resp_key:
@@ -383,10 +433,13 @@ class FastAPIAdapter(FrameworkAdapter):
                 if ctx_fields:
                     metadata["context_payload_fields"] = ctx_fields
 
+                # Convert snake_case function name to human-readable display name
+                _ep_display = func_name.replace("_", " ").title()
+
                 ep_detection = ComponentDetection(
                     component_type=ComponentType.API_ENDPOINT,
                     canonical_name=canon,
-                    display_name=func_name,
+                    display_name=_ep_display,
                     adapter_name=self.name,
                     priority=self.priority,
                     confidence=_CONFIDENCE,

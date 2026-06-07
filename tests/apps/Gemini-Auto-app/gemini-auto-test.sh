@@ -29,7 +29,7 @@ echo "---"
 echo "Preparing Gemini Auto for NuGuard Testing..."
 
 uv run nuguard sbom generate \
-  --config "$SCRIPT_DIR/nuguard-sbom-azure.yaml" \
+  --config "$SCRIPT_DIR/nuguard.yaml" \
   --format json \
   -o "$SCRIPT_DIR/gemini-auto.sbom.json"
 
@@ -55,7 +55,7 @@ echo "Running behavior analysis (static + dynamic)..."
 # behavior exits 2 when findings are present — expected in testing; treat as non-fatal.
 # --mode static+dynamic: runs SBOM×Policy alignment checks then live intent-aware probing.
 uv run nuguard behavior \
-  --config "$SCRIPT_DIR/nuguard-sbom-azure.yaml" \
+  --config "$SCRIPT_DIR/nuguard.yaml" \
   --mode static+dynamic \
   --format markdown \
   -o "$SCRIPT_DIR/reports/gemini-auto-behavior.md" || true
@@ -70,7 +70,7 @@ echo "Running redteam tests ..."
 
 # redteam tests exit 2 when findings are present — expected in testing; treat as non-fatal.
 uv run nuguard redteam \
-  --config "$SCRIPT_DIR/nuguard-sbom-azure.yaml" \
+  --config "$SCRIPT_DIR/nuguard.yaml" \
   --format markdown \
   --output "$SCRIPT_DIR/reports/gemini-auto-redteam.md" || true
 

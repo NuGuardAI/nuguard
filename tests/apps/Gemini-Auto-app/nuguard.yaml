@@ -43,7 +43,9 @@ target:
   #  username: alice
   #  password: alice123
   auth:
-    type: none
+    type: basic
+    username: ranjangoel001@gmail.com
+    password: ${TARGET_PASSWORD}
 
   # The /api/agent/chat endpoint requires vehicleState and language in every request.
   # Without these fields the server throws: "Cannot read properties of undefined (reading 'fuel')"
@@ -53,25 +55,25 @@ target:
   #   vehicleState.fuel, .tirePressure, .music.playing, .weather.temp are mandatory
   #   — the server throws 'Cannot read properties of undefined' for each missing one.
   #   language / googleAccessToken are optional but included for fidelity.
-  chat_payload_extras:
-    vehicleState:
-      fuel: 75
-      temp: 21
-      tirePressure: [32, 32, 32, 32]   # any array; server reads [0]
-      battery: 85
-      destination: null
-      stops: []
-      navMetadata: null
-      music:
-        playing: false                 # required; track/artist/provider optional
-        track: ""
-        artist: ""
-        provider: simulated
-      weather:
-        temp: 22                       # required; condition optional
-        condition: sunny
-    language: en-US
-    googleAccessToken: null
+  #chat_payload_extras:
+  #  vehicleState:
+  #    fuel: 75
+  #    temp: 21
+  #    tirePressure: [32, 32, 32, 32]   # any array; server reads [0]
+  #    battery: 85
+  #    destination: null
+  #    stops: []
+  #    navMetadata: null
+  #    music:
+  #      playing: false                 # required; track/artist/provider optional
+  #      track: ""
+  #      artist: ""
+  #      provider: simulated
+  #    weather:
+  #      temp: 22                       # required; condition optional
+  #      condition: sunny
+  #  language: en-US
+  #  googleAccessToken: null
 
 # ─── Behavior mode ────────────────────────────────────────────────────────────
 sbom: ./gemini-auto.sbom.json
@@ -89,10 +91,10 @@ behavior:
   #   invariant_probe      — probes behavioral invariants and policy constraints
   # Note: boundary_enforcement was removed in v7; boundary testing is now handled
   # by nuguard redteam. boundary_assertions below still run via invariant_probe.
-  workflows:
-    - intent_happy_path
-    - component_coverage
-    - invariant_probe
+  #workflows:
+  #  - intent_happy_path
+  #  - component_coverage
+  #  - invariant_probe
 
   # Boundary assertions: requests the app MUST refuse
   boundary_assertions:
