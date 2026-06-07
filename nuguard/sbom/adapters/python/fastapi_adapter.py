@@ -15,6 +15,7 @@ discover:
 from __future__ import annotations
 
 import ast
+import re
 from typing import Any
 
 from ...types import ComponentType
@@ -37,6 +38,32 @@ _AUTH_CLASSES = {
     "APIKeyCookie": "api_key",
     "APIKeyQuery": "api_key",
 }
+
+# Maps auth class name → AuthDetail.protocols value
+_AUTH_CLASS_PROTOCOLS: dict[str, list[str]] = {
+    "OAuth2PasswordBearer": ["oauth2"],
+    "OAuth2PasswordRequestForm": ["oauth2"],
+    "OAuth2": ["oauth2"],
+    "HTTPBearer": ["bearer"],
+    "HTTPBasic": ["basic"],
+    "HTTPDigest": ["digest"],
+    "APIKeyHeader": ["api_key"],
+    "APIKeyCookie": ["api_key"],
+    "APIKeyQuery": ["api_key"],
+}
+
+# Classes with strict enforcement by default
+_AUTH_STRICT_CLASSES = {"OAuth2PasswordBearer", "HTTPBearer", "APIKeyHeader"}
+
+# Rate limit decorator function names
+_RATE_LIMIT_UNIT_SECONDS = {
+    "second": 1, "seconds": 1,
+    "minute": 60, "minutes": 60,
+    "hour": 3600, "hours": 3600,
+    "day": 86400, "days": 86400,
+}
+
+_RATE_LIMIT_RE = re.compile(r"(\d+)\s*/\s*(second|minute|hour|day)s?", re.IGNORECASE)
 
 _HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options", "trace"}
 
@@ -288,6 +315,11 @@ class FastAPIAdapter(FrameworkAdapter):
             elif class_name in _AUTH_CLASSES:
                 auth_type = _AUTH_CLASSES[class_name]
                 canon = f"fastapi:auth:{file_path}:{var_name}"
+                auth_detail: dict[str, Any] = {
+                    "protocols": _AUTH_CLASS_PROTOCOLS.get(class_name, [auth_type]),
+                }
+                if class_name in _AUTH_STRICT_CLASSES:
+                    auth_detail["enforcement_strict"] = True
                 detections.append(ComponentDetection(
                     component_type=ComponentType.AUTH,
                     canonical_name=canon,
@@ -299,6 +331,7 @@ class FastAPIAdapter(FrameworkAdapter):
                         "framework": "fastapi",
                         "auth_type": auth_type,
                         "auth_class": class_name,
+                        "auth_detail": auth_detail,
                     },
                     file_path=file_path,
                     line=node.lineno,
@@ -378,6 +411,64 @@ class FastAPIAdapter(FrameworkAdapter):
                         target_type=ComponentType.API_ENDPOINT,
                         relationship_type="CALLS",
                     ))
+
+        # Third pass: rate limit detection (slowapi / flask-limiter style decorators)
+        has_limiter_middleware = any(
+            isinstance(node, ast.Assign)
+            and isinstance(node.value, ast.Call)
+            and _get_call_name(node.value) in ("Limiter", "SlowAPILimiter", "RateLimiter")
+            for node in ast.walk(tree)
+        )
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            for decorator in node.decorator_list:
+                if not isinstance(decorator, ast.Call):
+                    continue
+                func = decorator.func
+                _attr = getattr(func, "attr", None)
+                _id = getattr(func, "id", None)
+                rl_func_name: str | None = _attr if isinstance(_attr, str) else (_id if isinstance(_id, str) else None)
+                if rl_func_name != "limit":
+                    continue
+                # Extract the limit string argument, e.g. "5/minute"
+                limit_str: str | None = None
+                for arg in decorator.args:
+                    if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                        limit_str = arg.value
+                        break
+                if not limit_str:
+                    for kw in decorator.keywords:
+                        if kw.arg == "limit" and isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
+                            limit_str = kw.value.value
+                            break
+                if not limit_str:
+                    continue
+                m = _RATE_LIMIT_RE.search(limit_str)
+                if not m:
+                    continue
+                count = int(m.group(1))
+                unit = m.group(2).lower().rstrip("s")
+                window_secs = _RATE_LIMIT_UNIT_SECONDS.get(unit, 60)
+                rld: dict[str, Any] = {
+                    "window_seconds": window_secs,
+                    "enforcement_type": "middleware" if has_limiter_middleware else "decorator",
+                }
+                if unit in ("second", "seconds"):
+                    rld["requests_per_minute"] = count * 60
+                elif unit in ("minute", "minutes"):
+                    rld["requests_per_minute"] = count
+                elif unit in ("hour", "hours"):
+                    rld["requests_per_hour"] = count
+                elif unit in ("day", "days"):
+                    rld["requests_per_day"] = count
+                # Find the matching endpoint detection by function name and update it
+                for det in detections:
+                    if det.metadata.get("endpoint") and det.metadata.get("method"):
+                        if det.component_type == ComponentType.API_ENDPOINT:
+                            # Best-effort: tag the endpoint in this file
+                            det.metadata.setdefault("rate_limit_detail", rld)
+                            det.metadata["rate_limited"] = True
 
         return detections
 

@@ -74,7 +74,18 @@ from ..core.application_summary import build_scan_summary
 from ..core.ts_parser import TSParseResult
 from ..core.ts_parser import parse_typescript as _parse_ts_impl
 from ..deps import DependencyScanner
-from ..models import AiSbomDocument, Edge, Evidence, Node, ScanSummary, SourceLocation
+from ..models import (
+    AiSbomDocument,
+    AuthDetail,
+    DataHandlingDetail,
+    Edge,
+    EncryptionDetail,
+    Evidence,
+    Node,
+    RateLimitDetail,
+    ScanSummary,
+    SourceLocation,
+)
 from ..normalization import canonicalize_text
 from ..types import ComponentType, RelationshipType
 
@@ -645,6 +656,10 @@ class AiSbomExtractor:
         # Keep full file contents only when LLM enrichment is enabled.
         keep_full_contents = bool(config.enable_llm)
         file_contents: dict[str, str] = {}
+        # LOC tracking: lines of code per relative file path
+        file_loc: dict[str, int] = {}
+        # Import tracking per file for dependency cross-referencing
+        _file_imports: dict[str, set[str]] = {}
         # Summary builder only needs a bounded content sample.
         files_sample: list[tuple[str, str]] = []
         files_scanned = 0
@@ -683,6 +698,8 @@ class AiSbomExtractor:
             files_scanned += 1
             rel_path = str(file_path.relative_to(root))
             content_bytes = file_size
+            # Track LOC for every scanned file
+            file_loc[rel_path] = content.count("\n") + 1
             if keep_full_contents:
                 file_contents[rel_path] = content
                 full_cache_files += 1
@@ -727,6 +744,12 @@ class AiSbomExtractor:
                             )
                         imported_modules: set[str] = {
                             imp.module for imp in parse_result.imports if imp.module
+                        }
+                        # Capture top-level package names for dependency cross-referencing
+                        _file_imports[rel_path] = {
+                            imp.module.split(".")[0].lower()
+                            for imp in parse_result.imports
+                            if imp.module
                         }
                         for adapter in self.framework_adapters:
                             # Skip TypeScript adapters for Python/notebook files
@@ -1276,6 +1299,30 @@ class AiSbomExtractor:
                 if isinstance(_tp, list) and _tp:
                     node.metadata.trust_principals = [str(p) for p in _tp[:20]]
 
+            # ── SBOM 1.5.0 sub-model mapping (applies to all component types) ──────
+            _rld = acc.metadata.get("rate_limit_detail")
+            if isinstance(_rld, dict) and _rld and node.metadata.rate_limit_detail is None:
+                node.metadata.rate_limit_detail = RateLimitDetail(
+                    **{k: v for k, v in _rld.items() if v is not None}
+                )
+            _ad = acc.metadata.get("auth_detail")
+            if isinstance(_ad, dict) and _ad and node.metadata.auth_detail is None:
+                node.metadata.auth_detail = AuthDetail(
+                    **{k: v for k, v in _ad.items() if v is not None}
+                )
+            _ed = acc.metadata.get("encryption_detail")
+            if isinstance(_ed, dict) and _ed and node.metadata.encryption_detail is None:
+                node.metadata.encryption_detail = EncryptionDetail(
+                    **{k: v for k, v in _ed.items() if v is not None}
+                )
+                if node.metadata.encryption_detail.at_rest is not None:
+                    node.metadata.encryption_at_rest = node.metadata.encryption_detail.at_rest
+            _dh = acc.metadata.get("data_handling")
+            if isinstance(_dh, dict) and _dh and node.metadata.data_handling is None:
+                node.metadata.data_handling = DataHandlingDetail(
+                    **{k: v for k, v in _dh.items() if v is not None}
+                )
+
             node.evidence = sorted(acc.evidence, key=lambda e: e.confidence, reverse=True)
             doc.nodes.append(node)
 
@@ -1321,6 +1368,28 @@ class AiSbomExtractor:
         # Scan package manifest dependencies (pyproject.toml, requirements*.txt, package.json, …)
         doc.deps = DependencyScanner().scan(root)
         _log.info("deps scan: %d packages found", len(doc.deps))
+
+        # Per-node LOC and dependency cross-referencing
+        dep_names = {d.name.lower().replace("-", "_") for d in doc.deps}
+        for node in doc.nodes:
+            # LOC: sum lines from all evidence source files for this node
+            ev_paths = {
+                ev.location.path
+                for ev in node.evidence
+                if ev.location and ev.location.path
+            }
+            loc_sum = sum(file_loc.get(p, 0) for p in ev_paths)
+            if loc_sum:
+                node.metadata.loc = loc_sum
+
+            # Dependency names: intersect imports from evidence files with manifest deps
+            all_imports: set[str] = set()
+            for p in ev_paths:
+                all_imports |= _file_imports.get(p, set())
+            matched = sorted(all_imports & dep_names)
+            if matched:
+                node.metadata.dependency_names = matched
+
         _log.info("scan complete: %d files processed under %s", files_scanned, root)
         _log.info(
             "memory metrics: sample_files=%d sample_bytes=%d (%s) full_cache_files=%d full_cache_bytes=%d (%s) llm_enabled=%s",
@@ -1343,6 +1412,10 @@ class AiSbomExtractor:
                 dc_metadata=_dc_metadata,
             )
         )
+
+        # Write total LOC into the summary
+        if doc.summary and file_loc:
+            doc.summary.total_loc = sum(file_loc.values()) or None
 
         # Ensure google-ces is listed in summary.frameworks when CES nodes exist
         _has_ces = any(
@@ -1919,6 +1992,14 @@ class AiSbomExtractor:
         except Exception as exc:
             _log.warning("relationship-graph: unexpected error — continuing without: %s", exc)
 
+        # Step 7: Generate LLM descriptive names for all nodes
+        try:
+            from ..llm_client import enrich_descriptive_names
+            await enrich_descriptive_names(doc.nodes, client)
+            _log.info("descriptive-names: completed")
+        except Exception as exc:
+            _log.warning("descriptive-names: unexpected error — continuing without: %s", exc)
+
         # Recompute node_counts from the final node list after all verification,
         # aggregation, and discovery steps — gap-fill may have added nodes that
         # verification later rejected, leaving the counts stale.
@@ -1929,6 +2010,13 @@ class AiSbomExtractor:
                 for ct in _CT
                 if any(n.component_type == ct for n in doc.nodes)
             }
+
+        # Write LLM token usage into the summary
+        if doc.summary:
+            doc.summary.tokens_used_for_enrichment = client.tokens_used
+            doc.summary.input_tokens_used = client.input_tokens
+            doc.summary.output_tokens_used = client.output_tokens
+            doc.summary.llm_model_used = config.llm_model
 
         _log.info("llm enrichment complete: tokens_used=%d", client.tokens_used)
         return doc
@@ -2294,6 +2382,9 @@ def _make_scan_summary(d: dict[str, Any]) -> ScanSummary:
         # Streaming output detection
         uses_streaming=bool(d.get("uses_streaming", False)),
         streaming_endpoints=d.get("streaming_endpoints") or [],
+        # 1.5.0 additions
+        instrumentation=d.get("instrumentation"),
+        testing=d.get("testing"),
     )
 
 

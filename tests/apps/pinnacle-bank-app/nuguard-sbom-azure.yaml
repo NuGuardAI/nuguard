@@ -32,9 +32,12 @@ behavior:
 
   # Authentication
   auth:
-    type: none
+    #type: none
     # type: bearer
     # header: "Authorization: Bearer ${TARGET_TOKEN}"
+    type: basic
+    username: alice.johnson@pinnaclebank.com
+    password: alice123
 
   # Use LLM for intent-aware scenario generation and per-turn judging
   llm: true

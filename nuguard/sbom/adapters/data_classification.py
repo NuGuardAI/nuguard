@@ -287,6 +287,28 @@ class DataClassificationPythonAdapter(FrameworkAdapter):
 
             all_labels = sorted({lbl for lbls in classified.values() for lbl in lbls})
 
+            # DataHandlingDetail heuristics from field names
+            data_handling: dict[str, Any] = {}
+            field_names_lower = [f.lower() for f in field_names]
+            if any("consent" in fn for fn in field_names_lower):
+                data_handling["consent_required"] = True
+            if any(
+                kw in fn
+                for fn in field_names_lower
+                for kw in ("country", "region", "jurisdiction")
+            ):
+                data_handling["cross_border_transfer"] = True
+
+            meta: dict[str, Any] = {
+                "adapter": self.name,
+                "model_name": node.name,
+                "source": "python_model",
+                "data_classification": all_labels,
+                "classified_fields": classified,
+            }
+            if data_handling:
+                meta["data_handling"] = data_handling
+
             detections.append(
                 ComponentDetection(
                     component_type=ComponentType.DATASTORE,
@@ -295,13 +317,7 @@ class DataClassificationPythonAdapter(FrameworkAdapter):
                     adapter_name=self.name,
                     priority=self.priority,
                     confidence=0.95,
-                    metadata={
-                        "adapter": self.name,
-                        "model_name": node.name,
-                        "source": "python_model",
-                        "data_classification": all_labels,
-                        "classified_fields": classified,
-                    },
+                    metadata=meta,
                     file_path=file_path,
                     line=node.lineno,
                     snippet=f"class {node.name}",

@@ -514,6 +514,64 @@ class TerraformAdapter:
         enc_key_match = _TF_CMEK_RE.search(content)
         encryption_key_ref = enc_key_match.group(1) if enc_key_match else None
 
+        # EncryptionDetail
+        _alg_m = re.search(r"sse_algorithm\s*=\s*[\"']([^\"']+)[\"']", content)
+        _tls_m = re.search(r"min_tls_version\s*=\s*[\"']([^\"']+)[\"']", content)
+        _in_transit = bool(re.search(r"enforce_https\s*=\s*true", content, re.IGNORECASE)
+                          or re.search(r"ssl_policy\s*=", content))
+        _km: str | None = None
+        if encryption_key_ref:
+            if "arn:aws:kms" in encryption_key_ref:
+                _km = "aws_kms"
+            elif "projects/" in encryption_key_ref and "keyRings" in encryption_key_ref:
+                _km = "gcp_cmek"
+            elif "Microsoft.KeyVault" in encryption_key_ref or "vaults" in encryption_key_ref:
+                _km = "azure_key_vault"
+        _enc_detail: dict[str, Any] = {}
+        if encryption_at_rest:
+            _enc_detail["at_rest"] = True
+        if _in_transit:
+            _enc_detail["in_transit"] = True
+        if _alg_m:
+            _enc_detail["algorithm"] = _alg_m.group(1)
+        if _tls_m:
+            _enc_detail["tls_min_version"] = _tls_m.group(1)
+        if _km:
+            _enc_detail["key_management"] = _km
+
+        # Rate limit detection (API Gateway throttling)
+        _rate_limit_detail: dict[str, Any] = {}
+        _burst_m = re.search(r"throttling_burst_limit\s*=\s*(\d+)", content)
+        _rate_m = re.search(r"throttling_rate_limit\s*=\s*([\d.]+)", content)
+        _quota_m = re.search(r"quota_limit\s*=\s*(\d+)", content)
+        _quota_period_m = re.search(r"quota_period\s*=\s*[\"']([^\"']+)[\"']", content)
+        if _burst_m:
+            _rate_limit_detail["burst_size"] = int(_burst_m.group(1))
+        if _rate_m:
+            _rate_limit_detail["requests_per_minute"] = int(float(_rate_m.group(1)) * 60)
+        if _quota_m:
+            period = (_quota_period_m.group(1).upper() if _quota_period_m else "DAY")
+            if period == "DAY":
+                _rate_limit_detail["requests_per_day"] = int(_quota_m.group(1))
+            elif period in ("WEEK", "MONTH"):
+                _rate_limit_detail["requests_per_day"] = int(_quota_m.group(1)) // (7 if period == "WEEK" else 30)
+        if re.search(r"aws_api_gateway_usage_plan", content):
+            _rate_limit_detail["enforcement_type"] = "api_gateway"
+
+        # DataHandlingDetail
+        _dh: dict[str, Any] = {}
+        _ret_m = re.search(r"retention_in_days\s*=\s*(\d+)", content)
+        if _ret_m:
+            _dh["retention_days"] = int(_ret_m.group(1))
+        _bw_m = re.search(r"backup_window\s*=\s*[\"']([^\"']+)[\"']", content)
+        if _bw_m:
+            _dh["backup_frequency"] = _bw_m.group(1)
+        _br_m = re.search(r"backup_retention_period\s*=\s*(\d+)", content)
+        if _br_m and "backup_frequency" not in _dh:
+            _dh["backup_frequency"] = f"{_br_m.group(1)}-day-retention"
+        if re.search(r"backup_encrypted\s*=\s*true", content, re.IGNORECASE):
+            _dh["backup_encrypted"] = True
+
         # Secret stores
         secret_store: str | None = None
         for pattern, store_name in _TF_SECRET_STORES:
@@ -535,6 +593,13 @@ class TerraformAdapter:
             "encryption_key_ref": encryption_key_ref,
             "secret_store": secret_store,
         }
+        if _enc_detail:
+            meta["encryption_detail"] = _enc_detail
+        if _rate_limit_detail:
+            meta["rate_limit_detail"] = _rate_limit_detail
+            meta["rate_limited"] = True
+        if _dh:
+            meta["data_handling"] = _dh
         display = f"terraform:{target_display}:{cloud_region or 'unknown-region'}"
         return [
             _make_det(

@@ -112,6 +112,25 @@ class MCPServerAdapter(FrameworkAdapter):
                 continue
             auth_type = _auth_kind(inst.class_name)
             canon = canonicalize_text(f"mcp:auth:{inst.class_name.lower()}")
+            # Build AuthDetail based on class name
+            _protocols: list[str] = []
+            _strict: bool | None = None
+            _cls = inst.class_name
+            if _cls in ("BearerAuthProvider", "TokenAuth", "OAuth2Bearer"):
+                _protocols = ["bearer"]
+                _strict = True
+            elif _cls in ("OAuth2ClientCredentialsProvider", "OAuth2AuthorizationCodeProvider", "OAuthProvider", "ClientCredentialsProvider"):
+                _protocols = ["oauth2"]
+                _strict = True
+            elif _cls in ("APIKeyAuth",):
+                _protocols = ["api_key"]
+                _strict = True
+            elif _cls in ("JWTAuth",):
+                _protocols = ["jwt"]
+                _strict = True
+            _auth_detail: dict = {"protocols": _protocols}
+            if _strict is not None:
+                _auth_detail["enforcement_strict"] = _strict
             auth_detections.append(
                 ComponentDetection(
                     component_type=ComponentType.AUTH,
@@ -124,6 +143,7 @@ class MCPServerAdapter(FrameworkAdapter):
                         "framework": "mcp-server",
                         "auth_type": auth_type,
                         "auth_class": inst.class_name,
+                        "auth_detail": _auth_detail,
                     },
                     file_path=file_path,
                     line=inst.line,
