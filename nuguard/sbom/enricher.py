@@ -37,7 +37,7 @@ import re
 from collections.abc import Callable
 from uuid import UUID
 
-from .models import AiSbomDocument, Node, NodeMetadata
+from .models import AiSbomDocument, InstrumentationDetail, Node, NodeMetadata, TestingDetail
 from .types import ComponentType, RelationshipType
 
 # ---------------------------------------------------------------------------
@@ -147,6 +147,8 @@ def enrich(doc: AiSbomDocument) -> None:
     _enrich_tools(doc, tool_frameworks, framework_auth, privilege_node_ids, targets)
     _enrich_agents(doc, targets, node_by_id)
     _backfill_descriptions(doc)
+    _enrich_instrumentation(doc)
+    _enrich_testing(doc)
 
 
 # ---------------------------------------------------------------------------
@@ -434,3 +436,118 @@ def _backfill_descriptions(doc: AiSbomDocument) -> None:
 
             # 3. Final fallback
             meta.description = f"{node.name} agent"
+
+
+# ---------------------------------------------------------------------------
+# Instrumentation enrichment (per-node, uses dependency_names)
+# ---------------------------------------------------------------------------
+
+_INSTRUMENTATION_TOOL_MAP: dict[str, str] = {
+    "opentelemetry": "opentelemetry",
+    "opentelemetry_api": "opentelemetry",
+    "opentelemetry_sdk": "opentelemetry",
+    "opentelemetry_instrumentation": "opentelemetry",
+    "ddtrace": "datadog",
+    "datadog": "datadog",
+    "prometheus_client": "prometheus",
+    "prometheus": "prometheus",
+    "structlog": "structlog",
+    "sentry_sdk": "sentry",
+    "sentry": "sentry",
+    "newrelic": "new_relic",
+    "elastic_apm": "elastic_apm",
+    "jaeger": "jaeger",
+    "zipkin": "zipkin",
+}
+
+
+def _enrich_instrumentation(doc: AiSbomDocument) -> None:
+    """Derive InstrumentationDetail for each node from its dependency_names."""
+    for node in doc.nodes:
+        if node.metadata.instrumentation is not None:
+            continue  # already set by an adapter
+        dep_names = node.metadata.dependency_names or []
+        tools: list[str] = []
+        seen: set[str] = set()
+        for dep in dep_names:
+            tool = _INSTRUMENTATION_TOOL_MAP.get(dep.replace("-", "_").lower())
+            if tool and tool not in seen:
+                tools.append(tool)
+                seen.add(tool)
+        if not tools:
+            continue
+        node.metadata.instrumentation = InstrumentationDetail(
+            tools=tools,
+            tracing_enabled=any(t in seen for t in ("opentelemetry", "datadog", "jaeger", "zipkin")),
+            metrics_enabled=any(t in seen for t in ("prometheus", "datadog", "elastic_apm")),
+        )
+
+
+# ---------------------------------------------------------------------------
+# Testing enrichment (per-node, heuristic based on evidence file paths)
+# ---------------------------------------------------------------------------
+
+_TEST_FRAMEWORK_DEPS: dict[str, str] = {
+    "pytest": "pytest",
+    "unittest": "unittest",
+    "hypothesis": "hypothesis",
+    "jest": "jest",
+    "vitest": "vitest",
+    "mocha": "mocha",
+    "jasmine": "jasmine",
+    "coverage": "coverage",
+    "codecov": "codecov",
+    "pytest_cov": "coverage",
+}
+
+_TEST_FILE_PATTERNS = re.compile(
+    r"(?:^|/)tests?/|_test\.py$|test_[^/]+\.py$|__tests__/|\.spec\.[jt]sx?$|\.test\.[jt]sx?$",
+    re.IGNORECASE,
+)
+
+
+def _enrich_testing(doc: AiSbomDocument) -> None:
+    """Derive TestingDetail for each node based on evidence file paths and dependencies."""
+    # Build a set of all evidence paths across all nodes (for sibling test detection)
+    all_ev_paths: set[str] = set()
+    for node in doc.nodes:
+        for ev in node.evidence:
+            if ev.location:
+                all_ev_paths.add(ev.location.path)
+
+    for node in doc.nodes:
+        if node.metadata.testing is not None:
+            continue  # already set by an adapter
+        dep_names = node.metadata.dependency_names or []
+        frameworks: list[str] = []
+        seen_fw: set[str] = set()
+        for dep in dep_names:
+            fw = _TEST_FRAMEWORK_DEPS.get(dep.replace("-", "_").lower())
+            if fw and fw not in seen_fw:
+                frameworks.append(fw)
+                seen_fw.add(fw)
+
+        has_unit = False
+        has_integration = False
+        for ev in node.evidence:
+            if not ev.location:
+                continue
+            ev_path = ev.location.path
+            # Check if a sibling test file exists among all evidence paths
+            stem = ev_path.rsplit("/", 1)[-1].rsplit(".", 1)[0]
+            if any(
+                p.endswith(f"test_{stem}.py") or p.endswith(f"{stem}_test.py")
+                or p.endswith(f"{stem}.test.ts") or p.endswith(f"{stem}.spec.ts")
+                for p in all_ev_paths
+            ):
+                has_unit = True
+            if _TEST_FILE_PATTERNS.search(ev_path):
+                has_unit = True
+
+        if not (has_unit or has_integration or frameworks):
+            continue
+        node.metadata.testing = TestingDetail(
+            has_unit_tests=has_unit or None,
+            has_integration_tests=has_integration or None,
+            test_frameworks=frameworks,
+        )

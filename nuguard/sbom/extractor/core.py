@@ -33,7 +33,7 @@ import tempfile
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from ..adapters.base import (
     AdapterMatch,
@@ -74,7 +74,18 @@ from ..core.application_summary import build_scan_summary
 from ..core.ts_parser import TSParseResult
 from ..core.ts_parser import parse_typescript as _parse_ts_impl
 from ..deps import DependencyScanner
-from ..models import AiSbomDocument, Edge, Evidence, Node, ScanSummary, SourceLocation
+from ..models import (
+    AiSbomDocument,
+    AuthDetail,
+    DataHandlingDetail,
+    Edge,
+    EncryptionDetail,
+    Evidence,
+    Node,
+    RateLimitDetail,
+    ScanSummary,
+    SourceLocation,
+)
 from ..normalization import canonicalize_text
 from ..types import ComponentType, RelationshipType
 
@@ -221,6 +232,197 @@ def _extract_python_prompt_constants(
     return detections
 
 
+def _run_prompt_detector(
+    source: str,
+    rel_path: str,
+) -> "list[ComponentDetection]":
+    """Run :class:`PromptDetector` and convert results to ``ComponentDetection`` objects.
+
+    The ``PromptDetector`` returns ``Node`` objects; this bridge function
+    re-packages them so they flow through the standard ``_merge_detection``
+    pipeline (dedup, tier classification, evidence tracking).
+    """
+    from ..adapters.base import ComponentDetection  # noqa: PLC0415
+    from ..normalization import canonicalize_text  # noqa: PLC0415
+    from ..types import ComponentType  # noqa: PLC0415
+    from .prompt_detector import PromptDetector  # noqa: PLC0415
+
+    path = Path(rel_path)
+    try:
+        nodes = PromptDetector().detect(path, source)
+    except Exception:
+        return []
+
+    detections: list[ComponentDetection] = []
+    for node in nodes:
+        extras = node.metadata.extras if node.metadata else {}
+        content = extras.get("content", "")
+        detections.append(
+            ComponentDetection(
+                component_type=ComponentType.PROMPT,
+                canonical_name=canonicalize_text(node.name.lower()),
+                display_name=node.name,
+                adapter_name="prompt_detector",
+                priority=40,
+                confidence=node.confidence,
+                metadata={
+                    "role": "system",
+                    "content": content,
+                    "char_count": len(content),
+                    "is_template": extras.get("is_template", False),
+                    "injection_risk_score": extras.get("injection_risk_score", 0.0),
+                },
+                file_path=rel_path,
+                line=0,
+                snippet=content[:80] + ("..." if len(content) > 80 else ""),
+                evidence_kind="ast_prompt_detector",
+            )
+        )
+    return detections
+
+
+_PROMPT_DICT_NAME_RE = re.compile(
+    r"(?:prompt|persona|instruction|system_message)",
+    re.IGNORECASE,
+)
+_MIN_PROMPT_DICT_VALUE_LENGTH = 120
+
+
+def _extract_python_prompt_dicts(
+    source: str,
+    rel_path: str,
+) -> "list[ComponentDetection]":
+    """Detect prompt strings stored as values in module-level Python dicts.
+
+    Targets patterns like ``PROMPT_REGISTRY = {"key": "long prompt..."}``,
+    including the ``" ".join([...])`` fragment pattern.
+    """
+    import ast as _ast  # noqa: PLC0415
+
+    from ..adapters.base import ComponentDetection  # noqa: PLC0415
+    from ..normalization import canonicalize_text  # noqa: PLC0415
+    from ..types import ComponentType  # noqa: PLC0415
+
+    try:
+        tree = _ast.parse(source)
+    except SyntaxError:
+        return []
+
+    # First pass: collect module-level list/tuple string constants so that
+    # ``" ".join(_FRAGMENTS)`` can be resolved when the join argument is a
+    # variable reference rather than an inline list literal.
+    _module_lists: dict[str, list[str]] = {}
+    for node in _ast.iter_child_nodes(tree):
+        if isinstance(node, _ast.Assign) and len(node.targets) == 1:
+            t = node.targets[0]
+            if isinstance(t, _ast.Name) and isinstance(node.value, (_ast.List, _ast.Tuple)):
+                parts = []
+                for elt in node.value.elts:
+                    if isinstance(elt, _ast.Constant) and isinstance(elt.value, str):
+                        parts.append(elt.value)
+                    else:
+                        parts = []
+                        break
+                if parts:
+                    _module_lists[t.id] = parts
+
+    detections: list[ComponentDetection] = []
+
+    for node in _ast.iter_child_nodes(tree):
+        targets: list[str] = []
+        value: _ast.expr | None = None
+
+        if isinstance(node, _ast.Assign):
+            for t in node.targets:
+                if isinstance(t, _ast.Name):
+                    targets.append(t.id)
+            value = node.value
+        elif isinstance(node, _ast.AnnAssign) and isinstance(node.target, _ast.Name):
+            targets.append(node.target.id)
+            value = node.value
+
+        if not targets or value is None or not isinstance(value, _ast.Dict):
+            continue
+
+        for var_name in targets:
+            if not _PROMPT_DICT_NAME_RE.search(var_name):
+                continue
+
+            for dk, dv in zip(value.keys, value.values):
+                dict_key = dk.value if isinstance(dk, _ast.Constant) and isinstance(dk.value, str) else None
+                if dict_key is None:
+                    continue
+
+                prompt_text = _resolve_dict_value(dv, _module_lists)
+                if prompt_text is None or len(prompt_text) < _MIN_PROMPT_DICT_VALUE_LENGTH:
+                    continue
+
+                canon = canonicalize_text(f"{var_name}_{dict_key}".lower())
+                template_vars = re.findall(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}", prompt_text)
+                detections.append(
+                    ComponentDetection(
+                        component_type=ComponentType.PROMPT,
+                        canonical_name=canon,
+                        display_name=f"{var_name}[{dict_key}]",
+                        adapter_name="python_prompt_dict",
+                        priority=45,
+                        confidence=0.82,
+                        metadata={
+                            "role": "system" if "system" in dict_key.lower() else "unspecified",
+                            "content": prompt_text[:500],
+                            "char_count": len(prompt_text),
+                            "is_template": bool(template_vars),
+                            "template_variables": template_vars,
+                            "dict_name": var_name,
+                            "dict_key": dict_key,
+                        },
+                        file_path=rel_path,
+                        line=getattr(dk, "lineno", 0),
+                        snippet=prompt_text[:80] + ("..." if len(prompt_text) > 80 else ""),
+                        evidence_kind="ast_dict_value",
+                    )
+                )
+
+    return detections
+
+
+def _resolve_dict_value(
+    node: Any,
+    module_lists: dict[str, list[str]] | None = None,
+) -> str | None:
+    """Extract a string from an AST node, handling ``" ".join([...])``."""
+    import ast as _ast  # noqa: PLC0415
+
+    if isinstance(node, _ast.Constant) and isinstance(node.value, str):
+        return node.value
+
+    if isinstance(node, _ast.JoinedStr):
+        return None
+
+    # " ".join([...]) or " ".join(variable)
+    if isinstance(node, _ast.Call) and isinstance(node.func, _ast.Attribute):
+        if (
+            node.func.attr == "join"
+            and isinstance(node.func.value, _ast.Constant)
+            and isinstance(node.func.value.value, str)
+            and node.args
+        ):
+            sep = node.func.value.value
+            arg = node.args[0]
+            if isinstance(arg, (_ast.List, _ast.Tuple)):
+                parts: list[str] = []
+                for elt in arg.elts:
+                    if isinstance(elt, _ast.Constant) and isinstance(elt.value, str):
+                        parts.append(elt.value)
+                    else:
+                        return None
+                return sep.join(parts)
+            if isinstance(arg, _ast.Name) and module_lists and arg.id in module_lists:
+                return sep.join(module_lists[arg.id])
+
+    return None
+
+
 _IAC_EXTENSIONS = {".tf", ".tfvars", ".hcl", ".bicep", ".jinja", ".yaml", ".yml", ".json"}
 # Bicep and Jinja IaC-specific extensions (not processed by the generic YAML phase)
 _BICEP_EXTENSIONS = {".bicep"}
@@ -242,7 +444,7 @@ _SCRIPT_EXTENSIONS = {".sh", ".bash", ".zsh", ".fish", ".ps1"}
 
 
 def _should_skip_path_parts(parts: tuple[str, ...]) -> bool:
-    skip_dirs = {".git", "__pycache__", "node_modules", ".tox", ".claude", "site-packages", ".mypy_cache", ".pytest_cache", ".ruff_cache", ".pytype", "logs", "log", "reports"}
+    skip_dirs = {".git", "__pycache__", "node_modules", ".tox", ".claude", "site-packages", ".mypy_cache", ".pytest_cache", ".ruff_cache", ".pytype", "logs", "log", "reports", "nuguard-test-results", "test-results"}
     for part in parts:
         if part in skip_dirs:
             return True
@@ -327,6 +529,29 @@ class _NodeAccumulator:
     # Source-tier tracking (populated by _merge_detection)
     source_tiers: set[str] = field(default_factory=set)
     best_tier_rank: int = 99  # 0=code, 1=iac, 2=docs; 99=uninitialised
+
+
+def _load_gitignore_matcher(root: Path) -> "Callable[[str], bool] | None":
+    """Return a predicate that matches paths against the repo's ``.gitignore``.
+
+    Returns ``None`` when no ``.gitignore`` exists or the ``pathspec`` library
+    is unavailable (graceful degradation).
+    """
+    gitignore_path = root / ".gitignore"
+    if not gitignore_path.is_file():
+        return None
+    try:
+        import pathspec  # noqa: PLC0415
+    except ImportError:
+        _log.debug(".gitignore found but pathspec not installed; skipping")
+        return None
+    try:
+        patterns = gitignore_path.read_text(encoding="utf-8", errors="ignore")
+        spec = pathspec.PathSpec.from_lines("gitwildmatch", patterns.splitlines())
+        return spec.match_file  # type: ignore[return-value]
+    except Exception as exc:
+        _log.warning("failed to parse .gitignore: %s", exc)
+        return None
 
 
 class AiSbomExtractor:
@@ -431,6 +656,10 @@ class AiSbomExtractor:
         # Keep full file contents only when LLM enrichment is enabled.
         keep_full_contents = bool(config.enable_llm)
         file_contents: dict[str, str] = {}
+        # LOC tracking: lines of code per relative file path
+        file_loc: dict[str, int] = {}
+        # Import tracking per file for dependency cross-referencing
+        _file_imports: dict[str, set[str]] = {}
         # Summary builder only needs a bounded content sample.
         files_sample: list[tuple[str, str]] = []
         files_scanned = 0
@@ -469,6 +698,8 @@ class AiSbomExtractor:
             files_scanned += 1
             rel_path = str(file_path.relative_to(root))
             content_bytes = file_size
+            # Track LOC for every scanned file
+            file_loc[rel_path] = content.count("\n") + 1
             if keep_full_contents:
                 file_contents[rel_path] = content
                 full_cache_files += 1
@@ -514,6 +745,12 @@ class AiSbomExtractor:
                         imported_modules: set[str] = {
                             imp.module for imp in parse_result.imports if imp.module
                         }
+                        # Capture top-level package names for dependency cross-referencing
+                        _file_imports[rel_path] = {
+                            imp.module.split(".")[0].lower()
+                            for imp in parse_result.imports
+                            if imp.module
+                        }
                         for adapter in self.framework_adapters:
                             # Skip TypeScript adapters for Python/notebook files
                             if isinstance(adapter, TSFrameworkAdapter):
@@ -545,6 +782,15 @@ class AiSbomExtractor:
                         # prompt-only modules (e.g. prompts.py with no langchain imports)
                         # are still processed.
                         for det in _extract_python_prompt_constants(parse_result, rel_path):
+                            self._merge_detection(node_map, det)
+
+                        # Phase 1a″: PromptDetector — system-prompt variables,
+                        # f-string prompts, and dict-based {role: "system"} messages.
+                        for det in _run_prompt_detector(content, rel_path):
+                            self._merge_detection(node_map, det)
+
+                        # Phase 1a‴: dict-based prompt stores (PROMPT_REGISTRY, etc.)
+                        for det in _extract_python_prompt_dicts(content, rel_path):
                             self._merge_detection(node_map, det)
 
             # Phase 1b: SQL schema — data classification
@@ -806,8 +1052,13 @@ class AiSbomExtractor:
             if len(acc.source_tiers) > 1:
                 acc.confidence = min(0.99, acc.confidence + 0.03 * (len(acc.source_tiers) - 1))
 
+            _raw_display = acc.display_name
+            # Normalize display names that are raw variable identifiers
+            if " " not in _raw_display:
+                from ..normalization import normalize_display_name as _norm_dn
+                _raw_display = _norm_dn(_raw_display, acc.component_type)
             node = Node(
-                name=acc.display_name,
+                name=_raw_display,
                 component_type=acc.component_type,
                 confidence=acc.confidence,
             )
@@ -957,6 +1208,16 @@ class AiSbomExtractor:
                     node.metadata.request_body_schema = {
                         str(k): str(v) for k, v in _rbs.items()
                     }
+                    node.metadata.request_schema = dict(_rbs)
+                _resp_schema = acc.metadata.get("response_body_schema")
+                if isinstance(_resp_schema, dict) and _resp_schema:
+                    node.metadata.response_schema = dict(_resp_schema)
+                _cpf = acc.metadata.get("context_payload_fields")
+                if isinstance(_cpf, dict) and _cpf:
+                    existing = node.metadata.context_payload_fields or {}
+                    merged = {str(k): str(v) for k, v in _cpf.items()}
+                    merged.update(existing)  # existing node values win on conflict
+                    node.metadata.context_payload_fields = merged
             # server_name for all MCP FRAMEWORK/TOOL nodes
             if acc.metadata.get("framework") == "mcp-server":
                 if acc.metadata.get("server_name"):
@@ -1029,6 +1290,20 @@ class AiSbomExtractor:
                 _rl = acc.metadata.get("has_resource_limits")
                 if _rl is not None:
                     node.metadata.has_resource_limits = bool(_rl)
+                _hnp = acc.metadata.get("has_network_policy")
+                if _hnp is not None:
+                    node.metadata.has_network_policy = bool(_hnp)
+            # MODEL node typed fields (source_url, integrity_hash, checksum)
+            if acc.component_type == ComponentType.MODEL:
+                _su = acc.metadata.get("source_url")
+                if _su:
+                    node.metadata.source_url = str(_su)
+                _ih = acc.metadata.get("integrity_hash")
+                if _ih:
+                    node.metadata.integrity_hash = str(_ih)
+                _cs = acc.metadata.get("checksum")
+                if _cs:
+                    node.metadata.checksum = str(_cs)
             # IAM node typed fields
             if acc.component_type == ComponentType.IAM:
                 _it = acc.metadata.get("iam_type")
@@ -1047,10 +1322,38 @@ class AiSbomExtractor:
                 if isinstance(_tp, list) and _tp:
                     node.metadata.trust_principals = [str(p) for p in _tp[:20]]
 
+            # ── SBOM 1.5.0 sub-model mapping (applies to all component types) ──────
+            _rld = acc.metadata.get("rate_limit_detail")
+            if isinstance(_rld, dict) and _rld and node.metadata.rate_limit_detail is None:
+                node.metadata.rate_limit_detail = RateLimitDetail(
+                    **{k: v for k, v in _rld.items() if v is not None}
+                )
+            _ad = acc.metadata.get("auth_detail")
+            if isinstance(_ad, dict) and _ad and node.metadata.auth_detail is None:
+                node.metadata.auth_detail = AuthDetail(
+                    **{k: v for k, v in _ad.items() if v is not None}
+                )
+            _ed = acc.metadata.get("encryption_detail")
+            if isinstance(_ed, dict) and _ed and node.metadata.encryption_detail is None:
+                node.metadata.encryption_detail = EncryptionDetail(
+                    **{k: v for k, v in _ed.items() if v is not None}
+                )
+                if node.metadata.encryption_detail.at_rest is not None:
+                    node.metadata.encryption_at_rest = node.metadata.encryption_detail.at_rest
+            _dh = acc.metadata.get("data_handling")
+            if isinstance(_dh, dict) and _dh and node.metadata.data_handling is None:
+                node.metadata.data_handling = DataHandlingDetail(
+                    **{k: v for k, v in _dh.items() if v is not None}
+                )
+
             node.evidence = sorted(acc.evidence, key=lambda e: e.confidence, reverse=True)
             doc.nodes.append(node)
 
         self._resolve_edges(doc, node_map)
+
+        # Deduplicate DEPLOYMENT nodes: merge github-actions workflow nodes into
+        # the cloud-provider service nodes they deploy to.
+        _dedup_deployment_nodes(doc)
 
         # Phase CES: scan for Google Customer Engagement Suite deployments.
         # Runs after the main AST/regex loop so CES nodes can be appended.
@@ -1092,6 +1395,28 @@ class AiSbomExtractor:
         # Scan package manifest dependencies (pyproject.toml, requirements*.txt, package.json, …)
         doc.deps = DependencyScanner().scan(root)
         _log.info("deps scan: %d packages found", len(doc.deps))
+
+        # Per-node LOC and dependency cross-referencing
+        dep_names = {d.name.lower().replace("-", "_") for d in doc.deps}
+        for node in doc.nodes:
+            # LOC: sum lines from all evidence source files for this node
+            ev_paths = {
+                ev.location.path
+                for ev in node.evidence
+                if ev.location and ev.location.path
+            }
+            loc_sum = sum(file_loc.get(p, 0) for p in ev_paths)
+            if loc_sum:
+                node.metadata.loc = loc_sum
+
+            # Dependency names: intersect imports from evidence files with manifest deps
+            all_imports: set[str] = set()
+            for p in ev_paths:
+                all_imports |= _file_imports.get(p, set())
+            matched = sorted(all_imports & dep_names)
+            if matched:
+                node.metadata.dependency_names = matched
+
         _log.info("scan complete: %d files processed under %s", files_scanned, root)
         _log.info(
             "memory metrics: sample_files=%d sample_bytes=%d (%s) full_cache_files=%d full_cache_bytes=%d (%s) llm_enabled=%s",
@@ -1114,6 +1439,10 @@ class AiSbomExtractor:
                 dc_metadata=_dc_metadata,
             )
         )
+
+        # Write total LOC into the summary
+        if doc.summary and file_loc:
+            doc.summary.total_loc = sum(file_loc.values()) or None
 
         # Ensure google-ces is listed in summary.frameworks when CES nodes exist
         _has_ces = any(
@@ -1424,6 +1753,7 @@ class AiSbomExtractor:
             "ACCESSES": RelationshipType.ACCESSES,
             "PROTECTS": RelationshipType.PROTECTS,
             "DEPLOYS": RelationshipType.DEPLOYS,
+            "DELEGATES_TO": RelationshipType.DELEGATES_TO,
         }
 
         # Process explicit relationship hints
@@ -1445,7 +1775,14 @@ class AiSbomExtractor:
                 if edge_key in seen_edges:
                     continue
                 seen_edges.add(edge_key)
-                doc.edges.append(Edge(source=src_id, target=tgt_id, relationship_type=rel))
+                doc.edges.append(
+                    Edge(
+                        source=src_id,
+                        target=tgt_id,
+                        relationship_type=rel,
+                        access_type=getattr(hint, "access_type", None),
+                    )
+                )
 
         # Fallback edge inference — fills in edges not covered by explicit hints.
         by_type: dict[ComponentType, list[Node]] = {}
@@ -1690,6 +2027,14 @@ class AiSbomExtractor:
         except Exception as exc:
             _log.warning("relationship-graph: unexpected error — continuing without: %s", exc)
 
+        # Step 7: Generate LLM descriptive names for all nodes
+        try:
+            from ..llm_client import enrich_descriptive_names
+            await enrich_descriptive_names(doc.nodes, client)
+            _log.info("descriptive-names: completed")
+        except Exception as exc:
+            _log.warning("descriptive-names: unexpected error — continuing without: %s", exc)
+
         # Recompute node_counts from the final node list after all verification,
         # aggregation, and discovery steps — gap-fill may have added nodes that
         # verification later rejected, leaving the counts stale.
@@ -1700,6 +2045,13 @@ class AiSbomExtractor:
                 for ct in _CT
                 if any(n.component_type == ct for n in doc.nodes)
             }
+
+        # Write LLM token usage into the summary
+        if doc.summary:
+            doc.summary.tokens_used_for_enrichment = client.tokens_used
+            doc.summary.input_tokens_used = client.input_tokens
+            doc.summary.output_tokens_used = client.output_tokens
+            doc.summary.llm_model_used = config.llm_model
 
         _log.info("llm enrichment complete: tokens_used=%d", client.tokens_used)
         return doc
@@ -1964,6 +2316,9 @@ class AiSbomExtractor:
 
     @staticmethod
     def _iter_files(root: Path, config: AiSbomConfig) -> Iterator[tuple[Path, int]]:
+        import fnmatch as _fnmatch  # noqa: PLC0415
+
+        _gitignore_match = _load_gitignore_matcher(root) if getattr(config, "honor_gitignore", True) else None
         count = 0
         for dirpath, dirnames, filenames in os.walk(root):
             # Keep traversal deterministic and prune irrelevant dirs early.
@@ -1988,12 +2343,34 @@ class AiSbomExtractor:
                 if path.name in {"CLAUDE.md", "AGENTS.md"}:
                     continue
                 # Skip NuGuard-specific config, policy, and output files
-                if path.name == "nuguard.yaml":
+                # Match any nuguard-prefixed config/output file, not just exact "nuguard.yaml"
+                if path.name.lower().startswith("nuguard") and suffix in {".yaml", ".yml", ".json"}:
                     continue
                 name_lower = path.name.lower()
                 if name_lower in {"cognitive_policy.md", "cognitive_policy.json"}:
                     continue
                 if name_lower.endswith("sbom.json") or name_lower.endswith("aibom.json"):
+                    continue
+                if name_lower.endswith(".sbom.enriched.json"):
+                    continue
+                if name_lower.startswith("redteam-prompts-"):
+                    continue
+                if name_lower.startswith("nuguard-sbom-") and suffix in {".yaml", ".yml"}:
+                    continue
+                if name_lower in {"mcp_test_results.json", "canary.json"}:
+                    continue
+                # User-configured exclude patterns
+                if config.exclude_patterns:
+                    _rel = str(path.relative_to(root))
+                    if any(
+                        _fnmatch.fnmatch(_rel, pat) or _fnmatch.fnmatch(filename, pat)
+                        for pat in config.exclude_patterns
+                    ):
+                        continue
+                # .gitignore support
+                if _gitignore_match is not None and _gitignore_match(
+                    str(path.relative_to(root))
+                ):
                     continue
                 try:
                     size = path.stat().st_size
@@ -2041,6 +2418,9 @@ def _make_scan_summary(d: dict[str, Any]) -> ScanSummary:
         # Streaming output detection
         uses_streaming=bool(d.get("uses_streaming", False)),
         streaming_endpoints=d.get("streaming_endpoints") or [],
+        # 1.5.0 additions
+        instrumentation=d.get("instrumentation"),
+        testing=d.get("testing"),
     )
 
 
@@ -2340,3 +2720,86 @@ def _suppress_non_code_model_datastore(
 
 def stable_id(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _dedup_deployment_nodes(doc: "AiSbomDocument") -> None:  # noqa: F821
+    """Merge GitHub Actions workflow DEPLOYMENT nodes into the cloud-provider
+    service nodes they deploy to, avoiding duplicate Azure/GHA entries.
+
+    When the same deployment is described by both a GitHub Actions workflow
+    node (deployment_target=github-actions) and one or more cloud-provider
+    nodes (deployment_target=azure, aws, gcp), the GHA node is merged into
+    the cloud node: CI/CD metadata (triggers, runners) is copied across, then
+    the GHA node is removed.
+    """
+    from ..types import ComponentType as _CT  # local import
+
+    deployment_nodes = [n for n in doc.nodes if n.component_type == _CT.DEPLOYMENT]
+
+    # Build index: deployment_target → list of nodes
+    by_target: dict[str, list] = {}
+    for node in deployment_nodes:
+        target = node.metadata.extras.get("deployment_target", "unknown")
+        by_target.setdefault(target, []).append(node)
+
+    gha_nodes = by_target.get("github-actions", [])
+    generic_nodes = by_target.get("unknown", []) + [
+        n for n in deployment_nodes
+        if n.metadata.extras.get("adapter") == "deployment_generic"
+    ]
+    nodes_to_remove = []
+
+    # Remove generic deployment nodes when real IaC nodes already cover the same platform
+    real_iac_targets = {
+        t for t in by_target
+        if t not in ("unknown", "github-actions")
+        and any(
+            n.metadata.extras.get("adapter") != "deployment_generic"
+            for n in by_target[t]
+        )
+    }
+    gha_cloud_providers: set[str] = set()
+    for gha in gha_nodes:
+        gha_cloud_providers.update(gha.metadata.extras.get("cloud_providers") or [])
+
+    for generic_node in generic_nodes:
+        # Drop generic nodes when a real IaC node covers the same cloud, or when there
+        # are GHA nodes that already represent the deployment CI/CD pipeline
+        if real_iac_targets or gha_nodes:
+            if generic_node not in nodes_to_remove:
+                nodes_to_remove.append(generic_node)
+
+    # Merge GitHub Actions workflow nodes into the cloud-provider nodes they deploy to
+    for gha_node in gha_nodes:
+        if gha_node in nodes_to_remove:
+            continue
+        cloud_providers: list[str] = gha_node.metadata.extras.get("cloud_providers") or []
+        for provider in cloud_providers:
+            cloud_nodes = [
+                n for n in by_target.get(provider, [])
+                if n not in nodes_to_remove
+                and n.metadata.extras.get("adapter") != "deployment_generic"
+            ]
+            if len(cloud_nodes) == 1:
+                # Merge CI/CD metadata from the GHA workflow node into the cloud node
+                target_node = cloud_nodes[0]
+                gha_extras = gha_node.metadata.extras
+                target_extras = target_node.metadata.extras
+                for key in ("workflow_triggers", "runners", "uses_oidc", "secret_store"):
+                    if key not in target_extras and gha_extras.get(key) is not None:
+                        target_extras[key] = gha_extras[key]
+                # Merge evidence (deduplicated)
+                existing_locs = {
+                    (e.location.path if e.location else None) for e in target_node.evidence
+                }
+                for ev in gha_node.evidence:
+                    ev_path = ev.location.path if ev.location else None
+                    if ev_path not in existing_locs:
+                        target_node.evidence.append(ev)
+                        existing_locs.add(ev_path)
+                nodes_to_remove.append(gha_node)
+                break  # only merge into one cloud node per GHA node
+
+    for node in nodes_to_remove:
+        if node in doc.nodes:
+            doc.nodes.remove(node)

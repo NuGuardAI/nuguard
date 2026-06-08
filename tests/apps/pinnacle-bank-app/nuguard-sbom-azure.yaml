@@ -17,24 +17,39 @@ llm:
 sbom_generation:
   llm: true
 
+target: https://frontend-ui.agreeablesky-8c7ba25f.eastus.azurecontainerapps.io
+
+# Authentication
+auth:
+  #type: none
+  # type: bearer
+  # header: "Authorization: Bearer ${TARGET_TOKEN}"
+  type: basic
+  username: alice.johnson@pinnaclebank.com
+  password: alice123
+
+
 # ─── Behavior mode ────────────────────────────────────────────────────────────
 sbom: tests/apps/pinnacle-bank-app/pinnacle-bank.sbom.json
 behavior:
   # Required: URL of the running Pinnacle Bank AI application under test
-  target: https://frontend-ui.agreeablesky-8c7ba25f.eastus.azurecontainerapps.io
+  #target: https://frontend-ui.agreeablesky-8c7ba25f.eastus.azurecontainerapps.io
 
   # Path of the chat/agent endpoint on the target
-  target_endpoint: /api/chat
+  #target_endpoint: /api/chat
 
   # Request body shape
-  chat_payload_key: message
-  chat_payload_list: false
+  #chat_payload_key: message
+  #chat_payload_list: false
 
   # Authentication
-  auth:
-    type: none
+  #auth:
+    #type: none
     # type: bearer
     # header: "Authorization: Bearer ${TARGET_TOKEN}"
+  #  type: basic
+  #  username: alice.johnson@pinnaclebank.com
+  #  password: alice123
 
   # Use LLM for intent-aware scenario generation and per-turn judging
   llm: true
@@ -47,11 +62,6 @@ behavior:
   #   component_coverage   — one multi-turn scenario per SBOM tool/agent node
   #   boundary_enforcement — verifies the app correctly refuses out-of-scope requests
   #   invariant_probe      — probes behavioral invariants and policy constraints
-  workflows:
-    - intent_happy_path
-    - component_coverage
-    - boundary_enforcement
-    - invariant_probe
 
   # Boundary assertions: requests the app MUST refuse
   boundary_assertions:
@@ -83,10 +93,6 @@ behavior:
 
 # ─── Red team mode ────────────────────────────────────────────────────────────
 redteam:
-  target: https://frontend-ui.agreeablesky-8c7ba25f.eastus.azurecontainerapps.io
-  target_endpoint: /api/chat
-  chat_payload_key: message
-  chat_payload_list: false
 
   llm:
     model: azure/gpt-5.4-mini

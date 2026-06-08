@@ -97,12 +97,22 @@ class LLMClient:
         self._api_base = api_base
         self._budget = budget_tokens
         self._tokens_used = 0
+        self._input_tokens = 0
+        self._output_tokens = 0
         self._google_api_key = google_api_key
         self._vertex_location = vertex_location
 
     @property
     def tokens_used(self) -> int:
         return self._tokens_used
+
+    @property
+    def input_tokens(self) -> int:
+        return self._input_tokens
+
+    @property
+    def output_tokens(self) -> int:
+        return self._output_tokens
 
     def _check_budget(self) -> None:
         if self._tokens_used >= self._budget:
@@ -114,9 +124,13 @@ class LLMClient:
         """Extract token count from litellm response and update budget."""
         try:
             usage = response.usage
-            tokens = (usage.prompt_tokens or 0) + (usage.completion_tokens or 0)
+            prompt = usage.prompt_tokens or 0
+            completion = usage.completion_tokens or 0
+            tokens = prompt + completion
         except (AttributeError, TypeError):
-            tokens = 0
+            prompt = completion = tokens = 0
+        self._input_tokens += prompt
+        self._output_tokens += completion
         self._tokens_used += tokens
         return tokens
 
@@ -148,7 +162,14 @@ class LLMClient:
         candidates = data.get("candidates", [])
         text: str = candidates[0]["content"]["parts"][0]["text"] if candidates else ""
         usage = data.get("usageMetadata", {})
-        tokens = usage.get("totalTokenCount", 0)
+        prompt = usage.get("promptTokenCount", 0)
+        completion = usage.get("candidatesTokenCount", 0)
+        tokens = usage.get("totalTokenCount", prompt + completion)
+        if not prompt and not completion and tokens:
+            prompt = tokens // 2
+            completion = tokens - prompt
+        self._input_tokens += prompt
+        self._output_tokens += completion
         self._tokens_used += tokens
         return text, tokens
 
@@ -367,3 +388,68 @@ async def enrich_node_descriptions(
             _log.warning(
                 "enrich_node_descriptions: failed for node %s (%s): %s", name, ct_str, exc
             )
+
+
+async def enrich_descriptive_names(
+    nodes: list,  # list[Node] — avoid circular import
+    llm_client: "LLMClient",
+) -> None:
+    """Use LLM to generate a human-readable descriptive_name for every node.
+
+    Batches all nodes into a single structured call to minimise token usage.
+    Mutates nodes in-place. Skips nodes that already have descriptive_name set.
+    Called from AiSbomExtractor._llm_enrich() as the final enrichment step.
+    """
+    import json
+
+    targets = [
+        n for n in nodes
+        if getattr(getattr(n, "metadata", None), "descriptive_name", None) is None
+    ]
+    if not targets:
+        return
+
+    if llm_client.tokens_used >= llm_client._budget * 0.9:
+        _log.debug("enrich_descriptive_names: budget threshold reached, skipping")
+        return
+
+    _SYSTEM = (
+        "You are an AI security analyst generating short, human-readable names for AI system "
+        "components. Given a list of components, return a JSON object mapping each component's "
+        "id to a descriptive name (3–6 words, title case) that reflects its purpose and type, "
+        "e.g. 'User Authentication API', 'PostgreSQL Credentials Store', 'LangGraph Chat Agent'."
+    )
+
+    items = []
+    for node in targets:
+        meta = getattr(node, "metadata", None)
+        ct = str(getattr(getattr(node, "component_type", None), "value", "")) or "UNKNOWN"
+        name = getattr(node, "name", "") or ""
+        desc = (getattr(meta, "description", None) or "")[:100]
+        items.append({"id": str(node.id), "type": ct, "name": name, "desc": desc})
+
+    user_prompt = (
+        f"Components (JSON list):\n{json.dumps(items, ensure_ascii=False)}\n\n"
+        "Return a JSON object: {\"<id>\": \"<Descriptive Name>\", ...} for every component."
+    )
+
+    response_schema = {
+        "type": "object",
+        "additionalProperties": {"type": "string"},
+    }
+
+    try:
+        result = await llm_client.complete_structured(
+            system=_SYSTEM,
+            user=user_prompt,
+            response_schema=response_schema,
+        )
+        if not isinstance(result, dict):
+            return
+        id_map = {str(n.id): n for n in targets}
+        for node_id_str, label in result.items():
+            if isinstance(label, str) and label.strip() and node_id_str in id_map:
+                id_map[node_id_str].metadata.descriptive_name = label.strip()[:120]
+        _log.debug("enrich_descriptive_names: assigned names to %d nodes", len(result))
+    except Exception as exc:
+        _log.warning("enrich_descriptive_names: batch call failed: %s", exc)

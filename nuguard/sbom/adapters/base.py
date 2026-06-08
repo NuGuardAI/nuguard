@@ -110,6 +110,7 @@ class RelationshipHint:
     target_canonical: str
     target_type: ComponentType
     relationship_type: str  # "USES", "CALLS", "ACCESSES", etc.
+    access_type: str | None = None  # "read" | "write" | "readwrite" for ACCESSES hints
 
 
 @dataclass

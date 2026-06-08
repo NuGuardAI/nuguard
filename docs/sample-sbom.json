@@ -1,6 +1,6 @@
 {
-  "schema_version": "1.4.0",
-  "generated_at": "2026-03-23T00:00:00Z",
+  "schema_version": "1.5.0",
+  "generated_at": "2026-06-08T00:00:00Z",
   "generator": "nuguard",
   "target": "https://github.com/NuGuardAI/nuguard-oss",
   "nodes": [
@@ -11,14 +11,45 @@
       "confidence": 0.98,
       "metadata": {
         "framework": "openai-agents",
-        "system_prompt_excerpt": "You are a customer support assistant.",
+        "model_name": "gpt-4o-mini",
+        "description": "Customer support assistant with order lookup and account support tools.",
+        "descriptive_name": "Customer Support Agent",
+        "system_prompt_excerpt": "You are a customer support assistant. Help authenticated users with orders and account questions.",
+        "injection_risk_score": 0.42,
+        "dependency_names": [
+          "openai",
+          "fastapi"
+        ],
+        "instrumentation": {
+          "tools": [
+            "opentelemetry"
+          ],
+          "log_level": "INFO",
+          "tracing_enabled": true,
+          "metrics_enabled": true,
+          "sampling_rate": 0.1
+        },
+        "testing": {
+          "has_unit_tests": true,
+          "has_integration_tests": true,
+          "test_frameworks": [
+            "pytest"
+          ],
+          "ci_cd_pipeline": "github_actions",
+          "quality_gates": [
+            "ruff"
+          ],
+          "test_coverage_tool": "coverage.py"
+        },
+        "loc": 96,
         "extras": {
-          "adapter": "openai_agents"
+          "adapter": "openai_agents",
+          "canonical_name": "agent_support_agent"
         }
       },
       "evidence": [
         {
-          "kind": "ast",
+          "kind": "ast_instantiation",
           "confidence": 0.98,
           "detail": "openai_agents: agent instantiation",
           "location": {
@@ -35,6 +66,7 @@
       "confidence": 0.95,
       "metadata": {
         "description": "Looks up order status by order ID.",
+        "descriptive_name": "Order Lookup Tool",
         "parameters": [
           {
             "name": "order_id",
@@ -45,6 +77,12 @@
         ],
         "no_auth_required": false,
         "high_privilege": false,
+        "sql_injectable": false,
+        "ssrf_possible": false,
+        "dependency_names": [
+          "sqlalchemy"
+        ],
+        "loc": 41,
         "extras": {
           "adapter": "python_tool_parser"
         }
@@ -70,23 +108,221 @@
         "endpoint": "/chat",
         "method": "POST",
         "auth_required": true,
+        "auth_scope": "user",
         "accepts_user_input": true,
         "returns_sensitive_data": false,
+        "rate_limited": true,
+        "rate_limit_detail": {
+          "requests_per_minute": 60,
+          "requests_per_hour": 1000,
+          "requests_per_day": null,
+          "burst_size": 10,
+          "window_seconds": 60,
+          "enforcement_type": "middleware"
+        },
+        "idor_surface": false,
+        "path_params": [],
+        "request_body_schema": {
+          "message": "str",
+          "session_id": "str"
+        },
+        "request_schema": {
+          "ChatRequest": {
+            "type": "object",
+            "required": [
+              "message"
+            ],
+            "properties": {
+              "message": {
+                "type": "string"
+              },
+              "session_id": {
+                "type": "string"
+              }
+            }
+          }
+        },
+        "response_schema": {
+          "ChatResponse": {
+            "type": "object",
+            "properties": {
+              "response": {
+                "type": "string"
+              }
+            }
+          }
+        },
         "chat_payload_key": "message",
         "chat_payload_list": false,
         "response_text_key": "response",
+        "context_payload_fields": {
+          "session_id": "session"
+        },
+        "descriptive_name": "Authenticated Chat API",
+        "auth_detail": {
+          "protocols": [
+            "bearer",
+            "jwt"
+          ],
+          "token_expiry_seconds": 3600,
+          "mfa_required": false,
+          "credential_rotation_policy": "90-day",
+          "enforcement_strict": true,
+          "auth_roles": [
+            "user"
+          ]
+        },
+        "loc": 73,
         "extras": {
           "adapter": "fastapi"
         }
       },
       "evidence": [
         {
-          "kind": "ast",
+          "kind": "ast_decorator",
           "confidence": 0.93,
           "detail": "fastapi: route decorator",
           "location": {
             "path": "app/api.py",
             "line": 21
+          }
+        }
+      ]
+    },
+    {
+      "id": "44444444-4444-4444-4444-444444444444",
+      "name": "orders-db",
+      "component_type": "DATASTORE",
+      "confidence": 0.91,
+      "metadata": {
+        "datastore_type": "postgres",
+        "descriptive_name": "Orders Database",
+        "data_classification": [
+          "PII",
+          "PFI"
+        ],
+        "classified_tables": [
+          "customers",
+          "orders"
+        ],
+        "classified_fields": {
+          "customers": [
+            "email",
+            "phone"
+          ],
+          "orders": [
+            "billing_address",
+            "payment_token"
+          ]
+        },
+        "pii_fields": [
+          "email",
+          "phone",
+          "billing_address"
+        ],
+        "pfi_fields": [
+          "payment_token"
+        ],
+        "access_type": "read",
+        "encryption_at_rest": true,
+        "encryption_detail": {
+          "in_transit": true,
+          "at_rest": true,
+          "algorithm": "AES256",
+          "tls_min_version": "TLS1.2",
+          "redacted_fields": [
+            "payment_token"
+          ],
+          "log_redaction_enabled": true,
+          "key_management": "aws_kms"
+        },
+        "data_handling": {
+          "retention_days": 365,
+          "purge_schedule": "on-account-deletion",
+          "backup_frequency": "daily",
+          "backup_encrypted": true,
+          "anonymization_method": "tokenization",
+          "consent_required": true,
+          "cross_border_transfer": false
+        },
+        "loc": 58,
+        "extras": {
+          "adapter": "sqlalchemy"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.91,
+          "detail": "sqlalchemy: table metadata",
+          "location": {
+            "path": "app/models.py",
+            "line": 34
+          }
+        }
+      ]
+    },
+    {
+      "id": "55555555-5555-5555-5555-555555555555",
+      "name": "python:3.12-slim",
+      "component_type": "CONTAINER_IMAGE",
+      "confidence": 0.87,
+      "metadata": {
+        "image_name": "python",
+        "image_tag": "3.12-slim",
+        "registry": "docker.io",
+        "base_image": "python:3.12-slim",
+        "runs_as_root": false,
+        "has_health_check": true,
+        "has_resource_limits": true,
+        "descriptive_name": "Python Runtime Container",
+        "loc": 28,
+        "extras": {
+          "adapter": "dockerfile"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "dockerfile",
+          "confidence": 0.87,
+          "detail": "dockerfile: FROM python:3.12-slim",
+          "location": {
+            "path": "Dockerfile",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "66666666-6666-6666-6666-666666666666",
+      "name": "support-service-account",
+      "component_type": "IAM",
+      "confidence": 0.88,
+      "metadata": {
+        "iam_type": "service_account",
+        "principal": "support-agent@example.iam.gserviceaccount.com",
+        "permissions": [
+          "orders.read",
+          "logs.write"
+        ],
+        "iam_scope": "project",
+        "trust_principals": [
+          "github-actions"
+        ],
+        "descriptive_name": "Support Agent Service Account",
+        "loc": 20,
+        "extras": {
+          "adapter": "terraform"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "iac",
+          "confidence": 0.88,
+          "detail": "terraform: google_service_account",
+          "location": {
+            "path": "infra/main.tf",
+            "line": 15
           }
         }
       ]
@@ -102,28 +338,44 @@
       "source": "11111111-1111-1111-1111-111111111111",
       "target": "33333333-3333-3333-3333-333333333333",
       "relationship_type": "USES"
+    },
+    {
+      "source": "22222222-2222-2222-2222-222222222222",
+      "target": "44444444-4444-4444-4444-444444444444",
+      "relationship_type": "ACCESSES",
+      "access_type": "read"
+    },
+    {
+      "source": "66666666-6666-6666-6666-666666666666",
+      "target": "55555555-5555-5555-5555-555555555555",
+      "relationship_type": "DEPLOYS"
     }
   ],
   "deps": [
     {
       "name": "openai",
-      "version": "1.70.0",
-      "version_spec": ">=1.70,<2.0",
-      "purl": "pkg:pypi/openai@1.70.0",
-      "source_file": "pyproject.toml",
-      "ecosystem": "pypi"
+      "version_spec": ">=2.0,<3.0",
+      "purl": "pkg:pypi/openai",
+      "group": "runtime",
+      "source_file": "pyproject.toml"
     },
     {
       "name": "fastapi",
-      "version": "0.115.0",
       "version_spec": ">=0.115,<1.0",
-      "purl": "pkg:pypi/fastapi@0.115.0",
-      "source_file": "pyproject.toml",
-      "ecosystem": "pypi"
+      "purl": "pkg:pypi/fastapi",
+      "group": "runtime",
+      "source_file": "pyproject.toml"
+    },
+    {
+      "name": "pytest",
+      "version_spec": ">=8.0,<10.0",
+      "purl": "pkg:pypi/pytest",
+      "group": "dev",
+      "source_file": "pyproject.toml"
     }
   ],
   "summary": {
-    "use_case": "Customer support assistant with tool access",
+    "use_case": "Customer support assistant with authenticated order lookup and payment-status context.",
     "frameworks": [
       "openai-agents"
     ],
@@ -138,27 +390,56 @@
       "/chat",
       "/health"
     ],
-    "deployment_platforms": [],
-    "regions": [],
-    "environments": [
-      "dev"
+    "deployment_platforms": [
+      "GCP",
+      "GitHub Actions"
     ],
-    "deployment_urls": [],
-    "iac_accounts": [],
+    "regions": [
+      "us-central1"
+    ],
+    "environments": [
+      "dev",
+      "prod"
+    ],
+    "deployment_urls": [
+      "https://support.example.com"
+    ],
+    "iac_accounts": [
+      "example-prod"
+    ],
     "node_counts": {
       "AGENT": 1,
       "TOOL": 1,
-      "API_ENDPOINT": 1
+      "API_ENDPOINT": 1,
+      "DATASTORE": 1,
+      "CONTAINER_IMAGE": 1,
+      "IAM": 1
     },
-    "secret_stores": [],
-    "availability_zones": [],
-    "encryption_at_rest_coverage": false,
-    "security_findings": [],
-    "iam_principals": [],
-    "service_accounts": [],
-    "iac_security_summary": null,
-    "data_classification": [],
-    "classified_tables": [],
+    "secret_stores": [
+      "gcp_secret_manager"
+    ],
+    "availability_zones": [
+      "us-central1-a"
+    ],
+    "encryption_at_rest_coverage": true,
+    "security_findings": [
+      "github_actions_pull_request_target_reviewed"
+    ],
+    "iam_principals": [
+      "support-agent@example.iam.gserviceaccount.com"
+    ],
+    "service_accounts": [
+      "support-agent"
+    ],
+    "iac_security_summary": "Deployment uses a dedicated service account, encrypted storage, and non-root containers. Review workflow triggers and IAM permissions during release.",
+    "data_classification": [
+      "PII",
+      "PFI"
+    ],
+    "classified_tables": [
+      "customers",
+      "orders"
+    ],
     "startup_commands": [
       {
         "command": "uv run python -m app.main",
@@ -167,15 +448,67 @@
       }
     ],
     "env_files": [
-      ".env"
+      ".env.example"
     ],
     "env_var_keys": [
       "OPENAI_API_KEY",
       "PORT"
     ],
     "local_url": "http://localhost:8000",
-    "staging_urls": [],
-    "production_urls": [],
-    "log_paths": []
-  }
+    "staging_urls": [
+      "https://staging.support.example.com"
+    ],
+    "production_urls": [
+      "https://support.example.com"
+    ],
+    "log_paths": [
+      "logs/app.log"
+    ],
+    "uses_streaming": true,
+    "streaming_endpoints": [
+      "/chat/stream"
+    ],
+    "total_loc": 316,
+    "tokens_used_for_enrichment": 4180,
+    "input_tokens_used": 3500,
+    "output_tokens_used": 680,
+    "llm_model_used": "openai/gpt-4o-mini",
+    "instrumentation": {
+      "tools": [
+        "opentelemetry",
+        "prometheus"
+      ],
+      "log_level": "INFO",
+      "tracing_enabled": true,
+      "metrics_enabled": true,
+      "sampling_rate": 0.1
+    },
+    "testing": {
+      "has_unit_tests": true,
+      "has_integration_tests": true,
+      "test_frameworks": [
+        "pytest"
+      ],
+      "ci_cd_pipeline": "github_actions",
+      "quality_gates": [
+        "ruff",
+        "mypy"
+      ],
+      "test_coverage_tool": "coverage.py"
+    },
+    "github_actions_content": "name: ci\non: [push, pull_request]\njobs:\n  test:\n    runs-on: ubuntu-latest",
+    "workflow_security_findings": [
+      {
+        "rule_signal": "pull_request_target_reviewed",
+        "path": ".github/workflows/ci.yml",
+        "line": 2,
+        "snippet": "on: [push, pull_request]",
+        "confidence": 0.72
+      }
+    ],
+    "k8s_network_policy_namespaces": [
+      "support-prod"
+    ]
+  },
+  "relationship_graph_md": "```mermaid\nflowchart LR\n  support_agent --> lookup_order\n  lookup_order --> orders_db\n  support_agent --> chat_endpoint\n```\n\nThe support agent accepts authenticated chat requests, calls an order lookup tool, and reads from the encrypted orders database."
 }

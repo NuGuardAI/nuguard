@@ -15,6 +15,7 @@ discover:
 from __future__ import annotations
 
 import ast
+import re
 from typing import Any
 
 from ...types import ComponentType
@@ -38,6 +39,32 @@ _AUTH_CLASSES = {
     "APIKeyQuery": "api_key",
 }
 
+# Maps auth class name → AuthDetail.protocols value
+_AUTH_CLASS_PROTOCOLS: dict[str, list[str]] = {
+    "OAuth2PasswordBearer": ["oauth2"],
+    "OAuth2PasswordRequestForm": ["oauth2"],
+    "OAuth2": ["oauth2"],
+    "HTTPBearer": ["bearer"],
+    "HTTPBasic": ["basic"],
+    "HTTPDigest": ["digest"],
+    "APIKeyHeader": ["api_key"],
+    "APIKeyCookie": ["api_key"],
+    "APIKeyQuery": ["api_key"],
+}
+
+# Classes with strict enforcement by default
+_AUTH_STRICT_CLASSES = {"OAuth2PasswordBearer", "HTTPBearer", "APIKeyHeader"}
+
+# Rate limit decorator function names
+_RATE_LIMIT_UNIT_SECONDS = {
+    "second": 1, "seconds": 1,
+    "minute": 60, "minutes": 60,
+    "hour": 3600, "hours": 3600,
+    "day": 86400, "days": 86400,
+}
+
+_RATE_LIMIT_RE = re.compile(r"(\d+)\s*/\s*(second|minute|hour|day)s?", re.IGNORECASE)
+
 _HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options", "trace"}
 
 _PROMPT_FIELD_NAMES = {
@@ -47,6 +74,32 @@ _PROMPT_FIELD_NAMES = {
 }
 
 _RESPONSE_FIELD_NAMES = {"response", "content", "answer", "text", "reply", "message", "output"}
+
+# Domain-specific request body keys that are clearly NOT conversational message fields.
+# Endpoints whose only candidate chat key is in this set should not be marked as
+# chat endpoints — doing so causes pre-scan discovery to hit financial/medical
+# transaction routes instead of the actual AI chat endpoint.
+_NON_CHAT_PAYLOAD_KEYS = frozenset({
+    "from_account_id", "to_account_id", "amount", "card_id", "account_id",
+    "patient_id", "order_id", "booking_reference", "flight_number",
+    "user_id", "transaction_id", "payment_id", "notification_id",
+    "recipient_account", "source_account", "debit_account", "credit_account",
+})
+
+# Static identity fields — same value for all requests; sourced from login response or config.
+_IDENTITY_FIELD_NAMES = frozenset({
+    "user_id", "userId", "tenant_id", "tenantId",
+    "account_id", "accountId", "customer_id", "customerId",
+    "org_id", "orgId", "organization_id", "organizationId",
+    "workspace_id", "workspaceId", "project_id", "projectId",
+    "subscription_id", "subscriptionId", "user", "username", "login",
+})
+
+# Dynamic session fields — change per conversation; auto-generated as UUID when missing.
+_SESSION_FIELD_NAMES = frozenset({
+    "session_id", "sessionId", "conversation_id", "conversationId",
+    "thread_id", "threadId", "chat_id", "chatId", "request_id", "requestId",
+})
 
 _CONFIDENCE = 0.90
 
@@ -116,11 +169,39 @@ def _infer_response_text_key(fields: dict[str, str]) -> str | None:
     return None
 
 
+def _infer_context_payload_fields(
+    fields: dict[str, str],
+    chat_key: str | None,
+) -> dict[str, str]:
+    """Return ``{field_name: kind}`` for non-chat context fields in a POST body schema.
+
+    ``kind`` is ``'identity'`` (static per user — user_id, tenant_id, etc.) or
+    ``'session'`` (dynamic per conversation — session_id, thread_id, etc.).
+    The chat field is excluded.
+    """
+    result: dict[str, str] = {}
+    for name in fields:
+        if name == chat_key:
+            continue
+        if name in _IDENTITY_FIELD_NAMES or name.lower() in {f.lower() for f in _IDENTITY_FIELD_NAMES}:
+            result[name] = "identity"
+        elif name in _SESSION_FIELD_NAMES or name.lower() in {f.lower() for f in _SESSION_FIELD_NAMES}:
+            result[name] = "session"
+    return result
+
+
 def _extract_endpoint_schema(
     func_def: ast.FunctionDef | ast.AsyncFunctionDef,
     model_schemas: dict[str, dict[str, str]],
-) -> tuple[dict[str, str], str | None, bool, str | None]:
-    """Return ``(schema_dict, chat_payload_key, chat_payload_list, response_text_key)``."""
+) -> tuple[dict[str, str], str | None, bool, str | None, dict[str, str], dict[str, str]]:
+    """Return ``(req_schema, chat_payload_key, chat_payload_list, response_text_key, context_fields, resp_schema)``."""
+    req_schema: dict[str, str] = {}
+    resp_schema: dict[str, str] = {}
+    chat_key: str | None = None
+    chat_list: bool = False
+    resp_key: str | None = None
+    ctx_fields: dict[str, str] = {}
+
     for arg in func_def.args.args:
         if arg.annotation is None:
             continue
@@ -128,16 +209,19 @@ def _extract_endpoint_schema(
         if isinstance(arg.annotation, ast.Name):
             type_name = arg.annotation.id
         if type_name and type_name in model_schemas:
-            fields = model_schemas[type_name]
-            key, is_list = _infer_chat_payload_key(fields)
-            resp_key: str | None = None
-            ret = func_def.returns
-            if ret is not None:
-                ret_name = ret.id if isinstance(ret, ast.Name) else None
-                if ret_name and ret_name in model_schemas:
-                    resp_key = _infer_response_text_key(model_schemas[ret_name])
-            return fields, key, is_list, resp_key
-    return {}, None, False, None
+            req_schema = model_schemas[type_name]
+            chat_key, chat_list = _infer_chat_payload_key(req_schema)
+            ctx_fields = _infer_context_payload_fields(req_schema, chat_key)
+            break
+
+    ret = func_def.returns
+    if ret is not None:
+        ret_name = ret.id if isinstance(ret, ast.Name) else None
+        if ret_name and ret_name in model_schemas:
+            resp_schema = model_schemas[ret_name]
+            resp_key = _infer_response_text_key(resp_schema)
+
+    return req_schema, chat_key, chat_list, resp_key, ctx_fields, resp_schema
 
 
 def _extract_depends_auth_type(
@@ -234,10 +318,26 @@ class FastAPIAdapter(FrameworkAdapter):
                 # Emit as FRAMEWORK so they appear in the infrastructure section
                 # rather than polluting the AI agent list.
                 canon = f"fastapi:framework:{file_path}:{var_name}"
+                # Prefer the app's title= kwarg; fall back to framework name for generic vars
+                _title_kw: str | None = next(
+                    (
+                        str(kw.value.value)
+                        for kw in call.keywords
+                        if kw.arg == "title"
+                        and isinstance(kw.value, ast.Constant)
+                        and isinstance(kw.value.value, str)
+                    ),
+                    None,
+                )
+                _generic_vars = {"app", "api", "server", "router", "application"}
+                _fw_display = (
+                    _title_kw
+                    or (class_name if var_name.lower() in _generic_vars else var_name)
+                )
                 detections.append(ComponentDetection(
                     component_type=ComponentType.FRAMEWORK,
                     canonical_name=canon,
-                    display_name=var_name,
+                    display_name=_fw_display,
                     adapter_name=self.name,
                     priority=self.priority,
                     confidence=_CONFIDENCE,
@@ -251,6 +351,11 @@ class FastAPIAdapter(FrameworkAdapter):
             elif class_name in _AUTH_CLASSES:
                 auth_type = _AUTH_CLASSES[class_name]
                 canon = f"fastapi:auth:{file_path}:{var_name}"
+                auth_detail: dict[str, Any] = {
+                    "protocols": _AUTH_CLASS_PROTOCOLS.get(class_name, [auth_type]),
+                }
+                if class_name in _AUTH_STRICT_CLASSES:
+                    auth_detail["enforcement_strict"] = True
                 detections.append(ComponentDetection(
                     component_type=ComponentType.AUTH,
                     canonical_name=canon,
@@ -262,6 +367,7 @@ class FastAPIAdapter(FrameworkAdapter):
                         "framework": "fastapi",
                         "auth_type": auth_type,
                         "auth_class": class_name,
+                        "auth_detail": auth_detail,
                     },
                     file_path=file_path,
                     line=node.lineno,
@@ -291,9 +397,21 @@ class FastAPIAdapter(FrameworkAdapter):
                 if ep_auth is None:
                     ep_auth = _extract_security_auth_type(decorator, auth_vars)
 
-                schema, chat_key, chat_list, resp_key = _extract_endpoint_schema(
+                schema, chat_key, chat_list, resp_key, ctx_fields, resp_schema = _extract_endpoint_schema(
                     node, model_schemas
                 )
+
+                # Also extract response_model= kwarg from the route decorator itself
+                # (FastAPI convention: @app.post("/path", response_model=MyModel))
+                if not resp_schema and isinstance(decorator, ast.Call):
+                    for _kw in decorator.keywords:
+                        if _kw.arg == "response_model" and isinstance(_kw.value, ast.Name):
+                            _resp_model_name = _kw.value.id
+                            if _resp_model_name in model_schemas:
+                                resp_schema = model_schemas[_resp_model_name]
+                                if not resp_key:
+                                    resp_key = _infer_response_text_key(resp_schema)
+                            break
 
                 metadata: dict[str, Any] = {
                     "framework": "fastapi",
@@ -305,16 +423,23 @@ class FastAPIAdapter(FrameworkAdapter):
                     metadata["auth_type"] = ep_auth
                 if schema:
                     metadata["request_body_schema"] = schema
-                if chat_key:
+                if resp_schema:
+                    metadata["response_body_schema"] = resp_schema
+                if chat_key and chat_key not in _NON_CHAT_PAYLOAD_KEYS:
                     metadata["chat_payload_key"] = chat_key
                     metadata["chat_payload_list"] = chat_list
                 if resp_key:
                     metadata["response_text_key"] = resp_key
+                if ctx_fields:
+                    metadata["context_payload_fields"] = ctx_fields
+
+                # Convert snake_case function name to human-readable display name
+                _ep_display = func_name.replace("_", " ").title()
 
                 ep_detection = ComponentDetection(
                     component_type=ComponentType.API_ENDPOINT,
                     canonical_name=canon,
-                    display_name=func_name,
+                    display_name=_ep_display,
                     adapter_name=self.name,
                     priority=self.priority,
                     confidence=_CONFIDENCE,
@@ -339,6 +464,64 @@ class FastAPIAdapter(FrameworkAdapter):
                         target_type=ComponentType.API_ENDPOINT,
                         relationship_type="CALLS",
                     ))
+
+        # Third pass: rate limit detection (slowapi / flask-limiter style decorators)
+        has_limiter_middleware = any(
+            isinstance(node, ast.Assign)
+            and isinstance(node.value, ast.Call)
+            and _get_call_name(node.value) in ("Limiter", "SlowAPILimiter", "RateLimiter")
+            for node in ast.walk(tree)
+        )
+        for node in ast.walk(tree):
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            for decorator in node.decorator_list:
+                if not isinstance(decorator, ast.Call):
+                    continue
+                func = decorator.func
+                _attr = getattr(func, "attr", None)
+                _id = getattr(func, "id", None)
+                rl_func_name: str | None = _attr if isinstance(_attr, str) else (_id if isinstance(_id, str) else None)
+                if rl_func_name != "limit":
+                    continue
+                # Extract the limit string argument, e.g. "5/minute"
+                limit_str: str | None = None
+                for arg in decorator.args:
+                    if isinstance(arg, ast.Constant) and isinstance(arg.value, str):
+                        limit_str = arg.value
+                        break
+                if not limit_str:
+                    for kw in decorator.keywords:
+                        if kw.arg == "limit" and isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
+                            limit_str = kw.value.value
+                            break
+                if not limit_str:
+                    continue
+                m = _RATE_LIMIT_RE.search(limit_str)
+                if not m:
+                    continue
+                count = int(m.group(1))
+                unit = m.group(2).lower().rstrip("s")
+                window_secs = _RATE_LIMIT_UNIT_SECONDS.get(unit, 60)
+                rld: dict[str, Any] = {
+                    "window_seconds": window_secs,
+                    "enforcement_type": "middleware" if has_limiter_middleware else "decorator",
+                }
+                if unit in ("second", "seconds"):
+                    rld["requests_per_minute"] = count * 60
+                elif unit in ("minute", "minutes"):
+                    rld["requests_per_minute"] = count
+                elif unit in ("hour", "hours"):
+                    rld["requests_per_hour"] = count
+                elif unit in ("day", "days"):
+                    rld["requests_per_day"] = count
+                # Find the matching endpoint detection by function name and update it
+                for det in detections:
+                    if det.metadata.get("endpoint") and det.metadata.get("method"):
+                        if det.component_type == ComponentType.API_ENDPOINT:
+                            # Best-effort: tag the endpoint in this file
+                            det.metadata.setdefault("rate_limit_detail", rld)
+                            det.metadata["rate_limited"] = True
 
         return detections
 

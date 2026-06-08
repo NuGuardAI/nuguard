@@ -110,6 +110,15 @@ class AiSbomConfig(BaseModel):
             ".md",
         }
     )
+    exclude_patterns: list[str] = Field(
+        default_factory=list,
+        description="Glob patterns for files/directories to exclude from scanning, "
+                    "matched against the path relative to the scan root.",
+    )
+    honor_gitignore: bool = Field(
+        default=True,
+        description="When True, skip files matching .gitignore patterns in the repo root.",
+    )
     enable_llm: bool = Field(default_factory=_default_enable_llm)
 
     # LLM enrichment (used when enable_llm=True)

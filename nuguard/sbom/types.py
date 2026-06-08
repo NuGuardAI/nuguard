@@ -23,6 +23,7 @@ class RelationshipType(str, Enum):
     ACCESSES = "ACCESSES"
     PROTECTS = "PROTECTS"
     DEPLOYS = "DEPLOYS"
+    DELEGATES_TO = "DELEGATES_TO"
 
 
 class AccessType(str, Enum):

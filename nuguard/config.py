@@ -308,6 +308,12 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_guided_mutation_mode"] = str(redteam["guided_mutation_mode"])
     if "strict_outcome" in redteam:
         flat["redteam_strict_outcome"] = bool(redteam["strict_outcome"])
+    if "pre_run_warmup" in redteam:
+        flat["redteam_pre_run_warmup"] = int(redteam["pre_run_warmup"])
+    if "verify_findings" in redteam:
+        flat["redteam_verify_findings"] = bool(redteam["verify_findings"])
+    if "golden_data" in redteam and isinstance(redteam["golden_data"], dict):
+        flat["redteam_golden_data"] = redteam["golden_data"]
     if "credentials" in redteam and isinstance(redteam["credentials"], dict):
         flat["redteam_credentials"] = {
             str(k): str(v) for k, v in redteam["credentials"].items() if v is not None
@@ -1044,6 +1050,36 @@ class NuGuardConfig(BaseSettings):
         description=(
             "Emit findings when INJECT steps succeed even without canary/policy "
             "signals (yaml: redteam.finding_triggers.any_inject_success)."
+        ),
+    )
+    redteam_pre_run_warmup: int = Field(
+        default=0,
+        ge=0,
+        le=10,
+        description=(
+            "Number of lightweight warmup requests to send to the target before "
+            "scenarios start (yaml: redteam.pre_run_warmup). "
+            "Use 1–3 for Azure Container Apps or other serverless targets that "
+            "scale-to-zero between runs — wakes the container before scenarios fire."
+        ),
+    )
+    redteam_verify_findings: bool = Field(
+        default=False,
+        description=(
+            "Re-probe the target with the exact successful payload after a finding is "
+            "emitted to confirm it reproduces (yaml: redteam.verify_findings). "
+            "Off by default to keep runs fast; enable for high-stakes audits. "
+            "Adds a verified/unconfirmed badge to each finding in the report."
+        ),
+    )
+    redteam_golden_data: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Static pre-seed for the golden-data cache, keyed by SBOM agent node label "
+            "(yaml: redteam.golden_data). "
+            "Supported subkeys: account_id, name, email. "
+            "Eliminates the live DISCOVER step for known test accounts, making token "
+            "substitution ({golden_id} etc.) reliable on slow or auth-gated targets."
         ),
     )
     redteam_llm_model: str | None = Field(

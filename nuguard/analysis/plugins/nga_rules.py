@@ -97,9 +97,10 @@ def _depl_meta(node: dict[str, Any]) -> dict[str, Any]:
     for key in (
         "deployment_target", "secret_store", "encryption_at_rest",
         "encryption_key_ref", "runs_as_root", "has_health_check",
-        "has_resource_limits", "ha_mode", "availability_zones",
+        "has_resource_limits", "no_resource_limits", "ha_mode", "availability_zones",
         "iam_type", "permissions", "iam_scope", "trust_principals",
         "base_image", "image_name", "image_tag",
+        "has_network_policy", "source_url", "integrity_hash", "checksum",
     ):
         v = meta.get(key)
         if v is not None:
@@ -396,8 +397,11 @@ def _rule_nga006_missing_auth_on_api_endpoint(
         n for n in nodes
         if n.get("component_type") in _API_ENDPOINT_TYPES
         and n["id"] not in protected_targets
-        and (_node_extras(n).get("no_auth_required") is True
-             or not any(e.get("target") == n["id"] for e in edges))
+        and (
+            _node_extras(n).get("no_auth_required") is True
+            or (n.get("metadata") or {}).get("no_auth_required") is True
+            or not any(e.get("target") == n["id"] for e in edges)
+        )
     ]
     if not unprotected:
         return []
@@ -544,8 +548,9 @@ def _rule_nga009_no_audit_logging(
     has_middleware = any(
         mw in str(summary) for mw in _AUDIT_MIDDLEWARE
     )
+    has_instrumentation = bool(summary.get("instrumentation"))
 
-    if has_audit_lib or has_log_paths or has_middleware:
+    if has_audit_lib or has_log_paths or has_middleware or has_instrumentation:
         return []
 
     return [
@@ -573,6 +578,27 @@ def _rule_nga010_pr_target_injection(
     nodes: list[dict[str, Any]], summary: dict[str, Any], **_: Any
 ) -> list[dict[str, Any]]:
     """HIGH — GitHub Actions: pull_request_target with untrusted context injection."""
+    # Preferred: structured findings emitted by GitHubActionsAdapter
+    structured = [
+        f for f in (summary.get("workflow_security_findings") or [])
+        if f.get("rule_signal") == "NGA-010"
+    ]
+    if structured:
+        first = structured[0]
+        return [
+            _finding(
+                "NGA-010", "HIGH",
+                "GitHub Actions: pull_request_target with untrusted context injection",
+                f"Detected in {first['path']} (line {first['line']}): {first['snippet']}",
+                ["GitHub Actions workflow"],
+                "Never use '${{{{ github.event.pull_request.head... }}}}' directly in run steps "
+                "under pull_request_target. Pass untrusted data through environment variables "
+                "with explicit quoting, or use 'actions/github-script' with safe property access. "
+                "Consider switching to 'pull_request' trigger for untrusted code paths.",
+            )
+        ]
+
+    # Fallback: raw regex on concatenated workflow content
     workflow_content: str = summary.get("github_actions_content") or ""
     if not workflow_content:
         # Check individual nodes for workflow metadata
@@ -610,6 +636,27 @@ def _rule_nga011_github_env_injection(
     nodes: list[dict[str, Any]], summary: dict[str, Any], **_: Any
 ) -> list[dict[str, Any]]:
     """HIGH — GitHub Actions: GITHUB_ENV written from untrusted input."""
+    # Preferred: structured findings emitted by GitHubActionsAdapter
+    structured = [
+        f for f in (summary.get("workflow_security_findings") or [])
+        if f.get("rule_signal") == "NGA-011"
+    ]
+    if structured:
+        first = structured[0]
+        return [
+            _finding(
+                "NGA-011", "HIGH",
+                "GitHub Actions: GITHUB_ENV written from untrusted input",
+                f"Detected in {first['path']} (line {first['line']}): {first['snippet']}",
+                ["GitHub Actions workflow"],
+                "Never write untrusted input directly to $GITHUB_ENV. Validate and sanitise "
+                "all user-controlled data before using it in environment variable assignments. "
+                "Use 'github.event.pull_request.number' (integer) instead of string fields "
+                "where possible.",
+            )
+        ]
+
+    # Fallback: raw regex on concatenated workflow content
     workflow_content: str = summary.get("github_actions_content") or ""
     if not workflow_content:
         for n in nodes:
@@ -710,13 +757,19 @@ def _rule_nga013_no_k8s_network_policy(
             _depl_meta(n).get("deployment_target", "").lower() in ("kubernetes", "k8s")
             or (n.get("metadata") or {}).get("iac_format", "").lower() == "kubernetes"
         )
+        # Exclude NetworkPolicy marker nodes emitted by K8sAdapter
+        and not (n.get("metadata") or {}).get("extras", {}).get("is_network_policy_namespace")
     ]
     if not k8s_deployments:
         return []
 
+    # Cross-file NetworkPolicy coverage from summary
+    policy_namespaces: set[str] = set(summary.get("k8s_network_policy_namespaces") or [])
+
     no_netpol = [
         n for n in k8s_deployments
-        if not _depl_meta(n).get("has_network_policy")
+        if not _depl_meta(n).get("has_network_policy")  # same-file coverage
+        and (n.get("metadata") or {}).get("extras", {}).get("k8s_namespace", "") not in policy_namespaces
     ]
     if not no_netpol:
         return []
@@ -743,6 +796,26 @@ def _rule_nga014_actions_runner_debug(
     nodes: list[dict[str, Any]], summary: dict[str, Any], **_: Any
 ) -> list[dict[str, Any]]:
     """MEDIUM — GitHub Actions: ACTIONS_RUNNER_DEBUG secret exposed."""
+    # Preferred: structured findings emitted by GitHubActionsAdapter
+    structured = [
+        f for f in (summary.get("workflow_security_findings") or [])
+        if f.get("rule_signal") == "NGA-014"
+    ]
+    if structured:
+        first = structured[0]
+        return [
+            _finding(
+                "NGA-014", "MEDIUM",
+                "GitHub Actions: ACTIONS_RUNNER_DEBUG secret exposed",
+                f"Detected in {first['path']} (line {first['line']}): {first['snippet']}",
+                ["GitHub Actions workflow"],
+                "Remove 'ACTIONS_RUNNER_DEBUG' from workflow files and organisation secrets "
+                "when not actively debugging. Use GitHub's built-in 'Enable debug logging' "
+                "option in re-run settings instead of a persistent secret.",
+            )
+        ]
+
+    # Fallback: raw regex on concatenated workflow content
     workflow_content: str = summary.get("github_actions_content") or ""
     if not workflow_content:
         for n in nodes:
@@ -780,7 +853,12 @@ def _rule_nga015_no_resource_limits(
     depl_nodes = [n for n in nodes if n.get("component_type") == "DEPLOYMENT"]
     if not depl_nodes:
         return []
-    limited_nodes = [n for n in depl_nodes if _depl_meta(n).get("no_resource_limits") is True]
+
+    def _has_no_limits(n: dict[str, Any]) -> bool:
+        meta = _depl_meta(n)
+        return meta.get("no_resource_limits") is True or meta.get("has_resource_limits") is False
+
+    limited_nodes = [n for n in depl_nodes if _has_no_limits(n)]
     if not limited_nodes and "no_resource_limits" not in security_findings:
         return []
     affected = limited_nodes if limited_nodes else depl_nodes
@@ -1050,6 +1128,175 @@ _RULE_META: list[dict[str, str]] = [
 ]
 
 
+# ── Pass evidence builder ─────────────────────────────────────────────────────
+
+
+def _build_pass_evidence(
+    rule_idx: int,
+    nodes: list[dict[str, Any]],
+    edges: list[dict[str, Any]],
+    summary: dict[str, Any],
+) -> dict[str, Any]:
+    """Return SBOM-derived evidence for a rule that passed (parallel to _RULE_META[rule_idx]).
+
+    Called only when the corresponding rule returns no findings, so this function
+    documents *what was examined* and *what was found* rather than what failed.
+    All helpers (_depl_meta, _node_extras, etc.) are reused as-is.
+    """
+    rule_id = _RULE_META[rule_idx]["rule_id"]
+
+    if rule_id == "NGA-001":
+        dc_labels: list[str] = summary.get("data_classification") or []
+        model_nodes = [n for n in nodes if n.get("component_type") in _MODEL_TYPES]
+        return {
+            "data_classification_labels": dc_labels or ["none"],
+            "model_nodes_checked": [n.get("name", "") for n in model_nodes],
+            "phi_pii_detected": _has_phi_pii(dc_labels),
+        }
+
+    if rule_id == "NGA-002":
+        return {
+            "guardrail_nodes": [n.get("name", "") for n in nodes if n.get("component_type") in _GUARDRAIL_TYPES],
+            "model_nodes": [n.get("name", "") for n in nodes if n.get("component_type") in _MODEL_TYPES],
+            "agent_nodes": [n.get("name", "") for n in nodes if n.get("component_type") in _AGENT_TYPES],
+        }
+
+    if rule_id == "NGA-003":
+        return {
+            "deployment_nodes_checked": [n.get("name", "") for n in nodes if n.get("component_type") == "DEPLOYMENT"],
+            "secret_stores_configured": summary.get("secret_stores") or [],
+            "secrets_in_env_found": "secrets_in_env_vars" in (summary.get("security_findings") or []),
+        }
+
+    if rule_id == "NGA-004":
+        return {
+            "container_or_deployment_nodes_checked": [
+                n.get("name", "") for n in nodes
+                if n.get("component_type") in ("DEPLOYMENT", "CONTAINER_IMAGE")
+            ],
+            "runs_as_root_detected": False,
+        }
+
+    if rule_id == "NGA-005":
+        dc_labels = summary.get("data_classification") or []
+        return {
+            "data_classification_labels": dc_labels or ["none"],
+            "datastore_nodes_checked": [n.get("name", "") for n in nodes if n.get("component_type") in _DATASTORE_TYPES],
+            "unencrypted_datastores_found": 0,
+        }
+
+    if rule_id == "NGA-006":
+        return {
+            "api_endpoints_checked": [n.get("name", "") for n in nodes if n.get("component_type") in _API_ENDPOINT_TYPES],
+            "auth_nodes_found": [n.get("name", "") for n in nodes if n.get("component_type") == "AUTH"],
+        }
+
+    if rule_id == "NGA-007":
+        depl_ids = {n["id"] for n in nodes if n.get("component_type") in _DEPLOYMENT_TYPES}
+        iam_attached: list[str] = []
+        for e in edges:
+            if e.get("source") in depl_ids:
+                tgt = next((n for n in nodes if n["id"] == e.get("target")), None)
+                if tgt and tgt.get("component_type") in _IAM_TYPES:
+                    iam_attached.append(tgt.get("name", ""))
+            elif e.get("target") in depl_ids:
+                src = next((n for n in nodes if n["id"] == e.get("source")), None)
+                if src and src.get("component_type") in _IAM_TYPES:
+                    iam_attached.append(src.get("name", ""))
+        return {
+            "deployment_nodes_checked": [n.get("name", "") for n in nodes if n.get("component_type") in _DEPLOYMENT_TYPES],
+            "iam_nodes_checked": list(set(iam_attached)),
+            "overpermissive_roles_found": 0,
+        }
+
+    if rule_id == "NGA-008":
+        trusted = _DEFAULT_TRUSTED_REGISTRIES | set(summary.get("trusted_registries") or [])
+        return {
+            "model_nodes_checked": [n.get("name", "") for n in nodes if n.get("component_type") in _MODEL_TYPES],
+            "trusted_registries": sorted(trusted),
+        }
+
+    if rule_id == "NGA-009":
+        frameworks = [f.lower() for f in (summary.get("frameworks") or [])]
+        return {
+            "agent_nodes_checked": [n.get("name", "") for n in nodes if n.get("component_type") in _AGENT_TYPES],
+            "audit_libraries_found": [lib for lib in _AUDIT_LIBS if lib in frameworks],
+            "log_paths_found": summary.get("log_paths") or [],
+        }
+
+    if rule_id == "NGA-010":
+        return {
+            "github_actions_content_present": bool(summary.get("github_actions_content")),
+            "pull_request_target_injection_found": False,
+        }
+
+    if rule_id == "NGA-011":
+        return {
+            "github_actions_content_present": bool(summary.get("github_actions_content")),
+            "env_injection_patterns_found": False,
+        }
+
+    if rule_id == "NGA-012":
+        tool_names = [n.get("name", "") for n in nodes if n.get("component_type") == "TOOL"]
+        irreversible_tools = [
+            n.get("name", "") for n in nodes
+            if n.get("component_type") == "TOOL"
+            and _IRREVERSIBLE_TOOL_PATTERNS.search(n.get("name", "") + " " + str(n.get("metadata", {})))
+        ]
+        return {
+            "agents_checked": [n.get("name", "") for n in nodes if n.get("component_type") in _AGENT_TYPES],
+            "tools_checked": tool_names,
+            "irreversible_tools_found": irreversible_tools,
+        }
+
+    if rule_id == "NGA-013":
+        k8s = [
+            n.get("name", "") for n in nodes
+            if n.get("component_type") in _DEPLOYMENT_TYPES
+            and (
+                _depl_meta(n).get("deployment_target", "").lower() in ("kubernetes", "k8s")
+                or (n.get("metadata") or {}).get("iac_format", "").lower() == "kubernetes"
+            )
+        ]
+        return {"k8s_deployment_nodes_checked": k8s}
+
+    if rule_id == "NGA-014":
+        return {
+            "github_actions_content_present": bool(summary.get("github_actions_content")),
+            "debug_mode_patterns_found": False,
+        }
+
+    if rule_id == "NGA-015":
+        return {
+            "deployment_nodes_checked": [n.get("name", "") for n in nodes if n.get("component_type") == "DEPLOYMENT"],
+            "all_have_resource_limits": True,
+        }
+
+    if rule_id == "NGA-016":
+        return {
+            "container_image_nodes_checked": [n.get("name", "") for n in nodes if n.get("component_type") in _CONTAINER_TYPES],
+            "all_images_version_pinned": True,
+        }
+
+    if rule_id == "NGA-017":
+        return {
+            "deployment_and_container_nodes_checked": [
+                n.get("name", "") for n in nodes
+                if n.get("component_type") in (_DEPLOYMENT_TYPES | _CONTAINER_TYPES)
+            ],
+            "all_have_health_check": True,
+        }
+
+    if rule_id == "NGA-018":
+        return {
+            "datastore_nodes_checked": [n.get("name", "") for n in nodes if n.get("component_type") in _DATASTORE_TYPES],
+            "agent_nodes_checked": [n.get("name", "") for n in nodes if n.get("component_type") in _AGENT_TYPES],
+            "iam_nodes_found": [n.get("name", "") for n in nodes if n.get("component_type") in _IAM_TYPES],
+        }
+
+    return {}
+
+
 # ── OSV / Grype finding converters ───────────────────────────────────────────
 
 
@@ -1137,14 +1384,16 @@ class NgaRulesPlugin(AnalysisPlugin):
                 findings.extend(rule_findings)
                 if verbose:
                     meta = _RULE_META[i]
+                    is_pass = not rule_findings
                     rule_audit.append({
                         "rule_id": meta["rule_id"],
                         "severity": meta["severity"],
                         "title": meta["title"],
                         "checks": meta["checks"],
-                        "status": "FAIL" if rule_findings else "PASS",
+                        "status": "PASS" if is_pass else "FAIL",
                         "finding_count": len(rule_findings),
-                        "pass_reason": meta["pass_reason"] if not rule_findings else "",
+                        "pass_reason": meta["pass_reason"] if is_pass else "",
+                        "pass_evidence": _build_pass_evidence(i, nodes, edges, summary) if is_pass else {},
                         "affected": list({
                             f.get("affected_component") or ""
                             for f in rule_findings

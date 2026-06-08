@@ -17,7 +17,7 @@ from collections.abc import Iterable, Sequence
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse, urlunparse
 
-from ..models import Node
+from ..models import InstrumentationDetail, Node, TestingDetail
 
 if TYPE_CHECKING:
     from ..llm_client import LLMClient
@@ -561,6 +561,28 @@ def extract_iac_security_context(nodes: Sequence[Node]) -> dict[str, Any]:
         "security_findings": security_findings,
         "iam_principals": _uniq(iam_principals),
         "service_accounts": _uniq(service_accounts),
+        "github_actions_content": "\n---\n".join(
+            meta.extras.get("workflow_content", "")
+            for node in nodes
+            for meta in [node.metadata]
+            if meta.extras.get("iac_format") == "github_actions"
+            and meta.extras.get("workflow_content")
+        ),
+        "workflow_security_findings": list({
+            (f["rule_signal"], f.get("line", 0)): f
+            for node in nodes
+            for meta in [node.metadata]
+            if meta.extras.get("iac_format") == "github_actions"
+            for f in meta.extras.get("workflow_security_findings", [])
+        }.values()),
+        "k8s_network_policy_namespaces": sorted({
+            meta.extras.get("k8s_namespace", "")
+            for node in nodes
+            for meta in [node.metadata]
+            if meta.extras.get("iac_format") == "kubernetes"
+            and meta.extras.get("is_network_policy_namespace") is True
+            and meta.extras.get("k8s_namespace")
+        }),
     }
 
 
@@ -621,6 +643,14 @@ def build_scan_summary(
 
     iac_security = extract_iac_security_context(nodes)
 
+    # App-wide instrumentation and testing summaries
+    dep_names_all: set[str] = set()
+    for node in nodes:
+        for dep in node.metadata.dependency_names or []:
+            dep_names_all.add(dep.lower().replace("-", "_"))
+    app_instrumentation = _detect_app_instrumentation(nodes, files, dep_names_all)
+    app_testing = _detect_app_testing(nodes, files, dep_names_all)
+
     return {
         "source_ref": source_ref,
         "branch": branch,
@@ -645,6 +675,9 @@ def build_scan_summary(
         "log_paths": app_env["log_paths"],
         **{**deployment, "deployment_urls": all_deployment_urls},
         **iac_security,
+        # 1.5.0 additions
+        "instrumentation": app_instrumentation,
+        "testing": app_testing,
     }
 
 
@@ -848,3 +881,176 @@ async def maybe_refine_asset_summary_with_llm(
     except (asyncio.TimeoutError, Exception):  # noqa: BLE001
         pass
     return base_summary
+
+
+# ---------------------------------------------------------------------------
+# App-wide instrumentation detection
+# ---------------------------------------------------------------------------
+
+_APP_INSTRUMENTATION_IMPORTS: dict[str, str] = {
+    "opentelemetry": "opentelemetry",
+    "opentelemetry_api": "opentelemetry",
+    "opentelemetry_sdk": "opentelemetry",
+    "ddtrace": "datadog",
+    "datadog": "datadog",
+    "prometheus_client": "prometheus",
+    "prometheus": "prometheus",
+    "structlog": "structlog",
+    "sentry_sdk": "sentry",
+    "newrelic": "new_relic",
+    "elastic_apm": "elastic_apm",
+    "jaeger": "jaeger",
+}
+
+_LOG_LEVEL_RE = re.compile(
+    r"logging\.basicConfig\s*\(.*?level\s*=\s*logging\.(\w+)", re.DOTALL
+)
+
+
+def _detect_app_instrumentation(
+    nodes: Sequence[Node],
+    files: Sequence[tuple[str, str]],
+    dep_names: set[str],
+) -> InstrumentationDetail | None:
+    """Build an app-wide InstrumentationDetail from node data and file contents."""
+    tools: list[str] = []
+    seen: set[str] = set()
+
+    # Collect from per-node instrumentation already derived by the enricher
+    for node in nodes:
+        inst = node.metadata.instrumentation
+        if inst:
+            for t in inst.tools:
+                if t not in seen:
+                    tools.append(t)
+                    seen.add(t)
+
+    # Scan dep names for additional tools not already covered
+    for dep, tool in _APP_INSTRUMENTATION_IMPORTS.items():
+        if dep in dep_names and tool not in seen:
+            tools.append(tool)
+            seen.add(tool)
+
+    # Scan file contents for import patterns
+    _import_re = re.compile(
+        r"(?:import|from)\s+(opentelemetry|ddtrace|datadog|prometheus_client|structlog|sentry_sdk|newrelic|elastic_apm)\b"
+    )
+    log_level: str | None = None
+    for _path, content in files:
+        if not _path.endswith((".py",)):
+            continue
+        for m in _import_re.finditer(content):
+            pkg = m.group(1)
+            _tool = _APP_INSTRUMENTATION_IMPORTS.get(pkg)
+            if _tool and _tool not in seen:
+                tools.append(_tool)
+                seen.add(_tool)
+        if log_level is None:
+            lm = _LOG_LEVEL_RE.search(content)
+            if lm:
+                log_level = lm.group(1)
+
+    if not tools and log_level is None:
+        return None
+    return InstrumentationDetail(
+        tools=tools,
+        log_level=log_level,
+        tracing_enabled=any(t in seen for t in ("opentelemetry", "datadog", "jaeger")) or None,
+        metrics_enabled=any(t in seen for t in ("prometheus", "datadog", "elastic_apm")) or None,
+    )
+
+
+# ---------------------------------------------------------------------------
+# App-wide testing detection
+# ---------------------------------------------------------------------------
+
+_TEST_FRAMEWORK_DEP_MAP: dict[str, str] = {
+    "pytest": "pytest",
+    "hypothesis": "hypothesis",
+    "jest": "jest",
+    "vitest": "vitest",
+    "mocha": "mocha",
+    "jasmine": "jasmine",
+    "coverage": "coverage",
+    "pytest_cov": "coverage",
+}
+
+_TEST_PATH_RE = re.compile(
+    r"(?:^|/)tests?/|_test\.py$|test_[^/]+\.py$|__tests__/|\.spec\.[jt]sx?$|\.test\.[jt]sx?$",
+    re.IGNORECASE,
+)
+
+_CI_PLATFORM_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"\.github/workflows/"), "github_actions"),
+    (re.compile(r"\.gitlab-ci\.yml"), "gitlab_ci"),
+    (re.compile(r"Jenkinsfile"), "jenkins"),
+    (re.compile(r"\.circleci/config"), "circleci"),
+    (re.compile(r"azure-pipelines\.yml"), "azure_pipelines"),
+]
+
+_QUALITY_GATE_PATTERNS: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"codecov"), "codecov"),
+    (re.compile(r"sonarqube|sonar-project"), "sonarqube"),
+    (re.compile(r"snyk"), "snyk"),
+    (re.compile(r"coveralls"), "coveralls"),
+]
+
+
+def _detect_app_testing(
+    nodes: Sequence[Node],
+    files: Sequence[tuple[str, str]],
+    dep_names: set[str],
+) -> TestingDetail | None:
+    """Build an app-wide TestingDetail from nodes and file contents."""
+    frameworks: list[str] = []
+    seen_fw: set[str] = set()
+    has_unit: bool = False
+    has_integration: bool = False
+    ci_cd: str | None = None
+    quality_gates: list[str] = []
+    seen_gates: set[str] = set()
+
+    # Collect from per-node testing already derived by the enricher
+    for node in nodes:
+        tst = node.metadata.testing
+        if tst:
+            for fw in tst.test_frameworks:
+                if fw not in seen_fw:
+                    frameworks.append(fw)
+                    seen_fw.add(fw)
+            has_unit = has_unit or bool(tst.has_unit_tests)
+            has_integration = has_integration or bool(tst.has_integration_tests)
+
+    # Detect frameworks from dep names
+    for dep, fw in _TEST_FRAMEWORK_DEP_MAP.items():
+        if dep in dep_names and fw not in seen_fw:
+            frameworks.append(fw)
+            seen_fw.add(fw)
+
+    # Scan file paths and contents
+    for path, content in files:
+        if _TEST_PATH_RE.search(path):
+            has_unit = True
+        if "integration" in path.lower() and _TEST_PATH_RE.search(path):
+            has_integration = True
+        # CI/CD platform detection
+        if ci_cd is None:
+            for pattern, platform in _CI_PLATFORM_PATTERNS:
+                if pattern.search(path):
+                    ci_cd = platform
+                    # Scan workflow file for quality gate tools
+                    for gate_pat, gate_name in _QUALITY_GATE_PATTERNS:
+                        if gate_pat.search(content) and gate_name not in seen_gates:
+                            quality_gates.append(gate_name)
+                            seen_gates.add(gate_name)
+                    break
+
+    if not (has_unit or has_integration or frameworks or ci_cd):
+        return None
+    return TestingDetail(
+        has_unit_tests=has_unit or None,
+        has_integration_tests=has_integration or None,
+        test_frameworks=frameworks,
+        ci_cd_pipeline=ci_cd,
+        quality_gates=quality_gates,
+    )

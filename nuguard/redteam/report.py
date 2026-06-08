@@ -164,6 +164,11 @@ def to_markdown(
 
     for f in sorted(findings, key=lambda x: list(Severity).index(x.severity)):
         render_finding_block(lines, f, heading_level="##")
+        _verified = getattr(f, "verified", None)
+        if _verified is True:
+            lines += ["**Verification:** `[VERIFIED]` — reproduced in post-finding probe", ""]
+        elif _verified is False:
+            lines += ["**Verification:** `[UNCONFIRMED]` — could not reproduce in post-finding probe; treat as suspected", ""]
         if f.title.startswith("Inject Success Signal — "):
             lines += ["**Confidence:** Low — keyword match only, verify manually", ""]
         # Progress score (1–5 rubric)

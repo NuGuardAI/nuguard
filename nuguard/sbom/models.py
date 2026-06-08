@@ -116,6 +116,127 @@ class ToolParameter(BaseModel):
     )
 
 
+class RateLimitDetail(BaseModel):
+    """Structured rate limit configuration extracted from code or IaC."""
+
+    requests_per_minute: int | None = Field(default=None, description="Maximum requests allowed per minute")
+    requests_per_hour: int | None = Field(default=None, description="Maximum requests allowed per hour")
+    requests_per_day: int | None = Field(default=None, description="Maximum requests allowed per day")
+    burst_size: int | None = Field(default=None, description="Burst/concurrency limit above the steady-state rate")
+    window_seconds: int | None = Field(default=None, description="Duration of the rate limit window in seconds")
+    enforcement_type: str | None = Field(
+        default=None,
+        description="How the rate limit is enforced, e.g. 'decorator', 'middleware', 'api_gateway'",
+    )
+
+
+class AuthDetail(BaseModel):
+    """Detailed authentication and authorization posture for a component."""
+
+    protocols: list[str] = Field(
+        default_factory=list,
+        description="Auth protocols in use, e.g. ['oauth2', 'bearer', 'api_key', 'basic']",
+    )
+    token_expiry_seconds: int | None = Field(default=None, description="Token TTL in seconds when detectable")
+    mfa_required: bool | None = Field(default=None, description="True when MFA is required for access")
+    credential_rotation_policy: str | None = Field(
+        default=None, description="Rotation policy description, e.g. '90-day', 'on-demand'"
+    )
+    enforcement_strict: bool | None = Field(
+        default=None, description="True when auth is enforced on every request with no opt-out"
+    )
+    auth_roles: list[str] = Field(
+        default_factory=list,
+        description="Roles or scopes required for access, e.g. ['admin', 'read:users']",
+    )
+
+
+class EncryptionDetail(BaseModel):
+    """Encryption and redaction posture for a component."""
+
+    in_transit: bool | None = Field(default=None, description="True when data is encrypted in transit (TLS/SSL)")
+    at_rest: bool | None = Field(default=None, description="True when data is encrypted at rest")
+    algorithm: str | None = Field(
+        default=None, description="Encryption algorithm, e.g. 'AES256', 'aws:kms', 'RSA-4096'"
+    )
+    tls_min_version: str | None = Field(
+        default=None, description="Minimum TLS version enforced, e.g. 'TLS1.2', 'TLS1.3'"
+    )
+    redacted_fields: list[str] = Field(
+        default_factory=list,
+        description="Field names whose values are redacted before logging or storage",
+    )
+    log_redaction_enabled: bool | None = Field(
+        default=None, description="True when sensitive fields are masked/redacted in logs"
+    )
+    key_management: str | None = Field(
+        default=None,
+        description="Key management service, e.g. 'aws_kms', 'gcp_cmek', 'azure_key_vault', 'hashicorp_vault'",
+    )
+
+
+class DataHandlingDetail(BaseModel):
+    """Data retention, backup, anonymization, and consent configuration."""
+
+    retention_days: int | None = Field(default=None, description="Data retention period in days")
+    purge_schedule: str | None = Field(
+        default=None, description="Schedule or trigger for data purge, e.g. 'weekly', 'on-account-deletion'"
+    )
+    backup_frequency: str | None = Field(
+        default=None, description="Backup frequency, e.g. 'daily', 'hourly', '7-day-retention'"
+    )
+    backup_encrypted: bool | None = Field(default=None, description="True when backups are encrypted")
+    anonymization_method: str | None = Field(
+        default=None, description="Anonymization or pseudonymization technique, e.g. 'tokenization', 'k-anonymity'"
+    )
+    consent_required: bool | None = Field(
+        default=None, description="True when user consent is required before processing data"
+    )
+    cross_border_transfer: bool | None = Field(
+        default=None, description="True when data is transferred across jurisdictional borders"
+    )
+
+
+class InstrumentationDetail(BaseModel):
+    """Observability and monitoring tooling configured for a component or application."""
+
+    tools: list[str] = Field(
+        default_factory=list,
+        description="Observability tools detected, e.g. ['opentelemetry', 'datadog', 'prometheus', 'sentry']",
+    )
+    log_level: str | None = Field(
+        default=None, description="Configured log level, e.g. 'DEBUG', 'INFO', 'WARNING'"
+    )
+    tracing_enabled: bool | None = Field(default=None, description="True when distributed tracing is configured")
+    metrics_enabled: bool | None = Field(default=None, description="True when metrics collection is configured")
+    sampling_rate: float | None = Field(
+        default=None, description="Trace or log sampling rate [0.0, 1.0] when detectable"
+    )
+
+
+class TestingDetail(BaseModel):
+    """Testing, validation, and CI/CD posture for a component or application."""
+
+    has_unit_tests: bool | None = Field(default=None, description="True when unit test files are detected")
+    has_integration_tests: bool | None = Field(
+        default=None, description="True when integration test files or suites are detected"
+    )
+    test_frameworks: list[str] = Field(
+        default_factory=list,
+        description="Test frameworks detected, e.g. ['pytest', 'jest', 'vitest', 'hypothesis']",
+    )
+    ci_cd_pipeline: str | None = Field(
+        default=None, description="CI/CD platform detected, e.g. 'github_actions', 'gitlab_ci', 'jenkins'"
+    )
+    quality_gates: list[str] = Field(
+        default_factory=list,
+        description="Quality gate tools detected, e.g. ['codecov', 'sonarqube', 'snyk']",
+    )
+    test_coverage_tool: str | None = Field(
+        default=None, description="Coverage measurement tool detected, e.g. 'coverage.py', 'istanbul'"
+    )
+
+
 class NodeMetadata(BaseModel):
     """Typed + open-ended metadata attached to a Node."""
 
@@ -395,6 +516,17 @@ class NodeMetadata(BaseModel):
         default=None,
         description="Inferred primary response text field in the response body",
     )
+    context_payload_fields: dict[str, str] | None = Field(
+        default=None,
+        description=(
+            "Non-chat context fields detected in the POST request body schema, "
+            "mapping field_name → kind. "
+            "kind='identity': static per user (user_id, tenant_id, account_id…) — "
+            "auto-injected from login response or requires explicit config. "
+            "kind='session': dynamic per conversation (session_id, thread_id…) — "
+            "auto-generated as UUID for the first request per scenario."
+        ),
+    )
     # Datastore risk attributes (complement classified_fields for flat redteam lookups)
     pii_fields: list[str] | None = Field(
         default=None,
@@ -425,6 +557,67 @@ class NodeMetadata(BaseModel):
     access_type: str | None = Field(
         default=None,
         description="Datastore access mode inferred from ACCESSES edge: 'read' | 'write' | 'readwrite'",
+    )
+    # ── SBOM 1.5.0 enrichment fields ─────────────────────────────────────────
+    descriptive_name: str | None = Field(
+        default=None,
+        description="LLM-generated human-readable label, e.g. 'User Authentication API'",
+    )
+    rate_limit_detail: RateLimitDetail | None = Field(
+        default=None,
+        description="Structured rate limit configuration extracted from code or IaC",
+    )
+    auth_detail: AuthDetail | None = Field(
+        default=None,
+        description="Detailed authentication and authorization posture",
+    )
+    encryption_detail: EncryptionDetail | None = Field(
+        default=None,
+        description="Encryption and redaction posture; supersedes encryption_at_rest for new consumers",
+    )
+    data_handling: DataHandlingDetail | None = Field(
+        default=None,
+        description="Data retention, backup, anonymization, and consent configuration",
+    )
+    dependency_names: list[str] | None = Field(
+        default=None,
+        description="Package names from the manifest that appear in this component's source files",
+    )
+    instrumentation: InstrumentationDetail | None = Field(
+        default=None,
+        description="Observability and monitoring tooling detected for this component",
+    )
+    testing: TestingDetail | None = Field(
+        default=None,
+        description="Test coverage and CI/CD posture for this component",
+    )
+    loc: int | None = Field(
+        default=None,
+        description="Total lines of source code across the files where this component is defined",
+    )
+    request_schema: dict[str, Any] | None = Field(
+        default=None,
+        description="Request body JSON schema for API endpoints, keyed by Pydantic model class name",
+    )
+    response_schema: dict[str, Any] | None = Field(
+        default=None,
+        description="Response body JSON schema for API endpoints, keyed by Pydantic model class name",
+    )
+    has_network_policy: bool | None = Field(
+        default=None,
+        description="K8s workload: True when covered by a NetworkPolicy resource in the same namespace",
+    )
+    source_url: str | None = Field(
+        default=None,
+        description="Model artifact origin URL (HuggingFace repo, local path, or API base endpoint)",
+    )
+    integrity_hash: str | None = Field(
+        default=None,
+        description="Model artifact SHA-256 or git revision hash for supply-chain verification",
+    )
+    checksum: str | None = Field(
+        default=None,
+        description="Model artifact checksum (md5, sha1, sha256) as a hex string",
     )
     extras: dict[str, Any] = Field(
         default_factory=dict,
@@ -617,6 +810,57 @@ class ScanSummary(BaseModel):
             "and similar source-code evidence."
         ),
     )
+    # ── SBOM 1.5.0 summary fields ─────────────────────────────────────────────
+    total_loc: int | None = Field(
+        default=None,
+        description="Total lines of source code scanned across all files in the repository",
+    )
+    tokens_used_for_enrichment: int | None = Field(
+        default=None,
+        description="Total LLM tokens consumed (prompt + completion) during SBOM enrichment",
+    )
+    input_tokens_used: int | None = Field(
+        default=None,
+        description="LLM prompt tokens consumed during SBOM enrichment",
+    )
+    output_tokens_used: int | None = Field(
+        default=None,
+        description="LLM completion tokens consumed during SBOM enrichment",
+    )
+    llm_model_used: str | None = Field(
+        default=None,
+        description="LLM model string used for SBOM enrichment, e.g. 'gemini/gemini-2.0-flash'",
+    )
+    instrumentation: InstrumentationDetail | None = Field(
+        default=None,
+        description="App-wide observability and monitoring tooling summary",
+    )
+    testing: TestingDetail | None = Field(
+        default=None,
+        description="App-wide testing and CI/CD posture summary",
+    )
+    github_actions_content: str = Field(
+        default="",
+        description=(
+            "Raw concatenation of all detected GitHub Actions workflow YAML files, "
+            "separated by '\n---\n'. Used by NGA-010/011/014 regex rules as a fallback "
+            "when structured workflow_security_findings are not available."
+        ),
+    )
+    workflow_security_findings: list[dict[str, Any]] = Field(
+        default_factory=list,
+        description=(
+            "Structured security findings emitted by GitHubActionsAdapter during SBOM extraction. "
+            "Each dict has keys: {rule_signal, path, line, snippet, confidence}."
+        ),
+    )
+    k8s_network_policy_namespaces: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Kubernetes namespaces that have at least one NetworkPolicy resource detected. "
+            "Populated by K8sAdapter. Used by NGA-013 to assert cross-file coverage."
+        ),
+    )
 
 
 class AiSbomDocument(BaseModel):
@@ -629,12 +873,12 @@ class AiSbomDocument(BaseModel):
     model_config = ConfigDict(
         json_schema_extra={
             "$schema": "https://json-schema.org/draft/2020-12/schema",
-            "$id": "https://nuguard.ai/schemas/aibom/1.4.0/aibom.schema.json",
+            "$id": "https://nuguard.ai/schemas/aibom/1.5.0/aibom.schema.json",
         }
     )
 
     schema_version: str = Field(
-        default="1.4.0",
+        default="1.5.0",
         description="AIBOM schema version (semver); bump when format changes",
     )
     generated_at: datetime = Field(

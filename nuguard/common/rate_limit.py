@@ -34,6 +34,12 @@ SCENARIO_MAX_RATE_LIMIT_RETRIES: int = 3
 SCENARIO_RATE_LIMIT_BACKOFF_BASE: float = 2.0   # seconds
 SCENARIO_RATE_LIMIT_BACKOFF_CAP: float = 30.0   # seconds
 
+# Transient-error warm-up retries — fired when the target returns an app-level
+# connection-failure fallback (HTTP 200, but the orchestrator caught a cold-start
+# exception and returned a friendly error message).  The delays give Azure
+# Container Apps (minReplicas=0) time to spin up before the next attempt.
+TRANSIENT_ERROR_RETRY_DELAYS: tuple[float, ...] = (30.0, 60.0)  # seconds
+
 
 def is_rate_limited(response: str) -> bool:
     """Return ``True`` when TargetAppClient returned a 429 sentinel.

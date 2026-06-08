@@ -255,6 +255,9 @@ def redteam(
                 skip_discovery=cfg.redteam_skip_discovery,
                 discovery_max_turns=cfg.redteam_discovery_max_turns,
                 catalog=custom_catalog,
+                pre_run_warmup=cfg.redteam_pre_run_warmup,
+                verify_findings=cfg.redteam_verify_findings,
+                golden_data=cfg.redteam_golden_data or None,
             )
         )
     except Exception as exc:
@@ -425,6 +428,9 @@ async def _run_redteam(
     chat_payload_extras: dict[str, Any] | None = None,
     use_catalog: bool = True,
     catalog: "tuple | None" = None,
+    pre_run_warmup: int = 0,
+    verify_findings: bool = False,
+    golden_data: "dict | None" = None,
 ) -> tuple[list, dict[str, str], list, str, list[str], Any]:
     from nuguard.models.policy import CognitivePolicy
     from nuguard.redteam.target.canary import CanaryConfig
@@ -551,6 +557,9 @@ async def _run_redteam(
                 discovery_max_turns=discovery_max_turns,
                 use_catalog=use_catalog,
                 catalog=catalog,
+                pre_run_warmup=pre_run_warmup,
+                verify_findings=verify_findings,
+                golden_data=golden_data,
             )
 
     # App already running — just scan
@@ -597,6 +606,9 @@ async def _run_redteam(
         discovery_max_turns=discovery_max_turns,
         use_catalog=use_catalog,
         catalog=catalog,
+        pre_run_warmup=pre_run_warmup,
+        verify_findings=verify_findings,
+        golden_data=golden_data,
     )
 
 
@@ -642,6 +654,9 @@ async def _run_orchestrator(
     discovery_max_turns: int = 3,
     use_catalog: bool = True,
     catalog: "tuple | None" = None,
+    pre_run_warmup: int = 0,
+    verify_findings: bool = False,
+    golden_data: "dict | None" = None,
 ) -> tuple[list, dict[str, str], list, str, list[str], Any]:
     from nuguard.common.llm_client import LLMClient
     from nuguard.redteam.executor.orchestrator import RedteamOrchestrator
@@ -691,6 +706,9 @@ async def _run_orchestrator(
         discovery_max_turns=discovery_max_turns,
         use_catalog=use_catalog,
         catalog=catalog,
+        pre_run_warmup=pre_run_warmup,
+        verify_findings=verify_findings,
+        golden_data=golden_data,
     )
 
     findings = await orchestrator.run()
