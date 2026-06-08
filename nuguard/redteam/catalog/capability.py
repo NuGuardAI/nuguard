@@ -20,7 +20,11 @@ _WEB_PAT = re.compile(r"\b(?:url|web|browse|scrape|fetch|http|crawl|webhook)\b",
 _SEARCH_PAT = re.compile(r"\b(?:search|googl|bing|serpapi|websearch|lookup)\b", re.IGNORECASE)
 _EMAIL_PAT = re.compile(r"\b(?:email|send|notify|message|mail|smtp|comms|communication|messaging)\b", re.IGNORECASE)
 _CALENDAR_PAT = re.compile(r"\b(?:calendar|event|schedule|appointment|meeting)\b", re.IGNORECASE)
-_NAV_PAT = re.compile(r"\b(?:navigate|navigation|route|direction|map|gps|destination)\b", re.IGNORECASE)
+_NAV_PAT = re.compile(r"\b(?:navigate|navigation|direction|gps|destination)\b", re.IGNORECASE)
+# NOTE: "route" and "map" are intentionally excluded — they match too broadly:
+# "route" hits flight routes and API routes; "map" hits seat maps and data maps.
+# The remaining terms (navigate/navigation/gps/direction/destination) are
+# specific enough to require GPS/turn-by-turn navigation tools.
 _MEDIA_PAT = re.compile(r"\b(?:media|music|play|pause|volume|audio|radio|podcast)\b", re.IGNORECASE)
 _CLIMATE_PAT = re.compile(r"\b(?:climate|hvac|temperature|heat|cool|fan|ac|air)\b", re.IGNORECASE)
 _SHELL_PAT = re.compile(r"\b(?:execute|run|shell|bash|command|script|eval|terminal)\b", re.IGNORECASE)

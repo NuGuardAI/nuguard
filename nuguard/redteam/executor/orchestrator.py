@@ -1031,14 +1031,29 @@ class RedteamOrchestrator:
                 )
                 _synth_ids: list[str] = []
                 _synth_name = ""
+                _ID_KEY_CANDIDATES = (
+                    "account_id", "id", "booking_ref", "booking_id",
+                    "pnr", "confirmation_number", "confirmation_code",
+                    "reference", "reservation_id", "order_id", "customer_id",
+                )
+                _NAME_KEY_CANDIDATES = (
+                    "name", "customer_name", "passenger_name",
+                    "user_name", "full_name", "first_name",
+                )
                 for _gd_entry in self._golden_data.values():
                     if isinstance(_gd_entry, dict):
-                        _aid = _gd_entry.get("account_id") or _gd_entry.get("id") or ""
+                        _aid = next(
+                            (str(_gd_entry[k]) for k in _ID_KEY_CANDIDATES if _gd_entry.get(k)),
+                            "",
+                        )
                         if _aid and _aid not in _synth_ids:
-                            _synth_ids.append(str(_aid))
-                        _nm = _gd_entry.get("name") or _gd_entry.get("customer_name") or ""
+                            _synth_ids.append(_aid)
+                        _nm = next(
+                            (str(_gd_entry[k]) for k in _NAME_KEY_CANDIDATES if _gd_entry.get(k)),
+                            "",
+                        )
                         if _nm and not _synth_name:
-                            _synth_name = str(_nm)
+                            _synth_name = _nm
                 if _synth_ids or _synth_name:
                     _effective_pre_scan = _DP(
                         customer_name=_synth_name,
@@ -1158,22 +1173,14 @@ class RedteamOrchestrator:
         findings = _dedup_findings(findings)
         _log.info("Scan complete: %d findings (after dedup)", len(findings))
 
-        # Update coverage tracker with execution and finding data from executed scenarios.
+        # Update coverage tracker with finding data from executed scenarios.
+        # record_executed() is called per-node inside _run_one() at execution time.
+        # record_finding() uses sbom_path (raw node IDs) — affected_component is a
+        # display string and will not match the tracker's UUID-keyed entries.
         if self._coverage_tracker is not None:
-            _finding_node_ids: set[str] = {
-                f.affected_component or "" for f in findings if f.affected_component
-            }
-            for _scenario in self.scenarios_executed:
-                # scenarios_executed is list[tuple[title, goal_type, had_finding]]
-                _title, _goal, _had_finding = _scenario
-                # Use the title to correlate — tracker is keyed by node_id, not title.
-                # Best we can do without target_node_ids in scenarios_executed is to
-                # mark the overall run as "executed" rather than per-node.
-                _ = _had_finding  # used below via _finding_node_ids
-            # Per-node execution counts from coverage tracker's own generated entries
-            for _node_id in list(self._coverage_tracker._nodes):  # type: ignore[union-attr]
-                if any(f.affected_component == _node_id for f in findings):
-                    self._coverage_tracker.record_finding(_node_id)
+            for f in findings:
+                for _nid in (f.sbom_path or []):
+                    self._coverage_tracker.record_finding(str(_nid))  # type: ignore[union-attr]
 
         # Accumulate token usage from both LLM clients.
         for _llm in (self._redteam_llm, self._eval_llm):
@@ -1305,7 +1312,7 @@ class RedteamOrchestrator:
                         target_url = self._target_url + self._chat_path
                         for step_idx, sr in enumerate(step_results, 1):
                             request_text = (
-                                sr.step.payload
+                                sr.resolved_payload
                                 if not sr.step.target_path
                                 else f"{sr.step.http_method or 'POST'} {sr.step.target_path}"
                             )
@@ -1354,6 +1361,10 @@ class RedteamOrchestrator:
                 try:
                     result = await asyncio.wait_for(_execute_body(), timeout=_timeout)
                     consecutive_unavailable = 0
+                    # Record executed nodes in coverage tracker.
+                    if self._coverage_tracker is not None:
+                        for _nid in scenario.target_node_ids:
+                            self._coverage_tracker.record_executed(str(_nid))  # type: ignore[union-attr]
                     # Record a miss so subsequent similar scenarios can be suppressed.
                     if not result[0]:  # no findings produced
                         miss_tracker.record_miss(scenario)

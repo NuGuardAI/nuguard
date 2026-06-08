@@ -718,6 +718,14 @@ def _build_system_prompt_extraction(ctx: BuilderContext) -> list:
     return _stamp([results], ctx)
 
 
+def _build_code_gen_probe(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.coding_agents import _resolve_probe_user, build_code_gen_probe
+    agent = ctx.target_agent
+    probe_user = _resolve_probe_user(ctx.sbom)
+    results = build_code_gen_probe(str(agent.id), agent.name or "assistant", probe_user=probe_user)
+    return _stamp([results], ctx)
+
+
 # ── Registry ──────────────────────────────────────────────────────────────────
 
 BUILDER_FACTORIES: dict[str, BuilderFn] = {
@@ -796,6 +804,7 @@ BUILDER_FACTORIES: dict[str, BuilderFn] = {
     "structural_injection": _build_structural_injection,
     "refusal_oracle":       _build_refusal_oracle,
     "system_prompt_extraction": _build_system_prompt_extraction,
+    "code_gen_probe":       _build_code_gen_probe,
     # ── Business logic ────────────────────────────────────────────────────
     "false_action_claim":   _build_false_action_claim,
     "out_of_domain_advice": _build_out_of_domain_advice,

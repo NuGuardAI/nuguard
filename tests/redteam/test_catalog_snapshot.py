@@ -44,11 +44,11 @@ EXPECTED_ID_SERIES: dict[str, int] = {
     "P": 6,
     "G": 6,
     "J": 6,
-    "E": 6,
+    "E": 7,
     "B": 6,
     "K": 6,
 }
-EXPECTED_TOTAL = sum(EXPECTED_ID_SERIES.values())  # 84
+EXPECTED_TOTAL = sum(EXPECTED_ID_SERIES.values())  # 85
 
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
