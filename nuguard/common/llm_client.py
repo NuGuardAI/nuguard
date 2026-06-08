@@ -256,6 +256,10 @@ class LLMClient:
         if self.api_key is None:
             _log.debug("No API key found — LLMClient will return canned responses.")
 
+        # Token accumulators — reset with reset_token_counts(); read with token_counts.
+        self._input_tokens: int = 0
+        self._output_tokens: int = 0
+
         # Azure OpenAI requires an explicit endpoint URL.  Warn early so the user
         # gets a clear diagnostic instead of a cryptic APIConnectionError later.
         if (
@@ -270,6 +274,16 @@ class LLMClient:
                 "api_base under the llm: section of your nuguard.yaml.",
                 self.model,
             )
+
+    def reset_token_counts(self) -> None:
+        """Reset accumulated token counters to zero."""
+        self._input_tokens = 0
+        self._output_tokens = 0
+
+    @property
+    def token_counts(self) -> tuple[int, int]:
+        """Return (input_tokens, output_tokens) accumulated since last reset."""
+        return (self._input_tokens, self._output_tokens)
 
     async def complete_stream(
         self,
@@ -348,6 +362,9 @@ class LLMClient:
 
         for _attempt in range(_MAX_RETRIES + 1):
             try:
+                # Request usage in the final streaming chunk for providers that support it.
+                if any(self.model.startswith(p) for p in _OPENAI_PREFIXES + _ANTHROPIC_PREFIXES):
+                    kwargs.setdefault("stream_options", {"include_usage": True})
                 stream = await litellm.acompletion(
                     model=self.model,
                     messages=messages,
@@ -356,9 +373,14 @@ class LLMClient:
                     **kwargs,
                 )
                 async for chunk in stream:
-                    delta: str = chunk.choices[0].delta.content or ""
-                    if delta:
-                        yield delta
+                    _usage = getattr(chunk, "usage", None)
+                    if _usage is not None:
+                        self._input_tokens += getattr(_usage, "prompt_tokens", 0) or 0
+                        self._output_tokens += getattr(_usage, "completion_tokens", 0) or 0
+                    if chunk.choices:
+                        delta: str = chunk.choices[0].delta.content or ""
+                        if delta:
+                            yield delta
                 return
 
             except (litellm.RateLimitError, litellm.ServiceUnavailableError, litellm.APIConnectionError) as exc:

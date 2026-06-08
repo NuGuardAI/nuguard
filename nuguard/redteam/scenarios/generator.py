@@ -119,6 +119,9 @@ class ScenarioGenerator:
         # Goal 1: Policy Violations
         scenarios.extend(self._policy_violation_scenarios())
 
+        # Goal 1.5: SBOM-driven guardrail bypass (GUARDRAIL nodes + PROTECTS edges)
+        scenarios.extend(self._guardrail_bypass_scenarios())
+
         # Goal 2: Data Exfiltration
         scenarios.extend(self._exfiltration_scenarios())
 
@@ -416,6 +419,51 @@ class ScenarioGenerator:
         for trigger in policy.hitl_triggers:
             for node in target_nodes:
                 out.append(build_hitl_bypass(str(node.id), trigger))
+        return out
+
+    def _guardrail_bypass_scenarios(self) -> list[AttackScenario]:
+        """Generate targeted guardrail bypass scenarios using SBOM GUARDRAIL nodes.
+
+        For each GUARDRAIL node, finds the agents it protects via PROTECTS edges
+        and generates bypass attempts using the guardrail's blocked_topics and
+        blocked_actions metadata.  This surfaces guardrail-specific weaknesses
+        that generic policy-violation scenarios may miss.
+        """
+        out: list[AttackScenario] = []
+        guardrail_nodes = [
+            n for n in self._sbom.nodes if n.component_type == ComponentType.GUARDRAIL
+        ]
+        if not guardrail_nodes:
+            return out
+
+        for guardrail in guardrail_nodes:
+            guardrail_id = str(guardrail.id)
+            blocked_topics = list(guardrail.metadata.blocked_topics or [])
+            blocked_actions = list(guardrail.metadata.blocked_actions or [])
+            if not blocked_topics and not blocked_actions:
+                continue
+
+            # Find protected agents via PROTECTS edges from this guardrail.
+            protected_agent_ids: list[str] = self._outgoing.get(guardrail_id, {}).get(
+                RelationshipType.PROTECTS, []
+            )
+            # Fallback: target entry agents when no PROTECTS edges are present.
+            if not protected_agent_ids:
+                protected_agent_ids = list(self._compute_entry_agents())
+
+            for agent_id in protected_agent_ids[:_MAX_AGENTS_PER_GOAL]:
+                agent_node = self._node_by_id.get(agent_id)
+                if agent_node is None or agent_node.component_type != ComponentType.AGENT:
+                    continue
+                out.append(
+                    build_guardrail_bypass(
+                        agent_id=agent_id,
+                        agent_name=agent_node.name or "agent",
+                        blocked_topics=blocked_topics,
+                        blocked_actions=blocked_actions,
+                    )
+                )
+
         return out
 
     # ------------------------------------------------------------------ #

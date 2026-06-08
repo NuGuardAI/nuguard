@@ -560,6 +560,9 @@ class RedteamOrchestrator:
         self.scan_outcome: str = "no_findings"
         # Run-level configuration notices (e.g. automatic URL resolution).
         self.config_notes: list[str] = []
+        # Token usage accumulated across all LLM calls during the run.
+        self.input_tokens_used: int = 0
+        self.output_tokens_used: int = 0
 
     def _trigger_enabled(self, name: str) -> bool:
         """Return whether a finding trigger is enabled (defaults preserve legacy behavior)."""
@@ -639,6 +642,10 @@ class RedteamOrchestrator:
             self._target_url,
             self._profile,
         )
+        if self._redteam_llm is not None:
+            self._redteam_llm.reset_token_counts()
+        if self._eval_llm is not None:
+            self._eval_llm.reset_token_counts()
 
         # 0. Endpoint auto-discovery — when chat_path was not explicitly configured,
         #    probe SBOM POST endpoints live to find one that accepts chat requests.
@@ -1118,6 +1125,13 @@ class RedteamOrchestrator:
 
         findings = _dedup_findings(findings)
         _log.info("Scan complete: %d findings (after dedup)", len(findings))
+
+        # Accumulate token usage from both LLM clients.
+        for _llm in (self._redteam_llm, self._eval_llm):
+            if _llm is not None:
+                _in, _out = _llm.token_counts
+                self.input_tokens_used += _in
+                self.output_tokens_used += _out
 
         # Compute scan-level outcome from scenario records
         self.scan_outcome = _compute_scan_outcome(

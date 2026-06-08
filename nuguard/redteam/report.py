@@ -39,6 +39,8 @@ def to_json(
     meta: "ReportMeta | None" = None,
     remediation_plan: list | None = None,
     scan_outcome: str = "no_findings",
+    input_tokens_used: int = 0,
+    output_tokens_used: int = 0,
 ) -> str:
     """Generate a JSON report string from red-team findings.
 
@@ -46,6 +48,8 @@ def to_json(
         findings: List of :class:`~nuguard.models.finding.Finding` objects.
         meta: Optional report metadata.
         remediation_plan: Optional list of ``RemediationArtefact`` objects.
+        input_tokens_used: Total LLM prompt tokens consumed during the run.
+        output_tokens_used: Total LLM completion tokens consumed during the run.
 
     Returns:
         JSON string.
@@ -58,6 +62,8 @@ def to_json(
     payload: dict[str, Any] = {
         "_meta": meta.to_dict(),
         "scan_outcome": scan_outcome,
+        "input_tokens_used": input_tokens_used,
+        "output_tokens_used": output_tokens_used,
         "findings": [f.model_dump() for f in findings],
         "remediation_plan": [a.model_dump() for a in (remediation_plan or [])],
     }
