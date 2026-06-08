@@ -563,6 +563,12 @@ class RedteamOrchestrator:
         # Token usage accumulated across all LLM calls during the run.
         self.input_tokens_used: int = 0
         self.output_tokens_used: int = 0
+        # Effective policy (may be enriched from compiled controls) — set during run().
+        self._effective_policy: CognitivePolicy | None = None
+        # Escalation enrichment count — set when CI escalation LLM enrichment runs.
+        self.enriched_escalation_count: int = 0
+        # Coverage tracker — populated after generate() during run().
+        self._coverage_tracker: object | None = None
 
     def _trigger_enabled(self, name: str) -> bool:
         """Return whether a finding trigger is enabled (defaults preserve legacy behavior)."""
@@ -822,11 +828,13 @@ class RedteamOrchestrator:
             )
         elif self._policy_controls and effective_policy is None:
             effective_policy = _policy_from_controls(self._policy_controls)
+        self._effective_policy = effective_policy
 
         # Guided conversations require an LLM — only generate when one is configured.
         _with_guided = self._guided_conversations and bool(self._redteam_llm)
         generator = ScenarioGenerator(self._sbom, effective_policy)
         all_scenarios = generator.generate(with_guided=_with_guided)
+        self._coverage_tracker = getattr(generator, "coverage_tracker", None)
 
         # 1b. Catalog scenarios — merged in when use_catalog=True.
         # The catalog is capability-aware and handles its own profile filtering,
@@ -893,10 +901,10 @@ class RedteamOrchestrator:
                 _cache_dir,
                 llm_model=getattr(self._redteam_llm, "model", None),
             )
-            _cache_key = _cache.cache_key(self._sbom, self._policy)
+            _cache_key = _cache.cache_key(self._sbom, self._effective_policy)
             _cache_existed = _cache.load(_cache_key) is not None
             _llm_payloads = await LLMPromptGenerator(
-                self._redteam_llm, self._sbom, self._policy,
+                self._redteam_llm, self._sbom, self._effective_policy,
                 discovered_profile=_pre_scan_profile,
             ).enrich_all(scenarios, _cache, _cache_key)
             self.prompt_cache_path = _cache.path_for(_cache_key)
@@ -1045,7 +1053,7 @@ class RedteamOrchestrator:
             _warmup_app_domain, _warmup_allowed_topics = self._build_happy_path_context()
             executor = AttackExecutor(
                 client=client,
-                policy=self._policy,
+                policy=self._effective_policy,
                 canary=canary_scanner,
                 logger=logger,
                 eval_llm=self._eval_llm,
@@ -1116,6 +1124,30 @@ class RedteamOrchestrator:
                         "0 findings — escalating with %d lower-scored scenarios",
                         len(escalation_scenarios),
                     )
+                    # Apply LLM payload enrichment to escalation scenarios (same pipeline
+                    # as the initial pass) so they are as realistic as the first batch.
+                    if self._redteam_llm:
+                        from nuguard.redteam.llm_engine.prompt_cache import PromptCache
+                        from nuguard.redteam.llm_engine.prompt_generator import (
+                            LLMPromptGenerator,
+                            _inject_llm_payloads,
+                        )
+                        _esc_cache_dir = self._prompt_cache_dir or Path(".")
+                        _esc_cache = PromptCache(
+                            _esc_cache_dir,
+                            llm_model=getattr(self._redteam_llm, "model", None),
+                        )
+                        _esc_key = _esc_cache.cache_key(self._sbom, self._effective_policy)
+                        _esc_payloads = await LLMPromptGenerator(
+                            self._redteam_llm, self._sbom, self._effective_policy,
+                            discovered_profile=_effective_pre_scan,
+                        ).enrich_all(escalation_scenarios, _esc_cache, _esc_key)
+                        self.enriched_escalation_count = len(_esc_payloads)
+                        escalation_scenarios = _inject_llm_payloads(escalation_scenarios, _esc_payloads)
+                        _log.info(
+                            "Escalation LLM enrichment: %d/%d scenarios enriched",
+                            self.enriched_escalation_count, len(escalation_scenarios),
+                        )
                     self.scenarios_run += len(escalation_scenarios)
                     findings, escalation_executed, escalation_records = await self._run_scenarios(
                         escalation_scenarios, executor, guided_executor
@@ -1125,6 +1157,23 @@ class RedteamOrchestrator:
 
         findings = _dedup_findings(findings)
         _log.info("Scan complete: %d findings (after dedup)", len(findings))
+
+        # Update coverage tracker with execution and finding data from executed scenarios.
+        if self._coverage_tracker is not None:
+            _finding_node_ids: set[str] = {
+                f.affected_component or "" for f in findings if f.affected_component
+            }
+            for _scenario in self.scenarios_executed:
+                # scenarios_executed is list[tuple[title, goal_type, had_finding]]
+                _title, _goal, _had_finding = _scenario
+                # Use the title to correlate — tracker is keyed by node_id, not title.
+                # Best we can do without target_node_ids in scenarios_executed is to
+                # mark the overall run as "executed" rather than per-node.
+                _ = _had_finding  # used below via _finding_node_ids
+            # Per-node execution counts from coverage tracker's own generated entries
+            for _node_id in list(self._coverage_tracker._nodes):  # type: ignore[union-attr]
+                if any(f.affected_component == _node_id for f in findings):
+                    self._coverage_tracker.record_finding(_node_id)
 
         # Accumulate token usage from both LLM clients.
         for _llm in (self._redteam_llm, self._eval_llm):
@@ -1146,7 +1195,11 @@ class RedteamOrchestrator:
             from nuguard.redteam.llm_engine.summary_generator import LLMSummaryGenerator
             frameworks: list[str] = []
             if self._sbom.summary:
-                frameworks = list(getattr(self._sbom.summary, "frameworks_detected", None) or [])
+                frameworks = list(
+                    getattr(self._sbom.summary, "frameworks", None)
+                    or getattr(self._sbom.summary, "frameworks_detected", None)
+                    or []
+                )
             node_by_id: dict[str, object] = {
                 str(node.id): node for node in self._sbom.nodes if node.id
             }

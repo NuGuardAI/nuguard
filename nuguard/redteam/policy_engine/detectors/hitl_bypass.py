@@ -62,9 +62,6 @@ def detect_hitl_bypass_violations(
         List of violation dicts (may be empty).
     """
     violations: list[dict] = []
-    if not policy.hitl_triggers:
-        return violations
-
     prompt_lower = prompt.lower()
 
     for trigger in policy.hitl_triggers:
