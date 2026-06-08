@@ -8,10 +8,11 @@ The checker never raises — missing nodes produce gaps rather than exceptions.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import Any
 
 from nuguard.common.logging import get_logger
 from nuguard.models.policy import CognitivePolicy
-from nuguard.sbom.models import AiSbomDocument
+from nuguard.sbom.models import AiSbomDocument, Node, RateLimitDetail
 from nuguard.sbom.types import ComponentType
 
 _log = get_logger(__name__)
@@ -35,13 +36,15 @@ _CHECK_INFO: dict[str, tuple[str, str]] = {
     "CHECK-003": (
         "Data Classification Metadata",
         "Policy declares data classification requirements (PHI, PII, internal). "
-        "DATASTORE nodes in the SBOM should carry matching data_classification metadata.",
+        "DATASTORE nodes in the SBOM should carry data_classification, classified table, "
+        "classified field, or sensitive field metadata.",
     ),
     "CHECK-004": (
         "Rate Limit Instrumentation",
         "Policy defines rate limits for API endpoints. "
-        "API_ENDPOINT nodes in the SBOM should carry a rate_limit attribute so "
-        "the limits can be verified against the deployed configuration.",
+        "API_ENDPOINT nodes in the SBOM should carry rate_limited and/or "
+        "rate_limit_detail metadata so the limits can be verified against the "
+        "deployed configuration.",
     ),
     "CHECK-005": (
         "Auth Node for HITL",
@@ -100,6 +103,8 @@ class PolicyCheckResult:
 
     gaps: list[PolicyGap] = field(default_factory=list)
     passed: list[PolicyControl] = field(default_factory=list)
+    input_tokens_used: int = 0
+    output_tokens_used: int = 0
 
     @property
     def all_checks(self) -> list[PolicyGap | PolicyControl]:
@@ -162,6 +167,98 @@ def _prompt_evidence_for(triggers: list[str], doc: AiSbomDocument) -> list[str]:
     return evidence
 
 
+def _as_list(value: Any) -> list[Any]:
+    """Return *value* as a list, preserving existing list-like values."""
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return value
+    if isinstance(value, tuple | set):
+        return list(value)
+    return [value]
+
+
+def _metadata_value(node: Node, field_name: str) -> Any:
+    """Return a typed SBOM metadata value, falling back to legacy extras."""
+    value = getattr(node.metadata, field_name, None)
+    if value is not None:
+        return value
+    return node.metadata.extras.get(field_name)
+
+
+def _data_classification_evidence(node: Node) -> list[str]:
+    """Return SBOM 1.5 datastore classification evidence strings for *node*."""
+    evidence: list[str] = []
+
+    classifications = _as_list(_metadata_value(node, "data_classification"))
+    if classifications:
+        evidence.append(
+            "data_classification="
+            f"{', '.join(str(item) for item in classifications)}"
+        )
+
+    classified_tables = _as_list(_metadata_value(node, "classified_tables"))
+    if classified_tables:
+        evidence.append(
+            "classified_tables="
+            f"{', '.join(str(item) for item in classified_tables)}"
+        )
+
+    classified_fields = _metadata_value(node, "classified_fields")
+    if isinstance(classified_fields, dict) and classified_fields:
+        rendered_fields = []
+        for table, fields in classified_fields.items():
+            field_names = ", ".join(str(field) for field in _as_list(fields))
+            rendered_fields.append(f"{table}: [{field_names}]")
+        evidence.append("classified_fields=" + "; ".join(rendered_fields))
+
+    for field_name in ("pii_fields", "phi_fields", "pfi_fields"):
+        fields = _as_list(_metadata_value(node, field_name))
+        if fields:
+            evidence.append(
+                f"{field_name}="
+                f"{', '.join(str(field) for field in fields)}"
+            )
+
+    return evidence
+
+
+def _rate_limit_detail_summary(detail: RateLimitDetail | dict[str, Any]) -> str:
+    """Render a compact summary of structured rate-limit detail."""
+    if isinstance(detail, RateLimitDetail):
+        data = detail.model_dump(exclude_none=True)
+    elif isinstance(detail, dict):
+        data = {k: v for k, v in detail.items() if v is not None}
+    else:
+        data = {}
+    if not data:
+        return "{}"
+    return ", ".join(f"{key}={value!r}" for key, value in sorted(data.items()))
+
+
+def _rate_limit_evidence(node: Node) -> list[str]:
+    """Return SBOM 1.5 API rate-limit evidence strings for *node*."""
+    evidence: list[str] = []
+
+    rate_limited = _metadata_value(node, "rate_limited")
+    if rate_limited is True:
+        evidence.append("rate_limited=True")
+
+    rate_limit_detail = _metadata_value(node, "rate_limit_detail")
+    if rate_limit_detail:
+        evidence.append(
+            "rate_limit_detail={"
+            f"{_rate_limit_detail_summary(rate_limit_detail)}"
+            "}"
+        )
+
+    legacy_rate_limit = node.metadata.extras.get("rate_limit")
+    if legacy_rate_limit is not None:
+        evidence.append(f"legacy rate_limit={legacy_rate_limit!r}")
+
+    return evidence
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -177,9 +274,9 @@ def check_policy_against_sbom(
                         falls back to PROMPT node evidence when no GUARDRAIL found.
     CHECK-002 (medium)  restricted_action names a tool not found in SBOM.
     CHECK-003 (medium)  data_classification entries present but DATASTORE nodes
-                        lack PII metadata.
+                        lack classification or sensitive-field metadata.
     CHECK-004 (low)     rate_limits present but API_ENDPOINT nodes have no
-                        rate_limit attribute.
+                        rate_limited or rate_limit_detail metadata.
     CHECK-005 (medium)  hitl_triggers present but no AUTH node in SBOM.
 
     Args:
@@ -295,18 +392,16 @@ def check_policy_against_sbom(
     if policy.data_classification:
         if datastore_nodes:
             for ds in datastore_nodes:
-                dc = list(ds.metadata.data_classification or [])
-                extras_dc = list(ds.metadata.extras.get("data_classification") or [])
-                all_dc = dc + extras_dc
-                if all_dc:
+                data_evidence = _data_classification_evidence(ds)
+                if data_evidence:
                     result.passed.append(PolicyControl(
                         check_id="CHECK-003",
                         name=_check_name("CHECK-003"),
                         description=_check_description("CHECK-003"),
                         policy_section="data_classification",
                         evidence=[
-                            f"DATASTORE {ds.name!r} has classification metadata: "
-                            f"{', '.join(str(x) for x in all_dc)}"
+                            f"DATASTORE {ds.name!r} has classification metadata: {item}"
+                            for item in data_evidence
                         ],
                         evidence_source="sbom_node",
                     ))
@@ -317,12 +412,17 @@ def check_policy_against_sbom(
                         description=_check_description("CHECK-003"),
                         message=(
                             f"Policy declares data classification requirements but "
-                            f"DATASTORE node {ds.name!r} has no pii/data-classification metadata."
+                            f"DATASTORE node {ds.name!r} has no classification, "
+                            "classified-field, PII, PHI, or PFI metadata."
                         ),
                         policy_section="data_classification",
                         sbom_component=ds.name,
                         severity="medium",
-                        searched=[f"Checked data_classification field on DATASTORE {ds.name!r}: empty"],
+                        searched=[
+                            "Checked data_classification, classified_tables, "
+                            "classified_fields, pii_fields, phi_fields, and "
+                            f"pfi_fields on DATASTORE {ds.name!r}: empty"
+                        ],
                     ))
         else:
             result.gaps.append(PolicyGap(
@@ -342,15 +442,16 @@ def check_policy_against_sbom(
     if policy.rate_limits:
         if api_nodes:
             for ep in api_nodes:
-                rate_limit = ep.metadata.extras.get("rate_limit")
-                if rate_limit is not None:
+                rate_limit_evidence = _rate_limit_evidence(ep)
+                if rate_limit_evidence:
                     result.passed.append(PolicyControl(
                         check_id="CHECK-004",
                         name=_check_name("CHECK-004"),
                         description=_check_description("CHECK-004"),
                         policy_section="rate_limits",
                         evidence=[
-                            f"API_ENDPOINT {ep.name!r} has rate_limit={rate_limit!r}"
+                            f"API_ENDPOINT {ep.name!r} has {item}"
+                            for item in rate_limit_evidence
                         ],
                         evidence_source="sbom_node",
                     ))
@@ -361,12 +462,16 @@ def check_policy_against_sbom(
                         description=_check_description("CHECK-004"),
                         message=(
                             f"Policy defines rate_limits but API_ENDPOINT node "
-                            f"{ep.name!r} has no rate_limit attribute in the SBOM."
+                            f"{ep.name!r} has no rate_limited or rate_limit_detail "
+                            "metadata in the SBOM."
                         ),
                         policy_section="rate_limits",
                         sbom_component=ep.name,
                         severity="low",
-                        searched=[f"Checked rate_limit attribute on API_ENDPOINT {ep.name!r}: not set"],
+                        searched=[
+                            "Checked rate_limited, rate_limit_detail, and legacy "
+                            f"rate_limit metadata on API_ENDPOINT {ep.name!r}: not set"
+                        ],
                     ))
         else:
             result.gaps.append(PolicyGap(

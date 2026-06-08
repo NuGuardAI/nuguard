@@ -115,8 +115,8 @@ This compares declared policy requirements against the structural evidence in th
 
 - `CHECK-001`: HITL triggers exist but no `GUARDRAIL` node exists in the SBOM
 - `CHECK-002`: a restricted action does not match any `TOOL` node in the SBOM
-- `CHECK-003`: policy declares data classification requirements but `DATASTORE` nodes lack classification metadata
-- `CHECK-004`: policy declares rate limits but `API_ENDPOINT` nodes do not expose rate-limit metadata
+- `CHECK-003`: policy declares data classification requirements but `DATASTORE` nodes lack classification, classified-field, PII, PHI, or PFI metadata
+- `CHECK-004`: policy declares rate limits but `API_ENDPOINT` nodes do not expose `rate_limited` or `rate_limit_detail` metadata
 - `CHECK-005`: HITL triggers exist but there are no `AUTH` nodes in the SBOM
 
 ### Why this matters
