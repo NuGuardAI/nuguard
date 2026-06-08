@@ -16,7 +16,6 @@ from nuguard.models.exploit_chain import ExploitStep, GoalType, ScenarioType
 from ._chain_factory import make_scenario
 from .scenario_types import AttackScenario
 
-
 # Canary token embedded in repo/file payloads so the evaluator can detect leaks.
 _CANARY = "NUGUARD_CANARY_K_SERIES"
 

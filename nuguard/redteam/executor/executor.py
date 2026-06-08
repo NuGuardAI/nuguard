@@ -25,7 +25,10 @@ from nuguard.models.exploit_chain import HTTP_2XX_SENTINEL, ExploitChain, Exploi
 from nuguard.models.policy import CognitivePolicy
 from nuguard.redteam.llm_engine.adaptive_mutation import AdaptiveMutationStrategy
 from nuguard.redteam.llm_engine.happy_path import generate_happy_path_opener
-from nuguard.redteam.llm_engine.refusal_patterns import APP_TRANSIENT_ERROR_PATTERNS, HARD_REFUSAL_TOKENS
+from nuguard.redteam.llm_engine.refusal_patterns import (
+    APP_TRANSIENT_ERROR_PATTERNS,
+    HARD_REFUSAL_TOKENS,
+)
 from nuguard.redteam.llm_engine.response_evaluator import LLMResponseEvaluator
 from nuguard.redteam.policy_engine.evaluator import PolicyEvaluator, PolicyViolation
 from nuguard.redteam.target.action_logger import ActionLogger
