@@ -36,6 +36,8 @@ class BuilderContext(NamedTuple):
     target_agent: Node
     target_tool: "Node | None"
     policy: "object | None"  # CognitivePolicy | None — avoid heavy import
+    target_endpoint: "Node | None" = None   # API_ENDPOINT node for direct endpoint attacks
+    target_datastore: "Node | None" = None  # DATASTORE node for data-specific attacks
 
 
 # Factory signature ────────────────────────────────────────────────────────────
@@ -139,9 +141,13 @@ def _build_hitl_bypass(ctx: BuilderContext) -> list:
 def _build_mass_assignment(ctx: BuilderContext) -> list:
     from nuguard.redteam.scenarios.api_attacks import build_mass_assignment
     agent = ctx.target_agent
-    target = ctx.target_tool or agent
-    # build_mass_assignment requires a path parameter; use a generic one
-    results = build_mass_assignment(str(target.id), target.name or "endpoint", path="/api/users")
+    target = ctx.target_endpoint or ctx.target_tool or agent
+    # Use concrete endpoint path from SBOM when available
+    if ctx.target_endpoint is not None and ctx.target_endpoint.metadata:
+        path = ctx.target_endpoint.metadata.endpoint or "/api/users"
+    else:
+        path = "/api/users"
+    results = build_mass_assignment(str(target.id), target.name or "endpoint", path=path)
     return _stamp([results], ctx)
 
 

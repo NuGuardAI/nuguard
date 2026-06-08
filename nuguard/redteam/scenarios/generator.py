@@ -23,7 +23,13 @@ from .agentic_attacks import (
     build_memory_poisoning,
     build_multi_agent_trust_boundary,
 )
-from .api_attacks import build_auth_bypass, build_idor, build_mass_assignment
+from .api_attacks import (
+    build_auth_bypass,
+    build_auth_scope_bypass,
+    build_idor,
+    build_mass_assignment,
+    build_rate_limit_probe,
+)
 from .data_exfiltration import (
     build_account_id_probe,
     build_bank_account_probe,
@@ -56,7 +62,14 @@ from .guided_conversations import (
 from .jailbreak import build_context_flood, build_structural_injection
 from .mcp_attacks import build_mcp_output_poisoning, build_mcp_tool_injection, build_mcp_toxic_flow
 from .oracle_attacks import build_premise_injection, build_refusal_oracle
-from .policy_violations import build_hitl_bypass, build_restricted_action, build_restricted_topic
+from .policy_violations import (
+    build_allowed_topic_boundary,
+    build_hitl_bypass,
+    build_rate_limit_burst,
+    build_raw_section_probe,
+    build_restricted_action,
+    build_restricted_topic,
+)
 from .pre_scorer import pre_score
 from .privilege_escalation import build_privilege_chain
 from .prompt_injection import (
@@ -179,8 +192,32 @@ class ScenarioGenerator:
         if entry_agents:
             scenarios = self._dedup_by_entry_endpoint(scenarios, entry_agents)
 
-        # Sort by impact score descending
-        scenarios.sort(key=lambda s: s.impact_score, reverse=True)
+        # Record coverage for each generated scenario
+        from nuguard.redteam.coverage.tracker import CoverageTracker as _CT
+        self.coverage_tracker = _CT()
+        for sc in scenarios:
+            primary_id = sc.target_node_ids[0] if sc.target_node_ids else ""
+            node = self._node_by_id.get(primary_id)
+            if node:
+                self.coverage_tracker.record_generated(
+                    primary_id,
+                    str(node.component_type) if node.component_type else "unknown",
+                    node.name or primary_id,
+                )
+
+        # Sort by blended score: impact + SBOM risk signals (injection_risk, LOC, no testing)
+        def _blended_score(s: AttackScenario) -> float:
+            base = s.impact_score
+            node = self._node_by_id.get(s.target_node_ids[0] if s.target_node_ids else "")
+            if node and node.metadata:
+                base += min(getattr(node.metadata, "injection_risk_score", 0.0) or 0.0, 2.0)
+                if not getattr(node.metadata, "testing", True):
+                    base += 1.0
+                if (getattr(node.metadata, "loc", 0) or 0) > 500:
+                    base += 0.5
+            return base
+
+        scenarios.sort(key=_blended_score, reverse=True)
         # Populate target_tool_names from the SBOM CALLS graph so the LLM prompt
         # builder can name specific tools (Gmail, Calendar, etc.) in variants.
         # Done once at the end so every scenario type is covered uniformly.
@@ -419,6 +456,19 @@ class ScenarioGenerator:
         for trigger in policy.hitl_triggers:
             for node in target_nodes:
                 out.append(build_hitl_bypass(str(node.id), trigger))
+        for cond in policy.hitl_tool_conditions:
+            trigger_text = f"{cond.tool_name}: {cond.condition}"
+            for node in target_nodes:
+                out.append(build_hitl_bypass(str(node.id), trigger_text))
+        for topic in policy.allowed_topics:
+            for node in target_nodes:
+                out.append(build_allowed_topic_boundary(str(node.id), topic, policy.restricted_topics))
+        for key, limit in policy.rate_limits.items():
+            for node in target_nodes[:1]:
+                out.append(build_rate_limit_burst(str(node.id), key, limit))
+        for section_name, bullets in policy.raw_sections.items():
+            for node in target_nodes[:1]:
+                out.append(build_raw_section_probe(str(node.id), section_name, bullets))
         return out
 
     def _guardrail_bypass_scenarios(self) -> list[AttackScenario]:
@@ -1311,6 +1361,34 @@ class ScenarioGenerator:
                 )
                 if scenario is not None:
                     out.append(scenario)
+
+            # BFLA/Scope bypass: when auth_scope or auth_detail metadata is present
+            auth_scope = getattr(meta, "auth_scope", None)
+            auth_detail = getattr(meta, "auth_detail", None)
+            if auth_scope or auth_detail:
+                out.append(
+                    build_auth_scope_bypass(
+                        endpoint_id=endpoint_id,
+                        endpoint_name=node.name,
+                        path=path,
+                        method=method,
+                        auth_scope=auth_scope,
+                        auth_detail=auth_detail,
+                        request_body_schema=request_body_schema,
+                    )
+                )
+
+            # Rate-limit probe: when endpoint is explicitly rate-limited
+            if getattr(meta, "rate_limited", False):
+                out.append(
+                    build_rate_limit_probe(
+                        endpoint_id=endpoint_id,
+                        endpoint_name=node.name,
+                        path=path,
+                        method=method,
+                        request_body_schema=request_body_schema,
+                    )
+                )
 
         return out
 

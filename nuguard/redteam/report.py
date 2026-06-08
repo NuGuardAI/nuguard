@@ -76,6 +76,7 @@ def to_markdown(
     remediation_plan: list | None = None,
     scenario_records: list | None = None,
     catalog_coverage: "object | None" = None,
+    coverage_tracker: "object | None" = None,
 ) -> str:
     """Render red-team findings as a Markdown report string.
 
@@ -163,6 +164,12 @@ def to_markdown(
     # Catalog coverage report (Phase 2 — capability-aware catalog)
     if catalog_coverage is not None and hasattr(catalog_coverage, "to_markdown"):
         lines += ["", catalog_coverage.to_markdown(), ""]
+
+    # Coverage tracker table (SBOM node coverage)
+    if coverage_tracker is not None and hasattr(coverage_tracker, "to_markdown"):
+        _ct_md = coverage_tracker.to_markdown()
+        if _ct_md:
+            lines += ["", _ct_md, ""]
 
     if not findings:
         lines += ["_No findings — scan complete._", ""]

@@ -188,8 +188,42 @@ class CapabilityDetector:
         if self._has_hitl_guard():
             caps.add(C.HITL_GUARD)
 
-        # RENDERS_MARKDOWN: default True for all chat agents (most render markdown)
-        caps.add(C.RENDERS_MARKDOWN)
+        # All tool nodes in the SBOM (not just edge-reachable ones — edges may be incomplete)
+        all_sbom_tools = [n for n in self._sbom.nodes if n.component_type == ComponentType.TOOL]
+
+        # DOCUMENT: detect from tool name/description keywords
+        _DOCUMENT_TOOL_KEYS = (
+            "document", "file", "ocr", "upload", "attachment", "pdf", "scan", "ingest",
+        )
+        if any(
+            any(kw in _tool_haystack(t) for kw in _DOCUMENT_TOOL_KEYS)
+            for t in all_sbom_tools
+        ):
+            caps.add(C.DOCUMENT)
+
+        # MULTI_SESSION: detect from context_payload_fields or memory/session tool names
+        _SESSION_FIELD_KEYS = ("session_id", "user_id", "conversation_id", "history", "profile")
+        api_ep_nodes = [n for n in self._sbom.nodes if n.component_type == ComponentType.API_ENDPOINT]
+        chat_ctx_fields = [
+            f
+            for ep in api_ep_nodes
+            for f in (ep.metadata.context_payload_fields if ep.metadata else []) or []
+        ]
+        if any(any(kw in f.lower() for kw in _SESSION_FIELD_KEYS) for f in chat_ctx_fields):
+            caps.add(C.MULTI_SESSION)
+        _MULTI_SESSION_TOOL_KEYS = ("memory", "history", "profile", "session", "persist", "long-term")
+        if any(
+            any(kw in _tool_haystack(t) for kw in _MULTI_SESSION_TOOL_KEYS)
+            for t in all_sbom_tools
+        ):
+            caps.add(C.MULTI_SESSION)
+
+        # RENDERS_MARKDOWN: default True for all chat agents (most render markdown),
+        # but annotate whether evidence was found from framework metadata.
+        _MARKDOWN_FRAMEWORKS = ("react", "next", "streamlit", "gradio", "vue", "angular", "svelte")
+        _summary_frameworks = list(getattr(self._sbom.summary, "frameworks", None) or [])
+        _md_evidence = any(fw in " ".join(_summary_frameworks).lower() for fw in _MARKDOWN_FRAMEWORKS)
+        caps.add(C.RENDERS_MARKDOWN)  # default-on; evidence captured above if needed
 
         domain = self._infer_domain(agents, all_tools)
 

@@ -237,6 +237,109 @@ def build_mass_assignment(
     )
 
 
+def build_auth_scope_bypass(
+    endpoint_id: str,
+    endpoint_name: str,
+    path: str,
+    method: str = "GET",
+    auth_scope: str | None = None,
+    auth_detail: str | None = None,
+    request_body_schema: dict[str, str] | None = None,
+) -> AttackScenario:
+    """BFLA/RBAC probe — access an endpoint with a lower-privileged or mismatched scope."""
+    scope_label = auth_scope or auth_detail or "elevated scope"
+    body: dict = _build_realistic_body(request_body_schema or {})
+    chain_id = str(uuid.uuid4())
+    chain = ExploitChain(
+        chain_id=chain_id,
+        goal_type=GoalType.API_ATTACK,
+        scenario_type=ScenarioType.AUTH_BYPASS,
+        sbom_path=[endpoint_id],
+        owasp_asi_ref="ASI03 – Identity and Privilege Abuse",
+        steps=[
+            ExploitStep(
+                step_id=f"{chain_id}_s1",
+                step_type="INVOKE",
+                description=f"Access {endpoint_name} with downgraded scope (BFLA probe)",
+                payload="",
+                target_path=path,
+                http_method=method,
+                http_body=body if body else None,
+                target_node_id=endpoint_id,
+                success_signal=HTTP_2XX_SENTINEL,
+                on_failure="abort",
+            )
+        ],
+    )
+    chain.pre_score = pre_score(chain)
+    return AttackScenario(
+        scenario_id=str(uuid.uuid4()),
+        goal_type=GoalType.API_ATTACK,
+        scenario_type=ScenarioType.AUTH_BYPASS,
+        title=f"BFLA/Scope Bypass — {endpoint_name}",
+        description=(
+            f"Access {method} {path} without required scope '{scope_label}'. "
+            "A 2xx response indicates broken function-level authorization."
+        ),
+        target_node_ids=[endpoint_id],
+        impact_score=chain.pre_score,
+        chain=chain,
+    )
+
+
+def build_rate_limit_probe(
+    endpoint_id: str,
+    endpoint_name: str,
+    path: str,
+    method: str = "GET",
+    request_body_schema: dict[str, str] | None = None,
+    burst_count: int = 5,
+) -> AttackScenario:
+    """Safe rate-limit probe — send a bounded burst and check for 429 enforcement."""
+    body: dict = _build_realistic_body(request_body_schema or {})
+    chain_id = str(uuid.uuid4())
+    steps = [
+        ExploitStep(
+            step_id=f"{chain_id}_s{i + 1}",
+            step_type="INVOKE",
+            description=f"Rate-limit burst {i + 1}/{burst_count} to {endpoint_name}",
+            payload="",
+            target_path=path,
+            http_method=method,
+            http_body=body if body else None,
+            target_node_id=endpoint_id,
+            depends_on=[f"{chain_id}_s{i}"] if i > 0 else [],
+            on_failure="skip",
+        )
+        for i in range(burst_count)
+    ]
+    # Last step probes for 429 enforcement — missing 429 = rate-limit bypass
+    steps[-1].success_signal = HTTP_2XX_SENTINEL
+    steps[-1].on_failure = "abort"
+    chain = ExploitChain(
+        chain_id=chain_id,
+        goal_type=GoalType.API_ATTACK,
+        scenario_type=ScenarioType.AUTH_BYPASS,
+        sbom_path=[endpoint_id],
+        owasp_asi_ref="ASI05",
+        steps=steps,
+    )
+    chain.pre_score = pre_score(chain)
+    return AttackScenario(
+        scenario_id=str(uuid.uuid4()),
+        goal_type=GoalType.API_ATTACK,
+        scenario_type=ScenarioType.AUTH_BYPASS,
+        title=f"Rate-Limit Probe — {endpoint_name} ({burst_count} requests)",
+        description=(
+            f"Send {burst_count} rapid {method} {path} requests. "
+            "A 2xx on the final request without a 429 earlier indicates missing rate-limit enforcement."
+        ),
+        target_node_ids=[endpoint_id],
+        impact_score=chain.pre_score,
+        chain=chain,
+    )
+
+
 def build_idor(
     endpoint_id: str,
     endpoint_name: str,
