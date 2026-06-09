@@ -524,6 +524,26 @@ def test_extract_customer_name_no_label_returns_empty():
     assert name == ""
 
 
+def test_extract_customer_name_name_or_phrase_false_positive():
+    """'name or reservation' / 'name or number' must NOT be extracted as a name.
+
+    Regression: with re.IGNORECASE on the label pattern, 'name or reservation'
+    matched the label 'name' + space separator + captured 'or reservation...',
+    and for Gemini-Auto-app responses containing phrases like "I don't have your
+    name or reservation details on file" the profile ended up with name='name or'.
+    """
+    bad_texts = [
+        "I don't have your name or reservation details on file.",
+        "Just tell me the contact's name or number and what you would like to say.",
+        "I don't have access to your full name or email address for security reasons.",
+        "I need the recipient's name or number.",
+        "Please provide your name or booking reference to continue.",
+    ]
+    for text in bad_texts:
+        name = extract_customer_name(text)
+        assert name == "", f"False positive {name!r} extracted from: {text!r}"
+
+
 def test_golden_name_token_substitution():
     """{golden_name} is replaced with session.golden_name when present."""
     session = _make_session(golden_ids=["ACCT-1001"])
