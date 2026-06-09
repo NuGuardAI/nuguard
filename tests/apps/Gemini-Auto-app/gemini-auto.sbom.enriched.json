@@ -1,16 +1,16 @@
 {
   "schema_version": "1.5.0",
-  "generated_at": "2026-06-08T18:14:59Z",
+  "generated_at": "2026-06-08T23:44:49Z",
   "generator": "nuguard",
   "target": "https://github.com/NuGuardAI/Gemini-Car-Assistant",
   "nodes": [
     {
-      "id": "c37a4f88-8e6c-4942-884a-750a773158c5",
+      "id": "7d17783a-0e03-4bcc-b363-2f26afa87caa",
       "name": "Generic",
       "component_type": "API_ENDPOINT",
       "confidence": 0.44000000000000006,
       "metadata": {
-        "description": "Generic API endpoint handling POST /api/auth/login for user authentication.",
+        "description": "Generic API endpoint for POST /api/auth/login authentication requests.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Generic API Endpoint",
@@ -20,7 +20,7 @@
           "adapter": "api_endpoint_generic",
           "evidence_count": 1,
           "llm_soft_rejected": true,
-          "llm_verification_reason": "The referenced code is an HTTP route/commentary for Google OAuth login, not an AI-related endpoint. It is application code, but it does not expose AI/ML functionality and the snippet shown is documentation around auth handling, not an AI asset.",
+          "llm_verification_reason": "The referenced code is an HTTP route/documentation comment for POST /api/auth/login, not an AI-related endpoint. It handles Google OAuth/session JWT auth, which is authentication rather than AI/ML functionality.",
           "confidence_breakdown": {
             "regex_confidence": 0.55,
             "llm_confidence": 0.0,
@@ -49,15 +49,15 @@
       ]
     },
     {
-      "id": "0010f833-39f1-49c8-8ed0-b0fe4978376a",
+      "id": "a48f8088-9909-4de8-8ecd-218e7e794a08",
       "name": "JWT Auth",
       "component_type": "AUTH",
       "confidence": 1.0,
       "metadata": {
-        "description": "Authentication component supporting JWT, Bearer, and OAuth token-based access control for securing application requests.",
+        "description": "Implements JWT-based authentication using Bearer tokens and OAuth-compatible authorization flows.",
         "request_body_schema": {},
         "chat_payload_list": false,
-        "descriptive_name": "JWT Authentication",
+        "descriptive_name": "JWT Authentication Service",
         "loc": 1482,
         "extras": {
           "canonical_name": "auth_generic",
@@ -190,7 +190,7 @@
       ]
     },
     {
-      "id": "ada501c6-a0c9-4586-bbca-bff1b1ae8873",
+      "id": "87317b33-0103-47ab-a2ed-aec571cbb525",
       "name": "Node:20 Slim",
       "component_type": "CONTAINER_IMAGE",
       "confidence": 0.8712000000000001,
@@ -199,10 +199,10 @@
         "image_tag": "20-slim",
         "registry": "docker.io",
         "base_image": "node:20-slim",
-        "description": "Official Node.js 20 slim container image used as the builder stage base.",
+        "description": "A slim Node.js 20 container image used as the build stage base.",
         "request_body_schema": {},
         "chat_payload_list": false,
-        "descriptive_name": "Node 20 Slim Image",
+        "descriptive_name": "Node 20 Slim Container",
         "loc": 31,
         "extras": {
           "canonical_name": "container_image_node_20_slim",
@@ -249,14 +249,14 @@
       ]
     },
     {
-      "id": "b923aef4-6337-4992-8845-caac7a9a7ef4",
+      "id": "2a7b356e-aee0-49d7-ac1d-28afbbec938d",
       "name": "Deploy to Cloud Run",
       "component_type": "DEPLOYMENT",
       "confidence": 0.8360000000000001,
       "metadata": {
         "deployment_target": "github-actions",
         "secret_store": "github_actions_secret",
-        "description": "GitHub Actions workflow that deploys the application to Google Cloud Run on push or manual dispatch.",
+        "description": "GitHub Actions workflow that deploys the application to Google Cloud Run on push or manual workflow dispatch.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Cloud Run Deployment",
@@ -316,16 +316,16 @@
       ]
     },
     {
-      "id": "5cc3f205-3c58-4426-b6ef-903dac36e670",
+      "id": "68aeeef0-5d32-4c96-8056-c227a79f7cc1",
       "name": "Google Adk Ts",
       "component_type": "FRAMEWORK",
       "confidence": 1.0,
       "metadata": {
         "framework": "google_adk_ts",
-        "description": "TypeScript framework for building applications with Google ADK integrations.",
+        "description": "A TypeScript framework for building applications with Google ADK TS.",
         "request_body_schema": {},
         "chat_payload_list": false,
-        "descriptive_name": "Google ADK TypeScript",
+        "descriptive_name": "Google ADK TS Framework",
         "loc": 729,
         "extras": {
           "canonical_name": "framework_google_adk_ts",
@@ -422,16 +422,16 @@
       ]
     },
     {
-      "id": "1ffa4ba2-75ba-4149-baf3-de10ce5b17bd",
+      "id": "57f97c87-834a-4801-a6ec-68e4e92b3bfe",
       "name": "LLM Clients Ts",
       "component_type": "FRAMEWORK",
       "confidence": 0.8840000000000001,
       "metadata": {
         "framework": "google",
-        "description": "TypeScript framework component for Google GenAI client initialization using an API key.",
+        "description": "Google GenAI client framework for TypeScript, initialized with an API key to access Google language model services.",
         "request_body_schema": {},
         "chat_payload_list": false,
-        "descriptive_name": "LLM Clients TypeScript",
+        "descriptive_name": "LLM Clients TS Framework",
         "loc": 153,
         "extras": {
           "canonical_name": "framework_llm_clients_ts",
@@ -480,7 +480,7 @@
       ]
     },
     {
-      "id": "bedc624f-51f4-49e3-8066-caa21495a00f",
+      "id": "bd5384fc-fdcd-48fb-9545-91bd44d4d86b",
       "name": "Gcp Identity Deploy",
       "component_type": "IAM",
       "confidence": 0.8184000000000001,
@@ -495,10 +495,10 @@
         "trust_principals": [
           "github-actions"
         ],
-        "description": "GitHub Actions OIDC-based Google Cloud IAM identity deployment integration for authenticating workflows to GCP.",
+        "description": "GitHub Actions OIDC-based Google Cloud IAM identity used for deployment authentication.",
         "request_body_schema": {},
         "chat_payload_list": false,
-        "descriptive_name": "GCP Identity Deployment",
+        "descriptive_name": "GCP Deploy Identity",
         "loc": 109,
         "extras": {
           "canonical_name": "iam_gha_gcp_gcp_identity_deploy",
@@ -546,16 +546,16 @@
       ]
     },
     {
-      "id": "603ce113-f9a7-4e0a-82a0-ecf9274a73c2",
+      "id": "18a7440e-032f-4ae4-8bc3-960e05cf4910",
       "name": "gemini-2.0-flash",
       "component_type": "MODEL",
       "confidence": 0.9152000000000001,
       "metadata": {
         "framework": "google",
-        "description": "Google Gemini 2.0 Flash is a generative AI model used for content generation via Google AI APIs.",
+        "description": "Google Gemini 2.0 Flash generative language model used for content generation via Google AI APIs.",
         "request_body_schema": {},
         "chat_payload_list": false,
-        "descriptive_name": "Gemini 2 Flash Model",
+        "descriptive_name": "Gemini 2.0 Flash Model",
         "loc": 106,
         "extras": {
           "canonical_name": "gemini_2_0_flash",
@@ -607,12 +607,12 @@
       ]
     },
     {
-      "id": "fd511a19-089f-49e8-a94c-ea01b6b9c6f1",
+      "id": "f048d4d3-93d6-42c6-96fd-eabd52290ce8",
       "name": "gemini-3.1",
       "component_type": "MODEL",
       "confidence": 0.6032000000000001,
       "metadata": {
-        "description": "Gemini 3.1 is a generative AI model component identified by the name gemini-3.1.",
+        "description": "Gemini 3.1 is a machine learning model component identified by the generic name gemini-3.1.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Gemini 3.1 Model",
@@ -684,16 +684,16 @@
       ]
     },
     {
-      "id": "a7e5518c-1ebb-4f3f-94c0-59a23a5e6f8a",
+      "id": "2b66bb0a-3a7c-48aa-9367-54993497f7e3",
       "name": "MODEL",
       "component_type": "MODEL",
       "confidence": 0.8448000000000001,
       "metadata": {
         "framework": "google",
-        "description": "Google generative AI model identifier used with ai.models.generateContent to produce responses from user-provided content.",
+        "description": "Google model identifier used by ai.models.generateContent for generating content from user-provided prompts.",
         "request_body_schema": {},
         "chat_payload_list": false,
-        "descriptive_name": "Generic Model",
+        "descriptive_name": "Generic AI Model",
         "loc": 47,
         "extras": {
           "canonical_name": "model",
@@ -735,13 +735,13 @@
       ]
     },
     {
-      "id": "6edd164a-c58e-4edb-ace1-e772cce3ec8f",
+      "id": "0264fd4b-b0c0-4c16-894a-0fa6bb5a51a5",
       "name": "Email Out",
       "component_type": "PRIVILEGE",
       "confidence": 0.4840000000000001,
       "metadata": {
         "privilege_scope": "email_out",
-        "description": "Grants permission to send outbound email messages from the system.",
+        "description": "Permission allowing the application to send outgoing email messages.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Email Sending Privilege",
@@ -752,7 +752,7 @@
           "evidence_count": 2,
           "privilege_scope": "email_out",
           "llm_soft_rejected": true,
-          "llm_verification_reason": "The provided context only shows an EmailMessage interface and a comment about fetching emails; it does not evidence an outbound email write/send capability. The detected 'Email Out' privilege is therefore not confirmed as a production privilege node.",
+          "llm_verification_reason": "The provided context is just a comment/docstring and interface definition for fetching inbox emails, not an actual outbound email send operation or AI-related privilege in production code.",
           "confidence_breakdown": {
             "regex_confidence": 0.55,
             "llm_confidence": 0.0,
@@ -791,13 +791,13 @@
       ]
     },
     {
-      "id": "07eac636-c551-4cf3-8e65-86d063a45e77",
+      "id": "8bd36e00-08a8-4e34-b3cd-9054ff11dfa9",
       "name": "Filesystem Write",
       "component_type": "PRIVILEGE",
       "confidence": 0.44000000000000006,
       "metadata": {
         "privilege_scope": "filesystem_write",
-        "description": "Grants the ability to write to the filesystem, including opening service.yaml for write access.",
+        "description": "Privilege allowing the application to open and write filesystem files such as service.yaml.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Filesystem Write Privilege",
@@ -835,12 +835,12 @@
       ]
     },
     {
-      "id": "99041601-661f-4488-ab5e-807bb525201e",
+      "id": "6e190ed3-4a19-4ab2-b410-f2babc416e04",
       "name": "System Instruction",
       "component_type": "PROMPT",
       "confidence": 1.0,
       "metadata": {
-        "description": "System instruction prompt defining assistant behavior and response constraints.",
+        "description": "A prompt string literal defining system-level instructions for the assistant\u2019s behavior and response constraints.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "System Instruction Prompt",
@@ -858,20 +858,20 @@
           "enclosing_function": null,
           "content": "You are a concise web search assistant. Summarize the answer in 2-3 sentences. Driver-safe: no markdown, no bullet points.",
           "language": "typescript",
-          "description": "System prompt directing the model to act as a concise web search assistant, summarize answers in 2-3 sentences, avoid markdown and bullet points, and keep temperature at 0.",
+          "description": "System instruction prompt passed to the model to make the search assistant concise, driver-safe, and output plain text in 2-3 sentences.",
           "llm_verified": true,
-          "llm_verification_reason": "Concrete production code in an application file creates a GenAI request with a fixed systemInstruction, so this is a real PROMPT node rather than a test or example.",
-          "llm_confidence": 0.96,
+          "llm_verification_reason": "Concrete production code in an application file configuring an LLM call with a systemInstruction prompt; not a test, mock, or documentation snippet.",
+          "llm_confidence": 0.95,
           "confidence_breakdown": {
-            "regex_confidence": 0.96,
-            "llm_confidence": 0.96,
+            "regex_confidence": 0.95,
+            "llm_confidence": 0.95,
             "evidence_count": 3,
             "evidence_sources": [
               "llm:verified",
               "evidence:0",
               "confidence:high"
             ],
-            "base_confidence": 0.96,
+            "base_confidence": 0.95,
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 1.0
@@ -892,13 +892,13 @@
       ]
     },
     {
-      "id": "7675e879-ed1c-4fe4-9846-b7ec5e09a4ba",
+      "id": "879a2215-5557-4a80-8a2c-bca8bcd2bbe7",
       "name": "climate tools",
       "component_type": "TOOL",
       "confidence": 0.4840000000000001,
       "metadata": {
         "framework": "google-adk",
-        "description": "Provides Google ADK-enabled tools for fetching, processing, and analyzing climate-related data to support weather, environmental, and sustainability workflows.",
+        "description": "Provides climate-related tools for retrieving, analyzing, or managing weather and environmental data within the Google ADK framework.",
         "high_privilege": false,
         "sql_injectable": false,
         "ssrf_possible": false,
@@ -906,7 +906,7 @@
         "reads_external_content": false,
         "request_body_schema": {},
         "chat_payload_list": false,
-        "descriptive_name": "Climate Analysis Tools",
+        "descriptive_name": "Climate Data Tools",
         "loc": 138,
         "extras": {
           "canonical_name": "climate_tools",
@@ -916,7 +916,7 @@
           "framework": "google-adk",
           "language": "typescript",
           "llm_soft_rejected": true,
-          "llm_verification_reason": "This is only an import statement and there is no evidence of concrete tool definition or usage in production code from the provided context.",
+          "llm_verification_reason": "The only evidence provided is an import statement (`createClimateTools`) with no concrete usage or instantiation shown. Per criteria, import-only references should be rejected as not verified production nodes.",
           "confidence_breakdown": {
             "regex_confidence": 0.55,
             "llm_confidence": 0.0,
@@ -945,13 +945,13 @@
       ]
     },
     {
-      "id": "4216d65a-5a5d-4685-8c10-8859b067f330",
+      "id": "5ce935ba-93d1-4e71-9b71-9c598f9886b1",
       "name": "communication tools",
       "component_type": "TOOL",
       "confidence": 0.4840000000000001,
       "metadata": {
         "framework": "google-adk",
-        "description": "Provides messaging and interaction capabilities for the agent to exchange information with users or other systems, enabling coordinated communication within the Google ADK framework.",
+        "description": "Provides messaging and interaction capabilities that let the agent send, receive, and coordinate information with users or other systems during task execution.",
         "high_privilege": false,
         "sql_injectable": false,
         "ssrf_possible": false,
@@ -969,7 +969,7 @@
           "framework": "google-adk",
           "language": "typescript",
           "llm_soft_rejected": true,
-          "llm_verification_reason": "Only an import statement is shown; there is no concrete usage or instantiation demonstrating a real production tool node. This is insufficient to verify as an AIBOM TOOL.",
+          "llm_verification_reason": "This is only an import statement for createCommunicationTools with no shown usage or concrete instantiation; by itself it does not verify a production TOOL node.",
           "confidence_breakdown": {
             "regex_confidence": 0.55,
             "llm_confidence": 0.0,
@@ -998,13 +998,13 @@
       ]
     },
     {
-      "id": "601823b2-0546-4fcc-b077-437a6e40b4d3",
+      "id": "5af0e618-53ff-4ab3-9483-54a1b6553ce5",
       "name": "media tools",
       "component_type": "TOOL",
       "confidence": 0.4840000000000001,
       "metadata": {
         "framework": "google-adk",
-        "description": "Provides media-related utilities for processing, generating, transforming, or analyzing audio, images, and video within the Google ADK framework.",
+        "description": "Provides media-related tool functions in the Google ADK framework, enabling the system to process, manage, and interact with multimedia content such as images, audio, or video.",
         "high_privilege": false,
         "sql_injectable": false,
         "ssrf_possible": false,
@@ -1022,7 +1022,7 @@
           "framework": "google-adk",
           "language": "typescript",
           "llm_soft_rejected": true,
-          "llm_verification_reason": "Only a bare import statement is shown; there is no evidence of concrete usage or runtime AI functionality in production code.",
+          "llm_verification_reason": "This is only an import statement for createMediaTools with no evidence of concrete runtime usage or AI/tool functionality in the provided context, so it should not be verified as a production TOOL node.",
           "confidence_breakdown": {
             "regex_confidence": 0.55,
             "llm_confidence": 0.0,
@@ -1051,13 +1051,13 @@
       ]
     },
     {
-      "id": "4bc309c1-76ad-403a-94fe-64cd480f6a92",
+      "id": "0fbc3c65-620b-4f2b-8b59-0d2853e9ac59",
       "name": "navigation tools",
       "component_type": "TOOL",
       "confidence": 0.7680000000000001,
       "metadata": {
         "framework": "google-adk",
-        "description": "Provides tools for an AI agent to interpret user requests and assist with navigating information, likely supporting route, location, or page traversal tasks within the Google ADK framework.",
+        "description": "Provides route planning and map-based guidance tools for the agent to search locations, calculate directions, and support navigation-related tasks.",
         "high_privilege": false,
         "sql_injectable": false,
         "ssrf_possible": false,
@@ -1065,7 +1065,7 @@
         "reads_external_content": false,
         "request_body_schema": {},
         "chat_payload_list": false,
-        "descriptive_name": "Navigation Tools",
+        "descriptive_name": "Navigation Guidance Tools",
         "loc": 138,
         "extras": {
           "canonical_name": "navigation_tools",
@@ -1103,13 +1103,13 @@
       ]
     },
     {
-      "id": "c0c76f42-4997-4841-8bef-28e1e351a501",
+      "id": "6298c775-95e6-4c3c-933d-c46181fe3e4f",
       "name": "search tools",
       "component_type": "TOOL",
       "confidence": 0.7680000000000001,
       "metadata": {
         "framework": "google-adk",
-        "description": "Provides search capabilities for retrieving relevant information from external or indexed sources to support agent reasoning and response generation.",
+        "description": "Search tools provide the system with external lookup capabilities to find and retrieve relevant information from indexed sources or the web during task execution.",
         "high_privilege": false,
         "sql_injectable": false,
         "ssrf_possible": false,
@@ -1117,7 +1117,7 @@
         "reads_external_content": false,
         "request_body_schema": {},
         "chat_payload_list": false,
-        "descriptive_name": "Search Tools",
+        "descriptive_name": "Search Retrieval Tools",
         "loc": 138,
         "extras": {
           "canonical_name": "search_tools",
@@ -1155,13 +1155,13 @@
       ]
     },
     {
-      "id": "a132b7e4-7ce5-4a7e-b5a4-ea96127be27e",
+      "id": "699efeac-3104-4823-9635-d4043eb9d032",
       "name": "weather tools",
       "component_type": "TOOL",
       "confidence": 0.7680000000000001,
       "metadata": {
         "framework": "google-adk",
-        "description": "Provides weather-related tool functions within the Google ADK framework, enabling the system to retrieve, process, or act on weather information as needed.",
+        "description": "Provides weather-related tool functions for retrieving current conditions, forecasts, or related meteorological data within the Google ADK framework.",
         "high_privilege": false,
         "sql_injectable": false,
         "ssrf_possible": false,
@@ -1169,7 +1169,7 @@
         "reads_external_content": false,
         "request_body_schema": {},
         "chat_payload_list": false,
-        "descriptive_name": "Weather Tools",
+        "descriptive_name": "Weather Forecast Tools",
         "loc": 138,
         "extras": {
           "canonical_name": "weather_tools",
@@ -1207,13 +1207,13 @@
       ]
     },
     {
-      "id": "bdd3d465-9aa8-46de-b1b8-7a555db0a36e",
+      "id": "4b6d057e-2869-4726-9e67-17a70ed80d78",
       "name": "Gemini Car Assistant Assistant",
       "component_type": "AGENT",
       "confidence": 0.55,
       "metadata": {
         "endpoint": "/chat/message",
-        "description": "Chat-based AI assistant component that processes messages through the /chat/message endpoint.",
+        "description": "Agent handling chat messages for the Gemini Car Assistant via the /chat/message endpoint.",
         "accepts_user_input": true,
         "request_body_schema": {},
         "chat_payload_key": "message",
@@ -1226,14 +1226,14 @@
       "evidence": []
     },
     {
-      "id": "55cf51bc-bd9a-4b6b-ba6e-4ba58c7bb1a9",
+      "id": "31cc5278-491c-4f3b-949d-deda43842c94",
       "name": "* API",
       "component_type": "API_ENDPOINT",
       "confidence": 0.55,
       "metadata": {
         "endpoint": "*",
         "method": "GET",
-        "description": "A GET API endpoint for retrieving resources at the wildcard path.",
+        "description": "A GET API endpoint for retrieving data at the specified path.",
         "accepts_user_input": false,
         "request_body_schema": {},
         "chat_payload_list": false,
@@ -1245,14 +1245,14 @@
       "evidence": []
     },
     {
-      "id": "fd8403b2-a836-4e5c-a784-fd5f16756a79",
+      "id": "7544861e-114d-4de3-997e-5b0d2f773d6b",
       "name": "/api/auth/login API",
       "component_type": "API_ENDPOINT",
       "confidence": 0.55,
       "metadata": {
         "endpoint": "/api/auth/login",
         "method": "GET",
-        "description": "HTTP GET endpoint /api/auth/login used for user authentication login operations.",
+        "description": "GET /api/auth/login API endpoint for handling authentication login requests.",
         "accepts_user_input": false,
         "request_body_schema": {},
         "chat_payload_list": false,
@@ -1264,14 +1264,14 @@
       "evidence": []
     },
     {
-      "id": "c30080b0-018c-42ab-9915-b972260ba99a",
+      "id": "9b74a6b8-3a5a-4d8c-8dd5-141291ac1d11",
       "name": "/api/auth/logout API",
       "component_type": "API_ENDPOINT",
       "confidence": 0.55,
       "metadata": {
         "endpoint": "/api/auth/logout",
         "method": "GET",
-        "description": "GET /api/auth/logout endpoint that logs out authenticated users by terminating the current session.",
+        "description": "GET /api/auth/logout endpoint that logs out authenticated users by terminating their session.",
         "accepts_user_input": false,
         "request_body_schema": {},
         "chat_payload_list": false,
@@ -1283,14 +1283,14 @@
       "evidence": []
     },
     {
-      "id": "e2450320-ff30-4844-ae6e-214bd15d3d8a",
+      "id": "8c5c85eb-313d-4089-be95-f6e110d1bded",
       "name": "/api/auth/verify API",
       "component_type": "API_ENDPOINT",
       "confidence": 0.55,
       "metadata": {
         "endpoint": "/api/auth/verify",
         "method": "GET",
-        "description": "GET API endpoint /api/auth/verify that verifies authentication status.",
+        "description": "GET API endpoint /api/auth/verify that verifies authentication status for a request.",
         "accepts_user_input": false,
         "request_body_schema": {},
         "chat_payload_list": false,
@@ -1302,14 +1302,14 @@
       "evidence": []
     },
     {
-      "id": "6be5f6e4-e5c2-4b9f-b52e-15f63e119242",
+      "id": "3b3a0300-6121-4efc-b3cb-9c702e206bd3",
       "name": "/api/agent/chat API",
       "component_type": "API_ENDPOINT",
       "confidence": 0.55,
       "metadata": {
         "endpoint": "/api/agent/chat",
         "method": "POST",
-        "description": "POST API endpoint /api/agent/chat that receives chat requests for an agent service.",
+        "description": "POST /api/agent/chat endpoint for handling agent chat requests.",
         "accepts_user_input": true,
         "request_body_schema": {},
         "chat_payload_key": "message",
@@ -1348,7 +1348,7 @@
       "metadata": {
         "endpoint": "/chat",
         "method": "POST",
-        "description": "POST /chat endpoint that accepts chat requests and returns conversation responses.",
+        "description": "POST /chat API endpoint that accepts chat requests for the application.",
         "accepts_user_input": true,
         "request_body_schema": {},
         "chat_payload_key": "message",
@@ -1368,7 +1368,7 @@
       "metadata": {
         "endpoint": "/chat/message",
         "method": "POST",
-        "description": "POST API endpoint for submitting chat messages to the /chat/message path.",
+        "description": "POST /chat/message API endpoint for submitting chat messages.",
         "accepts_user_input": true,
         "request_body_schema": {},
         "chat_payload_key": "message",
@@ -1383,103 +1383,103 @@
   ],
   "edges": [
     {
-      "source": "5cc3f205-3c58-4426-b6ef-903dac36e670",
-      "target": "603ce113-f9a7-4e0a-82a0-ecf9274a73c2",
+      "source": "68aeeef0-5d32-4c96-8056-c227a79f7cc1",
+      "target": "18a7440e-032f-4ae4-8bc3-960e05cf4910",
       "relationship_type": "USES"
     },
     {
-      "source": "5cc3f205-3c58-4426-b6ef-903dac36e670",
-      "target": "a7e5518c-1ebb-4f3f-94c0-59a23a5e6f8a",
+      "source": "68aeeef0-5d32-4c96-8056-c227a79f7cc1",
+      "target": "2b66bb0a-3a7c-48aa-9367-54993497f7e3",
       "relationship_type": "USES"
     },
     {
-      "source": "5cc3f205-3c58-4426-b6ef-903dac36e670",
-      "target": "fd511a19-089f-49e8-a94c-ea01b6b9c6f1",
+      "source": "68aeeef0-5d32-4c96-8056-c227a79f7cc1",
+      "target": "f048d4d3-93d6-42c6-96fd-eabd52290ce8",
       "relationship_type": "USES"
     },
     {
-      "source": "1ffa4ba2-75ba-4149-baf3-de10ce5b17bd",
-      "target": "603ce113-f9a7-4e0a-82a0-ecf9274a73c2",
+      "source": "57f97c87-834a-4801-a6ec-68e4e92b3bfe",
+      "target": "18a7440e-032f-4ae4-8bc3-960e05cf4910",
       "relationship_type": "USES"
     },
     {
-      "source": "1ffa4ba2-75ba-4149-baf3-de10ce5b17bd",
-      "target": "a7e5518c-1ebb-4f3f-94c0-59a23a5e6f8a",
+      "source": "57f97c87-834a-4801-a6ec-68e4e92b3bfe",
+      "target": "2b66bb0a-3a7c-48aa-9367-54993497f7e3",
       "relationship_type": "USES"
     },
     {
-      "source": "1ffa4ba2-75ba-4149-baf3-de10ce5b17bd",
-      "target": "fd511a19-089f-49e8-a94c-ea01b6b9c6f1",
+      "source": "57f97c87-834a-4801-a6ec-68e4e92b3bfe",
+      "target": "f048d4d3-93d6-42c6-96fd-eabd52290ce8",
       "relationship_type": "USES"
     },
     {
-      "source": "197bf4d2-9dfb-4a9b-b320-5f2b50f8587a",
-      "target": "ada501c6-a0c9-4586-bbca-bff1b1ae8873",
+      "source": "b86b5436-6163-4f61-b4d0-caea044a5ddf",
+      "target": "87317b33-0103-47ab-a2ed-aec571cbb525",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "b923aef4-6337-4992-8845-caac7a9a7ef4",
-      "target": "ada501c6-a0c9-4586-bbca-bff1b1ae8873",
+      "source": "2a7b356e-aee0-49d7-ac1d-28afbbec938d",
+      "target": "87317b33-0103-47ab-a2ed-aec571cbb525",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "71baccd3-b10b-4b60-acbc-8060ca2edc7c",
-      "target": "ada501c6-a0c9-4586-bbca-bff1b1ae8873",
+      "source": "dea17d2e-3456-4661-8afb-ee98fbb3953a",
+      "target": "87317b33-0103-47ab-a2ed-aec571cbb525",
       "relationship_type": "DEPLOYS"
     },
     {
-      "source": "bedc624f-51f4-49e3-8066-caa21495a00f",
-      "target": "197bf4d2-9dfb-4a9b-b320-5f2b50f8587a",
+      "source": "bd5384fc-fdcd-48fb-9545-91bd44d4d86b",
+      "target": "b86b5436-6163-4f61-b4d0-caea044a5ddf",
       "relationship_type": "USES"
     },
     {
-      "source": "bedc624f-51f4-49e3-8066-caa21495a00f",
-      "target": "b923aef4-6337-4992-8845-caac7a9a7ef4",
+      "source": "bd5384fc-fdcd-48fb-9545-91bd44d4d86b",
+      "target": "2a7b356e-aee0-49d7-ac1d-28afbbec938d",
       "relationship_type": "USES"
     },
     {
-      "source": "bedc624f-51f4-49e3-8066-caa21495a00f",
-      "target": "71baccd3-b10b-4b60-acbc-8060ca2edc7c",
+      "source": "bd5384fc-fdcd-48fb-9545-91bd44d4d86b",
+      "target": "dea17d2e-3456-4661-8afb-ee98fbb3953a",
       "relationship_type": "USES"
     },
     {
-      "source": "0010f833-39f1-49c8-8ed0-b0fe4978376a",
-      "target": "c37a4f88-8e6c-4942-884a-750a773158c5",
+      "source": "a48f8088-9909-4de8-8ecd-218e7e794a08",
+      "target": "7d17783a-0e03-4bcc-b363-2f26afa87caa",
       "relationship_type": "PROTECTS"
     },
     {
-      "source": "bdd3d465-9aa8-46de-b1b8-7a555db0a36e",
-      "target": "603ce113-f9a7-4e0a-82a0-ecf9274a73c2",
+      "source": "4b6d057e-2869-4726-9e67-17a70ed80d78",
+      "target": "18a7440e-032f-4ae4-8bc3-960e05cf4910",
       "relationship_type": "USES"
     },
     {
-      "source": "bdd3d465-9aa8-46de-b1b8-7a555db0a36e",
-      "target": "7675e879-ed1c-4fe4-9846-b7ec5e09a4ba",
+      "source": "4b6d057e-2869-4726-9e67-17a70ed80d78",
+      "target": "879a2215-5557-4a80-8a2c-bca8bcd2bbe7",
       "relationship_type": "CALLS"
     },
     {
-      "source": "bdd3d465-9aa8-46de-b1b8-7a555db0a36e",
-      "target": "4216d65a-5a5d-4685-8c10-8859b067f330",
+      "source": "4b6d057e-2869-4726-9e67-17a70ed80d78",
+      "target": "5ce935ba-93d1-4e71-9b71-9c598f9886b1",
       "relationship_type": "CALLS"
     },
     {
-      "source": "bdd3d465-9aa8-46de-b1b8-7a555db0a36e",
-      "target": "601823b2-0546-4fcc-b077-437a6e40b4d3",
+      "source": "4b6d057e-2869-4726-9e67-17a70ed80d78",
+      "target": "5af0e618-53ff-4ab3-9483-54a1b6553ce5",
       "relationship_type": "CALLS"
     },
     {
-      "source": "bdd3d465-9aa8-46de-b1b8-7a555db0a36e",
-      "target": "4bc309c1-76ad-403a-94fe-64cd480f6a92",
+      "source": "4b6d057e-2869-4726-9e67-17a70ed80d78",
+      "target": "0fbc3c65-620b-4f2b-8b59-0d2853e9ac59",
       "relationship_type": "CALLS"
     },
     {
-      "source": "bdd3d465-9aa8-46de-b1b8-7a555db0a36e",
-      "target": "c0c76f42-4997-4841-8bef-28e1e351a501",
+      "source": "4b6d057e-2869-4726-9e67-17a70ed80d78",
+      "target": "6298c775-95e6-4c3c-933d-c46181fe3e4f",
       "relationship_type": "CALLS"
     },
     {
-      "source": "bdd3d465-9aa8-46de-b1b8-7a555db0a36e",
-      "target": "a132b7e4-7ce5-4a7e-b5a4-ea96127be27e",
+      "source": "4b6d057e-2869-4726-9e67-17a70ed80d78",
+      "target": "699efeac-3104-4823-9635-d4043eb9d032",
       "relationship_type": "CALLS"
     }
   ],
@@ -1640,7 +1640,7 @@
     }
   ],
   "summary": {
-    "use_case": "This application appears to function as a concise web search assistant that retrieves and summarizes information for users, likely supporting general query answering and search-based lookup. It serves users who need brief factual responses and includes 6 tool integrations across search, navigation, communication, media, climate, and weather capabilities; voice is supported, while image and video are not supported. No MCP server is indicated.",
+    "use_case": "This application appears to be a search-oriented AI assistant for users who need retrieval and tool-assisted lookups, built with Google ADK and connected to six tool groups: climate, communication, media, navigation, search, and weather. It supports text and voice, but not image or video input, and is deployed as a Cloud Run service with JWT authentication. No MCP server is indicated.",
     "frameworks": [
       "google_adk_ts",
       "google-adk"
@@ -1710,7 +1710,7 @@
     "service_accounts": [
       "gcp-identity-deploy"
     ],
-    "iac_security_summary": "## Security Briefing\n\n### 1) Deployment posture\n- **Cloud provider:** GCP only.\n- **Deployment mechanism:** GitHub Actions deploys to **Cloud Run**.\n- **Regions / HA / resilience:** No region, zone, or multi-region information is present. `availability_zones` is empty, so **no explicit HA or resilience topology is evidenced** in the provided data.\n\n### 2) Secret management\n- **Secret store in use:** `github_actions_secret`.\n- **Risk:** The aggregate signal reports **`secrets_in_build_args`**, which indicates a **plaintext-secret exposure risk during image build** if sensitive values are passed via build arguments.\n- No evidence is provided of a dedicated cloud secret manager, sealed secrets, or workload-side secret injection.\n\n### 3) Encryption\n- **Encryption at rest:** `encryption_at_rest_coverage: false`.\n- **Implication:** The supplied configuration does **not demonstrate at-rest encryption coverage** for deployed data or secret material.\n- **Key management:** No KMS, CMEK, or other key-management controls are shown.\n\n### 4) IAM / least-privilege\n- **Service account:** `gcp-identity-deploy` (project scope).\n- **Trust model:** OIDC federation is enabled (`uses_oidc: true`) and the service account trusts `github-actions`.\n- **Privileges shown:** `contents:read`, `id-token:write`.\n- **Assessment:** The listed permissions are narrowly scoped for GitHub Actions OIDC-based deployment. However, the trust relationship is broad at the principal level (`github-actions`), and no claim constraints (repo, branch, environment, audience) are shown. That means **least-privilege cannot be fully verified** from the provided data.\n\n### 5) CI/CD security\n- **Runner:** `ubuntu-latest` hosted runner.\n- **Security posture:** Hosted runners reduce local maintenance burden, but the workflow still executes in a shared CI environment.\n- **OIDC:** Enabled, which is preferable to long-lived cloud keys.\n- **Trigger surface:** `push` and `workflow_dispatch`.\n  - `push` broadens the attack surface to every change that reaches the triggering branch.\n  - `workflow_dispatch` enables manual execution, which is operationally useful but should be controlled with branch protection and reviewer gates.\n- No evidence is provided of environment protection rules, pinning of third-party actions, or checksum verification.\n\n### 6) Container security\n- **Base image:** `node:20-slim`.\n- **Findings not shown:** No information on:\n  - whether the container runs as **root** or non-root,\n  - **health checks**,\n  - **CPU/memory resource limits**.\n- Therefore, these controls are **unverified**, not confirmed absent.\n\n### 7) Key risks and recommendations\n1. **Eliminate build-time secret exposure**\n   - Remove secrets from build args; use runtime secret injection or a managed secret store.\n2. **Establish explicit encryption and key management**\n   - Define at-rest encryption requirements and use KMS/CMEK where applicable; verify secret/data stores are encrypted.\n3. **Tighten GitHub Actions trust and deployment controls**\n   - Constrain OIDC trust to specific repo/branch/environment claims, pin action versions, and protect `push`/`workflow_dispatch` with branch and approval controls.",
+    "iac_security_summary": "## Security briefing\n\n### 1) Deployment posture\n- **Cloud provider:** GCP only.\n- **Deployment path:** GitHub Actions deploys to **Cloud Run**.\n- **Regions / HA / resilience:** No regions or availability zones are defined in the provided data, and no multi-region or multi-zone resilience controls are visible. HA posture cannot be confirmed from this configuration alone.\n\n### 2) Secret management\n- **Secret store in use:** `github_actions_secret`.\n- **Plaintext-secret risk:** A security finding of **`secrets_in_build_args`** is present, which indicates secrets may be passed via build arguments. Build args are not suitable for sensitive data because they can be exposed in build metadata, logs, or image history depending on the build path.\n- No evidence of an external secrets manager (for example, GCP Secret Manager) is shown.\n\n### 3) Encryption\n- **Encryption-at-rest coverage:** Reported as **false**.\n- **Key management:** No KMS/key configuration is shown. There is no evidence of customer-managed keys or explicit encryption controls in the supplied configuration.\n\n### 4) IAM / least-privilege\n- **Service account:** `gcp-identity-deploy`\n- **Trust model:** The service account trusts `github-actions`, and deployment uses **OIDC** (`uses_oidc: true`), which is preferable to long-lived static cloud keys.\n- **Permissions observed:** `contents:read`, `id-token:write`\n  - These are GitHub-side permissions and appear consistent with an OIDC-based deployment flow.\n- **Least-privilege gaps:** The actual GCP IAM roles bound to `gcp-identity-deploy` are not shown, so over-permissive cloud-side access cannot be ruled out. Project-scoped IAM (`iam_scope: project`) suggests potentially broad blast radius if the account has elevated GCP roles.\n\n### 5) CI/CD security\n- **Runner:** `ubuntu-latest`\n  - Managed GitHub-hosted runner; no self-hosted runner risk is indicated.\n- **OIDC:** Enabled, which reduces credential persistence risk versus stored cloud secrets.\n- **Workflow triggers:** `push` and `workflow_dispatch`\n  - `push` increases the attack surface to all branches/events that match the workflow file.\n  - `workflow_dispatch` allows manual execution and should be restricted by repository access controls and environment protections if used for privileged deployments.\n- **Secret store in CI/CD:** GitHub Actions secrets are in use, but the build-args finding suggests secrets handling may still be unsafe.\n\n### 6) Container security\n- **Base image:** `node:20-slim`\n  - A slim base image is a better default than a full distro image, but no digest pinning is shown.\n- **Root container:** Not enough data to confirm non-root execution.\n- **Health checks:** Not shown.\n- **Resource limits:** Not shown.\n- **Other runtime hardening:** No evidence of read-only filesystem, dropped capabilities, or seccomp/AppArmor controls.\n\n### 7) Key risks and recommendations\n1. **Eliminate secrets in build arguments immediately**\n   - Move secrets out of build-time args; use runtime secret injection or a proper secret manager.\n2. **Define and validate GCP IAM roles for `gcp-identity-deploy`**\n   - Ensure the service account has only the minimal Cloud Run deployment permissions needed, and avoid broad project-level roles.\n3. **Harden the deployment and container supply chain**\n   - Pin the base image by digest, verify the container runs as non-root, and add health checks plus CPU/memory limits for Cloud Run.",
     "data_classification": [],
     "classified_tables": [],
     "startup_commands": [
@@ -1741,9 +1741,9 @@
       "/run_sse"
     ],
     "total_loc": 14378,
-    "tokens_used_for_enrichment": 15125,
-    "input_tokens_used": 12814,
-    "output_tokens_used": 2311,
+    "tokens_used_for_enrichment": 15172,
+    "input_tokens_used": 12812,
+    "output_tokens_used": 2360,
     "llm_model_used": "azure/gpt-5.4-mini",
     "testing": {
       "test_frameworks": [],
@@ -1754,6 +1754,6 @@
     "workflow_security_findings": [],
     "k8s_network_policy_namespaces": []
   },
-  "relationship_graph_md": "## Component Relationship Graph\n\n- **Frameworks / orchestration**\n  - `Google Adk Ts` and `LLM Clients Ts` are the two frameworks in the graph.\n  - Both frameworks **use** the same three model options: `gemini-2.0-flash`, `MODEL`, and `gemini-3.1`.\n\n- **Authentication / access control**\n  - `JWT Auth` **protects** a `Generic` API endpoint.\n  - No other guardrails or access-control relationships are shown.\n\n- **Tools / capabilities**\n  - The system includes six tool groups: `climate`, `communication`, `media`, `navigation`, `search`, and `weather`.\n  - All six tool nodes have **no connections**, so the graph does not show which framework or model invokes them, or whether they are guarded.\n\n- **Prompts / instructions**\n  - `System Instruction` is present as a prompt node, but it has **no connections** in the graph.\n\n- **Security observations**\n  - The only explicit protection shown is JWT coverage for one API endpoint.\n  - The toolset appears **unguided/unclear in the graph**: there is no shown protection, orchestration, or data-flow linkage.\n  - No datastores are shown, so there is no visible sensitive data access path in this graph.\n\n```mermaid\nflowchart LR\n    Generic_c37a4f([\"\ud83c\udf10 Generic\"])\n    Google_Adk_Ts_5cc3f2[/\"\u2699 Google Adk Ts\"/]\n    LLM_Clients_Ts_1ffa4b[/\"\u2699 LLM Clients Ts\"/]\n    gemini_2_0_flash_603ce1[(\"\ud83e\udde0 gemini-2.0-flash\")]\n    gemini_3_1_fd511a[(\"\ud83e\udde0 gemini-3.1\")]\n    MODEL_a7e551[(\"\ud83e\udde0 MODEL\")]\n    System_Instruction_990416>\"\ud83d\udcac System Instruction\"]\n    climate_tools_7675e8(\"\ud83d\udd27 climate tools\")\n    communication_tools_4216d6(\"\ud83d\udd27 communication tools\")\n    media_tools_601823(\"\ud83d\udd27 media tools\")\n    navigation_tools_4bc309(\"\ud83d\udd27 navigation tools\")\n    search_tools_c0c76f(\"\ud83d\udd27 search tools\")\n    weather_tools_a132b7(\"\ud83d\udd27 weather tools\")\n\n    Google_Adk_Ts_5cc3f2 -->|uses| gemini_2_0_flash_603ce1\n    Google_Adk_Ts_5cc3f2 -->|uses| MODEL_a7e551\n    Google_Adk_Ts_5cc3f2 -->|uses| gemini_3_1_fd511a\n    LLM_Clients_Ts_1ffa4b -->|uses| gemini_2_0_flash_603ce1\n    LLM_Clients_Ts_1ffa4b -->|uses| MODEL_a7e551\n    LLM_Clients_Ts_1ffa4b -->|uses| gemini_3_1_fd511a\n\n    classDef agent    fill:#4A90D9,stroke:#2C6FAC,color:#fff\n    classDef tool     fill:#7ED321,stroke:#5A9A18,color:#fff\n    classDef model    fill:#9B59B6,stroke:#7D3C98,color:#fff\n    classDef prompt   fill:#F39C12,stroke:#D68910,color:#fff\n    classDef guard    fill:#E74C3C,stroke:#C0392B,color:#fff\n    classDef store    fill:#1ABC9C,stroke:#17A589,color:#fff\n    classDef fw       fill:#95A5A6,stroke:#717D7E,color:#fff\n    classDef endpoint fill:#3498DB,stroke:#2471A3,color:#fff\n    class climate_tools_7675e8,communication_tools_4216d6,media_tools_601823,navigation_tools_4bc309,search_tools_c0c76f,weather_tools_a132b7 tool\n    class gemini_2_0_flash_603ce1,gemini_3_1_fd511a,MODEL_a7e551 model\n    class System_Instruction_990416 prompt\n    class Google_Adk_Ts_5cc3f2,LLM_Clients_Ts_1ffa4b fw\n    class Generic_c37a4f endpoint\n```",
-  "_enrichment_cache_key": "92c01c7834d9597bd6178a274ea7cedfddf926ceb053c0ae7354bd014438d8df"
+  "relationship_graph_md": "## Component Relationship Graph\n\n- **Core orchestration**\n  - Two frameworks are shown: **Google Adk Ts** and **LLM Clients Ts**.\n  - Both frameworks can use three models: **gemini-2.0-flash**, **gemini-3.1**, and a generic **MODEL**.\n\n- **Access control**\n  - **JWT Auth** protects a **Generic API endpoint**.\n  - No other guardrails, policy components, or access controls are shown in the graph.\n\n- **Prompting**\n  - **System Instruction** exists as a prompt component, but it has **no connections** to frameworks, models, or tools.\n\n- **Tools**\n  - The following tools are present but **unconnected**:\n    - climate tools\n    - communication tools\n    - media tools\n    - navigation tools\n    - search tools\n    - weather tools\n  - Because the graph shows no links, there is no visible evidence of which agent or framework can invoke them.\n\n- **Security observations**\n  - The only explicit protection shown is **JWT Auth on the API endpoint**.\n  - There is **no visible guardrail coverage** for the models or tools.\n  - No data stores, databases, or external services are shown, so **no datastore access** is evident from the graph.\n\n```mermaid\nflowchart LR\n    Generic_7d1778([\"\ud83c\udf10 Generic\"])\n    Google_Adk_Ts_68aeee[/\"\u2699 Google Adk Ts\"/]\n    LLM_Clients_Ts_57f97c[/\"\u2699 LLM Clients Ts\"/]\n    gemini_2_0_flash_18a744[(\"\ud83e\udde0 gemini-2.0-flash\")]\n    gemini_3_1_f048d4[(\"\ud83e\udde0 gemini-3.1\")]\n    MODEL_2b66bb[(\"\ud83e\udde0 MODEL\")]\n    System_Instruction_6e190e>\"\ud83d\udcac System Instruction\"]\n    climate_tools_879a22(\"\ud83d\udd27 climate tools\")\n    communication_tools_5ce935(\"\ud83d\udd27 communication tools\")\n    media_tools_5af0e6(\"\ud83d\udd27 media tools\")\n    navigation_tools_0fbc3c(\"\ud83d\udd27 navigation tools\")\n    search_tools_6298c7(\"\ud83d\udd27 search tools\")\n    weather_tools_699efe(\"\ud83d\udd27 weather tools\")\n\n    Google_Adk_Ts_68aeee -->|uses| gemini_2_0_flash_18a744\n    Google_Adk_Ts_68aeee -->|uses| MODEL_2b66bb\n    Google_Adk_Ts_68aeee -->|uses| gemini_3_1_f048d4\n    LLM_Clients_Ts_57f97c -->|uses| gemini_2_0_flash_18a744\n    LLM_Clients_Ts_57f97c -->|uses| MODEL_2b66bb\n    LLM_Clients_Ts_57f97c -->|uses| gemini_3_1_f048d4\n\n    classDef agent    fill:#4A90D9,stroke:#2C6FAC,color:#fff\n    classDef tool     fill:#7ED321,stroke:#5A9A18,color:#fff\n    classDef model    fill:#9B59B6,stroke:#7D3C98,color:#fff\n    classDef prompt   fill:#F39C12,stroke:#D68910,color:#fff\n    classDef guard    fill:#E74C3C,stroke:#C0392B,color:#fff\n    classDef store    fill:#1ABC9C,stroke:#17A589,color:#fff\n    classDef fw       fill:#95A5A6,stroke:#717D7E,color:#fff\n    classDef endpoint fill:#3498DB,stroke:#2471A3,color:#fff\n    class climate_tools_879a22,communication_tools_5ce935,media_tools_5af0e6,navigation_tools_0fbc3c,search_tools_6298c7,weather_tools_699efe tool\n    class gemini_2_0_flash_18a744,gemini_3_1_f048d4,MODEL_2b66bb model\n    class System_Instruction_6e190e prompt\n    class Google_Adk_Ts_68aeee,LLM_Clients_Ts_57f97c fw\n    class Generic_7d1778 endpoint\n```",
+  "_enrichment_cache_key": "c2e2a889a80d3559a3303cc0ca1c4edb5fa0b6fa584775140667caab2b835990"
 }
