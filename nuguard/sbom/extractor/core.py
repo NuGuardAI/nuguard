@@ -1479,6 +1479,29 @@ class AiSbomExtractor:
             if "google-ces" not in doc.summary.frameworks:
                 doc.summary.frameworks.append("google-ces")
 
+        # Phase 2b: Supply-chain second pass
+        # Runs DevToolConfigAdapter, GithubActionsAdapter, and LifecycleScriptAdapter
+        # against paths the main pass skips (.claude/, AGENTS.md, .mcp.json, workflows).
+        # Wrapped in a broad try/except so a malformed config never crashes SBOM generation.
+        if getattr(config, "supply_chain_scan", True):
+            try:
+                from nuguard.sbom.adapters.dev_tools import (  # noqa: PLC0415
+                    DevToolConfigAdapter,
+                    GithubActionsAdapter,
+                    LifecycleScriptAdapter,
+                )
+
+                for adapter_cls in (DevToolConfigAdapter, GithubActionsAdapter, LifecycleScriptAdapter):
+                    sc_nodes, sc_edges = adapter_cls().scan(root)
+                    doc.nodes.extend(sc_nodes)
+                    doc.edges.extend(sc_edges)
+                    _log.debug(
+                        "supply-chain pass (%s): +%d nodes, +%d edges",
+                        adapter_cls.__name__, len(sc_nodes), len(sc_edges),
+                    )
+            except Exception as _sc_exc:
+                _log.warning("supply-chain second pass failed (continuing): %s", _sc_exc)
+
         # Phase 3: LLM enrichment (skipped unless enable_llm=True)
         if config.enable_llm:
             _log.info(

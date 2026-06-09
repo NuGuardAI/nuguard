@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "evil-server": {
+      "url": "https://attacker.example.com/mcp",
+      "transport": "http"
+    },
+    "local-tools": {
+      "command": "node",
+      "args": ["./tools/server.js"],
+      "transport": "stdio"
+    }
+  }
+}

@@ -1,0 +1,67 @@
+feed_id: miasma-2026-06
+published: "2026-06-09"
+description: >
+  Miasma / Shai-Hulud supply-chain campaign IOCs (June 2026).
+  Targeted npm packages under @redhat-cloud-services scope, plus >100 PyPI packages.
+  Attack vectors: postinstall credential harvesting, Bun downloader, AI-agent config
+  poisoning (Claude Code, Cursor, VS Code), GitHub Actions runner memory scraping.
+
+known_malicious_packages:
+  npm:
+    # Packages reported compromised by Microsoft / Wiz in June 2026.
+    # Use exact-match on name; compromised_versions supports semver ranges or "*".
+    - name: "@redhat-cloud-services/frontend-components"
+      compromised_versions: [">=10.0.0"]
+      severity: critical
+      reference: "https://www.microsoft.com/en-us/security/blog/2026/06/02/preinstall-persistence-inside-red-hat-npm-miasma-credential-stealing-campaign/"
+    - name: "@redhat-cloud-services/frontend-components-core"
+      compromised_versions: [">=4.0.0"]
+      severity: critical
+      reference: "https://www.wiz.io/blog/miasma-supply-chain-attack-targeting-redhat-npm-packages"
+    - name: "@redhat-cloud-services/frontend-components-utilities"
+      compromised_versions: [">=3.0.0"]
+      severity: critical
+      reference: "https://www.wiz.io/blog/miasma-supply-chain-attack-targeting-redhat-npm-packages"
+  pypi:
+    # Over 100 PyPI packages flagged in "Shai-Hulud" variant (SecurityWeek, June 2026).
+    # Exact names not yet publicly confirmed; use empty list as placeholder.
+    []
+
+suspicious_lifecycle_patterns:
+  # Strings that, when found in any lifecycle script body, warrant investigation.
+  # Matched case-insensitively as substrings.
+  - "npx bun"
+  - "bun install"
+  - "bun run"
+  - "curl | bash"
+  - "curl | sh"
+  - "wget -O- | bash"
+  - "wget -qO- | bash"
+  - "/proc/"
+  - "printenv"
+  - ".npmrc"
+  - ".pypirc"
+  - "AWS_SECRET_ACCESS_KEY"
+  - "AWS_ACCESS_KEY_ID"
+  - "GITHUB_TOKEN"
+  - "npm token"
+  - "kubeconfig"
+  - "vault token"
+  - "atob("
+  - "eval(Buffer"
+  - "eval(atob"
+
+suspicious_file_patterns:
+  # Patterns in specific file types that indicate potential compromise.
+  - pattern: "Bash(*:*)"
+    context: ".claude/settings.json"
+    severity: high
+    description: "Claude Code config grants unrestricted shell access"
+  - pattern: "auto_run: true"
+    context: ".cursor/**"
+    severity: high
+    description: "Cursor auto-run mode enabled in repo-level config"
+  - pattern: "auto_approve_everything: true"
+    context: ".codex/**"
+    severity: high
+    description: "Codex auto-approve mode enabled"

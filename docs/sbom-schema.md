@@ -68,6 +68,10 @@ A Node represents a detected AI component, service boundary, infrastructure reso
 | `PROMPT` | A system prompt, instruction template, backstory, or prompt file |
 | `CONTAINER_IMAGE` | A Docker or OCI container image |
 | `IAM` | An IAM role, policy, service account, managed identity, or role binding |
+| `DEVELOPER_TOOL_CONFIG` | An AI coding-agent or editor configuration file committed to the repository, such as `.claude/settings.json`, `CLAUDE.md`, `AGENTS.md`, `.mcp.json`, or `.cursor/` configs |
+| `LIFECYCLE_SCRIPT` | An npm `postinstall`/`preinstall`/`prepare` script or a Python build hook (`setup.py`, `pyproject.toml` build-system hooks) that executes at install or build time |
+| `GITHUB_WORKFLOW` | A GitHub Actions workflow file under `.github/workflows/` |
+| `MCP_SERVER` | An MCP server reference declared in `.mcp.json` or another AI-agent config file |
 
 ---
 
@@ -219,6 +223,47 @@ All fields are optional unless marked otherwise. Fields are populated by whichev
 | `permissions` | string[] | Actions or scopes granted by this IAM entity, up to 20 entries |
 | `iam_scope` | string | Scope of the IAM binding: `"project"`, `"subscription"`, `"cluster"`, `"namespace"`, `"resource"` |
 | `trust_principals` | string[] | Principals trusted to assume this role |
+
+### DEVELOPER_TOOL_CONFIG fields
+
+Populated by the supply-chain second pass for AI coding-agent and editor configs committed to the repository.
+
+| Field | Type | Description |
+|---|---|---|
+| `tool_config_type` | string | Config format: `"claude-settings"`, `"claude-instructions"`, `"mcp-config"`, `"cursor-config"`, `"vscode-config"`, `"gemini-config"`, `"codex-config"`, `"smithery-config"` |
+| `permissions_granted` | string[] | Explicit allow-list entries from the config, e.g. `["Bash(*:*)", "Read", "Write"]` |
+| `permissions_denied` | string[] | Explicit deny-list entries from the config, e.g. `["Bash(rm:*)"]` |
+| `auto_execute` | boolean | True when the config enables auto-run or auto-approve mode |
+| `permission_scope` | string | Scope of the config file: `"repo"`, `"user"`, or `"global"` |
+
+### LIFECYCLE_SCRIPT fields
+
+| Field | Type | Description |
+|---|---|---|
+| `script_phase` | string | Script lifecycle hook: `"preinstall"`, `"install"`, `"postinstall"`, `"prepare"`, `"prepack"`, `"postpack"`, `"build-backend"` |
+| `script_body` | string | First 500 characters of the script body |
+| `invokes_network` | boolean | True when the script body references curl, wget, node-fetch, axios, or similar network-fetch primitives |
+| `invokes_shell` | boolean | True when the script pipes output to a shell (`\| bash`, `\| sh`, `\| node`) |
+| `downloads_binary` | boolean | True when the script downloads and executes a binary (e.g. npx bun, install.sh) |
+| `references_credentials` | boolean | True when the script references credential paths such as `.npmrc`, `AWS_SECRET_ACCESS_KEY`, `GITHUB_TOKEN`, or `/proc/*/environ` |
+
+### GITHUB_WORKFLOW fields
+
+| Field | Type | Description |
+|---|---|---|
+| `workflow_triggers` | string[] | Trigger event keys from the `on:` block, e.g. `["push", "pull_request_target"]` |
+| `workflow_permissions` | object | Top-level or job-level `permissions:` block, e.g. `{"id-token": "write", "contents": "read"}` |
+| `publishes_to` | string[] | Publish targets detected in workflow steps: `"pypi"`, `"npm"`, `"smithery"` |
+| `uses_oidc` | boolean | True when any job has `permissions.id-token: write` |
+| `action_refs` | string[] | All `uses: owner/action@ref` strings in the workflow, used to detect unpinned mutable refs |
+
+### MCP_SERVER fields
+
+| Field | Type | Description |
+|---|---|---|
+| `mcp_server_url` | string | URL of the MCP server (for HTTP/SSE transports) |
+| `mcp_server_trusted` | boolean | False by default; true when the server is listed in `redteam.mcp_trusted_servers` in `nuguard.yaml` |
+| `mcp_transport` | string | Transport protocol: `"stdio"`, `"http"`, or `"sse"` |
 
 ---
 
@@ -377,6 +422,7 @@ A directed relationship between two nodes.
 | `USES` | Component depends on a framework, model, auth provider, or other component |
 | `PROTECTS` | A guardrail protects an agent or endpoint |
 | `DEPLOYS` | A deployment resource hosts a container or service |
+| `CONTAINS` | A parent component contains a child component; used for `DEVELOPER_TOOL_CONFIG → MCP_SERVER` and `DEVELOPER_TOOL_CONFIG → LIFECYCLE_SCRIPT` relationships |
 
 ### AccessType values
 
@@ -487,9 +533,11 @@ Scan-level metadata derived during extraction. Populated when `nuguard sbom gene
 
 ---
 
-## NGA and MITRE ATLAS Static Analysis Inputs
+## NGA and Supply Chain Static Analysis Inputs
 
-The SBOM does not store `nuguard analyze` findings directly. Instead, `nuguard analyze` consumes the SBOM and emits NGA findings, optionally enriched with MITRE ATLAS annotations. SBOM 1.5.0 adds several evidence fields so the 18 NGA rules can reason over generated SBOMs without re-scanning source where possible.
+The SBOM does not store `nuguard analyze` findings directly. `nuguard analyze` consumes the SBOM and emits NGA, supply-chain, and ATLAS findings. SBOM 1.5.0 adds structured evidence fields so most rules reason over the generated SBOM without re-scanning source.
+
+### NGA-001–NGA-018 evidence fields
 
 | Rule area | SBOM evidence fields used |
 |---|---|
@@ -504,25 +552,18 @@ The SBOM does not store `nuguard analyze` findings directly. Instead, `nuguard a
 | Audit logging and observability | Node and summary `instrumentation`, `summary.log_paths`, and `summary.security_findings` |
 | Kubernetes network policy | `DEPLOYMENT.has_network_policy` and `summary.k8s_network_policy_namespaces` |
 
-MITRE ATLAS annotations are produced by the analysis layer. They appear on analysis findings under an `atlas` block, not on the SBOM document itself. A typical analysis finding includes:
+### Supply Chain Threat Pack evidence fields
 
-```json
-{
-  "source": "nga-rules",
-  "nga_rule": "NGA-006",
-  "mitre_atlas_technique": "AML.T0051",
-  "atlas": {
-    "atlas_version": "v2",
-    "techniques": [
-      {
-        "technique_id": "AML.T0051",
-        "technique_name": "LLM Prompt Injection",
-        "atlas_url": "https://atlas.mitre.org/techniques/AML.T0051"
-      }
-    ]
-  }
-}
-```
+When the SBOM includes supply-chain node types (populated by the second pass during `nuguard sbom generate`), the supply-chain scanner uses them directly. When SBOM nodes are absent, the scanner falls back to scanning source files at `--source`.
+
+| Rule family | SBOM node types used |
+|---|---|
+| GitHub Actions risks (NGA-SC-001–006) | `GITHUB_WORKFLOW` nodes: `workflow_triggers`, `uses_oidc`, `publishes_to`, `action_refs`, `workflow_permissions` |
+| AI-agent config poisoning (NGA-SC-007–010) | `DEVELOPER_TOOL_CONFIG` nodes: `permissions_granted`, `auto_execute`, `permission_scope`; `MCP_SERVER` nodes: `mcp_server_trusted`, `mcp_server_url` |
+| Lifecycle scripts (NGA-SC-011–016) | `LIFECYCLE_SCRIPT` nodes: `script_phase`, `script_body`, `invokes_network`, `invokes_shell`, `downloads_binary`, `references_credentials` |
+| Dependency integrity (NGA-SC-023–025) | `deps` array: `name`, `version_spec`, `purl`; threat-intel feeds matched against `name` |
+
+MITRE ATLAS annotations and supply-chain findings are produced by `nuguard analyze`. They appear on analysis findings, not on the SBOM document itself. See [docs/static-analysis-guide.md](static-analysis-guide.md) for the full rule reference.
 
 ---
 

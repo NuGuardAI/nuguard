@@ -673,10 +673,10 @@ def check_policy_against_sbom(
                 policy_section="restricted_topics",
                 severity="high",
                 searched=[
-                    f"TOOL nodes with no_auth_required=True: "
+                    "TOOL nodes with no_auth_required=True: "
                     + ", ".join(t.name for t in no_auth_tools[:5])
                     + (" …" if len(no_auth_tools) > 5 else ""),
-                    f"PII/PHI DATASTORE nodes: "
+                    "PII/PHI DATASTORE nodes: "
                     + ", ".join(
                         f"{d.name!r} (pii_fields={list(d.metadata.pii_fields or [])[:3]})"
                         for d in pii_datastores
@@ -686,7 +686,7 @@ def check_policy_against_sbom(
                     "Add authentication guards to each tool that accesses PII datastores. "
                     "In the tool implementation, verify the caller's identity token before "
                     "querying sensitive tables. Remove 'no_auth_required=True' annotations "
-                    f"from tools that touch the following datastores: "
+                    "from tools that touch the following datastores: "
                     + ", ".join(d.name for d in pii_datastores)
                     + ". Consider adding an AUTH node (JWT/OAuth2) and referencing it from "
                     "these tools so the SBOM reflects the authentication boundary."

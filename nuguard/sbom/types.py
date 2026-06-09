@@ -15,6 +15,11 @@ class ComponentType(str, Enum):
     PROMPT = "PROMPT"
     CONTAINER_IMAGE = "CONTAINER_IMAGE"
     IAM = "IAM"
+    # Supply-chain node types
+    DEVELOPER_TOOL_CONFIG = "DEVELOPER_TOOL_CONFIG"  # .claude/settings.json, .mcp.json, AGENTS.md
+    LIFECYCLE_SCRIPT = "LIFECYCLE_SCRIPT"            # npm postinstall, pyproject build hooks
+    GITHUB_WORKFLOW = "GITHUB_WORKFLOW"              # .github/workflows/*.yml
+    MCP_SERVER = "MCP_SERVER"                        # MCP server entries in .mcp.json
 
 
 class RelationshipType(str, Enum):
@@ -24,6 +29,7 @@ class RelationshipType(str, Enum):
     PROTECTS = "PROTECTS"
     DEPLOYS = "DEPLOYS"
     DELEGATES_TO = "DELEGATES_TO"
+    CONTAINS = "CONTAINS"  # config CONTAINS permission/script; workflow CONTAINS action ref
 
 
 class AccessType(str, Enum):

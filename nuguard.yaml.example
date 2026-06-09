@@ -50,6 +50,8 @@ target:
   # chat_payload_key: message       # JSON key for the message (default: message)
   # chat_payload_list: false        # wrap message in a list (default: false)
   # chat_response_key: response     # JSON key to extract reply text (default: auto-detect)
+  # chat_payload_extras:
+  #  user_id: alice
 
   # Authentication — uncomment ONE option:
   auth:

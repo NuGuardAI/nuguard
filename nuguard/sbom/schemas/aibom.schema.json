@@ -99,7 +99,11 @@
         "DEPLOYMENT",
         "PROMPT",
         "CONTAINER_IMAGE",
-        "IAM"
+        "IAM",
+        "DEVELOPER_TOOL_CONFIG",
+        "LIFECYCLE_SCRIPT",
+        "GITHUB_WORKFLOW",
+        "MCP_SERVER"
       ],
       "title": "ComponentType",
       "type": "string"
@@ -1555,6 +1559,258 @@
           "description": "Model artifact checksum (md5, sha1, sha256) as a hex string",
           "title": "Checksum"
         },
+        "tool_config_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "AI-agent or editor config sub-type, e.g. 'claude-settings', 'mcp-config', 'cursor-config', 'vscode-config', 'gemini-config', 'smithery-config'",
+          "title": "Tool Config Type"
+        },
+        "permissions_granted": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Permission patterns granted in this config, e.g. ['Bash(*:*)', 'Read', 'Write']",
+          "title": "Permissions Granted"
+        },
+        "permissions_denied": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Permission patterns denied in this config, e.g. ['Bash(rm:*)']",
+          "title": "Permissions Denied"
+        },
+        "auto_execute": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when auto-run or auto-approve mode is enabled in this config",
+          "title": "Auto Execute"
+        },
+        "permission_scope": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Scope at which this config grants permissions: 'repo' | 'user' | 'global'",
+          "title": "Permission Scope"
+        },
+        "script_phase": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Package lifecycle phase this script runs at, e.g. 'postinstall', 'preinstall', 'prepare', 'build-backend', 'publish-hook'",
+          "title": "Script Phase"
+        },
+        "script_body": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Lifecycle script body, truncated to 500 chars",
+          "title": "Script Body"
+        },
+        "invokes_network": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when the script contains network download commands (curl, wget, fetch, etc.)",
+          "title": "Invokes Network"
+        },
+        "invokes_shell": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when the script pipes into a shell (| bash, | sh, | node, etc.)",
+          "title": "Invokes Shell"
+        },
+        "downloads_binary": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when the script downloads and executes a binary (Bun, node, etc.)",
+          "title": "Downloads Binary"
+        },
+        "references_credentials": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when the script references credential paths or env vars: /proc/*/environ, .npmrc, AWS_SECRET_ACCESS_KEY, GITHUB_TOKEN, etc.",
+          "title": "References Credentials"
+        },
+        "workflow_triggers": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "GitHub Actions trigger event names parsed from the 'on:' block",
+          "title": "Workflow Triggers"
+        },
+        "workflow_permissions": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Top-level permissions block, e.g. {'id-token': 'write', 'contents': 'read'}",
+          "title": "Workflow Permissions"
+        },
+        "publishes_to": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Publish targets detected in workflow steps, e.g. ['pypi', 'npm', 'smithery']",
+          "title": "Publishes To"
+        },
+        "uses_oidc": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when any job has permissions.id-token: write (OIDC publishing)",
+          "title": "Uses Oidc"
+        },
+        "action_refs": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "All 'uses: owner/action@ref' strings found in this workflow. Unpinned refs (branch or tag, not full SHA) indicate a supply-chain risk.",
+          "title": "Action Refs"
+        },
+        "mcp_server_trusted": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when this MCP server is explicitly listed as trusted in nuguard.yaml",
+          "title": "Mcp Server Trusted"
+        },
+        "mcp_transport": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "MCP transport protocol declared in .mcp.json: 'stdio' | 'http' | 'sse'",
+          "title": "Mcp Transport"
+        },
         "extras": {
           "additionalProperties": true,
           "description": "Adapter-specific key/value pairs (provider, model_family, version, \u2026)",
@@ -1691,7 +1947,8 @@
         "ACCESSES",
         "PROTECTS",
         "DEPLOYS",
-        "DELEGATES_TO"
+        "DELEGATES_TO",
+        "CONTAINS"
       ],
       "title": "RelationshipType",
       "type": "string"
