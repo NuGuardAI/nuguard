@@ -420,6 +420,10 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["analyze_min_severity"] = analyze["min_severity"]
     if "nga_only" in analyze:
         flat["analyze_nga_only"] = analyze["nga_only"]
+    if "supply_chain_profile" in analyze:
+        flat["analyze_supply_chain_profile"] = analyze["supply_chain_profile"]
+    if "supply_chain_verify" in analyze:
+        flat["analyze_supply_chain_verify"] = analyze["supply_chain_verify"]
 
     # Output section
     output = data.get("output", {}) or {}
@@ -1143,6 +1147,20 @@ class NuGuardConfig(BaseSettings):
         description=(
             "Run only NGA structural rules (NGA-001–018), skipping external tool "
             "scans (yaml: analyze.nga_only, CLI: --nga)."
+        ),
+    )
+    analyze_supply_chain_profile: str = Field(
+        default="standard",
+        description=(
+            "Supply-chain scan profile: ci | standard | full "
+            "(yaml: analyze.supply_chain_profile, CLI: --supply-chain-profile)."
+        ),
+    )
+    analyze_supply_chain_verify: str = Field(
+        default="off",
+        description=(
+            "Artifact registry verification mode: off | warn | fail "
+            "(yaml: analyze.supply_chain_verify, CLI: --supply-chain-verify)."
         ),
     )
 

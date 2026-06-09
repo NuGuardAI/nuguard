@@ -88,7 +88,17 @@ def analyze(
                                  help="Run Semgrep AI-security rules (requires semgrep on PATH)."),
     source: str = typer.Option(
         None, "--source", "-s",
-        help="Path to app source directory for Checkov/Trivy/Semgrep scans.",
+        help="Path to app source directory for supply-chain, Checkov, Trivy, and Semgrep scans. Falls back to 'source:' in nuguard.yaml.",
+    ),
+    supply_chain: bool = typer.Option(True, "--supply-chain/--no-supply-chain",
+                                      help="Run supply-chain threat pack (NGA-SC-001–025)."),
+    supply_chain_profile: Optional[str] = typer.Option(
+        None, "--supply-chain-profile",
+        help="Supply-chain scan profile: ci | standard | full. [default: standard]",
+    ),
+    supply_chain_verify: Optional[str] = typer.Option(
+        None, "--supply-chain-verify",
+        help="Artifact registry verification: off | warn | fail. [default: off]",
     ),
     llm: bool = typer.Option(False, "--llm", help="Enable LLM enrichment in ATLAS pass."),
     verbose: bool = typer.Option(
@@ -129,6 +139,13 @@ def analyze(
 
     # --min-severity: CLI wins when explicitly set (non-None); else use config default
     min_severity = min_severity or cfg.analyze_min_severity
+
+    # --source: CLI wins; fall back to top-level source: in nuguard.yaml
+    source = source or cfg.source_path
+
+    # supply-chain: CLI wins; fall back to analyze: section in nuguard.yaml
+    sc_profile = supply_chain_profile or cfg.analyze_supply_chain_profile
+    sc_verify = supply_chain_verify or cfg.analyze_supply_chain_verify
 
     # NGA-only mode: disable all external scans
     if nga:
@@ -185,6 +202,9 @@ def analyze(
             enable_checkov=checkov,
             enable_trivy=trivy,
             enable_semgrep=semgrep,
+            enable_supply_chain=supply_chain,
+            supply_chain_profile=sc_profile,
+            supply_chain_verify_artifacts=sc_verify,
             source_path=source_path,
             atlas_config=atlas_config,
             min_severity=min_sev,
