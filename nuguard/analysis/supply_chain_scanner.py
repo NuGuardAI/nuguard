@@ -96,6 +96,110 @@ _PROFILE_RULES: dict[str, set[str]] = {
     "full": _FULL_RULES,
 }
 
+# ── Rule metadata for audit reporting ────────────────────────────────────────
+_RULE_META: list[dict[str, str]] = [
+    {"rule_id": "NGA-SC-001", "severity": "HIGH",
+     "title": "Publish workflow uses OIDC with unpinned actions",
+     "checks": "GITHUB_WORKFLOW nodes / .github/workflows/ for id-token:write + mutable action refs",
+     "pass_reason": "No publish workflows found with OIDC and unpinned third-party actions"},
+    {"rule_id": "NGA-SC-002", "severity": "CRITICAL",
+     "title": "Dangerous workflow trigger reaches publish path",
+     "checks": "Workflow trigger types (pull_request_target, workflow_dispatch) and publish steps",
+     "pass_reason": "No workflows with dangerous triggers on a publish-capable path"},
+    {"rule_id": "NGA-SC-003", "severity": "HIGH",
+     "title": "id-token:write + contents:write + mutable checkout",
+     "checks": "Workflow permissions (id-token:write + contents:write) and action refs",
+     "pass_reason": "No workflows combine id-token:write + contents:write with mutable checkouts"},
+    {"rule_id": "NGA-SC-004", "severity": "HIGH",
+     "title": "CI step uses unpinned global install",
+     "checks": "Workflow steps for npm install -g / npx without pinned version",
+     "pass_reason": "No unpinned global install steps detected in CI workflows"},
+    {"rule_id": "NGA-SC-005", "severity": "CRITICAL",
+     "title": "Workflow step reads credential paths",
+     "checks": "Workflow steps for /proc/environ, cloud creds, npm token, vault token patterns",
+     "pass_reason": "No credential-harvesting patterns found in workflow steps"},
+    {"rule_id": "NGA-SC-006", "severity": "CRITICAL",
+     "title": "Publish workflow provenance cannot be tied to repo/ref/SHA",
+     "checks": "Publish workflow provenance attestation steps",
+     "pass_reason": "No publish workflows with missing provenance attestation detected"},
+    {"rule_id": "NGA-SC-007", "severity": "HIGH",
+     "title": "AI-agent config grants unrestricted shell access",
+     "checks": "DEVELOPER_TOOL_CONFIG nodes / .claude/settings.json for Bash(*:*) permission",
+     "pass_reason": "No AI-agent config grants unrestricted Bash(*:*) access"},
+    {"rule_id": "NGA-SC-008", "severity": "MEDIUM",
+     "title": "AI-agent config is repo-controlled (commit-level attack surface)",
+     "checks": "Presence of .claude/settings.json or other AI-agent configs in the repository",
+     "pass_reason": "No repo-controlled AI-agent config files found"},
+    {"rule_id": "NGA-SC-009", "severity": "HIGH",
+     "title": ".mcp.json references external/untrusted MCP server",
+     "checks": "MCP_SERVER nodes / .mcp.json for untrusted server entries",
+     "pass_reason": "No untrusted MCP server references found"},
+    {"rule_id": "NGA-SC-010", "severity": "HIGH",
+     "title": "AI-agent auto-run/auto-approve mode enabled in repo config",
+     "checks": "AI-agent config files for auto_run:true or auto_approve_everything patterns",
+     "pass_reason": "No auto-run or auto-approve mode enabled in repo-level AI configs"},
+    {"rule_id": "NGA-SC-011", "severity": "CRITICAL",
+     "title": "Install hook makes network request",
+     "checks": "postinstall/preinstall/install/prepare scripts for curl/wget/node-fetch/axios",
+     "pass_reason": "No install hooks making outbound network requests detected"},
+    {"rule_id": "NGA-SC-012", "severity": "CRITICAL",
+     "title": "Lifecycle script pipes into a shell",
+     "checks": "Lifecycle script bodies for pipe-to-shell patterns (| bash, | sh, | node)",
+     "pass_reason": "No lifecycle scripts pipe output into a shell interpreter"},
+    {"rule_id": "NGA-SC-013", "severity": "CRITICAL",
+     "title": "Lifecycle script downloads and executes Bun",
+     "checks": "Lifecycle script bodies for npx bun / bun install / bun run patterns",
+     "pass_reason": "No Bun download patterns found in lifecycle scripts"},
+    {"rule_id": "NGA-SC-014", "severity": "CRITICAL",
+     "title": "Lifecycle script accesses credential paths",
+     "checks": "Lifecycle script bodies for /proc/environ, .npmrc, AWS keys, GITHUB_TOKEN",
+     "pass_reason": "No credential-access patterns found in lifecycle scripts"},
+    {"rule_id": "NGA-SC-015", "severity": "HIGH",
+     "title": "Python build hook makes network call",
+     "checks": "setup.py / pyproject.toml build hooks for urllib/requests/httpx calls",
+     "pass_reason": "No network calls detected in Python build hooks"},
+    {"rule_id": "NGA-SC-016", "severity": "HIGH",
+     "title": "Lifecycle script uses eval/Function/atob (obfuscation indicator)",
+     "checks": "Lifecycle script bodies for eval(), Function(), atob() patterns",
+     "pass_reason": "No obfuscation patterns (eval/Function/atob) found in lifecycle scripts"},
+    {"rule_id": "NGA-SC-017", "severity": "HIGH",
+     "title": "Large file in hidden tool directory",
+     "checks": "Files >100 KB in .claude/, .cursor/, .codex/, .gemini/, .vscode/ directories",
+     "pass_reason": "No large files found in hidden AI-agent/editor directories"},
+    {"rule_id": "NGA-SC-018", "severity": "HIGH",
+     "title": "High-entropy blob in tool directory",
+     "checks": "Files in hidden tool directories with Shannon entropy >6.5 bits/byte",
+     "pass_reason": "No high-entropy blobs detected in hidden tool directories"},
+    {"rule_id": "NGA-SC-019", "severity": "MEDIUM",
+     "title": "Minified single-line JavaScript above 5 KB",
+     "checks": "JavaScript files with a single line >5000 characters",
+     "pass_reason": "No minified single-line JavaScript files found"},
+    {"rule_id": "NGA-SC-020", "severity": "MEDIUM",
+     "title": "Commit claims dependency update but only changes AI/workflow files",
+     "checks": "Git log (last 50 commits) for message/file-change mismatches",
+     "pass_reason": "No suspicious commit message / file-change mismatches found in recent history"},
+    {"rule_id": "NGA-SC-021", "severity": "HIGH",
+     "title": "[skip ci] on security-sensitive file change",
+     "checks": "Git log for [skip ci] flags on commits changing workflows, package scripts, AI configs",
+     "pass_reason": "No [skip ci] flags found on security-sensitive file changes"},
+    {"rule_id": "NGA-SC-022", "severity": "HIGH",
+     "title": "Workflow changed without manifest/lockfile change",
+     "checks": "Git log for workflow-only changes without matching manifest/lockfile updates",
+     "pass_reason": "No workflow-only changes without manifest/lockfile changes found"},
+    {"rule_id": "NGA-SC-023", "severity": "MEDIUM",
+     "title": "Dependency uses mutable reference",
+     "checks": "SBOM dependencies for git URLs, tarball URLs, or file: references",
+     "pass_reason": "No mutable dependency references found"},
+    {"rule_id": "NGA-SC-024", "severity": "LOW",
+     "title": "npm project missing lockfile",
+     "checks": "package.json presence without a matching lockfile",
+     "pass_reason": "All npm projects have a committed lockfile (or no package.json present)"},
+    {"rule_id": "NGA-SC-025", "severity": "CRITICAL",
+     "title": "Package matches known-malicious IOC",
+     "checks": "SBOM dependencies and lifecycle script nodes against threat-intel IOC feeds",
+     "pass_reason": "No packages matched known-malicious IOC entries in loaded threat-intel feeds"},
+]
+
 
 def _shannon_entropy(data: bytes) -> float:
     """Compute Shannon entropy (bits per byte) of a byte string."""
@@ -126,6 +230,8 @@ class SupplyChainScanner:
         self.profile = profile if profile in _PROFILE_RULES else "standard"
         self._enabled = _PROFILE_RULES[self.profile]
         self._threat_intel = self._load_threat_intel(threat_intel_feeds)
+        self._ctx: dict[str, Any] = {}
+        self.last_audit: list[dict[str, Any]] = []
 
     def _load_threat_intel(self, feed_ids: list[str] | None) -> dict[str, Any]:
         try:
@@ -145,6 +251,12 @@ class SupplyChainScanner:
         nodes = sbom_nodes or []
         deps = sbom_deps or []
         findings: list[dict[str, Any]] = []
+        self._ctx = {}
+
+        _log.info(
+            "supply-chain scan starting (profile=%s, source=%s, %d SBOM nodes, %d deps)",
+            self.profile, source_path, len(nodes), len(deps),
+        )
 
         findings.extend(self._scan_lifecycle_scripts(source_path, nodes))
         findings.extend(self._scan_workflows(source_path, nodes))
@@ -157,7 +269,108 @@ class SupplyChainScanner:
             findings.extend(self._scan_large_payloads(source_path))
             findings.extend(self._scan_git_history(source_path))
 
+        _log.info(
+            "supply-chain scan complete: %d finding(s) from %d enabled rules (profile=%s)",
+            len(findings), len(self._enabled), self.profile,
+        )
+        self.last_audit = self._build_audit(findings)
         return findings
+
+    def _build_audit(self, findings: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Build per-rule pass/fail audit entries from scan results and context."""
+        fired: dict[str, list[dict[str, Any]]] = {}
+        for f in findings:
+            rid = f.get("rule_id", "")
+            fired.setdefault(rid, []).append(f)
+
+        audit: list[dict[str, Any]] = []
+        for meta in _RULE_META:
+            rid = meta["rule_id"]
+            if rid not in self._enabled:
+                audit.append({
+                    "rule_id": rid,
+                    "title": meta["title"],
+                    "severity": meta["severity"],
+                    "status": "SKIPPED",
+                    "finding_count": 0,
+                    "affected": [],
+                    "pass_reason": f"Not enabled in '{self.profile}' profile",
+                    "checks": meta["checks"],
+                    "pass_evidence": {},
+                })
+            elif rid in fired:
+                rule_findings = fired[rid]
+                affected = list({a for r in rule_findings for a in (r.get("affected") or [])})
+                audit.append({
+                    "rule_id": rid,
+                    "title": meta["title"],
+                    "severity": meta["severity"],
+                    "status": "FAIL",
+                    "finding_count": len(rule_findings),
+                    "affected": affected,
+                    "pass_reason": "",
+                    "checks": meta["checks"],
+                    "pass_evidence": {},
+                })
+            else:
+                audit.append({
+                    "rule_id": rid,
+                    "title": meta["title"],
+                    "severity": meta["severity"],
+                    "status": "PASS",
+                    "finding_count": 0,
+                    "affected": [],
+                    "pass_reason": meta["pass_reason"],
+                    "checks": meta["checks"],
+                    "pass_evidence": self._build_pass_evidence(rid),
+                })
+        return audit
+
+    def _build_pass_evidence(self, rule_id: str) -> dict[str, Any]:
+        """Return relevant scan context counts for a passing rule's audit entry."""
+        ctx = self._ctx
+        if rule_id in {"NGA-SC-001", "NGA-SC-002", "NGA-SC-003", "NGA-SC-004", "NGA-SC-005", "NGA-SC-006"}:
+            wf = ctx.get("workflows", {})
+            if wf.get("sbom_nodes_used"):
+                return {"workflow_nodes_examined": wf["sbom_nodes_used"],
+                        "workflow_names": wf.get("workflow_names", [])}
+            return {"workflow_files_examined": wf.get("workflow_files", 0),
+                    "workflow_names": wf.get("workflow_names", [])}
+        if rule_id in {"NGA-SC-007", "NGA-SC-008", "NGA-SC-009", "NGA-SC-010"}:
+            dt = ctx.get("dev_tool_configs", {})
+            if dt.get("sbom_nodes_used"):
+                return {"config_nodes_examined": dt["sbom_nodes_used"]}
+            return {"claude_settings_found": dt.get("claude_settings_found", False),
+                    "mcp_json_found": dt.get("mcp_json_found", False)}
+        if rule_id in {"NGA-SC-011", "NGA-SC-012", "NGA-SC-013",
+                       "NGA-SC-014", "NGA-SC-015", "NGA-SC-016"}:
+            lc = ctx.get("lifecycle", {})
+            if lc.get("sbom_nodes_used"):
+                return {"lifecycle_script_nodes_examined": lc["sbom_nodes_used"]}
+            return {"package_json_files_examined": lc.get("package_json_files", 0),
+                    "scripts_examined": lc.get("scripts_checked", 0)}
+        if rule_id in {"NGA-SC-017", "NGA-SC-018", "NGA-SC-019"}:
+            lp = ctx.get("large_payloads", {})
+            return {"hidden_dirs_scanned": lp.get("hidden_dirs_scanned", []),
+                    "js_files_scanned": lp.get("js_files_scanned", 0)}
+        if rule_id in {"NGA-SC-020", "NGA-SC-021", "NGA-SC-022"}:
+            gh = ctx.get("git_history", {})
+            ev: dict[str, Any] = {"git_available": gh.get("git_available", False)}
+            if gh.get("commits_inspected"):
+                ev["commits_inspected"] = gh["commits_inspected"]
+            return ev
+        if rule_id == "NGA-SC-023":
+            return {"deps_examined": ctx.get("mutable_deps", {}).get("deps_checked", 0)}
+        if rule_id == "NGA-SC-024":
+            lf = ctx.get("lockfile", {})
+            if not lf.get("package_json_found"):
+                return {"no_package_json": True}
+            return {"lockfile_found": lf.get("lockfile_found", False)}
+        if rule_id == "NGA-SC-025":
+            ti = ctx.get("threat_intel", {})
+            return {"deps_checked": ti.get("deps_checked", 0),
+                    "ioc_entries": ti.get("ioc_entries", 0)}
+        return {}
 
     # ------------------------------------------------------------------
     # Sub-scanner: lifecycle scripts
@@ -175,20 +388,27 @@ class SupplyChainScanner:
         ]
 
         if lifecycle_nodes:
+            _log.info("[NGA-SC-011..016] scanning %d LIFECYCLE_SCRIPT SBOM nodes", len(lifecycle_nodes))
             for node in lifecycle_nodes:
                 meta = node.get("metadata") or {}
                 body = str(meta.get("script_body") or "")
                 phase = str(meta.get("script_phase") or "")
                 source = node.get("name", "unknown")
                 findings.extend(self._check_script_body(body, phase, source))
+            self._ctx["lifecycle"] = {
+                "sbom_nodes_used": len(lifecycle_nodes),
+                "scripts_checked": len(lifecycle_nodes),
+            }
         else:
-            # No SBOM nodes; parse manifests directly
+            _log.info("[NGA-SC-011..016] scanning lifecycle scripts from source files (no SBOM nodes)")
             findings.extend(self._scan_lifecycle_from_files(source_path))
 
         return findings
 
     def _scan_lifecycle_from_files(self, root: Path) -> list[dict[str, Any]]:
         findings: list[dict[str, Any]] = []
+        pkg_json_count = 0
+        scripts_count = 0
         for pkg_json in root.rglob("package.json"):
             if any(p in pkg_json.parts for p in ("node_modules", ".git")):
                 continue
@@ -196,13 +416,22 @@ class SupplyChainScanner:
                 data = json.loads(pkg_json.read_text(encoding="utf-8"))
             except (json.JSONDecodeError, OSError):
                 continue
+            pkg_json_count += 1
             scripts = data.get("scripts") or {}
             for phase, body in scripts.items():
                 if not isinstance(body, str):
                     continue
+                scripts_count += 1
                 rel = str(pkg_json.relative_to(root))
                 source = f"{rel}:{phase}"
                 findings.extend(self._check_script_body(body, phase, source))
+        _log.info("[NGA-SC-011..016] scanned %d package.json file(s), %d script(s)",
+                  pkg_json_count, scripts_count)
+        self._ctx["lifecycle"] = {
+            "sbom_nodes_used": 0,
+            "package_json_files": pkg_json_count,
+            "scripts_checked": scripts_count,
+        }
         return findings
 
     def _check_script_body(
@@ -329,10 +558,15 @@ class SupplyChainScanner:
         ]
 
         if workflow_nodes:
+            _log.info("[NGA-SC-001..006] scanning %d GITHUB_WORKFLOW SBOM nodes", len(workflow_nodes))
             for node in workflow_nodes:
                 findings.extend(self._check_workflow_node(node))
+            self._ctx["workflows"] = {
+                "sbom_nodes_used": len(workflow_nodes),
+                "workflow_names": [n.get("name", "unknown") for n in workflow_nodes],
+            }
         else:
-            # Fall back to direct file scan
+            _log.info("[NGA-SC-001..006] scanning workflow files from source (no SBOM nodes)")
             findings.extend(self._scan_workflows_from_files(source_path))
         return findings
 
@@ -340,8 +574,18 @@ class SupplyChainScanner:
         findings: list[dict[str, Any]] = []
         workflows_dir = root / ".github" / "workflows"
         if not workflows_dir.is_dir():
+            _log.info("[NGA-SC-001..006] no .github/workflows/ directory found")
+            self._ctx["workflows"] = {"sbom_nodes_used": 0, "workflow_files": 0, "workflow_names": []}
             return findings
-        for wf in sorted(workflows_dir.glob("*.yml")) + sorted(workflows_dir.glob("*.yaml")):
+        wf_files = sorted(workflows_dir.glob("*.yml")) + sorted(workflows_dir.glob("*.yaml"))
+        wf_names = [f.name for f in wf_files]
+        _log.info("[NGA-SC-001..006] found %d workflow file(s): %s", len(wf_files), wf_names)
+        self._ctx["workflows"] = {
+            "sbom_nodes_used": 0,
+            "workflow_files": len(wf_files),
+            "workflow_names": wf_names,
+        }
+        for wf in wf_files:
             try:
                 text = wf.read_text(encoding="utf-8", errors="replace")
             except OSError:
@@ -515,9 +759,13 @@ class SupplyChainScanner:
         ]
 
         if config_nodes:
+            _log.info("[NGA-SC-007..010] scanning %d DEVELOPER_TOOL_CONFIG/MCP_SERVER SBOM nodes",
+                      len(config_nodes))
             for node in config_nodes:
                 findings.extend(self._check_config_node(node))
+            self._ctx["dev_tool_configs"] = {"sbom_nodes_used": len(config_nodes)}
         else:
+            _log.info("[NGA-SC-007..010] scanning AI-agent config files from source (no SBOM nodes)")
             findings.extend(self._scan_dev_tool_configs_from_files(source_path))
         return findings
 
@@ -615,8 +863,13 @@ class SupplyChainScanner:
     def _scan_dev_tool_configs_from_files(self, root: Path) -> list[dict[str, Any]]:
         """Fallback: scan config files directly when SBOM nodes are absent."""
         findings: list[dict[str, Any]] = []
+        claude_settings_found = False
+        mcp_json_found = False
+        auto_exec_dirs: list[str] = []
+
         claude_settings = root / ".claude" / "settings.json"
         if claude_settings.exists():
+            claude_settings_found = True
             try:
                 data = json.loads(claude_settings.read_text(encoding="utf-8"))
                 allowed: list[str] = [str(p) for p in (data.get("allow") or []) if p]
@@ -648,6 +901,7 @@ class SupplyChainScanner:
 
         mcp_json = root / ".mcp.json"
         if mcp_json.exists():
+            mcp_json_found = True
             try:
                 data = json.loads(mcp_json.read_text(encoding="utf-8"))
                 rel = str(mcp_json.relative_to(root))
@@ -671,6 +925,7 @@ class SupplyChainScanner:
             tool_path = root / tool_dir
             if not tool_path.is_dir():
                 continue
+            auto_exec_dirs.append(tool_dir)
             for cfg_file in tool_path.rglob("*"):
                 if not cfg_file.is_file():
                     continue
@@ -689,6 +944,16 @@ class SupplyChainScanner:
                         remediation="Disable auto-run/auto-approve in repo-level config.",
                     ))
 
+        _log.info(
+            "[NGA-SC-007..010] claude_settings=%s mcp_json=%s auto_exec_dirs=%s",
+            claude_settings_found, mcp_json_found, auto_exec_dirs,
+        )
+        self._ctx["dev_tool_configs"] = {
+            "sbom_nodes_used": 0,
+            "claude_settings_found": claude_settings_found,
+            "mcp_json_found": mcp_json_found,
+            "auto_exec_dirs_checked": auto_exec_dirs,
+        }
         return findings
 
     # ------------------------------------------------------------------
@@ -697,10 +962,14 @@ class SupplyChainScanner:
 
     def _scan_large_payloads(self, source_path: Path) -> list[dict[str, Any]]:
         findings: list[dict[str, Any]] = []
+        dirs_found: list[str] = []
+        js_files_scanned = 0
+
         for dir_name in _HIDDEN_TOOL_DIRS:
             tool_dir = source_path / dir_name
             if not tool_dir.is_dir():
                 continue
+            dirs_found.append(dir_name)
             for path in tool_dir.rglob("*"):
                 if not path.is_file():
                     continue
@@ -750,6 +1019,7 @@ class SupplyChainScanner:
             for path in source_path.rglob("*.js"):
                 if any(p in path.parts for p in ("node_modules", ".git")):
                     continue
+                js_files_scanned += 1
                 try:
                     text = path.read_text(encoding="utf-8", errors="replace")
                 except OSError:
@@ -773,6 +1043,12 @@ class SupplyChainScanner:
                         remediation="Audit the file source; prefer readable, un-minified files in source control.",
                     ))
 
+        _log.info("[NGA-SC-017..019] scanned %d hidden tool dir(s), %d JS file(s)",
+                  len(dirs_found), js_files_scanned)
+        self._ctx["large_payloads"] = {
+            "hidden_dirs_scanned": dirs_found,
+            "js_files_scanned": js_files_scanned,
+        }
         return findings
 
     # ------------------------------------------------------------------
@@ -784,9 +1060,16 @@ class SupplyChainScanner:
     ) -> list[dict[str, Any]]:
         findings: list[dict[str, Any]] = []
         if "NGA-SC-025" not in self._enabled:
+            self._ctx["threat_intel"] = {"deps_checked": 0, "ioc_entries": 0, "lifecycle_patterns": 0}
             return findings
 
         malicious = self._threat_intel.get("known_malicious_packages") or {}
+        ioc_entries = sum(len(v) for v in malicious.values() if isinstance(v, list))
+        suspicious_patterns: list[str] = self._threat_intel.get("suspicious_lifecycle_patterns") or []
+        _log.info(
+            "[NGA-SC-025] checking %d deps against %d IOC entries, %d lifecycle patterns",
+            len(deps), ioc_entries, len(suspicious_patterns),
+        )
 
         for dep in deps:
             name = str(dep.get("name") or "")
@@ -820,7 +1103,6 @@ class SupplyChainScanner:
                     ))
 
         # Suspicious patterns in lifecycle script nodes
-        suspicious_patterns: list[str] = self._threat_intel.get("suspicious_lifecycle_patterns") or []
         lifecycle_nodes = [
             n for n in nodes
             if (n.get("component_type") or "").upper() == "LIFECYCLE_SCRIPT"
@@ -843,6 +1125,11 @@ class SupplyChainScanner:
                     ))
                     break  # one finding per script is enough
 
+        self._ctx["threat_intel"] = {
+            "deps_checked": len(deps),
+            "ioc_entries": ioc_entries,
+            "lifecycle_patterns": len(suspicious_patterns),
+        }
         return findings
 
     # ------------------------------------------------------------------
@@ -852,7 +1139,10 @@ class SupplyChainScanner:
     def _check_mutable_deps(self, deps: list[dict[str, Any]]) -> list[dict[str, Any]]:
         findings: list[dict[str, Any]] = []
         if "NGA-SC-023" not in self._enabled:
+            self._ctx["mutable_deps"] = {"deps_checked": 0}
             return findings
+        _log.info("[NGA-SC-023] checking %d deps for mutable references", len(deps))
+        self._ctx["mutable_deps"] = {"deps_checked": len(deps)}
 
         for dep in deps:
             spec = str(dep.get("version_spec") or "")
@@ -887,6 +1177,7 @@ class SupplyChainScanner:
     ) -> list[dict[str, Any]]:
         findings: list[dict[str, Any]] = []
         if "NGA-SC-024" not in self._enabled:
+            self._ctx["lockfile"] = {"package_json_found": False, "lockfile_found": False}
             return findings
 
         # Check if lockfile exists for npm projects
@@ -895,6 +1186,11 @@ class SupplyChainScanner:
             (source_path / lf).exists()
             for lf in ("package-lock.json", "pnpm-lock.yaml", "yarn.lock")
         )
+        _log.info("[NGA-SC-024] package.json=%s lockfile=%s", has_package_json, has_npm_lockfile)
+        self._ctx["lockfile"] = {
+            "package_json_found": has_package_json,
+            "lockfile_found": has_npm_lockfile,
+        }
 
         if has_package_json and not has_npm_lockfile:
             findings.append(_finding(
@@ -924,6 +1220,8 @@ class SupplyChainScanner:
         """Basic git-aware heuristics (requires git on PATH)."""
         findings: list[dict[str, Any]] = []
         if not (source_path / ".git").exists():
+            _log.info("[NGA-SC-020..022] no .git directory found; skipping git history scan")
+            self._ctx["git_history"] = {"git_available": False}
             return findings
 
         try:
@@ -933,9 +1231,17 @@ class SupplyChainScanner:
                 capture_output=True, text=True, timeout=10,
             )
             if result.returncode != 0:
+                self._ctx["git_history"] = {"git_available": False}
                 return findings
 
-            for line in result.stdout.splitlines():
+            commits = result.stdout.splitlines()
+            _log.info("[NGA-SC-020..022] inspecting %d recent commits", len(commits))
+            self._ctx["git_history"] = {
+                "git_available": True,
+                "commits_inspected": len(commits),
+            }
+
+            for line in commits:
                 lower = line.lower()
                 if any(kw in lower for kw in ("dependency update", "chore: update", "bump deps")):
                     # Check what files actually changed
@@ -972,6 +1278,7 @@ class SupplyChainScanner:
                         ))
         except Exception as exc:
             _log.debug("Git history scan failed: %s", exc)
+            self._ctx["git_history"] = {"git_available": False}
 
         return findings
 

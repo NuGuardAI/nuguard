@@ -168,6 +168,8 @@ class StaticAnalyzer:
         self.tool_status: dict[str, dict[str, str]] = {}
         # Populated when verbose=True; per-rule pass/fail audit for NGA rules
         self.nga_audit: list[dict[str, Any]] = []
+        # Per-rule pass/fail audit for supply-chain rules (always populated)
+        self.sc_audit: list[dict[str, Any]] = []
 
     def analyze(self, doc: AiSbomDocument) -> list[Finding]:
         """Run all detectors and return a list of ``Finding`` objects.
@@ -447,6 +449,7 @@ class StaticAnalyzer:
                 return []
             raw_list = list(result.findings or [])
             findings = [_raw_to_finding(r, "supply-chain") for r in raw_list]
+            self.sc_audit = list(result.details.get("sc_audit") or [])
             _log.info("supply-chain scan: %d finding(s)", len(findings))
             return findings
         except Exception as exc:

@@ -81,7 +81,11 @@ class SupplyChainPlugin(AnalysisPlugin):
             plugin=self.name,
             message=f"{len(raw)} finding(s)",
             findings=raw,
-            details={"profile": profile, "verify_mode": verify_mode},
+            details={
+                "profile": profile,
+                "verify_mode": verify_mode,
+                "sc_audit": scanner.last_audit,
+            },
         )
 
     def _run_artifact_verification(
