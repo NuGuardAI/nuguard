@@ -210,7 +210,7 @@ def redteam(
         raise typer.Exit(code=1)
 
     try:
-        findings, llm_remediations, scenario_records, scan_outcome, config_notes, catalog_coverage = asyncio.run(  # type: ignore[misc]
+        findings, llm_remediations, scenario_records, scan_outcome, config_notes, catalog_coverage, input_tokens_used, output_tokens_used, coverage_tracker = asyncio.run(  # type: ignore[misc]
             _run_redteam(
                 sbom_doc=sbom_doc,
                 sbom_path=sbom_path,
@@ -306,19 +306,24 @@ def redteam(
     )
 
     _print_findings(findings, effective_format, meta, remediation_plan=remediation_plan,
-                    scenario_records=scenario_records, scan_outcome=scan_outcome)
+                    scenario_records=scenario_records, scan_outcome=scan_outcome,
+                    input_tokens_used=input_tokens_used, output_tokens_used=output_tokens_used,
+                    coverage_tracker=coverage_tracker)
     if output:
         if effective_format == "markdown":
             output.write_text(
                 _findings_to_markdown(findings, meta, remediation_plan=remediation_plan,
                                       scenario_records=scenario_records,
-                                      catalog_coverage=catalog_coverage),
+                                      catalog_coverage=catalog_coverage,
+                                      coverage_tracker=coverage_tracker),
                 encoding="utf-8",
             )
         else:
             payload: dict = {
                 "_meta": meta.to_dict(),
                 "scan_outcome": scan_outcome,
+                "input_tokens_used": input_tokens_used,
+                "output_tokens_used": output_tokens_used,
                 "findings": [f.model_dump() for f in findings],
                 "remediation_plan": [a.model_dump() for a in remediation_plan],
             }
@@ -431,7 +436,7 @@ async def _run_redteam(
     pre_run_warmup: int = 0,
     verify_findings: bool = False,
     golden_data: "dict | None" = None,
-) -> tuple[list, dict[str, str], list, str, list[str], Any]:
+) -> tuple[list, dict[str, str], list, str, list[str], Any, int, int, Any]:
     from nuguard.models.policy import CognitivePolicy
     from nuguard.redteam.target.canary import CanaryConfig
 
@@ -612,7 +617,7 @@ async def _run_redteam(
     )
 
 
-async def _run_orchestrator(
+async def _run_orchestrator(  # noqa: C901
     sbom_doc: object,
     target_url: str,
     cognitive_policy: object,
@@ -657,7 +662,7 @@ async def _run_orchestrator(
     pre_run_warmup: int = 0,
     verify_findings: bool = False,
     golden_data: "dict | None" = None,
-) -> tuple[list, dict[str, str], list, str, list[str], Any]:
+) -> tuple[list, dict[str, str], list, str, list[str], Any, int, int, Any]:
     from nuguard.common.llm_client import LLMClient
     from nuguard.redteam.executor.orchestrator import RedteamOrchestrator
 
@@ -715,6 +720,7 @@ async def _run_orchestrator(
     llm_remediations: dict[str, str] = orchestrator.llm_remediations
     scenario_records = orchestrator.scenario_records
     catalog_coverage = getattr(orchestrator, "catalog_coverage", None)
+    coverage_tracker = getattr(orchestrator, "_coverage_tracker", None)
 
     # Apply scenario filter if provided
     if scenario_filter:
@@ -731,7 +737,9 @@ async def _run_orchestrator(
     config_notes: list[str] = list(getattr(orchestrator, "config_notes", []))
     for note in config_notes:
         typer.echo(f"\n⚠ {note}", err=True)
-    return findings, llm_remediations, scenario_records, scan_outcome, config_notes, catalog_coverage
+    input_tokens_used: int = getattr(orchestrator, "input_tokens_used", 0)
+    output_tokens_used: int = getattr(orchestrator, "output_tokens_used", 0)
+    return findings, llm_remediations, scenario_records, scan_outcome, config_notes, catalog_coverage, input_tokens_used, output_tokens_used, coverage_tracker
 
 
 def _print_findings(
@@ -741,6 +749,9 @@ def _print_findings(
     remediation_plan: list | None = None,
     scenario_records: list | None = None,
     scan_outcome: str = "no_findings",
+    input_tokens_used: int = 0,
+    output_tokens_used: int = 0,
+    coverage_tracker: object | None = None,
 ) -> None:
     """Print findings to stdout in the requested format."""
     from nuguard.models.finding import Severity
@@ -752,6 +763,8 @@ def _print_findings(
         payload = {
             "_meta": meta.to_dict(),
             "scan_outcome": scan_outcome,
+            "input_tokens_used": input_tokens_used,
+            "output_tokens_used": output_tokens_used,
             "findings": [f.model_dump() for f in findings],
             "remediation_plan": [a.model_dump() for a in (remediation_plan or [])],
         }
@@ -761,7 +774,8 @@ def _print_findings(
     if format == "markdown":
         typer.echo(
             _findings_to_markdown(findings, meta, remediation_plan=remediation_plan,
-                                  scenario_records=scenario_records)
+                                  scenario_records=scenario_records,
+                                  coverage_tracker=coverage_tracker)
         )
         return
 
@@ -808,6 +822,7 @@ def _findings_to_markdown(
     remediation_plan: list | None = None,
     scenario_records: list | None = None,
     catalog_coverage: object | None = None,
+    coverage_tracker: object | None = None,
 ) -> str:
     """Delegate to :func:`nuguard.redteam.report.to_markdown`."""
     from nuguard.redteam.report import to_markdown
@@ -817,6 +832,7 @@ def _findings_to_markdown(
         remediation_plan=remediation_plan,
         scenario_records=scenario_records,
         catalog_coverage=catalog_coverage,
+        coverage_tracker=coverage_tracker,
     )
 
 

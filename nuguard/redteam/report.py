@@ -39,6 +39,8 @@ def to_json(
     meta: "ReportMeta | None" = None,
     remediation_plan: list | None = None,
     scan_outcome: str = "no_findings",
+    input_tokens_used: int = 0,
+    output_tokens_used: int = 0,
 ) -> str:
     """Generate a JSON report string from red-team findings.
 
@@ -46,6 +48,8 @@ def to_json(
         findings: List of :class:`~nuguard.models.finding.Finding` objects.
         meta: Optional report metadata.
         remediation_plan: Optional list of ``RemediationArtefact`` objects.
+        input_tokens_used: Total LLM prompt tokens consumed during the run.
+        output_tokens_used: Total LLM completion tokens consumed during the run.
 
     Returns:
         JSON string.
@@ -58,6 +62,8 @@ def to_json(
     payload: dict[str, Any] = {
         "_meta": meta.to_dict(),
         "scan_outcome": scan_outcome,
+        "input_tokens_used": input_tokens_used,
+        "output_tokens_used": output_tokens_used,
         "findings": [f.model_dump() for f in findings],
         "remediation_plan": [a.model_dump() for a in (remediation_plan or [])],
     }
@@ -70,6 +76,7 @@ def to_markdown(
     remediation_plan: list | None = None,
     scenario_records: list | None = None,
     catalog_coverage: "object | None" = None,
+    coverage_tracker: "object | None" = None,
 ) -> str:
     """Render red-team findings as a Markdown report string.
 
@@ -157,6 +164,12 @@ def to_markdown(
     # Catalog coverage report (Phase 2 — capability-aware catalog)
     if catalog_coverage is not None and hasattr(catalog_coverage, "to_markdown"):
         lines += ["", catalog_coverage.to_markdown(), ""]
+
+    # Coverage tracker table (SBOM node coverage)
+    if coverage_tracker is not None and hasattr(coverage_tracker, "to_markdown"):
+        _ct_md = coverage_tracker.to_markdown()
+        if _ct_md:
+            lines += ["", _ct_md, ""]
 
     if not findings:
         lines += ["_No findings — scan complete._", ""]

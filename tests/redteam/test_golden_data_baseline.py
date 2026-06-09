@@ -482,6 +482,34 @@ def test_extract_ids_labelled_pnr():
     assert "HN4P88" in ids
 
 
+def test_extract_ids_booking_number_is_pattern():
+    """'booking number is HN4P88' — chained label+word+is connector should be caught."""
+    text = "Your booking number is HN4P88. Please have it ready at check-in."
+    ids = extract_ids(text)
+    assert "HN4P88" in ids
+
+
+def test_extract_ids_booking_reference_is_pattern():
+    """'booking reference is K7Q4MN' — reference word between label and 'is' should be caught."""
+    text = "Your booking reference is K7Q4MN."
+    ids = extract_ids(text)
+    assert "K7Q4MN" in ids
+
+
+def test_extract_ids_booking_is_does_not_match_english_word():
+    """'booking is available' should NOT extract 'available' (no digit in value)."""
+    text = "Your booking is available for check-in."
+    ids = extract_ids(text)
+    assert "available" not in [i.lower() for i in ids]
+
+
+def test_extract_ids_booking_was_pattern():
+    """'booking was K7Q4MN' — 'was' connector should also be caught."""
+    text = "Your previous booking was K7Q4MN."
+    ids = extract_ids(text)
+    assert "K7Q4MN" in ids
+
+
 def test_extract_customer_name_basic():
     """extract_customer_name should return the labelled passenger name."""
     text = "Passenger: Alice Johnson. Seat 14A. Flight BA205."
@@ -494,6 +522,26 @@ def test_extract_customer_name_no_label_returns_empty():
     text = "Alice Johnson is flying today on flight BA205."
     name = extract_customer_name(text)
     assert name == ""
+
+
+def test_extract_customer_name_name_or_phrase_false_positive():
+    """'name or reservation' / 'name or number' must NOT be extracted as a name.
+
+    Regression: with re.IGNORECASE on the label pattern, 'name or reservation'
+    matched the label 'name' + space separator + captured 'or reservation...',
+    and for Gemini-Auto-app responses containing phrases like "I don't have your
+    name or reservation details on file" the profile ended up with name='name or'.
+    """
+    bad_texts = [
+        "I don't have your name or reservation details on file.",
+        "Just tell me the contact's name or number and what you would like to say.",
+        "I don't have access to your full name or email address for security reasons.",
+        "I need the recipient's name or number.",
+        "Please provide your name or booking reference to continue.",
+    ]
+    for text in bad_texts:
+        name = extract_customer_name(text)
+        assert name == "", f"False positive {name!r} extracted from: {text!r}"
 
 
 def test_golden_name_token_substitution():

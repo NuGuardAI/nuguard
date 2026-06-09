@@ -1446,6 +1446,8 @@ class BehaviorRunner:
             BehaviorRunResult with all findings, turn records, and coverage.
         """
         run_id = str(uuid.uuid4())
+        if self._llm is not None:
+            self._llm.reset_token_counts()
         _console.rule(
             f"[bold]BehaviorRunner[/bold]  run=[dim]{run_id[:8]}[/dim]  scenarios={len(scenarios)}  target={getattr(self._config, 'target', '')}",
             style="bold cyan",
@@ -1866,6 +1868,7 @@ class BehaviorRunner:
             run_id, len(scenario_results), len(all_findings), scan_outcome,
         )
 
+        _in_tok, _out_tok = self._llm.token_counts if self._llm is not None else (0, 0)
         return BehaviorRunResult(
             run_id=run_id,
             findings=all_findings,
@@ -1874,6 +1877,8 @@ class BehaviorRunner:
             scenarios_executed=len(scenario_results),
             scan_outcome=scan_outcome,
             coverage=coverage,
+            input_tokens_used=_in_tok,
+            output_tokens_used=_out_tok,
             config_notes=config_notes,
         )
 

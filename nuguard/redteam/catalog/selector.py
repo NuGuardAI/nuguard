@@ -82,7 +82,7 @@ def select_scenarios(
 
     node_by_id = {str(n.id): n for n in sbom.nodes}
 
-    # Build one BuilderContext per entry agent
+    # Build one BuilderContext per entry agent (base contexts)
     agent_contexts: list[BuilderContext] = []
     for aid in entry_ids:
         agent = node_by_id.get(aid)
@@ -96,6 +96,17 @@ def select_scenarios(
             target_tool=None,
             policy=policy,
         ))
+
+    # Index concrete SBOM surfaces for context enrichment
+    from nuguard.sbom.types import ComponentType
+    _tool_nodes = [n for n in sbom.nodes if n.component_type == ComponentType.TOOL]
+    _api_ep_nodes = [
+        n for n in sbom.nodes if n.component_type == ComponentType.API_ENDPOINT
+    ]
+    _mcp_tool_nodes = [
+        n for n in _tool_nodes
+        if n.metadata and (getattr(n.metadata, "mcp_server_url", None) or "mcp" in (n.name or "").lower())
+    ]
 
     # Walk catalog ─────────────────────────────────────────────────────────────
     generated: list = []
@@ -137,16 +148,50 @@ def select_scenarios(
             skipped.append((spec.id, spec.category.value, "factory_missing"))
             continue
 
-        # Run factory for each entry agent context
+        # Determine concrete surface nodes to bind for this spec
+        from .taxonomy import Capability as C
+        _needs_mcp = (
+            C.MCP_SERVER in spec.required_capabilities
+            and builder_key in ("mcp_toxic_flow", "mcp_tool_injection", "mcp_output_poisoning")
+        )
+        _needs_api = builder_key in ("mass_assignment", "auth_bypass", "idor")
+
+        # Build expanded context list with concrete node bindings
+        expanded_contexts: list[BuilderContext] = []
         for base_ctx in agent_contexts:
-            ctx = BuilderContext(
-                sbom=base_ctx.sbom,
-                spec=spec,
-                profile=base_ctx.profile,
-                target_agent=base_ctx.target_agent,
-                target_tool=base_ctx.target_tool,
-                policy=base_ctx.policy,
-            )
+            if _needs_mcp and _mcp_tool_nodes:
+                for tool_node in _mcp_tool_nodes[:2]:
+                    expanded_contexts.append(BuilderContext(
+                        sbom=base_ctx.sbom,
+                        spec=spec,
+                        profile=base_ctx.profile,
+                        target_agent=base_ctx.target_agent,
+                        target_tool=tool_node,
+                        policy=base_ctx.policy,
+                    ))
+            elif _needs_api and _api_ep_nodes:
+                for ep_node in _api_ep_nodes[:2]:
+                    expanded_contexts.append(BuilderContext(
+                        sbom=base_ctx.sbom,
+                        spec=spec,
+                        profile=base_ctx.profile,
+                        target_agent=base_ctx.target_agent,
+                        target_tool=base_ctx.target_tool,
+                        policy=base_ctx.policy,
+                        target_endpoint=ep_node,
+                    ))
+            else:
+                expanded_contexts.append(BuilderContext(
+                    sbom=base_ctx.sbom,
+                    spec=spec,
+                    profile=base_ctx.profile,
+                    target_agent=base_ctx.target_agent,
+                    target_tool=base_ctx.target_tool,
+                    policy=base_ctx.policy,
+                ))
+
+        # Run factory for each context
+        for ctx in expanded_contexts:
             try:
                 scenarios = factory(ctx)
             except NotImplementedError:

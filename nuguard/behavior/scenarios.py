@@ -1624,6 +1624,131 @@ def _dedup_cross_type(scenarios: list[BehaviorScenario]) -> list[BehaviorScenari
     return result
 
 
+def _endpoint_coverage_scenarios(
+    sbom: "AiSbomDocument",
+    intent: "IntentProfile",
+) -> list[BehaviorScenario]:
+    """Generate schema-aware coverage scenarios for API_ENDPOINT nodes.
+
+    For each endpoint that has a request or response schema, builds a 2-turn
+    scenario that:
+    - Turn 1: establishes context aligned with the endpoint's purpose
+    - Turn 2: exercises the endpoint's schema fields (context fields, payload
+      structure) to verify the agent handles them correctly
+
+    Only generates scenarios for interactive endpoints (accepts_user_input or
+    chat_payload_key set).  Purely machine-to-machine endpoints are skipped.
+    """
+    scenarios: list[BehaviorScenario] = []
+    seen_paths: set[str] = set()
+    use_case = ""
+    summary = getattr(sbom, "summary", None)
+    if summary:
+        use_case = getattr(summary, "use_case", "") or ""
+    if not use_case and intent.app_purpose:
+        use_case = intent.app_purpose
+
+    for node in getattr(sbom, "nodes", []):
+        ct = getattr(node, "component_type", None) or getattr(node, "type", None)
+        nt = getattr(ct, "value", str(ct) if ct else "").upper()
+        if nt != "API_ENDPOINT":
+            continue
+
+        meta = getattr(node, "metadata", None) if node else None
+        if meta is None:
+            continue
+
+        # Only cover interactive endpoints with schema information.
+        accepts_input = getattr(meta, "accepts_user_input", False)
+        chat_key = getattr(meta, "chat_payload_key", "") or ""
+        req_schema: dict = getattr(meta, "request_schema", None) or {}
+        req_body_schema: dict = getattr(meta, "request_body_schema", None) or {}
+        resp_schema: dict = getattr(meta, "response_schema", None) or {}
+        has_schema = bool(req_schema or req_body_schema or resp_schema)
+        if not (accepts_input or chat_key) and not has_schema:
+            continue
+
+        endpoint_path = getattr(meta, "path", "") or getattr(node, "name", "") or ""
+        if not endpoint_path:
+            continue
+        if endpoint_path in seen_paths:
+            continue
+        seen_paths.add(endpoint_path)
+
+        # Collect context field names from request schemas (non-chat fields).
+        context_fields: list[str] = []
+        for schema in (req_body_schema, req_schema):
+            if not schema:
+                continue
+            for model_fields in schema.values() if isinstance(schema, dict) else []:
+                if isinstance(model_fields, dict):
+                    for field_name in model_fields:
+                        if field_name != chat_key and field_name not in context_fields:
+                            context_fields.append(field_name)
+                break  # only use the first model's fields
+
+        node_name = getattr(node, "name", None) or endpoint_path
+        app_context = use_case[:80] if use_case else "the application"
+
+        # Build Turn 1: establish context
+        turn1 = (
+            f"Hello! I'm testing the {node_name} endpoint. "
+            f"I want to understand how it handles requests for {app_context}. "
+            f"Can you explain what this endpoint does and what information it uses?"
+        )
+
+        # Build Turn 2: probe schema-aware fields
+        if context_fields:
+            field_list = ", ".join(f"`{f}`" for f in context_fields[:5])
+            turn2 = (
+                f"The request includes context fields: {field_list}. "
+                f"How does this information affect your responses? "
+                f"What can you do with this context?"
+            )
+        elif resp_schema:
+            resp_field_names = []
+            for model_fields in resp_schema.values() if isinstance(resp_schema, dict) else []:
+                if isinstance(model_fields, dict):
+                    resp_field_names = list(model_fields.keys())[:5]
+                break
+            if resp_field_names:
+                turn2 = (
+                    f"I expect responses to include fields like {', '.join(resp_field_names[:4])}. "
+                    f"Can you provide a response that covers these aspects?"
+                )
+            else:
+                turn2 = (
+                    "What structured information can you provide about the current state "
+                    "or result of this request?"
+                )
+        else:
+            turn2 = (
+                "What are the valid ways to interact with this endpoint, "
+                "and what responses can I expect?"
+            )
+
+        scenario_name = f"endpoint_coverage_{endpoint_path.strip('/').replace('/', '_')}"
+        scenarios.append(
+            BehaviorScenario(
+                scenario_type=BehaviorScenarioType.COMPONENT_COVERAGE,
+                name=scenario_name,
+                messages=[turn1, turn2],
+                target_endpoint=endpoint_path,
+                target_component=node_name,
+                target_component_type="API_ENDPOINT",
+                goal=(
+                    f"Verify that {node_name} responds correctly given its request schema "
+                    f"fields and returns well-formed output."
+                ),
+                component_description=(
+                    getattr(meta, "description", "") or f"API endpoint at {endpoint_path}"
+                ),
+            )
+        )
+
+    return scenarios
+
+
 async def build_scenarios(
     config: Any,
     intent: "IntentProfile",
@@ -1666,6 +1791,7 @@ async def build_scenarios(
             "intent_happy_path",
             "agent_coverage",
             "component_coverage",
+            "endpoint_coverage",
             "invariant_probe",
             "data_discovery_probe",
         ]
@@ -1704,6 +1830,12 @@ async def build_scenarios(
         for key, result in zip(cov_keys, cov_results):
             all_scenarios.extend(result)
             _log.debug("build_scenarios: %d %s scenarios", len(result), key)
+
+    # --- Layer 2c: API endpoint schema coverage ---
+    if "endpoint_coverage" in workflows and sbom is not None:
+        ep_cov = _endpoint_coverage_scenarios(sbom, intent)
+        all_scenarios.extend(ep_cov)
+        _log.debug("build_scenarios: %d endpoint_coverage scenarios", len(ep_cov))
 
     # --- Layer 3: Invariant probes (HITL + data classification) ---
     if "invariant_probe" in workflows:

@@ -560,6 +560,15 @@ class RedteamOrchestrator:
         self.scan_outcome: str = "no_findings"
         # Run-level configuration notices (e.g. automatic URL resolution).
         self.config_notes: list[str] = []
+        # Token usage accumulated across all LLM calls during the run.
+        self.input_tokens_used: int = 0
+        self.output_tokens_used: int = 0
+        # Effective policy (may be enriched from compiled controls) — set during run().
+        self._effective_policy: CognitivePolicy | None = None
+        # Escalation enrichment count — set when CI escalation LLM enrichment runs.
+        self.enriched_escalation_count: int = 0
+        # Coverage tracker — populated after generate() during run().
+        self._coverage_tracker: object | None = None
 
     def _trigger_enabled(self, name: str) -> bool:
         """Return whether a finding trigger is enabled (defaults preserve legacy behavior)."""
@@ -639,6 +648,10 @@ class RedteamOrchestrator:
             self._target_url,
             self._profile,
         )
+        if self._redteam_llm is not None:
+            self._redteam_llm.reset_token_counts()
+        if self._eval_llm is not None:
+            self._eval_llm.reset_token_counts()
 
         # 0. Endpoint auto-discovery — when chat_path was not explicitly configured,
         #    probe SBOM POST endpoints live to find one that accepts chat requests.
@@ -815,11 +828,13 @@ class RedteamOrchestrator:
             )
         elif self._policy_controls and effective_policy is None:
             effective_policy = _policy_from_controls(self._policy_controls)
+        self._effective_policy = effective_policy
 
         # Guided conversations require an LLM — only generate when one is configured.
         _with_guided = self._guided_conversations and bool(self._redteam_llm)
         generator = ScenarioGenerator(self._sbom, effective_policy)
         all_scenarios = generator.generate(with_guided=_with_guided)
+        self._coverage_tracker = getattr(generator, "coverage_tracker", None)
 
         # 1b. Catalog scenarios — merged in when use_catalog=True.
         # The catalog is capability-aware and handles its own profile filtering,
@@ -886,10 +901,10 @@ class RedteamOrchestrator:
                 _cache_dir,
                 llm_model=getattr(self._redteam_llm, "model", None),
             )
-            _cache_key = _cache.cache_key(self._sbom, self._policy)
+            _cache_key = _cache.cache_key(self._sbom, self._effective_policy)
             _cache_existed = _cache.load(_cache_key) is not None
             _llm_payloads = await LLMPromptGenerator(
-                self._redteam_llm, self._sbom, self._policy,
+                self._redteam_llm, self._sbom, self._effective_policy,
                 discovered_profile=_pre_scan_profile,
             ).enrich_all(scenarios, _cache, _cache_key)
             self.prompt_cache_path = _cache.path_for(_cache_key)
@@ -1016,14 +1031,29 @@ class RedteamOrchestrator:
                 )
                 _synth_ids: list[str] = []
                 _synth_name = ""
+                _ID_KEY_CANDIDATES = (
+                    "account_id", "id", "booking_ref", "booking_id",
+                    "pnr", "confirmation_number", "confirmation_code",
+                    "reference", "reservation_id", "order_id", "customer_id",
+                )
+                _NAME_KEY_CANDIDATES = (
+                    "name", "customer_name", "passenger_name",
+                    "user_name", "full_name", "first_name",
+                )
                 for _gd_entry in self._golden_data.values():
                     if isinstance(_gd_entry, dict):
-                        _aid = _gd_entry.get("account_id") or _gd_entry.get("id") or ""
+                        _aid = next(
+                            (str(_gd_entry[k]) for k in _ID_KEY_CANDIDATES if _gd_entry.get(k)),
+                            "",
+                        )
                         if _aid and _aid not in _synth_ids:
-                            _synth_ids.append(str(_aid))
-                        _nm = _gd_entry.get("name") or _gd_entry.get("customer_name") or ""
+                            _synth_ids.append(_aid)
+                        _nm = next(
+                            (str(_gd_entry[k]) for k in _NAME_KEY_CANDIDATES if _gd_entry.get(k)),
+                            "",
+                        )
                         if _nm and not _synth_name:
-                            _synth_name = str(_nm)
+                            _synth_name = _nm
                 if _synth_ids or _synth_name:
                     _effective_pre_scan = _DP(
                         customer_name=_synth_name,
@@ -1038,7 +1068,7 @@ class RedteamOrchestrator:
             _warmup_app_domain, _warmup_allowed_topics = self._build_happy_path_context()
             executor = AttackExecutor(
                 client=client,
-                policy=self._policy,
+                policy=self._effective_policy,
                 canary=canary_scanner,
                 logger=logger,
                 eval_llm=self._eval_llm,
@@ -1109,6 +1139,30 @@ class RedteamOrchestrator:
                         "0 findings — escalating with %d lower-scored scenarios",
                         len(escalation_scenarios),
                     )
+                    # Apply LLM payload enrichment to escalation scenarios (same pipeline
+                    # as the initial pass) so they are as realistic as the first batch.
+                    if self._redteam_llm:
+                        from nuguard.redteam.llm_engine.prompt_cache import PromptCache
+                        from nuguard.redteam.llm_engine.prompt_generator import (
+                            LLMPromptGenerator,
+                            _inject_llm_payloads,
+                        )
+                        _esc_cache_dir = self._prompt_cache_dir or Path(".")
+                        _esc_cache = PromptCache(
+                            _esc_cache_dir,
+                            llm_model=getattr(self._redteam_llm, "model", None),
+                        )
+                        _esc_key = _esc_cache.cache_key(self._sbom, self._effective_policy)
+                        _esc_payloads = await LLMPromptGenerator(
+                            self._redteam_llm, self._sbom, self._effective_policy,
+                            discovered_profile=_effective_pre_scan,
+                        ).enrich_all(escalation_scenarios, _esc_cache, _esc_key)
+                        self.enriched_escalation_count = len(_esc_payloads)
+                        escalation_scenarios = _inject_llm_payloads(escalation_scenarios, _esc_payloads)
+                        _log.info(
+                            "Escalation LLM enrichment: %d/%d scenarios enriched",
+                            self.enriched_escalation_count, len(escalation_scenarios),
+                        )
                     self.scenarios_run += len(escalation_scenarios)
                     findings, escalation_executed, escalation_records = await self._run_scenarios(
                         escalation_scenarios, executor, guided_executor
@@ -1118,6 +1172,22 @@ class RedteamOrchestrator:
 
         findings = _dedup_findings(findings)
         _log.info("Scan complete: %d findings (after dedup)", len(findings))
+
+        # Update coverage tracker with finding data from executed scenarios.
+        # record_executed() is called per-node inside _run_one() at execution time.
+        # record_finding() uses sbom_path (raw node IDs) — affected_component is a
+        # display string and will not match the tracker's UUID-keyed entries.
+        if self._coverage_tracker is not None:
+            for f in findings:
+                for _nid in (f.sbom_path or []):
+                    self._coverage_tracker.record_finding(str(_nid))  # type: ignore[union-attr]
+
+        # Accumulate token usage from both LLM clients.
+        for _llm in (self._redteam_llm, self._eval_llm):
+            if _llm is not None:
+                _in, _out = _llm.token_counts
+                self.input_tokens_used += _in
+                self.output_tokens_used += _out
 
         # Compute scan-level outcome from scenario records
         self.scan_outcome = _compute_scan_outcome(
@@ -1132,7 +1202,11 @@ class RedteamOrchestrator:
             from nuguard.redteam.llm_engine.summary_generator import LLMSummaryGenerator
             frameworks: list[str] = []
             if self._sbom.summary:
-                frameworks = list(getattr(self._sbom.summary, "frameworks_detected", None) or [])
+                frameworks = list(
+                    getattr(self._sbom.summary, "frameworks", None)
+                    or getattr(self._sbom.summary, "frameworks_detected", None)
+                    or []
+                )
             node_by_id: dict[str, object] = {
                 str(node.id): node for node in self._sbom.nodes if node.id
             }
@@ -1238,7 +1312,7 @@ class RedteamOrchestrator:
                         target_url = self._target_url + self._chat_path
                         for step_idx, sr in enumerate(step_results, 1):
                             request_text = (
-                                sr.step.payload
+                                sr.resolved_payload
                                 if not sr.step.target_path
                                 else f"{sr.step.http_method or 'POST'} {sr.step.target_path}"
                             )
@@ -1287,6 +1361,10 @@ class RedteamOrchestrator:
                 try:
                     result = await asyncio.wait_for(_execute_body(), timeout=_timeout)
                     consecutive_unavailable = 0
+                    # Record executed nodes in coverage tracker.
+                    if self._coverage_tracker is not None:
+                        for _nid in scenario.target_node_ids:
+                            self._coverage_tracker.record_executed(str(_nid))  # type: ignore[union-attr]
                     # Record a miss so subsequent similar scenarios can be suppressed.
                     if not result[0]:  # no findings produced
                         miss_tracker.record_miss(scenario)

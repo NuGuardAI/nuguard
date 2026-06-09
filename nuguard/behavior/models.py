@@ -268,6 +268,8 @@ class BehaviorRunResult(BaseModel):
     scenarios_executed: int = 0
     scan_outcome: str = "no_findings"
     coverage: list[BehaviorCoverage] = Field(default_factory=list)
+    input_tokens_used: int = 0
+    output_tokens_used: int = 0
     config_notes: list[str] = Field(
         default_factory=list,
         description=(

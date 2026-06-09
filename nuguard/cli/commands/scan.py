@@ -152,6 +152,15 @@ def scan(
     else:
         typer.echo(f"warning: 'sbom' step skipped and no existing sbom at {sbom_path}", err=True)
 
+    # Parse SBOM document (needed for policy and redteam steps even when analyze is skipped)
+    sbom_doc = None
+    if sbom_dict:
+        try:
+            from nuguard.sbom.models import AiSbomDocument  # noqa: PLC0415
+            sbom_doc = AiSbomDocument.model_validate(sbom_dict)
+        except Exception as _sbe:
+            _log.warning("Could not parse SBOM document: %s", _sbe)
+
     # ------------------------------------------------------------------
     # Step 2: Static analysis
     # ------------------------------------------------------------------
@@ -177,7 +186,8 @@ def scan(
                     }],
                 }
 
-            sbom_doc = AiSbomDocument.model_validate(sbom_dict)
+            if sbom_doc is None:
+                sbom_doc = AiSbomDocument.model_validate(sbom_dict)
 
             atlas_config: dict[str, Any] = {}
             if llm:
@@ -216,21 +226,80 @@ def scan(
     # ------------------------------------------------------------------
     if "policy" in enabled_steps and policy:
         typer.echo("[3/4] Checking Cognitive Policy …")
-        typer.echo("    ⚠ policy check not yet implemented — skipped", err=True)
+        _policy_path = Path(policy)
+        if not _policy_path.exists():
+            typer.echo(
+                f"    ⚠ policy file not found: {policy} — policy step skipped",
+                err=True,
+            )
+        elif sbom_doc is None:
+            typer.echo("    ⚠ SBOM not available — policy step skipped", err=True)
+        else:
+            try:
+                from nuguard.policy.checker import check_policy_against_sbom  # noqa: PLC0415
+                from nuguard.policy.parser import parse_policy  # noqa: PLC0415
+                _policy_text = _policy_path.read_text(encoding="utf-8")
+                _cognitive_policy = parse_policy(_policy_text)
+                policy_result = check_policy_against_sbom(_cognitive_policy, sbom_doc)
+                _gap_count = len(policy_result.gaps)
+                typer.echo(f"    ✓ Policy check complete: {_gap_count} gap(s)")
+                if _gap_count:
+                    typer.echo(f"    ⚠ {_gap_count} policy gap(s) found", err=True)
+            except Exception as _pe:
+                typer.echo(f"    ⚠ Policy check failed: {_pe}", err=True)
+                _log.exception("policy check failed")
     else:
         typer.echo("[3/4] Policy step skipped")
 
     # ------------------------------------------------------------------
     # Step 4: Redteam (optional)
     # ------------------------------------------------------------------
-    if "redteam" in enabled_steps and target:
-        typer.echo("[4/4] Running red-team …")
+    _redteam_target: str | None = target or None
+    # Fall back to SBOM-discovered deployment URL when --target not set
+    if not _redteam_target and sbom_doc is not None and sbom_doc.summary:
+        _rt_url = getattr(sbom_doc.summary, "app_url", None) or getattr(
+            sbom_doc.summary, "deployment_url", None
+        )
+        if isinstance(_rt_url, str):
+            _redteam_target = _rt_url
+    if "redteam" in enabled_steps and _redteam_target:
+        typer.echo(f"[4/4] Running red-team against {_redteam_target} …")
+        if sbom_doc is None:
+            typer.echo("    ⚠ SBOM not available — redteam step skipped", err=True)
+        else:
+            try:
+                import asyncio as _asyncio  # noqa: PLC0415
+
+                from nuguard.cli.commands.redteam import _run_redteam  # noqa: PLC0415
+                (
+                    _rt_findings, _, _rt_records, _rt_outcome, _rt_notes, _, _, _, _
+                ) = _asyncio.run(
+                    _run_redteam(
+                        sbom_doc=sbom_doc,
+                        sbom_path=sbom_path if sbom_path else None,
+                        policy_path=Path(policy) if policy else None,
+                        target_url=_redteam_target,
+                        canary_path=None,
+                        profile="ci",
+                        min_impact_score=3.0,
+                    )
+                )
+                for _note in _rt_notes:
+                    typer.echo(f"    ⚠ {_note}", err=True)
+                typer.echo(
+                    f"    ✓ Red-team complete: {len(_rt_findings)} finding(s) (outcome: {_rt_outcome})"
+                )
+                all_findings.extend(_rt_findings)
+            except Exception as _rte:
+                typer.echo(f"    ⚠ Red-team step failed: {_rte}", err=True)
+                _log.exception("redteam step failed")
+    elif "redteam" in enabled_steps and not _redteam_target:
         typer.echo(
-            "    ⚠ redteam step not yet wired into scan — use 'nuguard redteam' directly",
+            "[4/4] Redteam step skipped — no target URL (use --target or ensure SBOM has deployment URL)",
             err=True,
         )
     else:
-        typer.echo("[4/4] Redteam step skipped (--target not set)")
+        typer.echo("[4/4] Redteam step skipped")
 
     # ------------------------------------------------------------------
     # Write outputs

@@ -10,10 +10,20 @@ _ID_PATTERNS: list[re.Pattern[str]] = [
         r'[\s_-]?(?:id|no|number|#)[\s:=]+([A-Z0-9][A-Z0-9\-]{2,19})',
         re.IGNORECASE,
     ),
-    # Labelled booking/confirmation/PNR codes: "confirmation: K7Q4MN", "PNR HN4P88", "PNR is HN4P88"
+    # Labelled booking/confirmation/PNR codes: "confirmation: K7Q4MN", "PNR HN4P88", "PNR code: K7Q4MN"
+    # "is"/"was" connector is handled by the dedicated pattern below (with digit requirement).
     re.compile(
         r'(?:confirmation|booking|reservation|pnr|record\s+locator)\s*'
-        r'(?:number|code|ref(?:erence)?|no|is|#)?\s*[:\s#]+([A-Z0-9]{4,10})\b',
+        r'(?:number|code|ref(?:erence)?|no|#)?\s*[:\s#]+([A-Z0-9]{4,10})\b',
+        re.IGNORECASE,
+    ),
+    # "booking number is HN4P88" / "booking reference is K7Q4MN" — "is"/"was" connector pattern.
+    # Requires at least one digit in the captured value to avoid matching English words like
+    # "confirmed", "available", etc.
+    re.compile(
+        r'(?:confirmation|booking|reservation|pnr|record\s+locator)'
+        r'(?:\s+(?:number|code|ref(?:erence)?|no|#))?\s*'
+        r'(?:is|was)\s+([A-Z0-9]*\d[A-Z0-9]*)\b',
         re.IGNORECASE,
     ),
     # Prefixed alphanumeric IDs: ACCT-0001, TEN-12345
@@ -37,12 +47,21 @@ _SPLIT_RE = re.compile(r'^(.*?)(\d+)$')
 
 # Patterns for extracting a customer/passenger/patient name.
 # Ordered from highest to lowest precision — first match wins.
+#
+# IMPORTANT: the label/trigger portion uses inline (?i:...) so it matches
+# case-insensitively, but the *captured* name group ([A-Z][a-z]+...) is kept
+# case-sensitive.  This prevents common lowercase words such as "or", "email",
+# "number", "reservation" from being accepted as the start of a name — which
+# would otherwise happen when an agent says "I don't have your name or email"
+# and the IGNORECASE flag makes `or` satisfy `[A-Z][a-z]+`.
 _NAME_PATTERNS: list[re.Pattern[str]] = [
-    # Label-prefix: "name: Alice Johnson", "passenger: Alice Johnson"
+    # Label-prefix with colon OR clear multi-space/newline separator:
+    # "Name: Alice Johnson", "Passenger: Alice Johnson"
+    # Single-space separators without a colon are intentionally excluded to
+    # avoid false-positive matches on "your name or …" phrases.
     re.compile(
-        r'(?:name|customer|passenger|patient|account\s+holder)\s*[:\s]+'
+        r'(?i:(?:name|customer|passenger|patient|account\s+holder)\s*[:\-]\s*)'
         r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)',
-        re.IGNORECASE,
     ),
     # Greeting: "Hello Alice Johnson," / "Hi Alice Johnson" / "Dear Alice Johnson,"
     re.compile(
@@ -51,15 +70,13 @@ _NAME_PATTERNS: list[re.Pattern[str]] = [
     ),
     # Logged-in-as / registered-to: "logged in as Alice Johnson"
     re.compile(
-        r'(?:logged\s+in\s+as|registered\s+to|authenticated\s+as)\s+'
+        r'(?i:(?:logged\s+in\s+as|registered\s+to|authenticated\s+as)\s+)'
         r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)',
-        re.IGNORECASE,
     ),
     # Contextual "for/to": "booking for Alice Johnson", "reserved for Alice Johnson"
     re.compile(
-        r'(?:booking|reservation|flight|ticket|account)\s+(?:for|to)\s+'
+        r'(?i:(?:booking|reservation|flight|ticket|account)\s+(?:for|to)\s+)'
         r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)',
-        re.IGNORECASE,
     ),
     # Possessive: "Alice Johnson's booking", "Alice Johnson's account"
     re.compile(
@@ -67,6 +84,15 @@ _NAME_PATTERNS: list[re.Pattern[str]] = [
         r"'s\s+(?:booking|reservation|account|flight|ticket)",
     ),
 ]
+
+# Words that should never be the first word of a valid name capture.
+# Used as a post-match sanity check to catch residual false positives.
+_NAME_LEADING_STOP_WORDS: frozenset[str] = frozenset({
+    "or", "and", "the", "a", "an", "no", "not", "my", "your", "their",
+    "our", "its", "email", "address", "number", "details", "information",
+    "profile", "data", "reservation", "booking", "file", "record",
+    "please", "provide", "contact", "security", "reasons", "access",
+})
 
 
 def extract_customer_name(text: str) -> str:
@@ -78,7 +104,11 @@ def extract_customer_name(text: str) -> str:
     for pattern in _NAME_PATTERNS:
         m = pattern.search(text)
         if m:
-            return m.group(1).strip()
+            candidate = m.group(1).strip()
+            first_word = candidate.split()[0].lower()
+            if first_word in _NAME_LEADING_STOP_WORDS:
+                continue
+            return candidate
     return ""
 
 

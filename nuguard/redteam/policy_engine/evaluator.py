@@ -10,6 +10,9 @@ from dataclasses import dataclass
 
 from nuguard.common.logging import get_logger
 from nuguard.models.policy import CognitivePolicy
+from nuguard.redteam.policy_engine.detectors.data_classification import (
+    detect_data_classification_violations,
+)
 from nuguard.redteam.policy_engine.detectors.hitl_bypass import (
     detect_hitl_bypass_violations,
 )
@@ -46,10 +49,11 @@ class PolicyEvaluator:
             tool_calls=[{"name": "bank_transfer", ...}],
         )
 
-    The evaluator runs three detectors:
+    The evaluator runs four detectors:
       1. Topic boundary (restricted / allowed topics)
       2. Restricted action (tool calls and response text)
       3. HITL bypass (missing human approval for trigger conditions)
+      4. Data classification (sensitive label leakage in response / tool output)
     """
 
     def __init__(self, policy: CognitivePolicy) -> None:
@@ -97,6 +101,11 @@ class PolicyEvaluator:
         )
         raw.extend(
             detect_hitl_bypass_violations(
+                self._policy, prompt, response, tool_calls
+            )
+        )
+        raw.extend(
+            detect_data_classification_violations(
                 self._policy, prompt, response, tool_calls
             )
         )
