@@ -294,7 +294,7 @@ Run static risk analysis on an AI-SBOM.
 
 ### `nuguard_scan`
 
-Run the full unified security scan pipeline: SBOM → analyze → policy → red-team.
+Run the unified security scan pipeline. It defaults to SBOM generation plus static analysis; include `policy,redteam` in `steps` for policy and red-team validation.
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
@@ -302,8 +302,8 @@ Run the full unified security scan pipeline: SBOM → analyze → policy → red
 | `output_dir` | string | `"nuguard-reports"` | Directory for output files |
 | `fail_on` | string | `"high"` | Severity threshold for non-zero exit |
 | `steps` | string | `"sbom,analyze"` | Comma-separated steps: `sbom,analyze,policy,redteam` |
-| `policy` | string | — | Path to Cognitive Policy Markdown |
-| `target` | string | — | Live app URL (required for `redteam` step) |
+| `policy` | string | — | Path to Cognitive Policy Markdown; required for the `policy` step and used by `redteam` when supplied |
+| `target` | string | — | Live app URL for the `redteam` step; the SBOM deployment URL is used as a fallback when available |
 | `llm` | bool | `false` | LLM enrichment |
 | `config_path` | string | — | Path to `nuguard.yaml` |
 

@@ -37,7 +37,7 @@ Generate an AI-SBOM for the current project and summarise the detected component
 
 5. **Flag zero-node results** — if no nodes found, explain why (wrong path, unsupported framework) and stop.
 
-6. **Next step hint** — suggest `/nuguard-analyze` or `/nuguard-scan` for the full pipeline.
+6. **Next step hint** — suggest `/nuguard-analyze` for static findings or `/nuguard-scan --full` for the unified policy/red-team validation path.
 
 ## Examples
 

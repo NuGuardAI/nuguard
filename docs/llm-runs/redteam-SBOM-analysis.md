@@ -248,15 +248,15 @@ Fix:
 - Blend base impact with SBOM risk factors: `injection_risk_score`, sensitive data reachability, high privilege, no auth, unguarded HITL, low tests, high LOC, and security findings.
 - Add LOC coverage reporting: total scanned LOC, component LOC exercised by redteam, high-risk LOC tested, and high-risk LOC skipped.
 
-### P2: Unified `scan` workflow does not run policy or redteam
+### Resolved: Unified `scan` workflow policy/redteam wiring
 
-The `scan` command still skips policy checks and redteam execution even when enabled (`nuguard/cli/commands/scan.py:214-233`).
+The `scan` command now runs policy checks when `policy` is included in `--steps`
+and `--policy` is supplied, and runs red-team validation when `redteam` is
+included in `--steps` and a target URL is available via `--target` or the SBOM
+deployment metadata.
 
-Risk: users running the apparent end-to-end pipeline can believe safety/security redteam coverage has been performed when it has not.
+Remaining follow-up:
 
-Fix:
-
-- Wire `scan --steps redteam` into the same orchestrator used by `nuguard redteam`.
 - Emit a hard warning or non-zero exit when requested policy/redteam steps are skipped.
 - Include the redteam coverage matrix in the scan output bundle.
 

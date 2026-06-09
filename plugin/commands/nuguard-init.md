@@ -60,7 +60,7 @@ Tell the user which files were **created** and which were **skipped** (already e
 
 Show the immediate next steps:
 - Run `/nuguard-sbom` to generate the AI bill of materials
-- Run `/nuguard-scan` to start the full analysis pipeline
+- Run `/nuguard-scan` to start the unified scan; pass `--full` or `--steps sbom,analyze,policy,redteam` to include policy and red-team validation
 
 ### 5. If files were skipped
 

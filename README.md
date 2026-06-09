@@ -122,7 +122,18 @@ nuguard scan \
   --output-dir nuguard-reports
 ```
 
-This is the easiest way to run SBOM generation plus static analysis in one pass.
+By default this runs SBOM generation plus static analysis in one pass. To include
+policy and red-team validations, opt in to those steps and provide the required
+inputs:
+
+```bash
+nuguard scan \
+  --source . \
+  --steps sbom,analyze,policy,redteam \
+  --policy cognitive_policy.md \
+  --target http://localhost:3000 \
+  --output-dir nuguard-reports
+```
 
 ## Configuration
 

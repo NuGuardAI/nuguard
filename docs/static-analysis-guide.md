@@ -82,6 +82,13 @@ nuguard scan --source . --output-dir nuguard-reports
 ```
 
 This is a convenient entry point when you do not already have `app.sbom.json`.
+The default scan steps are `sbom,analyze`. To include policy and red-team
+validation from the unified command, add those steps explicitly:
+
+```bash
+nuguard scan --source . --steps sbom,analyze,policy,redteam \
+  --policy cognitive_policy.md --target http://localhost:3000
+```
 
 ## Built-In vs Optional Detectors
 
@@ -389,6 +396,15 @@ Use:
 
 ```bash
 nuguard scan --source . --output-dir nuguard-reports
+```
+
+That command runs the default static path (`sbom,analyze`). For policy and
+red-team validation as well:
+
+```bash
+nuguard scan --source . --steps sbom,analyze,policy,redteam \
+  --policy cognitive_policy.md --target http://localhost:3000 \
+  --output-dir nuguard-reports
 ```
 
 ## Related Docs

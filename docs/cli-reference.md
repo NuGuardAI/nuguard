@@ -8,7 +8,7 @@ NuGuard ships a Typer-based CLI covering the full AI application security pipeli
 nuguard init        Create a nuguard.yaml config with auto-detected defaults
 nuguard sbom        SBOM generation, validation, and management
 nuguard analyze     Static risk analysis from an AI-SBOM
-nuguard scan        Unified pipeline: SBOM → analyze → policy → redteam
+nuguard scan        Unified pipeline: SBOM → analyze, with optional policy/redteam
 nuguard policy      Cognitive policy linting and compliance assessment
 nuguard behavior    Intent-aware behavioral analysis against a live AI application
 nuguard redteam     Dynamic adversarial testing against a live AI application
@@ -166,12 +166,12 @@ nuguard analyze --sbom app.sbom.json --no-grype --no-trivy --min-severity high
 
 ## `nuguard scan`
 
-Unified pipeline that chains SBOM generation, static analysis, policy check, and optionally red-team into a single command.
+Unified pipeline that chains SBOM generation, static analysis, and optional policy and red-team validation into a single command. The default step list is `sbom,analyze`; add `policy` and `redteam` explicitly when you want those validations to run.
 
 ```bash
 nuguard scan --source .
 nuguard scan --source . --steps sbom,analyze
-nuguard scan --source . --policy cognitive_policy.md --target http://localhost:3000
+nuguard scan --source . --steps sbom,analyze,policy,redteam --policy cognitive_policy.md --target http://localhost:3000
 nuguard scan --source . --llm --output-dir reports/
 ```
 
@@ -180,8 +180,8 @@ nuguard scan --source . --llm --output-dir reports/
 | `--source`, `-s` | `.` | Application source directory |
 | `--output-dir`, `-o` | `nuguard-reports` | Directory for all output artifacts |
 | `--steps` | `sbom,analyze` | Comma-separated subset: `sbom,analyze,policy,redteam` |
-| `--policy` | — | Cognitive Policy Markdown path (required for `policy` / `redteam` steps) |
-| `--target` | — | Live app URL for the `redteam` step |
+| `--policy` | — | Cognitive Policy Markdown path (required for the `policy` step; used by `redteam` when supplied) |
+| `--target` | — | Live app URL for the `redteam` step; if omitted, NuGuard falls back to an SBOM deployment URL when available |
 | `--container-image` | — | Container image ref for Trivy image scan (e.g. `myapp:latest`) |
 | `--fail-on` | `high` | Exit code 1 when any finding meets this severity |
 | `--llm` | off | LLM enrichment in the ATLAS annotation pass |
@@ -191,6 +191,8 @@ nuguard scan --source . --llm --output-dir reports/
 | `--no-checkov` | — | Skip Checkov scan |
 | `--no-trivy` | — | Skip Trivy scan |
 | `--no-semgrep` | — | Skip Semgrep scan |
+
+Supplying `--policy` or `--target` does not change the step list by itself. Use `--steps sbom,analyze,policy,redteam` for the full validation path.
 
 ---
 

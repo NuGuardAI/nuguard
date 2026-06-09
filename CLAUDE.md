@@ -150,3 +150,9 @@ nuguard/redteam/
 - Type hint all functions and methods
 - Use `logging` for debug/info/warning messages; avoid print statements
 - For LLM calls, handle rate limits and errors gracefully; provide fallback behavior if the LLM is unavailable
+- Ensure consistent coding style across the codebase; run `uv run ruff check nuguard/` before committing
+- Maximum code reuse and modularity; avoid monolithic functions or classes
+- Write comprehensive tests for all new functionality; aim for high coverage in critical areas like scenario generation and execution
+- Document all public functions and classes with docstrings; include examples where helpful
+- Use `nuguard.yaml` for any configurable parameters; avoid hardcoding values in the code
+- When in doubt, prioritize clarity and maintainability over cleverness or brevity
