@@ -10,10 +10,20 @@ _ID_PATTERNS: list[re.Pattern[str]] = [
         r'[\s_-]?(?:id|no|number|#)[\s:=]+([A-Z0-9][A-Z0-9\-]{2,19})',
         re.IGNORECASE,
     ),
-    # Labelled booking/confirmation/PNR codes: "confirmation: K7Q4MN", "PNR HN4P88", "PNR is HN4P88"
+    # Labelled booking/confirmation/PNR codes: "confirmation: K7Q4MN", "PNR HN4P88", "PNR code: K7Q4MN"
+    # "is"/"was" connector is handled by the dedicated pattern below (with digit requirement).
     re.compile(
         r'(?:confirmation|booking|reservation|pnr|record\s+locator)\s*'
-        r'(?:number|code|ref(?:erence)?|no|is|#)?\s*[:\s#]+([A-Z0-9]{4,10})\b',
+        r'(?:number|code|ref(?:erence)?|no|#)?\s*[:\s#]+([A-Z0-9]{4,10})\b',
+        re.IGNORECASE,
+    ),
+    # "booking number is HN4P88" / "booking reference is K7Q4MN" — "is"/"was" connector pattern.
+    # Requires at least one digit in the captured value to avoid matching English words like
+    # "confirmed", "available", etc.
+    re.compile(
+        r'(?:confirmation|booking|reservation|pnr|record\s+locator)'
+        r'(?:\s+(?:number|code|ref(?:erence)?|no|#))?\s*'
+        r'(?:is|was)\s+([A-Z0-9]*\d[A-Z0-9]*)\b',
         re.IGNORECASE,
     ),
     # Prefixed alphanumeric IDs: ACCT-0001, TEN-12345

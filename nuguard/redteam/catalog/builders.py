@@ -726,6 +726,167 @@ def _build_code_gen_probe(ctx: BuilderContext) -> list:
     return _stamp([results], ctx)
 
 
+# ── RAG and vector store (R-series) ──────────────────────────────────────────
+
+def _build_rag_doc_poisoning(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.rag_attacks import build_rag_document_poisoning
+    agent = ctx.target_agent
+    return _stamp([build_rag_document_poisoning(str(agent.id), agent.name or "assistant")], ctx)
+
+
+def _build_vector_acl_bypass(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.rag_attacks import build_vector_acl_bypass
+    agent = ctx.target_agent
+    return _stamp([build_vector_acl_bypass(str(agent.id), agent.name or "assistant")], ctx)
+
+
+def _build_embedding_hijack(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.rag_attacks import build_embedding_hijack
+    agent = ctx.target_agent
+    return _stamp([build_embedding_hijack(str(agent.id), agent.name or "assistant")], ctx)
+
+
+def _build_chunk_boundary_smuggling(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.rag_attacks import build_chunk_boundary_injection
+    agent = ctx.target_agent
+    return _stamp([build_chunk_boundary_injection(str(agent.id), agent.name or "assistant")], ctx)
+
+
+def _build_stale_retrieval(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.rag_attacks import build_stale_document_retrieval
+    agent = ctx.target_agent
+    return _stamp([build_stale_document_retrieval(str(agent.id), agent.name or "assistant")], ctx)
+
+
+def _build_cross_namespace_bleed(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.rag_attacks import build_cross_namespace_bleed
+    agent = ctx.target_agent
+    return _stamp([build_cross_namespace_bleed(str(agent.id), agent.name or "assistant")], ctx)
+
+
+def _build_citation_laundering(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.rag_attacks import build_citation_laundering
+    agent = ctx.target_agent
+    return _stamp([build_citation_laundering(str(agent.id), agent.name or "assistant")], ctx)
+
+
+def _build_nn_enumeration(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.rag_attacks import build_nearest_neighbor_enumeration
+    agent = ctx.target_agent
+    return _stamp([build_nearest_neighbor_enumeration(str(agent.id), agent.name or "assistant")], ctx)
+
+
+# ── Improper output handling (O-series) ───────────────────────────────────────
+
+def _build_output_xss(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.output_handling import build_output_xss
+    agent = ctx.target_agent
+    return _stamp([build_output_xss(str(agent.id), agent.name or "assistant")], ctx)
+
+
+def _build_output_tool_injection(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.output_handling import build_output_tool_arg_injection
+    agent = ctx.target_agent
+    tool_name = (ctx.target_tool.name if ctx.target_tool else None) or "send_email"
+    return _stamp([build_output_tool_arg_injection(str(agent.id), agent.name or "assistant", tool_name=tool_name)], ctx)
+
+
+def _build_output_sql_bypass(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.output_handling import build_output_sql_tenant_bypass
+    agent = ctx.target_agent
+    ds = ctx.target_datastore
+    table_name = (ds.name if ds else None) or "users"
+    return _stamp([build_output_sql_tenant_bypass(str(agent.id), agent.name or "assistant", table_name=table_name)], ctx)
+
+
+def _build_output_ssrf(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.output_handling import build_output_ssrf
+    agent = ctx.target_agent
+    return _stamp([build_output_ssrf(str(agent.id), agent.name or "assistant")], ctx)
+
+
+def _build_output_config_injection(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.output_handling import build_output_config_injection
+    agent = ctx.target_agent
+    return _stamp([build_output_config_injection(str(agent.id), agent.name or "assistant")], ctx)
+
+
+def _build_output_file_confusion(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.output_handling import build_output_file_confusion
+    agent = ctx.target_agent
+    return _stamp([build_output_file_confusion(str(agent.id), agent.name or "assistant")], ctx)
+
+
+# ── Human-agent trust (H-series) ─────────────────────────────────────────────
+
+def _build_approval_mismatch(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.human_trust import build_approval_summary_mismatch
+    agent = ctx.target_agent
+    return _stamp([build_approval_summary_mismatch(str(agent.id), agent.name or "assistant")], ctx)
+
+
+def _build_consent_laundering(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.human_trust import build_consent_laundering
+    agent = ctx.target_agent
+    return _stamp([build_consent_laundering(str(agent.id), agent.name or "assistant")], ctx)
+
+
+def _build_authority_bias(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.human_trust import build_authority_bias_phishing
+    agent = ctx.target_agent
+    return _stamp([build_authority_bias_phishing(str(agent.id), agent.name or "assistant")], ctx)
+
+
+def _build_partial_overreach(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.human_trust import build_partial_approval_overreach
+    agent = ctx.target_agent
+    return _stamp([build_partial_approval_overreach(str(agent.id), agent.name or "assistant")], ctx)
+
+
+def _build_hidden_payload(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.human_trust import build_hidden_action_payload
+    agent = ctx.target_agent
+    return _stamp([build_hidden_action_payload(str(agent.id), agent.name or "assistant")], ctx)
+
+
+# ── Agent identity (N-series) ─────────────────────────────────────────────────
+
+def _build_oauth_scope_escalation(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.agent_identity import build_oauth_scope_escalation
+    agent = ctx.target_agent
+    return _stamp([build_oauth_scope_escalation(str(agent.id), agent.name or "assistant")], ctx)
+
+
+def _build_token_replay(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.agent_identity import build_token_replay
+    agent = ctx.target_agent
+    return _stamp([build_token_replay(str(agent.id), agent.name or "assistant")], ctx)
+
+
+def _build_ownerless_action(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.agent_identity import build_ownerless_action
+    agent = ctx.target_agent
+    return _stamp([build_ownerless_action(str(agent.id), agent.name or "assistant")], ctx)
+
+
+def _build_cross_agent_cred_bleed(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.agent_identity import build_cross_agent_credential_bleed
+    agent = ctx.target_agent
+    return _stamp([build_cross_agent_credential_bleed(str(agent.id), agent.name or "assistant")], ctx)
+
+
+def _build_delegated_identity(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.agent_identity import build_delegated_identity_confusion
+    agent = ctx.target_agent
+    return _stamp([build_delegated_identity_confusion(str(agent.id), agent.name or "assistant")], ctx)
+
+
+def _build_credential_persistence(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.agent_identity import build_credential_persistence
+    agent = ctx.target_agent
+    return _stamp([build_credential_persistence(str(agent.id), agent.name or "assistant")], ctx)
+
+
 # ── Registry ──────────────────────────────────────────────────────────────────
 
 BUILDER_FACTORIES: dict[str, BuilderFn] = {
@@ -818,4 +979,33 @@ BUILDER_FACTORIES: dict[str, BuilderFn] = {
     "sandbox_escape":       _build_sandbox_escape,
     "delayed_ci_exfil":     _build_delayed_ci_exfil,
     "verifier_sabotage":    _build_verifier_sabotage,
+    # ── RAG and vector store (R-series) ───────────────────────────────────────
+    "rag_doc_poisoning":        _build_rag_doc_poisoning,
+    "vector_acl_bypass":        _build_vector_acl_bypass,
+    "embedding_hijack":         _build_embedding_hijack,
+    "chunk_boundary_smuggling": _build_chunk_boundary_smuggling,
+    "stale_retrieval":          _build_stale_retrieval,
+    "cross_namespace_bleed":    _build_cross_namespace_bleed,
+    "citation_laundering":      _build_citation_laundering,
+    "nn_enumeration":           _build_nn_enumeration,
+    # ── Improper output handling (O-series) ───────────────────────────────────
+    "output_xss":               _build_output_xss,
+    "output_tool_injection":    _build_output_tool_injection,
+    "output_sql_bypass":        _build_output_sql_bypass,
+    "output_ssrf":              _build_output_ssrf,
+    "output_config_injection":  _build_output_config_injection,
+    "output_file_confusion":    _build_output_file_confusion,
+    # ── Human-agent trust (H-series) ──────────────────────────────────────────
+    "approval_mismatch":        _build_approval_mismatch,
+    "consent_laundering":       _build_consent_laundering,
+    "authority_bias":           _build_authority_bias,
+    "partial_overreach":        _build_partial_overreach,
+    "hidden_payload":           _build_hidden_payload,
+    # ── Agent identity (N-series) ──────────────────────────────────────────────
+    "oauth_scope_escalation":   _build_oauth_scope_escalation,
+    "token_replay":             _build_token_replay,
+    "ownerless_action":         _build_ownerless_action,
+    "cross_agent_cred_bleed":   _build_cross_agent_cred_bleed,
+    "delegated_identity":       _build_delegated_identity,
+    "credential_persistence":   _build_credential_persistence,
 }

@@ -4,13 +4,14 @@ These tests enforce the structural invariants of the catalog defined in
 ``docs/llm-runs/Red-team-new-design.md`` and implemented in
 ``nuguard/redteam/catalog/``:
 
-1. All 84 stable IDs are present and unique.
-2. Each series (D/C/T/A/I/M/P/G/J/E/B/K) is contiguous with no gaps.
+1. All 110 stable IDs are present and unique.
+2. Each series (D/C/T/A/I/M/P/G/J/E/B/K/R/O/H/N) is contiguous with no gaps.
 3. Every ``builder_key`` resolves in ``BUILDER_FACTORIES``.
 4. Every field value is a valid enum member (no typos).
 5. Taxonomy invariants hold (required_capabilities non-empty, evidence_types
    non-empty, etc.).
 6. The AttackScenario model accepts the new catalog fields without error.
+7. OWASP LLM 2025 and Agentic 2026 coverage is comprehensive.
 """
 from __future__ import annotations
 
@@ -47,14 +48,18 @@ EXPECTED_ID_SERIES: dict[str, int] = {
     "E": 7,
     "B": 6,
     "K": 6,
+    "R": 8,
+    "O": 6,
+    "H": 5,
+    "N": 6,
 }
-EXPECTED_TOTAL = sum(EXPECTED_ID_SERIES.values())  # 85
+EXPECTED_TOTAL = sum(EXPECTED_ID_SERIES.values())  # 110
 
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
 
 def test_total_spec_count() -> None:
-    """Catalog must contain exactly 84 specs."""
+    """Catalog must contain exactly 110 specs."""
     assert len(SCENARIO_CATALOG) == EXPECTED_TOTAL, (
         f"Expected {EXPECTED_TOTAL} specs, got {len(SCENARIO_CATALOG)}"
     )
@@ -267,3 +272,23 @@ def test_spec_fields_snapshot(spec_id: str) -> None:
     assert spec.title, f"{spec_id}: title must be non-empty"
     assert spec.expected_control, f"{spec_id}: expected_control must be non-empty"
     assert spec.success_signal, f"{spec_id}: success_signal must be non-empty"
+
+
+def test_owasp_llm_coverage() -> None:
+    """Key OWASP LLM 2025 categories must appear in at least one spec."""
+    required = {"LLM01", "LLM02", "LLM04", "LLM05", "LLM06", "LLM08", "LLM09", "LLM10"}
+    covered: set[str] = set()
+    for spec in SCENARIO_CATALOG:
+        covered.update(spec.owasp_llm)
+    missing = required - covered
+    assert not missing, f"OWASP LLM categories not covered by any spec: {missing}"
+
+
+def test_owasp_agentic_coverage() -> None:
+    """Key OWASP Agentic 2026 categories must appear in at least one spec."""
+    required = {"ASI01", "ASI02", "ASI03", "ASI04", "ASI05", "ASI06", "ASI07", "ASI09"}
+    covered: set[str] = set()
+    for spec in SCENARIO_CATALOG:
+        covered.update(spec.owasp_agentic)
+    missing = required - covered
+    assert not missing, f"OWASP Agentic categories not covered by any spec: {missing}"

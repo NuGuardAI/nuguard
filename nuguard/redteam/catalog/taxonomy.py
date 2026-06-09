@@ -26,6 +26,10 @@ class ScenarioCategory(str, Enum):
     EVASION = "Evasion and Robustness"               # E
     BUSINESS_LOGIC = "Business Logic and Safety"     # B
     CODING_AGENT = "Coding and Automation Agents"    # K
+    RAG_VECTOR = "RAG and Vector Store"              # R
+    IMPROPER_OUTPUT = "Improper Output Handling"     # O
+    HUMAN_AGENT_TRUST = "Human-Agent Trust Exploitation"  # H
+    AGENT_IDENTITY = "Agent Identity and Credential"  # N
 
 
 class DeliveryChannel(str, Enum):
@@ -70,6 +74,11 @@ class SinkType(str, Enum):
     HANDOFF = "handoff"
     FILE_DIFF = "file_diff"
     COMMAND_EXECUTION = "command_execution"
+    BROWSER_DOM = "browser_dom"       # output rendered in browser/renderer
+    QUERY_EXECUTION = "query_execution"  # generated query run against DB
+    CONFIG_WRITE = "config_write"     # generated config applied to system
+    WORKFLOW_ENGINE = "workflow_engine"  # output consumed by workflow runner
+    ARTIFACT_RENDER = "artifact_render"  # generated artifact rendered/executed
 
 
 class EvidenceType(str, Enum):
@@ -86,6 +95,15 @@ class EvidenceType(str, Enum):
     COMMAND_TRACE = "command_trace"
     POLICY_EVAL = "policy_eval"
     RESPONSE_ARTIFACT = "response_artifact"
+    RETRIEVAL_TRACE = "retrieval_trace"   # which chunks were retrieved
+    CHUNK_ID = "chunk_id"                 # specific chunk identifiers returned
+    CITATION_TRACE = "citation_trace"     # citation metadata in answer
+    ACL_DECISION = "acl_decision"         # filter/ACL evaluation result
+    APPROVAL_TRACE = "approval_trace"     # human-visible vs raw action payload
+    IDENTITY_TRACE = "identity_trace"     # which identity/scope was used
+    TOKEN_SCOPE = "token_scope"           # OAuth scope presented/received
+    REVOCATION_CHECK = "revocation_check" # whether token was actually revoked
+    OWNER_TRACE = "owner_trace"           # accountable owner of an action
 
 
 class SafeExecution(str, Enum):
@@ -144,3 +162,14 @@ class Capability(str, Enum):
     HITL_GUARD = "hitl_guard"
     # Always-true baseline (every chat agent)
     CHAT = "chat"
+    # RAG / vector store internals
+    RAG_INGESTION = "rag_ingestion"                         # app accepts document uploads for RAG
+    RETRIEVAL_METADATA_FILTERS = "retrieval_metadata_filters"  # vector store applies per-query ACL
+    DOCUMENT_ACL = "document_acl"                           # document-level access control
+    INDEX_NAMESPACE = "index_namespace"                     # multi-tenant vector namespace isolation
+    # Identity / credential surfaces
+    OAUTH = "oauth"                                         # agent uses OAuth tokens for APIs
+    SERVICE_ACCOUNT = "service_account"                     # agent runs as non-human service principal
+    TOKEN_BROKER = "token_broker"                           # agent brokers or delegates tokens
+    DELEGATED_AUTH = "delegated_auth"                       # agent acts on behalf of a user
+    SCOPED_CREDENTIALS = "scoped_credentials"               # agent holds per-tool scoped creds

@@ -173,6 +173,9 @@ class StepResult:
         self.response = response
         self.tool_calls = tool_calls
         self.http_status_code = http_status_code
+        # Payload actually sent to the target (tokens resolved, e.g. {golden_id} → real ID).
+        # Set by _execute_step_with_payload after token substitution.
+        self.resolved_payload: str = step.payload
         # HTTP_2XX_SENTINEL: success when the server returns any 2xx status code
         # (used for auth-bypass and IDOR steps to detect missing access controls).
         if step.success_signal == HTTP_2XX_SENTINEL:
@@ -705,6 +708,7 @@ class AttackExecutor:
 
         # Substitute {golden_id} / {golden_id_list} tokens before sending
         payload = _substitute_golden_tokens(payload, session)
+        _resolved_payload = payload  # capture after substitution for display/logging
 
         if step.target_path:
             # Direct HTTP attack — bypass the chat endpoint entirely
@@ -741,6 +745,7 @@ class AttackExecutor:
                 tool_calls=tool_calls,
                 http_status_code=status_code,
             )
+            result.resolved_payload = _resolved_payload
         else:
             if self._app_log_reader:
                 self._app_log_reader.mark()
@@ -765,6 +770,7 @@ class AttackExecutor:
                 response, tool_calls = await self._client.send(payload, session)
             session.add_turn(payload, response, tool_calls)
             result = StepResult(step=step, response=response, tool_calls=tool_calls)
+            result.resolved_payload = _resolved_payload
 
         # DISCOVER step: store golden data and exit early — never a finding
         if step.step_type == "DISCOVER":

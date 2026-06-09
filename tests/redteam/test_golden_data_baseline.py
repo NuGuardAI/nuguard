@@ -482,6 +482,34 @@ def test_extract_ids_labelled_pnr():
     assert "HN4P88" in ids
 
 
+def test_extract_ids_booking_number_is_pattern():
+    """'booking number is HN4P88' — chained label+word+is connector should be caught."""
+    text = "Your booking number is HN4P88. Please have it ready at check-in."
+    ids = extract_ids(text)
+    assert "HN4P88" in ids
+
+
+def test_extract_ids_booking_reference_is_pattern():
+    """'booking reference is K7Q4MN' — reference word between label and 'is' should be caught."""
+    text = "Your booking reference is K7Q4MN."
+    ids = extract_ids(text)
+    assert "K7Q4MN" in ids
+
+
+def test_extract_ids_booking_is_does_not_match_english_word():
+    """'booking is available' should NOT extract 'available' (no digit in value)."""
+    text = "Your booking is available for check-in."
+    ids = extract_ids(text)
+    assert "available" not in [i.lower() for i in ids]
+
+
+def test_extract_ids_booking_was_pattern():
+    """'booking was K7Q4MN' — 'was' connector should also be caught."""
+    text = "Your previous booking was K7Q4MN."
+    ids = extract_ids(text)
+    assert "K7Q4MN" in ids
+
+
 def test_extract_customer_name_basic():
     """extract_customer_name should return the labelled passenger name."""
     text = "Passenger: Alice Johnson. Seat 14A. Flight BA205."
