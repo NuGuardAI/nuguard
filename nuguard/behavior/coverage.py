@@ -20,9 +20,9 @@ _log = logging.getLogger(__name__)
 
 MAX_COVERAGE_TURNS = 5
 
-# Node types that cannot produce an observable signal in behavioral (chat-style) testing.
-# Infrastructure nodes are evaluated outside the application boundary; always-on runtimes
-# are active in every turn equally; abstract constructs have no invocation semantics.
+# Node types excluded from the agent/tool coverage denominator tracked by CoverageState.
+# GUARDRAIL, DATASTORE, and API_ENDPOINT are now tracked separately via BehaviorCoverage
+# objects in BehaviorRunner._build_coverage_map() and have their own coverage_pct properties.
 NON_EXERCISABLE_NODE_TYPES: frozenset[str] = frozenset({
     # Infrastructure — invisible in conversational responses
     "AUTH",
@@ -32,11 +32,9 @@ NON_EXERCISABLE_NODE_TYPES: frozenset[str] = frozenset({
     # Always-on runtimes — no differential coverage signal
     "FRAMEWORK",
     "MODEL",
-    # Abstract constructs — not directly invocable via chat probing
+    # Abstract constructs — no direct chat invocation semantics
     "PRIVILEGE",
-    "DATASTORE",
     "PROMPT",
-    "API_ENDPOINT",
 })
 
 _SYSTEM_PROMPT_BASE = (

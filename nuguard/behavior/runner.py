@@ -33,7 +33,6 @@ from typing import TYPE_CHECKING, Any
 
 from nuguard.behavior._utils import is_not_used_response
 from nuguard.behavior.coverage import (
-    NON_EXERCISABLE_NODE_TYPES,
     CoverageState,
     generate_coverage_turns,
 )
@@ -525,7 +524,10 @@ class BehaviorRunner:
         self._judge_cache = judge_cache
         self._auth_session: Any = None
 
-        # Build component description map for coverage-turn generation
+        # Build component description map for coverage-turn generation.
+        # Only AGENT and TOOL nodes participate in adaptive coverage turns (they are the
+        # entities that appear in chat responses). DATASTORE, GUARDRAIL, API_ENDPOINT etc.
+        # are tracked via _build_coverage_map() using their own BehaviorCoverage objects.
         self._component_descriptions: dict[str, str] = {}
         self._agent_names: list[str] = []
         self._tool_names: list[str] = []
@@ -533,7 +535,7 @@ class BehaviorRunner:
             for node in getattr(sbom, "nodes", []):
                 ct = getattr(node, "component_type", None)
                 nt = (getattr(ct, "value", None) or str(ct) or "").upper()
-                if nt in NON_EXERCISABLE_NODE_TYPES:
+                if nt not in ("AGENT", "TOOL"):
                     continue
                 name = str(getattr(node, "name", None) or getattr(node, "id", ""))
                 meta = getattr(node, "metadata", None)
@@ -642,8 +644,12 @@ class BehaviorRunner:
             self._auth_session, _config_extras
         )
         _login_extras = self._auth_session.login_response_extras() if self._auth_session else {}
+        _auth_username = (
+            getattr(getattr(self._config, "auth", None), "username", None) or None
+        )
         _merged_extras, _hint_notes = apply_sbom_context_hints(
-            self._sbom, endpoint or "/chat", _merged_extras, _login_extras
+            self._sbom, endpoint or "/chat", _merged_extras, _login_extras,
+            auth_username=_auth_username,
         ) if self._sbom is not None else (_merged_extras, [])
         for _note in _login_notes + _hint_notes:
             _log.info("behavior _build_client: %s", _note)
@@ -1407,6 +1413,21 @@ class BehaviorRunner:
         _console.rule("[bold cyan]Pre-scan Discovery[/bold cyan]", style="dim cyan")
         try:
             client = await self._build_client()
+
+            # Surface identity-field warnings so users see them without digging into logs.
+            for _note in client.resolution_notes:
+                if "identity" in _note or "chat_payload_extras" in _note:
+                    _console.print(f"  [yellow]⚠ {_note}[/yellow]")
+
+            # Extract candidate rotation lists injected by apply_sbom_context_hints
+            _candidates_map: dict[str, list[str]] = {}
+            for _k, _v in list(client._chat_payload_extras.items()):
+                if _k.startswith("__") and _k.endswith("_candidates__") and isinstance(_v, list):
+                    _field = _k[2:-len("_candidates__")]
+                    _candidates_map[_field] = _v
+                    # Remove the internal marker key from the actual payload
+                    del client._chat_payload_extras[_k]
+
             _target_url = getattr(self, "_resolved_target_url", None) or getattr(self._config, "target", "") or ""
             _disc_session = _AS(
                 session_id="behavior-discovery",
@@ -1422,6 +1443,30 @@ class BehaviorRunner:
                 client, _disc_session, use_case=_use_case, max_turns=2,
                 fallback_endpoints=_disc_fallbacks[:4],
             )
+
+            # If profile is empty, rotate to the next identity candidate and retry.
+            if profile.is_empty and _candidates_map:
+                for _field_name, _candidates in _candidates_map.items():
+                    for _candidate in _candidates[1:]:  # candidates[0] was already tried
+                        _log.info("discovery: retrying with %s=%r", _field_name, _candidate)
+                        _console.print(
+                            f"  [dim]Pre-scan discovery: retrying with {_field_name}={_candidate!r}[/dim]"
+                        )
+                        client._chat_payload_extras[_field_name] = _candidate
+                        _retry_session = _AS(
+                            session_id=f"behavior-discovery-{_candidate}",
+                            target_url=_target_url,
+                            chain_id="behavior-pre-scan",
+                        )
+                        profile = await run_discovery_conversation(
+                            client, _retry_session, use_case=_use_case, max_turns=2,
+                        )
+                        if not profile.is_empty:
+                            _log.info("discovery: %s=%r produced profile", _field_name, _candidate)
+                            break
+                    if not profile.is_empty:
+                        break
+
             _log.info(
                 "behavior pre-scan discovery: name=%r ids=%s turns=%d",
                 profile.customer_name, profile.ids, profile.turns_sent,
@@ -1886,7 +1931,14 @@ class BehaviorRunner:
         self,
         scenario_results: list[ScenarioResult],
     ) -> list[BehaviorCoverage]:
-        """Build per-component coverage map from all scenario results."""
+        """Build per-component coverage map from all scenario results.
+
+        Tracks AGENT and TOOL via mention detection, and API_ENDPOINT and GUARDRAIL
+        via scenario execution (scenarios with ENDPOINT_COVERAGE or INVARIANT_PROBE
+        types that target those components).
+        """
+        from nuguard.behavior.models import BehaviorScenarioType
+
         component_map: dict[str, BehaviorCoverage] = {}
 
         # Initialize from known agents/tools
@@ -1901,7 +1953,56 @@ class BehaviorRunner:
                 node_type="TOOL",
             )
 
-        # Update from scenario results
+        # Initialize API_ENDPOINT and GUARDRAIL nodes from SBOM
+        if self._sbom is not None:
+            for node in getattr(self._sbom, "nodes", []):
+                ct = getattr(node, "component_type", None)
+                ntype = str(ct.value if hasattr(ct, "value") else ct).upper() if ct else ""
+                if ntype in ("API_ENDPOINT", "GUARDRAIL"):
+                    nname = getattr(node, "name", None) or str(getattr(node, "id", ""))
+                    if nname not in component_map:
+                        component_map[nname] = BehaviorCoverage(
+                            component_name=nname,
+                            node_type=ntype,
+                        )
+
+        # Collect exercised endpoint/guardrail names from scenario results
+        ep_coverage_type = BehaviorScenarioType.ENDPOINT_COVERAGE.value
+        inv_probe_type = BehaviorScenarioType.INVARIANT_PROBE.value
+
+        for sr in scenario_results:
+            stype = sr.scenario_type
+            # Endpoint coverage: mark endpoint node exercised when scenario ran
+            if stype == ep_coverage_type:
+                for verdict_dict in sr.verdicts:
+                    target = verdict_dict.get("target_component") or sr.scenario_name
+                    if target and target in component_map:
+                        cov = component_map[target]
+                        cov.exercised = True
+                        has_violation = any(
+                            d.get("deviation_type") in ("policy_violation", "data_leak")
+                            for d in (verdict_dict.get("deviations") or [])
+                            if isinstance(d, dict)
+                        )
+                        if has_violation:
+                            cov.exercised_against_policy = True
+                        else:
+                            cov.exercised_within_policy = True
+
+            # Guardrail probes: mark guardrail exercised when probe ran
+            if stype == inv_probe_type:
+                for verdict_dict in sr.verdicts:
+                    target = verdict_dict.get("target_component") or ""
+                    if target and target in component_map and component_map[target].node_type == "GUARDRAIL":
+                        cov = component_map[target]
+                        cov.exercised = True
+                        # A guardrail probe that passed means the block was observed
+                        if verdict_dict.get("passed"):
+                            cov.exercised_within_policy = True
+                        else:
+                            cov.exercised_against_policy = True
+
+        # Update from scenario results (agents/tools via mention detection)
         for sr in scenario_results:
             for verdict_dict in sr.verdicts:
                 agents = verdict_dict.get("agents_mentioned") or []
@@ -1914,14 +2015,14 @@ class BehaviorRunner:
                 )
 
                 for a in agents:
-                    if a in component_map:
+                    if a in component_map and component_map[a].node_type == "AGENT":
                         component_map[a].exercised = True
                         if has_violation:
                             component_map[a].exercised_against_policy = True
                         else:
                             component_map[a].exercised_within_policy = True
                 for t in tools:
-                    if t in component_map:
+                    if t in component_map and component_map[t].node_type == "TOOL":
                         component_map[t].exercised = True
                         if has_violation:
                             component_map[t].exercised_against_policy = True

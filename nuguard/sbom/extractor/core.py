@@ -676,6 +676,32 @@ class AiSbomExtractor:
                 return f"{num_bytes / (1024 * 1024):.2f} MiB"
             return f"{num_bytes / (1024 * 1024 * 1024):.2f} GiB"
 
+        # Pre-pass: build a cross-file Pydantic model schema index so FastAPI (and Flask)
+        # adapters can resolve request-body models that are imported from other modules.
+        # This is a fast AST-only pass — no detection, no merging.
+        _global_model_schemas: dict[str, dict[str, str]] = {}
+        try:
+            import ast as _ast  # noqa: PLC0415  # isort:skip
+            from nuguard.sbom.adapters.python.fastapi_adapter import (  # noqa: PLC0415
+                _collect_model_schemas as _collect_py_models,
+            )  # isort:skip
+            for _py_path, _ in self._iter_files(root, config):
+                if _py_path.suffix != ".py":
+                    continue
+                try:
+                    _py_src = _py_path.read_text(encoding="utf-8", errors="ignore")
+                    _py_tree = _ast.parse(_py_src)
+                    _global_model_schemas.update(_collect_py_models(_py_tree))
+                except Exception:
+                    pass
+        except Exception as _pre_exc:
+            _log.debug("cross-file model pre-pass failed (non-fatal): %s", _pre_exc)
+
+        # Inject the global model index into adapters that support it.
+        for _adapter in self.framework_adapters:
+            if hasattr(_adapter, "set_global_model_schemas"):
+                _adapter.set_global_model_schemas(_global_model_schemas)
+
         for file_path, file_size in self._iter_files(root, config):
             try:
                 content = file_path.read_text(encoding="utf-8", errors="ignore")

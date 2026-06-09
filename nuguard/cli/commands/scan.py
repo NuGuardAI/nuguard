@@ -1,12 +1,12 @@
-"""``nuguard scan`` — unified static analysis meta-command.
+"""``nuguard scan`` — unified security scan meta-command.
 
-Runs the full nuguard static analysis pipeline in a single command:
+Runs the configurable nuguard security scan pipeline in a single command:
 
   Step 1  sbom      Generate AI-SBOM from source (``nuguard sbom generate``)
   Step 2  analyze   Run all detectors (NGA rules + OSV + Grype + Checkov +
                     Trivy + Semgrep + ATLAS annotation)
-  Step 3  policy    Check Cognitive Policy document (if --policy supplied)
-  Step 4  redteam   Dynamic red-team (skipped unless --target is supplied)
+  Step 3  policy    Check Cognitive Policy document (if requested and --policy supplied)
+  Step 4  redteam   Dynamic red-team (if requested and a target URL is available)
 
 Exit codes
 ----------
@@ -28,7 +28,7 @@ import typer
 from nuguard.models.finding import Finding, Severity
 
 scan_app = typer.Typer(
-    help="Unified security scan: SBOM → analyze → policy (→ redteam).",
+    help="Unified security scan: SBOM → analyze, with optional policy/redteam.",
     no_args_is_help=True,
 )
 
@@ -64,7 +64,7 @@ def scan(
     ),
     target: str = typer.Option(
         None, "--target",
-        help="Live app URL for the redteam step (required to run redteam).",
+        help="Live app URL for the redteam step; falls back to SBOM deployment URL when available.",
     ),
     container_image: str = typer.Option(
         None, "--container-image",
@@ -99,7 +99,7 @@ def scan(
         help="Skip Semgrep AI-security rules scan.",
     ),
 ) -> None:
-    """Run the full nuguard static analysis pipeline.
+    """Run the configurable nuguard security scan pipeline.
 
     Generates an AI-SBOM, runs all enabled detectors, writes terminal output,
     ``report.md``, ``findings.sarif``, and ``findings.json`` to the output

@@ -116,19 +116,43 @@ def _get_sbom_context_fields(
     return best
 
 
+def _identity_candidates_from_username(username: str) -> list[str]:
+    """Return ordered candidate values to try for an identity body field.
+
+    Priority:
+      1. Full username as-is (e.g. ``alice.johnson@pinnaclebank.com``)
+      2. Strip ``@domain.tld``          → ``alice.johnson``
+      3. Strip ``.`` and everything after the first dot  → ``alice``
+    """
+    candidates: list[str] = [username]
+    if "@" in username:
+        local = username.split("@")[0]
+        if local and local not in candidates:
+            candidates.append(local)
+        if "." in local:
+            first = local.split(".")[0]
+            if first and first not in candidates:
+                candidates.append(first)
+    return candidates
+
+
 def apply_sbom_context_hints(
     sbom: "AiSbomDocument",
     chat_path: str,
     current_extras: dict[str, Any],
     login_extras: dict[str, str],
+    auth_username: str | None = None,
 ) -> tuple[dict[str, Any], list[str]]:
     """Apply SBOM-detected context field hints to *current_extras*.
 
     For each field in the SBOM's ``context_payload_fields`` that is NOT
     already set in *current_extras*:
 
-    - **identity** fields: injected from *login_extras* when available; otherwise
-      a config note is emitted telling the user to set the value explicitly.
+    - **identity** fields: injected from *login_extras* when available.  When no
+      login response contains the value, candidates are derived from *auth_username*
+      (full → strip domain → first name) and the first candidate is injected.  The
+      full candidate list is stored under ``__<field>_candidates__`` so the caller
+      can rotate to the next candidate if the first attempt produces an empty profile.
     - **session** fields: a fresh UUID is generated for each run (the
       :class:`~nuguard.redteam.target.client.TargetAppClient` already extracts
       and forwards session IDs from responses on subsequent turns, so this only
@@ -153,11 +177,22 @@ def apply_sbom_context_hints(
                 notes.append(
                     f"auto-injected '{field_name}' (identity) from login response"
                 )
+            elif auth_username:
+                candidates = _identity_candidates_from_username(auth_username)
+                merged[field_name] = candidates[0]
+                # Store remaining candidates for rotation by the discovery loop
+                _cand_key = f"__{field_name}_candidates__"
+                merged[_cand_key] = candidates
+                notes.append(
+                    f"auto-derived identity field '{field_name}'={candidates[0]!r} from "
+                    f"auth.username (candidates to try: {candidates}). "
+                    f"Set chat_payload_extras.{field_name} explicitly to override."
+                )
             else:
                 notes.append(
                     f"Endpoint '{chat_path}' declares '{field_name}' (identity field) in its "
                     f"request body but no value was found in the login response or config. "
-                    f"Set redteam.chat_payload_extras.{field_name}=<test-user-id> "
+                    f"Set chat_payload_extras.{field_name}=<test-user-id> "
                     f"or configure a login_flow that returns '{field_name}'."
                 )
 

@@ -320,6 +320,45 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
         if result.scenario_results:
             render_behavior_coverage_evidence(lines, result.coverage, result.scenario_results)
 
+    # Behavior SBOM Coverage (expanded objective tracking)
+    if result.coverage_objectives:
+        lines.append("## Behavior SBOM Coverage")
+        lines.append("")
+        lines.append(
+            f"Agent/tool coverage: **{result.coverage_percentage * 100:.0f}%** | "
+            f"Endpoint coverage: **{result.endpoint_coverage_pct * 100:.0f}%** | "
+            f"Guardrail coverage: **{result.guardrail_coverage_pct * 100:.0f}%**"
+        )
+        lines.append("")
+        mode_groups: dict[str, list] = {}
+        for obj in result.coverage_objectives:
+            mode_groups.setdefault(obj.behavior_mode, []).append(obj)
+
+        mode_order = ["dynamic", "static", "metadata_only", "not_behavior_exercisable"]
+        mode_labels = {
+            "dynamic": "Dynamic (chat-exercisable)",
+            "static": "Static (alignment check)",
+            "metadata_only": "Metadata-only (risk context)",
+            "not_behavior_exercisable": "Not behavior-exercisable (infrastructure)",
+        }
+        for mode in mode_order:
+            objs = mode_groups.get(mode, [])
+            if not objs:
+                continue
+            lines.append(f"### {mode_labels.get(mode, mode)} ({len(objs)})")
+            lines.append("")
+            lines.append("| Surface | Node/Edge | Status | Notes |")
+            lines.append("|---------|-----------|--------|-------|")
+            for obj in objs[:30]:  # cap per section to keep report readable
+                surface = obj.surface_type
+                name = (obj.node_name or obj.relationship_type or "—")[:50]
+                status = obj.status
+                reason = obj.reason[:60] if obj.reason else "—"
+                lines.append(f"| {surface} | {name} | {status} | {reason} |")
+            if len(objs) > 30:
+                lines.append(f"| … | _{len(objs) - 30} more_ | | |")
+            lines.append("")
+
     # Deviations — grouped by scenario → turn, with full turn evidence
     dev_turns: list[tuple[str, dict]] = []  # (scenario_name, verdict_dict)
     for sr in result.scenario_results:

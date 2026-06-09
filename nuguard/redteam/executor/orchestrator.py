@@ -735,11 +735,15 @@ class RedteamOrchestrator:
         for _note in _login_notes:
             self.config_notes.append(_note)
         _login_extras = bootstrapper.session.login_response_extras()
+        _auth_username = getattr(getattr(self, "_auth_config", None), "username", None) or None
         _merged_extras, _hint_notes = apply_sbom_context_hints(
-            self._sbom, self._chat_path, _merged_extras, _login_extras
+            self._sbom, self._chat_path, _merged_extras, _login_extras,
+            auth_username=_auth_username,
         )
         for _note in _hint_notes:
             self.config_notes.append(_note)
+        # Strip internal candidate-rotation markers before storing in payload extras
+        _merged_extras = {k: v for k, v in _merged_extras.items() if not (k.startswith("__") and k.endswith("_candidates__"))}
         if _merged_extras != self._chat_payload_extras:
             self._chat_payload_extras = _merged_extras
 
