@@ -649,7 +649,7 @@ class AiSbomExtractor:
         """Extract an SBOM from a directory on the local filesystem."""
         root = Path(path).resolve()
         _log.info("scanning files under %s", root)
-        doc = AiSbomDocument(target=source_ref or str(root))
+        doc = AiSbomDocument(target=source_ref or str(root), local_source_path=str(root))
         node_map: dict[tuple[ComponentType, str], _NodeAccumulator] = {}
         # Classification-only metadata from data_classification adapters (not emitted as nodes)
         _dc_metadata: list[dict[str, Any]] = []

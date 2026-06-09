@@ -978,6 +978,16 @@ class AiSbomDocument(BaseModel):
         description="Tool that produced this document",
     )
     target: str = Field(description="Repository URL or local path that was scanned")
+    local_source_path: str | None = Field(
+        default=None,
+        description=(
+            "Absolute filesystem path of the local directory that was scanned. "
+            "Set by the extractor at generation time; used by analysis tools "
+            "(supply-chain, Semgrep, Checkov) as a fallback when --source is not "
+            "supplied on the CLI. Points to a temp dir for remote-cloned SBOMs — "
+            "the path may not exist if analyzed in a later invocation."
+        ),
+    )
     nodes: list[Node] = Field(
         default_factory=list,
         description="Detected AI components",

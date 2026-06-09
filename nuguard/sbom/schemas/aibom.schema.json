@@ -2489,6 +2489,19 @@
       "title": "Target",
       "type": "string"
     },
+    "local_source_path": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "description": "Absolute filesystem path of the local directory that was scanned. Set by the extractor at generation time; used by analysis tools (supply-chain, Semgrep, Checkov) as a fallback when --source is not supplied on the CLI. Points to a temp dir for remote-cloned SBOMs \u2014 the path may not exist if analyzed in a later invocation.",
+      "title": "Local Source Path"
+    },
     "nodes": {
       "description": "Detected AI components",
       "items": {
