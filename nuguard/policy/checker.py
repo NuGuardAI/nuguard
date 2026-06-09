@@ -51,6 +51,25 @@ _CHECK_INFO: dict[str, tuple[str, str]] = {
         "Policy defines HITL triggers. Human-in-the-loop enforcement typically "
         "requires an authentication mechanism; the SBOM should contain AUTH nodes.",
     ),
+    "CHECK-006": (
+        "High-Privilege Scope Without Guardrail",
+        "PRIVILEGE nodes with admin, db_write, or filesystem_write scope grant "
+        "elevated capabilities that should be protected by GUARDRAIL nodes. "
+        "Without guardrail enforcement, privileged operations are reachable via "
+        "prompt injection or policy bypass.",
+    ),
+    "CHECK-007": (
+        "Unauthenticated Tool Access to PII Datastore",
+        "TOOL nodes with no_auth_required=True can be invoked without authentication. "
+        "When PII-classified DATASTORE nodes exist and policy restricts PII disclosure, "
+        "these tools create a path to access sensitive data without identity verification.",
+    ),
+    "CHECK-008": (
+        "Allowed-Topic Agent Grounding",
+        "Policy defines allowed topics. The AGENT node description and system PROMPT "
+        "nodes should contain explicit topic-scoping instructions so the model refuses "
+        "out-of-scope requests.",
+    ),
 }
 
 
@@ -81,6 +100,8 @@ class PolicyGap:
     searched: list[str] = field(default_factory=list)
     # Partial evidence found in PROMPT nodes (downgrade hint)
     prompt_evidence: list[str] = field(default_factory=list)
+    # Concrete remediation recommendation
+    remediation: str = ""
 
 
 @dataclass
@@ -337,6 +358,14 @@ def check_policy_against_sbom(
                 severity="high" if not prompt_ev else "medium",
                 searched=searched,
                 prompt_evidence=prompt_ev,
+                remediation=(
+                    "Add an InputGuardrail or OutputGuardrail component to your agent "
+                    "framework. In LangChain/LangGraph, implement a callback handler that "
+                    "intercepts dispute, fraud, and high-value transfer requests and routes "
+                    "them to a human queue. In ADK or OpenAI Agents SDK, configure a "
+                    "guardrail tool that triggers escalation. After adding the component, "
+                    "re-run 'nuguard sbom generate' so the GUARDRAIL node appears in the SBOM."
+                ),
             ))
 
     # ---- CHECK-002: Restricted Action Coverage ------------------------------
@@ -373,6 +402,15 @@ def check_policy_against_sbom(
                         severity="medium",
                         searched=[f"Checked {len(tool_names)} TOOL nodes: {', '.join(tool_names[:5])}"
                                   + (" …" if len(tool_names) > 5 else "")],
+                        remediation=(
+                            f"Ensure a TOOL node in the SBOM corresponds to the restricted "
+                            f"action {action!r}. Options: (1) rename the tool so its name "
+                            "contains a keyword from the action description; "
+                            "(2) update the policy restricted_action text to match the "
+                            "existing tool name; or (3) add explicit authorization checks "
+                            "(e.g. session-owner assertion) inside the tool implementation "
+                            "and re-run 'nuguard sbom generate' to refresh the SBOM."
+                        ),
                     ))
         else:
             result.gaps.append(PolicyGap(
@@ -386,6 +424,12 @@ def check_policy_against_sbom(
                 policy_section="restricted_actions",
                 severity="medium",
                 searched=["TOOL nodes: none found in SBOM"],
+                remediation=(
+                    "Register the tools that enforce your restricted actions so they "
+                    "appear as TOOL nodes in the SBOM. Each restricted action should map "
+                    "to a named tool with authorization checks in its implementation. "
+                    "Re-run 'nuguard sbom generate' after adding the tools."
+                ),
             ))
 
     # ---- CHECK-003: Data Classification Metadata ----------------------------
@@ -423,6 +467,14 @@ def check_policy_against_sbom(
                             "classified_fields, pii_fields, phi_fields, and "
                             f"pfi_fields on DATASTORE {ds.name!r}: empty"
                         ],
+                        remediation=(
+                            f"Annotate the {ds.name!r} datastore in source code with "
+                            "data-classification markers (e.g. column-level 'pii=True' "
+                            "attributes in SQLAlchemy models, or NuGuard-comment annotations "
+                            "on the connection string). Re-run 'nuguard sbom generate' so "
+                            "pii_fields, phi_fields, or data_classification metadata is "
+                            "captured in the SBOM node."
+                        ),
                     ))
         else:
             result.gaps.append(PolicyGap(
@@ -436,6 +488,12 @@ def check_policy_against_sbom(
                 policy_section="data_classification",
                 severity="medium",
                 searched=["DATASTORE nodes: none found in SBOM"],
+                remediation=(
+                    "Ensure data access objects (SQLAlchemy sessions, Postgres connections, "
+                    "Redis clients, etc.) are imported and used within the scanned source "
+                    "tree. Re-run 'nuguard sbom generate' so DATASTORE nodes are detected "
+                    "and their PII/PHI field annotations are captured."
+                ),
             ))
 
     # ---- CHECK-004: Rate Limit Instrumentation ------------------------------
@@ -472,6 +530,15 @@ def check_policy_against_sbom(
                             "Checked rate_limited, rate_limit_detail, and legacy "
                             f"rate_limit metadata on API_ENDPOINT {ep.name!r}: not set"
                         ],
+                        remediation=(
+                            f"Instrument {ep.name!r} with rate limiting. "
+                            "Options: (a) Add 'slowapi' or 'flask-limiter' decorators "
+                            "with the policy-defined limits; (b) configure Azure API "
+                            "Management / AWS API Gateway throttling policies; "
+                            "(c) add a 'rate_limited: true' annotation comment above the "
+                            "route handler so NuGuard captures it in the SBOM. "
+                            "Re-run 'nuguard sbom generate' after the change."
+                        ),
                     ))
         else:
             result.gaps.append(PolicyGap(
@@ -485,6 +552,12 @@ def check_policy_against_sbom(
                 policy_section="rate_limits",
                 severity="low",
                 searched=["API_ENDPOINT nodes: none found in SBOM"],
+                remediation=(
+                    "Ensure route/handler functions are present in the scanned source "
+                    "tree and decorated with the appropriate HTTP framework decorators "
+                    "(@app.route, @router.get, etc.) so NuGuard can detect them as "
+                    "API_ENDPOINT nodes. Re-run 'nuguard sbom generate'."
+                ),
             ))
 
     # ---- CHECK-005: Auth Node for HITL --------------------------------------
@@ -511,6 +584,186 @@ def check_policy_against_sbom(
                 policy_section="hitl_triggers",
                 severity="medium",
                 searched=["AUTH nodes: none found in SBOM"],
+                remediation=(
+                    "Add an authentication component (e.g. JWT middleware, OAuth2 handler, "
+                    "session manager) to the application so NuGuard can detect it as an "
+                    "AUTH node. Without identity verification, HITL triggers cannot reliably "
+                    "associate an escalation request with a specific customer. "
+                    "Re-run 'nuguard sbom generate' after adding the auth layer."
+                ),
+            ))
+
+    # ---- CHECK-006: High-Privilege Scope Without Guardrail ------------------
+    _HIGH_RISK_SCOPES = {"admin", "db_write", "filesystem_write"}
+    privilege_nodes = _nodes_of_type(doc, ComponentType.PRIVILEGE)
+    high_risk_priv = [
+        n for n in privilege_nodes
+        if (n.metadata.privilege_scope or "").lower() in _HIGH_RISK_SCOPES
+    ]
+    if high_risk_priv:
+        if guardrail_nodes:
+            result.passed.append(PolicyControl(
+                check_id="CHECK-006",
+                name=_check_name("CHECK-006"),
+                description=_check_description("CHECK-006"),
+                policy_section="restricted_actions",
+                evidence=[
+                    f"GUARDRAIL node {g.name!r} protects agent with PRIVILEGE nodes: "
+                    + ", ".join(f"{p.name!r} (scope={p.metadata.privilege_scope})"
+                                for p in high_risk_priv)
+                    for g in guardrail_nodes
+                ],
+                evidence_source="sbom_node",
+            ))
+        else:
+            scope_list = ", ".join(
+                f"{n.name!r} (scope={n.metadata.privilege_scope})" for n in high_risk_priv
+            )
+            result.gaps.append(PolicyGap(
+                check_id="CHECK-006",
+                name=_check_name("CHECK-006"),
+                description=_check_description("CHECK-006"),
+                message=(
+                    f"High-risk PRIVILEGE nodes detected ({scope_list}) but no "
+                    "GUARDRAIL nodes exist to intercept privileged operations before "
+                    "they execute. An attacker using prompt injection could invoke these "
+                    "capabilities without policy enforcement."
+                ),
+                policy_section="restricted_actions",
+                severity="high",
+                searched=[
+                    f"PRIVILEGE nodes with high-risk scope: {scope_list}",
+                    "GUARDRAIL nodes: none found",
+                ],
+                remediation=(
+                    "Add a guardrail component (InputGuardrail / OutputGuardrail) that "
+                    "specifically intercepts tool calls targeting admin, db_write, or "
+                    "filesystem_write operations and verifies intent and authorization "
+                    "before execution. In LangGraph, wrap the privileged tools in a "
+                    "ToolNode with a pre-call authorization check. Re-run "
+                    "'nuguard sbom generate' after adding the guardrail."
+                ),
+            ))
+
+    # ---- CHECK-007: Unauthenticated Tool Access to PII Datastore ------------
+    _pii_policy_keywords = {"pii", "account", "transaction", "personal", "sensitive"}
+    policy_restricts_pii = any(
+        any(kw in t.lower() for kw in _pii_policy_keywords)
+        for t in (policy.restricted_topics + policy.data_classification)
+    )
+    if policy_restricts_pii:
+        pii_datastores = [
+            n for n in datastore_nodes
+            if n.metadata.data_classification
+            or n.metadata.pii_fields
+            or n.metadata.phi_fields
+        ]
+        no_auth_tools = [n for n in tool_nodes if n.metadata.no_auth_required]
+        if pii_datastores and no_auth_tools:
+            result.gaps.append(PolicyGap(
+                check_id="CHECK-007",
+                name=_check_name("CHECK-007"),
+                description=_check_description("CHECK-007"),
+                message=(
+                    f"{len(no_auth_tools)} TOOL node(s) have no_auth_required=True "
+                    f"while {len(pii_datastores)} DATASTORE node(s) carry PII/PHI "
+                    "classification. These tools can be invoked without identity "
+                    "verification, creating an unauthenticated path to sensitive data."
+                ),
+                policy_section="restricted_topics",
+                severity="high",
+                searched=[
+                    f"TOOL nodes with no_auth_required=True: "
+                    + ", ".join(t.name for t in no_auth_tools[:5])
+                    + (" …" if len(no_auth_tools) > 5 else ""),
+                    f"PII/PHI DATASTORE nodes: "
+                    + ", ".join(
+                        f"{d.name!r} (pii_fields={list(d.metadata.pii_fields or [])[:3]})"
+                        for d in pii_datastores
+                    ),
+                ],
+                remediation=(
+                    "Add authentication guards to each tool that accesses PII datastores. "
+                    "In the tool implementation, verify the caller's identity token before "
+                    "querying sensitive tables. Remove 'no_auth_required=True' annotations "
+                    f"from tools that touch the following datastores: "
+                    + ", ".join(d.name for d in pii_datastores)
+                    + ". Consider adding an AUTH node (JWT/OAuth2) and referencing it from "
+                    "these tools so the SBOM reflects the authentication boundary."
+                ),
+            ))
+        elif pii_datastores and not no_auth_tools:
+            result.passed.append(PolicyControl(
+                check_id="CHECK-007",
+                name=_check_name("CHECK-007"),
+                description=_check_description("CHECK-007"),
+                policy_section="restricted_topics",
+                evidence=[
+                    f"All TOOL nodes require authentication; PII DATASTORE "
+                    f"{d.name!r} is protected."
+                    for d in pii_datastores
+                ],
+                evidence_source="sbom_node",
+            ))
+
+    # ---- CHECK-008: Allowed-Topic Agent Grounding ---------------------------
+    if policy.allowed_topics:
+        agent_nodes = _nodes_of_type(doc, ComponentType.AGENT)
+        prompt_nodes = _nodes_of_type(doc, ComponentType.PROMPT)
+        topic_keywords: list[str] = []
+        for topic in policy.allowed_topics:
+            topic_keywords.extend(w for w in topic.lower().split() if len(w) > 4)
+
+        grounding_evidence: list[str] = []
+        for a in agent_nodes:
+            desc = (a.metadata.description or "").lower()
+            if any(kw in desc for kw in topic_keywords):
+                grounding_evidence.append(
+                    f"AGENT {a.name!r} description contains topic-aligned content"
+                )
+        for p in prompt_nodes:
+            desc = (p.metadata.description or "").lower()
+            if any(kw in desc for kw in topic_keywords):
+                grounding_evidence.append(
+                    f"PROMPT {p.name!r} contains topic-aligned content"
+                )
+
+        if grounding_evidence:
+            result.passed.append(PolicyControl(
+                check_id="CHECK-008",
+                name=_check_name("CHECK-008"),
+                description=_check_description("CHECK-008"),
+                policy_section="allowed_topics",
+                evidence=grounding_evidence[:5],
+                evidence_source="prompt",
+            ))
+        else:
+            result.gaps.append(PolicyGap(
+                check_id="CHECK-008",
+                name=_check_name("CHECK-008"),
+                description=_check_description("CHECK-008"),
+                message=(
+                    f"Policy defines {len(policy.allowed_topics)} allowed topic(s) but "
+                    "no AGENT or PROMPT node description contains topic-scoping language. "
+                    "Without explicit grounding instructions the model may answer "
+                    "out-of-scope questions."
+                ),
+                policy_section="allowed_topics",
+                severity="medium",
+                searched=[
+                    f"Checked {len(agent_nodes)} AGENT node(s) and "
+                    f"{len(prompt_nodes)} PROMPT node(s) for topic keywords: "
+                    + ", ".join(topic_keywords[:8])
+                    + (" …" if len(topic_keywords) > 8 else "")
+                ],
+                remediation=(
+                    "Add explicit topic-restriction language to the agent's system prompt. "
+                    "Example: 'You are a banking assistant for Pinnacle Bank. You only help "
+                    "with: account inquiries, fund transfers, bill payments, loan status, "
+                    "credit card inquiries, and branch/ATM location. Politely refuse "
+                    "requests outside this scope.' Re-run 'nuguard sbom generate' so the "
+                    "updated prompt content appears in PROMPT node descriptions."
+                ),
             ))
 
     return result

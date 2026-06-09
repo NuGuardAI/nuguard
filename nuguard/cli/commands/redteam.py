@@ -461,15 +461,12 @@ async def _run_redteam(
     policy_controls: list | None = None
     if policy_path and policy_path.exists():
         try:
-            from nuguard.policy.loader import compiled_path_for, load_controls
-            from nuguard.policy.parser import parse_policy
+            from nuguard.policy.loader import ensure_policy_controls
 
-            cognitive_policy = parse_policy(policy_path.read_text())
-
-            compiled = compiled_path_for(policy_path)
-            if compiled.exists():
-                _log.info("Loading compiled policy controls from %s", compiled)
-                policy_controls = load_controls(compiled)
+            cognitive_policy, policy_controls = await ensure_policy_controls(
+                policy_path,
+                use_llm=False,  # rule-based build on auto-creation; use 'nuguard policy compile --llm' for richer prompts
+            )
         except NotImplementedError:
             _log.warning(
                 "Policy parser not implemented; running without policy constraints"

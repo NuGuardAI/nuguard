@@ -187,17 +187,21 @@ async def _run_behavior(
             log_prefix="behavior",
         )
 
-    # 5. Load policy
+    # 5. Load policy + compiled controls
     resolved_policy_path = policy_path or (Path(cfg.policy_path) if cfg.policy_path else None)
     policy_obj = None
     controls = None
     if resolved_policy_path and resolved_policy_path.exists():
         try:
-            from nuguard.policy.parser import parse_policy
-            policy_obj = parse_policy(resolved_policy_path.read_text())
+            from nuguard.policy.loader import ensure_policy_controls
+            policy_obj, controls = await ensure_policy_controls(
+                resolved_policy_path,
+                use_llm=bc.use_llm,
+                llm_client=None,  # LLM client not yet built at this point; rule-based build is fast
+            )
             _console.print(f"[dim]Loaded policy: {resolved_policy_path}[/dim]")
         except Exception as exc:
-            _log.warning("Could not parse policy from %s: %s", resolved_policy_path, exc)
+            _log.warning("Could not load policy from %s: %s", resolved_policy_path, exc)
 
     # 6. Build LLM client
     llm_client = None
@@ -210,15 +214,6 @@ async def _run_behavior(
             )
         except Exception as exc:
             _log.warning("Could not build LLM client: %s", exc)
-
-    # Compile controls from policy — after LLM client so it can be passed in
-    if policy_obj is not None:
-        try:
-            from nuguard.policy.compiler import compile_controls
-            policy_text = resolved_policy_path.read_text() if resolved_policy_path else ""
-            controls = await compile_controls(policy_text, use_llm=bc.use_llm, llm_client=llm_client)
-        except Exception as exc:
-            _log.debug("Could not compile controls: %s", exc)
 
     # 7. Run analysis
     _console.print(f"[bold]Running behavior analysis[/bold]  mode={mode}")
