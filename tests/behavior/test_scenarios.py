@@ -6,7 +6,12 @@ import uuid
 import pytest
 
 from nuguard.behavior.models import BehaviorScenarioType, IntentProfile
-from nuguard.behavior.scenarios import _tool_coverage_scenarios
+from nuguard.behavior.scenarios import (
+    _delegates_to_scenarios,
+    _endpoint_coverage_scenarios,
+    _guardrail_path_scenarios,
+    _tool_coverage_scenarios,
+)
 from nuguard.sbom.models import (
     AiSbomDocument,
     Edge,
@@ -183,3 +188,186 @@ async def test_tool_coverage_agent_scenario_is_agent_coverage_type():
     assert agent_sc is not None
     stype = getattr(agent_sc.scenario_type, "value", str(agent_sc.scenario_type))
     assert stype == BehaviorScenarioType.AGENT_COVERAGE.value
+
+
+# ---------------------------------------------------------------------------
+# Guardrail-path scenario generation
+# ---------------------------------------------------------------------------
+
+
+def _make_guardrail_sbom(blocked_actions: list[str] | None = None) -> AiSbomDocument:
+    gid = uuid.uuid5(_NS, "guardrail/ContentGuard")
+    tid = uuid.uuid5(_NS, "tool/TransferTool")
+    guardrail = Node(
+        id=gid,
+        name="ContentGuard",
+        component_type=NodeType.GUARDRAIL,
+        confidence=1.0,
+        metadata=NodeMetadata(
+            description="Content safety guardrail",
+            rules_excerpt="Blocks financial transfers",
+            blocked_actions=blocked_actions or ["transfer funds", "send money"],
+            refusal_style="hard_block",
+        ),
+    )
+    tool = Node(
+        id=tid,
+        name="TransferTool",
+        component_type=NodeType.TOOL,
+        confidence=1.0,
+        metadata=NodeMetadata(description="handles financial transfers"),
+    )
+    return AiSbomDocument(
+        target="./app",
+        nodes=[guardrail, tool],
+        edges=[Edge(source=gid, target=tid, relationship_type=EdgeRelationshipType.PROTECTS)],
+    )
+
+
+def test_guardrail_path_emits_invariant_probe():
+    """_guardrail_path_scenarios emits INVARIANT_PROBE for each blocked_action."""
+    sbom = _make_guardrail_sbom(["transfer funds"])
+    intent = _make_intent("banking assistant")
+    scenarios = _guardrail_path_scenarios(sbom, intent)
+    assert scenarios, "Expected at least one guardrail scenario"
+    for sc in scenarios:
+        stype = getattr(sc.scenario_type, "value", str(sc.scenario_type))
+        assert stype == BehaviorScenarioType.INVARIANT_PROBE.value
+
+
+def test_guardrail_path_sets_expect_refused():
+    sbom = _make_guardrail_sbom(["transfer funds"])
+    scenarios = _guardrail_path_scenarios(sbom, _make_intent())
+    assert all(s.expect_refused for s in scenarios)
+
+
+def test_guardrail_path_sets_scoped_guardrail():
+    sbom = _make_guardrail_sbom(["send money"])
+    scenarios = _guardrail_path_scenarios(sbom, _make_intent())
+    assert all(s.scoped_guardrail == "ContentGuard" for s in scenarios)
+
+
+def test_guardrail_path_two_turn_messages():
+    sbom = _make_guardrail_sbom(["transfer funds"])
+    scenarios = _guardrail_path_scenarios(sbom, _make_intent())
+    for sc in scenarios:
+        assert len(sc.messages) == 2, "Guardrail probe must be 2 turns"
+
+
+def test_guardrail_path_no_scenarios_without_blocked_actions():
+    gid = uuid.uuid5(_NS, "guardrail/EmptyGuard")
+    guardrail = Node(
+        id=gid,
+        name="EmptyGuard",
+        component_type=NodeType.GUARDRAIL,
+        confidence=1.0,
+        metadata=NodeMetadata(),
+    )
+    sbom = AiSbomDocument(target="./app", nodes=[guardrail], edges=[])
+    scenarios = _guardrail_path_scenarios(sbom, _make_intent())
+    assert scenarios == []
+
+
+# ---------------------------------------------------------------------------
+# DELEGATES_TO scenario generation
+# ---------------------------------------------------------------------------
+
+
+def _make_delegation_sbom() -> AiSbomDocument:
+    src_id = uuid.uuid5(_NS, "agent/SrcAgent")
+    tgt_id = uuid.uuid5(_NS, "agent/TgtAgent")
+    src = Node(
+        id=src_id,
+        name="SrcAgent",
+        component_type=NodeType.AGENT,
+        confidence=1.0,
+        metadata=NodeMetadata(description="orchestrator agent"),
+    )
+    tgt = Node(
+        id=tgt_id,
+        name="TgtAgent",
+        component_type=NodeType.AGENT,
+        confidence=1.0,
+        metadata=NodeMetadata(description="specialist agent for billing"),
+    )
+    return AiSbomDocument(
+        target="./app",
+        nodes=[src, tgt],
+        edges=[Edge(source=src_id, target=tgt_id, relationship_type=EdgeRelationshipType.DELEGATES_TO)],
+    )
+
+
+def test_delegates_to_emits_agent_coverage_scenario():
+    sbom = _make_delegation_sbom()
+    scenarios = _delegates_to_scenarios(sbom, _make_intent("multi-agent app"))
+    assert scenarios, "Expected at least one DELEGATES_TO scenario"
+    stype = getattr(scenarios[0].scenario_type, "value", str(scenarios[0].scenario_type))
+    assert stype == BehaviorScenarioType.AGENT_COVERAGE.value
+
+
+def test_delegates_to_targets_downstream_agent():
+    sbom = _make_delegation_sbom()
+    scenarios = _delegates_to_scenarios(sbom, _make_intent())
+    assert any(s.target_component == "TgtAgent" for s in scenarios)
+
+
+def test_delegates_to_scopes_both_agents():
+    sbom = _make_delegation_sbom()
+    scenarios = _delegates_to_scenarios(sbom, _make_intent())
+    sc = next(s for s in scenarios if s.target_component == "TgtAgent")
+    assert "SrcAgent" in sc.scoped_agents
+    assert "TgtAgent" in sc.scoped_agents
+
+
+def test_delegates_to_no_scenarios_without_edge():
+    src_id = uuid.uuid5(_NS, "agent/Alone")
+    agent = Node(id=src_id, name="Alone", component_type=NodeType.AGENT, confidence=1.0)
+    sbom = AiSbomDocument(target="./app", nodes=[agent], edges=[])
+    scenarios = _delegates_to_scenarios(sbom, _make_intent())
+    assert scenarios == []
+
+
+# ---------------------------------------------------------------------------
+# Endpoint coverage scenario type
+# ---------------------------------------------------------------------------
+
+
+def _make_endpoint_sbom() -> AiSbomDocument:
+    eid = uuid.uuid5(_NS, "endpoint//api/chat")
+    ep = Node(
+        id=eid,
+        name="/api/chat",
+        component_type=NodeType.API_ENDPOINT,
+        confidence=1.0,
+        metadata=NodeMetadata(
+            description="Chat endpoint",
+            accepts_user_input=True,
+            chat_payload_key="message",
+            request_body_schema={"message": "str", "session_id": "str"},
+            returns_sensitive_data=False,
+        ),
+    )
+    return AiSbomDocument(target="./app", nodes=[ep], edges=[])
+
+
+def test_endpoint_coverage_uses_endpoint_coverage_type():
+    """_endpoint_coverage_scenarios must use ENDPOINT_COVERAGE scenario type."""
+    sbom = _make_endpoint_sbom()
+    scenarios = _endpoint_coverage_scenarios(sbom, _make_intent())
+    assert scenarios, "Expected at least one endpoint scenario"
+    for sc in scenarios:
+        stype = getattr(sc.scenario_type, "value", str(sc.scenario_type))
+        assert stype == BehaviorScenarioType.ENDPOINT_COVERAGE.value
+
+
+def test_endpoint_coverage_target_component_is_endpoint_name():
+    sbom = _make_endpoint_sbom()
+    scenarios = _endpoint_coverage_scenarios(sbom, _make_intent())
+    assert any(s.target_component == "/api/chat" for s in scenarios)
+
+
+def test_endpoint_coverage_target_component_type_is_api_endpoint():
+    sbom = _make_endpoint_sbom()
+    scenarios = _endpoint_coverage_scenarios(sbom, _make_intent())
+    for sc in scenarios:
+        assert sc.target_component_type == "API_ENDPOINT"
