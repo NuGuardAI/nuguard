@@ -38,6 +38,22 @@ class SupplyChainPlugin(AnalysisPlugin):
                 details={},
             )
 
+        # source_path must be a local filesystem path, not a remote URL.
+        # The `source:` field in nuguard.yaml can hold a git clone URL used by
+        # `sbom generate`; that URL must not be forwarded to local-scan tools.
+        if source_path_str.startswith(("http://", "https://", "git://", "git+")):
+            return AnalysisResult(
+                status="skipped",
+                plugin=self.name,
+                message=(
+                    "supply-chain scan requires a local directory path; "
+                    f"'{source_path_str}' is a remote URL. "
+                    "Pass --source <local-path> to enable supply-chain scanning."
+                ),
+                findings=[],
+                details={},
+            )
+
         source_path = Path(source_path_str)
         if not source_path.exists():
             return AnalysisResult(

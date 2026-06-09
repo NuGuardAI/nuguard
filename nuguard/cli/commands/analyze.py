@@ -140,8 +140,13 @@ def analyze(
     # --min-severity: CLI wins when explicitly set (non-None); else use config default
     min_severity = min_severity or cfg.analyze_min_severity
 
-    # --source: CLI wins; fall back to top-level source: in nuguard.yaml
-    source = source or cfg.source_path
+    # --source: CLI wins; fall back to top-level source: in nuguard.yaml.
+    # Only use the config value when it's a local path — the `source:` field can also
+    # hold a remote GitHub URL used solely for SBOM generation (git clone), and passing
+    # that URL to local-scan tools (supply-chain, Semgrep, Checkov) makes no sense.
+    _cfg_source = cfg.source_path
+    if not source and _cfg_source and not _cfg_source.startswith(("http://", "https://", "git://", "git+")):
+        source = _cfg_source
 
     # supply-chain: CLI wins; fall back to analyze: section in nuguard.yaml
     sc_profile = supply_chain_profile or cfg.analyze_supply_chain_profile
