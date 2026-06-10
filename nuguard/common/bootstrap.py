@@ -5,7 +5,6 @@ decide whether to abort.
 """
 from __future__ import annotations
 
-import logging
 import time
 import uuid
 
@@ -13,10 +12,11 @@ import httpx
 
 from nuguard.common.auth import AuthConfig, AuthSession
 from nuguard.common.errors import TargetUnavailableError
+from nuguard.common.logging import get_logger
 from nuguard.models.health_report import CredentialCheckResult, TargetHealthReport
 from nuguard.redteam.target.canary import CanaryConfig
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Timeout for the single bootstrap health-check request (intentionally short)
 BOOTSTRAP_TIMEOUT = 15.0
@@ -97,6 +97,21 @@ class AuthBootstrapper:
             endpoint=self._endpoint,
             run_id=self._run_id,
         )
+
+        # If login_flow auth was configured but token acquisition failed, report
+        # auth_failed immediately — don't probe the chat endpoint, because an
+        # anonymous probe may return 200 and mask the credential failure.
+        if self._default_auth.type == "login_flow" and not self._session.login_succeeded:
+            report.checks.append(
+                CredentialCheckResult(
+                    identity="default",
+                    auth_type=self._default_auth.type,
+                    endpoint=self.full_url,
+                    status="auth_failed",
+                    error_detail="login_flow token acquisition failed — check credentials",
+                )
+            )
+            return report
 
         # Always check the default credential first, using the live session
         # headers (which carry the acquired JWT for login_flow auth)

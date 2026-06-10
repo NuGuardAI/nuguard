@@ -16,13 +16,14 @@ by AuthBootstrapper before any scenarios run.
 from __future__ import annotations
 
 import base64
-import logging
 from typing import Any, Literal
 
 import httpx
 from pydantic import BaseModel, Field, model_validator
 
-_log = logging.getLogger(__name__)
+from nuguard.common.logging import get_logger
+
+_log = get_logger(__name__)
 
 _LOGIN_TIMEOUT = 15.0
 
@@ -269,6 +270,8 @@ class AuthSession:
         # Extra fields extracted from the login response body (identity + session fields).
         # Populated by _do_login(); callers use login_response_extras() to read them.
         self._login_response_extras: dict[str, str] = {}
+        # Set to True only when login_flow auth completes with a valid token.
+        self._login_succeeded: bool = False
 
         if config.type == "login_flow" and config.login_flow:
             raw = config.login_flow.token_header
@@ -301,6 +304,11 @@ class AuthSession:
             )
             return {self._token_header_name: value}
         return self._config.to_headers()
+
+    @property
+    def login_succeeded(self) -> bool:
+        """True if login_flow completed and a valid token was acquired."""
+        return self._login_succeeded
 
     def login_response_extras(self) -> dict[str, str]:
         """Return identity/session fields extracted from the login response body.
@@ -379,6 +387,7 @@ class AuthSession:
                 return
 
             self._token = token
+            self._login_succeeded = True
             _log.debug(
                 "AuthSession: token acquired from %s (key=%r)",
                 url,
