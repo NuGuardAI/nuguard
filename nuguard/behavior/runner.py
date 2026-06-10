@@ -31,7 +31,7 @@ import time
 import uuid
 from typing import TYPE_CHECKING, Any
 
-from nuguard.behavior._utils import is_not_used_response
+from nuguard.behavior._utils import is_not_used_response, normalise_name
 from nuguard.behavior.coverage import (
     CoverageState,
     generate_coverage_turns,
@@ -107,6 +107,33 @@ def _make_short_title(violation_type: str, policy_clause: str) -> str:
         return f"Restricted action: {comp}"[:80]
     words = (policy_clause or violation_type).replace("_", " ").split()
     return " ".join(words[:15]) or "Policy violation"
+
+
+def _fingerprint_text(text: str, max_len: int = 220) -> str:
+    """Normalize and compact text used in deterministic finding IDs."""
+    cleaned = re.sub(r"\s+", " ", (text or "").strip().lower())
+    if len(cleaned) > max_len:
+        cleaned = cleaned[:max_len]
+    return cleaned
+
+
+def _make_finding_id(
+    *,
+    finding_type: str,
+    severity: str,
+    component: str,
+    summary: str,
+    first_seen_turn: int | None = None,
+) -> str:
+    """Build a deterministic finding ID from stable normalized fields."""
+    key = "|".join([
+        finding_type.strip().upper(),
+        severity.strip().lower(),
+        normalise_name(component or "unknown"),
+        _fingerprint_text(summary),
+        str(first_seen_turn or 0),
+    ])
+    return "F-" + hashlib.sha256(key.encode("utf-8")).hexdigest()[:12].upper()
 
 
 def _is_destructive_scenario(scenario: object) -> bool:
@@ -1069,8 +1096,13 @@ class BehaviorRunner:
                     tools_mentioned=[],
                     latency_ms=latency_ms,
                     deviations=list(_fail_verdict.deviations),
+                    effective_endpoint=scenario_endpoint,
+                    request_url=target_url + scenario_endpoint,
                 ))
-                verdicts.append(_fail_verdict.to_dict())
+                _fail_vdict = _fail_verdict.to_dict()
+                _fail_vdict["effective_endpoint"] = scenario_endpoint
+                _fail_vdict["request_url"] = target_url + scenario_endpoint
+                verdicts.append(_fail_vdict)
                 scenario_deviations.extend(_fail_verdict.deviations)
                 turn_idx += 1
                 if consecutive_failures >= _MAX_CONSECUTIVE_FAILURES:
@@ -1310,11 +1342,15 @@ class BehaviorRunner:
                 tools_mentioned=verdict.tools_mentioned,
                 latency_ms=latency_ms,
                 deviations=[d for d in verdict.deviations],
+                effective_endpoint=scenario_endpoint,
+                request_url=target_url + scenario_endpoint,
             )
             turn_records.append(turn_record)
             v_dict = verdict.to_dict()
             v_dict["user_message"] = message or ""
             v_dict["agent_response"] = response or ""
+            v_dict["effective_endpoint"] = scenario_endpoint
+            v_dict["request_url"] = target_url + scenario_endpoint
             verdicts.append(v_dict)
 
             # Accumulate deviations and findings
@@ -1322,11 +1358,18 @@ class BehaviorRunner:
             for violation in violations:
                 _vsev = violation.get("severity", "medium").lower()
                 findings.append({
-                    "finding_id": str(uuid.uuid4()),
+                    "finding_id": _make_finding_id(
+                        finding_type="POLICY_VIOLATION",
+                        severity=_vsev,
+                        component=scenario.target_component or "unknown",
+                        summary=violation.get("evidence", ""),
+                        first_seen_turn=turn_idx + 1,
+                    ),
                     "title": f"Policy violation: {violation.get('type', 'unknown')}",
                     "severity": _vsev,
                     "description": violation.get("evidence", ""),
                     "affected_component": scenario.target_component or "unknown",
+                    "finding_type": "POLICY_VIOLATION",
                     "policy_clause": violation.get("policy_clause", ""),
                 })
                 # Mirror into scenario_deviations so run() aggregation can include
@@ -1343,11 +1386,18 @@ class BehaviorRunner:
                 })
             if canary_hits:
                 findings.append({
-                    "finding_id": str(uuid.uuid4()),
+                    "finding_id": _make_finding_id(
+                        finding_type="SECRET_DISCLOSURE",
+                        severity="critical",
+                        component=scenario.target_component or "unknown",
+                        summary=",".join(str(h) for h in canary_hits),
+                        first_seen_turn=turn_idx + 1,
+                    ),
                     "title": "Canary data disclosure",
                     "severity": "critical",
                     "description": f"Canary values found in response: {canary_hits}",
                     "affected_component": scenario.target_component or "unknown",
+                    "finding_type": "SECRET_DISCLOSURE",
                 })
                 scenario_deviations.append({
                     "deviation_type": "data_leak",
@@ -1599,6 +1649,7 @@ class BehaviorRunner:
         # On 405/404, rotate through ranked SBOM candidates then fall back to live
         # probing.  Abort the run cleanly if no working endpoint is found.
         _preflight_ok = True
+        self._target_endpoint_source = "config" if getattr(self._config, "target_endpoint", "") else "default"
         try:
             from nuguard.common.endpoint_probe import (  # noqa: PLC0415
                 discover_chat_candidates_from_sbom as _dcandidates,
@@ -1627,6 +1678,7 @@ class BehaviorRunner:
                         _log.info("Pre-flight: rotated to working endpoint %s", _ep[0])
                         _console.print(f"  [cyan]Endpoint rotated → {_ep[0]}[/cyan]")
                         self._rotated_chat_endpoint = _ep
+                        self._target_endpoint_source = "sbom"
                         _rotated = True
                         break
                 if not _rotated and self._sbom is not None:
@@ -1639,6 +1691,7 @@ class BehaviorRunner:
                             _log.info("Pre-flight: live probe found working endpoint %s", _probed[0])
                             _console.print(f"  [cyan]Live probe → {_probed[0]}[/cyan]")
                             self._rotated_chat_endpoint = (_probed[0], _probed[1], _probed[2], None)
+                            self._target_endpoint_source = "probe"
                             _rotated = True
                     except Exception as _pe:
                         _log.warning("Pre-flight live probe failed: %s", _pe)
@@ -1784,6 +1837,8 @@ class BehaviorRunner:
         raw_results = await asyncio.gather(*(_run_one(i, s) for i, s in enumerate(scenarios)))
 
         seen_findings: set[tuple[str, str, str]] = set()
+        raw_gap_observations = 0
+        unique_gap_observations = 0
         for run_result in raw_results:
             if run_result is None:
                 continue
@@ -1802,7 +1857,13 @@ class BehaviorRunner:
                     seen_findings.add(dedup_key)
                     _attack_step = dev.get("attack_step")
                     all_findings.append({
-                        "finding_id": str(uuid.uuid4()),
+                        "finding_id": _make_finding_id(
+                            finding_type=str(dev.get("deviation_type", "policy_violation")).upper(),
+                            severity=str(dev.get("severity", "medium")).lower(),
+                            component=(getattr(orig, "target_component", None) or "unknown"),
+                            summary=dev.get("description", ""),
+                            first_seen_turn=(int(_attack_step.get("turn", 0)) if isinstance(_attack_step, dict) else 0),
+                        ),
                         "title": dev.get("title") or _make_short_title(
                             dev.get("deviation_type", "policy_violation"),
                             dev.get("description", ""),
@@ -1811,6 +1872,7 @@ class BehaviorRunner:
                         "description": dev.get("description", ""),
                         "affected_component": (getattr(orig, "target_component", None) or "unknown"),
                         "attack_steps": [_attack_step] if _attack_step else [],
+                        "finding_type": str(dev.get("deviation_type", "policy_violation")).upper(),
                     })
 
         # Aggregate gap strings from all scenario verdicts into bucketed findings.
@@ -1825,6 +1887,7 @@ class BehaviorRunner:
                 for gap_text in v_dict.get("gaps") or []:
                     if not isinstance(gap_text, str) or not gap_text.strip():
                         continue
+                    raw_gap_observations += 1
                     ftype, _ = _classify_gap(gap_text)
                     bucket_key = (ftype, component)
                     _gap_buckets.setdefault(bucket_key, []).append(gap_text.strip())
@@ -1838,6 +1901,7 @@ class BehaviorRunner:
             for g in gap_list:
                 seen_texts.setdefault(g.lower(), g)
             unique_gaps = list(seen_texts.values())
+            unique_gap_observations += len(unique_gaps)
             _, severity = _classify_gap(unique_gaps[0])
             description = "; ".join(unique_gaps[:5])
             dedup_key = (ftype, severity, description[:80])
@@ -1860,7 +1924,13 @@ class BehaviorRunner:
                 for v in bucket_verdicts
             ]
             all_findings.append({
-                "finding_id": str(uuid.uuid4()),
+                "finding_id": _make_finding_id(
+                    finding_type=ftype,
+                    severity=severity,
+                    component=component,
+                    summary=description,
+                    first_seen_turn=(int(bucket_verdicts[0].get("turn", 0)) if bucket_verdicts else 0),
+                ),
                 "title": f"{ftype.replace('_', ' ').title()}: {component}",
                 "severity": severity,
                 "description": description,
@@ -1868,6 +1938,8 @@ class BehaviorRunner:
                 "finding_type": ftype,
                 "occurrence_count": len(gap_list),
                 "gap_texts": unique_gaps,
+                "raw_gap_count": len(gap_list),
+                "unique_gap_count": len(unique_gaps),
                 "attack_steps": gap_attack_steps,
             })
 
@@ -1913,7 +1985,23 @@ class BehaviorRunner:
             run_id, len(scenario_results), len(all_findings), scan_outcome,
         )
 
-        _in_tok, _out_tok = self._llm.token_counts if self._llm is not None else (0, 0)
+    _in_tok, _out_tok = self._llm.token_counts if self._llm is not None else (0, 0)
+        buckets_formed = len(_gap_buckets)
+        buckets_emitted = sum(1 for _k, gap_list in _gap_buckets.items() if len(gap_list) >= _GAP_FINDING_MIN_OCCURRENCES)
+        gap_aggregation_stats = {
+            "raw_gap_observations": raw_gap_observations,
+            "unique_gap_observations": unique_gap_observations,
+            "buckets_formed": buckets_formed,
+            "buckets_emitted": buckets_emitted,
+            "buckets_dropped": max(0, buckets_formed - buckets_emitted),
+            "min_occurrences_threshold": _GAP_FINDING_MIN_OCCURRENCES,
+        }
+
+        effective_endpoint = (
+            self._rotated_chat_endpoint[0]
+            if self._rotated_chat_endpoint
+            else (getattr(self._config, "target_endpoint", "") or "/chat")
+        )
         return BehaviorRunResult(
             run_id=run_id,
             findings=all_findings,
@@ -1925,6 +2013,9 @@ class BehaviorRunner:
             input_tokens_used=_in_tok,
             output_tokens_used=_out_tok,
             config_notes=config_notes,
+            gap_aggregation_stats=gap_aggregation_stats,
+            effective_endpoint=effective_endpoint,
+            target_endpoint_source=getattr(self, "_target_endpoint_source", "config"),
         )
 
     def _build_coverage_map(
@@ -1940,6 +2031,8 @@ class BehaviorRunner:
         from nuguard.behavior.models import BehaviorScenarioType
 
         component_map: dict[str, BehaviorCoverage] = {}
+        normalized_component_name: dict[str, str] = {}
+        unmatched_mentions: set[str] = set()
 
         # Initialize from known agents/tools
         for name in self._agent_names:
@@ -1947,11 +2040,13 @@ class BehaviorRunner:
                 component_name=name,
                 node_type="AGENT",
             )
+            normalized_component_name[normalise_name(name)] = name
         for name in self._tool_names:
             component_map[name] = BehaviorCoverage(
                 component_name=name,
                 node_type="TOOL",
             )
+            normalized_component_name[normalise_name(name)] = name
 
         # Initialize API_ENDPOINT and GUARDRAIL nodes from SBOM
         if self._sbom is not None:
@@ -2015,19 +2110,37 @@ class BehaviorRunner:
                 )
 
                 for a in agents:
-                    if a in component_map and component_map[a].node_type == "AGENT":
-                        component_map[a].exercised = True
+                    key = a if a in component_map else normalized_component_name.get(normalise_name(a))
+                    if key and key in component_map and component_map[key].node_type == "AGENT":
+                        cov = component_map[key]
+                        cov.exercised = True
+                        if a not in cov.evidence_mentions:
+                            cov.evidence_mentions.append(a)
+                        norm_alias = normalise_name(a)
+                        if norm_alias and norm_alias not in cov.aliases_seen:
+                            cov.aliases_seen.append(norm_alias)
                         if has_violation:
-                            component_map[a].exercised_against_policy = True
+                            cov.exercised_against_policy = True
                         else:
-                            component_map[a].exercised_within_policy = True
+                            cov.exercised_within_policy = True
+                    elif a:
+                        unmatched_mentions.add(a)
                 for t in tools:
-                    if t in component_map and component_map[t].node_type == "TOOL":
-                        component_map[t].exercised = True
+                    key = t if t in component_map else normalized_component_name.get(normalise_name(t))
+                    if key and key in component_map and component_map[key].node_type == "TOOL":
+                        cov = component_map[key]
+                        cov.exercised = True
+                        if t not in cov.evidence_mentions:
+                            cov.evidence_mentions.append(t)
+                        norm_alias = normalise_name(t)
+                        if norm_alias and norm_alias not in cov.aliases_seen:
+                            cov.aliases_seen.append(norm_alias)
                         if has_violation:
-                            component_map[t].exercised_against_policy = True
+                            cov.exercised_against_policy = True
                         else:
-                            component_map[t].exercised_within_policy = True
+                            cov.exercised_within_policy = True
+                    elif t:
+                        unmatched_mentions.add(t)
 
                 # Record deviations
                 for dev in deviations:
@@ -2043,9 +2156,15 @@ class BehaviorRunner:
                         evidence=str(verdict_dict.get("reasoning", "")),
                     )
                     # Attach to relevant component
-                    for comp_name, cov in component_map.items():
-                        if comp_name in (agents + tools):
-                            cov.deviations.append(deviation)
+                    for mentioned in (agents + tools):
+                        key = mentioned if mentioned in component_map else normalized_component_name.get(normalise_name(str(mentioned)))
+                        if key and key in component_map:
+                            component_map[key].deviations.append(deviation)
+
+        if unmatched_mentions:
+            unmatched_sorted = sorted(unmatched_mentions)
+            for cov in component_map.values():
+                cov.unmatched_mentions = unmatched_sorted
 
         return list(component_map.values())
 

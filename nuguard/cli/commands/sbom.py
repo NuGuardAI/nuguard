@@ -75,7 +75,7 @@ _GH_TOKEN_PREFIXES = ("ghp_", "gho_", "ghs_", "ghu_", "github_pat_")
 _LLM_KEY_ENVS = (
     "LITELLM_API_KEY",
     "OPENAI_API_KEY",
-    "AZURE_API_KEY",
+    "AZURE_OPENAI_KEY",
     "ANTHROPIC_API_KEY",
     "GEMINI_API_KEY",
     "NUGUARD_REDTEAM_LLM_API_KEY",

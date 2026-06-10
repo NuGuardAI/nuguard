@@ -123,6 +123,8 @@ class TurnRecord(BaseModel):
     is_coverage_turn: bool = False
     latency_ms: int = 0
     deviations: list[dict] = Field(default_factory=list)
+    effective_endpoint: str = ""
+    request_url: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -151,6 +153,22 @@ class BehaviorCoverage(BaseModel):
     exercised_within_policy: bool = False
     exercised_against_policy: bool = False
     deviations: list[BehaviorDeviation] = Field(default_factory=list)
+    evidence_mentions: list[str] = Field(default_factory=list)
+    aliases_seen: list[str] = Field(default_factory=list)
+    unmatched_mentions: list[str] = Field(default_factory=list)
+
+
+class BehaviorCounts(BaseModel):
+    """Reconciled counts for findings and evidence rows."""
+
+    static_findings: int = 0
+    dynamic_findings: int = 0
+    gap_findings: int = 0
+    policy_dynamic_findings: int = 0
+    total_unique_findings: int = 0
+    deviation_evidence_items: int = 0
+    raw_gap_observations: int = 0
+    unique_gap_observations: int = 0
 
 
 class BehaviorCoverageObjective(BaseModel):
@@ -305,6 +323,9 @@ class BehaviorRunResult(BaseModel):
             "URL resolution when the configured target was a static hosting site."
         ),
     )
+    gap_aggregation_stats: dict[str, int] = Field(default_factory=dict)
+    effective_endpoint: str = ""
+    target_endpoint_source: str = "config"
 
 
 class BehaviorAnalysisResult(BaseModel):
@@ -322,6 +343,11 @@ class BehaviorAnalysisResult(BaseModel):
     remediation_plan: list[RemediationArtefact] = Field(default_factory=list)
     scan_outcome: str = "no_findings"
     llm_executive_summary: str | None = None
+    config_notes: list[str] = Field(default_factory=list)
+    gap_aggregation_stats: dict[str, int] = Field(default_factory=dict)
+    effective_endpoint: str = ""
+    target_endpoint_source: str = "config"
+    run_profile: dict[str, Any] = Field(default_factory=dict)
 
     @computed_field  # type: ignore[misc]
     @property
@@ -422,3 +448,35 @@ class BehaviorAnalysisResult(BaseModel):
             if _s.overall_score >= 2.0
         )
         return round(min(covered / total, 1.0), 4)
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def counts(self) -> BehaviorCounts:
+        """Return reconciled finding/evidence counts for report summaries."""
+        gap_findings = [
+            f for f in self.dynamic_findings
+            if str(f.get("finding_type", "")) in {
+                BehaviorFindingType.CAPABILITY_GAP.value,
+                BehaviorFindingType.INTENT_MISALIGNMENT.value,
+                BehaviorFindingType.TOOL_CHAIN_BROKEN.value,
+            }
+        ]
+        policy_dynamic = [f for f in self.dynamic_findings if f not in gap_findings]
+        raw_gap = int(self.gap_aggregation_stats.get("raw_gap_observations", 0))
+        uniq_gap = int(self.gap_aggregation_stats.get("unique_gap_observations", 0))
+        deviation_rows = sum(
+            1
+            for sr in self.scenario_results
+            for v in sr.verdicts
+            for _ in (v.get("deviations") or [])
+        )
+        return BehaviorCounts(
+            static_findings=len(self.static_findings),
+            dynamic_findings=len(self.dynamic_findings),
+            gap_findings=len(gap_findings),
+            policy_dynamic_findings=len(policy_dynamic),
+            total_unique_findings=len(self.static_findings) + len(self.dynamic_findings),
+            deviation_evidence_items=deviation_rows,
+            raw_gap_observations=raw_gap,
+            unique_gap_observations=uniq_gap,
+        )

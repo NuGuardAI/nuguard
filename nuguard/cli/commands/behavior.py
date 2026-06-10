@@ -57,6 +57,12 @@ def behavior_command(
     baseline: Optional[Path] = typer.Option(
         None, "--baseline", help="Path to a previous BehaviorAnalysisResult JSON for regression detection"
     ),
+    compare_to: Optional[Path] = typer.Option(
+        None, "--compare-to", help="Path to previous behavior report JSON for run-profile comparability"
+    ),
+    strict_report: bool = typer.Option(
+        False, "--strict-report", help="Fail if markdown report validation finds structural issues"
+    ),
     verbose: bool = typer.Option(
         False, "--verbose", "-v", help="Print detailed turn traces."
     ),
@@ -102,6 +108,8 @@ def behavior_command(
             fmt=format,
             fail_on=fail_on,
             baseline_path=baseline,
+            compare_to_path=compare_to,
+            strict_report=strict_report,
             verbose=verbose,
         )
     )
@@ -118,6 +126,8 @@ async def _run_behavior(
     fmt: str,
     fail_on: str,
     baseline_path: Optional[Path],
+    compare_to_path: Optional[Path],
+    strict_report: bool,
     verbose: bool,
 ) -> None:
     """Internal async implementation of the behavior command."""
@@ -246,10 +256,25 @@ async def _run_behavior(
         raise typer.Exit(code=2)
 
     # 8. Output report
+    previous_run_profile: dict = {}
+    if compare_to_path and compare_to_path.exists():
+        try:
+            import json as _json
+
+            previous_json = _json.loads(compare_to_path.read_text(encoding="utf-8"))
+            previous_run_profile = dict(previous_json.get("run_profile", {}) or {})
+        except Exception as exc:
+            _log.warning("Could not load compare-to report %s: %s", compare_to_path, exc)
+
     llm_models = [m for m in [cfg.litellm_model] if m]
     meta = ReportMeta(
         llm_models=llm_models,
         target_url=str(getattr(bc, "target", "") or ""),
+        target_endpoint=str(getattr(bc, "target_endpoint", "") or ""),
+        effective_endpoint=str(getattr(result, "effective_endpoint", "") or ""),
+        target_endpoint_source=str(getattr(result, "target_endpoint_source", "config") or "config"),
+        endpoint_discovery_notes=list(getattr(result, "config_notes", []) or []),
+        previous_run_profile=previous_run_profile,
     )
 
     report_text: str | None = None
@@ -263,6 +288,15 @@ async def _run_behavior(
     if output_path is not None:
         if report_text is None:
             report_text = to_markdown(result, meta)
+        if fmt == "markdown":
+            from nuguard.output.report_validation import validate_markdown_report
+
+            issues = validate_markdown_report(report_text)
+            if issues:
+                for issue in issues:
+                    _err_console.print(f"[yellow]Report validation warning:[/yellow] {issue}")
+                if strict_report:
+                    raise typer.Exit(code=3)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(report_text, encoding="utf-8")
         _console.print(f"[green]Report written to:[/green] {output_path}")

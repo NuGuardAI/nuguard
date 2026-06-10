@@ -11,6 +11,7 @@ from nuguard.behavior.models import (
     ScenarioResult,
 )
 from nuguard.behavior.report import to_json, to_markdown
+from nuguard.cli.report_meta import ReportMeta
 from nuguard.output.report_shared import _norm_sev
 
 # ---------------------------------------------------------------------------
@@ -292,3 +293,118 @@ def test_to_markdown_recommendations_section():
     assert "## Recommendations" in md
     assert "Remove restricted topic" in md
     assert "BA-001 finding" in md
+
+
+def test_to_markdown_summary_count_reconciliation_table():
+    result = _make_result(
+        static_findings=[{"finding_id": "F-1", "severity": "high", "title": "s1", "description": "d"}],
+        dynamic_findings=[
+            {
+                "finding_id": "F-2",
+                "severity": "medium",
+                "title": "d1",
+                "description": "d",
+                "finding_type": "CAPABILITY_GAP",
+                "occurrence_count": 3,
+            }
+        ],
+        gap_aggregation_stats={"raw_gap_observations": 3, "unique_gap_observations": 2},
+    )
+    md = to_markdown(result)
+    assert "| Count Bucket | Value |" in md
+    assert "| Unique findings (summary) | 2 |" in md
+    assert "| Raw gap observations | 3 (deduplicated to 2) |" in md
+
+
+def test_to_markdown_uses_deviation_evidence_heading_not_findings_heading():
+    verdicts = [
+        {
+            "turn": 1,
+            "verdict": "FAIL",
+            "scores": {},
+            "overall_score": 1.0,
+            "gaps": ["missing detail"],
+            "deviations": [{"deviation_type": "capability_gap", "description": "desc", "severity": "medium"}],
+        }
+    ]
+    sr = _make_scenario_result(score=1.0, verdicts=verdicts, deviations=[{"deviation_type": "capability_gap"}])
+    result = _make_result(scenario_results=[sr])
+    md = to_markdown(result)
+    assert "## Deviation Evidence (per-turn)" in md
+    assert "### [MEDIUM] capability_gap" not in md
+    assert "**[MEDIUM] capability_gap**" in md
+
+
+def test_to_markdown_covered_components_tagged_matched_unmatched():
+    verdicts = [
+        {
+            "turn": 1,
+            "verdict": "PASS",
+            "scores": {},
+            "overall_score": 4.5,
+            "gaps": [],
+            "agents_mentioned": ["Loan Application Agent"],
+            "tools_mentioned": ["UnknownTool"],
+        }
+    ]
+    sr = _make_scenario_result(score=4.5, verdicts=verdicts)
+    result = _make_result(
+        scenario_results=[sr],
+        coverage=[
+            BehaviorCoverage(component_name="loan_application_agent", node_type="AGENT", exercised=True),
+        ],
+    )
+    md = to_markdown(result)
+    assert "Loan Application Agent (matched)" in md
+    assert "UnknownTool (unmatched)" in md
+
+
+def test_to_markdown_renders_effective_endpoint_per_scenario():
+    verdicts = [
+        {
+            "turn": 1,
+            "verdict": "PASS",
+            "scores": {},
+            "overall_score": 4.0,
+            "gaps": [],
+            "effective_endpoint": "/api/agent",
+        }
+    ]
+    sr = _make_scenario_result(score=4.0, verdicts=verdicts)
+    result = _make_result(scenario_results=[sr])
+    md = to_markdown(result)
+    assert "**Effective Endpoint**: `/api/agent`" in md
+
+
+def test_to_markdown_run_profile_section_present():
+    result = _make_result(
+        run_profile={
+            "nuguard_version": "0.0.1",
+            "behavior_engine_version": "v1",
+            "scenarios_planned": 8,
+            "scenarios_executed": 7,
+            "scenarios_skipped": 1,
+            "total_turns": 39,
+            "coverage_turns": 5,
+            "llm_used": True,
+            "llm_model": "gemini/gemini-2.0-flash",
+            "target_fingerprint": "abc123",
+            "scenario_types": {"intent_happy_path": 3},
+        }
+    )
+    md = to_markdown(result)
+    assert "## Run Profile" in md
+    assert "| Scenarios Executed | 7 |" in md
+    assert "| Target Fingerprint | abc123 |" in md
+
+
+def test_to_markdown_comparability_warning_when_scope_changes():
+    result = _make_result(
+        run_profile={
+            "behavior_engine_version": "v1",
+            "scenarios_executed": 18,
+        }
+    )
+    meta = ReportMeta(previous_run_profile={"behavior_engine_version": "v1", "scenarios_executed": 7})
+    md = to_markdown(result, meta=meta)
+    assert "Comparability warning" in md
