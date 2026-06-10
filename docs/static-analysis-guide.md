@@ -64,7 +64,7 @@ Key flags:
 | `--source` | Source directory for file-based scanners |
 | `--nga` | Run only NGA-001–NGA-018 (no supply chain, no ATLAS, no external tools) |
 | `--no-supply-chain` | Skip the supply-chain threat pass |
-| `--supply-chain-profile` | `ci` \| `standard` \| `full` (default: `standard`) |
+| `--supply-chain-profile` | `ci` \| `standard` \| `full` (default: `standard`); `full` adds git-history checks |
 | `--supply-chain-verify` | `off` \| `warn` \| `fail` — artifact registry verification (default: `off`) |
 | `--min-severity` | `critical`, `high`, `medium`, `low`, `info` |
 | `--format` | `markdown`, `json`, or `sarif` |
@@ -173,15 +173,17 @@ Three attack families are covered:
 | NGA-SC-009 | HIGH | `.mcp.json` or agent config references an external or untrusted MCP server |
 | NGA-SC-010 | HIGH | AI-agent config enables auto-run or auto-approve mode at repo scope |
 
-**Large payload and entropy checks** (profile `full` only):
+**Large payload and entropy checks** (standard and full profiles — SBOM-native, no source directory required):
+
+These rules are evaluated directly from the AI-SBOM. File size and Shannon entropy are captured by the SBOM generator during scanning (`DevToolConfigAdapter`), and minified JS paths are recorded in `ScanSummary.minified_js_files`. No local clone is needed for these checks at analysis time.
 
 | Rule | Severity | Trigger |
 |---|---|---|
 | NGA-SC-017 | HIGH | File >100 KB inside `.claude/`, `.cursor/`, `.codex/`, or `.gemini/` |
-| NGA-SC-018 | HIGH | High-entropy or long base64 blob in a config or Markdown file |
+| NGA-SC-018 | HIGH | Shannon entropy > 6.5 bits/byte in a tool config or Markdown file |
 | NGA-SC-019 | MEDIUM | Minified single-line JS above 5 KB in any config or doc file |
 
-**Git commit heuristics** (profile `full` only, requires a git repository):
+**Git commit heuristics** (profile `full` only — requires a local git repository with commit history):
 
 | Rule | Severity | Trigger |
 |---|---|---|
@@ -201,12 +203,12 @@ Three attack families are covered:
 
 | Profile | Rules active | Use case |
 |---|---|---|
-| `ci` | NGA-SC-001–006, NGA-SC-007–014, NGA-SC-023–025 | Highest-signal checks only; suitable for fast CI gates |
-| `standard` | All offline rules (default) | Full offline scan; recommended for pre-merge checks |
-| `full` | All rules including entropy, large payload, and git history | Deep inspection; slower, run in scheduled jobs or on release |
+| `ci` | SC-001, SC-002, SC-004, SC-005, SC-007, SC-009–014, SC-025 | Highest-signal checks; fast CI gates |
+| `standard` | All CI rules + SC-003, SC-006, SC-008, SC-015–019, SC-023–024 (default) | Full SBOM-native scan; recommended for pre-merge and remote-repo analysis |
+| `full` | All standard rules + SC-020–022 | Adds git-history heuristics; requires a local git repository |
 
 ```bash
-nuguard analyze --sbom app.sbom.json --source . --supply-chain-profile full
+nuguard analyze --sbom app.sbom.json --source . --supply-chain-profile full  # adds SC-020..022 git-history checks
 ```
 
 ### Artifact registry verification (Phase 3, optional)
