@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from nuguard.common.auth import AuthConfig
     from nuguard.common.llm_client import LLMClient
     from nuguard.config import RedteamFindingTriggers
+    from nuguard.redteam.coverage.tracker import CoverageTracker
     from nuguard.redteam.target.discovery import DiscoveredProfile
     from nuguard.redteam.target.log_reader import BufferLogReader, FileLogReader
 
@@ -568,7 +569,7 @@ class RedteamOrchestrator:
         # Escalation enrichment count — set when CI escalation LLM enrichment runs.
         self.enriched_escalation_count: int = 0
         # Coverage tracker — populated after generate() during run().
-        self._coverage_tracker: object | None = None
+        self._coverage_tracker: "CoverageTracker | None" = None
 
     def _trigger_enabled(self, name: str) -> bool:
         """Return whether a finding trigger is enabled (defaults preserve legacy behavior)."""
@@ -838,7 +839,7 @@ class RedteamOrchestrator:
         _with_guided = self._guided_conversations and bool(self._redteam_llm)
         generator = ScenarioGenerator(self._sbom, effective_policy)
         all_scenarios = generator.generate(with_guided=_with_guided)
-        self._coverage_tracker = getattr(generator, "coverage_tracker", None)
+        self._coverage_tracker = cast("CoverageTracker | None", getattr(generator, "coverage_tracker", None))
 
         # 1b. Catalog scenarios — merged in when use_catalog=True.
         # The catalog is capability-aware and handles its own profile filtering,
@@ -1184,7 +1185,7 @@ class RedteamOrchestrator:
         if self._coverage_tracker is not None:
             for f in findings:
                 for _nid in (f.sbom_path or []):
-                    self._coverage_tracker.record_finding(str(_nid))  # type: ignore[union-attr]
+                    self._coverage_tracker.record_finding(str(_nid))
 
         # Accumulate token usage from both LLM clients.
         for _llm in (self._redteam_llm, self._eval_llm):
@@ -1368,7 +1369,7 @@ class RedteamOrchestrator:
                     # Record executed nodes in coverage tracker.
                     if self._coverage_tracker is not None:
                         for _nid in scenario.target_node_ids:
-                            self._coverage_tracker.record_executed(str(_nid))  # type: ignore[union-attr]
+                            self._coverage_tracker.record_executed(str(_nid))
                     # Record a miss so subsequent similar scenarios can be suppressed.
                     if not result[0]:  # no findings produced
                         miss_tracker.record_miss(scenario)
