@@ -1,4 +1,4 @@
-"""Static SBOM x Policy alignment checks (BA-001 through BA-008).
+"""Static SBOM x Policy alignment checks (BA-001 through BA-016).
 
 All checks are deterministic — no LLM needed.  Each check function returns
 0 or more Finding objects.
@@ -10,6 +10,7 @@ import re
 import uuid
 from typing import TYPE_CHECKING
 
+from nuguard.behavior.sbom_graph import SbomGraph
 from nuguard.models.finding import Finding, Severity
 
 if TYPE_CHECKING:
@@ -521,6 +522,443 @@ def _ba_008_hitl_gate_missing(
 
 
 # ---------------------------------------------------------------------------
+# BA-009: AUTH node does not protect sensitive endpoints/agents
+# ---------------------------------------------------------------------------
+
+
+def _ba_009_unprotected_sensitive_endpoints(
+    sbom: "AiSbomDocument",
+    intent: "IntentProfile",
+    policy: "CognitivePolicy",
+) -> list[Finding]:
+    """AUTH → PROTECTS gaps: sensitive endpoints or agents lack an AUTH protection edge."""
+    g = SbomGraph(sbom)
+    findings: list[Finding] = []
+
+    for node in sbom.nodes:
+        ntype = _node_type(node)
+        if ntype not in ("API_ENDPOINT", "AGENT"):
+            continue
+        returns_sensitive = bool(_node_metadata(node, "returns_sensitive_data"))
+        if not returns_sensitive:
+            continue
+        # If the node explicitly declares auth_required=True, the enforcement is present
+        if bool(_node_metadata(node, "auth_required")):
+            continue
+        # no_auth_required=True means deliberately open — skip
+        if bool(_node_metadata(node, "no_auth_required")):
+            continue
+        # Check for incoming AUTH → PROTECTS edge
+        if g.has_protection(node.id):
+            continue
+        name = getattr(node, "name", None) or str(node.id)
+        findings.append(
+            Finding(
+                finding_id=f"BA-009-{uuid.uuid4().hex[:8]}",
+                title=f"Sensitive {ntype} '{name}' lacks AUTH protection",
+                severity=Severity.HIGH,
+                description=(
+                    f"{ntype} '{name}' returns sensitive data but has no auth_required=True "
+                    f"flag and no AUTH → PROTECTS edge in the SBOM."
+                ),
+                affected_component=name,
+                remediation=(
+                    f"Set auth_required=True on '{name}' or add an AUTH node with a "
+                    "PROTECTS edge to enforce access control."
+                ),
+            )
+        )
+    return findings
+
+
+# ---------------------------------------------------------------------------
+# BA-010: High-privilege component reachable without AUTH or GUARDRAIL
+# ---------------------------------------------------------------------------
+
+
+def _ba_010_unguarded_privilege(
+    sbom: "AiSbomDocument",
+    intent: "IntentProfile",
+    policy: "CognitivePolicy",
+) -> list[Finding]:
+    """PRIVILEGE nodes or high_privilege tools reachable without AUTH or GUARDRAIL."""
+    g = SbomGraph(sbom)
+    findings: list[Finding] = []
+
+    # Collect high-privilege nodes (PRIVILEGE type or tool/agent with high_privilege flag)
+    high_priv_nodes = list(g.nodes_of_type("PRIVILEGE"))
+    for node in sbom.nodes:
+        ntype = _node_type(node)
+        if ntype in ("TOOL", "AGENT") and bool(_node_metadata(node, "high_privilege")):
+            high_priv_nodes.append(node)
+
+    for node in high_priv_nodes:
+        name = getattr(node, "name", None) or str(node.id)
+        if g.has_protection(node.id):
+            continue
+        findings.append(
+            Finding(
+                finding_id=f"BA-010-{uuid.uuid4().hex[:8]}",
+                title=f"High-privilege component '{name}' has no AUTH/GUARDRAIL protection",
+                severity=Severity.CRITICAL,
+                description=(
+                    f"'{name}' is marked as high-privilege but has no incoming AUTH → PROTECTS "
+                    f"or GUARDRAIL → PROTECTS edge. Privilege escalation is possible."
+                ),
+                affected_component=name,
+                remediation=(
+                    f"Add an AUTH or GUARDRAIL node with a PROTECTS edge to '{name}'."
+                ),
+            )
+        )
+    return findings
+
+
+# ---------------------------------------------------------------------------
+# BA-011: DATASTORE with write access lacks HITL/auth/guardrail
+# ---------------------------------------------------------------------------
+
+
+def _ba_011_write_datastore_no_control(
+    sbom: "AiSbomDocument",
+    intent: "IntentProfile",
+    policy: "CognitivePolicy",
+) -> list[Finding]:
+    """DATASTORE reached via ACCESSES(write|readwrite) without HITL, auth, or guardrail."""
+    g = SbomGraph(sbom)
+    findings: list[Finding] = []
+
+    for edge in sbom.edges:
+        rel = _edge_type(edge)
+        if rel != "ACCESSES":
+            continue
+        at = getattr(edge, "access_type", None)
+        at_str = str(at.value if hasattr(at, "value") else at).lower() if at else ""
+        if at_str not in ("write", "readwrite"):
+            continue
+
+        target = g.node_by_id(edge.target)
+        if target is None or _node_type(target) != "DATASTORE":
+            continue
+        ds_name = getattr(target, "name", None) or str(target.id)
+
+        if g.has_protection(target.id):
+            continue
+
+        # Check source node for auth metadata
+        source = g.node_by_id(edge.source)
+        src_name = getattr(source, "name", None) or str(edge.source) if source else str(edge.source)
+        src_has_auth = bool(_node_metadata(source, "auth_required")) if source else False
+        if src_has_auth:
+            continue
+
+        findings.append(
+            Finding(
+                finding_id=f"BA-011-{uuid.uuid4().hex[:8]}",
+                title=f"Write access to '{ds_name}' lacks HITL/auth/guardrail control",
+                severity=Severity.HIGH,
+                description=(
+                    f"'{src_name}' has ACCESSES(write) to datastore '{ds_name}' with no "
+                    f"GUARDRAIL or AUTH protection on the datastore path."
+                ),
+                affected_component=ds_name,
+                remediation=(
+                    f"Add HITL, an AUTH node, or a GUARDRAIL node with a PROTECTS edge "
+                    f"to '{ds_name}' to control write access."
+                ),
+            )
+        )
+    return findings
+
+
+# ---------------------------------------------------------------------------
+# BA-012: External MODEL used by agent that accesses sensitive data
+# ---------------------------------------------------------------------------
+
+
+def _ba_012_external_model_sensitive_data(
+    sbom: "AiSbomDocument",
+    intent: "IntentProfile",
+    policy: "CognitivePolicy",
+) -> list[Finding]:
+    """AGENT → USES → MODEL (external) AND agent transitively reaches sensitive DATASTORE."""
+    g = SbomGraph(sbom)
+    findings: list[Finding] = []
+
+    sensitive_ds_ids = {
+        str(n.id)
+        for n in sbom.nodes
+        if _node_type(n) == "DATASTORE"
+        and (
+            _node_metadata(n, "pii_fields")
+            or _node_metadata(n, "phi_fields")
+            or _node_metadata(n, "pfi_fields")
+        )
+    }
+    if not sensitive_ds_ids:
+        return []
+
+    for agent in g.nodes_of_type("AGENT"):
+        # Check for USES → MODEL edges with external source_url
+        external_models = []
+        for model_node in g.targets(agent.id, "USES"):
+            if _node_type(model_node) != "MODEL":
+                continue
+            src_url = str(_node_metadata(model_node, "source_url") or "")
+            if src_url.startswith(("http://", "https://")) or "huggingface" in src_url:
+                external_models.append(model_node)
+
+        if not external_models:
+            continue
+
+        # Check if agent transitively reaches sensitive datastore
+        paths = g.accesses_paths(agent.id)
+        agent_ds_ids = {str(ds_node.id) for _, ds_node, _ in paths}
+        if not (agent_ds_ids & sensitive_ds_ids):
+            continue
+
+        agent_name = getattr(agent, "name", None) or str(agent.id)
+        model_names = [getattr(m, "name", None) or str(m.id) for m in external_models]
+        findings.append(
+            Finding(
+                finding_id=f"BA-012-{uuid.uuid4().hex[:8]}",
+                title=f"Agent '{agent_name}' uses external model with access to sensitive data",
+                severity=Severity.MEDIUM,
+                description=(
+                    f"'{agent_name}' uses external model(s) [{', '.join(model_names)}] "
+                    f"and can reach sensitive datastores. Supply-chain risk if the model "
+                    f"is replaced or compromised."
+                ),
+                affected_component=agent_name,
+                remediation=(
+                    "Pin the model version with an integrity_hash or checksum. "
+                    "Consider isolating sensitive data paths from externally-sourced models."
+                ),
+            )
+        )
+    return findings
+
+
+# ---------------------------------------------------------------------------
+# BA-013: AGENT → USES → PROMPT contains restricted topic
+# ---------------------------------------------------------------------------
+
+
+def _ba_013_prompt_restricted_topic(
+    sbom: "AiSbomDocument",
+    intent: "IntentProfile",
+    policy: "CognitivePolicy",
+) -> list[Finding]:
+    """AGENT → USES → PROMPT where prompt text contains a policy restricted topic."""
+    if not getattr(policy, "restricted_topics", None):
+        return []
+
+    g = SbomGraph(sbom)
+    findings: list[Finding] = []
+    restricted: list[str] = list(policy.restricted_topics)
+
+    for agent in g.nodes_of_type("AGENT"):
+        for prompt_node in g.targets(agent.id, "USES"):
+            if _node_type(prompt_node) != "PROMPT":
+                continue
+            excerpt = (
+                str(_node_metadata(prompt_node, "rules_excerpt") or "")
+                + " "
+                + str(_node_metadata(prompt_node, "system_prompt_excerpt") or "")
+            ).lower()
+            if not excerpt.strip():
+                continue
+            matches = _fuzzy_topic_match(excerpt, restricted)
+            if not matches:
+                continue
+            agent_name = getattr(agent, "name", None) or str(agent.id)
+            prompt_name = getattr(prompt_node, "name", None) or str(prompt_node.id)
+            findings.append(
+                Finding(
+                    finding_id=f"BA-013-{uuid.uuid4().hex[:8]}",
+                    title=(
+                        f"Prompt '{prompt_name}' for agent '{agent_name}' "
+                        f"references restricted topic(s)"
+                    ),
+                    severity=Severity.HIGH,
+                    description=(
+                        f"Agent '{agent_name}' uses prompt '{prompt_name}' whose "
+                        f"text matches policy restricted topic(s): {', '.join(matches)}."
+                    ),
+                    affected_component=agent_name,
+                    remediation=(
+                        f"Review prompt '{prompt_name}' and remove or reframe references "
+                        f"to restricted topics: {', '.join(matches)}."
+                    ),
+                )
+            )
+    return findings
+
+
+# ---------------------------------------------------------------------------
+# BA-014: DELEGATES_TO handoff to higher-privilege agent without boundary
+# ---------------------------------------------------------------------------
+
+
+def _ba_014_unsafe_delegation(
+    sbom: "AiSbomDocument",
+    intent: "IntentProfile",
+    policy: "CognitivePolicy",
+) -> list[Finding]:
+    """AGENT → DELEGATES_TO → AGENT where target is higher-privilege with no guardrail."""
+    g = SbomGraph(sbom)
+    findings: list[Finding] = []
+
+    for agent in g.nodes_of_type("AGENT"):
+        src_high_priv = bool(_node_metadata(agent, "high_privilege"))
+        src_no_auth = bool(_node_metadata(agent, "no_auth_required"))
+
+        for downstream in g.targets(agent.id, "DELEGATES_TO"):
+            tgt_high_priv = bool(_node_metadata(downstream, "high_privilege"))
+            tgt_no_auth = bool(_node_metadata(downstream, "no_auth_required"))
+
+            # Privilege escalation: target is high_privilege but source is not
+            escalates = tgt_high_priv and not src_high_priv
+            # Auth weakening: source requires auth but target doesn't
+            weakens_auth = not src_no_auth and tgt_no_auth
+
+            if not (escalates or weakens_auth):
+                continue
+
+            # Check if downstream is protected
+            if g.has_protection(downstream.id):
+                continue
+
+            src_name = getattr(agent, "name", None) or str(agent.id)
+            tgt_name = getattr(downstream, "name", None) or str(downstream.id)
+            reason = []
+            if escalates:
+                reason.append("target is high-privilege")
+            if weakens_auth:
+                reason.append("target drops auth requirement")
+            findings.append(
+                Finding(
+                    finding_id=f"BA-014-{uuid.uuid4().hex[:8]}",
+                    title=(
+                        f"Unsafe delegation from '{src_name}' to '{tgt_name}' "
+                        f"({', '.join(reason)})"
+                    ),
+                    severity=Severity.HIGH,
+                    description=(
+                        f"'{src_name}' delegates to '{tgt_name}' which {' and '.join(reason)}, "
+                        f"but no GUARDRAIL or AUTH PROTECTS boundary guards the handoff."
+                    ),
+                    affected_component=src_name,
+                    remediation=(
+                        f"Add a GUARDRAIL or AUTH node with a PROTECTS edge to '{tgt_name}' "
+                        f"to enforce a privilege boundary on the delegation path."
+                    ),
+                )
+            )
+    return findings
+
+
+# ---------------------------------------------------------------------------
+# BA-015: DEPLOYS path has security posture issues
+# ---------------------------------------------------------------------------
+
+
+def _ba_015_deployment_security_posture(
+    sbom: "AiSbomDocument",
+    intent: "IntentProfile",
+    policy: "CognitivePolicy",
+) -> list[Finding]:
+    """DEPLOYS edge where the deployment node has known security posture issues."""
+    g = SbomGraph(sbom)
+    findings: list[Finding] = []
+
+    for edge in sbom.edges:
+        if _edge_type(edge) != "DEPLOYS":
+            continue
+        deploy_node = g.node_by_id(edge.target)
+        if deploy_node is None or _node_type(deploy_node) not in ("DEPLOYMENT", "CONTAINER_IMAGE"):
+            continue
+
+        name = getattr(deploy_node, "name", None) or str(deploy_node.id)
+        issues: list[str] = []
+
+        if bool(_node_metadata(deploy_node, "runs_as_root")):
+            issues.append("container runs as root")
+        if _node_metadata(deploy_node, "has_health_check") is False:
+            issues.append("no health check configured")
+        if _node_metadata(deploy_node, "has_resource_limits") is False:
+            issues.append("no resource limits set")
+        if _node_metadata(deploy_node, "has_network_policy") is False:
+            issues.append("no network policy")
+
+        if not issues:
+            continue
+
+        source = g.node_by_id(edge.source)
+        src_name = getattr(source, "name", None) or str(edge.source) if source else str(edge.source)
+        findings.append(
+            Finding(
+                finding_id=f"BA-015-{uuid.uuid4().hex[:8]}",
+                title=f"Deployment '{name}' has security posture issues",
+                severity=Severity.MEDIUM,
+                description=(
+                    f"Deployment '{name}' (deployed by '{src_name}') has the following "
+                    f"issues: {', '.join(issues)}."
+                ),
+                affected_component=name,
+                remediation=(
+                    f"Address deployment posture for '{name}': "
+                    + "; ".join(issues) + "."
+                ),
+            )
+        )
+    return findings
+
+
+# ---------------------------------------------------------------------------
+# BA-016: API_ENDPOINT returns sensitive data without auth or guardrail
+# ---------------------------------------------------------------------------
+
+
+def _ba_016_sensitive_endpoint_no_protection(
+    sbom: "AiSbomDocument",
+    intent: "IntentProfile",
+    policy: "CognitivePolicy",
+) -> list[Finding]:
+    """API_ENDPOINT with returns_sensitive_data=True but no auth or guardrail protection."""
+    g = SbomGraph(sbom)
+    findings: list[Finding] = []
+
+    for node in g.nodes_of_type("API_ENDPOINT"):
+        returns_sensitive = bool(_node_metadata(node, "returns_sensitive_data"))
+        if not returns_sensitive:
+            continue
+        auth_required = bool(_node_metadata(node, "auth_required"))
+        if auth_required:
+            continue
+        if g.has_protection(node.id):
+            continue
+        name = getattr(node, "name", None) or str(node.id)
+        findings.append(
+            Finding(
+                finding_id=f"BA-016-{uuid.uuid4().hex[:8]}",
+                title=f"Sensitive endpoint '{name}' lacks auth and guardrail protection",
+                severity=Severity.HIGH,
+                description=(
+                    f"API endpoint '{name}' returns sensitive data but has no "
+                    f"auth_required flag, no AUTH → PROTECTS, and no GUARDRAIL → PROTECTS edge."
+                ),
+                affected_component=name,
+                remediation=(
+                    f"Set auth_required=True on '{name}' and add an AUTH or GUARDRAIL "
+                    f"node with a PROTECTS edge."
+                ),
+            )
+        )
+    return findings
+
+
+# ---------------------------------------------------------------------------
 # Main entry point
 # ---------------------------------------------------------------------------
 
@@ -552,6 +990,15 @@ def check_alignment(
         _ba_006_untrusted_mcp_write,
         _ba_007_blocked_topics_gap,
         _ba_008_hitl_gate_missing,
+        # Expanded graph checks (P1)
+        _ba_009_unprotected_sensitive_endpoints,
+        _ba_010_unguarded_privilege,
+        _ba_011_write_datastore_no_control,
+        _ba_012_external_model_sensitive_data,
+        _ba_013_prompt_restricted_topic,
+        _ba_014_unsafe_delegation,
+        _ba_015_deployment_security_posture,
+        _ba_016_sensitive_endpoint_no_protection,
     ]
     all_findings: list[Finding] = []
     for checker in checkers:

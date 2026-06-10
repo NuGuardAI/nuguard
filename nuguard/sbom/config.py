@@ -137,6 +137,15 @@ class AiSbomConfig(BaseModel):
         default_factory=lambda: os.getenv("VERTEXAI_LOCATION") or None
     )
 
+    supply_chain_scan: bool = Field(
+        default=True,
+        description=(
+            "Run supply-chain second pass: DevToolConfigAdapter, GithubActionsAdapter, "
+            "and LifecycleScriptAdapter. Creates DEVELOPER_TOOL_CONFIG, GITHUB_WORKFLOW, "
+            "LIFECYCLE_SCRIPT, and MCP_SERVER nodes. Does not affect normal SBOM extraction."
+        ),
+    )
+
     @model_validator(mode="before")
     @classmethod
     def _migrate_legacy(cls, data: object) -> object:

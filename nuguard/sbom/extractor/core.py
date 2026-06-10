@@ -660,6 +660,8 @@ class AiSbomExtractor:
         file_loc: dict[str, int] = {}
         # Import tracking per file for dependency cross-referencing
         _file_imports: dict[str, set[str]] = {}
+        # Minified JS files detected during the scan (for SC-019)
+        _minified_js_files: list[str] = []
         # Summary builder only needs a bounded content sample.
         files_sample: list[tuple[str, str]] = []
         files_scanned = 0
@@ -675,6 +677,32 @@ class AiSbomExtractor:
             if num_bytes < 1024 * 1024 * 1024:
                 return f"{num_bytes / (1024 * 1024):.2f} MiB"
             return f"{num_bytes / (1024 * 1024 * 1024):.2f} GiB"
+
+        # Pre-pass: build a cross-file Pydantic model schema index so FastAPI (and Flask)
+        # adapters can resolve request-body models that are imported from other modules.
+        # This is a fast AST-only pass — no detection, no merging.
+        _global_model_schemas: dict[str, dict[str, str]] = {}
+        try:
+            import ast as _ast  # noqa: PLC0415  # isort:skip
+            from nuguard.sbom.adapters.python.fastapi_adapter import (  # noqa: PLC0415
+                _collect_model_schemas as _collect_py_models,
+            )  # isort:skip
+            for _py_path, _ in self._iter_files(root, config):
+                if _py_path.suffix != ".py":
+                    continue
+                try:
+                    _py_src = _py_path.read_text(encoding="utf-8", errors="ignore")
+                    _py_tree = _ast.parse(_py_src)
+                    _global_model_schemas.update(_collect_py_models(_py_tree))
+                except Exception:
+                    pass
+        except Exception as _pre_exc:
+            _log.debug("cross-file model pre-pass failed (non-fatal): %s", _pre_exc)
+
+        # Inject the global model index into adapters that support it.
+        for _adapter in self.framework_adapters:
+            if hasattr(_adapter, "set_global_model_schemas"):
+                _adapter.set_global_model_schemas(_global_model_schemas)
 
         for file_path, file_size in self._iter_files(root, config):
             try:
@@ -808,6 +836,7 @@ class AiSbomExtractor:
                         _dc_metadata.append(det.metadata)
 
             # Phase 1c: TypeScript/JavaScript AST-aware framework adapters
+            # Also detect minified single-line JS (>5 KB line) for SC-019
             elif is_typescript:
                 ts_hints = self._parse_typescript(content, rel_path)
                 imported_modules_ts: set[str] = {imp.module for imp in ts_hints.imports}
@@ -829,6 +858,12 @@ class AiSbomExtractor:
                         continue
                     for det in detections:
                         self._merge_detection(node_map, det)
+
+            # SC-019: detect minified JS (single line > 5000 chars) for supply-chain summary
+            if suffix == ".js" and content:
+                _js_lines = content.splitlines()
+                if _js_lines and max(len(ln) for ln in _js_lines) > 5000:
+                    _minified_js_files.append(rel_path)
 
             # Phase 1d: Dockerfile — container image extraction
             if is_dockerfile:
@@ -1440,9 +1475,11 @@ class AiSbomExtractor:
             )
         )
 
-        # Write total LOC into the summary
+        # Write total LOC and minified JS list into the summary
         if doc.summary and file_loc:
             doc.summary.total_loc = sum(file_loc.values()) or None
+        if doc.summary is not None and _minified_js_files:
+            doc.summary.minified_js_files = _minified_js_files
 
         # Ensure google-ces is listed in summary.frameworks when CES nodes exist
         _has_ces = any(
@@ -1452,6 +1489,42 @@ class AiSbomExtractor:
         if _has_ces and doc.summary is not None:
             if "google-ces" not in doc.summary.frameworks:
                 doc.summary.frameworks.append("google-ces")
+
+        # Phase 2b: Supply-chain second pass
+        # Runs DevToolConfigAdapter, GithubActionsAdapter, and LifecycleScriptAdapter
+        # against paths the main pass skips (.claude/, AGENTS.md, .mcp.json, workflows).
+        # Wrapped in a broad try/except so a malformed config never crashes SBOM generation.
+        if getattr(config, "supply_chain_scan", True):
+            try:
+                from nuguard.sbom.adapters.dev_tools import (  # noqa: PLC0415
+                    DevToolConfigAdapter,
+                    GithubActionsAdapter,
+                    LifecycleScriptAdapter,
+                )
+
+                for adapter_cls in (DevToolConfigAdapter, GithubActionsAdapter, LifecycleScriptAdapter):
+                    sc_nodes, sc_edges = adapter_cls().scan(root)
+                    doc.nodes.extend(sc_nodes)
+                    doc.edges.extend(sc_edges)
+                    _log.debug(
+                        "supply-chain pass (%s): +%d nodes, +%d edges",
+                        adapter_cls.__name__, len(sc_nodes), len(sc_edges),
+                    )
+            except Exception as _sc_exc:
+                _log.warning("supply-chain second pass failed (continuing): %s", _sc_exc)
+
+            # Populate lockfile summary fields while the repo is still on disk.
+            # Used by supply-chain scanner (SC-024) when analyzing remote SBOMs
+            # without a live filesystem (the temp clone will be deleted after extraction).
+            try:
+                if doc.summary is not None:
+                    doc.summary.has_package_json = (root / "package.json").exists()
+                    doc.summary.has_lockfile = any(
+                        (root / lf).exists()
+                        for lf in ("package-lock.json", "pnpm-lock.yaml", "yarn.lock")
+                    )
+            except Exception as _lf_exc:
+                _log.debug("lockfile summary population failed (non-fatal): %s", _lf_exc)
 
         # Phase 3: LLM enrichment (skipped unless enable_llm=True)
         if config.enable_llm:

@@ -156,6 +156,8 @@ async def test_capability_gap_when_tool_not_called():
         allowed_topics: list = []
         restricted_topics: list = []
         hitl_triggers: list = []
+        hitl_tool_conditions: list = []
+        data_classification: list = []
 
     cfg = _make_config(workflows=["capability_probe"])
     runner = ValidateRunner(
@@ -192,6 +194,8 @@ async def test_no_capability_gap_when_tool_called():
         allowed_topics: list = []
         restricted_topics: list = []
         hitl_triggers: list = []
+        hitl_tool_conditions: list = []
+        data_classification: list = []
 
     cfg = _make_config(workflows=["capability_probe"])
     runner = ValidateRunner(

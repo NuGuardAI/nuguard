@@ -59,9 +59,11 @@ class TestNonExercisableNodeTypesMembership:
 
     def test_abstract_construct_types_are_excluded(self) -> None:
         assert "PRIVILEGE" in NON_EXERCISABLE_NODE_TYPES
-        assert "DATASTORE" in NON_EXERCISABLE_NODE_TYPES
         assert "PROMPT" in NON_EXERCISABLE_NODE_TYPES
-        assert "API_ENDPOINT" in NON_EXERCISABLE_NODE_TYPES
+        # DATASTORE, GUARDRAIL, API_ENDPOINT are now tracked via their own BehaviorCoverage
+        # objects in _build_coverage_map() rather than via the agent/tool coverage denominator.
+        assert "DATASTORE" not in NON_EXERCISABLE_NODE_TYPES
+        assert "API_ENDPOINT" not in NON_EXERCISABLE_NODE_TYPES
 
     def test_exercisable_types_not_excluded(self) -> None:
         assert "AGENT" not in NON_EXERCISABLE_NODE_TYPES

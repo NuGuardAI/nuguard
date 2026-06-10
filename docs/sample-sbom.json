@@ -1,6 +1,6 @@
 {
   "schema_version": "1.5.0",
-  "generated_at": "2026-06-08T00:00:00Z",
+  "generated_at": "2026-06-09T00:00:00Z",
   "generator": "nuguard",
   "target": "https://github.com/NuGuardAI/nuguard-oss",
   "nodes": [
@@ -326,6 +326,119 @@
           }
         }
       ]
+    },
+    {
+      "id": "77777777-7777-7777-7777-777777777777",
+      "name": ".claude/settings.json",
+      "component_type": "DEVELOPER_TOOL_CONFIG",
+      "confidence": 0.95,
+      "metadata": {
+        "tool_config_type": "claude-settings",
+        "permissions_granted": [
+          "Read",
+          "Edit",
+          "Bash(npm run*:*)",
+          "Bash(uv run*:*)"
+        ],
+        "permissions_denied": [
+          "Bash(rm -rf*:*)"
+        ],
+        "auto_execute": false,
+        "permission_scope": "repo"
+      },
+      "evidence": [
+        {
+          "kind": "config",
+          "confidence": 0.95,
+          "detail": "dev_tools: .claude/settings.json",
+          "location": {
+            "path": ".claude/settings.json",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "88888888-8888-8888-8888-888888888888",
+      "name": "docs-server",
+      "component_type": "MCP_SERVER",
+      "confidence": 0.9,
+      "metadata": {
+        "mcp_server_url": null,
+        "mcp_server_trusted": false,
+        "mcp_transport": "stdio"
+      },
+      "evidence": [
+        {
+          "kind": "config",
+          "confidence": 0.9,
+          "detail": "dev_tools: .mcp.json mcpServers[docs-server]",
+          "location": {
+            "path": ".mcp.json",
+            "line": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "99999999-9999-9999-9999-999999999999",
+      "name": "package.json:postinstall",
+      "component_type": "LIFECYCLE_SCRIPT",
+      "confidence": 0.97,
+      "metadata": {
+        "script_phase": "postinstall",
+        "script_body": "node scripts/setup.js",
+        "invokes_network": false,
+        "invokes_shell": false,
+        "downloads_binary": false,
+        "references_credentials": false
+      },
+      "evidence": [
+        {
+          "kind": "config",
+          "confidence": 0.97,
+          "detail": "lifecycle: package.json postinstall",
+          "location": {
+            "path": "package.json",
+            "line": 8
+          }
+        }
+      ]
+    },
+    {
+      "id": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+      "name": ".github/workflows/publish.yml",
+      "component_type": "GITHUB_WORKFLOW",
+      "confidence": 0.93,
+      "metadata": {
+        "workflow_triggers": [
+          "push"
+        ],
+        "workflow_permissions": {
+          "id-token": "write",
+          "contents": "read"
+        },
+        "publishes_to": [
+          "pypi"
+        ],
+        "uses_oidc": true,
+        "action_refs": [
+          "actions/checkout@v4",
+          "actions/setup-python@v5",
+          "pypa/gh-action-pypi-publish@release/v1"
+        ]
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.93,
+          "detail": "github_actions: .github/workflows/publish.yml",
+          "location": {
+            "path": ".github/workflows/publish.yml",
+            "line": 1
+          }
+        }
+      ]
     }
   ],
   "edges": [
@@ -349,6 +462,11 @@
       "source": "66666666-6666-6666-6666-666666666666",
       "target": "55555555-5555-5555-5555-555555555555",
       "relationship_type": "DEPLOYS"
+    },
+    {
+      "source": "77777777-7777-7777-7777-777777777777",
+      "target": "88888888-8888-8888-8888-888888888888",
+      "relationship_type": "CONTAINS"
     }
   ],
   "deps": [
@@ -413,7 +531,11 @@
       "API_ENDPOINT": 1,
       "DATASTORE": 1,
       "CONTAINER_IMAGE": 1,
-      "IAM": 1
+      "IAM": 1,
+      "DEVELOPER_TOOL_CONFIG": 1,
+      "MCP_SERVER": 1,
+      "LIFECYCLE_SCRIPT": 1,
+      "GITHUB_WORKFLOW": 1
     },
     "secret_stores": [
       "gcp_secret_manager"
@@ -510,5 +632,5 @@
       "support-prod"
     ]
   },
-  "relationship_graph_md": "```mermaid\nflowchart LR\n  support_agent --> lookup_order\n  lookup_order --> orders_db\n  support_agent --> chat_endpoint\n```\n\nThe support agent accepts authenticated chat requests, calls an order lookup tool, and reads from the encrypted orders database."
+  "relationship_graph_md": "```mermaid\nflowchart LR\n  support_agent --> lookup_order\n  lookup_order --> orders_db\n  support_agent --> chat_endpoint\n  claude_settings --> docs_mcp_server\n```\n\nThe support agent accepts authenticated chat requests, calls an order lookup tool, and reads from the encrypted orders database. The repository includes a Claude Code settings file that references a local MCP docs server."
 }

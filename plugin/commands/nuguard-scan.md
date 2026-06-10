@@ -1,10 +1,10 @@
 ---
 name: nuguard-scan
-description: Full NuGuard security scan — SBOM generation → static analysis → findings report
+description: NuGuard unified scan — SBOM generation → static analysis, with optional policy/red-team validation
 allowed-tools: ["Read", "Bash"]
 ---
 
-Run a complete NuGuard security scan on the current project and present a structured findings report.
+Run a NuGuard security scan on the current project and present a structured findings report. The default CLI path runs SBOM generation plus static analysis; add `policy,redteam` to `--steps` for the full validation path.
 
 ## Steps
 
@@ -36,14 +36,12 @@ Omit `LITELLM_API_KEY=...` and `--llm` if no API key is in the config.
 
 Flag mapping:
 - `--source PATH` (default `.`)
-- `--steps sbom,analyze` (default; add `policy,redteam` if user explicitly requests them)
+- `--steps sbom,analyze` (default; use `sbom,analyze,policy,redteam` if the user explicitly requests full validation)
 - `--llm` — enable LLM enrichment (add when `llm_api_key` is set)
-- `--policy PATH` if `--policy` was supplied
-- `--target URL` if `--target` was supplied (required for `redteam` step)
-- `--min-severity LEVEL` (default `medium`)
+- `--policy PATH` if `--policy` was supplied (required for the `policy` step)
+- `--target URL` if `--target` was supplied (used by the `redteam` step; SBOM deployment URL may be used as fallback)
 - `--fail-on LEVEL` (default `high`)
-- `--config PATH` if `--config` was supplied
-- `--full` → set `--steps sbom,analyze,policy,redteam`
+- `--full` → translate to `--steps sbom,analyze,policy,redteam`; do not pass `--full` through to the CLI
 
 ### 4. Present findings
 
@@ -58,6 +56,6 @@ E.g. `Found 3 findings: 0 critical · 2 high · 1 medium.`
 
 ### 6. Report artefacts
 
-List the output files written (`app.sbom.json`, `findings.json`, `findings.sarif`, `report.md`).
+List the output files written (`sbom.json`, `findings.json`, `findings.sarif`, `report.md`).
 
-Available flags: `--source PATH`, `--steps LIST`, `--policy PATH`, `--target URL`, `--min-severity LEVEL`, `--fail-on LEVEL`, `--llm`, `--full`, `--config PATH`
+Available flags: `--source PATH`, `--steps LIST`, `--policy PATH`, `--target URL`, `--fail-on LEVEL`, `--llm`, `--full`

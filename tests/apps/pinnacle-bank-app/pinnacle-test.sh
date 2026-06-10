@@ -35,21 +35,34 @@ uv run nuguard sbom generate \
 
 echo "SBOM generated successfully."
 
-#echo "Compiling Cognitive Policy controls..."
+echo "Compiling Cognitive Policy controls..."
 
-#uv run nuguard policy compile --config "$SCRIPT_DIR/nuguard.yaml"
+uv run nuguard policy compile --config "$SCRIPT_DIR/nuguard-azure.yaml"
 
-#echo "Cognitive Policy Check..."
+echo "Cognitive Policy Check..."
 
 # policy check exits 2 when gaps are found — expected in testing; treat as non-fatal
-#uv run nuguard policy check \
-#  --config "$SCRIPT_DIR/nuguard.yaml" \
-#  --format markdown \
-#  -o "$SCRIPT_DIR/reports/pinnacle-bank-policy-check.md" || true
+uv run nuguard policy check \
+  --config "$SCRIPT_DIR/nuguard-azure.yaml" \
+  --format markdown \
+  -o "$SCRIPT_DIR/reports/pinnacle-bank-policy-check.md" || true
 
-#echo "Done."
+echo "Done."
 
 echo "---"
+
+echo "Security Analysis Check..."
+
+# analyze exits 2 when findings are present — expected in testing; treat as non-fatal
+uv run nuguard analyze \
+  --config "$SCRIPT_DIR/nuguard-azure.yaml" \
+  --format markdown \
+  -o "$SCRIPT_DIR/reports/pinnacle-bank-sec-analysis.md" || true
+
+echo "Done."
+
+echo "---"
+
 echo "Running behavior analysis (static + dynamic)..."
 
 # behavior exits 2 when findings are present — expected in testing; treat as non-fatal.

@@ -1,12 +1,12 @@
-"""``nuguard scan`` — unified static analysis meta-command.
+"""``nuguard scan`` — unified security scan meta-command.
 
-Runs the full nuguard static analysis pipeline in a single command:
+Runs the configurable nuguard security scan pipeline in a single command:
 
   Step 1  sbom      Generate AI-SBOM from source (``nuguard sbom generate``)
   Step 2  analyze   Run all detectors (NGA rules + OSV + Grype + Checkov +
                     Trivy + Semgrep + ATLAS annotation)
-  Step 3  policy    Check Cognitive Policy document (if --policy supplied)
-  Step 4  redteam   Dynamic red-team (skipped unless --target is supplied)
+  Step 3  policy    Check Cognitive Policy document (if requested and --policy supplied)
+  Step 4  redteam   Dynamic red-team (if requested and a target URL is available)
 
 Exit codes
 ----------
@@ -28,7 +28,7 @@ import typer
 from nuguard.models.finding import Finding, Severity
 
 scan_app = typer.Typer(
-    help="Unified security scan: SBOM → analyze → policy (→ redteam).",
+    help="Unified security scan: SBOM → analyze, with optional policy/redteam.",
     no_args_is_help=True,
 )
 
@@ -64,7 +64,7 @@ def scan(
     ),
     target: str = typer.Option(
         None, "--target",
-        help="Live app URL for the redteam step (required to run redteam).",
+        help="Live app URL for the redteam step; falls back to SBOM deployment URL when available.",
     ),
     container_image: str = typer.Option(
         None, "--container-image",
@@ -98,8 +98,20 @@ def scan(
         False, "--no-semgrep",
         help="Skip Semgrep AI-security rules scan.",
     ),
+    no_supply_chain: bool = typer.Option(
+        False, "--no-supply-chain",
+        help="Skip supply-chain threat scan (lifecycle scripts, AI-agent configs, workflows).",
+    ),
+    supply_chain_profile: str = typer.Option(
+        "standard", "--supply-chain-profile",
+        help="Supply-chain scan profile: ci | standard | full.",
+    ),
+    supply_chain_verify: str = typer.Option(
+        "off", "--supply-chain-verify",
+        help="Registry artifact verification: off | warn | fail (default: off).",
+    ),
 ) -> None:
-    """Run the full nuguard static analysis pipeline.
+    """Run the configurable nuguard security scan pipeline.
 
     Generates an AI-SBOM, runs all enabled detectors, writes terminal output,
     ``report.md``, ``findings.sarif``, and ``findings.json`` to the output
@@ -200,9 +212,12 @@ def scan(
                 enable_checkov=not no_checkov,
                 enable_trivy=not no_trivy,
                 enable_semgrep=not no_semgrep,
+                enable_supply_chain=not no_supply_chain,
                 source_path=src_path,
                 atlas_config=atlas_config,
                 min_severity=Severity.INFO,
+                supply_chain_profile=supply_chain_profile,
+                supply_chain_verify_artifacts=supply_chain_verify,
             )
             all_findings = analyzer.analyze(sbom_doc)
             tool_status["nga-rules"] = "ok"
@@ -212,6 +227,7 @@ def scan(
             tool_status["trivy"] = _detect_tool_status("trivy", not no_trivy)
             tool_status["semgrep"] = _detect_tool_status("semgrep", not no_semgrep)
             tool_status["atlas"] = "ok" if not no_atlas else "skipped"
+            tool_status["supply-chain"] = "ok" if not no_supply_chain else "skipped"
             typer.echo(f"    ✓ Analysis complete: {len(all_findings)} finding(s)")
         except Exception as exc:
             typer.echo(f"error: analysis failed: {exc}", err=True)

@@ -679,6 +679,7 @@ class BehaviorJudge:
         expected_agents: list[str] | None = None,
         expected_tools: list[str] | None = None,
         domain_context: str = "",
+        expected_components: "list | None" = None,
     ) -> TurnVerdict:
         """Evaluate a single turn and return a TurnVerdict.
 
@@ -690,6 +691,8 @@ class BehaviorJudge:
             expected_agents: Agent nodes expected to be involved.
             expected_tools: Tool nodes expected to be involved.
             domain_context: Optional domain context string.
+            expected_components: Optional list of BehaviorCoverageObjective for
+                future-proofing typed coverage assertions. Currently no-op.
 
         Returns:
             TurnVerdict with scores, verdict, and detected deviations.

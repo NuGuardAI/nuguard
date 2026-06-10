@@ -25,6 +25,7 @@ class BehaviorScenarioType(str, Enum):
     COMPONENT_COVERAGE = "component_coverage"      # Layer 2b: tool coverage (with chaining)
     INVARIANT_PROBE = "invariant_probe"            # Layer 3: HITL + data classification
     DATA_DISCOVERY_PROBE = "data_discovery_probe"  # Layer 4: discover + react to user data
+    ENDPOINT_COVERAGE = "endpoint_coverage"        # Layer 5: first-class API_ENDPOINT coverage
 
 
 class BehaviorFindingType(str, Enum):
@@ -92,6 +93,8 @@ class BehaviorScenario(BaseModel):
     """Action tier sequence (INFO/DECISION/ACTION) for chained scenarios."""
     primary_agent: str | None = None
     """Agent node ID owning this scenario (used for chaining grouping)."""
+    scoped_guardrail: str | None = None
+    """Guardrail node name this scenario validates (guardrail-path scenarios)."""
 
 
 # ---------------------------------------------------------------------------
@@ -148,6 +151,31 @@ class BehaviorCoverage(BaseModel):
     exercised_within_policy: bool = False
     exercised_against_policy: bool = False
     deviations: list[BehaviorDeviation] = Field(default_factory=list)
+
+
+class BehaviorCoverageObjective(BaseModel):
+    """A single SBOM surface (node or edge) mapped to a coverage objective.
+
+    Every node and edge in the SBOM appears as a BehaviorCoverageObjective
+    so reports can show which surfaces were dynamically exercised, statically
+    checked, metadata-only, or explicitly not behavior-exercisable.
+    """
+
+    objective_id: str
+    surface_type: str
+    """'node' | 'edge' | 'field' | 'policy_clause'"""
+    node_id: str | None = None
+    node_name: str | None = None
+    node_type: str | None = None
+    edge_source: str | None = None
+    edge_target: str | None = None
+    relationship_type: str | None = None
+    behavior_mode: str = "dynamic"
+    """'dynamic' | 'static' | 'metadata_only' | 'not_behavior_exercisable'"""
+    scenario_type: str | None = None
+    status: str = "generated"
+    """'generated' | 'executed' | 'passed' | 'failed' | 'skipped' | 'not_applicable'"""
+    reason: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -288,6 +316,7 @@ class BehaviorAnalysisResult(BaseModel):
     static_findings: list[dict] = Field(default_factory=list)
     dynamic_findings: list[dict] = Field(default_factory=list)
     coverage: list[BehaviorCoverage] = Field(default_factory=list)
+    coverage_objectives: list[BehaviorCoverageObjective] = Field(default_factory=list)
     scenario_results: list[ScenarioResult] = Field(default_factory=list)
     recommendations: list[Recommendation] = Field(default_factory=list)
     remediation_plan: list[RemediationArtefact] = Field(default_factory=list)
@@ -339,11 +368,30 @@ class BehaviorAnalysisResult(BaseModel):
     @computed_field  # type: ignore[misc]
     @property
     def coverage_percentage(self) -> float:
-        """Fraction of components that were exercised."""
-        if not self.coverage:
+        """Fraction of agent/tool components that were exercised (backward-compatible)."""
+        agent_tool = [c for c in self.coverage if c.node_type in ("AGENT", "TOOL")]
+        if not agent_tool:
             return 0.0
-        exercised = sum(1 for c in self.coverage if c.exercised)
-        return round(exercised / len(self.coverage), 4)
+        exercised = sum(1 for c in agent_tool if c.exercised)
+        return round(exercised / len(agent_tool), 4)
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def endpoint_coverage_pct(self) -> float:
+        """Fraction of API_ENDPOINT nodes that were exercised."""
+        endpoints = [c for c in self.coverage if c.node_type == "API_ENDPOINT"]
+        if not endpoints:
+            return 0.0
+        return round(sum(1 for c in endpoints if c.exercised) / len(endpoints), 4)
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def guardrail_coverage_pct(self) -> float:
+        """Fraction of GUARDRAIL nodes that were exercised."""
+        guardrails = [c for c in self.coverage if c.node_type == "GUARDRAIL"]
+        if not guardrails:
+            return 0.0
+        return round(sum(1 for c in guardrails if c.exercised) / len(guardrails), 4)
 
     @computed_field  # type: ignore[misc]
     @property

@@ -193,8 +193,13 @@ def _infer_context_payload_fields(
 def _extract_endpoint_schema(
     func_def: ast.FunctionDef | ast.AsyncFunctionDef,
     model_schemas: dict[str, dict[str, str]],
+    external_models: dict[str, dict[str, str]] | None = None,
 ) -> tuple[dict[str, str], str | None, bool, str | None, dict[str, str], dict[str, str]]:
-    """Return ``(req_schema, chat_payload_key, chat_payload_list, response_text_key, context_fields, resp_schema)``."""
+    """Return ``(req_schema, chat_payload_key, chat_payload_list, response_text_key, context_fields, resp_schema)``.
+
+    *external_models* is a cross-file Pydantic model index used to resolve models that are
+    imported from other modules (e.g. ``from schemas import ChatRequest``).
+    """
     req_schema: dict[str, str] = {}
     resp_schema: dict[str, str] = {}
     chat_key: str | None = None
@@ -202,24 +207,28 @@ def _extract_endpoint_schema(
     resp_key: str | None = None
     ctx_fields: dict[str, str] = {}
 
+    _ext = external_models or {}
     for arg in func_def.args.args:
         if arg.annotation is None:
             continue
         type_name: str | None = None
         if isinstance(arg.annotation, ast.Name):
             type_name = arg.annotation.id
-        if type_name and type_name in model_schemas:
-            req_schema = model_schemas[type_name]
-            chat_key, chat_list = _infer_chat_payload_key(req_schema)
-            ctx_fields = _infer_context_payload_fields(req_schema, chat_key)
-            break
+        if type_name:
+            resolved = model_schemas.get(type_name) or _ext.get(type_name)
+            if resolved:
+                req_schema = resolved
+                chat_key, chat_list = _infer_chat_payload_key(req_schema)
+                ctx_fields = _infer_context_payload_fields(req_schema, chat_key)
+                break
 
     ret = func_def.returns
     if ret is not None:
         ret_name = ret.id if isinstance(ret, ast.Name) else None
-        if ret_name and ret_name in model_schemas:
-            resp_schema = model_schemas[ret_name]
-            resp_key = _infer_response_text_key(resp_schema)
+        if ret_name:
+            resp_schema = model_schemas.get(ret_name) or _ext.get(ret_name) or {}
+            if resp_schema:
+                resp_key = _infer_response_text_key(resp_schema)
 
     return req_schema, chat_key, chat_list, resp_key, ctx_fields, resp_schema
 
@@ -280,6 +289,13 @@ class FastAPIAdapter(FrameworkAdapter):
     priority = 50
     handles_imports = ["fastapi", "fastapi.routing", "fastapi.security"]
 
+    def __init__(self) -> None:
+        self._global_model_schemas: dict[str, dict[str, str]] = {}
+
+    def set_global_model_schemas(self, schemas: dict[str, dict[str, str]]) -> None:
+        """Provide cross-file Pydantic model definitions for imported model resolution."""
+        self._global_model_schemas = schemas
+
     def extract(
         self,
         content: str,
@@ -298,6 +314,8 @@ class FastAPIAdapter(FrameworkAdapter):
         agent_vars: dict[str, str] = {}  # var_name -> canonical_name
         auth_vars: dict[str, str] = {}   # var_name -> auth_type
         model_schemas = _collect_model_schemas(tree)
+        # Local definitions take priority over cross-file global schemas
+        _effective_external = {k: v for k, v in self._global_model_schemas.items() if k not in model_schemas}
 
         # First pass: top-level assignments (FastAPI/APIRouter and auth class instantiations)
         for node in ast.walk(tree):
@@ -398,7 +416,7 @@ class FastAPIAdapter(FrameworkAdapter):
                     ep_auth = _extract_security_auth_type(decorator, auth_vars)
 
                 schema, chat_key, chat_list, resp_key, ctx_fields, resp_schema = _extract_endpoint_schema(
-                    node, model_schemas
+                    node, model_schemas, _effective_external
                 )
 
                 # Also extract response_model= kwarg from the route decorator itself

@@ -316,6 +316,7 @@ def check(
                     "message": gap.message,
                     "searched": gap.searched,
                     "prompt_evidence": gap.prompt_evidence,
+                    "remediation": gap.remediation,
                     "status": "gap",
                 }
             )
@@ -537,6 +538,9 @@ def _policy_findings_to_markdown(findings: list[dict], meta: ReportMeta | None =
                     for pe in f["prompt_evidence"]:
                         lines += [f"- {pe}"]
                     lines += [""]
+                if f.get("remediation"):
+                    lines += ["**Remediation:**", ""]
+                    lines += [f"> {f['remediation']}", ""]
         elif source == "compliance":
             result = (f.get("result") or "").upper()
             sev = (f.get("severity") or "info").upper()

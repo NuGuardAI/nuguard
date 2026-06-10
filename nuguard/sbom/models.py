@@ -619,6 +619,114 @@ class NodeMetadata(BaseModel):
         default=None,
         description="Model artifact checksum (md5, sha1, sha256) as a hex string",
     )
+    # ── DEVELOPER_TOOL_CONFIG node fields ────────────────────────────────────
+    tool_config_type: str | None = Field(
+        default=None,
+        description=(
+            "AI-agent or editor config sub-type, e.g. 'claude-settings', 'mcp-config', "
+            "'cursor-config', 'vscode-config', 'gemini-config', 'smithery-config'"
+        ),
+    )
+    permissions_granted: list[str] | None = Field(
+        default=None,
+        description="Permission patterns granted in this config, e.g. ['Bash(*:*)', 'Read', 'Write']",
+    )
+    permissions_denied: list[str] | None = Field(
+        default=None,
+        description="Permission patterns denied in this config, e.g. ['Bash(rm:*)']",
+    )
+    auto_execute: bool | None = Field(
+        default=None,
+        description="True when auto-run or auto-approve mode is enabled in this config",
+    )
+    permission_scope: str | None = Field(
+        default=None,
+        description="Scope at which this config grants permissions: 'repo' | 'user' | 'global'",
+    )
+    file_size_bytes: int | None = Field(
+        default=None,
+        description="Raw file size in bytes of this config file (for SC-017: large file detection)",
+    )
+    content_entropy: float | None = Field(
+        default=None,
+        description=(
+            "Shannon entropy (bits/byte) of the file content computed at extraction time "
+            "(for SC-018: high-entropy blob detection). Typical text is ~4–5; encrypted/base64 is >6.5."
+        ),
+    )
+    # ── LIFECYCLE_SCRIPT node fields ──────────────────────────────────────────
+    script_phase: str | None = Field(
+        default=None,
+        description=(
+            "Package lifecycle phase this script runs at, e.g. 'postinstall', 'preinstall', "
+            "'prepare', 'build-backend', 'publish-hook'"
+        ),
+    )
+    script_body: str | None = Field(
+        default=None,
+        description="Lifecycle script body, truncated to 2000 chars",
+    )
+    invokes_network: bool | None = Field(
+        default=None,
+        description="True when the script contains network download commands (curl, wget, fetch, etc.)",
+    )
+    invokes_shell: bool | None = Field(
+        default=None,
+        description="True when the script pipes into a shell (| bash, | sh, | node, etc.)",
+    )
+    downloads_binary: bool | None = Field(
+        default=None,
+        description="True when the script downloads and executes a binary (Bun, node, etc.)",
+    )
+    references_credentials: bool | None = Field(
+        default=None,
+        description=(
+            "True when the script references credential paths or env vars: "
+            "/proc/*/environ, .npmrc, AWS_SECRET_ACCESS_KEY, GITHUB_TOKEN, etc."
+        ),
+    )
+    # ── GITHUB_WORKFLOW additional boolean flags (computed from step bodies) ──
+    workflow_has_unpinned_global_install: bool | None = Field(
+        default=None,
+        description="True when any step in this workflow runs an unpinned global npm install or npx",
+    )
+    workflow_has_cred_access: bool | None = Field(
+        default=None,
+        description="True when any step in this workflow accesses credential paths or env vars",
+    )
+    # ── GITHUB_WORKFLOW node fields ───────────────────────────────────────────
+    workflow_triggers: list[str] | None = Field(
+        default=None,
+        description="GitHub Actions trigger event names parsed from the 'on:' block",
+    )
+    workflow_permissions: dict[str, str] | None = Field(
+        default=None,
+        description="Top-level permissions block, e.g. {'id-token': 'write', 'contents': 'read'}",
+    )
+    publishes_to: list[str] | None = Field(
+        default=None,
+        description="Publish targets detected in workflow steps, e.g. ['pypi', 'npm', 'smithery']",
+    )
+    uses_oidc: bool | None = Field(
+        default=None,
+        description="True when any job has permissions.id-token: write (OIDC publishing)",
+    )
+    action_refs: list[str] | None = Field(
+        default=None,
+        description=(
+            "All 'uses: owner/action@ref' strings found in this workflow. "
+            "Unpinned refs (branch or tag, not full SHA) indicate a supply-chain risk."
+        ),
+    )
+    # ── MCP_SERVER node fields ────────────────────────────────────────────────
+    mcp_server_trusted: bool | None = Field(
+        default=None,
+        description="True when this MCP server is explicitly listed as trusted in nuguard.yaml",
+    )
+    mcp_transport: str | None = Field(
+        default=None,
+        description="MCP transport protocol declared in .mcp.json: 'stdio' | 'http' | 'sse'",
+    )
     extras: dict[str, Any] = Field(
         default_factory=dict,
         description="Adapter-specific key/value pairs (provider, model_family, version, …)",
@@ -859,6 +967,32 @@ class ScanSummary(BaseModel):
         description=(
             "Kubernetes namespaces that have at least one NetworkPolicy resource detected. "
             "Populated by K8sAdapter. Used by NGA-013 to assert cross-file coverage."
+        ),
+    )
+    # ── Supply-chain summary fields ───────────────────────────────────────────
+    has_package_json: bool | None = Field(
+        default=None,
+        description=(
+            "True when a package.json file was found at the repo root during SBOM extraction. "
+            "Used by supply-chain scanner to check lockfile coverage (SC-024) without "
+            "requiring a live filesystem."
+        ),
+    )
+    has_lockfile: bool | None = Field(
+        default=None,
+        description=(
+            "True when at least one npm lockfile (package-lock.json, pnpm-lock.yaml, or "
+            "yarn.lock) was found at the repo root during SBOM extraction. "
+            "Used by supply-chain scanner (SC-024) without requiring a live filesystem."
+        ),
+    )
+    minified_js_files: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Relative paths to JavaScript files that contain a single line exceeding 5000 "
+            "characters — a reliable indicator of minified/bundled code. "
+            "Populated by the extractor during the main JS scanning pass. "
+            "Used by supply-chain scanner (SC-019) without requiring a live filesystem."
         ),
     )
 

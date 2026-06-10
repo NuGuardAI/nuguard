@@ -56,6 +56,18 @@ class PackageDep(BaseModel):
         return m.group(1) if m else None
 
 
+class LifecycleScript(BaseModel):
+    """A package lifecycle or build hook script extracted from manifests."""
+
+    model_config = ConfigDict(frozen=True)
+
+    name: str        # script name, e.g. "postinstall", "preinstall", "build-backend"
+    body: str        # script body, truncated to 2000 chars
+    source_file: str  # relative path to package.json / pyproject.toml / setup.py
+    ecosystem: str   # "npm" | "python"
+    phase: str       # "install-hook" | "build-hook" | "publish-hook"
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers
 # ---------------------------------------------------------------------------
@@ -439,3 +451,183 @@ class DependencyScanner:
                         )
                     )
         return deps
+
+    # ------------------------------------------------------------------
+    # Supply-chain extensions — no changes to existing scan() interface
+    # ------------------------------------------------------------------
+
+    def parse_lifecycle_scripts(self, root: Path) -> list[LifecycleScript]:
+        """Return lifecycle scripts from package.json and pyproject.toml build hooks.
+
+        npm phases scanned: preinstall, install, postinstall, prepare,
+        prepack, postpack, prepublish, prepublishOnly, publish.
+        Python phases scanned: [build-system] build-backend,
+        [tool.hatch.build.hooks.*], setup.py (presence only).
+        """
+        scripts: list[LifecycleScript] = []
+        candidates = _collect_manifest_candidates(root)
+
+        # ── npm lifecycle scripts ─────────────────────────────────────
+        _NPM_LIFECYCLE = {
+            "preinstall", "install", "postinstall", "prepare",
+            "prepack", "postpack", "prepublish", "prepublishOnly", "publish",
+        }
+        for path in candidates["package_json"]:
+            src = str(path.relative_to(root))
+            try:
+                data: dict[str, object] = json.loads(path.read_text(encoding="utf-8"))
+            except (json.JSONDecodeError, OSError):
+                continue
+            npm_scripts = data.get("scripts")
+            if not isinstance(npm_scripts, dict):
+                continue
+            for phase, body in npm_scripts.items():
+                if not isinstance(phase, str) or not isinstance(body, str):
+                    continue
+                phase_lower = phase.lower()
+                if phase_lower not in _NPM_LIFECYCLE:
+                    continue
+                _install_phases = {"preinstall", "install", "postinstall"}
+                _publish_phases = {"prepublish", "prepublishOnly", "publish"}
+                if phase_lower in _install_phases:
+                    hook_phase = "install-hook"
+                elif phase_lower in _publish_phases:
+                    hook_phase = "publish-hook"
+                else:
+                    hook_phase = "build-hook"
+                scripts.append(LifecycleScript(
+                    name=phase,
+                    body=body[:2000],
+                    source_file=src,
+                    ecosystem="npm",
+                    phase=hook_phase,
+                ))
+
+        # ── Python build hooks ────────────────────────────────────────
+        scripts.extend(self.parse_python_build_hooks(root))
+        return scripts
+
+    def parse_python_build_hooks(self, root: Path) -> list[LifecycleScript]:
+        """Extract Python build hooks from pyproject.toml and setup.py."""
+        scripts: list[LifecycleScript] = []
+        if tomllib is None:
+            return scripts
+
+        for path in _collect_manifest_candidates(root)["pyproject"]:
+            src = str(path.relative_to(root))
+            try:
+                data = tomllib.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            build_sys = data.get("build-system", {})
+            backend = build_sys.get("build-backend")
+            if backend and isinstance(backend, str):
+                scripts.append(LifecycleScript(
+                    name="build-backend",
+                    body=backend[:2000],
+                    source_file=src,
+                    ecosystem="python",
+                    phase="build-hook",
+                ))
+            tool = data.get("tool", {})
+            hatch = tool.get("hatch", {})
+            for hook_name, hook_cfg in hatch.get("build", {}).get("hooks", {}).items():
+                if isinstance(hook_cfg, dict):
+                    body = json.dumps(hook_cfg)[:2000]
+                    scripts.append(LifecycleScript(
+                        name=f"hatch.build.hooks.{hook_name}",
+                        body=body,
+                        source_file=src,
+                        ecosystem="python",
+                        phase="build-hook",
+                    ))
+
+        # setup.py presence: flag for manual review
+        for setup_py in root.rglob("setup.py"):
+            if any(skip in setup_py.parts for skip in _MANIFEST_SKIP_DIRS):
+                continue
+            src = str(setup_py.relative_to(root))
+            try:
+                body = setup_py.read_text(encoding="utf-8", errors="replace")[:2000]
+            except OSError:
+                continue
+            scripts.append(LifecycleScript(
+                name="setup.py",
+                body=body,
+                source_file=src,
+                ecosystem="python",
+                phase="build-hook",
+            ))
+        return scripts
+
+    def parse_lockfiles(self, root: Path) -> list[dict[str, str]]:
+        """Return minimal integrity records from lockfiles.
+
+        Reads: package-lock.json, pnpm-lock.yaml, uv.lock, poetry.lock.
+        Returns dicts with keys: name, version, resolved_url, integrity_hash, ecosystem.
+        """
+        records: list[dict[str, str]] = []
+        records.extend(self._parse_npm_lockfile(root))
+        records.extend(self._parse_uv_lockfile(root))
+        return records
+
+    def _parse_npm_lockfile(self, root: Path) -> list[dict[str, str]]:
+        records: list[dict[str, str]] = []
+        lock_path = root / "package-lock.json"
+        if not lock_path.exists():
+            return records
+        try:
+            data = json.loads(lock_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return records
+        packages = data.get("packages") or data.get("dependencies") or {}
+        for pkg_key, pkg_data in packages.items():
+            if not isinstance(pkg_data, dict):
+                continue
+            name = pkg_key.removeprefix("node_modules/") if pkg_key.startswith("node_modules/") else pkg_key
+            if not name:
+                continue
+            records.append({
+                "name": name,
+                "version": str(pkg_data.get("version", "")),
+                "resolved_url": str(pkg_data.get("resolved", "")),
+                "integrity_hash": str(pkg_data.get("integrity", "")),
+                "ecosystem": "npm",
+            })
+        return records
+
+    def _parse_uv_lockfile(self, root: Path) -> list[dict[str, str]]:
+        records: list[dict[str, str]] = []
+        if tomllib is None:
+            return records
+        lock_path = root / "uv.lock"
+        if not lock_path.exists():
+            return records
+        try:
+            data = tomllib.loads(lock_path.read_text(encoding="utf-8"))
+        except Exception:
+            return records
+        for pkg in data.get("package", []):
+            if not isinstance(pkg, dict):
+                continue
+            name = str(pkg.get("name", ""))
+            version = str(pkg.get("version", ""))
+            for src in pkg.get("source", {}).values() if isinstance(pkg.get("source"), dict) else []:
+                records.append({
+                    "name": name,
+                    "version": version,
+                    "resolved_url": str(src),
+                    "integrity_hash": "",
+                    "ecosystem": "python",
+                })
+                break
+            else:
+                if name:
+                    records.append({
+                        "name": name,
+                        "version": version,
+                        "resolved_url": "",
+                        "integrity_hash": "",
+                        "ecosystem": "python",
+                    })
+        return records

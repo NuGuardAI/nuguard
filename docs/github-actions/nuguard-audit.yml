@@ -52,6 +52,10 @@ jobs:
             --source . \
             --output-dir nuguard-reports \
             --fail-on high
+          # Add these flags when CI has a running target to validate:
+          #   --steps sbom,analyze,policy,redteam \
+          #   --policy cognitive_policy.md \
+          #   --target "$APP_URL"
         env:
           LITELLM_API_KEY: ${{ secrets.LITELLM_API_KEY }}   # optional — enables LLM enrichment
         # Exit 0 = clean, 1 = findings at threshold, 2 = critical findings, 3 = error
