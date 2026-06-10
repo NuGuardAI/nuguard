@@ -10,10 +10,10 @@ DISCOVER steps are cheap cache hits.
 """
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from nuguard.common.logging import get_logger
 from nuguard.redteam.executor.id_extractor import (
     extract_customer_name,
     extract_entity_map,
@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from nuguard.redteam.target.client import TargetAppClient
     from nuguard.redteam.target.session import AttackSession
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 
 def _console_print(msg: str) -> None:
@@ -242,5 +242,9 @@ async def run_discovery_conversation(
             f"  [dim]Pre-scan discovery: no profile data extracted after "
             f"{profile.turns_sent} turn(s)[/dim]"
         )
+        if profile.raw_response:
+            _console_print("  [dim]Discovery responses (truncated):[/dim]")
+            for i, r in enumerate(profile.raw_response.split("\n---\n")):
+                _console_print(f"  [dim]  turn {i + 1}: {r[:200]}[/dim]")
 
     return profile
