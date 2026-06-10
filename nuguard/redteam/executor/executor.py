@@ -2,12 +2,12 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import os
 import re as _re
 from typing import TYPE_CHECKING
 
 from nuguard.common.llm_client import LLMClient
+from nuguard.common.logging import get_logger
 from nuguard.common.rate_limit import (
     SCENARIO_MAX_RATE_LIMIT_RETRIES,
     TRANSIENT_ERROR_RETRY_DELAYS,
@@ -44,7 +44,7 @@ from .id_extractor import (
     generate_similar_ids,
 )
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 # Regex patterns to detect capability self-disclosures in warmup responses.
 # Mirrors _SELF_DISCLOSURE_PATTERNS in conversation_director.py so static chains

@@ -16,15 +16,16 @@ from __future__ import annotations
 
 import importlib
 import importlib.metadata
-import logging
 import pkgutil
+
+from nuguard.common.logging import get_logger
 
 from ..adapters.base import FrameworkAdapter
 from .base import PluginAdapter
 
 __all__ = ["PluginAdapter", "load_plugins"]
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # __path__ is a list[str] set by Python's import system for packages.
 _pkg_path: list[str] = __path__

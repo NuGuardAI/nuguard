@@ -2,10 +2,10 @@
 from __future__ import annotations
 
 import json
-import logging
 import re
 from typing import TYPE_CHECKING, Any
 
+from nuguard.common.logging import get_logger
 from nuguard.output.report_shared import (
     _norm_sev,
     _truncate_evidence,
@@ -23,7 +23,7 @@ if TYPE_CHECKING:
     from nuguard.behavior.models import BehaviorAnalysisResult
     from nuguard.cli.report_meta import ReportMeta
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 # Finding types produced by gap aggregation — rendered in the Gap Summary section,
 # excluded from the Dynamic Analysis Findings section.

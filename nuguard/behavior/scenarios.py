@@ -15,13 +15,13 @@ Boundary enforcement is NOT included — that is redteam's domain.
 from __future__ import annotations
 
 import asyncio
-import logging
 import re
 from typing import TYPE_CHECKING, Any
 
 from nuguard.behavior._utils import extract_json_object
 from nuguard.behavior.models import BehaviorScenario, BehaviorScenarioType
 from nuguard.behavior.sbom_graph import SbomGraph
+from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
     from nuguard.behavior.models import IntentProfile
@@ -30,7 +30,7 @@ if TYPE_CHECKING:
     from nuguard.redteam.target.discovery import DiscoveredProfile
     from nuguard.sbom.models import AiSbomDocument
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 
 def _profile_context_block(profile: "DiscoveredProfile | None") -> str:

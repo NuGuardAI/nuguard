@@ -14,16 +14,17 @@ This module:
 """
 from __future__ import annotations
 
-import logging
 import re
 import unicodedata
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Literal
 
+from nuguard.common.logging import get_logger
+
 if TYPE_CHECKING:
     from nuguard.sbom.models import AiSbomDocument
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 # ── Footer template ──────────────────────────────────────────────────────────
 

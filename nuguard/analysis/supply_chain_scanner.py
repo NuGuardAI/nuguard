@@ -35,13 +35,14 @@ Rule taxonomy (all ``NGA-SC-*``):
 from __future__ import annotations
 
 import json
-import logging
 import math
 import re
 from pathlib import Path
 from typing import Any
 
-_log = logging.getLogger("analysis.supply_chain_scanner")
+from nuguard.common.logging import get_logger
+
+_log = get_logger("analysis.supply_chain_scanner")
 
 # ── Regex patterns ────────────────────────────────────────────────────────────
 _SHA_PIN_RE = re.compile(r"@[0-9a-f]{40}\b")

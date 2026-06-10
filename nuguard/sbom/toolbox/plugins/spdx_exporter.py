@@ -17,18 +17,19 @@ Produces output aligned with the NuGuardAI SPDX 3.0.1 reference format:
 from __future__ import annotations
 
 import json
-import logging
 import re
 from importlib import resources
 from pathlib import Path
 from typing import Any
+
+from nuguard.common.logging import get_logger
 
 from ...models import AiSbomDocument, Node
 from ...types import ComponentType, RelationshipType
 from ..models import ToolResult
 from ..plugin_base import ToolPlugin
 
-_log = logging.getLogger("toolbox.plugins.spdx")
+_log = get_logger("toolbox.plugins.spdx")
 
 # ── Constants ─────────────────────────────────────────────────────────────────
 

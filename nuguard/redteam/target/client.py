@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 import random
 import re
 import time
@@ -16,13 +15,14 @@ from typing import TYPE_CHECKING, Any
 import httpx
 
 from nuguard.common.errors import TargetUnavailableError  # noqa: F401 — re-exported for callers
+from nuguard.common.logging import get_logger
 
 from .session import AttackSession
 
 if TYPE_CHECKING:
     from .framework_adapters import FrameworkAdapter
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 # Dedup set: emit the ADK app_name fallback warning at most once per base URL.
 _adk_fallback_warned: set[str] = set()

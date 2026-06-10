@@ -9,13 +9,13 @@ use for the primary user prompt.
 from __future__ import annotations
 
 import ast
-import logging
 import uuid
 from pathlib import Path
 
+from nuguard.common.logging import get_logger
 from nuguard.sbom.models import Edge, EdgeRelationshipType, Node, NodeMetadata, NodeType
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _CONFIDENCE = 0.90
 

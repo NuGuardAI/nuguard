@@ -20,7 +20,6 @@ Usage
 from __future__ import annotations
 
 import json
-import logging
 import shutil
 import subprocess
 from pathlib import Path
@@ -28,8 +27,9 @@ from typing import Any
 
 from nuguard.analysis.models import AnalysisResult
 from nuguard.analysis.plugin_base import AnalysisPlugin
+from nuguard.common.logging import get_logger
 
-_log = logging.getLogger("analysis.plugins.checkov")
+_log = get_logger("analysis.plugins.checkov")
 
 # Checkov severity → nuguard severity label
 _SEV_MAP: dict[str, str] = {

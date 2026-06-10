@@ -10,15 +10,16 @@ hooks are needed for the next message.
 """
 from __future__ import annotations
 
-import logging
 import re
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
+from nuguard.common.logging import get_logger
+
 if TYPE_CHECKING:
     from nuguard.common.llm_client import LLMClient
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # Posture detection regexes

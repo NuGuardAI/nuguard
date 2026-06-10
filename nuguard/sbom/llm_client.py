@@ -18,7 +18,9 @@ import json
 import logging
 from typing import Any
 
-_log = logging.getLogger(__name__)
+from nuguard.common.logging import get_logger
+
+_log = get_logger(__name__)
 
 _litellm_noise_suppressed = False
 

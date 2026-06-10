@@ -5,12 +5,12 @@ All checks are deterministic — no LLM needed.  Each check function returns
 """
 from __future__ import annotations
 
-import logging
 import re
 import uuid
 from typing import TYPE_CHECKING
 
 from nuguard.behavior.sbom_graph import SbomGraph
+from nuguard.common.logging import get_logger
 from nuguard.models.finding import Finding, Severity
 
 if TYPE_CHECKING:
@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from nuguard.models.policy import CognitivePolicy
     from nuguard.sbom.models import AiSbomDocument, Edge, Node
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------

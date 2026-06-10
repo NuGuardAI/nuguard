@@ -12,12 +12,12 @@ provided it uses it to generate contextual patch text for
 """
 from __future__ import annotations
 
-import logging
 import re
 import uuid
 from typing import TYPE_CHECKING, Any
 
 from nuguard.behavior.models import RemediationArtefact, RemediationArtefactType
+from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
     from nuguard.behavior.models import BehaviorAnalysisResult
@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from nuguard.models.policy import CognitivePolicy
     from nuguard.sbom.models import AiSbomDocument, Node
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # Privilege strategy lookup table

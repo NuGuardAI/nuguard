@@ -2,14 +2,14 @@
 
 from __future__ import annotations
 
-import logging
+from nuguard.common.logging import get_logger
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import AsyncIterator
 
 import aiosqlite
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 _DB_PATH = Path("data/milo.db")
 
 

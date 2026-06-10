@@ -26,14 +26,15 @@ The returned list elements share the same shape as OSV findings:
 from __future__ import annotations
 
 import json
-import logging
 import shutil
 import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
 
-_log = logging.getLogger("analysis.grype")
+from nuguard.common.logging import get_logger
+
+_log = get_logger("analysis.grype")
 
 # Grype severity labels → normalised values (Grype uses title-case)
 _SEV_MAP: dict[str, str] = {

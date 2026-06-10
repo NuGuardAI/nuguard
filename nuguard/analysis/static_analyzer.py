@@ -26,15 +26,15 @@ objects before being returned.  Severity values are normalised to the
 
 from __future__ import annotations
 
-import logging
 import uuid
 from pathlib import Path
 from typing import Any
 
+from nuguard.common.logging import get_logger
 from nuguard.models.finding import Finding, Severity
 from nuguard.sbom.models import AiSbomDocument
 
-_log = logging.getLogger("analysis.static_analyzer")
+_log = get_logger("analysis.static_analyzer")
 
 # Severity normalisation map: raw string → Severity enum
 _SEV_MAP: dict[str, Severity] = {

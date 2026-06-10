@@ -29,15 +29,16 @@ Config keys
 from __future__ import annotations
 
 import hashlib
-import logging
 from datetime import datetime, timezone
 from typing import Any, cast
+
+from nuguard.common.logging import get_logger
 
 from ..integration_contracts import AwsSecurityHubConfig
 from ..models import ToolResult
 from ..plugin_base import ToolPlugin
 
-_log = logging.getLogger("toolbox.plugins.aws_security_hub")
+_log = get_logger("toolbox.plugins.aws_security_hub")
 
 # ---------------------------------------------------------------------------
 # boto3 — optional; imported at module level for easy test-patching

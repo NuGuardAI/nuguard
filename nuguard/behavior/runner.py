@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import logging
 import re
 import time
 import uuid
@@ -49,6 +48,7 @@ from nuguard.behavior.models import (
 from nuguard.behavior.turn_context import TurnContext, extract_turn_context
 from nuguard.common.console import _console
 from nuguard.common.console import print_turn as _common_print_turn
+from nuguard.common.logging import get_logger
 from nuguard.common.rate_limit import (
     SCENARIO_MAX_RATE_LIMIT_RETRIES,
     TRANSIENT_ERROR_RETRY_DELAYS,
@@ -64,7 +64,7 @@ if TYPE_CHECKING:
     from nuguard.redteam.target.discovery import DiscoveredProfile
     from nuguard.sbom.models import AiSbomDocument
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 
 _DESTRUCTIVE_KEYWORDS = frozenset({

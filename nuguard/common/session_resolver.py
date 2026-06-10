@@ -20,17 +20,18 @@ hand directly to :func:`~nuguard.common.target_client_builder.build_target_app_c
 """
 from __future__ import annotations
 
-import logging
 import uuid
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
+
+from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
     from nuguard.common.auth import AuthConfig, AuthSession
     from nuguard.common.bootstrap import TargetHealthReport
     from nuguard.sbom.models import AiSbomDocument
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------

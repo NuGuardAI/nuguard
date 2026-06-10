@@ -22,12 +22,12 @@ The LLM is used here to *generate* the targeted payload, not to evaluate success
 from __future__ import annotations
 
 import asyncio
-import logging
 import re
 from typing import Literal
 
 from nuguard.common.env_utils import env_float
 from nuguard.common.llm_client import LLMClient
+from nuguard.common.logging import get_logger
 from nuguard.redteam.llm_engine.refusal_patterns import (
     HARD_REFUSAL_TOKENS as _HARD_REFUSAL_TOKENS,
 )
@@ -41,7 +41,7 @@ from nuguard.redteam.llm_engine.refusal_patterns import (
     SOFT_REFUSAL_TOKENS as _SOFT_REFUSAL_TOKENS,
 )
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 _MUTATION_TEMPERATURE = env_float("NUGUARD_REDTEAM_MUTATION_TEMPERATURE", 0.85)
 

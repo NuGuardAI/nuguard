@@ -5,18 +5,18 @@ across all turns.  Updated after each TurnVerdict.
 """
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from nuguard.behavior._utils import normalise_name, parse_json_array
+from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
     from nuguard.behavior.judge import TurnVerdict
     from nuguard.behavior.models import IntentProfile
     from nuguard.common.llm_client import LLMClient
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 MAX_COVERAGE_TURNS = 5
 

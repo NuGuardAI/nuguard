@@ -23,13 +23,14 @@ Usage::
 from __future__ import annotations
 
 import asyncio
-import logging
 from typing import TYPE_CHECKING
+
+from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
     from nuguard.common.llm_client import LLMClient
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 _GASLIGHTING_SYSTEM = """\
 You are a technical writer creating internal banking policy documents.

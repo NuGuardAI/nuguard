@@ -9,7 +9,6 @@ a file that can be edited and fed back through ``load_catalog_yaml``.
 """
 from __future__ import annotations
 
-import logging
 import warnings
 from pathlib import Path
 from typing import Any
@@ -17,6 +16,7 @@ from typing import Any
 import yaml
 from pydantic import BaseModel, Field, ValidationError
 
+from nuguard.common.logging import get_logger
 from nuguard.models.exploit_chain import GoalType, ScenarioType
 from nuguard.redteam.catalog.spec import ScenarioSpec
 from nuguard.redteam.catalog.taxonomy import (
@@ -29,7 +29,7 @@ from nuguard.redteam.catalog.taxonomy import (
     SourceTrust,
 )
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 __all__ = ["load_catalog_yaml", "export_catalog_yaml"]
 

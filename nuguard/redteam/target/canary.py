@@ -3,14 +3,15 @@ from __future__ import annotations
 
 import base64
 import json
-import logging
 import re
 from pathlib import Path
 from typing import Any
 
 from pydantic import BaseModel, Field
 
-_log = logging.getLogger(__name__)
+from nuguard.common.logging import get_logger
+
+_log = get_logger(__name__)
 
 
 class CanaryRecord(BaseModel):

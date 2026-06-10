@@ -8,9 +8,9 @@ either module with the same interface::
 from __future__ import annotations
 
 import json
-import logging
 from typing import TYPE_CHECKING, Any
 
+from nuguard.common.logging import get_logger
 from nuguard.output.report_shared import (
     _truncate_evidence,
     render_finding_block,
@@ -26,7 +26,7 @@ from nuguard.output.validation_report import (
 if TYPE_CHECKING:
     from nuguard.cli.report_meta import ReportMeta
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------

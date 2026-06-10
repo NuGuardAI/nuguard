@@ -1,16 +1,16 @@
 """Build ValidateScenario list from ValidateConfig and optional policy."""
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
+from nuguard.common.logging import get_logger
 from nuguard.config import ValidateConfig
 from nuguard.models.validate import ValidateScenario, ValidateScenarioType
 
 if TYPE_CHECKING:
     from nuguard.sbom.models import AiSbomDocument
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 # Default happy-path probe messages used when no custom messages are configured.
 _DEFAULT_HAPPY_PATH_MESSAGES = [

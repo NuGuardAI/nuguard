@@ -16,12 +16,13 @@ rest of the vulnerability scan still runs.
 from __future__ import annotations
 
 import json
-import logging
 import urllib.error
 import urllib.request
 from typing import Any
 
-_log = logging.getLogger("analysis.osv")
+from nuguard.common.logging import get_logger
+
+_log = get_logger("analysis.osv")
 
 _BATCH_URL  = "https://api.osv.dev/v1/querybatch"
 _VULN_URL   = "https://api.osv.dev/v1/vulns/{id}"

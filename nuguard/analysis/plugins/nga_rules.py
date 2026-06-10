@@ -26,14 +26,14 @@ NGA-018  Multiple AI agents sharing a datastore, no IAM isolation  LOW
 
 from __future__ import annotations
 
-import logging
 import re
 from typing import Any, Callable
 
 from nuguard.analysis.models import AnalysisResult
 from nuguard.analysis.plugin_base import AnalysisPlugin
+from nuguard.common.logging import get_logger
 
-_log = logging.getLogger("analysis.nga_rules")
+_log = get_logger("analysis.nga_rules")
 
 # ── Severity ordering ────────────────────────────────────────────────────────
 _SEVERITY_ORDER = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "INFO": 4}

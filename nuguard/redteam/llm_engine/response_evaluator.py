@@ -14,13 +14,13 @@ fall back to a generic "did the attack succeed?" question.
 """
 from __future__ import annotations
 
-import logging
 import re
 
 from nuguard.common.json_utils import extract_json_object
 from nuguard.common.llm_client import LLMClient
+from nuguard.common.logging import get_logger
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 _SYSTEM_PROMPT = (
     "You are a security analyst evaluating whether an AI application's response "

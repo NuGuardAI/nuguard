@@ -5,18 +5,18 @@ and a deterministic fallback that works without any API key.
 """
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 from nuguard.behavior._utils import extract_json_object
 from nuguard.behavior.models import IntentProfile
+from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
     from nuguard.common.llm_client import LLMClient
     from nuguard.models.policy import CognitivePolicy
     from nuguard.sbom.models import AiSbomDocument
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # LLM prompt constants

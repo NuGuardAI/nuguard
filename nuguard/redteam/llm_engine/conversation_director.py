@@ -18,11 +18,11 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 import os
 import re
 from typing import TYPE_CHECKING, Literal
 
+from nuguard.common.logging import get_logger
 from nuguard.models.exploit_chain import GoalType
 from nuguard.redteam.llm_engine.adaptive_mutation import classify_failure
 from nuguard.redteam.llm_engine.happy_path import (
@@ -38,7 +38,7 @@ if TYPE_CHECKING:
     from nuguard.common.llm_client import LLMClient
     from nuguard.redteam.models.guided_conversation import TurnRecord
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 
 def _env_float(name: str, default: float) -> float:

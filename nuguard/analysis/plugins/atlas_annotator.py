@@ -77,7 +77,6 @@ Output ``details`` schema::
 from __future__ import annotations
 
 import asyncio
-import logging
 from typing import Any, cast
 
 from nuguard.analysis._atlas_data import (
@@ -93,8 +92,9 @@ from nuguard.analysis._atlas_data import (
 )
 from nuguard.analysis.models import AnalysisResult
 from nuguard.analysis.plugin_base import AnalysisPlugin
+from nuguard.common.logging import get_logger
 
-_log = logging.getLogger("analysis.plugins.atlas")
+_log = get_logger("analysis.plugins.atlas")
 
 
 class AtlasAnnotatorPlugin(AnalysisPlugin):

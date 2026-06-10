@@ -1,10 +1,10 @@
 """Context-sensitive scenario generator — reads SBOM and emits prioritised AttackScenario list."""
 from __future__ import annotations
 
-import logging
 import re
 import uuid
 
+from nuguard.common.logging import get_logger
 from nuguard.models.exploit_chain import ExploitChain, ExploitStep, GoalType, ScenarioType
 from nuguard.models.policy import CognitivePolicy
 from nuguard.sbom.models import AiSbomDocument
@@ -82,7 +82,7 @@ from .sbom_driven import _classify_tool, build_tool_scenarios
 from .scenario_types import AttackScenario
 from .tool_abuse import build_sql_injection, build_ssrf
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 # Cap agents per attack goal to avoid combinatorial explosion while still
 # covering heterogeneous deployments (primary + secondary agent).

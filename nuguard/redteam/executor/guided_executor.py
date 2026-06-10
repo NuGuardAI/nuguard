@@ -7,8 +7,9 @@ agent just said.
 """
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
+
+from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
     from nuguard.redteam.llm_engine.conversation_director import ConversationDirector
@@ -28,7 +29,7 @@ from nuguard.redteam.models.guided_conversation import GuidedConversation, TurnR
 from nuguard.redteam.target.client import TargetAppClient, TargetUnavailableError
 from nuguard.redteam.target.session import AttackSession
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 # Hard-refusal abort: if this many consecutive turns have score <= 1 AND classify
 # as HARD_REFUSAL or SOFT_REFUSAL, the conversation is abandoned.

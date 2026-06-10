@@ -16,17 +16,18 @@ via ``auth_headers``.  This module does not perform authentication.
 """
 from __future__ import annotations
 
-import logging
 import re
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
+
+from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
     from nuguard.common.auth import AuthConfig
     from nuguard.redteam.target.client import TargetAppClient
     from nuguard.sbom.models import AiSbomDocument
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # Static-site detection helpers
