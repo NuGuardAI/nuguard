@@ -660,6 +660,8 @@ class AiSbomExtractor:
         file_loc: dict[str, int] = {}
         # Import tracking per file for dependency cross-referencing
         _file_imports: dict[str, set[str]] = {}
+        # Minified JS files detected during the scan (for SC-019)
+        _minified_js_files: list[str] = []
         # Summary builder only needs a bounded content sample.
         files_sample: list[tuple[str, str]] = []
         files_scanned = 0
@@ -834,6 +836,7 @@ class AiSbomExtractor:
                         _dc_metadata.append(det.metadata)
 
             # Phase 1c: TypeScript/JavaScript AST-aware framework adapters
+            # Also detect minified single-line JS (>5 KB line) for SC-019
             elif is_typescript:
                 ts_hints = self._parse_typescript(content, rel_path)
                 imported_modules_ts: set[str] = {imp.module for imp in ts_hints.imports}
@@ -855,6 +858,12 @@ class AiSbomExtractor:
                         continue
                     for det in detections:
                         self._merge_detection(node_map, det)
+
+            # SC-019: detect minified JS (single line > 5000 chars) for supply-chain summary
+            if suffix == ".js" and content:
+                _js_lines = content.splitlines()
+                if _js_lines and max(len(ln) for ln in _js_lines) > 5000:
+                    _minified_js_files.append(rel_path)
 
             # Phase 1d: Dockerfile — container image extraction
             if is_dockerfile:
@@ -1466,9 +1475,11 @@ class AiSbomExtractor:
             )
         )
 
-        # Write total LOC into the summary
+        # Write total LOC and minified JS list into the summary
         if doc.summary and file_loc:
             doc.summary.total_loc = sum(file_loc.values()) or None
+        if doc.summary is not None and _minified_js_files:
+            doc.summary.minified_js_files = _minified_js_files
 
         # Ensure google-ces is listed in summary.frameworks when CES nodes exist
         _has_ces = any(
