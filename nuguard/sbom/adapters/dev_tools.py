@@ -154,12 +154,15 @@ class DevToolConfigAdapter:
         return [node], []
 
     def _parse_claude_settings(
-        self, path: Path, rel: str
+        self, path: Path, rel: str,
+        file_size_bytes: int | None = None, content_entropy: float | None = None,
     ) -> tuple[list[Node], list[Edge]]:
         try:
             data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
-            return [self._make_config_node(rel, "claude-settings", rel)], []
+            return [self._make_config_node(rel, "claude-settings", rel,
+                                           file_size_bytes=file_size_bytes,
+                                           content_entropy=content_entropy)], []
 
         allowed: list[str] = [str(p) for p in (data.get("allow") or []) if p]
         denied: list[str] = [str(p) for p in (data.get("deny") or []) if p]
@@ -175,6 +178,8 @@ class DevToolConfigAdapter:
             permissions_denied=denied or None,
             auto_execute=auto_exec if allowed else None,
             permission_scope="repo",
+            file_size_bytes=file_size_bytes,
+            content_entropy=content_entropy,
         )
         node = Node(
             id=uuid4(),
@@ -192,14 +197,19 @@ class DevToolConfigAdapter:
         return [node], []
 
     def _parse_mcp_json(
-        self, path: Path, rel: str
+        self, path: Path, rel: str,
+        file_size_bytes: int | None = None, content_entropy: float | None = None,
     ) -> tuple[list[Node], list[Edge]]:
         try:
             data: dict[str, Any] = json.loads(path.read_text(encoding="utf-8"))
         except (json.JSONDecodeError, OSError):
-            return [self._make_config_node(rel, "mcp-config", rel)], []
+            return [self._make_config_node(rel, "mcp-config", rel,
+                                           file_size_bytes=file_size_bytes,
+                                           content_entropy=content_entropy)], []
 
-        parent_node = self._make_config_node(rel, "mcp-config", rel)
+        parent_node = self._make_config_node(rel, "mcp-config", rel,
+                                             file_size_bytes=file_size_bytes,
+                                             content_entropy=content_entropy)
         nodes: list[Node] = [parent_node]
         edges: list[Edge] = []
 
@@ -240,7 +250,8 @@ class DevToolConfigAdapter:
         return nodes, edges
 
     def _make_config_node(
-        self, name: str, config_type: str, source_file: str
+        self, name: str, config_type: str, source_file: str,
+        file_size_bytes: int | None = None, content_entropy: float | None = None,
     ) -> Node:
         return Node(
             id=uuid4(),
@@ -250,6 +261,8 @@ class DevToolConfigAdapter:
             metadata=NodeMetadata(
                 tool_config_type=config_type,
                 permission_scope="repo",
+                file_size_bytes=file_size_bytes,
+                content_entropy=content_entropy,
             ),
             evidence=[Evidence(
                 kind="config",
