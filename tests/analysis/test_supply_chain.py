@@ -145,10 +145,12 @@ def test_large_payload_skipped_in_ci_profile():
     assert "NGA-SC-017" not in rule_ids, "NGA-SC-017 should be skipped in ci profile"
 
 
-def test_large_payload_skipped_in_standard_profile():
+def test_large_payload_runs_in_standard_profile():
+    # SC-017..019 moved from full-only to standard (SBOM-native).
     findings = _scan("large_dropper", profile="standard")
     rule_ids = _rule_ids(findings)
-    assert "NGA-SC-017" not in rule_ids, "NGA-SC-017 should be skipped in standard profile"
+    # The large_dropper fixture has a >100 KB file in .claude/ — SC-017 must fire
+    assert "NGA-SC-017" in rule_ids, f"NGA-SC-017 should fire in standard profile, got {rule_ids}"
 
 
 # ---------------------------------------------------------------------------

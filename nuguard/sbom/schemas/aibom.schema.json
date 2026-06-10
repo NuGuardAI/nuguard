@@ -1630,6 +1630,32 @@
           "description": "Scope at which this config grants permissions: 'repo' | 'user' | 'global'",
           "title": "Permission Scope"
         },
+        "file_size_bytes": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Raw file size in bytes of this config file (for SC-017: large file detection)",
+          "title": "File Size Bytes"
+        },
+        "content_entropy": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Shannon entropy (bits/byte) of the file content computed at extraction time (for SC-018: high-entropy blob detection). Typical text is ~4\u20135; encrypted/base64 is >6.5.",
+          "title": "Content Entropy"
+        },
         "script_phase": {
           "anyOf": [
             {
@@ -2358,6 +2384,14 @@
           "default": null,
           "description": "True when at least one npm lockfile (package-lock.json, pnpm-lock.yaml, or yarn.lock) was found at the repo root during SBOM extraction. Used by supply-chain scanner (SC-024) without requiring a live filesystem.",
           "title": "Has Lockfile"
+        },
+        "minified_js_files": {
+          "description": "Relative paths to JavaScript files that contain a single line exceeding 5000 characters \u2014 a reliable indicator of minified/bundled code. Populated by the extractor during the main JS scanning pass. Used by supply-chain scanner (SC-019) without requiring a live filesystem.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Minified Js Files",
+          "type": "array"
         }
       },
       "title": "ScanSummary",
