@@ -11,15 +11,10 @@ triggering real destructive execution in a properly sandboxed test environment.
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 from nuguard.models.exploit_chain import ExploitStep, GoalType, ScenarioType
 
 from ._chain_factory import make_scenario
 from .scenario_types import AttackScenario
-
-if TYPE_CHECKING:
-    from nuguard.sbom.models import AiSbomDocument
 
 # Canary token embedded in repo/file payloads so the evaluator can detect leaks.
 _CANARY = "NUGUARD_CANARY_K_SERIES"
