@@ -229,6 +229,15 @@ class CapabilityDetector:
         _md_evidence = any(fw in " ".join(_summary_frameworks).lower() for fw in _MARKDOWN_FRAMEWORKS)
         caps.add(C.RENDERS_MARKDOWN)  # default-on; evidence captured above if needed
 
+        # STREAMING: detected from ScanSummary when the app exposes SSE endpoints
+        if getattr(self._sbom, "summary", None) and getattr(self._sbom.summary, "uses_streaming", False):
+            caps.add(C.STREAMING)
+
+        # CI: also detected from ScanSummary.testing.ci_cd_pipeline (supplements tool-name detection)
+        _testing = getattr(self._sbom.summary, "testing", None) if getattr(self._sbom, "summary", None) else None
+        if _testing and getattr(_testing, "ci_cd_pipeline", None):
+            caps.add(C.CI)
+
         domain = self._infer_domain(agents, all_tools)
 
         return AppCapabilityProfile(

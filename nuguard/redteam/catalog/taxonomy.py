@@ -30,6 +30,8 @@ class ScenarioCategory(str, Enum):
     IMPROPER_OUTPUT = "Improper Output Handling"     # O
     HUMAN_AGENT_TRUST = "Human-Agent Trust Exploitation"  # H
     AGENT_IDENTITY = "Agent Identity and Credential"  # N
+    API_SCHEMA = "API Schema Exploitation"            # S
+    SUPPLY_CHAIN = "Supply Chain and CI/CD"           # V
 
 
 class DeliveryChannel(str, Enum):
@@ -173,3 +175,5 @@ class Capability(str, Enum):
     TOKEN_BROKER = "token_broker"                           # agent brokers or delegates tokens
     DELEGATED_AUTH = "delegated_auth"                       # agent acts on behalf of a user
     SCOPED_CREDENTIALS = "scoped_credentials"               # agent holds per-tool scoped creds
+    # Streaming output
+    STREAMING = "streaming"                                  # app exposes SSE/streaming endpoints
