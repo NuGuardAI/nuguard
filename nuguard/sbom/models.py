@@ -643,6 +643,17 @@ class NodeMetadata(BaseModel):
         default=None,
         description="Scope at which this config grants permissions: 'repo' | 'user' | 'global'",
     )
+    file_size_bytes: int | None = Field(
+        default=None,
+        description="Raw file size in bytes of this config file (for SC-017: large file detection)",
+    )
+    content_entropy: float | None = Field(
+        default=None,
+        description=(
+            "Shannon entropy (bits/byte) of the file content computed at extraction time "
+            "(for SC-018: high-entropy blob detection). Typical text is ~4–5; encrypted/base64 is >6.5."
+        ),
+    )
     # ── LIFECYCLE_SCRIPT node fields ──────────────────────────────────────────
     script_phase: str | None = Field(
         default=None,
@@ -973,6 +984,15 @@ class ScanSummary(BaseModel):
             "True when at least one npm lockfile (package-lock.json, pnpm-lock.yaml, or "
             "yarn.lock) was found at the repo root during SBOM extraction. "
             "Used by supply-chain scanner (SC-024) without requiring a live filesystem."
+        ),
+    )
+    minified_js_files: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Relative paths to JavaScript files that contain a single line exceeding 5000 "
+            "characters — a reliable indicator of minified/bundled code. "
+            "Populated by the extractor during the main JS scanning pass. "
+            "Used by supply-chain scanner (SC-019) without requiring a live filesystem."
         ),
     )
 

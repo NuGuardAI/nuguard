@@ -18,26 +18,26 @@ The attack surface for AI applications has evolved well beyond static CVE analys
 
 **What NuGuard detects**
 
-NuGuard 0.5.10 ships the Supply Chain Threat Pack: 25 native detection rules (NGA-SC-001–NGA-SC-025) built into `nuguard analyze` and `nuguard scan`. No external tools required.
+NuGuard 0.7.1 ships the Supply Chain Threat Pack: 25 native detection rules (NGA-SC-001–NGA-SC-025) built into `nuguard analyze` and `nuguard scan`. No external tools required.
 
-GitHub Actions risks (NGA-SC-001–006):
-- NGA-SC-001 (HIGH): Publish workflow uses OIDC with an unpinned third-party action
-- NGA-SC-002 (CRITICAL): `pull_request_target` reachable from a publish step or secrets context
-- NGA-SC-005 (CRITICAL): CI step reads `/proc/*/environ`, npm tokens, or cloud credentials
+GitHub Actions risks:
+- Publish workflow uses OIDC with an unpinned third-party action
+- `pull_request_target` reachable from a publish step or secrets context
+- CI step reads `/proc/*/environ`, npm tokens, or cloud credentials
 
-Lifecycle script threats (NGA-SC-011–016):
-- NGA-SC-011 (CRITICAL): `postinstall`/`preinstall` invokes a network download
-- NGA-SC-012 (CRITICAL): Lifecycle script pipes to shell (`| bash`, `| sh`)
-- NGA-SC-013 (CRITICAL): Bun download and execution in a lifecycle hook
-- NGA-SC-014 (CRITICAL): Script reads npm tokens, `AWS_SECRET_ACCESS_KEY`, `GITHUB_TOKEN`, or `/proc/environ`
+Lifecycle script threats:
+- `postinstall`/`preinstall` invokes a network download
+- Lifecycle script pipes to shell (`| bash`, `| sh`)
+- Bun download and execution in a lifecycle hook
+- Script reads npm tokens, `AWS_SECRET_ACCESS_KEY`, `GITHUB_TOKEN`, or `/proc/environ`
 
-AI-agent config poisoning (NGA-SC-007–010):
-- NGA-SC-007 (HIGH): `Bash(*:*)` or equivalent broad shell permission in an agent config
-- NGA-SC-009 (HIGH): `.mcp.json` references an external or untrusted MCP server
-- NGA-SC-010 (HIGH): Auto-run or auto-approve mode enabled in a repo-scoped config
+AI-agent config poisoning:
+- `Bash(*:*)` or equivalent broad shell permission in an agent config
+- `.mcp.json` references an external or untrusted MCP server
+- Auto-run or auto-approve mode enabled in a repo-scoped config
 
-Threat-intel IOC matching (NGA-SC-025):
-- CRITICAL: Package name matches a known-malicious entry in a loaded threat-intel feed. Ships with the Miasma/Shai-Hulud June 2026 IOC feed; additional YAML feed files are auto-loaded from `nuguard/threat_intel/`.
+Threat-intel IOC matching:
+- Package name matches a known-malicious entry in a loaded threat-intel feed. Ships with the Miasma/Shai-Hulud June 2026 IOC feed; additional YAML feed files are auto-loaded from `nuguard/threat_intel/`.
 
 **How the SBOM makes it precise**
 
@@ -62,15 +62,13 @@ nuguard scan --source . --supply-chain-profile ci
 # Deep inspection with entropy and git-history checks
 nuguard scan --source . --supply-chain-profile full
 
-# Add PyPI/npm artifact registry verification (no install)
-nuguard analyze --sbom app.sbom.json --source . --supply-chain-verify warn
 ```
 
-The artifact verifier (Phase 3) fetches registry metadata from PyPI and npm without installing anything, comparing published lifecycle scripts against the source repository. Drift is reported as NGA-SC-A01; missing provenance attestation as NGA-SC-A02.
+The artifact verifier fetches registry metadata from PyPI and npm without installing anything, comparing published lifecycle scripts against the source repository. NuGuard reports the drift and missing provenance attestation.
 
 **Why this matters for AI teams**
 
-AI application repositories carry a uniquely dense supply-chain surface: agentic frameworks pull deep dependency trees, CI pipelines publish model artifacts, and AI coding agents execute code directly from repository configuration. A single poisoned `postinstall` script or a broad `.claude/settings.json` entry is enough to turn a routine `npm install` or a Claude Code session into full credential exfiltration.
+AI application repos carry a uniquely dense supply-chain surface: agentic frameworks pull deep dependency trees, CI pipelines publish model artifacts, and AI coding agents execute code directly from repository configuration. A single poisoned `postinstall` script or a broad `.claude/settings.json` entry is enough to turn a routine `npm install` or a Claude Code session into full credential exfiltration.
 
 NuGuard's Supply Chain Threat Pack is fully integrated into the existing `nuguard analyze` pipeline. Findings flow through the same normalized `Finding` model—SARIF, JSON, and Markdown output work without any changes. All 25 rules run offline with no external tool dependencies.
 

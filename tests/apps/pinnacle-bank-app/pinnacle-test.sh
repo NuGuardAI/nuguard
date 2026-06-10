@@ -50,6 +50,19 @@ uv run nuguard policy check \
 echo "Done."
 
 echo "---"
+
+echo "Security Analysis Check..."
+
+# analyze exits 2 when findings are present — expected in testing; treat as non-fatal
+uv run nuguard analyze \
+  --config "$SCRIPT_DIR/nuguard-azure.yaml" \
+  --format markdown \
+  -o "$SCRIPT_DIR/reports/pinnacle-bank-sec-analysis.md" || true
+
+echo "Done."
+
+echo "---"
+
 echo "Running behavior analysis (static + dynamic)..."
 
 # behavior exits 2 when findings are present — expected in testing; treat as non-fatal.

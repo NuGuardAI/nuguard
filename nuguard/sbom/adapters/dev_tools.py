@@ -66,6 +66,18 @@ _BUN_RE = re.compile(r"\bnpx\s+bun\b|\bbun\s+install\b|\bbun\s+run\b", re.IGNORE
 _UNPINNED_GLOBAL_RE = re.compile(r"\bnpm\s+install\s+-g\b|\bnpm\s+i\s+-g\b|\bnpx\b(?!\s+--yes)", re.IGNORECASE)
 
 
+def _shannon_entropy(data: bytes) -> float:
+    """Compute Shannon entropy (bits/byte) of a byte string."""
+    import math  # noqa: PLC0415
+    if not data:
+        return 0.0
+    freq: dict[int, int] = {}
+    for b in data:
+        freq[b] = freq.get(b, 0) + 1
+    n = len(data)
+    return -sum((c / n) * math.log2(c / n) for c in freq.values())
+
+
 class DevToolConfigAdapter:
     """Scan a repository tree for AI-agent and editor configuration files.
 
@@ -112,21 +124,32 @@ class DevToolConfigAdapter:
 
         return nodes, edges
 
+    def _read_file_metrics(self, path: Path) -> tuple[int | None, float | None]:
+        """Return (file_size_bytes, content_entropy) for supply-chain SC-017/018."""
+        try:
+            raw = path.read_bytes()
+            return len(raw), _shannon_entropy(raw)
+        except OSError:
+            return None, None
+
     def _process_file(
         self, path: Path, root: Path, config_type: str
     ) -> tuple[list[Node], list[Edge]]:
         rel = str(path.relative_to(root))
         _log.debug("DevToolConfigAdapter: processing %s (%s)", rel, config_type)
+        file_size_bytes, content_entropy = self._read_file_metrics(path)
 
         if config_type == "claude-settings":
-            return self._parse_claude_settings(path, rel)
+            return self._parse_claude_settings(path, rel, file_size_bytes, content_entropy)
         if config_type == "mcp-config":
-            return self._parse_mcp_json(path, rel)
+            return self._parse_mcp_json(path, rel, file_size_bytes, content_entropy)
         # Generic: just record the file as a DEVELOPER_TOOL_CONFIG node
         node = self._make_config_node(
             name=rel,
             config_type=config_type,
             source_file=rel,
+            file_size_bytes=file_size_bytes,
+            content_entropy=content_entropy,
         )
         return [node], []
 
