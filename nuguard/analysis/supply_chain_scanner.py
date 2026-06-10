@@ -83,10 +83,10 @@ _CI_RULES = {
 }
 _STANDARD_RULES = _CI_RULES | {
     "NGA-SC-003", "NGA-SC-006", "NGA-SC-008", "NGA-SC-015", "NGA-SC-016",
+    "NGA-SC-017", "NGA-SC-018", "NGA-SC-019",
     "NGA-SC-023", "NGA-SC-024",
 }
 _FULL_RULES = _STANDARD_RULES | {
-    "NGA-SC-017", "NGA-SC-018", "NGA-SC-019",
     "NGA-SC-020", "NGA-SC-021", "NGA-SC-022",
 }
 
@@ -267,8 +267,9 @@ class SupplyChainScanner:
         findings.extend(self._check_mutable_deps(deps))
         findings.extend(self._check_lockfile_coverage(source_path, deps))
 
+        # SC-017..019 are now in standard profile (SBOM-native) and full profile (filesystem)
+        findings.extend(self._scan_large_payloads(source_path, nodes, self._sbom_summary))
         if self.profile == "full":
-            findings.extend(self._scan_large_payloads(source_path))
             findings.extend(self._scan_git_history(source_path))
 
         _log.info(
@@ -353,6 +354,9 @@ class SupplyChainScanner:
                     "scripts_examined": lc.get("scripts_checked", 0)}
         if rule_id in {"NGA-SC-017", "NGA-SC-018", "NGA-SC-019"}:
             lp = ctx.get("large_payloads", {})
+            if lp.get("sbom_nodes_used") is not None:
+                return {"dev_tool_config_nodes_examined": lp["sbom_nodes_used"],
+                        "minified_js_files_found": lp.get("minified_js_files", 0)}
             return {"hidden_dirs_scanned": lp.get("hidden_dirs_scanned", []),
                     "js_files_scanned": lp.get("js_files_scanned", 0)}
         if rule_id in {"NGA-SC-020", "NGA-SC-021", "NGA-SC-022"}:
@@ -1177,10 +1181,95 @@ class SupplyChainScanner:
     # Sub-scanner: large payloads (full profile only)
     # ------------------------------------------------------------------
 
-    def _scan_large_payloads(self, source_path: Path) -> list[dict[str, Any]]:
+    def _scan_large_payloads(
+        self,
+        source_path: Path,
+        nodes: list[dict[str, Any]] | None = None,
+        sbom_summary: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
         findings: list[dict[str, Any]] = []
+        nodes = nodes or []
+        sbom_summary = sbom_summary or {}
+
+        # SBOM-native path: use pre-computed metadata from DEVELOPER_TOOL_CONFIG nodes
+        dev_tool_nodes = [
+            n for n in nodes
+            if (n.get("component_type") or "").upper() == "DEVELOPER_TOOL_CONFIG"
+        ]
+        if dev_tool_nodes:
+            _log.info(
+                "[NGA-SC-017..019] scanning %d DEVELOPER_TOOL_CONFIG SBOM nodes + summary",
+                len(dev_tool_nodes),
+            )
+            for node in dev_tool_nodes:
+                meta = node.get("metadata") or {}
+                name = node.get("name", "unknown")
+                size = meta.get("file_size_bytes")
+                entropy = meta.get("content_entropy")
+
+                if "NGA-SC-017" in self._enabled and size is not None and size > 100 * 1024:
+                    findings.append(_finding(
+                        rule_id="NGA-SC-017",
+                        severity="high",
+                        title="Large file in hidden tool directory",
+                        description=(
+                            f"Config file '{name}' is {size // 1024} KB, above the 100 KB "
+                            "threshold for hidden AI-agent/editor configuration directories. "
+                            "SafeDep reported large dropper payloads hidden in .claude/ and "
+                            "similar directories in the Miasma campaign."
+                        ),
+                        affected=[name],
+                        remediation="Audit this file and verify it was intentionally committed.",
+                    ))
+
+                if "NGA-SC-018" in self._enabled and entropy is not None and entropy > 6.5:
+                    findings.append(_finding(
+                        rule_id="NGA-SC-018",
+                        severity="high",
+                        title="High-entropy blob in tool directory",
+                        description=(
+                            f"Config file '{name}' has Shannon entropy {entropy:.2f} bits/byte "
+                            "(threshold: 6.5). High entropy may indicate encrypted or "
+                            "compressed payload data."
+                        ),
+                        affected=[name],
+                        remediation="Audit this file; confirm it is legitimate config data.",
+                    ))
+
+            # SC-019 from ScanSummary
+            if "NGA-SC-019" in self._enabled:
+                for minified_path in (sbom_summary.get("minified_js_files") or []):
+                    findings.append(_finding(
+                        rule_id="NGA-SC-019",
+                        severity="medium",
+                        title="Minified single-line JavaScript above 5 KB",
+                        description=(
+                            f"File '{minified_path}' contains a minified/single-line JavaScript "
+                            "body exceeding 5000 characters. "
+                            "Check that this file was intentionally committed and is not a dropper."
+                        ),
+                        affected=[minified_path],
+                        remediation="Audit the file source; prefer readable, un-minified files in source control.",
+                    ))
+
+            _log.info(
+                "[NGA-SC-017..019] SBOM-native: %d config nodes examined, %d minified JS files",
+                len(dev_tool_nodes), len(sbom_summary.get("minified_js_files") or []),
+            )
+            self._ctx["large_payloads"] = {
+                "sbom_nodes_used": len(dev_tool_nodes),
+                "minified_js_files": len(sbom_summary.get("minified_js_files") or []),
+            }
+            return findings
+
+        # Filesystem fallback: used when source_path exists (local repos with --source)
         dirs_found: list[str] = []
         js_files_scanned = 0
+
+        if not source_path.exists():
+            _log.info("[NGA-SC-017..019] no SBOM nodes and no source path; skipping large payload scan")
+            self._ctx["large_payloads"] = {"hidden_dirs_scanned": [], "js_files_scanned": 0}
+            return findings
 
         for dir_name in _HIDDEN_TOOL_DIRS:
             tool_dir = source_path / dir_name
