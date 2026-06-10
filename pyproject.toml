@@ -102,6 +102,7 @@ markers = [
     "redteam_e2e: E2E redteam scan against a live fixture app (opt-in: NUGUARD_REDTEAM_E2E=1)",
     "benchmark_redteam: Full benchmark redteam CLI scan (opt-in: NUGUARD_REDTEAM_BENCHMARK=1)",
     "analyze_e2e: E2E analyze pipeline from GitHub clone (opt-in: NUGUARD_ANALYZE_E2E=1)",
+    "smoke: Smoke tests for key extraction scenarios",
 ]
 
 [tool.ruff]

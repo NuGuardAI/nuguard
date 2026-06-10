@@ -42,6 +42,7 @@ from pathlib import Path
 from typing import Any
 
 import pytest
+from typer.testing import CliRunner as TyperCliRunner
 
 # AppRunner is used to start fixture apps that the SBOM cannot auto-discover
 # (e.g. apps that use Streamlit or non-standard entry points).
@@ -146,6 +147,15 @@ def _run_nuguard(*args: str, cwd: Path | None = None, timeout: int = 120) -> sub
     )
 
 
+_cli_runner = TyperCliRunner()
+
+
+def _invoke_nuguard_sbom(*args: str) -> "typer.testing.Result":  # type: ignore[name-defined]
+    """Invoke nuguard via CliRunner (in-process) — no subprocess/uv overhead."""
+    from nuguard.cli.main import app  # lazy import keeps startup fast
+    return _cli_runner.invoke(app, list(args))
+
+
 # ---------------------------------------------------------------------------
 # SBOM generation tests — run for ALL 27 fixtures (no API key required)
 # ---------------------------------------------------------------------------
@@ -177,12 +187,11 @@ def test_sbom_generate_from_fixture(fixture_name: str, tmp_path: Path) -> None:
         if config_path.exists():
             cmd_args += ["--config", str(config_path)]
 
-        result = _run_nuguard(*cmd_args, timeout=180)
+        result = _invoke_nuguard_sbom(*cmd_args)
 
-        assert result.returncode == 0, (
+        assert result.exit_code == 0, (
             f"nuguard sbom generate failed for {fixture_name}\n"
-            f"stdout:\n{result.stdout[-2000:]}\n"
-            f"stderr:\n{result.stderr[-2000:]}"
+            f"output:\n{result.output[-2000:]}"
         )
         assert sbom_out.exists(), f"SBOM output not written: {sbom_out}"
         assert sbom_out.stat().st_size > 100, f"SBOM output too small: {sbom_out}"
