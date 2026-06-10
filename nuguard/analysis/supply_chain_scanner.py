@@ -246,12 +246,14 @@ class SupplyChainScanner:
         source_path: Path,
         sbom_nodes: list[dict[str, Any]] | None = None,
         sbom_deps: list[dict[str, Any]] | None = None,
+        sbom_summary: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """Run all enabled supply-chain checks; return raw finding dicts."""
         nodes = sbom_nodes or []
         deps = sbom_deps or []
         findings: list[dict[str, Any]] = []
         self._ctx = {}
+        self._sbom_summary: dict[str, Any] = sbom_summary or {}
 
         _log.info(
             "supply-chain scan starting (profile=%s, source=%s, %d SBOM nodes, %d deps)",
@@ -394,7 +396,7 @@ class SupplyChainScanner:
                 body = str(meta.get("script_body") or "")
                 phase = str(meta.get("script_phase") or "")
                 source = node.get("name", "unknown")
-                findings.extend(self._check_script_body(body, phase, source))
+                findings.extend(self._check_script_node(meta, body, phase, source))
             self._ctx["lifecycle"] = {
                 "sbom_nodes_used": len(lifecycle_nodes),
                 "scripts_checked": len(lifecycle_nodes),
@@ -432,6 +434,183 @@ class SupplyChainScanner:
             "package_json_files": pkg_json_count,
             "scripts_checked": scripts_count,
         }
+        return findings
+
+    def _check_script_node(
+        self, meta: dict[str, Any], body: str, phase: str, source: str
+    ) -> list[dict[str, Any]]:
+        """Check a LIFECYCLE_SCRIPT SBOM node using pre-computed booleans first, then body regex."""
+        findings: list[dict[str, Any]] = []
+        is_install_hook = phase.lower() in {
+            "preinstall", "install", "postinstall", "prepare",
+        }
+
+        # Use pre-computed boolean flags (more reliable than truncated body regex)
+        if "NGA-SC-013" in self._enabled and meta.get("downloads_binary"):
+            findings.append(_finding(
+                rule_id="NGA-SC-013",
+                severity="critical",
+                title="Lifecycle script downloads and executes Bun",
+                description=(
+                    f"The lifecycle script '{source}' downloads or runs Bun. "
+                    "This is a known Miasma-campaign technique for downloading and running "
+                    "a second-stage payload without leaving npm-audit-visible traces."
+                ),
+                affected=[source],
+                remediation=(
+                    "Remove the Bun download from lifecycle scripts. "
+                    "If Bun is needed, install it as a development dependency and pin the version."
+                ),
+            ))
+        elif "NGA-SC-013" in self._enabled and body and _BUN_RE.search(body):
+            findings.append(_finding(
+                rule_id="NGA-SC-013",
+                severity="critical",
+                title="Lifecycle script downloads and executes Bun",
+                description=(
+                    f"The lifecycle script '{source}' downloads or runs Bun "
+                    f"(`{_first_match(_BUN_RE, body)}`). "
+                    "This is a known Miasma-campaign technique for downloading and running "
+                    "a second-stage payload without leaving npm-audit-visible traces."
+                ),
+                affected=[source],
+                remediation=(
+                    "Remove the Bun download from lifecycle scripts. "
+                    "If Bun is needed, install it as a development dependency and pin the version."
+                ),
+            ))
+
+        if "NGA-SC-012" in self._enabled and meta.get("invokes_shell"):
+            findings.append(_finding(
+                rule_id="NGA-SC-012",
+                severity="critical",
+                title="Lifecycle script pipes into a shell",
+                description=(
+                    f"The lifecycle script '{source}' pipes output directly into a shell. "
+                    "This pattern is used to execute remote code without writing it to disk."
+                ),
+                affected=[source],
+                remediation=(
+                    "Replace the pipe-to-shell pattern with a verified, pinned script file. "
+                    "Never execute content fetched from the network directly."
+                ),
+            ))
+        elif "NGA-SC-012" in self._enabled and body and _SHELL_PIPE_RE.search(body):
+            findings.append(_finding(
+                rule_id="NGA-SC-012",
+                severity="critical",
+                title="Lifecycle script pipes into a shell",
+                description=(
+                    f"The lifecycle script '{source}' pipes output directly into a shell "
+                    f"(`{_first_match(_SHELL_PIPE_RE, body)}`). "
+                    "This pattern is used to execute remote code without writing it to disk."
+                ),
+                affected=[source],
+                remediation=(
+                    "Replace the pipe-to-shell pattern with a verified, pinned script file. "
+                    "Never execute content fetched from the network directly."
+                ),
+            ))
+
+        if "NGA-SC-011" in self._enabled and is_install_hook and meta.get("invokes_network"):
+            findings.append(_finding(
+                rule_id="NGA-SC-011",
+                severity="critical",
+                title="Install hook makes a network request",
+                description=(
+                    f"The install-phase lifecycle script '{source}' invokes a network tool. "
+                    "Install hooks should never make outbound network requests; "
+                    "this is the primary vector in the Miasma campaign."
+                ),
+                affected=[source],
+                remediation=(
+                    "Remove network calls from install hooks. "
+                    "Download all necessary files at build time and bundle them, "
+                    "or use a lock-file-verified install step."
+                ),
+            ))
+        elif "NGA-SC-011" in self._enabled and is_install_hook and body and _NETWORK_RE.search(body):
+            findings.append(_finding(
+                rule_id="NGA-SC-011",
+                severity="critical",
+                title="Install hook makes a network request",
+                description=(
+                    f"The install-phase lifecycle script '{source}' invokes a network tool "
+                    f"(`{_first_match(_NETWORK_RE, body)}`). "
+                    "Install hooks should never make outbound network requests; "
+                    "this is the primary vector in the Miasma campaign."
+                ),
+                affected=[source],
+                remediation=(
+                    "Remove network calls from install hooks. "
+                    "Download all necessary files at build time and bundle them, "
+                    "or use a lock-file-verified install step."
+                ),
+            ))
+
+        if "NGA-SC-014" in self._enabled and meta.get("references_credentials"):
+            findings.append(_finding(
+                rule_id="NGA-SC-014",
+                severity="critical",
+                title="Lifecycle script accesses credential paths",
+                description=(
+                    f"The lifecycle script '{source}' references credential files or environment "
+                    "variables. This is the signature of the Miasma credential-harvesting stage."
+                ),
+                affected=[source],
+                remediation=(
+                    "Immediately audit the script. Remove all credential access. "
+                    "Rotate any credentials that may have been exfiltrated."
+                ),
+            ))
+        elif "NGA-SC-014" in self._enabled and body and _CRED_RE.search(body):
+            findings.append(_finding(
+                rule_id="NGA-SC-014",
+                severity="critical",
+                title="Lifecycle script accesses credential paths",
+                description=(
+                    f"The lifecycle script '{source}' references credential files or environment "
+                    f"variables (`{_first_match(_CRED_RE, body)}`). "
+                    "This is the signature of the Miasma credential-harvesting stage."
+                ),
+                affected=[source],
+                remediation=(
+                    "Immediately audit the script. Remove all credential access. "
+                    "Rotate any credentials that may have been exfiltrated."
+                ),
+            ))
+
+        # SC-015 and SC-016 don't have pre-computed booleans — use body regex
+        if body:
+            if "NGA-SC-016" in self._enabled and _EVAL_RE.search(body):
+                findings.append(_finding(
+                    rule_id="NGA-SC-016",
+                    severity="high",
+                    title="Lifecycle script uses eval / Function / atob (obfuscation indicator)",
+                    description=(
+                        f"The lifecycle script '{source}' contains "
+                        f"`{_first_match(_EVAL_RE, body)}`, which is a common obfuscation technique "
+                        "used by malicious packages to hide their payload from static analysis."
+                    ),
+                    affected=[source],
+                    remediation="Remove eval/Function/atob from lifecycle scripts.",
+                ))
+
+            if "NGA-SC-015" in self._enabled and phase in {"setup.py", "build-backend"}:
+                if _NETWORK_RE.search(body):
+                    findings.append(_finding(
+                        rule_id="NGA-SC-015",
+                        severity="high",
+                        title="Python build hook makes a network call",
+                        description=(
+                            f"The Python build hook '{source}' invokes a network library "
+                            f"(`{_first_match(_NETWORK_RE, body)}`). "
+                            "Build hooks run during `pip install` and should never fetch remote code."
+                        ),
+                        affected=[source],
+                        remediation="Remove network calls from Python build hooks and setup.py.",
+                    ))
+
         return findings
 
     def _check_script_body(
@@ -607,6 +786,44 @@ class SupplyChainScanner:
 
         is_publish = bool(publishes_to)
         unpinned_refs = [r for r in action_refs if not _SHA_PIN_RE.search(r)]
+
+        # SC-004: unpinned global install in step bodies (pre-computed boolean)
+        if "NGA-SC-004" in self._enabled and meta.get("workflow_has_unpinned_global_install"):
+            findings.append(_finding(
+                rule_id="NGA-SC-004",
+                severity="high",
+                title="CI step uses unpinned global install",
+                description=(
+                    f"Workflow '{name}' contains a step that runs an unpinned global npm install "
+                    "or npx without a pinned version. This allows attackers who compromise a "
+                    "package to inject malicious code into the CI environment."
+                ),
+                affected=[name],
+                remediation=(
+                    "Pin global installs to exact versions (e.g. `npm install -g tool@1.2.3`) "
+                    "or use a lockfile-based approach. Avoid unpinned npx calls in CI."
+                ),
+            ))
+
+        # SC-005: credential access in step bodies (pre-computed boolean)
+        if "NGA-SC-005" in self._enabled and meta.get("workflow_has_cred_access"):
+            findings.append(_finding(
+                rule_id="NGA-SC-005",
+                severity="critical",
+                title="Workflow step reads credential paths or environment variables",
+                description=(
+                    f"Workflow '{name}' contains a step that accesses credential paths or "
+                    "sensitive environment variables (e.g. /proc/environ, .npmrc, "
+                    "AWS_SECRET_ACCESS_KEY, GITHUB_TOKEN). This is the signature pattern of "
+                    "CI credential harvesting attacks."
+                ),
+                affected=[name],
+                remediation=(
+                    "Audit all workflow steps for credential access. "
+                    "Use GitHub's secrets mechanism and never echo or print credentials. "
+                    "Restrict secret access to only the jobs that need it."
+                ),
+            ))
 
         if "NGA-SC-001" in self._enabled and is_publish and uses_oidc and unpinned_refs:
             findings.append(_finding(
@@ -1180,12 +1397,24 @@ class SupplyChainScanner:
             self._ctx["lockfile"] = {"package_json_found": False, "lockfile_found": False}
             return findings
 
-        # Check if lockfile exists for npm projects
-        has_package_json = (source_path / "package.json").exists()
-        has_npm_lockfile = any(
-            (source_path / lf).exists()
-            for lf in ("package-lock.json", "pnpm-lock.yaml", "yarn.lock")
-        )
+        # Check if lockfile exists for npm projects.
+        # Prefer filesystem check; fall back to SBOM summary for remote repos where
+        # the temp clone has already been deleted by the time analyze runs.
+        if source_path.exists():
+            has_package_json = (source_path / "package.json").exists()
+            has_npm_lockfile = any(
+                (source_path / lf).exists()
+                for lf in ("package-lock.json", "pnpm-lock.yaml", "yarn.lock")
+            )
+        elif self._sbom_summary:
+            has_package_json = bool(self._sbom_summary.get("has_package_json"))
+            has_npm_lockfile = bool(self._sbom_summary.get("has_lockfile"))
+            _log.info("[NGA-SC-024] using SBOM summary (no local filesystem): package_json=%s lockfile=%s",
+                      has_package_json, has_npm_lockfile)
+        else:
+            _log.info("[NGA-SC-024] no source_path and no SBOM summary; skipping lockfile check")
+            self._ctx["lockfile"] = {"package_json_found": False, "lockfile_found": False}
+            return findings
         _log.info("[NGA-SC-024] package.json=%s lockfile=%s", has_package_json, has_npm_lockfile)
         self._ctx["lockfile"] = {
             "package_json_found": has_package_json,

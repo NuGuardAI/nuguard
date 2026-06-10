@@ -63,6 +63,7 @@ _NETWORK_PATTERNS = re.compile(
 )
 _SHELL_PIPE_RE = re.compile(r"\|\s*(bash|sh|node|python)\b", re.IGNORECASE)
 _BUN_RE = re.compile(r"\bnpx\s+bun\b|\bbun\s+install\b|\bbun\s+run\b", re.IGNORECASE)
+_UNPINNED_GLOBAL_RE = re.compile(r"\bnpm\s+install\s+-g\b|\bnpm\s+i\s+-g\b|\bnpx\b(?!\s+--yes)", re.IGNORECASE)
 
 
 class DevToolConfigAdapter:
@@ -319,6 +320,20 @@ class GithubActionsAdapter:
         if _PUBLISH_SMITHERY_RE.search(raw_text):
             publishes_to.append("smithery")
 
+        # Compute step-level boolean flags from all job step `run:` bodies
+        jobs: dict[str, Any] = data.get("jobs") or {}
+        step_bodies_parts: list[str] = []
+        for job_data in jobs.values():
+            if isinstance(job_data, dict):
+                for step in (job_data.get("steps") or []):
+                    if isinstance(step, dict):
+                        run_body = step.get("run")
+                        if run_body and isinstance(run_body, str):
+                            step_bodies_parts.append(run_body)
+        step_bodies = "\n".join(step_bodies_parts)
+        workflow_has_unpinned_global_install = bool(_UNPINNED_GLOBAL_RE.search(step_bodies)) if step_bodies else None
+        workflow_has_cred_access = bool(_CRED_PATTERNS.search(step_bodies)) if step_bodies else None
+
         return Node(
             id=uuid4(),
             name=rel,
@@ -330,6 +345,8 @@ class GithubActionsAdapter:
                 uses_oidc=uses_oidc if uses_oidc else None,
                 publishes_to=publishes_to or None,
                 action_refs=action_refs or None,
+                workflow_has_unpinned_global_install=workflow_has_unpinned_global_install,
+                workflow_has_cred_access=workflow_has_cred_access,
             ),
             evidence=[Evidence(
                 kind="yaml",
@@ -365,7 +382,7 @@ class LifecycleScriptAdapter:
                 confidence=0.9,
                 metadata=NodeMetadata(
                     script_phase=script.name,
-                    script_body=body[:500],
+                    script_body=body[:2000],
                     invokes_network=invokes_network or None,
                     invokes_shell=invokes_shell or None,
                     downloads_binary=downloads_binary or None,

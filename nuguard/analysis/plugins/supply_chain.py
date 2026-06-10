@@ -28,41 +28,18 @@ class SupplyChainPlugin(AnalysisPlugin):
     name = "supply-chain"
 
     def run(self, sbom: dict[str, Any], config: dict[str, Any]) -> AnalysisResult:
-        source_path_str = config.get("source_path")
-        if not source_path_str:
-            return AnalysisResult(
-                status="skipped",
-                plugin=self.name,
-                message="source_path not provided; supply-chain scan skipped",
-                findings=[],
-                details={},
-            )
+        source_path_str = config.get("source_path") or ""
 
-        # source_path must be a local filesystem path, not a remote URL.
+        # Reject remote URLs — they are never valid local scan targets.
         # The `source:` field in nuguard.yaml can hold a git clone URL used by
         # `sbom generate`; that URL must not be forwarded to local-scan tools.
         if source_path_str.startswith(("http://", "https://", "git://", "git+")):
-            return AnalysisResult(
-                status="skipped",
-                plugin=self.name,
-                message=(
-                    "supply-chain scan requires a local directory path; "
-                    f"'{source_path_str}' is a remote URL. "
-                    "Pass --source <local-path> to enable supply-chain scanning."
-                ),
-                findings=[],
-                details={},
-            )
+            source_path_str = ""
 
-        source_path = Path(source_path_str)
-        if not source_path.exists():
-            return AnalysisResult(
-                status="skipped",
-                plugin=self.name,
-                message=f"source_path does not exist: {source_path}",
-                findings=[],
-                details={},
-            )
+        # Use the provided path when it exists; fall back to a non-existent sentinel
+        # so the scanner still runs SBOM-native rules (SC-011..014 use pre-computed
+        # booleans; SC-024 falls back to SBOM summary fields).
+        source_path = Path(source_path_str) if source_path_str else Path("/dev/null")
 
         profile = str(config.get("supply_chain_profile") or "standard")
         feed_ids: list[str] | None = config.get("supply_chain_threat_intel_feeds")
@@ -76,6 +53,7 @@ class SupplyChainPlugin(AnalysisPlugin):
                 source_path,
                 sbom_nodes=list(sbom.get("nodes") or []),
                 sbom_deps=list(sbom.get("deps") or []),
+                sbom_summary=dict(sbom.get("summary") or {}),
             )
         except Exception as exc:
             _log.warning("Supply-chain offline scan failed: %s", exc)
@@ -87,8 +65,8 @@ class SupplyChainPlugin(AnalysisPlugin):
                 details={},
             )
 
-        # Phase 3: optional registry artifact verification
-        if verify_mode != "off":
+        # Phase 3: optional registry artifact verification (requires real source dir)
+        if verify_mode != "off" and source_path.exists() and source_path.is_dir():
             raw.extend(self._run_artifact_verification(sbom, source_path, verify_mode))
 
         _log.info("supply-chain scan: %d finding(s) (profile=%s)", len(raw), profile)

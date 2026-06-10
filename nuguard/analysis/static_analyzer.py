@@ -180,14 +180,6 @@ class StaticAnalyzer:
         self.tool_status = {}
         sbom_dict = doc.model_dump()
 
-        # Use the local path stored in the SBOM when the caller didn't supply one.
-        # The extractor always records the directory it scanned in local_source_path.
-        if self.source_path is None and doc.local_source_path:
-            candidate = Path(doc.local_source_path)
-            if candidate.exists() and candidate.is_dir():
-                self.source_path = candidate
-                _log.info("using local_source_path from SBOM: %s", self.source_path)
-
         # Inject source_path into every SBOM node's metadata so M1 plugins
         # (Checkov, Trivy, Semgrep) can discover files without requiring each
         # SBOM node to carry an explicit source_path field.

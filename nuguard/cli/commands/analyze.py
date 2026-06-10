@@ -182,13 +182,6 @@ def analyze(
         typer.echo(f"error: SBOM validation failed: {exc}", err=True)
         raise typer.Exit(code=2)
 
-    # Fall back to the local source path stored in the SBOM when neither
-    # --source nor a local config source: was provided.
-    if not source and doc.local_source_path:
-        candidate = Path(doc.local_source_path)
-        if candidate.exists() and candidate.is_dir():
-            source = str(candidate)
-
     # ------------------------------------------------------------------
     # Run analysis
     # ------------------------------------------------------------------

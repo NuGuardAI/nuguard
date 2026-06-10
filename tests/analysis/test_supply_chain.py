@@ -190,20 +190,21 @@ def test_supply_chain_plugin_returns_ok_status():
     assert result.status == "ok"
 
 
-def test_supply_chain_plugin_skips_without_source_path():
+def test_supply_chain_plugin_runs_without_source_path():
+    # Plugin now runs SBOM-native rules even without a local source directory.
     plugin = SupplyChainPlugin()
     result = plugin.run(sbom={"nodes": [], "deps": []}, config={})
-    assert result.status == "skipped"
-    assert "source_path" in result.message.lower()
+    assert result.status == "ok"
 
 
-def test_supply_chain_plugin_skips_nonexistent_source():
+def test_supply_chain_plugin_runs_with_nonexistent_source():
+    # Plugin falls back to SBOM-native rules when source path does not exist.
     plugin = SupplyChainPlugin()
     result = plugin.run(
         sbom={"nodes": [], "deps": []},
         config={"source_path": "/nonexistent/path/12345"},
     )
-    assert result.status == "skipped"
+    assert result.status == "ok"
 
 
 def test_supply_chain_plugin_finds_curl_bash():

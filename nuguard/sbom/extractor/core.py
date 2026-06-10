@@ -649,7 +649,7 @@ class AiSbomExtractor:
         """Extract an SBOM from a directory on the local filesystem."""
         root = Path(path).resolve()
         _log.info("scanning files under %s", root)
-        doc = AiSbomDocument(target=source_ref or str(root), local_source_path=str(root))
+        doc = AiSbomDocument(target=source_ref or str(root))
         node_map: dict[tuple[ComponentType, str], _NodeAccumulator] = {}
         # Classification-only metadata from data_classification adapters (not emitted as nodes)
         _dc_metadata: list[dict[str, Any]] = []
@@ -1501,6 +1501,19 @@ class AiSbomExtractor:
                     )
             except Exception as _sc_exc:
                 _log.warning("supply-chain second pass failed (continuing): %s", _sc_exc)
+
+            # Populate lockfile summary fields while the repo is still on disk.
+            # Used by supply-chain scanner (SC-024) when analyzing remote SBOMs
+            # without a live filesystem (the temp clone will be deleted after extraction).
+            try:
+                if doc.summary is not None:
+                    doc.summary.has_package_json = (root / "package.json").exists()
+                    doc.summary.has_lockfile = any(
+                        (root / lf).exists()
+                        for lf in ("package-lock.json", "pnpm-lock.yaml", "yarn.lock")
+                    )
+            except Exception as _lf_exc:
+                _log.debug("lockfile summary population failed (non-fatal): %s", _lf_exc)
 
         # Phase 3: LLM enrichment (skipped unless enable_llm=True)
         if config.enable_llm:

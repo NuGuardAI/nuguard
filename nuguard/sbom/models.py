@@ -653,7 +653,7 @@ class NodeMetadata(BaseModel):
     )
     script_body: str | None = Field(
         default=None,
-        description="Lifecycle script body, truncated to 500 chars",
+        description="Lifecycle script body, truncated to 2000 chars",
     )
     invokes_network: bool | None = Field(
         default=None,
@@ -673,6 +673,15 @@ class NodeMetadata(BaseModel):
             "True when the script references credential paths or env vars: "
             "/proc/*/environ, .npmrc, AWS_SECRET_ACCESS_KEY, GITHUB_TOKEN, etc."
         ),
+    )
+    # ── GITHUB_WORKFLOW additional boolean flags (computed from step bodies) ──
+    workflow_has_unpinned_global_install: bool | None = Field(
+        default=None,
+        description="True when any step in this workflow runs an unpinned global npm install or npx",
+    )
+    workflow_has_cred_access: bool | None = Field(
+        default=None,
+        description="True when any step in this workflow accesses credential paths or env vars",
     )
     # ── GITHUB_WORKFLOW node fields ───────────────────────────────────────────
     workflow_triggers: list[str] | None = Field(
@@ -949,6 +958,23 @@ class ScanSummary(BaseModel):
             "Populated by K8sAdapter. Used by NGA-013 to assert cross-file coverage."
         ),
     )
+    # ── Supply-chain summary fields ───────────────────────────────────────────
+    has_package_json: bool | None = Field(
+        default=None,
+        description=(
+            "True when a package.json file was found at the repo root during SBOM extraction. "
+            "Used by supply-chain scanner to check lockfile coverage (SC-024) without "
+            "requiring a live filesystem."
+        ),
+    )
+    has_lockfile: bool | None = Field(
+        default=None,
+        description=(
+            "True when at least one npm lockfile (package-lock.json, pnpm-lock.yaml, or "
+            "yarn.lock) was found at the repo root during SBOM extraction. "
+            "Used by supply-chain scanner (SC-024) without requiring a live filesystem."
+        ),
+    )
 
 
 class AiSbomDocument(BaseModel):
@@ -978,16 +1004,6 @@ class AiSbomDocument(BaseModel):
         description="Tool that produced this document",
     )
     target: str = Field(description="Repository URL or local path that was scanned")
-    local_source_path: str | None = Field(
-        default=None,
-        description=(
-            "Absolute filesystem path of the local directory that was scanned. "
-            "Set by the extractor at generation time; used by analysis tools "
-            "(supply-chain, Semgrep, Checkov) as a fallback when --source is not "
-            "supplied on the CLI. Points to a temp dir for remote-cloned SBOMs — "
-            "the path may not exist if analyzed in a later invocation."
-        ),
-    )
     nodes: list[Node] = Field(
         default_factory=list,
         description="Detected AI components",
