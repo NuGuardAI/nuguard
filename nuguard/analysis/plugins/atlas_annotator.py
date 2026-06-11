@@ -131,7 +131,8 @@ class AtlasAnnotatorPlugin(AnalysisPlugin):
         # ------------------------------------------------------------------
         # Pass 2 — native ATLAS graph checks
         # ------------------------------------------------------------------
-        native_findings = self._run_native_pass(sbom)
+        injected_graph = config.get("sbom_graph")
+        native_findings = self._run_native_pass(sbom, graph=injected_graph)
         _log.debug("Pass 2: %d native ATLAS finding(s) produced", len(native_findings))
 
         all_findings = nga_findings + native_findings
@@ -438,35 +439,58 @@ class AtlasAnnotatorPlugin(AnalysisPlugin):
     # Pass 2 helpers                                                       #
     # ------------------------------------------------------------------ #
 
-    def _run_native_pass(self, sbom: dict[str, Any]) -> list[dict[str, Any]]:
-        """Run native ATLAS graph checks against the raw SBOM."""
+    def _run_native_pass(
+        self,
+        sbom: dict[str, Any],
+        graph: "Any | None" = None,
+    ) -> list[dict[str, Any]]:
+        """Run native ATLAS graph checks against the raw SBOM.
+
+        When an :class:`~nuguard.analysis.graph.AnalysisGraph` is injected via
+        *graph*, its pre-built node/type indexes are reused directly instead of
+        rebuilding them from the raw dict.  The write-filtered adjacency for
+        NC-002 is always built locally since it has semantics not captured by
+        the generic graph (skip read-only ACCESSES edges).
+        """
         nodes: list[dict[str, Any]] = list(sbom.get("nodes") or [])
         edges: list[dict[str, Any]] = list(sbom.get("edges") or [])
 
         findings: list[dict[str, Any]] = []
 
-        # Build fast lookup structures.  Normalize IDs to strings — model_dump()
-        # may emit UUID objects rather than str when called without mode="json".
-        nodes_by_id: dict[str, dict[str, Any]] = {str(n.get("id", "")): n for n in nodes}
-        node_types_by_id: dict[str, str] = {
-            str(n.get("id", "")): (n.get("component_type") or "").upper() for n in nodes
-        }
+        if graph is not None:
+            # Reuse pre-built indexes from the injected AnalysisGraph
+            nodes_by_id: dict[str, dict[str, Any]] = graph._node_by_id  # type: ignore[attr-defined]
+            node_types_by_id: dict[str, str] = {
+                nid: (n.get("component_type") or "").upper()
+                for nid, n in nodes_by_id.items()
+            }
+            type_sets: dict[str, set[str]] = {
+                ct: {str(n.get("id", "")) for n in nlist}
+                for ct, nlist in graph._by_type.items()  # type: ignore[attr-defined]
+            }
+        else:
+            # Build lookup structures from raw dict.  Normalize IDs to strings —
+            # model_dump() may emit UUID objects rather than str.
+            nodes_by_id = {str(n.get("id", "")): n for n in nodes}
+            node_types_by_id = {
+                str(n.get("id", "")): (n.get("component_type") or "").upper() for n in nodes
+            }
+            type_sets = {}
+            for nid, ntype in node_types_by_id.items():
+                type_sets.setdefault(ntype, set()).add(nid)
+
+        # Write-filtered adjacency: skip read-only ACCESSES edges (NC-002 semantics)
         adjacency: dict[str, set[str]] = {}
         for edge in edges:
             src = str(edge.get("source") or edge.get("from") or "")
             tgt = str(edge.get("target") or edge.get("to") or "")
             if src and tgt:
-                # Skip read-only ACCESSES edges: NC-002 only cares about write-capable paths
                 if (
                     edge.get("relationship_type") == "ACCESSES"
                     and edge.get("access_type") == "read"
                 ):
                     continue
                 adjacency.setdefault(src, set()).add(tgt)
-
-        type_sets: dict[str, set[str]] = {}
-        for nid, ntype in node_types_by_id.items():
-            type_sets.setdefault(ntype, set()).add(nid)
 
         findings += self._check_nc001_external_model_no_hash(nodes, type_sets)
         findings += self._check_nc002_unguarded_datastore(

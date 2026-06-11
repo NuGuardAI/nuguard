@@ -195,10 +195,15 @@ class StaticAnalyzer:
         m1_config["supply_chain_verify_artifacts"] = self.supply_chain_verify_artifacts
         m1_config["supply_chain_threat_intel_feeds"] = self.supply_chain_threat_intel_feeds
 
+        # Build the analysis graph once; injected into NGA rules and ATLAS native
+        # checks so they can do indexed traversal instead of O(n²) flat scans.
+        from nuguard.analysis.graph import AnalysisGraph  # noqa: PLC0415
+        sbom_graph = AnalysisGraph(sbom_dict)
+
         all_findings: list[Finding] = []
 
         # Step 1: NGA structural rules (annotated with ATLAS techniques inline)
-        nga = self._run_nga(sbom_dict)
+        nga = self._run_nga(sbom_dict, sbom_graph=sbom_graph)
         all_findings.extend(nga)
         self.tool_status["nga-rules"] = {
             "status": "ok", "findings": str(len(nga)),
@@ -260,7 +265,7 @@ class StaticAnalyzer:
         # skip_nga=True so the annotator does not re-run NGA rules; Step 1
         # already annotated NGA findings with ATLAS techniques directly.
         if self.enable_atlas:
-            atlas = self._run_atlas_native(sbom_dict)
+            atlas = self._run_atlas_native(sbom_dict, sbom_graph=sbom_graph)
             all_findings.extend(atlas)
             self.tool_status["atlas"] = {"status": "ok", "findings": str(len(atlas))}
         else:
@@ -288,7 +293,11 @@ class StaticAnalyzer:
     # Internal runner helpers
     # ------------------------------------------------------------------
 
-    def _run_nga(self, sbom_dict: dict[str, Any]) -> list[Finding]:
+    def _run_nga(
+        self,
+        sbom_dict: dict[str, Any],
+        sbom_graph: "Any | None" = None,
+    ) -> list[Finding]:
         """Run NgaRulesPlugin (NGA-001…NGA-018) and annotate with ATLAS techniques."""
         try:
             from nuguard.analysis._atlas_data import NGA_TO_ATLAS  # noqa: PLC0415
@@ -297,7 +306,10 @@ class StaticAnalyzer:
             plugin = NgaRulesPlugin()
             # provider="nga-rules" skips the OSV/Grype phases inside the plugin;
             # those are run separately by _run_osv() and _run_grype().
-            result = plugin.run(sbom_dict, {"provider": "nga-rules", "verbose": self.verbose})
+            nga_config: dict[str, Any] = {"provider": "nga-rules", "verbose": self.verbose}
+            if sbom_graph is not None:
+                nga_config["sbom_graph"] = sbom_graph
+            result = plugin.run(sbom_dict, nga_config)
 
             findings: list[Finding] = []
             for raw in list(result.findings or []):
@@ -461,7 +473,11 @@ class StaticAnalyzer:
             }
             return []
 
-    def _run_atlas_native(self, sbom_dict: dict[str, Any]) -> list[Finding]:
+    def _run_atlas_native(
+        self,
+        sbom_dict: dict[str, Any],
+        sbom_graph: "Any | None" = None,
+    ) -> list[Finding]:
         """Run only the MITRE ATLAS native graph checks (NC-001..004).
 
         ``skip_nga=True`` prevents the annotator from re-running NGA rules;
@@ -474,7 +490,9 @@ class StaticAnalyzer:
             )
 
             plugin = AtlasAnnotatorPlugin()
-            config = {**self.atlas_config, "skip_nga": True}
+            config: dict[str, Any] = {**self.atlas_config, "skip_nga": True}
+            if sbom_graph is not None:
+                config["sbom_graph"] = sbom_graph
             result = plugin.run(sbom_dict, config)
             raw_list: list[dict[str, Any]] = list(result.details.get("findings") or [])
             findings = [_raw_to_finding(r, "atlas") for r in raw_list]
