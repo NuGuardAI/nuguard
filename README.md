@@ -1,8 +1,8 @@
 # NuGuard Open Source
 
-NuGuard is an open source AI application security toolkit. Its goal is to provide the most extensive redteaming and behavioral validation of Agentic AI applications. 
+NuGuard is an open source AI application security toolkit. Its goal is to provide the most extensive redteaming and behavioral validation of Agentic AI applications. A commercial version of NuGuard is available as a hosted SaaS product with additional features and support, check it at http://nuguard.ai. 
 
-AI developers can focus on building their applications while NuGuard continuously tests and validates them against a wide range of security risks, including prompt injection, tool misuse, data exfiltration, and more.
+With NuGuard, AI developers can focus on building their applications while NuGuard continuously tests and validates them against a wide range of security risks, including supply chain attacks, prompt injection, MCP tool misuse, API Attacks,data exfiltration, and more.
 
 
 ## What It Does
