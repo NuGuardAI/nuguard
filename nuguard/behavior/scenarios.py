@@ -265,7 +265,9 @@ Return JSON:
     {{
       "name": "short_snake_case_name",
       "goal": "one sentence: Verify that X does Y",
-      "messages": ["turn1 message", "turn2 message", ...]
+      "messages": ["turn1 message", "turn2 message", ...],
+      "tools": ["ToolName1", "ToolName2"],
+      "agents": ["AgentName1"]
     }}
   ]
 }}
@@ -286,6 +288,8 @@ Rules:
   "web search queries" mean queries a user of THIS app would make, not general internet
   searches (e.g. a car assistant's search scenarios should cover traffic, fuel stations,
   route info — not flights, banking, or other unrelated domains)
+- For "tools" and "agents": list ONLY names from the Known agents/tools lists above that
+  this scenario actually exercises — do not invent new names
 """
 
 
@@ -391,6 +395,9 @@ async def _intent_happy_path_scenarios(
         _log.warning("_intent_happy_path_scenarios: could not parse LLM response, using templates")
         return _deterministic_happy_path(intent, sbom)
 
+    valid_tools = set(tools)
+    valid_agents = set(agents)
+
     scenarios: list[BehaviorScenario] = []
     for item in (parsed.get("scenarios") or []):
         if not isinstance(item, dict):
@@ -399,12 +406,20 @@ async def _intent_happy_path_scenarios(
         if not messages:
             continue
         messages = _normalize_scenario_messages(messages, append_suffix=False)
+        # Restrict LLM-returned tools/agents to names actually in the SBOM to prevent
+        # the LLM inventing component names that would widen the coverage scope.
+        raw_tools = [str(t) for t in (item.get("tools") or []) if t]
+        raw_agents = [str(a) for a in (item.get("agents") or []) if a]
+        scoped_tools = [t for t in raw_tools if t in valid_tools]
+        scoped_agents = [a for a in raw_agents if a in valid_agents]
         scenarios.append(
             BehaviorScenario(
                 scenario_type=BehaviorScenarioType.INTENT_HAPPY_PATH,
                 name=str(item.get("name") or f"happy_path_{len(scenarios) + 1}"),
                 messages=messages,
                 goal=str(item.get("goal") or ""),
+                scoped_tools=scoped_tools,
+                scoped_agents=scoped_agents,
             )
         )
     return scenarios[:4] or _deterministic_happy_path(intent, sbom)

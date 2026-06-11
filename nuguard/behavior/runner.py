@@ -836,6 +836,31 @@ class BehaviorRunner:
         if scenario.scoped_tools or scenario.scoped_agents:
             scoped_component_set = set(scenario.scoped_tools) | set(scenario.scoped_agents)
 
+        # For intent_happy_path scenarios, augment/derive coverage scope from keyword
+        # overlap between the scenario goal and component names/descriptions.  This
+        # prevents off-topic coverage turns (e.g. "Broadcast All Users" appearing in a
+        # "check balance" scenario) while still letting related components through.
+        # When no components match the goal keywords, scoped_component_set becomes an
+        # empty set which causes generate_coverage_turns to return [] — no spurious turns.
+        if scenario.scenario_type == BehaviorScenarioType.INTENT_HAPPY_PATH:
+            goal_text = (scenario.goal + " " + " ".join(scenario.messages[:2])).lower()
+            goal_words = {w for w in re.split(r"\W+", goal_text) if len(w) >= 4}
+            kw_matched: set[str] = {
+                name
+                for name in (self._tool_names + self._agent_names)
+                if goal_words
+                & set(
+                    re.split(
+                        r"\W+",
+                        (name + " " + self._component_descriptions.get(name, "")).lower(),
+                    )
+                )
+            }
+            if scoped_component_set is not None:
+                scoped_component_set = scoped_component_set | kw_matched
+            else:
+                scoped_component_set = kw_matched
+
         # Track the last agent response so _adapt_message can generate contextual probes.
         response: str = ""
 
