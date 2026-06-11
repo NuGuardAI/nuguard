@@ -261,8 +261,13 @@ def _is_destructive_scenario(scenario: AttackScenario) -> bool:
 
     Destructive scenarios are sorted to the end of the run so non-destructive
     scenarios execute against intact account data first.
+
+    Only the attack-action portion of the title (before the " — Agent Name" suffix)
+    is checked, to avoid false matches on agent names such as "Cancellation Agent".
     """
-    text = (scenario.title + " " + scenario.description).lower()
+    # Titles follow "Attack Name — Agent Name" convention; check only the attack part.
+    attack_part = scenario.title.split(" — ")[0]
+    text = (attack_part + " " + scenario.description).lower()
     return any(k in text for k in _DESTRUCTIVE_KEYWORDS)
 
 

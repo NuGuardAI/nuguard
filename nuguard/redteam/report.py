@@ -228,6 +228,8 @@ def _attack_coverage_summary(scenario_records: list) -> list[str]:
         "TOOL_ABUSE": "Tool Abuse",
         "API_ATTACK": "API Attack",
         "MCP_TOXIC_FLOW": "MCP Toxic",
+        "AGENTIC_TRUST_ABUSE": "Agentic Trust Abuse",
+        "RECON_INFERENCE": "Recon Inference",
     }
     _NOT_TESTED = {"skipped", "similar_miss", "failed", "aborted"}
 
@@ -293,6 +295,8 @@ def _scenario_coverage_table(scenario_records: list) -> list[str]:
         "TOOL_ABUSE": "Tool Abuse",
         "API_ATTACK": "API Attack",
         "MCP_TOXIC_FLOW": "MCP Toxic",
+        "AGENTIC_TRUST_ABUSE": "Agentic Trust Abuse",
+        "RECON_INFERENCE": "Recon Inference",
     }
 
     def _fmt_duration(s: float) -> str:
