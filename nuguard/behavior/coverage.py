@@ -14,6 +14,7 @@ from nuguard.common.logging import get_logger
 if TYPE_CHECKING:
     from nuguard.behavior.judge import TurnVerdict
     from nuguard.behavior.models import IntentProfile
+    from nuguard.behavior.runner import DiscoveredProfile
     from nuguard.common.llm_client import LLMClient
 
 _log = get_logger(__name__)
@@ -163,6 +164,7 @@ async def generate_coverage_turns(
     domain_context: str = "",
     intent: "IntentProfile | None" = None,
     scoped_components: set[str] | None = None,
+    profile: "DiscoveredProfile | None" = None,
 ) -> list[str]:
     """Return follow-up messages targeting uncovered SBOM components.
 
@@ -176,6 +178,8 @@ async def generate_coverage_turns(
         scoped_components: When provided, restrict coverage turns to this
             subset of component names (v5 scoped coverage).  Components
             outside this set are skipped — they belong to other scenarios.
+        profile: Optional DiscoveredProfile with real user name and IDs to
+            anchor probes (prevents invented customer names causing false FAILs).
 
     Returns:
         A list of at most MAX_COVERAGE_TURNS message strings.
@@ -209,8 +213,22 @@ async def generate_coverage_turns(
     elif domain_context:
         app_context = f"Application context: {domain_context}\n\n"
 
+    # Build identity anchor from discovered profile so probes use real data
+    identity_context = ""
+    if profile is not None:
+        name_hint = profile.customer_name or ""
+        id_hints = ", ".join(str(i) for i in (profile.ids or [])[:3])
+        if name_hint or id_hints:
+            identity_context = (
+                f"Authenticated test user: {name_hint}"
+                + (f" (IDs: {id_hints})" if id_hints else "")
+                + ".\nIMPORTANT: Only reference this user's name and IDs in probes. "
+                "Do NOT invent other customer names or account numbers.\n\n"
+            )
+
     prompt = (
         f"{app_context}"
+        f"{identity_context}"
         f"Previous agent response summary: {session_context[:500]}\n\n"
         f"The following AI agent components have not yet been exercised in this test session:\n"
         f"{comp_list}\n\n"
@@ -218,6 +236,7 @@ async def generate_coverage_turns(
         f"of strings. Each message must:\n"
         f"  - Be grounded in the application context above (not a generic probe).\n"
         f"  - Directly request the use of the named component with a concrete example.\n"
+        f"  - Only reference the authenticated test user's name and IDs (do not invent other customers).\n"
         f"  - End with: 'Please keep the response under 500 words and list all agents "
         f"and tools involved in handling this request.'\n\n"
         f"Output: JSON array only, no extra text."

@@ -549,7 +549,14 @@ class BehaviorRunner:
                 if nt == "AGENT":
                     self._agent_names.append(name)
                 elif nt == "TOOL":
-                    self._tool_names.append(name)
+                    high_priv = bool(
+                        getattr(node, "high_privilege", False)
+                        or getattr(meta, "high_privilege", False)
+                        if meta is not None
+                        else getattr(node, "high_privilege", False)
+                    )
+                    if not high_priv:
+                        self._tool_names.append(name)
 
 
     async def _build_client(self) -> Any:
@@ -916,6 +923,7 @@ class BehaviorRunner:
                     domain_context=getattr(self._intent, "app_purpose", "") if self._intent else "",
                     intent=self._intent,
                     scoped_components=scoped_component_set,
+                    profile=self._pre_scan_profile,
                 )
                 if not coverage_messages:
                     break
@@ -1820,10 +1828,16 @@ class BehaviorRunner:
         _gap_buck_verdicts: dict[tuple[str, str], list[dict]] = {}
         for run_result in [r for r in raw_results if r is not None]:
             orig = scenario_by_id.get(run_result.scenario_id)
-            component = (getattr(orig, "target_component", None) or "unknown")
+            component = (
+                getattr(orig, "target_component", None)
+                or getattr(orig, "matched_topic", None)
+                or "unknown"
+            )
             for v_dict in run_result.verdicts:
                 for gap_text in v_dict.get("gaps") or []:
                     if not isinstance(gap_text, str) or not gap_text.strip():
+                        continue
+                    if gap_text.startswith("Request failed:"):
                         continue
                     ftype, _ = _classify_gap(gap_text)
                     bucket_key = (ftype, component)

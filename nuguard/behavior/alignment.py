@@ -37,6 +37,26 @@ def _build_node_maps(
     return node_by_id, outgoing
 
 
+# ---------------------------------------------------------------------------
+# Patterns for BA-003 write-action vs read-only tool filtering
+# ---------------------------------------------------------------------------
+
+# Verbs that indicate a restricted action requires *performing* something (write/mutate).
+# Tools with read-only name prefixes (Get*, List*, Check*, Fetch*, View*, Stream*) cannot
+# initiate, approve, create or send anything and should not be flagged for these actions.
+_WRITE_RESTRICTED_ACTION_VERBS = re.compile(
+    r"\b(?:initiat|approv|execut|broadcast|send|transfer|delet|creat|modif|updat|submit"
+    r"|invok|overrid|waiv|whitelist|grant|reset|reject|convert|buy|sell|freeze|sign"
+    r"|publish|dispatch|post|put|patch|write|insert)\b",
+    re.IGNORECASE,
+)
+
+_READ_ONLY_TOOL_NAME = re.compile(
+    r"^(?:get|list|check|fetch|view|stream|read)\b",
+    re.IGNORECASE,
+)
+
+
 def _fuzzy_topic_match(text: str, topics: list[str]) -> list[str]:
     """Return topics that fuzzy-match against *text*.
 
@@ -208,11 +228,18 @@ def _ba_003_restricted_action_tool_edge(
     grouped: dict[tuple[str, str], list[str]] = {}
 
     for action in policy.restricted_actions:
+        # For write-action restrictions (initiate, approve, send, etc.) skip tools
+        # whose names start with read-only verb prefixes (Get, List, Check, Fetch,
+        # View, Stream, Read).  A read-only tool cannot initiate or approve anything
+        # so flagging it would be a false positive.
+        is_write_action = bool(_WRITE_RESTRICTED_ACTION_VERBS.search(action))
         # Find tools whose name or description matches the restricted action
         for node in sbom.nodes:
             if _node_type(node) != "TOOL":
                 continue
             name = getattr(node, "name", None) or str(node.id)
+            if is_write_action and _READ_ONLY_TOOL_NAME.match(name):
+                continue
             desc = str(_node_metadata(node, "description") or "")
             combined = f"{name} {desc}".lower()
             if not _fuzzy_topic_match(combined, [action]):
@@ -423,6 +450,37 @@ def _ba_006_untrusted_mcp_write(
 
 
 # ---------------------------------------------------------------------------
+# BA-007 helper: infer severity from restricted topic content
+# ---------------------------------------------------------------------------
+
+_SEVERITY_RANK: dict[str, int] = {"critical": 3, "high": 2, "medium": 1, "low": 0}
+
+
+def _topic_severity(topic: str) -> Severity:
+    """Infer finding severity from a restricted topic's keywords."""
+    lower = topic.lower()
+    if any(
+        kw in lower
+        for kw in (
+            "pii", "personal", "account number", "ssn", "system prompt",
+            "api key", "credential", "agent instruction", "llm configuration",
+            "internal system", "session variable", "transaction history",
+        )
+    ):
+        return Severity.CRITICAL
+    if any(
+        kw in lower
+        for kw in (
+            "guardrail", "bypass", "safety", "financial advice",
+            "investment", "fraud", "unauthorized", "disclosure",
+            "privilege", "escalation", "injection",
+        )
+    ):
+        return Severity.HIGH
+    return Severity.MEDIUM
+
+
+# ---------------------------------------------------------------------------
 # BA-007: Agent blocked_topics doesn't cover all restricted_topics
 # ---------------------------------------------------------------------------
 
@@ -446,11 +504,16 @@ def _ba_007_blocked_topics_gap(
             if not any(topic.lower() in b or b in topic.lower() for b in blocked):
                 uncovered.append(topic)
         if uncovered:
+            max_severity = max(
+                (_topic_severity(t) for t in uncovered),
+                key=lambda s: _SEVERITY_RANK.get(s.value, 0),
+                default=Severity.MEDIUM,
+            )
             findings.append(
                 Finding(
                     finding_id=f"BA-007-{uuid.uuid4().hex[:8]}",
                     title=f"Agent '{agent_name}' blocked_topics misses {len(uncovered)} restricted topic(s)",
-                    severity=Severity.MEDIUM,
+                    severity=max_severity,
                     description=(
                         f"Policy restricts topics {uncovered!r} but agent '{agent_name}' "
                         f"does not include them in blocked_topics."

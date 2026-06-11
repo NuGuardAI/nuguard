@@ -235,6 +235,28 @@ class BehaviorAnalyzer:
                 coverage = run_result.coverage
                 scenario_results = run_result.scenario_results
 
+                # FP-2: Downgrade BA-008 HITL static findings to LOW when the
+                # corresponding dynamic invariant probe passed.  A passing probe
+                # confirms the agent handles the HITL trigger in its runtime
+                # behaviour even though no formal GUARDRAIL node exists in the SBOM.
+                passed_scenario_names = {
+                    sr.get("scenario_name", "") if isinstance(sr, dict) else getattr(sr, "scenario_name", "")
+                    for sr in scenario_results
+                    if (
+                        (sr.get("verdict") if isinstance(sr, dict) else getattr(sr, "verdict", None))
+                        in ("PASS", "pass")
+                    )
+                }
+                hitl_probe_passed = any("hitl" in n.lower() for n in passed_scenario_names)
+                if hitl_probe_passed:
+                    for sf in static_findings:
+                        if sf.get("finding_id", "").startswith("BA-008") and sf.get("severity") == "high":
+                            sf["severity"] = "low"
+                            sf["description"] = (
+                                sf.get("description", "")
+                                + " [Downgraded: dynamic HITL probe passed, confirming runtime handling.]"
+                            )
+
         # Step 4: Build analysis result
         result = BehaviorAnalysisResult(
             intent=intent,
