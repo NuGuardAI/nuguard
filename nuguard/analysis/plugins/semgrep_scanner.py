@@ -28,7 +28,6 @@ Config keys
 from __future__ import annotations
 
 import json
-import logging
 import shutil
 import subprocess
 from pathlib import Path
@@ -36,8 +35,9 @@ from typing import Any
 
 from nuguard.analysis.models import AnalysisResult
 from nuguard.analysis.plugin_base import AnalysisPlugin
+from nuguard.common.logging import get_logger
 
-_log = logging.getLogger("analysis.plugins.semgrep")
+_log = get_logger("analysis.plugins.semgrep")
 
 # Bundled AI-security ruleset (ships with nuguard)
 _BUNDLED_RULES: Path = (

@@ -22,15 +22,16 @@ Config keys
 """
 from __future__ import annotations
 
-import logging
 from typing import Any
+
+from nuguard.common.logging import get_logger
 
 from ..http_utils import post_json
 from ..integration_contracts import XrayConfig
 from ..models import ToolResult
 from ..plugin_base import ToolPlugin
 
-_log = logging.getLogger("toolbox.plugins.xray")
+_log = get_logger("toolbox.plugins.xray")
 
 
 class XrayPlugin(ToolPlugin):

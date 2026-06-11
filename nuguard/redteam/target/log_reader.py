@@ -8,10 +8,11 @@ mark() call.  Two implementations:
 """
 from __future__ import annotations
 
-import logging
 from pathlib import Path
 
-_log = logging.getLogger(__name__)
+from nuguard.common.logging import get_logger
+
+_log = get_logger(__name__)
 
 _MAX_LINES = 50  # max log lines to include per scenario
 

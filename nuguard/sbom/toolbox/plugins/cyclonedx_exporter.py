@@ -10,15 +10,16 @@ document consumable by Grype, Trivy, and other CycloneDX-aware scanners.
 """
 from __future__ import annotations
 
-import logging
 from typing import Any
+
+from nuguard.common.logging import get_logger
 
 from ...models import AiSbomDocument
 from ...serializer import AiSbomSerializer
 from ..models import ToolResult
 from ..plugin_base import ToolPlugin
 
-_log = logging.getLogger("toolbox.plugins.cyclonedx")
+_log = get_logger("toolbox.plugins.cyclonedx")
 
 
 class CycloneDxExporter(ToolPlugin):

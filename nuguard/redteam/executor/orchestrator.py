@@ -261,8 +261,13 @@ def _is_destructive_scenario(scenario: AttackScenario) -> bool:
 
     Destructive scenarios are sorted to the end of the run so non-destructive
     scenarios execute against intact account data first.
+
+    Only the attack-action portion of the title (before the " — Agent Name" suffix)
+    is checked, to avoid false matches on agent names such as "Cancellation Agent".
     """
-    text = (scenario.title + " " + scenario.description).lower()
+    # Titles follow "Attack Name — Agent Name" convention; check only the attack part.
+    attack_part = scenario.title.split(" — ")[0]
+    text = (attack_part + " " + scenario.description).lower()
     return any(k in text for k in _DESTRUCTIVE_KEYWORDS)
 
 
@@ -463,7 +468,7 @@ class RedteamOrchestrator:
         finding_triggers: "RedteamFindingTriggers | None" = None,
         verbose: bool = False,
         credentials: dict[str, str] | None = None,
-        scenario_timeout: float = 300.0,
+        scenario_timeout: float = 180.0,
         turn_delay_seconds: float = 0.0,
         scenario_delay_seconds: float = 0.0,
         similar_miss_threshold: int = 4,
@@ -475,6 +480,7 @@ class RedteamOrchestrator:
         pre_run_warmup: int = 0,
         verify_findings: bool = False,
         golden_data: "dict[str, Any] | None" = None,
+        suppress_spa_html_auth_bypass: bool = True,
     ) -> None:
         self._sbom = sbom
         self._target_url = target_url
@@ -528,6 +534,7 @@ class RedteamOrchestrator:
         self._pre_run_warmup = max(0, pre_run_warmup)
         self._verify_findings = verify_findings
         self._golden_data: dict[str, Any] = golden_data or {}
+        self._suppress_spa_html = suppress_spa_html_auth_bypass
         # Auto-discover from SBOM; fall back to provided values
         self._chat_path, self._chat_payload_key, self._chat_payload_list, _discovered_response_key = (
             _discover_chat_config(sbom, chat_path, chat_payload_key, chat_payload_list)
@@ -1085,6 +1092,7 @@ class RedteamOrchestrator:
                 turn_delay_seconds=self._turn_delay_seconds,
                 sbom=self._sbom,
                 pre_scan_profile=_effective_pre_scan,
+                suppress_spa_html_auth_bypass=self._suppress_spa_html,
             )
 
             # Build GuidedAttackExecutor when LLM is configured and guided is enabled

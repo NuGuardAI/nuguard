@@ -11,9 +11,10 @@ Detects direct SDK client instantiations across all major AI providers:
 
 from __future__ import annotations
 
-import logging
 import re
 from typing import Any
+
+from nuguard.common.logging import get_logger
 
 from ...normalization import canonicalize_text
 from ...types import ComponentType
@@ -26,7 +27,7 @@ from ..models_kb import (
     infer_provider,
 )
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 # API call patterns that specify a model
 _MODEL_SPECIFYING_METHODS = re.compile(

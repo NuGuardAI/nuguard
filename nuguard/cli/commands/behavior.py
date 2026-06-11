@@ -2,12 +2,13 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from pathlib import Path
 from typing import Optional
 
 import typer
 from rich.console import Console
+
+from nuguard.common.logging import get_logger
 
 behavior_app = typer.Typer(
     name="behavior",
@@ -16,7 +17,7 @@ behavior_app = typer.Typer(
 
 _console = Console()
 _err_console = Console(stderr=True)
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 
 @behavior_app.callback(invoke_without_command=True)

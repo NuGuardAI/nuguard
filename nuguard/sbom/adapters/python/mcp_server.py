@@ -303,7 +303,7 @@ class MCPServerAdapter(FrameworkAdapter):
             fw_relationships.append(
                 RelationshipHint(
                     source_canonical=fw_canonical,
-                    source_type=ComponentType.FRAMEWORK,
+                    source_type=ComponentType.TOOL,
                     target_canonical=tool.canonical_name,
                     target_type=ComponentType.TOOL,
                     relationship_type="CALLS",
@@ -313,7 +313,7 @@ class MCPServerAdapter(FrameworkAdapter):
             fw_relationships.append(
                 RelationshipHint(
                     source_canonical=fw_canonical,
-                    source_type=ComponentType.FRAMEWORK,
+                    source_type=ComponentType.TOOL,
                     target_canonical=auth.canonical_name,
                     target_type=ComponentType.AUTH,
                     relationship_type="USES",
@@ -323,7 +323,7 @@ class MCPServerAdapter(FrameworkAdapter):
             fw_relationships.append(
                 RelationshipHint(
                     source_canonical=fw_canonical,
-                    source_type=ComponentType.FRAMEWORK,
+                    source_type=ComponentType.TOOL,
                     target_canonical=ep.canonical_name,
                     target_type=ComponentType.API_ENDPOINT,
                     relationship_type="USES",
@@ -344,7 +344,7 @@ class MCPServerAdapter(FrameworkAdapter):
                 )
 
         fw_node = ComponentDetection(
-            component_type=ComponentType.FRAMEWORK,
+            component_type=ComponentType.TOOL,
             canonical_name=fw_canonical,
             display_name=fw_display,
             adapter_name=self.name,

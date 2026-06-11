@@ -20,17 +20,18 @@ hand directly to :func:`~nuguard.common.target_client_builder.build_target_app_c
 """
 from __future__ import annotations
 
-import logging
 import uuid
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
+
+from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
     from nuguard.common.auth import AuthConfig, AuthSession
     from nuguard.common.bootstrap import TargetHealthReport
     from nuguard.sbom.models import AiSbomDocument
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -84,36 +85,69 @@ def _merge_login_response_extras(
     return merged, notes
 
 
+_IDENTITY_FIELD_NAMES: frozenset[str] = frozenset({
+    "user_id", "userid", "uid", "user", "userId",
+})
+
+
 def _get_sbom_context_fields(
     sbom: "AiSbomDocument",
     chat_path: str,
 ) -> dict[str, str]:
-    """Return the ``context_payload_fields`` from the SBOM node matching *chat_path*.
+    """Return context payload field hints from the SBOM node matching *chat_path*.
 
-    Returns an empty dict when no matching node is found or the SBOM has no
-    ``context_payload_fields`` metadata.
+    First looks for explicit ``context_payload_fields`` metadata.  When none are
+    declared, falls back to scanning the endpoint's ``request_body_schema`` for
+    well-known identity field names (``user_id``, ``userId``, ``uid``) and
+    classifies them as ``"identity"`` automatically.
+
+    Returns an empty dict when no matching node is found.
     """
     try:
         from nuguard.sbom.models import NodeType  # noqa: PLC0415
     except Exception:
         return {}
 
-    best: dict[str, str] = {}
+    best_explicit: dict[str, str] = {}
+    best_inferred: dict[str, str] = {}
+
     for node in sbom.nodes:
         if node.component_type != NodeType.API_ENDPOINT:
             continue
         meta = node.metadata
-        if not meta or not meta.context_payload_fields:
+        if not meta:
             continue
         ep = (meta.endpoint or "").strip()
-        if ep and ep == chat_path.strip():
-            best = dict(meta.context_payload_fields)
-            break
-        # Fallback: use the first node with context fields when path doesn't match exactly
-        if not best:
-            best = dict(meta.context_payload_fields)
+        path_matches = ep and ep == chat_path.strip()
 
-    return best
+        # Explicit context_payload_fields always takes priority
+        if meta.context_payload_fields:
+            if path_matches:
+                return dict(meta.context_payload_fields)
+            if not best_explicit:
+                best_explicit = dict(meta.context_payload_fields)
+            continue
+
+        # Infer identity fields from request_body_schema when context_payload_fields absent
+        schema = getattr(meta, "request_body_schema", None) or {}
+        if isinstance(schema, dict) and schema:
+            inferred: dict[str, str] = {
+                field: "identity"
+                for field in schema
+                if field.lower() in _IDENTITY_FIELD_NAMES
+            }
+            if inferred:
+                if path_matches:
+                    _log.debug(
+                        "_get_sbom_context_fields: inferred identity fields %s from "
+                        "request_body_schema of endpoint '%s'",
+                        list(inferred), ep or chat_path,
+                    )
+                    return inferred
+                if not best_inferred:
+                    best_inferred = inferred
+
+    return best_explicit or best_inferred
 
 
 def _identity_candidates_from_username(username: str) -> list[str]:

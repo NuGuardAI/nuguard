@@ -11,9 +11,10 @@ Usage::
 """
 from __future__ import annotations
 
-import logging
 from collections import Counter
 from typing import TYPE_CHECKING, Any
+
+from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
     from nuguard.common.ces_client import CESDeploymentConfig
@@ -22,7 +23,7 @@ if TYPE_CHECKING:
 from .google_adk import ADK_FRAMEWORK_NAMES, GoogleADKAdapter
 from .google_ces import CES_FRAMEWORK_NAME, GoogleCESAdapter
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 
 def _extract_agent_source_dirs(sbom: "AiSbomDocument") -> list[str]:

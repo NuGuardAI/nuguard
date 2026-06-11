@@ -13,14 +13,15 @@ Preview Enhanced), Notion, GitLab, and most modern doc platforms.
 """
 from __future__ import annotations
 
-import logging
 import re
 from typing import TYPE_CHECKING, Any
+
+from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
     from nuguard.sbom.models import AiSbomDocument
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 # Component types included in the relationship diagram
 _GRAPH_TYPES = {

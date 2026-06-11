@@ -21,11 +21,12 @@ Usage::
 from __future__ import annotations
 
 import asyncio
-import logging
 import textwrap
 from typing import Any
 
-_log = logging.getLogger(__name__)
+from nuguard.common.logging import get_logger
+
+_log = get_logger(__name__)
 
 # All scenario step payloads use this placeholder host; the orchestrator replaces
 # it with the real ``host:port`` after the server has bound to a port.

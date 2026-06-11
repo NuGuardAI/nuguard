@@ -17,14 +17,15 @@ Evidence kind: ``"dockerfile"``
 """
 from __future__ import annotations
 
-import logging
 import re
 from typing import Any
+
+from nuguard.common.logging import get_logger
 
 from ..types import ComponentType
 from .base import ComponentDetection
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 # Matches a FROM instruction (case-insensitive, handles --platform flag and AS alias)
 _FROM_RE = re.compile(

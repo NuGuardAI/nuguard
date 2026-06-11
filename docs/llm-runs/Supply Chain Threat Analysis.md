@@ -18,7 +18,7 @@ The attack surface for AI applications has evolved well beyond static CVE analys
 
 **What NuGuard detects**
 
-NuGuard 0.7.1 ships the Supply Chain Threat Pack: 25 native detection rules (NGA-SC-001–NGA-SC-025) built into `nuguard analyze` and `nuguard scan`. No external tools required.
+NuGuard 0.7.2 ships the Supply Chain Threat Pack: 25 native detection rules (NGA-SC-001–NGA-SC-025) built into `nuguard analyze` and `nuguard scan`. No external tools required.
 
 GitHub Actions risks:
 - Publish workflow uses OIDC with an unpinned third-party action

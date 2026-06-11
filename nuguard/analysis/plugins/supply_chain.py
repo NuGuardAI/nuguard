@@ -12,14 +12,14 @@ Config keys consumed from the config dict:
 
 from __future__ import annotations
 
-import logging
 from pathlib import Path
 from typing import Any
 
 from nuguard.analysis.models import AnalysisResult
 from nuguard.analysis.plugin_base import AnalysisPlugin
+from nuguard.common.logging import get_logger
 
-_log = logging.getLogger("analysis.plugins.supply_chain")
+_log = get_logger("analysis.plugins.supply_chain")
 
 
 class SupplyChainPlugin(AnalysisPlugin):

@@ -25,8 +25,9 @@ from __future__ import annotations
 
 import asyncio
 import copy
-import logging
 from typing import TYPE_CHECKING
+
+from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
     from nuguard.redteam.llm_engine.conversation_director import ConversationDirector
@@ -37,7 +38,7 @@ if TYPE_CHECKING:
 from nuguard.redteam.executor.attribution import parse_handled_by, strip_meta_footer
 from nuguard.redteam.models.guided_conversation import GuidedConversation, TurnRecord
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 # Score weight for turning a float confidence+severity signal into an int for pruning.
 # confidence: high=3, medium=2, low=1; severity_signal: upgrade=+1, unchanged=0, downgrade=-1

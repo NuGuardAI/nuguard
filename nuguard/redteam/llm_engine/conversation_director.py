@@ -18,11 +18,11 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 import os
 import re
 from typing import TYPE_CHECKING, Literal
 
+from nuguard.common.logging import get_logger
 from nuguard.models.exploit_chain import GoalType
 from nuguard.redteam.llm_engine.adaptive_mutation import classify_failure
 from nuguard.redteam.llm_engine.happy_path import (
@@ -38,7 +38,7 @@ if TYPE_CHECKING:
     from nuguard.common.llm_client import LLMClient
     from nuguard.redteam.models.guided_conversation import TurnRecord
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 
 def _env_float(name: str, default: float) -> float:
@@ -410,6 +410,13 @@ class ConversationDirector:
                 )
                 return milestones
         except asyncio.TimeoutError:
+            # In Python 3.12, asyncio.wait_for raises TimeoutError *inside* the
+            # coroutine rather than CancelledError.  Re-raise when an outer
+            # wait_for (the scenario-level timeout) is the source so it can
+            # cancel the whole scenario rather than just returning a fallback.
+            _ct = asyncio.current_task()
+            if _ct is not None and _ct.cancelling() > 0:
+                raise
             _log.warning("plan_milestones timeout | goal=%s", self._goal_type.value)
         except Exception as exc:
             _log.warning("plan_milestones error: %s", exc)
@@ -511,6 +518,13 @@ class ConversationDirector:
             if message:
                 return message + ATTRIBUTION_FOOTER, tactic
         except asyncio.TimeoutError:
+            # Re-raise when an outer scenario-level wait_for is cancelling us
+            # (Python 3.12: outer TimeoutError is delivered as TimeoutError, not
+            # CancelledError, so a bare 'except asyncio.TimeoutError' would
+            # otherwise swallow it and return a fallback turn indefinitely).
+            _ct = asyncio.current_task()
+            if _ct is not None and _ct.cancelling() > 0:
+                raise
             _log.warning("next_turn timeout | turn=%d goal=%s", turn_number, self._goal_type.value)
         except Exception as exc:
             _log.warning("next_turn error: %s", exc)
@@ -560,6 +574,10 @@ class ConversationDirector:
                 return self._heuristic_progress(last_agent_response, tactic_used)
             score, reasoning, evidence_quote, success_indicator, failure_cls = self._parse_progress(raw)
         except asyncio.TimeoutError:
+            # Re-raise when the outer scenario-level wait_for is the source.
+            _ct = asyncio.current_task()
+            if _ct is not None and _ct.cancelling() > 0:
+                raise
             _log.warning("assess_progress timeout | goal=%s", self._goal_type.value)
             return self._heuristic_progress(last_agent_response, tactic_used)
         except Exception as exc:

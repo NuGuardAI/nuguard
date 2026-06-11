@@ -30,15 +30,16 @@ extractor.
 
 from __future__ import annotations
 
-import logging
 import re
 from bisect import bisect_right
 from typing import Any
 
+from nuguard.common.logging import get_logger
+
 from ..types import ComponentType
 from .base import ComponentDetection
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------

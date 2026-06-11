@@ -887,6 +887,171 @@ def _build_credential_persistence(ctx: BuilderContext) -> list:
     return _stamp([build_credential_persistence(str(agent.id), agent.name or "assistant")], ctx)
 
 
+# ── API schema exploitation (S-series) ───────────────────────────────────────
+
+def _build_schema_identity_override(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.api_schema_attacks import build_schema_identity_override
+    ep = ctx.target_endpoint
+    identity_fields: dict[str, str] = {}
+    if ep and ep.metadata and ep.metadata.context_payload_fields:
+        identity_fields = {k: v for k, v in ep.metadata.context_payload_fields.items() if v == "identity"}
+    agent = ctx.target_agent
+    return _stamp([build_schema_identity_override(str(agent.id), agent.name or "assistant", identity_fields)], ctx)
+
+
+def _build_schema_mass_assignment(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.api_schema_attacks import build_schema_mass_assignment
+    ep = ctx.target_endpoint
+    schema_fields: dict[str, str] = {}
+    if ep and ep.metadata and ep.metadata.request_body_schema:
+        schema_fields = ep.metadata.request_body_schema
+    agent = ctx.target_agent
+    return _stamp([build_schema_mass_assignment(str(agent.id), agent.name or "assistant", schema_fields)], ctx)
+
+
+def _build_response_schema_probe(ctx: BuilderContext) -> list:
+    import re
+
+    from nuguard.redteam.scenarios.api_schema_attacks import build_response_schema_probe
+    _sensitive = re.compile(r"(internal|admin|secret|raw|flag|token|note|debug|hidden|priv|super|root|audit)", re.IGNORECASE)
+    ep = ctx.target_endpoint
+    sensitive_fields: list[str] = []
+    if ep and ep.metadata and ep.metadata.response_schema:
+        for model_fields in ep.metadata.response_schema.values():
+            if isinstance(model_fields, dict):
+                sensitive_fields.extend(k for k in model_fields if _sensitive.search(k))
+    agent = ctx.target_agent
+    return _stamp([build_response_schema_probe(str(agent.id), agent.name or "assistant", sensitive_fields or None)], ctx)
+
+
+def _build_streaming_exfil(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.api_schema_attacks import build_streaming_exfil
+    streaming_endpoint = "/chat"
+    if ctx.sbom.summary and ctx.sbom.summary.streaming_endpoints:
+        streaming_endpoint = ctx.sbom.summary.streaming_endpoints[0]
+    agent = ctx.target_agent
+    return _stamp([build_streaming_exfil(str(agent.id), agent.name or "assistant", streaming_endpoint)], ctx)
+
+
+def _build_param_confusion_injection(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.api_schema_attacks import build_param_confusion_injection
+    ep = ctx.target_endpoint
+    primary_key = "message"
+    schema_keys: list[str] = []
+    if ep and ep.metadata:
+        if ep.metadata.chat_payload_key:
+            primary_key = ep.metadata.chat_payload_key
+        if ep.metadata.request_body_schema:
+            schema_keys = [k for k in ep.metadata.request_body_schema if k != primary_key]
+    agent = ctx.target_agent
+    return _stamp([build_param_confusion_injection(str(agent.id), agent.name or "assistant", primary_key, schema_keys or None)], ctx)
+
+
+def _build_session_fixation(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.api_schema_attacks import build_session_fixation
+    ep = ctx.target_endpoint
+    session_field = "session_id"
+    if ep and ep.metadata and ep.metadata.context_payload_fields:
+        for field, kind in ep.metadata.context_payload_fields.items():
+            if kind == "session":
+                session_field = field
+                break
+    agent = ctx.target_agent
+    return _stamp([build_session_fixation(str(agent.id), agent.name or "assistant", session_field)], ctx)
+
+
+def _build_structured_output_coercion(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.api_schema_attacks import build_structured_output_coercion
+    ep = ctx.target_endpoint
+    output_fields: list[str] = []
+    if ep and ep.metadata and ep.metadata.response_schema:
+        for model_fields in ep.metadata.response_schema.values():
+            if isinstance(model_fields, dict):
+                output_fields.extend(list(model_fields.keys())[:4])
+    agent = ctx.target_agent
+    return _stamp([build_structured_output_coercion(str(agent.id), agent.name or "assistant", output_fields or None)], ctx)
+
+
+def _build_schema_type_confusion(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.api_schema_attacks import build_schema_type_confusion
+    ep = ctx.target_endpoint
+    field_name, field_type = "user_id", "str"
+    if ep and ep.metadata and ep.metadata.request_body_schema:
+        for fname, ftype in ep.metadata.request_body_schema.items():
+            if fname != (ep.metadata.chat_payload_key or "message"):
+                field_name, field_type = fname, ftype
+                break
+    agent = ctx.target_agent
+    return _stamp([build_schema_type_confusion(str(agent.id), agent.name or "assistant", field_name, field_type)], ctx)
+
+
+# ── Supply chain, CI/CD & deployment (V-series) ───────────────────────────────
+
+def _build_env_var_probe(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.supply_chain_attacks import build_env_var_probe
+    keys: list[str] = []
+    if ctx.sbom.summary:
+        keys = list(ctx.sbom.summary.env_var_keys or [])
+    agent = ctx.target_agent
+    return _stamp([build_env_var_probe(str(agent.id), agent.name or "assistant", keys)], ctx)
+
+
+def _build_ci_secret_probe(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.supply_chain_attacks import build_ci_secret_probe
+    ci_platform = "github_actions"
+    if ctx.sbom.summary and ctx.sbom.summary.testing and ctx.sbom.summary.testing.ci_cd_pipeline:
+        ci_platform = ctx.sbom.summary.testing.ci_cd_pipeline
+    agent = ctx.target_agent
+    return _stamp([build_ci_secret_probe(str(agent.id), agent.name or "assistant", ci_platform)], ctx)
+
+
+def _build_cloud_metadata_ssrf(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.supply_chain_attacks import build_cloud_metadata_ssrf
+    platforms: list[str] = []
+    if ctx.sbom.summary:
+        platforms = list(ctx.sbom.summary.deployment_platforms or [])
+    agent = ctx.target_agent
+    return _stamp([build_cloud_metadata_ssrf(str(agent.id), agent.name or "assistant", platforms)], ctx)
+
+
+def _build_dependency_cve_probe(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.supply_chain_attacks import build_dependency_cve_probe
+    dep_names: list[str] = []
+    for node in ctx.sbom.nodes:
+        if node.metadata and node.metadata.dependency_names:
+            dep_names.extend(node.metadata.dependency_names)
+    agent = ctx.target_agent
+    return _stamp([build_dependency_cve_probe(str(agent.id), agent.name or "assistant", dep_names or None)], ctx)
+
+
+def _build_quality_gate_inference(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.supply_chain_attacks import build_quality_gate_inference
+    agent = ctx.target_agent
+    return _stamp([build_quality_gate_inference(str(agent.id), agent.name or "assistant")], ctx)
+
+
+def _build_artifact_integrity_probe(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.supply_chain_attacks import build_artifact_integrity_probe
+    source_url = ""
+    integrity_hash = ""
+    agent = ctx.target_agent
+    if agent.metadata:
+        source_url = agent.metadata.source_url or ""
+        integrity_hash = agent.metadata.integrity_hash or ""
+    return _stamp([build_artifact_integrity_probe(str(agent.id), agent.name or "assistant", source_url, integrity_hash)], ctx)
+
+
+def _build_cross_env_credential_reuse(ctx: BuilderContext) -> list:
+    from nuguard.redteam.scenarios.supply_chain_attacks import build_cross_env_credential_reuse
+    staging_url = ""
+    prod_url = ""
+    if ctx.sbom.summary:
+        staging_url = (ctx.sbom.summary.staging_urls or [""])[0]
+        prod_url = (ctx.sbom.summary.production_urls or [""])[0]
+    agent = ctx.target_agent
+    return _stamp([build_cross_env_credential_reuse(str(agent.id), agent.name or "assistant", staging_url, prod_url)], ctx)
+
+
 # ── Registry ──────────────────────────────────────────────────────────────────
 
 BUILDER_FACTORIES: dict[str, BuilderFn] = {
@@ -1008,4 +1173,21 @@ BUILDER_FACTORIES: dict[str, BuilderFn] = {
     "cross_agent_cred_bleed":   _build_cross_agent_cred_bleed,
     "delegated_identity":       _build_delegated_identity,
     "credential_persistence":   _build_credential_persistence,
+    # ── API schema exploitation (S-series) ────────────────────────────────────
+    "schema_identity_override":   _build_schema_identity_override,
+    "schema_mass_assignment":     _build_schema_mass_assignment,
+    "response_schema_probe":      _build_response_schema_probe,
+    "streaming_exfil":            _build_streaming_exfil,
+    "param_confusion_injection":  _build_param_confusion_injection,
+    "session_fixation":           _build_session_fixation,
+    "structured_output_coercion": _build_structured_output_coercion,
+    "schema_type_confusion":      _build_schema_type_confusion,
+    # ── Supply chain, CI/CD & deployment (V-series) ───────────────────────────
+    "env_var_probe":              _build_env_var_probe,
+    "ci_secret_probe":            _build_ci_secret_probe,
+    "cloud_metadata_ssrf":        _build_cloud_metadata_ssrf,
+    "dependency_cve_probe":       _build_dependency_cve_probe,
+    "quality_gate_inference":     _build_quality_gate_inference,
+    "artifact_integrity_probe":   _build_artifact_integrity_probe,
+    "cross_env_credential_reuse": _build_cross_env_credential_reuse,
 }

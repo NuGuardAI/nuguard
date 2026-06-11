@@ -19,10 +19,11 @@ retry logic and constants are defined in exactly one place.
 from __future__ import annotations
 
 import asyncio
-import logging
 import random
 
-_log = logging.getLogger(__name__)
+from nuguard.common.logging import get_logger
+
+_log = get_logger(__name__)
 
 # Sentinel prefix emitted by TargetAppClient when a 429 exhausts all
 # per-request retries.

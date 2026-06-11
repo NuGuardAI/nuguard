@@ -6,10 +6,11 @@ value is present but malformed.
 """
 from __future__ import annotations
 
-import logging
 import os
 
-_log = logging.getLogger(__name__)
+from nuguard.common.logging import get_logger
+
+_log = get_logger(__name__)
 
 
 def env_float(name: str, default: float) -> float:

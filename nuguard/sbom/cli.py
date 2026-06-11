@@ -53,12 +53,14 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse, urlunparse
 
+from nuguard.common.logging import get_logger
+
 from .config import AiSbomConfig
 from .extractor import AiSbomExtractor
 from .models import AiSbomDocument
 from .serializer import AiSbomSerializer
 
-_log = logging.getLogger("nuguard")
+_log = get_logger("nuguard")
 
 
 def _setup_logging(verbose: bool, debug: bool) -> None:

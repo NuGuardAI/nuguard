@@ -25,20 +25,20 @@ v7 changes:
 from __future__ import annotations
 
 import hashlib
-import logging
 import re
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Literal
 
 from nuguard.behavior._utils import extract_json_object, mentioned_actively
+from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
     from nuguard.behavior.judge_cache import JudgeCache
     from nuguard.behavior.models import BehaviorScenario, IntentProfile
     from nuguard.common.llm_client import LLMClient
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # Constants

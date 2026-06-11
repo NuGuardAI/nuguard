@@ -21,13 +21,14 @@ Returns a flat list of finding dicts, one per (dep, advisory) pair:
 from __future__ import annotations
 
 import json
-import logging
 import re
 import urllib.error
 import urllib.request
 from typing import Any
 
-_log = logging.getLogger(__name__)
+from nuguard.common.logging import get_logger
+
+_log = get_logger(__name__)
 
 _OSV_BATCH_URL = "https://api.osv.dev/v1/querybatch"
 

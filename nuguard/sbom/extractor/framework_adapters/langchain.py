@@ -6,10 +6,10 @@ for AgentExecutor, Chroma, SQLDatabase, Tool, StructuredTool, etc.
 
 from __future__ import annotations
 
-import logging
 import uuid
 from pathlib import Path
 
+from nuguard.common.logging import get_logger
 from nuguard.sbom.models import (
     Edge,
     EdgeRelationshipType,
@@ -19,7 +19,7 @@ from nuguard.sbom.models import (
 )
 from nuguard.sbom.types import RelationshipType
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 def _stable_id(key: str) -> uuid.UUID:

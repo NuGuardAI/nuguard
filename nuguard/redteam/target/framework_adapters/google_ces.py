@@ -16,7 +16,6 @@ not present.
 """
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 import httpx
@@ -28,8 +27,9 @@ from nuguard.common.ces_client import (
     CESSessionEndedError,
     get_gcloud_token,
 )
+from nuguard.common.logging import get_logger
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 # SBOM framework name that indicates a CES-based application.
 CES_FRAMEWORK_NAME = "google-ces"

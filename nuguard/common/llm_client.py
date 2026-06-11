@@ -335,9 +335,11 @@ class LLMClient:
             )
         # Reasoning-class models (o1/o3/o4/gpt-5) reject temperature and top_p.
         # Strip them pre-emptively to avoid UnsupportedParamsError on the first call.
+        # Default reasoning_effort to "medium" unless the caller overrides it.
         if _is_reasoning_model(self.model):
             kwargs.pop("temperature", None)
             kwargs.pop("top_p", None)
+            kwargs.setdefault("reasoning_effort", "medium")
         if self.api_base:
             kwargs.setdefault("api_base", self.api_base)
         # Strip any None api_base that may have crept in to avoid LiteLLM

@@ -35,7 +35,7 @@ evidence, remediation, and compliance mapping.
    policy's allowed topics for happy-path openers, and respects rate limits
    and profile budgets.
 7. **Research-grounded attack diversity.** The scenario generator employs
-   techniques from published AI security research (2023–2024): Many-Shot
+   techniques from published AI security research (2023–2026): Many-Shot
    Jailbreaking, Crescendo, Skeleton Key, encoding evasion, multi-language
    bypass, and agentic trust abuse attacks.
 
@@ -45,7 +45,7 @@ evidence, remediation, and compliance mapping.
 
 ```
                        ┌──────────────────────────────┐
-                       │   RedteamOrchestrator.run()  │
+                       │   RedteamOrchestrator        │
                        └──────────────┬───────────────┘
                                       │
         ┌─────────────────────────────┼──────────────────────────────┐
@@ -58,9 +58,9 @@ evidence, remediation, and compliance mapping.
 └────────┬─────────┘        └─────────┬──────────┘          └────────┬─────────┘
          │                            │                              ▲
          ▼                            ▼                              │
-┌─────────────────────────────────────────────────┐                   │
-│              [Static chains]                    │                   │
-│  AttackExecutor.execute_chain(...)              │───────────────────┘
+┌─────────────────────────────────────────────────┐                  │
+│              [Static chains]                    │                  │
+│  AttackExecutor.execute_chain(...)              │──────────────────┘
 │    ├── InvokeEndpoint  (TargetAppClient)        │
 │    ├── AdaptiveMutationStrategy (on failure)    │
 │    ├── ResponseEvaluator (LLM semantic judge)   │
@@ -95,13 +95,14 @@ evidence, remediation, and compliance mapping.
 
 | Subpackage | Responsibility |
 |---|---|
-| `catalog/` | Stable-ID scenario catalog. `CapabilityDetector` builds an app capability profile from the SBOM, `selector.py` gates specs by capability/profile, caps `ci`/`standard` runs, round-robins across categories, and emits a `CoverageReport`. |
+| `catalog/` | Stable-ID scenario catalog. **125 scenarios across 18 categories** (D/C/T/A/I/M/P/G/J/E/B/K/R/O/H/N/S/V series). `registry.py` is the compiled in-process master; `capability.py` detects `AppCapabilityProfile` from SBOM; `selector.py` gates specs by capability/profile, caps `ci`/`standard` runs, round-robins across categories, and emits a `CoverageReport`; `coverage.py` holds that report. |
+| `coverage/` | `CoverageTracker` — records which SBOM nodes and policy clauses were exercised during generation and execution. Distinct from the catalog `CoverageReport`; both feed the final report. |
 | `scenarios/` | Deterministic SBOM+policy → `AttackScenario` builders. One file per goal family: `prompt_injection`, `data_exfiltration`, `privilege_escalation`, `tool_abuse`, `policy_violations`, `api_attacks`, `mcp_attacks`, `jailbreak`, `sbom_driven`, `guided_conversations`, `advanced_jailbreaks`, `evasion`, `agentic_attacks`, plus newer authorization, business-logic, coding-agent, covert-exfiltration, indirect-injection, memory, multi-agent, oracle, and destructive-action scenario families. The orchestration file is `generator.py`. |
 | `llm_engine/` | All LLM interactions: `prompt_generator` (payload variants; 12-technique rotation, goal-specific hints), `prompt_validation_gate` (filters malformed/unsafe generated prompts), `conversation_director` (guided turn planning and scoring), `tree_explorer` (TAP branch/prune exploration), `adaptive_mutation`, `response_evaluator`, `response_extractor`, `happy_path`, `summary_generator`, and `prompt_cache`. |
 | `executor/` | `AttackExecutor` runs static `ExploitChain`s step-by-step; `GuidedAttackExecutor` runs `GuidedConversation`s or delegates TAP conversations to `TreeExplorer`; `orchestrator.py` is the top-level coordinator handling auth bootstrap, pre-scan discovery, catalog merge, publishing, concurrency, budget enforcement, finding synthesis, policy rollup, artifact scanning, tool-trace judging, similarity-miss pruning, verification probes, and scan outcomes. |
 | `policy_engine/` | `PolicyEvaluator` checks step results against the cognitive policy and returns `PolicyViolation` records (used to create policy-specific findings). |
 | `risk_engine/` | `severity_scorer`, `compliance_mapper` (OWASP ASI / LLM Top-10, MITRE ATLAS), `remediation_generator` (rule-based fallback). |
-| `target/` | `TargetAppClient` (HTTP POST with auth, retries, redaction), `CanaryScanner` (canary hit detection), `ActionLogger` (structured JSONL audit log), `log_reader` (optional log correlation). |
+| `target/` | `TargetAppClient` (HTTP POST with auth, retries, redaction), `CanaryScanner` (canary hit detection), `ActionLogger` (structured JSONL audit log), `log_reader` (optional log correlation), `discovery.py` (pre-scan discovery conversation). |
 | `target/framework_adapters/` | Framework-specific target adapters for Google ADK and Google Customer Engagement Suite style request/response flows. |
 | `models/` | `GuidedConversation`, `TurnRecord` — the runtime model of a live conversation and its evidence. |
 | `enrichment/` | Runtime SBOM enrichment — e.g. discovering additional endpoints mid-scan. |
@@ -215,30 +216,50 @@ different attack angle:
 | **13 — Agentic Trust Abuse** | **`agentic_attacks.py`** | **Confused Deputy, Multi-Agent Trust Boundary, Memory Poisoning, Goal Hijacking** |
 | **14 — Oracle & Deception** | **`oracle_attacks.py`** | **Refusal oracle / side-channel recon and false-premise anchoring** |
 
-Goals 11–14 extend the legacy generator with research-grounded attack
+Goals 11–14 extend the original generator with research-grounded attack
 families beyond classic prompt injection (see §11 below).
 
-The catalog adds another taxonomy layer with stable category series:
+### Stable-ID catalog (125 scenarios, 18 categories)
 
-| Series | Category |
-|---|---|
-| `D` | Data Exfiltration |
-| `C` | Covert Exfiltration |
-| `T` | Destructive Tool Actions |
-| `A` | Authorization Failures |
-| `I` | Indirect Prompt Injection |
-| `M` | MCP and Tool Poisoning |
-| `P` | Memory and Persistence |
-| `G` | Multi-Agent Trust Abuse |
-| `J` | Jailbreak and Policy Bypass |
-| `E` | Evasion and Robustness |
-| `B` | Business Logic and Safety |
-| `K` | Coding and Automation Agents |
+The catalog (`catalog/registry.py`) provides a parallel, stable-ID set of
+scenarios that complement the SBOM-driven builder path. Each entry is a
+`ScenarioSpec` with a unique alphanumeric ID, declarative capability gate,
+delivery channel, evidence type, and safe-execution mode. The selector
+(`catalog/selector.py`) uses an `AppCapabilityProfile` built from the SBOM
+to gate which specs can fire against a given target.
 
-Catalog scenarios also distinguish delivery channel (`user_prompt`,
-`web_content`, `email`, `document`, `tool_output`, `mcp_metadata`, `memory`,
-`api`, `repo`, `terminal`, etc.), source trust, sink type, required evidence,
-and safe-execution mode.
+| Series | Category | Count |
+|---|---|---|
+| `D` | Data Exfiltration | 8 |
+| `C` | Covert Exfiltration | 8 |
+| `T` | Destructive Tool Actions | 8 |
+| `A` | Authorization Failures | 8 |
+| `I` | Indirect Prompt Injection | 8 |
+| `M` | MCP and Tool Poisoning | 8 |
+| `R` | RAG and Vector Store | 8 |
+| `P` | Memory and Persistence | 6 |
+| `G` | Multi-Agent Trust Abuse | 6 |
+| `J` | Jailbreak and Policy Bypass | 6 |
+| `O` | Improper Output Handling | 6 |
+| `B` | Business Logic and Safety | 6 |
+| `K` | Coding and Automation Agents | 6 |
+| `N` | Agent Identity and Credential | 6 |
+| `E` | Evasion and Robustness | 7 |
+| `H` | Human-Agent Trust Exploitation | 5 |
+| `S` | API Schema Exploitation | 8 |
+| `V` | Supply Chain, CI/CD & Deployment | 7 |
+
+Catalog scenarios distinguish:
+- **Delivery channel** (`user_prompt`, `web_content`, `email`, `document`,
+  `tool_output`, `mcp_metadata`, `memory`, `api`, `repo`, `terminal`, etc.)
+- **Source trust** — `trusted_user`, `untrusted_user`, `external_content`, etc.
+- **Sink type** — what the attack writes to or reads from
+- **Required capabilities** — frozenset of `Capability` flags from
+  `AppCapabilityProfile`; spec is skipped when the target lacks them
+- **Evidence types** — `CANARY`, `TOOL_TRACE`, `EGRESS_TRAP`,
+  `RESPONSE_ARTIFACT`, `POLICY_EVAL`, etc.
+- **Safe-execution mode** — `trace_only`, `dry_run_tool`, `emulated_tool`,
+  `synthetic_tenant`, `canary_only`, `trap_endpoint`, or `sandbox`
 
 ### Representative builder modules
 
@@ -276,7 +297,15 @@ and safe-execution mode.
 - **`authorization` / `business_logic` / `coding_agents` /
   `covert_exfiltration` / `indirect_injection` / `memory_persistence` /
   `multi_agent` / `destructive_actions`** — catalog builder families for the
-  D/C/T/A/I/M/P/G/J/E/B/K series.
+  D/C/T/A/I/M/P/G/J/E/B/K/R/O/H/N series.
+- **`api_schema_attacks`** — S-series (8 scenarios): `build_schema_identity_override`,
+  `build_schema_mass_assignment`, `build_response_schema_probe`, `build_streaming_exfil`,
+  `build_param_confusion_injection`, `build_session_fixation`,
+  `build_structured_output_coercion`, `build_schema_type_confusion`
+- **`supply_chain_attacks`** — V-series (7 scenarios): `build_env_var_probe`,
+  `build_ci_secret_probe`, `build_cloud_metadata_ssrf` (disabled by default),
+  `build_dependency_cve_probe`, `build_quality_gate_inference`,
+  `build_artifact_integrity_probe`, `build_cross_env_credential_reuse`
 
 Each scenario carries `impact_score` (pre-scored by `pre_scorer.py` or the
 catalog `base_impact`) and is filtered by profile (`ci` requires at least 5.0,
@@ -288,6 +317,105 @@ After filtering, the orchestrator calls `_publish_scenarios()` which logs a
 per-scenario breakdown — mode (static chain vs guided conversation), goal
 type, target nodes, and budget — so operators can see what will run before
 execution starts.
+
+---
+
+## 4a. SBOM Coverage Tracking
+
+Coverage is tracked by two independent components that together answer "did
+we exercise the whole application?".
+
+### `CoverageTracker` (`redteam/coverage/tracker.py`)
+
+A per-run accumulator attached to `ScenarioGenerator` that records which SBOM
+nodes and cognitive-policy clauses were exercised.
+
+| Method | Called when |
+|---|---|
+| `record_generated(node_id, node_type, name)` | A scenario targeting `node_id` is emitted by any builder |
+| `record_executed(node_id)` | The orchestrator starts executing a scenario for `node_id` |
+| `record_finding(node_id)` | A finding is attributed to `node_id` |
+| `record_policy_clause(clause)` | A policy-violation finding cites `clause` |
+
+`to_markdown()` renders a table (Node | Type | Generated | Executed | Findings)
+embedded in the final report. A footer note counts scenarios that were capped
+by the per-goal agent limit (`capped_count`).
+
+### `CoverageReport` (`redteam/catalog/coverage.py`)
+
+Produced by `selector.select_scenarios()` alongside the concrete scenario list.
+Records which catalog `ScenarioCategory` series fired and why others were skipped
+(capability gate, profile cap, disabled flag).
+
+Fields: `profile`, `total_generated`, `categories_covered`,
+`per_category_count`, `skipped` (list of `(id, category, skip_reason)` tuples),
+`capabilities_detected`.
+
+The orchestrator stores this in `self.last_coverage` and surfaces the counts
+in verbose log output and the final Markdown report (e.g.
+`Merged 64 catalog scenarios (coverage: 14 categories)`).
+
+---
+
+## 4b. Pre-scan Discovery
+
+Before scenario generation the orchestrator runs a brief authenticated
+conversation with the live target to capture the real user's profile. This
+profile is then used to make attack payloads context-specific and to filter
+false positives.
+
+### `DiscoveredProfile` (`target/discovery.py`)
+
+```
+DiscoveredProfile
+├── customer_name: str        e.g. "Alice Johnson"
+├── ids: list[str]            booking refs, account IDs, etc.
+├── entity_map: dict[str,str] labelled pairs: {"flight": "BA205", …}
+├── raw_response: str         concatenated turn responses
+├── turns_sent: int
+└── is_empty: bool            True when name == "" and ids == []
+```
+
+`run_discovery_conversation(client, session, use_case, max_turns)` drives the
+conversation. It selects domain-aware opener messages based on the SBOM's
+`use_case` field:
+
+| Domain | Example turn-1 opener |
+|---|---|
+| Airline | "What upcoming flights and bookings do you have for my account? …" |
+| Banking | "What accounts and recent transactions do you have for me? …" |
+| Healthcare | "What medical records and appointments do you have on file? …" |
+| Generic | "Please show me all the data you currently have on file for my account …" |
+
+Turns stop early as soon as both a name *and* at least one ID have been
+extracted (`is_empty` flips false). On an empty profile the console prints
+the (truncated) raw responses so the operator can diagnose why extraction
+failed.
+
+### Extraction (`executor/id_extractor.py`)
+
+- `extract_customer_name(text)` — tries five ordered patterns:
+  label-prefix with colon (`"Name: Alice"`), greeting (`"Hello Alice,"`),
+  logged-in-as, contextual (`"booking for Alice Johnson"`), possessive.
+  Accepts single-word names from greetings and label prefixes.
+  A stop-word guard rejects common false positives ("or", "email", "booking", etc.).
+- `extract_ids(text)` — matches labelled IDs, booking/confirmation codes,
+  prefixed alphanumeric IDs (e.g. `ACCT-0001`), compact prefix+digit IDs, and
+  UUIDs. Flight-number formats (e.g. `BA-205`) are excluded.
+- `extract_entity_map(text)` — captures labelled entity pairs such as
+  `"flight: BA205"` or `"departure: 2026-08-15"`.
+
+### How the profile feeds downstream components
+
+| Consumer | Usage |
+|---|---|
+| `LLMPromptGenerator` | Injects real name/IDs into attack payload text so probes reference the authenticated user's own data |
+| `ChainAssembler` | Pre-seeds `AttackSession.golden_data` / `golden_ids` / `golden_name` so DISCOVER steps in chains are instant cache hits |
+| Executor token substitution | Replaces `{golden_id}`, `{golden_id_list}`, `{golden_name}`, `{golden_id_neighbor}` in payloads with discovered values |
+| Golden-data filter | Discovery responses establish the baseline; responses that are ≥ 80% the user's own data are suppressed as false positives |
+
+Config: `redteam.skip_discovery` (bool, default false) and
+`redteam.discovery_max_turns` (int, default 3).
 
 ---
 
@@ -673,12 +801,17 @@ optional LLM-authored sections:
    from SBOM hints when the configured URL points at a frontend/static host.
 2. **Auth bootstrap** — `bootstrap_auth_runtime()` verifies every configured
    credential. Basic auth may be upgraded to a login flow when the SBOM exposes
-   a login endpoint. Aborts on default-credential failure (`AuthError`).
+   a login endpoint. Aborts on default-credential failure (`AuthError`); if
+   `login_flow` auth is configured but token acquisition fails, bootstrap
+   reports `auth_failed` immediately without probing the chat endpoint (so an
+   anonymous 200 cannot mask a credential failure).
 3. **Payload context merge** — login-response identity/session fields and SBOM
    request-body context hints are merged into `chat_payload_extras`.
-4. **Pre-scan discovery** — unless disabled, run a benign discovery
-   conversation as the authenticated user to capture customer name, account IDs,
-   and profile context. Empty anonymous profiles produce config notes.
+4. **Pre-scan discovery** — unless `redteam.skip_discovery` is set, run a
+   domain-aware discovery conversation as the authenticated user (see §4b).
+   Captures `DiscoveredProfile` (name, IDs, entity map). Empty anonymous
+   profiles produce config notes. The profile pre-seeds golden-data caches and
+   informs payload generation.
 5. **Policy enrichment** — if compiled `policy_controls` exist, inject their
    `boundary_prompts` into the policy so generators use richer text.
 6. **Scenario generation** — run the direct builder path and merge the
@@ -932,8 +1065,8 @@ Goals 11–14 are tagged with `ScenarioType` enum values in
 | `REFUSAL_ORACLE` | 14 | Reconnaissance via refusal/response side channels |
 | `PREMISE_INJECTION` | 14 | False-premise anchoring / coherence-bias exploitation |
 
-The catalog adds many additional `ScenarioType` values for stable D/C/T/A/I/M/P/G/J/E/B/K
-series coverage: private document extraction, cross-session leak, markdown
+The catalog adds many additional `ScenarioType` values for stable
+D/C/T/A/I/M/P/G/J/E/B/K/R/O/H/N series coverage: private document extraction, cross-session leak, markdown
 image/link exfiltration, URL encoding exfiltration, metadata smuggling,
 destructive record mutation, unauthorized transaction, BOLA/BFLA/RBAC failures,
 MCP shadow tools, credential overreach, profile and summary poisoning,
@@ -1003,51 +1136,6 @@ and tool parameter injection.
 
 ---
 
-## 14. Roadmap / TODO
-
-### Near-term (next 1–2 iterations)
-
-- **Unify scenario publishing with behavior** — emit a single JSON
-  `scan-plan.json` artefact consumable by both capabilities, so operators
-  get a pre-execution plan view.
-- **Richer breakthrough selection** — currently prefers `milestone_reached`
-  then progress score. Consider weighting turns where the evaluator's
-  `severity_signal == "upgrade"`.
-- **Catalog coverage surfacing** — expose skipped catalog specs and missing
-  capabilities in the CLI/Markdown output, not only internal coverage objects.
-
-### Mid-term
-
-- **Multi-target session reuse** — reuse a single authenticated session
-  across scenarios targeting the same endpoint, cutting bootstrap cost.
-- **Structured evaluator output** — promote the current free-form
-  `evidence` string to a typed `EvidenceRecord` with fields for quoted
-  tokens, JSON paths, and canary IDs.
-- **Per-goal-type success telemetry** — ship aggregated pass/fail rates by
-  goal_type and scenario family for trend analysis across runs.
-- **Prompt-cache versioning** — cache filenames include the LLM model slug, but
-  the content hash itself is SBOM+policy. Future cache metadata should include
-  prompt-template/version identifiers so changing generator instructions forces
-  regeneration.
-- **Tool trace integrations** — deepen first-party tool-log integrations so
-  trace findings are not limited to response-visible or app-log-visible calls.
-
-### Long-term
-
-- **Reinforcement-learning director** — train a lightweight model on
-  historical (tactic → progress_delta) transitions so tactic selection is
-  learned rather than phase-based.
-- **Tool-side introspection** — when the target exposes tool-call logs,
-  correlate attacker turns with actual tool invocations to detect
-  privilege-escalation pivots that aren't visible in the chat stream.
-- **Cross-run memory** — persist successful exploit chains as regression
-  tests that must continue to fail against the hardened app.
-- **Headless browser targets** — extend `TargetAppClient` to drive a
-  browser for web-UI-only agents (no API endpoint).
-- **SARIF+SBOM fingerprinting** — emit findings with node-scoped
-  fingerprints so SARIF consumers can suppress known issues without losing
-  regression signal.
-
 ### Known limitations
 
 - **LLM cost.** Guided conversations and payload enrichment can be
@@ -1069,4 +1157,4 @@ and tool parameter injection.
 
 ---
 
-*Last updated: 2026-06-08.*
+*Last updated: 2026-06-10.*

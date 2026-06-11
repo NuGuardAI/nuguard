@@ -27,6 +27,7 @@ import argparse
 import asyncio
 import json
 import logging
+from nuguard.common.logging import get_logger
 import os
 import shutil
 import sys
@@ -51,7 +52,7 @@ from .schemas import (
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # Default paths
 BENCHMARK_DIR = Path(__file__).parent

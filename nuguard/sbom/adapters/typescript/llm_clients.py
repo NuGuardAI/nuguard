@@ -16,9 +16,10 @@ Supports:
 
 from __future__ import annotations
 
-import logging
 import re
 from typing import Any
+
+from nuguard.common.logging import get_logger
 
 from ...core.ts_parser import TSParseResult, parse_typescript
 from ...normalization import canonicalize_text
@@ -26,7 +27,7 @@ from ...types import ComponentType
 from ..base import ComponentDetection
 from ._ts_regex import TSFrameworkAdapter
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------

@@ -13,17 +13,17 @@ Two compilation modes:
 from __future__ import annotations
 
 import json
-import logging
 import re
 from typing import TYPE_CHECKING
 
+from nuguard.common.logging import get_logger
 from nuguard.models.policy import CognitivePolicy, PolicyControl
 from nuguard.policy.parser import parse_policy
 
 if TYPE_CHECKING:
     from nuguard.common.llm_client import LLMClient
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # System prompt for LLM compilation

@@ -6,14 +6,14 @@ for running asset discovery against ground truth datasets.
 """
 import asyncio
 import base64
-import logging
+from nuguard.common.logging import get_logger
 import os
 from dataclasses import dataclass, field
 from typing import List, Optional, Tuple
 
 import httpx
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass

@@ -30,15 +30,16 @@ from __future__ import annotations
 import base64
 import gzip
 import json
-import logging
 from typing import Any
+
+from nuguard.common.logging import get_logger
 
 from ..http_utils import post_json
 from ..integration_contracts import GhasConfig
 from ..models import ToolResult
 from ..plugin_base import ToolPlugin
 
-_log = logging.getLogger("toolbox.plugins.ghas")
+_log = get_logger("toolbox.plugins.ghas")
 
 _GITHUB_API_DEFAULT = "https://api.github.com"
 _API_VERSION_HEADER = "2022-11-28"

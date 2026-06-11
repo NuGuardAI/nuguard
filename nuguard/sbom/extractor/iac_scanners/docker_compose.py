@@ -5,16 +5,16 @@ Scans docker-compose.yml files to detect container images and security findings.
 
 from __future__ import annotations
 
-import logging
 import uuid
 from pathlib import Path
 from typing import Any
 
 import yaml
 
+from nuguard.common.logging import get_logger
 from nuguard.sbom.models import Node, NodeMetadata, NodeType
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 _CONFIDENCE = 0.90
 

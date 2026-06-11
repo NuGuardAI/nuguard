@@ -24,16 +24,17 @@ Supported patterns
 
 from __future__ import annotations
 
-import logging
 import re
 from pathlib import Path
 from typing import Any
+
+from nuguard.common.logging import get_logger
 
 from ..normalization import canonicalize_text
 from ..types import ComponentType
 from .base import ComponentDetection, RelationshipHint
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # Helpers
