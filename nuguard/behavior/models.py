@@ -156,6 +156,8 @@ class BehaviorCoverage(BaseModel):
     evidence_mentions: list[str] = Field(default_factory=list)
     aliases_seen: list[str] = Field(default_factory=list)
     unmatched_mentions: list[str] = Field(default_factory=list)
+    mapping_confidence: str | None = None
+    mapped_from_endpoint: str | None = None
 
 
 class BehaviorCounts(BaseModel):
@@ -324,6 +326,7 @@ class BehaviorRunResult(BaseModel):
         ),
     )
     gap_aggregation_stats: dict[str, int] = Field(default_factory=dict)
+    coverage_mapping_diagnostics: dict[str, Any] = Field(default_factory=dict)
     effective_endpoint: str = ""
     target_endpoint_source: str = "config"
 
@@ -345,6 +348,7 @@ class BehaviorAnalysisResult(BaseModel):
     llm_executive_summary: str | None = None
     config_notes: list[str] = Field(default_factory=list)
     gap_aggregation_stats: dict[str, int] = Field(default_factory=dict)
+    coverage_mapping_diagnostics: dict[str, Any] = Field(default_factory=dict)
     effective_endpoint: str = ""
     target_endpoint_source: str = "config"
     run_profile: dict[str, Any] = Field(default_factory=dict)

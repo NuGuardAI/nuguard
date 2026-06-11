@@ -30,6 +30,7 @@ import re
 import time
 import uuid
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlparse
 
 from nuguard.behavior._utils import is_not_used_response, normalise_name
 from nuguard.behavior.coverage import (
@@ -134,6 +135,69 @@ def _make_finding_id(
         str(first_seen_turn or 0),
     ])
     return "F-" + hashlib.sha256(key.encode("utf-8")).hexdigest()[:12].upper()
+
+
+def _canonical_turn_hash(
+    verdict_dict: dict[str, Any],
+    *,
+    scenario_id: str,
+) -> str:
+    """Return a deterministic hash for a behavior turn evidence row.
+
+    The hash identity intentionally excludes verdict scores so repeated rows
+    with the same request/response pair collapse into one evidence turn.
+    """
+    payload = str(verdict_dict.get("user_message") or verdict_dict.get("prompt") or "")
+    response = str(verdict_dict.get("agent_response") or verdict_dict.get("response") or "")
+    endpoint = str(verdict_dict.get("effective_endpoint") or "")
+    turn = int(verdict_dict.get("turn") or 0)
+
+    def _norm(text: str) -> str:
+        return re.sub(r"\s+", " ", text.strip().lower())
+
+    raw = "|".join([
+        scenario_id.strip().lower(),
+        str(turn),
+        _norm(endpoint),
+        _norm(payload),
+        _norm(response),
+    ])
+    return hashlib.sha256(raw.encode("utf-8")).hexdigest()[:16]
+
+
+def _normalise_endpoint_route(value: str) -> str:
+    """Normalise endpoint paths/URLs to a route key such as ``/api/chat``."""
+    if not value:
+        return ""
+    text = value.strip()
+    if not text:
+        return ""
+    if "://" in text:
+        try:
+            text = urlparse(text).path or ""
+        except Exception:
+            text = ""
+    else:
+        # Handle path-only values that still include query/fragment suffixes.
+        text = text.split("?", 1)[0].split("#", 1)[0]
+    text = text.strip()
+    if not text:
+        return ""
+    if not text.startswith("/"):
+        text = "/" + text
+    text = re.sub(r"/+", "/", text)
+    if len(text) > 1:
+        text = text.rstrip("/")
+    return text.lower()
+
+
+def _endpoint_path_from_component_name(component_name: str) -> str:
+    """Extract endpoint path from SBOM-style endpoint names (e.g. ``/chat API``)."""
+    name = (component_name or "").strip()
+    if not name:
+        return ""
+    name = re.sub(r"\s+API$", "", name, flags=re.IGNORECASE).strip()
+    return _normalise_endpoint_route(name)
 
 
 def _is_destructive_scenario(scenario: object) -> bool:
@@ -550,6 +614,7 @@ class BehaviorRunner:
         self._judge = BehaviorJudge(llm_client=llm_client, intent=intent, judge_cache=judge_cache)
         self._judge_cache = judge_cache
         self._auth_session: Any = None
+        self._coverage_mapping_diagnostics: dict[str, Any] = {}
 
         # Build component description map for coverage-turn generation.
         # Only AGENT and TOOL nodes participate in adaptive coverage turns (they are the
@@ -1351,6 +1416,8 @@ class BehaviorRunner:
             v_dict["agent_response"] = response or ""
             v_dict["effective_endpoint"] = scenario_endpoint
             v_dict["request_url"] = target_url + scenario_endpoint
+            v_dict["target_component"] = getattr(scenario, "target_component", "") or ""
+            v_dict["target_component_type"] = getattr(scenario, "target_component_type", "") or ""
             verdicts.append(v_dict)
 
             # Accumulate deviations and findings
@@ -1878,12 +1945,19 @@ class BehaviorRunner:
         # Aggregate gap strings from all scenario verdicts into bucketed findings.
         # Buckets are keyed by (finding_type, affected_component); each bucket that
         # accumulates >= _GAP_FINDING_MIN_OCCURRENCES gap instances becomes one finding.
+        #
+        # Scoped non-goal: this block intentionally avoids changing verdict/scoring
+        # behavior. It only refactors evidence aggregation and deduplication.
         _gap_buckets: dict[tuple[str, str], list[str]] = {}
-        _gap_buck_verdicts: dict[tuple[str, str], list[dict]] = {}
+        _gap_bucket_evidence: dict[tuple[str, str], dict[str, dict[str, Any]]] = {}
+        _gap_bucket_raw_evidence_rows: dict[tuple[str, str], int] = {}
         for run_result in [r for r in raw_results if r is not None]:
             orig = scenario_by_id.get(run_result.scenario_id)
             component = (getattr(orig, "target_component", None) or "unknown")
             for v_dict in run_result.verdicts:
+                turn_hash = _canonical_turn_hash(v_dict, scenario_id=run_result.scenario_id)
+                evidence_entry = dict(v_dict)
+                evidence_entry["turn_hash"] = turn_hash
                 for gap_text in v_dict.get("gaps") or []:
                     if not isinstance(gap_text, str) or not gap_text.strip():
                         continue
@@ -1891,7 +1965,8 @@ class BehaviorRunner:
                     ftype, _ = _classify_gap(gap_text)
                     bucket_key = (ftype, component)
                     _gap_buckets.setdefault(bucket_key, []).append(gap_text.strip())
-                    _gap_buck_verdicts.setdefault(bucket_key, []).append(v_dict)
+                    _gap_bucket_raw_evidence_rows[bucket_key] = _gap_bucket_raw_evidence_rows.get(bucket_key, 0) + 1
+                    _gap_bucket_evidence.setdefault(bucket_key, {}).setdefault(turn_hash, evidence_entry)
 
         for (ftype, component), gap_list in _gap_buckets.items():
             if len(gap_list) < _GAP_FINDING_MIN_OCCURRENCES:
@@ -1908,7 +1983,12 @@ class BehaviorRunner:
             if dedup_key in seen_findings:
                 continue
             seen_findings.add(dedup_key)
-            bucket_verdicts = _gap_buck_verdicts.get((ftype, component), [])[:5]
+            bucket_verdicts = list(_gap_bucket_evidence.get((ftype, component), {}).values())
+            bucket_verdicts.sort(key=lambda v: int(v.get("turn", 0)))
+            unique_evidence_turn_count = len(bucket_verdicts)
+            bucket_verdicts = bucket_verdicts[:5]
+            raw_evidence_rows = _gap_bucket_raw_evidence_rows.get((ftype, component), 0)
+            duplicate_turns_removed = max(0, raw_evidence_rows - unique_evidence_turn_count)
             gap_attack_steps = [
                 {
                     "step_type": "BEHAVIOR_TURN",
@@ -1920,6 +2000,7 @@ class BehaviorRunner:
                     "overall_score": v.get("overall_score", 0.0),
                     "scores": v.get("scores", {}),
                     "gaps": v.get("gaps", []),
+                    "turn_hash": v.get("turn_hash", ""),
                 }
                 for v in bucket_verdicts
             ]
@@ -1940,6 +2021,8 @@ class BehaviorRunner:
                 "gap_texts": unique_gaps,
                 "raw_gap_count": len(gap_list),
                 "unique_gap_count": len(unique_gaps),
+                "evidence_turn_count": unique_evidence_turn_count,
+                "duplicate_turns_removed": duplicate_turns_removed,
                 "attack_steps": gap_attack_steps,
             })
 
@@ -1995,6 +2078,8 @@ class BehaviorRunner:
             "buckets_emitted": buckets_emitted,
             "buckets_dropped": max(0, buckets_formed - buckets_emitted),
             "min_occurrences_threshold": _GAP_FINDING_MIN_OCCURRENCES,
+            "raw_evidence_rows": sum(_gap_bucket_raw_evidence_rows.values()),
+            "unique_evidence_turns": sum(len(v) for v in _gap_bucket_evidence.values()),
         }
 
         effective_endpoint = (
@@ -2014,6 +2099,7 @@ class BehaviorRunner:
             output_tokens_used=_out_tok,
             config_notes=config_notes,
             gap_aggregation_stats=gap_aggregation_stats,
+            coverage_mapping_diagnostics=dict(self._coverage_mapping_diagnostics),
             effective_endpoint=effective_endpoint,
             target_endpoint_source=getattr(self, "_target_endpoint_source", "config"),
         )
@@ -2033,6 +2119,15 @@ class BehaviorRunner:
         component_map: dict[str, BehaviorCoverage] = {}
         normalized_component_name: dict[str, str] = {}
         unmatched_mentions: set[str] = set()
+        mapped_component_mentions: set[str] = set()
+        component_type_mismatch_count = 0
+        endpoint_runtime_only_unmapped = 0
+        endpoint_norm_map: dict[str, str] = {}
+        endpoint_alias_map: dict[str, str] = {}
+
+        # Optional explicit aliases from config (runtime endpoint -> SBOM component name).
+        # Example: {"/api/agent/chat": "/chat API"}
+        cfg_aliases = getattr(self._config, "endpoint_aliases", None) or {}
 
         # Initialize from known agents/tools
         for name in self._agent_names:
@@ -2060,6 +2155,39 @@ class BehaviorRunner:
                             component_name=nname,
                             node_type=ntype,
                         )
+                    if ntype == "API_ENDPOINT":
+                        nroute = _endpoint_path_from_component_name(nname)
+                        if nroute:
+                            endpoint_norm_map[nroute] = nname
+
+        # Register config-provided aliases now that component_map is initialized.
+        if isinstance(cfg_aliases, dict):
+            for route, comp_name in cfg_aliases.items():
+                nr = _normalise_endpoint_route(str(route))
+                cname = str(comp_name)
+                if nr and cname in component_map and component_map[cname].node_type == "API_ENDPOINT":
+                    endpoint_alias_map[nr] = cname
+
+        def _resolve_endpoint_component(target_name: str, runtime_endpoint: str) -> tuple[str | None, str, str]:
+            """Resolve endpoint to SBOM coverage component with confidence tier."""
+            tname = (target_name or "").strip()
+            rnorm = _normalise_endpoint_route(runtime_endpoint)
+
+            if tname and tname in component_map and component_map[tname].node_type == "API_ENDPOINT":
+                return tname, "direct_match", rnorm
+
+            if rnorm and rnorm in endpoint_alias_map:
+                return endpoint_alias_map[rnorm], "alias_match", rnorm
+
+            if rnorm and rnorm in endpoint_norm_map:
+                return endpoint_norm_map[rnorm], "normalized_match", rnorm
+
+            # Last resort: parse target endpoint-style names to normalized path.
+            tnorm = _endpoint_path_from_component_name(tname)
+            if tnorm and tnorm in endpoint_norm_map:
+                return endpoint_norm_map[tnorm], "normalized_match", tnorm
+
+            return None, "runtime_only_unmapped", rnorm
 
         # Collect exercised endpoint/guardrail names from scenario results
         ep_coverage_type = BehaviorScenarioType.ENDPOINT_COVERAGE.value
@@ -2070,19 +2198,45 @@ class BehaviorRunner:
             # Endpoint coverage: mark endpoint node exercised when scenario ran
             if stype == ep_coverage_type:
                 for verdict_dict in sr.verdicts:
-                    target = verdict_dict.get("target_component") or sr.scenario_name
-                    if target and target in component_map:
-                        cov = component_map[target]
-                        cov.exercised = True
-                        has_violation = any(
-                            d.get("deviation_type") in ("policy_violation", "data_leak")
-                            for d in (verdict_dict.get("deviations") or [])
-                            if isinstance(d, dict)
-                        )
-                        if has_violation:
-                            cov.exercised_against_policy = True
-                        else:
-                            cov.exercised_within_policy = True
+                    target = str(verdict_dict.get("target_component") or sr.scenario_name or "")
+                    runtime_endpoint = str(verdict_dict.get("effective_endpoint") or "")
+
+                    # Learn aliases from observed endpoint coverage scenarios.
+                    if target and runtime_endpoint and target in component_map and component_map[target].node_type == "API_ENDPOINT":
+                        rnorm = _normalise_endpoint_route(runtime_endpoint)
+                        if rnorm:
+                            endpoint_alias_map.setdefault(rnorm, target)
+
+                    resolved_name, confidence, resolved_route = _resolve_endpoint_component(target, runtime_endpoint)
+                    if resolved_name is None:
+                        # Preserve visibility when runtime endpoint is valid but not represented in SBOM.
+                        fallback_route = resolved_route or _normalise_endpoint_route(runtime_endpoint) or "<unknown-endpoint>"
+                        fallback_name = f"{fallback_route} (runtime)"
+                        endpoint_runtime_only_unmapped += 1
+                        if fallback_name not in component_map:
+                            component_map[fallback_name] = BehaviorCoverage(
+                                component_name=fallback_name,
+                                node_type="API_ENDPOINT",
+                                mapping_confidence="runtime_only_unmapped",
+                                mapped_from_endpoint=fallback_route,
+                            )
+                        resolved_name = fallback_name
+                        confidence = "runtime_only_unmapped"
+
+                    cov = component_map[resolved_name]
+                    cov.exercised = True
+                    cov.mapping_confidence = confidence
+                    if resolved_route:
+                        cov.mapped_from_endpoint = resolved_route
+                    has_violation = any(
+                        d.get("deviation_type") in ("policy_violation", "data_leak")
+                        for d in (verdict_dict.get("deviations") or [])
+                        if isinstance(d, dict)
+                    )
+                    if has_violation:
+                        cov.exercised_against_policy = True
+                    else:
+                        cov.exercised_within_policy = True
 
             # Guardrail probes: mark guardrail exercised when probe ran
             if stype == inv_probe_type:
@@ -2114,6 +2268,7 @@ class BehaviorRunner:
                     if key and key in component_map and component_map[key].node_type == "AGENT":
                         cov = component_map[key]
                         cov.exercised = True
+                        mapped_component_mentions.add(f"AGENT:{a}->{key}")
                         if a not in cov.evidence_mentions:
                             cov.evidence_mentions.append(a)
                         norm_alias = normalise_name(a)
@@ -2124,12 +2279,17 @@ class BehaviorRunner:
                         else:
                             cov.exercised_within_policy = True
                     elif a:
-                        unmatched_mentions.add(a)
+                        if key and key in component_map:
+                            component_type_mismatch_count += 1
+                            mapped_component_mentions.add(f"AGENT_TYPE_MISMATCH:{a}->{key}:{component_map[key].node_type}")
+                        else:
+                            unmatched_mentions.add(a)
                 for t in tools:
                     key = t if t in component_map else normalized_component_name.get(normalise_name(t))
                     if key and key in component_map and component_map[key].node_type == "TOOL":
                         cov = component_map[key]
                         cov.exercised = True
+                        mapped_component_mentions.add(f"TOOL:{t}->{key}")
                         if t not in cov.evidence_mentions:
                             cov.evidence_mentions.append(t)
                         norm_alias = normalise_name(t)
@@ -2140,7 +2300,11 @@ class BehaviorRunner:
                         else:
                             cov.exercised_within_policy = True
                     elif t:
-                        unmatched_mentions.add(t)
+                        if key and key in component_map:
+                            component_type_mismatch_count += 1
+                            mapped_component_mentions.add(f"TOOL_TYPE_MISMATCH:{t}->{key}:{component_map[key].node_type}")
+                        else:
+                            unmatched_mentions.add(t)
 
                 # Record deviations
                 for dev in deviations:
@@ -2165,6 +2329,13 @@ class BehaviorRunner:
             unmatched_sorted = sorted(unmatched_mentions)
             for cov in component_map.values():
                 cov.unmatched_mentions = unmatched_sorted
+
+        self._coverage_mapping_diagnostics = {
+            "mentioned_entities_unmapped": sorted(unmatched_mentions),
+            "mapped_component_mentions": sorted(mapped_component_mentions),
+            "component_type_mismatch_count": component_type_mismatch_count,
+            "runtime_only_unmapped_endpoint_count": endpoint_runtime_only_unmapped,
+        }
 
         return list(component_map.values())
 

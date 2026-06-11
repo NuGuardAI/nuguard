@@ -249,6 +249,7 @@ class BehaviorAnalyzer:
             result.dynamic_scan_outcome = _dynamic_scan_outcome
         if _dynamic_run_result is not None:
             result.gap_aggregation_stats = dict(getattr(_dynamic_run_result, "gap_aggregation_stats", {}) or {})
+            result.coverage_mapping_diagnostics = dict(getattr(_dynamic_run_result, "coverage_mapping_diagnostics", {}) or {})
             result.effective_endpoint = str(getattr(_dynamic_run_result, "effective_endpoint", "") or "")
             result.target_endpoint_source = str(getattr(_dynamic_run_result, "target_endpoint_source", "config") or "config")
             result.config_notes = list(getattr(_dynamic_run_result, "config_notes", []) or [])

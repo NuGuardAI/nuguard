@@ -58,6 +58,7 @@ def to_json(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = None) 
         "remediation_plan": [a.model_dump() for a in result.remediation_plan],
         "counts": result.counts.model_dump(),
         "gap_aggregation_stats": result.gap_aggregation_stats,
+        "coverage_mapping_diagnostics": result.coverage_mapping_diagnostics,
         "effective_endpoint": result.effective_endpoint,
         "target_endpoint_source": result.target_endpoint_source,
         "run_profile": result.run_profile,
