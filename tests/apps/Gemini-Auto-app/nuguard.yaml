@@ -42,15 +42,18 @@ target:
   #  type: basic
   #  username: alice
   #  password: alice123
+  #auth:
+  #  type: basic
+  #  username: ranjangoel001@gmail.com
+  #  password: ${TARGET_PASSWORD}
   auth:
-    type: basic
-    username: ranjangoel001@gmail.com
-    password: ${TARGET_PASSWORD}
+    type: none
 
   # The /api/agent/chat endpoint requires vehicleState and language in every request.
   # Without these fields the server throws: "Cannot read properties of undefined (reading 'fuel')"
   # target_endpoint is intentionally omitted — it is auto-discovered from
   # summary.api_endpoints in the SBOM ("/api/agent/chat").
+  target_endpoint: /api/agent/chat
   # Required fields discovered by probing the live endpoint:
   #   vehicleState.fuel, .tirePressure, .music.playing, .weather.temp are mandatory
   #   — the server throws 'Cannot read properties of undefined' for each missing one.

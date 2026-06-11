@@ -1985,7 +1985,7 @@ class BehaviorRunner:
             run_id, len(scenario_results), len(all_findings), scan_outcome,
         )
 
-    _in_tok, _out_tok = self._llm.token_counts if self._llm is not None else (0, 0)
+        _in_tok, _out_tok = self._llm.token_counts if self._llm is not None else (0, 0)
         buckets_formed = len(_gap_buckets)
         buckets_emitted = sum(1 for _k, gap_list in _gap_buckets.items() if len(gap_list) >= _GAP_FINDING_MIN_OCCURRENCES)
         gap_aggregation_stats = {
