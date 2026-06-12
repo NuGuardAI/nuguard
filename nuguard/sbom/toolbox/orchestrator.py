@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-import logging
 from typing import Any
+
+from nuguard.common.logging import get_logger
 
 from .models import ToolResult
 from .plugin_base import ToolPlugin
@@ -16,7 +17,7 @@ from .plugins.sarif_exporter import SarifExporterPlugin
 from .plugins.spdx_exporter import SpdxExporter
 from .plugins.vulnerability import VulnerabilityScannerPlugin
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 _DEFAULT_PLUGINS: list[type[ToolPlugin]] = [
     CycloneDxExporter,

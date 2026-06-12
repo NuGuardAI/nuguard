@@ -35,14 +35,15 @@ Example usage::
 from __future__ import annotations
 
 import json
-import logging
 from pathlib import Path
 from typing import Any
+
+from nuguard.common.logging import get_logger
 
 from ..models import AiSbomDocument, Evidence, Node, NodeMetadata, SourceLocation
 from ..types import ComponentType
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # Category configuration

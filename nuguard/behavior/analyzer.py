@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import hashlib
-import logging
 from typing import TYPE_CHECKING, Any
 
 from nuguard.behavior.alignment import check_alignment
@@ -12,13 +11,14 @@ from nuguard.behavior.prompt_cache import BehaviorPromptCache
 from nuguard.behavior.recommendations import RecommendationEngine
 from nuguard.behavior.runner import BehaviorRunner
 from nuguard.behavior.scenarios import build_scenarios
+from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
     from nuguard.common.llm_client import LLMClient
     from nuguard.models.policy import CognitivePolicy, PolicyControl
     from nuguard.sbom.models import AiSbomDocument
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 
 class BehaviorAnalyzer:
@@ -235,6 +235,28 @@ class BehaviorAnalyzer:
                 dynamic_findings = run_result.findings
                 coverage = run_result.coverage
                 scenario_results = run_result.scenario_results
+
+                # FP-2: Downgrade BA-008 HITL static findings to LOW when the
+                # corresponding dynamic invariant probe passed.  A passing probe
+                # confirms the agent handles the HITL trigger in its runtime
+                # behaviour even though no formal GUARDRAIL node exists in the SBOM.
+                passed_scenario_names = {
+                    sr.get("scenario_name", "") if isinstance(sr, dict) else getattr(sr, "scenario_name", "")
+                    for sr in scenario_results
+                    if (
+                        (sr.get("verdict") if isinstance(sr, dict) else getattr(sr, "verdict", None))
+                        in ("PASS", "pass")
+                    )
+                }
+                hitl_probe_passed = any("hitl" in n.lower() for n in passed_scenario_names)
+                if hitl_probe_passed:
+                    for sf in static_findings:
+                        if sf.get("finding_id", "").startswith("BA-008") and sf.get("severity") == "high":
+                            sf["severity"] = "low"
+                            sf["description"] = (
+                                sf.get("description", "")
+                                + " [Downgraded: dynamic HITL probe passed, confirming runtime handling.]"
+                            )
 
         # Step 4: Build analysis result
         result = BehaviorAnalysisResult(

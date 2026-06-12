@@ -1,7 +1,6 @@
 """ValidateRunner — async orchestrator for nuguard validate mode."""
 from __future__ import annotations
 
-import logging
 import re
 import uuid
 from typing import TYPE_CHECKING
@@ -11,6 +10,7 @@ from rich.panel import Panel
 
 from nuguard.common.bootstrap import AuthBootstrapper
 from nuguard.common.errors import AuthError
+from nuguard.common.logging import get_logger
 from nuguard.config import ValidateConfig
 from nuguard.models.finding import Finding, Severity
 from nuguard.models.validate import (
@@ -32,7 +32,7 @@ if TYPE_CHECKING:
     from nuguard.models.validate import CapabilityMap
     from nuguard.sbom.models import AiSbomDocument
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 _console = Console()
 
 

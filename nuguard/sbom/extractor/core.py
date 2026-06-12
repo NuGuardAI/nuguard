@@ -24,7 +24,6 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-import logging
 import os
 import re
 import shutil
@@ -34,6 +33,8 @@ from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable
+
+from nuguard.common.logging import get_logger
 
 from ..adapters.base import (
     AdapterMatch,
@@ -89,7 +90,7 @@ from ..models import (
 from ..normalization import canonicalize_text
 from ..types import ComponentType, RelationshipType
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 # File extensions that warrant Python AST parsing
 _PYTHON_EXTENSIONS = {".py", ".pyw"}

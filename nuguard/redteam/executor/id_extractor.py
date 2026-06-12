@@ -56,17 +56,19 @@ _SPLIT_RE = re.compile(r'^(.*?)(\d+)$')
 # and the IGNORECASE flag makes `or` satisfy `[A-Z][a-z]+`.
 _NAME_PATTERNS: list[re.Pattern[str]] = [
     # Label-prefix with colon OR clear multi-space/newline separator:
-    # "Name: Alice Johnson", "Passenger: Alice Johnson"
+    # "Name: Alice Johnson", "Passenger: Alice Johnson", "Name: Alice"
     # Single-space separators without a colon are intentionally excluded to
     # avoid false-positive matches on "your name or …" phrases.
     re.compile(
         r'(?i:(?:name|customer|passenger|patient|account\s+holder)\s*[:\-]\s*)'
-        r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)',
+        r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)',
     ),
-    # Greeting: "Hello Alice Johnson," / "Hi Alice Johnson" / "Dear Alice Johnson,"
+    # Greeting: "Hello Alice Johnson," / "Hi Alice," — single word is unambiguous
+    # because the greeting keyword makes it clear the capture is a name.
+    # Stop-word guard below rejects false positives like "Hello There,".
     re.compile(
         r'(?:Hello|Hi|Dear|Welcome(?:\s+back)?),?\s+'
-        r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)',
+        r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*)',
     ),
     # Logged-in-as / registered-to: "logged in as Alice Johnson"
     re.compile(

@@ -5,7 +5,6 @@ client for calling CES ``runSession`` endpoints.
 """
 from __future__ import annotations
 
-import logging
 import os
 import random
 import re
@@ -18,6 +17,8 @@ from typing import Any, Callable
 
 import httpx
 
+from nuguard.common.logging import get_logger
+
 try:
     import google.auth
     import google.auth.transport.requests
@@ -26,7 +27,7 @@ try:
 except ImportError:
     _GOOGLE_AUTH_AVAILABLE = False
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # Schema constants (embedded in SBOM metadata)

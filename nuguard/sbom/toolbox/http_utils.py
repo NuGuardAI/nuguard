@@ -1,14 +1,15 @@
 from __future__ import annotations
 
 import json
-import logging
 import time
 import urllib.error
 import urllib.parse
 import urllib.request
 from typing import Any
 
-_log = logging.getLogger("toolbox.http")
+from nuguard.common.logging import get_logger
+
+_log = get_logger("toolbox.http")
 
 
 def get_json(url: str, params: dict[str, str], headers: dict[str, str], timeout: float, retries: int) -> dict[str, Any]:

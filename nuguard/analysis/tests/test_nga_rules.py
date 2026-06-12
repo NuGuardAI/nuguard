@@ -569,10 +569,11 @@ class TestRulesRegistry:
         assert names[2] == "_rule_nga003_secrets_in_env"
         assert names[3] == "_rule_nga004_runs_as_root"
         assert names[4] == "_rule_nga005_unencrypted_pii_datastore"
-        # NGA-019 is retired (renumbered to NGA-012); verify old name is absent
-        assert "_rule_nga019" not in " ".join(names)
-        # Rules run NGA-001 to NGA-018 with no gaps
-        assert len(_RULES) == 18
+        # NGA-019 and NGA-020 are present (added after NGA-018)
+        assert "_rule_nga019_unguarded_write_to_sensitive_datastore" in " ".join(names)
+        assert "_rule_nga020_unguarded_agent_delegation" in " ".join(names)
+        # Rules run NGA-001 to NGA-020 with no gaps
+        assert len(_RULES) == 20
 
     def test_all_rules_return_list(self) -> None:
         for rule in _RULES:

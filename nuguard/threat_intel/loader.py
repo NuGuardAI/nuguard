@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-import logging
 from pathlib import Path
 from typing import Any
 
-_log = logging.getLogger("threat_intel.loader")
+from nuguard.common.logging import get_logger
+
+_log = get_logger("threat_intel.loader")
 
 _FEEDS_DIR = Path(__file__).parent
 

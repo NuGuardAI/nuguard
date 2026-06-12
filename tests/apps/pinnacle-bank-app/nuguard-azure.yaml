@@ -63,8 +63,8 @@ target:
   # The /api/chat endpoint accepts any user_id with no server-side auth check (open IDOR).
   # Without user_id: alice in every request the backend returns an anonymous empty profile
   # ($0 balances, KYC=0, Risk=100) and DISCOVER captures wrong golden data.
-  # chat_payload_extras:
-  #  user_id: alice
+  chat_payload_extras:
+    user_id: alice
 
   # No HTTP auth needed — the endpoint is wide open (itself a finding).
   # auth: type: none

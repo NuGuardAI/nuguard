@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
-import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
     from nuguard.sbom.ai_sbom import AiSbomDocument
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 
 async def enrich_sbom_for_run(

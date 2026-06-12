@@ -2,17 +2,17 @@
 from __future__ import annotations
 
 import json
-import logging
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from nuguard.common.logging import get_logger
 from nuguard.models.policy import PolicyControl
 
 if TYPE_CHECKING:
     from nuguard.common.llm_client import LLMClient
     from nuguard.models.policy import CognitivePolicy
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 
 def save_controls(controls: list[PolicyControl], path: Path) -> None:

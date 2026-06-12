@@ -223,9 +223,14 @@ def test_connection_error_retries_and_succeeds() -> None:
     async def _run() -> str:
         return await client.complete("hello")
 
-    result = asyncio.run(_run())
+    # Patch asyncio.sleep so exponential backoff doesn't add real wait time.
+    with patch("nuguard.common.llm_client.asyncio.sleep") as mock_sleep:
+        mock_sleep.return_value = None
+        result = asyncio.run(_run())
+
     assert result == "ok"
     assert captured["call_count"] == 3
+    assert mock_sleep.call_count == 2  # one sleep per retry before the success
 
 
 def test_unsupported_params_error_strips_and_retries() -> None:

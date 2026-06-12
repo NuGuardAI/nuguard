@@ -1,15 +1,15 @@
 """RecommendationEngine — generate remediation recommendations from findings and deviations."""
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING
 
 from nuguard.behavior.models import Recommendation
+from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
     from nuguard.behavior.models import BehaviorAnalysisResult
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 
 class RecommendationEngine:

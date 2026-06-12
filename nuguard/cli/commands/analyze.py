@@ -11,13 +11,13 @@ Exit codes
 from __future__ import annotations
 
 import json
-import logging
 import re
 from pathlib import Path
 from typing import Any, Optional
 
 import typer
 
+from nuguard.common.logging import get_logger
 from nuguard.models.finding import Finding, Severity
 
 analyze_app = typer.Typer(
@@ -25,7 +25,7 @@ analyze_app = typer.Typer(
     no_args_is_help=True,
 )
 
-_log = logging.getLogger("cli.analyze")
+_log = get_logger("cli.analyze")
 
 _SEV_ORDER: dict[str, int] = {
     "critical": 0,

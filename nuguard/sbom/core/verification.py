@@ -15,7 +15,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import logging
 import os
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -23,9 +22,11 @@ from functools import lru_cache
 from typing import Any
 from uuid import UUID
 
+from nuguard.common.logging import get_logger
+
 from ..models import Evidence, Node
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # Configuration from environment

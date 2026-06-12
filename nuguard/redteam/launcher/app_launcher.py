@@ -20,7 +20,6 @@ Usage::
 from __future__ import annotations
 
 import asyncio
-import logging
 import os
 import shlex
 import signal
@@ -30,10 +29,12 @@ from typing import TYPE_CHECKING
 
 import httpx
 
+from nuguard.common.logging import get_logger
+
 if TYPE_CHECKING:
     from nuguard.sbom.models import AiSbomDocument
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 _DEFAULT_STARTUP_TIMEOUT = 60.0  # seconds to wait for the app to answer
 _DEFAULT_POLL_INTERVAL = 1.0  # seconds between health-check polls

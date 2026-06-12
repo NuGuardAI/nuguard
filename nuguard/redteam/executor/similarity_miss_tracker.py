@@ -75,6 +75,17 @@ def _scenario_tokens(scenario: AttackScenario) -> frozenset[str]:
     return _extract_tokens(" ".join(parts))
 
 
+def _scenario_cluster_key(scenario: AttackScenario) -> str:
+    """Return the cluster key for *scenario*: goal_type + sorted target node IDs.
+
+    Incorporating target node IDs isolates per-agent miss clusters so that
+    misses against one agent do not suppress the same attack against a different
+    agent.  Up to 2 node IDs are used (covers most single- and dual-node specs).
+    """
+    targets = "|".join(sorted(scenario.target_node_ids[:2]))
+    return f"{scenario.goal_type.value}:{targets}"
+
+
 class SimilarityMissTracker:
     """Track missed scenarios to suppress future attempts with similar payloads.
 
@@ -110,8 +121,9 @@ class SimilarityMissTracker:
         tokens = _scenario_tokens(scenario)
         if not tokens:
             return
+        key = _scenario_cluster_key(scenario)
         goal = scenario.goal_type.value
-        for cluster in self._clusters[goal]:
+        for cluster in self._clusters[key]:
             if _jaccard(tokens, cluster[0]) >= self._similarity_threshold:
                 cluster[0] = cluster[0] | tokens  # widen the cluster
                 cluster[1] += 1
@@ -121,10 +133,10 @@ class SimilarityMissTracker:
                 )
                 return
         # First miss in this cluster
-        self._clusters[goal].append([tokens, 1])
+        self._clusters[key].append([tokens, 1])
         _log.debug(
             "SimilarityMissTracker: new cluster for goal=%s (total clusters=%d)",
-            goal, len(self._clusters[goal]),
+            goal, len(self._clusters[key]),
         )
 
     def should_skip(self, scenario: AttackScenario) -> bool:
@@ -136,8 +148,9 @@ class SimilarityMissTracker:
         tokens = _scenario_tokens(scenario)
         if not tokens:
             return False
+        key = _scenario_cluster_key(scenario)
         goal = scenario.goal_type.value
-        for cluster in self._clusters.get(goal, []):
+        for cluster in self._clusters.get(key, []):
             if (
                 cluster[1] >= self._miss_threshold
                 and _jaccard(tokens, cluster[0]) >= self._similarity_threshold
@@ -160,13 +173,22 @@ class SimilarityMissTracker:
     def miss_count_for(self, scenario: AttackScenario) -> int:
         """Return the miss count of the cluster most similar to *scenario* (0 if none)."""
         tokens = _scenario_tokens(scenario)
-        goal = scenario.goal_type.value
+        key = _scenario_cluster_key(scenario)
         best = 0
-        for cluster in self._clusters.get(goal, []):
+        for cluster in self._clusters.get(key, []):
             if _jaccard(tokens, cluster[0]) >= self._similarity_threshold:
                 best = max(best, cluster[1])
         return best
 
     def cluster_count(self, goal_type_value: str) -> int:
-        """Return the number of miss clusters recorded for *goal_type_value*."""
-        return len(self._clusters.get(goal_type_value, []))
+        """Return the number of miss clusters recorded for *goal_type_value*.
+
+        Note: counts clusters whose key starts with *goal_type_value* (since keys
+        now include target node IDs after the colon separator).
+        """
+        prefix = goal_type_value + ":"
+        return sum(
+            len(clusters)
+            for k, clusters in self._clusters.items()
+            if k == goal_type_value or k.startswith(prefix)
+        )

@@ -10,12 +10,13 @@ it runs as a separate second pass only when supply_chain_scan is enabled.
 from __future__ import annotations
 
 import json
-import logging
 import re
 import sys
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
+
+from nuguard.common.logging import get_logger
 
 if sys.version_info >= (3, 11):
     import tomllib
@@ -35,7 +36,7 @@ except ImportError:
 from nuguard.sbom.models import Edge, Evidence, Node, NodeMetadata, SourceLocation
 from nuguard.sbom.types import ComponentType, RelationshipType
 
-_log = logging.getLogger("sbom.adapters.dev_tools")
+_log = get_logger("sbom.adapters.dev_tools")
 
 # ── Broad-permission patterns ─────────────────────────────────────────────────
 _BROAD_BASH_RE = re.compile(r"Bash\s*\(\s*\*\s*:\s*\*\s*\)")

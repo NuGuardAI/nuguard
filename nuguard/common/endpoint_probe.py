@@ -14,16 +14,17 @@ docs, callbacks) are skipped regardless of HTTP status.
 from __future__ import annotations
 
 import json
-import logging
 import re
 from typing import TYPE_CHECKING
 
 import httpx
 
+from nuguard.common.logging import get_logger
+
 if TYPE_CHECKING:
     from nuguard.sbom.models import AiSbomDocument
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 # Endpoint path fragments that are definitively NOT chat endpoints.
 # Keep this list tight — false exclusions are worse than false inclusions

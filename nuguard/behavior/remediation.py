@@ -12,12 +12,12 @@ provided it uses it to generate contextual patch text for
 """
 from __future__ import annotations
 
-import logging
 import re
 import uuid
 from typing import TYPE_CHECKING, Any
 
 from nuguard.behavior.models import RemediationArtefact, RemediationArtefactType
+from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
     from nuguard.behavior.models import BehaviorAnalysisResult
@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from nuguard.models.policy import CognitivePolicy
     from nuguard.sbom.models import AiSbomDocument, Node
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # Privilege strategy lookup table
@@ -846,8 +846,9 @@ class RemediationSynthesizer:
             topics = []
 
         topic_lines = "\n".join(f'- "{t}"' for t in topics[:8])
+        section_label = f"Out of Scope — {component}" if component and component != "unknown" else "Out of Scope"
         patch_text = (
-            "## Out of Scope\n"
+            f"## {section_label}\n"
             "Do NOT discuss or assist with any of the following topics:\n"
             f"{topic_lines}\n"
             'If asked about these, respond: "I can only assist with topics related to this service."'
@@ -860,7 +861,7 @@ class RemediationSynthesizer:
                 component_type=_node_type(node) if node else "AGENT",
                 artefact_type=RemediationArtefactType.SYSTEM_PROMPT_PATCH,
                 priority=priority,
-                patch_section="Out of Scope",
+                patch_section=section_label,
                 patch_text=patch_text,
                 rationale=desc,
             ),
@@ -897,22 +898,20 @@ class RemediationSynthesizer:
     ) -> list[RemediationArtefact]:
         desc = finding.get("description", "")
         # Pull classified field names from SBOM node metadata if available
-        fields: list[str] = []
+        _seen_fields: dict[str, None] = {}
         if node:
-            pii = _node_meta(node, "pii_fields") or []
-            if isinstance(pii, list):
-                fields.extend(str(f) for f in pii[:8])
-            phi = _node_meta(node, "phi_fields") or []
-            if isinstance(phi, list):
-                fields.extend(str(f) for f in phi[:4])
-            pfi = _node_meta(node, "pfi_fields") or []
-            if isinstance(pfi, list):
-                fields.extend(str(f) for f in pfi[:4])
+            for attr, limit in (("pii_fields", 8), ("phi_fields", 4), ("pfi_fields", 4)):
+                vals = _node_meta(node, attr) or []
+                if isinstance(vals, list):
+                    for f in vals[:limit]:
+                        _seen_fields.setdefault(str(f), None)
             classified = _node_meta(node, "classified_fields") or {}
             if isinstance(classified, dict):
                 for tbl_fields in classified.values():
                     if isinstance(tbl_fields, list):
-                        fields.extend(str(f) for f in tbl_fields[:4])
+                        for f in tbl_fields[:4]:
+                            _seen_fields.setdefault(str(f), None)
+        fields = list(_seen_fields)
 
         if not fields:
             fields = ["account_number", "routing_number", "ssn", "card_number",
@@ -967,11 +966,18 @@ class RemediationSynthesizer:
                         agent_name = str(getattr(n, "name", "") or "the agent")
                         break
 
+        # Use finding title to fill in a useful component name if 'unknown'
+        tool_label = component
+        if not tool_label or tool_label == "unknown":
+            title_match = re.search(r"'([^']+)'", str(finding.get("title", "")))
+            tool_label = title_match.group(1) if title_match else "the expected tool"
+
+        invocation_section = f"Tool Invocation — {tool_label}"
         patch_text = (
-            f"## Tool Invocation — {component}\n"
-            f"When the user requests actions handled by '{component}'"
+            f"## {invocation_section}\n"
+            f"When the user requests actions handled by '{tool_label}'"
             + (f" ({tool_desc[:80]})" if tool_desc else "")
-            + f", call {component}() explicitly and present the result to the user. "
+            + f", call {tool_label}() explicitly and present the result to the user. "
             f"Do not attempt to fulfil this request without invoking the tool."
         )
 
@@ -981,9 +987,9 @@ class RemediationSynthesizer:
             component_type="AGENT",
             artefact_type=RemediationArtefactType.SYSTEM_PROMPT_PATCH,
             priority=priority,
-            patch_section=f"Tool Invocation — {component}",
+            patch_section=invocation_section,
             patch_text=patch_text,
-            rationale=desc or f"Agent does not invoke {component} when expected.",
+            rationale=desc or f"Agent does not invoke {tool_label} when expected.",
         )]
 
     # ------------------------------------------------------------------
@@ -1000,7 +1006,7 @@ class RemediationSynthesizer:
     ) -> list[RemediationArtefact]:
         desc = finding.get("description", "")
         # Extract tool name from finding title: "Unauthenticated agent '...' can access high-privilege tool '...'"
-        tool_match = re.search(r"tool '([^']+)'", str(finding.get("title", "")))
+        tool_match = re.search(r"tool '([^']+)'", str(finding.get("title", "")), re.IGNORECASE)
         tool_name = tool_match.group(1) if tool_match else "the high-privilege tool"
         tool_node = self._node_by_name.get(tool_name)
         tool_desc = str(_node_meta(tool_node, "description") or "") if tool_node else ""
@@ -1116,14 +1122,20 @@ class RemediationSynthesizer:
         desc = finding.get("description", "")
         title = finding.get("title", "")
 
-        # Extract tool name from title: "Agent '...' can invoke restricted action tool '...'"
-        tool_match = re.search(r"tool '([^']+)'", title)
-        tool_name = tool_match.group(1) if tool_match else "the restricted tool"
+        # Extract tool name from title.
+        # BA-003 title format: "Tool 'X' implements restricted action..."
+        # BA-006 title format: "...can invoke restricted action tool 'X'"
+        tool_match = re.search(r"tool '([^']+)'", title, re.IGNORECASE)
+        tool_name = tool_match.group(1) if tool_match else ""
+        # Second pass: try quoted name at start of title ("Tool 'X' ...")
+        if not tool_name:
+            start_match = re.match(r"['\"]([^'\"]+)['\"]", title)
+            tool_name = start_match.group(1) if start_match else "the restricted tool"
         tool_node = self._node_by_name.get(tool_name)
         tool_desc = str(_node_meta(tool_node, "description") or "") if tool_node else ""
 
         # Extract the restricted action text from the description
-        action_match = re.search(r"restricts action '([^']+)'", desc)
+        action_match = re.search(r"restricts action '([^']+)'", desc, re.IGNORECASE)
         restricted_action = action_match.group(1) if action_match else desc[:120]
 
         # Determine if this is a write-capable / high-impact tool
@@ -1260,8 +1272,9 @@ class RemediationSynthesizer:
         prompt_node = self._prompt_by_agent.get(component)
         location = _prompt_location(prompt_node)
 
+        policy_label = f"Policy Compliance — {component}" if component and component != "unknown" else "Policy Compliance"
         patch_text = (
-            f"## Policy Compliance\n"
+            f"## {policy_label}\n"
             f"The following behaviour is prohibited: {(desc or title)[:200]}\n"
             f"Ensure all responses comply with the application's stated policy."
         )
@@ -1272,7 +1285,7 @@ class RemediationSynthesizer:
             artefact_type=RemediationArtefactType.SYSTEM_PROMPT_PATCH,
             priority=priority,
             patch_location=location or None,
-            patch_section="Policy Compliance",
+            patch_section=policy_label,
             patch_text=patch_text,
             rationale=desc or title,
         )]

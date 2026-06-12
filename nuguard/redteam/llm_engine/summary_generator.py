@@ -1,17 +1,17 @@
 """LLM-powered executive summary and remediation brief generator."""
 from __future__ import annotations
 
-import logging
 import re
 from typing import TYPE_CHECKING
 
 from nuguard.common.llm_client import LLMClient
+from nuguard.common.logging import get_logger
 from nuguard.models.finding import Finding
 
 if TYPE_CHECKING:
     pass
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 _EXEC_SUMMARY_SYSTEM = (
     "You are a security engineer summarising an AI red-team scan report. "

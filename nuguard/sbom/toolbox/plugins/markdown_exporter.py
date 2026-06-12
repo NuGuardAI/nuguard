@@ -15,13 +15,14 @@ Output sections
 
 from __future__ import annotations
 
-import logging
 from typing import Any
+
+from nuguard.common.logging import get_logger
 
 from ..models import ToolResult
 from ..plugin_base import ToolPlugin
 
-_log = logging.getLogger("toolbox.plugins.markdown")
+_log = get_logger("toolbox.plugins.markdown")
 
 
 # ── Markdown helpers ──────────────────────────────────────────────────────────

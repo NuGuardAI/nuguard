@@ -18,14 +18,15 @@ functions directly.
 """
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING, Any
+
+from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
     from nuguard.redteam.target.client import TargetAppClient
     from nuguard.redteam.target.session import AttackSession
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 
 async def handle_credential_request(

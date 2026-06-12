@@ -14,9 +14,9 @@ It:
 from __future__ import annotations
 
 import hashlib
-import logging
 from collections import defaultdict
 
+from nuguard.common.logging import get_logger
 from nuguard.sbom.models import AiSbomDocument
 
 from .builders import BUILDER_FACTORIES, AppCapabilityProfile, BuilderContext
@@ -24,7 +24,7 @@ from .coverage import CoverageReport
 from .spec import ScenarioSpec
 from .taxonomy import ScenarioCategory
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 # Profile target counts
 _PROFILE_CAPS: dict[str, int] = {

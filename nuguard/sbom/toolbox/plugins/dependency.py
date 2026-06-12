@@ -23,14 +23,15 @@ Output keys
 """
 from __future__ import annotations
 
-import logging
 from collections import Counter
 from typing import Any
+
+from nuguard.common.logging import get_logger
 
 from ..models import ToolResult
 from ..plugin_base import ToolPlugin
 
-_log = logging.getLogger("toolbox.plugins.dependency")
+_log = get_logger("toolbox.plugins.dependency")
 
 
 class DependencyAnalyzerPlugin(ToolPlugin):

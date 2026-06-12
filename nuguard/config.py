@@ -312,6 +312,8 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_pre_run_warmup"] = int(redteam["pre_run_warmup"])
     if "verify_findings" in redteam:
         flat["redteam_verify_findings"] = bool(redteam["verify_findings"])
+    if "suppress_spa_html_auth_bypass" in redteam:
+        flat["redteam_suppress_spa_html_auth_bypass"] = bool(redteam["suppress_spa_html_auth_bypass"])
     if "golden_data" in redteam and isinstance(redteam["golden_data"], dict):
         flat["redteam_golden_data"] = redteam["golden_data"]
     if "credentials" in redteam and isinstance(redteam["credentials"], dict):
@@ -862,7 +864,7 @@ class NuGuardConfig(BaseSettings):
         ),
     )
     redteam_scenario_timeout: float = Field(
-        default=300.0,
+        default=180.0,
         description=(
             "Per-scenario wall-clock timeout in seconds (yaml: redteam.scenario_timeout). "
             "Scenarios that exceed this limit are cancelled and recorded as 'timeout'. "
@@ -1074,6 +1076,16 @@ class NuGuardConfig(BaseSettings):
             "emitted to confirm it reproduces (yaml: redteam.verify_findings). "
             "Off by default to keep runs fast; enable for high-stakes audits. "
             "Adds a verified/unconfirmed badge to each finding in the report."
+        ),
+    )
+    redteam_suppress_spa_html_auth_bypass: bool = Field(
+        default=True,
+        description=(
+            "Suppress HTTP-2xx auth-bypass findings when the response body is an SPA "
+            "HTML shell (yaml: redteam.suppress_spa_html_auth_bypass). "
+            "Single-page applications served by a catch-all web server return 200 + HTML "
+            "for every path, so a 2xx on a non-API path is not a real auth-bypass. "
+            "Set to false to report all 2xx responses as findings."
         ),
     )
     redteam_golden_data: dict[str, Any] = Field(

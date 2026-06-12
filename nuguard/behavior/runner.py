@@ -25,7 +25,6 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import logging
 import re
 import time
 import uuid
@@ -50,6 +49,7 @@ from nuguard.behavior.models import (
 from nuguard.behavior.turn_context import TurnContext, extract_turn_context
 from nuguard.common.console import _console
 from nuguard.common.console import print_turn as _common_print_turn
+from nuguard.common.logging import get_logger
 from nuguard.common.rate_limit import (
     SCENARIO_MAX_RATE_LIMIT_RETRIES,
     TRANSIENT_ERROR_RETRY_DELAYS,
@@ -65,7 +65,7 @@ if TYPE_CHECKING:
     from nuguard.redteam.target.discovery import DiscoveredProfile
     from nuguard.sbom.models import AiSbomDocument
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 
 _DESTRUCTIVE_KEYWORDS = frozenset({
@@ -641,7 +641,14 @@ class BehaviorRunner:
                 if nt == "AGENT":
                     self._agent_names.append(name)
                 elif nt == "TOOL":
-                    self._tool_names.append(name)
+                    high_priv = bool(
+                        getattr(node, "high_privilege", False)
+                        or getattr(meta, "high_privilege", False)
+                        if meta is not None
+                        else getattr(node, "high_privilege", False)
+                    )
+                    if not high_priv:
+                        self._tool_names.append(name)
 
 
     async def _build_client(self) -> Any:
@@ -921,6 +928,31 @@ class BehaviorRunner:
         if scenario.scoped_tools or scenario.scoped_agents:
             scoped_component_set = set(scenario.scoped_tools) | set(scenario.scoped_agents)
 
+        # For intent_happy_path scenarios, augment/derive coverage scope from keyword
+        # overlap between the scenario goal and component names/descriptions.  This
+        # prevents off-topic coverage turns (e.g. "Broadcast All Users" appearing in a
+        # "check balance" scenario) while still letting related components through.
+        # When no components match the goal keywords, scoped_component_set becomes an
+        # empty set which causes generate_coverage_turns to return [] — no spurious turns.
+        if scenario.scenario_type == BehaviorScenarioType.INTENT_HAPPY_PATH:
+            goal_text = (scenario.goal + " " + " ".join(scenario.messages[:2])).lower()
+            goal_words = {w for w in re.split(r"\W+", goal_text) if len(w) >= 4}
+            kw_matched: set[str] = {
+                name
+                for name in (self._tool_names + self._agent_names)
+                if goal_words
+                & set(
+                    re.split(
+                        r"\W+",
+                        (name + " " + self._component_descriptions.get(name, "")).lower(),
+                    )
+                )
+            }
+            if scoped_component_set is not None:
+                scoped_component_set = scoped_component_set | kw_matched
+            else:
+                scoped_component_set = kw_matched
+
         # Track the last agent response so _adapt_message can generate contextual probes.
         response: str = ""
 
@@ -1008,6 +1040,7 @@ class BehaviorRunner:
                     domain_context=getattr(self._intent, "app_purpose", "") if self._intent else "",
                     intent=self._intent,
                     scoped_components=scoped_component_set,
+                    profile=self._pre_scan_profile,
                 )
                 if not coverage_messages:
                     break
@@ -1953,13 +1986,19 @@ class BehaviorRunner:
         _gap_bucket_raw_evidence_rows: dict[tuple[str, str], int] = {}
         for run_result in [r for r in raw_results if r is not None]:
             orig = scenario_by_id.get(run_result.scenario_id)
-            component = (getattr(orig, "target_component", None) or "unknown")
+            component = (
+                getattr(orig, "target_component", None)
+                or getattr(orig, "matched_topic", None)
+                or "unknown"
+            )
             for v_dict in run_result.verdicts:
                 turn_hash = _canonical_turn_hash(v_dict, scenario_id=run_result.scenario_id)
                 evidence_entry = dict(v_dict)
                 evidence_entry["turn_hash"] = turn_hash
                 for gap_text in v_dict.get("gaps") or []:
                     if not isinstance(gap_text, str) or not gap_text.strip():
+                        continue
+                    if gap_text.startswith("Request failed:"):
                         continue
                     raw_gap_observations += 1
                     ftype, _ = _classify_gap(gap_text)

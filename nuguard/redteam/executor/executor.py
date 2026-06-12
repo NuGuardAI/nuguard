@@ -2,12 +2,12 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 import os
 import re as _re
 from typing import TYPE_CHECKING
 
 from nuguard.common.llm_client import LLMClient
+from nuguard.common.logging import get_logger
 from nuguard.common.rate_limit import (
     SCENARIO_MAX_RATE_LIMIT_RETRIES,
     TRANSIENT_ERROR_RETRY_DELAYS,
@@ -44,7 +44,35 @@ from .id_extractor import (
     generate_similar_ids,
 )
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
+
+# Path prefixes that are unambiguously real API endpoints.
+# Responses from these paths are NOT suppressed even when the body looks like HTML.
+_API_PATH_PREFIXES = ("/api/", "/v1/", "/v2/", "/v3/", "/graphql", "/rpc", "/rest/")
+
+# HTML prefixes that identify a SPA shell response (case-insensitive after strip).
+_SPA_HTML_PREFIXES = ("<!doctype html", "<html")
+
+
+def _is_spa_html_response(response: str, target_path: str | None) -> bool:
+    """Return True when a 2xx response body looks like an SPA HTML shell.
+
+    Single-page applications served by a catch-all web server return HTTP 200
+    plus the full page HTML for *every* path, including paths that are not real
+    API routes. An HTTP 2xx on such a path is NOT an authentication-bypass
+    finding. This helper detects the pattern by checking:
+
+    * The path is not under a known API prefix (``/api/``, ``/v1/``, …).
+    * The response body starts with ``<!doctype html`` or ``<html`` (case-insensitive).
+    """
+    if not target_path:
+        return False
+    normalised = target_path.lower().split("?")[0].rstrip("/") or "/"
+    if any(normalised.startswith(p) for p in _API_PATH_PREFIXES):
+        return False  # real API route — do not suppress
+    stripped = response.lstrip().lower()
+    return any(stripped.startswith(p) for p in _SPA_HTML_PREFIXES)
+
 
 # Regex patterns to detect capability self-disclosures in warmup responses.
 # Mirrors _SELF_DISCLOSURE_PATTERNS in conversation_director.py so static chains
@@ -317,6 +345,7 @@ class AttackExecutor:
         turn_delay_seconds: float = 0.0,
         sbom: "AiSbomDocument | None" = None,
         pre_scan_profile: "DiscoveredProfile | None" = None,
+        suppress_spa_html_auth_bypass: bool = True,
     ) -> None:
         self._client = client
         self._evaluator = PolicyEvaluator(policy) if policy else None
@@ -359,6 +388,7 @@ class AttackExecutor:
                         pre_scan_profile.customer_name,
                     )
         self._turn_delay_seconds = max(0.0, turn_delay_seconds)
+        self._suppress_spa_html = suppress_spa_html_auth_bypass
 
     async def run(
         self, chain: ExploitChain
@@ -745,6 +775,21 @@ class AttackExecutor:
                 tool_calls=tool_calls,
                 http_status_code=status_code,
             )
+            # Suppress HTTP-2xx auth-bypass false positives caused by SPA
+            # catch-all routes that return the page HTML for every path.
+            if (
+                result.success_signal_found
+                and step.success_signal == HTTP_2XX_SENTINEL
+                and self._suppress_spa_html
+                and _is_spa_html_response(response, step.target_path)
+            ):
+                _log.debug(
+                    "Step %s: suppressed HTTP 2xx hit — SPA HTML response on "
+                    "non-API path %s",
+                    step.step_id,
+                    step.target_path,
+                )
+                result.success_signal_found = False
             result.resolved_payload = _resolved_payload
         else:
             if self._app_log_reader:
