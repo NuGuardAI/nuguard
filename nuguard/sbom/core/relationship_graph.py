@@ -273,7 +273,7 @@ async def build_relationship_graph_with_llm(
 
     narrative = ""
     try:
-        text, _ = await llm_client.complete_text(system=_SYSTEM, user=user_prompt)
+        text = await llm_client.complete(prompt=user_prompt, system=_SYSTEM)
         narrative = text.strip()
     except Exception as exc:
         _log.warning("relationship-graph: LLM narrative failed — diagram only: %s", exc)

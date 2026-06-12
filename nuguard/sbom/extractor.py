@@ -1319,11 +1319,17 @@ class AiSbomExtractor:
         2.5. Annotate MCP FRAMEWORK nodes with a short LLM description
         3. Enrich the scan-level use-case summary
         """
-        from .core.application_summary import maybe_refine_use_case_summary_with_llm
-        from .core.confidence import aggregate_node_confidence
-        from .core.gap_fill import apply_discovery_results, discover_missing_nodes
-        from .core.verification import apply_verification_results, verify_uncertain_nodes
-        from .llm_client import LLMClient
+        from nuguard.common.llm_client import LLMClient  # noqa: PLC0415
+
+        from .core.application_summary import (
+            maybe_refine_use_case_summary_with_llm,  # noqa: PLC0415
+        )
+        from .core.confidence import aggregate_node_confidence  # noqa: PLC0415
+        from .core.gap_fill import apply_discovery_results, discover_missing_nodes  # noqa: PLC0415
+        from .core.verification import (  # noqa: PLC0415
+            apply_verification_results,
+            verify_uncertain_nodes,
+        )
 
         client = LLMClient(
             model=config.llm_model,
@@ -1331,7 +1337,6 @@ class AiSbomExtractor:
             api_base=config.llm_api_base,
             budget_tokens=config.llm_budget_tokens,
             google_api_key=config.google_api_key,
-            vertex_location=config.vertex_location,
         )
         evidence_map = {n.id: n.evidence for n in doc.nodes}
 
@@ -1347,8 +1352,13 @@ class AiSbomExtractor:
             _log.warning("gap-fill: unexpected error — continuing without: %s", exc)
 
         # Step 1: Verify uncertain detections
+        async def _llm_call(system: str, user: str) -> tuple[str, int]:
+            _before = sum(client.token_counts)
+            text = await client.complete(prompt=user, system=system)
+            return text, sum(client.token_counts) - _before
+
         results, v_stats = await verify_uncertain_nodes(
-            doc.nodes, evidence_map, client.complete_text, file_contents=file_contents
+            doc.nodes, evidence_map, _llm_call, file_contents=file_contents
         )
         doc.nodes = apply_verification_results(doc.nodes, results)
         _log.info("llm verification: %s", v_stats.to_dict())
@@ -1384,7 +1394,8 @@ class AiSbomExtractor:
         except Exception as exc:
             _log.warning("iac-summary: unexpected error — continuing without: %s", exc)
 
-        _log.info("llm enrichment complete: tokens_used=%d", client.tokens_used)
+        _in, _out = client.token_counts
+        _log.info("llm enrichment complete: tokens_used=%d", _in + _out)
         return doc
 
     async def _llm_summarize_iac(
@@ -1514,8 +1525,8 @@ class AiSbomExtractor:
             "the provided data shows."
         )
 
-        raw, tokens = await client.complete_text(system_prompt, user_prompt)
-        _log.info("iac-summary: generated %d chars using %d tokens", len(raw), tokens)
+        raw = await client.complete(prompt=user_prompt, system=system_prompt)
+        _log.info("iac-summary: generated %d chars", len(raw))
         doc.summary.iac_security_summary = raw.strip()
         return doc
 
@@ -1602,8 +1613,8 @@ class AiSbomExtractor:
         )
 
         try:
-            raw, tokens = await client.complete_text(system, user)
-            _log.debug("mcp-annotate: %d tokens used", tokens)
+            raw = await client.complete(prompt=user, system=system)
+            _log.debug("mcp-annotate: completed")
             text = raw.strip()
             if text.startswith("```"):
                 text = "\n".join(ln for ln in text.splitlines() if not ln.startswith("```"))

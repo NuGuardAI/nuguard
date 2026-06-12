@@ -20,7 +20,7 @@ from urllib.parse import urlparse, urlunparse
 from ..models import InstrumentationDetail, Node, TestingDetail
 
 if TYPE_CHECKING:
-    from ..llm_client import LLMClient
+    from nuguard.common.llm_client import LLMClient
 
 # ---------------------------------------------------------------------------
 # Pattern constants
@@ -821,8 +821,9 @@ async def maybe_refine_use_case_summary_with_llm(
             'Respond with JSON: {"summary": "..."}'
         )
         system = "You are a technical writer producing concise AI system inventory summaries."
+        from ..llm_client import complete_structured
         result = await asyncio.wait_for(
-            llm_client.complete_structured(system, user_prompt, schema),
+            complete_structured(llm_client, system, user_prompt, schema),
             timeout=15.0,
         )
         candidate = (result or {}).get("summary")
@@ -871,8 +872,9 @@ async def maybe_refine_asset_summary_with_llm(
             'Respond with JSON: {"summary": "..."}'
         )
         system = "You are a technical writer producing concise AI asset inventory summaries."
+        from ..llm_client import complete_structured
         result = await asyncio.wait_for(
-            llm_client.complete_structured(system, user_prompt, schema),
+            complete_structured(llm_client, system, user_prompt, schema),
             timeout=15.0,
         )
         candidate = (result or {}).get("summary")
