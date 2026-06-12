@@ -16,6 +16,10 @@ class ReportMeta:
     verbose: bool = False
     target_url: str = ""
     target_endpoint: str = ""
+    effective_endpoint: str = ""
+    target_endpoint_source: str = "config"
+    endpoint_discovery_notes: list[str] = field(default_factory=list)
+    previous_run_profile: dict = field(default_factory=dict)
     finding_triggers: dict[str, bool] = field(default_factory=dict)
     scan_profile: str = ""
 
@@ -25,7 +29,7 @@ class ReportMeta:
         if not self.target_url:
             return ""
         base = self.target_url.rstrip("/")
-        ep = self.target_endpoint or ""
+        ep = self.effective_endpoint or self.target_endpoint or ""
         return f"{base}{ep}" if ep else base
 
     def to_dict(self) -> dict:
@@ -36,6 +40,10 @@ class ReportMeta:
         }
         if self.target_full_url:
             d["target"] = self.target_full_url
+            d["effective_endpoint"] = self.effective_endpoint or self.target_endpoint or ""
+            d["target_endpoint_source"] = self.target_endpoint_source
+        if self.endpoint_discovery_notes:
+            d["endpoint_discovery_notes"] = self.endpoint_discovery_notes
         if self.finding_triggers:
             d["finding_triggers"] = self.finding_triggers
         return d
@@ -48,6 +56,13 @@ class ReportMeta:
         ]
         if self.target_full_url:
             lines.append(f"**Target:** `{self.target_full_url}`  ")
+            endpoint = self.effective_endpoint or self.target_endpoint or ""
+            if endpoint:
+                lines.append(
+                    f"**Effective Endpoint:** `{endpoint}` (source: {self.target_endpoint_source})  "
+                )
+        for note in self.endpoint_discovery_notes:
+            lines.append(f"**Endpoint Note:** {note}  ")
         if self.verbose:
             lines.append("**Mode:** verbose  ")
         lines.append("")
@@ -58,6 +73,9 @@ class ReportMeta:
         parts = [f"Generated: {self.timestamp}", f"LLM: {llm_str}"]
         if self.target_full_url:
             parts.append(f"Target: {self.target_full_url}")
+            endpoint = self.effective_endpoint or self.target_endpoint or ""
+            if endpoint:
+                parts.append(f"Endpoint: {endpoint} ({self.target_endpoint_source})")
         if self.verbose:
             parts.append("Mode: verbose")
         if self.finding_triggers:

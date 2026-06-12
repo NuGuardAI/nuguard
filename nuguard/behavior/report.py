@@ -5,6 +5,7 @@ import json
 import re
 from typing import TYPE_CHECKING, Any
 
+from nuguard.behavior._utils import normalise_name
 from nuguard.common.logging import get_logger
 from nuguard.output.report_shared import (
     _norm_sev,
@@ -55,13 +56,22 @@ def to_json(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = None) 
         "coverage": [c.model_dump() for c in result.coverage],
         "recommendations": [r.model_dump() for r in result.recommendations],
         "remediation_plan": [a.model_dump() for a in result.remediation_plan],
+        "counts": result.counts.model_dump(),
+        "gap_aggregation_stats": result.gap_aggregation_stats,
+        "coverage_mapping_diagnostics": result.coverage_mapping_diagnostics,
+        "effective_endpoint": result.effective_endpoint,
+        "target_endpoint_source": result.target_endpoint_source,
+        "run_profile": result.run_profile,
     }
     if meta is not None:
-        data["meta"] = {
-            "config_path": str(getattr(meta, "config_path", "") or ""),
-            "sbom_path": str(getattr(meta, "sbom_path", "") or ""),
-            "policy_path": str(getattr(meta, "policy_path", "") or ""),
-        }
+        if hasattr(meta, "to_dict"):
+            data["meta"] = meta.to_dict()
+        else:
+            data["meta"] = {
+                "config_path": str(getattr(meta, "config_path", "") or ""),
+                "sbom_path": str(getattr(meta, "sbom_path", "") or ""),
+                "policy_path": str(getattr(meta, "policy_path", "") or ""),
+            }
     return json.dumps(data, indent=2, default=str)
 
 
@@ -102,6 +112,8 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
         lines.append("")
     lines.append(f"- **Intent**: {result.intent.app_purpose or 'not determined'}")
     lines.append(f"- **Analysis Mode**: {mode}")
+    lines.append(f"- **Scan Outcome**: `{result.scan_outcome}`")
+    lines.append(f"- **Run ID**: `{result.run_id}`")
     _dyn_outcome = getattr(result, "dynamic_scan_outcome", None)
     if result.static_findings and _dyn_outcome in ("aborted_target_unavailable", "inconclusive_target_errors"):
         if _dyn_outcome == "aborted_target_unavailable":
@@ -133,8 +145,8 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
         )
 
     lines.append(f"- **Intent Alignment Score**: {result.intent_alignment_score:.2f} / 5.0")
-    total_findings = len(result.static_findings) + len(result.dynamic_findings)
-    lines.append(f"- **Total Findings**: {total_findings}")
+    counts = result.counts
+    lines.append(f"- **Total Findings**: {counts.total_unique_findings}")
     # Severity breakdown
     sev_counts: dict[str, int] = {}
     for f in list(result.static_findings) + list(result.dynamic_findings):
@@ -144,6 +156,22 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
     sev_parts = [f"{s}: {sev_counts[s]}" for s in sev_order if s in sev_counts]
     if sev_parts:
         lines.append(f"- **By Severity**: {' | '.join(sev_parts)}")
+    lines.append("")
+    lines.append("| Count Bucket | Value |")
+    lines.append("|---|---:|")
+    lines.append(f"| Unique findings (summary) | {counts.total_unique_findings} |")
+    lines.append(f"| Static findings | {counts.static_findings} |")
+    lines.append(f"| Dynamic policy/canary findings | {counts.policy_dynamic_findings} |")
+    lines.append(f"| Aggregated gap findings | {counts.gap_findings} |")
+    lines.append(f"| Deviation evidence items (per-turn) | {counts.deviation_evidence_items} |")
+    _gap_stats = result.gap_aggregation_stats or {}
+    _unique_turns = int(_gap_stats.get("unique_evidence_turns", 0))
+    _raw_rows = int(_gap_stats.get("raw_evidence_rows", 0))
+    _turns_dedup_note = f"; {_raw_rows} evidence rows → {_unique_turns} unique turns" if _raw_rows and _unique_turns < _raw_rows else ""
+    lines.append(
+        f"| Raw gap observations | {counts.raw_gap_observations} "
+        f"(text-deduped to {counts.unique_gap_observations}{_turns_dedup_note}) |"
+    )
 
     _scenario_details = None
     if result.scenario_results:
@@ -161,6 +189,48 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
             type_breakdown=_type_breakdown,
         )
     else:
+        lines.append("")
+
+    _prev_profile = getattr(meta, "previous_run_profile", {}) if meta is not None else {}
+    _curr_profile = result.run_profile or {}
+    if _prev_profile and _curr_profile:
+        prev_exec = int(_prev_profile.get("scenarios_executed", 0) or 0)
+        curr_exec = int(_curr_profile.get("scenarios_executed", 0) or 0)
+        prev_ver = str(_prev_profile.get("behavior_engine_version", "") or "")
+        curr_ver = str(_curr_profile.get("behavior_engine_version", "") or "")
+        scenario_delta = abs(curr_exec - prev_exec)
+        scenario_delta_pct = (scenario_delta / prev_exec) if prev_exec else 0.0
+        if (prev_exec and scenario_delta_pct > 0.20) or (prev_ver and curr_ver and prev_ver != curr_ver):
+            lines.append(
+                f"> **Comparability warning:** scenario set changed from {prev_exec} to {curr_exec} "
+                f"(engine {prev_ver or 'unknown'} -> {curr_ver or 'unknown'}). "
+                "Trend comparisons may be unreliable."
+            )
+            lines.append("")
+
+    if _curr_profile:
+        lines.append("## Run Profile")
+        lines.append("")
+        lines.append("| Field | Value |")
+        lines.append("|---|---|")
+        lines.append(f"| NuGuard Version | {_curr_profile.get('nuguard_version', 'n/a')} |")
+        lines.append(f"| Behavior Engine Version | {_curr_profile.get('behavior_engine_version', 'n/a')} |")
+        lines.append(f"| Scenarios Planned | {_curr_profile.get('scenarios_planned', 'n/a')} |")
+        lines.append(f"| Scenarios Executed | {_curr_profile.get('scenarios_executed', 'n/a')} |")
+        lines.append(f"| Scenarios Skipped | {_curr_profile.get('scenarios_skipped', 'n/a')} |")
+        lines.append(f"| Total Turns | {_curr_profile.get('total_turns', 'n/a')} |")
+        lines.append(f"| Coverage Turns | {_curr_profile.get('coverage_turns', 'n/a')} |")
+        lines.append(f"| LLM Used | {_curr_profile.get('llm_used', 'n/a')} |")
+        _llm_model_display = (
+            _curr_profile.get("llm_model") or
+            (meta.llm_models[0] if meta is not None and getattr(meta, "llm_models", []) else None) or
+            "n/a"
+        )
+        lines.append(f"| LLM Model | {_llm_model_display} |")
+        lines.append(f"| Target Fingerprint | {_curr_profile.get('target_fingerprint', 'n/a')} |")
+        scenario_types = _curr_profile.get("scenario_types", {}) or {}
+        if scenario_types:
+            lines.append(f"| Scenario Types | {', '.join(f'{k}:{v}' for k, v in sorted(scenario_types.items()))} |")
         lines.append("")
 
     # Scenario Coverage table — placed right after Summary so it's the first thing readers see
@@ -187,10 +257,14 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
         # Render grouped (restricted action) findings — one heading per policy rule
         for rule_key, findings_group in grouped_static.items():
             sev = _norm_sev(findings_group[0].get("severity", ""))
+            fid = findings_group[0].get("finding_id", "")
             tool_names = [f.get("affected_component", "?") for f in findings_group]
             owasp_llm = "LLM08 – Excessive Agency"
             owasp_asi = "ASI02 – Tool Misuse and Exploitation"
-            lines.append(f"### [{sev}] Restricted Action Reachable — '{rule_key}'")
+            heading = f"### [{sev}] Restricted Action Reachable — '{rule_key}'"
+            if fid:
+                heading += f" — {fid}"
+            lines.append(heading)
             lines.append("")
             lines.append(f"Policy restricts action '{rule_key}', but {len(tool_names)} tool(s) implementing this action are reachable via CALLS edges:")
             lines.append("")
@@ -208,13 +282,17 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
         # Render ungrouped findings individually (BA-001, BA-004, BA-005, etc.)
         for finding in ungrouped_static:
             title = finding.get("title", "")
+            fid = finding.get("finding_id", "")
             sev = _norm_sev(finding.get("severity", ""))
             comp = finding.get("affected_component", "")
             desc = finding.get("description", "")
             remediation = finding.get("remediation", "")
             owasp_asi_ref = finding.get("owasp_asi_ref") or ""
             owasp_llm_ref = finding.get("owasp_llm_ref") or ""
-            lines.append(f"### [{sev}] {title}")
+            heading = f"### [{sev}] {title}"
+            if fid:
+                heading += f" — {fid}"
+            lines.append(heading)
             if comp:
                 lines.append(f"**Affected Component:** {comp}")
             lines.append("")
@@ -243,6 +321,12 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
                 lines.append(f"- **Turns**: {sr.total_turns} ({sr.coverage_turns} adaptive)")
             else:
                 lines.append(f"- **Turns**: {sr.total_turns}")
+            _eps = sorted({str(v.get("effective_endpoint", "")).strip() for v in sr.verdicts if str(v.get("effective_endpoint", "")).strip()})
+            if _eps:
+                if len(_eps) == 1:
+                    lines.append(f"- **Effective Endpoint**: `{_eps[0]}`")
+                else:
+                    lines.append(f"- **Effective Endpoints**: {', '.join(f'`{ep}`' for ep in _eps)}")
             lines.append("")
 
             if sr.verdicts:
@@ -288,6 +372,9 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
                                 evidence_lines.append(f"> **User:** {str(user_msg)[:200]}")
                             if agent_resp:
                                 evidence_lines.append(f"> **Agent:** {str(agent_resp)[:200]}")
+                            endpoint = str(v.get("effective_endpoint", "")).strip()
+                            if endpoint:
+                                evidence_lines.append(f"> **Endpoint:** `{endpoint}`")
                             for gap in gaps_raw:
                                 evidence_lines.append(f"> **Gap:** {str(gap)[:400]}")
                             evidence_lines.append("")
@@ -302,23 +389,64 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
                 for name in (v.get("agents_mentioned") or []) + (v.get("tools_mentioned") or [])
             ))
             if covered:
-                lines.append(f"**Covered components**: {', '.join(covered)}")
+                coverage_norm = {normalise_name(c.component_name) for c in result.coverage}
+                tagged = [f"{name} ({'matched' if normalise_name(name) in coverage_norm else 'unmatched'})" for name in covered]
+                lines.append(f"**Covered components**: {', '.join(tagged)}")
                 lines.append("")
 
     # Coverage Map
     if result.coverage:
         lines.append("## Coverage Map")
         lines.append("")
-        lines.append("| Component | Type | Exercised | Within Policy | Deviations |")
-        lines.append("|-----------|------|-----------|---------------|------------|")
+        lines.append("| Component | Type | Exercised | Within Policy | Deviations | Aliases Seen |")
+        lines.append("|-----------|------|-----------|---------------|------------|--------------|")
         for cov in result.coverage:
             ex = "Yes" if cov.exercised else "No"
             wp = "Yes" if cov.exercised_within_policy else ("No" if cov.exercised else "-")
             dev_count = len(cov.deviations)
-            lines.append(f"| {cov.component_name} | {cov.node_type} | {ex} | {wp} | {dev_count} |")
+            aliases = ", ".join(cov.aliases_seen[:3]) if cov.aliases_seen else "-"
+            lines.append(f"| {cov.component_name} | {cov.node_type} | {ex} | {wp} | {dev_count} | {aliases} |")
         lines.append("")
+        unmatched_mentions = sorted({m for cov in result.coverage for m in (cov.unmatched_mentions or [])})
+        if unmatched_mentions:
+            lines.append("**Unmatched Mentions:**")
+            lines.append("")
+            for mention in unmatched_mentions:
+                lines.append(f"- {mention}")
+            lines.append("")
         if result.scenario_results:
             render_behavior_coverage_evidence(lines, result.coverage, result.scenario_results)
+
+        # Coverage mapping diagnostics — surfaces hallucinated/unmapped entity mentions
+        _cov_diag = result.coverage_mapping_diagnostics or {}
+        _unmapped = [str(e) for e in (_cov_diag.get("mentioned_entities_unmapped") or [])]
+        _rt_unmapped = int(_cov_diag.get("runtime_only_unmapped_endpoint_count") or 0)
+        _type_mismatch = int(_cov_diag.get("component_type_mismatch_count") or 0)
+        if _unmapped or _rt_unmapped or _type_mismatch:
+            lines.append("### Coverage Diagnostics")
+            lines.append("")
+            if _unmapped:
+                lines.append(
+                    f"**Unmapped entity mentions** ({len(_unmapped)}) — "
+                    "names mentioned by the app at runtime that are not in the SBOM. "
+                    "May indicate hallucination or undeclared components:"
+                )
+                lines.append("")
+                for entity in _unmapped:
+                    lines.append(f"- `{entity}`")
+                lines.append("")
+            if _rt_unmapped:
+                lines.append(
+                    f"**Runtime-only endpoints**: {_rt_unmapped} endpoint(s) observed at runtime "
+                    "but absent from the SBOM — added as unmatched coverage entries."
+                )
+                lines.append("")
+            if _type_mismatch:
+                lines.append(
+                    f"**Component type mismatches**: {_type_mismatch} mention(s) where the runtime "
+                    "component type did not match the SBOM node type."
+                )
+                lines.append("")
 
     # Behavior SBOM Coverage (expanded objective tracking)
     if result.coverage_objectives:
@@ -367,7 +495,11 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
                 dev_turns.append((sr.scenario_name, v))
 
     if dev_turns:
-        lines.append("## Deviations")
+        lines.append("## Deviation Evidence (per-turn)")
+        lines.append("")
+        lines.append(
+            "Each entry below is per-turn evidence. Multiple entries can map to a single unique finding in the summary."
+        )
         lines.append("")
         shown = 0
         for scenario_name, v in dev_turns:
@@ -389,7 +521,7 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
                 dtype = dev.get("deviation_type", "unknown")
                 desc = dev.get("description", "")
                 sev = _norm_sev(dev.get("severity", ""))
-                lines.append(f"### [{sev}] {dtype}")
+                lines.append(f"**[{sev}] {dtype}**")
                 lines.append("")
                 lines.append(desc)
                 lines.append("")
@@ -417,14 +549,22 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
     # Behavioral Gap Summary — findings promoted from LLM-generated gap strings
     gap_findings = [f for f in result.dynamic_findings if f.get("finding_type") in _GAP_FINDING_TYPES]
     if gap_findings:
-        total_occurrences = sum(int(f.get("occurrence_count", 1)) for f in gap_findings)
-        unique_components = {f.get("affected_component", "unknown") for f in gap_findings}
+        stats = result.gap_aggregation_stats or {}
+        threshold = int(stats.get("min_occurrences_threshold", 0))
         lines.append("## Behavioral Gap Summary")
         lines.append("")
         lines.append(
-            f"> {total_occurrences} gap observations aggregated into {len(gap_findings)} finding(s)"
-            f" across {len(unique_components)} component(s)."
+            "Buckets are keyed by `(finding_type, affected_component)` and promoted "
+            f"to findings at threshold >= {threshold}."
         )
+        lines.append("")
+        lines.append("| Stage | Count |")
+        lines.append("|---|---:|")
+        lines.append(f"| Raw gap observations | {int(stats.get('raw_gap_observations', 0))} |")
+        lines.append(f"| Deduplicated unique gaps | {int(stats.get('unique_gap_observations', 0))} |")
+        lines.append(f"| Buckets formed | {int(stats.get('buckets_formed', 0))} |")
+        lines.append(f"| Buckets emitted as findings (>= {threshold}) | {int(stats.get('buckets_emitted', len(gap_findings)))} |")
+        lines.append(f"| Buckets dropped (below threshold) | {int(stats.get('buckets_dropped', 0))} |")
         lines.append("")
         for ftype in ("CAPABILITY_GAP", "INTENT_MISALIGNMENT", "TOOL_CHAIN_BROKEN", "POLICY_VIOLATION"):
             type_findings = [f for f in gap_findings if f.get("finding_type") == ftype]
@@ -437,9 +577,11 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
             lines.append("|---|---|---|")
             for gf in type_findings:
                 comp = gf.get("affected_component", "unknown")
+                fid = gf.get("finding_id", "")
                 count = gf.get("occurrence_count", 1)
                 sample = "; ".join(str(g)[:120] for g in (gf.get("gap_texts") or [gf.get("description", "")])[:3])
-                lines.append(f"| {comp} | {count} | {sample} |")
+                comp_display = f"{comp} ({fid})" if fid else comp
+                lines.append(f"| {comp_display} | {count} | {sample} |")
             lines.append("")
 
     # Dynamic Analysis Findings (policy violations, canary hits — not gap aggregates)

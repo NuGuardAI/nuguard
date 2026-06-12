@@ -3,17 +3,10 @@ from __future__ import annotations
 
 import uuid
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock
 
-import pytest
-
-from nuguard.behavior.models import (
-    BehaviorRunResult,
-    ScenarioResult,
-    TurnRecord,
-)
-from nuguard.behavior.runner import BehaviorRunner
-
+from nuguard.behavior.models import ScenarioResult, TurnRecord
+from nuguard.behavior.runner import BehaviorRunner, _canonical_turn_hash
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -214,6 +207,7 @@ def test_gap_attack_steps_built_from_verdict_dicts() -> None:
             "overall_score": v.get("overall_score", 0.0),
             "scores": v.get("scores", {}),
             "gaps": v.get("gaps", []),
+            "turn_hash": _canonical_turn_hash(v, scenario_id="s1"),
         }
         for v in bucket_verdicts
     ]
@@ -223,6 +217,52 @@ def test_gap_attack_steps_built_from_verdict_dicts() -> None:
     assert gap_attack_steps[0]["payload"] == "prompt 1"
     assert gap_attack_steps[0]["succeeded"] is False
     assert gap_attack_steps[2]["turn"] == 3
+    assert gap_attack_steps[0]["turn_hash"]
+
+
+def test_gap_attack_steps_dedup_by_canonical_turn_hash() -> None:
+    v1 = {
+        "turn": 1,
+        "verdict": "FAIL",
+        "user_message": "Please summarize this transcript.",
+        "agent_response": "I need the transcript text.",
+        "overall_score": 1.5,
+        "scores": {},
+        "gaps": ["No summary provided"],
+    }
+    # Same semantic turn with whitespace/case noise.
+    v1_dup = {
+        "turn": 1,
+        "verdict": "FAIL",
+        "user_message": "  please summarize   this transcript.  ",
+        "agent_response": "I need the transcript text.",
+        "overall_score": 1.5,
+        "scores": {},
+        "gaps": ["No summary provided"],
+    }
+    v2 = {
+        "turn": 2,
+        "verdict": "FAIL",
+        "user_message": "Here is the transcript.",
+        "agent_response": "I still need the transcript.",
+        "overall_score": 1.5,
+        "scores": {},
+        "gaps": ["Still missing summary"],
+    }
+
+    h1 = _canonical_turn_hash(v1, scenario_id="scenario-1")
+    h1_dup = _canonical_turn_hash(v1_dup, scenario_id="scenario-1")
+    h2 = _canonical_turn_hash(v2, scenario_id="scenario-1")
+
+    assert h1 == h1_dup
+    assert h1 != h2
+
+    evidence: dict[str, dict] = {}
+    for verdict in (v1, v1_dup, v2):
+        th = _canonical_turn_hash(verdict, scenario_id="scenario-1")
+        evidence.setdefault(th, {**verdict, "turn_hash": th})
+
+    assert len(evidence) == 2
 
 
 # ---------------------------------------------------------------------------
