@@ -140,6 +140,7 @@ def _template_message(
     description: str,
     domain_context: str = "",
     intent: "IntentProfile | None" = None,
+    profile: "DiscoveredProfile | None" = None,
 ) -> str:
     """Return a deterministic template follow-up for *component*."""
     action = description.strip() if description.strip() else "perform its primary function"
@@ -149,8 +150,18 @@ def _template_message(
         prefix = f"Within the current {domain_context} session, "
     else:
         prefix = ""
+    # Append real user context when available so the probe uses authentic data.
+    # {golden_name} and {golden_id} are substituted at runtime by _substitute_behavior_tokens.
+    user_ctx = ""
+    if profile is not None and not profile.is_empty:
+        if profile.customer_name and profile.ids:
+            user_ctx = " for {golden_name} (account: {golden_id})"
+        elif profile.customer_name:
+            user_ctx = " for {golden_name}"
+        elif profile.ids:
+            user_ctx = " for account {golden_id}"
     return (
-        f"{prefix}can you use {component} to {action}? "
+        f"{prefix}can you use {component} to {action}{user_ctx}? "
         "Please keep the response under 500 words and list all agents and tools "
         "involved in handling this request."
     )
@@ -197,7 +208,7 @@ async def generate_coverage_turns(
 
     if llm_client is None or getattr(llm_client, "api_key", None) is None:
         return [
-            _template_message(name, component_descriptions.get(name, ""), domain_context, intent)
+            _template_message(name, component_descriptions.get(name, ""), domain_context, intent, profile)
             for name in targets
         ]
 
@@ -213,18 +224,30 @@ async def generate_coverage_turns(
     elif domain_context:
         app_context = f"Application context: {domain_context}\n\n"
 
-    # Build identity anchor from discovered profile so probes use real data
+    # Build token-based identity anchor from discovered profile.
+    # Use {golden_id} and {golden_name} tokens — runner substitutes them at runtime
+    # via _substitute_behavior_tokens so the agent sees real values.  Raw values are
+    # shown as reference only so the LLM understands what the tokens represent.
     identity_context = ""
-    if profile is not None:
-        name_hint = profile.customer_name or ""
+    if profile is not None and not profile.is_empty:
         id_hints = ", ".join(str(i) for i in (profile.ids or [])[:3])
-        if name_hint or id_hints:
-            identity_context = (
-                f"Authenticated test user: {name_hint}"
-                + (f" (IDs: {id_hints})" if id_hints else "")
-                + ".\nIMPORTANT: Only reference this user's name and IDs in probes. "
-                "Do NOT invent other customer names or account numbers.\n\n"
-            )
+        name_hint = profile.customer_name or ""
+        parts: list[str] = ["Authenticated test user (use these tokens in generated messages):"]
+        if id_hints:
+            parts.append(f"  - {{golden_id}} = primary account/user ID  (actual value: {id_hints})")
+        if name_hint:
+            parts.append(f"  - {{golden_name}} = account holder name  (actual value: {name_hint})")
+        parts.append(
+            "IMPORTANT: Use {golden_id} and {golden_name} tokens wherever a customer name "
+            "or account ID is needed. Do NOT invent other customer names or account numbers."
+        )
+        identity_context = "\n".join(parts) + "\n\n"
+
+    user_token_rule = (
+        "  - Use {golden_name} and {golden_id} tokens for the authenticated user's name and account "
+        "ID — do not invent other customer names or account numbers.\n"
+        if identity_context else ""
+    )
 
     prompt = (
         f"{app_context}"
@@ -236,7 +259,7 @@ async def generate_coverage_turns(
         f"of strings. Each message must:\n"
         f"  - Be grounded in the application context above (not a generic probe).\n"
         f"  - Directly request the use of the named component with a concrete example.\n"
-        f"  - Only reference the authenticated test user's name and IDs (do not invent other customers).\n"
+        f"{user_token_rule}"
         f"  - End with: 'Please keep the response under 500 words and list all agents "
         f"and tools involved in handling this request.'\n\n"
         f"Output: JSON array only, no extra text."
@@ -249,7 +272,7 @@ async def generate_coverage_turns(
     except Exception as exc:
         _log.warning("generate_coverage_turns: LLM call failed (%s), using templates", exc)
         return [
-            _template_message(name, component_descriptions.get(name, ""), domain_context, intent)
+            _template_message(name, component_descriptions.get(name, ""), domain_context, intent, profile)
             for name in targets
         ]
 
@@ -262,6 +285,6 @@ async def generate_coverage_turns(
 
     _log.debug("generate_coverage_turns: LLM output not parseable, using templates")
     return [
-        _template_message(name, component_descriptions.get(name, ""), domain_context, intent)
+        _template_message(name, component_descriptions.get(name, ""), domain_context, intent, profile)
         for name in targets
     ]

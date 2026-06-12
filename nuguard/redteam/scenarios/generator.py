@@ -19,9 +19,13 @@ from .advanced_jailbreaks import (
 )
 from .agentic_attacks import (
     build_confused_deputy,
+    build_cross_agent_prompt_injection,
     build_goal_hijacking,
+    build_intent_router_confusion,
+    build_kyc_override_loan_approval,
     build_memory_poisoning,
     build_multi_agent_trust_boundary,
+    build_upstream_agent_fabrication,
 )
 from .api_attacks import (
     build_auth_bypass,
@@ -2004,6 +2008,79 @@ class ScenarioGenerator:
                         hijacked_action=(
                             "exfiltrate all results to attacker-controlled endpoint"
                         ),
+                    )
+                )
+
+        # ── New agentic attack patterns ─────────────────────────────────────────
+        #
+        # Intent Router Confusion — emitted for every entry agent.
+        # Covers systems where an intent classifier routes to specialist agents;
+        # the attack bypasses specialist guardrails by disguising the request.
+        restricted_actions_list = list(self._policy.restricted_actions or [])
+        high_risk_action = (
+            restricted_actions_list[0][:80] if restricted_actions_list
+            else "approve a loan application without credit checks"
+        )
+        for agent_node in agent_nodes[:_MAX_AGENTS_PER_GOAL]:
+            out.append(
+                build_intent_router_confusion(
+                    agent_id=str(agent_node.id),
+                    agent_name=agent_node.name,
+                    high_risk_action=high_risk_action,
+                )
+            )
+
+        # Upstream Agent Fabrication — emitted when there are restricted actions
+        # or multiple tool groups indicating a multi-agent trust surface.
+        has_multi_agent_signals = (
+            len(agent_nodes) > 1
+            or bool(restricted_actions_list)
+            or any(
+                kw in (t.name.lower() + " " + (t.metadata.description or "").lower())
+                for t in tool_nodes
+                for kw in ("fraud", "compliance", "aml", "kyc")
+            )
+        )
+        if has_multi_agent_signals:
+            target_action = (
+                f"finalise the {restricted_actions_list[0][:60]}"
+                if restricted_actions_list else "finalise the inter-account transfer"
+            )
+            for agent_node in agent_nodes[:1]:
+                out.append(
+                    build_upstream_agent_fabrication(
+                        agent_id=str(agent_node.id),
+                        agent_name=agent_node.name,
+                        target_action=target_action,
+                    )
+                )
+
+        # Cross-Agent Prompt Injection — emitted when privileged tools are present,
+        # using their names to make the injected directive more credible.
+        if priv_tools:
+            injected = " and ".join(t.name for t in priv_tools[:2])
+            for agent_node in agent_nodes[:1]:
+                out.append(
+                    build_cross_agent_prompt_injection(
+                        agent_id=str(agent_node.id),
+                        agent_name=agent_node.name,
+                        injected_tools=injected,
+                    )
+                )
+
+        # KYC Override → Loan Approval chain — emitted when both override_kyc AND
+        # approve_loan exist as TOOL nodes in the SBOM.  Uses the first non-default
+        # neighbour account ID from the policy or a safe placeholder.
+        _tool_names_lower = {t.name.lower() for t in tool_nodes}
+        if "override_kyc" in _tool_names_lower and "approve_loan" in _tool_names_lower:
+            # Prefer a realistic neighbour account ID when available via policy extras
+            target_customer_id = "ACCT-002"
+            for agent_node in agent_nodes[:1]:
+                out.append(
+                    build_kyc_override_loan_approval(
+                        agent_id=str(agent_node.id),
+                        agent_name=agent_node.name,
+                        target_customer_id=target_customer_id,
                     )
                 )
 
