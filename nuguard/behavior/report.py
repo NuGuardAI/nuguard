@@ -112,6 +112,8 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
         lines.append("")
     lines.append(f"- **Intent**: {result.intent.app_purpose or 'not determined'}")
     lines.append(f"- **Analysis Mode**: {mode}")
+    lines.append(f"- **Scan Outcome**: `{result.scan_outcome}`")
+    lines.append(f"- **Run ID**: `{result.run_id}`")
     _dyn_outcome = getattr(result, "dynamic_scan_outcome", None)
     if result.static_findings and _dyn_outcome in ("aborted_target_unavailable", "inconclusive_target_errors"):
         if _dyn_outcome == "aborted_target_unavailable":
@@ -162,8 +164,13 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
     lines.append(f"| Dynamic policy/canary findings | {counts.policy_dynamic_findings} |")
     lines.append(f"| Aggregated gap findings | {counts.gap_findings} |")
     lines.append(f"| Deviation evidence items (per-turn) | {counts.deviation_evidence_items} |")
+    _gap_stats = result.gap_aggregation_stats or {}
+    _unique_turns = int(_gap_stats.get("unique_evidence_turns", 0))
+    _raw_rows = int(_gap_stats.get("raw_evidence_rows", 0))
+    _turns_dedup_note = f"; {_raw_rows} evidence rows → {_unique_turns} unique turns" if _raw_rows and _unique_turns < _raw_rows else ""
     lines.append(
-        f"| Raw gap observations | {counts.raw_gap_observations} (deduplicated to {counts.unique_gap_observations}) |"
+        f"| Raw gap observations | {counts.raw_gap_observations} "
+        f"(text-deduped to {counts.unique_gap_observations}{_turns_dedup_note}) |"
     )
 
     _scenario_details = None
@@ -214,7 +221,12 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
         lines.append(f"| Total Turns | {_curr_profile.get('total_turns', 'n/a')} |")
         lines.append(f"| Coverage Turns | {_curr_profile.get('coverage_turns', 'n/a')} |")
         lines.append(f"| LLM Used | {_curr_profile.get('llm_used', 'n/a')} |")
-        lines.append(f"| LLM Model | {_curr_profile.get('llm_model', 'n/a') or 'n/a'} |")
+        _llm_model_display = (
+            _curr_profile.get("llm_model") or
+            (meta.llm_models[0] if meta is not None and getattr(meta, "llm_models", []) else None) or
+            "n/a"
+        )
+        lines.append(f"| LLM Model | {_llm_model_display} |")
         lines.append(f"| Target Fingerprint | {_curr_profile.get('target_fingerprint', 'n/a')} |")
         scenario_types = _curr_profile.get("scenario_types", {}) or {}
         if scenario_types:
@@ -404,6 +416,37 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
             lines.append("")
         if result.scenario_results:
             render_behavior_coverage_evidence(lines, result.coverage, result.scenario_results)
+
+        # Coverage mapping diagnostics — surfaces hallucinated/unmapped entity mentions
+        _cov_diag = result.coverage_mapping_diagnostics or {}
+        _unmapped = [str(e) for e in (_cov_diag.get("mentioned_entities_unmapped") or [])]
+        _rt_unmapped = int(_cov_diag.get("runtime_only_unmapped_endpoint_count") or 0)
+        _type_mismatch = int(_cov_diag.get("component_type_mismatch_count") or 0)
+        if _unmapped or _rt_unmapped or _type_mismatch:
+            lines.append("### Coverage Diagnostics")
+            lines.append("")
+            if _unmapped:
+                lines.append(
+                    f"**Unmapped entity mentions** ({len(_unmapped)}) — "
+                    "names mentioned by the app at runtime that are not in the SBOM. "
+                    "May indicate hallucination or undeclared components:"
+                )
+                lines.append("")
+                for entity in _unmapped:
+                    lines.append(f"- `{entity}`")
+                lines.append("")
+            if _rt_unmapped:
+                lines.append(
+                    f"**Runtime-only endpoints**: {_rt_unmapped} endpoint(s) observed at runtime "
+                    "but absent from the SBOM — added as unmatched coverage entries."
+                )
+                lines.append("")
+            if _type_mismatch:
+                lines.append(
+                    f"**Component type mismatches**: {_type_mismatch} mention(s) where the runtime "
+                    "component type did not match the SBOM node type."
+                )
+                lines.append("")
 
     # Behavior SBOM Coverage (expanded objective tracking)
     if result.coverage_objectives:
