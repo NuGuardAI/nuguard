@@ -313,7 +313,7 @@ def test_to_markdown_summary_count_reconciliation_table():
     md = to_markdown(result)
     assert "| Count Bucket | Value |" in md
     assert "| Unique findings (summary) | 2 |" in md
-    assert "| Raw gap observations | 3 (deduplicated to 2) |" in md
+    assert "| Raw gap observations | 3 (text-deduped to 2) |" in md
 
 
 def test_to_markdown_uses_deviation_evidence_heading_not_findings_heading():
