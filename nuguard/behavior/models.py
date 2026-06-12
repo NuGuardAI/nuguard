@@ -12,6 +12,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field, computed_field
 
+from nuguard.models.token_usage import TokenUsage
+
 # ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
@@ -322,6 +324,7 @@ class BehaviorAnalysisResult(BaseModel):
     remediation_plan: list[RemediationArtefact] = Field(default_factory=list)
     scan_outcome: str = "no_findings"
     llm_executive_summary: str | None = None
+    token_usage: TokenUsage = Field(default_factory=TokenUsage)
 
     @computed_field  # type: ignore[misc]
     @property

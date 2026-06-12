@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from nuguard.common.auth import AuthConfig
     from nuguard.common.llm_client import LLMClient
     from nuguard.config import RedteamFindingTriggers
+    from nuguard.models.token_usage import TokenUsage
     from nuguard.redteam.coverage.tracker import CoverageTracker
     from nuguard.redteam.target.discovery import DiscoveredProfile
     from nuguard.redteam.target.log_reader import BufferLogReader, FileLogReader
@@ -577,6 +578,20 @@ class RedteamOrchestrator:
         self.enriched_escalation_count: int = 0
         # Coverage tracker — populated after generate() during run().
         self._coverage_tracker: "CoverageTracker | None" = None
+
+    @property
+    def token_usage(self) -> "TokenUsage":
+        """Aggregated LLM token usage for the run as a :class:`~nuguard.models.token_usage.TokenUsage`."""
+        from nuguard.models.token_usage import TokenUsage  # noqa: PLC0415
+
+        llm_model: str | None = getattr(self._redteam_llm, "model", None) or getattr(
+            self._eval_llm, "model", None
+        )
+        return TokenUsage(
+            input_tokens=self.input_tokens_used,
+            output_tokens=self.output_tokens_used,
+            llm_model=llm_model,
+        )
 
     def _trigger_enabled(self, name: str) -> bool:
         """Return whether a finding trigger is enabled (defaults preserve legacy behavior)."""
