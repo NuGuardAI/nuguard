@@ -12,6 +12,7 @@ from typing import Any
 
 from nuguard.common.logging import get_logger
 from nuguard.models.policy import CognitivePolicy
+from nuguard.models.token_usage import TokenUsage
 from nuguard.sbom.models import AiSbomDocument, Node, RateLimitDetail
 from nuguard.sbom.types import ComponentType
 
@@ -124,8 +125,15 @@ class PolicyCheckResult:
 
     gaps: list[PolicyGap] = field(default_factory=list)
     passed: list[PolicyControl] = field(default_factory=list)
-    input_tokens_used: int = 0
-    output_tokens_used: int = 0
+    token_usage: TokenUsage = field(default_factory=TokenUsage)
+
+    @property
+    def input_tokens_used(self) -> int:
+        return self.token_usage.input_tokens
+
+    @property
+    def output_tokens_used(self) -> int:
+        return self.token_usage.output_tokens
 
     @property
     def all_checks(self) -> list[PolicyGap | PolicyControl]:

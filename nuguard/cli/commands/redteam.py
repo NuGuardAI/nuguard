@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, Optional
 if TYPE_CHECKING:
     from nuguard.common.auth import AuthConfig
     from nuguard.config import RedteamFindingTriggers
+    from nuguard.models.token_usage import TokenUsage
 
 import typer
 
@@ -210,7 +211,7 @@ def redteam(
         raise typer.Exit(code=1)
 
     try:
-        findings, llm_remediations, scenario_records, scan_outcome, config_notes, catalog_coverage, input_tokens_used, output_tokens_used, coverage_tracker = asyncio.run(  # type: ignore[misc]
+        findings, llm_remediations, scenario_records, scan_outcome, config_notes, catalog_coverage, input_tokens_used, output_tokens_used, coverage_tracker, token_usage = asyncio.run(  # type: ignore[misc]
             _run_redteam(
                 sbom_doc=sbom_doc,
                 sbom_path=sbom_path,
@@ -309,7 +310,7 @@ def redteam(
     _print_findings(findings, effective_format, meta, remediation_plan=remediation_plan,
                     scenario_records=scenario_records, scan_outcome=scan_outcome,
                     input_tokens_used=input_tokens_used, output_tokens_used=output_tokens_used,
-                    coverage_tracker=coverage_tracker)
+                    token_usage=token_usage, coverage_tracker=coverage_tracker)
     if output:
         if effective_format == "markdown":
             output.write_text(
@@ -323,6 +324,7 @@ def redteam(
             payload: dict = {
                 "_meta": meta.to_dict(),
                 "scan_outcome": scan_outcome,
+                "token_usage": token_usage.model_dump(),
                 "input_tokens_used": input_tokens_used,
                 "output_tokens_used": output_tokens_used,
                 "findings": [f.model_dump() for f in findings],
@@ -438,7 +440,7 @@ async def _run_redteam(
     verify_findings: bool = False,
     golden_data: "dict | None" = None,
     suppress_spa_html_auth_bypass: bool = True,
-) -> tuple[list, dict[str, str], list, str, list[str], Any, int, int, Any]:
+) -> "tuple[list, dict[str, str], list, str, list[str], Any, int, int, Any, Any]":
     from nuguard.models.policy import CognitivePolicy
     from nuguard.redteam.target.canary import CanaryConfig
 
@@ -664,7 +666,7 @@ async def _run_orchestrator(  # noqa: C901
     verify_findings: bool = False,
     golden_data: "dict | None" = None,
     suppress_spa_html_auth_bypass: bool = True,
-) -> tuple[list, dict[str, str], list, str, list[str], Any, int, int, Any]:
+) -> "tuple[list, dict[str, str], list, str, list[str], Any, int, int, Any, Any]":
     from nuguard.common.llm_client import LLMClient
     from nuguard.redteam.executor.orchestrator import RedteamOrchestrator
 
@@ -742,7 +744,11 @@ async def _run_orchestrator(  # noqa: C901
         typer.echo(f"\n⚠ {note}", err=True)
     input_tokens_used: int = getattr(orchestrator, "input_tokens_used", 0)
     output_tokens_used: int = getattr(orchestrator, "output_tokens_used", 0)
-    return findings, llm_remediations, scenario_records, scan_outcome, config_notes, catalog_coverage, input_tokens_used, output_tokens_used, coverage_tracker
+    from nuguard.models.token_usage import TokenUsage  # noqa: PLC0415
+    token_usage = getattr(orchestrator, "token_usage", None) or TokenUsage(
+        input_tokens=input_tokens_used, output_tokens=output_tokens_used
+    )
+    return findings, llm_remediations, scenario_records, scan_outcome, config_notes, catalog_coverage, input_tokens_used, output_tokens_used, coverage_tracker, token_usage
 
 
 def _print_findings(
@@ -754,6 +760,7 @@ def _print_findings(
     scan_outcome: str = "no_findings",
     input_tokens_used: int = 0,
     output_tokens_used: int = 0,
+    token_usage: "TokenUsage | None" = None,
     coverage_tracker: object | None = None,
 ) -> None:
     """Print findings to stdout in the requested format."""
@@ -763,9 +770,16 @@ def _print_findings(
         meta = ReportMeta()
 
     if format == "json":
+        _tu_dict = token_usage.model_dump() if token_usage is not None else {
+            "input_tokens": input_tokens_used,
+            "output_tokens": output_tokens_used,
+            "total_tokens": input_tokens_used + output_tokens_used,
+            "llm_model": None,
+        }
         payload = {
             "_meta": meta.to_dict(),
             "scan_outcome": scan_outcome,
+            "token_usage": _tu_dict,
             "input_tokens_used": input_tokens_used,
             "output_tokens_used": output_tokens_used,
             "findings": [f.model_dump() for f in findings],

@@ -239,8 +239,10 @@ def analyze(
     tool_status = getattr(analyzer, "tool_status", {})
     nga_audit = getattr(analyzer, "nga_audit", [])
     sc_audit = getattr(analyzer, "sc_audit", [])
+    from nuguard.models.token_usage import TokenUsage  # noqa: PLC0415
+    token_usage: TokenUsage = getattr(analyzer, "token_usage", None) or TokenUsage()
     if fmt == "json":
-        report_text = _render_json(visible, sbom_path, tool_status, nga_audit, sc_audit)
+        report_text = _render_json(visible, sbom_path, tool_status, nga_audit, sc_audit, token_usage=token_usage)
     elif fmt == "sarif":
         report_text = _render_sarif(visible, sbom_path, tool_status)
     else:
@@ -586,6 +588,7 @@ def _render_json(
     tool_status: dict[str, Any] | None = None,
     nga_audit: list[dict[str, Any]] | None = None,
     sc_audit: list[dict[str, Any]] | None = None,
+    token_usage: "Any | None" = None,
 ) -> str:
     # Severity counts
     sev_counts: dict[str, int] = {}
@@ -602,6 +605,7 @@ def _render_json(
         "total": len(findings),
         "severity_counts": sev_counts,
         "tool_status": tool_status or {},
+        "token_usage": token_usage.model_dump() if token_usage is not None else {},
         "by_component": by_component,
         "findings": [f.model_dump() for f in findings],
         **({"nga_rule_audit": nga_audit} if nga_audit else {}),

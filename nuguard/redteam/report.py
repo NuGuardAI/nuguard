@@ -25,6 +25,7 @@ from nuguard.output.validation_report import (
 
 if TYPE_CHECKING:
     from nuguard.cli.report_meta import ReportMeta
+    from nuguard.models.token_usage import TokenUsage
 
 _log = get_logger(__name__)
 
@@ -41,6 +42,7 @@ def to_json(
     scan_outcome: str = "no_findings",
     input_tokens_used: int = 0,
     output_tokens_used: int = 0,
+    token_usage: "TokenUsage | None" = None,
 ) -> str:
     """Generate a JSON report string from red-team findings.
 
@@ -50,6 +52,7 @@ def to_json(
         remediation_plan: Optional list of ``RemediationArtefact`` objects.
         input_tokens_used: Total LLM prompt tokens consumed during the run.
         output_tokens_used: Total LLM completion tokens consumed during the run.
+        token_usage: Structured token usage (preferred over the flat int params).
 
     Returns:
         JSON string.
@@ -59,11 +62,15 @@ def to_json(
     if meta is None:
         meta = _ReportMeta()
 
+    _in = token_usage.input_tokens if token_usage is not None else input_tokens_used
+    _out = token_usage.output_tokens if token_usage is not None else output_tokens_used
+
     payload: dict[str, Any] = {
         "_meta": meta.to_dict(),
         "scan_outcome": scan_outcome,
-        "input_tokens_used": input_tokens_used,
-        "output_tokens_used": output_tokens_used,
+        "token_usage": token_usage.model_dump() if token_usage is not None else {"input_tokens": _in, "output_tokens": _out, "total_tokens": _in + _out, "llm_model": None},
+        "input_tokens_used": _in,
+        "output_tokens_used": _out,
         "findings": [f.model_dump() for f in findings],
         "remediation_plan": [a.model_dump() for a in (remediation_plan or [])],
     }
