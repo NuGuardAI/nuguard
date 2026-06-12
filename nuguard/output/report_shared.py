@@ -5,6 +5,7 @@ from here to keep formatting consistent and avoid duplication.
 """
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -22,17 +23,29 @@ def _norm_sev(raw: object) -> str:
 
 def _truncate_evidence(text: str, *, limit: int = 2500) -> str:
     """Trim *text* to *limit* chars at a newline/word boundary."""
+    return safe_truncate(text, limit=limit, suffix="… (truncated)")
+
+
+def safe_truncate(text: str, *, limit: int = 2500, suffix: str = "…") -> str:
+    """Trim text safely at a word boundary and append suffix."""
     if len(text) <= limit:
         return text
     cut = text[:limit]
     window = max(200, limit // 5)
     last_nl = cut.rfind("\n", limit - window)
     if last_nl != -1:
-        return cut[:last_nl] + "\n… (truncated)"
+        return cut[:last_nl] + "\n" + suffix
     last_sp = cut.rfind(" ", limit - 80)
     if last_sp != -1:
-        return cut[:last_sp] + " … (truncated)"
-    return cut + "… (truncated)"
+        return cut[:last_sp] + " " + suffix
+    return cut + suffix
+
+
+def sanitize_markdown_block(text: str) -> str:
+    """Sanitize text before embedding in markdown sections."""
+    cleaned = (text or "").replace("\r\n", "\n").replace("\r", "\n")
+    cleaned = re.sub(r"\x1b\[[0-9;]*m", "", cleaned)
+    return cleaned
 
 
 def render_finding_block(
@@ -54,6 +67,7 @@ def render_finding_block(
     """
     if isinstance(finding, dict):
         title = finding.get("title", "")
+        finding_id = finding.get("finding_id", "")
         sev = _norm_sev(finding.get("severity", ""))
         comp = finding.get("affected_component", "")
         desc = finding.get("description", "")
@@ -66,6 +80,7 @@ def render_finding_block(
         goal_type = finding.get("goal_type") or ""
     else:
         title = finding.title or ""
+        finding_id = getattr(finding, "finding_id", "") or ""
         sev = (
             finding.severity.value.upper()
             if hasattr(finding.severity, "value")
@@ -81,7 +96,10 @@ def render_finding_block(
         policy_clause = ""
         goal_type = str(finding.goal_type) if getattr(finding, "goal_type", None) else ""
 
-    lines.append(f"{heading_level} [{sev}] {title}")
+    heading = f"{heading_level} [{sev}] {title}"
+    if finding_id:
+        heading += f" — {finding_id}"
+    lines.append(heading)
     lines.append("")
     if desc and desc != title:
         lines.append(desc)
@@ -100,7 +118,8 @@ def render_finding_block(
         lines.append("")
     if evidence_quote:
         lines.append("**Evidence:**")
-        lines.append("> " + _truncate_evidence(evidence_quote, limit=1000).replace("\n", "\n> "))
+        evidence = sanitize_markdown_block(_truncate_evidence(evidence_quote, limit=1000))
+        lines.append("> " + evidence.replace("\n", "\n> "))
         lines.append("")
     if remediation:
         lines.append(f"**Remediation:** {remediation}")

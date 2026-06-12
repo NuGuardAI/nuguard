@@ -1,6 +1,7 @@
 """BehaviorAnalyzer — top-level orchestrator for static + dynamic behavior analysis."""
 from __future__ import annotations
 
+import hashlib
 from typing import TYPE_CHECKING, Any
 
 from nuguard.behavior.alignment import check_alignment
@@ -269,9 +270,53 @@ class BehaviorAnalyzer:
         )
         if _dynamic_scan_outcome is not None:
             result.dynamic_scan_outcome = _dynamic_scan_outcome
+        if _dynamic_run_result is not None:
+            result.gap_aggregation_stats = dict(getattr(_dynamic_run_result, "gap_aggregation_stats", {}) or {})
+            result.coverage_mapping_diagnostics = dict(getattr(_dynamic_run_result, "coverage_mapping_diagnostics", {}) or {})
+            result.effective_endpoint = str(getattr(_dynamic_run_result, "effective_endpoint", "") or "")
+            result.target_endpoint_source = str(getattr(_dynamic_run_result, "target_endpoint_source", "config") or "config")
+            result.config_notes = list(getattr(_dynamic_run_result, "config_notes", []) or [])
 
         # Step 5: Generate recommendations
         result.recommendations = self._rec_engine.generate(result)
+
+        # Step 5a: Build run profile metadata for report comparability.
+        scenario_type_counts: dict[str, int] = {}
+        total_turns = 0
+        coverage_turns = 0
+        for sr in scenario_results:
+            scenario_type_counts[sr.scenario_type] = scenario_type_counts.get(sr.scenario_type, 0) + 1
+            total_turns += int(sr.total_turns or 0)
+            coverage_turns += int(sr.coverage_turns or 0)
+
+        target_url = str(getattr(self._config, "target", "") or "")
+        payload_key = str(getattr(self._config, "chat_payload_key", "message") or "message")
+        endpoint_for_fp = str(
+            getattr(_dynamic_run_result, "effective_endpoint", "")
+            or getattr(self._config, "target_endpoint", "")
+            or "/chat"
+        )
+        fingerprint_seed = f"{target_url}|{endpoint_for_fp}|{payload_key}"
+
+        try:
+            from nuguard import __version__ as nuguard_version
+        except Exception:
+            nuguard_version = "unknown"
+
+        result.run_profile = {
+            "nuguard_version": str(nuguard_version),
+            "behavior_engine_version": "v1",
+            "scenarios_planned": len(scenario_results) + len(skipped_scenario_names),
+            "scenarios_executed": len(scenario_results),
+            "scenarios_skipped": len(skipped_scenario_names),
+            "scenario_types": scenario_type_counts,
+            "total_turns": total_turns,
+            "coverage_turns": coverage_turns,
+            "max_scenarios_cap": getattr(self._config, "max_scenarios", None),
+            "llm_used": bool(self._llm),
+            "llm_model": str(getattr(self._config, "llm_model", "") or "") or None,
+            "target_fingerprint": hashlib.sha256(fingerprint_seed.encode("utf-8")).hexdigest(),
+        }
 
         # Step 5b: Synthesize concrete remediation artefacts in parallel.
         # synthesize_async() properly awaits LLM patch calls; the sync synthesize()
