@@ -288,9 +288,11 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
                         if agent_resp or user_msg:
                             evidence_lines.append(f"_Turn {t}:_")
                             if user_msg:
-                                evidence_lines.append(f"> **User:** {str(user_msg)[:200]}")
+                                u = _truncate_evidence(str(user_msg), limit=500).replace("\n", "\n> ")
+                                evidence_lines.append(f"> **User:** {u}")
                             if agent_resp:
-                                evidence_lines.append(f"> **Agent:** {str(agent_resp)[:200]}")
+                                a = _truncate_evidence(str(agent_resp), limit=1000).replace("\n", "\n> ")
+                                evidence_lines.append(f"> **Agent:** {a}")
                             for gap in gaps_raw:
                                 evidence_lines.append(f"> **Gap:** {str(gap)[:400]}")
                             evidence_lines.append("")
