@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, Optional
 if TYPE_CHECKING:
     from nuguard.common.auth import AuthConfig
     from nuguard.config import RedteamFindingTriggers
+    from nuguard.models.token_usage import TokenUsage
 
 import typer
 
@@ -439,7 +440,7 @@ async def _run_redteam(
     verify_findings: bool = False,
     golden_data: "dict | None" = None,
     suppress_spa_html_auth_bypass: bool = True,
-) -> tuple[list, dict[str, str], list, str, list[str], Any, int, int, Any]:
+) -> "tuple[list, dict[str, str], list, str, list[str], Any, int, int, Any, Any]":
     from nuguard.models.policy import CognitivePolicy
     from nuguard.redteam.target.canary import CanaryConfig
 
@@ -665,7 +666,7 @@ async def _run_orchestrator(  # noqa: C901
     verify_findings: bool = False,
     golden_data: "dict | None" = None,
     suppress_spa_html_auth_bypass: bool = True,
-) -> tuple[list, dict[str, str], list, str, list[str], Any, int, int, Any]:
+) -> "tuple[list, dict[str, str], list, str, list[str], Any, int, int, Any, Any]":
     from nuguard.common.llm_client import LLMClient
     from nuguard.redteam.executor.orchestrator import RedteamOrchestrator
 
@@ -759,7 +760,7 @@ def _print_findings(
     scan_outcome: str = "no_findings",
     input_tokens_used: int = 0,
     output_tokens_used: int = 0,
-    token_usage: "object | None" = None,
+    token_usage: "TokenUsage | None" = None,
     coverage_tracker: object | None = None,
 ) -> None:
     """Print findings to stdout in the requested format."""
