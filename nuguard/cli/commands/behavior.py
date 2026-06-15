@@ -8,6 +8,7 @@ from typing import Optional
 import typer
 from rich.console import Console
 
+from nuguard.cli.common import output_path_for_format, parse_output_formats
 from nuguard.common.logging import get_logger
 
 behavior_app = typer.Typer(
@@ -47,8 +48,14 @@ def behavior_command(
     output: Optional[Path] = typer.Option(
         None, "--output", "-o", help="Write report to this path"
     ),
-    format: str = typer.Option(
-        "text", "--format", "-f", help="Output format: text | json | markdown"
+    format: list[str] | None = typer.Option(
+        None,
+        "--format",
+        "-f",
+        help=(
+            "Output format(s): text | json | markdown. "
+            "Repeat --format or pass comma-separated values."
+        ),
     ),
     fail_on: str = typer.Option(
         "high",
@@ -84,7 +91,8 @@ def behavior_command(
       nuguard behavior
       nuguard behavior --static --config ./nuguard.yaml
       nuguard behavior --dynamic --target http://localhost:8090
-      nuguard behavior --policy ./policy.md --output ./behavior-report.md --format markdown
+    nuguard behavior --policy ./policy.md --output ./behavior-report.md --format markdown
+    nuguard behavior --output ./behavior-report --format json --format markdown
       nuguard behavior --mode static+dynamic --fail-on critical
     """
     if ctx.invoked_subcommand is not None:
@@ -97,6 +105,22 @@ def behavior_command(
     elif dynamic and not static:
         effective_mode = "dynamic"
 
+    try:
+        formats = parse_output_formats(
+            format,
+            default_format="text",
+            allowed_formats={"text", "json", "markdown"},
+        )
+    except ValueError as exc:
+        _err_console.print(f"[red]Error:[/red] {exc}")
+        raise typer.Exit(code=2)
+
+    if len(formats) > 1 and output is None:
+        _err_console.print(
+            "[red]Error:[/red] --output is required when multiple --format values are requested"
+        )
+        raise typer.Exit(code=2)
+
     asyncio.run(
         _run_behavior(
             config_path=config,
@@ -106,7 +130,7 @@ def behavior_command(
             intent_text=intent,
             canary_path=canary,
             output_path=output,
-            fmt=format,
+            formats=formats,
             fail_on=fail_on,
             baseline_path=baseline,
             compare_to_path=compare_to,
@@ -124,7 +148,7 @@ async def _run_behavior(
     intent_text: Optional[str],
     canary_path: Optional[Path],
     output_path: Optional[Path],
-    fmt: str,
+    formats: list[str],
     fail_on: str,
     baseline_path: Optional[Path],
     compare_to_path: Optional[Path],
@@ -278,31 +302,51 @@ async def _run_behavior(
         previous_run_profile=previous_run_profile,
     )
 
-    report_text: str | None = None
-    if fmt == "json":
-        report_text = to_json(result, meta)
-    elif fmt == "markdown":
-        report_text = to_markdown(result, meta)
-    else:
-        to_text(result, meta)
+    extension_map = {
+        "text": ".txt",
+        "json": ".json",
+        "markdown": ".md",
+    }
+
+    def _render(fmt: str) -> str | None:
+        if fmt == "json":
+            return to_json(result, meta)
+        if fmt == "markdown":
+            return to_markdown(result, meta)
+        if output_path is None:
+            to_text(result, meta)
+            return None
+        # Preserve prior behavior for --format text --output ...
+        # where markdown was written to file.
+        return to_markdown(result, meta)
 
     if output_path is not None:
-        if report_text is None:
-            report_text = to_markdown(result, meta)
-        if fmt == "markdown":
-            from nuguard.output.report_validation import validate_markdown_report
+        for fmt in formats:
+            out_path = output_path_for_format(
+                output_path,
+                fmt=fmt,
+                all_formats=formats,
+                extension_map=extension_map,
+            )
+            report_text = _render(fmt)
+            if report_text is None:
+                continue
+            if fmt == "markdown":
+                from nuguard.output.report_validation import validate_markdown_report
 
-            issues = validate_markdown_report(report_text)
-            if issues:
-                for issue in issues:
-                    _err_console.print(f"[yellow]Report validation warning:[/yellow] {issue}")
-                if strict_report:
-                    raise typer.Exit(code=3)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(report_text, encoding="utf-8")
-        _console.print(f"[green]Report written to:[/green] {output_path}")
-    elif report_text is not None:
-        _console.print(report_text)
+                issues = validate_markdown_report(report_text)
+                if issues:
+                    for issue in issues:
+                        _err_console.print(f"[yellow]Report validation warning:[/yellow] {issue}")
+                    if strict_report:
+                        raise typer.Exit(code=3)
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(report_text, encoding="utf-8")
+            _console.print(f"[green]Report written to:[/green] {out_path}")
+    else:
+        report_text = _render(formats[0])
+        if report_text is not None:
+            _console.print(report_text)
 
     # 9. Exit code based on fail_on severity
     severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}

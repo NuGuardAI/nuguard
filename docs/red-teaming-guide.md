@@ -889,8 +889,8 @@ nuguard redteam \
 | — | `redteam.tree_breadth` | — | `0` (auto) | TAP tree breadth: parallel tactic variants per depth level (ci=2, full=3) |
 | — | `redteam.tree_max_depth` | — | `0` (auto) | TAP tree max depth: recursion depth per scenario (ci=2, full=3) |
 | `--fail-on` | `output.fail_on` | — | `high` | Exit code 2 if any finding ≥ this severity |
-| `--format` / `-f` | `output.format` | — | `text` | `text`, `json`, `markdown`, or `sarif` |
-| `--output` / `-o` | — | — | — | Write report to this file path |
+| `--format` / `-f` | `output.format` | — | `text` | `text`, `json`, `markdown`, or `sarif` (repeat flag or use comma-separated values for multiple outputs) |
+| `--output` / `-o` | — | — | — | Write report to this file path. Required when multiple formats are requested; base path expands to per-format files |
 | `--verbose` / `-v` | `redteam.verbose` | — | `false` | Print detailed per-scenario traces to terminal |
 
 For future server-side storage of run configs/tokens, follow the encrypt-at-rest pattern in

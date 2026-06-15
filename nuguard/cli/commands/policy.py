@@ -11,6 +11,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from nuguard.cli.common import output_path_for_format, parse_output_formats
 from nuguard.cli.report_meta import ReportMeta
 from nuguard.common.logging import get_logger
 
@@ -210,10 +211,13 @@ def check(
         help="Path to a custom controls JSON file.",
         exists=False,
     ),
-    output_format: str = typer.Option(
-        "text",
+    output_format: list[str] | None = typer.Option(
+        None,
         "--format",
-        help="Output format: text | json | markdown.",
+        help=(
+            "Output format(s): text | json | markdown. "
+            "Repeat --format or pass comma-separated values."
+        ),
     ),
     output_file: Optional[Path] = typer.Option(
         None,
@@ -256,13 +260,29 @@ def check(
     from nuguard.config import load_config
     from nuguard.sbom.extractor.serializer import AiSbomSerializer
 
+    cfg = load_config(config_file)
+
+    try:
+        formats = parse_output_formats(
+            output_format,
+            default_format="text",
+            allowed_formats={"text", "json", "markdown"},
+        )
+    except ValueError as exc:
+        _err_console.print(f"Error: {exc}")
+        raise typer.Exit(code=_EXIT_ERROR)
+
+    if len(formats) > 1 and output_file is None:
+        _err_console.print(
+            "Error: --output is required when multiple --format values are requested"
+        )
+        raise typer.Exit(code=_EXIT_ERROR)
+
     # Fall back to nuguard.yaml for --sbom and --policy when not provided on CLI
-    if config_file is not None:
-        cfg = load_config(config_file)
-        if sbom is None and cfg.sbom_path:
-            sbom = Path(cfg.sbom_path)
-        if policy is None and cfg.policy_path:
-            policy = Path(cfg.policy_path)
+    if sbom is None and cfg.sbom_path:
+        sbom = Path(cfg.sbom_path)
+    if policy is None and cfg.policy_path:
+        policy = Path(cfg.policy_path)
 
     if not sbom and not policy:
         _err_console.print("Provide --policy and/or --sbom (or set them in nuguard.yaml).")
@@ -342,7 +362,7 @@ def check(
                     }
                 )
 
-        if output_format == "text":
+        if "text" in formats and output_file is None:
             _print_policy_check_result(check_result, verbose=verbose)
 
     # ---- Compliance framework assessment -----------------------------------
@@ -385,30 +405,44 @@ def check(
             ):
                 has_critical = True
 
-        if output_format == "text":
+        if "text" in formats and output_file is None:
             _print_assessment_table(assessment)
 
     # ---- JSON / Markdown output --------------------------------------------
     meta = ReportMeta(
         llm_models=[cfg.litellm_model] if enable_llm else [],
     )
-    if output_format == "json":
-        payload = {"_meta": meta.to_dict(), "findings": all_findings}
-        content = json.dumps(payload, indent=2, default=str)
-        if output_file:
-            output_file.write_text(content, encoding="utf-8")
-            _console.print(f"Output written to {output_file}")
-        else:
-            typer.echo(content)
-    elif output_format == "markdown":
-        content = _policy_findings_to_markdown(all_findings, meta)
-        if output_file:
-            output_file.write_text(content, encoding="utf-8")
-            _console.print(f"Output written to {output_file}")
-        else:
-            typer.echo(content)
+
+    extension_map = {
+        "text": ".txt",
+        "json": ".json",
+        "markdown": ".md",
+    }
+
+    def _render(fmt: str) -> str:
+        if fmt == "json":
+            payload = {"_meta": meta.to_dict(), "findings": all_findings}
+            return json.dumps(payload, indent=2, default=str)
+        if fmt == "markdown":
+            return _policy_findings_to_markdown(all_findings, meta)
+        return _policy_findings_to_text(all_findings, meta)
+
+    if output_file:
+        for fmt in formats:
+            out_path = output_path_for_format(
+                output_file,
+                fmt=fmt,
+                all_formats=formats,
+                extension_map=extension_map,
+            )
+            out_path.write_text(_render(fmt), encoding="utf-8")
+            _console.print(f"Output written to {out_path}")
     else:
-        _console.print(f"[dim]{meta.to_text_line()}[/dim]")
+        fmt = formats[0]
+        if fmt == "text":
+            _console.print(f"[dim]{meta.to_text_line()}[/dim]")
+        else:
+            typer.echo(_render(fmt))
 
     if not all_findings:
         _console.print("[green]✓ No findings.[/green]")
@@ -551,6 +585,38 @@ def _policy_findings_to_markdown(findings: list[dict], meta: ReportMeta | None =
                 lines += [""]
             if f.get("remediation"):
                 lines += [f"**Remediation:** {f['remediation']}", ""]
+    return "\n".join(lines)
+
+
+def _policy_findings_to_text(findings: list[dict], meta: ReportMeta | None = None) -> str:
+    """Render policy check findings as plain text."""
+    if meta is None:
+        meta = ReportMeta()
+    lines = ["NuGuard Policy Report", meta.to_text_line(), ""]
+    if not findings:
+        lines.append("No findings.")
+        return "\n".join(lines)
+
+    for f in findings:
+        source = str(f.get("source", "")).strip() or "unknown"
+        identifier = str(f.get("id", "")).strip()
+        name = str(f.get("name", "")).strip()
+        severity = str(f.get("severity", "info")).upper()
+        status = str(f.get("status", "")).upper()
+        title = f"[{severity}] {identifier}"
+        if name:
+            title += f": {name}"
+        if status:
+            title += f" ({status})"
+        lines.append(title)
+        lines.append(f"  source: {source}")
+        message = str(f.get("message", "")).strip()
+        if message:
+            lines.append(f"  message: {message}")
+        remediation = str(f.get("remediation", "")).strip()
+        if remediation:
+            lines.append(f"  remediation: {remediation}")
+        lines.append("")
     return "\n".join(lines)
 
 

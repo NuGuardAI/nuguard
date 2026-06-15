@@ -141,6 +141,7 @@ nuguard analyze --sbom app.sbom.json --config nuguard.yaml              # load m
 nuguard analyze --sbom app.sbom.json --format sarif --output results.sarif
 nuguard analyze --sbom app.sbom.json --source . --llm
 nuguard analyze --sbom app.sbom.json --no-grype --no-trivy --min-severity high
+nuguard analyze --sbom app.sbom.json --format json --format markdown --output reports/analyze
 ```
 
 | Flag | Default | Description |
@@ -148,7 +149,7 @@ nuguard analyze --sbom app.sbom.json --no-grype --no-trivy --min-severity high
 | `--sbom` | **required** | Path to AI-SBOM JSON |
 | `--config`, `-c` | — | Path to `nuguard.yaml`; sets `min_severity` and `nga_only` defaults (CLI flags override) |
 | `--nga` | off | NGA structural rules only (NGA-001–018); disables all external tool scans |
-| `--format`, `-f` | `markdown` | `markdown` \| `sarif` \| `json` |
+| `--format`, `-f` | `markdown` | `markdown` \| `sarif` \| `json` (repeat flag or use comma-separated values for multiple outputs) |
 | `--min-severity` | `medium` | Minimum severity to include: `critical` \| `high` \| `medium` \| `low` \| `info` |
 | `--source`, `-s` | — | Source directory for Checkov / Trivy / Semgrep path resolution |
 | `--atlas` / `--no-atlas` | on | MITRE ATLAS native graph checks (NGA-001–018) |
@@ -158,7 +159,7 @@ nuguard analyze --sbom app.sbom.json --no-grype --no-trivy --min-severity high
 | `--trivy` / `--no-trivy` | on | Trivy container/fs scan (requires `trivy` on PATH) |
 | `--semgrep` / `--no-semgrep` | on | Semgrep AI-security rules (requires `semgrep` on PATH) |
 | `--llm` | off | LLM enrichment in the ATLAS annotation pass |
-| `--output`, `-o` | stdout | Write report to this file |
+| `--output`, `-o` | stdout | Write report to this file. Required when multiple formats are requested; base path expands to per-format files (for example `analyze.json`, `analyze.md`) |
 
 **Source path resolution for Checkov:** When `--source` is provided, IaC file paths found in SBOM nodes are resolved relative to that directory. If no IaC nodes exist, Checkov scans the entire source directory. The SBOM `target` field is used as a fallback when `--source` is not set.
 
@@ -244,6 +245,10 @@ nuguard policy check --sbom app.sbom.json --framework owasp-llm-top10
 nuguard policy check --policy policy.md --sbom app.sbom.json \
   --framework owasp-llm-top10 --llm
 
+# JSON + Markdown in one run
+nuguard policy check --policy policy.md --sbom app.sbom.json \
+  --format json --format markdown --output reports/policy-check
+
 # Read paths from nuguard.yaml
 nuguard policy check
 ```
@@ -255,8 +260,8 @@ nuguard policy check
 | `--config` | `./nuguard.yaml` | Config file path |
 | `--framework` | — | `owasp-llm-top10` \| `nist-ai-rmf` \| `eu-ai-act` |
 | `--controls` | — | Custom controls JSON file |
-| `--format` | `text` | `text` \| `json` \| `markdown` |
-| `--output`, `-o` | stdout | Write the assessment report to this file |
+| `--format` | `text` | `text` \| `json` \| `markdown` (repeat flag or use comma-separated values for multiple outputs) |
+| `--output`, `-o` | stdout | Write the assessment report to this file. Required when multiple formats are requested; base path expands to per-format files |
 | `--llm` / `--no-llm` | off | LLM fallback for controls that can't be assessed from SBOM alone |
 | `--verbose`, `-v` | off | Show all controls including PASS results with evidence |
 
@@ -285,6 +290,9 @@ nuguard behavior --dynamic --target http://localhost:8090
 # Markdown report to file
 nuguard behavior --policy ./policy.md --output ./behavior-report.md --format markdown
 
+# JSON + Markdown in one run
+nuguard behavior --config nuguard.yaml --format json --format markdown --output ./behavior-report
+
 # CI gate
 nuguard behavior --mode static+dynamic --fail-on critical
 ```
@@ -299,8 +307,8 @@ nuguard behavior --mode static+dynamic --fail-on critical
 | `--policy` | — | from `nuguard.yaml` | Cognitive Policy Markdown path |
 | `--intent` | — | from SBOM | Override app intent (one-line description) |
 | `--canary` | — | from `nuguard.yaml` | Path to `canary.json` seed file |
-| `--output` | `-o` | stdout | Write report to this file |
-| `--format` | `-f` | `text` | `text` \| `json` \| `markdown` |
+| `--output` | `-o` | stdout | Write report to this file. Required when multiple formats are requested; base path expands to per-format files |
+| `--format` | `-f` | `text` | `text` \| `json` \| `markdown` (repeat flag or use comma-separated values for multiple outputs) |
 | `--fail-on` | — | `high` | Exit code 1 when any finding meets this severity: `critical` \| `high` \| `medium` \| `low` |
 | `--baseline` | — | — | Path to a previous `BehaviorAnalysisResult` JSON for regression detection |
 | `--verbose` | `-v` | off | Print detailed per-turn traces |
@@ -354,6 +362,10 @@ nuguard redteam --sbom app.sbom.json --target http://localhost:8000 \
 # CI gate — SARIF output, fail on high+
 nuguard redteam --sbom app.sbom.json --target $APP_URL \
   --profile ci -f sarif -o results.sarif --fail-on high
+
+# JSON + Markdown in one run
+nuguard redteam --sbom app.sbom.json --target $APP_URL \
+  --format json --format markdown --output results/redteam
 ```
 
 | Flag | Short | Default | Description |
@@ -372,8 +384,8 @@ nuguard redteam --sbom app.sbom.json --target $APP_URL \
 | `--guided` / `--no-guided` | — | on when LLM set | Adaptive multi-turn guided conversations (TAP + PAIR) |
 | `--guided-max-turns` | — | `12` | Max turns per guided conversation |
 | `--guided-concurrency` | — | `3` | Parallel guided conversations |
-| `--format` | `-f` | `text` | `text` \| `json` \| `markdown` \| `sarif` |
-| `--output` | `-o` | — | Write findings to this file |
+| `--format` | `-f` | `text` | `text` \| `json` \| `markdown` \| `sarif` (repeat flag or use comma-separated values for multiple outputs) |
+| `--output` | `-o` | — | Write findings to this file. Required when multiple formats are requested; base path expands to per-format files |
 | `--fail-on` | — | `high` | Exit code 2 if any finding meets this severity |
 | `--verbose` / `--no-verbose` | `-v` / `-V` | off | Print detailed per-turn traces |
 

@@ -67,12 +67,12 @@ Key flags:
 | `--supply-chain-profile` | `ci` \| `standard` \| `full` (default: `standard`); `full` adds git-history checks |
 | `--supply-chain-verify` | `off` \| `warn` \| `fail` — artifact registry verification (default: `off`) |
 | `--min-severity` | `critical`, `high`, `medium`, `low`, `info` |
-| `--format` | `markdown`, `json`, or `sarif` |
+| `--format` | `markdown`, `json`, or `sarif` (repeat flag or use comma-separated values for multiple outputs) |
 | `--llm` | Enable LLM enrichment for the ATLAS pass |
 | `--atlas` / `--no-atlas` | Toggle ATLAS native checks |
 | `--osv` / `--no-osv` | Toggle OSV dependency lookup |
 | `--semgrep` / `--no-semgrep` | Toggle Semgrep |
-| `--output` | Write report to a file |
+| `--output` | Write report to a file. Required when multiple formats are requested; base path expands to per-format files |
 
 ---
 
