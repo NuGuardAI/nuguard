@@ -13,6 +13,7 @@ from typing import Any
 from unittest.mock import patch
 
 from nuguard.analysis.plugins.atlas_annotator import AtlasAnnotatorPlugin
+from nuguard.models.token_usage import TokenUsage
 
 # ---------------------------------------------------------------------------
 # Shared fixtures
@@ -154,7 +155,7 @@ class TestLlmEnrichment:
         with (
             patch.object(plugin, "_run_osv_pass", return_value=[]),
             patch.object(plugin, "_run_grype_pass", return_value=[]),
-            patch.object(plugin, "_run_llm_enrichment", return_value=([], "overall")),
+            patch.object(plugin, "_run_llm_enrichment", return_value=([], "overall", TokenUsage())),
         ):
             result = plugin.run(_MINIMAL_SBOM, {"llm": True})
         assert result.details["basis"] == "llm"
@@ -164,7 +165,7 @@ class TestLlmEnrichment:
         with (
             patch.object(plugin, "_run_osv_pass", return_value=[]),
             patch.object(plugin, "_run_grype_pass", return_value=[]),
-            patch.object(plugin, "_run_llm_enrichment", return_value=([], "executive summary")),
+            patch.object(plugin, "_run_llm_enrichment", return_value=([], "executive summary", TokenUsage())),
         ):
             result = plugin.run(_MINIMAL_SBOM, {"llm": True})
         assert result.details.get("llm_summary") == "executive summary"
@@ -182,7 +183,7 @@ class TestLlmEnrichment:
             patch.object(
                 plugin,
                 "_run_llm_enrichment",
-                return_value=([enriched_finding], "overall"),
+                return_value=([enriched_finding], "overall", TokenUsage()),
             ),
         ):
             result = plugin.run(_MINIMAL_SBOM, {"llm": True})
@@ -194,7 +195,7 @@ class TestLlmEnrichment:
         with (
             patch.object(plugin, "_run_osv_pass", return_value=[]),
             patch.object(plugin, "_run_grype_pass", return_value=[]),
-            patch.object(plugin, "_run_llm_enrichment", return_value=([], "")),
+            patch.object(plugin, "_run_llm_enrichment", return_value=([], "", TokenUsage())),
         ):
             result = plugin.run(_MINIMAL_SBOM, {"enable_llm": True})
         assert result.details["basis"] == "llm"
@@ -242,7 +243,7 @@ class TestLlmEnrichment:
         with (
             patch.object(plugin, "_run_osv_pass", return_value=[_OSV_FINDING]),
             patch.object(plugin, "_run_grype_pass", return_value=[_GRYPE_FINDING]),
-            patch.object(plugin, "_run_llm_enrichment", return_value=([], "")),
+            patch.object(plugin, "_run_llm_enrichment", return_value=([], "", TokenUsage())),
         ):
             plugin.run(_MINIMAL_SBOM, {"llm": True})
 

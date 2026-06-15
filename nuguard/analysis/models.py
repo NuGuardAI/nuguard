@@ -5,6 +5,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from nuguard.models.token_usage import TokenUsage
+
 
 class AnalysisResult(BaseModel):
     """Structured output returned by every AnalysisPlugin.
@@ -22,3 +24,4 @@ class AnalysisResult(BaseModel):
     message: str
     findings: list[dict[str, Any]] = Field(default_factory=list)
     details: dict[str, Any] = Field(default_factory=dict)
+    token_usage: TokenUsage = Field(default_factory=TokenUsage)

@@ -49,6 +49,9 @@ def to_json(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = None) 
         "coverage_percentage": result.coverage_percentage,
         "intent_alignment_score": result.intent_alignment_score,
         "llm_executive_summary": result.llm_executive_summary,
+        "token_usage": result.token_usage.model_dump(),
+        "input_tokens_used": result.token_usage.input_tokens,
+        "output_tokens_used": result.token_usage.output_tokens,
         "intent": result.intent.model_dump(),
         "static_findings": result.static_findings,
         "dynamic_findings": result.dynamic_findings,
@@ -369,9 +372,11 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
                         if agent_resp or user_msg:
                             evidence_lines.append(f"_Turn {t}:_")
                             if user_msg:
-                                evidence_lines.append(f"> **User:** {str(user_msg)[:200]}")
+                                u = _truncate_evidence(str(user_msg), limit=500).replace("\n", "\n> ")
+                                evidence_lines.append(f"> **User:** {u}")
                             if agent_resp:
-                                evidence_lines.append(f"> **Agent:** {str(agent_resp)[:200]}")
+                                a = _truncate_evidence(str(agent_resp), limit=1000).replace("\n", "\n> ")
+                                evidence_lines.append(f"> **Agent:** {a}")
                             endpoint = str(v.get("effective_endpoint", "")).strip()
                             if endpoint:
                                 evidence_lines.append(f"> **Endpoint:** `{endpoint}`")

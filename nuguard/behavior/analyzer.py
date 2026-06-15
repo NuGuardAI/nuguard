@@ -12,6 +12,7 @@ from nuguard.behavior.recommendations import RecommendationEngine
 from nuguard.behavior.runner import BehaviorRunner
 from nuguard.behavior.scenarios import build_scenarios
 from nuguard.common.logging import get_logger
+from nuguard.models.token_usage import TokenUsage
 
 if TYPE_CHECKING:
     from nuguard.common.llm_client import LLMClient
@@ -368,6 +369,20 @@ class BehaviorAnalyzer:
                 )
             except Exception as exc:
                 _log.warning("Behavior executive summary generation failed: %s", exc)
+
+        # Aggregate token usage from dynamic runner + analyzer-level LLM calls
+        if _dynamic_run_result is not None:
+            result.token_usage = result.token_usage + TokenUsage(
+                input_tokens=_dynamic_run_result.input_tokens_used,
+                output_tokens=_dynamic_run_result.output_tokens_used,
+            )
+        if self._llm is not None:
+            in_, out_ = self._llm.token_counts
+            result.token_usage = result.token_usage + TokenUsage(
+                input_tokens=in_,
+                output_tokens=out_,
+                llm_model=getattr(self._llm, "model", None),
+            )
 
         _log.info(
             "BehaviorAnalyzer.analyze: complete — outcome=%s, risk=%.1f, coverage=%.0f%%",

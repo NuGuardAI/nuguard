@@ -77,7 +77,7 @@ Output ``details`` schema::
 from __future__ import annotations
 
 import asyncio
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from nuguard.analysis._atlas_data import (
     ATLAS_VERSION,
@@ -93,6 +93,9 @@ from nuguard.analysis._atlas_data import (
 from nuguard.analysis.models import AnalysisResult
 from nuguard.analysis.plugin_base import AnalysisPlugin
 from nuguard.common.logging import get_logger
+
+if TYPE_CHECKING:
+    from nuguard.models.token_usage import TokenUsage
 
 _log = get_logger("analysis.plugins.atlas")
 
@@ -143,6 +146,8 @@ class AtlasAnnotatorPlugin(AnalysisPlugin):
         # ------------------------------------------------------------------
         use_llm = bool(config.get("llm") or config.get("enable_llm"))
         overall_llm_summary: str | None = None
+        from nuguard.models.token_usage import TokenUsage  # noqa: PLC0415
+        llm_token_usage = TokenUsage()
         if use_llm:
             _log.info("Pass 3: LLM enrichment enabled")
             osv_findings = self._run_osv_pass(sbom)
@@ -155,7 +160,7 @@ class AtlasAnnotatorPlugin(AnalysisPlugin):
                 len(grype_findings),
             )
             all_findings = self._enrich_with_cve_context(all_findings, cve_findings)
-            all_findings, overall_llm_summary = self._run_llm_enrichment(
+            all_findings, overall_llm_summary, llm_token_usage = self._run_llm_enrichment(
                 all_findings, cve_findings, sbom, config
             )
 
@@ -207,6 +212,7 @@ class AtlasAnnotatorPlugin(AnalysisPlugin):
             plugin=self.name,
             message=message,
             details=details,
+            token_usage=llm_token_usage,
         )
 
     # ------------------------------------------------------------------ #
@@ -294,13 +300,15 @@ class AtlasAnnotatorPlugin(AnalysisPlugin):
         cve_findings: list[dict[str, Any]],
         sbom: dict[str, Any],
         config: dict[str, Any],
-    ) -> tuple[list[dict[str, Any]], str]:
+    ) -> tuple[list[dict[str, Any]], str, "TokenUsage"]:
         """Synchronous entry point for LLM enrichment; falls back gracefully."""
+        from nuguard.models.token_usage import TokenUsage  # noqa: PLC0415
+
         try:
             return asyncio.run(self._async_llm_enrichment(findings, cve_findings, sbom, config))
         except Exception as exc:
             _log.warning("LLM enrichment failed, falling back to static output: %s", exc)
-            return findings, ""
+            return findings, "", TokenUsage()
 
     async def _async_llm_enrichment(
         self,
@@ -308,11 +316,12 @@ class AtlasAnnotatorPlugin(AnalysisPlugin):
         cve_findings: list[dict[str, Any]],
         sbom: dict[str, Any],
         config: dict[str, Any],
-    ) -> tuple[list[dict[str, Any]], str]:
+    ) -> tuple[list[dict[str, Any]], str, "TokenUsage"]:
         """Build per-finding llm_summary + overall executive summary."""
         import os  # noqa: PLC0415
 
         from nuguard.common.llm_client import LLMClient  # noqa: PLC0415
+        from nuguard.models.token_usage import TokenUsage  # noqa: PLC0415
 
         model = config.get("llm_model") or "gpt-4o-mini"
         is_vertex = str(model).startswith("vertex_ai/")
@@ -346,7 +355,9 @@ class AtlasAnnotatorPlugin(AnalysisPlugin):
         except Exception as exc:
             _log.debug("Overall LLM summary failed: %s", exc)
 
-        return enriched, overall
+        in_, out_ = client.token_counts
+        token_usage = TokenUsage(input_tokens=in_, output_tokens=out_, llm_model=model)
+        return enriched, overall, token_usage
 
     async def _summarize_finding(
         self,

@@ -170,6 +170,9 @@ class StaticAnalyzer:
         self.nga_audit: list[dict[str, Any]] = []
         # Per-rule pass/fail audit for supply-chain rules (always populated)
         self.sc_audit: list[dict[str, Any]] = []
+        # Accumulated LLM token usage across all plugins (ATLAS LLM enrichment)
+        from nuguard.models.token_usage import TokenUsage  # noqa: PLC0415
+        self.token_usage: "TokenUsage" = TokenUsage()
 
     def analyze(self, doc: AiSbomDocument) -> list[Finding]:
         """Run all detectors and return a list of ``Finding`` objects.
@@ -496,6 +499,7 @@ class StaticAnalyzer:
             result = plugin.run(sbom_dict, config)
             raw_list: list[dict[str, Any]] = list(result.details.get("findings") or [])
             findings = [_raw_to_finding(r, "atlas") for r in raw_list]
+            self.token_usage = self.token_usage + result.token_usage
             _log.info("ATLAS native checks: %d finding(s)", len(findings))
             return findings
         except Exception as exc:
