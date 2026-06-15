@@ -361,7 +361,7 @@ class BehaviorAnalysisResult(BaseModel):
     def overall_risk_score(self) -> float:
         """Compute overall risk score (0–100) as the weighted average severity.
 
-        Weights: critical=100, high=70, medium=40, low=10, info=0.
+        Weights: critical=100, high=80, medium=50, low=25, info=0.
         Score = mean of per-finding weights, so volume and mix of severities
         influence the score proportionally. Consistent with red-team scoring.
         """
@@ -371,7 +371,7 @@ class BehaviorAnalysisResult(BaseModel):
         ]
         if not all_findings:
             return 0.0
-        _weights = {"critical": 100.0, "high": 70.0, "medium": 40.0, "low": 10.0, "info": 0.0}
+        _weights = {"critical": 100.0, "high": 80.0, "medium": 50.0, "low": 25.0, "info": 0.0}
 
         def _sev_key(raw: object) -> str:
             # Normalise plain strings ("high", "HIGH") and enum-style strings
@@ -379,7 +379,7 @@ class BehaviorAnalysisResult(BaseModel):
             s = str(raw).lower()
             return s.rsplit(".", 1)[-1] if "." in s else s
 
-        total = sum(_weights.get(_sev_key(f.get("severity", "low")), 10.0) for f in all_findings)
+        total = sum(_weights.get(_sev_key(f.get("severity", "low")), 25.0) for f in all_findings)
         return round(total / len(all_findings), 2)
 
     broken_chains: list[str] = Field(default_factory=list)
