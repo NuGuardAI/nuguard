@@ -201,3 +201,31 @@ class TestOutputFormats:
                 assert "findings" in parsed
             else:
                 assert parsed.get("version") == "2.1.0"
+
+    def test_multiple_formats_require_output(self) -> None:
+        with patch(_PATCH_ANALYZER) as cls:
+            cls.return_value = _make_mock_analyzer()
+            result = _invoke("--sbom", _SBOM_PATH, "--nga", "--format", "json", "--format", "markdown")
+
+        assert result.exit_code == 2
+        assert "--output is required" in result.output
+
+    def test_multiple_formats_write_multiple_files(self, tmp_path: Path) -> None:
+        out_base = tmp_path / "analysis-report"
+        with patch(_PATCH_ANALYZER) as cls:
+            cls.return_value = _make_mock_analyzer()
+            result = _invoke(
+                "--sbom",
+                _SBOM_PATH,
+                "--nga",
+                "--format",
+                "json",
+                "--format",
+                "markdown",
+                "--output",
+                str(out_base),
+            )
+
+        assert result.exit_code in (0, 1), result.output
+        assert (tmp_path / "analysis-report.json").exists()
+        assert (tmp_path / "analysis-report.md").exists()

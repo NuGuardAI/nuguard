@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 
 import typer
 
+from nuguard.cli.common import output_path_for_format, parse_output_formats
 from nuguard.cli.report_meta import ReportMeta
 from nuguard.common.logging import get_logger
 
@@ -87,8 +88,14 @@ def redteam(
     output: Optional[Path] = typer.Option(
         None, "--output", "-o", help="Write findings JSON to this path."
     ),
-    format: str = typer.Option(
-        "text", "--format", "-f", help="Output format: text | json | markdown | sarif."
+    format: list[str] | None = typer.Option(
+        None,
+        "--format",
+        "-f",
+        help=(
+            "Output format(s): text | json | markdown | sarif. "
+            "Repeat --format or pass comma-separated values."
+        ),
     ),
     fail_on: str = typer.Option(
         "high",
@@ -143,7 +150,23 @@ def redteam(
     effective_min_impact = (
         min_impact_score if min_impact_score != 0.0 else cfg.min_impact_score
     )
-    effective_format = format if format != "text" else cfg.output_format
+    raw_formats = format if format else [cfg.output_format or "text"]
+    try:
+        effective_formats = parse_output_formats(
+            raw_formats,
+            default_format="text",
+            allowed_formats={"text", "json", "markdown", "sarif"},
+        )
+    except ValueError as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1)
+
+    if len(effective_formats) > 1 and output is None:
+        typer.echo(
+            "Error: --output is required when multiple --format values are requested",
+            err=True,
+        )
+        raise typer.Exit(code=1)
     effective_fail_on = fail_on if fail_on != "high" else cfg.fail_on
     effective_scenarios = (
         [s.strip() for s in scenarios.split(",")] if scenarios
@@ -307,33 +330,64 @@ def redteam(
         findings, sbom_doc, cognitive_policy=_cognitive_policy
     )
 
-    _print_findings(findings, effective_format, meta, remediation_plan=remediation_plan,
-                    scenario_records=scenario_records, scan_outcome=scan_outcome,
-                    input_tokens_used=input_tokens_used, output_tokens_used=output_tokens_used,
-                    token_usage=token_usage, coverage_tracker=coverage_tracker)
-    if output:
-        if effective_format == "markdown":
-            output.write_text(
-                _findings_to_markdown(findings, meta, remediation_plan=remediation_plan,
-                                      scenario_records=scenario_records,
-                                      catalog_coverage=catalog_coverage,
-                                      coverage_tracker=coverage_tracker),
-                encoding="utf-8",
+    extension_map = {
+        "text": ".txt",
+        "json": ".json",
+        "markdown": ".md",
+        "sarif": ".sarif",
+    }
+
+    if output is None:
+        _print_findings(
+            findings,
+            effective_formats[0],
+            meta,
+            remediation_plan=remediation_plan,
+            scenario_records=scenario_records,
+            scan_outcome=scan_outcome,
+            input_tokens_used=input_tokens_used,
+            output_tokens_used=output_tokens_used,
+            token_usage=token_usage,
+            coverage_tracker=coverage_tracker,
+        )
+    else:
+        for fmt in effective_formats:
+            out_path = output_path_for_format(
+                output,
+                fmt=fmt,
+                all_formats=effective_formats,
+                extension_map=extension_map,
             )
-        else:
-            payload: dict = {
-                "_meta": meta.to_dict(),
-                "scan_outcome": scan_outcome,
-                "token_usage": token_usage.model_dump(),
-                "input_tokens_used": input_tokens_used,
-                "output_tokens_used": output_tokens_used,
-                "findings": [f.model_dump() for f in findings],
-                "remediation_plan": [a.model_dump() for a in remediation_plan],
-            }
-            if config_notes:
-                payload["config_notes"] = config_notes
-            output.write_text(json.dumps(payload, indent=2, default=str))
-        typer.echo(f"Findings written to {output}")
+            if fmt == "markdown":
+                out_path.write_text(
+                    _findings_to_markdown(
+                        findings,
+                        meta,
+                        remediation_plan=remediation_plan,
+                        scenario_records=scenario_records,
+                        catalog_coverage=catalog_coverage,
+                        coverage_tracker=coverage_tracker,
+                    ),
+                    encoding="utf-8",
+                )
+            elif fmt == "sarif":
+                from nuguard.output.sarif_generator import generate_sarif  # noqa: PLC0415
+
+                out_path.write_text(generate_sarif(findings, sbom_path=sbom_path), encoding="utf-8")
+            else:
+                payload: dict = {
+                    "_meta": meta.to_dict(),
+                    "scan_outcome": scan_outcome,
+                    "token_usage": token_usage.model_dump(),
+                    "input_tokens_used": input_tokens_used,
+                    "output_tokens_used": output_tokens_used,
+                    "findings": [f.model_dump() for f in findings],
+                    "remediation_plan": [a.model_dump() for a in remediation_plan],
+                }
+                if config_notes:
+                    payload["config_notes"] = config_notes
+                out_path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
+            typer.echo(f"Findings written to {out_path}")
 
         # Write machine-readable remediation plan alongside the main output
         if llm_remediations and findings:
@@ -786,6 +840,12 @@ def _print_findings(
             "remediation_plan": [a.model_dump() for a in (remediation_plan or [])],
         }
         typer.echo(json.dumps(payload, indent=2, default=str))
+        return
+
+    if format == "sarif":
+        from nuguard.output.sarif_generator import generate_sarif
+
+        typer.echo(generate_sarif(findings))
         return
 
     if format == "markdown":

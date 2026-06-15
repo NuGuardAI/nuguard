@@ -17,6 +17,7 @@ from typing import Any, Optional
 
 import typer
 
+from nuguard.cli.common import output_path_for_format, parse_output_formats
 from nuguard.common.logging import get_logger
 from nuguard.models.finding import Finding, Severity
 
@@ -56,9 +57,14 @@ def analyze(
         False, "--nga",
         help="Run NGA structural rules only (NGA-001–018); skip OSV, Grype, Checkov, Trivy, Semgrep, and ATLAS native checks.",
     ),
-    format: str = typer.Option(
-        "markdown", "--format", "-f",
-        help="Output format: markdown | sarif | json.",
+    format: list[str] | None = typer.Option(
+        None,
+        "--format",
+        "-f",
+        help=(
+            "Output format(s): markdown | sarif | json. "
+            "Repeat --format or pass comma-separated values."
+        ),
     ),
     policy: str = typer.Option(
         None, "--policy",
@@ -191,10 +197,27 @@ def analyze(
         raise typer.Exit(code=2)
     min_sev = Severity(min_sev_str) if min_sev_str != "info" else Severity.INFO
 
+    try:
+        formats = parse_output_formats(
+            format,
+            default_format="markdown",
+            allowed_formats={"markdown", "json", "sarif"},
+        )
+    except ValueError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=2)
+
+    if len(formats) > 1 and not output:
+        typer.echo(
+            "error: --output is required when multiple --format values are requested",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
     atlas_config: dict[str, Any] = {}
     if llm:
         atlas_config["llm"] = True
-    if format == "markdown":
+    if "markdown" in formats:
         atlas_config["format"] = "markdown"
 
     try:
@@ -235,25 +258,46 @@ def analyze(
     # ------------------------------------------------------------------
     # Render output
     # ------------------------------------------------------------------
-    fmt = format.lower()
+    def _render(fmt: str) -> str:
+        if fmt == "json":
+            return _render_json(
+                visible,
+                sbom_path,
+                tool_status,
+                nga_audit,
+                sc_audit,
+                token_usage=token_usage,
+            )
+        if fmt == "sarif":
+            return _render_sarif(visible, sbom_path, tool_status)
+        return _render_markdown(visible, sbom_path, min_severity, tool_status, nga_audit, sc_audit)
+
+    extension_map = {
+        "markdown": ".md",
+        "json": ".json",
+        "sarif": ".sarif",
+    }
     tool_status = getattr(analyzer, "tool_status", {})
     nga_audit = getattr(analyzer, "nga_audit", [])
     sc_audit = getattr(analyzer, "sc_audit", [])
     from nuguard.models.token_usage import TokenUsage  # noqa: PLC0415
+
     token_usage: TokenUsage = getattr(analyzer, "token_usage", None) or TokenUsage()
-    if fmt == "json":
-        report_text = _render_json(visible, sbom_path, tool_status, nga_audit, sc_audit, token_usage=token_usage)
-    elif fmt == "sarif":
-        report_text = _render_sarif(visible, sbom_path, tool_status)
-    else:
-        report_text = _render_markdown(visible, sbom_path, min_severity, tool_status, nga_audit, sc_audit)
 
     if output:
-        out_path = Path(output)
-        out_path.write_text(report_text, encoding="utf-8")
-        typer.echo(f"report written to {out_path}")
+        out_base = Path(output)
+        for fmt in formats:
+            out_path = output_path_for_format(
+                out_base,
+                fmt=fmt,
+                all_formats=formats,
+                extension_map=extension_map,
+            )
+            report_text = _render(fmt)
+            out_path.write_text(report_text, encoding="utf-8")
+            typer.echo(f"report written to {out_path}")
     else:
-        typer.echo(report_text)
+        typer.echo(_render(formats[0]))
 
     # Exit 1 if any findings at or above threshold
     raise typer.Exit(code=1 if visible else 0)

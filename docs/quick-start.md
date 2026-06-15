@@ -69,6 +69,7 @@ Useful variants:
 ```bash
 nuguard analyze --sbom app.sbom.json --format json
 nuguard analyze --config nuguard.yaml --format sarif
+nuguard analyze --sbom app.sbom.json --format json --format markdown --output reports/analyze
 ```
 
 ## 5. Run the Behavior Validation

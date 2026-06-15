@@ -176,6 +176,52 @@ def test_check_json_output(policy_file: Path, sbom_file: Path) -> None:
     assert isinstance(findings, list)
 
 
+def test_check_multiple_formats_require_output(policy_file: Path, sbom_file: Path) -> None:
+    result = runner.invoke(
+        app,
+        [
+            "policy",
+            "check",
+            "--policy",
+            str(policy_file),
+            "--sbom",
+            str(sbom_file),
+            "--format",
+            "json",
+            "--format",
+            "markdown",
+        ],
+    )
+    assert result.exit_code == 3
+    assert "--output is required" in result.output
+
+
+def test_check_multiple_formats_write_multiple_files(
+    policy_file: Path, sbom_file: Path, tmp_path: Path
+) -> None:
+    out_base = tmp_path / "policy-report"
+    result = runner.invoke(
+        app,
+        [
+            "policy",
+            "check",
+            "--policy",
+            str(policy_file),
+            "--sbom",
+            str(sbom_file),
+            "--format",
+            "json",
+            "--format",
+            "markdown",
+            "--output",
+            str(out_base),
+        ],
+    )
+    assert result.exit_code in (0, 1, 2), result.output
+    assert (tmp_path / "policy-report.json").exists()
+    assert (tmp_path / "policy-report.md").exists()
+
+
 def test_check_reads_paths_from_nuguard_yaml(
     policy_file: Path, sbom_file: Path, tmp_path: Path
 ) -> None:
