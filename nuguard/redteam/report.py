@@ -120,7 +120,7 @@ def to_markdown(
     lines += ["## Summary", ""]
     if meta.scan_profile:
         lines += [f"- **Scan Profile**: {meta.scan_profile}", ""]
-    _WEIGHTS = {"CRITICAL": 100.0, "HIGH": 70.0, "MEDIUM": 40.0, "LOW": 10.0, "INFO": 0.0}
+    _WEIGHTS = {"CRITICAL": 100.0, "HIGH": 80.0, "MEDIUM": 50.0, "LOW": 25.0, "INFO": 0.0}
     if findings:
         _scores = [
             _WEIGHTS.get(
