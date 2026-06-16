@@ -10,6 +10,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from nuguard.cli.common import output_path_for_format, parse_output_formats
 from nuguard.cli.report_meta import ReportMeta
 from nuguard.common.logging import get_logger
 from nuguard.models.validate import ValidateRunResult
@@ -39,8 +40,14 @@ def validate_command(
     output: Optional[Path] = typer.Option(
         None, "--output", "-o", help="Write findings JSON to this path"
     ),
-    format: str = typer.Option(
-        "text", "--format", "-f", help="Output format: text | json | markdown"
+    format: list[str] | None = typer.Option(
+        None,
+        "--format",
+        "-f",
+        help=(
+            "Output format(s): text | json | markdown. "
+            "Repeat --format or pass comma-separated values."
+        ),
     ),
     fail_on: str = typer.Option(
         "high",
@@ -64,13 +71,29 @@ def validate_command(
     """
     if ctx.invoked_subcommand is not None:
         return
+    try:
+        formats = parse_output_formats(
+            format,
+            default_format="text",
+            allowed_formats={"text", "json", "markdown"},
+        )
+    except ValueError as exc:
+        _err_console.print(f"[red]Error:[/red] {exc}")
+        raise typer.Exit(code=2)
+
+    if len(formats) > 1 and output is None:
+        _err_console.print(
+            "[red]Error:[/red] --output is required when multiple --format values are requested"
+        )
+        raise typer.Exit(code=2)
+
     _do_validate(
         config_path=config,
         target_override=target,
         policy_path=policy,
         canary_path=canary,
         output_path=output,
-        fmt=format,
+        formats=formats,
         fail_on=fail_on,
         baseline_path=baseline,
     )
@@ -82,7 +105,7 @@ def _do_validate(
     policy_path: Optional[Path],
     canary_path: Optional[Path],
     output_path: Optional[Path],
-    fmt: str,
+    formats: list[str],
     fail_on: str,
     baseline_path: Optional[Path],
 ) -> None:
@@ -143,29 +166,36 @@ def _do_validate(
         target_url=vc.target,
         target_endpoint=vc.target_endpoint or "/chat",
     )
-    if fmt == "json":
-        payload = {"_meta": meta.to_dict(), **result.model_dump()}
-        out = json.dumps(payload, indent=2, default=str)
-        if output_path:
-            output_path.write_text(out, encoding="utf-8")
-            _console.print(f"[green]Results written to[/green] {output_path}")
-        else:
-            _console.print(out)
-    elif fmt == "markdown":
-        md = _validate_result_to_markdown(result, meta)
-        if output_path:
-            output_path.write_text(md, encoding="utf-8")
-            _console.print(f"[green]Results written to[/green] {output_path}")
-        else:
-            _console.print(md)
-    else:
-        _print_validate_result(result, meta)
-        if output_path:
+    extension_map = {
+        "text": ".txt",
+        "json": ".json",
+        "markdown": ".md",
+    }
+
+    def _render(fmt: str) -> str:
+        if fmt == "json":
             payload = {"_meta": meta.to_dict(), **result.model_dump()}
-            output_path.write_text(
-                json.dumps(payload, indent=2, default=str), encoding="utf-8"
+            return json.dumps(payload, indent=2, default=str)
+        if fmt == "markdown":
+            return _validate_result_to_markdown(result, meta)
+        return _validate_result_to_text(result, meta)
+
+    if output_path:
+        for fmt in formats:
+            out_path = output_path_for_format(
+                output_path,
+                fmt=fmt,
+                all_formats=formats,
+                extension_map=extension_map,
             )
-            _console.print(f"\n[green]Results written to[/green] {output_path}")
+            out_path.write_text(_render(fmt), encoding="utf-8")
+            _console.print(f"[green]Results written to[/green] {out_path}")
+    else:
+        fmt = formats[0]
+        if fmt == "text":
+            _print_validate_result(result, meta)
+        else:
+            _console.print(_render(fmt))
 
     # ── Exit code ─────────────────────────────────────────────────────────────
     from nuguard.models.finding import Severity  # noqa: PLC0415
@@ -441,5 +471,31 @@ def _validate_result_to_markdown(result: "ValidateRunResult", meta: ReportMeta |
                         lines += [f"- [{v.get('severity','?').upper()}] {v.get('evidence','')}", ""]
                 if rec.canary_hits:
                     lines += [f"**Canary hits:** {', '.join(rec.canary_hits)}", ""]
+
+    return "\n".join(lines)
+
+
+def _validate_result_to_text(result: "ValidateRunResult", meta: ReportMeta | None = None) -> str:
+    """Render a ValidateRunResult as plain text."""
+    if meta is None:
+        meta = ReportMeta()
+
+    lines = [
+        "Validate Results",
+        meta.to_text_line(),
+        f"Run ID: {result.run_id}",
+        f"Scenarios: {result.scenarios_executed}",
+        f"Outcome: {result.scan_outcome}",
+        "",
+    ]
+
+    if result.findings:
+        lines.append("Findings:")
+        for f in result.findings:
+            sev = str(f.get("severity", "info")).upper()
+            title = str(f.get("title", "Untitled finding"))
+            lines.append(f"- [{sev}] {title}")
+    else:
+        lines.append("No findings.")
 
     return "\n".join(lines)

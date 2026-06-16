@@ -552,8 +552,8 @@ All flags can be set in `nuguard.yaml`. Run `nuguard init` to generate an annota
 | — | `behavior.verbose` | `false` | Include full per-turn traces in the report |
 | `--verbose` / `-v` | `behavior.verbose` | `false` | Print detailed turn traces to terminal |
 | `--fail-on` | `output.fail_on` | `high` | Exit code 2 if any finding ≥ this severity |
-| `--format` / `-f` | `output.format` | `text` | `text`, `json`, or `markdown` |
-| `--output` / `-o` | — | — | Write report to this file path |
+| `--format` / `-f` | `output.format` | `text` | `text`, `json`, or `markdown` (repeat flag or use comma-separated values for multiple outputs) |
+| `--output` / `-o` | — | — | Write report to this file path. Required when multiple formats are requested; base path expands to per-format files |
 
 ---
 
