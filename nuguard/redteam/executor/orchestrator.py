@@ -11,11 +11,11 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 
 if TYPE_CHECKING:
     from nuguard.common.auth import AuthConfig
+    from nuguard.common.discovery import DiscoveredProfile
     from nuguard.common.llm_client import LLMClient
     from nuguard.config import RedteamFindingTriggers
     from nuguard.models.token_usage import TokenUsage
     from nuguard.redteam.coverage.tracker import CoverageTracker
-    from nuguard.redteam.target.discovery import DiscoveredProfile
     from nuguard.redteam.target.log_reader import BufferLogReader, FileLogReader
 
 from nuguard.common.console import print_turn as _common_print_turn
@@ -540,6 +540,14 @@ class RedteamOrchestrator:
         self._chat_path, self._chat_payload_key, self._chat_payload_list, _discovered_response_key = (
             _discover_chat_config(sbom, chat_path, chat_payload_key, chat_payload_list)
         )
+        # Track how the effective endpoint was resolved for reporting.
+        _input_explicit = bool(chat_path)
+        if _input_explicit and self._chat_path == chat_path:
+            self._chat_path_source = "config"
+        elif self._chat_path:
+            self._chat_path_source = "sbom"
+        else:
+            self._chat_path_source = "default"  # updated by _maybe_probe_endpoints if live probe succeeds
         # Prefer explicit caller-supplied response key; fall back to SBOM-discovered one.
         self._chat_response_key = chat_response_key or _discovered_response_key
         # Populated by run() — scenarios executed and their titles
@@ -592,6 +600,16 @@ class RedteamOrchestrator:
             output_tokens=self.output_tokens_used,
             llm_model=llm_model,
         )
+
+    @property
+    def resolved_chat_path(self) -> str:
+        """The effective chat endpoint path after SBOM/probe resolution."""
+        return self._chat_path or "/chat"
+
+    @property
+    def resolved_chat_path_source(self) -> str:
+        """How the effective endpoint was determined: config | sbom | probe | default."""
+        return self._chat_path_source
 
     def _trigger_enabled(self, name: str) -> bool:
         """Return whether a finding trigger is enabled (defaults preserve legacy behavior)."""
@@ -781,11 +799,11 @@ class RedteamOrchestrator:
             from nuguard.common.console import _console as _rtconsole  # noqa: PLC0415
             _rtconsole.rule("[bold cyan]Pre-scan Discovery[/bold cyan]", style="dim cyan")
             try:
+                from nuguard.common.discovery import (
+                    run_discovery_conversation,  # noqa: PLC0415
+                )
                 from nuguard.common.target_client_builder import (
                     build_target_app_client as _btac,  # noqa: PLC0415
-                )
-                from nuguard.redteam.target.discovery import (
-                    run_discovery_conversation,  # noqa: PLC0415
                 )
                 from nuguard.redteam.target.session import AttackSession as _AS  # noqa: PLC0415
                 _disc_client = _btac(
@@ -1053,7 +1071,7 @@ class RedteamOrchestrator:
             # substituted correctly without relying on DISCOVER step responses.
             _effective_pre_scan = _pre_scan_profile
             if _effective_pre_scan is None and self._golden_data:
-                from nuguard.redteam.target.discovery import (
+                from nuguard.common.discovery import (
                     DiscoveredProfile as _DP,  # noqa: PLC0415
                 )
                 _synth_ids: list[str] = []
@@ -2181,6 +2199,7 @@ class RedteamOrchestrator:
             self._chat_path = path
             self._chat_payload_key = pay_key
             self._chat_payload_list = pay_list
+            self._chat_path_source = "probe"
         else:
             _log.warning(
                 "redteam: endpoint probe found nothing — keeping default %r",
@@ -2188,3 +2207,4 @@ class RedteamOrchestrator:
             )
             if not self._chat_path:
                 self._chat_path = "/chat"
+                self._chat_path_source = "default"

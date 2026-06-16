@@ -25,9 +25,9 @@ from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
     from nuguard.behavior.models import IntentProfile
+    from nuguard.common.discovery import DiscoveredProfile
     from nuguard.common.llm_client import LLMClient
     from nuguard.models.policy import CognitivePolicy, PolicyControl
-    from nuguard.redteam.target.discovery import DiscoveredProfile
     from nuguard.sbom.models import AiSbomDocument
 
 _log = get_logger(__name__)

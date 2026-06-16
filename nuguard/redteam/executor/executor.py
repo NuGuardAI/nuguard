@@ -17,7 +17,7 @@ from nuguard.common.rate_limit import (
 
 if TYPE_CHECKING:
     from nuguard.common.auth import AuthSession
-    from nuguard.redteam.target.discovery import DiscoveredProfile
+    from nuguard.common.discovery import DiscoveredProfile
     from nuguard.redteam.target.log_reader import BufferLogReader, FileLogReader
     from nuguard.sbom.models import AiSbomDocument
 

@@ -234,7 +234,7 @@ def redteam(
         raise typer.Exit(code=1)
 
     try:
-        findings, llm_remediations, scenario_records, scan_outcome, config_notes, catalog_coverage, input_tokens_used, output_tokens_used, coverage_tracker, token_usage = asyncio.run(  # type: ignore[misc]
+        findings, llm_remediations, scenario_records, scan_outcome, config_notes, catalog_coverage, input_tokens_used, output_tokens_used, coverage_tracker, token_usage, resolved_chat_path, resolved_chat_path_source = asyncio.run(  # type: ignore[misc]
             _run_redteam(
                 sbom_doc=sbom_doc,
                 sbom_path=sbom_path,
@@ -312,6 +312,8 @@ def redteam(
         verbose=effective_verbose,
         target_url=target_url or "",
         target_endpoint=cfg.target_endpoint or "/chat",
+        effective_endpoint=resolved_chat_path,
+        target_endpoint_source=resolved_chat_path_source,
         finding_triggers=finding_triggers.model_dump(),
         scan_profile=effective_profile,
     )
@@ -494,7 +496,7 @@ async def _run_redteam(
     verify_findings: bool = False,
     golden_data: "dict | None" = None,
     suppress_spa_html_auth_bypass: bool = True,
-) -> "tuple[list, dict[str, str], list, str, list[str], Any, int, int, Any, Any]":
+) -> "tuple[list, dict[str, str], list, str, list[str], Any, int, int, Any, Any, str, str]":
     from nuguard.models.policy import CognitivePolicy
     from nuguard.redteam.target.canary import CanaryConfig
 
@@ -720,7 +722,7 @@ async def _run_orchestrator(  # noqa: C901
     verify_findings: bool = False,
     golden_data: "dict | None" = None,
     suppress_spa_html_auth_bypass: bool = True,
-) -> "tuple[list, dict[str, str], list, str, list[str], Any, int, int, Any, Any]":
+) -> "tuple[list, dict[str, str], list, str, list[str], Any, int, int, Any, Any, str, str]":
     from nuguard.common.llm_client import LLMClient
     from nuguard.redteam.executor.orchestrator import RedteamOrchestrator
 
@@ -802,7 +804,7 @@ async def _run_orchestrator(  # noqa: C901
     token_usage = getattr(orchestrator, "token_usage", None) or TokenUsage(
         input_tokens=input_tokens_used, output_tokens=output_tokens_used
     )
-    return findings, llm_remediations, scenario_records, scan_outcome, config_notes, catalog_coverage, input_tokens_used, output_tokens_used, coverage_tracker, token_usage
+    return findings, llm_remediations, scenario_records, scan_outcome, config_notes, catalog_coverage, input_tokens_used, output_tokens_used, coverage_tracker, token_usage, orchestrator.resolved_chat_path, orchestrator.resolved_chat_path_source
 
 
 def _print_findings(
