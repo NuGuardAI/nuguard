@@ -17,7 +17,8 @@ llm:
 sbom_generation:
   llm: true
 
-target: https://frontend-ui.agreeablesky-8c7ba25f.eastus.azurecontainerapps.io
+#target: https://frontend-ui.agreeablesky-8c7ba25f.eastus.azurecontainerapps.io
+target: https://frontend-ui.purplewave-810bc652.eastus.azurecontainerapps.io
 
 # Authentication
 auth:
@@ -26,7 +27,7 @@ auth:
   # header: "Authorization: Bearer ${TARGET_TOKEN}"
   type: basic
   username: alice.johnson@pinnaclebank.com
-  password: alice123
+  password: demo123
 
 
 # ─── Behavior mode ────────────────────────────────────────────────────────────
