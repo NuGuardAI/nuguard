@@ -16,9 +16,9 @@ from nuguard.models.exploit_chain import ExploitStep, GoalType
 from nuguard.sbom.models import AiSbomDocument
 
 if TYPE_CHECKING:
+    from nuguard.common.discovery import DiscoveredProfile
     from nuguard.models.policy import CognitivePolicy
     from nuguard.redteam.scenarios.scenario_types import AttackScenario
-    from nuguard.redteam.target.discovery import DiscoveredProfile
 
 from .prompt_cache import PromptCache
 from .prompt_validation_gate import PromptValidationGate

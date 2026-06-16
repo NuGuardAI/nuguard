@@ -60,9 +60,9 @@ from nuguard.redteam.llm_engine.refusal_patterns import APP_TRANSIENT_ERROR_PATT
 
 if TYPE_CHECKING:
     from nuguard.behavior.models import IntentProfile
+    from nuguard.common.discovery import DiscoveredProfile
     from nuguard.common.llm_client import LLMClient
     from nuguard.models.policy import CognitivePolicy
-    from nuguard.redteam.target.discovery import DiscoveredProfile
     from nuguard.sbom.models import AiSbomDocument
 
 _log = get_logger(__name__)
@@ -1263,7 +1263,7 @@ class BehaviorRunner:
             # Only capture once per scenario (first good ID wins); IDs revealed later in
             # the same session override the initial capture if they look more specific.
             if response and not _local_tokens.get("golden_id"):
-                from nuguard.redteam.executor.id_extractor import extract_ids as _eid  # noqa: PLC0415, I001
+                from nuguard.common.id_extractor import extract_ids as _eid  # noqa: PLC0415
                 _cand_ids = _eid(response)
                 if _cand_ids:
                     _local_tokens["golden_id"] = _cand_ids[0]
@@ -1555,7 +1555,7 @@ class BehaviorRunner:
         Call this before :meth:`build_scenarios` so the discovered profile can be
         injected into scenario prompts at generation time.
         """
-        from nuguard.redteam.target.discovery import (  # noqa: PLC0415
+        from nuguard.common.discovery import (  # noqa: PLC0415
             run_discovery_conversation,
         )
         from nuguard.redteam.target.session import AttackSession as _AS  # noqa: PLC0415
@@ -1714,11 +1714,11 @@ class BehaviorRunner:
         else:
             _console.rule("[bold cyan]Pre-scan Discovery[/bold cyan]", style="dim cyan")
             try:
+                from nuguard.common.discovery import (
+                    run_discovery_conversation,  # noqa: PLC0415
+                )
                 from nuguard.common.endpoint_probe import (  # noqa: PLC0415
                     discover_chat_candidates_from_sbom as _discover_candidates,
-                )
-                from nuguard.redteam.target.discovery import (
-                    run_discovery_conversation,  # noqa: PLC0415
                 )
                 from nuguard.redteam.target.session import AttackSession as _AS  # noqa: PLC0415
                 _disc_session = _AS(
@@ -2445,7 +2445,7 @@ def _generate_data_reactive_turns(
     # Pre-scan profile IDs take precedence over in-response extraction.
     # Falls back to the original hardcoded wording when no neighbour can be derived
     # (e.g., pure-alpha PNR codes, UUIDs, or when nothing was disclosed).
-    from nuguard.redteam.executor.id_extractor import (  # noqa: PLC0415
+    from nuguard.common.id_extractor import (  # noqa: PLC0415
         generate_similar_ids,
     )
 

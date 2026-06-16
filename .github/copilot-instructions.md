@@ -43,18 +43,20 @@ nuguard/
 └── common/         # errors.py, logging.py, llm_client.py, http.py
 ```
 
-## Coding Style
-
-- Follow PEP 8 and Black formatting
-- Type-hint all functions and methods
-- Use `logging` for debug/info/warning — no bare `print` statements
-- Write modular, single-responsibility functions and classes
-- Add docstrings for complex logic and public APIs
-- Write unit tests for all new code; aim for high coverage
-- Use `uv run` to execute commands inside the virtual environment
+### Coding style
+- Follow PEP8 and Black formatting
+- Type hint all functions and methods
+- Use `logging` for debug/info/warning messages; avoid print statements
+- For LLM calls, handle rate limits and errors gracefully; provide fallback behavior if the LLM is unavailable
+- Ensure consistent coding style across the codebase; run `uv run ruff check nuguard/` before committing
+- Maximum code reuse and modularity; avoid monolithic functions or classes
+- Write comprehensive tests for all new functionality; aim for high coverage in critical areas like scenario generation and execution
+- Document all public functions and classes with docstrings; include examples where helpful
+- Use `nuguard.yaml` for any configurable parameters; avoid hardcoding values in the code
+- When in doubt, prioritize clarity and maintainability over cleverness or brevity
 - Use the `tmp/` folder for scratch scripts instead of streaming commands in the terminal
 - For CLI commands, provide helpful error messages and proper exit codes
-- For LLM calls, handle rate limits and errors gracefully with fallback behavior
+
 
 ## Security Requirements (OWASP Top 10)
 

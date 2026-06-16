@@ -1,6 +1,6 @@
 [project]
 name = "nuguard"
-version = "0.7.4"
+version = "0.7.5"
 description = "AI application security — SBOM generation, vulnerability scanning, behavioral validation, and adversarial red-teaming for AI Agents"
 readme = "README.md"
 license = { text = "Apache-2.0" }

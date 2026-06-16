@@ -4,7 +4,7 @@ from __future__ import annotations
 import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from nuguard.redteam.target.discovery import (
+from nuguard.common.discovery import (
     DiscoveredProfile,
     _domain_messages,
     _domain_task_messages,
