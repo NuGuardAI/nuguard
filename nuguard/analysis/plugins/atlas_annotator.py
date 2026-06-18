@@ -522,7 +522,11 @@ class AtlasAnnotatorPlugin(AnalysisPlugin):
         type_sets: dict[str, set[str]],
     ) -> list[dict[str, Any]]:
         check = NATIVE_CHECKS[0]  # ATLAS-NC-001
-        affected: list[str] = []
+        # Separate hosted API models (no downloadable weights) from self-hosted/local ones.
+        # Artifact integrity hashing is not applicable to hosted API models; they need
+        # version-pinning guidance instead.
+        local_affected: list[str] = []
+        hosted_affected: list[str] = []
 
         for nid in type_sets.get("MODEL", set()):
             node = next((n for n in nodes if str(n.get("id", "")) == nid), {})
@@ -535,21 +539,58 @@ class AtlasAnnotatorPlugin(AnalysisPlugin):
                 or extras.get("provider")
                 or ""
             ).lower()
-            has_external = any(p in provider for p in EXTERNAL_PROVIDERS)
+            has_external_provider = any(p in provider for p in EXTERNAL_PROVIDERS)
+            has_source_url = bool(
+                meta.get("source_url") or extras.get("source_url")
+            )
             has_hash = bool(
-                meta.get("integrity_hash")              # typed field (models.NodeMetadata)
-                or meta.get("checksum")                 # typed field (models.NodeMetadata)
-                or extras.get("integrity_hash")         # legacy extras path
+                meta.get("integrity_hash")
+                or meta.get("checksum")
+                or extras.get("integrity_hash")
                 or meta.get("digest")
                 or extras.get("digest")
             )
-            if has_external and not has_hash:
-                affected.append(name)
-                _log.debug("NC-001: external model '%s' (provider=%s) has no integrity_hash", name, provider)
+            if not has_external_provider or not has_hash:
+                # Not an external provider, or already has a hash — not of interest
+                if not has_external_provider:
+                    continue
+                if has_hash:
+                    continue
+                # External provider + no hash: distinguish hosted API vs local weights
+                if has_source_url:
+                    local_affected.append(name)
+                    _log.debug(
+                        "NC-001: self-hosted external model '%s' (provider=%s) has no integrity_hash",
+                        name, provider,
+                    )
+                else:
+                    hosted_affected.append(name)
+                    _log.debug(
+                        "NC-001: hosted API model '%s' (provider=%s) has no version pin",
+                        name, provider,
+                    )
 
-        if not affected:
-            return []
-        return [_native_finding(check, affected)]
+        results: list[dict[str, Any]] = []
+        if local_affected:
+            results.append(_native_finding(check, local_affected))
+        if hosted_affected:
+            # Hosted API models: version-pinning finding instead of integrity-hash finding
+            hosted_check = dict(check)
+            hosted_check["title"] = "Hosted model API version not pinned"
+            hosted_check["description"] = (
+                "One or more models are consumed via a hosted provider API without a pinned"
+                " model version. Provider-side model updates can silently alter behaviour,"
+                " introduce regressions, or change safety properties."
+            )
+            hosted_check["remediation"] = (
+                "Pin the model to a specific API version in your provider configuration."
+                " Log the model version identifier returned with each inference call."
+                " Maintain an approved-model registry and require change-control review"
+                " before upgrading to a newer model version."
+                " Artifact integrity hashing does not apply to hosted API models."
+            )
+            results.append(_native_finding(hosted_check, hosted_affected))
+        return results
 
     # NC-002 ----------------------------------------------------------------
 

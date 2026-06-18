@@ -7,6 +7,7 @@ The checker never raises — missing nodes produce gaps rather than exceptions.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -17,6 +18,83 @@ from nuguard.sbom.models import AiSbomDocument, Node, RateLimitDetail
 from nuguard.sbom.types import ComponentType
 
 _log = get_logger(__name__)
+
+_WORD_RE = re.compile(r"[a-z0-9]+")
+
+_ACTION_STOP_WORDS = {
+    "action",
+    "actions",
+    "add",
+    "any",
+    "authenticated",
+    "caller",
+    "completing",
+    "create",
+    "current",
+    "data",
+    "does",
+    "execute",
+    "export",
+    "for",
+    "from",
+    "information",
+    "issue",
+    "modify",
+    "node",
+    "nodes",
+    "other",
+    "outside",
+    "policy",
+    "restricted",
+    "session",
+    "should",
+    "system",
+    "than",
+    "the",
+    "tool",
+    "user",
+    "users",
+    "without",
+}
+
+_ACTION_SYNONYMS = {
+    "access": "read",
+    "book": "reservation",
+    "booking": "reservation",
+    "bookings": "reservation",
+    "cancel": "cancel",
+    "canceled": "cancel",
+    "canceling": "cancel",
+    "cancellation": "cancel",
+    "cancellations": "cancel",
+    "cancelled": "cancel",
+    "cancels": "cancel",
+    "credential": "credential",
+    "credentials": "credential",
+    "credit": "refund",
+    "credits": "refund",
+    "database": "db",
+    "databases": "db",
+    "query": "query",
+    "queries": "query",
+    "read": "read",
+    "reading": "read",
+    "reads": "read",
+    "record": "record",
+    "records": "record",
+    "retrieve": "read",
+    "retrieved": "read",
+    "retrieves": "read",
+    "retrieving": "read",
+    "refund": "refund",
+    "refunds": "refund",
+    "reservation": "reservation",
+    "reservations": "reservation",
+    "script": "script",
+    "scripts": "script",
+    "lookup": "read",
+    "lookups": "read",
+}
 
 # ---------------------------------------------------------------------------
 # Check metadata — name and description for every check ID
@@ -155,6 +233,134 @@ def _fuzzy_match(needle: str, haystack: str) -> bool:
     n = needle.lower()
     h = haystack.lower()
     return n in h or h in n
+
+
+def _canonical_action_tokens(text: str) -> set[str]:
+    """Return normalized policy/action tokens for lightweight semantic matching."""
+    tokens: set[str] = set()
+    for raw in _WORD_RE.findall(text.lower()):
+        token = _ACTION_SYNONYMS.get(raw, raw)
+        if len(token) <= 2 or token in _ACTION_STOP_WORDS:
+            continue
+        tokens.add(token)
+    return tokens
+
+
+def _node_search_text(node: Node) -> str:
+    """Return name/description/evidence text used to match a policy action to a node."""
+    parts = [
+        node.name,
+        node.metadata.description or "",
+        node.metadata.descriptive_name or "",
+        str(node.metadata.extras.get("description", "")),
+    ]
+    parts.extend(e.detail for e in node.evidence[:3])
+    return " ".join(part for part in parts if part)
+
+
+def _component_location(node: Node) -> str:
+    """Return a compact source location for a node."""
+    if not node.evidence:
+        return "source=unknown"
+    location = node.evidence[0].location
+    if location.line:
+        return f"source={location.path}:{location.line}"
+    return f"source={location.path}"
+
+
+def _component_label(node: Node) -> str:
+    """Return a compact component label with route/source context when available."""
+    label = repr(node.name)
+    endpoint = node.metadata.endpoint
+    method = node.metadata.method
+    if endpoint:
+        route = f"{method} {endpoint}" if method else endpoint
+        label = f"{label} ({route})"
+    return f"{label}, confidence={node.confidence:.2f}, {_component_location(node)}"
+
+
+def _is_soft_rejected(node: Node) -> bool:
+    """Return True when enrichment marked a candidate node as likely false positive."""
+    return bool(node.metadata.extras.get("llm_soft_rejected"))
+
+
+def _is_generic_endpoint_candidate(node: Node) -> bool:
+    """Return True for route-less generic endpoint candidates superseded by framework nodes."""
+    if node.metadata.endpoint or node.metadata.method:
+        return False
+    name = node.name.lower()
+    descriptive_name = (node.metadata.descriptive_name or "").lower()
+    canonical_name = str(node.metadata.extras.get("canonical_name", "")).lower()
+    adapter = str(node.metadata.extras.get("adapter", "")).lower()
+    return (
+        name == "generic"
+        or "generic api endpoint" in descriptive_name
+        or canonical_name == "api_endpoint_generic"
+        or adapter == "api_endpoint_generic"
+    )
+
+
+def _restricted_action_matches(action: str, tools: list[Node]) -> list[tuple[Node, set[str]]]:
+    """Return TOOL nodes that appear to be enforcement boundaries for *action*."""
+    action_tokens = _canonical_action_tokens(action)
+    matches: list[tuple[Node, set[str]]] = []
+    if not action_tokens:
+        return matches
+
+    for tool in tools:
+        if _fuzzy_match(action, tool.name):
+            matches.append((tool, action_tokens))
+            continue
+        tool_tokens = _canonical_action_tokens(_node_search_text(tool))
+        overlap = action_tokens & tool_tokens
+        if len(overlap) >= 2:
+            matches.append((tool, overlap))
+    return matches
+
+
+def _endpoint_rate_limit_severity(node: Node) -> str:
+    """Return endpoint-specific severity for missing rate-limit metadata."""
+    text = " ".join(
+        [
+            node.name,
+            node.metadata.endpoint or "",
+            node.metadata.descriptive_name or "",
+            node.metadata.chat_payload_key or "",
+        ]
+    ).lower()
+    if (
+        "login" in text
+        or "auth" in text
+        or "chat" in text
+        or node.metadata.chat_payload_key
+        or node.metadata.returns_sensitive_data
+    ):
+        return "medium"
+    return "low"
+
+
+def _rate_limit_remediation(node: Node) -> str:
+    """Return endpoint-specific rate-limit remediation text."""
+    severity_hint = ""
+    text = f"{node.name} {node.metadata.endpoint or ''}".lower()
+    if "login" in text or "auth" in text:
+        severity_hint = (
+            " Prioritize credential-stuffing protection with per-account and "
+            "per-IP throttling plus exponential backoff."
+        )
+    elif "chat" in text or node.metadata.chat_payload_key:
+        severity_hint = (
+            " Prioritize per-user/session throttling and token/cost budgets because "
+            "this endpoint can drive model and tool execution."
+        )
+    return (
+        f"Instrument {node.name!r} with rate limiting."
+        f"{severity_hint} Options: (a) Add 'slowapi' or 'flask-limiter' decorators "
+        "with the policy-defined limits; (b) configure Azure API Management / AWS API "
+        "Gateway throttling policies; (c) add a 'rate_limited: true' annotation comment "
+        "above the route handler so NuGuard captures it in the SBOM. "
+        "Re-run 'nuguard sbom generate' after the change."
+    )
 
 
 def _prompt_evidence_for(triggers: list[str], doc: AiSbomDocument) -> list[str]:
@@ -321,7 +527,11 @@ def check_policy_against_sbom(
     auth_nodes = _nodes_of_type(doc, ComponentType.AUTH)
     tool_nodes = _nodes_of_type(doc, ComponentType.TOOL)
     datastore_nodes = _nodes_of_type(doc, ComponentType.DATASTORE)
-    api_nodes = _nodes_of_type(doc, ComponentType.API_ENDPOINT)
+    all_api_nodes = _nodes_of_type(doc, ComponentType.API_ENDPOINT)
+    api_nodes = [
+        n for n in all_api_nodes
+        if not _is_soft_rejected(n) and not _is_generic_endpoint_candidate(n)
+    ]
 
     # ---- CHECK-001: HITL Enforcement ----------------------------------------
     if policy.hitl_triggers:
@@ -381,9 +591,7 @@ def check_policy_against_sbom(
         if tool_nodes:
             tool_names = [n.name for n in tool_nodes]
             for action in policy.restricted_actions:
-                matched_tools = [
-                    n for n in tool_nodes if _fuzzy_match(action, n.name)
-                ]
+                matched_tools = _restricted_action_matches(action, tool_nodes)
                 if matched_tools:
                     result.passed.append(PolicyControl(
                         check_id="CHECK-002",
@@ -391,9 +599,9 @@ def check_policy_against_sbom(
                         description=_check_description("CHECK-002"),
                         policy_section="restricted_actions",
                         evidence=[
-                            f"Action {action!r} matched TOOL node {n.name!r} "
-                            f"(file={n.evidence[0].location.path if n.evidence else 'unknown'})"
-                            for n in matched_tools
+                            f"Action {action!r} maps to TOOL node {_component_label(n)} "
+                            f"(matched terms: {', '.join(sorted(overlap)[:5])})"
+                            for n, overlap in matched_tools
                         ],
                         evidence_source="sbom_node",
                     ))
@@ -404,20 +612,30 @@ def check_policy_against_sbom(
                         description=_check_description("CHECK-002"),
                         message=(
                             f"Restricted action {action!r} does not match any TOOL node "
-                            "name in the SBOM. Verify the action name is correct."
+                            "name, description, or source-evidence terms in the SBOM. "
+                            "This may mean the capability is absent, the SBOM missed it, "
+                            "or the policy needs an explicit tool/control mapping."
                         ),
                         policy_section="restricted_actions",
                         severity="medium",
-                        searched=[f"Checked {len(tool_names)} TOOL nodes: {', '.join(tool_names[:5])}"
-                                  + (" …" if len(tool_names) > 5 else "")],
+                        searched=[
+                            f"Checked {len(tool_names)} TOOL nodes: {', '.join(tool_names[:5])}"
+                            + (" …" if len(tool_names) > 5 else ""),
+                            "Matched against TOOL name, description, descriptive_name, "
+                            "extras.description, and source evidence terms.",
+                            "If this capability is intentionally absent, treat this as "
+                            "not applicable rather than an implementation defect.",
+                        ],
                         remediation=(
-                            f"Ensure a TOOL node in the SBOM corresponds to the restricted "
-                            f"action {action!r}. Options: (1) rename the tool so its name "
-                            "contains a keyword from the action description; "
-                            "(2) update the policy restricted_action text to match the "
-                            "existing tool name; or (3) add explicit authorization checks "
-                            "(e.g. session-owner assertion) inside the tool implementation "
-                            "and re-run 'nuguard sbom generate' to refresh the SBOM."
+                            f"Map restricted action {action!r} to an enforcement boundary. "
+                            "Preferred options: (1) add explicit policy metadata such as "
+                            "'policy_controls', 'operation', 'data_access', and "
+                            "'authz_required' to the corresponding tool; (2) add or verify "
+                            "authorization checks inside the tool implementation; or "
+                            "(3) if the capability is not implemented, mark the policy "
+                            "control as not applicable in the source policy or control "
+                            "metadata. Re-run 'nuguard sbom generate' after changing code "
+                            "or annotations."
                         ),
                     ))
         else:
@@ -522,6 +740,7 @@ def check_policy_against_sbom(
                         evidence_source="sbom_node",
                     ))
                 else:
+                    severity = _endpoint_rate_limit_severity(ep)
                     result.gaps.append(PolicyGap(
                         check_id="CHECK-004",
                         name=_check_name("CHECK-004"),
@@ -533,22 +752,28 @@ def check_policy_against_sbom(
                         ),
                         policy_section="rate_limits",
                         sbom_component=ep.name,
-                        severity="low",
+                        severity=severity,
                         searched=[
                             "Checked rate_limited, rate_limit_detail, and legacy "
-                            f"rate_limit metadata on API_ENDPOINT {ep.name!r}: not set"
+                            f"rate_limit metadata on API_ENDPOINT {_component_label(ep)}: not set",
+                            "Endpoint priority is based on route/name, chat payload "
+                            "metadata, and sensitive-response metadata.",
                         ],
-                        remediation=(
-                            f"Instrument {ep.name!r} with rate limiting. "
-                            "Options: (a) Add 'slowapi' or 'flask-limiter' decorators "
-                            "with the policy-defined limits; (b) configure Azure API "
-                            "Management / AWS API Gateway throttling policies; "
-                            "(c) add a 'rate_limited: true' annotation comment above the "
-                            "route handler so NuGuard captures it in the SBOM. "
-                            "Re-run 'nuguard sbom generate' after the change."
-                        ),
+                        remediation=_rate_limit_remediation(ep),
                     ))
         else:
+            skipped = [
+                n for n in all_api_nodes
+                if _is_soft_rejected(n) or _is_generic_endpoint_candidate(n)
+            ]
+            searched = ["API_ENDPOINT nodes: none found in SBOM"]
+            if skipped:
+                searched = [
+                    "No usable API_ENDPOINT nodes found after excluding "
+                    f"{len(skipped)} soft-rejected or generic route-less candidate(s): "
+                    + ", ".join(n.name for n in skipped[:5])
+                    + (" …" if len(skipped) > 5 else ""),
+                ]
             result.gaps.append(PolicyGap(
                 check_id="CHECK-004",
                 name=_check_name("CHECK-004"),
@@ -559,7 +784,7 @@ def check_policy_against_sbom(
                 ),
                 policy_section="rate_limits",
                 severity="low",
-                searched=["API_ENDPOINT nodes: none found in SBOM"],
+                searched=searched,
                 remediation=(
                     "Ensure route/handler functions are present in the scanned source "
                     "tree and decorated with the appropriate HTTP framework decorators "
