@@ -71,8 +71,11 @@ def behavior_command(
     strict_report: bool = typer.Option(
         False, "--strict-report", help="Fail if markdown report validation finds structural issues"
     ),
-    verbose: bool = typer.Option(
-        False, "--verbose", "-v", help="Print detailed turn traces."
+    verbose: Optional[bool] = typer.Option(
+        None,
+        "--verbose/--no-verbose",
+        "-v/-V",
+        help="Print detailed turn traces. Overrides behavior.verbose in nuguard.yaml.",
     ),
     static: bool = typer.Option(
         False, "--static", help="Run static analysis only (shorthand for --mode static)"
@@ -153,7 +156,7 @@ async def _run_behavior(
     baseline_path: Optional[Path],
     compare_to_path: Optional[Path],
     strict_report: bool,
-    verbose: bool,
+    verbose: Optional[bool],
 ) -> None:
     """Internal async implementation of the behavior command."""
     from nuguard.behavior.analyzer import BehaviorAnalyzer
@@ -175,8 +178,8 @@ async def _run_behavior(
     updates: dict = {}
     if target_override:
         updates["target"] = target_override
-    if verbose:
-        updates["verbose"] = True
+    if verbose is not None:
+        updates["verbose"] = bool(verbose)
     if canary_path:
         updates["canary"] = str(canary_path)
     if updates:
@@ -294,6 +297,7 @@ async def _run_behavior(
     llm_models = [m for m in [cfg.litellm_model] if m]
     meta = ReportMeta(
         llm_models=llm_models,
+        verbose=bool(getattr(bc, "verbose", False)),
         target_url=str(getattr(bc, "target", "") or ""),
         target_endpoint=str(getattr(bc, "target_endpoint", "") or ""),
         effective_endpoint=str(getattr(result, "effective_endpoint", "") or ""),
