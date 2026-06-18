@@ -13,9 +13,13 @@ policy:
 
 # ─── LLM settings ─────────────────────────────────────────────────────────────
 llm:
-  model: azure/gpt-5.4-mini    # any LiteLLM model string (openai/gpt-4o, etc.)
-  api_key: ${AZURE_OPENAI_KEY}     # never put keys here; use env var interpolation
-  api_base: ${AZURE_API_BASE}     # optional override for Azure OpenAI endpoint URL
+#  model: azure/gpt-5.4-mini    # any LiteLLM model string (openai/gpt-4o, etc.)
+#  api_key: ${AZURE_OPENAI_KEY}     # never put keys here; use env var interpolation
+#  api_base: ${AZURE_API_BASE}     # optional override for Azure OpenAI endpoint URL
+
+  model: azure/${AZURE_DEEPSEEK_MODEL_NAME}    # any LiteLLM model string (openai/gpt-4o, etc.)
+  api_key: ${AZURE_DEEPSEEK_KEY}     # never put keys here; use env var interpolation
+  api_base: ${AZURE_DEEPSEEK_ENDPOINT}     # optional override for Azure OpenAI endpoint URL
 
 # ─── SBOM generation ──────────────────────────────────────────────────────────
 sbom_generation:
@@ -188,9 +192,13 @@ redteam:
 
   # LLM for response evaluation and finding summarisation
   eval_llm:
-    model: azure/gpt-5.4-mini
-    api_key: ${AZURE_OPENAI_KEY}
-    api_base: ${AZURE_API_BASE}     # optional override for Azure OpenAI endpoint URL
+  #  model: azure/gpt-5.4-mini
+  #  api_key: ${AZURE_OPENAI_KEY}
+  #  api_base: ${AZURE_API_BASE}     # optional override for Azure OpenAI endpoint URL
+
+    model: azure/${AZURE_DEEPSEEK_MODEL_NAME}    # any LiteLLM model string (openai/gpt-4o, etc.)
+    api_key: ${AZURE_DEEPSEEK_KEY}     # never put keys here; use env var interpolation
+    api_base: ${AZURE_DEEPSEEK_ENDPOINT}     # optional override for Azure OpenAI endpoint URL
 
   # MCP server hostnames treated as trusted.
   # Servers absent from this list are classified 'untrusted' and eligible
