@@ -15,6 +15,7 @@ Supports detection of AI frameworks in TypeScript and JavaScript code:
 from .agno import AgnoTSAdapter
 from .azure_ai_agents import AzureAIAgentsTSAdapter
 from .bedrock_agents import BedrockAgentsTSAdapter
+from .claude_agent_sdk import ClaudeAgentSDKTSAdapter
 from .datastores import DatastoreTSAdapter
 from .google_adk import GoogleADKAdapter
 from .langgraph import LangGraphTSAdapter
@@ -25,6 +26,7 @@ from .prompts import PromptTSAdapter
 __all__ = [
     "AgnoTSAdapter",
     "AzureAIAgentsTSAdapter",
+    "ClaudeAgentSDKTSAdapter",
     "BedrockAgentsTSAdapter",
     "DatastoreTSAdapter",
     "GoogleADKAdapter",
