@@ -153,6 +153,7 @@ def build_auth_bypass(
                 target_node_id=endpoint_id,
                 success_signal=HTTP_2XX_SENTINEL,
                 on_failure="abort",
+                use_llm_eval=True,
             )
         ],
     )
@@ -268,6 +269,7 @@ def build_auth_scope_bypass(
                 target_node_id=endpoint_id,
                 success_signal=HTTP_2XX_SENTINEL,
                 on_failure="abort",
+                use_llm_eval=True,
             )
         ],
     )
@@ -316,6 +318,7 @@ def build_rate_limit_probe(
     # Last step probes for 429 enforcement — missing 429 = rate-limit bypass
     steps[-1].success_signal = HTTP_2XX_SENTINEL
     steps[-1].on_failure = "abort"
+    steps[-1].use_llm_eval = True
     chain = ExploitChain(
         chain_id=chain_id,
         goal_type=GoalType.API_ATTACK,
@@ -375,6 +378,7 @@ def build_idor(
                 target_node_id=endpoint_id,
                 success_signal=HTTP_2XX_SENTINEL,
                 on_failure="abort",
+                use_llm_eval=True,
             )
         ],
     )

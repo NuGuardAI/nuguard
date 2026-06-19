@@ -600,14 +600,21 @@ class BehaviorJudge:
         scores: dict[str, float],
         policy_issues: list[str],
         gaps: list[str],
+        reasoning: str = "",
     ) -> list[dict]:
         """Detect deviations from intent based on v7 3-dimension scores."""
         deviations: list[dict] = []
         # Low topic alignment = misalignment deviation
         if scores.get("topic_alignment", 5.0) < 3.0:
+            # Use LLM's specific context if available rather than a static string
+            _ta_desc = (
+                f"Topic misalignment: {policy_issues[0]}"
+                if policy_issues
+                else (reasoning[:200] if reasoning else "Response does not align with the declared allowed topic")
+            )
             deviations.append({
                 "deviation_type": "intent_misalignment",
-                "description": "Response does not align with the declared allowed topic",
+                "description": _ta_desc,
                 "severity": "high" if scores.get("topic_alignment", 5.0) < 2.0 else "medium",
             })
         # Low response validity = capability gap or error
@@ -859,7 +866,10 @@ class BehaviorJudge:
 
         policy_issues = [str(i) for i in (parsed.get("policy_issues") or [])]
         gaps = [str(g) for g in (parsed.get("gaps") or [])]
-        deviations = self._detect_deviations(scores, policy_issues, gaps)
+        deviations = self._detect_deviations(
+            scores, policy_issues, gaps,
+            reasoning=str(parsed.get("reasoning") or ""),
+        )
 
         _log.debug(
             "BehaviorJudge.judge_turn: parsed  verdict=%s  score=%.2f  scores=%s  "
