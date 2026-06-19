@@ -1,11 +1,11 @@
 {
   "schema_version": "1.5.0",
-  "generated_at": "2026-06-18T21:38:40Z",
+  "generated_at": "2026-06-12T22:09:10Z",
   "generator": "nuguard",
   "target": "/workspaces/nuguard/tests/apps/openai-cs-agents-demo",
   "nodes": [
     {
-      "id": "fd891d08-107c-4a5d-a929-ae97d67bf465",
+      "id": "dba7f2e1-2360-4ca1-b971-45a5f808304e",
       "name": "Cancellation Agent",
       "component_type": "AGENT",
       "confidence": 0.8832000000000001,
@@ -16,7 +16,7 @@
         "system_prompt_excerpt": "{…}\nYou are a Cancellation Agent. Use the following routine to support the customer:\n1. The customer's confirmation number is {…} and flight number is {…}. If either is unknown, use the lookup_reservation tool to retrieve them — do not ask the customer. Once you have both, confirm them with the customer before cancelling.\n2. If the customer confirms, use the cancel_flight tool to cancel their flight.\nIf the customer asks anything else, transfer back to the triage agent.",
         "request_body_schema": {},
         "chat_payload_list": false,
-        "descriptive_name": "Cancellation Agent",
+        "descriptive_name": "Airline Cancellation Agent",
         "dependency_names": [
           "pydantic"
         ],
@@ -64,7 +64,7 @@
       ]
     },
     {
-      "id": "8406c690-cf26-4262-ba20-ad71e9ef055a",
+      "id": "3e32b051-6340-4510-8f2e-ceca7b1ed0e3",
       "name": "FAQ Agent",
       "component_type": "AGENT",
       "confidence": 0.8832000000000001,
@@ -75,7 +75,7 @@
         "system_prompt_excerpt": "{…}\n    You are an FAQ agent. If you are speaking to a customer, you probably were transferred to from the triage agent.\n    Use the following routine to support the customer.\n    1. Identify the last question asked by the customer.\n    2. Use the faq lookup tool to get the answer. Do not rely on your own knowledge.\n    3. Respond to the customer with the answer",
         "request_body_schema": {},
         "chat_payload_list": false,
-        "descriptive_name": "FAQ Agent",
+        "descriptive_name": "Airline FAQ Agent",
         "dependency_names": [
           "pydantic"
         ],
@@ -123,7 +123,7 @@
       ]
     },
     {
-      "id": "3921d234-44e8-4a2c-85cb-72b7999dc50f",
+      "id": "fcf5910b-c543-4220-a134-e62c0a51ab88",
       "name": "Flight Status Agent",
       "component_type": "AGENT",
       "confidence": 0.8832000000000001,
@@ -134,7 +134,7 @@
         "system_prompt_excerpt": "{…}\nYou are a Flight Status Agent. Use the following routine to support the customer:\n1. The customer's confirmation number is {…} and flight number is {…}. If either is unknown, use the lookup_reservation tool to retrieve them — do not ask the customer. Once you have both, confirm them with the customer.\n2. Use the flight_status_tool to report the current status of the flight.\nIf the customer asks anything else, transfer back to the triage agent.",
         "request_body_schema": {},
         "chat_payload_list": false,
-        "descriptive_name": "Flight Status Agent",
+        "descriptive_name": "Airline Flight Status Agent",
         "dependency_names": [
           "pydantic"
         ],
@@ -182,7 +182,7 @@
       ]
     },
     {
-      "id": "b6f77488-5806-47e1-b151-3a1f6c55e6a6",
+      "id": "cc8abe8a-919e-49e0-9f6e-d739447c239e",
       "name": "Seat Booking Agent",
       "component_type": "AGENT",
       "confidence": 0.8832000000000001,
@@ -193,7 +193,7 @@
         "system_prompt_excerpt": "{…}\nYou are a seat booking agent. You were transferred here from the triage agent.\nUse the following routine to support the customer:\n1. The customer's confirmation number is {…} and current seat is {…}. If the confirmation number is unknown, use the lookup_reservation tool to find it. Once you have it, confirm it with the customer before proceeding.\n2. Ask the customer what their desired seat number is. You can also use the display_seat_map tool to show them an interactive seat map where they c",
         "request_body_schema": {},
         "chat_payload_list": false,
-        "descriptive_name": "Seat Booking Agent",
+        "descriptive_name": "Airline Seat Booking Agent",
         "dependency_names": [
           "pydantic"
         ],
@@ -241,7 +241,7 @@
       ]
     },
     {
-      "id": "70a8c00b-19e5-4486-a219-f1f5923fe3f5",
+      "id": "617af185-0bc2-4745-b709-c6e5ba1fbe2d",
       "name": "Triage Agent",
       "component_type": "AGENT",
       "confidence": 0.8832000000000001,
@@ -252,7 +252,7 @@
         "system_prompt_excerpt": "{…} You are a helpful triaging agent for an airline customer service system. IMPORTANT: At the very start of every conversation, before responding to the customer, you MUST call the lookup_reservation tool (with no arguments) to load the customer's flight reservations from the database. Use the returned reservation data to personalise your response and to pre-populate context before handing off to any specialist agent. Never ask the customer for information already available in context (name, em",
         "request_body_schema": {},
         "chat_payload_list": false,
-        "descriptive_name": "Triage Agent",
+        "descriptive_name": "Airline Triage Agent",
         "dependency_names": [
           "pydantic"
         ],
@@ -300,7 +300,7 @@
       ]
     },
     {
-      "id": "f52276b0-1b35-495e-b83d-202159d1747c",
+      "id": "756b6229-fe08-4c9b-9268-d775cb1e8c1d",
       "name": "Generic",
       "component_type": "API_ENDPOINT",
       "confidence": 1.0,
@@ -317,20 +317,20 @@
           "canonical_name": "api_endpoint_generic",
           "adapter": "api_endpoint_generic",
           "evidence_count": 1,
-          "description": "POST /login endpoint that accepts a LoginRequest and returns a LoginResponse, part of the auth system.",
+          "description": "Exposes a POST /login API endpoint that accepts login credentials and begins the authentication flow by verifying them.",
           "llm_verified": true,
-          "llm_verification_reason": "This is a concrete FastAPI endpoint at '@app.post(\"/login\")' in production application code, accepting login requests. The login endpoint is an API endpoint that authenticates users and presumably issues tokens, fitting the API_ENDPOINT type.",
-          "llm_confidence": 0.95,
+          "llm_verification_reason": "Concrete FastAPI route defined in application code; not a test, stub, or documentation snippet.",
+          "llm_confidence": 0.96,
           "confidence_breakdown": {
-            "regex_confidence": 0.95,
-            "llm_confidence": 0.95,
+            "regex_confidence": 0.96,
+            "llm_confidence": 0.96,
             "evidence_count": 3,
             "evidence_sources": [
               "llm:verified",
               "evidence:0",
               "confidence:high"
             ],
-            "base_confidence": 0.95,
+            "base_confidence": 0.96,
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 1.0
@@ -350,7 +350,7 @@
       ]
     },
     {
-      "id": "fa5fe996-a15f-4b02-b12e-fe7f657dcad8",
+      "id": "68860edd-1148-4880-b67b-70e618c6e636",
       "name": "Me",
       "component_type": "API_ENDPOINT",
       "confidence": 0.8640000000000001,
@@ -360,7 +360,7 @@
         "method": "GET",
         "request_body_schema": {},
         "chat_payload_list": false,
-        "descriptive_name": "User Profile API",
+        "descriptive_name": "Current User Endpoint",
         "dependency_names": [
           "fastapi",
           "pydantic"
@@ -414,7 +414,7 @@
       ]
     },
     {
-      "id": "712fde60-8479-4251-8fec-6176ebb3ee03",
+      "id": "04a6c66e-05d7-4ae6-9842-e81ad264fb5b",
       "name": "Chat Endpoint",
       "component_type": "API_ENDPOINT",
       "confidence": 0.8640000000000001,
@@ -431,7 +431,7 @@
         "context_payload_fields": {
           "conversation_id": "session"
         },
-        "descriptive_name": "Chat API Endpoint",
+        "descriptive_name": "Chat Messages API Endpoint",
         "dependency_names": [
           "fastapi",
           "pydantic"
@@ -504,7 +504,7 @@
       ]
     },
     {
-      "id": "47d4f307-3b50-4042-9d6e-54141875953c",
+      "id": "47b3c2cf-b2d9-48cb-9083-e8fa03f5cc1d",
       "name": "Login",
       "component_type": "API_ENDPOINT",
       "confidence": 0.8640000000000001,
@@ -582,7 +582,7 @@
       ]
     },
     {
-      "id": "85883d77-44e4-4316-8d55-f5fcc25620e3",
+      "id": "7f7cba16-77b5-4c2c-b6b6-d1e86910bd8e",
       "name": "Logout",
       "component_type": "API_ENDPOINT",
       "confidence": 0.8640000000000001,
@@ -634,14 +634,14 @@
       ]
     },
     {
-      "id": "129b7693-f3f8-497a-986c-c413e6f9c163",
+      "id": "27f0ec22-2007-464f-af68-922f2c25c3c1",
       "name": "Bearer Auth",
       "component_type": "AUTH",
       "confidence": 1.0,
       "metadata": {
         "request_body_schema": {},
         "chat_payload_list": false,
-        "descriptive_name": "Bearer Authentication Handler",
+        "descriptive_name": "Bearer Token Authentication",
         "dependency_names": [
           "fastapi",
           "pydantic"
@@ -732,7 +732,7 @@
       ]
     },
     {
-      "id": "0af846ef-67e7-453e-a7b5-36d4d7186e65",
+      "id": "87c5f00e-a1af-47ab-a7bf-575e8632ed5d",
       "name": "Sqlite",
       "component_type": "DATASTORE",
       "confidence": 0.8448000000000001,
@@ -773,7 +773,7 @@
         },
         "request_body_schema": {},
         "chat_payload_list": false,
-        "descriptive_name": "SQLite Datastore",
+        "descriptive_name": "SQLite Data Store",
         "loc": 186,
         "extras": {
           "canonical_name": "datastore_sqlite",
@@ -811,7 +811,7 @@
       ]
     },
     {
-      "id": "6d6bd84f-fe50-49ae-90fd-7dbdde463ec5",
+      "id": "d065bc47-c70b-4b54-90b9-aa861296738c",
       "name": "Deploy to Azure",
       "component_type": "DEPLOYMENT",
       "confidence": 0.8360000000000001,
@@ -820,7 +820,7 @@
         "secret_store": "github_actions_secret",
         "request_body_schema": {},
         "chat_payload_list": false,
-        "descriptive_name": "Azure Deployment Workflow",
+        "descriptive_name": "Azure Deployment Pipeline",
         "loc": 204,
         "extras": {
           "canonical_name": "deployment_github_actions_deploy_to_azure",
@@ -876,7 +876,7 @@
       ]
     },
     {
-      "id": "72c4c590-1fce-4bb1-ae0b-1ff07f7f9d30",
+      "id": "8cc09cb5-406c-49b7-9420-885a872b481b",
       "name": "FastAPI",
       "component_type": "FRAMEWORK",
       "confidence": 0.8640000000000001,
@@ -884,7 +884,7 @@
         "framework": "fastapi",
         "request_body_schema": {},
         "chat_payload_list": false,
-        "descriptive_name": "FastAPI Framework",
+        "descriptive_name": "FastAPI Web Framework",
         "dependency_names": [
           "fastapi",
           "pydantic"
@@ -925,7 +925,7 @@
       ]
     },
     {
-      "id": "1300b12e-9b39-44cb-8999-72b374bf29f2",
+      "id": "75b351a1-6230-4d62-92ad-f137b248341e",
       "name": "OpenAI Agents",
       "component_type": "FRAMEWORK",
       "confidence": 0.9880000000000001,
@@ -981,7 +981,7 @@
       ]
     },
     {
-      "id": "13c9d7d0-2588-4a14-9ceb-db6e1283e564",
+      "id": "0b040943-7148-46ae-8017-cef290eb446a",
       "name": "Jailbreak Guardrail",
       "component_type": "GUARDRAIL",
       "confidence": 0.8832000000000001,
@@ -989,7 +989,7 @@
         "framework": "openai_agents",
         "request_body_schema": {},
         "chat_payload_list": false,
-        "descriptive_name": "Jailbreak Guardrail",
+        "descriptive_name": "Jailbreak Protection Guardrail",
         "dependency_names": [
           "pydantic"
         ],
@@ -1037,7 +1037,7 @@
       ]
     },
     {
-      "id": "7cec0010-16ce-4ea3-9ef4-22f8db34cf8a",
+      "id": "401b51f4-23fb-4913-9d37-cc4df065a664",
       "name": "Relevance Guardrail",
       "component_type": "GUARDRAIL",
       "confidence": 0.8832000000000001,
@@ -1045,7 +1045,7 @@
         "framework": "openai_agents",
         "request_body_schema": {},
         "chat_payload_list": false,
-        "descriptive_name": "Relevance Guardrail",
+        "descriptive_name": "Relevance Filtering Guardrail",
         "dependency_names": [
           "pydantic"
         ],
@@ -1093,7 +1093,7 @@
       ]
     },
     {
-      "id": "de720ac6-38a6-4600-9c55-6a85ca006f81",
+      "id": "30cd8e12-82da-4801-8c64-c264fb5fdb56",
       "name": "Azure Credentials",
       "component_type": "IAM",
       "confidence": 0.8184000000000001,
@@ -1106,7 +1106,7 @@
         ],
         "request_body_schema": {},
         "chat_payload_list": false,
-        "descriptive_name": "Azure Credentials IAM",
+        "descriptive_name": "Azure IAM Credentials",
         "loc": 204,
         "extras": {
           "canonical_name": "iam_gha_azure_secrets_azure_credentials",
@@ -1150,7 +1150,7 @@
       ]
     },
     {
-      "id": "7dda65b7-2d2f-4a68-996f-a356554fb2e7",
+      "id": "18348150-dc75-41ac-bb57-fed1e7dae513",
       "name": "gpt-4.1-mini",
       "component_type": "MODEL",
       "confidence": 1.0,
@@ -1288,7 +1288,7 @@
       ]
     },
     {
-      "id": "f0108bdb-b917-4749-8f3f-6721ec65bb9b",
+      "id": "9dae4ea6-d5f2-46e4-913f-af3ab0fa9252",
       "name": "Db Write",
       "component_type": "PRIVILEGE",
       "confidence": 0.8640000000000001,
@@ -1344,14 +1344,14 @@
       ]
     },
     {
-      "id": "f53b8cb5-301d-4afd-886f-75563ce86072",
+      "id": "3a7f9a10-2ef3-4886-8dba-9d4361a6c6d5",
       "name": "Cancellation Agent Instructions",
       "component_type": "PROMPT",
       "confidence": 0.8096000000000002,
       "metadata": {
         "request_body_schema": {},
         "chat_payload_list": false,
-        "descriptive_name": "Cancellation Agent Instructions",
+        "descriptive_name": "Cancellation Agent Instructions Prompt",
         "dependency_names": [
           "pydantic"
         ],
@@ -1393,14 +1393,14 @@
       ]
     },
     {
-      "id": "93c7430c-cab7-47d1-b6dd-a578477aa3f0",
+      "id": "dfb2b82b-0e1d-46d4-99da-22cf0712ae4e",
       "name": "FAQ Agent Instructions",
       "component_type": "PROMPT",
       "confidence": 0.8096000000000002,
       "metadata": {
         "request_body_schema": {},
         "chat_payload_list": false,
-        "descriptive_name": "FAQ Agent Instructions",
+        "descriptive_name": "FAQ Agent Instructions Prompt",
         "dependency_names": [
           "pydantic"
         ],
@@ -1442,14 +1442,14 @@
       ]
     },
     {
-      "id": "77dc863a-b34e-4b8b-b328-7e373d80b26d",
+      "id": "fd199d29-a765-4238-8aa0-9393a350165a",
       "name": "Flight Status Agent Instructions",
       "component_type": "PROMPT",
       "confidence": 0.8096000000000002,
       "metadata": {
         "request_body_schema": {},
         "chat_payload_list": false,
-        "descriptive_name": "Flight Status Agent Instructions",
+        "descriptive_name": "Flight Status Instructions Prompt",
         "dependency_names": [
           "pydantic"
         ],
@@ -1491,14 +1491,14 @@
       ]
     },
     {
-      "id": "98824adb-f9c7-4942-bc4b-fedee196cbff",
+      "id": "adddf1c2-b5e2-411e-a722-14d717fc2676",
       "name": "Jailbreak Guardrail Instructions",
       "component_type": "PROMPT",
       "confidence": 0.8096000000000002,
       "metadata": {
         "request_body_schema": {},
         "chat_payload_list": false,
-        "descriptive_name": "Jailbreak Guardrail Instructions",
+        "descriptive_name": "Jailbreak Guardrail Instructions Prompt",
         "dependency_names": [
           "pydantic"
         ],
@@ -1540,14 +1540,14 @@
       ]
     },
     {
-      "id": "c3f188f8-16ba-46d5-bfa5-17d01d9a7188",
+      "id": "08061413-0dcb-487b-b1f1-423e49753655",
       "name": "Generic",
       "component_type": "PROMPT",
       "confidence": 1.0,
       "metadata": {
         "request_body_schema": {},
         "chat_payload_list": false,
-        "descriptive_name": "Generic Prompt",
+        "descriptive_name": "Generic Prompt Template",
         "dependency_names": [
           "pydantic"
         ],
@@ -1556,20 +1556,20 @@
           "canonical_name": "prompt_generic",
           "adapter": "prompt_generic",
           "evidence_count": 1,
-          "description": "POST /login endpoint that accepts a LoginRequest and returns a LoginResponse, part of the auth system.",
+          "description": "Exposes a POST /login API endpoint that accepts login credentials and begins the authentication flow by verifying them.",
           "llm_verified": true,
-          "llm_verification_reason": "This is a concrete FastAPI endpoint at '@app.post(\"/login\")' in production application code, accepting login requests. The login endpoint is an API endpoint that authenticates users and presumably issues tokens, fitting the API_ENDPOINT type.",
-          "llm_confidence": 0.95,
+          "llm_verification_reason": "Concrete FastAPI route defined in application code; not a test, stub, or documentation snippet.",
+          "llm_confidence": 0.96,
           "confidence_breakdown": {
-            "regex_confidence": 0.95,
-            "llm_confidence": 0.95,
+            "regex_confidence": 0.96,
+            "llm_confidence": 0.96,
             "evidence_count": 3,
             "evidence_sources": [
               "llm:verified",
               "evidence:0",
               "confidence:high"
             ],
-            "base_confidence": 0.95,
+            "base_confidence": 0.96,
             "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
             "final_confidence": 1.0
@@ -1589,14 +1589,14 @@
       ]
     },
     {
-      "id": "9f93b21e-8fff-4901-b79e-8d024d422e6d",
+      "id": "a54901b9-b096-48cf-b0e7-e450b6326337",
       "name": "Relevance Guardrail Instructions",
       "component_type": "PROMPT",
       "confidence": 0.8096000000000002,
       "metadata": {
         "request_body_schema": {},
         "chat_payload_list": false,
-        "descriptive_name": "Relevance Guardrail Instructions",
+        "descriptive_name": "Relevance Guardrail Instructions Prompt",
         "dependency_names": [
           "pydantic"
         ],
@@ -1638,14 +1638,14 @@
       ]
     },
     {
-      "id": "4d8cc21d-992f-467c-a5a5-419e4f7b7bfc",
+      "id": "8fb0a82d-3b1c-4324-9b32-e3697adc85bc",
       "name": "Seat Booking Agent Instructions",
       "component_type": "PROMPT",
       "confidence": 0.8096000000000002,
       "metadata": {
         "request_body_schema": {},
         "chat_payload_list": false,
-        "descriptive_name": "Seat Booking Agent Instructions",
+        "descriptive_name": "Seat Booking Agent Instructions Prompt",
         "dependency_names": [
           "pydantic"
         ],
@@ -1687,14 +1687,14 @@
       ]
     },
     {
-      "id": "9a87fadd-02a5-4444-a01f-2b6650537afd",
+      "id": "6a88d827-56f0-47ba-adb3-da070154172a",
       "name": "Triage Agent Instructions",
       "component_type": "PROMPT",
       "confidence": 0.8096000000000002,
       "metadata": {
         "request_body_schema": {},
         "chat_payload_list": false,
-        "descriptive_name": "Triage Agent Instructions",
+        "descriptive_name": "Triage Agent Instructions Prompt",
         "dependency_names": [
           "pydantic"
         ],
@@ -1736,13 +1736,13 @@
       ]
     },
     {
-      "id": "d6ca13aa-f505-4d9f-bc28-cb48aa78400a",
+      "id": "f5aab7d7-4055-4b14-8f57-ecc158eca5b8",
       "name": "Baggage Tool",
       "component_type": "TOOL",
       "confidence": 1.0,
       "metadata": {
         "framework": "openai_agents",
-        "description": "Tool used to process baggage-related data, enabling AI agents to handle luggage queries, tracking, and manifest operations within airport systems.",
+        "description": "Provides a mechanism for storing and retrieving per-agent contextual baggage, allowing agents to carry auxiliary state or metadata across tool calls and interactions.",
         "high_privilege": false,
         "sql_injectable": false,
         "ssrf_possible": false,
@@ -1750,7 +1750,7 @@
         "reads_external_content": false,
         "request_body_schema": {},
         "chat_payload_list": false,
-        "descriptive_name": "Baggage Inquiry Tool",
+        "descriptive_name": "Baggage Context Storage Tool",
         "dependency_names": [
           "pydantic"
         ],
@@ -1761,13 +1761,13 @@
           "evidence_count": 1,
           "framework": "openai_agents",
           "decorator": "function_tool",
-          "description": "A tool function that looks up baggage allowance and fees based on a user query.",
+          "description": "Agent tool that returns canned baggage allowance or overweight fee information based on the query.",
           "llm_verified": true,
-          "llm_verification_reason": "The baggage_tool function is decorated with @function_tool, which is a real AI tool definition for an agent framework (OpenAI Agents SDK). It is defined in application code (main.py) and provides baggage lookup functionality to an AI agent.",
-          "llm_confidence": 0.95,
+          "llm_verification_reason": "Concrete @function_tool definition in application code; not a test/mock/doc example and it is exposed as an agent tool via openai_agents.",
+          "llm_confidence": 0.98,
           "confidence_breakdown": {
-            "regex_confidence": 0.95,
-            "llm_confidence": 0.95,
+            "regex_confidence": 0.98,
+            "llm_confidence": 0.98,
             "evidence_count": 4,
             "evidence_sources": [
               "llm:verified",
@@ -1775,7 +1775,7 @@
               "evidence:0",
               "confidence:high"
             ],
-            "base_confidence": 0.95,
+            "base_confidence": 0.98,
             "evidence_multiplier": 1.3,
             "validation_penalty": 0.0,
             "final_confidence": 1.0
@@ -1795,13 +1795,13 @@
       ]
     },
     {
-      "id": "aff7f69a-4156-4748-b1d9-26e78a618c39",
+      "id": "bc41639f-9970-4820-8100-12219aa1f000",
       "name": "Cancel Flight",
       "component_type": "TOOL",
       "confidence": 1.0,
       "metadata": {
         "framework": "openai_agents",
-        "description": "Processes flight cancellation requests by validating booking details, checking eligibility, and updating reservation status accordingly.",
+        "description": "Cancels a booked flight reservation by verifying the required booking details and submitting a cancellation request to the airline or travel system.",
         "high_privilege": false,
         "sql_injectable": false,
         "ssrf_possible": false,
@@ -1820,13 +1820,13 @@
           "evidence_count": 1,
           "framework": "openai_agents",
           "decorator": "function_tool",
-          "description": "Cancels a flight reservation based on the confirmation number stored in the agent context.",
+          "description": "An agent tool that cancels the current flight using the confirmation number stored in the agent context; if no confirmation number is present, it returns an instruction to look up the reservation first.",
           "llm_verified": true,
-          "llm_verification_reason": "Concrete function_tool definition in an OpenAI Agents SDK application (non-test file), used as a tool by an agent for flight cancellation.",
-          "llm_confidence": 0.95,
+          "llm_verification_reason": "Concrete application code in python-backend/main.py defining a @function_tool for the OpenAI Agents framework; not a test or doc stub.",
+          "llm_confidence": 0.97,
           "confidence_breakdown": {
-            "regex_confidence": 0.95,
-            "llm_confidence": 0.95,
+            "regex_confidence": 0.97,
+            "llm_confidence": 0.97,
             "evidence_count": 4,
             "evidence_sources": [
               "llm:verified",
@@ -1834,7 +1834,7 @@
               "evidence:0",
               "confidence:high"
             ],
-            "base_confidence": 0.95,
+            "base_confidence": 0.97,
             "evidence_multiplier": 1.3,
             "validation_penalty": 0.0,
             "final_confidence": 1.0
@@ -1854,13 +1854,13 @@
       ]
     },
     {
-      "id": "8d3b0a80-c350-435b-ac9f-6cb173c4669e",
+      "id": "9d854b8f-f431-4686-94b8-660b7c7f2f1a",
       "name": "Display Seat Map",
       "component_type": "TOOL",
       "confidence": 1.0,
       "metadata": {
         "framework": "openai_agents",
-        "description": "Retrieves and presents an interactive aircraft seat map, allowing users to view available seats and select their preferred seating arrangement.",
+        "description": "Displays a seat map for a venue or transport booking, allowing users to view available, reserved, and selected seats.",
         "high_privilege": false,
         "sql_injectable": false,
         "ssrf_possible": false,
@@ -1879,13 +1879,13 @@
           "evidence_count": 1,
           "framework": "openai_agents",
           "decorator": "function_tool",
-          "description": "Trigger the UI to show an interactive seat map to the customer for seat selection.",
+          "description": "Tool that returns a seat-map display command so the UI can open an interactive seat selector for the customer.",
           "llm_verified": true,
-          "llm_verification_reason": "Concrete function decorated with @function_tool, defined in application code (main.py), provides a real capability for an AI agent to trigger a UI seat map.",
-          "llm_confidence": 1.0,
+          "llm_verification_reason": "Concrete production code defines an OpenAI Agents function tool via @function_tool with a runtime name override and behavior that returns a UI trigger string; not test or documentation code.",
+          "llm_confidence": 0.99,
           "confidence_breakdown": {
-            "regex_confidence": 1.0,
-            "llm_confidence": 1.0,
+            "regex_confidence": 0.99,
+            "llm_confidence": 0.99,
             "evidence_count": 4,
             "evidence_sources": [
               "llm:verified",
@@ -1893,7 +1893,7 @@
               "evidence:0",
               "confidence:high"
             ],
-            "base_confidence": 1.0,
+            "base_confidence": 0.99,
             "evidence_multiplier": 1.3,
             "validation_penalty": 0.0,
             "final_confidence": 1.0
@@ -1913,13 +1913,13 @@
       ]
     },
     {
-      "id": "41bde20f-71c1-48a1-9a92-a466544c139a",
+      "id": "556fac0e-ce44-4f60-9915-a7c4123d35ed",
       "name": "Faq Lookup Tool",
       "component_type": "TOOL",
       "confidence": 1.0,
       "metadata": {
         "framework": "openai_agents",
-        "description": "Retrieves predefined answers to frequently asked questions to provide users with quick, accurate responses to common inquiries.",
+        "description": "Looks up relevant FAQ entries to provide concise, predefined answers to common user questions.",
         "high_privilege": false,
         "sql_injectable": false,
         "ssrf_possible": false,
@@ -1938,13 +1938,13 @@
           "evidence_count": 1,
           "framework": "openai_agents",
           "decorator": "function_tool",
-          "description": "Looks up answers to frequently asked questions about baggage policy.",
+          "description": "Lookup frequently asked questions, returning canned baggage policy information for queries about bags or baggage.",
           "llm_verified": true,
-          "llm_verification_reason": "Production code with a concrete @function_tool decorated async function for FAQ lookup, used in an AI agent context.",
-          "llm_confidence": 0.9,
+          "llm_verification_reason": "Concrete tool function defined in application code with an agent-tool decorator; not a test or mock.",
+          "llm_confidence": 0.98,
           "confidence_breakdown": {
-            "regex_confidence": 0.9,
-            "llm_confidence": 0.9,
+            "regex_confidence": 0.98,
+            "llm_confidence": 0.98,
             "evidence_count": 4,
             "evidence_sources": [
               "llm:verified",
@@ -1952,7 +1952,7 @@
               "evidence:0",
               "confidence:high"
             ],
-            "base_confidence": 0.9,
+            "base_confidence": 0.98,
             "evidence_multiplier": 1.3,
             "validation_penalty": 0.0,
             "final_confidence": 1.0
@@ -1972,13 +1972,13 @@
       ]
     },
     {
-      "id": "1deeb7e5-6689-499f-97a3-7b1734b57d02",
+      "id": "4f96a891-c0e0-4484-9ee9-cd7dce0061f3",
       "name": "Flight Status Tool",
       "component_type": "TOOL",
-      "confidence": 1.0,
+      "confidence": 0.8160000000000001,
       "metadata": {
         "framework": "openai_agents",
-        "description": "Provides real-time flight status updates, including schedules, delays, cancellations, and gate information for airline passengers and staff.",
+        "description": "Retrieves current flight status information, such as departure, arrival, delay, and gate details, to help an agent answer travel-related queries accurately.",
         "high_privilege": false,
         "sql_injectable": false,
         "ssrf_possible": false,
@@ -1997,24 +1997,19 @@
           "evidence_count": 1,
           "framework": "openai_agents",
           "decorator": "function_tool",
-          "description": "Tool that looks up and returns the status of a given flight.",
-          "llm_verified": true,
-          "llm_verification_reason": "Concrete function_tool decorator in application code providing flight status lookup functionality.",
-          "llm_confidence": 0.95,
           "confidence_breakdown": {
-            "regex_confidence": 0.95,
-            "llm_confidence": 0.95,
-            "evidence_count": 4,
+            "regex_confidence": 0.85,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
             "evidence_sources": [
-              "llm:verified",
               "framework:openai_agents",
               "evidence:0",
               "confidence:high"
             ],
-            "base_confidence": 0.95,
-            "evidence_multiplier": 1.3,
+            "base_confidence": 0.68,
+            "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
-            "final_confidence": 1.0
+            "final_confidence": 0.816
           }
         }
       },
@@ -2031,13 +2026,13 @@
       ]
     },
     {
-      "id": "7e7f4e58-46c8-4a75-9445-ccdfde406bce",
+      "id": "154e0649-312e-4448-8e27-ba42250ddd0c",
       "name": "Lookup Reservation",
       "component_type": "TOOL",
-      "confidence": 1.0,
+      "confidence": 0.8160000000000001,
       "metadata": {
         "framework": "openai_agents",
-        "description": "Retrieves stored reservation details (time, party size, contact info) using a confirmation number or name and date.",
+        "description": "Retrieves reservation details, status, or identifiers from the booking system to support customer inquiries and downstream agent actions.",
         "high_privilege": false,
         "sql_injectable": false,
         "ssrf_possible": false,
@@ -2056,24 +2051,19 @@
           "evidence_count": 1,
           "framework": "openai_agents",
           "decorator": "function_tool",
-          "description": "AI agent tool that looks up flight reservations for the current customer from the database; can list all reservations or retrieve a specific booking by confirmation number.",
-          "llm_verified": true,
-          "llm_verification_reason": "Function decorated with @function_tool from openai_agents, defined in application code (not test), used as a tool for an AI agent to look up flight reservations at runtime.",
-          "llm_confidence": 0.95,
           "confidence_breakdown": {
-            "regex_confidence": 0.95,
-            "llm_confidence": 0.95,
-            "evidence_count": 4,
+            "regex_confidence": 0.85,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
             "evidence_sources": [
-              "llm:verified",
               "framework:openai_agents",
               "evidence:0",
               "confidence:high"
             ],
-            "base_confidence": 0.95,
-            "evidence_multiplier": 1.3,
+            "base_confidence": 0.68,
+            "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
-            "final_confidence": 1.0
+            "final_confidence": 0.816
           }
         }
       },
@@ -2090,13 +2080,13 @@
       ]
     },
     {
-      "id": "7a9bcba6-617f-4d31-9f93-17384ac2bb98",
+      "id": "b42c0555-7155-4ecf-9f60-4c90121a6781",
       "name": "Update Seat",
       "component_type": "TOOL",
-      "confidence": 1.0,
+      "confidence": 0.8160000000000001,
       "metadata": {
         "framework": "openai_agents",
-        "description": "Updates a specific seat assignment or configuration within the system, modifying seating details based on provided parameters.",
+        "description": "Updates an existing seat record for a reservation, modifying attributes such as assignment, status, or related details in the seating system.",
         "high_privilege": false,
         "sql_injectable": false,
         "ssrf_possible": false,
@@ -2115,24 +2105,19 @@
           "evidence_count": 1,
           "framework": "openai_agents",
           "decorator": "function_tool",
-          "description": "Tool to update seat assignment for a reservation by confirmation number, calls database update function.",
-          "llm_verified": true,
-          "llm_verification_reason": "The function is defined with @function_tool decorator from openai_agents, making it a concrete tool available to an AI agent in production code.",
-          "llm_confidence": 0.95,
           "confidence_breakdown": {
-            "regex_confidence": 0.95,
-            "llm_confidence": 0.95,
-            "evidence_count": 4,
+            "regex_confidence": 0.85,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
             "evidence_sources": [
-              "llm:verified",
               "framework:openai_agents",
               "evidence:0",
               "confidence:high"
             ],
-            "base_confidence": 0.95,
-            "evidence_multiplier": 1.3,
+            "base_confidence": 0.68,
+            "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
-            "final_confidence": 1.0
+            "final_confidence": 0.816
           }
         }
       },
@@ -2149,14 +2134,14 @@
       ]
     },
     {
-      "id": "fcfd7497-258c-4282-ae99-3e7320a565c5",
+      "id": "475da0ca-cc0f-4f47-89c9-2b2f8ac81a0a",
       "name": ".github/workflows/deploy-azure.yml",
       "component_type": "GITHUB_WORKFLOW",
       "confidence": 0.7200000000000001,
       "metadata": {
         "request_body_schema": {},
         "chat_payload_list": false,
-        "descriptive_name": "Azure Deploy Workflow",
+        "descriptive_name": "Azure Deployment Workflow",
         "workflow_has_unpinned_global_install": true,
         "workflow_has_cred_access": false,
         "workflow_triggers": [
@@ -2204,288 +2189,288 @@
   ],
   "edges": [
     {
-      "source": "72c4c590-1fce-4bb1-ae0b-1ff07f7f9d30",
-      "target": "47d4f307-3b50-4042-9d6e-54141875953c",
+      "source": "8cc09cb5-406c-49b7-9420-885a872b481b",
+      "target": "47b3c2cf-b2d9-48cb-9083-e8fa03f5cc1d",
       "relationship_type": "CALLS"
     },
     {
-      "source": "72c4c590-1fce-4bb1-ae0b-1ff07f7f9d30",
-      "target": "fa5fe996-a15f-4b02-b12e-fe7f657dcad8",
+      "source": "8cc09cb5-406c-49b7-9420-885a872b481b",
+      "target": "68860edd-1148-4880-b67b-70e618c6e636",
       "relationship_type": "CALLS"
     },
     {
-      "source": "72c4c590-1fce-4bb1-ae0b-1ff07f7f9d30",
-      "target": "85883d77-44e4-4316-8d55-f5fcc25620e3",
+      "source": "8cc09cb5-406c-49b7-9420-885a872b481b",
+      "target": "7f7cba16-77b5-4c2c-b6b6-d1e86910bd8e",
       "relationship_type": "CALLS"
     },
     {
-      "source": "72c4c590-1fce-4bb1-ae0b-1ff07f7f9d30",
-      "target": "712fde60-8479-4251-8fec-6176ebb3ee03",
+      "source": "8cc09cb5-406c-49b7-9420-885a872b481b",
+      "target": "04a6c66e-05d7-4ae6-9842-e81ad264fb5b",
       "relationship_type": "CALLS"
     },
     {
-      "source": "7cec0010-16ce-4ea3-9ef4-22f8db34cf8a",
-      "target": "7dda65b7-2d2f-4a68-996f-a356554fb2e7",
+      "source": "401b51f4-23fb-4913-9d37-cc4df065a664",
+      "target": "18348150-dc75-41ac-bb57-fed1e7dae513",
       "relationship_type": "USES"
     },
     {
-      "source": "13c9d7d0-2588-4a14-9ceb-db6e1283e564",
-      "target": "7dda65b7-2d2f-4a68-996f-a356554fb2e7",
+      "source": "0b040943-7148-46ae-8017-cef290eb446a",
+      "target": "18348150-dc75-41ac-bb57-fed1e7dae513",
       "relationship_type": "USES"
     },
     {
-      "source": "70a8c00b-19e5-4486-a219-f1f5923fe3f5",
-      "target": "3921d234-44e8-4a2c-85cb-72b7999dc50f",
+      "source": "617af185-0bc2-4745-b709-c6e5ba1fbe2d",
+      "target": "fcf5910b-c543-4220-a134-e62c0a51ab88",
       "relationship_type": "DELEGATES_TO"
     },
     {
-      "source": "70a8c00b-19e5-4486-a219-f1f5923fe3f5",
-      "target": "8406c690-cf26-4262-ba20-ad71e9ef055a",
+      "source": "617af185-0bc2-4745-b709-c6e5ba1fbe2d",
+      "target": "3e32b051-6340-4510-8f2e-ceca7b1ed0e3",
       "relationship_type": "DELEGATES_TO"
     },
     {
-      "source": "fd891d08-107c-4a5d-a929-ae97d67bf465",
-      "target": "d6ca13aa-f505-4d9f-bc28-cb48aa78400a",
+      "source": "dba7f2e1-2360-4ca1-b971-45a5f808304e",
+      "target": "f5aab7d7-4055-4b14-8f57-ecc158eca5b8",
       "relationship_type": "CALLS"
     },
     {
-      "source": "fd891d08-107c-4a5d-a929-ae97d67bf465",
-      "target": "aff7f69a-4156-4748-b1d9-26e78a618c39",
+      "source": "dba7f2e1-2360-4ca1-b971-45a5f808304e",
+      "target": "bc41639f-9970-4820-8100-12219aa1f000",
       "relationship_type": "CALLS"
     },
     {
-      "source": "fd891d08-107c-4a5d-a929-ae97d67bf465",
-      "target": "8d3b0a80-c350-435b-ac9f-6cb173c4669e",
+      "source": "dba7f2e1-2360-4ca1-b971-45a5f808304e",
+      "target": "9d854b8f-f431-4686-94b8-660b7c7f2f1a",
       "relationship_type": "CALLS"
     },
     {
-      "source": "fd891d08-107c-4a5d-a929-ae97d67bf465",
-      "target": "41bde20f-71c1-48a1-9a92-a466544c139a",
+      "source": "dba7f2e1-2360-4ca1-b971-45a5f808304e",
+      "target": "556fac0e-ce44-4f60-9915-a7c4123d35ed",
       "relationship_type": "CALLS"
     },
     {
-      "source": "fd891d08-107c-4a5d-a929-ae97d67bf465",
-      "target": "1deeb7e5-6689-499f-97a3-7b1734b57d02",
+      "source": "dba7f2e1-2360-4ca1-b971-45a5f808304e",
+      "target": "4f96a891-c0e0-4484-9ee9-cd7dce0061f3",
       "relationship_type": "CALLS"
     },
     {
-      "source": "8406c690-cf26-4262-ba20-ad71e9ef055a",
-      "target": "d6ca13aa-f505-4d9f-bc28-cb48aa78400a",
+      "source": "3e32b051-6340-4510-8f2e-ceca7b1ed0e3",
+      "target": "f5aab7d7-4055-4b14-8f57-ecc158eca5b8",
       "relationship_type": "CALLS"
     },
     {
-      "source": "8406c690-cf26-4262-ba20-ad71e9ef055a",
-      "target": "aff7f69a-4156-4748-b1d9-26e78a618c39",
+      "source": "3e32b051-6340-4510-8f2e-ceca7b1ed0e3",
+      "target": "bc41639f-9970-4820-8100-12219aa1f000",
       "relationship_type": "CALLS"
     },
     {
-      "source": "8406c690-cf26-4262-ba20-ad71e9ef055a",
-      "target": "8d3b0a80-c350-435b-ac9f-6cb173c4669e",
+      "source": "3e32b051-6340-4510-8f2e-ceca7b1ed0e3",
+      "target": "9d854b8f-f431-4686-94b8-660b7c7f2f1a",
       "relationship_type": "CALLS"
     },
     {
-      "source": "8406c690-cf26-4262-ba20-ad71e9ef055a",
-      "target": "41bde20f-71c1-48a1-9a92-a466544c139a",
+      "source": "3e32b051-6340-4510-8f2e-ceca7b1ed0e3",
+      "target": "556fac0e-ce44-4f60-9915-a7c4123d35ed",
       "relationship_type": "CALLS"
     },
     {
-      "source": "8406c690-cf26-4262-ba20-ad71e9ef055a",
-      "target": "1deeb7e5-6689-499f-97a3-7b1734b57d02",
+      "source": "3e32b051-6340-4510-8f2e-ceca7b1ed0e3",
+      "target": "4f96a891-c0e0-4484-9ee9-cd7dce0061f3",
       "relationship_type": "CALLS"
     },
     {
-      "source": "3921d234-44e8-4a2c-85cb-72b7999dc50f",
-      "target": "d6ca13aa-f505-4d9f-bc28-cb48aa78400a",
+      "source": "fcf5910b-c543-4220-a134-e62c0a51ab88",
+      "target": "f5aab7d7-4055-4b14-8f57-ecc158eca5b8",
       "relationship_type": "CALLS"
     },
     {
-      "source": "3921d234-44e8-4a2c-85cb-72b7999dc50f",
-      "target": "aff7f69a-4156-4748-b1d9-26e78a618c39",
+      "source": "fcf5910b-c543-4220-a134-e62c0a51ab88",
+      "target": "bc41639f-9970-4820-8100-12219aa1f000",
       "relationship_type": "CALLS"
     },
     {
-      "source": "3921d234-44e8-4a2c-85cb-72b7999dc50f",
-      "target": "8d3b0a80-c350-435b-ac9f-6cb173c4669e",
+      "source": "fcf5910b-c543-4220-a134-e62c0a51ab88",
+      "target": "9d854b8f-f431-4686-94b8-660b7c7f2f1a",
       "relationship_type": "CALLS"
     },
     {
-      "source": "3921d234-44e8-4a2c-85cb-72b7999dc50f",
-      "target": "41bde20f-71c1-48a1-9a92-a466544c139a",
+      "source": "fcf5910b-c543-4220-a134-e62c0a51ab88",
+      "target": "556fac0e-ce44-4f60-9915-a7c4123d35ed",
       "relationship_type": "CALLS"
     },
     {
-      "source": "3921d234-44e8-4a2c-85cb-72b7999dc50f",
-      "target": "1deeb7e5-6689-499f-97a3-7b1734b57d02",
+      "source": "fcf5910b-c543-4220-a134-e62c0a51ab88",
+      "target": "4f96a891-c0e0-4484-9ee9-cd7dce0061f3",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b6f77488-5806-47e1-b151-3a1f6c55e6a6",
-      "target": "d6ca13aa-f505-4d9f-bc28-cb48aa78400a",
+      "source": "cc8abe8a-919e-49e0-9f6e-d739447c239e",
+      "target": "f5aab7d7-4055-4b14-8f57-ecc158eca5b8",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b6f77488-5806-47e1-b151-3a1f6c55e6a6",
-      "target": "aff7f69a-4156-4748-b1d9-26e78a618c39",
+      "source": "cc8abe8a-919e-49e0-9f6e-d739447c239e",
+      "target": "bc41639f-9970-4820-8100-12219aa1f000",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b6f77488-5806-47e1-b151-3a1f6c55e6a6",
-      "target": "8d3b0a80-c350-435b-ac9f-6cb173c4669e",
+      "source": "cc8abe8a-919e-49e0-9f6e-d739447c239e",
+      "target": "9d854b8f-f431-4686-94b8-660b7c7f2f1a",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b6f77488-5806-47e1-b151-3a1f6c55e6a6",
-      "target": "41bde20f-71c1-48a1-9a92-a466544c139a",
+      "source": "cc8abe8a-919e-49e0-9f6e-d739447c239e",
+      "target": "556fac0e-ce44-4f60-9915-a7c4123d35ed",
       "relationship_type": "CALLS"
     },
     {
-      "source": "b6f77488-5806-47e1-b151-3a1f6c55e6a6",
-      "target": "1deeb7e5-6689-499f-97a3-7b1734b57d02",
+      "source": "cc8abe8a-919e-49e0-9f6e-d739447c239e",
+      "target": "4f96a891-c0e0-4484-9ee9-cd7dce0061f3",
       "relationship_type": "CALLS"
     },
     {
-      "source": "70a8c00b-19e5-4486-a219-f1f5923fe3f5",
-      "target": "d6ca13aa-f505-4d9f-bc28-cb48aa78400a",
+      "source": "617af185-0bc2-4745-b709-c6e5ba1fbe2d",
+      "target": "f5aab7d7-4055-4b14-8f57-ecc158eca5b8",
       "relationship_type": "CALLS"
     },
     {
-      "source": "70a8c00b-19e5-4486-a219-f1f5923fe3f5",
-      "target": "aff7f69a-4156-4748-b1d9-26e78a618c39",
+      "source": "617af185-0bc2-4745-b709-c6e5ba1fbe2d",
+      "target": "bc41639f-9970-4820-8100-12219aa1f000",
       "relationship_type": "CALLS"
     },
     {
-      "source": "70a8c00b-19e5-4486-a219-f1f5923fe3f5",
-      "target": "8d3b0a80-c350-435b-ac9f-6cb173c4669e",
+      "source": "617af185-0bc2-4745-b709-c6e5ba1fbe2d",
+      "target": "9d854b8f-f431-4686-94b8-660b7c7f2f1a",
       "relationship_type": "CALLS"
     },
     {
-      "source": "70a8c00b-19e5-4486-a219-f1f5923fe3f5",
-      "target": "41bde20f-71c1-48a1-9a92-a466544c139a",
+      "source": "617af185-0bc2-4745-b709-c6e5ba1fbe2d",
+      "target": "556fac0e-ce44-4f60-9915-a7c4123d35ed",
       "relationship_type": "CALLS"
     },
     {
-      "source": "70a8c00b-19e5-4486-a219-f1f5923fe3f5",
-      "target": "1deeb7e5-6689-499f-97a3-7b1734b57d02",
+      "source": "617af185-0bc2-4745-b709-c6e5ba1fbe2d",
+      "target": "4f96a891-c0e0-4484-9ee9-cd7dce0061f3",
       "relationship_type": "CALLS"
     },
     {
-      "source": "fd891d08-107c-4a5d-a929-ae97d67bf465",
-      "target": "7dda65b7-2d2f-4a68-996f-a356554fb2e7",
+      "source": "dba7f2e1-2360-4ca1-b971-45a5f808304e",
+      "target": "18348150-dc75-41ac-bb57-fed1e7dae513",
       "relationship_type": "USES"
     },
     {
-      "source": "8406c690-cf26-4262-ba20-ad71e9ef055a",
-      "target": "7dda65b7-2d2f-4a68-996f-a356554fb2e7",
+      "source": "3e32b051-6340-4510-8f2e-ceca7b1ed0e3",
+      "target": "18348150-dc75-41ac-bb57-fed1e7dae513",
       "relationship_type": "USES"
     },
     {
-      "source": "3921d234-44e8-4a2c-85cb-72b7999dc50f",
-      "target": "7dda65b7-2d2f-4a68-996f-a356554fb2e7",
+      "source": "fcf5910b-c543-4220-a134-e62c0a51ab88",
+      "target": "18348150-dc75-41ac-bb57-fed1e7dae513",
       "relationship_type": "USES"
     },
     {
-      "source": "b6f77488-5806-47e1-b151-3a1f6c55e6a6",
-      "target": "7dda65b7-2d2f-4a68-996f-a356554fb2e7",
+      "source": "cc8abe8a-919e-49e0-9f6e-d739447c239e",
+      "target": "18348150-dc75-41ac-bb57-fed1e7dae513",
       "relationship_type": "USES"
     },
     {
-      "source": "70a8c00b-19e5-4486-a219-f1f5923fe3f5",
-      "target": "7dda65b7-2d2f-4a68-996f-a356554fb2e7",
+      "source": "617af185-0bc2-4745-b709-c6e5ba1fbe2d",
+      "target": "18348150-dc75-41ac-bb57-fed1e7dae513",
       "relationship_type": "USES"
     },
     {
-      "source": "1300b12e-9b39-44cb-8999-72b374bf29f2",
-      "target": "fd891d08-107c-4a5d-a929-ae97d67bf465",
+      "source": "75b351a1-6230-4d62-92ad-f137b248341e",
+      "target": "dba7f2e1-2360-4ca1-b971-45a5f808304e",
       "relationship_type": "CALLS"
     },
     {
-      "source": "1300b12e-9b39-44cb-8999-72b374bf29f2",
-      "target": "8406c690-cf26-4262-ba20-ad71e9ef055a",
+      "source": "75b351a1-6230-4d62-92ad-f137b248341e",
+      "target": "3e32b051-6340-4510-8f2e-ceca7b1ed0e3",
       "relationship_type": "CALLS"
     },
     {
-      "source": "1300b12e-9b39-44cb-8999-72b374bf29f2",
-      "target": "3921d234-44e8-4a2c-85cb-72b7999dc50f",
+      "source": "75b351a1-6230-4d62-92ad-f137b248341e",
+      "target": "fcf5910b-c543-4220-a134-e62c0a51ab88",
       "relationship_type": "CALLS"
     },
     {
-      "source": "1300b12e-9b39-44cb-8999-72b374bf29f2",
-      "target": "b6f77488-5806-47e1-b151-3a1f6c55e6a6",
+      "source": "75b351a1-6230-4d62-92ad-f137b248341e",
+      "target": "cc8abe8a-919e-49e0-9f6e-d739447c239e",
       "relationship_type": "CALLS"
     },
     {
-      "source": "1300b12e-9b39-44cb-8999-72b374bf29f2",
-      "target": "70a8c00b-19e5-4486-a219-f1f5923fe3f5",
+      "source": "75b351a1-6230-4d62-92ad-f137b248341e",
+      "target": "617af185-0bc2-4745-b709-c6e5ba1fbe2d",
       "relationship_type": "CALLS"
     },
     {
-      "source": "1300b12e-9b39-44cb-8999-72b374bf29f2",
-      "target": "d6ca13aa-f505-4d9f-bc28-cb48aa78400a",
+      "source": "75b351a1-6230-4d62-92ad-f137b248341e",
+      "target": "f5aab7d7-4055-4b14-8f57-ecc158eca5b8",
       "relationship_type": "CALLS"
     },
     {
-      "source": "1300b12e-9b39-44cb-8999-72b374bf29f2",
-      "target": "aff7f69a-4156-4748-b1d9-26e78a618c39",
+      "source": "75b351a1-6230-4d62-92ad-f137b248341e",
+      "target": "bc41639f-9970-4820-8100-12219aa1f000",
       "relationship_type": "CALLS"
     },
     {
-      "source": "1300b12e-9b39-44cb-8999-72b374bf29f2",
-      "target": "8d3b0a80-c350-435b-ac9f-6cb173c4669e",
+      "source": "75b351a1-6230-4d62-92ad-f137b248341e",
+      "target": "9d854b8f-f431-4686-94b8-660b7c7f2f1a",
       "relationship_type": "CALLS"
     },
     {
-      "source": "1300b12e-9b39-44cb-8999-72b374bf29f2",
-      "target": "41bde20f-71c1-48a1-9a92-a466544c139a",
+      "source": "75b351a1-6230-4d62-92ad-f137b248341e",
+      "target": "556fac0e-ce44-4f60-9915-a7c4123d35ed",
       "relationship_type": "CALLS"
     },
     {
-      "source": "1300b12e-9b39-44cb-8999-72b374bf29f2",
-      "target": "1deeb7e5-6689-499f-97a3-7b1734b57d02",
+      "source": "75b351a1-6230-4d62-92ad-f137b248341e",
+      "target": "4f96a891-c0e0-4484-9ee9-cd7dce0061f3",
       "relationship_type": "CALLS"
     },
     {
-      "source": "1300b12e-9b39-44cb-8999-72b374bf29f2",
-      "target": "7e7f4e58-46c8-4a75-9445-ccdfde406bce",
+      "source": "75b351a1-6230-4d62-92ad-f137b248341e",
+      "target": "154e0649-312e-4448-8e27-ba42250ddd0c",
       "relationship_type": "CALLS"
     },
     {
-      "source": "1300b12e-9b39-44cb-8999-72b374bf29f2",
-      "target": "7a9bcba6-617f-4d31-9f93-17384ac2bb98",
+      "source": "75b351a1-6230-4d62-92ad-f137b248341e",
+      "target": "b42c0555-7155-4ecf-9f60-4c90121a6781",
       "relationship_type": "CALLS"
     },
     {
-      "source": "de720ac6-38a6-4600-9c55-6a85ca006f81",
-      "target": "a183b883-1bbd-4f1f-b450-6b366690441c",
+      "source": "30cd8e12-82da-4801-8c64-c264fb5fdb56",
+      "target": "f93fc0bc-2bf6-417f-9ddf-4e59a5b14e88",
       "relationship_type": "USES"
     },
     {
-      "source": "de720ac6-38a6-4600-9c55-6a85ca006f81",
-      "target": "6d6bd84f-fe50-49ae-90fd-7dbdde463ec5",
+      "source": "30cd8e12-82da-4801-8c64-c264fb5fdb56",
+      "target": "d065bc47-c70b-4b54-90b9-aa861296738c",
       "relationship_type": "USES"
     },
     {
-      "source": "129b7693-f3f8-497a-986c-c413e6f9c163",
-      "target": "712fde60-8479-4251-8fec-6176ebb3ee03",
+      "source": "27f0ec22-2007-464f-af68-922f2c25c3c1",
+      "target": "04a6c66e-05d7-4ae6-9842-e81ad264fb5b",
       "relationship_type": "PROTECTS"
     },
     {
-      "source": "129b7693-f3f8-497a-986c-c413e6f9c163",
-      "target": "f52276b0-1b35-495e-b83d-202159d1747c",
+      "source": "27f0ec22-2007-464f-af68-922f2c25c3c1",
+      "target": "756b6229-fe08-4c9b-9268-d775cb1e8c1d",
       "relationship_type": "PROTECTS"
     },
     {
-      "source": "129b7693-f3f8-497a-986c-c413e6f9c163",
-      "target": "47d4f307-3b50-4042-9d6e-54141875953c",
+      "source": "27f0ec22-2007-464f-af68-922f2c25c3c1",
+      "target": "47b3c2cf-b2d9-48cb-9083-e8fa03f5cc1d",
       "relationship_type": "PROTECTS"
     },
     {
-      "source": "129b7693-f3f8-497a-986c-c413e6f9c163",
-      "target": "85883d77-44e4-4316-8d55-f5fcc25620e3",
+      "source": "27f0ec22-2007-464f-af68-922f2c25c3c1",
+      "target": "7f7cba16-77b5-4c2c-b6b6-d1e86910bd8e",
       "relationship_type": "PROTECTS"
     },
     {
-      "source": "129b7693-f3f8-497a-986c-c413e6f9c163",
-      "target": "fa5fe996-a15f-4b02-b12e-fe7f657dcad8",
+      "source": "27f0ec22-2007-464f-af68-922f2c25c3c1",
+      "target": "68860edd-1148-4880-b67b-70e618c6e636",
       "relationship_type": "PROTECTS"
     }
   ],
@@ -2688,7 +2673,7 @@
     }
   ],
   "summary": {
-    "use_case": "This application serves as an AI customer service system for an airline, handling tasks such as FAQ question answering, request triage and routing, flight status lookups, seat bookings, and cancellations. It is powered by five specialized OpenAI Agents (gpt-4.1-mini) with seven tool integrations and two guardrails (jailbreak and relevance) to ensure safe and relevant responses. The system operates solely in text mode and does not support voice, image, or video inputs.",
+    "use_case": "This application appears to provide airline customer support and traveler self-service workflows, with agents for FAQs, triage/routing, flight status, cancellations, seat booking, and baggage questions, plus FastAPI login/chat/account endpoints. It supports text only; voice, image, and video are not supported. Notable capabilities include agentic orchestration with guardrails for jailbreak and relevance, SQLite-backed state, and Bearer-authenticated access; no MCP server is indicated.",
     "frameworks": [
       "openai_agents"
     ],
@@ -2754,7 +2739,7 @@
     "service_accounts": [
       "${{ secrets.AZURE_CREDENTIALS }}"
     ],
-    "iac_security_summary": "## Security briefing\n\n### 1) Deployment posture\n- **Cloud provider / runtime:** Azure via GitHub Actions on ubuntu-latest runners\n- **Regions / HA / resilience:** Not evidenced\n- **Assessment:** Deployment targets Azure but lacks any specified regions or availability zones for resilience.\n\n### 2) Secret management\n- **Secret stores:** GitHub Actions secrets (github_actions_secret)\n- **Credential handling:** Azure Credentials referenced as `${{ secrets.AZURE_CREDENTIALS }}` — a secret reference, not plaintext\n- **Assessment:** Secret is stored in GitHub Actions secrets, which is a reasonable approach, but no encryption-at-rest or key management details are evidenced.\n\n### 3) Encryption\n- **Encryption at rest:** Not evidenced (encryption_at_rest_coverage is false)\n- **Key management:** Not evidenced\n- **Assessment:** Encryption configuration is absent from the provided infrastructure data.\n\n### 4) IAM / least privilege\n- **Principals / service accounts:** `${{ secrets.AZURE_CREDENTIALS }}` (managed identity)\n- **Scope / permissions / trust:** Scope is subscription-level; trust principals include github-actions; IAM type is managed_identity\n- **Assessment:** Subscription-wide scope grants excessive permissions, and lack of OIDC means credentials are long-lived secrets rather than short-lived tokens.\n\n### 5) CI/CD security\n- **Runners / triggers:** Ubuntu-latest runners; triggers include push and workflow_dispatch\n- **OIDC / credential flow:** Not using OIDC (uses_oidc: false) — credential flow relies on static secrets stored in GitHub\n- **Assessment:** Missing OIDC increases risk of credential exposure; static subscription-level secrets should be replaced with OIDC-based federated identity.\n\n### 6) Container security\n- **Images / root user:** Not evidenced\n- **Health checks / resource limits:** Not evidenced\n- **Assessment:** No container configuration data is present in the detected infrastructure nodes.\n\n### 7) Top 3 prioritized actions\n1. Replace static `${{ secrets.AZURE_CREDENTIALS }}` with OIDC-based federated identity for GitHub Actions to Azure to eliminate long-lived credential exposure.\n2. Reduce the IAM scope from subscription to a resource group or specific resource level to follow least-privilege principles.\n3. Enable encryption at rest and document key management (e.g., Azure Key Vault) for any data services used by the AI application.",
+    "iac_security_summary": "## Security briefing\n\n### 1) Deployment posture\n- **Cloud provider:** Azure only.\n- **Regions / zones:** No region or availability-zone data is present; **no HA/resilience topology is evidenced**.\n- **Deployment path:** GitHub Actions workflow named **“Deploy to Azure”**.\n- **Triggers:** `push` and `workflow_dispatch`, which expands the execution surface to both repository changes and manual runs.\n\n### 2) Secret management\n- **Secret store in use:** `github_actions_secret`.\n- **Credential handling:** Azure access is tied to `${{ secrets.AZURE_CREDENTIALS }}`.\n- **Risk:** No plaintext secret is shown, but this is **static secret-based authentication**, not federated OIDC. That increases exposure to secret leakage, rotation drift, and workflow misuse.\n\n### 3) Encryption\n- **Encryption-at-rest coverage:** `false` in the aggregate signals.\n- **Key management:** No KMS/CMK/rotation details are provided.\n- **Risk:** There is **no evidence of at-rest encryption coverage** or any key governance controls in the supplied configuration.\n\n### 4) IAM / least-privilege\n- **IAM type:** `managed_identity`.\n- **Scope:** `subscription`.\n- **Trust principal:** `github-actions`.\n- **Risk:** Subscription-level scope is **broad** and may exceed least-privilege needs unless the deployment truly spans the full subscription.\n- **OIDC:** Not used (`uses_oidc: false`), so there is **no federated workload identity**; auth relies on stored GitHub secret material.\n\n### 5) CI/CD security\n- **Runner:** `ubuntu-latest` GitHub-hosted runner.\n- **Security implications:** The runner is ephemeral, but the use of a mutable “latest” label means the underlying image can change over time.\n- **Trigger surface:** `push` + `workflow_dispatch` increases the chance of unintended or unauthorized deployment execution if repository controls are weak.\n- **OIDC gap:** No OIDC federation is configured, so CI/CD authentication is not using short-lived cloud-issued credentials.\n\n### 6) Container security\n- **Not evidenced in provided data.** No container nodes or workload specs were supplied, so root/non-root, health checks, and resource limits **cannot be assessed** from this configuration.\n\n### 7) Key risks and prioritized recommendations\n1. **Replace static Azure credentials with GitHub Actions OIDC federation.** This removes long-lived cloud secrets from GitHub and reduces credential theft risk.\n2. **Reduce Azure IAM scope from subscription-level to the minimum required resource scope.** Use resource-group or workload-specific permissions where possible.\n3. **Define and verify encryption-at-rest and secret governance.** Confirm storage/services are encrypted, establish key ownership/rotation, and review GitHub secret access controls for the workflow.",
     "data_classification": [
       "PII"
     ],
@@ -2788,10 +2773,10 @@
     "uses_streaming": false,
     "streaming_endpoints": [],
     "total_loc": 11155,
-    "tokens_used_for_enrichment": 16679,
-    "input_tokens_used": 13620,
-    "output_tokens_used": 3059,
-    "llm_model_used": "azure/DeepSeek-V4-Flash",
+    "tokens_used_for_enrichment": 15587,
+    "input_tokens_used": 10044,
+    "output_tokens_used": 5543,
+    "llm_model_used": "azure/gpt-5.4-mini",
     "instrumentation": {
       "tools": [],
       "log_level": "INFO"
@@ -2808,5 +2793,5 @@
     "has_lockfile": false,
     "minified_js_files": []
   },
-  "relationship_graph_md": "## Component Relationship Graph\n\n- **Architecture & Data Flow**: User requests hit FastAPI endpoints (`Login`, `Me`, `Logout`, `Chat Endpoint`). The `Chat Endpoint` is protected by Bearer Auth. The `OpenAI Agents` framework orchestrates five agents (`Triage`, `Cancellation`, `FAQ`, `Flight Status`, `Seat Booking`). `Triage Agent` delegates to `Flight Status Agent` and `FAQ Agent`. All agents use `gpt-4.1-mini` and can call the same set of tools: `Baggage Tool`, `Cancel Flight`, `Display Seat Map`, `Faq Lookup Tool`, `Flight Status Tool`. Two guardrails (`Relevance`, `Jailbreak`) also use `gpt-4.1-mini` but no agent explicitly invokes them.\n\n- **Security Observations**: \n    - **Unguarded tools**: No guardrails are enforced on any agent-tool calls. Every agent can call every tool, including `Cancel Flight` and `Flight Status Tool`, without relevance or jailbreak checks.\n    - **Missing guardrail coverage**: Guardrails are isolated—they only use the LLM but are not wired into the chat endpoint or agent execution flow.\n    - **No datastore exposure**: `Sqlite` is listed as a datastore but has no connections, so no data ingress/egress is visible.\n    - **Broad tool access**: All agents share five tools, creating risk of unintended actions (e.g., a FAQ agent calling `Cancel Flight`).\n\n```mermaid\nflowchart LR\n    Cancellation_Agent_fd891d[\"🤖 Cancellation Agent\"]\n    FAQ_Agent_8406c6[\"🤖 FAQ Agent\"]\n    Flight_Status_Agent_3921d2[\"🤖 Flight Status Agent\"]\n    Seat_Booking_Agent_b6f774[\"🤖 Seat Booking Agent\"]\n    Triage_Agent_70a8c0[\"🤖 Triage Agent\"]\n    Generic_f52276([\"🌐 Generic\"])\n    Me_fa5fe9([\"🌐 Me\"])\n    Chat_Endpoint_712fde([\"🌐 Chat Endpoint\"])\n    Login_47d4f3([\"🌐 Login\"])\n    Logout_85883d([\"🌐 Logout\"])\n    Sqlite_0af846[(\"🗄 Sqlite\")]\n    FastAPI_72c4c5[/\"⚙ FastAPI\"/]\n    OpenAI_Agents_1300b1[/\"⚙ OpenAI Agents\"/]\n    Jailbreak_Guardrail_13c9d7{\"🛡 Jailbreak Guardrail\"}\n    Relevance_Guardrail_7cec00{\"🛡 Relevance Guardrail\"}\n    gpt_4_1_mini_7dda65[(\"🧠 gpt-4.1-mini\")]\n    Cancellation_Agent_Instructions_f53b8c>\"💬 Cancellation Agent Instructions\"]\n    FAQ_Agent_Instructions_93c743>\"💬 FAQ Agent Instructions\"]\n    Flight_Status_Agent_Instructions_77dc86>\"💬 Flight Status Agent Instructions\"]\n    Jailbreak_Guardrail_Instructions_98824a>\"💬 Jailbreak Guardrail Instructions\"]\n    Generic_c3f188>\"💬 Generic\"]\n    Relevance_Guardrail_Instructions_9f93b2>\"💬 Relevance Guardrail Instructions\"]\n    Seat_Booking_Agent_Instructions_4d8cc2>\"💬 Seat Booking Agent Instructions\"]\n    Triage_Agent_Instructions_9a87fa>\"💬 Triage Agent Instructions\"]\n    Baggage_Tool_d6ca13(\"🔧 Baggage Tool\")\n    Cancel_Flight_aff7f6(\"🔧 Cancel Flight\")\n    Display_Seat_Map_8d3b0a(\"🔧 Display Seat Map\")\n    Faq_Lookup_Tool_41bde2(\"🔧 Faq Lookup Tool\")\n    Flight_Status_Tool_1deeb7(\"🔧 Flight Status Tool\")\n    Lookup_Reservation_7e7f4e(\"🔧 Lookup Reservation\")\n    Update_Seat_7a9bcb(\"🔧 Update Seat\")\n\n    FastAPI_72c4c5 -->|calls| Login_47d4f3\n    FastAPI_72c4c5 -->|calls| Me_fa5fe9\n    FastAPI_72c4c5 -->|calls| Logout_85883d\n    FastAPI_72c4c5 -->|calls| Chat_Endpoint_712fde\n    Relevance_Guardrail_7cec00 -->|uses| gpt_4_1_mini_7dda65\n    Jailbreak_Guardrail_13c9d7 -->|uses| gpt_4_1_mini_7dda65\n    Triage_Agent_70a8c0 -->|delegates_to| Flight_Status_Agent_3921d2\n    Triage_Agent_70a8c0 -->|delegates_to| FAQ_Agent_8406c6\n    Cancellation_Agent_fd891d -->|calls| Baggage_Tool_d6ca13\n    Cancellation_Agent_fd891d -->|calls| Cancel_Flight_aff7f6\n    Cancellation_Agent_fd891d -->|calls| Display_Seat_Map_8d3b0a\n    Cancellation_Agent_fd891d -->|calls| Faq_Lookup_Tool_41bde2\n    Cancellation_Agent_fd891d -->|calls| Flight_Status_Tool_1deeb7\n    FAQ_Agent_8406c6 -->|calls| Baggage_Tool_d6ca13\n    FAQ_Agent_8406c6 -->|calls| Cancel_Flight_aff7f6\n    FAQ_Agent_8406c6 -->|calls| Display_Seat_Map_8d3b0a\n    FAQ_Agent_8406c6 -->|calls| Faq_Lookup_Tool_41bde2\n    FAQ_Agent_8406c6 -->|calls| Flight_Status_Tool_1deeb7\n    Flight_Status_Agent_3921d2 -->|calls| Baggage_Tool_d6ca13\n    Flight_Status_Agent_3921d2 -->|calls| Cancel_Flight_aff7f6\n    Flight_Status_Agent_3921d2 -->|calls| Display_Seat_Map_8d3b0a\n    Flight_Status_Agent_3921d2 -->|calls| Faq_Lookup_Tool_41bde2\n    Flight_Status_Agent_3921d2 -->|calls| Flight_Status_Tool_1deeb7\n    Seat_Booking_Agent_b6f774 -->|calls| Baggage_Tool_d6ca13\n    Seat_Booking_Agent_b6f774 -->|calls| Cancel_Flight_aff7f6\n    Seat_Booking_Agent_b6f774 -->|calls| Display_Seat_Map_8d3b0a\n    Seat_Booking_Agent_b6f774 -->|calls| Faq_Lookup_Tool_41bde2\n    Seat_Booking_Agent_b6f774 -->|calls| Flight_Status_Tool_1deeb7\n    Triage_Agent_70a8c0 -->|calls| Baggage_Tool_d6ca13\n    Triage_Agent_70a8c0 -->|calls| Cancel_Flight_aff7f6\n    Triage_Agent_70a8c0 -->|calls| Display_Seat_Map_8d3b0a\n    Triage_Agent_70a8c0 -->|calls| Faq_Lookup_Tool_41bde2\n    Triage_Agent_70a8c0 -->|calls| Flight_Status_Tool_1deeb7\n    Cancellation_Agent_fd891d -->|uses| gpt_4_1_mini_7dda65\n    FAQ_Agent_8406c6 -->|uses| gpt_4_1_mini_7dda65\n    Flight_Status_Agent_3921d2 -->|uses| gpt_4_1_mini_7dda65\n    Seat_Booking_Agent_b6f774 -->|uses| gpt_4_1_mini_7dda65\n    Triage_Agent_70a8c0 -->|uses| gpt_4_1_mini_7dda65\n    OpenAI_Agents_1300b1 -->|calls| Cancellation_Agent_fd891d\n    OpenAI_Agents_1300b1 -->|calls| FAQ_Agent_8406c6\n    OpenAI_Agents_1300b1 -->|calls| Flight_Status_Agent_3921d2\n    OpenAI_Agents_1300b1 -->|calls| Seat_Booking_Agent_b6f774\n    OpenAI_Agents_1300b1 -->|calls| Triage_Agent_70a8c0\n    OpenAI_Agents_1300b1 -->|calls| Baggage_Tool_d6ca13\n    OpenAI_Agents_1300b1 -->|calls| Cancel_Flight_aff7f6\n    OpenAI_Agents_1300b1 -->|calls| Display_Seat_Map_8d3b0a\n    OpenAI_Agents_1300b1 -->|calls| Faq_Lookup_Tool_41bde2\n    OpenAI_Agents_1300b1 -->|calls| Flight_Status_Tool_1deeb7\n    OpenAI_Agents_1300b1 -->|calls| Lookup_Reservation_7e7f4e\n    OpenAI_Agents_1300b1 -->|calls| Update_Seat_7a9bcb\n\n    classDef agent    fill:#4A90D9,stroke:#2C6FAC,color:#fff\n    classDef tool     fill:#7ED321,stroke:#5A9A18,color:#fff\n    classDef model    fill:#9B59B6,stroke:#7D3C98,color:#fff\n    classDef prompt   fill:#F39C12,stroke:#D68910,color:#fff\n    classDef guard    fill:#E74C3C,stroke:#C0392B,color:#fff\n    classDef store    fill:#1ABC9C,stroke:#17A589,color:#fff\n    classDef fw       fill:#95A5A6,stroke:#717D7E,color:#fff\n    classDef endpoint fill:#3498DB,stroke:#2471A3,color:#fff\n    class Cancellation_Agent_fd891d,FAQ_Agent_8406c6,Flight_Status_Agent_3921d2,Seat_Booking_Agent_b6f774,Triage_Agent_70a8c0 agent\n    class Baggage_Tool_d6ca13,Cancel_Flight_aff7f6,Display_Seat_Map_8d3b0a,Faq_Lookup_Tool_41bde2,Flight_Status_Tool_1deeb7,Lookup_Reservation_7e7f4e,Update_Seat_7a9bcb tool\n    class gpt_4_1_mini_7dda65 model\n    class Cancellation_Agent_Instructions_f53b8c,FAQ_Agent_Instructions_93c743,Flight_Status_Agent_Instructions_77dc86,Jailbreak_Guardrail_Instructions_98824a,Generic_c3f188,Relevance_Guardrail_Instructions_9f93b2,Seat_Booking_Agent_Instructions_4d8cc2,Triage_Agent_Instructions_9a87fa prompt\n    class Jailbreak_Guardrail_13c9d7,Relevance_Guardrail_7cec00 guard\n    class Sqlite_0af846 store\n    class FastAPI_72c4c5,OpenAI_Agents_1300b1 fw\n    class Generic_f52276,Me_fa5fe9,Chat_Endpoint_712fde,Login_47d4f3,Logout_85883d endpoint\n```"
+  "relationship_graph_md": "## Component Relationship Graph\n\n- **Entry points:** FastAPI exposes `Login`, `Me`, `Logout`, and `Chat Endpoint`; `Bearer Auth` protects all of them, plus `Generic`.\n- **Orchestration:** `OpenAI Agents` is the main runtime that calls the `Cancellation`, `FAQ`, `Flight Status`, `Seat Booking`, and `Triage` agents, and can also call all listed tools directly.\n- **Agent routing:** `Triage Agent` delegates to `Flight Status Agent` and `FAQ Agent`.\n- **Model use:** `gpt-4.1-mini` is used by the `Relevance Guardrail`, `Jailbreak Guardrail`, and all five agents.\n- **Tool access:** Agents can call `Baggage Tool`, `Cancel Flight`, `Display Seat Map`, `Faq Lookup Tool`, and `Flight Status Tool`; `OpenAI Agents` can also call `Lookup Reservation` and `Update Seat`.\n- **Data stores:** `Sqlite` is shown with **no connections**, so the graph does not show any reachable datastore.\n- **Security observations:** Tool calls are broadly exposed through `OpenAI Agents`, with no explicit guardrail links shown to endpoints, agents, or tools. The graph shows guardrail components, but not where they are enforced.\n\n```mermaid\nflowchart LR\n    Cancellation_Agent_dba7f2[\"🤖 Cancellation Agent\"]\n    FAQ_Agent_3e32b0[\"🤖 FAQ Agent\"]\n    Flight_Status_Agent_fcf591[\"🤖 Flight Status Agent\"]\n    Seat_Booking_Agent_cc8abe[\"🤖 Seat Booking Agent\"]\n    Triage_Agent_617af1[\"🤖 Triage Agent\"]\n    Generic_756b62([\"🌐 Generic\"])\n    Me_68860e([\"🌐 Me\"])\n    Chat_Endpoint_04a6c6([\"🌐 Chat Endpoint\"])\n    Login_47b3c2([\"🌐 Login\"])\n    Logout_7f7cba([\"🌐 Logout\"])\n    Sqlite_87c5f0[(\"🗄 Sqlite\")]\n    FastAPI_8cc09c[/\"⚙ FastAPI\"/]\n    OpenAI_Agents_75b351[/\"⚙ OpenAI Agents\"/]\n    Jailbreak_Guardrail_0b0409{\"🛡 Jailbreak Guardrail\"}\n    Relevance_Guardrail_401b51{\"🛡 Relevance Guardrail\"}\n    gpt_4_1_mini_183481[(\"🧠 gpt-4.1-mini\")]\n    Cancellation_Agent_Instructions_3a7f9a>\"💬 Cancellation Agent Instructions\"]\n    FAQ_Agent_Instructions_dfb2b8>\"💬 FAQ Agent Instructions\"]\n    Flight_Status_Agent_Instructions_fd199d>\"💬 Flight Status Agent Instructions\"]\n    Jailbreak_Guardrail_Instructions_adddf1>\"💬 Jailbreak Guardrail Instructions\"]\n    Generic_080614>\"💬 Generic\"]\n    Relevance_Guardrail_Instructions_a54901>\"💬 Relevance Guardrail Instructions\"]\n    Seat_Booking_Agent_Instructions_8fb0a8>\"💬 Seat Booking Agent Instructions\"]\n    Triage_Agent_Instructions_6a88d8>\"💬 Triage Agent Instructions\"]\n    Baggage_Tool_f5aab7(\"🔧 Baggage Tool\")\n    Cancel_Flight_bc4163(\"🔧 Cancel Flight\")\n    Display_Seat_Map_9d854b(\"🔧 Display Seat Map\")\n    Faq_Lookup_Tool_556fac(\"🔧 Faq Lookup Tool\")\n    Flight_Status_Tool_4f96a8(\"🔧 Flight Status Tool\")\n    Lookup_Reservation_154e06(\"🔧 Lookup Reservation\")\n    Update_Seat_b42c05(\"🔧 Update Seat\")\n\n    FastAPI_8cc09c -->|calls| Login_47b3c2\n    FastAPI_8cc09c -->|calls| Me_68860e\n    FastAPI_8cc09c -->|calls| Logout_7f7cba\n    FastAPI_8cc09c -->|calls| Chat_Endpoint_04a6c6\n    Relevance_Guardrail_401b51 -->|uses| gpt_4_1_mini_183481\n    Jailbreak_Guardrail_0b0409 -->|uses| gpt_4_1_mini_183481\n    Triage_Agent_617af1 -->|delegates_to| Flight_Status_Agent_fcf591\n    Triage_Agent_617af1 -->|delegates_to| FAQ_Agent_3e32b0\n    Cancellation_Agent_dba7f2 -->|calls| Baggage_Tool_f5aab7\n    Cancellation_Agent_dba7f2 -->|calls| Cancel_Flight_bc4163\n    Cancellation_Agent_dba7f2 -->|calls| Display_Seat_Map_9d854b\n    Cancellation_Agent_dba7f2 -->|calls| Faq_Lookup_Tool_556fac\n    Cancellation_Agent_dba7f2 -->|calls| Flight_Status_Tool_4f96a8\n    FAQ_Agent_3e32b0 -->|calls| Baggage_Tool_f5aab7\n    FAQ_Agent_3e32b0 -->|calls| Cancel_Flight_bc4163\n    FAQ_Agent_3e32b0 -->|calls| Display_Seat_Map_9d854b\n    FAQ_Agent_3e32b0 -->|calls| Faq_Lookup_Tool_556fac\n    FAQ_Agent_3e32b0 -->|calls| Flight_Status_Tool_4f96a8\n    Flight_Status_Agent_fcf591 -->|calls| Baggage_Tool_f5aab7\n    Flight_Status_Agent_fcf591 -->|calls| Cancel_Flight_bc4163\n    Flight_Status_Agent_fcf591 -->|calls| Display_Seat_Map_9d854b\n    Flight_Status_Agent_fcf591 -->|calls| Faq_Lookup_Tool_556fac\n    Flight_Status_Agent_fcf591 -->|calls| Flight_Status_Tool_4f96a8\n    Seat_Booking_Agent_cc8abe -->|calls| Baggage_Tool_f5aab7\n    Seat_Booking_Agent_cc8abe -->|calls| Cancel_Flight_bc4163\n    Seat_Booking_Agent_cc8abe -->|calls| Display_Seat_Map_9d854b\n    Seat_Booking_Agent_cc8abe -->|calls| Faq_Lookup_Tool_556fac\n    Seat_Booking_Agent_cc8abe -->|calls| Flight_Status_Tool_4f96a8\n    Triage_Agent_617af1 -->|calls| Baggage_Tool_f5aab7\n    Triage_Agent_617af1 -->|calls| Cancel_Flight_bc4163\n    Triage_Agent_617af1 -->|calls| Display_Seat_Map_9d854b\n    Triage_Agent_617af1 -->|calls| Faq_Lookup_Tool_556fac\n    Triage_Agent_617af1 -->|calls| Flight_Status_Tool_4f96a8\n    Cancellation_Agent_dba7f2 -->|uses| gpt_4_1_mini_183481\n    FAQ_Agent_3e32b0 -->|uses| gpt_4_1_mini_183481\n    Flight_Status_Agent_fcf591 -->|uses| gpt_4_1_mini_183481\n    Seat_Booking_Agent_cc8abe -->|uses| gpt_4_1_mini_183481\n    Triage_Agent_617af1 -->|uses| gpt_4_1_mini_183481\n    OpenAI_Agents_75b351 -->|calls| Cancellation_Agent_dba7f2\n    OpenAI_Agents_75b351 -->|calls| FAQ_Agent_3e32b0\n    OpenAI_Agents_75b351 -->|calls| Flight_Status_Agent_fcf591\n    OpenAI_Agents_75b351 -->|calls| Seat_Booking_Agent_cc8abe\n    OpenAI_Agents_75b351 -->|calls| Triage_Agent_617af1\n    OpenAI_Agents_75b351 -->|calls| Baggage_Tool_f5aab7\n    OpenAI_Agents_75b351 -->|calls| Cancel_Flight_bc4163\n    OpenAI_Agents_75b351 -->|calls| Display_Seat_Map_9d854b\n    OpenAI_Agents_75b351 -->|calls| Faq_Lookup_Tool_556fac\n    OpenAI_Agents_75b351 -->|calls| Flight_Status_Tool_4f96a8\n    OpenAI_Agents_75b351 -->|calls| Lookup_Reservation_154e06\n    OpenAI_Agents_75b351 -->|calls| Update_Seat_b42c05\n\n    classDef agent    fill:#4A90D9,stroke:#2C6FAC,color:#fff\n    classDef tool     fill:#7ED321,stroke:#5A9A18,color:#fff\n    classDef model    fill:#9B59B6,stroke:#7D3C98,color:#fff\n    classDef prompt   fill:#F39C12,stroke:#D68910,color:#fff\n    classDef guard    fill:#E74C3C,stroke:#C0392B,color:#fff\n    classDef store    fill:#1ABC9C,stroke:#17A589,color:#fff\n    classDef fw       fill:#95A5A6,stroke:#717D7E,color:#fff\n    classDef endpoint fill:#3498DB,stroke:#2471A3,color:#fff\n    class Cancellation_Agent_dba7f2,FAQ_Agent_3e32b0,Flight_Status_Agent_fcf591,Seat_Booking_Agent_cc8abe,Triage_Agent_617af1 agent\n    class Baggage_Tool_f5aab7,Cancel_Flight_bc4163,Display_Seat_Map_9d854b,Faq_Lookup_Tool_556fac,Flight_Status_Tool_4f96a8,Lookup_Reservation_154e06,Update_Seat_b42c05 tool\n    class gpt_4_1_mini_183481 model\n    class Cancellation_Agent_Instructions_3a7f9a,FAQ_Agent_Instructions_dfb2b8,Flight_Status_Agent_Instructions_fd199d,Jailbreak_Guardrail_Instructions_adddf1,Generic_080614,Relevance_Guardrail_Instructions_a54901,Seat_Booking_Agent_Instructions_8fb0a8,Triage_Agent_Instructions_6a88d8 prompt\n    class Jailbreak_Guardrail_0b0409,Relevance_Guardrail_401b51 guard\n    class Sqlite_87c5f0 store\n    class FastAPI_8cc09c,OpenAI_Agents_75b351 fw\n    class Generic_756b62,Me_68860e,Chat_Endpoint_04a6c6,Login_47b3c2,Logout_7f7cba endpoint\n```"
 }

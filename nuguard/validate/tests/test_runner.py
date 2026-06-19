@@ -4,6 +4,7 @@ from __future__ import annotations
 import httpx
 import pytest
 import respx
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from nuguard.common.auth import AuthConfig
 from nuguard.config import ValidateBoundaryAssertion, ValidateConfig
@@ -48,6 +49,36 @@ async def test_happy_path_scenario_runs():
     result = await runner.run()
     assert result.scenarios_executed >= 1
     assert result.scan_outcome in ("no_findings", "findings", "high_findings", "critical_findings")
+    assert result.effective_endpoint == "/chat"
+    assert result.target_endpoint_source == "config"
+
+
+@respx.mock
+@pytest.mark.asyncio
+async def test_discovered_endpoint_metadata_is_consistent():
+    """When target_endpoint is discovered, run metadata must reflect the resolved endpoint."""
+    # Bootstrap auth check uses placeholder /chat.
+    _bootstrap_route(respx.mock)
+    # Scenario execution uses the discovered endpoint.
+    respx.mock.post("http://localhost:9999/api/chat").mock(
+        return_value=httpx.Response(200, json={"response": "Hello, how can I help?"})
+    )
+
+    from nuguard.validate.runner import ValidateRunner
+
+    cfg = _make_config(workflows=["happy_path"], target_endpoint="")
+    runner = ValidateRunner(
+        validate_config=cfg,
+        auth_config=AuthConfig(type="none"),
+        sbom=MagicMock(),
+    )
+
+    with patch.object(ValidateRunner, "_discover_endpoint", new=AsyncMock(return_value="/api/chat")):
+        result = await runner.run()
+
+    assert result.scenarios_executed >= 1
+    assert result.effective_endpoint == "/api/chat"
+    assert result.target_endpoint_source == "probe"
 
 
 # ── Boundary assertion ────────────────────────────────────────────────────────

@@ -29,6 +29,10 @@ if TYPE_CHECKING:
 
 _log = get_logger(__name__)
 
+_MAX_DIAG_SCENARIOS = 20
+_MAX_DIAG_TURNS_PER_SCENARIO = 4
+_MAX_DIAG_SNIPPET_CHARS = 800
+
 
 # ---------------------------------------------------------------------------
 # Public API
@@ -43,6 +47,7 @@ def to_json(
     input_tokens_used: int = 0,
     output_tokens_used: int = 0,
     token_usage: "TokenUsage | None" = None,
+    scenario_records: list | None = None,
 ) -> str:
     """Generate a JSON report string from red-team findings.
 
@@ -74,6 +79,8 @@ def to_json(
         "findings": [f.model_dump() for f in findings],
         "remediation_plan": [a.model_dump() for a in (remediation_plan or [])],
     }
+    if meta.verbose and scenario_records:
+        payload["diagnostics"] = _build_redteam_diagnostics(scenario_records)
     return json.dumps(payload, indent=2, default=str)
 
 
@@ -205,10 +212,73 @@ def to_markdown(
     if remediation_plan:
         render_remediation_plan_section(lines, remediation_plan)
 
-    if _scenario_details:
-        render_scenario_details_section(lines, _scenario_details, truncate_limit=2500)
+    if meta.verbose and _scenario_details:
+        lines += ["## Diagnostics", ""]
+        lines += [
+            f"_Scenario traces capped at {_MAX_DIAG_TURNS_PER_SCENARIO} turn(s) per scenario, "
+            f"{_MAX_DIAG_SNIPPET_CHARS} chars per request/response snippet._",
+            "",
+        ]
+        render_scenario_details_section(
+            lines,
+            _truncate_scenario_details(_scenario_details),
+            truncate_limit=_MAX_DIAG_SNIPPET_CHARS,
+        )
 
     return "\n".join(lines)
+
+
+def _truncate_scenario_details(scenario_details: list) -> list:
+    truncated = []
+    for sd in scenario_details[:_MAX_DIAG_SCENARIOS]:
+        turns = list(sd.turns[:_MAX_DIAG_TURNS_PER_SCENARIO])
+        truncated.append(
+            type(sd)(
+                index=sd.index,
+                title=sd.title,
+                scenario_type=sd.scenario_type,
+                goal_or_type=sd.goal_or_type,
+                status=sd.status,
+                turns=turns,
+                had_finding=sd.had_finding,
+            )
+        )
+    return truncated
+
+
+def _build_redteam_diagnostics(scenario_records: list) -> dict[str, Any]:
+    details = extract_redteam_scenario_details(scenario_records)
+    scenario_traces: list[dict[str, Any]] = []
+    for sd in details[:_MAX_DIAG_SCENARIOS]:
+        turns = []
+        for td in sd.turns[:_MAX_DIAG_TURNS_PER_SCENARIO]:
+            turns.append(
+                {
+                    "turn": td.turn_number,
+                    "passed": td.passed,
+                    "request": _truncate_evidence(td.request or "", limit=_MAX_DIAG_SNIPPET_CHARS),
+                    "response": _truncate_evidence(td.response or "", limit=_MAX_DIAG_SNIPPET_CHARS),
+                    "step_type": td.metadata.get("step_type", ""),
+                    "llm_eval_confidence": td.metadata.get("llm_eval_confidence", None),
+                }
+            )
+        scenario_traces.append(
+            {
+                "scenario_title": sd.title,
+                "goal_or_type": sd.goal_or_type,
+                "status": sd.status,
+                "turns": turns,
+                "turns_truncated": max(0, len(sd.turns) - _MAX_DIAG_TURNS_PER_SCENARIO),
+            }
+        )
+    return {
+        "execution_notes": {
+            "scenarios_cap": _MAX_DIAG_SCENARIOS,
+            "turns_per_scenario_cap": _MAX_DIAG_TURNS_PER_SCENARIO,
+            "snippet_char_cap": _MAX_DIAG_SNIPPET_CHARS,
+        },
+        "scenario_traces": scenario_traces,
+    }
 
 
 # ---------------------------------------------------------------------------
