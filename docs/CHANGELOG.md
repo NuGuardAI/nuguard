@@ -2,6 +2,18 @@
 
 Track user-facing documentation updates here, especially changes to CLI behavior, workflows, and troubleshooting guidance.
 
+## v0.8.0 - 2026-06-18
+
+### Added
+- Prepublish sanity workflow profiles and runner guidance for release readiness.
+
+### Changed
+- Endpoint resolution precedence now keeps explicit endpoint configuration authoritative.
+- Verbose-mode behavior is aligned across commands with stable findings and richer bounded diagnostics.
+
+### Fixed
+- Regression coverage now validates explicit vs fallback endpoint paths and endpoint/source metadata consistency.
+
 
 ## Release Template
 
