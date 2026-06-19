@@ -109,3 +109,5 @@ class ValidateRunResult(BaseModel):
     policy_records: list[TurnPolicyRecord] = Field(default_factory=list)
     scenarios_executed: int = 0
     scan_outcome: str = "no_findings"
+    effective_endpoint: str = ""
+    target_endpoint_source: str = "default"

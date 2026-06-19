@@ -423,3 +423,4 @@ Mitigation: shared helpers and cross-command test suite.
 3. `_meta.verbose` is always present where metadata is supported.
 4. Verbose diagnostics are bounded, structured, and format-parity aligned.
 5. Documentation is updated and changelog entry is published.
+

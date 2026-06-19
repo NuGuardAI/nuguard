@@ -179,7 +179,9 @@ def _do_validate(
         llm_models=[cfg.litellm_model] if resolved_policy_path else [],
         verbose=effective_verbose,
         target_url=vc.target,
-        target_endpoint=vc.target_endpoint or "/chat",
+        target_endpoint=result.effective_endpoint or vc.target_endpoint or "/chat",
+        effective_endpoint=result.effective_endpoint or vc.target_endpoint or "/chat",
+        target_endpoint_source=result.target_endpoint_source or ("config" if vc.target_endpoint else "default"),
     )
     extension_map = {
         "text": ".txt",

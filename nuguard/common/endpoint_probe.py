@@ -458,6 +458,10 @@ def discover_chat_config_from_sbom(
     :func:`discover_chat_candidates_from_sbom` when you need the full ranked list
     for endpoint rotation.
     """
+    # Explicit endpoint is authoritative and must never be overridden by SBOM.
+    if chat_path:
+        return chat_path, chat_payload_key, chat_payload_list, None
+
     candidates = discover_chat_candidates_from_sbom(sbom, chat_path, chat_payload_key, chat_payload_list)
     if candidates:
         best = candidates[0]

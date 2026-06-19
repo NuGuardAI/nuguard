@@ -48,6 +48,8 @@ def _fake_validate_result() -> ValidateRunResult:
         ],
         scenarios_executed=1,
         scan_outcome="findings",
+        effective_endpoint="/api/agent/chat",
+        target_endpoint_source="probe",
     )
 
 
@@ -161,3 +163,33 @@ def test_validate_json_omits_diagnostics_when_not_verbose(
     payload = _json.loads(out_base.read_text(encoding="utf-8"))
     assert payload["_meta"]["verbose"] is False
     assert "diagnostics" not in payload
+
+
+def test_validate_json_uses_resolved_endpoint_metadata(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    import json as _json
+    import nuguard.cli.commands.validate as validate_cmd
+
+    monkeypatch.setattr(validate_cmd, "_run_validate", _fake_run_validate)
+    cfg = _write_validate_config(tmp_path)
+    out_base = tmp_path / "validate-meta"
+
+    result = runner.invoke(
+        app,
+        [
+            "validate",
+            "--config",
+            str(cfg),
+            "--format",
+            "json",
+            "--output",
+            str(out_base),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+
+    payload = _json.loads(out_base.read_text(encoding="utf-8"))
+    assert payload["_meta"]["effective_endpoint"] == "/api/agent/chat"
+    assert payload["_meta"]["target_endpoint_source"] == "probe"
