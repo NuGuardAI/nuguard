@@ -2,12 +2,36 @@
 
 set -euo pipefail
 
+# Ensure uv is on PATH across Linux/macOS/WSL/Git-Bash without hardcoded usernames.
+for bin_dir in \
+  "$HOME/.local/bin" \
+  "$HOME/bin" \
+  /mnt/c/Users/*/.local/bin \
+  /c/Users/*/.local/bin
+do
+  if [[ -d "$bin_dir" ]]; then
+    PATH="$bin_dir:$PATH"
+  fi
+done
+export PATH
+
+# On Windows shells, uv may be available as uv.exe only.
+if ! command -v uv >/dev/null 2>&1 && command -v uv.exe >/dev/null 2>&1; then
+  uv() { uv.exe "$@"; }
+  export -f uv
+fi
+
+if ! command -v uv >/dev/null 2>&1; then
+  echo "[FAIL] uv not found. Install uv and ensure it is on PATH before running prepublish." >&2
+  exit 1
+fi
+
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$ROOT_DIR"
 
 # App matrix: name|config|sbom|behavior_out_base|redteam_out_base|expected_endpoint
 APP_RUNS=(
-  "openai-cs|tests/apps/openai-cs-agents-demo/nuguard.prepublish.yaml|tests/apps/openai-cs-agents-demo/openai-cs.sbom.json|tests/apps/openai-cs-agents-demo/reports/openai-cs-prepublish-behavior|tests/apps/openai-cs-agents-demo/reports/openai-cs-prepublish-redteam|/api/chat"
+  "openai-cs|tests/apps/openai-cs-agents-demo/nuguard.prepublish.yaml|tests/apps/openai-cs-agents-demo/openai-cs.sbom.json|tests/apps/openai-cs-agents-demo/reports/openai-cs-prepublish-behavior|tests/apps/openai-cs-agents-demo/reports/openai-cs-prepublish-redteam|/chat"
   "gemini-auto|tests/apps/Gemini-Auto-app/nuguard.prepublish.yaml|tests/apps/Gemini-Auto-app/gemini-auto.sbom.json|tests/apps/Gemini-Auto-app/reports/gemini-auto-prepublish-behavior|tests/apps/Gemini-Auto-app/reports/gemini-auto-prepublish-redteam|/api/agent/chat"
   "pinnacle-bank|tests/apps/pinnacle-bank-app/nuguard-azure.prepublish.yaml|tests/apps/pinnacle-bank-app/pinnacle-bank.sbom.json|tests/apps/pinnacle-bank-app/reports/pinnacle-bank-prepublish-behavior|tests/apps/pinnacle-bank-app/reports/pinnacle-bank-prepublish-redteam|/api/chat"
 )
@@ -16,8 +40,10 @@ BEHAVIOR_SUMMARIES=()
 REDTEAM_SUMMARIES=()
 DURATIONS=()
 
-run_allow_findings() {
+run_with_allowed_rc() {
   local label="$1"
+  local allowed_csv="$2"
+  shift
   shift
 
   set +e
@@ -25,18 +51,18 @@ run_allow_findings() {
   local rc=$?
   set -e
 
-  if [[ "$rc" -ne 0 && "$rc" -ne 2 ]]; then
-    echo "[FAIL] ${label} exited with code ${rc} (expected 0 or 2)." >&2
+  if [[ ",${allowed_csv}," != *",${rc},"* ]]; then
+    echo "[FAIL] ${label} exited with code ${rc} (allowed: ${allowed_csv})." >&2
     exit 1
   fi
 
-  if [[ "$rc" -eq 2 ]]; then
-    echo "[WARN] ${label} exited 2 (findings/gating signal). Continuing to quality checks."
+  if [[ "$rc" -ne 0 ]]; then
+    echo "[WARN] ${label} exited ${rc} (non-blocking findings/gating signal). Continuing to quality checks."
   fi
 }
 
 echo "[1/3] Repo smoke checks"
-uv run nuguard --help > /dev/null
+uv run nuguard --help > /dev/null 2>&1
 uv run pytest tests/test_config.py tests/test_secret_store.py -q
 
 echo "[2/3] App prepublish sanity runs"
@@ -48,13 +74,16 @@ for entry in "${APP_RUNS[@]}"; do
   echo "[APP] ${name}"
   app_start="$(date +%s)"
 
-  run_allow_findings "${name}: sbom" \
+  # SBOM generation is expected to be strictly successful.
+  run_with_allowed_rc "${name}: sbom" "0" \
     uv run nuguard sbom generate \
       --config "$cfg" \
       --format json \
       -o "$sbom_out"
 
-  run_allow_findings "${name}: behavior" \
+  # Findings from app-under-test must not block publishing NuGuard itself.
+  # Allow severity/gating exit codes and enforce quality via JSON checks below.
+  run_with_allowed_rc "${name}: behavior" "0,1,2" \
     uv run nuguard behavior \
       --config "$cfg" \
       --mode dynamic \
@@ -63,7 +92,7 @@ for entry in "${APP_RUNS[@]}"; do
       --output "$behavior_base" \
       --verbose
 
-  run_allow_findings "${name}: redteam" \
+  run_with_allowed_rc "${name}: redteam" "0,1,2" \
     uv run nuguard redteam \
       --config "$cfg" \
       --format json \
