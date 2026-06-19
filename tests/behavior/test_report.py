@@ -150,7 +150,7 @@ def test_to_markdown_contains_validation_summary_bullets():
 def test_to_markdown_scenario_details_section_present():
     sr = _make_scenario_result(score=4.0)
     result = _make_result(scenario_results=[sr])
-    md = to_markdown(result)
+    md = to_markdown(result, meta=ReportMeta(verbose=True))
     assert "## Scenario Details" in md
     assert "### Scenario 1:" in md
 
@@ -167,7 +167,7 @@ def test_to_markdown_scenario_details_shows_request_response():
     ]
     sr = _make_scenario_result(score=4.0, verdicts=verdicts)
     result = _make_result(scenario_results=[sr])
-    md = to_markdown(result)
+    md = to_markdown(result, meta=ReportMeta(verbose=True))
     assert "What is my balance?" in md
     assert "Your balance is $500." in md
 

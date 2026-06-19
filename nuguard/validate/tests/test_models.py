@@ -96,3 +96,5 @@ def test_validate_run_result_empty():
     assert result.scan_outcome == "no_findings"
     assert result.findings == []
     assert result.scenarios_executed == 0
+    assert result.effective_endpoint == ""
+    assert result.target_endpoint_source == "default"

@@ -94,10 +94,8 @@ behavior:
   #   invariant_probe      — probes behavioral invariants and policy constraints
   # Note: boundary_enforcement was removed in v7; boundary testing is now handled
   # by nuguard redteam. boundary_assertions below still run via invariant_probe.
-  #workflows:
-  #  - intent_happy_path
-  #  - component_coverage
-  #  - invariant_probe
+  workflows:
+    - intent_happy_path
 
   # Boundary assertions: requests the app MUST refuse
   boundary_assertions:
@@ -125,7 +123,7 @@ behavior:
   judge_concurrency: 2
 
   # Hard cap on total scenarios executed (comment out to run all)
-  max_scenarios: 30
+  max_scenarios: 12
 
   # Google ADK adapter: Gemini Car Assistant wraps ADK internally but exposes a
   # custom FastAPI endpoint (/api/agent/chat), NOT the standard ADK REST API
@@ -177,7 +175,7 @@ redteam:
     api_key: ${AZURE_OPENAI_KEY}
     api_base: ${AZURE_OPENAI_ENDPOINT}
 
-  profile: full
+  profile: ci
 
   # Stable-ID scenario catalog (84 scenarios across 12 attack categories).
   # Set false to run the legacy SBOM-only generator without catalog scenarios.
@@ -211,13 +209,14 @@ redteam:
       expect: refused
       severity: critical
 
-  request_timeout: 120
+  request_timeout: 90
   verbose: true
-  strict_outcome: false
+  strict_outcome: true
   similar_miss_threshold: 4   # set to 0 to disable
   guided_conversations: true
-  guided_max_turns: 12
-  guided_concurrency: 3
+  guided_max_turns: 6
+  guided_concurrency: 2
+  scenario_timeout: 120
 
   finding_triggers:
     canary_hits: true

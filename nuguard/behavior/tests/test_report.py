@@ -408,3 +408,50 @@ def test_to_markdown_comparability_warning_when_scope_changes():
     meta = ReportMeta(previous_run_profile={"behavior_engine_version": "v1", "scenarios_executed": 7})
     md = to_markdown(result, meta=meta)
     assert "Comparability warning" in md
+
+
+def test_to_markdown_diagnostics_section_only_in_verbose_mode():
+    verdicts = [
+        {
+            "turn": 1,
+            "verdict": "FAIL",
+            "user_message": "x" * 1200,
+            "agent_response": "y" * 1200,
+            "scores": {},
+            "overall_score": 1.0,
+            "gaps": ["gap1", "gap2", "gap3", "gap4", "gap5"],
+        }
+    ]
+    sr = _make_scenario_result(score=1.0, verdicts=verdicts)
+    result = _make_result(scenario_results=[sr])
+
+    verbose_md = to_markdown(result, meta=ReportMeta(verbose=True))
+    non_verbose_md = to_markdown(result, meta=ReportMeta(verbose=False))
+
+    assert "## Diagnostics" in verbose_md
+    assert "## Scenario Details" in verbose_md
+    assert "## Diagnostics" not in non_verbose_md
+    assert "## Scenario Details" not in non_verbose_md
+
+
+def test_to_json_includes_diagnostics_only_in_verbose_mode():
+    verdicts = [
+        {
+            "turn": 1,
+            "verdict": "PASS",
+            "user_message": "hello",
+            "agent_response": "world",
+            "scores": {},
+            "overall_score": 4.0,
+            "gaps": [],
+        }
+    ]
+    sr = _make_scenario_result(score=4.0, verdicts=verdicts)
+    result = _make_result(scenario_results=[sr])
+
+    verbose_json = json.loads(to_json(result, meta=ReportMeta(verbose=True)))
+    non_verbose_json = json.loads(to_json(result, meta=ReportMeta(verbose=False)))
+
+    assert "diagnostics" in verbose_json
+    assert "scenario_traces" in verbose_json["diagnostics"]
+    assert "diagnostics" not in non_verbose_json

@@ -14,6 +14,7 @@ from nuguard.behavior.models import (
     ScenarioResult,
 )
 from nuguard.behavior.runner import BehaviorRunner
+from nuguard.common.discovery import DiscoveredProfile
 from nuguard.sbom.models import AiSbomDocument, Node, NodeMetadata
 from nuguard.sbom.types import ComponentType
 
@@ -274,6 +275,89 @@ async def test_run_handles_scenario_exception():
     # The second scenario should still have run
     assert len(result.scenario_results) == 1
     assert result.scenario_results[0].scenario_name == "will_pass"
+
+
+@pytest.mark.asyncio
+async def test_run_does_not_rotate_when_target_endpoint_is_explicit() -> None:
+    """Explicit target_endpoint must fail fast on 404/405 without SBOM/probe rotation."""
+
+    class _DummyClient:
+        def __init__(self) -> None:
+            self.base_url = "http://localhost:8080"
+            self.chat_path = "/chat"
+            self.resolution_notes: list[str] = []
+            self.called_paths: list[str] = []
+
+        async def send(self, message: str, session: object) -> tuple[str, list[dict]]:
+            self.called_paths.append(self.chat_path)
+            if self.chat_path == "/chat":
+                return "[HTTP 404] not found", []
+            return "OK", []
+
+        def set_chat_endpoint(
+            self,
+            chat_path: str,
+            chat_payload_key: str,
+            chat_payload_list: bool,
+            chat_response_key: str | None = None,
+        ) -> None:
+            self.chat_path = chat_path
+
+    cfg = _make_config()
+    cfg.target_endpoint = "/chat"
+
+    sbom = AiSbomDocument(
+        target="./app",
+        nodes=[
+            Node(
+                id=uuid.uuid5(_NS, "API_ENDPOINT//chat"),
+                name="/chat",
+                component_type=ComponentType.API_ENDPOINT,
+                confidence=0.99,
+                metadata=NodeMetadata(
+                    endpoint="/chat",
+                    method="POST",
+                    chat_payload_key="message",
+                    chat_payload_list=False,
+                ),
+            ),
+            Node(
+                id=uuid.uuid5(_NS, "API_ENDPOINT//api/agent/chat"),
+                name="/api/agent/chat",
+                component_type=ComponentType.API_ENDPOINT,
+                confidence=0.99,
+                metadata=NodeMetadata(
+                    endpoint="/api/agent/chat",
+                    method="POST",
+                    chat_payload_key="message",
+                    chat_payload_list=False,
+                ),
+            ),
+        ],
+        edges=[],
+    )
+
+    runner = BehaviorRunner(
+        config=cfg,
+        sbom=sbom,
+        policy=_make_mock_policy(),
+        intent=_make_intent(),
+        llm_client=None,
+    )
+    dummy = _DummyClient()
+
+    with (
+        patch.object(runner, "_build_client", new=AsyncMock(return_value=dummy)),
+        patch.object(runner, "_build_policy_evaluator", return_value=None),
+    ):
+        result = await runner.run(
+            scenarios=[_make_scenario("explicit_endpoint")],
+            pre_scan_profile=DiscoveredProfile(customer_name="Alice", ids=["ACCT-001"]),
+        )
+
+    assert result.scan_outcome == "aborted_endpoint_unreachable"
+    assert any("Explicit endpoint precedence is enforced" in note for note in result.config_notes)
+    assert "/api/agent/chat" not in dummy.called_paths
 
 
 def test_build_coverage_map_endpoint_direct_match_confidence() -> None:

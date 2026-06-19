@@ -46,7 +46,7 @@ def test_discovery_prefers_source_backed_queue_endpoint_over_synthetic_chat_mess
 
     path, payload_key, payload_list, response_key = _discover_chat_config(
         sbom=sbom,
-        chat_path="/chat",
+        chat_path="",
         chat_payload_key="message",
         chat_payload_list=False,
     )
@@ -93,7 +93,7 @@ def test_langgraph_endpoint_discovered_without_payload_key_in_sbom() -> None:
 
     path, payload_key, payload_list, response_key = _discover_chat_config(
         sbom=sbom,
-        chat_path="/chat",
+        chat_path="",
         chat_payload_key="message",
         chat_payload_list=False,
     )
@@ -161,7 +161,7 @@ def test_explicit_payload_key_beats_langgraph_inference() -> None:
 
     path, payload_key, payload_list, response_key = _discover_chat_config(
         sbom=sbom,
-        chat_path="/chat",
+        chat_path="",
         chat_payload_key="message",
         chat_payload_list=False,
     )
@@ -170,3 +170,34 @@ def test_explicit_payload_key_beats_langgraph_inference() -> None:
     assert payload_key == "custom_key"
     assert payload_list is False
     assert response_key is None  # meta.response_text_key not set
+
+
+def test_explicit_chat_path_is_authoritative_over_sbom_candidates() -> None:
+    sbom = AiSbomDocument(
+        target="stateset-icommerce",
+        nodes=[
+            Node(
+                name="Queue API",
+                component_type=ComponentType.API_ENDPOINT,
+                confidence=0.92,
+                metadata={
+                    "endpoint": "/api/chat/queue",
+                    "method": "POST",
+                    "chat_payload_key": "message",
+                },
+            ),
+        ],
+        edges=[],
+    )
+
+    path, payload_key, payload_list, response_key = _discover_chat_config(
+        sbom=sbom,
+        chat_path="/chat",
+        chat_payload_key="message",
+        chat_payload_list=False,
+    )
+
+    assert path == "/chat"
+    assert payload_key == "message"
+    assert payload_list is False
+    assert response_key is None

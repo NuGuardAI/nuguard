@@ -176,6 +176,98 @@ def test_check_json_output(policy_file: Path, sbom_file: Path) -> None:
     assert isinstance(findings, list)
 
 
+def test_check_findings_invariant_with_verbose_toggle(policy_file: Path, sbom_file: Path) -> None:
+    import re as _re
+
+    base = runner.invoke(
+        app,
+        [
+            "policy",
+            "check",
+            "--policy",
+            str(policy_file),
+            "--sbom",
+            str(sbom_file),
+            "--format",
+            "json",
+            "--no-verbose",
+        ],
+    )
+    verbose = runner.invoke(
+        app,
+        [
+            "policy",
+            "check",
+            "--policy",
+            str(policy_file),
+            "--sbom",
+            str(sbom_file),
+            "--format",
+            "json",
+            "--verbose",
+        ],
+    )
+    assert base.exit_code in (0, 1, 2), base.output
+    assert verbose.exit_code in (0, 1, 2), verbose.output
+
+    base_json_start = _re.search(r"\{", base.output)
+    verbose_json_start = _re.search(r"\{", verbose.output)
+    assert base_json_start is not None
+    assert verbose_json_start is not None
+
+    base_payload = json.loads(base.output[base_json_start.start():])
+    verbose_payload = json.loads(verbose.output[verbose_json_start.start():])
+
+    assert base_payload.get("findings", []) == verbose_payload.get("findings", [])
+
+
+def test_check_json_verbose_adds_diagnostics(policy_file: Path, sbom_file: Path) -> None:
+    import re as _re
+
+    verbose = runner.invoke(
+        app,
+        [
+            "policy",
+            "check",
+            "--policy",
+            str(policy_file),
+            "--sbom",
+            str(sbom_file),
+            "--format",
+            "json",
+            "--verbose",
+        ],
+    )
+    non_verbose = runner.invoke(
+        app,
+        [
+            "policy",
+            "check",
+            "--policy",
+            str(policy_file),
+            "--sbom",
+            str(sbom_file),
+            "--format",
+            "json",
+            "--no-verbose",
+        ],
+    )
+    assert verbose.exit_code in (0, 1, 2), verbose.output
+    assert non_verbose.exit_code in (0, 1, 2), non_verbose.output
+
+    v_start = _re.search(r"\{", verbose.output)
+    n_start = _re.search(r"\{", non_verbose.output)
+    assert v_start is not None
+    assert n_start is not None
+    v_payload = json.loads(verbose.output[v_start.start():])
+    n_payload = json.loads(non_verbose.output[n_start.start():])
+
+    assert v_payload.get("_meta", {}).get("verbose") is True
+    assert "diagnostics" in v_payload
+    assert n_payload.get("_meta", {}).get("verbose") is False
+    assert "diagnostics" not in n_payload
+
+
 def test_check_multiple_formats_require_output(policy_file: Path, sbom_file: Path) -> None:
     result = runner.invoke(
         app,

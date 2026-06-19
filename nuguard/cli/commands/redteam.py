@@ -377,15 +377,18 @@ def redteam(
 
                 out_path.write_text(generate_sarif(findings, sbom_path=sbom_path), encoding="utf-8")
             else:
-                payload: dict = {
-                    "_meta": meta.to_dict(),
-                    "scan_outcome": scan_outcome,
-                    "token_usage": token_usage.model_dump(),
-                    "input_tokens_used": input_tokens_used,
-                    "output_tokens_used": output_tokens_used,
-                    "findings": [f.model_dump() for f in findings],
-                    "remediation_plan": [a.model_dump() for a in remediation_plan],
-                }
+                from nuguard.redteam.report import to_json as _to_json_report  # noqa: PLC0415
+
+                payload: dict = json.loads(
+                    _to_json_report(
+                        findings,
+                        meta=meta,
+                        remediation_plan=remediation_plan,
+                        scan_outcome=scan_outcome,
+                        token_usage=token_usage,
+                        scenario_records=scenario_records,
+                    )
+                )
                 if config_notes:
                     payload["config_notes"] = config_notes
                 out_path.write_text(json.dumps(payload, indent=2, default=str), encoding="utf-8")
@@ -826,22 +829,20 @@ def _print_findings(
         meta = ReportMeta()
 
     if format == "json":
-        _tu_dict = token_usage.model_dump() if token_usage is not None else {
-            "input_tokens": input_tokens_used,
-            "output_tokens": output_tokens_used,
-            "total_tokens": input_tokens_used + output_tokens_used,
-            "llm_model": None,
-        }
-        payload = {
-            "_meta": meta.to_dict(),
-            "scan_outcome": scan_outcome,
-            "token_usage": _tu_dict,
-            "input_tokens_used": input_tokens_used,
-            "output_tokens_used": output_tokens_used,
-            "findings": [f.model_dump() for f in findings],
-            "remediation_plan": [a.model_dump() for a in (remediation_plan or [])],
-        }
-        typer.echo(json.dumps(payload, indent=2, default=str))
+        from nuguard.redteam.report import to_json as _to_json_report
+
+        typer.echo(
+            _to_json_report(
+                findings,
+                meta=meta,
+                remediation_plan=remediation_plan,
+                scan_outcome=scan_outcome,
+                input_tokens_used=input_tokens_used,
+                output_tokens_used=output_tokens_used,
+                token_usage=token_usage,
+                scenario_records=scenario_records,
+            )
+        )
         return
 
     if format == "sarif":

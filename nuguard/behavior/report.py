@@ -26,6 +26,10 @@ if TYPE_CHECKING:
 
 _log = get_logger(__name__)
 
+_MAX_DIAG_SCENARIOS = 20
+_MAX_DIAG_TURNS_PER_SCENARIO = 4
+_MAX_DIAG_SNIPPET_CHARS = 800
+
 # Finding types produced by gap aggregation — rendered in the Gap Summary section,
 # excluded from the Dynamic Analysis Findings section.
 _GAP_FINDING_TYPES = frozenset({"CAPABILITY_GAP", "INTENT_MISALIGNMENT", "TOOL_CHAIN_BROKEN"})
@@ -75,6 +79,8 @@ def to_json(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = None) 
                 "sbom_path": str(getattr(meta, "sbom_path", "") or ""),
                 "policy_path": str(getattr(meta, "policy_path", "") or ""),
             }
+        if getattr(meta, "verbose", False):
+            data["diagnostics"] = _build_behavior_diagnostics(result)
     return json.dumps(data, indent=2, default=str)
 
 
@@ -631,10 +637,85 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
             else:
                 render_remediation_plan_section(lines, result.remediation_plan)
 
-    if _scenario_details:
-        render_scenario_details_section(lines, _scenario_details)
+    if getattr(meta, "verbose", False) and _scenario_details:
+        lines.append("## Diagnostics")
+        lines.append("")
+        lines.append(
+            f"_Scenario traces capped at {_MAX_DIAG_TURNS_PER_SCENARIO} turn(s) per scenario, "
+            f"{_MAX_DIAG_SNIPPET_CHARS} chars per request/response snippet._"
+        )
+        lines.append("")
+        render_scenario_details_section(
+            lines,
+            _truncate_scenario_details(_scenario_details),
+            truncate_limit=_MAX_DIAG_SNIPPET_CHARS,
+        )
 
     return "\n".join(lines)
+
+
+def _truncate_scenario_details(scenario_details: list) -> list:
+    truncated = []
+    for sd in scenario_details[:_MAX_DIAG_SCENARIOS]:
+        turns = list(sd.turns[:_MAX_DIAG_TURNS_PER_SCENARIO])
+        truncated.append(
+            type(sd)(
+                index=sd.index,
+                title=sd.title,
+                scenario_type=sd.scenario_type,
+                goal_or_type=sd.goal_or_type,
+                status=sd.status,
+                turns=turns,
+                had_finding=sd.had_finding,
+            )
+        )
+    return truncated
+
+
+def _build_behavior_diagnostics(result: "BehaviorAnalysisResult") -> dict[str, Any]:
+    traces: list[dict[str, Any]] = []
+    for sr in result.scenario_results[:_MAX_DIAG_SCENARIOS]:
+        turns: list[dict[str, Any]] = []
+        for verdict in (sr.verdicts or [])[:_MAX_DIAG_TURNS_PER_SCENARIO]:
+            turns.append(
+                {
+                    "turn": verdict.get("turn", 0),
+                    "verdict": verdict.get("verdict", ""),
+                    "request": _truncate_evidence(
+                        str(verdict.get("user_message") or verdict.get("prompt") or ""),
+                        limit=_MAX_DIAG_SNIPPET_CHARS,
+                    ),
+                    "response": _truncate_evidence(
+                        str(verdict.get("agent_response") or verdict.get("response") or ""),
+                        limit=_MAX_DIAG_SNIPPET_CHARS,
+                    ),
+                    "gaps": [
+                        _truncate_evidence(str(gap), limit=200)
+                        for gap in (verdict.get("gaps") or [])[:4]
+                    ],
+                }
+            )
+
+        traces.append(
+            {
+                "scenario_name": sr.scenario_name,
+                "scenario_type": sr.scenario_type,
+                "turns": turns,
+                "turns_truncated": max(
+                    0,
+                    len(sr.verdicts or []) - _MAX_DIAG_TURNS_PER_SCENARIO,
+                ),
+            }
+        )
+
+    return {
+        "execution_notes": {
+            "scenarios_cap": _MAX_DIAG_SCENARIOS,
+            "turns_per_scenario_cap": _MAX_DIAG_TURNS_PER_SCENARIO,
+            "snippet_char_cap": _MAX_DIAG_SNIPPET_CHARS,
+        },
+        "scenario_traces": traces,
+    }
 
 
 def _render_behavior_attack_steps(lines: list[str], finding: dict) -> None:

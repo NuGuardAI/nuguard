@@ -156,6 +156,7 @@ class ValidateRunner:
         # ── Step 0: Auth bootstrap ────────────────────────────────────────────
         target_url = self._config.target
         endpoint = self._config.target_endpoint  # empty string → auto-discover below
+        endpoint_source = "config" if endpoint else "default"
 
         if not target_url:
             raise ValueError(
@@ -191,8 +192,11 @@ class ValidateRunner:
         # Runs after bootstrap so that live session headers are available.
         if not endpoint and self._sbom is not None:
             endpoint = await self._discover_endpoint()
+            if endpoint:
+                endpoint_source = "probe"
         if not endpoint:
             endpoint = "/chat"
+            endpoint_source = "default"
             _log.debug("No target_endpoint configured and SBOM unavailable — defaulting to /chat")
 
         # ── Step 1: Build scenarios ───────────────────────────────────────────
@@ -304,7 +308,7 @@ class ValidateRunner:
                     _print_turn_verbose(
                         scenario_name=scenario.name,
                         turn_idx=turn_idx,
-                        url=client.base_url + (self._config.target_endpoint or "/chat"),
+                        url=client.base_url + endpoint,
                         request=message,
                         response=response_text,
                         tool_calls=tool_calls,
@@ -418,6 +422,8 @@ class ValidateRunner:
             policy_records=policy_records,
             scenarios_executed=len(scenarios),
             scan_outcome=outcome,
+            effective_endpoint=endpoint,
+            target_endpoint_source=endpoint_source,
         )
 
     # ------------------------------------------------------------------
