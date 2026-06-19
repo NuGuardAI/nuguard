@@ -271,7 +271,7 @@ def _do_generate(
             clone_url = _inject_token(from_repo, resolved_token) if resolved_token else from_repo
             _console.print(f"[bold]Cloning[/bold] {from_repo} ({ref}) …")
             # Pass the original URL as source_ref to avoid leaking the token
-            from nuguard.sbom.extractor.core import AiSbomExtractor  # noqa: PLC0415
+            from nuguard.sbom.extractor import AiSbomExtractor  # noqa: PLC0415
             extractor = AiSbomExtractor()
             doc = extractor.extract_from_repo(
                 clone_url, ref=ref, config=config, source_ref=from_repo

@@ -971,9 +971,14 @@ class AttackExecutor:
                 step.step_id,
             )
         if step.use_llm_eval and self._response_evaluator and not is_client_error and not is_app_transient_error:
+            # For API attack steps the text payload is empty; use method+path instead
+            # so the evaluator understands what endpoint was probed.
+            _eval_payload = payload
+            if not _eval_payload.strip() and step.target_path:
+                _eval_payload = f"{step.http_method or 'GET'} {step.target_path}"
             llm_eval = await self._response_evaluator.evaluate(
                 goal_type=chain.goal_type.value,
-                payload=payload,
+                payload=_eval_payload,
                 response=response,
                 golden_data=session.golden_data,
                 app_log_context=app_log_context,

@@ -56,6 +56,22 @@ _IRREVERSIBLE_TOOL_PATTERNS = re.compile(
     re.IGNORECASE,
 )
 
+# ── Read-only tool name prefixes (NGA-012 — override weak irreversible matches) ──
+# A tool whose name starts with one of these verbs is presumed read-only unless
+# its privilege_scope contains a write-capable scope (see _WRITE_PRIVILEGE_SCOPES).
+_READ_ONLY_TOOL_PREFIXES = re.compile(
+    r"^(?:get|fetch|lookup|search|list|status|display|show|view|check|find|retrieve|query)[_\-]",
+    re.IGNORECASE,
+)
+
+# ── Write-capable privilege scopes (NGA-012) ──────────────────────────────────
+# Any TOOL node with one of these scopes is always considered irreversible,
+# regardless of its name.
+_WRITE_PRIVILEGE_SCOPES = {
+    "DB_WRITE", "FILESYSTEM_WRITE", "CODE_EXECUTION",
+    "EMAIL_OUT", "SOCIAL_MEDIA_OUT",
+}
+
 # ── HITL pattern indicators in AGENT metadata (NGA-012) ──────────────────────
 _HITL_PATTERNS = {
     "interrupt", "interrupt_before", "interrupt_after",
@@ -301,6 +317,23 @@ def _rule_nga002_insufficient_guardrails(
     """
     findings: list[dict[str, Any]] = []
 
+    # Count global guardrail nodes to detect potential SBOM extraction gaps.
+    global_guardrail_count = sum(
+        1 for n in nodes if n.get("component_type") in _GUARDRAIL_TYPES
+    )
+
+    def _gap_note(description: str) -> str:
+        """Append an SBOM modeling gap note when guardrail nodes exist without PROTECTS edges."""
+        if global_guardrail_count:
+            return (
+                description
+                + f" Note: {global_guardrail_count} guardrail node(s) detected in the SBOM"
+                " but no PROTECTS edge connects them to this path — this may be an SBOM"
+                " extraction gap rather than a real vulnerability."
+                " Verify guardrail coverage in source before remediating."
+            )
+        return description
+
     if graph is not None:
         # Sub-check A: per MODEL, check if it or any of its using agents is protected
         for model in graph.nodes_of_type("MODEL"):
@@ -321,11 +354,12 @@ def _rule_nga002_insufficient_guardrails(
             findings.append(_finding(
                 "NGA-002", "HIGH",
                 f"LLM model '{model_name}' has no output guardrail (sub-check A)",
-                evidence,
+                _gap_note(evidence),
                 affected,
                 f"Attach a guardrail (e.g. LlamaGuard, NeMo Guardrails) to "
                 f"'{model_name}' or to each calling agent: {agent_names or ['unknown']}.",
                 evidence=evidence,
+                modeling_gap_risk=bool(global_guardrail_count),
             ))
 
         # Sub-check B: per unauthenticated API_ENDPOINT exposing an AGENT
@@ -352,10 +386,11 @@ def _rule_nga002_insufficient_guardrails(
                 findings.append(_finding(
                     "NGA-002", "HIGH",
                     f"Internet-capable agent '{agent_name}' has no output guardrail (sub-check B)",
-                    evidence,
+                    _gap_note(evidence),
                     [ep_name, agent_name],
                     f"Place a guardrail before '{agent_name}' on endpoint '{ep_name}'.",
                     evidence=evidence,
+                    modeling_gap_risk=bool(global_guardrail_count),
                 ))
 
         # Sub-check C: DELEGATES_TO edges where neither side is protected
@@ -373,11 +408,12 @@ def _rule_nga002_insufficient_guardrails(
                 findings.append(_finding(
                     "NGA-002", "HIGH",
                     f"Unguarded delegation: '{src_name}' → '{tgt_name}' (sub-check C)",
-                    evidence,
+                    _gap_note(evidence),
                     [src_name, tgt_name],
                     f"Add a guardrail between '{src_name}' and '{tgt_name}' to prevent "
                     "prompt injection from propagating across the delegation boundary.",
                     evidence=evidence,
+                    modeling_gap_risk=bool(global_guardrail_count),
                 ))
 
         return findings
@@ -386,15 +422,19 @@ def _rule_nga002_insufficient_guardrails(
     guardrail_ids = {n["id"] for n in nodes if n.get("component_type") in _GUARDRAIL_TYPES}
     model_nodes = [n for n in nodes if n.get("component_type") in _MODEL_TYPES]
     if model_nodes and not guardrail_ids:
+        desc = (
+            f"{len(model_nodes)} LLM model node(s) produce output with no output-validation "
+            "or guardrail step detected anywhere in the SBOM graph."
+        )
         findings.append(_finding(
             "NGA-002", "HIGH",
             "LLM models with no output guardrail (sub-check A)",
-            f"{len(model_nodes)} LLM model node(s) produce output with no output-validation "
-            "or guardrail step detected anywhere in the SBOM graph.",
+            _gap_note(desc),
             [n.get("name", "") for n in model_nodes],
             "Implement structured output parsing and validation. Add a GUARDRAIL component "
             "(response classifier, PII filter, or output validator) between model output "
             "and downstream consumers.",
+            modeling_gap_risk=bool(global_guardrail_count),
         ))
     api_endpoint_ids = {n["id"] for n in nodes if n.get("component_type") in _API_ENDPOINT_TYPES}
     if api_endpoint_ids and not guardrail_ids:
@@ -408,15 +448,19 @@ def _rule_nga002_insufficient_guardrails(
             and n["id"] in agents_with_outbound
         ]
         if agent_nodes_outbound:
+            desc = (
+                f"{len(agent_nodes_outbound)} agent(s) make outbound API calls with no output "
+                "guardrail detected. Internet-capable agents without output filtering can "
+                "exfiltrate data or be manipulated by adversarial external content."
+            )
             findings.append(_finding(
                 "NGA-002", "HIGH",
                 "Internet-capable agent with no output guardrail (sub-check B)",
-                f"{len(agent_nodes_outbound)} agent(s) make outbound API calls with no output "
-                "guardrail detected. Internet-capable agents without output filtering can "
-                "exfiltrate data or be manipulated by adversarial external content.",
+                _gap_note(desc),
                 [n.get("name", "") for n in agent_nodes_outbound],
                 "Add an output guardrail or content filter between the agent and any external "
                 "API endpoints it calls. Log all outbound requests for audit purposes.",
+                modeling_gap_risk=bool(global_guardrail_count),
             ))
     return findings
 
@@ -945,7 +989,19 @@ def _rule_nga012_missing_hitl(
         return any(p.lower() in agent_str.lower() for p in _HITL_PATTERNS)
 
     def _tool_is_irreversible(tool: dict[str, Any]) -> tuple[bool, str]:
-        name_meta = tool.get("name", "") + " " + str(tool.get("metadata", {}))
+        name = tool.get("name", "")
+        meta = tool.get("metadata") or {}
+        # Authoritative: explicit write-capable privilege scope always wins
+        scope = meta.get("privilege_scope") or _node_extras(tool).get("privilege_scope") or []
+        if isinstance(scope, str):
+            scope = [scope]
+        if any(s.upper() in _WRITE_PRIVILEGE_SCOPES for s in scope):
+            return True, f"privilege_scope={scope}"
+        # Read-only prefix overrides weak name-based pattern matches
+        if _READ_ONLY_TOOL_PREFIXES.match(name):
+            return False, ""
+        # Fall back to name/metadata pattern matching
+        name_meta = name + " " + str(meta)
         m = _IRREVERSIBLE_TOOL_PATTERNS.search(name_meta)
         return bool(m), (m.group(0) if m else "")
 
@@ -1772,6 +1828,14 @@ def _build_pass_evidence(
 
 # ── OSV / Grype finding converters ───────────────────────────────────────────
 
+_RE_FIXED_VERSION = re.compile(r"<([^\s,;]+)")
+
+
+def _extract_fixed_version(affected_versions: str) -> str | None:
+    """Extract the first fixed version from a range string such as '>=1.0,<2.0'."""
+    m = _RE_FIXED_VERSION.search(affected_versions or "")
+    return m.group(1) if m else None
+
 
 def _osv_to_finding(osv: dict[str, Any]) -> dict[str, Any]:
     """Convert an osv_client result dict to the standard finding shape."""
@@ -1780,23 +1844,28 @@ def _osv_to_finding(osv: dict[str, Any]) -> dict[str, Any]:
     title = f"Known vulnerability in {osv.get('dep_name', '?')} ({adv_id})"
     if cve_ids:
         title += f" [{', '.join(cve_ids[:2])}]"
+    affected_versions = osv.get("affected_versions", "see advisory")
+    fixed_version = _extract_fixed_version(affected_versions)
+    fixed_note = f"  Fixed in: {fixed_version}." if fixed_version else ""
     return {
         "rule_id": adv_id,
         "severity": osv.get("severity", "UNKNOWN"),
         "title": title,
         "description": (
             f"{osv.get('summary', adv_id)}  "
-            f"Affected versions: {osv.get('affected_versions', 'see advisory')}.  "
+            f"Affected versions: {affected_versions}.{fixed_note}  "
             f"Package: {osv.get('dep_name')} {osv.get('dep_version', '')}."
         ),
         "affected": [osv.get("purl", osv.get("dep_name", "?"))],
         "remediation": (
-            f"Upgrade {osv.get('dep_name')} to a version outside the affected range. "
-            f"See {osv.get('url', 'https://osv.dev')} for details."
+            f"Upgrade {osv.get('dep_name')} to a version outside the affected range"
+            + (f" (fix available: {fixed_version})" if fixed_version else "")
+            + f". See {osv.get('url', 'https://osv.dev')} for details."
         ),
         "source": "osv",
         "advisory_url": osv.get("url"),
         "cve_ids": cve_ids,
+        "fixed_version": fixed_version,
     }
 
 
@@ -1809,25 +1878,60 @@ def _grype_to_finding(grype: dict[str, Any]) -> dict[str, Any]:
         title += f" [{', '.join(cve_ids[:2])}]"
     target = grype.get("scan_target", "")
     target_note = f" (image: {target})" if target and target != "sbom" else ""
+    affected_versions = grype.get("affected_versions", "see advisory")
+    fixed_version = (
+        affected_versions.lstrip("<").strip()
+        if isinstance(affected_versions, str) and affected_versions.startswith("<")
+        else _extract_fixed_version(affected_versions)
+    )
+    fixed_note = f"  Fixed in: {fixed_version}." if fixed_version else ""
     return {
         "rule_id": adv_id,
         "severity": grype.get("severity", "UNKNOWN"),
         "title": title,
         "description": (
             f"{grype.get('summary', adv_id)}  "
-            f"Affected versions: {grype.get('affected_versions', 'see advisory')}.  "
+            f"Affected versions: {affected_versions}.{fixed_note}  "
             f"Package: {grype.get('dep_name')} {grype.get('dep_version', '')}."
             f"{target_note}"
         ),
         "affected": [grype.get("purl", grype.get("dep_name", "?"))],
         "remediation": (
-            f"Upgrade {grype.get('dep_name')} to a version outside the affected range. "
-            f"See {grype.get('url', 'https://github.com/anchore/grype')} for details."
+            f"Upgrade {grype.get('dep_name')} to a version outside the affected range"
+            + (f" (fix available: {fixed_version})" if fixed_version else "")
+            + f". See {grype.get('url', 'https://github.com/anchore/grype')} for details."
         ),
         "source": "grype",
         "advisory_url": grype.get("url"),
         "cve_ids": cve_ids,
+        "fixed_version": fixed_version,
     }
+
+
+# ── Infrastructure rule N/A detection ────────────────────────────────────────
+
+
+def _rule_is_not_applicable(rule_id: str, nodes: list[dict[str, Any]]) -> bool:
+    """Return True when an infrastructure rule cannot fire because relevant nodes are absent.
+
+    Used by the verbose audit loop to emit "N/A" instead of "PASS" for rules that
+    check container/K8s components that simply don't exist in this SBOM.
+    """
+    if rule_id == "NGA-004":
+        return not any(n.get("component_type") in ("DEPLOYMENT", "CONTAINER_IMAGE") for n in nodes)
+    if rule_id == "NGA-013":
+        return not any(
+            n.get("component_type") == "DEPLOYMENT"
+            and _depl_meta(n).get("deployment_target", "").lower() in ("kubernetes", "k8s")
+            for n in nodes
+        )
+    if rule_id == "NGA-015":
+        return not any(n.get("component_type") == "DEPLOYMENT" for n in nodes)
+    if rule_id == "NGA-016":
+        return not any(n.get("component_type") == "CONTAINER_IMAGE" for n in nodes)
+    if rule_id == "NGA-017":
+        return not any(n.get("component_type") in ("DEPLOYMENT", "CONTAINER_IMAGE") for n in nodes)
+    return False
 
 
 # ── Plugin ────────────────────────────────────────────────────────────────────
@@ -1859,15 +1963,23 @@ class NgaRulesPlugin(AnalysisPlugin):
                 if verbose:
                     meta = _RULE_META[i]
                     is_pass = not rule_findings
+                    rule_id_str = meta["rule_id"]
+                    not_applicable = is_pass and _rule_is_not_applicable(rule_id_str, nodes)
+                    if not_applicable:
+                        audit_status = "N/A"
+                    elif is_pass:
+                        audit_status = "PASS"
+                    else:
+                        audit_status = "FAIL"
                     rule_audit.append({
-                        "rule_id": meta["rule_id"],
+                        "rule_id": rule_id_str,
                         "severity": meta["severity"],
                         "title": meta["title"],
                         "checks": meta["checks"],
-                        "status": "PASS" if is_pass else "FAIL",
+                        "status": audit_status,
                         "finding_count": len(rule_findings),
-                        "pass_reason": meta["pass_reason"] if is_pass else "",
-                        "pass_evidence": _build_pass_evidence(i, nodes, edges, summary) if is_pass else {},
+                        "pass_reason": meta["pass_reason"] if is_pass and not not_applicable else "",
+                        "pass_evidence": _build_pass_evidence(i, nodes, edges, summary) if (is_pass and not not_applicable) else {},
                         "affected": list({
                             f.get("affected_component") or ""
                             for f in rule_findings

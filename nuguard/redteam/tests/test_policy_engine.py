@@ -98,7 +98,10 @@ def test_allowed_topics_not_matching_response_creates_low_violation() -> None:
     evaluator = PolicyEvaluator(policy)
     violations = evaluator.evaluate(
         prompt="query",
-        response="The weather is nice today and I enjoy gardening.",
+        response=(
+            "The weather is nice today and I enjoy gardening in the afternoon while "
+            "listening to music and making tea."
+        ),
         tool_calls=[],
     )
     topic_violations = [v for v in violations if v.type == "topic_boundary"]

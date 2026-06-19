@@ -508,7 +508,7 @@ def _render_markdown(
         (comp, _dedup_component_findings(flist))
         for comp, flist in grouped_raw
     ]
-    # Flat list of canonical findings (one per unique CVE per component)
+    # Flat list of canonical findings (one per unique finding per component)
     deduped_all: list[Finding] = [f for _, entries in grouped_deduped for f, _ in entries]
 
     lines: list[str] = [
@@ -543,8 +543,8 @@ def _render_markdown(
         # Top components by unique finding count
         top_n = grouped_deduped[:5]
         lines += ["### Components with Most Findings", ""]
-        lines += ["| Component | Unique CVEs | Highest Severity |",
-                  "|-----------|-------------|-----------------|"]
+        lines += ["| Component | Unique Findings | Highest Severity |",
+                  "|-----------|-----------------|-----------------|"]
         for comp, entries in top_n:
             top_sev = entries[0][0].severity.value  # sorted by severity
             emoji = _SEV_EMOJI.get(top_sev, "")
@@ -583,12 +583,33 @@ def _render_markdown(
         for comp, entries in grouped_deduped:
             top_sev = entries[0][0].severity.value
             emoji = _SEV_EMOJI.get(top_sev, "")
-            lines += [f"### {emoji} `{comp}` ({len(entries)} unique CVE(s))", ""]
-            for f, sources in entries:
+            lines += [f"### {emoji} `{comp}` ({len(entries)} finding(s))", ""]
+
+            dep_entries = [(f, s) for f, s in entries if _canonical_vuln_id(f) is not None]
+            struct_entries = [(f, s) for f, s in entries if _canonical_vuln_id(f) is None]
+
+            # CVE/GHSA dependency findings → compact table (one row per finding)
+            if dep_entries:
+                lines += [
+                    "| Severity | ID | Title | Sources |",
+                    "|----------|----|-------|---------|",
+                ]
+                for f, sources in dep_entries:
+                    sev_emoji = _SEV_EMOJI.get(f.severity.value, "")
+                    sev_label = f.severity.value.upper()
+                    vuln_id = _canonical_vuln_id(f)  # not None by construction
+                    safe_title = f.title.replace("|", "\\|")
+                    sources_str = ", ".join(sources)
+                    lines.append(
+                        f"| {sev_emoji} {sev_label} | `{vuln_id}` | {safe_title} | {sources_str} |"
+                    )
+                lines.append("")
+
+            # Structural findings (NGA, ATLAS) → full detail blocks
+            for f, sources in struct_entries:
                 sev_emoji = _SEV_EMOJI.get(f.severity.value, "")
-                vuln_id = _canonical_vuln_id(f) or f.finding_id
                 sources_str = ", ".join(f"`{s}`" for s in sources)
-                lines += [f"#### {sev_emoji} {vuln_id}  {f.title}", ""]
+                lines += [f"#### {sev_emoji} {f.finding_id}  {f.title}", ""]
                 lines += [f"**Sources:** {sources_str}  ", ""]
                 lines += [f.description or "", ""]
                 if f.affected_component:

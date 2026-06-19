@@ -107,7 +107,9 @@ def detect_topic_violations(
             )
 
     # ---- Tier 2: no overlap with allowed topics ---------------------------
-    if policy.allowed_topics:
+    # Short responses (acknowledgments, one-liners) never contain domain keywords
+    # by design and firing Tier-2 on them produces only noise.
+    if policy.allowed_topics and len(response.strip()) >= 60:
         matched_any_allowed = any(
             _response_overlaps_topic(response_lower, topic)
             for topic in policy.allowed_topics

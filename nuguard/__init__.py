@@ -1,3 +1,3 @@
 """NuGuard AI Security CLI — open-source AI penetration testing platform."""
 
-__version__ = "0.7.6"
+__version__ = "0.7.7"

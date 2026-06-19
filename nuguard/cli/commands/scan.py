@@ -140,8 +140,8 @@ def scan(
     if "sbom" in enabled_steps:
         typer.echo(f"[1/4] Generating AI-SBOM for {src_path} …")
         try:
+            from nuguard.sbom.extractor import AiSbomExtractor  # noqa: PLC0415
             from nuguard.sbom.extractor.config import AiSbomConfig  # noqa: PLC0415
-            from nuguard.sbom.extractor.core import AiSbomExtractor  # noqa: PLC0415
             from nuguard.sbom.serializer import AiSbomSerializer  # noqa: PLC0415
 
             cfg = AiSbomConfig()
