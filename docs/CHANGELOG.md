@@ -2,7 +2,7 @@
 
 Track user-facing documentation updates here, especially changes to CLI behavior, workflows, and troubleshooting guidance.
 
-## v0.8.0 - 2026-06-18
+## v0.7.6 - 2026-06-18
 
 ### Added
 - Prepublish sanity workflow profiles and runner guidance for release readiness.
