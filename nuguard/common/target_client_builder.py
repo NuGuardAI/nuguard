@@ -222,7 +222,16 @@ def resolve_auth_config_with_sbom_fallback(
         token_header="Authorization: Bearer",
         refresh_on_401=True,
     )
-    upgraded = AuthConfig(type="login_flow", login_flow=login_flow)
+    # Keep the original username/password on the upgraded config (even though
+    # type="login_flow" doesn't use them directly) so bootstrap can fall back to
+    # sending them as HTTP Basic auth straight to the chat endpoint if the login
+    # endpoint turns out not to work.
+    upgraded = AuthConfig(
+        type="login_flow",
+        login_flow=login_flow,
+        username=auth_config.username,
+        password=auth_config.password,
+    )
 
     note = (
         f"auth.type='basic' with credentials for '{auth_config.username}' was upgraded to "
