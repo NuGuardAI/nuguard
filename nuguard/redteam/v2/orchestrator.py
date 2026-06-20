@@ -167,7 +167,6 @@ class RedteamV2Orchestrator:
         from nuguard.redteam.v2.surface.recon import (
             ReconResult,
             resolve_chat_endpoint,
-            run_recon,
         )
         from nuguard.sbom.models import AiSbomDocument
 
@@ -216,22 +215,59 @@ class RedteamV2Orchestrator:
             request_timeout=self.settings.request_timeout,
         ) if self.target_url else None
 
-        # ── Step 3: user-data discovery with the correctly-configured client ──
-        # Pass the already-resolved path so run_recon skips re-probing.
-        recon = await run_recon(
-            sbom,
+        # ── Step 3: user-data discovery using run_discovery_conversation ──────
+        # Use the same pre-scan discovery path as v1: domain-aware messages,
+        # refusal detection, task-framed fallbacks.  Falls back to an empty
+        # profile when the target is not configured or all turns fail.
+        user_ids: list[str] = []
+        user_name: str = ""
+        entity_map: dict[str, str] = {}
+        disclosures: list[str] = []
+
+        if client is not None and self.target_url:
+            from nuguard.common.discovery import run_discovery_conversation
+            from nuguard.redteam.target.session import AttackSession
+
+            use_case = ""
+            if sbom is not None and sbom.summary:
+                use_case = (
+                    getattr(sbom.summary, "use_case", "") or
+                    getattr(sbom.summary, "application_name", "") or ""
+                )
+
+            disc_session = AttackSession(
+                session_id="recon",
+                target_url=self.target_url,
+                chain_id="recon",
+            )
+            discovered = await run_discovery_conversation(
+                client=client,
+                session=disc_session,
+                use_case=use_case,
+                max_turns=3,
+            )
+            user_ids = discovered.ids
+            user_name = discovered.customer_name
+            entity_map = discovered.entity_map
+            if discovered.raw_response:
+                disclosures = [discovered.raw_response]
+            _log.info(
+                "recon extracted %d id(s)%s",
+                len(user_ids),
+                f", name={user_name!r}" if user_name else "",
+            )
+
+        recon = ReconResult(
             chat_path=path,
             chat_payload_key=key,
             chat_payload_list=is_list,
-            target_url=self.target_url,
-            auth_headers=auth_headers,
-            allow_live_probe=False,  # already resolved in step 1
-            client=client,
-            timeout=self.settings.request_timeout,
+            response_key=resp_key,
+            endpoint_source=source,
+            user_ids=user_ids,
+            user_name=user_name,
+            entity_map=entity_map,
+            disclosures=disclosures,
         )
-        # Preserve the source from step 1 (run_recon would mark it "config" since
-        # the path is already resolved and non-empty).
-        recon.endpoint_source = source
 
         notes.append(f"chat endpoint resolved via {source!r}: {path}")
         if recon.has_user_data:

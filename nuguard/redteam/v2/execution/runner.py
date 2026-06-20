@@ -319,11 +319,15 @@ class ObjectiveRunner:
                 evidence.append(str(response_text)[:200])
 
         # Detect target misconfiguration: all adversarial steps returned HTTP
-        # 4xx (e.g. 405 Method Not Allowed) with no successful responses.
-        # This indicates the endpoint is not accepting our requests at all,
-        # rather than the target actively defending against the attack.
-        all_4xx = bool(adversarial) and not succeeded and all(
-            str(getattr(r, "response", "")).startswith("[HTTP 4")
+        # 4xx or 5xx with no successful responses.  4xx (e.g. 405) = wrong
+        # endpoint/method; 5xx = endpoint exists but crashes on every request
+        # (auth failure, app bug, or downstream LLM unavailable).  Both signal
+        # that the endpoint is not usable rather than actively defending.
+        def _is_transport_error(resp: str) -> bool:
+            return resp.startswith("[HTTP 4") or resp.startswith("[HTTP 5")
+
+        all_transport_error = bool(adversarial) and not succeeded and all(
+            _is_transport_error(str(getattr(r, "response", "")))
             for r in adversarial
         )
 
@@ -337,7 +341,7 @@ class ObjectiveRunner:
             family=obj.family,
             step_count=len(adversarial),
             step_results=list(results),
-            target_transport_error=all_4xx,
+            target_transport_error=all_transport_error,
         )
 
     def _summarize_guided(

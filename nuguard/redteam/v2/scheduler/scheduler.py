@@ -165,8 +165,8 @@ class PhasedScheduler:
             ]
             if completed_phase and len(transport_errors) == len(completed_phase):
                 _log.error(
-                    "All %d objectives in phase %s returned HTTP 4xx (transport error) — "
-                    "target endpoint appears misconfigured. Aborting remaining phases.",
+                    "All %d objectives in phase %s returned HTTP 4xx/5xx (transport error) — "
+                    "target endpoint appears misconfigured or unavailable. Aborting remaining phases.",
                     len(transport_errors),
                     phase,
                 )
