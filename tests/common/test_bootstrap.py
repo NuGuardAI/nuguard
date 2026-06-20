@@ -129,6 +129,9 @@ async def test_login_flow_failure_falls_back_to_chat_endpoint_ok() -> None:
     report = await bootstrapper.run()
     assert report.all_ok is True
     assert report.checks[0].status == "ok"
+    # auth_type must reflect what was actually sent (none), not the
+    # originally-configured login_flow that failed.
+    assert report.checks[0].auth_type == "none"
     assert login_route.call_count == 1
     # A later 401 (e.g. from rate limiting) must not retry the already-dead
     # login endpoint — refresh_if_needed() should be a no-op for this session.
@@ -166,6 +169,9 @@ async def test_login_flow_failure_falls_back_to_basic_auth_with_original_creds()
     expected = f"Basic {base64.b64encode(b'alice:secret').decode()}"
     assert report.all_ok is True
     assert chat_route.calls[0].request.headers["Authorization"] == expected
+    # auth_type must reflect what was actually sent (basic), not the
+    # originally-configured login_flow that failed.
+    assert report.checks[0].auth_type == "basic"
     # session.headers() must return the working fallback credentials directly —
     # bootstrap swaps the session's auth config to type="basic" on success.
     assert bootstrapper.session.headers() == {"Authorization": expected}
@@ -181,6 +187,10 @@ async def test_login_flow_failure_and_chat_endpoint_failure_reports_both() -> No
     respx.post(FULL_URL).mock(return_value=httpx.Response(401, text="Unauthorized"))
     report = await _bootstrapper(auth=_login_flow_auth()).run()
     assert report.checks[0].status == "auth_failed"
+    # The failing probe was sent with the fallback auth (none, since this
+    # login_flow config has no username/password) — auth_type must say so,
+    # not the originally-configured login_flow.
+    assert report.checks[0].auth_type == "none"
     detail = report.checks[0].error_detail or ""
     assert "login endpoint" in detail
     assert "500" in detail

@@ -1,4 +1,6 @@
 """Regression test: bootstrap failures (None auth session) must not crash."""
+from __future__ import annotations
+
 from nuguard.common.session_resolver import _merge_login_response_extras
 
 

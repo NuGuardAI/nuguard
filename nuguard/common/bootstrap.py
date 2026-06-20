@@ -3,6 +3,7 @@ before any scenario runs. Raises TargetUnavailableError for hard network
 failures; returns a TargetHealthReport for auth failures so callers can
 decide whether to abort.
 """
+
 from __future__ import annotations
 
 import time
@@ -108,7 +109,8 @@ class AuthBootstrapper:
         # rather than failing outright. If that also fails, report the real login
         # failure reason instead of a generic message.
         login_flow_failed = (
-            self._default_auth.type == "login_flow" and not self._session.login_succeeded
+            self._default_auth.type == "login_flow"
+            and not self._session.login_succeeded
         )
         fallback_auth_config: AuthConfig | None = None
         if login_flow_failed:
@@ -123,21 +125,32 @@ class AuthBootstrapper:
             logger.warning(
                 "bootstrap: login_flow failed (%s) — falling back to %s directly to %s",
                 self._session.login_error,
-                "the original username/password (HTTP Basic)"
-                if fallback_auth_config.type == "basic"
-                else "no auth",
+                (
+                    "the original username/password (HTTP Basic)"
+                    if fallback_auth_config.type == "basic"
+                    else "no auth"
+                ),
                 self.full_url,
             )
 
         # Always check the default credential. Use the fallback headers when the
         # login flow failed; otherwise the live session headers (the acquired JWT
         # for login_flow auth, or the static headers for other auth types).
+        # auth_type reflects what was actually sent on the wire for this probe —
+        # the fallback type (basic/none), not the originally-configured login_flow.
+        probe_auth_type = (
+            fallback_auth_config.type
+            if fallback_auth_config is not None
+            else self._default_auth.type
+        )
         result = await self._check_one(
             identity="default",
-            headers=fallback_auth_config.to_headers()
-            if fallback_auth_config is not None
-            else self._session.headers(),
-            auth_type=self._default_auth.type,
+            headers=(
+                fallback_auth_config.to_headers()
+                if fallback_auth_config is not None
+                else self._session.headers()
+            ),
+            auth_type=probe_auth_type,
         )
 
         if login_flow_failed:
@@ -146,15 +159,17 @@ class AuthBootstrapper:
                 logger.info(
                     "bootstrap: chat endpoint accepted %s — continuing with that, "
                     "won't retry the login endpoint again this session",
-                    "the original username/password directly"
-                    if fallback_auth_config.type == "basic"
-                    else "the request without a token",
+                    (
+                        "the original username/password directly"
+                        if fallback_auth_config.type == "basic"
+                        else "the request without a token"
+                    ),
                 )
                 self._session.replace_config(fallback_auth_config)
             else:
                 result = CredentialCheckResult(
                     identity="default",
-                    auth_type=self._default_auth.type,
+                    auth_type=probe_auth_type,
                     endpoint=self.full_url,
                     status=result.status,
                     http_status_code=result.http_status_code,
