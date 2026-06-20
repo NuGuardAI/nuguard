@@ -295,15 +295,18 @@ class AuthSession:
     def headers(self) -> dict[str, str]:
         """Return HTTP headers for the current auth state.
 
-        For login_flow: returns the live token header (logs a warning and
-        returns empty dict if called before initialize()).
+        For login_flow: returns the live token header. Returns an empty dict if
+        there is no token — logging a warning unless the bootstrapper has
+        already marked the login flow unusable (expected once a fallback probe
+        has taken over; see :meth:`mark_login_flow_unusable`).
         For static types: delegates to AuthConfig.to_headers().
         """
         if self._config.type == "login_flow":
             if self._token is None:
-                _log.warning(
-                    "AuthSession.headers() called before initialize() — no token"
-                )
+                if not self._login_flow_unusable:
+                    _log.warning(
+                        "AuthSession.headers() called before initialize() — no token"
+                    )
                 return {}
             value = (
                 f"{self._token_header_value_prefix} {self._token}".strip()
