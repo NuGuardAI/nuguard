@@ -248,6 +248,30 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         }
     if "canary" in redteam:
         flat["canary_path"] = redteam["canary"]
+    if "engine" in redteam:
+        flat["redteam_engine"] = str(redteam["engine"])
+    redteam_v2 = redteam.get("v2", {}) or {}
+    if isinstance(redteam_v2, dict):
+        if "knowledge_base_version" in redteam_v2:
+            flat["redteam_v2_knowledge_base_version"] = str(
+                redteam_v2["knowledge_base_version"]
+            )
+        if "phases" in redteam_v2 and isinstance(redteam_v2["phases"], list):
+            flat["redteam_v2_phases"] = [str(p) for p in redteam_v2["phases"]]
+        semantic_judge = redteam_v2.get("semantic_judge", {}) or {}
+        if isinstance(semantic_judge, dict):
+            if "count" in semantic_judge:
+                flat["redteam_v2_semantic_judge_count"] = int(semantic_judge["count"])
+            if "quorum" in semantic_judge:
+                flat["redteam_v2_semantic_judge_quorum"] = int(semantic_judge["quorum"])
+        if "transferability_enabled" in redteam_v2:
+            flat["redteam_v2_transferability_enabled"] = bool(
+                redteam_v2["transferability_enabled"]
+            )
+        if "max_per_phase" in redteam_v2:
+            flat["redteam_v2_max_per_phase"] = int(redteam_v2["max_per_phase"])
+        if "dry_run_only" in redteam_v2:
+            flat["redteam_v2_dry_run_only"] = bool(redteam_v2["dry_run_only"])
     if "profile" in redteam:
         flat["redteam_profile"] = redteam["profile"]
     if "use_catalog" in redteam:
@@ -695,6 +719,29 @@ class RedteamFindingTriggers(BaseModel):
         )
 
 
+class RedteamV2Settings(BaseModel):
+    """Settings for the v2 red-team engine (yaml: redteam.v2.*).
+
+    The v2 engine is opt-in via ``redteam.engine: v2`` (or ``--engine v2``).
+    These knobs are consumed as the corresponding pipeline stages land; Phase 0
+    only plumbs them through config and the orchestrator stub.
+    """
+
+    knowledge_base_version: str = "0.1.0"
+    # Phase names to run (empty = all enabled phases).
+    phases: list[str] = Field(default_factory=list)
+    # Number of independent LLM judges and the quorum required to confirm a
+    # semantic (text-only) policy violation.
+    semantic_judge_count: int = 3
+    semantic_judge_quorum: int = 2
+    # Score successful objectives for transferability across models/policies.
+    transferability_enabled: bool = True
+    # Cap scenarios executed per phase (0 = unlimited).
+    max_per_phase: int = 0
+    # Enforce dry-run-only execution for destructive/high-impact actions.
+    dry_run_only: bool = True
+
+
 class NuGuardConfig(BaseSettings):
     """Resolved nuguard configuration.
 
@@ -810,6 +857,44 @@ class NuGuardConfig(BaseSettings):
     canary_path: str | None = Field(
         default=None,
         description="Path to canary JSON file (yaml: redteam.canary).",
+    )
+    redteam_engine: Literal["v1", "v2"] = Field(
+        default="v1",
+        description=(
+            "Red-team engine to use: 'v1' (default, stable) or 'v2' "
+            "(knowledge-base-driven, phased, layered evaluation) (yaml: redteam.engine)."
+        ),
+    )
+    redteam_v2_knowledge_base_version: str = Field(
+        default="0.1.0",
+        description="Pinned technique knowledge-base version (yaml: redteam.v2.knowledge_base_version).",
+    )
+    redteam_v2_phases: list[str] = Field(
+        default_factory=list,
+        description="v2 phases to run; empty = all (yaml: redteam.v2.phases).",
+    )
+    redteam_v2_semantic_judge_count: int = Field(
+        default=3,
+        ge=1,
+        description="Number of independent LLM judges for semantic verdicts (yaml: redteam.v2.semantic_judge.count).",
+    )
+    redteam_v2_semantic_judge_quorum: int = Field(
+        default=2,
+        ge=1,
+        description="Judge votes required to confirm a semantic violation (yaml: redteam.v2.semantic_judge.quorum).",
+    )
+    redteam_v2_transferability_enabled: bool = Field(
+        default=True,
+        description="Score successful objectives for transferability (yaml: redteam.v2.transferability_enabled).",
+    )
+    redteam_v2_max_per_phase: int = Field(
+        default=0,
+        ge=0,
+        description="Cap scenarios executed per v2 phase; 0 = unlimited (yaml: redteam.v2.max_per_phase).",
+    )
+    redteam_v2_dry_run_only: bool = Field(
+        default=True,
+        description="Enforce dry-run-only execution for destructive actions (yaml: redteam.v2.dry_run_only).",
     )
     redteam_profile: str = Field(
         default="ci",
@@ -1274,6 +1359,18 @@ class NuGuardConfig(BaseSettings):
             policy_violations=self.redteam_trigger_policy_violations,
             critical_success_hits=self.redteam_trigger_critical_success_hits,
             any_inject_success=self.redteam_trigger_any_inject_success,
+        )
+
+    def resolved_redteam_v2_settings(self) -> RedteamV2Settings:
+        """Build v2-engine settings from resolved redteam configuration."""
+        return RedteamV2Settings(
+            knowledge_base_version=self.redteam_v2_knowledge_base_version,
+            phases=list(self.redteam_v2_phases),
+            semantic_judge_count=self.redteam_v2_semantic_judge_count,
+            semantic_judge_quorum=self.redteam_v2_semantic_judge_quorum,
+            transferability_enabled=self.redteam_v2_transferability_enabled,
+            max_per_phase=self.redteam_v2_max_per_phase,
+            dry_run_only=self.redteam_v2_dry_run_only,
         )
 
     model_config = SettingsConfigDict(

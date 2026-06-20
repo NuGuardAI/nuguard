@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
     from nuguard.common.auth import AuthConfig
-    from nuguard.config import RedteamFindingTriggers
+    from nuguard.config import RedteamFindingTriggers, RedteamV2Settings
     from nuguard.models.token_usage import TokenUsage
 
 import typer
@@ -76,6 +76,14 @@ def redteam(
     ),
     profile: str = typer.Option(
         "ci", "--profile", help="Scan profile: ci (fast, safe) or full."
+    ),
+    engine: Optional[str] = typer.Option(
+        None,
+        "--engine",
+        help=(
+            "Red-team engine: v1 (default, stable) or v2 (knowledge-base-driven, "
+            "phased, layered evaluation; in development)."
+        ),
     ),
     scenarios: Optional[str] = typer.Option(
         None, "--scenarios", help="Comma-separated scenario types to run (default: all)."
@@ -146,6 +154,12 @@ def redteam(
     _source_path_val = getattr(cfg, "source_path", None)
     source_dir = source or (Path(str(_source_path_val)) if _source_path_val else None)
     # CLI flag takes precedence; fall back to config default
+    effective_engine = (engine or cfg.redteam_engine or "v1").lower()
+    if effective_engine not in ("v1", "v2"):
+        typer.echo(
+            f"Error: invalid --engine {effective_engine!r}; expected 'v1' or 'v2'", err=True
+        )
+        raise typer.Exit(code=1)
     effective_profile = profile if profile != "ci" else cfg.redteam_profile
     effective_min_impact = (
         min_impact_score if min_impact_score != 0.0 else cfg.min_impact_score
@@ -233,58 +247,92 @@ def redteam(
         )
         raise typer.Exit(code=1)
 
-    try:
-        findings, llm_remediations, scenario_records, scan_outcome, config_notes, catalog_coverage, input_tokens_used, output_tokens_used, coverage_tracker, token_usage, resolved_chat_path, resolved_chat_path_source = asyncio.run(  # type: ignore[misc]
-            _run_redteam(
-                sbom_doc=sbom_doc,
-                sbom_path=sbom_path,
-                policy_path=policy_path,
-                target_url=target_url,
-                canary_path=canary_path,
-                profile=effective_profile,
-                min_impact_score=effective_min_impact,
-                scenario_filter=effective_scenarios,
-                auth_config=cfg.resolved_auth_config(),
-                headers_override=cfg.redteam_headers,
-                source_dir=source_dir,
-                launch=launch,
-                chat_path=cfg.target_endpoint,
-                chat_payload_key=cfg.redteam_chat_payload_key,
-                chat_payload_list=cfg.redteam_chat_payload_list,
-                chat_response_key=cfg.redteam_chat_response_key or None,
-                chat_payload_extras=cfg.redteam_chat_payload_extras or None,
-                guided_conversations=effective_guided,
-                guided_max_turns=effective_guided_max_turns,
-                guided_concurrency=effective_guided_concurrency,
-                guided_mutation_mode=effective_guided_mutation_mode,
-                tree_breadth=cfg.redteam_tree_breadth,
-                tree_max_depth=cfg.redteam_tree_max_depth,
-                strict_outcome=cfg.redteam_strict_outcome,
-                credentials=cfg.redteam_credentials or None,
-                redteam_llm_model=cfg.redteam_llm_model,
-                redteam_llm_api_key=cfg.redteam_llm_api_key,
-                redteam_llm_api_base=cfg.redteam_llm_api_base,
-                eval_llm_model=cfg.redteam_eval_llm_model or cfg.litellm_model or None,
-                eval_llm_api_key=cfg.redteam_eval_llm_api_key or cfg.litellm_api_key or None,
-                eval_llm_api_base=cfg.redteam_eval_llm_api_base,
-                prompt_cache_dir=cfg.redteam_prompt_cache_dir,
-                # ^ eval_llm falls back to top-level llm.model/api_key when redteam.eval_llm is not set
-                finding_triggers=finding_triggers,
-                verbose=effective_verbose,
-                scenario_timeout=cfg.redteam_scenario_timeout,
-                concurrency=cfg.redteam_concurrency,
-                turn_delay_seconds=cfg.redteam_turn_delay_seconds,
-                scenario_delay_seconds=cfg.redteam_scenario_delay_seconds,
-                similar_miss_threshold=cfg.redteam_similar_miss_threshold,
-                skip_discovery=cfg.redteam_skip_discovery,
-                discovery_max_turns=cfg.redteam_discovery_max_turns,
-                catalog=custom_catalog,
-                pre_run_warmup=cfg.redteam_pre_run_warmup,
-                verify_findings=cfg.redteam_verify_findings,
-                golden_data=cfg.redteam_golden_data or None,
-                suppress_spa_html_auth_bypass=cfg.redteam_suppress_spa_html_auth_bypass,
-            )
+    if effective_engine == "v2":
+        typer.echo("  Engine: v2 (scaffold — see redteam-v2 implementation plan)")
+        runner = _run_redteam_v2(
+            sbom_doc=sbom_doc,
+            sbom_path=sbom_path,
+            policy_path=policy_path,
+            target_url=target_url,
+            canary_path=canary_path,
+            settings=cfg.resolved_redteam_v2_settings(),
+            profile=effective_profile,
+            chat_path=cfg.target_endpoint or "/chat",
+            auth_config=cfg.resolved_auth_config(),
+            redteam_llm_model=cfg.redteam_llm_model,
+            redteam_llm_api_key=cfg.redteam_llm_api_key,
+            redteam_llm_api_base=cfg.redteam_llm_api_base,
+            eval_llm_model=cfg.redteam_eval_llm_model or cfg.litellm_model or None,
+            eval_llm_api_key=cfg.redteam_eval_llm_api_key or cfg.litellm_api_key or None,
+            eval_llm_api_base=cfg.redteam_eval_llm_api_base,
+            verbose=effective_verbose,
         )
+    else:
+        runner = _run_redteam(
+            sbom_doc=sbom_doc,
+            sbom_path=sbom_path,
+            policy_path=policy_path,
+            target_url=target_url,
+            canary_path=canary_path,
+            profile=effective_profile,
+            min_impact_score=effective_min_impact,
+            scenario_filter=effective_scenarios,
+            auth_config=cfg.resolved_auth_config(),
+            headers_override=cfg.redteam_headers,
+            source_dir=source_dir,
+            launch=launch,
+            chat_path=cfg.target_endpoint,
+            chat_payload_key=cfg.redteam_chat_payload_key,
+            chat_payload_list=cfg.redteam_chat_payload_list,
+            chat_response_key=cfg.redteam_chat_response_key or None,
+            chat_payload_extras=cfg.redteam_chat_payload_extras or None,
+            guided_conversations=effective_guided,
+            guided_max_turns=effective_guided_max_turns,
+            guided_concurrency=effective_guided_concurrency,
+            guided_mutation_mode=effective_guided_mutation_mode,
+            tree_breadth=cfg.redteam_tree_breadth,
+            tree_max_depth=cfg.redteam_tree_max_depth,
+            strict_outcome=cfg.redteam_strict_outcome,
+            credentials=cfg.redteam_credentials or None,
+            redteam_llm_model=cfg.redteam_llm_model,
+            redteam_llm_api_key=cfg.redteam_llm_api_key,
+            redteam_llm_api_base=cfg.redteam_llm_api_base,
+            eval_llm_model=cfg.redteam_eval_llm_model or cfg.litellm_model or None,
+            eval_llm_api_key=cfg.redteam_eval_llm_api_key or cfg.litellm_api_key or None,
+            eval_llm_api_base=cfg.redteam_eval_llm_api_base,
+            prompt_cache_dir=cfg.redteam_prompt_cache_dir,
+            # ^ eval_llm falls back to top-level llm.model/api_key when redteam.eval_llm is not set
+            finding_triggers=finding_triggers,
+            verbose=effective_verbose,
+            scenario_timeout=cfg.redteam_scenario_timeout,
+            concurrency=cfg.redteam_concurrency,
+            turn_delay_seconds=cfg.redteam_turn_delay_seconds,
+            scenario_delay_seconds=cfg.redteam_scenario_delay_seconds,
+            similar_miss_threshold=cfg.redteam_similar_miss_threshold,
+            skip_discovery=cfg.redteam_skip_discovery,
+            discovery_max_turns=cfg.redteam_discovery_max_turns,
+            catalog=custom_catalog,
+            pre_run_warmup=cfg.redteam_pre_run_warmup,
+            verify_findings=cfg.redteam_verify_findings,
+            golden_data=cfg.redteam_golden_data or None,
+            suppress_spa_html_auth_bypass=cfg.redteam_suppress_spa_html_auth_bypass,
+        )
+
+    try:
+        (
+            findings,
+            llm_remediations,
+            scenario_records,
+            scan_outcome,
+            config_notes,
+            catalog_coverage,
+            input_tokens_used,
+            output_tokens_used,
+            coverage_tracker,
+            token_usage,
+            resolved_chat_path,
+            resolved_chat_path_source,
+        ) = asyncio.run(runner)  # type: ignore[misc]
     except Exception as exc:
         from nuguard.common.errors import AuthError, TargetUnavailableError  # noqa: PLC0415
         if isinstance(exc, TargetUnavailableError):
@@ -449,6 +497,77 @@ def _resolve_target_url(sbom_doc: object, launch: bool = False) -> str | None:
     except Exception as exc:
         _log.debug("URL discovery from SBOM failed: %s", exc)
         return None
+
+
+async def _run_redteam_v2(
+    *,
+    sbom_doc: object,
+    sbom_path: Path | None,
+    policy_path: Path | None,
+    target_url: str | None,
+    canary_path: Path | None,
+    settings: "RedteamV2Settings",
+    profile: str = "ci",
+    chat_path: str = "/chat",
+    auth_config: "AuthConfig | None" = None,
+    redteam_llm_model: str | None = None,
+    redteam_llm_api_key: str | None = None,
+    redteam_llm_api_base: str | None = None,
+    eval_llm_model: str | None = None,
+    eval_llm_api_key: str | None = None,
+    eval_llm_api_base: str | None = None,
+    verbose: bool = False,
+) -> "tuple[list, dict[str, str], list, str, list[str], Any, int, int, Any, Any, str, str]":
+    """Run the v2 red-team engine and adapt its result to the CLI report tuple.
+
+    Phase 0: the v2 orchestrator is a scaffold that returns no findings.  This
+    wrapper keeps the same 12-tuple shape as :func:`_run_redteam` so the shared
+    output/reporting code path is reused unchanged.
+    """
+    from nuguard.common.llm_client import LLMClient
+    from nuguard.redteam.v2 import RedteamV2Orchestrator
+
+    redteam_llm: LLMClient | None = None
+    if redteam_llm_model:
+        redteam_llm = LLMClient(
+            model=redteam_llm_model,
+            api_key=redteam_llm_api_key,
+            api_base=redteam_llm_api_base,
+        )
+    eval_llm: LLMClient | None = None
+    if eval_llm_model and eval_llm_api_key:
+        eval_llm = LLMClient(
+            model=eval_llm_model,
+            api_key=eval_llm_api_key,
+            api_base=eval_llm_api_base,
+        )
+
+    orchestrator = RedteamV2Orchestrator(
+        sbom=sbom_doc,
+        target_url=target_url or "",
+        settings=settings,
+        profile=profile,
+        chat_path=chat_path,
+        auth_config=auth_config,
+        redteam_llm=redteam_llm,
+        eval_llm=eval_llm,
+        verbose=verbose,
+    )
+    result = await orchestrator.run()
+    return (
+        result.findings,
+        {},
+        result.scenario_records,
+        result.scan_outcome,
+        result.config_notes,
+        None,
+        result.token_usage.input_tokens,
+        result.token_usage.output_tokens,
+        None,
+        result.token_usage,
+        result.resolved_chat_path,
+        result.resolved_chat_path_source,
+    )
 
 
 async def _run_redteam(

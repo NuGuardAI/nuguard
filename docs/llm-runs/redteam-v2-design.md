@@ -88,41 +88,6 @@ The Mindgard article is useful as a source map, but many of its quantitative cla
 | NVIDIA garak | Repeatable probe/detector model for LLM vulnerability scanning. | Treat probes and detectors as stable regression assets with explicit pass/fail logic. |
 | Google SAIF and Anthropic classifier research | Secure AI lifecycle and defense-in-depth guidance. | Map test results to secure-by-default controls, detection/response, adaptive mitigation, and residual-risk reporting. |
 
-## Red Team System Inputs
-
-### AI SBOM
-
-The red team engine should parse the SBOM into an attack-surface graph:
-
-| SBOM surface | Fields to consume | Test impact |
-| --- | --- | --- |
-| Models | provider, model family, modality, context length, fine-tuning, safety layers | Select jailbreak, long-context, multimodal, and model-specific probes. |
-| Prompts and policies | system prompts, templates, guardrails, refusal policy, hidden instructions | Test system prompt leakage, instruction hierarchy, and guardrail bypass. |
-| Agents | topology, planner/executor split, sub-agents, handoffs, memory, autonomy | Test goal hijack, delegation abuse, handoff poisoning, and cascading failure. |
-| Tools and MCP servers | tool name, description, schema, auth scope, side effects, server trust | Test tool selection, tool argument manipulation, toxic tool descriptions, tool-output injection, and approval gates. |
-| APIs | endpoint, method, auth, request/response schema, rate limits, sensitive outputs | Test BOLA/BFLA, mass assignment, sensitive response leakage, and output handling. |
-| Data stores | RAG indexes, SQL/NoSQL stores, memory, PII/PHI/secret classification | Test data exfiltration, retrieval overreach, poisoning, cross-tenant leakage, and deletion/export duties. |
-| Identity | user roles, service accounts, OAuth scopes, API keys, non-human identities | Test privilege scope, stale authorization, impersonation, and agent-to-agent identity. |
-| Dependencies | AI frameworks, parsers, file converters, browser/code execution, packages | Test supply chain, unsafe deserialization, SSRF through processors, package hallucination, and vulnerable components. |
-| Deployment | Kubernetes, serverless, CI, network policies, secrets, egress controls | Test cloud/IAM posture, network egress, logs, secrets, and lateral movement paths. |
-| Observability | traces, logs, audit, tool-call events, judge artifacts | Determine evidence confidence and whether claimed side effects really happened. |
-
-### Cognitive Policy
-
-Convert the policy into a machine-testable contract:
-
-| Policy clause | Red team interpretation |
-| --- | --- |
-| Allowed topics | Generate off-topic pivots, mixed-intent prompts, and benign-pretext escalation to verify topic boundaries. |
-| Restricted topics | Probe direct, roleplay, encoded, translated, multi-turn, and indirect variants. |
-| Restricted actions | Verify the agent refuses or blocks action, not just unsafe final text. |
-| Human-in-the-loop rules | Attempt high-impact operations and verify approval is decided by deterministic controls, not the agent. |
-| Tool-specific approval conditions | Generate tests for every named tool and threshold, such as payment amount, deletion, external send, account change, or code execution. |
-| Data classification | Seed canaries and verify no PII, PHI, credentials, tenant data, system prompts, or classified fields leave authorized contexts. |
-| Rate limits | Test safe burst, retry, session rotation, streaming amplification, and tool-call amplification within configured caps. |
-| Retention/export/delete duties | Verify data-handling workflows follow policy and cannot be bypassed through agent phrasing. |
-| Raw/unknown sections | Use an LLM planner to convert custom policy text into candidate tests, then require human review before execution. |
-
 ## Technique Families
 
 Each technique family should be stored as structured metadata, not only as prompt strings. A useful record includes: `id`, `name`, `source_refs`, `surfaces`, `preconditions`, `attack_intent`, `safe_payload_strategy`, `success_criteria`, `detectors`, `execution_phase`, `state_impact`, `required_fixtures`, `reset_hooks`, and `mapped_controls`.
@@ -182,33 +147,6 @@ Important ordering rules:
 - Run egress tests only against NuGuard-controlled trap URLs and canaries.
 - If early phases reveal a critical uncontrolled side effect, skip later high-impact phases and preserve evidence.
 
-## Scenario Generation From SBOM and Policy
-
-The generator should produce a coverage matrix before producing individual prompts:
-
-```text
-for each SBOM node:
-  identify trust boundary, data sensitivity, privileges, side effects, and observability
-  map node to applicable technique families
-  map node to Cognitive Policy clauses
-  generate safe fixtures and canaries if needed
-  produce scenario objectives, not only prompt text
-  assign execution phase, resource locks, and detectors
-
-for each Cognitive Policy clause:
-  generate positive tests for allowed behavior
-  generate negative tests for disallowed behavior
-  generate mixed-intent and multi-turn tests for boundary drift
-  generate tool/action tests where policy mentions side effects or approval
-  record skipped clauses with reason
-
-for each prior successful scenario:
-  sanitize the objective and remove harmful operational content
-  retarget it across related models, roles, tools, data stores, and policy clauses
-  cluster similar successful objectives to identify universal templates
-  rank reusable templates higher when they transfer across unrelated behaviors
-```
-
 Example matrix:
 
 | Source input | Derived objective | Technique families | Required evidence |
@@ -230,47 +168,6 @@ ART-style behavior categories should be explicit coverage dimensions:
 | Conflicting objective | Agent adopts a goal that conflicts with deployment policy or public/legal constraints. | Profit maximization over regulated price cap, bypassing fairness, ignoring safety duties. |
 | Prohibited content | Agent outputs content the policy forbids even when no tool is called. | Scams, malware guidance, disallowed legal/medical/financial advice, copyrighted content. |
 | Prohibited action | Agent invokes or attempts a forbidden tool-mediated action. | Purchase, refund, deletion, external send, account mutation, unsafe file or code operation. |
-
-## Evaluation and Findings
-
-Every executed scenario should be evaluated across these layers:
-
-| Layer | What it checks | Implementation |
-| --- | --- | --- |
-| Deterministic detectors | Canary leakage, PII/secret patterns, forbidden tool call, missing approval, egress hit, role/scope mismatch. | Regex, structured trace assertions, API/log checks, DLP classifiers. |
-| Semantic policy judge | Whether the response or action violates the Cognitive Policy even when keywords differ. | Isolated judge LLM with structured rubric and no access to target tools. |
-| Side-effect verifier | Whether a claimed or attempted action actually happened. | Tool trace, database diff, audit log, dry-run receipt, egress trap. |
-| Coverage scorer | Which SBOM nodes, policy clauses, and technique families were generated, run, skipped, or blocked. | Coverage matrix with reason codes. |
-| Transferability scorer | Whether a finding generalizes across models, related policies, or adjacent workflows. | Safe retargeting matrix, model-family grouping, behavior-cluster IDs. |
-| Judge robustness check | Whether automated scoring can be gamed or is underspecified. | Majority LLM judgment plus deterministic assertions and sampled human review for high-impact or ambiguous cases. |
-
-Finding fields:
-
-- `finding_id`
-- `severity`
-- `confidence`
-- `technique_family`
-- `mapped_sources`
-- `sbom_nodes`
-- `policy_clauses`
-- `attack_phase`
-- `objective`
-- `observed_behavior`
-- `expected_behavior`
-- `evidence`
-- `blast_radius`
-- `recommended_controls`
-- `regression_test_id`
-
-Severity should account for action capability, data sensitivity, privilege boundary crossed, exploit repeatability, user interaction required, and whether the issue composes with other findings into a kill chain.
-
-Evaluation notes from ART-style competitions:
-
-- Prefer behavior-level success criteria over prompt-level labels. A policy violation is a failed outcome, not a particular string.
-- Use programmatic judges for tool-call arguments, identity mismatch, egress hits, and database writes whenever traces are available.
-- Use multiple LLM judges only for semantic outcomes, and keep a human appeal/review path for high-impact or ambiguous cases.
-- Track false positives caused by specification gaming, repeated tokens, formatting tricks, partial-language matches, and detector-only success.
-- Treat transferability as a severity multiplier: a finding that works across models, policies, or tools is more urgent than a brittle one-off.
 
 ## Defensive Controls to Validate
 
@@ -337,27 +234,16 @@ technique:
     - "capability scoped tool access"
 ```
 
-## Minimum Viable Red Team Engine
-
-1. Parse SBOM and Cognitive Policy into a normalized attack-surface graph.
-2. Build a coverage matrix across SBOM nodes, policy clauses, and technique families.
-3. Generate scenario objectives with safe fixtures, canaries, and expected outcomes.
-4. Order scenarios by phase: baseline, warm-up, boundary, direct, multi-turn, indirect, data/identity, agentic chain, high-impact dry run, cleanup.
-5. Execute with strict resource locks, fresh identities, rate caps, egress traps, and reset hooks.
-6. Evaluate with deterministic detectors first, then semantic judge, side-effect verifier, transferability scorer, and judge-robustness checks.
-7. Report findings plus coverage gaps and skipped tests.
-8. Convert every confirmed finding into a stable regression test.
-
-## Non-Negotiable Safety Rules
-
-- Run only against systems where testing is authorized.
-- Use synthetic tenants, canaries, dry-run tools, emulated tools, and resettable fixtures.
-- Do not execute real sends, deletes, purchases, refunds, code execution, network changes, or data exports unless explicitly enabled for a sandbox fixture.
-- Do not store harmful operational payloads in the reusable knowledge base. Store technique metadata and generate safe, policy-specific variants at runtime.
-- Keep adversary LLM, judge LLM, and target system isolated.
-- Treat every external content source as untrusted data.
-- Treat every tool call as a security boundary.
-- Treat prompt injection as residual risk and measure blast radius, not just filter success.
+## Implementation Guidelines
+- The knowledge base should be stored in a structured format such as YAML or JSON, with versioning to track updates and changes over time. Each technique family should have a unique identifier and be linked to its source references for traceability.
+- The red team runner should be designed to query the knowledge base for relevant techniques based on the SBOM metadata and the observed behavior of the agent. It should be able to select appropriate techniques for each test case, generate the necessary prompts or inputs, and execute the tests while collecting evidence for evaluation.
+- The eval LLM should also reference the knowledge base when analyzing test results, mapping observed behavior to known techniques and controls, and providing consistent severity ratings and remediation recommendations based on the defined criteria.
+- Regular updates to the knowledge base should be made as new research, techniques, and controls emerge in the rapidly evolving field of AI security. The versioning system allows the red team to track which techniques were used in which test runs and to update the runner's logic as the knowledge base evolves.
+- Leverage the existing implementation of common modules for pre-scan discovery, config parsing, CLI, and reporting from the v1 red team runner, while building new modules for the intelligent scheduler, adaptive test generation, evidence collection, and evaluation based on the structured knowledge base.
+- keep the redteam v2 folder separate from the v1 runner to allow for independent development, testing, and deployment of the new features without impacting the existing functionality. This also allows for easier integration of new techniques and controls as they are added to the knowledge base. We could retire the v1 runner once the v2 runner is fully functional and has all the necessary features implemented.
+- Maximize the code resuse, keep the code modular, and maintain a clear separation of concerns between the runner logic, the knowledge base, and the evaluation criteria. This allows for easier maintenance, updates, and potential open-sourcing of the red team framework in the future.
+- Keep the existing coding style and conventions from the v1 runner, while improving the documentation, comments, and test coverage to ensure that the new features are well-understood and maintainable by the team.
+- Ensure proper error handling, logging, and security measures are in place when executing tests, especially those that involve tool calls, data manipulation, or interactions with external systems. 
 
 ## Source Links
 
