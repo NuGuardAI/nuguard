@@ -275,11 +275,6 @@ class AuthSession:
         # Human-readable reason for the most recent login failure (None until
         # _do_login fails at least once). Surfaced by callers in error_detail.
         self._login_error: str | None = None
-        # Set by the bootstrapper when the login endpoint is proven broken AND
-        # the chat endpoint already worked without a token. Once set, the
-        # session stops retrying the dead login endpoint on every later 401
-        # (e.g. from rate limiting) — there's nothing to refresh.
-        self._login_flow_unusable: bool = False
 
         if config.type == "login_flow" and config.login_flow:
             raw = config.login_flow.token_header
@@ -295,18 +290,15 @@ class AuthSession:
     def headers(self) -> dict[str, str]:
         """Return HTTP headers for the current auth state.
 
-        For login_flow: returns the live token header. Returns an empty dict if
-        there is no token — logging a warning unless the bootstrapper has
-        already marked the login flow unusable (expected once a fallback probe
-        has taken over; see :meth:`mark_login_flow_unusable`).
+        For login_flow: returns the live token header (logs a warning and
+        returns empty dict if called before initialize()).
         For static types: delegates to AuthConfig.to_headers().
         """
         if self._config.type == "login_flow":
             if self._token is None:
-                if not self._login_flow_unusable:
-                    _log.warning(
-                        "AuthSession.headers() called before initialize() — no token"
-                    )
+                _log.warning(
+                    "AuthSession.headers() called before initialize() — no token"
+                )
                 return {}
             value = (
                 f"{self._token_header_value_prefix} {self._token}".strip()
@@ -326,16 +318,18 @@ class AuthSession:
         """Reason the most recent login attempt failed, or ``None`` if it succeeded."""
         return self._login_error
 
-    def mark_login_flow_unusable(self) -> None:
-        """Record that the login endpoint is broken and the session is proceeding
-        without a token (the chat endpoint accepted requests anyway).
+    def replace_config(self, config: AuthConfig) -> None:
+        """Swap the auth config backing headers()/refresh_if_needed().
 
         Called by :class:`~nuguard.common.bootstrap.AuthBootstrapper` after a
-        successful fallback probe. Disables :meth:`refresh_if_needed` for the
-        rest of this session so later 401s don't keep retrying a login endpoint
-        already proven dead.
+        login_flow endpoint proves broken and a fallback probe (e.g. HTTP Basic
+        auth with the original username/password) succeeds against the chat
+        endpoint instead. After this call, headers() returns the working
+        fallback credentials directly, and refresh_if_needed() — which only
+        acts on type=="login_flow" — naturally stops retrying the dead login
+        endpoint.
         """
-        self._login_flow_unusable = True
+        self._config = config
 
     def login_response_extras(self) -> dict[str, str]:
         """Return identity/session fields extracted from the login response body.
@@ -355,12 +349,6 @@ class AuthSession:
         Returns True if a token refresh was attempted (caller should retry
         the failed request with the updated headers()), False otherwise.
         """
-        if self._login_flow_unusable:
-            _log.debug(
-                "AuthSession: skipping login refresh — login endpoint already "
-                "proven unusable this session"
-            )
-            return False
         if (
             self._config.type == "login_flow"
             and self._config.login_flow is not None

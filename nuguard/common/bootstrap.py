@@ -57,12 +57,6 @@ class AuthBootstrapper:
         self._probe_payload_extras: dict[str, object] = probe_payload_extras or {}
         # Initialised during run() — exposed so behavior/redteam can share it
         self._session: AuthSession | None = None
-        # Static headers discovered by the login_flow fallback (HTTP Basic auth
-        # built from the original username/password) when it succeeds. Empty
-        # unless that fallback fired. Callers must merge these into every
-        # outbound request for the rest of the session — session.headers()
-        # stays empty since the session's auth type is still login_flow.
-        self._fallback_headers: dict[str, str] = {}
 
     @property
     def full_url(self) -> str:
@@ -73,27 +67,17 @@ class AuthBootstrapper:
         """The resolved AuthSession for the default credential.
 
         Available after run() completes.  Both behavior and redteam runners
-        call bootstrapper.run() before sending any requests, then build
-        outbound headers from bootstrapper.session.headers() merged with
-        bootstrapper.fallback_headers (the latter is empty unless the
-        login_flow→chat-endpoint fallback fired; see that property).
+        call bootstrapper.run() before sending any requests, then use
+        bootstrapper.session.headers() on every outbound call. If the
+        login_flow endpoint proved broken and a fallback probe succeeded,
+        run() has already swapped the session's auth config so headers()
+        returns the working fallback credentials.
 
         Raises RuntimeError if accessed before run() is called.
         """
         if self._session is None:
             raise RuntimeError("AuthBootstrapper.session accessed before run()")
         return self._session
-
-    @property
-    def fallback_headers(self) -> dict[str, str]:
-        """Headers discovered by the login_flow→chat-endpoint fallback, if any.
-
-        Empty unless ``run()`` fell back from a broken login_flow to sending the
-        original username/password as HTTP Basic auth directly to the chat
-        endpoint and that worked. Callers must merge this into the headers used
-        for every request, not just the bootstrap probe.
-        """
-        return dict(self._fallback_headers)
 
     async def run(self) -> TargetHealthReport:
         """Run bootstrap checks for all credentials. Returns a TargetHealthReport.
@@ -126,18 +110,22 @@ class AuthBootstrapper:
         login_flow_failed = (
             self._default_auth.type == "login_flow" and not self._session.login_succeeded
         )
-        fallback_headers: dict[str, str] = {}
+        fallback_auth_config: AuthConfig | None = None
         if login_flow_failed:
             if self._default_auth.username and self._default_auth.password:
-                fallback_headers = AuthConfig(
+                fallback_auth_config = AuthConfig(
                     type="basic",
                     username=self._default_auth.username,
                     password=self._default_auth.password,
-                ).to_headers()
+                )
+            else:
+                fallback_auth_config = AuthConfig(type="none")
             logger.warning(
                 "bootstrap: login_flow failed (%s) — falling back to %s directly to %s",
                 self._session.login_error,
-                "the original username/password (HTTP Basic)" if fallback_headers else "no auth",
+                "the original username/password (HTTP Basic)"
+                if fallback_auth_config.type == "basic"
+                else "no auth",
                 self.full_url,
             )
 
@@ -146,19 +134,23 @@ class AuthBootstrapper:
         # for login_flow auth, or the static headers for other auth types).
         result = await self._check_one(
             identity="default",
-            headers=fallback_headers if login_flow_failed else self._session.headers(),
+            headers=fallback_auth_config.to_headers()
+            if fallback_auth_config is not None
+            else self._session.headers(),
             auth_type=self._default_auth.type,
         )
 
         if login_flow_failed:
+            assert fallback_auth_config is not None
             if result.status == "ok":
                 logger.info(
                     "bootstrap: chat endpoint accepted %s — continuing with that, "
                     "won't retry the login endpoint again this session",
-                    "the original username/password directly" if fallback_headers else "the request without a token",
+                    "the original username/password directly"
+                    if fallback_auth_config.type == "basic"
+                    else "the request without a token",
                 )
-                self._session.mark_login_flow_unusable()
-                self._fallback_headers = fallback_headers
+                self._session.replace_config(fallback_auth_config)
             else:
                 result = CredentialCheckResult(
                     identity="default",

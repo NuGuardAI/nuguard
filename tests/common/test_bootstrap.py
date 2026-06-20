@@ -166,9 +166,9 @@ async def test_login_flow_failure_falls_back_to_basic_auth_with_original_creds()
     expected = f"Basic {base64.b64encode(b'alice:secret').decode()}"
     assert report.all_ok is True
     assert chat_route.calls[0].request.headers["Authorization"] == expected
-    # Must be exposed so callers keep sending it for every later request —
-    # session.headers() alone won't, since the session's auth type is still login_flow.
-    assert bootstrapper.fallback_headers == {"Authorization": expected}
+    # session.headers() must return the working fallback credentials directly —
+    # bootstrap swaps the session's auth config to type="basic" on success.
+    assert bootstrapper.session.headers() == {"Authorization": expected}
     # And the dead login endpoint must not be retried again this session.
     refreshed = await bootstrapper.session.refresh_if_needed()
     assert refreshed is False
