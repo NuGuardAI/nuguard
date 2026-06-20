@@ -69,7 +69,7 @@ class RedteamV2Orchestrator:
         policy_controls: list | None = None,
         canary_config: "CanaryConfig | None" = None,
         profile: str = "ci",
-        chat_path: str = "/chat",
+        chat_path: str = "",
         auth_config: "AuthConfig | None" = None,
         redteam_llm: "LLMClient | None" = None,
         eval_llm: "LLMClient | None" = None,
@@ -85,6 +85,9 @@ class RedteamV2Orchestrator:
         self.policy_controls = policy_controls or []
         self.canary_config = canary_config
         self.profile = profile
+        # Track whether the caller explicitly configured a chat path.
+        # When False, recon probes SBOM + live endpoints instead of assuming /chat.
+        self._chat_path_explicit = bool(chat_path)
         self.chat_path = chat_path or "/chat"
         self.auth_config = auth_config
         self.redteam_llm = redteam_llm
@@ -161,18 +164,18 @@ class RedteamV2Orchestrator:
     # ── stage helpers ─────────────────────────────────────────────────────────
 
     async def _run_recon(self, notes: list[str]) -> Any:
-        from nuguard.redteam.v2.surface.recon import run_recon
+        from nuguard.redteam.v2.surface.recon import (
+            ReconResult,
+            resolve_chat_endpoint,
+            run_recon,
+        )
         from nuguard.sbom.models import AiSbomDocument
 
         auth_headers = self.auth_config.to_headers() if self.auth_config else None
-        client = self._build_target_client(
-            chat_path=self.chat_path, auth_headers=auth_headers
-        ) if self.target_url else None
-
         sbom = self.sbom if isinstance(self.sbom, AiSbomDocument) else None
+
         if sbom is None:
             # Minimal recon without a typed SBOM.
-            from nuguard.redteam.v2.surface.recon import ReconResult
             notes.append("SBOM is not an AiSbomDocument — recon limited to config defaults")
             return ReconResult(
                 chat_path=self.chat_path,
@@ -182,15 +185,55 @@ class RedteamV2Orchestrator:
                 endpoint_source="config",
             )
 
-        recon = await run_recon(
+        # ── Step 1: resolve the chat endpoint (zero-I/O SBOM + live probe) ──
+        # Pass an empty path when the user did not explicitly configure one so
+        # that resolve_chat_endpoint consults the SBOM and probes live endpoints.
+        # Passing "/chat" (the default) short-circuits to source="config" without
+        # any discovery, which causes 405s when the real endpoint differs.
+        _probe_path = self.chat_path if self._chat_path_explicit else ""
+        path, key, is_list, resp_key, source = await resolve_chat_endpoint(
             sbom,
-            chat_path=self.chat_path,
+            chat_path=_probe_path,
             target_url=self.target_url,
             auth_headers=auth_headers,
             allow_live_probe=True,
-            client=client,
+            timeout=self.settings.request_timeout,
         )
-        notes.append(f"chat endpoint resolved via {recon.endpoint_source!r}: {recon.chat_path}")
+        _log.info(
+            "recon: endpoint resolved via %r — path=%s key=%s list=%s",
+            source, path, key, is_list,
+        )
+
+        # ── Step 2: build the client with the resolved endpoint config ────────
+        # Building before recon (as before) meant the discovery prompts went to
+        # the unresolved /chat path with the wrong payload shape.
+        client = self._build_target_client(
+            chat_path=path,
+            chat_payload_key=key,
+            chat_payload_list=is_list,
+            chat_response_key=resp_key,
+            auth_headers=auth_headers,
+            request_timeout=self.settings.request_timeout,
+        ) if self.target_url else None
+
+        # ── Step 3: user-data discovery with the correctly-configured client ──
+        # Pass the already-resolved path so run_recon skips re-probing.
+        recon = await run_recon(
+            sbom,
+            chat_path=path,
+            chat_payload_key=key,
+            chat_payload_list=is_list,
+            target_url=self.target_url,
+            auth_headers=auth_headers,
+            allow_live_probe=False,  # already resolved in step 1
+            client=client,
+            timeout=self.settings.request_timeout,
+        )
+        # Preserve the source from step 1 (run_recon would mark it "config" since
+        # the path is already resolved and non-empty).
+        recon.endpoint_source = source
+
+        notes.append(f"chat endpoint resolved via {source!r}: {path}")
         if recon.has_user_data:
             notes.append(
                 f"recon extracted {len(recon.user_ids)} user id(s)"
