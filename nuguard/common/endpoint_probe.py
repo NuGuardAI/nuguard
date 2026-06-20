@@ -30,9 +30,9 @@ _log = get_logger(__name__)
 # Keep this list tight — false exclusions are worse than false inclusions
 # because the probe will verify via HTTP anyway.
 _EXCLUDE_PATTERNS = re.compile(
-    r"/(health|ping|ready|live|metrics|auth|logout|token|oauth|callback"
-    r"|webhook|static|assets|docs|openapi|swagger|favicon|vite"
-    r"|upload|download)(/|$)",
+    r"/(health|ping|ready|live|metrics|auth|login|logout|register|signup|signin"
+    r"|token|oauth|callback|webhook|static|assets|docs|openapi|swagger|favicon"
+    r"|vite|upload|download)(/|$)",
     re.IGNORECASE,
 )
 
