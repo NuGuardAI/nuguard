@@ -272,6 +272,14 @@ class AuthSession:
         self._login_response_extras: dict[str, str] = {}
         # Set to True only when login_flow auth completes with a valid token.
         self._login_succeeded: bool = False
+        # Human-readable reason for the most recent login failure (None until
+        # _do_login fails at least once). Surfaced by callers in error_detail.
+        self._login_error: str | None = None
+        # Set by the bootstrapper when the login endpoint is proven broken AND
+        # the chat endpoint already worked without a token. Once set, the
+        # session stops retrying the dead login endpoint on every later 401
+        # (e.g. from rate limiting) — there's nothing to refresh.
+        self._login_flow_unusable: bool = False
 
         if config.type == "login_flow" and config.login_flow:
             raw = config.login_flow.token_header
@@ -310,6 +318,22 @@ class AuthSession:
         """True if login_flow completed and a valid token was acquired."""
         return self._login_succeeded
 
+    @property
+    def login_error(self) -> str | None:
+        """Reason the most recent login attempt failed, or ``None`` if it succeeded."""
+        return self._login_error
+
+    def mark_login_flow_unusable(self) -> None:
+        """Record that the login endpoint is broken and the session is proceeding
+        without a token (the chat endpoint accepted requests anyway).
+
+        Called by :class:`~nuguard.common.bootstrap.AuthBootstrapper` after a
+        successful fallback probe. Disables :meth:`refresh_if_needed` for the
+        rest of this session so later 401s don't keep retrying a login endpoint
+        already proven dead.
+        """
+        self._login_flow_unusable = True
+
     def login_response_extras(self) -> dict[str, str]:
         """Return identity/session fields extracted from the login response body.
 
@@ -328,6 +352,12 @@ class AuthSession:
         Returns True if a token refresh was attempted (caller should retry
         the failed request with the updated headers()), False otherwise.
         """
+        if self._login_flow_unusable:
+            _log.debug(
+                "AuthSession: skipping login refresh — login endpoint already "
+                "proven unusable this session"
+            )
+            return False
         if (
             self._config.type == "login_flow"
             and self._config.login_flow is not None
@@ -358,36 +388,34 @@ class AuthSession:
                     resp = await client.get(url, params=lf.payload)
 
             if resp.status_code not in range(200, 300):
-                _log.warning(
-                    "AuthSession: login failed — HTTP %d from %s: %s",
-                    resp.status_code,
-                    url,
-                    resp.text[:200],
+                self._login_error = (
+                    f"login endpoint {url} returned HTTP {resp.status_code}: "
+                    f"{resp.text[:200]}"
                 )
+                _log.warning("AuthSession: %s", self._login_error)
                 return
 
             try:
                 body = resp.json()
             except Exception:
-                _log.warning(
-                    "AuthSession: login response from %s is not JSON: %s",
-                    url,
-                    resp.text[:200],
+                self._login_error = (
+                    f"login response from {url} is not JSON: {resp.text[:200]}"
                 )
+                _log.warning("AuthSession: %s", self._login_error)
                 return
 
             token = _extract_nested(body, lf.token_response_key)
             if not token:
-                _log.warning(
-                    "AuthSession: token key %r not found in login response from %s: %s",
-                    lf.token_response_key,
-                    url,
-                    str(body)[:200],
+                self._login_error = (
+                    f"token key {lf.token_response_key!r} not found in login response "
+                    f"from {url}: {str(body)[:200]}"
                 )
+                _log.warning("AuthSession: %s", self._login_error)
                 return
 
             self._token = token
             self._login_succeeded = True
+            self._login_error = None
             _log.debug(
                 "AuthSession: token acquired from %s (key=%r)",
                 url,
@@ -411,16 +439,11 @@ class AuthSession:
                 )
 
         except httpx.TimeoutException:
-            _log.warning(
-                "AuthSession: login request timed out after %ss for %s",
-                _LOGIN_TIMEOUT,
-                url,
-            )
+            self._login_error = f"login request to {url} timed out after {_LOGIN_TIMEOUT}s"
+            _log.warning("AuthSession: %s", self._login_error)
         except httpx.RequestError as exc:
-            _log.warning("AuthSession: login request failed for %s: %s", url, exc)
+            self._login_error = f"login request to {url} failed: {exc}"
+            _log.warning("AuthSession: %s", self._login_error)
         except Exception as exc:
-            _log.warning(
-                "AuthSession: unexpected error during login for %s: %s",
-                url,
-                exc,
-            )
+            self._login_error = f"unexpected error during login for {url}: {exc}"
+            _log.warning("AuthSession: %s", self._login_error)

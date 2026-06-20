@@ -723,7 +723,7 @@ class BehaviorRunner:
                     identity=default_check.identity,
                     detail=default_check.error_detail,
                 )
-            bootstrap_headers = bootstrapper.session.headers()
+            bootstrap_headers = {**bootstrapper.session.headers(), **bootstrapper.fallback_headers}
             self._auth_session = bootstrapper.session
         except AuthError:
             raise

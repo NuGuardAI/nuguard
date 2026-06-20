@@ -57,6 +57,12 @@ class AuthBootstrapper:
         self._probe_payload_extras: dict[str, object] = probe_payload_extras or {}
         # Initialised during run() — exposed so behavior/redteam can share it
         self._session: AuthSession | None = None
+        # Static headers discovered by the login_flow fallback (HTTP Basic auth
+        # built from the original username/password) when it succeeds. Empty
+        # unless that fallback fired. Callers must merge these into every
+        # outbound request for the rest of the session — session.headers()
+        # stays empty since the session's auth type is still login_flow.
+        self._fallback_headers: dict[str, str] = {}
 
     @property
     def full_url(self) -> str:
@@ -75,6 +81,17 @@ class AuthBootstrapper:
         if self._session is None:
             raise RuntimeError("AuthBootstrapper.session accessed before run()")
         return self._session
+
+    @property
+    def fallback_headers(self) -> dict[str, str]:
+        """Headers discovered by the login_flow→chat-endpoint fallback, if any.
+
+        Empty unless ``run()`` fell back from a broken login_flow to sending the
+        original username/password as HTTP Basic auth directly to the chat
+        endpoint and that worked. Callers must merge this into the headers used
+        for every request, not just the bootstrap probe.
+        """
+        return dict(self._fallback_headers)
 
     async def run(self) -> TargetHealthReport:
         """Run bootstrap checks for all credentials. Returns a TargetHealthReport.
@@ -98,28 +115,61 @@ class AuthBootstrapper:
             run_id=self._run_id,
         )
 
-        # If login_flow auth was configured but token acquisition failed, report
-        # auth_failed immediately — don't probe the chat endpoint, because an
-        # anonymous probe may return 200 and mask the credential failure.
-        if self._default_auth.type == "login_flow" and not self._session.login_succeeded:
-            report.checks.append(
-                CredentialCheckResult(
+        # If login_flow auth was configured but token acquisition failed, the SBOM's
+        # declared auth endpoint isn't usable. If this config came from a "basic"
+        # username/password that we upgraded to login_flow, fall back to sending
+        # those same credentials as HTTP Basic auth straight to the chat endpoint
+        # rather than failing outright. If that also fails, report the real login
+        # failure reason instead of a generic message.
+        login_flow_failed = (
+            self._default_auth.type == "login_flow" and not self._session.login_succeeded
+        )
+        fallback_headers: dict[str, str] = {}
+        if login_flow_failed:
+            if self._default_auth.username and self._default_auth.password:
+                fallback_headers = AuthConfig(
+                    type="basic",
+                    username=self._default_auth.username,
+                    password=self._default_auth.password,
+                ).to_headers()
+            logger.warning(
+                "bootstrap: login_flow failed (%s) — falling back to %s directly to %s",
+                self._session.login_error,
+                "the original username/password (HTTP Basic)" if fallback_headers else "no auth",
+                self.full_url,
+            )
+
+        # Always check the default credential. Use the fallback headers when the
+        # login flow failed; otherwise the live session headers (the acquired JWT
+        # for login_flow auth, or the static headers for other auth types).
+        result = await self._check_one(
+            identity="default",
+            headers=fallback_headers if login_flow_failed else self._session.headers(),
+            auth_type=self._default_auth.type,
+        )
+
+        if login_flow_failed:
+            if result.status == "ok":
+                logger.info(
+                    "bootstrap: chat endpoint accepted %s — continuing with that, "
+                    "won't retry the login endpoint again this session",
+                    "the original username/password directly" if fallback_headers else "the request without a token",
+                )
+                self._session.mark_login_flow_unusable()
+                self._fallback_headers = fallback_headers
+            else:
+                result = CredentialCheckResult(
                     identity="default",
                     auth_type=self._default_auth.type,
                     endpoint=self.full_url,
-                    status="auth_failed",
-                    error_detail="login_flow token acquisition failed — check credentials",
+                    status=result.status,
+                    http_status_code=result.http_status_code,
+                    response_time_ms=result.response_time_ms,
+                    error_detail=(
+                        f"login_flow token acquisition failed ({self._session.login_error}); "
+                        f"fallback probe to chat endpoint also failed: {result.error_detail}"
+                    ),
                 )
-            )
-            return report
-
-        # Always check the default credential first, using the live session
-        # headers (which carry the acquired JWT for login_flow auth)
-        result = await self._check_one(
-            identity="default",
-            headers=self._session.headers(),
-            auth_type=self._default_auth.type,
-        )
         report.checks.append(result)
 
         # Raise immediately if the default credential cannot reach the target at all
