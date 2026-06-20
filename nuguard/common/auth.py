@@ -380,28 +380,31 @@ class AuthSession:
 
             if resp.status_code not in range(200, 300):
                 self._login_error = (
-                    f"login endpoint {url} returned HTTP {resp.status_code}: "
-                    f"{resp.text[:200]}"
+                    f"login endpoint {url} returned HTTP {resp.status_code}"
                 )
                 _log.warning("AuthSession: %s", self._login_error)
+                _log.debug("AuthSession: login response body: %s", resp.text[:200])
                 return
 
             try:
                 body = resp.json()
             except Exception:
-                self._login_error = (
-                    f"login response from {url} is not JSON: {resp.text[:200]}"
-                )
+                self._login_error = f"login response from {url} is not JSON"
                 _log.warning("AuthSession: %s", self._login_error)
+                _log.debug("AuthSession: login response body: %s", resp.text[:200])
                 return
 
             token = _extract_nested(body, lf.token_response_key)
             if not token:
+                response_keys = (
+                    list(body.keys()) if isinstance(body, dict) else type(body).__name__
+                )
                 self._login_error = (
                     f"token key {lf.token_response_key!r} not found in login response "
-                    f"from {url}: {str(body)[:200]}"
+                    f"from {url} (response keys: {response_keys})"
                 )
                 _log.warning("AuthSession: %s", self._login_error)
+                _log.debug("AuthSession: login response body: %s", str(body)[:200])
                 return
 
             self._token = token

@@ -195,6 +195,45 @@ async def test_login_flow_failure_and_chat_endpoint_failure_reports_both() -> No
     assert "login endpoint" in detail
     assert "500" in detail
     assert "fallback probe to chat endpoint also failed" in detail
+    # The login response body must never appear in user-visible error_detail —
+    # only status codes/keys, never raw response content (may hold secrets/PII).
+    assert "boom" not in detail
+
+
+@pytest.mark.anyio
+@respx.mock
+async def test_login_failure_reasons_do_not_leak_response_body() -> None:
+    # Each of these failure modes used to embed a truncated response body
+    # (resp.text / str(body)) into login_error, which gets surfaced to users
+    # via CredentialCheckResult.error_detail. login_error must stay body-free.
+    respx.post(f"{TARGET}/login").mock(
+        return_value=httpx.Response(500, text="super-secret-internal-detail")
+    )
+    respx.post(FULL_URL).mock(return_value=httpx.Response(200))
+    bootstrapper = _bootstrapper(auth=_login_flow_auth())
+    await bootstrapper.run()
+    assert "super-secret-internal-detail" not in (bootstrapper.session.login_error or "")
+    assert "HTTP 500" in (bootstrapper.session.login_error or "")
+
+
+@pytest.mark.anyio
+@respx.mock
+async def test_login_missing_token_key_reports_keys_not_values() -> None:
+    # Login succeeds (2xx, valid JSON) but the configured token_response_key
+    # isn't present. The response may contain the token under another key, or
+    # other sensitive fields — login_error must list keys only, never values.
+    respx.post(f"{TARGET}/login").mock(
+        return_value=httpx.Response(
+            200, json={"access_token": "shhh-this-is-secret", "user": "alice"}
+        )
+    )
+    respx.post(FULL_URL).mock(return_value=httpx.Response(200))
+    bootstrapper = _bootstrapper(auth=_login_flow_auth())
+    await bootstrapper.run()
+    error = bootstrapper.session.login_error or ""
+    assert "shhh-this-is-secret" not in error
+    assert "access_token" in error
+    assert "user" in error
 
 
 # ── tenant token tests ───────────────────────────────────────────────────────
