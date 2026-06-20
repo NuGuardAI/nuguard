@@ -147,6 +147,12 @@ def _policy_clauses(policy: object | None) -> list[str]:
         clauses.append(f"hitl_tool:{tool}")
     if getattr(policy, "rate_limits", None):
         clauses.append("rate_limits")
+    # Raw/unknown sections need human review before testing (design guidance);
+    # they are surfaced as clauses so planning records them as coverage gaps.
+    raw_sections = getattr(policy, "raw_sections", None)
+    if isinstance(raw_sections, dict):
+        for key in raw_sections:
+            clauses.append(f"raw_section:{key}")
     return clauses
 
 

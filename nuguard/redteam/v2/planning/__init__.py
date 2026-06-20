@@ -1,8 +1,30 @@
 """Phase 3 — coverage matrix and scenario objective generation.
 
-Builds the coverage matrix (SBOM nodes × policy clauses × technique families)
-and emits scenario *objectives* (not just prompts), each tagged with execution
-phase, resource locks, detectors, and required evidence.
-
-Not implemented yet (scaffold).
+* :func:`generate_objectives` turns an :class:`AttackSurface` + KB + Cognitive
+  Policy into a list of :class:`ScenarioObjective` (intent + judging metadata,
+  not prompt strings) plus a :class:`CoverageMatrix`.
+* ART behaviour categories (:class:`BehaviorCategory`) are explicit dimensions.
 """
+from __future__ import annotations
+
+from nuguard.redteam.v2.planning.coverage_matrix import (
+    CoverageEntry,
+    CoverageMatrix,
+    CoverageStatus,
+)
+from nuguard.redteam.v2.planning.objective_generator import (
+    BehaviorCategory,
+    ObjectiveIntent,
+    ScenarioObjective,
+    generate_objectives,
+)
+
+__all__ = [
+    "BehaviorCategory",
+    "CoverageEntry",
+    "CoverageMatrix",
+    "CoverageStatus",
+    "ObjectiveIntent",
+    "ScenarioObjective",
+    "generate_objectives",
+]
