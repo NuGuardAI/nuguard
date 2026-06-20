@@ -100,9 +100,16 @@ class RedteamV2Orchestrator:
         """Execute the full v2 pipeline and return confirmed findings."""
         config_notes: list[str] = []
 
+        # ── 0. Auth bootstrap (mirrors v1 orchestrator) ───────────────────────
+        # Resolve the target URL (handles static hosting fallback), upgrade basic
+        # auth → login_flow via SBOM-discovered login endpoint, execute the login
+        # flow to get a Bearer token, and return live session headers for all
+        # subsequent HTTP requests.
+        effective_headers = await self._bootstrap_auth(config_notes)
+
         # ── 1. Recon: resolve endpoint + optional user-data extraction ────────
         _log.info("v2 pipeline: starting recon")
-        recon = await self._run_recon(config_notes)
+        recon = await self._run_recon(config_notes, effective_headers=effective_headers)
 
         # ── 2. Build the per-target catalog (capability-gated, cached) ────────
         _log.info("v2 pipeline: building target catalog")
@@ -128,7 +135,7 @@ class RedteamV2Orchestrator:
 
         # ── 5–6. Execute objectives through the phased scheduler ──────────────
         _log.info("v2 pipeline: executing %d objectives", len(objectives))
-        scheduled_results = await self._run_scheduler(objectives, surface, recon, config_notes)
+        scheduled_results = await self._run_scheduler(objectives, surface, recon, config_notes, effective_headers=effective_headers)
 
         # ── 7. Layered evaluation ─────────────────────────────────────────────
         _log.info("v2 pipeline: evaluating outcomes")
@@ -163,14 +170,74 @@ class RedteamV2Orchestrator:
 
     # ── stage helpers ─────────────────────────────────────────────────────────
 
-    async def _run_recon(self, notes: list[str]) -> Any:
+    async def _bootstrap_auth(self, notes: list[str]) -> dict[str, str]:
+        """Mirror v1 auth bootstrap: URL resolution, basic→login_flow upgrade, token acquisition.
+
+        Returns live HTTP headers (e.g. ``{"Authorization": "Bearer <tok>"}``).
+        For static auth types (bearer, api_key, basic) returns the static headers
+        directly.  For login_flow, executes the login HTTP request and returns the
+        Bearer token header.  Never raises — failures are logged and empty headers
+        returned so the run can still attempt scenarios.
+        """
+        from nuguard.common.auth_runtime import bootstrap_auth_runtime, resolve_auth_runtime
+        from nuguard.common.target_client_builder import (
+            resolve_auth_config_with_sbom_fallback,
+            resolve_target_url,
+        )
+        from nuguard.sbom.models import AiSbomDocument
+
+        sbom = self.sbom if isinstance(self.sbom, AiSbomDocument) else None
+
+        # ── Step 1: resolve static-hosting URL fallback ───────────────────────
+        if self.target_url:
+            resolved_url, url_notes = resolve_target_url(self.target_url, sbom)
+            if resolved_url and resolved_url != self.target_url.rstrip("/"):
+                self.target_url = resolved_url
+                notes.extend(url_notes)
+
+        # ── Step 2: upgrade basic auth → login_flow via SBOM login endpoint ──
+        effective_auth = self.auth_config
+        if (
+            effective_auth is not None
+            and effective_auth.type == "basic"
+            and effective_auth.login_flow is None
+            and sbom is not None
+        ):
+            effective_auth, auth_note = resolve_auth_config_with_sbom_fallback(
+                effective_auth, sbom
+            )
+            if auth_note:
+                notes.append(auth_note)
+
+        # ── Step 3: execute login flow / acquire token ────────────────────────
+        if not self.target_url:
+            # No target configured — return static headers without bootstrapping.
+            return (effective_auth.to_headers() if effective_auth else {})
+
+        try:
+            auth_runtime = resolve_auth_runtime(auth_config=effective_auth)
+            bootstrapper, health_report = await bootstrap_auth_runtime(
+                target_url=self.target_url,
+                endpoint=self._chat_path_explicit and self.chat_path or "",
+                auth_config=auth_runtime.auth_config,
+                timeout=self.settings.request_timeout,
+            )
+            for line in health_report.summary_lines():
+                _log.info("auth bootstrap %s", line)
+            return bootstrapper.session.headers()
+        except Exception as exc:
+            _log.warning("auth bootstrap failed: %s — proceeding with static headers", exc)
+            return (effective_auth.to_headers() if effective_auth else {})
+
+    async def _run_recon(self, notes: list[str], *, effective_headers: dict[str, str] | None = None) -> Any:
         from nuguard.redteam.v2.surface.recon import (
             ReconResult,
             resolve_chat_endpoint,
         )
         from nuguard.sbom.models import AiSbomDocument
 
-        auth_headers = self.auth_config.to_headers() if self.auth_config else None
+        # Use bootstrapped session headers (Bearer token) rather than raw auth config.
+        auth_headers = effective_headers or (self.auth_config.to_headers() if self.auth_config else None)
         sbom = self.sbom if isinstance(self.sbom, AiSbomDocument) else None
 
         if sbom is None:
@@ -368,12 +435,15 @@ class RedteamV2Orchestrator:
         surface: Any,
         recon: Any,
         notes: list[str],
+        *,
+        effective_headers: dict[str, str] | None = None,
     ) -> list[Any]:
         from nuguard.redteam.v2.execution.runner import KillChainState, ObjectiveRunner
         from nuguard.redteam.v2.scheduler.safety import SafetyPolicy
         from nuguard.redteam.v2.scheduler.scheduler import PhasedScheduler
 
-        auth_headers = self.auth_config.to_headers() if self.auth_config else None
+        # Use bootstrapped session headers (Bearer token) rather than raw auth config.
+        auth_headers = effective_headers or (self.auth_config.to_headers() if self.auth_config else None)
         client = self._build_target_client(
             chat_path=getattr(recon, "chat_path", self.chat_path),
             chat_payload_key=getattr(recon, "chat_payload_key", "message"),
