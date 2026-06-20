@@ -66,6 +66,10 @@ class ObjectiveOutcome:
     step_count: int = 0
     reason: str = ""
     step_results: list[Any] = field(default_factory=list)
+    # Set when every adversarial step returned an HTTP 4xx response (e.g. 405
+    # Method Not Allowed). Signals a target configuration problem rather than
+    # a genuine security result and is used by the scheduler to abort early.
+    target_transport_error: bool = False
 
 
 @dataclass
@@ -314,6 +318,15 @@ class ObjectiveRunner:
             if hit and not evidence and response_text:
                 evidence.append(str(response_text)[:200])
 
+        # Detect target misconfiguration: all adversarial steps returned HTTP
+        # 4xx (e.g. 405 Method Not Allowed) with no successful responses.
+        # This indicates the endpoint is not accepting our requests at all,
+        # rather than the target actively defending against the attack.
+        all_4xx = bool(adversarial) and not succeeded and all(
+            str(getattr(r, "response", "")).startswith("[HTTP 4")
+            for r in adversarial
+        )
+
         return ObjectiveOutcome(
             objective_id=obj.objective_id,
             status="executed",
@@ -324,6 +337,7 @@ class ObjectiveRunner:
             family=obj.family,
             step_count=len(adversarial),
             step_results=list(results),
+            target_transport_error=all_4xx,
         )
 
     def _summarize_guided(

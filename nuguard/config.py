@@ -740,6 +740,12 @@ class RedteamV2Settings(BaseModel):
     max_per_phase: int = 0
     # Enforce dry-run-only execution for destructive/high-impact actions.
     dry_run_only: bool = True
+    # Per-HTTP-request timeout in seconds passed to TargetAppClient.
+    # Maps from redteam.request_timeout in nuguard.yaml.
+    request_timeout: float = 60.0
+    # Per-objective wall-clock timeout in seconds. Objectives that exceed this
+    # limit are cancelled and recorded as 'timeout'. 0 disables the timeout.
+    objective_timeout: float = 120.0
 
 
 class NuGuardConfig(BaseSettings):
@@ -1371,6 +1377,8 @@ class NuGuardConfig(BaseSettings):
             transferability_enabled=self.redteam_v2_transferability_enabled,
             max_per_phase=self.redteam_v2_max_per_phase,
             dry_run_only=self.redteam_v2_dry_run_only,
+            request_timeout=self.redteam_request_timeout,
+            objective_timeout=max(0.0, self.redteam_scenario_timeout),
         )
 
     model_config = SettingsConfigDict(

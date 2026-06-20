@@ -100,11 +100,14 @@ class PhasedScheduler:
         safety: SafetyPolicy | None = None,
         stop_on_critical: bool = True,
         identity_factory: Callable[[], str] | None = None,
+        objective_timeout: float = 120.0,
     ) -> None:
         self._concurrency = max(1, concurrency)
         self._safety = safety or SafetyPolicy()
         self._stop_on_critical = stop_on_critical
         self._identity_factory = identity_factory or (lambda: f"rt2-{uuid.uuid4().hex[:12]}")
+        # 0 means no timeout
+        self._objective_timeout: float | None = objective_timeout if objective_timeout > 0 else None
 
     async def run(
         self,
@@ -151,6 +154,38 @@ class PhasedScheduler:
             if any(r.critical for r in phase_results):
                 critical_seen = True
 
+            # Abort remaining phases when every completed objective in this
+            # phase failed due to HTTP 4xx transport errors (e.g. 405 Method
+            # Not Allowed), which indicates the target endpoint is
+            # misconfigured — not that the target defended against the attack.
+            completed_phase = [r for r in phase_results if r.status == "completed"]
+            transport_errors = [
+                r for r in completed_phase
+                if getattr(r.result, "target_transport_error", False)
+            ]
+            if completed_phase and len(transport_errors) == len(completed_phase):
+                _log.error(
+                    "All %d objectives in phase %s returned HTTP 4xx (transport error) — "
+                    "target endpoint appears misconfigured. Aborting remaining phases.",
+                    len(transport_errors),
+                    phase,
+                )
+                remaining_phases = sorted(k for k in by_phase if k > phase)
+                for remaining_phase in remaining_phases:
+                    for obj in by_phase[remaining_phase]:
+                        results.append(
+                            ScheduledResult(
+                                objective=obj,
+                                phase=remaining_phase,
+                                status="skipped_transport_error",
+                                reason=(
+                                    f"target returned HTTP 4xx for all objectives "
+                                    f"in phase {phase} — endpoint misconfigured"
+                                ),
+                            )
+                        )
+                break
+
         _log.info(
             "scheduler complete: %d objectives across %d phases", len(results), len(by_phase)
         )
@@ -179,10 +214,25 @@ class PhasedScheduler:
         async with sem:
             acquired = await self._acquire_locks(obj, locks)
             try:
-                result = await runner(ctx)
+                if self._objective_timeout is not None:
+                    result = await asyncio.wait_for(
+                        runner(ctx), timeout=self._objective_timeout
+                    )
+                else:
+                    result = await runner(ctx)
                 crit = is_critical(result)
                 status = "completed"
                 reason = ""
+            except asyncio.TimeoutError:
+                _log.warning(
+                    "objective %s timed out after %.0fs",
+                    obj.objective_id,
+                    self._objective_timeout,
+                )
+                result, crit, status, reason = (
+                    None, False, "timeout",
+                    f"timed out after {self._objective_timeout:.0f}s",
+                )
             except Exception as exc:  # a single objective failure never aborts the run
                 _log.warning("objective %s failed: %s", obj.objective_id, exc)
                 result, crit, status, reason = None, False, "error", str(exc)
