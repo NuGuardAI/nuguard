@@ -73,8 +73,10 @@ class AuthBootstrapper:
         """The resolved AuthSession for the default credential.
 
         Available after run() completes.  Both behavior and redteam runners
-        call bootstrapper.run() before sending any requests, then use
-        bootstrapper.session.headers() on every outbound call.
+        call bootstrapper.run() before sending any requests, then build
+        outbound headers from bootstrapper.session.headers() merged with
+        bootstrapper.fallback_headers (the latter is empty unless the
+        login_flow→chat-endpoint fallback fired; see that property).
 
         Raises RuntimeError if accessed before run() is called.
         """
