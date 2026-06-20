@@ -79,9 +79,20 @@ async def resolve_chat_endpoint(
 ) -> tuple[str, str, bool, str | None, str]:
     """Resolve ``(path, payload_key, payload_list, response_key, source)``.
 
-    An explicit ``chat_path`` is authoritative (source ``"config"``).  Otherwise
-    the SBOM is consulted zero-I/O; if that yields nothing and ``allow_live_probe``
-    is set with a ``target_url``, a live probe is attempted.
+    An explicit ``chat_path`` is authoritative (source ``"config"``).  Otherwise:
+
+    1. When ``allow_live_probe`` is set, a live HTTP probe is performed first —
+       this mirrors the v1 ``probe_chat_endpoints`` flow which tries each SBOM
+       candidate (plus common fallbacks) and skips any that return 404/405.
+       The probe result is the most reliable source because it is validated by
+       a real HTTP response.
+    2. SBOM zero-I/O discovery is used as a fallback when the live probe is
+       disabled or finds nothing.
+    3. If neither succeeds, ``/chat`` is returned as the last-resort default.
+
+    The previous ordering (SBOM first, live probe only when SBOM finds nothing)
+    caused the engine to lock onto a wrong SBOM-discovered path (e.g. ``/chat``)
+    without ever verifying it, resulting in universal HTTP 405 failures.
     """
     from nuguard.common.endpoint_probe import (
         discover_chat_config_from_sbom,
@@ -91,16 +102,21 @@ async def resolve_chat_endpoint(
     if chat_path:
         return chat_path, chat_payload_key, chat_payload_list, None, "config"
 
-    path, key, is_list, resp_key = discover_chat_config_from_sbom(
+    # Run SBOM discovery zero-I/O to get candidate paths/keys that the live
+    # probe can use as prioritised hints (probe_chat_endpoints uses the SBOM's
+    # API_ENDPOINT nodes internally, so this result is already incorporated).
+    sbom_path, sbom_key, sbom_list, resp_key = discover_chat_config_from_sbom(
         sbom, chat_path, chat_payload_key, chat_payload_list
     )
-    if path:
-        return path, key, is_list, resp_key, "sbom"
 
+    # Live probe: always preferred when allowed — it validates the endpoint via
+    # real HTTP requests and skips paths that return 404/405.
     if allow_live_probe and target_url:
         try:
             probed = await probe_chat_endpoints(
-                target_url, sbom, auth_headers=auth_headers, timeout=timeout
+                target_url, sbom, auth_headers=auth_headers, timeout=timeout,
+                known_payload_key=sbom_key if sbom_key != chat_payload_key else None,
+                known_payload_list=sbom_list,
             )
         except Exception as exc:  # network failures must not abort recon
             _log.debug("live endpoint probe failed: %s", exc)
@@ -108,6 +124,10 @@ async def resolve_chat_endpoint(
         if probed:
             p_path, p_key, p_list = probed
             return p_path, p_key, p_list, resp_key, "live_probe"
+
+    # Fall back to SBOM result when no live probe was run or it found nothing.
+    if sbom_path:
+        return sbom_path, sbom_key, sbom_list, resp_key, "sbom"
 
     # Nothing resolved — return defaults so the caller can still try /chat.
     return chat_path or "/chat", chat_payload_key, chat_payload_list, resp_key, "default"
