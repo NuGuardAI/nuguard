@@ -1,0 +1,3 @@
+[submodule "tests/apps/claude-cookbooks"]
+	path = tests/apps/claude-cookbooks
+	url = https://github.com/anthropics/claude-cookbooks
