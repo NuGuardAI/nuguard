@@ -254,6 +254,13 @@ async def probe_chat_endpoints(
         headers=headers,
         follow_redirects=True,
     ) as client:
+        # Track the first 5xx path as a fallback. A 5xx response means the endpoint
+        # exists and is processing POST requests — the error is likely due to missing
+        # auth, a required field the probe doesn't know about, or the LLM backend
+        # returning an error for the synthetic test payload.  In all these cases the
+        # real redteam requests (with auth headers and proper payloads) may succeed.
+        server_error_fallback: tuple[str, str, bool] | None = None
+
         for path in paths:
             _log.info("endpoint_probe: trying %s%s", base, path)
             for pay_key, pay_list in payload_shapes:
@@ -277,7 +284,10 @@ async def probe_chat_endpoints(
 
                 if status >= 500:
                     _log.debug("endpoint_probe: %s — %d server error", path, status)
-                    break  # server error; skip this path
+                    # Record as fallback: endpoint exists, error may be auth/payload.
+                    if server_error_fallback is None:
+                        server_error_fallback = (path, pay_key, pay_list)
+                    break  # try next path
 
                 # 2xx or 4xx (other than 404/405) — endpoint exists
                 if status < 300:
@@ -316,6 +326,14 @@ async def probe_chat_endpoints(
     _log.warning(
         "endpoint_probe: no chat-capable endpoint found after probing %d paths", len(paths)
     )
+    if server_error_fallback:
+        p_path, p_key, p_list = server_error_fallback
+        _log.info(
+            "endpoint_probe: selected %s as fallback (5xx — endpoint exists, "
+            "error likely auth/payload-related; payload_key=%r)",
+            p_path, p_key,
+        )
+        return server_error_fallback
     return None
 
 
