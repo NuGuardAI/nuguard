@@ -63,6 +63,8 @@ class ScenarioObjective:
     execution_phase: int
     state_impact: str
     resource_locks: tuple[str, ...]
+    required_fixtures: tuple[str, ...]
+    reset_hooks: tuple[str, ...]
     detectors: tuple[str, ...]
     required_evidence: tuple[str, ...]
     safe_execution: str
@@ -206,6 +208,8 @@ def _from_technique(
         execution_phase=technique.execution.phase,
         state_impact=technique.execution.state_impact.value,
         resource_locks=technique.execution.resource_locks,
+        required_fixtures=technique.execution.required_fixtures,
+        reset_hooks=technique.execution.reset_hooks,
         detectors=tuple(d.value for d in technique.detectors),
         required_evidence=tuple(e.value for e in technique.evidence_types),
         safe_execution=technique.safe_execution.value,
@@ -409,6 +413,8 @@ def _positive_objective(
         execution_phase=3,  # boundary mapping
         state_impact="none",
         resource_locks=(),
+        required_fixtures=(),
+        reset_hooks=(),
         detectors=(),
         required_evidence=("response_quote",),
         safe_execution="trace_only",
