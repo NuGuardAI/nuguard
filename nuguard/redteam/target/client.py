@@ -398,15 +398,17 @@ class TargetAppClient:
                 return text, calls
 
             # If the session already has prior turns, the target backend is up
-            # and responding — only this specific payload triggered the backend's
-            # error fallback (e.g. Azure OpenAI content filter).  Retrying with
-            # the same adversarial payload will always get the same block, so
-            # return immediately and let the executor record it as a miss.
-            if session.turns:
+            # and responding — the transient is either a quota-induced blip or a
+            # content-filter block on this specific adversarial payload.  Allow
+            # one retry (attempt 0 → 1) so a momentary quota spike can recover;
+            # after that, stop retrying since the same payload will keep being
+            # blocked by the content filter.
+            if session.turns and attempt >= 1:
                 _log.debug(
-                    "Transient response on turn %d — treating as content-filter "
-                    "block (backend is healthy), not cold-start; skipping retry.",
+                    "Transient response on turn %d (retry #%d) — treating as content-filter "
+                    "block (backend is healthy); stopping retry.",
                     len(session.turns) + 1,
+                    attempt,
                 )
                 return text, calls
 

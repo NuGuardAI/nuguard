@@ -76,4 +76,4 @@ uv run nuguard redteam \
 
 # Wait for the tee log-capture background process to flush all output before exiting.
 # Without this, the exec > >(tee) pipe may close before the last lines reach the log file.
-#wait
+wait

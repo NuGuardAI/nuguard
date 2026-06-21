@@ -21,6 +21,7 @@ The runner is the scheduler's ``runner`` callable: ``async (RunContext) -> Objec
 """
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol
 
@@ -36,6 +37,19 @@ if TYPE_CHECKING:
 _log = get_logger(__name__)
 
 _NON_ADVERSARIAL_STEPS = frozenset({"WARMUP", "DISCOVER", "OBSERVE"})
+
+# Serialise concurrent kill-chain-compose LLM calls so objectives running in
+# parallel don't simultaneously exhaust the same LLM quota as the target app.
+# v1 avoids this via its prompt cache (all payloads pre-generated before
+# execution); this semaphore is the v2 equivalent during live execution.
+_COMPOSE_SEM: asyncio.Semaphore | None = None
+
+
+def _get_compose_sem() -> asyncio.Semaphore:
+    global _COMPOSE_SEM
+    if _COMPOSE_SEM is None:
+        _COMPOSE_SEM = asyncio.Semaphore(1)
+    return _COMPOSE_SEM
 _CRITICAL_STATES = frozenset({"external_write", "destructive"})
 
 
@@ -412,14 +426,15 @@ class ObjectiveRunner:
             "Rewrite the payload to naturally reference the prior context above."
         )
         try:
-            result = await asyncio.wait_for(
-                self._mutation_llm.complete(
-                    prompt,
-                    system=self._COMPOSE_SYSTEM,
-                    label="kill-chain-compose",
-                ),
-                timeout=self._COMPOSE_TIMEOUT_S,
-            )
+            async with _get_compose_sem():
+                result = await asyncio.wait_for(
+                    self._mutation_llm.complete(
+                        prompt,
+                        system=self._COMPOSE_SYSTEM,
+                        label="kill-chain-compose",
+                    ),
+                    timeout=self._COMPOSE_TIMEOUT_S,
+                )
             return (result or "").strip().strip('"\'')
         except Exception as exc:
             _log.debug("kill-chain synthesis failed (%s) — using original payload", exc)
