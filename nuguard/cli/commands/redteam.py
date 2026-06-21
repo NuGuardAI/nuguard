@@ -527,6 +527,7 @@ async def _run_redteam_v2(
     output/reporting code path is reused unchanged.
     """
     from nuguard.common.llm_client import LLMClient
+    from nuguard.redteam.persona import REDTEAM_EXPERT_SYSTEM_PROMPT
     from nuguard.redteam.v2 import RedteamV2Orchestrator
 
     redteam_llm: LLMClient | None = None
@@ -535,6 +536,7 @@ async def _run_redteam_v2(
             model=redteam_llm_model,
             api_key=redteam_llm_api_key,
             api_base=redteam_llm_api_base,
+            default_system_prompt=REDTEAM_EXPERT_SYSTEM_PROMPT,
         )
     eval_llm: LLMClient | None = None
     if eval_llm_model and eval_llm_api_key:
@@ -850,10 +852,16 @@ async def _run_orchestrator(  # noqa: C901
 ) -> "tuple[list, dict[str, str], list, str, list[str], Any, int, int, Any, Any, str, str]":
     from nuguard.common.llm_client import LLMClient
     from nuguard.redteam.executor.orchestrator import RedteamOrchestrator
+    from nuguard.redteam.persona import REDTEAM_EXPERT_SYSTEM_PROMPT
 
     redteam_llm: LLMClient | None = None
     if redteam_llm_model:
-        redteam_llm = LLMClient(model=redteam_llm_model, api_key=redteam_llm_api_key, api_base=redteam_llm_api_base)
+        redteam_llm = LLMClient(
+            model=redteam_llm_model,
+            api_key=redteam_llm_api_key,
+            api_base=redteam_llm_api_base,
+            default_system_prompt=REDTEAM_EXPERT_SYSTEM_PROMPT,
+        )
     eval_llm: LLMClient | None = None
     if eval_llm_model and eval_llm_api_key:
         eval_llm = LLMClient(model=eval_llm_model, api_key=eval_llm_api_key, api_base=eval_llm_api_base)
