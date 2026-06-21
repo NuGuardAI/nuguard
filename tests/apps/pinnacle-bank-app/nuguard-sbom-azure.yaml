@@ -10,9 +10,13 @@ policy:
   llm: true
 
 llm:
-  model: azure/gpt-5.4-mini
-  api_key: ${AZURE_OPENAI_KEY}
-  api_base: ${AZURE_OPENAI_ENDPOINT}
+#  model: azure/gpt-5.4-mini
+#  api_key: ${AZURE_OPENAI_KEY}
+#  api_base: ${AZURE_OPENAI_ENDPOINT}
+
+  model: azure/${AZURE_DEEPSEEK_MODEL_NAME}    # any LiteLLM model string (openai/gpt-4o, etc.)
+  api_key: ${AZURE_DEEPSEEK_KEY}     # never put keys here; use env var interpolation
+  api_base: ${AZURE_DEEPSEEK_ENDPOINT}     # optional override for Azure OpenAI endpoint URL
 
 sbom_generation:
   llm: true
@@ -101,13 +105,18 @@ redteam:
     api_base: ${AZURE_OPENAI_ENDPOINT}
 
   eval_llm:
-    model: azure/gpt-5.4-mini
-    api_key: ${AZURE_OPENAI_KEY}
-    api_base: ${AZURE_OPENAI_ENDPOINT}
+  #  model: azure/gpt-5.4-mini
+  #  api_key: ${AZURE_OPENAI_KEY}
+  #  api_base: ${AZURE_OPENAI_ENDPOINT}
 
-  auth:
-    type: none
-
+    model: azure/${AZURE_DEEPSEEK_MODEL_NAME}    # any LiteLLM model string (openai/gpt-4o, etc.)
+    api_key: ${AZURE_DEEPSEEK_KEY}     # never put keys here; use env var interpolation
+    api_base: ${AZURE_DEEPSEEK_ENDPOINT}     # optional override for Azure OpenAI endpoint URL
+  
+  v2:
+    knowledge_base_version: 0.1.0   # pinned technique KB version
+    phases: []                      # phase names to run; empty = all
+    
   profile: full
   scenarios:
     - prompt-injection

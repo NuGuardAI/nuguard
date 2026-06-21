@@ -30,7 +30,6 @@ if TYPE_CHECKING:
 _log = get_logger(__name__)
 
 # Concurrency ceiling for the phased scheduler.
-_DEFAULT_CONCURRENCY = 5
 
 
 @dataclass
@@ -71,6 +70,7 @@ class RedteamV2Orchestrator:
         profile: str = "ci",
         chat_path: str = "",
         auth_config: "AuthConfig | None" = None,
+        chat_payload_extras: dict[str, Any] | None = None,
         redteam_llm: "LLMClient | None" = None,
         eval_llm: "LLMClient | None" = None,
         verbose: bool = False,
@@ -90,6 +90,7 @@ class RedteamV2Orchestrator:
         self._chat_path_explicit = bool(chat_path)
         self.chat_path = chat_path or "/chat"
         self.auth_config = auth_config
+        self.chat_payload_extras: dict[str, Any] = chat_payload_extras or {}
         self.redteam_llm = redteam_llm
         self.eval_llm = eval_llm
         self.verbose = verbose
@@ -456,6 +457,9 @@ class RedteamV2Orchestrator:
         static_exec = self._build_static_executor(client, canary)
         guided_exec = self._build_guided_executor(client, canary)
 
+        chat_path = getattr(recon, "chat_path", self.chat_path)
+        full_target_url = self.target_url.rstrip("/") + chat_path
+
         killchain = KillChainState()
         runner = ObjectiveRunner(
             sbom=self.sbom,  # type: ignore[arg-type]
@@ -465,6 +469,8 @@ class RedteamV2Orchestrator:
             client=client,
             policy=self.policy,
             killchain=killchain,
+            verbose=self.verbose,
+            target_url=full_target_url,
         )
 
         safety = SafetyPolicy(
@@ -472,7 +478,7 @@ class RedteamV2Orchestrator:
             allow_external_egress=False,
         )
         scheduler = PhasedScheduler(
-            concurrency=_DEFAULT_CONCURRENCY,
+            concurrency=self.settings.concurrency,
             safety=safety,
             stop_on_critical=True,
             objective_timeout=self.settings.objective_timeout,
@@ -555,6 +561,7 @@ class RedteamV2Orchestrator:
             chat_response_key=chat_response_key,
             default_headers=auth_headers,
             timeout=request_timeout,
+            chat_payload_extras=self.chat_payload_extras or None,
         )
 
     def _build_canary(self) -> Any:
@@ -575,6 +582,7 @@ class RedteamV2Orchestrator:
             eval_llm=self.eval_llm,
             mutation_llm=self.redteam_llm,
             sbom=sbom,
+            turn_delay_seconds=self.settings.turn_delay_seconds,
         )
 
     def _build_guided_executor(self, client: Any, canary: Any) -> Any | None:

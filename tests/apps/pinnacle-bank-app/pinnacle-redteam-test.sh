@@ -71,7 +71,7 @@ echo "Running redteam tests ..."
 # redteam tests exit 2 when findings are present — expected in testing; treat as non-fatal.
 uv run nuguard redteam \
   --config "$SCRIPT_DIR/nuguard-azure.yaml" \
-  --format markdown \
+  --engine v2 --format markdown \
   --output "$SCRIPT_DIR/reports/pinnacle-bank-redteam.md" || true
 
 # Wait for the tee log-capture background process to flush all output before exiting.

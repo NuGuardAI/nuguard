@@ -746,6 +746,12 @@ class RedteamV2Settings(BaseModel):
     # Per-objective wall-clock timeout in seconds. Objectives that exceed this
     # limit are cancelled and recorded as 'timeout'. 0 disables the timeout.
     objective_timeout: float = 120.0
+    # Maximum number of objectives running in parallel. Maps from
+    # redteam.concurrency in nuguard.yaml. Lower for rate-limited targets.
+    concurrency: int = 3
+    # Inter-step pause in seconds between HTTP requests within a single chain.
+    # Maps from redteam.turn_delay_seconds in nuguard.yaml.
+    turn_delay_seconds: float = 0.0
 
 
 class NuGuardConfig(BaseSettings):
@@ -1379,6 +1385,8 @@ class NuGuardConfig(BaseSettings):
             dry_run_only=self.redteam_v2_dry_run_only,
             request_timeout=self.redteam_request_timeout,
             objective_timeout=max(0.0, self.redteam_scenario_timeout),
+            concurrency=self.redteam_concurrency,
+            turn_delay_seconds=self.redteam_turn_delay_seconds,
         )
 
     model_config = SettingsConfigDict(

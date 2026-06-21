@@ -137,7 +137,8 @@ def test_independent_objectives_run_concurrently() -> None:
         active -= 1
 
     objs = [_obj(f"o{i}", phase=4) for i in range(3)]  # no locks
-    sched = PhasedScheduler(concurrency=5, identity_factory=_id_factory())
+    # startup_jitter_max=0 so tasks overlap within their 20 ms window
+    sched = PhasedScheduler(concurrency=5, identity_factory=_id_factory(), startup_jitter_max=0)
     asyncio.run(sched.run(objs, runner))
     assert max_active >= 2
 

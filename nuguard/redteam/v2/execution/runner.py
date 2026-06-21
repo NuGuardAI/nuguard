@@ -24,6 +24,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol
 
+from nuguard.common.console import print_turn as _print_turn
 from nuguard.common.logging import get_logger
 from nuguard.redteam.v2.scheduler.scheduler import RunContext
 
@@ -112,6 +113,8 @@ class ObjectiveRunner:
         policy: object | None = None,
         killchain: KillChainState | None = None,
         compose_kill_chains: bool = True,
+        verbose: bool = False,
+        target_url: str = "",
     ) -> None:
         self._sbom = sbom
         self._profile = profile
@@ -121,6 +124,8 @@ class ObjectiveRunner:
         self._policy = policy
         self.killchain = killchain or KillChainState()
         self._compose = compose_kill_chains
+        self._verbose = verbose
+        self._target_url = target_url
         self._node_by_id: dict[str, Node] = {str(n.id): n for n in sbom.nodes}
 
     # ── scheduler entry point ────────────────────────────────────────────────
@@ -209,7 +214,44 @@ class ObjectiveRunner:
         for node in self._sbom.nodes:
             if node.component_type == ComponentType.AGENT:
                 return node
-        return None
+        # Fallback: SBOM was generated without an explicit AGENT node (e.g. the app
+        # scanner tagged the LLM backend as TOOL/PROMPT).  Synthesise a proxy agent
+        # from the SBOM summary so scenarios can still be built and executed.
+        return self._synthesize_proxy_agent()
+
+    def _synthesize_proxy_agent(self) -> "Node | None":
+        """Return a synthetic AGENT node derived from SBOM summary metadata.
+
+        Used when the SBOM has no ComponentType.AGENT nodes.  The proxy carries
+        a stable deterministic UUID so scenario titles are reproducible.
+        """
+        from uuid import UUID
+
+        from nuguard.sbom.models import Node, NodeMetadata
+        from nuguard.sbom.types import ComponentType
+
+        summary = getattr(self._sbom, "summary", None)
+
+        # Derive a human-readable name from the SBOM summary use_case or fall back
+        # to "AI Assistant" so generated scenario titles are legible.
+        use_case: str = (getattr(summary, "use_case", "") or "").strip()
+        if use_case:
+            # Truncate to first sentence / clause
+            name = use_case.split(".")[0].split(",")[0].strip()
+            name = name[:60] if len(name) > 60 else name
+        else:
+            name = "AI Assistant"
+
+        # Use a deterministic UUID so the same SBOM always produces the same proxy ID.
+        proxy_id = UUID("00000000-0000-0000-0000-000000000001")
+
+        return Node(
+            id=proxy_id,
+            name=name,
+            component_type=ComponentType.AGENT,
+            confidence=0.5,
+            metadata=NodeMetadata(),
+        )
 
     def _bind_surface_nodes(
         self, obj: "ScenarioObjective"
@@ -243,6 +285,8 @@ class ObjectiveRunner:
                 obj.objective_id, "error", family=obj.family,
                 scenario_id=getattr(scenario, "scenario_id", None), reason=str(exc),
             )
+        if self._verbose:
+            self._print_static_turns(scenario, results)
         return self._summarize_static(obj, scenario, results)
 
     async def _run_guided(self, obj: "ScenarioObjective", scenario: Any) -> ObjectiveOutcome:
@@ -257,7 +301,60 @@ class ObjectiveRunner:
                 obj.objective_id, "error", family=obj.family,
                 scenario_id=getattr(scenario, "scenario_id", None), reason=str(exc),
             )
+        if self._verbose:
+            self._print_guided_turns(scenario, result_conv)
         return self._summarize_guided(obj, scenario, result_conv)
+
+    def _print_static_turns(self, scenario: Any, results: list[Any]) -> None:
+        title = getattr(scenario, "title", "")
+        goal = getattr(scenario, "goal_type", None)
+        goal_str = goal.value if goal is not None else ""
+        for idx, sr in enumerate(results, 1):
+            step_type = getattr(getattr(sr, "step", None), "step_type", "") or ""
+            succeeded = bool(getattr(sr, "success_signal_found", False))
+            outcome_colour = "dim" if step_type in _NON_ADVERSARIAL_STEPS else ("green" if succeeded else "red")
+            outcome_label = "warmup" if step_type in _NON_ADVERSARIAL_STEPS else ("HIT" if succeeded else "miss")
+            http_status = getattr(sr, "http_status_code", None)
+            status_str = f"  HTTP {http_status}" if http_status else ""
+            result_lines = [
+                f"  [dim]goal:[/dim] {goal_str}{status_str}"
+                f"  result=[{outcome_colour}]{outcome_label}[/{outcome_colour}]"
+            ]
+            _print_turn(
+                module="redteam",
+                scenario_name=title,
+                turn_idx=idx,
+                url=self._target_url,
+                request=getattr(sr, "resolved_payload", "") or "",
+                response=getattr(sr, "response", "") or "",
+                result_lines=result_lines,
+            )
+
+    def _print_guided_turns(self, scenario: Any, conv: Any) -> None:
+        title = getattr(scenario, "title", "")
+        goal = getattr(scenario, "goal_type", None)
+        goal_str = goal.value if goal is not None else ""
+        for turn in getattr(conv, "turns", []) or []:
+            turn_idx = getattr(turn, "turn", 0)
+            score = getattr(turn, "progress_score", 0) or 0
+            succeeded = score >= 5  # ConversationDirector.SUCCESS_SCORE
+            tactic = getattr(turn, "tactic_used", None) or ""
+            outcome_colour = "green" if succeeded else "red"
+            outcome_label = "HIT" if succeeded else "miss"
+            tactic_str = f"  tactic={tactic}" if tactic else ""
+            result_lines = [
+                f"  [dim]goal:[/dim] {goal_str}{tactic_str}"
+                f"  result=[{outcome_colour}]{outcome_label}[/{outcome_colour}]"
+            ]
+            _print_turn(
+                module="redteam",
+                scenario_name=title,
+                turn_idx=turn_idx,
+                url=self._target_url,
+                request=getattr(turn, "attacker_message", "") or "",
+                response=getattr(turn, "agent_response", "") or "",
+                result_lines=result_lines,
+            )
 
     def _compose_kill_chain(self, chain: Any) -> Any:
         """Prepend prior-success context to the first adversarial step."""

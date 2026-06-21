@@ -22,6 +22,7 @@ executor unchanged.
 from __future__ import annotations
 
 import asyncio
+import random
 import uuid
 from collections import defaultdict
 from collections.abc import Awaitable, Callable, Iterable
@@ -96,11 +97,12 @@ class PhasedScheduler:
     def __init__(
         self,
         *,
-        concurrency: int = 5,
+        concurrency: int = 3,
         safety: SafetyPolicy | None = None,
         stop_on_critical: bool = True,
         identity_factory: Callable[[], str] | None = None,
         objective_timeout: float = 120.0,
+        startup_jitter_max: float = 2.0,
     ) -> None:
         self._concurrency = max(1, concurrency)
         self._safety = safety or SafetyPolicy()
@@ -108,6 +110,9 @@ class PhasedScheduler:
         self._identity_factory = identity_factory or (lambda: f"rt2-{uuid.uuid4().hex[:12]}")
         # 0 means no timeout
         self._objective_timeout: float | None = objective_timeout if objective_timeout > 0 else None
+        # Maximum random delay before each objective starts, to stagger concurrent
+        # requests and avoid thundering-herd load spikes on the target app.
+        self._startup_jitter_max = max(0.0, startup_jitter_max)
 
     async def run(
         self,
@@ -214,6 +219,11 @@ class PhasedScheduler:
 
         identity, fresh = self._assign_identity(obj, reuse_identities)
         ctx = RunContext(objective=obj, phase=phase, identity=identity, fresh_identity=fresh)
+
+        # Stagger objective starts to avoid a thundering-herd burst when many
+        # objectives are dispatched simultaneously against a rate-limited target.
+        if self._startup_jitter_max > 0:
+            await asyncio.sleep(random.uniform(0, self._startup_jitter_max))
 
         async with sem:
             acquired = await self._acquire_locks(obj, locks)
