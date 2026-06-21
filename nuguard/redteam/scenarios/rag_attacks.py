@@ -299,7 +299,7 @@ def build_stale_document_retrieval(
             ),
             target_node_id=agent_id,
             depends_on=[f"{chain_id}_s1"],
-            on_failure="skip",
+            on_failure="mutate",
             use_llm_eval=True,
         ),
     ]
@@ -425,7 +425,7 @@ def build_citation_laundering(
             ),
             target_node_id=agent_id,
             depends_on=[f"{chain_id}_s2"],
-            on_failure="skip",
+            on_failure="mutate",
             use_llm_eval=True,
         ),
     ]
@@ -508,7 +508,7 @@ def build_nearest_neighbor_enumeration(
             ),
             target_node_id=agent_id,
             depends_on=[f"{chain_id}_s3"],
-            on_failure="skip",
+            on_failure="mutate",
             use_llm_eval=True,
         ),
     ]

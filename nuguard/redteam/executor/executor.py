@@ -380,13 +380,22 @@ class AttackExecutor:
         # get the same profile entry so DISCOVER steps are always cache hits.
         if pre_scan_profile is not None and not pre_scan_profile.is_empty and sbom is not None:
             from nuguard.sbom.models import NodeType as _NodeType  # noqa: PLC0415
+            _profile_data = (
+                pre_scan_profile.raw_response,
+                pre_scan_profile.ids,
+                pre_scan_profile.customer_name,
+            )
             for _node in getattr(sbom, "nodes", []):
                 if getattr(_node, "component_type", None) == _NodeType.AGENT:
-                    self._golden_data_cache[str(_node.id)] = (
-                        pre_scan_profile.raw_response,
-                        pre_scan_profile.ids,
-                        pre_scan_profile.customer_name,
-                    )
+                    self._golden_data_cache[str(_node.id)] = _profile_data
+            # Also seed the deterministic proxy-agent UUID that ObjectiveRunner
+            # synthesises when no real SBOM AGENT node is found in the profile.
+            # Prevents redundant live DISCOVER requests when multiple v2 chains
+            # start concurrently before any single DISCOVER has completed.
+            from uuid import UUID  # noqa: PLC0415
+            _proxy_id = str(UUID("00000000-0000-0000-0000-000000000001"))
+            if _proxy_id not in self._golden_data_cache:
+                self._golden_data_cache[_proxy_id] = _profile_data
         self._turn_delay_seconds = max(0.0, turn_delay_seconds)
         self._suppress_spa_html = suppress_spa_html_auth_bypass
 
