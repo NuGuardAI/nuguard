@@ -113,6 +113,7 @@ class TargetAppClient:
         default_headers: dict[str, str] | None = None,
         framework_adapter: "FrameworkAdapter | None" = None,
         chat_payload_extras: dict[str, Any] | None = None,
+        max_concurrent_requests: int = 0,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self._chat_path = chat_path
@@ -152,6 +153,16 @@ class TargetAppClient:
         # include it in subsequent request bodies so multi-turn conversations
         # are correlated on the server side.
         self._session_context: dict[str, Any] = {}
+        # Global HTTP semaphore: limits concurrent in-flight requests across ALL
+        # callers sharing this client instance.  Useful when the target app has a
+        # low Azure OpenAI / LLM concurrency quota and returns transient errors
+        # ("having difficulty connecting") when multiple requests arrive
+        # simultaneously.  0 = unlimited (default behaviour).
+        self._request_sem: asyncio.Semaphore | None = (
+            asyncio.Semaphore(max_concurrent_requests)
+            if max_concurrent_requests > 0
+            else None
+        )
         # Optional framework-specific adapter (e.g. Google ADK).  When set,
         # send() delegates body construction and response parsing to the adapter.
         self._framework_adapter: FrameworkAdapter | None = framework_adapter
@@ -334,6 +345,13 @@ class TargetAppClient:
                 errors, auth rejections, rate limits) do not count — the target is
                 alive and responding; it simply rejected our specific payload.
         """
+        if self._request_sem is not None:
+            async with self._request_sem:
+                return await self._send_impl(payload, session)
+        return await self._send_impl(payload, session)
+
+    async def _send_impl(self, payload: str, session: AttackSession) -> tuple[str, list[dict]]:
+        """Inner send implementation (called with or without the request semaphore)."""
         data: dict | list | str = {}
         for attempt in range(self._max_429_retries + 1):
             try:

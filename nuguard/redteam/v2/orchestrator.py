@@ -562,6 +562,7 @@ class RedteamV2Orchestrator:
             default_headers=auth_headers,
             timeout=request_timeout,
             chat_payload_extras=self.chat_payload_extras or None,
+            max_concurrent_requests=self.settings.max_concurrent_requests,
         )
 
     def _build_canary(self) -> Any:

@@ -316,6 +316,8 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_concurrency"] = int(redteam["concurrency"])
     if "turn_delay_seconds" in redteam:
         flat["redteam_turn_delay_seconds"] = float(redteam["turn_delay_seconds"])
+    if "max_concurrent_requests" in redteam:
+        flat["redteam_max_concurrent_requests"] = int(redteam["max_concurrent_requests"])
     if "scenario_delay_seconds" in redteam:
         flat["redteam_scenario_delay_seconds"] = float(redteam["scenario_delay_seconds"])
     if "guided_mutation_mode" in redteam:
@@ -752,6 +754,10 @@ class RedteamV2Settings(BaseModel):
     # Inter-step pause in seconds between HTTP requests within a single chain.
     # Maps from redteam.turn_delay_seconds in nuguard.yaml.
     turn_delay_seconds: float = 0.0
+    # Maximum concurrent HTTP requests to the target across all objectives.
+    # 0 = unlimited. Set to 1 to fully serialise target calls (e.g. low Azure
+    # OpenAI quota).  Maps from redteam.max_concurrent_requests in nuguard.yaml.
+    max_concurrent_requests: int = 1
 
 
 class NuGuardConfig(BaseSettings):
@@ -1057,6 +1063,15 @@ class NuGuardConfig(BaseSettings):
         description=(
             "Inter-turn pause in seconds to avoid 429s on the target "
             "(yaml: redteam.turn_delay_seconds)."
+        ),
+    )
+    redteam_max_concurrent_requests: int = Field(
+        default=1,
+        ge=0,
+        description=(
+            "Maximum concurrent HTTP requests to the target across all parallel "
+            "scenarios (yaml: redteam.max_concurrent_requests). "
+            "0 = unlimited; 1 = fully serialised (safest for low-quota Azure apps)."
         ),
     )
     redteam_scenario_delay_seconds: float = Field(
@@ -1387,6 +1402,7 @@ class NuGuardConfig(BaseSettings):
             objective_timeout=max(0.0, self.redteam_scenario_timeout),
             concurrency=self.redteam_concurrency,
             turn_delay_seconds=self.redteam_turn_delay_seconds,
+            max_concurrent_requests=self.redteam_max_concurrent_requests,
         )
 
     model_config = SettingsConfigDict(
