@@ -112,6 +112,16 @@ redteam:
 
   # Request body shape is auto-discovered from the SBOM (chat_endpoint node: message/false).
   # No override needed.
+  # v2 engine settings (only used when engine: v2)
+  v2:
+    knowledge_base_version: 0.1.0   # pinned technique KB version
+    phases: []                      # phase names to run; empty = all
+  #   semantic_judge:
+  #     count: 3                      # independent LLM judges for semantic verdicts
+  #     quorum: 2                     # votes required to confirm a violation
+  #   transferability_enabled: true   # score successful objectives for transferability
+  #   max_per_phase: 0                # cap scenarios per phase; 0 = unlimited
+  #   dry_run_only: true              # enforce dry-run-only for destructive actions
 
   # Scan profile:
   #   ci   — fast; only scenarios with pre-impact score ≥ 5 (default)

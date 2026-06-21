@@ -49,6 +49,11 @@ def build_finding(
     if not verdict.succeeded:
         return None
 
+    if technique is None and objective.technique_id:
+        from nuguard.redteam.v2.knowledge import load_technique_index
+
+        technique = load_technique_index().get(objective.technique_id)
+
     severity = _finalize_severity(verdict, objective)
     sources = list(technique.source_refs) if technique else []
     controls = list(technique.mapped_controls) if technique else []

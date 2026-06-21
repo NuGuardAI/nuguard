@@ -69,7 +69,7 @@ echo "---"
 echo "Running redteam tests ..."
 
 # redteam tests exit 2 when findings are present — expected in testing; treat as non-fatal.
-uv run nuguard redteam \
+uv run nuguard redteam --engine v2 \
   --config "$SCRIPT_DIR/nuguard.yaml" \
   --format markdown \
   --output "$SCRIPT_DIR/reports/openai-cs-redteam.md" || true
