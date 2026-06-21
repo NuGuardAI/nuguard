@@ -113,6 +113,7 @@ class LayerResult:
     evidence: list[str] = field(default_factory=list)
     notes: list[str] = field(default_factory=list)
     needs_human_review: bool = False
+    remediation_hints: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -133,3 +134,4 @@ class Verdict:
     needs_human_review: bool = False
     transferable: bool = False
     cluster_id: str | None = None
+    remediation_hints: list[str] = field(default_factory=list)

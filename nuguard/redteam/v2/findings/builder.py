@@ -59,6 +59,7 @@ def build_finding(
     controls = list(technique.mapped_controls) if technique else []
     attack_steps = _attack_steps(outcome)
     evidence_quote = _first_evidence(verdict, outcome)
+    remediation = _remediation_text(verdict.remediation_hints, controls)
 
     review = " [HUMAN REVIEW]" if verdict.needs_human_review else ""
     transfer = ""
@@ -84,7 +85,7 @@ def build_finding(
         severity=severity,
         description=description,
         affected_component=objective.surface_node_ids[0] if objective.surface_node_ids else None,
-        remediation=_remediation(controls),
+        remediation=remediation,
         references=sources,
         goal_type=verdict.family,
         sbom_path=list(objective.surface_node_ids),
@@ -158,6 +159,16 @@ def _blast_radius(objective: "ScenarioObjective") -> str:
         parts.append(f"state={objective.state_impact}")
     parts.append(f"{len(objective.surface_node_ids)} node(s)")
     return ", ".join(parts)
+
+
+def _remediation_text(judge_hints: list[str], controls: list[str]) -> str | None:
+    """Build remediation text, preferring LLM judge hints over generic controls."""
+    parts: list[str] = []
+    if judge_hints:
+        parts.append(judge_hints[0])
+    if controls:
+        parts.append("Validate/strengthen controls: " + "; ".join(controls))
+    return " ".join(parts) if parts else None
 
 
 def _remediation(controls: list[str]) -> str | None:

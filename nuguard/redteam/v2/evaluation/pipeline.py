@@ -68,6 +68,7 @@ class EvaluationPipeline:
         notes: list[str] = []
         detectors: list[str] = []
         evidence: list[str] = []
+        remediation_hints: list[str] = []
         needs_review = False
         from_semantic = False
 
@@ -88,9 +89,10 @@ class EvaluationPipeline:
                 succeeded = True
                 from_semantic = True
                 confidence = sem.confidence
-                severity = self._base_severity(inp)
+                severity = sem.severity or self._base_severity(inp)
                 detectors = list(sem.detectors)
                 evidence = list(sem.evidence)
+                remediation_hints = list(sem.remediation_hints)
             else:
                 succeeded = False
                 confidence = Confidence.NONE
@@ -139,6 +141,7 @@ class EvaluationPipeline:
             evidence=evidence,
             notes=notes,
             needs_human_review=needs_review,
+            remediation_hints=remediation_hints,
         )
 
     async def evaluate_all(self, inputs: Iterable[EvaluationInput]) -> list[Verdict]:
