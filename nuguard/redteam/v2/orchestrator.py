@@ -491,6 +491,7 @@ class RedteamV2Orchestrator:
             client=client,
             policy=self.policy,
             killchain=killchain,
+            mutation_llm=self.redteam_llm,
             verbose=self.verbose,
             target_url=full_target_url,
         )

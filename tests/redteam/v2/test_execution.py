@@ -145,25 +145,73 @@ def test_executor_error_isolated(minimal_sbom_doc: AiSbomDocument) -> None:
 
 
 # ── kill-chain composition ────────────────────────────────────────────────────────
-def test_killchain_preamble_injected_after_prior_success(
+def test_killchain_never_injects_bracket_notation(
     minimal_sbom_doc: AiSbomDocument,
 ) -> None:
+    """Kill-chain context must never be prepended verbatim as bracket notation.
+
+    The old behaviour prepended ``[Context established earlier in this assessment: ...]``
+    directly to the payload sent to the target application.  That text is
+    nuguard-internal metadata and must not appear in messages sent to the AI app:
+    it confuses the target and can trigger content-filter blocks.
+    """
     executor = _FakeStatic([_sr(canary_hits=["CANARY-1"])])
     runner, objectives = _runner(minimal_sbom_doc, executor)
     obj = _buildable_objective(runner, objectives)
 
-    # First run: no prior disclosures → chain payload unchanged.
+    # First run: no prior disclosures → payload unchanged.
     asyncio.run(runner(_ctx(obj)))
     first_chain = executor.last_chain
     first_adv = next(s for s in first_chain.steps if s.step_type not in ("WARMUP", "DISCOVER"))
     assert not first_adv.payload.startswith("[Context established earlier")
-    assert runner.killchain.disclosures  # recorded the success
+    assert runner.killchain.disclosures  # success is still recorded
 
-    # Second run: prior success recorded → preamble injected into opening step.
+    # Second run: prior success recorded.  Without a mutation_llm the chain is
+    # returned unchanged — bracket notation must still never appear.
     asyncio.run(runner(_ctx(obj)))
     second_chain = executor.last_chain
     second_adv = next(s for s in second_chain.steps if s.step_type not in ("WARMUP", "DISCOVER"))
-    assert second_adv.payload.startswith("[Context established earlier")
+    assert not second_adv.payload.startswith("[Context established earlier")
+
+
+def test_killchain_calls_llm_when_available(
+    minimal_sbom_doc: AiSbomDocument,
+) -> None:
+    """When a mutation_llm is provided, _compose_kill_chain uses it to synthesise."""
+    import asyncio as _asyncio
+
+    synthesised_payload = "Contextual adversarial payload from LLM"
+
+    class _FakeLLM:
+        def __init__(self):
+            self.calls: list[str] = []
+
+        async def complete(self, prompt: str, **kwargs) -> str:
+            self.calls.append(prompt)
+            return synthesised_payload
+
+    fake_llm = _FakeLLM()
+    surface = AttackSurface.from_sbom(minimal_sbom_doc)
+    objectives, _ = generate_objectives(surface)
+    executor = _FakeStatic([_sr(canary_hits=["CANARY-2"])])
+    runner = ObjectiveRunner(
+        sbom=minimal_sbom_doc,
+        profile=surface.profile,
+        static_executor=executor,
+        mutation_llm=fake_llm,
+    )
+    obj = _buildable_objective(runner, objectives)
+
+    # First run: no prior disclosures → LLM not called, payload unchanged.
+    _asyncio.run(runner(_ctx(obj)))
+    assert not fake_llm.calls
+
+    # Second run: prior success recorded → LLM called; synthesised payload used.
+    _asyncio.run(runner(_ctx(obj)))
+    assert fake_llm.calls, "mutation_llm.complete should have been called"
+    adv = next(s for s in executor.last_chain.steps if s.step_type not in ("WARMUP", "DISCOVER"))
+    assert adv.payload == synthesised_payload
+    assert not adv.payload.startswith("[Context established earlier")
 
 
 def test_killchain_disabled(minimal_sbom_doc: AiSbomDocument) -> None:
