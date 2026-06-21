@@ -204,6 +204,10 @@ class PhasedScheduler:
     ) -> ScheduledResult:
         decision = assess(obj, self._safety)
         if not decision.allowed:
+            _log.debug(
+                "safety: skipping objective %s (%s) — %s",
+                obj.objective_id, obj.family, decision.reason,
+            )
             return ScheduledResult(
                 objective=obj, phase=phase, status="skipped_safety", reason=decision.reason
             )

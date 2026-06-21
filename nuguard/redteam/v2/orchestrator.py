@@ -494,6 +494,20 @@ class RedteamV2Orchestrator:
         eval_inputs: list[EvaluationInput] = []
         obj_by_id = {o.objective_id: o for o in objectives}
 
+        from collections import Counter
+        status_counts = Counter(sr.status for sr in scheduled_results)
+        none_count = sum(1 for sr in scheduled_results if sr.result is None)
+        _log.debug(
+            "evaluate: %d scheduled, %d with result, statuses: %s",
+            len(scheduled_results), len(scheduled_results) - none_count, dict(status_counts),
+        )
+        if none_count:
+            _log.info(
+                "evaluate: %d objective(s) skipped before evaluation — %s",
+                none_count,
+                ", ".join(f"{k}={v}" for k, v in status_counts.items() if k != "completed"),
+            )
+
         for sr in scheduled_results:
             if sr.result is None:
                 continue
