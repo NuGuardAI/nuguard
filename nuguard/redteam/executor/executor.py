@@ -342,7 +342,7 @@ class AttackExecutor:
         auth_session: "AuthSession | None" = None,
         app_domain: str = "",
         allowed_topics: list[str] | None = None,
-        turn_delay_seconds: float = 0.0,
+        turn_delay_seconds: float = 5.0,
         sbom: "AiSbomDocument | None" = None,
         pre_scan_profile: "DiscoveredProfile | None" = None,
         suppress_spa_html_auth_bypass: bool = True,
@@ -482,6 +482,7 @@ class AttackExecutor:
             # time to finish starting before the next attempt.  Real HTTP/network
             # errors are NOT retried here — they go straight to the circuit breaker.
             _step_aborted = False
+            _turns_before_step = len(session.turns)
             _transient_retry_idx = 0
             while True:
                 try:
@@ -510,6 +511,7 @@ class AttackExecutor:
                 if (
                     _is_step_transient
                     and not _client_handles_transient
+                    and not _turns_before_step
                     and _transient_retry_idx < len(TRANSIENT_ERROR_RETRY_DELAYS)
                 ):
                     delay_s = TRANSIENT_ERROR_RETRY_DELAYS[_transient_retry_idx]

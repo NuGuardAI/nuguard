@@ -454,7 +454,29 @@ class RedteamV2Orchestrator:
             request_timeout=self.settings.request_timeout,
         )
         canary = self._build_canary()
-        static_exec = self._build_static_executor(client, canary)
+        app_domain, allowed_topics = self._build_happy_path_context()
+
+        # Build a DiscoveredProfile from recon so the DISCOVER golden-data cache
+        # is pre-seeded.  This lets the executor skip repeat DISCOVER requests
+        # for chains targeting the same agent node, and ensures session.turns > 0
+        # after the WARMUP so content-filter transient responses are not retried.
+        pre_scan_profile: Any = None
+        if getattr(recon, "has_user_data", False):
+            from nuguard.common.discovery import DiscoveredProfile
+            pre_scan_profile = DiscoveredProfile(
+                customer_name=getattr(recon, "user_name", ""),
+                ids=list(getattr(recon, "user_ids", [])),
+                entity_map=dict(getattr(recon, "entity_map", {})),
+                raw_response="\n---\n".join(getattr(recon, "disclosures", [])),
+            )
+
+        static_exec = self._build_static_executor(
+            client,
+            canary,
+            app_domain=app_domain,
+            allowed_topics=allowed_topics,
+            pre_scan_profile=pre_scan_profile,
+        )
         guided_exec = self._build_guided_executor(client, canary)
 
         chat_path = getattr(recon, "chat_path", self.chat_path)
@@ -563,6 +585,7 @@ class RedteamV2Orchestrator:
             timeout=request_timeout,
             chat_payload_extras=self.chat_payload_extras or None,
             max_concurrent_requests=self.settings.max_concurrent_requests,
+            max_transient_hold_seconds=self.settings.max_transient_hold_seconds,
         )
 
     def _build_canary(self) -> Any:
@@ -571,7 +594,42 @@ class RedteamV2Orchestrator:
         cfg = self.canary_config or CanaryConfig()
         return CanaryScanner(cfg)
 
-    def _build_static_executor(self, client: Any, canary: Any) -> Any:
+    def _build_happy_path_context(self) -> tuple[str, list[str]]:
+        """Return (app_domain, allowed_topics) for the per-chain WARMUP opener.
+
+        Mirrors the v1 orchestrator's ``_build_happy_path_context``.  Without
+        these values the executor's ``has_domain_context`` guard evaluates to
+        False and WARMUP is silently skipped, meaning the very first target
+        request is already an adversarial payload — which the backend's content
+        filter catches and returns as "having difficulty connecting", triggering
+        the in-semaphore retry loop.
+        """
+        from nuguard.sbom.models import AiSbomDocument
+
+        app_name = ""
+        use_case = ""
+        sbom = self.sbom
+        if isinstance(sbom, AiSbomDocument) and sbom.summary:
+            app_name = (getattr(sbom.summary, "application_name", "") or "").strip()
+            use_case = (getattr(sbom.summary, "use_case", "") or "").strip()
+        if app_name and use_case:
+            app_domain = f"{app_name} — {use_case[:160]}"
+        else:
+            app_domain = app_name or use_case[:160]
+        allowed_topics: list[str] = []
+        if self.policy:
+            allowed_topics = [t for t in (self.policy.allowed_topics or []) if t]
+        return app_domain, allowed_topics
+
+    def _build_static_executor(
+        self,
+        client: Any,
+        canary: Any,
+        *,
+        app_domain: str = "",
+        allowed_topics: list[str] | None = None,
+        pre_scan_profile: Any = None,
+    ) -> Any:
         from nuguard.redteam.executor.executor import AttackExecutor
         from nuguard.sbom.models import AiSbomDocument
 
@@ -583,6 +641,9 @@ class RedteamV2Orchestrator:
             eval_llm=self.eval_llm,
             mutation_llm=self.redteam_llm,
             sbom=sbom,
+            app_domain=app_domain,
+            allowed_topics=allowed_topics or [],
+            pre_scan_profile=pre_scan_profile,
             turn_delay_seconds=self.settings.turn_delay_seconds,
         )
 

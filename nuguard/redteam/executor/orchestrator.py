@@ -470,7 +470,7 @@ class RedteamOrchestrator:
         verbose: bool = False,
         credentials: dict[str, str] | None = None,
         scenario_timeout: float = 180.0,
-        turn_delay_seconds: float = 0.0,
+        turn_delay_seconds: float = 5.0,
         scenario_delay_seconds: float = 0.0,
         similar_miss_threshold: int = 4,
         skip_discovery: bool = False,

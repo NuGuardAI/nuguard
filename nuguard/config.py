@@ -169,13 +169,13 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         elif "llm" in policy_val:
             flat["policy_use_llm"] = bool(policy_val["llm"])
 
-    # LLM section
+    # LLM section — skip keys whose env-var interpolation produced None (var not set)
     llm = data.get("llm", {}) or {}
-    if "model" in llm:
+    if llm.get("model") is not None:
         flat["litellm_model"] = llm["model"]
-    if "api_key" in llm:
+    if llm.get("api_key") is not None:
         flat["litellm_api_key"] = llm["api_key"]
-    if "api_base" in llm:
+    if llm.get("api_base") is not None:
         flat["litellm_api_base"] = llm["api_base"]
 
     # Database section
@@ -318,6 +318,8 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_turn_delay_seconds"] = float(redteam["turn_delay_seconds"])
     if "max_concurrent_requests" in redteam:
         flat["redteam_max_concurrent_requests"] = int(redteam["max_concurrent_requests"])
+    if "max_transient_hold_seconds" in redteam:
+        flat["redteam_max_transient_hold_seconds"] = float(redteam["max_transient_hold_seconds"])
     if "scenario_delay_seconds" in redteam:
         flat["redteam_scenario_delay_seconds"] = float(redteam["scenario_delay_seconds"])
     if "guided_mutation_mode" in redteam:
@@ -363,22 +365,22 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
                 finding_triggers["any_inject_success"]
             )
 
-    # Redteam LLM section
+    # Redteam LLM section — skip keys whose env-var interpolation produced None
     redteam_llm = redteam.get("llm", {}) or {}
-    if "model" in redteam_llm:
+    if redteam_llm.get("model") is not None:
         flat["redteam_llm_model"] = redteam_llm["model"]
-    if "api_key" in redteam_llm:
+    if redteam_llm.get("api_key") is not None:
         flat["redteam_llm_api_key"] = redteam_llm["api_key"]
-    if "api_base" in redteam_llm:
+    if redteam_llm.get("api_base") is not None:
         flat["redteam_llm_api_base"] = redteam_llm["api_base"]
 
-    # Eval LLM section
+    # Eval LLM section — skip keys whose env-var interpolation produced None
     redteam_eval_llm = redteam.get("eval_llm", {}) or {}
-    if "model" in redteam_eval_llm:
+    if redteam_eval_llm.get("model") is not None:
         flat["redteam_eval_llm_model"] = redteam_eval_llm["model"]
-    if "api_key" in redteam_eval_llm:
+    if redteam_eval_llm.get("api_key") is not None:
         flat["redteam_eval_llm_api_key"] = redteam_eval_llm["api_key"]
-    if "api_base" in redteam_eval_llm:
+    if redteam_eval_llm.get("api_base") is not None:
         flat["redteam_eval_llm_api_base"] = redteam_eval_llm["api_base"]
 
     # Behavior section — shared target block keys are the baseline; behavior.* overrides them
@@ -754,12 +756,22 @@ class RedteamV2Settings(BaseModel):
     # redteam.concurrency in nuguard.yaml. Lower for rate-limited targets.
     concurrency: int = 3
     # Inter-step pause in seconds between HTTP requests within a single chain.
+    # Default 5 s gives the target's LLM backend time to recover between turns,
+    # reducing transient errors on quota-constrained deployments.
     # Maps from redteam.turn_delay_seconds in nuguard.yaml.
-    turn_delay_seconds: float = 0.0
+    turn_delay_seconds: float = 5.0
     # Maximum concurrent HTTP requests to the target across all objectives.
     # 0 = unlimited. Set to 1 to fully serialise target calls (e.g. low Azure
     # OpenAI quota).  Maps from redteam.max_concurrent_requests in nuguard.yaml.
     max_concurrent_requests: int = 1
+    # Maximum total seconds to hold the HTTP semaphore while retrying transient
+    # errors on the first request of a new chain.  After this limit, the
+    # semaphore is released so other chains can proceed (the last transient
+    # response is returned to the caller).  This prevents one chain from
+    # monopolising the semaphore for the full objective_timeout when the cause
+    # is systemic (e.g. shared Azure OpenAI quota contention).
+    # Maps from redteam.max_transient_hold_seconds in nuguard.yaml.
+    max_transient_hold_seconds: float = 300.0
 
 
 class NuGuardConfig(BaseSettings):
@@ -1061,7 +1073,7 @@ class NuGuardConfig(BaseSettings):
         ),
     )
     redteam_turn_delay_seconds: float = Field(
-        default=0.0,
+        default=5.0,
         ge=0.0,
         description=(
             "Inter-turn pause in seconds to avoid 429s on the target "
@@ -1075,6 +1087,16 @@ class NuGuardConfig(BaseSettings):
             "Maximum concurrent HTTP requests to the target across all parallel "
             "scenarios (yaml: redteam.max_concurrent_requests). "
             "0 = unlimited; 1 = fully serialised (safest for low-quota Azure apps)."
+        ),
+    )
+    redteam_max_transient_hold_seconds: float = Field(
+        default=300.0,
+        ge=0.0,
+        description=(
+            "Maximum total seconds to hold the HTTP semaphore while retrying transient "
+            "errors on the first request of a new chain. After this limit the semaphore "
+            "is released so other chains can proceed "
+            "(yaml: redteam.max_transient_hold_seconds)."
         ),
     )
     redteam_scenario_delay_seconds: float = Field(
@@ -1406,6 +1428,7 @@ class NuGuardConfig(BaseSettings):
             concurrency=self.redteam_concurrency,
             turn_delay_seconds=self.redteam_turn_delay_seconds,
             max_concurrent_requests=self.redteam_max_concurrent_requests,
+            max_transient_hold_seconds=self.redteam_max_transient_hold_seconds,
         )
 
     model_config = SettingsConfigDict(

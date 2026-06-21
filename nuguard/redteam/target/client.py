@@ -114,6 +114,7 @@ class TargetAppClient:
         framework_adapter: "FrameworkAdapter | None" = None,
         chat_payload_extras: dict[str, Any] | None = None,
         max_concurrent_requests: int = 0,
+        max_transient_hold_seconds: float = 300.0,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self._chat_path = chat_path
@@ -163,6 +164,11 @@ class TargetAppClient:
             if max_concurrent_requests > 0
             else None
         )
+        # Max total seconds to hold the semaphore during transient-error retries
+        # on the first request of a new chain.  After this limit the semaphore is
+        # released so other chains can proceed rather than blocking for the full
+        # objective timeout.
+        self._max_transient_hold_seconds: float = max(0.0, max_transient_hold_seconds)
         # Optional framework-specific adapter (e.g. Google ADK).  When set,
         # send() delegates body construction and response parsing to the adapter.
         self._framework_adapter: FrameworkAdapter | None = framework_adapter
@@ -362,19 +368,19 @@ class TargetAppClient:
         """Send with in-semaphore transient-error retries (holds the semaphore during waits).
 
         Retries :data:`~nuguard.common.transport.RETRIABLE_OUTCOMES` (app-transient
-        phrases AND HTTP 502/503/504 gateway errors) **indefinitely** with capped backoff,
-        all while holding the semaphore.
+        phrases AND HTTP 502/503/504 gateway errors) with capped backoff, all while
+        holding the semaphore.  Retrying stops when:
 
-        The semaphore is held for the entire recovery window so no other chain can fire
-        requests while the target is cold-starting or rate-limited.  Retrying stops when:
-
-        * The target returns a non-retriable response (success or hard error) → ``return``.
-        * The objective timeout fires (``asyncio.CancelledError`` from ``wait_for``) →
-          re-raised so the scheduler records the objective as ``"timeout"``.
+        * The target returns a non-retriable response → ``return``.
+        * ``_max_transient_hold_seconds`` of total wait time has elapsed → releases
+          the semaphore so other chains can proceed (prevents one chain from blocking
+          all others for the full objective timeout when the cause is systemic, e.g.
+          shared Azure OpenAI quota contention between nuguard and the target app).
+        * The objective timeout fires (``asyncio.CancelledError``) → re-raised so the
+          scheduler records the objective as ``"timeout"``.
 
         The backoff schedule is :data:`~nuguard.common.rate_limit.TRANSIENT_ERROR_RETRY_DELAYS`
-        for the first N attempts, then the last (largest) delay is reused for all subsequent
-        attempts until the target recovers or the caller is cancelled.
+        for the first N attempts, then the last (largest) delay caps all subsequent waits.
         """
         from nuguard.common.rate_limit import TRANSIENT_ERROR_RETRY_DELAYS
         from nuguard.common.transport import RETRIABLE_OUTCOMES, classify_transport
@@ -382,7 +388,9 @@ class TargetAppClient:
         delays = list(TRANSIENT_ERROR_RETRY_DELAYS)
         cap_delay = delays[-1] if delays else 60.0
         attempt = 0
-        text, calls = "", []
+        total_waited = 0.0
+        text: str = ""
+        calls: list[dict] = []
 
         while True:
             text, calls = await self._send_impl(payload, session)
@@ -402,6 +410,18 @@ class TargetAppClient:
                 )
                 return text, calls
 
+            # Release the semaphore after holding it for too long.  Systemic issues
+            # (e.g. shared Azure OpenAI quota contention) will not resolve with more
+            # retries from this chain; other chains deserve a chance to make progress.
+            if self._max_transient_hold_seconds > 0 and total_waited >= self._max_transient_hold_seconds:
+                _log.warning(
+                    "Transient errors persisted after %.0fs of in-semaphore retries "
+                    "(max_transient_hold=%.0fs) — releasing semaphore so other chains "
+                    "can proceed. Last response was retriable but target did not recover.",
+                    total_waited, self._max_transient_hold_seconds,
+                )
+                return text, calls
+
             delay = delays[attempt] if attempt < len(delays) else cap_delay
             attempt += 1
             _log.info(
@@ -411,6 +431,7 @@ class TargetAppClient:
             )
             try:
                 await asyncio.sleep(delay)
+                total_waited += delay
             except asyncio.CancelledError:
                 # Objective timeout fired during the sleep — release the semaphore
                 # and propagate so the scheduler records this as "timeout".
