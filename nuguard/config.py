@@ -747,7 +747,9 @@ class RedteamV2Settings(BaseModel):
     request_timeout: float = 60.0
     # Per-objective wall-clock timeout in seconds. Objectives that exceed this
     # limit are cancelled and recorded as 'timeout'. 0 disables the timeout.
-    objective_timeout: float = 120.0
+    # Default is 600 s to accommodate the in-semaphore transient-retry loop,
+    # which can hold the semaphore for several minutes while the target cold-starts.
+    objective_timeout: float = 600.0
     # Maximum number of objectives running in parallel. Maps from
     # redteam.concurrency in nuguard.yaml. Lower for rate-limited targets.
     concurrency: int = 3
@@ -967,11 +969,12 @@ class NuGuardConfig(BaseSettings):
         ),
     )
     redteam_scenario_timeout: float = Field(
-        default=180.0,
+        default=600.0,
         description=(
             "Per-scenario wall-clock timeout in seconds (yaml: redteam.scenario_timeout). "
             "Scenarios that exceed this limit are cancelled and recorded as 'timeout'. "
-            "0 disables the timeout."
+            "0 disables the timeout. Default is 600 s to accommodate in-semaphore "
+            "transient-retry loops for slow cold-starting targets."
         ),
     )
     redteam_similar_miss_threshold: int = Field(

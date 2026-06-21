@@ -339,6 +339,12 @@ class TargetAppClient:
     async def send(self, payload: str, session: AttackSession) -> tuple[str, list[dict]]:
         """Send a prompt payload to the target and return (response_text, tool_calls).
 
+        When ``max_concurrent_requests`` is set (semaphore mode), transient app
+        errors ("having difficulty connecting") are retried **inside** the semaphore
+        scope so no other concurrent chain can send while the target is recovering.
+        This prevents the thundering-herd pattern where multiple chains hammer a
+        cold-starting Azure Container App during the retry window.
+
         Raises:
             TargetUnavailableError: after MAX_CONSECUTIVE_ERRORS consecutive 5xx
                 or network errors on the chat endpoint.  4xx responses (validation
@@ -347,8 +353,60 @@ class TargetAppClient:
         """
         if self._request_sem is not None:
             async with self._request_sem:
-                return await self._send_impl(payload, session)
+                return await self._send_with_transient_retry(payload, session)
         return await self._send_impl(payload, session)
+
+    async def _send_with_transient_retry(
+        self, payload: str, session: AttackSession
+    ) -> tuple[str, list[dict]]:
+        """Send with in-semaphore transient-error retries (holds the semaphore during waits).
+
+        Retries :data:`~nuguard.common.transport.RETRIABLE_OUTCOMES` (app-transient
+        phrases AND HTTP 502/503/504 gateway errors) **indefinitely** with capped backoff,
+        all while holding the semaphore.
+
+        The semaphore is held for the entire recovery window so no other chain can fire
+        requests while the target is cold-starting or rate-limited.  Retrying stops when:
+
+        * The target returns a non-retriable response (success or hard error) → ``return``.
+        * The objective timeout fires (``asyncio.CancelledError`` from ``wait_for``) →
+          re-raised so the scheduler records the objective as ``"timeout"``.
+
+        The backoff schedule is :data:`~nuguard.common.rate_limit.TRANSIENT_ERROR_RETRY_DELAYS`
+        for the first N attempts, then the last (largest) delay is reused for all subsequent
+        attempts until the target recovers or the caller is cancelled.
+        """
+        from nuguard.common.rate_limit import TRANSIENT_ERROR_RETRY_DELAYS
+        from nuguard.common.transport import RETRIABLE_OUTCOMES, classify_transport
+
+        delays = list(TRANSIENT_ERROR_RETRY_DELAYS)
+        cap_delay = delays[-1] if delays else 60.0
+        attempt = 0
+        text, calls = "", []
+
+        while True:
+            text, calls = await self._send_impl(payload, session)
+            if classify_transport(text) not in RETRIABLE_OUTCOMES:
+                return text, calls
+
+            delay = delays[attempt] if attempt < len(delays) else cap_delay
+            attempt += 1
+            _log.info(
+                "Retriable transport error — waiting %.0fs before retry #%d "
+                "[semaphore held; no other chains will send during this window]",
+                delay, attempt,
+            )
+            try:
+                await asyncio.sleep(delay)
+            except asyncio.CancelledError:
+                # Objective timeout fired during the sleep — release the semaphore
+                # and propagate so the scheduler records this as "timeout".
+                _log.warning(
+                    "In-semaphore transient retry cancelled (objective timeout) "
+                    "after %d attempt(s); target may still be recovering.",
+                    attempt,
+                )
+                raise
 
     async def _send_impl(self, payload: str, session: AttackSession) -> tuple[str, list[dict]]:
         """Inner send implementation (called with or without the request semaphore)."""

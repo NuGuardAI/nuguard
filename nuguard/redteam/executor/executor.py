@@ -501,7 +501,17 @@ class AttackExecutor:
                     and not result.response.startswith(("[HTTP ", "[REQUEST_ERROR:"))
                     and not is_rate_limited(result.response)
                 )
-                if _is_step_transient and _transient_retry_idx < len(TRANSIENT_ERROR_RETRY_DELAYS):
+                # Skip executor-level retry when the client's semaphore already
+                # handled transient retries inside send() (v2 semaphore mode).
+                # The executor retry is only active when the client has no semaphore.
+                _client_handles_transient = (
+                    getattr(self._client, "_request_sem", None) is not None
+                )
+                if (
+                    _is_step_transient
+                    and not _client_handles_transient
+                    and _transient_retry_idx < len(TRANSIENT_ERROR_RETRY_DELAYS)
+                ):
                     delay_s = TRANSIENT_ERROR_RETRY_DELAYS[_transient_retry_idx]
                     _transient_retry_idx += 1
                     _log.info(
@@ -616,7 +626,8 @@ class AttackExecutor:
                     if attempt >= self.MAX_MUTATIONS - 1:
                         break
 
-        chain.status = "completed"
+        if chain.status != "aborted":
+            chain.status = "completed"
         return chain, results
 
     async def _send_happy_path_warmup(

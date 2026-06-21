@@ -67,10 +67,13 @@ class ObjectiveOutcome:
     step_count: int = 0
     reason: str = ""
     step_results: list[Any] = field(default_factory=list)
-    # Set when every adversarial step returned an HTTP 4xx response (e.g. 405
-    # Method Not Allowed). Signals a target configuration problem rather than
-    # a genuine security result and is used by the scheduler to abort early.
+    # Set when every adversarial step returned a transport-level error (HTTP
+    # 4xx/5xx, [REQUEST_ERROR:], or app-transient) with no success signals.
+    # Used by the scheduler to abort remaining phases and avoid false negatives.
     target_transport_error: bool = False
+    # Dominant TransportOutcome value (e.g. "http_4xx", "app_transient") when
+    # target_transport_error=True; used by the scheduler for specific reason strings.
+    target_transport_class: str = ""
 
 
 @dataclass
@@ -416,17 +419,31 @@ class ObjectiveRunner:
             if hit and not evidence and response_text:
                 evidence.append(str(response_text)[:200])
 
-        # Detect target misconfiguration: all adversarial steps returned HTTP
-        # 4xx or 5xx with no successful responses.  4xx (e.g. 405) = wrong
-        # endpoint/method; 5xx = endpoint exists but crashes on every request
-        # (auth failure, app bug, or downstream LLM unavailable).  Both signal
-        # that the endpoint is not usable rather than actively defending.
-        def _is_transport_error(resp: str) -> bool:
-            return resp.startswith("[HTTP 4") or resp.startswith("[HTTP 5")
+        # Detect target unavailability: all adversarial steps returned a
+        # transport-level error (HTTP 4xx/5xx, REQUEST_ERROR, app-transient)
+        # with no success signals.  This signals the target is not usable
+        # for this objective — not that it defended against the attack.
+        from collections import Counter
 
+        from nuguard.common.transport import TransportOutcome, classify_transport
+
+        def _is_transport_error(resp: str) -> bool:
+            return classify_transport(resp) != TransportOutcome.OK
+
+        transport_class_counts: Counter[str] = Counter()
         all_transport_error = bool(adversarial) and not succeeded and all(
             _is_transport_error(str(getattr(r, "response", "")))
             for r in adversarial
+        )
+        if all_transport_error:
+            for r in adversarial:
+                outcome = classify_transport(str(getattr(r, "response", "")))
+                transport_class_counts[outcome.value] += 1
+
+        dominant_class = (
+            transport_class_counts.most_common(1)[0][0]
+            if transport_class_counts
+            else ""
         )
 
         return ObjectiveOutcome(
@@ -440,6 +457,7 @@ class ObjectiveRunner:
             step_count=len(adversarial),
             step_results=list(results),
             target_transport_error=all_transport_error,
+            target_transport_class=dominant_class,
         )
 
     def _summarize_guided(

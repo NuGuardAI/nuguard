@@ -160,20 +160,38 @@ class PhasedScheduler:
                 critical_seen = True
 
             # Abort remaining phases when every completed objective in this
-            # phase failed due to HTTP 4xx transport errors (e.g. 405 Method
-            # Not Allowed), which indicates the target endpoint is
-            # misconfigured — not that the target defended against the attack.
+            # phase failed with a transport-level error (HTTP 4xx/5xx,
+            # REQUEST_ERROR, app-transient). This indicates the target
+            # endpoint is unreachable or misconfigured, not that it defended.
             completed_phase = [r for r in phase_results if r.status == "completed"]
             transport_errors = [
                 r for r in completed_phase
                 if getattr(r.result, "target_transport_error", False)
             ]
             if completed_phase and len(transport_errors) == len(completed_phase):
+                # Pick the most-common transport class across all errored objectives
+                # to emit a specific, actionable abort reason.
+                from collections import Counter
+                _class_counts: Counter[str] = Counter(
+                    getattr(r.result, "target_transport_class", "") or "http_4xx"
+                    for r in transport_errors
+                )
+                dominant = _class_counts.most_common(1)[0][0] if _class_counts else "http_4xx"
+                _ABORT_REASONS: dict[str, str] = {
+                    "http_4xx": "endpoint misconfigured (HTTP 4xx — wrong path or method)",
+                    "http_5xx": "target app error (HTTP 500 — internal failure)",
+                    "http_gateway_error": "target temporarily unavailable (HTTP 502/503/504)",
+                    "request_error": "network/connectivity error (DNS or TCP failure)",
+                    "rate_limit": "rate limited (429 exhausted all retries)",
+                    "app_transient": "app transient error (backend cold start)",
+                }
+                abort_reason = _ABORT_REASONS.get(dominant, f"transport error ({dominant})")
                 _log.error(
-                    "All %d objectives in phase %s returned HTTP 4xx/5xx (transport error) — "
-                    "target endpoint appears misconfigured or unavailable. Aborting remaining phases.",
+                    "All %d objectives in phase %s returned transport errors (%s) — "
+                    "aborting remaining phases.",
                     len(transport_errors),
                     phase,
+                    abort_reason,
                 )
                 remaining_phases = sorted(k for k in by_phase if k > phase)
                 for remaining_phase in remaining_phases:
@@ -184,8 +202,8 @@ class PhasedScheduler:
                                 phase=remaining_phase,
                                 status="skipped_transport_error",
                                 reason=(
-                                    f"target returned HTTP 4xx for all objectives "
-                                    f"in phase {phase} — endpoint misconfigured"
+                                    f"all objectives in phase {phase} failed: "
+                                    f"{abort_reason}"
                                 ),
                             )
                         )
