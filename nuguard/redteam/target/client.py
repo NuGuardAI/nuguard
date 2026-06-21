@@ -389,10 +389,23 @@ class TargetAppClient:
             if classify_transport(text) not in RETRIABLE_OUTCOMES:
                 return text, calls
 
+            # If the session already has prior turns, the target backend is up
+            # and responding — only this specific payload triggered the backend's
+            # error fallback (e.g. Azure OpenAI content filter).  Retrying with
+            # the same adversarial payload will always get the same block, so
+            # return immediately and let the executor record it as a miss.
+            if session.turns:
+                _log.debug(
+                    "Transient response on turn %d — treating as content-filter "
+                    "block (backend is healthy), not cold-start; skipping retry.",
+                    len(session.turns) + 1,
+                )
+                return text, calls
+
             delay = delays[attempt] if attempt < len(delays) else cap_delay
             attempt += 1
             _log.info(
-                "Retriable transport error — waiting %.0fs before retry #%d "
+                "Retriable transport error on first request — waiting %.0fs before retry #%d "
                 "[semaphore held; no other chains will send during this window]",
                 delay, attempt,
             )
