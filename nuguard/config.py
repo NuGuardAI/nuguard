@@ -754,12 +754,11 @@ class RedteamV2Settings(BaseModel):
     objective_timeout: float = 600.0
     # Maximum number of objectives running in parallel. Maps from
     # redteam.concurrency in nuguard.yaml. Lower for rate-limited targets.
-    concurrency: int = 3
+    concurrency: int = 5
     # Inter-step pause in seconds between HTTP requests within a single chain.
-    # Default 5 s gives the target's LLM backend time to recover between turns,
-    # reducing transient errors on quota-constrained deployments.
+    # Set > 0 only when the target's LLM backend needs rate-limit breathing room.
     # Maps from redteam.turn_delay_seconds in nuguard.yaml.
-    turn_delay_seconds: float = 5.0
+    turn_delay_seconds: float = 0.0
     # Maximum concurrent HTTP requests to the target across all objectives.
     # 0 = unlimited. Set to 1 to fully serialise target calls (e.g. low Azure
     # OpenAI quota).  Maps from redteam.max_concurrent_requests in nuguard.yaml.

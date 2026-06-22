@@ -198,6 +198,8 @@ redteam:
   verify_findings: false
 
   # Guided adversarial conversations using ConversationDirector
+  concurrency: 5                     # parallel scenarios (raised from default 3 for throughput)
+  turn_delay_seconds: 0             # no inter-step sleep (models tolerate rapid requests)
   guided_conversations: true        # enable adaptive multi-turn attacks
   guided_max_turns: 8               # upper-bound cap on turns per guided scenario.
                                     # Scenario builders pick 8–12 by default; this
