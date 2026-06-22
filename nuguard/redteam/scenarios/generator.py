@@ -2021,6 +2021,8 @@ class ScenarioGenerator:
                     agent_name=agent_name,
                     restricted_topic=restricted_topic,
                     new_rule=new_rule[:200],
+                    extra_restricted_topics=[t for t in blocked_topics[1:] if t != restricted_topic],
+                    extra_restricted_actions=blocked_actions,
                 )
             )
 
