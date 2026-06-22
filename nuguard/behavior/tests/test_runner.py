@@ -185,7 +185,7 @@ async def test_run_policy_violation_creates_finding():
     violation_result = ScenarioResult(
         scenario_id="test-id",
         scenario_name="boundary_test",
-        scenario_type="invariant_probe",
+        scenario_type="guardrail_probe",
         verdicts=[{"overall_score": 1.5, "verdict": "FAIL", "agents_mentioned": [], "tools_mentioned": [], "deviations": [{"deviation_type": "policy_violation", "description": "gambling content returned", "severity": "HIGH"}]}],
         overall_score=1.5,
         coverage_pct=0.0,

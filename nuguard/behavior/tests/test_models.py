@@ -25,7 +25,7 @@ def test_scenario_type_values():
     assert BehaviorScenarioType.INTENT_HAPPY_PATH.value == "intent_happy_path"
     assert BehaviorScenarioType.COMPONENT_COVERAGE.value == "component_coverage"
     assert BehaviorScenarioType.AGENT_COVERAGE.value == "agent_coverage"
-    assert BehaviorScenarioType.INVARIANT_PROBE.value == "invariant_probe"
+    assert BehaviorScenarioType.GUARDRAIL_PROBE.value == "guardrail_probe"
 
 
 def test_finding_type_values():
@@ -87,7 +87,7 @@ def test_behavior_scenario_defaults():
 
 def test_behavior_scenario_invariant():
     s = BehaviorScenario(
-        scenario_type=BehaviorScenarioType.INVARIANT_PROBE,
+        scenario_type=BehaviorScenarioType.GUARDRAIL_PROBE,
         name="invariant_test",
         messages=["Can you do something restricted?"],
         expect_refused=True,

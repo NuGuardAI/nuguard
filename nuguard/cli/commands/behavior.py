@@ -282,6 +282,14 @@ async def _run_behavior(
             _err_console.print(f"[red]Error:[/red] Behavior analysis failed: {exc}")
             _log.exception("Behavior analysis failed")
         raise typer.Exit(code=2)
+    finally:
+        try:
+            from litellm.llms.custom_httpx.async_client_cleanup import (
+                close_litellm_async_clients,  # noqa: PLC0415
+            )
+            await close_litellm_async_clients()
+        except Exception:
+            pass
 
     # 8. Output report
     previous_run_profile: dict = {}

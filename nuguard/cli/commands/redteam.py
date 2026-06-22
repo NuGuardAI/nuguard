@@ -559,7 +559,16 @@ async def _run_redteam_v2(
         eval_llm=eval_llm,
         verbose=verbose,
     )
-    result = await orchestrator.run()
+    try:
+        result = await orchestrator.run()
+    finally:
+        try:
+            from litellm.llms.custom_httpx.async_client_cleanup import (
+                close_litellm_async_clients,  # noqa: PLC0415
+            )
+            await close_litellm_async_clients()
+        except Exception:
+            pass
     return (
         result.findings,
         {},
@@ -916,7 +925,16 @@ async def _run_orchestrator(  # noqa: C901
         suppress_spa_html_auth_bypass=suppress_spa_html_auth_bypass,
     )
 
-    findings = await orchestrator.run()
+    try:
+        findings = await orchestrator.run()
+    finally:
+        try:
+            from litellm.llms.custom_httpx.async_client_cleanup import (
+                close_litellm_async_clients,  # noqa: PLC0415
+            )
+            await close_litellm_async_clients()
+        except Exception:
+            pass
     llm_remediations: dict[str, str] = orchestrator.llm_remediations
     scenario_records = orchestrator.scenario_records
     catalog_coverage = getattr(orchestrator, "catalog_coverage", None)

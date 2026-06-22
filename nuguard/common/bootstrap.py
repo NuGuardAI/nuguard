@@ -6,6 +6,7 @@ decide whether to abort.
 
 from __future__ import annotations
 
+import asyncio
 import time
 import uuid
 
@@ -19,8 +20,18 @@ from nuguard.redteam.target.canary import CanaryConfig
 
 logger = get_logger(__name__)
 
-# Timeout for the single bootstrap health-check request (intentionally short)
-BOOTSTRAP_TIMEOUT = 15.0
+# Timeout for a single bootstrap health-check request.
+# 30 s accommodates serverless targets (Azure Container Apps, AWS Lambda) whose
+# first request is held while the container cold-starts.
+BOOTSTRAP_TIMEOUT = 30.0
+
+# Retries for transient target_unavailable results (connection refused, timeout,
+# 502/503/504).  Cold-start containers can fail the first 1-2 probes; retrying
+# with backoff avoids a spurious "target is unreachable" hard abort.
+BOOTSTRAP_STARTUP_RETRIES = 3
+
+# Backoff base (seconds).  Retry delays: 2 s, 4 s, 8 s.
+_BACKOFF_BASE = 2.0
 
 
 class AuthBootstrapper:
@@ -48,6 +59,7 @@ class AuthBootstrapper:
         run_id: str | None = None,
         timeout: float | None = None,
         probe_payload_extras: dict[str, object] | None = None,
+        startup_retries: int | None = None,
     ) -> None:
         self._target_url = target_url.rstrip("/")
         self._endpoint = endpoint
@@ -55,6 +67,7 @@ class AuthBootstrapper:
         self._canary = canary_config
         self._run_id = run_id or str(uuid.uuid4())
         self._timeout = timeout if timeout is not None else BOOTSTRAP_TIMEOUT
+        self._startup_retries = startup_retries if startup_retries is not None else BOOTSTRAP_STARTUP_RETRIES
         self._probe_payload_extras: dict[str, object] = probe_payload_extras or {}
         # Initialised during run() — exposed so behavior/redteam can share it
         self._session: AuthSession | None = None
@@ -216,6 +229,36 @@ class AuthBootstrapper:
         return report
 
     async def _check_one(
+        self,
+        identity: str,
+        headers: dict[str, str],
+        auth_type: str,
+    ) -> CredentialCheckResult:
+        """Probe the endpoint with retry/backoff for transient target_unavailable results.
+
+        Retries up to ``self._startup_retries`` times when the target returns a
+        transient failure (connection error, timeout, 502/503/504).  Auth failures
+        (401/403) are never retried — they indicate a credential problem, not a
+        cold-start transient.  Backoff schedule: 2 s, 4 s, 8 s, …
+        """
+        result = await self._probe_once(identity, headers, auth_type)
+        for attempt in range(self._startup_retries):
+            if result.status != "target_unavailable":
+                break
+            wait = _BACKOFF_BASE * (2 ** attempt)  # 2 s, 4 s, 8 s
+            logger.info(
+                "bootstrap: target_unavailable (attempt %d/%d) — "
+                "cold-start retry in %.0f s: %s",
+                attempt + 1,
+                self._startup_retries + 1,
+                wait,
+                result.error_detail,
+            )
+            await asyncio.sleep(wait)
+            result = await self._probe_once(identity, headers, auth_type)
+        return result
+
+    async def _probe_once(
         self,
         identity: str,
         headers: dict[str, str],

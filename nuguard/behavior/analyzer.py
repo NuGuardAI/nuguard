@@ -238,7 +238,7 @@ class BehaviorAnalyzer:
                 scenario_results = run_result.scenario_results
 
                 # FP-2: Downgrade BA-008 HITL static findings to LOW when the
-                # corresponding dynamic invariant probe passed.  A passing probe
+                # corresponding dynamic guardrail probe passed.  A passing probe
                 # confirms the agent handles the HITL trigger in its runtime
                 # behaviour even though no formal GUARDRAIL node exists in the SBOM.
                 passed_scenario_names = {

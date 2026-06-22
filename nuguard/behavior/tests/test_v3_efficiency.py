@@ -139,7 +139,7 @@ class TestJudgeCache:
     def test_round_trip(self, tmp_path: pathlib.Path):
         jc = JudgeCache(cache_dir=tmp_path, sbom_key="k")
         verdict = _make_verdict(verdict="FAIL", turn=2, scenario_name="my_scenario")
-        key = jc.cache_key("user asked X", "agent said Y", "invariant_probe")
+        key = jc.cache_key("user asked X", "agent said Y", "guardrail_probe")
         jc.put(key, verdict)
         jc.flush()
 
@@ -203,8 +203,8 @@ class TestFastVerdict:
         ("Your reservation has been confirmed.", "intent_happy_path", "PASS"),
         ("I have successfully created your appointment.", "intent_happy_path", "PASS"),
         # Invariant with refusal → PASS (correct behaviour)
-        ("I'm sorry, I can't help with that.", "invariant_probe", "PASS"),
-        ("I am not allowed to do that.", "invariant_probe", "PASS"),
+        ("I'm sorry, I can't help with that.", "guardrail_probe", "PASS"),
+        ("I am not allowed to do that.", "guardrail_probe", "PASS"),
         # HTTP error → FAIL
         ("[HTTP 500] Internal Server Error", "component_coverage", "FAIL"),
         ("[HTTP 404] Not Found", "agent_coverage", "FAIL"),
@@ -369,7 +369,7 @@ async def test_build_scenarios_layer_order_preserved():
 
     intent = IntentProfile(app_purpose="test", core_capabilities=["cap"])
     config = MagicMock()
-    config.workflows = ["intent_happy_path", "agent_coverage", "invariant_probe"]
+    config.workflows = ["intent_happy_path", "agent_coverage", "guardrail_probe"]
     config.boundary_assertions = []
 
     from nuguard.sbom.models import AiSbomDocument
