@@ -13,7 +13,7 @@ Track user-facing documentation updates here, especially changes to CLI behavior
 - `login_error` no longer surfaces response body content (status codes and response keys only), preventing sensitive data or token values from leaking into CLI output; full body remains available at debug-level logs.
 - Suppressed a noisy "called before initialize()" warning once `login_flow` fallback is active and expected.
 
-## v0.7.7 - 2026-06-18
+## v0.7.8 - 2026-06-20
 
 ### Added
 - Prepublish sanity workflow profiles and runner guidance for release readiness.
