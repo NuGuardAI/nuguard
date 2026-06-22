@@ -61,7 +61,7 @@ class TargetSessionConfig:
 # ---------------------------------------------------------------------------
 
 def _merge_login_response_extras(
-    session: "AuthSession",
+    session: "AuthSession | None",
     config_extras: dict[str, Any],
 ) -> tuple[dict[str, Any], list[str]]:
     """Merge identity/session fields from the login response into *config_extras*.
@@ -69,7 +69,13 @@ def _merge_login_response_extras(
     Returns ``(merged_extras, notes)`` where *notes* describes what was
     auto-injected.  Explicit config always wins — login-response values only
     fill in fields that are NOT already set.
+
+    ``session`` is ``None`` when bootstrap couldn't establish an auth session
+    (e.g. the user configured auth directly on the chat endpoint instead of an
+    auth endpoint the SBOM declares) — that's not an error, just nothing to merge.
     """
+    if session is None:
+        return dict(config_extras), []
     login_extras = session.login_response_extras()
     if not login_extras:
         return dict(config_extras), []
