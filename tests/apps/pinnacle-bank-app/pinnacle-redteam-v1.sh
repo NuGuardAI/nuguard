@@ -68,11 +68,15 @@ echo "Report:       $SCRIPT_DIR/reports/pinnacle-bank-behavior.md"
 echo "---"
 echo "Running redteam tests ..."
 
-# redteam tests exit 2 when findings are present — expected in testing; treat as non-fatal.
+# redteam exits 2 when findings are present — expected in testing, treat as non-fatal.
+# Exit 1 is a hard error (target unreachable, auth failure, config error) — propagate it.
 uv run nuguard redteam \
   --config "$SCRIPT_DIR/nuguard-azure.yaml" \
   --engine v1 --format markdown \
-  --output "$SCRIPT_DIR/reports/pinnacle-bank-redteam-v1.md" || true
+  --output "$SCRIPT_DIR/reports/pinnacle-bank-redteam-v1.md" || {
+    _exit=$?
+    [[ $_exit -eq 2 ]] || { echo "ERROR: redteam failed (exit $_exit)" >&2; exit $_exit; }
+  }
 
 # Wait for the tee log-capture background process to flush all output before exiting.
 # Without this, the exec > >(tee) pipe may close before the last lines reach the log file.
