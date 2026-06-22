@@ -457,6 +457,10 @@ class ConversationDirector:
         from nuguard.redteam.executor.attribution import ATTRIBUTION_FOOTER
 
         turn_number = len(history) + 1
+        # Request the [nuguard-meta] footer on turn 1 (initial routing) and every
+        # 3rd turn thereafter to catch mid-conversation handoffs in multi-agent
+        # targets, without repeating it on every single turn.
+        _want_attribution = turn_number == 1 or turn_number % 3 == 0
         last_failure = ""
         if history:
             last_failure = classify_failure(history[-1].agent_response)
@@ -513,10 +517,10 @@ class ConversationDirector:
                 timeout=_TIMEOUT_S,
             )
             if raw.startswith("[NUGUARD_CANNED_RESPONSE]"):
-                return self._fallback_turn(turn_number, tactic) + ATTRIBUTION_FOOTER, tactic
+                return self._fallback_turn(turn_number, tactic) + (ATTRIBUTION_FOOTER if _want_attribution else ""), tactic
             message = raw.strip().strip('"\'')
             if message:
-                return message + ATTRIBUTION_FOOTER, tactic
+                return message + (ATTRIBUTION_FOOTER if _want_attribution else ""), tactic
         except asyncio.TimeoutError:
             # Re-raise when an outer scenario-level wait_for is cancelling us
             # (Python 3.12: outer TimeoutError is delivered as TimeoutError, not
@@ -528,7 +532,7 @@ class ConversationDirector:
             _log.warning("next_turn timeout | turn=%d goal=%s", turn_number, self._goal_type.value)
         except Exception as exc:
             _log.warning("next_turn error: %s", exc)
-        return self._fallback_turn(turn_number, tactic) + ATTRIBUTION_FOOTER, tactic
+        return self._fallback_turn(turn_number, tactic) + (ATTRIBUTION_FOOTER if _want_attribution else ""), tactic
 
     async def assess_progress(
         self,
