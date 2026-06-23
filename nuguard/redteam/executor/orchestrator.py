@@ -1435,6 +1435,8 @@ class RedteamOrchestrator:
                                     goal_type_hint=scenario.goal_type.value,
                                 ):
                                     try:
+                                        if _esc_scenario.chain is None:
+                                            continue
                                         _esc_chain, _esc_results = await executor.run(_esc_scenario.chain)
                                         _esc_step_details = self._build_step_details(_esc_results)
                                         _esc_findings = self._build_findings(
@@ -1451,7 +1453,7 @@ class RedteamOrchestrator:
                                     except Exception as _esc_exc:
                                         _log.warning(
                                             "[codegen-esc] escalation chain %s failed: %s",
-                                            _esc_scenario.chain.scenario_type.value, _esc_exc,
+                                            _esc_scenario.chain.scenario_type.value if _esc_scenario.chain else "unknown", _esc_exc,
                                         )
 
                     return (

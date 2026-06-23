@@ -381,7 +381,7 @@ class ObjectiveRunner:
             except Exception as exc:
                 _log.warning(
                     "[codegen-esc] escalation chain %s failed: %s",
-                    esc_scenario.chain.scenario_type.value, exc,
+                    esc_scenario.chain.scenario_type.value if esc_scenario.chain else "unknown", exc,
                 )
                 continue
             if self._verbose:
