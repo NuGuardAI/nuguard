@@ -316,6 +316,8 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_concurrency"] = int(redteam["concurrency"])
     if "turn_delay_seconds" in redteam:
         flat["redteam_turn_delay_seconds"] = float(redteam["turn_delay_seconds"])
+    if "codegen_escalation_enabled" in redteam:
+        flat["redteam_codegen_escalation_enabled"] = bool(redteam["codegen_escalation_enabled"])
     if "max_concurrent_requests" in redteam:
         flat["redteam_max_concurrent_requests"] = int(redteam["max_concurrent_requests"])
     if "max_transient_hold_seconds" in redteam:
@@ -771,6 +773,11 @@ class RedteamV2Settings(BaseModel):
     # is systemic (e.g. shared Azure OpenAI quota contention).
     # Maps from redteam.max_transient_hold_seconds in nuguard.yaml.
     max_transient_hold_seconds: float = 300.0
+    # When True, a confirmed code-generation success (agent writes Python/TS/XML/JSON
+    # when it shouldn't) automatically spawns an escalation chain that uses the
+    # established developer-mode trust channel to probe safeguard removal, data
+    # exfiltration, restricted actions, and tool abuse.
+    codegen_escalation_enabled: bool = True
 
 
 class NuGuardConfig(BaseSettings):
@@ -1077,6 +1084,14 @@ class NuGuardConfig(BaseSettings):
         description=(
             "Inter-turn pause in seconds to avoid 429s on the target "
             "(yaml: redteam.turn_delay_seconds)."
+        ),
+    )
+    redteam_codegen_escalation_enabled: bool = Field(
+        default=True,
+        description=(
+            "When True, a confirmed code-generation success automatically spawns an "
+            "escalation chain probing safeguard removal, data exfiltration, and tool abuse "
+            "(yaml: redteam.codegen_escalation_enabled)."
         ),
     )
     redteam_max_concurrent_requests: int = Field(
@@ -1428,6 +1443,7 @@ class NuGuardConfig(BaseSettings):
             turn_delay_seconds=self.redteam_turn_delay_seconds,
             max_concurrent_requests=self.redteam_max_concurrent_requests,
             max_transient_hold_seconds=self.redteam_max_transient_hold_seconds,
+            codegen_escalation_enabled=self.redteam_codegen_escalation_enabled,
         )
 
     model_config = SettingsConfigDict(

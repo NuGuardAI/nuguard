@@ -317,6 +317,7 @@ def redteam(
             verify_findings=cfg.redteam_verify_findings,
             golden_data=cfg.redteam_golden_data or None,
             suppress_spa_html_auth_bypass=cfg.redteam_suppress_spa_html_auth_bypass,
+            codegen_escalation_enabled=cfg.redteam_codegen_escalation_enabled,
         )
 
     try:
@@ -633,6 +634,7 @@ async def _run_redteam(
     verify_findings: bool = False,
     golden_data: "dict | None" = None,
     suppress_spa_html_auth_bypass: bool = True,
+    codegen_escalation_enabled: bool = True,
 ) -> "tuple[list, dict[str, str], list, str, list[str], Any, int, int, Any, Any, str, str]":
     from nuguard.models.policy import CognitivePolicy
     from nuguard.redteam.target.canary import CanaryConfig
@@ -760,6 +762,7 @@ async def _run_redteam(
                 verify_findings=verify_findings,
                 golden_data=golden_data,
                 suppress_spa_html_auth_bypass=suppress_spa_html_auth_bypass,
+                codegen_escalation_enabled=codegen_escalation_enabled,
             )
 
     # App already running — just scan
@@ -810,6 +813,7 @@ async def _run_redteam(
         verify_findings=verify_findings,
         golden_data=golden_data,
         suppress_spa_html_auth_bypass=suppress_spa_html_auth_bypass,
+        codegen_escalation_enabled=codegen_escalation_enabled,
     )
 
 
@@ -859,6 +863,7 @@ async def _run_orchestrator(  # noqa: C901
     verify_findings: bool = False,
     golden_data: "dict | None" = None,
     suppress_spa_html_auth_bypass: bool = True,
+    codegen_escalation_enabled: bool = True,
 ) -> "tuple[list, dict[str, str], list, str, list[str], Any, int, int, Any, Any, str, str]":
     from nuguard.common.llm_client import LLMClient
     from nuguard.redteam.executor.orchestrator import RedteamOrchestrator
@@ -923,6 +928,7 @@ async def _run_orchestrator(  # noqa: C901
         verify_findings=verify_findings,
         golden_data=golden_data,
         suppress_spa_html_auth_bypass=suppress_spa_html_auth_bypass,
+        codegen_escalation_enabled=codegen_escalation_enabled,
     )
 
     try:

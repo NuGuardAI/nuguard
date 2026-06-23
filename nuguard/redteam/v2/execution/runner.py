@@ -99,6 +99,10 @@ class KillChainState:
     succeeded_objectives: set[str] = field(default_factory=set)
     max_disclosures: int = 5
 
+    # Set to True after the first code-gen escalation fires so we don't
+    # compound: one escalation chain per run is enough signal.
+    codegen_escalation_done: bool = False
+
     def record(self, objective: "ScenarioObjective", outcome: ObjectiveOutcome) -> None:
         if not outcome.succeeded:
             return
@@ -137,6 +141,7 @@ class ObjectiveRunner:
         mutation_llm: Any = None,
         verbose: bool = False,
         target_url: str = "",
+        codegen_escalation_enabled: bool = True,
     ) -> None:
         self._sbom = sbom
         self._profile = profile
@@ -149,6 +154,7 @@ class ObjectiveRunner:
         self._mutation_llm = mutation_llm
         self._verbose = verbose
         self._target_url = target_url
+        self._codegen_escalation_enabled = codegen_escalation_enabled
         self._node_by_id: dict[str, Node] = {str(n.id): n for n in sbom.nodes}
 
     # ── scheduler entry point ────────────────────────────────────────────────
@@ -310,7 +316,98 @@ class ObjectiveRunner:
             )
         if self._verbose:
             self._print_static_turns(scenario, results)
-        return self._summarize_static(obj, scenario, results)
+        outcome = self._summarize_static(obj, scenario, results)
+
+        # Code-gen exploitation escalation: when the primary chain confirms that
+        # the agent generated code, immediately run a follow-on chain that uses
+        # that developer-mode trust channel to escalate to more dangerous goals.
+        if self._codegen_escalation_enabled and not self.killchain.codegen_escalation_done:
+            hit, evidence = self._detect_codegen_success(results)
+            if hit:
+                _log.info(
+                    "[codegen-esc] code generation confirmed for obj=%s — running escalation chain",
+                    obj.objective_id,
+                )
+                self.killchain.codegen_escalation_done = True
+                esc_outcome = await self._run_codegen_escalation(obj, evidence)
+                outcome = self._merge_outcomes(outcome, esc_outcome)
+
+        return outcome
+
+    # ── code-gen escalation helpers ──────────────────────────────────────────
+
+    def _detect_codegen_success(self, results: list[Any]) -> tuple[bool, str]:
+        """Return (True, evidence_snippet) when a step result shows code generation."""
+        from nuguard.redteam.scenarios.codegen_escalation import (
+            detect_codegen_success,  # noqa: PLC0415
+        )
+        return detect_codegen_success(results)
+
+    async def _run_codegen_escalation(
+        self, obj: "ScenarioObjective", evidence: str
+    ) -> ObjectiveOutcome:
+        """Run 5 goal-specific escalation chains using the code-gen trust channel.
+
+        Each chain carries the correct GoalType so every finding is attributed to
+        the right attack family (PROMPT_DRIVEN_THREAT for safeguard strip,
+        DATA_EXFILTRATION for bulk/covert exfil, TOOL_ABUSE for tool chaining, etc.).
+        """
+        from nuguard.redteam.scenarios.codegen_escalation import (  # noqa: PLC0415
+            build_codegen_escalation_chains,
+        )
+
+        agent = self._entry_agent()
+        if agent is None:
+            return ObjectiveOutcome(
+                obj.objective_id, "no_scenario",
+                family="CODE_GEN_ESCALATION",
+                reason="no entry agent available for escalation",
+            )
+
+        chains = build_codegen_escalation_chains(
+            agent_id=str(agent.id),
+            agent_name=agent.name,
+            context_evidence=evidence,
+            goal_type_hint=obj.family,
+        )
+
+        merged = ObjectiveOutcome(obj.objective_id, "executed", family="CODE_GEN_ESCALATION")
+        for esc_scenario in chains:
+            chain = esc_scenario.chain
+            if self._compose:
+                chain = await self._compose_kill_chain(chain)
+            try:
+                _, esc_results = await self._static.run(chain)
+            except Exception as exc:
+                _log.warning(
+                    "[codegen-esc] escalation chain %s failed: %s",
+                    esc_scenario.chain.scenario_type.value, exc,
+                )
+                continue
+            if self._verbose:
+                self._print_static_turns(esc_scenario, esc_results)
+            chain_outcome = self._summarize_static(obj, esc_scenario, esc_results)
+            merged = self._merge_outcomes(merged, chain_outcome)
+
+        return merged
+
+    @staticmethod
+    def _merge_outcomes(base: ObjectiveOutcome, escalation: ObjectiveOutcome) -> ObjectiveOutcome:
+        """Merge an escalation ObjectiveOutcome into the base, combining all signals."""
+        return ObjectiveOutcome(
+            objective_id=base.objective_id,
+            status=base.status,
+            succeeded=base.succeeded or escalation.succeeded,
+            critical=base.critical or escalation.critical,
+            evidence=base.evidence + escalation.evidence,
+            scenario_id=base.scenario_id,
+            family=base.family,
+            step_count=base.step_count + escalation.step_count,
+            reason=base.reason,
+            step_results=base.step_results + escalation.step_results,
+            target_transport_error=base.target_transport_error and escalation.target_transport_error,
+            target_transport_class=base.target_transport_class or escalation.target_transport_class,
+        )
 
     async def _run_guided(self, obj: "ScenarioObjective", scenario: Any) -> ObjectiveOutcome:
         conv = scenario.guided_conversation

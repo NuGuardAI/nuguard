@@ -494,6 +494,7 @@ class RedteamV2Orchestrator:
             mutation_llm=self.redteam_llm,
             verbose=self.verbose,
             target_url=full_target_url,
+            codegen_escalation_enabled=self.settings.codegen_escalation_enabled,
         )
 
         safety = SafetyPolicy(
