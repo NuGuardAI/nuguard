@@ -169,13 +169,13 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         elif "llm" in policy_val:
             flat["policy_use_llm"] = bool(policy_val["llm"])
 
-    # LLM section
+    # LLM section — skip keys whose env-var interpolation produced None (var not set)
     llm = data.get("llm", {}) or {}
-    if "model" in llm:
+    if llm.get("model") is not None:
         flat["litellm_model"] = llm["model"]
-    if "api_key" in llm:
+    if llm.get("api_key") is not None:
         flat["litellm_api_key"] = llm["api_key"]
-    if "api_base" in llm:
+    if llm.get("api_base") is not None:
         flat["litellm_api_base"] = llm["api_base"]
 
     # Database section
@@ -248,6 +248,30 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         }
     if "canary" in redteam:
         flat["canary_path"] = redteam["canary"]
+    if "engine" in redteam:
+        flat["redteam_engine"] = str(redteam["engine"])
+    redteam_v2 = redteam.get("v2", {}) or {}
+    if isinstance(redteam_v2, dict):
+        if "knowledge_base_version" in redteam_v2:
+            flat["redteam_v2_knowledge_base_version"] = str(
+                redteam_v2["knowledge_base_version"]
+            )
+        if "phases" in redteam_v2 and isinstance(redteam_v2["phases"], list):
+            flat["redteam_v2_phases"] = [str(p) for p in redteam_v2["phases"]]
+        semantic_judge = redteam_v2.get("semantic_judge", {}) or {}
+        if isinstance(semantic_judge, dict):
+            if "count" in semantic_judge:
+                flat["redteam_v2_semantic_judge_count"] = int(semantic_judge["count"])
+            if "quorum" in semantic_judge:
+                flat["redteam_v2_semantic_judge_quorum"] = int(semantic_judge["quorum"])
+        if "transferability_enabled" in redteam_v2:
+            flat["redteam_v2_transferability_enabled"] = bool(
+                redteam_v2["transferability_enabled"]
+            )
+        if "max_per_phase" in redteam_v2:
+            flat["redteam_v2_max_per_phase"] = int(redteam_v2["max_per_phase"])
+        if "dry_run_only" in redteam_v2:
+            flat["redteam_v2_dry_run_only"] = bool(redteam_v2["dry_run_only"])
     if "profile" in redteam:
         flat["redteam_profile"] = redteam["profile"]
     if "use_catalog" in redteam:
@@ -292,6 +316,12 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_concurrency"] = int(redteam["concurrency"])
     if "turn_delay_seconds" in redteam:
         flat["redteam_turn_delay_seconds"] = float(redteam["turn_delay_seconds"])
+    if "codegen_escalation_enabled" in redteam:
+        flat["redteam_codegen_escalation_enabled"] = bool(redteam["codegen_escalation_enabled"])
+    if "max_concurrent_requests" in redteam:
+        flat["redteam_max_concurrent_requests"] = int(redteam["max_concurrent_requests"])
+    if "max_transient_hold_seconds" in redteam:
+        flat["redteam_max_transient_hold_seconds"] = float(redteam["max_transient_hold_seconds"])
     if "scenario_delay_seconds" in redteam:
         flat["redteam_scenario_delay_seconds"] = float(redteam["scenario_delay_seconds"])
     if "guided_mutation_mode" in redteam:
@@ -337,22 +367,22 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
                 finding_triggers["any_inject_success"]
             )
 
-    # Redteam LLM section
+    # Redteam LLM section — skip keys whose env-var interpolation produced None
     redteam_llm = redteam.get("llm", {}) or {}
-    if "model" in redteam_llm:
+    if redteam_llm.get("model") is not None:
         flat["redteam_llm_model"] = redteam_llm["model"]
-    if "api_key" in redteam_llm:
+    if redteam_llm.get("api_key") is not None:
         flat["redteam_llm_api_key"] = redteam_llm["api_key"]
-    if "api_base" in redteam_llm:
+    if redteam_llm.get("api_base") is not None:
         flat["redteam_llm_api_base"] = redteam_llm["api_base"]
 
-    # Eval LLM section
+    # Eval LLM section — skip keys whose env-var interpolation produced None
     redteam_eval_llm = redteam.get("eval_llm", {}) or {}
-    if "model" in redteam_eval_llm:
+    if redteam_eval_llm.get("model") is not None:
         flat["redteam_eval_llm_model"] = redteam_eval_llm["model"]
-    if "api_key" in redteam_eval_llm:
+    if redteam_eval_llm.get("api_key") is not None:
         flat["redteam_eval_llm_api_key"] = redteam_eval_llm["api_key"]
-    if "api_base" in redteam_eval_llm:
+    if redteam_eval_llm.get("api_base") is not None:
         flat["redteam_eval_llm_api_base"] = redteam_eval_llm["api_base"]
 
     # Behavior section — shared target block keys are the baseline; behavior.* overrides them
@@ -695,6 +725,61 @@ class RedteamFindingTriggers(BaseModel):
         )
 
 
+class RedteamV2Settings(BaseModel):
+    """Settings for the v2 red-team engine (yaml: redteam.v2.*).
+
+    The v2 engine is opt-in via ``redteam.engine: v2`` (or ``--engine v2``).
+    These knobs are consumed as the corresponding pipeline stages land; Phase 0
+    only plumbs them through config and the orchestrator stub.
+    """
+
+    knowledge_base_version: str = "0.1.0"
+    # Phase names to run (empty = all enabled phases).
+    phases: list[str] = Field(default_factory=list)
+    # Number of independent LLM judges and the quorum required to confirm a
+    # semantic (text-only) policy violation.
+    semantic_judge_count: int = 3
+    semantic_judge_quorum: int = 2
+    # Score successful objectives for transferability across models/policies.
+    transferability_enabled: bool = True
+    # Cap scenarios executed per phase (0 = unlimited).
+    max_per_phase: int = 0
+    # Enforce dry-run-only execution for destructive/high-impact actions.
+    dry_run_only: bool = True
+    # Per-HTTP-request timeout in seconds passed to TargetAppClient.
+    # Maps from redteam.request_timeout in nuguard.yaml.
+    request_timeout: float = 60.0
+    # Per-objective wall-clock timeout in seconds. Objectives that exceed this
+    # limit are cancelled and recorded as 'timeout'. 0 disables the timeout.
+    # Default is 600 s to accommodate the in-semaphore transient-retry loop,
+    # which can hold the semaphore for several minutes while the target cold-starts.
+    objective_timeout: float = 600.0
+    # Maximum number of objectives running in parallel. Maps from
+    # redteam.concurrency in nuguard.yaml. Lower for rate-limited targets.
+    concurrency: int = 5
+    # Inter-step pause in seconds between HTTP requests within a single chain.
+    # Set > 0 only when the target's LLM backend needs rate-limit breathing room.
+    # Maps from redteam.turn_delay_seconds in nuguard.yaml.
+    turn_delay_seconds: float = 0.0
+    # Maximum concurrent HTTP requests to the target across all objectives.
+    # 0 = unlimited. Set to 1 to fully serialise target calls (e.g. low Azure
+    # OpenAI quota).  Maps from redteam.max_concurrent_requests in nuguard.yaml.
+    max_concurrent_requests: int = 1
+    # Maximum total seconds to hold the HTTP semaphore while retrying transient
+    # errors on the first request of a new chain.  After this limit, the
+    # semaphore is released so other chains can proceed (the last transient
+    # response is returned to the caller).  This prevents one chain from
+    # monopolising the semaphore for the full objective_timeout when the cause
+    # is systemic (e.g. shared Azure OpenAI quota contention).
+    # Maps from redteam.max_transient_hold_seconds in nuguard.yaml.
+    max_transient_hold_seconds: float = 300.0
+    # When True, a confirmed code-generation success (agent writes Python/TS/XML/JSON
+    # when it shouldn't) automatically spawns an escalation chain that uses the
+    # established developer-mode trust channel to probe safeguard removal, data
+    # exfiltration, restricted actions, and tool abuse.
+    codegen_escalation_enabled: bool = True
+
+
 class NuGuardConfig(BaseSettings):
     """Resolved nuguard configuration.
 
@@ -811,6 +896,44 @@ class NuGuardConfig(BaseSettings):
         default=None,
         description="Path to canary JSON file (yaml: redteam.canary).",
     )
+    redteam_engine: Literal["v1", "v2"] = Field(
+        default="v1",
+        description=(
+            "Red-team engine to use: 'v1' (default, stable) or 'v2' "
+            "(knowledge-base-driven, phased, layered evaluation) (yaml: redteam.engine)."
+        ),
+    )
+    redteam_v2_knowledge_base_version: str = Field(
+        default="0.1.0",
+        description="Pinned technique knowledge-base version (yaml: redteam.v2.knowledge_base_version).",
+    )
+    redteam_v2_phases: list[str] = Field(
+        default_factory=list,
+        description="v2 phases to run; empty = all (yaml: redteam.v2.phases).",
+    )
+    redteam_v2_semantic_judge_count: int = Field(
+        default=3,
+        ge=1,
+        description="Number of independent LLM judges for semantic verdicts (yaml: redteam.v2.semantic_judge.count).",
+    )
+    redteam_v2_semantic_judge_quorum: int = Field(
+        default=2,
+        ge=1,
+        description="Judge votes required to confirm a semantic violation (yaml: redteam.v2.semantic_judge.quorum).",
+    )
+    redteam_v2_transferability_enabled: bool = Field(
+        default=True,
+        description="Score successful objectives for transferability (yaml: redteam.v2.transferability_enabled).",
+    )
+    redteam_v2_max_per_phase: int = Field(
+        default=0,
+        ge=0,
+        description="Cap scenarios executed per v2 phase; 0 = unlimited (yaml: redteam.v2.max_per_phase).",
+    )
+    redteam_v2_dry_run_only: bool = Field(
+        default=True,
+        description="Enforce dry-run-only execution for destructive actions (yaml: redteam.v2.dry_run_only).",
+    )
     redteam_profile: str = Field(
         default="ci",
         description=(
@@ -864,11 +987,12 @@ class NuGuardConfig(BaseSettings):
         ),
     )
     redteam_scenario_timeout: float = Field(
-        default=180.0,
+        default=600.0,
         description=(
             "Per-scenario wall-clock timeout in seconds (yaml: redteam.scenario_timeout). "
             "Scenarios that exceed this limit are cancelled and recorded as 'timeout'. "
-            "0 disables the timeout."
+            "0 disables the timeout. Default is 600 s to accommodate in-semaphore "
+            "transient-retry loops for slow cold-starting targets."
         ),
     )
     redteam_similar_miss_threshold: int = Field(
@@ -955,11 +1079,38 @@ class NuGuardConfig(BaseSettings):
         ),
     )
     redteam_turn_delay_seconds: float = Field(
-        default=0.0,
+        default=5.0,
         ge=0.0,
         description=(
             "Inter-turn pause in seconds to avoid 429s on the target "
             "(yaml: redteam.turn_delay_seconds)."
+        ),
+    )
+    redteam_codegen_escalation_enabled: bool = Field(
+        default=True,
+        description=(
+            "When True, a confirmed code-generation success automatically spawns an "
+            "escalation chain probing safeguard removal, data exfiltration, and tool abuse "
+            "(yaml: redteam.codegen_escalation_enabled)."
+        ),
+    )
+    redteam_max_concurrent_requests: int = Field(
+        default=1,
+        ge=0,
+        description=(
+            "Maximum concurrent HTTP requests to the target across all parallel "
+            "scenarios (yaml: redteam.max_concurrent_requests). "
+            "0 = unlimited; 1 = fully serialised (safest for low-quota Azure apps)."
+        ),
+    )
+    redteam_max_transient_hold_seconds: float = Field(
+        default=300.0,
+        ge=0.0,
+        description=(
+            "Maximum total seconds to hold the HTTP semaphore while retrying transient "
+            "errors on the first request of a new chain. After this limit the semaphore "
+            "is released so other chains can proceed "
+            "(yaml: redteam.max_transient_hold_seconds)."
         ),
     )
     redteam_scenario_delay_seconds: float = Field(
@@ -1274,6 +1425,25 @@ class NuGuardConfig(BaseSettings):
             policy_violations=self.redteam_trigger_policy_violations,
             critical_success_hits=self.redteam_trigger_critical_success_hits,
             any_inject_success=self.redteam_trigger_any_inject_success,
+        )
+
+    def resolved_redteam_v2_settings(self) -> RedteamV2Settings:
+        """Build v2-engine settings from resolved redteam configuration."""
+        return RedteamV2Settings(
+            knowledge_base_version=self.redteam_v2_knowledge_base_version,
+            phases=list(self.redteam_v2_phases),
+            semantic_judge_count=self.redteam_v2_semantic_judge_count,
+            semantic_judge_quorum=self.redteam_v2_semantic_judge_quorum,
+            transferability_enabled=self.redteam_v2_transferability_enabled,
+            max_per_phase=self.redteam_v2_max_per_phase,
+            dry_run_only=self.redteam_v2_dry_run_only,
+            request_timeout=self.redteam_request_timeout,
+            objective_timeout=max(0.0, self.redteam_scenario_timeout),
+            concurrency=self.redteam_concurrency,
+            turn_delay_seconds=self.redteam_turn_delay_seconds,
+            max_concurrent_requests=self.redteam_max_concurrent_requests,
+            max_transient_hold_seconds=self.redteam_max_transient_hold_seconds,
+            codegen_escalation_enabled=self.redteam_codegen_escalation_enabled,
         )
 
     model_config = SettingsConfigDict(

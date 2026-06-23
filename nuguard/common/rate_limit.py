@@ -39,7 +39,7 @@ SCENARIO_RATE_LIMIT_BACKOFF_CAP: float = 30.0   # seconds
 # connection-failure fallback (HTTP 200, but the orchestrator caught a cold-start
 # exception and returned a friendly error message).  The delays give Azure
 # Container Apps (minReplicas=0) time to spin up before the next attempt.
-TRANSIENT_ERROR_RETRY_DELAYS: tuple[float, ...] = (30.0, 60.0)  # seconds
+TRANSIENT_ERROR_RETRY_DELAYS: tuple[float, ...] = (60.0, 120.0)  # seconds
 
 
 def is_rate_limited(response: str) -> bool:

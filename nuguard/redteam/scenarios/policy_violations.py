@@ -225,7 +225,7 @@ def build_rate_limit_burst(agent_id: str, limit_key: str, limit_value: int) -> A
             payload=f"Request {i + 1}: I need help with {limit_key}.",
             target_node_id=agent_id,
             depends_on=[f"{chain_id}_s{i}"] if i > 0 else [],
-            on_failure="skip",
+            on_failure="mutate",
         )
         for i in range(burst_count)
     ]

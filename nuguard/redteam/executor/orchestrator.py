@@ -470,7 +470,7 @@ class RedteamOrchestrator:
         verbose: bool = False,
         credentials: dict[str, str] | None = None,
         scenario_timeout: float = 180.0,
-        turn_delay_seconds: float = 0.0,
+        turn_delay_seconds: float = 5.0,
         scenario_delay_seconds: float = 0.0,
         similar_miss_threshold: int = 4,
         skip_discovery: bool = False,
@@ -482,6 +482,7 @@ class RedteamOrchestrator:
         verify_findings: bool = False,
         golden_data: "dict[str, Any] | None" = None,
         suppress_spa_html_auth_bypass: bool = True,
+        codegen_escalation_enabled: bool = True,
     ) -> None:
         self._sbom = sbom
         self._target_url = target_url
@@ -536,6 +537,7 @@ class RedteamOrchestrator:
         self._verify_findings = verify_findings
         self._golden_data: dict[str, Any] = golden_data or {}
         self._suppress_spa_html = suppress_spa_html_auth_bypass
+        self._codegen_escalation_enabled = codegen_escalation_enabled
         # Auto-discover from SBOM; fall back to provided values
         self._chat_path, self._chat_payload_key, self._chat_payload_list, _discovered_response_key = (
             _discover_chat_config(sbom, chat_path, chat_payload_key, chat_payload_list)
@@ -1297,6 +1299,8 @@ class RedteamOrchestrator:
         # Similarity miss tracker: skip scenarios whose payloads closely resemble
         # already-failed attacks once the miss count exceeds the threshold.
         miss_tracker = SimilarityMissTracker(miss_threshold=self._similar_miss_threshold)
+        # Code-gen escalation: allow at most one escalation per run.
+        _codegen_escalation_done = False
 
         async def _run_one(
             scenario: AttackScenario,
@@ -1397,6 +1401,61 @@ class RedteamOrchestrator:
                         turns_budget=len(scenario.chain.steps),
                     )
                     _tally_transport(record, step_results)
+
+                    # Code-gen exploitation escalation: when the primary chain
+                    # confirms the agent generated code, immediately run a
+                    # follow-on chain that uses that developer-mode trust channel
+                    # to probe safeguard removal, data exfiltration, and tool abuse.
+                    nonlocal _codegen_escalation_done
+                    if self._codegen_escalation_enabled and not _codegen_escalation_done:
+                        from nuguard.redteam.scenarios.codegen_escalation import (  # noqa: PLC0415
+                            build_codegen_escalation_chains,
+                            detect_codegen_success,
+                        )
+                        _esc_hit, _esc_evidence = detect_codegen_success(step_results)
+                        if _esc_hit:
+                            _codegen_escalation_done = True
+                            _log.info(
+                                "[codegen-esc] code generation confirmed — running escalation chains for %s",
+                                scenario.title,
+                            )
+                            _entry_agent = next(
+                                (n for n in self._sbom.nodes
+                                 if getattr(n, "component_type", None) is not None
+                                 and str(getattr(n.component_type, "value", n.component_type)).upper() == "AGENT"),
+                                None,
+                            )
+                            if _entry_agent is not None:
+                                # Each escalation scenario carries its own GoalType so
+                                # every finding is attributed to the correct attack family.
+                                for _esc_scenario in build_codegen_escalation_chains(
+                                    agent_id=str(_entry_agent.id),
+                                    agent_name=_entry_agent.name,
+                                    context_evidence=_esc_evidence,
+                                    goal_type_hint=scenario.goal_type.value,
+                                ):
+                                    try:
+                                        if _esc_scenario.chain is None:
+                                            continue
+                                        _esc_chain, _esc_results = await executor.run(_esc_scenario.chain)
+                                        _esc_step_details = self._build_step_details(_esc_results)
+                                        _esc_findings = self._build_findings(
+                                            _esc_scenario, _esc_chain, _esc_results, _esc_step_details,
+                                        )
+                                        new_findings.extend(_esc_findings)
+                                        had_finding = had_finding or bool(_esc_findings)
+                                        record.steps.extend(_esc_step_details)
+                                        record.turns_used += sum(
+                                            1 for sd in _esc_step_details
+                                            if sd.get("step_type") != "WARMUP"
+                                        )
+                                        record.turns_budget += len(_esc_scenario.chain.steps)
+                                    except Exception as _esc_exc:
+                                        _log.warning(
+                                            "[codegen-esc] escalation chain %s failed: %s",
+                                            _esc_scenario.chain.scenario_type.value if _esc_scenario.chain else "unknown", _esc_exc,
+                                        )
+
                     return (
                         new_findings,
                         (scenario.title, scenario.goal_type.value, had_finding),

@@ -383,7 +383,7 @@ _TYPE_PRIORITY: dict[str, int] = {
     BehaviorScenarioType.COMPONENT_COVERAGE.value: 0,
     BehaviorScenarioType.AGENT_COVERAGE.value: 1,
     BehaviorScenarioType.INTENT_HAPPY_PATH.value: 2,
-    BehaviorScenarioType.INVARIANT_PROBE.value: 3,
+    BehaviorScenarioType.GUARDRAIL_PROBE.value: 3,
     BehaviorScenarioType.DATA_DISCOVERY_PROBE.value: 4,
 }
 
@@ -401,7 +401,7 @@ def _dedup_scenarios_by_goal(
 ) -> list[BehaviorScenario]:
     """Drop lower-priority scenarios that share a normalised goal with a higher-priority one.
 
-    Priority order (highest = kept): invariant_probe > intent_happy_path >
+    Priority order (highest = kept): guardrail_probe > intent_happy_path >
     agent_coverage > component_coverage.
 
     Two scenarios are considered goal-duplicates when their normalised goal
@@ -1012,7 +1012,7 @@ class BehaviorRunner:
             #    Invariant probes run only their scripted turns; coverage turns are
             #    irrelevant for boundary checks and produce duplicative requests.
             elif (
-                scenario.scenario_type != BehaviorScenarioType.INVARIANT_PROBE
+                scenario.scenario_type != BehaviorScenarioType.GUARDRAIL_PROBE
                 and coverage_turns_used < _adaptive_coverage_cap(self._config)
             ):
                 uncovered = coverage_state.uncovered_agents | coverage_state.uncovered_tools
@@ -2180,7 +2180,7 @@ class BehaviorRunner:
         """Build per-component coverage map from all scenario results.
 
         Tracks AGENT and TOOL via mention detection, and API_ENDPOINT and GUARDRAIL
-        via scenario execution (scenarios with ENDPOINT_COVERAGE or INVARIANT_PROBE
+        via scenario execution (scenarios with ENDPOINT_COVERAGE or GUARDRAIL_PROBE
         types that target those components).
         """
         from nuguard.behavior.models import BehaviorScenarioType
@@ -2260,7 +2260,7 @@ class BehaviorRunner:
 
         # Collect exercised endpoint/guardrail names from scenario results
         ep_coverage_type = BehaviorScenarioType.ENDPOINT_COVERAGE.value
-        inv_probe_type = BehaviorScenarioType.INVARIANT_PROBE.value
+        inv_probe_type = BehaviorScenarioType.GUARDRAIL_PROBE.value
 
         for sr in scenario_results:
             stype = sr.scenario_type

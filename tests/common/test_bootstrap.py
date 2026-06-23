@@ -1,12 +1,14 @@
 """Tests for AuthBootstrapper using respx HTTP mocks."""
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, patch
+
 import pytest
 import respx
 import httpx
 
 from nuguard.common.auth import AuthConfig, LoginFlowConfig
-from nuguard.common.bootstrap import AuthBootstrapper
+from nuguard.common.bootstrap import AuthBootstrapper, BOOTSTRAP_STARTUP_RETRIES
 from nuguard.common.errors import TargetUnavailableError
 from nuguard.redteam.target.canary import CanaryConfig, CanaryTenant
 
@@ -18,6 +20,7 @@ FULL_URL = f"{TARGET}{ENDPOINT}"
 def _bootstrapper(
     auth: AuthConfig | None = None,
     canary: CanaryConfig | None = None,
+    startup_retries: int = 0,
 ) -> AuthBootstrapper:
     return AuthBootstrapper(
         target_url=TARGET,
@@ -25,6 +28,7 @@ def _bootstrapper(
         default_auth=auth or AuthConfig(type="none"),
         canary_config=canary,
         run_id="test-run",
+        startup_retries=startup_retries,
     )
 
 
@@ -311,3 +315,65 @@ async def test_headers_injected_correctly_none() -> None:
     await _bootstrapper(auth=AuthConfig(type="none")).run()
     sent = route.calls[0].request
     assert "authorization" not in {k.lower() for k in sent.headers.keys()}
+
+
+# ── cold-start retry tests ───────────────────────────────────────────────────
+
+
+@pytest.mark.anyio
+@respx.mock
+async def test_cold_start_retry_succeeds_on_second_attempt() -> None:
+    """Bootstrap retries a 502 and succeeds when the target recovers."""
+    respx.post(FULL_URL).mock(
+        side_effect=[
+            httpx.Response(502),         # cold-start probe 1
+            httpx.Response(200),         # recovered
+        ]
+    )
+    with patch("nuguard.common.bootstrap.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+        report = await _bootstrapper(startup_retries=BOOTSTRAP_STARTUP_RETRIES).run()
+
+    assert report.all_ok is True
+    assert report.checks[0].status == "ok"
+    mock_sleep.assert_called_once()   # exactly one backoff sleep before success
+
+
+@pytest.mark.anyio
+@respx.mock
+async def test_cold_start_retry_exhausted_raises() -> None:
+    """Bootstrap raises TargetUnavailableError when all retries are exhausted."""
+    respx.post(FULL_URL).mock(return_value=httpx.Response(503))
+    with patch("nuguard.common.bootstrap.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+        with pytest.raises(TargetUnavailableError):
+            await _bootstrapper(startup_retries=BOOTSTRAP_STARTUP_RETRIES).run()
+
+    # sleep called once per retry (BOOTSTRAP_STARTUP_RETRIES times total)
+    assert mock_sleep.call_count == BOOTSTRAP_STARTUP_RETRIES
+
+
+@pytest.mark.anyio
+@respx.mock
+async def test_cold_start_retry_connection_error_then_ok() -> None:
+    """Connection refused on first attempt (container not yet up) → retry → ok."""
+    respx.post(FULL_URL).mock(
+        side_effect=[
+            httpx.ConnectError("connection refused"),
+            httpx.Response(200),
+        ]
+    )
+    with patch("nuguard.common.bootstrap.asyncio.sleep", new_callable=AsyncMock):
+        report = await _bootstrapper(startup_retries=BOOTSTRAP_STARTUP_RETRIES).run()
+
+    assert report.all_ok is True
+
+
+@pytest.mark.anyio
+@respx.mock
+async def test_cold_start_retry_not_triggered_for_auth_failure() -> None:
+    """Auth failures (401/403) are never retried — they are not cold-start transients."""
+    respx.post(FULL_URL).mock(return_value=httpx.Response(401, text="Unauthorized"))
+    with patch("nuguard.common.bootstrap.asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
+        report = await _bootstrapper(startup_retries=BOOTSTRAP_STARTUP_RETRIES).run()
+
+    assert report.checks[0].status == "auth_failed"
+    mock_sleep.assert_not_called()   # no sleep — auth failures skip retries

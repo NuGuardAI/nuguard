@@ -342,7 +342,7 @@ class AttackExecutor:
         auth_session: "AuthSession | None" = None,
         app_domain: str = "",
         allowed_topics: list[str] | None = None,
-        turn_delay_seconds: float = 0.0,
+        turn_delay_seconds: float = 5.0,
         sbom: "AiSbomDocument | None" = None,
         pre_scan_profile: "DiscoveredProfile | None" = None,
         suppress_spa_html_auth_bypass: bool = True,
@@ -380,13 +380,22 @@ class AttackExecutor:
         # get the same profile entry so DISCOVER steps are always cache hits.
         if pre_scan_profile is not None and not pre_scan_profile.is_empty and sbom is not None:
             from nuguard.sbom.models import NodeType as _NodeType  # noqa: PLC0415
+            _profile_data = (
+                pre_scan_profile.raw_response,
+                pre_scan_profile.ids,
+                pre_scan_profile.customer_name,
+            )
             for _node in getattr(sbom, "nodes", []):
                 if getattr(_node, "component_type", None) == _NodeType.AGENT:
-                    self._golden_data_cache[str(_node.id)] = (
-                        pre_scan_profile.raw_response,
-                        pre_scan_profile.ids,
-                        pre_scan_profile.customer_name,
-                    )
+                    self._golden_data_cache[str(_node.id)] = _profile_data
+            # Also seed the deterministic proxy-agent UUID that ObjectiveRunner
+            # synthesises when no real SBOM AGENT node is found in the profile.
+            # Prevents redundant live DISCOVER requests when multiple v2 chains
+            # start concurrently before any single DISCOVER has completed.
+            from uuid import UUID  # noqa: PLC0415
+            _proxy_id = str(UUID("00000000-0000-0000-0000-000000000001"))
+            if _proxy_id not in self._golden_data_cache:
+                self._golden_data_cache[_proxy_id] = _profile_data
         self._turn_delay_seconds = max(0.0, turn_delay_seconds)
         self._suppress_spa_html = suppress_spa_html_auth_bypass
 
@@ -482,6 +491,7 @@ class AttackExecutor:
             # time to finish starting before the next attempt.  Real HTTP/network
             # errors are NOT retried here — they go straight to the circuit breaker.
             _step_aborted = False
+            _turns_before_step = len(session.turns)
             _transient_retry_idx = 0
             while True:
                 try:
@@ -501,7 +511,18 @@ class AttackExecutor:
                     and not result.response.startswith(("[HTTP ", "[REQUEST_ERROR:"))
                     and not is_rate_limited(result.response)
                 )
-                if _is_step_transient and _transient_retry_idx < len(TRANSIENT_ERROR_RETRY_DELAYS):
+                # Skip executor-level retry when the client's semaphore already
+                # handled transient retries inside send() (v2 semaphore mode).
+                # The executor retry is only active when the client has no semaphore.
+                _client_handles_transient = (
+                    getattr(self._client, "_request_sem", None) is not None
+                )
+                if (
+                    _is_step_transient
+                    and not _client_handles_transient
+                    and not _turns_before_step
+                    and _transient_retry_idx < len(TRANSIENT_ERROR_RETRY_DELAYS)
+                ):
                     delay_s = TRANSIENT_ERROR_RETRY_DELAYS[_transient_retry_idx]
                     _transient_retry_idx += 1
                     _log.info(
@@ -616,7 +637,8 @@ class AttackExecutor:
                     if attempt >= self.MAX_MUTATIONS - 1:
                         break
 
-        chain.status = "completed"
+        if chain.status != "aborted":
+            chain.status = "completed"
         return chain, results
 
     async def _send_happy_path_warmup(

@@ -225,14 +225,14 @@ def _make_guardrail_sbom(blocked_actions: list[str] | None = None) -> AiSbomDocu
 
 
 def test_guardrail_path_emits_invariant_probe():
-    """_guardrail_path_scenarios emits INVARIANT_PROBE for each blocked_action."""
+    """_guardrail_path_scenarios emits GUARDRAIL_PROBE for each blocked_action."""
     sbom = _make_guardrail_sbom(["transfer funds"])
     intent = _make_intent("banking assistant")
     scenarios = _guardrail_path_scenarios(sbom, intent)
     assert scenarios, "Expected at least one guardrail scenario"
     for sc in scenarios:
         stype = getattr(sc.scenario_type, "value", str(sc.scenario_type))
-        assert stype == BehaviorScenarioType.INVARIANT_PROBE.value
+        assert stype == BehaviorScenarioType.GUARDRAIL_PROBE.value
 
 
 def test_guardrail_path_sets_expect_refused():

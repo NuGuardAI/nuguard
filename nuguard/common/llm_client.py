@@ -193,6 +193,7 @@ class LLMClient:
         budget_tokens: int | None = None,
         google_api_key: str | None = None,
         request_timeout: float | None = None,
+        default_system_prompt: str | None = None,
     ) -> None:
         self.model: str = (
             model
@@ -217,6 +218,7 @@ class LLMClient:
         self.api_base: str | None = api_base
         self.budget_tokens: int | None = budget_tokens
         self.google_api_key: str | None = google_api_key
+        self.default_system_prompt: str | None = default_system_prompt
         # Per-request timeout for LLM calls (seconds).
         # Resolution order:
         #   1. explicit request_timeout argument
@@ -317,9 +319,10 @@ class LLMClient:
                 "Install with: pip install litellm"
             ) from exc
 
+        effective_system = system if system is not None else self.default_system_prompt
         messages: list[dict[str, str]] = []
-        if system:
-            messages.append({"role": "system", "content": system})
+        if effective_system:
+            messages.append({"role": "system", "content": effective_system})
         messages.append({"role": "user", "content": prompt})
 
         _log.debug(

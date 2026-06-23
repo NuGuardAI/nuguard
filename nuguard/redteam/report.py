@@ -347,6 +347,13 @@ def _attack_coverage_summary(scenario_records: list) -> list[str]:
     return lines
 
 
+def _r(r: Any, key: str, default: Any = None) -> Any:
+    """Dict-and-dataclass safe field getter for scenario records."""
+    if isinstance(r, dict):
+        return r.get(key, default)
+    return getattr(r, key, default)
+
+
 def _scenario_coverage_table(scenario_records: list) -> list[str]:
     """Return Markdown lines for the Scenario Coverage summary table.
 
@@ -361,7 +368,7 @@ def _scenario_coverage_table(scenario_records: list) -> list[str]:
 
     records = sorted(
         scenario_records,
-        key=lambda r: (-getattr(r, "impact_score", 0.0), 0 if r.had_finding else 1),
+        key=lambda r: (-_r(r, "impact_score", 0.0), 0 if _r(r, "had_finding", False) else 1),
     )
 
     _GOAL_ABBREV = {
@@ -395,19 +402,24 @@ def _scenario_coverage_table(scenario_records: list) -> list[str]:
     findings_count = 0
 
     for idx, r in enumerate(records, start=1):
-        title = r.title[:60] + ("…" if len(r.title) > 60 else "")
-        goal = _GOAL_ABBREV.get(r.goal_type, r.goal_type.replace("_", " ").title())
-        finding_cell = "**YES**" if r.had_finding else "no"
-        turns_used = getattr(r, "turns_used", len(r.steps))
-        turns_budget = getattr(r, "turns_budget", 0) or turns_used
+        title_str = _r(r, "title", "") or ""
+        title = title_str[:60] + ("…" if len(title_str) > 60 else "")
+        goal_type_str = _r(r, "goal_type", "") or ""
+        goal = _GOAL_ABBREV.get(goal_type_str, goal_type_str.replace("_", " ").title())
+        had_finding = bool(_r(r, "had_finding", False))
+        finding_cell = "**YES**" if had_finding else "no"
+        turns_used = _r(r, "turns_used", None)
+        if turns_used is None:
+            turns_used = len(_r(r, "steps", []) or [])
+        turns_budget = _r(r, "turns_budget", 0) or turns_used
         turns_cell = f"{turns_used}/{turns_budget}"
-        duration = getattr(r, "duration_s", 0.0)
+        duration = _r(r, "duration_s", 0.0) or 0.0
         dur_cell = _fmt_duration(duration)
         avg_cell = _fmt_avg(duration, turns_used)
 
         total_duration += duration
         total_turns += turns_used
-        if r.had_finding:
+        if had_finding:
             findings_count += 1
 
         lines.append(

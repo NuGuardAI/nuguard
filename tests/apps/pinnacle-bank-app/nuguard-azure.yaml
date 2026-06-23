@@ -19,10 +19,15 @@ policy:
   llm: true                     # use LLM to compile richer test/boundary prompts
 
 # ─── LLM settings ─────────────────────────────────────────────────────────────
+# IMPORTANT: nuguard's analysis LLM must use a DIFFERENT quota than the target
+# app to avoid competing for Azure OpenAI TPM budget. The Pinnacle Bank backend
+# uses azure/gpt-5.4-mini via AZURE_API_BASE — use OpenAI directly here so
+# nuguard's happy-path openers, evaluators, and adapters don't exhaust the
+# same deployment and cause "having difficulty connecting" in the target app.
 llm:
-  model: azure/gpt-5.4-mini    # any LiteLLM model string (openai/gpt-4o, etc.)
-  api_key: ${AZURE_OPENAI_KEY}     # never put keys here; use env var interpolation
-  api_base: ${AZURE_API_BASE}     # optional override for Azure OpenAI endpoint URL
+  model: azure/${AZURE_DEEPSEEK_MODEL_NAME}    # any LiteLLM model string (openai/gpt-4o, etc.)
+  api_key: ${AZURE_DEEPSEEK_KEY}     # never put keys here; use env var interpolation
+  api_base: ${AZURE_DEEPSEEK_ENDPOINT}     # optional override for Azure OpenAI endpoint URL
 
 # ─── SBOM generation ──────────────────────────────────────────────────────────
 sbom_generation:
@@ -153,6 +158,13 @@ redteam:
   # Multi-agent pipelines with LLM calls can take 60–120 s; increase for slow apps
   request_timeout: 90
 
+  # Max seconds to hold the HTTP semaphore while retrying cold-start transient errors
+  # on the FIRST request of a new chain (default: 300 = 5 minutes).
+  # After this limit, the semaphore is released so other chains can proceed rather
+  # than blocking for the full scenario_timeout.
+  # Azure Container App cold-starts typically recover within 90s; 300s is conservative.
+  max_transient_hold_seconds: 300
+
   # Verbose report: include full per-scenario traces in redteam report
   verbose: true
 
@@ -186,13 +198,15 @@ redteam:
   verify_findings: false
 
   # Guided adversarial conversations using ConversationDirector
+  concurrency: 5                     # parallel scenarios (raised from default 3 for throughput)
+  turn_delay_seconds: 0             # no inter-step sleep (models tolerate rapid requests)
   guided_conversations: true        # enable adaptive multi-turn attacks
   guided_max_turns: 8               # upper-bound cap on turns per guided scenario.
                                     # Scenario builders pick 8–12 by default; this
                                     # clamps any higher cap down. Raise/lower to
                                     # trade cost for depth.
   guided_concurrency: 3             # parallel guided conversations (default: 3)
-  scenario_timeout: 300             # cancel any single scenario after 5 minutes
+  scenario_timeout: 900             # cancel any single scenario after 15 minutes (increased from 300 to accommodate in-semaphore cold-start retries)
 
   # TAP tree exploration (RT-016) — branching multi-tactic search.
   # 0 = auto-select from profile (ci → 2, full → 3).
@@ -208,17 +222,20 @@ redteam:
   emit_pytest: false
   emit_pytest_dir: ./redteam-regression
 
-  # LLM for attack-payload generation (must tolerate adversarial content)
+  # LLM for attack-payload generation (must tolerate adversarial content).
+  # Must use a DIFFERENT deployment than the target app to avoid TPM contention.
   llm:
     model: azure/gpt-5.4-mini    # any LiteLLM model string (openai/gpt-4o, etc.)
     api_key: ${AZURE_OPENAI_KEY}
     api_base: ${AZURE_API_BASE}     # optional override for Azure OpenAI endpoint URL
 
-  # LLM for response evaluation and finding summarisation
+  # LLM for response evaluation and finding summarisation.
+  # Must use a DIFFERENT deployment than the target app to avoid TPM contention.
   eval_llm:
-    model: azure/gpt-5.4-mini
-    api_key: ${AZURE_OPENAI_KEY}
-    api_base: ${AZURE_API_BASE}     # optional override for Azure OpenAI endpoint URL
+    model: azure/${AZURE_DEEPSEEK_MODEL_NAME}    # any LiteLLM model string (openai/gpt-4o, etc.)
+    api_key: ${AZURE_DEEPSEEK_KEY}     # never put keys here; use env var interpolation
+    api_base: ${AZURE_DEEPSEEK_ENDPOINT}     # optional override for Azure OpenAI endpoint URL
+
 
   # MCP server hostnames treated as trusted.
   # Servers absent from this list are classified 'untrusted' and eligible

@@ -19,9 +19,15 @@ echo " Compiling Cognitive Policy controls... \n"
 echo " Cognitive Policy Check... \n"
 
 # policy check exits 2 when gaps are found — expected in testing; treat as non-fatal
- uv run nuguard policy check --config ./nuguard.yaml --format markdown -o ./healthcare-policy-check.md || true
+ uv run nuguard policy check --config ./nuguard.yaml --format markdown -o ./healthcare-policy-check.md || {
+    _exit=$?
+    [[ $_exit -eq 2 ]] || { echo "ERROR: policy check failed (exit $_exit)" >&2; exit $_exit; }
+  }
 
 echo " Validating results... \n"
 
-# validate exits 2 when findings are present — expected in testing; treat as non-fatal
- uv run nuguard behavior --config ./nuguard.yaml --format markdown -o ./healthcare-validation.md || true
+# behavior exits 2 when findings are present — expected in testing; treat as non-fatal
+ uv run nuguard behavior --config ./nuguard.yaml --format markdown -o ./healthcare-validation.md || {
+    _exit=$?
+    [[ $_exit -eq 2 ]] || { echo "ERROR: behavior scan failed (exit $_exit)" >&2; exit $_exit; }
+  }

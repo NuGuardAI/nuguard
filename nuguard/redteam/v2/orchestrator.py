@@ -1,0 +1,717 @@
+"""Top-level v2 runner: surface → plan → schedule → execute → evaluate → report.
+
+Full pipeline (Phases 0–7 complete):
+
+1. **Recon** — resolve chat endpoint + benign user-data extraction.
+2. **Target catalog** — capability-gate KB techniques × SBOM × policy; cached.
+3. **Attack surface** — SBOM → normalized surface graph with trust-zone tags.
+4. **Objectives** — coverage matrix + per-node/per-clause scenario objectives.
+5. **Scheduler** — phased, safe, identity-fresh, resource-locked execution.
+6. **Execution** — v1 AttackExecutor/GuidedAttackExecutor (thin adapter layer).
+7. **Evaluation** — deterministic → semantic multi-judge → side-effect → robustness → transferability.
+8. **Findings** — Verdict → Finding with full design fields; regression export.
+"""
+from __future__ import annotations
+
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any
+
+from nuguard.common.logging import get_logger
+from nuguard.models.token_usage import TokenUsage
+
+if TYPE_CHECKING:
+    from nuguard.common.auth import AuthConfig
+    from nuguard.common.llm_client import LLMClient
+    from nuguard.config import RedteamV2Settings
+    from nuguard.models.finding import Finding
+    from nuguard.models.policy import CognitivePolicy
+    from nuguard.redteam.target.canary import CanaryConfig
+
+_log = get_logger(__name__)
+
+# Concurrency ceiling for the phased scheduler.
+
+
+@dataclass
+class RedteamV2Result:
+    """Aggregate output of a v2 run.
+
+    Mirrors the shape the CLI report path expects so the v2 engine can reuse
+    the same Markdown/JSON/SARIF rendering as v1.
+    """
+
+    findings: list["Finding"] = field(default_factory=list)
+    scenario_records: list[Any] = field(default_factory=list)
+    scan_outcome: str = "no_findings"
+    config_notes: list[str] = field(default_factory=list)
+    token_usage: TokenUsage = field(default_factory=TokenUsage)
+    resolved_chat_path: str = "/chat"
+    resolved_chat_path_source: str = "config"
+
+
+class RedteamV2Orchestrator:
+    """Coordinates the full v2 pipeline (surface → plan → execute → evaluate → findings).
+
+    The constructor accepts the same core inputs as the v1
+    :class:`~nuguard.redteam.executor.orchestrator.RedteamOrchestrator` so the
+    CLI can switch engines with minimal branching.  Extra v1-only keyword
+    arguments are accepted and silently discarded via ``**_ignored``.
+    """
+
+    def __init__(
+        self,
+        *,
+        sbom: object,
+        target_url: str,
+        settings: "RedteamV2Settings | None" = None,
+        policy: "CognitivePolicy | None" = None,
+        policy_controls: list | None = None,
+        canary_config: "CanaryConfig | None" = None,
+        profile: str = "ci",
+        chat_path: str = "",
+        auth_config: "AuthConfig | None" = None,
+        chat_payload_extras: dict[str, Any] | None = None,
+        redteam_llm: "LLMClient | None" = None,
+        eval_llm: "LLMClient | None" = None,
+        verbose: bool = False,
+        **_ignored: Any,
+    ) -> None:
+        from nuguard.config import RedteamV2Settings as _Settings
+
+        self.sbom = sbom
+        self.target_url = target_url
+        self.settings = settings or _Settings()
+        self.policy = policy
+        self.policy_controls = policy_controls or []
+        self.canary_config = canary_config
+        self.profile = profile
+        # Track whether the caller explicitly configured a chat path.
+        # When False, recon probes SBOM + live endpoints instead of assuming /chat.
+        self._chat_path_explicit = bool(chat_path)
+        self.chat_path = chat_path or "/chat"
+        self.auth_config = auth_config
+        self.chat_payload_extras: dict[str, Any] = chat_payload_extras or {}
+        self.redteam_llm = redteam_llm
+        self.eval_llm = eval_llm
+        self.verbose = verbose
+
+    # ── main entry point ─────────────────────────────────────────────────────────
+
+    async def run(self) -> RedteamV2Result:
+        """Execute the full v2 pipeline and return confirmed findings."""
+        config_notes: list[str] = []
+
+        # ── 0. Auth bootstrap (mirrors v1 orchestrator) ───────────────────────
+        # Resolve the target URL (handles static hosting fallback), upgrade basic
+        # auth → login_flow via SBOM-discovered login endpoint, execute the login
+        # flow to get a Bearer token, and return live session headers for all
+        # subsequent HTTP requests.
+        effective_headers = await self._bootstrap_auth(config_notes)
+
+        # ── 1. Recon: resolve endpoint + optional user-data extraction ────────
+        _log.info("v2 pipeline: starting recon")
+        recon = await self._run_recon(config_notes, effective_headers=effective_headers)
+
+        # ── 2. Build the per-target catalog (capability-gated, cached) ────────
+        _log.info("v2 pipeline: building target catalog")
+        catalog, from_cache = self._build_catalog(recon, config_notes)
+        if from_cache:
+            config_notes.append("target catalog loaded from cache (SBOM+policy hash unchanged)")
+
+        # ── 3. Attack surface + capability profile ────────────────────────────
+        _log.info("v2 pipeline: building attack surface")
+        surface = self._build_surface()
+
+        # ── 4. Coverage matrix + objectives ──────────────────────────────────
+        _log.info("v2 pipeline: generating objectives")
+        objectives, coverage = self._generate_objectives(surface, catalog.technique_ids, config_notes)
+        if not objectives:
+            config_notes.append("no objectives generated — SBOM may have no addressable nodes")
+            return RedteamV2Result(
+                scan_outcome="no_objectives",
+                config_notes=config_notes,
+                resolved_chat_path=recon.chat_path,
+                resolved_chat_path_source=recon.endpoint_source,
+            )
+
+        # ── 5–6. Execute objectives through the phased scheduler ──────────────
+        _log.info("v2 pipeline: executing %d objectives", len(objectives))
+        scheduled_results = await self._run_scheduler(objectives, surface, recon, config_notes, effective_headers=effective_headers)
+
+        # ── 7. Layered evaluation ─────────────────────────────────────────────
+        _log.info("v2 pipeline: evaluating outcomes")
+        verdicts, outcomes_by_id = await self._evaluate(scheduled_results, objectives)
+
+        # ── 8. Build findings from confirmed verdicts ─────────────────────────
+        _log.info("v2 pipeline: building findings")
+        from nuguard.redteam.v2.findings.builder import build_findings
+
+        findings = build_findings(verdicts, objectives, outcomes=outcomes_by_id)
+
+        # ── Assemble result ───────────────────────────────────────────────────
+        scenario_records = _build_scenario_records(scheduled_results, verdicts)
+        scan_outcome = (
+            "critical_findings" if any(
+                f.severity.value in ("critical", "high") for f in findings
+            )
+            else ("findings" if findings else "no_findings")
+        )
+
+        _log.info(
+            "v2 pipeline complete: %d finding(s), outcome=%s", len(findings), scan_outcome
+        )
+        return RedteamV2Result(
+            findings=findings,
+            scenario_records=scenario_records,
+            scan_outcome=scan_outcome,
+            config_notes=config_notes,
+            resolved_chat_path=recon.chat_path,
+            resolved_chat_path_source=recon.endpoint_source,
+        )
+
+    # ── stage helpers ─────────────────────────────────────────────────────────
+
+    async def _bootstrap_auth(self, notes: list[str]) -> dict[str, str]:
+        """Mirror v1 auth bootstrap: URL resolution, basic→login_flow upgrade, token acquisition.
+
+        Returns live HTTP headers (e.g. ``{"Authorization": "Bearer <tok>"}``).
+        For static auth types (bearer, api_key, basic) returns the static headers
+        directly.  For login_flow, executes the login HTTP request and returns the
+        Bearer token header.  Never raises — failures are logged and empty headers
+        returned so the run can still attempt scenarios.
+        """
+        from nuguard.common.auth_runtime import bootstrap_auth_runtime, resolve_auth_runtime
+        from nuguard.common.target_client_builder import (
+            resolve_auth_config_with_sbom_fallback,
+            resolve_target_url,
+        )
+        from nuguard.sbom.models import AiSbomDocument
+
+        sbom = self.sbom if isinstance(self.sbom, AiSbomDocument) else None
+
+        # ── Step 1: resolve static-hosting URL fallback ───────────────────────
+        if self.target_url:
+            resolved_url, url_notes = resolve_target_url(self.target_url, sbom)
+            if resolved_url and resolved_url != self.target_url.rstrip("/"):
+                self.target_url = resolved_url
+                notes.extend(url_notes)
+
+        # ── Step 2: upgrade basic auth → login_flow via SBOM login endpoint ──
+        effective_auth = self.auth_config
+        if (
+            effective_auth is not None
+            and effective_auth.type == "basic"
+            and effective_auth.login_flow is None
+            and sbom is not None
+        ):
+            effective_auth, auth_note = resolve_auth_config_with_sbom_fallback(
+                effective_auth, sbom
+            )
+            if auth_note:
+                notes.append(auth_note)
+
+        # ── Step 3: execute login flow / acquire token ────────────────────────
+        if not self.target_url:
+            # No target configured — return static headers without bootstrapping.
+            return (effective_auth.to_headers() if effective_auth else {})
+
+        try:
+            auth_runtime = resolve_auth_runtime(auth_config=effective_auth)
+            bootstrapper, health_report = await bootstrap_auth_runtime(
+                target_url=self.target_url,
+                endpoint=self._chat_path_explicit and self.chat_path or "",
+                auth_config=auth_runtime.auth_config,
+                timeout=self.settings.request_timeout,
+            )
+            for line in health_report.summary_lines():
+                _log.info("auth bootstrap %s", line)
+            return bootstrapper.session.headers()
+        except Exception as exc:
+            _log.warning("auth bootstrap failed: %s — proceeding with static headers", exc)
+            return (effective_auth.to_headers() if effective_auth else {})
+
+    async def _run_recon(self, notes: list[str], *, effective_headers: dict[str, str] | None = None) -> Any:
+        from nuguard.redteam.v2.surface.recon import (
+            ReconResult,
+            resolve_chat_endpoint,
+        )
+        from nuguard.sbom.models import AiSbomDocument
+
+        # Use bootstrapped session headers (Bearer token) rather than raw auth config.
+        auth_headers = effective_headers or (self.auth_config.to_headers() if self.auth_config else None)
+        sbom = self.sbom if isinstance(self.sbom, AiSbomDocument) else None
+
+        if sbom is None:
+            # Minimal recon without a typed SBOM.
+            notes.append("SBOM is not an AiSbomDocument — recon limited to config defaults")
+            return ReconResult(
+                chat_path=self.chat_path,
+                chat_payload_key="message",
+                chat_payload_list=False,
+                response_key=None,
+                endpoint_source="config",
+            )
+
+        # ── Step 1: resolve the chat endpoint (zero-I/O SBOM + live probe) ──
+        # Pass an empty path when the user did not explicitly configure one so
+        # that resolve_chat_endpoint consults the SBOM and probes live endpoints.
+        # Passing "/chat" (the default) short-circuits to source="config" without
+        # any discovery, which causes 405s when the real endpoint differs.
+        _probe_path = self.chat_path if self._chat_path_explicit else ""
+        path, key, is_list, resp_key, source = await resolve_chat_endpoint(
+            sbom,
+            chat_path=_probe_path,
+            target_url=self.target_url,
+            auth_headers=auth_headers,
+            allow_live_probe=True,
+            timeout=self.settings.request_timeout,
+        )
+        _log.info(
+            "recon: endpoint resolved via %r — path=%s key=%s list=%s",
+            source, path, key, is_list,
+        )
+
+        # ── Step 2: build the client with the resolved endpoint config ────────
+        # Building before recon (as before) meant the discovery prompts went to
+        # the unresolved /chat path with the wrong payload shape.
+        client = self._build_target_client(
+            chat_path=path,
+            chat_payload_key=key,
+            chat_payload_list=is_list,
+            chat_response_key=resp_key,
+            auth_headers=auth_headers,
+            request_timeout=self.settings.request_timeout,
+        ) if self.target_url else None
+
+        # ── Step 3: user-data discovery using run_discovery_conversation ──────
+        # Use the same pre-scan discovery path as v1: domain-aware messages,
+        # refusal detection, task-framed fallbacks.  Falls back to an empty
+        # profile when the target is not configured or all turns fail.
+        user_ids: list[str] = []
+        user_name: str = ""
+        entity_map: dict[str, str] = {}
+        disclosures: list[str] = []
+
+        if client is not None and self.target_url:
+            from nuguard.common.discovery import run_discovery_conversation
+            from nuguard.redteam.target.session import AttackSession
+
+            use_case = ""
+            if sbom is not None and sbom.summary:
+                use_case = (
+                    getattr(sbom.summary, "use_case", "") or
+                    getattr(sbom.summary, "application_name", "") or ""
+                )
+
+            disc_session = AttackSession(
+                session_id="recon",
+                target_url=self.target_url,
+                chain_id="recon",
+            )
+            discovered = await run_discovery_conversation(
+                client=client,
+                session=disc_session,
+                use_case=use_case,
+                max_turns=3,
+            )
+            user_ids = discovered.ids
+            user_name = discovered.customer_name
+            entity_map = discovered.entity_map
+            if discovered.raw_response:
+                disclosures = [discovered.raw_response]
+            _log.info(
+                "recon extracted %d id(s)%s",
+                len(user_ids),
+                f", name={user_name!r}" if user_name else "",
+            )
+
+        recon = ReconResult(
+            chat_path=path,
+            chat_payload_key=key,
+            chat_payload_list=is_list,
+            response_key=resp_key,
+            endpoint_source=source,
+            user_ids=user_ids,
+            user_name=user_name,
+            entity_map=entity_map,
+            disclosures=disclosures,
+        )
+
+        notes.append(f"chat endpoint resolved via {source!r}: {path}")
+        if recon.has_user_data:
+            notes.append(
+                f"recon extracted {len(recon.user_ids)} user id(s)"
+                + (f", name={recon.user_name!r}" if recon.user_name else "")
+            )
+        return recon
+
+    def _build_catalog(self, recon: Any, notes: list[str]) -> Any:
+        from nuguard.redteam.v2.surface.target_catalog import build_target_catalog
+        from nuguard.sbom.models import AiSbomDocument
+
+        sbom = self.sbom
+        if not isinstance(sbom, AiSbomDocument):
+            # Synthesize a minimal empty SBOM so the catalog still builds.
+            try:
+                from nuguard.sbom.models import AiSbomDocument as _Doc
+                sbom = _Doc(nodes=[], edges=[], target="v2-run")
+            except Exception:
+                pass
+
+        catalog, from_cache = build_target_catalog(
+            sbom,  # type: ignore[arg-type]
+            policy=self.policy,
+            target_url=self.target_url,
+            scan_profile=self.profile,
+        )
+        return catalog, from_cache
+
+    def _build_surface(self) -> Any:
+        from nuguard.redteam.v2.surface.attack_surface import AttackSurface
+        from nuguard.sbom.models import AiSbomDocument
+
+        sbom = self.sbom
+        if not isinstance(sbom, AiSbomDocument):
+            try:
+                sbom = AiSbomDocument(nodes=[], edges=[], target="v2-run")
+            except Exception:
+                pass
+        return AttackSurface.from_sbom(sbom, policy=self.policy)  # type: ignore[arg-type]
+
+    def _generate_objectives(
+        self,
+        surface: Any,
+        technique_ids: list[str],
+        notes: list[str],
+    ) -> tuple[list[Any], Any]:
+        from nuguard.redteam.v2.planning.objective_generator import generate_objectives
+
+        # Phase filter: if settings.phases is non-empty, only include those phases.
+        objectives, coverage = generate_objectives(
+            surface,
+            policy=self.policy,
+            technique_ids=technique_ids or None,
+        )
+
+        # Filter by enabled phases if configured.
+        enabled_phases = set(self.settings.phases)
+        if enabled_phases:
+            from nuguard.redteam.v2.scheduler.phases import Phase
+            enabled_ints: set[int] = set()
+            for name in enabled_phases:
+                # Accept phase enum names ("RECON", "WARMUP") or integer strings ("1", "2").
+                try:
+                    enabled_ints.add(int(name))
+                    continue
+                except ValueError:
+                    pass
+                try:
+                    enabled_ints.add(int(Phase[name.upper()]))
+                except KeyError:
+                    pass
+            if enabled_ints:
+                objectives = [o for o in objectives if o.execution_phase in enabled_ints]
+                notes.append(f"phase filter active: {sorted(enabled_ints)} ({len(objectives)} objectives)")
+
+        # Max-per-phase cap.
+        if self.settings.max_per_phase > 0:
+            from collections import defaultdict
+            by_phase: dict[int, list] = defaultdict(list)
+            for o in objectives:
+                by_phase[o.execution_phase].append(o)
+            capped: list[Any] = []
+            for ph_objs in by_phase.values():
+                capped.extend(ph_objs[: self.settings.max_per_phase])
+            objectives = capped
+
+        notes.append(
+            f"objectives: {len(objectives)} generated, "
+            f"{len(coverage.gaps())} coverage gap(s)"
+        )
+        return objectives, coverage
+
+    async def _run_scheduler(
+        self,
+        objectives: list[Any],
+        surface: Any,
+        recon: Any,
+        notes: list[str],
+        *,
+        effective_headers: dict[str, str] | None = None,
+    ) -> list[Any]:
+        from nuguard.redteam.v2.execution.runner import KillChainState, ObjectiveRunner
+        from nuguard.redteam.v2.scheduler.safety import SafetyPolicy
+        from nuguard.redteam.v2.scheduler.scheduler import PhasedScheduler
+
+        # Use bootstrapped session headers (Bearer token) rather than raw auth config.
+        auth_headers = effective_headers or (self.auth_config.to_headers() if self.auth_config else None)
+        client = self._build_target_client(
+            chat_path=getattr(recon, "chat_path", self.chat_path),
+            chat_payload_key=getattr(recon, "chat_payload_key", "message"),
+            chat_payload_list=getattr(recon, "chat_payload_list", False),
+            chat_response_key=getattr(recon, "response_key", None),
+            auth_headers=auth_headers,
+            request_timeout=self.settings.request_timeout,
+        )
+        canary = self._build_canary()
+        app_domain, allowed_topics = self._build_happy_path_context()
+
+        # Build a DiscoveredProfile from recon so the DISCOVER golden-data cache
+        # is pre-seeded.  This lets the executor skip repeat DISCOVER requests
+        # for chains targeting the same agent node, and ensures session.turns > 0
+        # after the WARMUP so content-filter transient responses are not retried.
+        pre_scan_profile: Any = None
+        if getattr(recon, "has_user_data", False):
+            from nuguard.common.discovery import DiscoveredProfile
+            pre_scan_profile = DiscoveredProfile(
+                customer_name=getattr(recon, "user_name", ""),
+                ids=list(getattr(recon, "user_ids", [])),
+                entity_map=dict(getattr(recon, "entity_map", {})),
+                raw_response="\n---\n".join(getattr(recon, "disclosures", [])),
+            )
+
+        static_exec = self._build_static_executor(
+            client,
+            canary,
+            app_domain=app_domain,
+            allowed_topics=allowed_topics,
+            pre_scan_profile=pre_scan_profile,
+        )
+        guided_exec = self._build_guided_executor(client, canary)
+
+        chat_path = getattr(recon, "chat_path", self.chat_path)
+        full_target_url = self.target_url.rstrip("/") + chat_path
+
+        killchain = KillChainState()
+        runner = ObjectiveRunner(
+            sbom=self.sbom,  # type: ignore[arg-type]
+            profile=surface.profile,
+            static_executor=static_exec,
+            guided_executor=guided_exec,
+            client=client,
+            policy=self.policy,
+            killchain=killchain,
+            mutation_llm=self.redteam_llm,
+            verbose=self.verbose,
+            target_url=full_target_url,
+            codegen_escalation_enabled=self.settings.codegen_escalation_enabled,
+        )
+
+        safety = SafetyPolicy(
+            dry_run_only=self.settings.dry_run_only,
+            allow_external_egress=False,
+        )
+        scheduler = PhasedScheduler(
+            concurrency=self.settings.concurrency,
+            safety=safety,
+            stop_on_critical=True,
+            objective_timeout=self.settings.objective_timeout,
+        )
+
+        scheduled = await scheduler.run(objectives, runner)
+        completed = sum(1 for r in scheduled if r.status == "completed")
+        skipped = len(scheduled) - completed
+        notes.append(f"scheduler: {completed} executed, {skipped} skipped/errored")
+        return scheduled
+
+    async def _evaluate(
+        self, scheduled_results: list[Any], objectives: list[Any]
+    ) -> tuple[list[Any], dict[str, Any]]:
+        from nuguard.redteam.v2.evaluation.pipeline import EvaluationPipeline
+        from nuguard.redteam.v2.evaluation.verdict import EvaluationInput
+
+        outcomes_by_id: dict[str, Any] = {}
+        eval_inputs: list[EvaluationInput] = []
+        obj_by_id = {o.objective_id: o for o in objectives}
+
+        from collections import Counter
+        status_counts = Counter(sr.status for sr in scheduled_results)
+        none_count = sum(1 for sr in scheduled_results if sr.result is None)
+        _log.debug(
+            "evaluate: %d scheduled, %d with result, statuses: %s",
+            len(scheduled_results), len(scheduled_results) - none_count, dict(status_counts),
+        )
+        if none_count:
+            _log.info(
+                "evaluate: %d objective(s) skipped before evaluation — %s",
+                none_count,
+                ", ".join(f"{k}={v}" for k, v in status_counts.items() if k != "completed"),
+            )
+
+        for sr in scheduled_results:
+            if sr.result is None:
+                continue
+            obj = obj_by_id.get(sr.objective.objective_id)
+            if obj is None:
+                continue
+            outcomes_by_id[sr.objective.objective_id] = sr.result
+            inp = EvaluationInput.from_outcome(obj, sr.result)
+            eval_inputs.append(inp)
+
+        if not eval_inputs:
+            return [], outcomes_by_id
+
+        from nuguard.config import RedteamFindingTriggers
+
+        pipeline = EvaluationPipeline(
+            llm=self.eval_llm,
+            judge_count=self.settings.semantic_judge_count,
+            judge_quorum=self.settings.semantic_judge_quorum,
+            transferability_enabled=self.settings.transferability_enabled,
+            triggers=RedteamFindingTriggers(),
+        )
+        verdicts = await pipeline.evaluate_all(eval_inputs)
+        return verdicts, outcomes_by_id
+
+    # ── v1 infrastructure builders ────────────────────────────────────────────
+
+    def _build_target_client(
+        self,
+        *,
+        chat_path: str = "/chat",
+        chat_payload_key: str = "message",
+        chat_payload_list: bool = False,
+        chat_response_key: str | None = None,
+        auth_headers: dict[str, str] | None = None,
+        request_timeout: float = 60.0,
+    ) -> Any:
+        from nuguard.redteam.target.client import TargetAppClient
+
+        return TargetAppClient(
+            base_url=self.target_url,
+            chat_path=chat_path,
+            chat_payload_key=chat_payload_key,
+            chat_payload_list=chat_payload_list,
+            chat_response_key=chat_response_key,
+            default_headers=auth_headers,
+            timeout=request_timeout,
+            chat_payload_extras=self.chat_payload_extras or None,
+            max_concurrent_requests=self.settings.max_concurrent_requests,
+            max_transient_hold_seconds=self.settings.max_transient_hold_seconds,
+        )
+
+    def _build_canary(self) -> Any:
+        from nuguard.redteam.target.canary import CanaryConfig, CanaryScanner
+
+        cfg = self.canary_config or CanaryConfig()
+        return CanaryScanner(cfg)
+
+    def _build_happy_path_context(self) -> tuple[str, list[str]]:
+        """Return (app_domain, allowed_topics) for the per-chain WARMUP opener.
+
+        Mirrors the v1 orchestrator's ``_build_happy_path_context``.  Without
+        these values the executor's ``has_domain_context`` guard evaluates to
+        False and WARMUP is silently skipped, meaning the very first target
+        request is already an adversarial payload — which the backend's content
+        filter catches and returns as "having difficulty connecting", triggering
+        the in-semaphore retry loop.
+        """
+        from nuguard.sbom.models import AiSbomDocument
+
+        app_name = ""
+        use_case = ""
+        sbom = self.sbom
+        if isinstance(sbom, AiSbomDocument) and sbom.summary:
+            app_name = (getattr(sbom.summary, "application_name", "") or "").strip()
+            use_case = (getattr(sbom.summary, "use_case", "") or "").strip()
+        if app_name and use_case:
+            app_domain = f"{app_name} — {use_case[:160]}"
+        else:
+            app_domain = app_name or use_case[:160]
+        allowed_topics: list[str] = []
+        if self.policy:
+            allowed_topics = [t for t in (self.policy.allowed_topics or []) if t]
+        return app_domain, allowed_topics
+
+    def _build_static_executor(
+        self,
+        client: Any,
+        canary: Any,
+        *,
+        app_domain: str = "",
+        allowed_topics: list[str] | None = None,
+        pre_scan_profile: Any = None,
+    ) -> Any:
+        from nuguard.redteam.executor.executor import AttackExecutor
+        from nuguard.sbom.models import AiSbomDocument
+
+        sbom = self.sbom if isinstance(self.sbom, AiSbomDocument) else None
+        return AttackExecutor(
+            client=client,
+            policy=self.policy,
+            canary=canary,
+            eval_llm=self.eval_llm,
+            mutation_llm=self.redteam_llm,
+            sbom=sbom,
+            app_domain=app_domain,
+            allowed_topics=allowed_topics or [],
+            pre_scan_profile=pre_scan_profile,
+            turn_delay_seconds=self.settings.turn_delay_seconds,
+        )
+
+    def _build_guided_executor(self, client: Any, canary: Any) -> Any | None:
+        if self.redteam_llm is None:
+            return None
+
+        from nuguard.models.exploit_chain import GoalType
+        from nuguard.redteam.executor.guided_executor import GuidedAttackExecutor
+        from nuguard.redteam.llm_engine.conversation_director import ConversationDirector
+        from nuguard.sbom.models import AiSbomDocument
+
+        sbom = self.sbom if isinstance(self.sbom, AiSbomDocument) else None
+        director = ConversationDirector(
+            llm=self.redteam_llm,
+            eval_llm=self.eval_llm or self.redteam_llm,
+            goal_type=GoalType.PROMPT_DRIVEN_THREAT,  # placeholder — overridden per scenario
+            goal_description="",
+        )
+        return GuidedAttackExecutor(
+            client=client,
+            director=director,
+            canary=canary,
+            sbom=sbom,
+        )
+
+
+# ── utilities ─────────────────────────────────────────────────────────────────
+
+def _build_scenario_records(scheduled_results: list[Any], verdicts: list[Any]) -> list[dict]:
+    """Thin scenario-record list for the report path (mirrors v1 ScenarioRecord shape)."""
+    verdict_map = {v.objective_id: v for v in verdicts}
+    records: list[dict] = []
+    for sr in scheduled_results:
+        oid = sr.objective.objective_id
+        verdict = verdict_map.get(oid)
+        had_finding = bool(verdict.succeeded if verdict else False)
+        # Map scheduler status to the chain_status values expected by report helpers.
+        _sched_status = sr.status
+        if _sched_status == "completed":
+            chain_status = "succeeded" if had_finding else "completed"
+        else:
+            chain_status = "aborted"
+        outcome = sr.result
+        step_count = int(getattr(outcome, "step_count", 0) or 0)
+        records.append(
+            {
+                "objective_id": oid,
+                "title": sr.objective.title,
+                # Expose family under both its native key and the v1 report key
+                "family": sr.objective.family,
+                "goal_type": sr.objective.family,
+                "phase": int(sr.phase),
+                "scheduler_status": _sched_status,
+                # v1 report-compat fields
+                "chain_status": chain_status,
+                "had_finding": had_finding,
+                "impact_score": 0.0,
+                "turns_used": step_count,
+                "turns_budget": step_count,
+                "duration_s": 0.0,
+                "steps": [],
+                # Verdict details
+                "succeeded": verdict.succeeded if verdict else False,
+                "confidence": verdict.confidence.value if verdict else "none",
+                "severity": verdict.severity.value if verdict else "info",
+            }
+        )
+    return records

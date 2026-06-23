@@ -25,7 +25,7 @@ class BehaviorScenarioType(str, Enum):
     INTENT_HAPPY_PATH = "intent_happy_path"        # Layer 1: topic-path scenarios
     AGENT_COVERAGE = "agent_coverage"              # Layer 2a: one scenario per AGENT node
     COMPONENT_COVERAGE = "component_coverage"      # Layer 2b: tool coverage (with chaining)
-    INVARIANT_PROBE = "invariant_probe"            # Layer 3: HITL + data classification
+    GUARDRAIL_PROBE = "guardrail_probe"            # Layer 3: HITL + data classification
     DATA_DISCOVERY_PROBE = "data_discovery_probe"  # Layer 4: discover + react to user data
     ENDPOINT_COVERAGE = "endpoint_coverage"        # Layer 5: first-class API_ENDPOINT coverage
 

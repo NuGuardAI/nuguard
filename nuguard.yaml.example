@@ -141,6 +141,22 @@ redteam:
   # adk:
   #   app_name: my-agent-app       # bypasses the /list-apps auto-discovery call
 
+  # Red-team engine:
+  #   v1 — default, stable scenario-catalog engine
+  #   v2 — knowledge-base-driven, phased scheduler, layered evaluation (in development)
+  # engine: v1
+
+  # v2 engine settings (only used when engine: v2)
+  # v2:
+  #   knowledge_base_version: 0.1.0   # pinned technique KB version
+  #   phases: []                      # phase names to run; empty = all
+  #   semantic_judge:
+  #     count: 3                      # independent LLM judges for semantic verdicts
+  #     quorum: 2                     # votes required to confirm a violation
+  #   transferability_enabled: true   # score successful objectives for transferability
+  #   max_per_phase: 0                # cap scenarios per phase; 0 = unlimited
+  #   dry_run_only: true              # enforce dry-run-only for destructive actions
+
   # Scan profile:
   #   ci       — fast; only scenarios with pre-impact score ≥ 5, capped at ~20 (default)
   #   standard — balanced; score ≥ 3, capped at ~40 scenarios

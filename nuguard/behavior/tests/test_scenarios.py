@@ -14,7 +14,7 @@ from nuguard.behavior.scenarios import (
     _deterministic_component_scenario,
     _deterministic_happy_path,
     _deterministic_tool_chain,
-    _invariant_probe_scenarios,
+    _guardrail_probe_scenarios,
     _is_standalone_group,
     _tool_action_tier,
     build_scenarios,
@@ -328,7 +328,7 @@ def test_dedup_cross_type_keeps_chained_with_empty_scoped_tools():
 def test_dedup_cross_type_passthrough_non_component_scenarios():
     happy = _make_happy_path_scenario("happy", scoped_tools=["get_balance"])
     invariant = BehaviorScenario(
-        scenario_type=BehaviorScenarioType.INVARIANT_PROBE,
+        scenario_type=BehaviorScenarioType.GUARDRAIL_PROBE,
         name="hitl_probe",
         messages=["Transfer $1M"],
         scoped_tools=["get_balance"],
@@ -338,29 +338,29 @@ def test_dedup_cross_type_passthrough_non_component_scenarios():
 
 
 # ---------------------------------------------------------------------------
-# Layer 3: Invariant Probes
+# Layer 3: Guardrail Probes
 # ---------------------------------------------------------------------------
 
 
-def test_invariant_probe_hitl():
+def test_guardrail_probe_hitl():
     policy = _make_policy(hitl_triggers=["budget > $10k"])
     intent = _make_intent()
-    scenarios = _invariant_probe_scenarios(policy, intent)
+    scenarios = _guardrail_probe_scenarios(policy, intent)
     hitl_scenarios = [s for s in scenarios if "hitl_probe" in s.name]
     assert len(hitl_scenarios) >= 1
-    assert hitl_scenarios[0].scenario_type == BehaviorScenarioType.INVARIANT_PROBE
+    assert hitl_scenarios[0].scenario_type == BehaviorScenarioType.GUARDRAIL_PROBE
 
 
-def test_invariant_probe_data_classification():
+def test_guardrail_probe_data_classification():
     policy = _make_policy(data_classification=["no PII in logs"])
     intent = _make_intent()
-    scenarios = _invariant_probe_scenarios(policy, intent)
+    scenarios = _guardrail_probe_scenarios(policy, intent)
     data_scenarios = [s for s in scenarios if "data_probe" in s.name]
     assert len(data_scenarios) >= 1
 
 
-def test_invariant_probe_no_policy():
-    scenarios = _invariant_probe_scenarios(None, _make_intent())
+def test_guardrail_probe_no_policy():
+    scenarios = _guardrail_probe_scenarios(None, _make_intent())
     assert scenarios == []
 
 
@@ -389,7 +389,7 @@ async def test_build_scenarios_all_layers():
     assert BehaviorScenarioType.INTENT_HAPPY_PATH in types
     # v7: boundary_enforcement removed
     assert all(str(t) != "boundary_enforcement" for t in types)
-    assert BehaviorScenarioType.INVARIANT_PROBE in types
+    assert BehaviorScenarioType.GUARDRAIL_PROBE in types
 
 
 @pytest.mark.asyncio
