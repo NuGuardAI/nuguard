@@ -235,10 +235,12 @@ def test_guardrail_path_emits_invariant_probe():
         assert stype == BehaviorScenarioType.GUARDRAIL_PROBE.value
 
 
-def test_guardrail_path_sets_expect_refused():
+def test_guardrail_path_sets_expect_not_refused():
+    # Guardrail path scenarios now verify positive pass-through (allowed topics),
+    # so expect_refused must be False on all emitted probes.
     sbom = _make_guardrail_sbom(["transfer funds"])
     scenarios = _guardrail_path_scenarios(sbom, _make_intent())
-    assert all(s.expect_refused for s in scenarios)
+    assert all(not s.expect_refused for s in scenarios)
 
 
 def test_guardrail_path_sets_scoped_guardrail():
@@ -254,7 +256,9 @@ def test_guardrail_path_two_turn_messages():
         assert len(sc.messages) == 2, "Guardrail probe must be 2 turns"
 
 
-def test_guardrail_path_no_scenarios_without_blocked_actions():
+def test_guardrail_path_no_scenarios_for_empty_guardrail():
+    # A guardrail with no rules_excerpt and no policy allowed_topics has no
+    # useful context to probe — no scenarios should be generated.
     gid = uuid.uuid5(_NS, "guardrail/EmptyGuard")
     guardrail = Node(
         id=gid,
@@ -264,6 +268,7 @@ def test_guardrail_path_no_scenarios_without_blocked_actions():
         metadata=NodeMetadata(),
     )
     sbom = AiSbomDocument(target="./app", nodes=[guardrail], edges=[])
+    # No policy passed → no allowed_topics, and guardrail has no rules_excerpt → skip.
     scenarios = _guardrail_path_scenarios(sbom, _make_intent())
     assert scenarios == []
 

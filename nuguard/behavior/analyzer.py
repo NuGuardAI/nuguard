@@ -204,6 +204,58 @@ class BehaviorAnalyzer:
                 )
                 pre_scan_profile = await runner.discover()
 
+                # ── Golden-data fallback ─────────────────────────────────
+                # When live discovery returns nothing, build a DiscoveredProfile
+                # from config-supplied golden_data so test payloads use real
+                # account IDs/names instead of synthetic placeholders.
+                # Priority: live discovery > behavior.golden_data > redteam.golden_data
+                if pre_scan_profile is None or pre_scan_profile.is_empty:
+                    _gd = (
+                        getattr(self._config.behavior_config, "golden_data", {}) or {}
+                    ) or (
+                        getattr(self._config, "redteam_golden_data", {}) or {}
+                    )
+                    if _gd:
+                        from nuguard.common.discovery import (  # noqa: PLC0415
+                            DiscoveredProfile as _DP,
+                        )
+                        _ID_KEYS = (
+                            "account_id", "id", "booking_ref", "booking_id",
+                            "pnr", "confirmation_number", "confirmation_code",
+                            "reference", "reservation_id", "order_id", "customer_id",
+                        )
+                        _NAME_KEYS = (
+                            "name", "customer_name", "passenger_name",
+                            "user_name", "full_name", "first_name",
+                        )
+                        _ids: list[str] = []
+                        _name = ""
+                        for _entry in _gd.values():
+                            if isinstance(_entry, dict):
+                                _aid = next(
+                                    (str(_entry[k]) for k in _ID_KEYS if _entry.get(k)),
+                                    "",
+                                )
+                                if _aid and _aid not in _ids:
+                                    _ids.append(_aid)
+                                _nm = next(
+                                    (str(_entry[k]) for k in _NAME_KEYS if _entry.get(k)),
+                                    "",
+                                )
+                                if _nm and not _name:
+                                    _name = _nm
+                        if _ids or _name:
+                            pre_scan_profile = _DP(
+                                customer_name=_name,
+                                ids=_ids,
+                                raw_response=f"Pre-seeded from config: id={_ids}, name={_name!r}",
+                            )
+                            from nuguard.common.console import _console  # noqa: PLC0415
+                            _console.print(
+                                f"  [bold cyan]Pre-scan discovery (config golden_data):[/bold cyan] "
+                                f"name={_name!r}  ids={_ids}"
+                            )
+
                 # ── Scenario cache / build ───────────────────────────────
                 # v3: skip LLM generation on warm runs.
                 # NOTE: we intentionally bypass the cache when a non-empty

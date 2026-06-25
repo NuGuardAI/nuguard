@@ -56,6 +56,25 @@ _READ_ONLY_TOOL_NAME = re.compile(
     re.IGNORECASE,
 )
 
+# Markers that indicate a restriction is about accessing *another* customer's data
+# (cross-user / cross-tenant data isolation).  When a restriction matches this pattern,
+# we require the tool to explicitly reference customer-identifying data before flagging.
+_CROSS_USER_RESTRICTION_MARKERS = re.compile(
+    r"\b(?:any\s+customer|other\s+customer|another\s+customer|other\s+than\s+the"
+    r"|cross.?user|cross.?tenant|another\s+user|different\s+customer"
+    r"|other\s+user|another\s+account\s+holder)\b",
+    re.IGNORECASE,
+)
+
+# Keywords in a tool's name or description that indicate it deals with customer-specific
+# (per-identity) data.  Generic financial / market-data tools that lack these tokens
+# should not be flagged for cross-user data isolation restrictions.
+_CUSTOMER_SCOPED_TOOL_KEYWORDS: frozenset[str] = frozenset({
+    "customer", "user_id", "userid", "account holder", "account number",
+    "session", "tenant", "client id", "clientid", "member id", "member",
+    "subscriber", "policyholder", "account owner",
+})
+
 
 def _fuzzy_topic_match(text: str, topics: list[str]) -> list[str]:
     """Return topics that fuzzy-match against *text*.
@@ -233,6 +252,10 @@ def _ba_003_restricted_action_tool_edge(
         # View, Stream, Read).  A read-only tool cannot initiate or approve anything
         # so flagging it would be a false positive.
         is_write_action = bool(_WRITE_RESTRICTED_ACTION_VERBS.search(action))
+        # Cross-user data isolation restrictions require the tool to explicitly reference
+        # customer-identifying data.  Market-data tools (Exchange Rate, Crypto Price, etc.)
+        # match keyword overlap on "account" but don't actually expose per-user records.
+        is_cross_user_restriction = bool(_CROSS_USER_RESTRICTION_MARKERS.search(action))
         # Find tools whose name or description matches the restricted action
         for node in sbom.nodes:
             if _node_type(node) != "TOOL":
@@ -243,6 +266,12 @@ def _ba_003_restricted_action_tool_edge(
             desc = str(_node_metadata(node, "description") or "")
             combined = f"{name} {desc}".lower()
             if not _fuzzy_topic_match(combined, [action]):
+                continue
+            # For cross-user restrictions: require at least one customer-scoped keyword
+            # in the tool's name/description to avoid false positives on generic tools.
+            if is_cross_user_restriction and not any(
+                kw in combined for kw in _CUSTOMER_SCOPED_TOOL_KEYWORDS
+            ):
                 continue
             # Collect agents that can reach this tool
             for src_node in sbom.nodes:
