@@ -563,6 +563,15 @@ class BehaviorConfig(BaseModel):
         ),
     )
     boundary_assertions: list[BehaviorBoundaryAssertion] = Field(default_factory=list)
+    golden_data: dict[str, Any] = Field(
+        default_factory=dict,
+        description=(
+            "Pre-seeded user profile data for behavior testing — same schema as "
+            "redteam.golden_data.  Used as a fallback when live pre-scan discovery "
+            "returns an empty profile so test payloads reference real account IDs and "
+            "names rather than synthetic placeholders."
+        ),
+    )
     request_timeout: float = 60.0
     verbose: bool = False
     use_llm: bool = Field(

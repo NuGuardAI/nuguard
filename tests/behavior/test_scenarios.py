@@ -10,6 +10,7 @@ from nuguard.behavior.scenarios import (
     _delegates_to_scenarios,
     _endpoint_coverage_scenarios,
     _guardrail_path_scenarios,
+    _policy_topic_coverage_scenarios,
     _tool_coverage_scenarios,
 )
 from nuguard.sbom.models import (
@@ -235,10 +236,12 @@ def test_guardrail_path_emits_invariant_probe():
         assert stype == BehaviorScenarioType.GUARDRAIL_PROBE.value
 
 
-def test_guardrail_path_sets_expect_refused():
+def test_guardrail_path_sets_expect_not_refused():
+    # Guardrail path scenarios now verify positive pass-through (allowed topics),
+    # so expect_refused must be False on all emitted probes.
     sbom = _make_guardrail_sbom(["transfer funds"])
     scenarios = _guardrail_path_scenarios(sbom, _make_intent())
-    assert all(s.expect_refused for s in scenarios)
+    assert all(not s.expect_refused for s in scenarios)
 
 
 def test_guardrail_path_sets_scoped_guardrail():
@@ -254,7 +257,9 @@ def test_guardrail_path_two_turn_messages():
         assert len(sc.messages) == 2, "Guardrail probe must be 2 turns"
 
 
-def test_guardrail_path_no_scenarios_without_blocked_actions():
+def test_guardrail_path_no_scenarios_for_empty_guardrail():
+    # A guardrail with no rules_excerpt and no policy allowed_topics has no
+    # useful context to probe — no scenarios should be generated.
     gid = uuid.uuid5(_NS, "guardrail/EmptyGuard")
     guardrail = Node(
         id=gid,
@@ -264,6 +269,7 @@ def test_guardrail_path_no_scenarios_without_blocked_actions():
         metadata=NodeMetadata(),
     )
     sbom = AiSbomDocument(target="./app", nodes=[guardrail], edges=[])
+    # No policy passed → no allowed_topics, and guardrail has no rules_excerpt → skip.
     scenarios = _guardrail_path_scenarios(sbom, _make_intent())
     assert scenarios == []
 
@@ -371,3 +377,79 @@ def test_endpoint_coverage_target_component_type_is_api_endpoint():
     scenarios = _endpoint_coverage_scenarios(sbom, _make_intent())
     for sc in scenarios:
         assert sc.target_component_type == "API_ENDPOINT"
+
+
+# ---------------------------------------------------------------------------
+# Policy-topic coverage fallback
+# ---------------------------------------------------------------------------
+
+
+def _make_policy(allowed_topics: list[str]) -> object:
+    from nuguard.models.policy import CognitivePolicy
+    return CognitivePolicy(allowed_topics=allowed_topics)
+
+
+def _make_tool_only_sbom() -> AiSbomDocument:
+    """SBOM with TOOL nodes but no AGENT nodes — simulates Pinnacle Bank."""
+    tid = uuid.uuid5(_NS, "tool/GetBalance")
+    return AiSbomDocument(
+        target="./app",
+        nodes=[Node(id=tid, name="GetBalance", component_type=NodeType.TOOL, confidence=1.0)],
+        edges=[],
+    )
+
+
+def test_policy_topic_coverage_emits_one_scenario_per_topic():
+    policy = _make_policy(["account inquiries", "fund transfers", "bill payments"])
+    sbom = _make_tool_only_sbom()
+    scenarios = _policy_topic_coverage_scenarios(_make_intent("banking app"), policy, sbom)  # type: ignore[arg-type]
+    assert len(scenarios) == 3
+
+
+def test_policy_topic_coverage_uses_intent_happy_path_type():
+    policy = _make_policy(["account inquiries"])
+    sbom = _make_tool_only_sbom()
+    scenarios = _policy_topic_coverage_scenarios(_make_intent(), policy, sbom)  # type: ignore[arg-type]
+    for sc in scenarios:
+        stype = getattr(sc.scenario_type, "value", str(sc.scenario_type))
+        assert stype == BehaviorScenarioType.INTENT_HAPPY_PATH.value
+
+
+def test_policy_topic_coverage_two_turn_messages():
+    policy = _make_policy(["fund transfers"])
+    sbom = _make_tool_only_sbom()
+    scenarios = _policy_topic_coverage_scenarios(_make_intent(), policy, sbom)  # type: ignore[arg-type]
+    for sc in scenarios:
+        assert len(sc.messages) == 2
+
+
+def test_policy_topic_coverage_no_scenarios_without_topics():
+    policy = _make_policy([])
+    sbom = _make_tool_only_sbom()
+    scenarios = _policy_topic_coverage_scenarios(_make_intent(), policy, sbom)  # type: ignore[arg-type]
+    assert scenarios == []
+
+
+def test_policy_topic_coverage_capped_at_eight():
+    topics = [f"topic_{i}" for i in range(12)]
+    policy = _make_policy(topics)
+    sbom = _make_tool_only_sbom()
+    scenarios = _policy_topic_coverage_scenarios(_make_intent(), policy, sbom)  # type: ignore[arg-type]
+    assert len(scenarios) == 8
+
+
+def test_policy_topic_coverage_not_active_when_agent_nodes_exist():
+    """When AGENT nodes are present the fallback must NOT be called from build_scenarios."""
+    import asyncio
+    from nuguard.behavior.scenarios import build_scenarios
+    from nuguard.config import BehaviorConfig
+
+    policy = _make_policy(["account inquiries", "fund transfers"])
+    sbom = _make_sbom(["BankingAgent"], ["GetBalance"])  # has an AGENT node
+
+    cfg = BehaviorConfig()
+    result = asyncio.run(build_scenarios(cfg, _make_intent("banking app"), policy=policy, sbom=sbom))
+    policy_topic_names = [s.name for s in result if s.name.startswith("policy_topic_")]
+    assert policy_topic_names == [], (
+        "policy_topic_coverage must not activate when AGENT nodes exist"
+    )

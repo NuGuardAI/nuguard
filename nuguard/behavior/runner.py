@@ -2016,6 +2016,15 @@ class BehaviorRunner:
         _gap_bucket_raw_evidence_rows: dict[tuple[str, str], int] = {}
         for run_result in [r for r in raw_results if r is not None]:
             orig = scenario_by_id.get(run_result.scenario_id)
+            # Partial turns inside a passing guardrail probe are expected noise —
+            # the agent may warm-up or clarify before escalating/allowing.  Don't
+            # promote these to capability_gap findings; the overall PASS verdict is
+            # the relevant signal for guardrail probes.
+            if (
+                getattr(orig, "scenario_type", None) == BehaviorScenarioType.GUARDRAIL_PROBE
+                and getattr(run_result, "verdict", "").upper() == "PASS"
+            ):
+                continue
             component = (
                 getattr(orig, "target_component", None)
                 or getattr(orig, "matched_topic", None)

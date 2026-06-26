@@ -342,10 +342,26 @@ def test_dedup_cross_type_passthrough_non_component_scenarios():
 # ---------------------------------------------------------------------------
 
 
+def _make_guardrail_sbom() -> object:
+    """Minimal SBOM with one GUARDRAIL node — required to activate guardrail probes."""
+    from nuguard.sbom.models import AiSbomDocument, Node, NodeMetadata, NodeType
+    gid = __import__("uuid").uuid4()
+    guardrail = Node(
+        id=gid,
+        name="ContentGuard",
+        component_type=NodeType.GUARDRAIL,
+        confidence=1.0,
+        metadata=NodeMetadata(rules_excerpt="Blocks off-topic requests"),
+    )
+    return AiSbomDocument(target="test", nodes=[guardrail])
+
+
 def test_guardrail_probe_hitl():
+    # Guardrail probes are SBOM-gated: a GUARDRAIL node must exist.
     policy = _make_policy(hitl_triggers=["budget > $10k"])
     intent = _make_intent()
-    scenarios = _guardrail_probe_scenarios(policy, intent)
+    sbom = _make_guardrail_sbom()
+    scenarios = _guardrail_probe_scenarios(policy, intent, sbom=sbom)
     hitl_scenarios = [s for s in scenarios if "hitl_probe" in s.name]
     assert len(hitl_scenarios) >= 1
     assert hitl_scenarios[0].scenario_type == BehaviorScenarioType.GUARDRAIL_PROBE
@@ -354,9 +370,18 @@ def test_guardrail_probe_hitl():
 def test_guardrail_probe_data_classification():
     policy = _make_policy(data_classification=["no PII in logs"])
     intent = _make_intent()
-    scenarios = _guardrail_probe_scenarios(policy, intent)
+    sbom = _make_guardrail_sbom()
+    scenarios = _guardrail_probe_scenarios(policy, intent, sbom=sbom)
     data_scenarios = [s for s in scenarios if "data_probe" in s.name]
     assert len(data_scenarios) >= 1
+
+
+def test_guardrail_probe_requires_guardrail_node():
+    # Without a GUARDRAIL node in the SBOM, no guardrail probe scenarios are emitted.
+    policy = _make_policy(hitl_triggers=["budget > $10k"])
+    sbom = _make_sbom_with_components(["CopyAgent"], ["search_tool"])  # no GUARDRAIL node
+    scenarios = _guardrail_probe_scenarios(policy, _make_intent(), sbom=sbom)
+    assert scenarios == []
 
 
 def test_guardrail_probe_no_policy():
@@ -389,7 +414,9 @@ async def test_build_scenarios_all_layers():
     assert BehaviorScenarioType.INTENT_HAPPY_PATH in types
     # v7: boundary_enforcement removed
     assert all(str(t) != "boundary_enforcement" for t in types)
-    assert BehaviorScenarioType.GUARDRAIL_PROBE in types
+    # GUARDRAIL_PROBE is SBOM-gated: requires a GUARDRAIL node. The test SBOM has none,
+    # so no guardrail_probe scenarios are expected here.
+    assert BehaviorScenarioType.GUARDRAIL_PROBE not in types
 
 
 @pytest.mark.asyncio
