@@ -38,7 +38,7 @@ The AI application, a customer support assistant for Pinnacle Bank, manages sens
 
 | Field | Value |
 |---|---|
-| NuGuard Version | 0.8.1 |
+| NuGuard Version | 0.8.2 |
 | Behavior Engine Version | v1 |
 | Scenarios Planned | 15 |
 | Scenarios Executed | 15 |
