@@ -29,7 +29,7 @@ requests==2.24.0
 # ── OpenAI async client (for llm_backend.py) ────────────────────────────────
 # Note: llm_backend.py loads openai via importlib at runtime; listed here so
 # it is present in the environment and visible to SBOM dep manifest scanning.
-openai>=1.47.0
+openai>=2.44.0
 urllib3==1.25.11
 
 # ── ORM (DELIBERATELY VULNERABLE) ───────────────────────────────────────────
