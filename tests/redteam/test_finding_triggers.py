@@ -30,12 +30,12 @@ def _scenario() -> AttackScenario:
     )
 
 
-def _chain() -> ExploitChain:
+def _chain(sbom_path: list[str] | None = None) -> ExploitChain:
     return ExploitChain(
         chain_id="chain-1",
         goal_type=GoalType.DATA_EXFILTRATION,
         scenario_type=ScenarioType.DIRECT_PII_EXTRACTION,
-        sbom_path=["node-1"],
+        sbom_path=sbom_path if sbom_path is not None else ["node-1"],
     )
 
 
@@ -385,6 +385,38 @@ def test_empty_llm_confidence_skip_no_finding() -> None:
         step_details=orchestrator._build_step_details([sr]),
     )
     assert findings == []
+
+
+# ---------------------------------------------------------------------------
+# affected_component fallback when target_node_ids is empty
+# ---------------------------------------------------------------------------
+
+
+def test_affected_component_falls_back_to_sbom_path_when_target_node_ids_empty() -> None:
+    """When a scenario builder leaves target_node_ids empty, _build_findings
+    should still attribute the finding using the chain's actual sbom_path
+    rather than collapsing affected_component to an empty string."""
+    orchestrator = _default_orchestrator()
+    scenario = AttackScenario(
+        scenario_id="scn-2",
+        goal_type=GoalType.DATA_EXFILTRATION,
+        scenario_type=ScenarioType.DIRECT_PII_EXTRACTION,
+        title="Extract PHI",
+        description="Attempt to exfiltrate sensitive medical data",
+        target_node_ids=[],
+    )
+    chain = _chain(sbom_path=["node-observed"])
+    step_result = _step_result(success=False, canary_hits=["PATIENT_ID_123"])
+
+    findings = orchestrator._build_findings(
+        scenario=scenario,
+        chain=chain,
+        step_results=[step_result],
+        step_details=orchestrator._build_step_details([step_result]),
+    )
+
+    assert findings
+    assert findings[0].affected_component == "node-observed"
 
 
 # ---------------------------------------------------------------------------

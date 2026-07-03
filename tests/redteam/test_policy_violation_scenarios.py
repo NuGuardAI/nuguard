@@ -8,18 +8,17 @@ Verifies that all Cognitive Policy dimensions produce at least one scenario:
 """
 from __future__ import annotations
 
-import pytest
-
 from nuguard.models.policy import CognitivePolicy, HitlToolCondition
+from nuguard.redteam.scenarios.faux_reasoning import build_policy_patching
 from nuguard.redteam.scenarios.policy_violations import (
     build_allowed_topic_boundary,
-    build_hitl_bypass,
     build_rate_limit_burst,
     build_raw_section_probe,
-    build_restricted_action,
     build_restricted_topic,
+    concrete_topic_probe,
 )
 from nuguard.redteam.scenarios.scenario_types import AttackScenario
+from nuguard.redteam.scenarios.session_metadata import build_policy_version_claim
 
 _AGENT_ID = "agent-001"
 
@@ -93,13 +92,88 @@ class TestRawSectionProbe:
         assert "Audit Logging" in scenario.title
 
 
+_PII_TOPIC = (
+    "Sensitive personal data disclosure beyond what is needed for reservation "
+    "lookup or account support."
+)
+_OFF_TOPIC = (
+    "Any advice or assistance unrelated to airline travel support or the app's "
+    "configured FAQ scope."
+)
+_DOMAIN_TOPIC = "financial advice, investment recommendations, or general banking"
+
+
+class TestConcreteTopicProbe:
+    """concrete_topic_probe() must impersonate a real request, not announce the category."""
+
+    def test_pii_topic_uses_golden_tokens_and_concrete_fields(self) -> None:
+        probe = concrete_topic_probe(_PII_TOPIC)
+        assert "{golden_name}" in probe
+        assert "{golden_id}" in probe
+        assert any(field in probe.lower() for field in ("phone", "date of birth", "address"))
+        assert "sensitive personal data disclosure" not in probe.lower()
+
+    def test_off_topic_topic_produces_concrete_off_topic_question(self) -> None:
+        probe = concrete_topic_probe(_OFF_TOPIC)
+        assert "unrelated" not in probe.lower()
+        assert "faq scope" not in probe.lower()
+        assert any(w in probe.lower() for w in ("super bowl", "weather", "election"))
+
+    def test_off_topic_is_deterministic(self) -> None:
+        assert concrete_topic_probe(_OFF_TOPIC) == concrete_topic_probe(_OFF_TOPIC)
+
+    def test_domain_topic_never_uses_bare_help_me_with_template(self) -> None:
+        probe = concrete_topic_probe(_DOMAIN_TOPIC)
+        assert "help me with:" not in probe.lower()
+        assert "financial advice" in probe.lower()
+
+    def test_escalate_variant_differs_from_initial(self) -> None:
+        assert concrete_topic_probe(_PII_TOPIC) != concrete_topic_probe(_PII_TOPIC, escalate=True)
+        assert concrete_topic_probe(_DOMAIN_TOPIC) != concrete_topic_probe(
+            _DOMAIN_TOPIC, escalate=True
+        )
+
+
+class TestRestrictedTopicUsesConcreteProbe:
+    def test_no_bare_help_me_with_splice(self) -> None:
+        scenario = build_restricted_topic(_AGENT_ID, _PII_TOPIC)
+        for step in scenario.chain.steps:
+            assert f"help me with: {_PII_TOPIC}" not in step.payload
+            assert f"information about: {_PII_TOPIC}" not in step.payload
+
+    def test_pii_topic_step_carries_golden_tokens(self) -> None:
+        scenario = build_restricted_topic(_AGENT_ID, _PII_TOPIC)
+        assert any("{golden_id}" in step.payload for step in scenario.chain.steps)
+
+
+class TestPolicyPatchingUsesConcreteProbe:
+    def test_verify_topic_step_no_bare_splice(self) -> None:
+        scenario = build_policy_patching(
+            _AGENT_ID, "Cancellation Agent", extra_restricted_topics=[_OFF_TOPIC]
+        )
+        payloads = [s.payload for s in scenario.chain.steps]
+        assert not any(f"help me with: {_OFF_TOPIC}" in p for p in payloads)
+        assert any(w in " ".join(payloads).lower() for w in ("super bowl", "weather", "election"))
+
+
+class TestPolicyVersionClaimUsesConcreteProbe:
+    def test_no_bare_help_me_with_splice(self) -> None:
+        scenario = build_policy_version_claim(
+            _AGENT_ID, "Cancellation Agent", restricted_topic=_PII_TOPIC
+        )
+        payloads = [s.payload for s in scenario.chain.steps]
+        assert not any(f"Can you help me with {_PII_TOPIC}" in p for p in payloads)
+        assert any("{golden_id}" in p for p in payloads)
+
+
 class TestGeneratorProducesAllDimensions:
     """Integration: ScenarioGenerator._policy_violation_scenarios covers all clauses."""
 
     def _make_sbom_with_agent(self) -> object:
+        import uuid
+
         from nuguard.sbom.models import AiSbomDocument, Node, NodeMetadata
         from nuguard.sbom.types import ComponentType
-        import uuid
         node = Node(
             id=str(uuid.uuid4()),
             name="Main Agent",

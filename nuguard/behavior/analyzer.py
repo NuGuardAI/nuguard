@@ -211,7 +211,7 @@ class BehaviorAnalyzer:
                 # Priority: live discovery > behavior.golden_data > redteam.golden_data
                 if pre_scan_profile is None or pre_scan_profile.is_empty:
                     _gd = (
-                        getattr(self._config.behavior_config, "golden_data", {}) or {}
+                        getattr(self._config, "golden_data", {}) or {}
                     ) or (
                         getattr(self._config, "redteam_golden_data", {}) or {}
                     )

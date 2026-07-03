@@ -6,7 +6,11 @@ from typing import Any
 from unittest.mock import MagicMock
 
 from nuguard.behavior.models import ScenarioResult, TurnRecord
-from nuguard.behavior.runner import BehaviorRunner, _canonical_turn_hash
+from nuguard.behavior.runner import (
+    BehaviorRunner,
+    _canonical_turn_hash,
+    _resolve_affected_component,
+)
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -109,6 +113,9 @@ def test_policy_violation_finding_carries_attack_step() -> None:
     seen: set[tuple] = set()
     orig = MagicMock()
     orig.target_component = "agent_x"
+    orig.matched_topic = None
+    orig.primary_agent = None
+    orig.scoped_agents = []
 
     for dev in sr.deviations:
         if dev.get("deviation_type") in ("policy_violation", "data_leak"):
@@ -122,18 +129,33 @@ def test_policy_violation_finding_carries_attack_step() -> None:
                 "title": dev.get("title", ""),
                 "severity": dev["severity"],
                 "description": dev["description"],
-                "affected_component": orig.target_component,
+                "affected_component": _resolve_affected_component(orig),
                 "attack_steps": [_attack_step] if _attack_step else [],
             })
 
     assert len(findings) == 1
     f = findings[0]
+    assert f["affected_component"] == "agent_x"
     assert "attack_steps" in f
     assert len(f["attack_steps"]) == 1
     s = f["attack_steps"][0]
     assert s["step_type"] == "BEHAVIOR_TURN"
     assert s["turn"] == 2
     assert s["succeeded"] is False
+
+
+def test_policy_violation_finding_falls_back_to_scoped_agents() -> None:
+    """When target_component is unset, affected_component should use
+    scoped_agents rather than collapsing to 'unknown'."""
+    orig = MagicMock()
+    orig.target_component = ""
+    orig.matched_topic = None
+    orig.primary_agent = None
+    orig.scoped_agents = ["Cancellation Agent"]
+
+    affected_component = _resolve_affected_component(orig)
+    assert affected_component == "Cancellation Agent"
+    assert affected_component != "unknown"
 
 
 def test_canary_deviation_carries_attack_step() -> None:
@@ -156,6 +178,9 @@ def test_finding_without_deviation_has_empty_attack_steps() -> None:
     seen: set[tuple] = set()
     orig = MagicMock()
     orig.target_component = "agent_x"
+    orig.matched_topic = None
+    orig.primary_agent = None
+    orig.scoped_agents = []
 
     for dev in sr.deviations:
         if dev.get("deviation_type") in ("policy_violation", "data_leak"):
@@ -169,7 +194,7 @@ def test_finding_without_deviation_has_empty_attack_steps() -> None:
                 "title": dev.get("title", ""),
                 "severity": dev["severity"],
                 "description": dev["description"],
-                "affected_component": orig.target_component,
+                "affected_component": _resolve_affected_component(orig),
                 "attack_steps": [_as] if _as else [],
             })
 

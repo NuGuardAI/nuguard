@@ -394,35 +394,6 @@ from nuguard.common.endpoint_probe import (  # noqa: E402
 )
 
 
-def _enrich_policy_from_controls(
-    policy: "CognitivePolicy", controls: list
-) -> "CognitivePolicy":
-    """Return a copy of *policy* with restricted_topics / restricted_actions
-    extended by the boundary_prompt text from compiled controls.
-
-    This ensures the ScenarioGenerator uses richer, control-specific prompts
-    rather than falling back to generic templates.
-    """
-    extra_topics = [
-        p
-        for c in controls
-        if c.control_type == "topic_restriction"
-        for p in (c.boundary_prompts or [])
-    ]
-    extra_actions = [
-        p
-        for c in controls
-        if c.control_type == "action_restriction"
-        for p in (c.boundary_prompts or [])
-    ]
-    return policy.model_copy(
-        update={
-            "restricted_topics": list(policy.restricted_topics) + extra_topics,
-            "restricted_actions": list(policy.restricted_actions) + extra_actions,
-        }
-    )
-
-
 def _policy_from_controls(controls: list) -> "CognitivePolicy":
     """Build a minimal CognitivePolicy from compiled controls when no .md policy exists."""
     restricted_topics = [
@@ -877,15 +848,13 @@ class RedteamOrchestrator:
                 _log.warning("pre-scan discovery: %s", _empty_note)
 
         # 1. Generate scenarios from SBOM + policy.
-        # When compiled controls are available, enrich the policy with their
-        # boundary_prompts so the scenario generator uses the richer, LLM-crafted
-        # (or rule-based) prompts instead of generic templates.
+        # Compiled controls' boundary_prompts are full ready-to-send attacker
+        # messages (see nuguard.validate.scenarios._boundary_scenarios_from_controls
+        # for the correct way to consume them as scripted turns) — they must not
+        # be spliced into restricted_topics/restricted_actions, which scenario
+        # builders treat as bare topic names and re-wrap in their own templates.
         effective_policy = self._policy
-        if self._policy_controls and effective_policy is not None:
-            effective_policy = _enrich_policy_from_controls(
-                effective_policy, self._policy_controls
-            )
-        elif self._policy_controls and effective_policy is None:
+        if self._policy_controls and effective_policy is None:
             effective_policy = _policy_from_controls(self._policy_controls)
         self._effective_policy = effective_policy
 
@@ -2023,8 +1992,12 @@ class RedteamOrchestrator:
             canary_hits.extend(sr.canary_hits)
 
         # Hoist repeated per-scenario computations — all four finding tiers share these.
+        # target_node_ids is set at nearly every scenario-builder call site, but when
+        # it's empty fall back to the chain's actual sbom_path (computed below anyway)
+        # rather than losing attribution entirely.
+        _node_ids_for_label = scenario.target_node_ids[:2] or chain.sbom_path[:2]
         affected = ", ".join(
-            self._node_label.get(nid, nid) for nid in scenario.target_node_ids[:2]
+            self._node_label.get(nid, nid) for nid in _node_ids_for_label
         )
         sbom_path_descriptions = [
             self._node_label.get(nid, nid) for nid in chain.sbom_path

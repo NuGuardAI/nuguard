@@ -10,9 +10,12 @@ from nuguard.behavior.scenarios import (
     _delegates_to_scenarios,
     _endpoint_coverage_scenarios,
     _guardrail_path_scenarios,
+    _hitl_probe_scenarios,
+    _policy_fragment,
     _policy_topic_coverage_scenarios,
     _tool_coverage_scenarios,
 )
+from nuguard.models.policy import CognitivePolicy
 from nuguard.sbom.models import (
     AiSbomDocument,
     Edge,
@@ -441,6 +444,7 @@ def test_policy_topic_coverage_capped_at_eight():
 def test_policy_topic_coverage_not_active_when_agent_nodes_exist():
     """When AGENT nodes are present the fallback must NOT be called from build_scenarios."""
     import asyncio
+
     from nuguard.behavior.scenarios import build_scenarios
     from nuguard.config import BehaviorConfig
 
@@ -453,3 +457,84 @@ def test_policy_topic_coverage_not_active_when_agent_nodes_exist():
     assert policy_topic_names == [], (
         "policy_topic_coverage must not activate when AGENT nodes exist"
     )
+
+
+# ---------------------------------------------------------------------------
+# _policy_fragment — trailing-stopword stripping
+# ---------------------------------------------------------------------------
+
+
+def test_policy_fragment_strips_dangling_trailing_preposition():
+    # Truncating at max_len=60 lands right after "...assistance for", which
+    # would otherwise leave a dangling preposition when embedded in a sentence.
+    text = (
+        "This app is a multi-agent AI customer service system for airline "
+        "reservations and travel assistance for flight status inquiries"
+    )
+    fragment = _policy_fragment(text, max_len=60)
+    assert not fragment.endswith("for")
+    assert fragment.split(" ")[-1].lower() not in {"for", "to", "and", "or", "of", "with", "in", "on"}
+
+
+def test_policy_fragment_untruncated_text_unaffected():
+    assert _policy_fragment("cancellation policy") == "cancellation policy"
+
+
+# ---------------------------------------------------------------------------
+# _hitl_probe_scenarios — clean turn 1, marked as warm-up
+# ---------------------------------------------------------------------------
+
+
+def test_hitl_probe_turn1_has_no_duplicated_preposition():
+    policy = CognitivePolicy(
+        allowed_topics=["travel assistance for flight status inquiries"],
+        hitl_triggers=["any cancellation request that changes an existing reservation"],
+    )
+    intent = _make_intent(
+        "This app is a multi-agent AI customer service system for airline "
+        "reservations and travel assistance, providing authenticated chat-based "
+        "support for tasks such as flight status, cancellations, seat selection, "
+        "and baggage inquiries while enforcing strict guardrails and human "
+        "escalation policies."
+    )
+    scenarios = _hitl_probe_scenarios(policy, intent)
+    assert scenarios
+    turn1 = scenarios[0].messages[0]
+    assert "for for" not in turn1
+    assert intent.app_purpose not in turn1
+
+
+def test_hitl_probe_scenario_marks_turn1_as_warmup():
+    policy = CognitivePolicy(
+        allowed_topics=["account inquiries"],
+        hitl_triggers=["any cancellation request"],
+    )
+    scenarios = _hitl_probe_scenarios(policy, _make_intent())
+    assert scenarios
+    assert all(s.warmup_turns == 1 for s in scenarios)
+
+
+# ---------------------------------------------------------------------------
+# _generate_data_reactive_turns — no cross-user/IDOR probe
+# ---------------------------------------------------------------------------
+
+
+def test_generate_data_reactive_turns_returns_two_own_account_turns():
+    from nuguard.behavior.models import BehaviorScenario
+    from nuguard.behavior.models import BehaviorScenarioType as BST
+    from nuguard.behavior.runner import _generate_data_reactive_turns
+
+    scenario = BehaviorScenario(
+        scenario_type=BST.DATA_DISCOVERY_PROBE,
+        name="data_discovery_cancellation_agent",
+        messages=["Hi! What bookings do you have on file for me?"],
+    )
+    intent = _make_intent("airline reservations and travel assistance")
+    turns = _generate_data_reactive_turns(
+        "Your confirmation number is AA1234 for flight DL-401.", scenario, intent,
+    )
+    assert len(turns) == 2
+    for turn in turns:
+        assert "colleague" not in turn.lower()
+        assert "another user" not in turn.lower()
+        assert "john smith" not in turn.lower()

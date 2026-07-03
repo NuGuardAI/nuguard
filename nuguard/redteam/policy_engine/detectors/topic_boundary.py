@@ -28,6 +28,23 @@ _SHORT_STOP_WORDS: frozenset[str] = frozenset({
     "via", "per", "due", "fee", "tax", "ref", "yes", "now", "too",
 })
 
+# Matches text enclosed in straight or curly quote pairs, e.g. the attacker's
+# own probe echoed back inside a refusal: `I couldn't find an FAQ answer for
+# "Sensitive personal data disclosure..."`.
+_QUOTED_SPAN_RE = re.compile(r'"[^"]*"|“[^”]*”|\'[^\']*\'')
+
+
+def _strip_quoted_spans(text: str) -> str:
+    """Remove quoted spans from *text* so echoed attacker text isn't mistaken for disclosure.
+
+    A refusal that merely quotes the user's own question back (e.g. "I
+    couldn't find an FAQ answer for '<restricted topic clause>'") should not
+    count as the agent discussing the restricted topic.  Stripping quoted
+    spans before the Tier-1 substring check defuses that false positive while
+    leaving genuine (unquoted) engagement with the topic intact.
+    """
+    return _QUOTED_SPAN_RE.sub(" ", text)
+
 
 def _response_overlaps_topic(response_lower: str, topic: str) -> bool:
     """Return True when *response_lower* has meaningful word-level overlap with *topic*.
@@ -86,13 +103,14 @@ def detect_topic_violations(
         return violations
 
     response_lower = response.lower()
+    response_unquoted_lower = _strip_quoted_spans(response_lower)
 
     # ---- Tier 1: restricted topics ----------------------------------------
     for topic in policy.restricted_topics:
         keyword = topic.strip().lower()
         if not keyword:
             continue
-        if keyword in response_lower:
+        if keyword in response_unquoted_lower:
             _log.debug("topic_boundary Tier-1 hit: restricted topic %r", topic)
             violations.append(
                 {
