@@ -123,6 +123,7 @@ def extract_redteam_scenario_details(scenario_records: list[Any]) -> list[Scenar
                     "tool_calls": step.get("tool_calls", []),
                     "llm_eval_evidence": step.get("llm_eval_evidence"),
                     "llm_eval_confidence": step.get("llm_eval_confidence"),
+                    "evidence_source": step.get("evidence_source"),
                 },
             ))
 
@@ -287,7 +288,9 @@ def render_scenario_details_section(
             if llm_ev:
                 conf = td.metadata.get("llm_eval_confidence") or ""
                 conf_label = f" ({conf})" if conf else ""
-                lines.append(f"> **LLM eval{conf_label}:** {_truncate_evidence(llm_ev, limit=400)}")
+                source = td.metadata.get("evidence_source") or "llm_eval"
+                label = "Golden-data filter" if source == "golden_filter" else "LLM eval"
+                lines.append(f"> **{label}{conf_label}:** {_truncate_evidence(llm_ev, limit=400)}")
                 lines.append("")
 
         lines.append("---")

@@ -71,7 +71,10 @@ def _is_spa_html_response(response: str, target_path: str | None) -> bool:
     normalised = target_path.lower().split("?")[0].rstrip("/") or "/"
     if any(normalised.startswith(p) for p in _API_PATH_PREFIXES):
         return False  # real API route — do not suppress
-    stripped = response.lstrip().lower()
+    # Strip a leading UTF-8 BOM (U+FEFF) — Python's str.lstrip() does not treat
+    # it as whitespace, so a BOM-prefixed body would otherwise slip past the
+    # prefix check below and defeat this suppression entirely.
+    stripped = response.lstrip().lstrip("﻿").lstrip().lower()
     return any(stripped.startswith(p) for p in _SPA_HTML_PREFIXES)
 
 
@@ -239,6 +242,13 @@ class StepResult:
         # Populated when use_llm_eval=True and LLMResponseEvaluator is available
         self.llm_eval_evidence: str = ""
         self.llm_eval_confidence: str = ""
+        # Which judge produced llm_eval_evidence/llm_eval_confidence above:
+        # "llm_eval" (LLMResponseEvaluator's actual model call) or
+        # "golden_filter" (deterministic golden-data classifier — see
+        # golden_data_filter.classify_response). Reports must label these
+        # differently: the golden filter is regex/token-overlap logic, not an
+        # LLM judgement, even though it populates the same evidence fields.
+        self.evidence_source: str = ""
         # Set when golden-data filter suppresses a keyword hit as own-account data
         self.golden_data_suppressed: bool = False
         # Phase 3: catalog evidence layers
@@ -947,6 +957,7 @@ class AttackExecutor:
             elif hit_class == HitClass.GOLDEN_PLUS_NOVEL:
                 result.success_signal_found = True
                 result.llm_eval_confidence = "high"
+                result.evidence_source = "golden_filter"
                 result.llm_eval_evidence = (
                     "Response contains authenticated user's own data plus significant "
                     "novel data not present in the golden baseline — cross-account "
@@ -1009,6 +1020,7 @@ class AttackExecutor:
                 result.success_signal_found = bool(llm_eval.get("succeeded", False))
                 result.llm_eval_evidence = llm_eval.get("evidence", "")
                 result.llm_eval_confidence = llm_eval.get("confidence", "")
+                result.evidence_source = "llm_eval"
                 _log.info(
                     "LLM eval | step=%s succeeded=%s confidence=%s evidence=%r",
                     step.step_id,

@@ -495,7 +495,13 @@ def _render_hit_turns(f: Any) -> list[str]:
         if llm_evidence:
             conf = step.get("llm_eval_confidence") or ""
             conf_label = f" ({conf})" if conf else ""
-            lines.append(f"> **LLM eval{conf_label}:** {llm_evidence}")
+            # The golden-data filter (regex/token-overlap classifier) shares the
+            # llm_eval_evidence/confidence fields with the real LLM judge but is
+            # not an LLM verdict — label it distinctly so reports don't imply a
+            # model reviewed the response when a deterministic rule fired.
+            source = step.get("evidence_source") or "llm_eval"
+            label = "Golden-data filter" if source == "golden_filter" else "LLM eval"
+            lines.append(f"> **{label}{conf_label}:** {llm_evidence}")
         lines.append("")
     return lines
 

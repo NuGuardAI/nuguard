@@ -172,16 +172,21 @@ redteam:
   #   nuguard redteam catalog-export --output my-catalog.yaml
   # catalog: ./my-catalog.yaml
 
-  # Scenario types to run (omit section to run all).
-  # These filter the legacy builder families; the catalog uses capability gating
-  # instead (see use_catalog above).
+  # Goal types to run (omit section, or leave empty, to run all 9).
+  # Matches against each scenario's goal type, scenario type, and title, so any
+  # of the tokens below (or a recognisable substring) selects that category.
+  # Uncomment/remove entries to customise which attack families are tested.
   scenarios:
-    - prompt-injection
-    - tool-abuse
-    - privilege-escalation
-    - data-exfiltration
-    - policy-violation
-    - mcp-toxic-flow
+    - prompt-driven-threat     # jailbreaks, guardrail bypass, system-prompt extraction
+    - policy-violation         # restricted topics/actions, HITL bypass, topic boundary
+    - data-exfiltration        # PII/PHI extraction, covert encoding, cross-tenant
+    - privilege-escalation     # role/permission escalation, false-premise attacks
+    - tool-abuse               # SQL injection, SSRF, shell injection, resource exhaustion
+    - mcp-toxic-flow           # poisoned MCP tool descriptions/output, credential overreach
+    - api-attack               # auth bypass, IDOR, mass assignment, BFLA
+    - agentic-trust-abuse      # confused deputy, memory poisoning, multi-agent trust
+    - recon-inference          # refusal-oracle / boundary self-probe information gathering
+  # 'prompt-injection' is also accepted as a legacy alias for prompt-driven-threat.
 
   # Minimum pre-impact score [0–10] for a scenario to be included (default: 0.0)
   min_impact_score: 0.0

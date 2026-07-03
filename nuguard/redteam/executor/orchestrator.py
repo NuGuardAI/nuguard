@@ -55,8 +55,20 @@ def _sev_rank(severity: Severity) -> int:
         return len(_SEV_ORDER)
 
 
+# Back-compat aliases for scenario/goal-type filter tokens (redteam.scenarios /
+# --scenarios). "prompt-injection" was the pre-rename token for what is now
+# GoalType.PROMPT_DRIVEN_THREAT; without this alias the token silently matches
+# zero scenarios (neither substring of the other), so a config still using it
+# would drop the entire PROMPT_DRIVEN_THREAT category without any error.
+_GOAL_TOKEN_ALIASES: dict[str, str] = {
+    "prompt_injection": "prompt_driven_threat",
+    "prompt_injections": "prompt_driven_threat",
+}
+
+
 def _normalize_scenario_token(value: str) -> str:
-    return value.strip().lower().replace("-", "_")
+    normalized = value.strip().lower().replace("-", "_")
+    return _GOAL_TOKEN_ALIASES.get(normalized, normalized)
 
 
 def _dedup_findings(findings: list[Finding]) -> list[Finding]:
@@ -1925,6 +1937,7 @@ class RedteamOrchestrator:
             if sr.llm_eval_evidence:
                 detail["llm_eval_evidence"] = sr.llm_eval_evidence
                 detail["llm_eval_confidence"] = sr.llm_eval_confidence
+                detail["evidence_source"] = getattr(sr, "evidence_source", "") or "llm_eval"
             details.append(detail)
         return details
 
