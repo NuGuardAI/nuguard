@@ -1099,7 +1099,7 @@ class RedteamOrchestrator:
 
                     if scenario.chain is None:
                         return [], (scenario.title, scenario.goal_type.value, False), _skipped_record("failed")
-                    chain, step_results = await executor.run(scenario.chain)
+                    chain, step_results, session = await executor.run(scenario.chain)
                     if self._verbose:
                         target_url = self._target_url + self._chat_path
                         for step_idx, sr in enumerate(step_results, 1):
@@ -1121,7 +1121,7 @@ class RedteamOrchestrator:
                             )
                     step_details = self._build_step_details(step_results)
                     new_findings = self._build_findings(
-                        scenario, chain, step_results, step_details
+                        scenario, chain, step_results, step_details, session=session
                     )
                     had_finding = bool(new_findings)
                     record = ScenarioRecord(
@@ -1607,6 +1607,7 @@ class RedteamOrchestrator:
         chain: ExploitChain,
         step_results: list[StepResult],
         step_details: list[dict],
+        session: AttackSession | None = None,
     ) -> list[Finding]:
         """Convert scenario execution results into Finding objects."""
         findings: list[Finding] = []
@@ -1643,6 +1644,15 @@ class RedteamOrchestrator:
             owasp_llm_ref=owasp_llm,
             attack_steps=step_details,
         )
+        # Attach the golden-data baseline (authenticated test account's own data)
+        # when the chain captured one via a DISCOVER step, so reports can show
+        # what self-account data findings were compared against.
+        if session is not None and session.golden_data:
+            _base.update(
+                golden_ids=list(session.golden_ids),
+                golden_name=session.golden_name or None,
+                golden_data_excerpt=session.golden_data[:500],
+            )
 
         # Canary-based finding
         if canary_hits and self._trigger_enabled("canary_hits"):

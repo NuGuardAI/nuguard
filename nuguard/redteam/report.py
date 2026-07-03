@@ -166,6 +166,19 @@ def to_markdown(
             lines += [f"**Remediation:** {f.remediation}", ""]
         if f.owasp_llm_ref:
             lines += [f"**OWASP LLM:** {f.owasp_llm_ref}", ""]
+        golden_ids = getattr(f, "golden_ids", None) or []
+        golden_name = getattr(f, "golden_name", None)
+        golden_excerpt = getattr(f, "golden_data_excerpt", None)
+        if golden_ids or golden_name or golden_excerpt:
+            lines += ["**Golden Data Baseline** (authenticated test account's own data, "
+                      "used to distinguish expected self-returns from genuine cross-account leakage):", ""]
+            if golden_name:
+                lines += [f"- Name: `{golden_name}`"]
+            if golden_ids:
+                lines += [f"- ID(s): {', '.join(f'`{i}`' for i in golden_ids)}"]
+            if golden_excerpt:
+                lines += ["", "```", golden_excerpt, "```"]
+            lines += [""]
         lines += _render_hit_turns(f)
 
     if remediation_plan:

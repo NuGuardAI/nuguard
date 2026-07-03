@@ -287,14 +287,18 @@ class AttackExecutor:
 
     async def run(
         self, chain: ExploitChain
-    ) -> tuple[ExploitChain, list[StepResult]]:
-        """Run the chain and return updated chain + step results.
+    ) -> tuple[ExploitChain, list[StepResult], AttackSession]:
+        """Run the chain and return updated chain + step results + session.
 
         Before the first adversarial step, a domain-specific happy-path
         message is sent to the agent to establish realistic engagement.  The
         warmup is recorded as a ``WARMUP`` step in the returned results so it
         shows up in verbose reports, but is never evaluated as a success
         signal and never triggers a finding.
+
+        The returned ``AttackSession`` carries any golden-data baseline
+        (``golden_data``/``golden_ids``/``golden_name``) captured via a
+        DISCOVER step, so callers can attach it to findings for reporting.
         """
         chain.status = "running"
         session = self._client.new_session(chain.chain_id)
@@ -419,7 +423,7 @@ class AttackExecutor:
                         break
 
         chain.status = "completed"
-        return chain, results
+        return chain, results, session
 
     async def _send_happy_path_warmup(
         self,
