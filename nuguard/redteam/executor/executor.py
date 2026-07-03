@@ -28,6 +28,7 @@ from nuguard.redteam.llm_engine.happy_path import generate_happy_path_opener
 from nuguard.redteam.llm_engine.refusal_patterns import (
     APP_TRANSIENT_ERROR_PATTERNS,
     HARD_REFUSAL_TOKENS,
+    contains_any_token,
 )
 from nuguard.redteam.llm_engine.response_evaluator import LLMResponseEvaluator
 from nuguard.redteam.policy_engine.evaluator import PolicyEvaluator, PolicyViolation
@@ -916,8 +917,7 @@ class AttackExecutor:
             and step.success_signal != HTTP_2XX_SENTINEL
             and chain.goal_type.value in _REFUSAL_SUPPRESSION_GOALS
         ):
-            _resp_lower = response.lower()
-            if any(tok in _resp_lower for tok in HARD_REFUSAL_TOKENS):
+            if contains_any_token(response, HARD_REFUSAL_TOKENS):
                 result.success_signal_found = False
                 _log.debug(
                     "Refusal suppression: keyword hit suppressed | chain=%s step=%s",

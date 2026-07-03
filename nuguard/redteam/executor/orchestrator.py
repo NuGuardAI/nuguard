@@ -1872,8 +1872,10 @@ class RedteamOrchestrator:
                     chain_id=f"verify-{finding.finding_id[:8]}",
                 )
                 _resp_text, _ = await executor._client.send(trigger_payload, _vs)
-                _resp_lower = (_resp_text or "").lower()
-                _is_refusal = any(p in _resp_lower for p in _REFUSAL_PATTERNS)
+                from nuguard.redteam.llm_engine.refusal_patterns import (  # noqa: PLC0415
+                    contains_any_token,
+                )
+                _is_refusal = contains_any_token(_resp_text or "", frozenset(_REFUSAL_PATTERNS))
                 _is_error = bool(_resp_text) and _resp_text.startswith(("[HTTP ", "[REQUEST_ERROR:"))
                 finding.verified = bool(_resp_text) and not _is_refusal and not _is_error
                 _log.info(

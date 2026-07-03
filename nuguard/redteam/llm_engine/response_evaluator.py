@@ -459,9 +459,11 @@ def _detect_hard_refusal(response: str) -> bool:
     Uses the shared token set from refusal_patterns.py so the definition
     stays in sync with guided_executor and response_extractor.
     """
-    from nuguard.redteam.llm_engine.refusal_patterns import HARD_REFUSAL_TOKENS  # noqa: PLC0415
-    response_lower = response.lower()
-    return any(tok in response_lower for tok in HARD_REFUSAL_TOKENS)
+    from nuguard.redteam.llm_engine.refusal_patterns import (  # noqa: PLC0415
+        HARD_REFUSAL_TOKENS,
+        contains_any_token,
+    )
+    return contains_any_token(response, HARD_REFUSAL_TOKENS)
 
 
 class LLMResponseEvaluator:

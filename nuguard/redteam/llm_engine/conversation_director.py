@@ -32,6 +32,7 @@ from nuguard.redteam.llm_engine.happy_path import (
     build_happy_path_prompt,
     fallback_happy_path,
 )
+from nuguard.redteam.llm_engine.refusal_patterns import is_attacker_self_refusal
 from nuguard.redteam.llm_engine.response_extractor import TurnFacts
 
 if TYPE_CHECKING:
@@ -401,6 +402,13 @@ class ConversationDirector:
             )
             if raw.startswith("[NUGUARD_CANNED_RESPONSE]"):
                 return self._fallback_milestones()
+            if is_attacker_self_refusal(raw):
+                _log.debug(
+                    "plan_milestones: attacker LLM refused to plan milestones "
+                    "(goal=%s) — using fallback milestones",
+                    self._goal_type.value,
+                )
+                return self._fallback_milestones()
             milestones = self._parse_milestones(raw)
             if milestones:
                 _log.info(
@@ -519,6 +527,13 @@ class ConversationDirector:
             if raw.startswith("[NUGUARD_CANNED_RESPONSE]"):
                 return self._fallback_turn(turn_number, tactic) + (ATTRIBUTION_FOOTER if _want_attribution else ""), tactic
             message = raw.strip().strip('"\'')
+            if message and is_attacker_self_refusal(message):
+                _log.debug(
+                    "next_turn: attacker LLM refused to generate turn %d "
+                    "(goal=%s, tactic=%s) — using fallback turn",
+                    turn_number, self._goal_type.value, tactic,
+                )
+                return self._fallback_turn(turn_number, tactic) + (ATTRIBUTION_FOOTER if _want_attribution else ""), tactic
             if message:
                 return message + (ATTRIBUTION_FOOTER if _want_attribution else ""), tactic
         except asyncio.TimeoutError:

@@ -196,8 +196,9 @@ def classify_response(
                     # Semantic gate 2: hard refusal means same — no data was extracted.
                     from nuguard.redteam.llm_engine.refusal_patterns import (  # noqa: PLC0415
                         HARD_REFUSAL_TOKENS,
+                        contains_any_token,
                     )
-                    if any(tok in response.lower() for tok in HARD_REFUSAL_TOKENS):
+                    if contains_any_token(response, HARD_REFUSAL_TOKENS):
                         return HitClass.NEEDS_PROBE
                     return HitClass.GOLDEN_PLUS_NOVEL
 
