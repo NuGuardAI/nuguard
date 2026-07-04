@@ -274,8 +274,6 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
             flat["redteam_v2_dry_run_only"] = bool(redteam_v2["dry_run_only"])
     if "profile" in redteam:
         flat["redteam_profile"] = redteam["profile"]
-    if "use_catalog" in redteam:
-        flat["redteam_use_catalog"] = bool(redteam["use_catalog"])
     if "catalog_path" in redteam:
         flat["redteam_catalog_path"] = str(redteam["catalog_path"])
     if "min_impact_score" in redteam:
@@ -557,9 +555,8 @@ class BehaviorConfig(BaseModel):
     workflows: list[str] = Field(
         default_factory=list,
         description=(
-            "Workflows to execute: intent_happy_path, component_coverage, "
-            "boundary_enforcement, invariant_probe. "
-            "Empty = run all."
+            "Workflow categories to execute: topic_coverage, agent_tool_coverage, "
+            "guardrail_coverage, data_discovery_probe. Empty = run all."
         ),
     )
     boundary_assertions: list[BehaviorBoundaryAssertion] = Field(default_factory=list)
@@ -950,14 +947,6 @@ class NuGuardConfig(BaseSettings):
             "or 'full' (all scenarios, ≥50 on rich SBOMs) (yaml: redteam.profile)."
         ),
     )
-    redteam_use_catalog: bool = Field(
-        default=True,
-        description=(
-            "When True, supplement legacy scenario generation with the stable-ID catalog "
-            "(docs/llm-runs/Red-team-new-design.md).  Disable for legacy-only runs "
-            "(yaml: redteam.use_catalog)."
-        ),
-    )
     redteam_catalog_path: str | None = Field(
         default=None,
         description=(
@@ -976,8 +965,7 @@ class NuGuardConfig(BaseSettings):
             "Goal types to run; empty = all 9. Values: prompt-driven-threat, "
             "policy-violation, data-exfiltration, privilege-escalation, "
             "tool-abuse, mcp-toxic-flow, api-attack, agentic-trust-abuse, "
-            "recon-inference ('prompt-injection' accepted as a legacy alias "
-            "for prompt-driven-threat) (yaml: redteam.scenarios)."
+            "recon-inference (yaml: redteam.scenarios)."
         ),
     )
     mcp_trusted_servers: list[str] = Field(

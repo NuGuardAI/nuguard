@@ -42,7 +42,7 @@ class _FakeStatic:
     async def run(self, chain):
         self.calls += 1
         self.last_chain = chain
-        return chain, self.results
+        return chain, self.results, None
 
 
 def _ctx(obj: ScenarioObjective) -> RunContext:

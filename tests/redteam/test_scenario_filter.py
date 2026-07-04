@@ -1,12 +1,7 @@
 """Coverage for the redteam.scenarios goal-type filter (nuguard.yaml `scenarios:`).
 
-Regression guard for a real bug: the documented token "prompt-injection"
-silently matched zero scenarios because GoalType.PROMPT_DRIVEN_THREAT was
-renamed at some point and the docs/example were never updated — any config
-using that token dropped the entire PROMPT_DRIVEN_THREAT category (the
-largest attack family) without any error or warning. This asserts every
-canonical token for all 9 GoalTypes actually matches, plus the back-compat
-alias for the old broken token.
+Asserts every canonical token for all 9 GoalTypes actually matches a scenario
+of that type, and that tokens don't cross-match unrelated GoalTypes.
 """
 from __future__ import annotations
 
@@ -60,12 +55,6 @@ def test_canonical_token_does_not_match_other_goal_types(goal_type, scenario_typ
         assert _scenario_matches_filter(scenario, {_normalize_scenario_token(token)}) is False, (
             f"Token {token!r} for {goal_type} unexpectedly matched {other_goal}"
         )
-
-
-def test_prompt_injection_legacy_alias_matches_prompt_driven_threat():
-    """The old (broken) 'prompt-injection' token must be aliased, not silently dropped."""
-    scenario = _make_scenario(GoalType.PROMPT_DRIVEN_THREAT, ScenarioType.SKELETON_KEY)
-    assert _scenario_matches_filter(scenario, {_normalize_scenario_token("prompt-injection")}) is True
 
 
 def test_no_filter_matches_everything():

@@ -95,23 +95,21 @@ behavior:
   # Requires llm: block to be configured above and LITELLM_API_KEY to be set.
   llm: true
 
-  # Workflows to run (default: all layers — omit or leave empty to run everything)
-  #   intent_happy_path      — Layer 1: topic-path scenarios grounded in allowed_topics
-  #   agent_coverage         — Layer 2a: one scenario per AGENT node in the SBOM
-  #   component_coverage     — Layer 2b: tool chains per agent via SBOM CALLS edges
-  #   endpoint_coverage      — Layer 2c: first-class API_ENDPOINT schema coverage
-  #   guardrail_path         — Layer 2d: guardrail-protected path probes
-  #   delegates_to           — Layer 2e: DELEGATES_TO sub-agent handoff scenarios
-  #   guardrail_probe        — Layer 3: HITL triggers + data classification boundaries
-  #   policy_topic_coverage  — Layer 1b: fallback per-topic scenarios (no AGENT nodes)
-  #   data_discovery_probe   — Layer 4: per-user data disclosure + cross-user IDOR
+  # Workflow categories to run (default: all 4 — omit or leave empty to run everything)
+  #   topic_coverage        — intent happy-path scenarios grounded in allowed_topics,
+  #                           plus a per-topic fallback when the SBOM has no AGENT nodes
+  #   agent_tool_coverage   — agent, tool-chain, API endpoint, and sub-agent
+  #                           delegation coverage (all SBOM-driven)
+  #   guardrail_coverage    — guardrail-protected path probes, HITL triggers, and
+  #                           data classification boundaries
+  #   data_discovery_probe  — per-user data disclosure + cross-user IDOR
   #workflows:
-  #  - intent_happy_path
-  #  - agent_coverage
-  #  - component_coverage
+  #  - topic_coverage
+  #  - agent_tool_coverage
 
   # Hard cap on total scenarios executed (after deduplication).
-  # Preserves priority order: L1 → L2 → L3 → L4. Omit for no cap.
+  # Preserves category priority order: topic_coverage → agent_tool_coverage →
+  # guardrail_coverage → data_discovery_probe. Omit for no cap.
   # max_scenarios: 20
 
   # Canary seed file — same file used by redteam canary scanning.
@@ -204,31 +202,11 @@ redteam:
   # adk:
   #   app_name: my-agent-app       # bypasses the /list-apps auto-discovery call
 
-  # Red-team engine:
-  #   v1 — default, stable scenario-catalog engine
-  #   v2 — knowledge-base-driven, phased scheduler, layered evaluation (in development)
-  # engine: v1
-
-  # v2 engine settings (only used when engine: v2)
-  # v2:
-  #   knowledge_base_version: 0.1.0   # pinned technique KB version
-  #   phases: []                      # phase names to run; empty = all
-  #   semantic_judge:
-  #     count: 3                      # independent LLM judges for semantic verdicts
-  #     quorum: 2                     # votes required to confirm a violation
-  #   transferability_enabled: true   # score successful objectives for transferability
-  #   max_per_phase: 0                # cap scenarios per phase; 0 = unlimited
-  #   dry_run_only: true              # enforce dry-run-only for destructive actions
-
   # Scan profile:
   #   ci       — fast; only scenarios with pre-impact score ≥ 5, capped at ~20 (default)
   #   standard — balanced; score ≥ 3, capped at ~40 scenarios
   #   full     — all capability-gated scenarios; ≥ 50 on feature-rich targets
   profile: full
-
-  # Stable-ID scenario catalog (84 scenarios across 12 attack categories).
-  # Set false to run the legacy SBOM-only generator without catalog scenarios.
-  use_catalog: true
 
   # Custom scenario catalog — export the built-in catalog as a starting point,
   # edit it, then point here to use your customised version:
@@ -249,7 +227,6 @@ redteam:
     - api-attack               # auth bypass, IDOR, mass assignment, BFLA
     - agentic-trust-abuse      # confused deputy, memory poisoning, multi-agent trust
     - recon-inference          # refusal-oracle / boundary self-probe information gathering
-  # 'prompt-injection' is also accepted as a legacy alias for prompt-driven-threat.
 
   # Minimum pre-impact score [0–10] for a scenario to be included (default: 0.0)
   min_impact_score: 0.0

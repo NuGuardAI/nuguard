@@ -1,14 +1,20 @@
-"""SBOM-driven scenario generation for behavior analysis (v7).
+"""SBOM-driven scenario generation for behavior analysis (v8).
 
-Layer 1: Topic Paths (intent_happy_path) — end-to-end scenarios per allowed_topic in
-         cognitive policy, traversing the agent→tool path from the SBOM.
-Layer 2a: Agent Coverage (agent_coverage) — one scenario per AGENT node grounded in
-          the agent's SBOM description + closest allowed_topic.
-Layer 2b: Tool Coverage (component_coverage) — one scenario per TOOL reachable via
-          AGENT→CALLS→TOOL, using tool description + parameters.  Similar tools on
-          the same agent are chained into multi-turn conversations (INFO→ACTION).
-Layer 3: Guardrail Probes — HITL triggers and data-classification invariants.
-Layer 4: Data Discovery Probes — ask what data the agent holds, then react.
+Scenarios are generated under 4 configurable ``behavior.workflows`` categories
+(see ``build_scenarios()``):
+
+topic_coverage — end-to-end scenarios per allowed_topic in cognitive policy,
+    traversing the agent→tool path from the SBOM (intent_happy_path), plus a
+    policy_topic_coverage fallback when the SBOM has no AGENT nodes.
+agent_tool_coverage — one scenario per AGENT node grounded in the agent's SBOM
+    description + closest allowed_topic (agent_coverage); one scenario per TOOL
+    reachable via AGENT→CALLS→TOOL, chaining similar tools on the same agent into
+    multi-turn conversations (component_coverage); API_ENDPOINT schema coverage
+    (endpoint_coverage); and AGENT→DELEGATES_TO→AGENT handoff scenarios
+    (delegates_to).
+guardrail_coverage — guardrail-protected path probes (guardrail_path) plus HITL
+    triggers and data-classification invariants (guardrail_probe).
+data_discovery_probe — ask what data the agent holds, then react.
 
 Boundary enforcement is NOT included — that is redteam's domain.
 """
@@ -470,207 +476,6 @@ def _policy_topic_coverage_scenarios(
                 matched_topic=topic_short,
             )
         )
-    return scenarios
-
-
-# ---------------------------------------------------------------------------
-# Layer 2: Component Coverage
-# ---------------------------------------------------------------------------
-
-_COMPONENT_COVERAGE_SYSTEM = (
-    "You are a QA engineer creating behavior test scenarios for an AI application. "
-    "Return ONLY valid JSON."
-)
-
-_COMPONENT_COVERAGE_USER_TEMPLATE = """\
-## Application Intent
-Purpose: {app_purpose}
-Capabilities: {capabilities}
-
-## Components to Test
-Agents:
-{agent_lines}
-
-Tools:
-{tool_lines}
-
-## Instructions
-Generate exactly one 3-4 turn test conversation per component.
-Rules:
-- Turn 1: realistic task grounded in the app's purpose -- DIFFERENT context per scenario
-- Turn 2: specific details (audience, goals, constraints, etc.)
-- Turn 3: explicitly invoke the component BY NAME
-  * Agent: "Can you have {{AgentName}} [action]?"
-  * Tool: "Please use {{tool_name}} to [action]?"
-- Turn 4 (optional): verification or refinement follow-up
-- goal: one sentence "Verify that {{ComponentName}} [measurable outcome]"
-- Append this exact string to Turn 3 ONLY (the explicit component invocation): "{suffix}"
-- Turn 1 and Turn 2 must be plain conversation — do NOT add the suffix to them
-- Do NOT emit the suffix as a standalone turn; embed it in the Turn 3 message text
-- No two Turn 1 messages may be identical
-
-Return:
-{{
-  "scenarios": [
-    {{
-      "name": "snake_case_name",
-      "target_component": "ComponentName",
-      "target_component_type": "AGENT or TOOL",
-      "goal": "Verify that ComponentName does X",
-      "messages": ["turn1", "turn2", "turn3"]
-    }}
-  ]
-}}
-"""
-
-
-def _deterministic_component_scenario(
-    component_name: str,
-    component_type: str,
-    description: str,
-    intent: "IntentProfile",
-    idx: int,
-) -> BehaviorScenario:
-    """Deterministic 3-turn scenario for a single component."""
-    opener = (
-        f"I need help with: {intent.app_purpose[:80]}. What can you do for me?"
-        if intent.app_purpose
-        else f"I need help completing task #{idx + 1}. What are your capabilities?"
-    )
-    turn1 = opener.rstrip()
-    turn2 = f"I have a specific task that requires {_policy_fragment(description, 80) if description else 'specialized processing'}."
-    turn3 = _component_probe_message(component_name, description, component_type, intent)
-    ct_upper = component_type.upper()
-    return BehaviorScenario(
-        scenario_type=BehaviorScenarioType.COMPONENT_COVERAGE,
-        name=f"component_{component_name.lower().replace(' ', '_')}",
-        messages=[turn1, turn2, turn3],
-        target_component=component_name,
-        target_component_type=ct_upper,
-        goal=f"Verify that {component_name} is correctly invoked and produces a relevant response",
-        component_description=description,
-        scoped_tools=[component_name] if ct_upper != "AGENT" else [],
-        scoped_agents=[component_name] if ct_upper == "AGENT" else [],
-    )
-
-
-async def _component_coverage_scenarios(
-    sbom: "AiSbomDocument",
-    intent: "IntentProfile",
-    policy: "CognitivePolicy | None",
-    controls: "list[PolicyControl] | None",
-    llm_client: "LLMClient | None",
-) -> list[BehaviorScenario]:
-    """Generate 1 scenario per AGENT/TOOL node."""
-    components: list[tuple[str, str, str]] = []  # (name, description, type)
-    for node in getattr(sbom, "nodes", []):
-        ct = getattr(node, "component_type", None) or getattr(node, "type", None)
-        nt = getattr(ct, "value", str(ct) if ct else "").upper()
-        if nt not in ("AGENT", "TOOL"):
-            continue
-        name = getattr(node, "name", None) or str(getattr(node, "id", ""))
-        # NodeMetadata.description is the right field for real SBOM Node objects
-        meta = getattr(node, "metadata", None)
-        if meta is not None and hasattr(meta, "description"):
-            desc = getattr(meta, "description", "") or ""
-        else:
-            desc = getattr(node, "description", "") or ""
-        if not desc and nt == "TOOL":
-            inferred = _name_to_description(name)
-            if inferred:
-                desc = inferred
-        components.append((name, desc, nt))
-
-    if not components:
-        return []
-
-    if llm_client is None or getattr(llm_client, "api_key", None) is None:
-        return [
-            _deterministic_component_scenario(name, ctype, desc, intent, i)
-            for i, (name, desc, ctype) in enumerate(components)
-        ]
-
-    agent_lines = "\n".join(
-        f"- {name}: {desc or 'no description'}"
-        for name, desc, ctype in components
-        if ctype == "AGENT"
-    ) or "none"
-    tool_lines = "\n".join(
-        f"- {name}: {desc or 'no description'}"
-        for name, desc, ctype in components
-        if ctype == "TOOL"
-    ) or "none"
-
-    prompt = _COMPONENT_COVERAGE_USER_TEMPLATE.format(
-        app_purpose=intent.app_purpose,
-        capabilities=", ".join(intent.core_capabilities[:6]),
-        agent_lines=agent_lines,
-        tool_lines=tool_lines,
-        suffix=_TURN_SUFFIX.strip(),
-    )
-
-    try:
-        raw = await llm_client.complete(
-            prompt,
-            system=_COMPONENT_COVERAGE_SYSTEM,
-            label="behavior:component_coverage_gen",
-        )
-    except Exception as exc:
-        _log.warning("_component_coverage_scenarios: LLM call failed (%s), using templates", exc)
-        return [
-            _deterministic_component_scenario(name, ctype, desc, intent, i)
-            for i, (name, desc, ctype) in enumerate(components)
-        ]
-
-    parsed = extract_json_object(raw)
-    if not parsed or "scenarios" not in parsed:
-        _log.warning("_component_coverage_scenarios: could not parse LLM response, using templates")
-        return [
-            _deterministic_component_scenario(name, ctype, desc, intent, i)
-            for i, (name, desc, ctype) in enumerate(components)
-        ]
-
-    scenarios: list[BehaviorScenario] = []
-    comp_lookup = {name.lower(): (name, desc, ctype) for name, desc, ctype in components}
-
-    for item in (parsed.get("scenarios") or []):
-        if not isinstance(item, dict):
-            continue
-        messages = [str(m) for m in (item.get("messages") or []) if m]
-        if not messages:
-            continue
-        messages = _normalize_scenario_messages(
-            messages,
-            scenario_type=BehaviorScenarioType.COMPONENT_COVERAGE.value,
-        )
-        tc = str(item.get("target_component") or "")
-        tc_type = str(item.get("target_component_type") or "TOOL").upper()
-        # Look up description from components
-        comp_info = comp_lookup.get(tc.lower())
-        desc = comp_info[1] if comp_info else ""
-        # v5: scope the scenario to just this component so coverage turns
-        # only probe this tool/agent, not the entire SBOM.
-        scoped_tools = [tc] if tc_type != "AGENT" else []
-        scoped_agents = [tc] if tc_type == "AGENT" else []
-        scenarios.append(
-            BehaviorScenario(
-                scenario_type=BehaviorScenarioType.COMPONENT_COVERAGE,
-                name=str(item.get("name") or f"component_{tc.lower().replace(' ', '_')}"),
-                messages=messages,
-                target_component=tc,
-                target_component_type=tc_type,
-                goal=str(item.get("goal") or f"Verify that {tc} is correctly invoked"),
-                component_description=desc,
-                scoped_tools=scoped_tools,
-                scoped_agents=scoped_agents,
-            )
-        )
-
-    if not scenarios:
-        return [
-            _deterministic_component_scenario(name, ctype, desc, intent, i)
-            for i, (name, desc, ctype) in enumerate(components)
-        ]
     return scenarios
 
 
@@ -1237,8 +1042,8 @@ async def _tool_coverage_scenarios(
             )
 
         # Emit one agent-level scenario per real (non-standalone) agent so that
-        # the AGENT node itself is always probed when component_coverage runs,
-        # without requiring agent_coverage to be listed in workflows.
+        # the AGENT node itself is always probed alongside its tool coverage
+        # (agent + tool coverage both run together under agent_tool_coverage).
         if not _is_standalone_group(agent_name):
             agent_desc = agent_desc_map.get(agent_name, "")
             scenarios.append(
@@ -2060,14 +1865,13 @@ async def build_scenarios(
     skipped_out: "list[str] | None" = None,
     pre_scan_profile: "DiscoveredProfile | None" = None,
 ) -> list[BehaviorScenario]:
-    """Build all scenarios for the configured workflows (v7).
+    """Build all scenarios for the configured workflows (v8).
 
-    Layers:
-      1. intent_happy_path   — topic-path scenarios from cognitive policy allowed_topics
-      2a. agent_coverage     — one scenario per AGENT node (SBOM-driven)
-      2b. component_coverage — tool coverage with INFO→ACTION chaining (SBOM-driven)
-      3. guardrail_probe     — HITL triggers + data classification boundaries
-      4. data_discovery_probe — ask what data the agent holds, then react
+    Categories:
+      topic_coverage       — intent-driven happy paths + allowed-topic fallback probes
+      agent_tool_coverage  — SBOM-driven agent, tool, endpoint, and delegation coverage
+      guardrail_coverage   — HITL triggers, data classification, and guardrail-path probes
+      data_discovery_probe — ask what data the agent holds, then react
 
     Boundary enforcement is excluded — that belongs to the redteam module.
 
@@ -2086,17 +1890,12 @@ async def build_scenarios(
         Deduplicated list of BehaviorScenario objects.
     """
     workflows: list[str] = list(getattr(config, "workflows", None) or [])
-    # Default: run all layers (no boundary_enforcement)
+    # Default: run all categories
     if not workflows:
         workflows = [
-            "intent_happy_path",
-            "agent_coverage",
-            "component_coverage",
-            "endpoint_coverage",
-            "guardrail_path",
-            "delegates_to",
-            "guardrail_probe",
-            "policy_topic_coverage",
+            "topic_coverage",
+            "agent_tool_coverage",
+            "guardrail_coverage",
             "data_discovery_probe",
         ]
 
@@ -2109,69 +1908,58 @@ async def build_scenarios(
 
     all_scenarios: list[BehaviorScenario] = []
 
-    # --- Layer 1: Topic paths (intent_happy_path) ---
-    if "intent_happy_path" in workflows:
+    # --- topic_coverage: intent happy paths + allowed-topic fallback ---
+    if "topic_coverage" in workflows:
         happy = await _intent_happy_path_scenarios(intent, sbom, llm_client, policy=policy, pre_scan_profile=pre_scan_profile)
         all_scenarios.extend(happy)
         _log.debug("build_scenarios: %d intent_happy_path scenarios", len(happy))
 
-    # --- Layer 1b: Policy-topic coverage (fallback when SBOM has no AGENT nodes) ---
-    # When neither agent_coverage nor component_coverage will produce scenarios (no AGENT
-    # nodes in the SBOM), generate one positive scenario per allowed_topic from the policy.
-    if "policy_topic_coverage" in workflows and policy is not None:
-        _no_agents = sbom is None or not SbomGraph(sbom).nodes_of_type("AGENT")
-        if _no_agents:
-            ptc = _policy_topic_coverage_scenarios(intent, policy, sbom, pre_scan_profile)
-            all_scenarios.extend(ptc)
-            _log.debug("build_scenarios: %d policy_topic_coverage scenarios", len(ptc))
+        # Policy-topic coverage is a fallback for when the SBOM has no AGENT nodes
+        # (so agent_tool_coverage below won't produce anything): one positive
+        # scenario per allowed_topic from the policy.
+        if policy is not None:
+            _no_agents = sbom is None or not SbomGraph(sbom).nodes_of_type("AGENT")
+            if _no_agents:
+                ptc = _policy_topic_coverage_scenarios(intent, policy, sbom, pre_scan_profile)
+                all_scenarios.extend(ptc)
+                _log.debug("build_scenarios: %d policy_topic_coverage scenarios", len(ptc))
 
-    # --- Layers 2a + 2b: SBOM-driven agent + tool coverage ---
-    # Fire both concurrently since they're LLM-backed
-    run_agent_cov = "agent_coverage" in workflows and sbom is not None
-    run_tool_cov = "component_coverage" in workflows and sbom is not None
-
-    if run_agent_cov or run_tool_cov:
-        cov_tasks = []
-        cov_keys: list[str] = []
-        if run_agent_cov:
-            cov_tasks.append(_agent_coverage_scenarios(sbom, intent, policy, llm_client, pre_scan_profile=pre_scan_profile))  # type: ignore[arg-type]
-            cov_keys.append("agent_coverage")
-        if run_tool_cov:
-            cov_tasks.append(_tool_coverage_scenarios(sbom, intent, policy, llm_client))  # type: ignore[arg-type]
-            cov_keys.append("component_coverage")
+    # --- agent_tool_coverage: SBOM-driven agent, tool, endpoint, and delegation coverage ---
+    if "agent_tool_coverage" in workflows and sbom is not None:
+        # Fire agent + tool coverage concurrently since they're LLM-backed
+        cov_tasks = [
+            _agent_coverage_scenarios(sbom, intent, policy, llm_client, pre_scan_profile=pre_scan_profile),  # type: ignore[arg-type]
+            _tool_coverage_scenarios(sbom, intent, policy, llm_client),  # type: ignore[arg-type]
+        ]
+        cov_keys = ["agent_coverage", "component_coverage"]
 
         cov_results = await asyncio.gather(*cov_tasks)
         for key, result in zip(cov_keys, cov_results):
             all_scenarios.extend(result)
             _log.debug("build_scenarios: %d %s scenarios", len(result), key)
 
-    # --- Layer 2c: API endpoint schema coverage ---
-    if "endpoint_coverage" in workflows and sbom is not None:
         ep_cov = _endpoint_coverage_scenarios(sbom, intent)
         all_scenarios.extend(ep_cov)
         _log.debug("build_scenarios: %d endpoint_coverage scenarios", len(ep_cov))
 
-    # --- Layer 2d: Guardrail-protected path probes ---
-    if "guardrail_path" in workflows and sbom is not None:
-        gp_cov = _guardrail_path_scenarios(sbom, intent, policy)
-        all_scenarios.extend(gp_cov)
-        _log.debug("build_scenarios: %d guardrail_path scenarios", len(gp_cov))
-
-    # --- Layer 2e: DELEGATES_TO handoff scenarios ---
-    if "delegates_to" in workflows and sbom is not None:
         dt_cov = _delegates_to_scenarios(sbom, intent)
         all_scenarios.extend(dt_cov)
         _log.debug("build_scenarios: %d delegates_to scenarios", len(dt_cov))
 
-    # --- Layer 3: Guardrail probes (HITL + data classification, SBOM-gated) ---
-    # Only emitted when GUARDRAIL nodes exist in the SBOM.  Negative boundary
+    # --- guardrail_coverage: guardrail-path probes + HITL/data-classification probes ---
+    # Both are SBOM-gated: only emitted when GUARDRAIL nodes exist. Negative boundary
     # tests (cross-user, tool-bypass) are redteam's responsibility.
-    if "guardrail_probe" in workflows:
+    if "guardrail_coverage" in workflows:
+        if sbom is not None:
+            gp_cov = _guardrail_path_scenarios(sbom, intent, policy)
+            all_scenarios.extend(gp_cov)
+            _log.debug("build_scenarios: %d guardrail_path scenarios", len(gp_cov))
+
         invariant = _guardrail_probe_scenarios(policy, intent, sbom=sbom) if policy is not None else []
         all_scenarios.extend(invariant)
         _log.debug("build_scenarios: %d guardrail_probe scenarios", len(invariant))
 
-    # --- Layer 4: Data discovery probes ---
+    # --- data_discovery_probe: per-user data disclosure + cross-user IDOR probes ---
     if "data_discovery_probe" in workflows and sbom is not None:
         discovery = _data_discovery_scenarios(sbom, intent)
         all_scenarios.extend(discovery)

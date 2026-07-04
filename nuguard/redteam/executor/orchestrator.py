@@ -17,6 +17,7 @@ if TYPE_CHECKING:
     from nuguard.models.token_usage import TokenUsage
     from nuguard.redteam.coverage.tracker import CoverageTracker
     from nuguard.redteam.target.log_reader import BufferLogReader, FileLogReader
+    from nuguard.redteam.target.session import AttackSession
 
 from nuguard.common.console import print_turn as _common_print_turn
 from nuguard.common.logging import get_logger
@@ -55,20 +56,8 @@ def _sev_rank(severity: Severity) -> int:
         return len(_SEV_ORDER)
 
 
-# Back-compat aliases for scenario/goal-type filter tokens (redteam.scenarios /
-# --scenarios). "prompt-injection" was the pre-rename token for what is now
-# GoalType.PROMPT_DRIVEN_THREAT; without this alias the token silently matches
-# zero scenarios (neither substring of the other), so a config still using it
-# would drop the entire PROMPT_DRIVEN_THREAT category without any error.
-_GOAL_TOKEN_ALIASES: dict[str, str] = {
-    "prompt_injection": "prompt_driven_threat",
-    "prompt_injections": "prompt_driven_threat",
-}
-
-
 def _normalize_scenario_token(value: str) -> str:
-    normalized = value.strip().lower().replace("-", "_")
-    return _GOAL_TOKEN_ALIASES.get(normalized, normalized)
+    return value.strip().lower().replace("-", "_")
 
 
 def _dedup_findings(findings: list[Finding]) -> list[Finding]:
@@ -459,7 +448,6 @@ class RedteamOrchestrator:
         skip_discovery: bool = False,
         discovery_max_turns: int = 3,
         chat_payload_extras: dict[str, Any] | None = None,
-        use_catalog: bool = True,
         catalog: "tuple | None" = None,
         pre_run_warmup: int = 0,
         verify_findings: bool = False,
@@ -473,7 +461,6 @@ class RedteamOrchestrator:
         self._policy_controls = policy_controls  # compiled PolicyControl list
         self._canary_config = canary_config
         self._profile = profile
-        self._use_catalog = use_catalog
         self._catalog = catalog
         self._min_impact = min_impact_score
         self._log_path = log_path
@@ -864,35 +851,33 @@ class RedteamOrchestrator:
         all_scenarios = generator.generate(with_guided=_with_guided)
         self._coverage_tracker = cast("CoverageTracker | None", getattr(generator, "coverage_tracker", None))
 
-        # 1b. Catalog scenarios — merged in when use_catalog=True.
+        # 1b. Catalog scenarios — merged into the SBOM-driven set above.
         # The catalog is capability-aware and handles its own profile filtering,
         # so we merge after the legacy filter to avoid double-capping.
-        _use_catalog = getattr(self, "_use_catalog", True)
         self.catalog_coverage = None
-        if _use_catalog:
-            try:
-                catalog_scenarios = generator.generate_from_catalog(
-                    scan_profile=self._profile,
-                    with_guided=_with_guided,
-                    catalog=self._catalog,
-                )
-                self.catalog_coverage = generator.last_coverage
-                # Merge catalog scenarios, keeping existing legacy ones first
-                existing_keys = {
-                    (s.goal_type, s.scenario_type, tuple(s.target_node_ids))
-                    for s in all_scenarios
-                }
-                for s in catalog_scenarios:
-                    key = (s.goal_type, s.scenario_type, tuple(s.target_node_ids))
-                    if key not in existing_keys:
-                        all_scenarios.append(s)
-                _log.info(
-                    "Merged %d catalog scenarios (coverage: %d categories)",
-                    len(catalog_scenarios),
-                    self.catalog_coverage.categories_covered_count if self.catalog_coverage else 0,
-                )
-            except Exception as exc:
-                _log.warning("Catalog generation failed (non-fatal): %s", exc)
+        try:
+            catalog_scenarios = generator.generate_from_catalog(
+                scan_profile=self._profile,
+                with_guided=_with_guided,
+                catalog=self._catalog,
+            )
+            self.catalog_coverage = generator.last_coverage
+            # Merge catalog scenarios, keeping existing legacy ones first
+            existing_keys = {
+                (s.goal_type, s.scenario_type, tuple(s.target_node_ids))
+                for s in all_scenarios
+            }
+            for s in catalog_scenarios:
+                key = (s.goal_type, s.scenario_type, tuple(s.target_node_ids))
+                if key not in existing_keys:
+                    all_scenarios.append(s)
+            _log.info(
+                "Merged %d catalog scenarios (coverage: %d categories)",
+                len(catalog_scenarios),
+                self.catalog_coverage.categories_covered_count if self.catalog_coverage else 0,
+            )
+        except Exception as exc:
+            _log.warning("Catalog generation failed (non-fatal): %s", exc)
 
         # 2. Filter by profile and impact score (before enrichment — avoids wasting LLM calls)
         if self._profile == "ci":

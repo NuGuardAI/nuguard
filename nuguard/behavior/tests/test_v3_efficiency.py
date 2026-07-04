@@ -323,7 +323,7 @@ async def test_build_scenarios_parallelises_llm_calls():
     intent = IntentProfile(app_purpose="flight booking", core_capabilities=["book flights"])
 
     config = MagicMock()
-    config.workflows = ["intent_happy_path", "agent_coverage"]
+    config.workflows = ["topic_coverage", "agent_tool_coverage"]
     config.boundary_assertions = []
 
     # SBOM needs at least one AGENT node for agent_coverage to issue an LLM call
@@ -369,7 +369,7 @@ async def test_build_scenarios_layer_order_preserved():
 
     intent = IntentProfile(app_purpose="test", core_capabilities=["cap"])
     config = MagicMock()
-    config.workflows = ["intent_happy_path", "agent_coverage", "guardrail_probe"]
+    config.workflows = ["topic_coverage", "agent_tool_coverage", "guardrail_coverage"]
     config.boundary_assertions = []
 
     from nuguard.sbom.models import AiSbomDocument

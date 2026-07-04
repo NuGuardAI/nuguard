@@ -805,10 +805,10 @@ nuguard redteam \
 nuguard redteam \
   --sbom ./sbom.json \
   --target http://localhost:8000 \
-  --scenarios prompt-injection,data-exfiltration
+  --scenarios prompt-driven-threat,data-exfiltration
 ```
 
-Valid `--scenarios` values: `prompt-injection`, `tool-abuse`, `privilege-escalation`, `data-exfiltration`, `policy-violation`, `mcp-toxic-flow`. You can also pass stable catalog IDs directly (e.g. `--scenarios D01,C03,J02`).
+Valid `--scenarios` values: `prompt-driven-threat`, `policy-violation`, `data-exfiltration`, `privilege-escalation`, `tool-abuse`, `mcp-toxic-flow`, `api-attack`, `agentic-trust-abuse`, `recon-inference`. You can also pass stable catalog IDs directly (e.g. `--scenarios D01,C03,J02`).
 
 ### CI gate — fail on high severity
 
@@ -863,7 +863,6 @@ nuguard redteam \
 | — | `target.auth` / `redteam.auth` (override) | — | `type: none` | Structured auth config: `bearer`, `api_key`, `basic`, `login_flow`, or `none`. Set in `target.auth` for shared credentials; override in `redteam.auth` when redteam needs separate credentials |
 | — | `redteam.auth_header` | — | — | Legacy shorthand header string (fallback when neither `target.auth` nor `redteam.auth` is set) |
 | `--profile` | `redteam.profile` | — | `ci` | `ci` (top-20, impact ≥ 5.0), `standard` (top-40, impact ≥ 3.0), or `full` (all matching catalog scenarios) |
-| — | `redteam.use_catalog` | — | `true` | Include catalog scenarios in the run. Set `false` to use only the SBOM-driven generator. |
 | `--catalog` | `redteam.catalog_path` | — | — | Path to a custom scenario catalog YAML. Replaces the built-in 84-scenario catalog. Generate a starting file with `nuguard redteam catalog-export`. |
 | `--scenarios` | `redteam.scenarios` | — | all | Scenario type filter (list in YAML, comma-separated on CLI) |
 | `--min-impact-score` | `redteam.min_impact_score` | — | `0.0` | Exclude scenarios below this pre-score |
@@ -970,7 +969,7 @@ redteam:
 
   # Run only these attack families (omit to run all)
   scenarios:
-    - prompt-injection
+    - prompt-driven-threat
     - data-exfiltration
     - privilege-escalation
 

@@ -335,7 +335,7 @@ async def test_codegen_escalation_disabled_skips_escalation():
         response="```python\ndef evil(): pass\n```",
     )]
     static_exec = MagicMock()
-    static_exec.run = AsyncMock(return_value=(MagicMock(), fake_results))
+    static_exec.run = AsyncMock(return_value=(MagicMock(), fake_results, None))
 
     runner = ObjectiveRunner(
         sbom=sbom,
@@ -368,7 +368,7 @@ async def test_codegen_escalation_enabled_triggers_on_hit():
         response="Here you go:\n```python\ndef fetch(): return db.all()\n```",
     )]
     static_exec = MagicMock()
-    static_exec.run = AsyncMock(return_value=(MagicMock(), fake_results))
+    static_exec.run = AsyncMock(return_value=(MagicMock(), fake_results, None))
 
     runner = ObjectiveRunner(
         sbom=sbom,
