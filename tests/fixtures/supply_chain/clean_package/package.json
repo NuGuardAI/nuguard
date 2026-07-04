@@ -1,0 +1,13 @@
+{
+  "name": "clean-package",
+  "version": "1.0.0",
+  "description": "A benign package with no lifecycle scripts",
+  "scripts": {
+    "test": "jest",
+    "build": "tsc",
+    "lint": "eslint src/"
+  },
+  "dependencies": {
+    "express": "^4.18.0"
+  }
+}

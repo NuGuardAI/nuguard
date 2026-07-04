@@ -77,8 +77,7 @@ Output ``details`` schema::
 from __future__ import annotations
 
 import asyncio
-import logging
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 from nuguard.analysis._atlas_data import (
     ATLAS_VERSION,
@@ -93,8 +92,12 @@ from nuguard.analysis._atlas_data import (
 )
 from nuguard.analysis.models import AnalysisResult
 from nuguard.analysis.plugin_base import AnalysisPlugin
+from nuguard.common.logging import get_logger
 
-_log = logging.getLogger("analysis.plugins.atlas")
+if TYPE_CHECKING:
+    from nuguard.models.token_usage import TokenUsage
+
+_log = get_logger("analysis.plugins.atlas")
 
 
 class AtlasAnnotatorPlugin(AnalysisPlugin):
@@ -131,7 +134,8 @@ class AtlasAnnotatorPlugin(AnalysisPlugin):
         # ------------------------------------------------------------------
         # Pass 2 — native ATLAS graph checks
         # ------------------------------------------------------------------
-        native_findings = self._run_native_pass(sbom)
+        injected_graph = config.get("sbom_graph")
+        native_findings = self._run_native_pass(sbom, graph=injected_graph)
         _log.debug("Pass 2: %d native ATLAS finding(s) produced", len(native_findings))
 
         all_findings = nga_findings + native_findings
@@ -142,6 +146,8 @@ class AtlasAnnotatorPlugin(AnalysisPlugin):
         # ------------------------------------------------------------------
         use_llm = bool(config.get("llm") or config.get("enable_llm"))
         overall_llm_summary: str | None = None
+        from nuguard.models.token_usage import TokenUsage  # noqa: PLC0415
+        llm_token_usage = TokenUsage()
         if use_llm:
             _log.info("Pass 3: LLM enrichment enabled")
             osv_findings = self._run_osv_pass(sbom)
@@ -154,7 +160,7 @@ class AtlasAnnotatorPlugin(AnalysisPlugin):
                 len(grype_findings),
             )
             all_findings = self._enrich_with_cve_context(all_findings, cve_findings)
-            all_findings, overall_llm_summary = self._run_llm_enrichment(
+            all_findings, overall_llm_summary, llm_token_usage = self._run_llm_enrichment(
                 all_findings, cve_findings, sbom, config
             )
 
@@ -206,6 +212,7 @@ class AtlasAnnotatorPlugin(AnalysisPlugin):
             plugin=self.name,
             message=message,
             details=details,
+            token_usage=llm_token_usage,
         )
 
     # ------------------------------------------------------------------ #
@@ -293,13 +300,15 @@ class AtlasAnnotatorPlugin(AnalysisPlugin):
         cve_findings: list[dict[str, Any]],
         sbom: dict[str, Any],
         config: dict[str, Any],
-    ) -> tuple[list[dict[str, Any]], str]:
+    ) -> tuple[list[dict[str, Any]], str, "TokenUsage"]:
         """Synchronous entry point for LLM enrichment; falls back gracefully."""
+        from nuguard.models.token_usage import TokenUsage  # noqa: PLC0415
+
         try:
             return asyncio.run(self._async_llm_enrichment(findings, cve_findings, sbom, config))
         except Exception as exc:
             _log.warning("LLM enrichment failed, falling back to static output: %s", exc)
-            return findings, ""
+            return findings, "", TokenUsage()
 
     async def _async_llm_enrichment(
         self,
@@ -307,11 +316,12 @@ class AtlasAnnotatorPlugin(AnalysisPlugin):
         cve_findings: list[dict[str, Any]],
         sbom: dict[str, Any],
         config: dict[str, Any],
-    ) -> tuple[list[dict[str, Any]], str]:
+    ) -> tuple[list[dict[str, Any]], str, "TokenUsage"]:
         """Build per-finding llm_summary + overall executive summary."""
         import os  # noqa: PLC0415
 
         from nuguard.common.llm_client import LLMClient  # noqa: PLC0415
+        from nuguard.models.token_usage import TokenUsage  # noqa: PLC0415
 
         model = config.get("llm_model") or "gpt-4o-mini"
         is_vertex = str(model).startswith("vertex_ai/")
@@ -345,7 +355,9 @@ class AtlasAnnotatorPlugin(AnalysisPlugin):
         except Exception as exc:
             _log.debug("Overall LLM summary failed: %s", exc)
 
-        return enriched, overall
+        in_, out_ = client.token_counts
+        token_usage = TokenUsage(input_tokens=in_, output_tokens=out_, llm_model=model)
+        return enriched, overall, token_usage
 
     async def _summarize_finding(
         self,
@@ -438,29 +450,58 @@ class AtlasAnnotatorPlugin(AnalysisPlugin):
     # Pass 2 helpers                                                       #
     # ------------------------------------------------------------------ #
 
-    def _run_native_pass(self, sbom: dict[str, Any]) -> list[dict[str, Any]]:
-        """Run native ATLAS graph checks against the raw SBOM."""
+    def _run_native_pass(
+        self,
+        sbom: dict[str, Any],
+        graph: "Any | None" = None,
+    ) -> list[dict[str, Any]]:
+        """Run native ATLAS graph checks against the raw SBOM.
+
+        When an :class:`~nuguard.analysis.graph.AnalysisGraph` is injected via
+        *graph*, its pre-built node/type indexes are reused directly instead of
+        rebuilding them from the raw dict.  The write-filtered adjacency for
+        NC-002 is always built locally since it has semantics not captured by
+        the generic graph (skip read-only ACCESSES edges).
+        """
         nodes: list[dict[str, Any]] = list(sbom.get("nodes") or [])
         edges: list[dict[str, Any]] = list(sbom.get("edges") or [])
 
         findings: list[dict[str, Any]] = []
 
-        # Build fast lookup structures.  Normalize IDs to strings — model_dump()
-        # may emit UUID objects rather than str when called without mode="json".
-        nodes_by_id: dict[str, dict[str, Any]] = {str(n.get("id", "")): n for n in nodes}
-        node_types_by_id: dict[str, str] = {
-            str(n.get("id", "")): (n.get("component_type") or "").upper() for n in nodes
-        }
+        if graph is not None:
+            # Reuse pre-built indexes from the injected AnalysisGraph
+            nodes_by_id: dict[str, dict[str, Any]] = graph._node_by_id  # type: ignore[attr-defined]
+            node_types_by_id: dict[str, str] = {
+                nid: (n.get("component_type") or "").upper()
+                for nid, n in nodes_by_id.items()
+            }
+            type_sets: dict[str, set[str]] = {
+                ct: {str(n.get("id", "")) for n in nlist}
+                for ct, nlist in graph._by_type.items()  # type: ignore[attr-defined]
+            }
+        else:
+            # Build lookup structures from raw dict.  Normalize IDs to strings —
+            # model_dump() may emit UUID objects rather than str.
+            nodes_by_id = {str(n.get("id", "")): n for n in nodes}
+            node_types_by_id = {
+                str(n.get("id", "")): (n.get("component_type") or "").upper() for n in nodes
+            }
+            type_sets = {}
+            for nid, ntype in node_types_by_id.items():
+                type_sets.setdefault(ntype, set()).add(nid)
+
+        # Write-filtered adjacency: skip read-only ACCESSES edges (NC-002 semantics)
         adjacency: dict[str, set[str]] = {}
         for edge in edges:
             src = str(edge.get("source") or edge.get("from") or "")
             tgt = str(edge.get("target") or edge.get("to") or "")
             if src and tgt:
+                if (
+                    edge.get("relationship_type") == "ACCESSES"
+                    and edge.get("access_type") == "read"
+                ):
+                    continue
                 adjacency.setdefault(src, set()).add(tgt)
-
-        type_sets: dict[str, set[str]] = {}
-        for nid, ntype in node_types_by_id.items():
-            type_sets.setdefault(ntype, set()).add(nid)
 
         findings += self._check_nc001_external_model_no_hash(nodes, type_sets)
         findings += self._check_nc002_unguarded_datastore(
@@ -481,7 +522,11 @@ class AtlasAnnotatorPlugin(AnalysisPlugin):
         type_sets: dict[str, set[str]],
     ) -> list[dict[str, Any]]:
         check = NATIVE_CHECKS[0]  # ATLAS-NC-001
-        affected: list[str] = []
+        # Separate hosted API models (no downloadable weights) from self-hosted/local ones.
+        # Artifact integrity hashing is not applicable to hosted API models; they need
+        # version-pinning guidance instead.
+        local_affected: list[str] = []
+        hosted_affected: list[str] = []
 
         for nid in type_sets.get("MODEL", set()):
             node = next((n for n in nodes if str(n.get("id", "")) == nid), {})
@@ -494,15 +539,58 @@ class AtlasAnnotatorPlugin(AnalysisPlugin):
                 or extras.get("provider")
                 or ""
             ).lower()
-            has_external = any(p in provider for p in EXTERNAL_PROVIDERS)
-            has_hash = bool(extras.get("integrity_hash"))
-            if has_external and not has_hash:
-                affected.append(name)
-                _log.debug("NC-001: external model '%s' (provider=%s) has no integrity_hash", name, provider)
+            has_external_provider = any(p in provider for p in EXTERNAL_PROVIDERS)
+            has_source_url = bool(
+                meta.get("source_url") or extras.get("source_url")
+            )
+            has_hash = bool(
+                meta.get("integrity_hash")
+                or meta.get("checksum")
+                or extras.get("integrity_hash")
+                or meta.get("digest")
+                or extras.get("digest")
+            )
+            if not has_external_provider or not has_hash:
+                # Not an external provider, or already has a hash — not of interest
+                if not has_external_provider:
+                    continue
+                if has_hash:
+                    continue
+                # External provider + no hash: distinguish hosted API vs local weights
+                if has_source_url:
+                    local_affected.append(name)
+                    _log.debug(
+                        "NC-001: self-hosted external model '%s' (provider=%s) has no integrity_hash",
+                        name, provider,
+                    )
+                else:
+                    hosted_affected.append(name)
+                    _log.debug(
+                        "NC-001: hosted API model '%s' (provider=%s) has no version pin",
+                        name, provider,
+                    )
 
-        if not affected:
-            return []
-        return [_native_finding(check, affected)]
+        results: list[dict[str, Any]] = []
+        if local_affected:
+            results.append(_native_finding(check, local_affected))
+        if hosted_affected:
+            # Hosted API models: version-pinning finding instead of integrity-hash finding
+            hosted_check = dict(check)
+            hosted_check["title"] = "Hosted model API version not pinned"
+            hosted_check["description"] = (
+                "One or more models are consumed via a hosted provider API without a pinned"
+                " model version. Provider-side model updates can silently alter behaviour,"
+                " introduce regressions, or change safety properties."
+            )
+            hosted_check["remediation"] = (
+                "Pin the model to a specific API version in your provider configuration."
+                " Log the model version identifier returned with each inference call."
+                " Maintain an approved-model registry and require change-control review"
+                " before upgrading to a newer model version."
+                " Artifact integrity hashing does not apply to hosted API models."
+            )
+            results.append(_native_finding(hosted_check, hosted_affected))
+        return results
 
     # NC-002 ----------------------------------------------------------------
 

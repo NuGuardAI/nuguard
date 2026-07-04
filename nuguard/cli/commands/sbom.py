@@ -75,7 +75,7 @@ _GH_TOKEN_PREFIXES = ("ghp_", "gho_", "ghs_", "ghu_", "github_pat_")
 _LLM_KEY_ENVS = (
     "LITELLM_API_KEY",
     "OPENAI_API_KEY",
-    "AZURE_API_KEY",
+    "AZURE_OPENAI_KEY",
     "ANTHROPIC_API_KEY",
     "GEMINI_API_KEY",
     "NUGUARD_REDTEAM_LLM_API_KEY",
@@ -235,10 +235,17 @@ def _do_generate(
     from nuguard.config import load_config  # noqa: PLC0415
     cfg = load_config(config_file)
 
-    # Fall back to nuguard.yaml's source field when --source is not provided
+    # Fall back to nuguard.yaml's source field when --source is not provided.
+    # If source: is a URL (https://github.com/…) treat it as --from-repo so it
+    # is cloned rather than being passed to Path() — which would collapse the
+    # double slash and silently scan a non-existent local path.
     if source is None and from_repo is None:
         if cfg.source_path:
-            source = Path(cfg.source_path)
+            sp = cfg.source_path
+            if sp.startswith("https://") or sp.startswith("http://"):
+                from_repo = sp
+            else:
+                source = Path(sp)
 
     if source is None and from_repo is None:
         _err_console.print(
@@ -264,7 +271,7 @@ def _do_generate(
             clone_url = _inject_token(from_repo, resolved_token) if resolved_token else from_repo
             _console.print(f"[bold]Cloning[/bold] {from_repo} ({ref}) …")
             # Pass the original URL as source_ref to avoid leaking the token
-            from nuguard.sbom.extractor.core import AiSbomExtractor  # noqa: PLC0415
+            from nuguard.sbom.extractor import AiSbomExtractor  # noqa: PLC0415
             extractor = AiSbomExtractor()
             doc = extractor.extract_from_repo(
                 clone_url, ref=ref, config=config, source_ref=from_repo

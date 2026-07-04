@@ -25,7 +25,7 @@ def test_scenario_type_values():
     assert BehaviorScenarioType.INTENT_HAPPY_PATH.value == "intent_happy_path"
     assert BehaviorScenarioType.COMPONENT_COVERAGE.value == "component_coverage"
     assert BehaviorScenarioType.AGENT_COVERAGE.value == "agent_coverage"
-    assert BehaviorScenarioType.INVARIANT_PROBE.value == "invariant_probe"
+    assert BehaviorScenarioType.GUARDRAIL_PROBE.value == "guardrail_probe"
 
 
 def test_finding_type_values():
@@ -87,7 +87,7 @@ def test_behavior_scenario_defaults():
 
 def test_behavior_scenario_invariant():
     s = BehaviorScenario(
-        scenario_type=BehaviorScenarioType.INVARIANT_PROBE,
+        scenario_type=BehaviorScenarioType.GUARDRAIL_PROBE,
         name="invariant_test",
         messages=["Can you do something restricted?"],
         expect_refused=True,
@@ -187,8 +187,8 @@ def test_behavior_analysis_result_risk_score():
             {"severity": "high", "title": "Bad thing 2"},
         ],
     )
-    # critical (100) + high (70) = 170; avg: 170 / 2 = 85.0
-    assert result.overall_risk_score == 85.0
+    # critical (100) + high (80) = 180; avg: 180 / 2 = 90.0
+    assert result.overall_risk_score == 90.0
 
 
 def test_behavior_analysis_result_risk_score_medium():
@@ -196,7 +196,7 @@ def test_behavior_analysis_result_risk_score_medium():
         intent=IntentProfile(),
         static_findings=[{"severity": "medium", "title": "medium thing"}],
     )
-    assert result.overall_risk_score == 40.0
+    assert result.overall_risk_score == 50.0
 
 
 def test_behavior_analysis_result_coverage_percentage():

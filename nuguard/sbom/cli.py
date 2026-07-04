@@ -1,16 +1,16 @@
-"""Xelo CLI — AI SBOM generator.
+"""NuGuard CLI — AI SBOM generator.
 
 Commands
 --------
-xelo scan <PATH|URL>
+nuguard scan <PATH|URL>
     Extract AI components from a local directory or a remote git repo.
     Target is treated as a URL when it contains ``://``.
 
-    --format json          Xelo-native JSON (default)
+    --format json          NuGuard-native JSON (default)
     --format cyclonedx     Package dependencies only as CycloneDX 1.6 (AI SBOM details not included)
     --format cyclonedx-ext Standard deps BOM + AI-BOM merged (CycloneDX 1.6, extended with AI
                            components)
-    --format spdx          AI components as SPDX 3.0.1 JSON-LD (optional: pip install xelo[spdx])
+    --format spdx          AI components as SPDX 3.0.1 JSON-LD (optional: pip install nuguard[spdx])
     --output <file>        Write to file (default: stdout)
     --llm                  Enable LLM enrichment for this run
     --ref <branch>         Branch/ref to clone when target is a URL
@@ -19,16 +19,16 @@ xelo scan <PATH|URL>
     --plugin-output <file> Plugin output file (default: stdout)
     --plugin-config k=v    Plugin config entry, repeatable (same as --config in plugin run)
 
-xelo validate <FILE>
-    Validate a Xelo-native JSON document against the schema.
+nuguard validate <FILE>
+    Validate a NuGuard-native JSON document against the schema.
 
-xelo schema [--output <file>]
-    Emit the Xelo JSON schema.
+nuguard schema [--output <file>]
+    Emit the NuGuard JSON schema.
 
-xelo plugin list
+nuguard plugin list
     List all available toolbox plugins.
 
-xelo plugin run <PLUGIN> <SBOM> [--output <file>] [--config key=value ...]
+nuguard plugin run <PLUGIN> <SBOM> [--output <file>] [--config key=value ...]
     Run a named toolbox plugin against an existing SBOM JSON file.
 
     Available plugins: license, dependency, sarif, cyclonedx, spdx,
@@ -53,12 +53,14 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse, urlunparse
 
+from nuguard.common.logging import get_logger
+
 from .config import AiSbomConfig
 from .extractor import AiSbomExtractor
 from .models import AiSbomDocument
 from .serializer import AiSbomSerializer
 
-_log = logging.getLogger("xelo")
+_log = get_logger("nuguard")
 
 
 def _setup_logging(verbose: bool, debug: bool) -> None:
@@ -127,19 +129,19 @@ def _add_llm_args(p: argparse.ArgumentParser) -> None:
     """Attach LLM flags to a sub-parser."""
     p.add_argument("--llm", action="store_true", help="Enable LLM enrichment for this run.")
     p.add_argument(
-        "--llm-model", metavar="<model>", help="LLM model string (overrides XELO_LLM_MODEL)."
+        "--llm-model", metavar="<model>", help="LLM model string (overrides NUGUARD_LLM_MODEL)."
     )
     p.add_argument(
         "--llm-budget-tokens",
         type=int,
         metavar="<n>",
-        help="Token budget (overrides XELO_LLM_BUDGET_TOKENS).",
+        help="Token budget (overrides NUGUARD_LLM_BUDGET_TOKENS).",
     )
     p.add_argument(
-        "--llm-api-key", metavar="<key>", help="LLM API key (overrides XELO_LLM_API_KEY)."
+        "--llm-api-key", metavar="<key>", help="LLM API key (overrides NUGUARD_LLM_API_KEY)."
     )
     p.add_argument(
-        "--llm-api-base", metavar="<url>", help="LLM base URL (overrides XELO_LLM_API_BASE)."
+        "--llm-api-base", metavar="<url>", help="LLM base URL (overrides NUGUARD_LLM_API_BASE)."
     )
 
 
@@ -148,56 +150,56 @@ def _add_llm_args(p: argparse.ArgumentParser) -> None:
 # (module_path, class_name, network_required, short_description)
 _PLUGIN_REGISTRY: dict[str, tuple[str, str, str, str]] = {
     "license": (
-        "xelo.toolbox.plugins.license_checker",
+        "nuguard.sbom.toolbox.plugins.license_checker",
         "LicenseCheckerPlugin",
         "No",
         "Check dependency licence compliance",
     ),
     "dependency": (
-        "xelo.toolbox.plugins.dependency",
+        "nuguard.sbom.toolbox.plugins.dependency",
         "DependencyAnalyzerPlugin",
         "No",
         "Dependency breakdown and freshness analysis",
     ),
     "sarif": (
-        "xelo.toolbox.plugins.sarif_exporter",
+        "nuguard.sbom.toolbox.plugins.sarif_exporter",
         "SarifExporterPlugin",
         "No",
         "Export findings as SARIF 2.1.0 (GitHub Code Scanning compatible)",
     ),
     "cyclonedx": (
-        "xelo.toolbox.plugins.cyclonedx_exporter",
+        "nuguard.sbom.toolbox.plugins.cyclonedx_exporter",
         "CycloneDxExporter",
         "No",
         "Export nodes as CycloneDX 1.6 BOM",
     ),
     "spdx": (
-        "xelo.toolbox.plugins.spdx_exporter",
+        "nuguard.sbom.toolbox.plugins.spdx_exporter",
         "SpdxExporter",
         "No",
-        "Export nodes as SPDX 3.0.1 JSON-LD (install xelo[spdx] for spdx-tools validation)",
+        "Export nodes as SPDX 3.0.1 JSON-LD (install nuguard[spdx] for spdx-tools validation)",
     ),
     "markdown": (
-        "xelo.toolbox.plugins.markdown_exporter",
+        "nuguard.sbom.toolbox.plugins.markdown_exporter",
         "MarkdownExporterPlugin",
         "No",
         "Generate a human-readable Markdown report",
     ),
     "ghas": (
-        "xelo.toolbox.plugins.ghas_uploader",
+        "nuguard.sbom.toolbox.plugins.ghas_uploader",
         "GhasUploaderPlugin",
         "Yes",
         "Upload SARIF to GitHub Advanced Security "
         "(--config token=<ghp_…> github_repo=owner/repo ref=refs/heads/main commit_sha=<sha>)",
     ),
     "aws-security-hub": (
-        "xelo.toolbox.plugins.aws_security_hub",
+        "nuguard.sbom.toolbox.plugins.aws_security_hub",
         "AwsSecurityHubPlugin",
         "Yes",
         "Push findings to AWS Security Hub (--config region=<r> aws_account_id=<id>)",
     ),
     "xray": (
-        "xelo.toolbox.plugins.xray",
+        "nuguard.sbom.toolbox.plugins.xray",
         "XrayPlugin",
         "Yes",
         "Submit SBOM to JFrog Xray "
@@ -221,7 +223,7 @@ def _load_plugin(name: str) -> Any:
         valid = ", ".join(sorted(_PLUGIN_REGISTRY))
         raise ValueError(
             f"unknown plugin {name!r}. Available: {valid}.\n"
-            "Run 'xelo plugin list' for descriptions."
+            "Run 'nuguard plugin list' for descriptions."
         )
     module_path, class_name, _, _ = _PLUGIN_REGISTRY[name]
     try:
@@ -324,11 +326,11 @@ def main() -> None:
     )
 
     # ── validate ──────────────────────────────────────────────────────────
-    validate_p = subparsers.add_parser("validate", help="Validate a Xelo-native JSON document")
+    validate_p = subparsers.add_parser("validate", help="Validate a NuGuard-native JSON document")
     validate_p.add_argument("input", metavar="<file>")
 
     # ── schema ────────────────────────────────────────────────────────────
-    schema_p = subparsers.add_parser("schema", help="Emit the Xelo JSON schema")
+    schema_p = subparsers.add_parser("schema", help="Emit the NuGuard JSON schema")
     schema_p.add_argument(
         "--output", default="-", metavar="<file>", help="File to write schema to (default: stdout)"
     )
@@ -345,12 +347,12 @@ def main() -> None:
     run_p.add_argument(
         "plugin_name",
         metavar="<plugin>",
-        help="Plugin name — see 'xelo plugin list'",
+        help="Plugin name — see 'nuguard plugin list'",
     )
     run_p.add_argument(
         "sbom_file",
         metavar="<sbom>",
-        help="Path to a Xelo-native JSON SBOM file",
+        help="Path to a NuGuard-native JSON SBOM file",
     )
     run_p.add_argument(
         "--output",
@@ -399,7 +401,7 @@ def _handle_plugin(args: argparse.Namespace) -> None:
     elif sub == "run":
         _handle_plugin_run(args)
     else:
-        print("Usage: xelo plugin <list|run>", file=sys.stderr)
+        print("Usage: nuguard plugin <list|run>", file=sys.stderr)
         sys.exit(1)
 
 
@@ -411,7 +413,7 @@ def _handle_plugin_list(_args: argparse.Namespace) -> None:
     for name, (_mod, _cls, network, desc) in _PLUGIN_REGISTRY.items():
         print(f"  {name:<{name_w}}  {network:<8}  {desc}")
     print()
-    print("Run 'xelo plugin run <name> <sbom> --help' for per-plugin flags.")
+    print("Run 'nuguard plugin run <name> <sbom> --help' for per-plugin flags.")
 
 
 def _handle_plugin_run(args: argparse.Namespace) -> None:

@@ -492,7 +492,7 @@ async def test_policy_check_sbom_flag() -> None:
 
     args = mock.call_args.args[0]
     assert "--sbom" in args
-    assert "/tmp/app.sbom.json" in args
+    assert any(Path(arg).name == "app.sbom.json" for arg in args)
 
 
 @pytest.mark.asyncio

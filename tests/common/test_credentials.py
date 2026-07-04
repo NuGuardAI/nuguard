@@ -190,6 +190,18 @@ class TestDetectConfirmationRequest:
             "Which account would you like to use?"
         ) == "clarification"
 
+    def test_clarification_whats_your_confirmation_number(self) -> None:
+        assert detect_confirmation_request(
+            "Sure—what's your new reservation confirmation number (the one "
+            "after rebooking)? Once I have that, I'll set your seat to 14F."
+        ) == "clarification"
+
+    def test_clarification_which_trip_relates_to(self) -> None:
+        assert detect_confirmation_request(
+            "What I need from you: tell me which reservation/flight your "
+            "baggage relates to."
+        ) == "clarification"
+
     def test_plain_statement_returns_none(self) -> None:
         assert detect_confirmation_request("I have completed the transfer.") is None
 

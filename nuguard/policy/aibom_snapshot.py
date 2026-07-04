@@ -202,14 +202,32 @@ def _privilege_detail(node: Node) -> dict[str, Any]:
 
 def _api_endpoint_detail(node: Node) -> dict[str, Any]:
     p = _meta(node)
+    rate_limit_detail = node.metadata.rate_limit_detail
+    if rate_limit_detail is not None:
+        rate_limit_detail_value: dict[str, Any] | None = rate_limit_detail.model_dump(
+            exclude_none=True
+        )
+    else:
+        rate_limit_detail_value = p.get("rate_limit_detail")
     return {
         "id": str(node.id),
         "name": node.name,
         "endpoint": node.metadata.endpoint or p.get("endpoint"),
         "method": node.metadata.method or p.get("method"),
         "transport": node.metadata.transport or p.get("transport"),
-        "rate_limit": p.get("rate_limit"),
-        "has_auth": bool(node.metadata.auth_type or p.get("auth_type")),
+        "rate_limited": (
+            node.metadata.rate_limited
+            if node.metadata.rate_limited is not None
+            else p.get("rate_limited")
+        ),
+        "rate_limit_detail": rate_limit_detail_value,
+        "rate_limit": p.get("rate_limit"),  # legacy snapshot key for existing controls
+        "has_auth": bool(
+            node.metadata.auth_required
+            or node.metadata.auth_type
+            or p.get("auth_required")
+            or p.get("auth_type")
+        ),
         "file_path": str(p.get("file_path") or ""),
         "line": p.get("line_start"),
         "confidence": node.confidence,

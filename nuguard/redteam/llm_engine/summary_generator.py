@@ -1,17 +1,17 @@
 """LLM-powered executive summary and remediation brief generator."""
 from __future__ import annotations
 
-import logging
 import re
 from typing import TYPE_CHECKING
 
 from nuguard.common.llm_client import LLMClient
+from nuguard.common.logging import get_logger
 from nuguard.models.finding import Finding
 
 if TYPE_CHECKING:
     pass
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 _EXEC_SUMMARY_SYSTEM = (
     "You are a security engineer summarising an AI red-team scan report. "
@@ -28,6 +28,11 @@ _REMEDIATION_BATCH_SYSTEM = (
     "You will receive multiple findings grouped by component and attack goal. "
     "For each finding, write concise, actionable steps. "
     "Use imperative sentences. Be concrete. Max 5 steps per finding."
+)
+
+_BEHAVIOR_EXEC_SUMMARY_SYSTEM = (
+    "You are a security engineer summarising an AI behavior analysis report. "
+    "Write concise, technical prose. Do NOT use bullet lists or headers."
 )
 
 _CODING_BRIEF_SYSTEM = (
@@ -98,6 +103,77 @@ class LLMSummaryGenerator:
             return result.strip()
         except Exception as exc:
             _log.warning("Executive summary generation failed: %s", exc)
+            return ""
+
+    async def behavior_executive_summary(
+        self,
+        target_url: str,
+        app_purpose: str,
+        risk_score: float,
+        coverage_pct: float,
+        alignment_score: float,
+        scenarios_run: int,
+        static_findings: list[dict],
+        dynamic_findings: list[dict],
+        frameworks: list[str],
+    ) -> str:
+        """Return a 2–4 sentence executive summary for a behavior analysis report."""
+        all_findings = list(static_findings) + list(dynamic_findings)
+        counts: dict[str, int] = {}
+        for f in all_findings:
+            sev = str(f.get("severity", "unknown")).lower().rsplit(".", 1)[-1]
+            counts[sev] = counts.get(sev, 0) + 1
+
+        finding_lines = []
+        for f in all_findings[:10]:
+            sev = str(f.get("severity", "unknown")).lower().rsplit(".", 1)[-1]
+            title = f.get("title", "unknown")
+            comp = f.get("affected_component", "unknown component")
+            desc = (f.get("description") or "")[:200]
+            finding_lines.append(f"- [{sev}] {title}: {comp} — {desc}")
+
+        gap_types: list[str] = []
+        for ftype in ("CAPABILITY_GAP", "INTENT_MISALIGNMENT", "TOOL_CHAIN_BROKEN"):
+            if any(f.get("finding_type") == ftype for f in dynamic_findings):
+                gap_types.append(ftype.replace("_", " ").title())
+
+        prompt = (
+            f"Behavior analysis statistics:\n"
+            f"- Target: {target_url}\n"
+            f"- App purpose: {app_purpose or 'unknown'}\n"
+            f"- Frameworks detected: {', '.join(frameworks) or 'unknown'}\n"
+            f"- Scenarios run: {scenarios_run}\n"
+            f"- Overall risk score: {risk_score:.1f} / 100\n"
+            f"- Component coverage: {coverage_pct * 100:.0f}%\n"
+            f"- Intent alignment score: {alignment_score:.2f} / 5.0\n"
+            f"- Findings: {len(all_findings)} "
+            f"({counts.get('critical', 0)} critical, {counts.get('high', 0)} high, "
+            f"{counts.get('medium', 0)} medium, {counts.get('low', 0)} low)\n"
+        )
+        if gap_types:
+            prompt += f"- Behavioral gaps: {', '.join(gap_types)}\n"
+        if finding_lines:
+            prompt += "\nFindings:\n" + "\n".join(finding_lines) + "\n"
+        prompt += (
+            "\nWrite a 2–4 sentence executive summary for a technical audience. "
+            "Focus on: what the AI application does, what behavioral issues were found, "
+            "what the risk is, and the urgency of remediation. "
+            "Do NOT repeat finding titles verbatim — synthesise."
+        )
+        _log.debug(
+            "summary-gen | behavior-executive-summary: %d findings, %d scenarios",
+            len(all_findings), scenarios_run,
+        )
+        try:
+            result = await self._llm.complete(
+                prompt, system=_BEHAVIOR_EXEC_SUMMARY_SYSTEM,
+                label=f"summary-gen | behavior-executive-summary findings={len(all_findings)}",
+            )
+            if result.startswith("[NUGUARD_CANNED_RESPONSE]"):
+                return ""
+            return result.strip()
+        except Exception as exc:
+            _log.warning("Behavior executive summary generation failed: %s", exc)
             return ""
 
     async def remediation(

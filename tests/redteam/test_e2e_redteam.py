@@ -31,7 +31,7 @@ from nuguard.models.policy import CognitivePolicy
 from nuguard.policy.parser import parse_policy
 from nuguard.redteam.executor.orchestrator import RedteamOrchestrator, ScenarioRecord
 from nuguard.sbom.extractor.config import AiSbomConfig
-from nuguard.sbom.extractor.core import AiSbomExtractor
+from nuguard.sbom.extractor import AiSbomExtractor
 from nuguard.sbom.serializer import AiSbomSerializer
 
 from .app_runner import APP_CONFIGS, FIXTURES_DIR, AppConfig, AppRunner

@@ -1,6 +1,6 @@
-"""Prompt & PromptTemplate Detection TypeScript Adapter for Xelo SBOM.
+"""Prompt & PromptTemplate Detection TypeScript Adapter for NuGuard SBOM.
 
-Parsing is performed by ``xelo.core.ts_parser`` (tree-sitter when
+Parsing is performed by ``nuguard.core.ts_parser`` (tree-sitter when
 available, regex fallback otherwise).  The tree-sitter path provides accurate
 context (enclosing variable name, object property key) that dramatically
 reduces false positives on JSDoc comments and non-prompt strings.

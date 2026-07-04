@@ -7,8 +7,10 @@ agent just said.
 """
 from __future__ import annotations
 
-import logging
+import asyncio
 from typing import TYPE_CHECKING
+
+from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
     from nuguard.redteam.llm_engine.conversation_director import ConversationDirector
@@ -22,12 +24,13 @@ from nuguard.redteam.executor.attribution import (
     parse_handled_by,
     strip_meta_footer,
 )
+from nuguard.redteam.executor.executor import _substitute_golden_tokens
 from nuguard.redteam.llm_engine.response_extractor import TurnFacts, extract_turn_facts
 from nuguard.redteam.models.guided_conversation import GuidedConversation, TurnRecord
 from nuguard.redteam.target.client import TargetAppClient, TargetUnavailableError
 from nuguard.redteam.target.session import AttackSession
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 # Hard-refusal abort: if this many consecutive turns have score <= 1 AND classify
 # as HARD_REFUSAL or SOFT_REFUSAL, the conversation is abandoned.
@@ -144,13 +147,12 @@ class GuidedAttackExecutor:
             )
             return await explorer.explore(conv=conv, session=session, sbom=self._sbom)
 
-        # Step 0: plan milestones (one LLM call before turn 1)
+        # Step 0: plan milestones (one LLM call). Start as a background task so
+        # it runs in parallel with turn-1 (warmup) next_turn() + HTTP calls.
+        # Milestones are consumed before turn 2, by which time the task is done.
+        _milestone_task: asyncio.Task | None = None
         if not conv.milestones:
-            conv.milestones = await self._director.plan_milestones()
-            _log.info(
-                "[guided] %d milestones planned for conv=%s",
-                len(conv.milestones), conv.conversation_id[:8],
-            )
+            _milestone_task = asyncio.create_task(self._director.plan_milestones())
 
         milestone_idx = 0
         consecutive_hard_refusals = 0
@@ -167,6 +169,17 @@ class GuidedAttackExecutor:
         for _turn_num in range(conv.max_turns):
             turn_number = conv.current_turn_number + 1
             consecutive_stalled = conv.consecutive_stalled_turns()
+
+            # Resolve milestones from background task before turn 2
+            # (warmup turn 1 doesn't use milestones, so plan_milestones runs
+            # in parallel with turn-1 next_turn() + HTTP — free overlap).
+            if _milestone_task is not None and turn_number >= 2:
+                conv.milestones = await _milestone_task
+                _milestone_task = None
+                _log.info(
+                    "[guided] %d milestones ready for conv=%s",
+                    len(conv.milestones), conv.conversation_id[:8],
+                )
 
             # Advance milestone index based on progress
             milestone_idx = self._current_milestone_idx(conv, milestone_idx)
@@ -196,6 +209,9 @@ class GuidedAttackExecutor:
             # Mark log reader position before the request
             if self._app_log_reader:
                 self._app_log_reader.mark()
+
+            # Substitute {golden_id} / {golden_name} etc. tokens before sending
+            message = _substitute_golden_tokens(message, session)
 
             # Send to target
             try:

@@ -34,6 +34,9 @@ from nuguard.redteam.llm_engine.refusal_patterns import (
 from nuguard.redteam.llm_engine.refusal_patterns import (
     SOFT_REFUSAL_TOKENS as _SOFT_REFUSAL_TOKENS,
 )
+from nuguard.redteam.llm_engine.refusal_patterns import (
+    contains_any_token as _contains_any_token,
+)
 
 # ── TurnFacts dataclass ───────────────────────────────────────────────────────
 
@@ -117,8 +120,7 @@ def _is_topic_refusal(response: str) -> bool:
     stripped = response.strip()
     # Very short responses with refusal keywords are almost always topic rejections
     if len(stripped) <= 80:
-        lower = stripped.lower()
-        if any(tok in lower for tok in _HARD_REFUSAL_TOKENS):
+        if _contains_any_token(stripped, _HARD_REFUSAL_TOKENS):
             return True
     # Pattern match on the opening of longer responses too
     for pattern in _COMPILED_TOPIC_REFUSALS:
@@ -180,19 +182,17 @@ def extract_turn_facts(response: str) -> TurnFacts:
     if not response or not response.strip():
         return TurnFacts(agent_posture="hard_refused", attack_class_viable=False)
 
-    lower = response.lower()
-
     # Fast path: topic-scope rejection → attack class is dead for this agent
     if _is_topic_refusal(response):
         return TurnFacts(agent_posture="hard_refused", attack_class_viable=False)
 
     # Hard refusal that's not topic-scope (e.g. content filter) — may be
     # retryable with a different framing, so attack_class_viable stays True.
-    if any(tok in lower for tok in _HARD_REFUSAL_TOKENS) and len(response) < 200:
+    if _contains_any_token(response, _HARD_REFUSAL_TOKENS) and len(response) < 200:
         return TurnFacts(agent_posture="hard_refused", attack_class_viable=True)
 
     # Soft refusal
-    if any(tok in lower for tok in _SOFT_REFUSAL_TOKENS):
+    if _contains_any_token(response, _SOFT_REFUSAL_TOKENS):
         return TurnFacts(
             agent_posture="soft_refused",
             attack_class_viable=True,
@@ -200,7 +200,7 @@ def extract_turn_facts(response: str) -> TurnFacts:
         )
 
     # Partial compliance — push harder on the same vector
-    if any(tok in lower for tok in _PARTIAL_TOKENS):
+    if _contains_any_token(response, _PARTIAL_TOKENS):
         return TurnFacts(
             agent_posture="partial",
             attack_class_viable=True,

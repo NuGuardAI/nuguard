@@ -1,7 +1,10 @@
 {
-  "id": "nuguardai-nuguard",
-  "version": "0.4.8",
+  "id": "nuguard",
+  "version": "0.7.5",
   "format": "claude-plugin",
   "source": ".claude-plugin/plugin.json",
-  "hostTargets": ["claude-code", "openclaw"]
+  "hostTargets": [
+    "claude-code",
+    "openclaw"
+  ]
 }

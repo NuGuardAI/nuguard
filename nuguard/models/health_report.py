@@ -22,6 +22,7 @@ class CredentialCheckResult(BaseModel):
     http_status_code: int | None = None
     response_time_ms: float | None = None
     error_detail: str = ""
+    response_text: str = ""          # first 500 chars of the probe response body
     checked_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 

@@ -1,4 +1,4 @@
-"""Unit tests for xelo.ast_parser.
+"""Unit tests for nuguard.ast_parser.
 
 Tests validate that the stdlib-ast-based parser correctly extracts imports,
 class instantiations, function calls, and string literals from Python source.

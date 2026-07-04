@@ -60,9 +60,17 @@ class TestLLMProviders:
         )
 
     def test_yaml_config_adapter_fires(self, doc: AiSbomDocument) -> None:
-        adapters_used = {n.metadata.extras.get("adapter") for n in doc.nodes}
-        assert "llm_yaml_config" in adapters_used, (
-            f"LLMYAMLConfigAdapter not in adapters: {adapters_used}"
+        yaml_model_nodes = [
+            n
+            for n in nodes(doc, ComponentType.MODEL)
+            if any(
+                str(e.location.path).replace("\\", "/").endswith("config/llm.yaml")
+                for e in getattr(n, "evidence", [])
+            )
+        ]
+        assert yaml_model_nodes, (
+            "Expected YAML config evidence on at least one MODEL node, "
+            f"got: {[n.name for n in nodes(doc, ComponentType.MODEL)]}"
         )
 
 

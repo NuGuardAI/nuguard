@@ -110,6 +110,7 @@ class RelationshipHint:
     target_canonical: str
     target_type: ComponentType
     relationship_type: str  # "USES", "CALLS", "ACCESSES", etc.
+    access_type: str | None = None  # "read" | "write" | "readwrite" for ACCESSES hints
 
 
 @dataclass
@@ -170,7 +171,7 @@ class FrameworkAdapter:
         self,
         content: str,
         file_path: str,
-        parse_result: Any,  # xelo.ast_parser.ParseResult
+        parse_result: Any,  # nuguard.ast_parser.ParseResult
     ) -> list[ComponentDetection]:
         """Extract component detections from *file_path*.
 

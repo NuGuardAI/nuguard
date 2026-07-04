@@ -1,8 +1,6 @@
 """Tests for nuguard.validate.scenarios — scenario builder."""
 from __future__ import annotations
 
-import pytest
-
 from nuguard.config import ValidateBoundaryAssertion, ValidateConfig
 from nuguard.models.validate import ValidateScenarioType
 from nuguard.validate.scenarios import build_scenarios
@@ -52,8 +50,15 @@ def test_capability_probe_with_policy():
 def test_capability_probe_without_policy_skipped(caplog):
     cfg = _config(workflows=["capability_probe"])
     import logging
-    with caplog.at_level(logging.WARNING, logger="nuguard.validate.scenarios"):
-        scenarios = build_scenarios(cfg, policy=None)
+    # get_logger() sets propagate=False, so caplog's root-logger handler won't
+    # receive records.  Attach caplog.handler directly to the specific logger.
+    logger = logging.getLogger("nuguard.validate.scenarios")
+    logger.addHandler(caplog.handler)
+    try:
+        with caplog.at_level(logging.WARNING, logger="nuguard.validate.scenarios"):
+            scenarios = build_scenarios(cfg, policy=None)
+    finally:
+        logger.removeHandler(caplog.handler)
     assert scenarios == []
     assert "capability_probe" in caplog.text
 

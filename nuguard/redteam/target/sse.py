@@ -6,13 +6,14 @@ the same parsing logic for ADK ``/run_sse`` responses.
 from __future__ import annotations
 
 import json
-import logging
 from collections.abc import AsyncGenerator
 from typing import Any
 
 import httpx
 
-_log = logging.getLogger(__name__)
+from nuguard.common.logging import get_logger
+
+_log = get_logger(__name__)
 
 
 def parse_sse_events(raw: str) -> list[dict[str, Any]]:

@@ -1,7 +1,7 @@
 """BehaviorAnalyzer — top-level orchestrator for static + dynamic behavior analysis."""
 from __future__ import annotations
 
-import logging
+import hashlib
 from typing import TYPE_CHECKING, Any
 
 from nuguard.behavior.alignment import check_alignment
@@ -11,13 +11,15 @@ from nuguard.behavior.prompt_cache import BehaviorPromptCache
 from nuguard.behavior.recommendations import RecommendationEngine
 from nuguard.behavior.runner import BehaviorRunner
 from nuguard.behavior.scenarios import build_scenarios
+from nuguard.common.logging import get_logger
+from nuguard.models.token_usage import TokenUsage
 
 if TYPE_CHECKING:
     from nuguard.common.llm_client import LLMClient
     from nuguard.models.policy import CognitivePolicy, PolicyControl
     from nuguard.sbom.models import AiSbomDocument
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 
 class BehaviorAnalyzer:
@@ -202,6 +204,58 @@ class BehaviorAnalyzer:
                 )
                 pre_scan_profile = await runner.discover()
 
+                # ── Golden-data fallback ─────────────────────────────────
+                # When live discovery returns nothing, build a DiscoveredProfile
+                # from config-supplied golden_data so test payloads use real
+                # account IDs/names instead of synthetic placeholders.
+                # Priority: live discovery > behavior.golden_data > redteam.golden_data
+                if pre_scan_profile is None or pre_scan_profile.is_empty:
+                    _gd = (
+                        getattr(self._config, "golden_data", {}) or {}
+                    ) or (
+                        getattr(self._config, "redteam_golden_data", {}) or {}
+                    )
+                    if _gd:
+                        from nuguard.common.discovery import (  # noqa: PLC0415
+                            DiscoveredProfile as _DP,
+                        )
+                        _ID_KEYS = (
+                            "account_id", "id", "booking_ref", "booking_id",
+                            "pnr", "confirmation_number", "confirmation_code",
+                            "reference", "reservation_id", "order_id", "customer_id",
+                        )
+                        _NAME_KEYS = (
+                            "name", "customer_name", "passenger_name",
+                            "user_name", "full_name", "first_name",
+                        )
+                        _ids: list[str] = []
+                        _name = ""
+                        for _entry in _gd.values():
+                            if isinstance(_entry, dict):
+                                _aid = next(
+                                    (str(_entry[k]) for k in _ID_KEYS if _entry.get(k)),
+                                    "",
+                                )
+                                if _aid and _aid not in _ids:
+                                    _ids.append(_aid)
+                                _nm = next(
+                                    (str(_entry[k]) for k in _NAME_KEYS if _entry.get(k)),
+                                    "",
+                                )
+                                if _nm and not _name:
+                                    _name = _nm
+                        if _ids or _name:
+                            pre_scan_profile = _DP(
+                                customer_name=_name,
+                                ids=_ids,
+                                raw_response=f"Pre-seeded from config: id={_ids}, name={_name!r}",
+                            )
+                            from nuguard.common.console import _console  # noqa: PLC0415
+                            _console.print(
+                                f"  [bold cyan]Pre-scan discovery (config golden_data):[/bold cyan] "
+                                f"name={_name!r}  ids={_ids}"
+                            )
+
                 # ── Scenario cache / build ───────────────────────────────
                 # v3: skip LLM generation on warm runs.
                 # NOTE: we intentionally bypass the cache when a non-empty
@@ -235,6 +289,28 @@ class BehaviorAnalyzer:
                 coverage = run_result.coverage
                 scenario_results = run_result.scenario_results
 
+                # FP-2: Downgrade BA-008 HITL static findings to LOW when the
+                # corresponding dynamic guardrail probe passed.  A passing probe
+                # confirms the agent handles the HITL trigger in its runtime
+                # behaviour even though no formal GUARDRAIL node exists in the SBOM.
+                passed_scenario_names = {
+                    sr.get("scenario_name", "") if isinstance(sr, dict) else getattr(sr, "scenario_name", "")
+                    for sr in scenario_results
+                    if (
+                        (sr.get("verdict") if isinstance(sr, dict) else getattr(sr, "verdict", None))
+                        in ("PASS", "pass")
+                    )
+                }
+                hitl_probe_passed = any("hitl" in n.lower() for n in passed_scenario_names)
+                if hitl_probe_passed:
+                    for sf in static_findings:
+                        if sf.get("finding_id", "").startswith("BA-008") and sf.get("severity") == "high":
+                            sf["severity"] = "low"
+                            sf["description"] = (
+                                sf.get("description", "")
+                                + " [Downgraded: dynamic HITL probe passed, confirming runtime handling.]"
+                            )
+
         # Step 4: Build analysis result
         result = BehaviorAnalysisResult(
             intent=intent,
@@ -246,9 +322,53 @@ class BehaviorAnalyzer:
         )
         if _dynamic_scan_outcome is not None:
             result.dynamic_scan_outcome = _dynamic_scan_outcome
+        if _dynamic_run_result is not None:
+            result.gap_aggregation_stats = dict(getattr(_dynamic_run_result, "gap_aggregation_stats", {}) or {})
+            result.coverage_mapping_diagnostics = dict(getattr(_dynamic_run_result, "coverage_mapping_diagnostics", {}) or {})
+            result.effective_endpoint = str(getattr(_dynamic_run_result, "effective_endpoint", "") or "")
+            result.target_endpoint_source = str(getattr(_dynamic_run_result, "target_endpoint_source", "config") or "config")
+            result.config_notes = list(getattr(_dynamic_run_result, "config_notes", []) or [])
 
         # Step 5: Generate recommendations
         result.recommendations = self._rec_engine.generate(result)
+
+        # Step 5a: Build run profile metadata for report comparability.
+        scenario_type_counts: dict[str, int] = {}
+        total_turns = 0
+        coverage_turns = 0
+        for sr in scenario_results:
+            scenario_type_counts[sr.scenario_type] = scenario_type_counts.get(sr.scenario_type, 0) + 1
+            total_turns += int(sr.total_turns or 0)
+            coverage_turns += int(sr.coverage_turns or 0)
+
+        target_url = str(getattr(self._config, "target", "") or "")
+        payload_key = str(getattr(self._config, "chat_payload_key", "message") or "message")
+        endpoint_for_fp = str(
+            getattr(_dynamic_run_result, "effective_endpoint", "")
+            or getattr(self._config, "target_endpoint", "")
+            or "/chat"
+        )
+        fingerprint_seed = f"{target_url}|{endpoint_for_fp}|{payload_key}"
+
+        try:
+            from nuguard import __version__ as nuguard_version
+        except Exception:
+            nuguard_version = "unknown"
+
+        result.run_profile = {
+            "nuguard_version": str(nuguard_version),
+            "behavior_engine_version": "v1",
+            "scenarios_planned": len(scenario_results) + len(skipped_scenario_names),
+            "scenarios_executed": len(scenario_results),
+            "scenarios_skipped": len(skipped_scenario_names),
+            "scenario_types": scenario_type_counts,
+            "total_turns": total_turns,
+            "coverage_turns": coverage_turns,
+            "max_scenarios_cap": getattr(self._config, "max_scenarios", None),
+            "llm_used": bool(self._llm),
+            "llm_model": str(getattr(self._config, "llm_model", "") or "") or None,
+            "target_fingerprint": hashlib.sha256(fingerprint_seed.encode("utf-8")).hexdigest(),
+        }
 
         # Step 5b: Synthesize concrete remediation artefacts in parallel.
         # synthesize_async() properly awaits LLM patch calls; the sync synthesize()
@@ -279,6 +399,42 @@ class BehaviorAnalyzer:
             result.scan_outcome = _dynamic_run_result.scan_outcome
         else:
             result.scan_outcome = "no_findings"
+
+        # Step 7: LLM executive summary (opt-in — only when llm_client is configured)
+        if self._llm and all_findings:
+            try:
+                from nuguard.redteam.llm_engine.summary_generator import LLMSummaryGenerator
+                frameworks: list[str] = []
+                if self._sbom and self._sbom.summary:
+                    frameworks = list(getattr(self._sbom.summary, "frameworks_detected", None) or [])
+                summary_gen = LLMSummaryGenerator(self._llm)
+                result.llm_executive_summary = await summary_gen.behavior_executive_summary(
+                    target_url=getattr(self._config, "target", "") or "",
+                    app_purpose=intent.app_purpose,
+                    risk_score=result.overall_risk_score,
+                    coverage_pct=result.coverage_percentage,
+                    alignment_score=result.intent_alignment_score,
+                    scenarios_run=len(result.scenario_results),
+                    static_findings=static_findings,
+                    dynamic_findings=dynamic_findings,
+                    frameworks=frameworks,
+                )
+            except Exception as exc:
+                _log.warning("Behavior executive summary generation failed: %s", exc)
+
+        # Aggregate token usage from dynamic runner + analyzer-level LLM calls
+        if _dynamic_run_result is not None:
+            result.token_usage = result.token_usage + TokenUsage(
+                input_tokens=_dynamic_run_result.input_tokens_used,
+                output_tokens=_dynamic_run_result.output_tokens_used,
+            )
+        if self._llm is not None:
+            in_, out_ = self._llm.token_counts
+            result.token_usage = result.token_usage + TokenUsage(
+                input_tokens=in_,
+                output_tokens=out_,
+                llm_model=getattr(self._llm, "model", None),
+            )
 
         _log.info(
             "BehaviorAnalyzer.analyze: complete — outcome=%s, risk=%.1f, coverage=%.0f%%",

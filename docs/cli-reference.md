@@ -8,7 +8,7 @@ NuGuard ships a Typer-based CLI covering the full AI application security pipeli
 nuguard init        Create a nuguard.yaml config with auto-detected defaults
 nuguard sbom        SBOM generation, validation, and management
 nuguard analyze     Static risk analysis from an AI-SBOM
-nuguard scan        Unified pipeline: SBOM → analyze → policy → redteam
+nuguard scan        Unified pipeline: SBOM → analyze, with optional policy/redteam
 nuguard policy      Cognitive policy linting and compliance assessment
 nuguard behavior    Intent-aware behavioral analysis against a live AI application
 nuguard redteam     Dynamic adversarial testing against a live AI application
@@ -28,6 +28,7 @@ nuguard init                                    # write ./nuguard.yaml
 nuguard init --path ./config/nuguard.yaml       # write to a specific path
 nuguard init --target http://localhost:8080
 nuguard init --target http://localhost:8080 --source ./src --force
+nuguard init --target http://localhost:8080 --llm   # LLM-drafted cognitive policy
 ```
 
 | Flag | Short | Default | Description |
@@ -36,6 +37,7 @@ nuguard init --target http://localhost:8080 --source ./src --force
 | `--target` | `-t` | `http://localhost:8080` | URL of the running AI application — sets `behavior.target` and `redteam.target`. |
 | `--source` | `-s` | `./` | Source code directory for SBOM generation — sets `source:` in the config. |
 | `--force` | `-f` | `false` | Overwrite files that already exist. |
+| `--llm` / `--no-llm` | — | `false` | Use an LLM to draft `cognitive-policy.md` with concise, app-specific defaults (5–6 allowed and restricted topics each). Requires `LITELLM_API_KEY`. Without this flag a blank template is written instead. |
 | `--dir` | `-d` | — | *(Legacy, hidden)* Directory to write all starter files into. Prefer `--path`. |
 
 **Auto-detection:** if an existing SBOM (`*.sbom.json`), policy (`cognitive_policy.md`, `policy.md`, …), or canary (`canary.json`) is found in the target directory, the generated `nuguard.yaml` pre-fills those paths and the post-init "Next steps" list skips the corresponding steps.
@@ -107,7 +109,7 @@ nuguard sbom plugin run markdown_export --sbom app.sbom.json
 
 | Plugin name | Output | Description |
 |---|---|---|
-| `cyclonedx_export` | CycloneDX 1.6 JSON | Standard BOM with xelo:* properties and optional VEX vulnerabilities |
+| `cyclonedx_export` | CycloneDX 1.6 JSON | Standard BOM with nuguard:* properties and optional VEX vulnerabilities |
 | `cyclonedx_ext_export` | CycloneDX 1.6 JSON | Extended BOM with `modelCard`, `services`, `compositions`, and `nuguard:*` properties |
 | `spdx_export` | SPDX 3.0.1 JSON-LD | SPDX 3.0.1 export with `ai_AIPackage`, `dataset_Dataset`, and relationship graph |
 | `sarif_export` | SARIF 2.1.0 JSON | Vulnerability findings export for GitHub Code Scanning |
@@ -139,6 +141,7 @@ nuguard analyze --sbom app.sbom.json --config nuguard.yaml              # load m
 nuguard analyze --sbom app.sbom.json --format sarif --output results.sarif
 nuguard analyze --sbom app.sbom.json --source . --llm
 nuguard analyze --sbom app.sbom.json --no-grype --no-trivy --min-severity high
+nuguard analyze --sbom app.sbom.json --format json --format markdown --output reports/analyze
 ```
 
 | Flag | Default | Description |
@@ -146,7 +149,7 @@ nuguard analyze --sbom app.sbom.json --no-grype --no-trivy --min-severity high
 | `--sbom` | **required** | Path to AI-SBOM JSON |
 | `--config`, `-c` | — | Path to `nuguard.yaml`; sets `min_severity` and `nga_only` defaults (CLI flags override) |
 | `--nga` | off | NGA structural rules only (NGA-001–018); disables all external tool scans |
-| `--format`, `-f` | `markdown` | `markdown` \| `sarif` \| `json` |
+| `--format`, `-f` | `markdown` | `markdown` \| `sarif` \| `json` (repeat flag or use comma-separated values for multiple outputs) |
 | `--min-severity` | `medium` | Minimum severity to include: `critical` \| `high` \| `medium` \| `low` \| `info` |
 | `--source`, `-s` | — | Source directory for Checkov / Trivy / Semgrep path resolution |
 | `--atlas` / `--no-atlas` | on | MITRE ATLAS native graph checks (NGA-001–018) |
@@ -156,7 +159,7 @@ nuguard analyze --sbom app.sbom.json --no-grype --no-trivy --min-severity high
 | `--trivy` / `--no-trivy` | on | Trivy container/fs scan (requires `trivy` on PATH) |
 | `--semgrep` / `--no-semgrep` | on | Semgrep AI-security rules (requires `semgrep` on PATH) |
 | `--llm` | off | LLM enrichment in the ATLAS annotation pass |
-| `--output`, `-o` | stdout | Write report to this file |
+| `--output`, `-o` | stdout | Write report to this file. Required when multiple formats are requested; base path expands to per-format files (for example `analyze.json`, `analyze.md`) |
 
 **Source path resolution for Checkov:** When `--source` is provided, IaC file paths found in SBOM nodes are resolved relative to that directory. If no IaC nodes exist, Checkov scans the entire source directory. The SBOM `target` field is used as a fallback when `--source` is not set.
 
@@ -164,12 +167,12 @@ nuguard analyze --sbom app.sbom.json --no-grype --no-trivy --min-severity high
 
 ## `nuguard scan`
 
-Unified pipeline that chains SBOM generation, static analysis, policy check, and optionally red-team into a single command.
+Unified pipeline that chains SBOM generation, static analysis, and optional policy and red-team validation into a single command. The default step list is `sbom,analyze`; add `policy` and `redteam` explicitly when you want those validations to run.
 
 ```bash
 nuguard scan --source .
 nuguard scan --source . --steps sbom,analyze
-nuguard scan --source . --policy cognitive_policy.md --target http://localhost:3000
+nuguard scan --source . --steps sbom,analyze,policy,redteam --policy cognitive_policy.md --target http://localhost:3000
 nuguard scan --source . --llm --output-dir reports/
 ```
 
@@ -178,8 +181,8 @@ nuguard scan --source . --llm --output-dir reports/
 | `--source`, `-s` | `.` | Application source directory |
 | `--output-dir`, `-o` | `nuguard-reports` | Directory for all output artifacts |
 | `--steps` | `sbom,analyze` | Comma-separated subset: `sbom,analyze,policy,redteam` |
-| `--policy` | — | Cognitive Policy Markdown path (required for `policy` / `redteam` steps) |
-| `--target` | — | Live app URL for the `redteam` step |
+| `--policy` | — | Cognitive Policy Markdown path (required for the `policy` step; used by `redteam` when supplied) |
+| `--target` | — | Live app URL for the `redteam` step; if omitted, NuGuard falls back to an SBOM deployment URL when available |
 | `--container-image` | — | Container image ref for Trivy image scan (e.g. `myapp:latest`) |
 | `--fail-on` | `high` | Exit code 1 when any finding meets this severity |
 | `--llm` | off | LLM enrichment in the ATLAS annotation pass |
@@ -189,6 +192,8 @@ nuguard scan --source . --llm --output-dir reports/
 | `--no-checkov` | — | Skip Checkov scan |
 | `--no-trivy` | — | Skip Trivy scan |
 | `--no-semgrep` | — | Skip Semgrep scan |
+
+Supplying `--policy` or `--target` does not change the step list by itself. Use `--steps sbom,analyze,policy,redteam` for the full validation path.
 
 ---
 
@@ -240,6 +245,10 @@ nuguard policy check --sbom app.sbom.json --framework owasp-llm-top10
 nuguard policy check --policy policy.md --sbom app.sbom.json \
   --framework owasp-llm-top10 --llm
 
+# JSON + Markdown in one run
+nuguard policy check --policy policy.md --sbom app.sbom.json \
+  --format json --format markdown --output reports/policy-check
+
 # Read paths from nuguard.yaml
 nuguard policy check
 ```
@@ -251,8 +260,8 @@ nuguard policy check
 | `--config` | `./nuguard.yaml` | Config file path |
 | `--framework` | — | `owasp-llm-top10` \| `nist-ai-rmf` \| `eu-ai-act` |
 | `--controls` | — | Custom controls JSON file |
-| `--format` | `text` | `text` \| `json` \| `markdown` |
-| `--output`, `-o` | stdout | Write the assessment report to this file |
+| `--format` | `text` | `text` \| `json` \| `markdown` (repeat flag or use comma-separated values for multiple outputs) |
+| `--output`, `-o` | stdout | Write the assessment report to this file. Required when multiple formats are requested; base path expands to per-format files |
 | `--llm` / `--no-llm` | off | LLM fallback for controls that can't be assessed from SBOM alone |
 | `--verbose`, `-v` | off | Show all controls including PASS results with evidence |
 
@@ -281,6 +290,9 @@ nuguard behavior --dynamic --target http://localhost:8090
 # Markdown report to file
 nuguard behavior --policy ./policy.md --output ./behavior-report.md --format markdown
 
+# JSON + Markdown in one run
+nuguard behavior --config nuguard.yaml --format json --format markdown --output ./behavior-report
+
 # CI gate
 nuguard behavior --mode static+dynamic --fail-on critical
 ```
@@ -295,8 +307,8 @@ nuguard behavior --mode static+dynamic --fail-on critical
 | `--policy` | — | from `nuguard.yaml` | Cognitive Policy Markdown path |
 | `--intent` | — | from SBOM | Override app intent (one-line description) |
 | `--canary` | — | from `nuguard.yaml` | Path to `canary.json` seed file |
-| `--output` | `-o` | stdout | Write report to this file |
-| `--format` | `-f` | `text` | `text` \| `json` \| `markdown` |
+| `--output` | `-o` | stdout | Write report to this file. Required when multiple formats are requested; base path expands to per-format files |
+| `--format` | `-f` | `text` | `text` \| `json` \| `markdown` (repeat flag or use comma-separated values for multiple outputs) |
 | `--fail-on` | — | `high` | Exit code 1 when any finding meets this severity: `critical` \| `high` \| `medium` \| `low` |
 | `--baseline` | — | — | Path to a previous `BehaviorAnalysisResult` JSON for regression detection |
 | `--verbose` | `-v` | off | Print detailed per-turn traces |
@@ -312,6 +324,15 @@ nuguard behavior --mode static+dynamic --fail-on critical
 Dynamic adversarial testing against a live AI application. Reads the AI-SBOM to derive an attack surface, generates and executes scenarios, and produces structured findings with OWASP/MITRE mappings.
 
 See [red-teaming-guide.md](./red-teaming-guide.md) for a complete description of how the engine works.
+
+### Subcommands
+
+| Subcommand | Description |
+|---|---|
+| *(default)* | Run the red-team scan |
+| `catalog-export` | Export the built-in scenario catalog to YAML for customization |
+
+### `nuguard redteam` (scan)
 
 ```bash
 # Basic scan (app already running)
@@ -334,9 +355,17 @@ nuguard redteam --sbom app.sbom.json --target http://localhost:8000 \
 nuguard redteam --sbom app.sbom.json --target http://localhost:8000 \
   --scenarios prompt-injection,data-exfiltration
 
+# Scan with a custom scenario catalog
+nuguard redteam --sbom app.sbom.json --target http://localhost:8000 \
+  --catalog ./my-catalog.yaml --profile full
+
 # CI gate — SARIF output, fail on high+
 nuguard redteam --sbom app.sbom.json --target $APP_URL \
   --profile ci -f sarif -o results.sarif --fail-on high
+
+# JSON + Markdown in one run
+nuguard redteam --sbom app.sbom.json --target $APP_URL \
+  --format json --format markdown --output results/redteam
 ```
 
 | Flag | Short | Default | Description |
@@ -348,16 +377,41 @@ nuguard redteam --sbom app.sbom.json --target $APP_URL \
 | `--launch` / `--no-launch` | — | off | Auto-start the app from the SBOM startup command; stop it after the scan. Requires `--source` |
 | `--policy` | — | from `nuguard.yaml` | Cognitive Policy Markdown path |
 | `--canary` | — | from `nuguard.yaml` | Canary JSON file path |
+| `--catalog` | — | built-in catalog | Path to a custom scenario catalog YAML. Replaces the built-in 84-scenario catalog. Generate with `nuguard redteam catalog-export` |
 | `--profile` | — | `ci` | `ci` (high-signal only) or `full` (all scenarios) |
 | `--scenarios` | — | all | Comma-separated filter: `prompt-injection`, `tool-abuse`, `privilege-escalation`, `data-exfiltration`, `policy-violation`, `mcp-toxic-flow` |
 | `--min-impact-score` | — | `0.0` | Exclude scenarios below this pre-score [0–10] |
 | `--guided` / `--no-guided` | — | on when LLM set | Adaptive multi-turn guided conversations (TAP + PAIR) |
 | `--guided-max-turns` | — | `12` | Max turns per guided conversation |
 | `--guided-concurrency` | — | `3` | Parallel guided conversations |
-| `--format` | `-f` | `text` | `text` \| `json` \| `markdown` \| `sarif` |
-| `--output` | `-o` | — | Write findings to this file |
+| `--format` | `-f` | `text` | `text` \| `json` \| `markdown` \| `sarif` (repeat flag or use comma-separated values for multiple outputs) |
+| `--output` | `-o` | — | Write findings to this file. Required when multiple formats are requested; base path expands to per-format files |
 | `--fail-on` | — | `high` | Exit code 2 if any finding meets this severity |
 | `--verbose` / `--no-verbose` | `-v` / `-V` | off | Print detailed per-turn traces |
+
+### `nuguard redteam catalog-export`
+
+Export the full built-in scenario catalog to a YAML file for review or customization.  The exported file can be edited and passed back with `--catalog` to replace the built-in catalog for a scan.
+
+```bash
+# Write to a file
+nuguard redteam catalog-export --output my-catalog.yaml
+
+# Print to stdout (pipe to less or grep)
+nuguard redteam catalog-export
+```
+
+| Flag | Short | Default | Description |
+|---|---|---|---|
+| `--output` | `-o` | stdout | Write the YAML to this path instead of printing |
+
+Common edits after exporting:
+
+- Set `enabled: false` on a scenario to skip it entirely.
+- Lower `base_impact` below the profile threshold (e.g. `< 5.0` for `--profile ci`) to exclude it from fast scans without disabling it globally.
+- Edit `expected_control` or `success_signal` to match your application's specific behavior.
+
+See [Customizing the Catalog](./red-teaming-guide.md#customizing-the-catalog) in the red-teaming guide for a full walkthrough.
 
 **Target URL resolution order:** `--target` flag → `redteam.target` in `nuguard.yaml` → SBOM-discovered URLs (local → staging → production) → error.
 
@@ -374,6 +428,8 @@ nuguard redteam --sbom app.sbom.json --target $APP_URL \
 
 | YAML key | Default | Description |
 |---|---|---|
+| `redteam.catalog_path` | — | Path to a custom scenario catalog YAML (same as `--catalog`). Relative paths resolved from the config file directory. |
+| `redteam.use_catalog` | `true` | Include catalog scenarios. Set `false` to use only the SBOM-driven generator. |
 | `redteam.strict_outcome` | `false` | When ≥ 80% of events are 5xx/network errors, report `inconclusive_target_errors` instead of `no_findings` |
 | `redteam.emit_pytest` | `false` | Generate pytest regression tests for HIT findings (severity ≥ medium) |
 | `redteam.emit_pytest_dir` | `tests/redteam` | Directory to write generated pytest files |

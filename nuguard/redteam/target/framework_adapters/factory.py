@@ -11,9 +11,10 @@ Usage::
 """
 from __future__ import annotations
 
-import logging
 from collections import Counter
 from typing import TYPE_CHECKING, Any
+
+from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
     from nuguard.common.ces_client import CESDeploymentConfig
@@ -22,7 +23,7 @@ if TYPE_CHECKING:
 from .google_adk import ADK_FRAMEWORK_NAMES, GoogleADKAdapter
 from .google_ces import CES_FRAMEWORK_NAME, GoogleCESAdapter
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 
 def _extract_agent_source_dirs(sbom: "AiSbomDocument") -> list[str]:
@@ -113,6 +114,14 @@ def make_framework_adapter(
     if not (detected_frameworks & ADK_FRAMEWORK_NAMES):
         return None
 
+    # Allow explicit opt-out when the target wraps ADK with a custom REST API.
+    if adk_config is not None and not getattr(adk_config, "enabled", True):
+        _log.info(
+            "make_framework_adapter: ADK adapter disabled via adk.enabled=false — "
+            "using generic HTTP POST"
+        )
+        return None
+
     _log.info(
         "make_framework_adapter: detected Google ADK (frameworks=%s) — creating GoogleADKAdapter",
         detected_frameworks & ADK_FRAMEWORK_NAMES,
@@ -135,6 +144,23 @@ def make_framework_adapter(
     # from /list-apps when multiple ADK sub-projects share the same source tree.
     # Only computed when app_name is not already explicitly set.
     sbom_app_candidates: list[str] = []
+    if not app_name:
+        # Prefer adk_app_name captured from Runner(app_name=...) during SBOM scan.
+        # This avoids the /list-apps runtime call entirely when the source was scanned.
+        for node in getattr(sbom, "nodes", []) or []:
+            _ctype = str(getattr(getattr(node, "component_type", None), "value", "") or "")
+            if _ctype != "AGENT":
+                continue
+            _meta = getattr(node, "metadata", None)
+            _sbom_adk_name = (getattr(_meta, "extras", None) or {}).get("adk_app_name", "")
+            if _sbom_adk_name and isinstance(_sbom_adk_name, str):
+                app_name = _sbom_adk_name.strip()
+                _log.info(
+                    "make_framework_adapter: using adk_app_name %r from SBOM node %r",
+                    app_name,
+                    node.name,
+                )
+                break
     if not app_name:
         sbom_app_candidates = _extract_agent_source_dirs(sbom)
         if sbom_app_candidates:

@@ -12,6 +12,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field, computed_field
 
+from nuguard.models.token_usage import TokenUsage
+
 # ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
@@ -23,8 +25,9 @@ class BehaviorScenarioType(str, Enum):
     INTENT_HAPPY_PATH = "intent_happy_path"        # Layer 1: topic-path scenarios
     AGENT_COVERAGE = "agent_coverage"              # Layer 2a: one scenario per AGENT node
     COMPONENT_COVERAGE = "component_coverage"      # Layer 2b: tool coverage (with chaining)
-    INVARIANT_PROBE = "invariant_probe"            # Layer 3: HITL + data classification
+    GUARDRAIL_PROBE = "guardrail_probe"            # Layer 3: HITL + data classification
     DATA_DISCOVERY_PROBE = "data_discovery_probe"  # Layer 4: discover + react to user data
+    ENDPOINT_COVERAGE = "endpoint_coverage"        # Layer 5: first-class API_ENDPOINT coverage
 
 
 class BehaviorFindingType(str, Enum):
@@ -92,6 +95,11 @@ class BehaviorScenario(BaseModel):
     """Action tier sequence (INFO/DECISION/ACTION) for chained scenarios."""
     primary_agent: str | None = None
     """Agent node ID owning this scenario (used for chaining grouping)."""
+    scoped_guardrail: str | None = None
+    """Guardrail node name this scenario validates (guardrail-path scenarios)."""
+    warmup_turns: int = 0
+    """Number of leading scripted turns that are non-substantive warm-up —
+    excluded from deviation/finding scoring but still shown in the report."""
 
 
 # ---------------------------------------------------------------------------
@@ -120,6 +128,8 @@ class TurnRecord(BaseModel):
     is_coverage_turn: bool = False
     latency_ms: int = 0
     deviations: list[dict] = Field(default_factory=list)
+    effective_endpoint: str = ""
+    request_url: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -148,6 +158,49 @@ class BehaviorCoverage(BaseModel):
     exercised_within_policy: bool = False
     exercised_against_policy: bool = False
     deviations: list[BehaviorDeviation] = Field(default_factory=list)
+    evidence_mentions: list[str] = Field(default_factory=list)
+    aliases_seen: list[str] = Field(default_factory=list)
+    unmatched_mentions: list[str] = Field(default_factory=list)
+    mapping_confidence: str | None = None
+    mapped_from_endpoint: str | None = None
+
+
+class BehaviorCounts(BaseModel):
+    """Reconciled counts for findings and evidence rows."""
+
+    static_findings: int = 0
+    dynamic_findings: int = 0
+    gap_findings: int = 0
+    policy_dynamic_findings: int = 0
+    total_unique_findings: int = 0
+    deviation_evidence_items: int = 0
+    raw_gap_observations: int = 0
+    unique_gap_observations: int = 0
+
+
+class BehaviorCoverageObjective(BaseModel):
+    """A single SBOM surface (node or edge) mapped to a coverage objective.
+
+    Every node and edge in the SBOM appears as a BehaviorCoverageObjective
+    so reports can show which surfaces were dynamically exercised, statically
+    checked, metadata-only, or explicitly not behavior-exercisable.
+    """
+
+    objective_id: str
+    surface_type: str
+    """'node' | 'edge' | 'field' | 'policy_clause'"""
+    node_id: str | None = None
+    node_name: str | None = None
+    node_type: str | None = None
+    edge_source: str | None = None
+    edge_target: str | None = None
+    relationship_type: str | None = None
+    behavior_mode: str = "dynamic"
+    """'dynamic' | 'static' | 'metadata_only' | 'not_behavior_exercisable'"""
+    scenario_type: str | None = None
+    status: str = "generated"
+    """'generated' | 'executed' | 'passed' | 'failed' | 'skipped' | 'not_applicable'"""
+    reason: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -170,6 +223,7 @@ class ScenarioResult(BaseModel):
     total_turns: int = 0
     coverage_turns: int = 0
     deviations: list[dict] = Field(default_factory=list)
+    matched_topic: str | None = None
 
 
 class Recommendation(BaseModel):
@@ -267,6 +321,8 @@ class BehaviorRunResult(BaseModel):
     scenarios_executed: int = 0
     scan_outcome: str = "no_findings"
     coverage: list[BehaviorCoverage] = Field(default_factory=list)
+    input_tokens_used: int = 0
+    output_tokens_used: int = 0
     config_notes: list[str] = Field(
         default_factory=list,
         description=(
@@ -274,6 +330,10 @@ class BehaviorRunResult(BaseModel):
             "URL resolution when the configured target was a static hosting site."
         ),
     )
+    gap_aggregation_stats: dict[str, int] = Field(default_factory=dict)
+    coverage_mapping_diagnostics: dict[str, Any] = Field(default_factory=dict)
+    effective_endpoint: str = ""
+    target_endpoint_source: str = "config"
 
 
 class BehaviorAnalysisResult(BaseModel):
@@ -285,17 +345,26 @@ class BehaviorAnalysisResult(BaseModel):
     static_findings: list[dict] = Field(default_factory=list)
     dynamic_findings: list[dict] = Field(default_factory=list)
     coverage: list[BehaviorCoverage] = Field(default_factory=list)
+    coverage_objectives: list[BehaviorCoverageObjective] = Field(default_factory=list)
     scenario_results: list[ScenarioResult] = Field(default_factory=list)
     recommendations: list[Recommendation] = Field(default_factory=list)
     remediation_plan: list[RemediationArtefact] = Field(default_factory=list)
     scan_outcome: str = "no_findings"
+    llm_executive_summary: str | None = None
+    token_usage: TokenUsage = Field(default_factory=TokenUsage)
+    config_notes: list[str] = Field(default_factory=list)
+    gap_aggregation_stats: dict[str, int] = Field(default_factory=dict)
+    coverage_mapping_diagnostics: dict[str, Any] = Field(default_factory=dict)
+    effective_endpoint: str = ""
+    target_endpoint_source: str = "config"
+    run_profile: dict[str, Any] = Field(default_factory=dict)
 
     @computed_field  # type: ignore[misc]
     @property
     def overall_risk_score(self) -> float:
         """Compute overall risk score (0–100) as the weighted average severity.
 
-        Weights: critical=100, high=70, medium=40, low=10, info=0.
+        Weights: critical=100, high=80, medium=50, low=25, info=0.
         Score = mean of per-finding weights, so volume and mix of severities
         influence the score proportionally. Consistent with red-team scoring.
         """
@@ -305,7 +374,7 @@ class BehaviorAnalysisResult(BaseModel):
         ]
         if not all_findings:
             return 0.0
-        _weights = {"critical": 100.0, "high": 70.0, "medium": 40.0, "low": 10.0, "info": 0.0}
+        _weights = {"critical": 100.0, "high": 80.0, "medium": 50.0, "low": 25.0, "info": 0.0}
 
         def _sev_key(raw: object) -> str:
             # Normalise plain strings ("high", "HIGH") and enum-style strings
@@ -313,7 +382,7 @@ class BehaviorAnalysisResult(BaseModel):
             s = str(raw).lower()
             return s.rsplit(".", 1)[-1] if "." in s else s
 
-        total = sum(_weights.get(_sev_key(f.get("severity", "low")), 10.0) for f in all_findings)
+        total = sum(_weights.get(_sev_key(f.get("severity", "low")), 25.0) for f in all_findings)
         return round(total / len(all_findings), 2)
 
     broken_chains: list[str] = Field(default_factory=list)
@@ -335,11 +404,30 @@ class BehaviorAnalysisResult(BaseModel):
     @computed_field  # type: ignore[misc]
     @property
     def coverage_percentage(self) -> float:
-        """Fraction of components that were exercised."""
-        if not self.coverage:
+        """Fraction of agent/tool components that were exercised (backward-compatible)."""
+        agent_tool = [c for c in self.coverage if c.node_type in ("AGENT", "TOOL")]
+        if not agent_tool:
             return 0.0
-        exercised = sum(1 for c in self.coverage if c.exercised)
-        return round(exercised / len(self.coverage), 4)
+        exercised = sum(1 for c in agent_tool if c.exercised)
+        return round(exercised / len(agent_tool), 4)
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def endpoint_coverage_pct(self) -> float:
+        """Fraction of API_ENDPOINT nodes that were exercised."""
+        endpoints = [c for c in self.coverage if c.node_type == "API_ENDPOINT"]
+        if not endpoints:
+            return 0.0
+        return round(sum(1 for c in endpoints if c.exercised) / len(endpoints), 4)
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def guardrail_coverage_pct(self) -> float:
+        """Fraction of GUARDRAIL nodes that were exercised."""
+        guardrails = [c for c in self.coverage if c.node_type == "GUARDRAIL"]
+        if not guardrails:
+            return 0.0
+        return round(sum(1 for c in guardrails if c.exercised) / len(guardrails), 4)
 
     @computed_field  # type: ignore[misc]
     @property
@@ -370,3 +458,35 @@ class BehaviorAnalysisResult(BaseModel):
             if _s.overall_score >= 2.0
         )
         return round(min(covered / total, 1.0), 4)
+
+    @computed_field  # type: ignore[misc]
+    @property
+    def counts(self) -> BehaviorCounts:
+        """Return reconciled finding/evidence counts for report summaries."""
+        gap_findings = [
+            f for f in self.dynamic_findings
+            if str(f.get("finding_type", "")) in {
+                BehaviorFindingType.CAPABILITY_GAP.value,
+                BehaviorFindingType.INTENT_MISALIGNMENT.value,
+                BehaviorFindingType.TOOL_CHAIN_BROKEN.value,
+            }
+        ]
+        policy_dynamic = [f for f in self.dynamic_findings if f not in gap_findings]
+        raw_gap = int(self.gap_aggregation_stats.get("raw_gap_observations", 0))
+        uniq_gap = int(self.gap_aggregation_stats.get("unique_gap_observations", 0))
+        deviation_rows = sum(
+            1
+            for sr in self.scenario_results
+            for v in sr.verdicts
+            for _ in (v.get("deviations") or [])
+        )
+        return BehaviorCounts(
+            static_findings=len(self.static_findings),
+            dynamic_findings=len(self.dynamic_findings),
+            gap_findings=len(gap_findings),
+            policy_dynamic_findings=len(policy_dynamic),
+            total_unique_findings=len(self.static_findings) + len(self.dynamic_findings),
+            deviation_evidence_items=deviation_rows,
+            raw_gap_observations=raw_gap,
+            unique_gap_observations=uniq_gap,
+        )

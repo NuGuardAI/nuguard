@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
 import random
 import re
 import time
@@ -16,13 +15,17 @@ from typing import TYPE_CHECKING, Any
 import httpx
 
 from nuguard.common.errors import TargetUnavailableError  # noqa: F401 — re-exported for callers
+from nuguard.common.logging import get_logger
 
 from .session import AttackSession
 
 if TYPE_CHECKING:
     from .framework_adapters import FrameworkAdapter
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
+
+# Dedup set: emit the ADK app_name fallback warning at most once per base URL.
+_adk_fallback_warned: set[str] = set()
 
 DEFAULT_TIMEOUT = 30.0
 
@@ -109,6 +112,9 @@ class TargetAppClient:
         retry_429_backoff_cap_seconds: float = DEFAULT_429_BACKOFF_CAP_SECONDS,
         default_headers: dict[str, str] | None = None,
         framework_adapter: "FrameworkAdapter | None" = None,
+        chat_payload_extras: dict[str, Any] | None = None,
+        max_concurrent_requests: int = 0,
+        max_transient_hold_seconds: float = 300.0,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self._chat_path = chat_path
@@ -117,6 +123,7 @@ class TargetAppClient:
         self._chat_payload_format = (
             chat_payload_format if chat_payload_format in ("json", "form") else "json"
         )
+        self._chat_payload_extras: dict[str, Any] = chat_payload_extras or {}
         self._chat_response_key = chat_response_key  # explicit key overrides auto-detection
         # Lazily-detected response key: set on the first successful dict response when
         # no explicit key is configured.  Avoids returning raw JSON to judges.
@@ -147,6 +154,21 @@ class TargetAppClient:
         # include it in subsequent request bodies so multi-turn conversations
         # are correlated on the server side.
         self._session_context: dict[str, Any] = {}
+        # Global HTTP semaphore: limits concurrent in-flight requests across ALL
+        # callers sharing this client instance.  Useful when the target app has a
+        # low Azure OpenAI / LLM concurrency quota and returns transient errors
+        # ("having difficulty connecting") when multiple requests arrive
+        # simultaneously.  0 = unlimited (default behaviour).
+        self._request_sem: asyncio.Semaphore | None = (
+            asyncio.Semaphore(max_concurrent_requests)
+            if max_concurrent_requests > 0
+            else None
+        )
+        # Max total seconds to hold the semaphore during transient-error retries
+        # on the first request of a new chain.  After this limit the semaphore is
+        # released so other chains can proceed rather than blocking for the full
+        # objective timeout.
+        self._max_transient_hold_seconds: float = max(0.0, max_transient_hold_seconds)
         # Optional framework-specific adapter (e.g. Google ADK).  When set,
         # send() delegates body construction and response parsing to the adapter.
         self._framework_adapter: FrameworkAdapter | None = framework_adapter
@@ -289,6 +311,31 @@ class TargetAppClient:
             )
         self._consecutive_errors = 0
 
+    def set_chat_endpoint(
+        self,
+        path: str,
+        payload_key: str,
+        payload_list: bool = False,
+        response_key: str | None = None,
+    ) -> None:
+        """Replace the configured chat endpoint without rebuilding the client.
+
+        Used for endpoint rotation when the primary endpoint returns 405/404.
+        Resets the circuit breaker so the new path starts with a clean slate.
+        """
+        _log.info(
+            "set_chat_endpoint: rotating from %s → %s (key=%s)",
+            self._chat_path, path, payload_key,
+        )
+        self._chat_path = path
+        self._chat_payload_key = payload_key
+        self._chat_payload_list = payload_list
+        if response_key is not None:
+            self._chat_response_key = response_key
+        # Clear auto-detected response key so it is re-detected for the new endpoint
+        self._detected_response_key = None
+        self.reset_circuit_breaker()
+
     def update_default_headers(self, headers: dict[str, str] | None) -> None:
         """Merge headers into the default client headers for subsequent requests."""
         if not headers:
@@ -298,24 +345,143 @@ class TargetAppClient:
     async def send(self, payload: str, session: AttackSession) -> tuple[str, list[dict]]:
         """Send a prompt payload to the target and return (response_text, tool_calls).
 
+        When ``max_concurrent_requests`` is set (semaphore mode), transient app
+        errors ("having difficulty connecting") are retried **inside** the semaphore
+        scope so no other concurrent chain can send while the target is recovering.
+        This prevents the thundering-herd pattern where multiple chains hammer a
+        cold-starting Azure Container App during the retry window.
+
         Raises:
             TargetUnavailableError: after MAX_CONSECUTIVE_ERRORS consecutive 5xx
                 or network errors on the chat endpoint.  4xx responses (validation
                 errors, auth rejections, rate limits) do not count — the target is
                 alive and responding; it simply rejected our specific payload.
         """
+        if self._request_sem is not None:
+            async with self._request_sem:
+                return await self._send_with_transient_retry(payload, session)
+        return await self._send_impl(payload, session)
+
+    async def _send_with_transient_retry(
+        self, payload: str, session: AttackSession
+    ) -> tuple[str, list[dict]]:
+        """Send with in-semaphore transient-error retries (holds the semaphore during waits).
+
+        Retries :data:`~nuguard.common.transport.RETRIABLE_OUTCOMES` (app-transient
+        phrases AND HTTP 502/503/504 gateway errors) with capped backoff, all while
+        holding the semaphore.  Retrying stops when:
+
+        * The target returns a non-retriable response → ``return``.
+        * ``_max_transient_hold_seconds`` of total wait time has elapsed → releases
+          the semaphore so other chains can proceed (prevents one chain from blocking
+          all others for the full objective timeout when the cause is systemic, e.g.
+          shared Azure OpenAI quota contention between nuguard and the target app).
+        * The objective timeout fires (``asyncio.CancelledError``) → re-raised so the
+          scheduler records the objective as ``"timeout"``.
+
+        The backoff schedule is :data:`~nuguard.common.rate_limit.TRANSIENT_ERROR_RETRY_DELAYS`
+        for the first N attempts, then the last (largest) delay caps all subsequent waits.
+        """
+        from nuguard.common.rate_limit import TRANSIENT_ERROR_RETRY_DELAYS
+        from nuguard.common.transport import RETRIABLE_OUTCOMES, classify_transport
+
+        delays = list(TRANSIENT_ERROR_RETRY_DELAYS)
+        cap_delay = delays[-1] if delays else 60.0
+        attempt = 0
+        total_waited = 0.0
+        text: str = ""
+        calls: list[dict] = []
+
+        while True:
+            text, calls = await self._send_impl(payload, session)
+            if classify_transport(text) not in RETRIABLE_OUTCOMES:
+                return text, calls
+
+            # If the session already has prior turns, the target backend is up
+            # and responding — the transient is either a quota-induced blip or a
+            # content-filter block on this specific adversarial payload.  Allow
+            # one retry (attempt 0 → 1) so a momentary quota spike can recover;
+            # after that, stop retrying since the same payload will keep being
+            # blocked by the content filter.
+            if session.turns and attempt >= 1:
+                _log.debug(
+                    "Transient response on turn %d (retry #%d) — treating as content-filter "
+                    "block (backend is healthy); stopping retry.",
+                    len(session.turns) + 1,
+                    attempt,
+                )
+                return text, calls
+
+            # Release the semaphore after holding it for too long.  Systemic issues
+            # (e.g. shared Azure OpenAI quota contention) will not resolve with more
+            # retries from this chain; other chains deserve a chance to make progress.
+            if self._max_transient_hold_seconds > 0 and total_waited >= self._max_transient_hold_seconds:
+                _log.warning(
+                    "Transient errors persisted after %.0fs of in-semaphore retries "
+                    "(max_transient_hold=%.0fs) — releasing semaphore so other chains "
+                    "can proceed. Last response was retriable but target did not recover.",
+                    total_waited, self._max_transient_hold_seconds,
+                )
+                return text, calls
+
+            delay = delays[attempt] if attempt < len(delays) else cap_delay
+            attempt += 1
+            _log.info(
+                "Retriable transport error on first request — waiting %.0fs before retry #%d "
+                "[semaphore held; no other chains will send during this window]",
+                delay, attempt,
+            )
+            try:
+                await asyncio.sleep(delay)
+                total_waited += delay
+            except asyncio.CancelledError:
+                # Objective timeout fired during the sleep — release the semaphore
+                # and propagate so the scheduler records this as "timeout".
+                _log.warning(
+                    "In-semaphore transient retry cancelled (objective timeout) "
+                    "after %d attempt(s); target may still be recovering.",
+                    attempt,
+                )
+                raise
+
+    async def _send_impl(self, payload: str, session: AttackSession) -> tuple[str, list[dict]]:
+        """Inner send implementation (called with or without the request semaphore)."""
         data: dict | list | str = {}
         for attempt in range(self._max_429_retries + 1):
             try:
+                session_id: str = ""
                 if self._framework_adapter is not None:
                     # Framework-aware path: delegate body construction + session mgmt.
                     # Pass the AttackSession's ID as the scenario key so concurrent
                     # scenarios each maintain their own server-side ADK session.
                     scenario_key = str(session.session_id) if session.session_id else ""
-                    session_id = await self._framework_adapter.ensure_session(
-                        self._client, scenario_key
-                    )
+                    try:
+                        session_id = await self._framework_adapter.ensure_session(
+                            self._client, scenario_key
+                        )
+                    except RuntimeError as _adk_err:
+                        # When the target does not expose /list-apps (e.g. it wraps ADK
+                        # behind a custom REST endpoint), silently drop the ADK adapter
+                        # and fall through to the generic HTTP POST path below.
+                        if "app_name could not be determined" in str(_adk_err):
+                            _base = self.base_url or ""
+                            if _base not in _adk_fallback_warned:
+                                _adk_fallback_warned.add(_base)
+                                _log.warning(
+                                    "ADK adapter could not resolve app_name "
+                                    "(target does not expose GET /list-apps and "
+                                    "the SBOM contains no adk_app_name). "
+                                    "Falling back to generic HTTP POST — "
+                                    "multi-turn session fidelity may be reduced. "
+                                    "Fix: run 'nuguard sbom generate' against the source "
+                                    "so app_name is captured from Runner(app_name=...), "
+                                    "or set 'adk.app_name: <name>' in nuguard.yaml."
+                                )
+                            self._framework_adapter = None
+                        else:
+                            raise
 
+                if self._framework_adapter is not None:
                     # GoogleCESAdapter manages its own HTTP transport to ces.googleapis.com.
                     # Detect it by type to avoid calling send() on mocks or other adapters.
                     try:
@@ -341,6 +507,10 @@ class TargetAppClient:
                     # server can correlate subsequent turns within the same conversation.
                     if self._session_context:
                         body.update(self._session_context)
+                    # Merge static extra fields (e.g. vehicleState, language) declared in
+                    # chat_payload_extras — the message key always takes precedence.
+                    if self._chat_payload_extras:
+                        body = {**self._chat_payload_extras, **body}
                     chat_path = self._chat_path
 
                 if self._chat_payload_format == "form":
@@ -418,6 +588,7 @@ class TargetAppClient:
             text = (
                 data.get("response")
                 or data.get("content")
+                or data.get("text")
                 or data.get("message", {}).get("content", "")
                 or ""
             )
@@ -581,6 +752,8 @@ class TargetAppClient:
                 body = {self._chat_payload_key: value}
                 if self._session_context:
                     body.update(self._session_context)
+                if self._chat_payload_extras:
+                    body = {**self._chat_payload_extras, **body}
                 chat_path = self._chat_path
 
             t_start = time.monotonic()
@@ -643,6 +816,7 @@ class TargetAppClient:
                             text = (
                                 data.get("response")
                                 or data.get("content")
+                                or data.get("text")
                                 or data.get("message", {}).get("content", "")
                                 or ""
                             )

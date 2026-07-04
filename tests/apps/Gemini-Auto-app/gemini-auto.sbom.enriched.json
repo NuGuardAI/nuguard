@@ -1,0 +1,225 @@
+{
+  "schema_version": "1.5.0",
+  "generated_at": "2026-06-10T17:19:48Z",
+  "generator": "nuguard",
+  "target": "C:\\Uma\\Job Search\\Prospects\\NuGuard\\Code\\nuguard\\tests\\apps\\Gemini-Auto-app",
+  "nodes": [
+    {
+      "id": "0a936d4e-0840-40f1-b82e-864332d2e88a",
+      "name": "API Key Auth",
+      "component_type": "AUTH",
+      "confidence": 0.44000000000000006,
+      "metadata": {
+        "description": "Authentication component that validates requests using API keys.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "loc": 100,
+        "extras": {
+          "canonical_name": "auth_generic",
+          "adapter": "auth_generic",
+          "evidence_count": 1,
+          "confidence_breakdown": {
+            "regex_confidence": 0.55,
+            "llm_confidence": 0.0,
+            "evidence_count": 1,
+            "evidence_sources": [
+              "evidence:0"
+            ],
+            "base_confidence": 0.44,
+            "evidence_multiplier": 1.0,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.44
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "auth_generic: api_key",
+          "location": {
+            "path": "canary.example.json",
+            "line": 87
+          }
+        }
+      ]
+    },
+    {
+      "id": "81887355-c465-5de3-b14d-c1cace8887f2",
+      "name": "/health API",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.6,
+      "metadata": {
+        "endpoint": "/health",
+        "method": "GET",
+        "description": "GET /health endpoint that returns application health status.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "source": "runtime_probe",
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": []
+    },
+    {
+      "id": "808f255c-c9b1-58f2-ba71-dd1cb8ecb0f9",
+      "name": "/chat API",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.6,
+      "metadata": {
+        "endpoint": "/chat",
+        "method": "POST",
+        "description": "HTTP POST API endpoint at /chat for submitting chat requests.",
+        "accepts_user_input": true,
+        "request_body_schema": {},
+        "chat_payload_key": "message",
+        "chat_payload_list": false,
+        "extras": {
+          "source": "runtime_probe",
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": []
+    },
+    {
+      "id": "5cf48a09-c0b4-5a13-8fd5-287711ff1e4a",
+      "name": "/chat/message API",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.6,
+      "metadata": {
+        "endpoint": "/chat/message",
+        "method": "POST",
+        "description": "POST API endpoint at /chat/message for submitting chat messages.",
+        "accepts_user_input": true,
+        "request_body_schema": {},
+        "chat_payload_key": "message",
+        "chat_payload_list": false,
+        "extras": {
+          "source": "runtime_probe",
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": []
+    },
+    {
+      "id": "f2f3d360-73b0-534a-b2be-37309f343370",
+      "name": "/api/health API",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.6,
+      "metadata": {
+        "endpoint": "/api/health",
+        "method": "GET",
+        "description": "GET /api/health endpoint that returns service health status.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "source": "runtime_probe",
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": []
+    },
+    {
+      "id": "10b16786-3933-56e4-81b6-f0aeee505760",
+      "name": "/api/chat API",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.6,
+      "metadata": {
+        "endpoint": "/api/chat",
+        "method": "POST",
+        "description": "POST API endpoint /api/chat that accepts chat requests and returns generated conversational responses.",
+        "accepts_user_input": true,
+        "request_body_schema": {},
+        "chat_payload_key": "message",
+        "chat_payload_list": false,
+        "extras": {
+          "source": "runtime_probe",
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": []
+    },
+    {
+      "id": "96e5cf0d-ad5e-519f-8f67-16f9ae37a40a",
+      "name": "/api/chat/message API",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.6,
+      "metadata": {
+        "endpoint": "/api/chat/message",
+        "method": "POST",
+        "description": "POST API endpoint /api/chat/message that receives chat message submissions.",
+        "accepts_user_input": true,
+        "request_body_schema": {},
+        "chat_payload_key": "message",
+        "chat_payload_list": false,
+        "extras": {
+          "source": "runtime_probe",
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": []
+    }
+  ],
+  "edges": [],
+  "deps": [],
+  "summary": {
+    "use_case": "This application implements an agentic AI workflow with 0 agent(s), 0 tool integration(s), and 0 guardrail control(s). Detected use cases include general agentic task orchestration. Multi-modal support: Voice not supported, Images not supported, Video not supported.",
+    "frameworks": [],
+    "modalities": [
+      "TEXT"
+    ],
+    "modality_support": {
+      "text": true,
+      "voice": false,
+      "image": false,
+      "video": false
+    },
+    "api_endpoints": [],
+    "deployment_platforms": [
+      "Azure"
+    ],
+    "regions": [],
+    "environments": [
+      "test",
+      "dev"
+    ],
+    "deployment_urls": [],
+    "iac_accounts": [],
+    "node_counts": {
+      "AUTH": 1,
+      "API_ENDPOINT": 6
+    },
+    "secret_stores": [],
+    "availability_zones": [],
+    "encryption_at_rest_coverage": false,
+    "security_findings": [],
+    "iam_principals": [],
+    "service_accounts": [],
+    "data_classification": [],
+    "classified_tables": [],
+    "startup_commands": [],
+    "env_files": [],
+    "env_var_keys": [],
+    "staging_urls": [],
+    "production_urls": [],
+    "log_paths": [
+      "$SCRIPT_DIR/reports/agentic-test-$(date +%Y%m%dT%H%M%S).log"
+    ],
+    "uses_streaming": false,
+    "streaming_endpoints": [],
+    "total_loc": 289,
+    "tokens_used_for_enrichment": 0,
+    "input_tokens_used": 0,
+    "output_tokens_used": 0,
+    "llm_model_used": "gemini/gemini-2.0-flash",
+    "github_actions_content": "",
+    "workflow_security_findings": [],
+    "k8s_network_policy_namespaces": [],
+    "has_package_json": false,
+    "has_lockfile": false,
+    "minified_js_files": []
+  },
+  "_enrichment_cache_key": "725c86a87422ec61bdd97fc3b3d9733e2b822e86e6a8b6181c2419316affa514"
+}

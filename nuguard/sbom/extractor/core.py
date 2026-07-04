@@ -24,7 +24,6 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-import logging
 import os
 import re
 import shutil
@@ -33,7 +32,9 @@ import tempfile
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
+
+from nuguard.common.logging import get_logger
 
 from ..adapters.base import (
     AdapterMatch,
@@ -74,11 +75,22 @@ from ..core.application_summary import build_scan_summary
 from ..core.ts_parser import TSParseResult
 from ..core.ts_parser import parse_typescript as _parse_ts_impl
 from ..deps import DependencyScanner
-from ..models import AiSbomDocument, Edge, Evidence, Node, ScanSummary, SourceLocation
+from ..models import (
+    AiSbomDocument,
+    AuthDetail,
+    DataHandlingDetail,
+    Edge,
+    EncryptionDetail,
+    Evidence,
+    Node,
+    RateLimitDetail,
+    ScanSummary,
+    SourceLocation,
+)
 from ..normalization import canonicalize_text
 from ..types import ComponentType, RelationshipType
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 # File extensions that warrant Python AST parsing
 _PYTHON_EXTENSIONS = {".py", ".pyw"}
@@ -221,6 +233,197 @@ def _extract_python_prompt_constants(
     return detections
 
 
+def _run_prompt_detector(
+    source: str,
+    rel_path: str,
+) -> "list[ComponentDetection]":
+    """Run :class:`PromptDetector` and convert results to ``ComponentDetection`` objects.
+
+    The ``PromptDetector`` returns ``Node`` objects; this bridge function
+    re-packages them so they flow through the standard ``_merge_detection``
+    pipeline (dedup, tier classification, evidence tracking).
+    """
+    from ..adapters.base import ComponentDetection  # noqa: PLC0415
+    from ..normalization import canonicalize_text  # noqa: PLC0415
+    from ..types import ComponentType  # noqa: PLC0415
+    from .prompt_detector import PromptDetector  # noqa: PLC0415
+
+    path = Path(rel_path)
+    try:
+        nodes = PromptDetector().detect(path, source)
+    except Exception:
+        return []
+
+    detections: list[ComponentDetection] = []
+    for node in nodes:
+        extras = node.metadata.extras if node.metadata else {}
+        content = extras.get("content", "")
+        detections.append(
+            ComponentDetection(
+                component_type=ComponentType.PROMPT,
+                canonical_name=canonicalize_text(node.name.lower()),
+                display_name=node.name,
+                adapter_name="prompt_detector",
+                priority=40,
+                confidence=node.confidence,
+                metadata={
+                    "role": "system",
+                    "content": content,
+                    "char_count": len(content),
+                    "is_template": extras.get("is_template", False),
+                    "injection_risk_score": extras.get("injection_risk_score", 0.0),
+                },
+                file_path=rel_path,
+                line=0,
+                snippet=content[:80] + ("..." if len(content) > 80 else ""),
+                evidence_kind="ast_prompt_detector",
+            )
+        )
+    return detections
+
+
+_PROMPT_DICT_NAME_RE = re.compile(
+    r"(?:prompt|persona|instruction|system_message)",
+    re.IGNORECASE,
+)
+_MIN_PROMPT_DICT_VALUE_LENGTH = 120
+
+
+def _extract_python_prompt_dicts(
+    source: str,
+    rel_path: str,
+) -> "list[ComponentDetection]":
+    """Detect prompt strings stored as values in module-level Python dicts.
+
+    Targets patterns like ``PROMPT_REGISTRY = {"key": "long prompt..."}``,
+    including the ``" ".join([...])`` fragment pattern.
+    """
+    import ast as _ast  # noqa: PLC0415
+
+    from ..adapters.base import ComponentDetection  # noqa: PLC0415
+    from ..normalization import canonicalize_text  # noqa: PLC0415
+    from ..types import ComponentType  # noqa: PLC0415
+
+    try:
+        tree = _ast.parse(source)
+    except SyntaxError:
+        return []
+
+    # First pass: collect module-level list/tuple string constants so that
+    # ``" ".join(_FRAGMENTS)`` can be resolved when the join argument is a
+    # variable reference rather than an inline list literal.
+    _module_lists: dict[str, list[str]] = {}
+    for node in _ast.iter_child_nodes(tree):
+        if isinstance(node, _ast.Assign) and len(node.targets) == 1:
+            t = node.targets[0]
+            if isinstance(t, _ast.Name) and isinstance(node.value, (_ast.List, _ast.Tuple)):
+                parts = []
+                for elt in node.value.elts:
+                    if isinstance(elt, _ast.Constant) and isinstance(elt.value, str):
+                        parts.append(elt.value)
+                    else:
+                        parts = []
+                        break
+                if parts:
+                    _module_lists[t.id] = parts
+
+    detections: list[ComponentDetection] = []
+
+    for node in _ast.iter_child_nodes(tree):
+        targets: list[str] = []
+        value: _ast.expr | None = None
+
+        if isinstance(node, _ast.Assign):
+            for t in node.targets:
+                if isinstance(t, _ast.Name):
+                    targets.append(t.id)
+            value = node.value
+        elif isinstance(node, _ast.AnnAssign) and isinstance(node.target, _ast.Name):
+            targets.append(node.target.id)
+            value = node.value
+
+        if not targets or value is None or not isinstance(value, _ast.Dict):
+            continue
+
+        for var_name in targets:
+            if not _PROMPT_DICT_NAME_RE.search(var_name):
+                continue
+
+            for dk, dv in zip(value.keys, value.values):
+                dict_key = dk.value if isinstance(dk, _ast.Constant) and isinstance(dk.value, str) else None
+                if dict_key is None:
+                    continue
+
+                prompt_text = _resolve_dict_value(dv, _module_lists)
+                if prompt_text is None or len(prompt_text) < _MIN_PROMPT_DICT_VALUE_LENGTH:
+                    continue
+
+                canon = canonicalize_text(f"{var_name}_{dict_key}".lower())
+                template_vars = re.findall(r"\{([a-zA-Z_][a-zA-Z0-9_]*)\}", prompt_text)
+                detections.append(
+                    ComponentDetection(
+                        component_type=ComponentType.PROMPT,
+                        canonical_name=canon,
+                        display_name=f"{var_name}[{dict_key}]",
+                        adapter_name="python_prompt_dict",
+                        priority=45,
+                        confidence=0.82,
+                        metadata={
+                            "role": "system" if "system" in dict_key.lower() else "unspecified",
+                            "content": prompt_text[:500],
+                            "char_count": len(prompt_text),
+                            "is_template": bool(template_vars),
+                            "template_variables": template_vars,
+                            "dict_name": var_name,
+                            "dict_key": dict_key,
+                        },
+                        file_path=rel_path,
+                        line=getattr(dk, "lineno", 0),
+                        snippet=prompt_text[:80] + ("..." if len(prompt_text) > 80 else ""),
+                        evidence_kind="ast_dict_value",
+                    )
+                )
+
+    return detections
+
+
+def _resolve_dict_value(
+    node: Any,
+    module_lists: dict[str, list[str]] | None = None,
+) -> str | None:
+    """Extract a string from an AST node, handling ``" ".join([...])``."""
+    import ast as _ast  # noqa: PLC0415
+
+    if isinstance(node, _ast.Constant) and isinstance(node.value, str):
+        return node.value
+
+    if isinstance(node, _ast.JoinedStr):
+        return None
+
+    # " ".join([...]) or " ".join(variable)
+    if isinstance(node, _ast.Call) and isinstance(node.func, _ast.Attribute):
+        if (
+            node.func.attr == "join"
+            and isinstance(node.func.value, _ast.Constant)
+            and isinstance(node.func.value.value, str)
+            and node.args
+        ):
+            sep = node.func.value.value
+            arg = node.args[0]
+            if isinstance(arg, (_ast.List, _ast.Tuple)):
+                parts: list[str] = []
+                for elt in arg.elts:
+                    if isinstance(elt, _ast.Constant) and isinstance(elt.value, str):
+                        parts.append(elt.value)
+                    else:
+                        return None
+                return sep.join(parts)
+            if isinstance(arg, _ast.Name) and module_lists and arg.id in module_lists:
+                return sep.join(module_lists[arg.id])
+
+    return None
+
+
 _IAC_EXTENSIONS = {".tf", ".tfvars", ".hcl", ".bicep", ".jinja", ".yaml", ".yml", ".json"}
 # Bicep and Jinja IaC-specific extensions (not processed by the generic YAML phase)
 _BICEP_EXTENSIONS = {".bicep"}
@@ -242,7 +445,7 @@ _SCRIPT_EXTENSIONS = {".sh", ".bash", ".zsh", ".fish", ".ps1"}
 
 
 def _should_skip_path_parts(parts: tuple[str, ...]) -> bool:
-    skip_dirs = {".git", "__pycache__", "node_modules", ".tox", ".claude", "site-packages", ".mypy_cache", ".pytest_cache", ".ruff_cache", ".pytype", "logs", "log", "reports"}
+    skip_dirs = {".git", "__pycache__", "node_modules", ".tox", ".claude", "site-packages", ".mypy_cache", ".pytest_cache", ".ruff_cache", ".pytype", "logs", "log", "reports", "nuguard-test-results", "test-results"}
     for part in parts:
         if part in skip_dirs:
             return True
@@ -327,6 +530,29 @@ class _NodeAccumulator:
     # Source-tier tracking (populated by _merge_detection)
     source_tiers: set[str] = field(default_factory=set)
     best_tier_rank: int = 99  # 0=code, 1=iac, 2=docs; 99=uninitialised
+
+
+def _load_gitignore_matcher(root: Path) -> "Callable[[str], bool] | None":
+    """Return a predicate that matches paths against the repo's ``.gitignore``.
+
+    Returns ``None`` when no ``.gitignore`` exists or the ``pathspec`` library
+    is unavailable (graceful degradation).
+    """
+    gitignore_path = root / ".gitignore"
+    if not gitignore_path.is_file():
+        return None
+    try:
+        import pathspec  # noqa: PLC0415
+    except ImportError:
+        _log.debug(".gitignore found but pathspec not installed; skipping")
+        return None
+    try:
+        patterns = gitignore_path.read_text(encoding="utf-8", errors="ignore")
+        spec = pathspec.PathSpec.from_lines("gitwildmatch", patterns.splitlines())
+        return spec.match_file  # type: ignore[return-value]
+    except Exception as exc:
+        _log.warning("failed to parse .gitignore: %s", exc)
+        return None
 
 
 class AiSbomExtractor:
@@ -431,6 +657,12 @@ class AiSbomExtractor:
         # Keep full file contents only when LLM enrichment is enabled.
         keep_full_contents = bool(config.enable_llm)
         file_contents: dict[str, str] = {}
+        # LOC tracking: lines of code per relative file path
+        file_loc: dict[str, int] = {}
+        # Import tracking per file for dependency cross-referencing
+        _file_imports: dict[str, set[str]] = {}
+        # Minified JS files detected during the scan (for SC-019)
+        _minified_js_files: list[str] = []
         # Summary builder only needs a bounded content sample.
         files_sample: list[tuple[str, str]] = []
         files_scanned = 0
@@ -446,6 +678,32 @@ class AiSbomExtractor:
             if num_bytes < 1024 * 1024 * 1024:
                 return f"{num_bytes / (1024 * 1024):.2f} MiB"
             return f"{num_bytes / (1024 * 1024 * 1024):.2f} GiB"
+
+        # Pre-pass: build a cross-file Pydantic model schema index so FastAPI (and Flask)
+        # adapters can resolve request-body models that are imported from other modules.
+        # This is a fast AST-only pass — no detection, no merging.
+        _global_model_schemas: dict[str, dict[str, str]] = {}
+        try:
+            import ast as _ast  # noqa: PLC0415  # isort:skip
+            from nuguard.sbom.adapters.python.fastapi_adapter import (  # noqa: PLC0415
+                _collect_model_schemas as _collect_py_models,
+            )  # isort:skip
+            for _py_path, _ in self._iter_files(root, config):
+                if _py_path.suffix != ".py":
+                    continue
+                try:
+                    _py_src = _py_path.read_text(encoding="utf-8", errors="ignore")
+                    _py_tree = _ast.parse(_py_src)
+                    _global_model_schemas.update(_collect_py_models(_py_tree))
+                except Exception:
+                    pass
+        except Exception as _pre_exc:
+            _log.debug("cross-file model pre-pass failed (non-fatal): %s", _pre_exc)
+
+        # Inject the global model index into adapters that support it.
+        for _adapter in self.framework_adapters:
+            if hasattr(_adapter, "set_global_model_schemas"):
+                _adapter.set_global_model_schemas(_global_model_schemas)
 
         for file_path, file_size in self._iter_files(root, config):
             try:
@@ -469,6 +727,8 @@ class AiSbomExtractor:
             files_scanned += 1
             rel_path = str(file_path.relative_to(root))
             content_bytes = file_size
+            # Track LOC for every scanned file
+            file_loc[rel_path] = content.count("\n") + 1
             if keep_full_contents:
                 file_contents[rel_path] = content
                 full_cache_files += 1
@@ -514,6 +774,12 @@ class AiSbomExtractor:
                         imported_modules: set[str] = {
                             imp.module for imp in parse_result.imports if imp.module
                         }
+                        # Capture top-level package names for dependency cross-referencing
+                        _file_imports[rel_path] = {
+                            imp.module.split(".")[0].lower()
+                            for imp in parse_result.imports
+                            if imp.module
+                        }
                         for adapter in self.framework_adapters:
                             # Skip TypeScript adapters for Python/notebook files
                             if isinstance(adapter, TSFrameworkAdapter):
@@ -547,6 +813,15 @@ class AiSbomExtractor:
                         for det in _extract_python_prompt_constants(parse_result, rel_path):
                             self._merge_detection(node_map, det)
 
+                        # Phase 1a″: PromptDetector — system-prompt variables,
+                        # f-string prompts, and dict-based {role: "system"} messages.
+                        for det in _run_prompt_detector(content, rel_path):
+                            self._merge_detection(node_map, det)
+
+                        # Phase 1a‴: dict-based prompt stores (PROMPT_REGISTRY, etc.)
+                        for det in _extract_python_prompt_dicts(content, rel_path):
+                            self._merge_detection(node_map, det)
+
             # Phase 1b: SQL schema — data classification
             elif is_sql:
                 _log.debug("running SQL data classification on %s", rel_path)
@@ -562,6 +837,7 @@ class AiSbomExtractor:
                         _dc_metadata.append(det.metadata)
 
             # Phase 1c: TypeScript/JavaScript AST-aware framework adapters
+            # Also detect minified single-line JS (>5 KB line) for SC-019
             elif is_typescript:
                 ts_hints = self._parse_typescript(content, rel_path)
                 imported_modules_ts: set[str] = {imp.module for imp in ts_hints.imports}
@@ -583,6 +859,12 @@ class AiSbomExtractor:
                         continue
                     for det in detections:
                         self._merge_detection(node_map, det)
+
+            # SC-019: detect minified JS (single line > 5000 chars) for supply-chain summary
+            if suffix == ".js" and content:
+                _js_lines = content.splitlines()
+                if _js_lines and max(len(ln) for ln in _js_lines) > 5000:
+                    _minified_js_files.append(rel_path)
 
             # Phase 1d: Dockerfile — container image extraction
             if is_dockerfile:
@@ -792,6 +1074,10 @@ class AiSbomExtractor:
         # Dockerfiles) are kept because they legitimately describe components.
         _suppress_non_code_model_datastore(node_map)
 
+        # Improve 'generic' display names for AUTH/DEPLOYMENT nodes to reflect
+        # the dominant technology keyword found in the evidence.
+        _improve_generic_node_names(node_map)
+
         # Build nodes + edges
         for key in sorted(node_map.keys(), key=lambda v: (v[0].value, v[1])):
             acc = node_map[key]
@@ -802,8 +1088,13 @@ class AiSbomExtractor:
             if len(acc.source_tiers) > 1:
                 acc.confidence = min(0.99, acc.confidence + 0.03 * (len(acc.source_tiers) - 1))
 
+            _raw_display = acc.display_name
+            # Normalize display names that are raw variable identifiers
+            if " " not in _raw_display:
+                from ..normalization import normalize_display_name as _norm_dn
+                _raw_display = _norm_dn(_raw_display, acc.component_type)
             node = Node(
-                name=acc.display_name,
+                name=_raw_display,
                 component_type=acc.component_type,
                 confidence=acc.confidence,
             )
@@ -953,6 +1244,16 @@ class AiSbomExtractor:
                     node.metadata.request_body_schema = {
                         str(k): str(v) for k, v in _rbs.items()
                     }
+                    node.metadata.request_schema = dict(_rbs)
+                _resp_schema = acc.metadata.get("response_body_schema")
+                if isinstance(_resp_schema, dict) and _resp_schema:
+                    node.metadata.response_schema = dict(_resp_schema)
+                _cpf = acc.metadata.get("context_payload_fields")
+                if isinstance(_cpf, dict) and _cpf:
+                    existing = node.metadata.context_payload_fields or {}
+                    merged = {str(k): str(v) for k, v in _cpf.items()}
+                    merged.update(existing)  # existing node values win on conflict
+                    node.metadata.context_payload_fields = merged
             # server_name for all MCP FRAMEWORK/TOOL nodes
             if acc.metadata.get("framework") == "mcp-server":
                 if acc.metadata.get("server_name"):
@@ -1025,6 +1326,20 @@ class AiSbomExtractor:
                 _rl = acc.metadata.get("has_resource_limits")
                 if _rl is not None:
                     node.metadata.has_resource_limits = bool(_rl)
+                _hnp = acc.metadata.get("has_network_policy")
+                if _hnp is not None:
+                    node.metadata.has_network_policy = bool(_hnp)
+            # MODEL node typed fields (source_url, integrity_hash, checksum)
+            if acc.component_type == ComponentType.MODEL:
+                _su = acc.metadata.get("source_url")
+                if _su:
+                    node.metadata.source_url = str(_su)
+                _ih = acc.metadata.get("integrity_hash")
+                if _ih:
+                    node.metadata.integrity_hash = str(_ih)
+                _cs = acc.metadata.get("checksum")
+                if _cs:
+                    node.metadata.checksum = str(_cs)
             # IAM node typed fields
             if acc.component_type == ComponentType.IAM:
                 _it = acc.metadata.get("iam_type")
@@ -1043,10 +1358,38 @@ class AiSbomExtractor:
                 if isinstance(_tp, list) and _tp:
                     node.metadata.trust_principals = [str(p) for p in _tp[:20]]
 
+            # ── SBOM 1.5.0 sub-model mapping (applies to all component types) ──────
+            _rld = acc.metadata.get("rate_limit_detail")
+            if isinstance(_rld, dict) and _rld and node.metadata.rate_limit_detail is None:
+                node.metadata.rate_limit_detail = RateLimitDetail(
+                    **{k: v for k, v in _rld.items() if v is not None}
+                )
+            _ad = acc.metadata.get("auth_detail")
+            if isinstance(_ad, dict) and _ad and node.metadata.auth_detail is None:
+                node.metadata.auth_detail = AuthDetail(
+                    **{k: v for k, v in _ad.items() if v is not None}
+                )
+            _ed = acc.metadata.get("encryption_detail")
+            if isinstance(_ed, dict) and _ed and node.metadata.encryption_detail is None:
+                node.metadata.encryption_detail = EncryptionDetail(
+                    **{k: v for k, v in _ed.items() if v is not None}
+                )
+                if node.metadata.encryption_detail.at_rest is not None:
+                    node.metadata.encryption_at_rest = node.metadata.encryption_detail.at_rest
+            _dh = acc.metadata.get("data_handling")
+            if isinstance(_dh, dict) and _dh and node.metadata.data_handling is None:
+                node.metadata.data_handling = DataHandlingDetail(
+                    **{k: v for k, v in _dh.items() if v is not None}
+                )
+
             node.evidence = sorted(acc.evidence, key=lambda e: e.confidence, reverse=True)
             doc.nodes.append(node)
 
         self._resolve_edges(doc, node_map)
+
+        # Deduplicate DEPLOYMENT nodes: merge github-actions workflow nodes into
+        # the cloud-provider service nodes they deploy to.
+        _dedup_deployment_nodes(doc)
 
         # Phase CES: scan for Google Customer Engagement Suite deployments.
         # Runs after the main AST/regex loop so CES nodes can be appended.
@@ -1088,6 +1431,28 @@ class AiSbomExtractor:
         # Scan package manifest dependencies (pyproject.toml, requirements*.txt, package.json, …)
         doc.deps = DependencyScanner().scan(root)
         _log.info("deps scan: %d packages found", len(doc.deps))
+
+        # Per-node LOC and dependency cross-referencing
+        dep_names = {d.name.lower().replace("-", "_") for d in doc.deps}
+        for node in doc.nodes:
+            # LOC: sum lines from all evidence source files for this node
+            ev_paths = {
+                ev.location.path
+                for ev in node.evidence
+                if ev.location and ev.location.path
+            }
+            loc_sum = sum(file_loc.get(p, 0) for p in ev_paths)
+            if loc_sum:
+                node.metadata.loc = loc_sum
+
+            # Dependency names: intersect imports from evidence files with manifest deps
+            all_imports: set[str] = set()
+            for p in ev_paths:
+                all_imports |= _file_imports.get(p, set())
+            matched = sorted(all_imports & dep_names)
+            if matched:
+                node.metadata.dependency_names = matched
+
         _log.info("scan complete: %d files processed under %s", files_scanned, root)
         _log.info(
             "memory metrics: sample_files=%d sample_bytes=%d (%s) full_cache_files=%d full_cache_bytes=%d (%s) llm_enabled=%s",
@@ -1111,6 +1476,12 @@ class AiSbomExtractor:
             )
         )
 
+        # Write total LOC and minified JS list into the summary
+        if doc.summary and file_loc:
+            doc.summary.total_loc = sum(file_loc.values()) or None
+        if doc.summary is not None and _minified_js_files:
+            doc.summary.minified_js_files = _minified_js_files
+
         # Ensure google-ces is listed in summary.frameworks when CES nodes exist
         _has_ces = any(
             getattr(n.metadata, "framework", "") == "google-ces"
@@ -1119,6 +1490,42 @@ class AiSbomExtractor:
         if _has_ces and doc.summary is not None:
             if "google-ces" not in doc.summary.frameworks:
                 doc.summary.frameworks.append("google-ces")
+
+        # Phase 2b: Supply-chain second pass
+        # Runs DevToolConfigAdapter, GithubActionsAdapter, and LifecycleScriptAdapter
+        # against paths the main pass skips (.claude/, AGENTS.md, .mcp.json, workflows).
+        # Wrapped in a broad try/except so a malformed config never crashes SBOM generation.
+        if getattr(config, "supply_chain_scan", True):
+            try:
+                from nuguard.sbom.adapters.dev_tools import (  # noqa: PLC0415
+                    DevToolConfigAdapter,
+                    GithubActionsAdapter,
+                    LifecycleScriptAdapter,
+                )
+
+                for adapter_cls in (DevToolConfigAdapter, GithubActionsAdapter, LifecycleScriptAdapter):
+                    sc_nodes, sc_edges = adapter_cls().scan(root)
+                    doc.nodes.extend(sc_nodes)
+                    doc.edges.extend(sc_edges)
+                    _log.debug(
+                        "supply-chain pass (%s): +%d nodes, +%d edges",
+                        adapter_cls.__name__, len(sc_nodes), len(sc_edges),
+                    )
+            except Exception as _sc_exc:
+                _log.warning("supply-chain second pass failed (continuing): %s", _sc_exc)
+
+            # Populate lockfile summary fields while the repo is still on disk.
+            # Used by supply-chain scanner (SC-024) when analyzing remote SBOMs
+            # without a live filesystem (the temp clone will be deleted after extraction).
+            try:
+                if doc.summary is not None:
+                    doc.summary.has_package_json = (root / "package.json").exists()
+                    doc.summary.has_lockfile = any(
+                        (root / lf).exists()
+                        for lf in ("package-lock.json", "pnpm-lock.yaml", "yarn.lock")
+                    )
+            except Exception as _lf_exc:
+                _log.debug("lockfile summary population failed (non-fatal): %s", _lf_exc)
 
         # Phase 3: LLM enrichment (skipped unless enable_llm=True)
         if config.enable_llm:
@@ -1200,11 +1607,13 @@ class AiSbomExtractor:
             self._clone_repo(url=url, ref=ref, dest=repo_dir)
             return self.extract_from_path(repo_dir, config, source_ref=display_url, branch=ref)
 
-        with tempfile.TemporaryDirectory(prefix="xelo_") as temp_dir:
+        with tempfile.TemporaryDirectory(prefix="nuguard_clone_", ignore_cleanup_errors=True) as temp_dir:
             repo_dir = Path(temp_dir) / "repo" / app_name
             repo_dir.mkdir(parents=True, exist_ok=True)
             self._clone_repo(url=url, ref=ref, dest=repo_dir)
-            return self.extract_from_path(repo_dir, config, source_ref=display_url, branch=ref)
+            doc = self.extract_from_path(repo_dir, config, source_ref=display_url, branch=ref)
+        _log.debug("Deleted cloned repo temp dir: %s", temp_dir)
+        return doc
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -1418,14 +1827,21 @@ class AiSbomExtractor:
             "ACCESSES": RelationshipType.ACCESSES,
             "PROTECTS": RelationshipType.PROTECTS,
             "DEPLOYS": RelationshipType.DEPLOYS,
+            "DELEGATES_TO": RelationshipType.DELEGATES_TO,
         }
 
         # Process explicit relationship hints
         seen_edges: set[tuple[Any, Any, str]] = set()
         for acc in node_map.values():
             for hint in acc.relationships:
-                src_id = canonical_to_id.get(hint.source_canonical)
-                tgt_id = canonical_to_id.get(hint.target_canonical)
+                # Hints may store raw canonical names (colons) while the node
+                # lookup map uses canonicalized names (underscores). Try both.
+                src_id = canonical_to_id.get(hint.source_canonical) or canonical_to_id.get(
+                    canonicalize_text(hint.source_canonical)
+                )
+                tgt_id = canonical_to_id.get(hint.target_canonical) or canonical_to_id.get(
+                    canonicalize_text(hint.target_canonical)
+                )
                 if src_id is None or tgt_id is None:
                     continue
                 rel = rel_type_map.get(hint.relationship_type, RelationshipType.USES)
@@ -1433,43 +1849,91 @@ class AiSbomExtractor:
                 if edge_key in seen_edges:
                     continue
                 seen_edges.add(edge_key)
-                doc.edges.append(Edge(source=src_id, target=tgt_id, relationship_type=rel))
+                doc.edges.append(
+                    Edge(
+                        source=src_id,
+                        target=tgt_id,
+                        relationship_type=rel,
+                        access_type=getattr(hint, "access_type", None),
+                    )
+                )
 
-        # Fallback: connect agents to tools/models they have no explicit link to
+        # Fallback edge inference — fills in edges not covered by explicit hints.
         by_type: dict[ComponentType, list[Node]] = {}
         for node in doc.nodes:
             by_type.setdefault(node.component_type, []).append(node)
 
-        agent_ids_with_edges: set[Any] = {e.source for e in doc.edges}
+        def _add_edge(src_id: Any, tgt_id: Any, rel: str) -> None:
+            key = (src_id, tgt_id, rel)
+            if key in seen_edges:
+                return
+            seen_edges.add(key)
+            doc.edges.append(
+                Edge(
+                    source=src_id,
+                    target=tgt_id,
+                    relationship_type=rel_type_map.get(rel, RelationshipType.USES),
+                )
+            )
 
+        # Build framework name/adapter → id map for metadata-based fallbacks.
+        fw_name_to_id: dict[str, Any] = {}
+        for fw in by_type.get(ComponentType.FRAMEWORK, []):
+            fw_meta_name = fw.metadata.framework or ""
+            if fw_meta_name:
+                fw_name_to_id.setdefault(fw_meta_name, fw.id)
+            fw_name_to_id.setdefault(fw.name, fw.id)
+            adapter_name = fw.metadata.extras.get("adapter", "")
+            if adapter_name:
+                fw_name_to_id.setdefault(adapter_name, fw.id)
+
+        model_ids: set[Any] = {n.id for n in by_type.get(ComponentType.MODEL, [])}
+
+        # Track which agents already have tool vs. model edges separately so
+        # the fallback can add only what is missing.
+        agent_ids_with_tool_edges: set[Any] = set()
+        agent_ids_with_model_edges: set[Any] = set()
+        for e in doc.edges:
+            if e.relationship_type == RelationshipType.CALLS and e.target in {
+                n.id for n in by_type.get(ComponentType.TOOL, [])
+            }:
+                agent_ids_with_tool_edges.add(e.source)
+            if e.relationship_type == RelationshipType.USES and e.target in model_ids:
+                agent_ids_with_model_edges.add(e.source)
+
+        # Fallback: AGENT → TOOL (CALLS) for agents with no tool edges
         for agent in by_type.get(ComponentType.AGENT, []):
-            if agent.id in agent_ids_with_edges:
-                continue  # Already has explicit edges
-
+            if agent.id in agent_ids_with_tool_edges:
+                continue
             for tool in sorted(by_type.get(ComponentType.TOOL, []), key=lambda n: n.name)[:5]:
-                key = (agent.id, tool.id, "CALLS")
-                if key not in seen_edges:
-                    seen_edges.add(key)
-                    doc.edges.append(
-                        Edge(
-                            source=agent.id,
-                            target=tool.id,
-                            relationship_type=RelationshipType.CALLS,
-                        )
-                    )
-            for model in sorted(by_type.get(ComponentType.MODEL, []), key=lambda n: n.name)[:3]:
-                key = (agent.id, model.id, "USES")
-                if key not in seen_edges:
-                    seen_edges.add(key)
-                    doc.edges.append(
-                        Edge(
-                            source=agent.id,
-                            target=model.id,
-                            relationship_type=RelationshipType.USES,
-                        )
-                    )
+                _add_edge(agent.id, tool.id, "CALLS")
 
-        # Fallback: connect frameworks to models when no explicit edges exist.
+        # Fallback: AGENT → MODEL (USES) for agents with no model edges
+        for agent in by_type.get(ComponentType.AGENT, []):
+            if agent.id in agent_ids_with_model_edges:
+                continue
+            for model in sorted(
+                by_type.get(ComponentType.MODEL, []), key=lambda n: -n.confidence
+            )[:3]:
+                _add_edge(agent.id, model.id, "USES")
+
+        # Fallback: FRAMEWORK → AGENT (CALLS) via shared metadata.framework
+        for agent in by_type.get(ComponentType.AGENT, []):
+            fw_name = agent.metadata.framework or ""
+            fw_id = fw_name_to_id.get(fw_name)
+            if fw_id:
+                _add_edge(fw_id, agent.id, "CALLS")
+
+        # Fallback: FRAMEWORK → TOOL (CALLS) via shared metadata.framework.
+        # Covers cases where hint resolution already added explicit CALLS edges
+        # (e.g. MCP tools) — _add_edge is idempotent so duplicate keys are skipped.
+        for tool in by_type.get(ComponentType.TOOL, []):
+            fw_name = tool.metadata.framework or ""
+            fw_id = fw_name_to_id.get(fw_name)
+            if fw_id:
+                _add_edge(fw_id, tool.id, "CALLS")
+
+        # Fallback: FRAMEWORK → MODEL (USES) for frameworks with no outgoing edges.
         # Covers custom-orchestrator apps (no AGENT nodes) where LLM provider
         # config was detected from YAML / regex without explicit AST hints.
         frameworks_with_outgoing: set[Any] = {e.source for e in doc.edges}
@@ -1480,16 +1944,20 @@ class AiSbomExtractor:
                 by_type.get(ComponentType.MODEL, []),
                 key=lambda n: -n.confidence,
             )[:5]:
-                key = (fw.id, model.id, "USES")
-                if key not in seen_edges:
-                    seen_edges.add(key)
-                    doc.edges.append(
-                        Edge(
-                            source=fw.id,
-                            target=model.id,
-                            relationship_type=RelationshipType.USES,
-                        )
-                    )
+                _add_edge(fw.id, model.id, "USES")
+
+        # Fallback: AGENT → DATASTORE (ACCESSES) transitively via CALLS chain.
+        # Requires TOOL→DATASTORE ACCESSES edges (from adapter hints or
+        # PythonDatastoreAdapter same-file detection).
+        tool_to_datastores: dict[Any, list[Any]] = {}
+        for e in doc.edges:
+            if e.relationship_type == RelationshipType.ACCESSES:
+                tool_to_datastores.setdefault(e.source, []).append(e.target)
+
+        for e in doc.edges:
+            if e.relationship_type == RelationshipType.CALLS:
+                for ds_id in tool_to_datastores.get(e.target, []):
+                    _add_edge(e.source, ds_id, "ACCESSES")
 
         # Structural edges: DEPLOYMENT → CONTAINER_IMAGE (DEPLOYS)
         for dep in by_type.get(ComponentType.DEPLOYMENT, []):
@@ -1550,11 +2018,17 @@ class AiSbomExtractor:
         2.5. Annotate MCP FRAMEWORK nodes with a short LLM description
         3. Enrich the scan-level use-case summary
         """
-        from ..core.application_summary import maybe_refine_use_case_summary_with_llm
-        from ..core.confidence import aggregate_node_confidence
-        from ..core.gap_fill import apply_discovery_results, discover_missing_nodes
-        from ..core.verification import apply_verification_results, verify_uncertain_nodes
-        from ..llm_client import LLMClient
+        from nuguard.common.llm_client import LLMClient  # noqa: PLC0415
+
+        from ..core.application_summary import (
+            maybe_refine_use_case_summary_with_llm,  # noqa: PLC0415
+        )
+        from ..core.confidence import aggregate_node_confidence  # noqa: PLC0415
+        from ..core.gap_fill import apply_discovery_results, discover_missing_nodes  # noqa: PLC0415
+        from ..core.verification import (  # noqa: PLC0415
+            apply_verification_results,
+            verify_uncertain_nodes,
+        )
 
         client = LLMClient(
             model=config.llm_model,
@@ -1562,7 +2036,6 @@ class AiSbomExtractor:
             api_base=config.llm_api_base,
             budget_tokens=config.llm_budget_tokens,
             google_api_key=config.google_api_key,
-            vertex_location=config.vertex_location,
         )
         evidence_map = {n.id: n.evidence for n in doc.nodes}
 
@@ -1578,8 +2051,13 @@ class AiSbomExtractor:
             _log.warning("gap-fill: unexpected error — continuing without: %s", exc)
 
         # Step 1: Verify uncertain detections
+        async def _llm_call(system: str, user: str) -> tuple[str, int]:
+            _before = sum(client.token_counts)
+            text = await client.complete(prompt=user, system=system)
+            return text, sum(client.token_counts) - _before
+
         results, v_stats = await verify_uncertain_nodes(
-            doc.nodes, evidence_map, client.complete_text, file_contents=file_contents
+            doc.nodes, evidence_map, _llm_call, file_contents=file_contents
         )
         doc.nodes = apply_verification_results(doc.nodes, results)
         _log.info("llm verification: %s", v_stats.to_dict())
@@ -1633,7 +2111,35 @@ class AiSbomExtractor:
         except Exception as exc:
             _log.warning("relationship-graph: unexpected error — continuing without: %s", exc)
 
-        _log.info("llm enrichment complete: tokens_used=%d", client.tokens_used)
+        # Step 7: Generate LLM descriptive names for all nodes
+        try:
+            from ..llm_client import enrich_descriptive_names
+            await enrich_descriptive_names(doc.nodes, client)
+            _log.info("descriptive-names: completed")
+        except Exception as exc:
+            _log.warning("descriptive-names: unexpected error — continuing without: %s", exc)
+
+        # Recompute node_counts from the final node list after all verification,
+        # aggregation, and discovery steps — gap-fill may have added nodes that
+        # verification later rejected, leaving the counts stale.
+        if doc.summary:
+            from ..types import ComponentType as _CT
+            doc.summary.node_counts = {
+                ct.value: sum(1 for n in doc.nodes if n.component_type == ct)
+                for ct in _CT
+                if any(n.component_type == ct for n in doc.nodes)
+            }
+
+        # Write LLM token usage into the summary
+        if doc.summary:
+            _in, _out = client.token_counts
+            doc.summary.tokens_used_for_enrichment = _in + _out
+            doc.summary.input_tokens_used = _in
+            doc.summary.output_tokens_used = _out
+            doc.summary.llm_model_used = config.llm_model
+
+        _in, _out = client.token_counts
+        _log.info("llm enrichment complete: tokens_used=%d", _in + _out)
         return doc
 
     async def _llm_summarize_iac(
@@ -1742,29 +2248,56 @@ class AiSbomExtractor:
             f"```json\n{_json.dumps(node_summaries, indent=2)}\n```\n\n"
             "## Aggregate Security Signals\n"
             f"```json\n{_json.dumps(aggregate, indent=2)}\n```\n\n"
-            "Write a concise (≤500 words) security briefing for a security engineer / DevSecOps "
-            "practitioner reviewing this AI application. Cover:\n"
-            "1. **Deployment posture** — cloud providers, regions, HA / resilience setup\n"
-            "2. **Secret management** — secret stores in use, any plaintext-secret risks\n"
-            "3. **Encryption** — encryption-at-rest coverage and key management\n"
-            "4. **IAM / least-privilege** — service accounts, OIDC trusts, "
-            "over-permissive policies\n"
-            "5. **CI/CD security** — GitHub Actions runners, OIDC config, "
-            "workflow trigger surface\n"
-            "6. **Container security** — root containers, missing health checks, "
-            "missing resource limits\n"
-            "7. **Key risks and recommendations** — top 3 prioritised actions\n\n"
-            "Respond in plain Markdown. Be specific; avoid generic statements."
+            "Write a concise security briefing for a security engineer / DevSecOps "
+            "practitioner. Use exactly this Markdown structure and heading text:\n\n"
+            "## Security briefing\n\n"
+            "### 1) Deployment posture\n"
+            "- **Cloud provider / runtime:** <evidence or Not evidenced>\n"
+            "- **Regions / HA / resilience:** <evidence or Not evidenced>\n"
+            "- **Assessment:** <one sentence>\n\n"
+            "### 2) Secret management\n"
+            "- **Secret stores:** <evidence or Not evidenced>\n"
+            "- **Credential handling:** <evidence or Not evidenced>\n"
+            "- **Assessment:** <one sentence>\n\n"
+            "### 3) Encryption\n"
+            "- **Encryption at rest:** <evidence or Not evidenced>\n"
+            "- **Key management:** <evidence or Not evidenced>\n"
+            "- **Assessment:** <one sentence>\n\n"
+            "### 4) IAM / least privilege\n"
+            "- **Principals / service accounts:** <evidence or Not evidenced>\n"
+            "- **Scope / permissions / trust:** <evidence or Not evidenced>\n"
+            "- **Assessment:** <one sentence>\n\n"
+            "### 5) CI/CD security\n"
+            "- **Runners / triggers:** <evidence or Not evidenced>\n"
+            "- **OIDC / credential flow:** <evidence or Not evidenced>\n"
+            "- **Assessment:** <one sentence>\n\n"
+            "### 6) Container security\n"
+            "- **Images / root user:** <evidence or Not evidenced>\n"
+            "- **Health checks / resource limits:** <evidence or Not evidenced>\n"
+            "- **Assessment:** <one sentence>\n\n"
+            "### 7) Top 3 prioritized actions\n"
+            "1. <action tied to evidence>\n"
+            "2. <action tied to evidence>\n"
+            "3. <action tied to evidence>\n\n"
+            "Rules:\n"
+            "- Stay under 500 words.\n"
+            "- Use only the provided JSON. Do not infer providers, plaintext secrets, "
+            "permissions, regions, containers, or key management when absent.\n"
+            "- Treat `${{ secrets.NAME }}` and similar placeholders as secret references, "
+            "not plaintext secret values. Call it a plaintext secret only if an actual "
+            "secret value is shown.\n"
+            "- When data is missing, write `Not evidenced` rather than guessing.\n"
+            "- Prefer stable field names from the JSON over model-specific phrasing."
         )
 
         system_prompt = (
             "You are a cloud security architect producing IaC security briefings. "
-            "Use precise technical language. Do not hallucinate — only report what "
-            "the provided data shows."
+            "Follow the requested template exactly. Use precise technical language. "
+            "Do not hallucinate — only report what the provided data shows."
         )
 
-        raw, tokens = await client.complete_text(system_prompt, user_prompt)
-        _log.info("iac-summary: generated %d chars using %d tokens", len(raw), tokens)
+        raw = await client.complete(prompt=user_prompt, system=system_prompt)
+        _log.info("iac-summary: generated %d chars", len(raw))
         doc.summary.iac_security_summary = raw.strip()
         return doc
 
@@ -1851,8 +2384,8 @@ class AiSbomExtractor:
         )
 
         try:
-            raw, tokens = await client.complete_text(system, user)
-            _log.debug("mcp-annotate: %d tokens used", tokens)
+            raw = await client.complete(prompt=user, system=system)
+            _log.debug("mcp-annotate: completed")
             text = raw.strip()
             if text.startswith("```"):
                 text = "\n".join(ln for ln in text.splitlines() if not ln.startswith("```"))
@@ -1896,6 +2429,9 @@ class AiSbomExtractor:
 
     @staticmethod
     def _iter_files(root: Path, config: AiSbomConfig) -> Iterator[tuple[Path, int]]:
+        import fnmatch as _fnmatch  # noqa: PLC0415
+
+        _gitignore_match = _load_gitignore_matcher(root) if getattr(config, "honor_gitignore", True) else None
         count = 0
         for dirpath, dirnames, filenames in os.walk(root):
             # Keep traversal deterministic and prune irrelevant dirs early.
@@ -1920,12 +2456,34 @@ class AiSbomExtractor:
                 if path.name in {"CLAUDE.md", "AGENTS.md"}:
                     continue
                 # Skip NuGuard-specific config, policy, and output files
-                if path.name == "nuguard.yaml":
+                # Match any nuguard-prefixed config/output file, not just exact "nuguard.yaml"
+                if path.name.lower().startswith("nuguard") and suffix in {".yaml", ".yml", ".json"}:
                     continue
                 name_lower = path.name.lower()
                 if name_lower in {"cognitive_policy.md", "cognitive_policy.json"}:
                     continue
                 if name_lower.endswith("sbom.json") or name_lower.endswith("aibom.json"):
+                    continue
+                if name_lower.endswith(".sbom.enriched.json"):
+                    continue
+                if name_lower.startswith("redteam-prompts-"):
+                    continue
+                if name_lower.startswith("nuguard-sbom-") and suffix in {".yaml", ".yml"}:
+                    continue
+                if name_lower in {"mcp_test_results.json", "canary.json"}:
+                    continue
+                # User-configured exclude patterns
+                if config.exclude_patterns:
+                    _rel = str(path.relative_to(root))
+                    if any(
+                        _fnmatch.fnmatch(_rel, pat) or _fnmatch.fnmatch(filename, pat)
+                        for pat in config.exclude_patterns
+                    ):
+                        continue
+                # .gitignore support
+                if _gitignore_match is not None and _gitignore_match(
+                    str(path.relative_to(root))
+                ):
                     continue
                 try:
                     size = path.stat().st_size
@@ -1973,6 +2531,9 @@ def _make_scan_summary(d: dict[str, Any]) -> ScanSummary:
         # Streaming output detection
         uses_streaming=bool(d.get("uses_streaming", False)),
         streaming_endpoints=d.get("streaming_endpoints") or [],
+        # 1.5.0 additions
+        instrumentation=d.get("instrumentation"),
+        testing=d.get("testing"),
     )
 
 
@@ -2107,6 +2668,73 @@ def _dedup_by_location(
         del node_map[k]
 
 
+# ---------------------------------------------------------------------------
+# Auth / deployment name improvement
+# ---------------------------------------------------------------------------
+
+# Ordered rules: first matching rule wins.  Checked against evidence snippets
+# so that the most prominent tech keyword in the evidence determines the name.
+_AUTH_NAME_RULES: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"\bjwt\b", re.IGNORECASE), "jwt_auth"),
+    (re.compile(r"\bbearer\b", re.IGNORECASE), "bearer_auth"),
+    (re.compile(r"\boauth2?\b", re.IGNORECASE), "oauth_auth"),
+    (re.compile(r"\b(api[_-]?key|apikey)\b", re.IGNORECASE), "api_key_auth"),
+    (re.compile(r"\b(bcrypt|passlib|argon2|pbkdf2|scrypt)\b", re.IGNORECASE), "password_auth"),
+    (re.compile(r"\b(session[_.]cookie|cookie[_.]jar|csrf[_.]token)\b", re.IGNORECASE), "session_auth"),
+]
+
+_DEPLOY_NAME_RULES: list[tuple[re.Pattern[str], str]] = [
+    (re.compile(r"\bgcloud\b", re.IGNORECASE), "gcloud_deployment"),
+    (re.compile(r"\bgsutil\b", re.IGNORECASE), "gcloud_deployment"),
+    (re.compile(r"\b(kubectl|kubernetes|kustomize|skaffold|argocd|fluxcd)\b", re.IGNORECASE), "kubernetes_deployment"),
+    (re.compile(r"\b(az\s+(?:login|group|webapp|container|acr|aks|functionapp)|azure[_-]cli|azd)\b", re.IGNORECASE), "azure_deployment"),
+    (re.compile(r"\baws\s+(?:ec2|s3|lambda|ecs|eks|rds|cloudformation|deploy|ecr)\b", re.IGNORECASE), "aws_deployment"),
+    (re.compile(r"\b(terraform|pulumi|cdktf)\b", re.IGNORECASE), "terraform_deployment"),
+    (re.compile(r"\bansible\b", re.IGNORECASE), "ansible_deployment"),
+    (re.compile(r"\bhelm\b", re.IGNORECASE), "helm_deployment"),
+    (re.compile(r"\bheroku\b", re.IGNORECASE), "heroku_deployment"),
+    (re.compile(r"\bvercel\b", re.IGNORECASE), "vercel_deployment"),
+    (re.compile(r"\bnetlify\b", re.IGNORECASE), "netlify_deployment"),
+    (re.compile(r"\b(docker|compose)\b", re.IGNORECASE), "docker_deployment"),
+    (re.compile(r"\b(nginx|gunicorn|uvicorn|caddy|traefik)\b", re.IGNORECASE), "server_deployment"),
+]
+
+
+def _improve_generic_node_names(
+    node_map: dict[tuple[ComponentType, str], _NodeAccumulator],
+) -> None:
+    """Rename AUTH/DEPLOYMENT nodes named 'generic' to a more descriptive label.
+
+    Scans each node's evidence detail strings (e.g. "auth_generic: Bearer",
+    "deployment_generic: gcloud") and applies ordered rules to derive a human-
+    readable name such as 'bearer_auth' or 'gcloud_deployment'.
+    """
+    for (ct, _canon), acc in node_map.items():
+        if acc.display_name != "generic":
+            continue
+        if ct == ComponentType.AUTH:
+            rules = _AUTH_NAME_RULES
+        elif ct == ComponentType.DEPLOYMENT:
+            rules = _DEPLOY_NAME_RULES
+        else:
+            continue
+        # Collect all evidence snippets (the part after the adapter prefix).
+        snippets = [
+            ev.detail.split(":", 1)[-1].strip() if ":" in ev.detail else ev.detail
+            for ev in acc.evidence
+        ]
+        for pattern, new_name in rules:
+            if any(pattern.search(s) for s in snippets):
+                _log.debug(
+                    "generic_name_improve: %s %r → %r",
+                    ct.value,
+                    acc.canonical_name,
+                    new_name,
+                )
+                acc.display_name = new_name
+                break
+
+
 def _suppress_generic_tech_regex_datastore(
     node_map: dict[tuple[ComponentType, str], _NodeAccumulator],
 ) -> None:
@@ -2205,3 +2833,86 @@ def _suppress_non_code_model_datastore(
 
 def stable_id(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _dedup_deployment_nodes(doc: "AiSbomDocument") -> None:  # noqa: F821
+    """Merge GitHub Actions workflow DEPLOYMENT nodes into the cloud-provider
+    service nodes they deploy to, avoiding duplicate Azure/GHA entries.
+
+    When the same deployment is described by both a GitHub Actions workflow
+    node (deployment_target=github-actions) and one or more cloud-provider
+    nodes (deployment_target=azure, aws, gcp), the GHA node is merged into
+    the cloud node: CI/CD metadata (triggers, runners) is copied across, then
+    the GHA node is removed.
+    """
+    from ..types import ComponentType as _CT  # local import
+
+    deployment_nodes = [n for n in doc.nodes if n.component_type == _CT.DEPLOYMENT]
+
+    # Build index: deployment_target → list of nodes
+    by_target: dict[str, list] = {}
+    for node in deployment_nodes:
+        target = node.metadata.extras.get("deployment_target", "unknown")
+        by_target.setdefault(target, []).append(node)
+
+    gha_nodes = by_target.get("github-actions", [])
+    generic_nodes = by_target.get("unknown", []) + [
+        n for n in deployment_nodes
+        if n.metadata.extras.get("adapter") == "deployment_generic"
+    ]
+    nodes_to_remove = []
+
+    # Remove generic deployment nodes when real IaC nodes already cover the same platform
+    real_iac_targets = {
+        t for t in by_target
+        if t not in ("unknown", "github-actions")
+        and any(
+            n.metadata.extras.get("adapter") != "deployment_generic"
+            for n in by_target[t]
+        )
+    }
+    gha_cloud_providers: set[str] = set()
+    for gha in gha_nodes:
+        gha_cloud_providers.update(gha.metadata.extras.get("cloud_providers") or [])
+
+    for generic_node in generic_nodes:
+        # Drop generic nodes when a real IaC node covers the same cloud, or when there
+        # are GHA nodes that already represent the deployment CI/CD pipeline
+        if real_iac_targets or gha_nodes:
+            if generic_node not in nodes_to_remove:
+                nodes_to_remove.append(generic_node)
+
+    # Merge GitHub Actions workflow nodes into the cloud-provider nodes they deploy to
+    for gha_node in gha_nodes:
+        if gha_node in nodes_to_remove:
+            continue
+        cloud_providers: list[str] = gha_node.metadata.extras.get("cloud_providers") or []
+        for provider in cloud_providers:
+            cloud_nodes = [
+                n for n in by_target.get(provider, [])
+                if n not in nodes_to_remove
+                and n.metadata.extras.get("adapter") != "deployment_generic"
+            ]
+            if len(cloud_nodes) == 1:
+                # Merge CI/CD metadata from the GHA workflow node into the cloud node
+                target_node = cloud_nodes[0]
+                gha_extras = gha_node.metadata.extras
+                target_extras = target_node.metadata.extras
+                for key in ("workflow_triggers", "runners", "uses_oidc", "secret_store"):
+                    if key not in target_extras and gha_extras.get(key) is not None:
+                        target_extras[key] = gha_extras[key]
+                # Merge evidence (deduplicated)
+                existing_locs = {
+                    (e.location.path if e.location else None) for e in target_node.evidence
+                }
+                for ev in gha_node.evidence:
+                    ev_path = ev.location.path if ev.location else None
+                    if ev_path not in existing_locs:
+                        target_node.evidence.append(ev)
+                        existing_locs.add(ev_path)
+                nodes_to_remove.append(gha_node)
+                break  # only merge into one cloud node per GHA node
+
+    for node in nodes_to_remove:
+        if node in doc.nodes:
+            doc.nodes.remove(node)

@@ -93,9 +93,9 @@ class TestResearchAssistant:
         assert nodes(doc, ComponentType.FRAMEWORK), "Expected openai_agents FRAMEWORK node"
 
     def test_two_agents_found(self, doc: AiSbomDocument) -> None:
-        agent_names = names(doc, ComponentType.AGENT)
-        assert "research_assistant" in agent_names, f"research_assistant not found: {agent_names}"
-        assert "report_writer" in agent_names, f"report_writer not found: {agent_names}"
+        agent_names_lower = {n.lower() for n in names(doc, ComponentType.AGENT)}
+        assert "research assistant" in agent_names_lower, f"research_assistant not found: {agent_names_lower}"
+        assert "report writer" in agent_names_lower, f"report_writer not found: {agent_names_lower}"
 
     def test_gpt4o_model_extracted(self, doc: AiSbomDocument) -> None:
         model_names = names(doc, ComponentType.MODEL)
@@ -297,14 +297,14 @@ class TestOpenAIAgentsTriage:
         assert "openai_agents" in adapters(doc)
 
     def test_detects_all_three_agents(self, doc: AiSbomDocument) -> None:
-        agent_names = names(doc, ComponentType.AGENT)
-        assert "triage_agent" in agent_names
-        assert "billing_agent" in agent_names
-        assert "technical_agent" in agent_names
+        agent_names_lower = {n.lower() for n in names(doc, ComponentType.AGENT)}
+        assert "triage agent" in agent_names_lower
+        assert "billing agent" in agent_names_lower
+        assert "technical agent" in agent_names_lower
 
     def test_detects_function_tools(self, doc: AiSbomDocument) -> None:
-        tool_names = names(doc, ComponentType.TOOL)
-        assert "lookup_account" in tool_names or "create_refund" in tool_names
+        tool_names_lower = {n.lower() for n in names(doc, ComponentType.TOOL)}
+        assert "lookup account" in tool_names_lower or "create refund" in tool_names_lower
 
     def test_detects_gpt_models(self, doc: AiSbomDocument) -> None:
         model_names = names(doc, ComponentType.MODEL)

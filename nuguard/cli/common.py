@@ -2,14 +2,72 @@
 
 from __future__ import annotations
 
-import logging
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Iterable
+
+from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
     from nuguard.sbom.ai_sbom import AiSbomDocument
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
+
+
+def parse_output_formats(
+    raw_formats: Iterable[str] | None,
+    *,
+    default_format: str,
+    allowed_formats: set[str],
+) -> list[str]:
+    """Parse, normalize, and validate one-or-many output formats.
+
+    Supports repeated values and comma-separated values in the same list.
+    Returns a de-duplicated list in first-seen order.
+    """
+    values = list(raw_formats or [])
+    if not values:
+        return [default_format]
+
+    parsed: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        for token in str(value).split(","):
+            fmt = token.strip().lower()
+            if not fmt:
+                continue
+            if fmt not in allowed_formats:
+                allowed = " | ".join(sorted(allowed_formats))
+                raise ValueError(f"Unknown format '{fmt}'. Allowed: {allowed}")
+            if fmt not in seen:
+                seen.add(fmt)
+                parsed.append(fmt)
+
+    if not parsed:
+        allowed = " | ".join(sorted(allowed_formats))
+        raise ValueError(f"No valid format provided. Allowed: {allowed}")
+
+    return parsed
+
+
+def output_path_for_format(
+    output_path: Path,
+    *,
+    fmt: str,
+    all_formats: list[str],
+    extension_map: dict[str, str],
+) -> Path:
+    """Resolve per-format output paths for single or multi-format output.
+
+    For single-format output, preserves the user-provided path unchanged.
+    For multi-format output, treats the provided path as a base name and writes
+    sibling files with format-specific extensions.
+    """
+    if len(all_formats) <= 1:
+        return output_path
+
+    base = output_path.with_suffix("") if output_path.suffix else output_path
+    ext = extension_map.get(fmt, f".{fmt}")
+    return base.parent / f"{base.name}{ext}"
 
 
 async def enrich_sbom_for_run(

@@ -14,24 +14,25 @@ docs, callbacks) are skipped regardless of HTTP status.
 from __future__ import annotations
 
 import json
-import logging
 import re
 from typing import TYPE_CHECKING
 
 import httpx
 
+from nuguard.common.logging import get_logger
+
 if TYPE_CHECKING:
     from nuguard.sbom.models import AiSbomDocument
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 # Endpoint path fragments that are definitively NOT chat endpoints.
 # Keep this list tight — false exclusions are worse than false inclusions
 # because the probe will verify via HTTP anyway.
 _EXCLUDE_PATTERNS = re.compile(
-    r"/(health|ping|ready|live|metrics|auth|logout|token|oauth|callback"
-    r"|webhook|static|assets|docs|openapi|swagger|favicon|vite"
-    r"|upload|download)(/|$)",
+    r"/(health|ping|ready|live|metrics|auth|login|logout|register|signup|signin"
+    r"|token|oauth|callback|webhook|static|assets|docs|openapi|swagger|favicon"
+    r"|vite|upload|download)(/|$)",
     re.IGNORECASE,
 )
 
@@ -48,6 +49,17 @@ _PROBE_PAYLOADS: list[tuple[str, bool]] = [
 ]
 
 _TEST_MESSAGE = "Hello, this is a connectivity test."
+
+# Payload keys that are definitively NOT conversational chat keys.
+# These appear in domain-specific endpoints (banking transfers, healthcare orders, etc.)
+# and must not be treated as the primary chat message field.
+_RUNTIME_NON_CHAT_KEYS: frozenset[str] = frozenset({
+    "from_account_id", "to_account_id", "amount", "card_id", "account_id",
+    "patient_id", "order_id", "booking_reference", "flight_number",
+    "transaction_id", "payment_id", "notification_id",
+    "recipient_account", "source_account", "debit_account", "credit_account",
+    "transfer_amount", "beneficiary_id", "invoice_id", "claim_id",
+})
 
 
 def _sbom_post_paths(sbom: "AiSbomDocument") -> list[str]:
@@ -89,9 +101,75 @@ def _sbom_post_paths(sbom: "AiSbomDocument") -> list[str]:
 
         scored.append((score, path))
 
+    # Supplement with paths from summary.api_endpoints when no API_ENDPOINT nodes
+    # are present (e.g. SBOM was generated without full static analysis).
+    if not scored:
+        summary = getattr(sbom, "summary", None)
+        raw_api_eps = getattr(summary, "api_endpoints", None) if summary is not None else None
+        if isinstance(raw_api_eps, (list, tuple)):
+            seen: set[str] = set()
+            for p in raw_api_eps:
+                p = str(p).strip()
+                # Skip wildcards and non-path entries
+                if not p or not p.startswith("/") or "{" in p or p == "/*":
+                    continue
+                if _EXCLUDE_PATTERNS.search(p):
+                    continue
+                if p not in seen:
+                    seen.add(p)
+                    path_l = p.lower()
+                    score = 0
+                    for token in ("chat", "agent", "run", "message", "query",
+                                   "complete", "infer", "generate", "respond",
+                                   "converse", "talk", "assistant", "llm", "ai"):
+                        if token in path_l:
+                            score += 2
+                            break
+                    scored.append((score, p))
+
     # Sort descending by score, then alphabetically for determinism
     scored.sort(key=lambda x: (-x[0], x[1]))
     return [p for _, p in scored]
+
+
+def is_empty_session_response(response_text: str) -> bool:
+    """Return True when *response_text* looks like an anonymous or empty-user session.
+
+    These heuristics are intentionally broad — this is a warning signal for the
+    caller to emit a config note, never a hard rejection.  Covers common patterns
+    across banking, healthcare, travel, and generic AI apps.
+    """
+    if not response_text:
+        return False
+    text = response_text.lower()
+
+    # Zero monetary balances (banking / fintech apps)
+    if re.search(r"\$0\.00", response_text) and "balance" in text:
+        return True
+    # KYC level 0 — unverified identity
+    if re.search(r"kyc.{0,20}level.{0,5}0", text) or re.search(r"kyc.{0,5}:\s*0", text):
+        return True
+    # Account ID is "UNKNOWN" or "null"
+    if re.search(r"\bunknown\b", text) and any(
+        w in text for w in ("account", "id", "user", "profile")
+    ):
+        return True
+    # Explicit "no data" / "no account" / "no profile" phrases
+    if re.search(r"no\s+(data|records?|account|profile|transaction).{0,30}(file|found|available)", text):
+        return True
+    # Try JSON: if every numeric top-level value is 0 and string values are empty
+    try:
+        import json as _json  # noqa: PLC0415
+        data = _json.loads(response_text)
+        if isinstance(data, dict) and data:
+            nums = [v for v in data.values() if isinstance(v, (int, float))]
+            strs = [v for v in data.values() if isinstance(v, str)]
+            if nums and all(v == 0 for v in nums) and all(not v.strip() for v in strs if v):
+                return True
+    except Exception:
+        pass
+
+    return False
 
 
 async def probe_chat_endpoints(
@@ -102,6 +180,7 @@ async def probe_chat_endpoints(
     known_payload_key: str | None = None,
     known_payload_list: bool = False,
     known_response_key: str | None = None,
+    probe_payload_extras: "dict[str, object] | None" = None,
 ) -> tuple[str, str, bool] | None:
     """Probe SBOM POST endpoints and return the first chat-capable one.
 
@@ -175,11 +254,21 @@ async def probe_chat_endpoints(
         headers=headers,
         follow_redirects=True,
     ) as client:
+        # Track the first 5xx path as a fallback. A 5xx response means the endpoint
+        # exists and is processing POST requests — the error is likely due to missing
+        # auth, a required field the probe doesn't know about, or the LLM backend
+        # returning an error for the synthetic test payload.  In all these cases the
+        # real redteam requests (with auth headers and proper payloads) may succeed.
+        server_error_fallback: tuple[str, str, bool] | None = None
+
         for path in paths:
             _log.info("endpoint_probe: trying %s%s", base, path)
             for pay_key, pay_list in payload_shapes:
                 value: object = [_TEST_MESSAGE] if pay_list else _TEST_MESSAGE
-                body = {pay_key: value}
+                body: dict[str, object] = {}
+                if probe_payload_extras:
+                    body.update(probe_payload_extras)
+                body[pay_key] = value
                 try:
                     resp = await client.post(path, content=json.dumps(body))
                 except Exception as exc:
@@ -195,7 +284,10 @@ async def probe_chat_endpoints(
 
                 if status >= 500:
                     _log.debug("endpoint_probe: %s — %d server error", path, status)
-                    break  # server error; skip this path
+                    # Record as fallback: endpoint exists, error may be auth/payload.
+                    if server_error_fallback is None:
+                        server_error_fallback = (path, pay_key, pay_list)
+                    break  # try next path
 
                 # 2xx or 4xx (other than 404/405) — endpoint exists
                 if status < 300:
@@ -234,27 +326,31 @@ async def probe_chat_endpoints(
     _log.warning(
         "endpoint_probe: no chat-capable endpoint found after probing %d paths", len(paths)
     )
+    if server_error_fallback:
+        p_path, p_key, p_list = server_error_fallback
+        _log.info(
+            "endpoint_probe: selected %s as fallback (5xx — endpoint exists, "
+            "error likely auth/payload-related; payload_key=%r)",
+            p_path, p_key,
+        )
+        return server_error_fallback
     return None
 
 
-def discover_chat_config_from_sbom(
+def discover_chat_candidates_from_sbom(
     sbom: "AiSbomDocument",
     chat_path: str = "",
     chat_payload_key: str = "message",
     chat_payload_list: bool = False,
-) -> tuple[str, str, bool, str | None]:
-    """Auto-discover chat endpoint config from SBOM API_ENDPOINT node metadata.
+) -> list[tuple[str, str, bool, str | None]]:
+    """Return all chat-capable SBOM endpoints sorted by score descending.
 
-    Looks for a POST endpoint whose metadata has ``chat_payload_key`` set.
-    Falls back to framework-convention inference (e.g. LangGraph ``phrases``/
-    list semantics) when the node lacks an explicit payload key.  Falls back
-    to the provided defaults if nothing is found.
+    Each element is ``(path, payload_key, payload_list, response_key)``.
+    Returns an empty list when no candidates are found — callers should then
+    fall back to :func:`probe_chat_endpoints` for live HTTP discovery.
 
-    Returns ``(chat_path, chat_payload_key, chat_payload_list, response_text_key)``.
-    ``response_text_key`` is ``None`` when not determinable from the SBOM.
-
-    This function is zero-I/O (no network calls).  Use :func:`probe_chat_endpoints`
-    for live HTTP probing when the SBOM lacks sufficient metadata.
+    This function is zero-I/O.  See :func:`discover_chat_config_from_sbom` for
+    the single-winner convenience wrapper.
     """
     from nuguard.sbom.models import NodeType  # noqa: PLC0415
 
@@ -284,6 +380,10 @@ def discover_chat_config_from_sbom(
         # ── Resolve payload key ────────────────────────────────────────────
         inferred_response_key: str | None = meta.response_text_key or None
         if meta.chat_payload_key:
+            if meta.chat_payload_key in _RUNTIME_NON_CHAT_KEYS:
+                # Domain-specific key (financial, medical, etc.) — not a chat endpoint.
+                # Skip so that summary.api_endpoints fallback can find the real one.
+                continue
             payload_key = meta.chat_payload_key
             payload_list = bool(meta.chat_payload_list)
         elif has_langgraph and any(
@@ -347,13 +447,73 @@ def discover_chat_config_from_sbom(
             (score, discovered_path, payload_key, payload_list, node.name, inferred_response_key)
         )
 
+    if not candidates:
+        return []
+
+    # Sort descending by score, then alphabetically for determinism
+    candidates.sort(key=lambda item: (-item[0], item[1]))
+    _log.info(
+        "SBOM chat candidates (%d): %s",
+        len(candidates),
+        [(c[1], c[2]) for c in candidates[:5]],
+    )
+    return [(c[1], c[2], c[3], c[5]) for c in candidates]
+
+
+def discover_chat_config_from_sbom(
+    sbom: "AiSbomDocument",
+    chat_path: str = "",
+    chat_payload_key: str = "message",
+    chat_payload_list: bool = False,
+) -> tuple[str, str, bool, str | None]:
+    """Auto-discover the best chat endpoint config from SBOM API_ENDPOINT node metadata.
+
+    Returns ``(chat_path, chat_payload_key, chat_payload_list, response_text_key)``.
+    ``response_text_key`` is ``None`` when not determinable from the SBOM.
+
+    This function is zero-I/O (no network calls).  Use :func:`probe_chat_endpoints`
+    for live HTTP probing when the SBOM lacks sufficient metadata.  Use
+    :func:`discover_chat_candidates_from_sbom` when you need the full ranked list
+    for endpoint rotation.
+    """
+    # Explicit endpoint is authoritative and must never be overridden by SBOM.
+    if chat_path:
+        return chat_path, chat_payload_key, chat_payload_list, None
+
+    candidates = discover_chat_candidates_from_sbom(sbom, chat_path, chat_payload_key, chat_payload_list)
     if candidates:
-        best = max(candidates, key=lambda item: item[0])
+        best = candidates[0]
         _log.info(
-            "SBOM auto-discovered chat config: path=%s key=%s list=%s response_key=%s (node=%s)",
-            best[1], best[2], best[3], best[5], best[4],
+            "SBOM auto-discovered chat config: path=%s key=%s list=%s response_key=%s",
+            best[0], best[1], best[2], best[3],
         )
-        return best[1], best[2], best[3], best[5]
+        return best
+
+    # No API_ENDPOINT nodes — fall back to summary.api_endpoints when available.
+    summary = getattr(sbom, "summary", None)
+    raw_api_eps = getattr(summary, "api_endpoints", None) if summary is not None else None
+    if isinstance(raw_api_eps, (list, tuple)):
+        chat_tokens = ("chat", "agent", "run", "message", "query", "complete",
+                       "infer", "generate", "respond", "converse", "talk",
+                       "assistant", "llm", "ai")
+        best_path: str | None = None
+        best_score = -1
+        for p in raw_api_eps:
+            p = str(p).strip()
+            if not p or not p.startswith("/") or "{" in p or p == "/*":
+                continue
+            p_l = p.lower()
+            score = sum(2 for tok in chat_tokens if tok in p_l)
+            if p_l.startswith("/api/"):
+                score += 1
+            if score > best_score:
+                best_score = score
+                best_path = p
+        if best_path and best_score > 0:
+            _log.info(
+                "SBOM summary.api_endpoints fallback — using chat path %s", best_path,
+            )
+            return best_path, chat_payload_key, chat_payload_list, None
 
     return chat_path, chat_payload_key, chat_payload_list, None
 

@@ -27,13 +27,14 @@ not present.
 """
 from __future__ import annotations
 
-import logging
 import uuid
 from typing import Any
 
 import httpx
 
-_log = logging.getLogger(__name__)
+from nuguard.common.logging import get_logger
+
+_log = get_logger(__name__)
 
 # SBOM framework names that indicate an ADK-based application.
 ADK_FRAMEWORK_NAMES: frozenset[str] = frozenset({"google-adk", "google_adk"})

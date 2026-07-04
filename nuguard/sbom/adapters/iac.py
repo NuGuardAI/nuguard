@@ -30,15 +30,16 @@ extractor.
 
 from __future__ import annotations
 
-import logging
 import re
 from bisect import bisect_right
 from typing import Any
 
+from nuguard.common.logging import get_logger
+
 from ..types import ComponentType
 from .base import ComponentDetection
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -53,6 +54,28 @@ def _try_load_yaml(content: str) -> Any:
         return yaml.safe_load(content)
     except Exception:  # noqa: BLE001
         return None
+
+
+def _try_load_yaml_all(content: str) -> list[Any]:
+    """Load all YAML documents from a multi-document stream."""
+    try:
+        import yaml  # type: ignore[import-untyped]
+
+        return [d for d in yaml.safe_load_all(content) if isinstance(d, dict)]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+# ── GitHub Actions security patterns (mirrored in nuguard/analysis/plugins/nga_rules.py) ────────
+# NOTE: Keep these in sync with _PATTERN_* constants in nga_rules.py.
+_GHA_PR_TARGET_INJECTION_RE = re.compile(
+    r"pull_request_target.*\$\{\{.*github\.event\.pull_request\.",
+    re.DOTALL,
+)
+_GHA_ENV_INJECTION_RE = re.compile(
+    r'echo\s+.*\$\{\{.*\}\}.*>>\s*\$GITHUB_ENV'
+)
+_GHA_DEBUG_SECRET_RE = re.compile(r'ACTIONS_RUNNER_DEBUG')
 
 
 def _try_load_json(content: str) -> Any:
@@ -189,16 +212,62 @@ class K8sAdapter:
         if "apiVersion" not in content or "kind" not in content:
             return []
 
-        data = _try_load_yaml(content)
-        if not _is_k8s_manifest(data, content):
-            return []
+        docs = _try_load_yaml_all(content)
+        if not docs:
+            # Fall back to single-doc parse for edge cases
+            data = _try_load_yaml(content)
+            if not _is_k8s_manifest(data, content):
+                return []
+            docs = [data]
 
-        kind = str(data.get("kind", ""))
-        if kind in _K8S_WORKLOAD_KINDS:
-            return self._workload(data, content, file_path)
-        if kind in _K8S_IAM_KINDS:
-            return self._rbac(data, content, file_path)
-        return []
+        # Pass 1: collect namespaces that have a NetworkPolicy resource in this file
+        policy_namespaces: set[str] = set()
+        for doc in docs:
+            if isinstance(doc, dict) and str(doc.get("kind", "")) == "NetworkPolicy":
+                ns = _k8s_namespace(doc) or "default"
+                policy_namespaces.add(ns)
+
+        # Pass 2: emit nodes for workload and RBAC kinds
+        results: list[ComponentDetection] = []
+        for doc in docs:
+            if not _is_k8s_manifest(doc, ""):
+                continue
+            kind = str(doc.get("kind", ""))
+            if kind in _K8S_WORKLOAD_KINDS:
+                workload_dets = self._workload(doc, content, file_path)
+                # Mark workloads whose namespace is covered by a same-file NetworkPolicy
+                if policy_namespaces:
+                    for det in workload_dets:
+                        ns = det.metadata.get("k8s_namespace", "default")
+                        if ns in policy_namespaces:
+                            det.metadata["has_network_policy"] = True
+                results.extend(workload_dets)
+            elif kind in _K8S_IAM_KINDS:
+                results.extend(self._rbac(doc, content, file_path))
+
+        # Emit a lightweight marker node for each NetworkPolicy namespace so that
+        # extract_iac_security_context() can aggregate cross-file coverage.
+        for ns in policy_namespaces:
+            canonical = f"netpol:k8s:{ns}"
+            results.append(
+                _make_det(
+                    component_type=ComponentType.DEPLOYMENT,
+                    canonical_name=canonical,
+                    display_name=f"NetworkPolicy:{ns}",
+                    adapter_name=self.name,
+                    confidence=0.9,
+                    metadata={
+                        "iac_format": "kubernetes",
+                        "k8s_namespace": ns,
+                        "is_network_policy_namespace": True,
+                    },
+                    file_path=file_path,
+                    line=1,
+                    snippet=f"NetworkPolicy in namespace {ns}",
+                )
+            )
+
+        return results
 
     # ------------------------------------------------------------------
     # Workload → DEPLOYMENT
@@ -514,6 +583,64 @@ class TerraformAdapter:
         enc_key_match = _TF_CMEK_RE.search(content)
         encryption_key_ref = enc_key_match.group(1) if enc_key_match else None
 
+        # EncryptionDetail
+        _alg_m = re.search(r"sse_algorithm\s*=\s*[\"']([^\"']+)[\"']", content)
+        _tls_m = re.search(r"min_tls_version\s*=\s*[\"']([^\"']+)[\"']", content)
+        _in_transit = bool(re.search(r"enforce_https\s*=\s*true", content, re.IGNORECASE)
+                          or re.search(r"ssl_policy\s*=", content))
+        _km: str | None = None
+        if encryption_key_ref:
+            if "arn:aws:kms" in encryption_key_ref:
+                _km = "aws_kms"
+            elif "projects/" in encryption_key_ref and "keyRings" in encryption_key_ref:
+                _km = "gcp_cmek"
+            elif "Microsoft.KeyVault" in encryption_key_ref or "vaults" in encryption_key_ref:
+                _km = "azure_key_vault"
+        _enc_detail: dict[str, Any] = {}
+        if encryption_at_rest:
+            _enc_detail["at_rest"] = True
+        if _in_transit:
+            _enc_detail["in_transit"] = True
+        if _alg_m:
+            _enc_detail["algorithm"] = _alg_m.group(1)
+        if _tls_m:
+            _enc_detail["tls_min_version"] = _tls_m.group(1)
+        if _km:
+            _enc_detail["key_management"] = _km
+
+        # Rate limit detection (API Gateway throttling)
+        _rate_limit_detail: dict[str, Any] = {}
+        _burst_m = re.search(r"throttling_burst_limit\s*=\s*(\d+)", content)
+        _rate_m = re.search(r"throttling_rate_limit\s*=\s*([\d.]+)", content)
+        _quota_m = re.search(r"quota_limit\s*=\s*(\d+)", content)
+        _quota_period_m = re.search(r"quota_period\s*=\s*[\"']([^\"']+)[\"']", content)
+        if _burst_m:
+            _rate_limit_detail["burst_size"] = int(_burst_m.group(1))
+        if _rate_m:
+            _rate_limit_detail["requests_per_minute"] = int(float(_rate_m.group(1)) * 60)
+        if _quota_m:
+            period = (_quota_period_m.group(1).upper() if _quota_period_m else "DAY")
+            if period == "DAY":
+                _rate_limit_detail["requests_per_day"] = int(_quota_m.group(1))
+            elif period in ("WEEK", "MONTH"):
+                _rate_limit_detail["requests_per_day"] = int(_quota_m.group(1)) // (7 if period == "WEEK" else 30)
+        if re.search(r"aws_api_gateway_usage_plan", content):
+            _rate_limit_detail["enforcement_type"] = "api_gateway"
+
+        # DataHandlingDetail
+        _dh: dict[str, Any] = {}
+        _ret_m = re.search(r"retention_in_days\s*=\s*(\d+)", content)
+        if _ret_m:
+            _dh["retention_days"] = int(_ret_m.group(1))
+        _bw_m = re.search(r"backup_window\s*=\s*[\"']([^\"']+)[\"']", content)
+        if _bw_m:
+            _dh["backup_frequency"] = _bw_m.group(1)
+        _br_m = re.search(r"backup_retention_period\s*=\s*(\d+)", content)
+        if _br_m and "backup_frequency" not in _dh:
+            _dh["backup_frequency"] = f"{_br_m.group(1)}-day-retention"
+        if re.search(r"backup_encrypted\s*=\s*true", content, re.IGNORECASE):
+            _dh["backup_encrypted"] = True
+
         # Secret stores
         secret_store: str | None = None
         for pattern, store_name in _TF_SECRET_STORES:
@@ -535,6 +662,13 @@ class TerraformAdapter:
             "encryption_key_ref": encryption_key_ref,
             "secret_store": secret_store,
         }
+        if _enc_detail:
+            meta["encryption_detail"] = _enc_detail
+        if _rate_limit_detail:
+            meta["rate_limit_detail"] = _rate_limit_detail
+            meta["rate_limited"] = True
+        if _dh:
+            meta["data_handling"] = _dh
         display = f"terraform:{target_display}:{cloud_region or 'unknown-region'}"
         return [
             _make_det(
@@ -1329,6 +1463,21 @@ _GHA_SECRET_REF_RE = re.compile(r"\$\{\{\s*secrets\.[A-Za-z0-9_]+\s*\}\}")
 # environment: reference inside a job
 _GHA_ENV_NAME_RE = re.compile(r"^\s+environment\s*:", re.MULTILINE)
 
+# Azure CLI resource patterns for extracting individual service nodes
+_AZ_WEBAPP_RE = re.compile(
+    r"az\s+webapp\s+create\s+.*?--name\s+(\S+)(?:.*?--runtime\s+(\S+))?", re.DOTALL
+)
+_AZ_STATIC_WEB_RE = re.compile(r"az\s+staticwebapp\s+create\s+.*?--name\s+(\S+)", re.DOTALL)
+_AZ_PLAN_RE = re.compile(
+    r"az\s+appservice\s+plan\s+create\s+.*?--name\s+(\S+)(?:.*?--sku\s+(\S+))?", re.DOTALL
+)
+_AZ_RESOURCE_GROUP_RE = re.compile(r"--resource-group\s+(\S+)")
+
+# Template variable pattern for cleaning display names
+_GHA_TEMPLATE_VAR_RE = re.compile(
+    r"\$\{\{?\s*(?:secrets\.|vars\.|env\.)?([A-Za-z_][A-Za-z0-9_]*)\s*\}?\}"
+)
+
 
 def _gha_safe_on(data: dict[str, Any]) -> Any:
     """Return the 'on' trigger value, handling both ``on`` and ``'on'`` keys."""
@@ -1501,6 +1650,13 @@ class GitHubActionsAdapter:
         workflow_name = str(data.get("name") or os.path.basename(file_path))
         canonical = f"deployment:github-actions:{workflow_name}".lower().replace(" ", "-")[:128]
 
+        # Detect GitHub Actions security misconfigurations in workflow content
+        wf_findings = (
+            self._detect_pr_target_injection(content, file_path)
+            + self._detect_env_injection(content, file_path)
+            + self._detect_debug_secret(content, file_path)
+        )
+
         meta: dict[str, Any] = {
             "iac_format": "github_actions",
             "deployment_target": "github-actions",
@@ -1512,6 +1668,9 @@ class GitHubActionsAdapter:
             "uses_oidc": uses_oidc,
             "secret_store": secret_store,
             "ha_mode": ha_mode,
+            # Structured security findings (NGA-010/011/014)
+            "workflow_security_findings": wf_findings,
+            "workflow_content": content,
             # These are not applicable for GHA workflows
             "runs_as_root": None,
             "has_health_check": None,
@@ -1520,7 +1679,7 @@ class GitHubActionsAdapter:
         if top_perms:
             meta["permissions"] = _cap20(top_perms)
 
-        return [
+        results = [
             _make_det(
                 component_type=ComponentType.DEPLOYMENT,
                 canonical_name=canonical,
@@ -1533,6 +1692,139 @@ class GitHubActionsAdapter:
                 snippet=f"GitHub Actions: {workflow_name} triggers={triggers[:3]}",
             )
         ]
+
+        # Extract individual Azure resources from az CLI commands in run: scripts
+        results.extend(self._azure_resource_nodes(all_steps, cloud_providers, file_path))
+        return results
+
+    # ------------------------------------------------------------------
+    # Security finding detectors (NGA-010/011/014)
+    # ------------------------------------------------------------------
+
+    def _detect_pr_target_injection(self, content: str, file_path: str) -> list[dict[str, Any]]:
+        """Detect pull_request_target with untrusted expression injection (NGA-010)."""
+        m = _GHA_PR_TARGET_INJECTION_RE.search(content)
+        if not m:
+            return []
+        # Find the approximate line number of the match start
+        lineno = content[: m.start()].count("\n") + 1
+        snippet = m.group(0)[:120].replace("\n", " ")
+        return [{
+            "rule_signal": "NGA-010",
+            "path": file_path,
+            "line": lineno,
+            "snippet": snippet,
+            "confidence": 0.9,
+        }]
+
+    def _detect_env_injection(self, content: str, file_path: str) -> list[dict[str, Any]]:
+        """Detect GITHUB_ENV written from untrusted template expressions (NGA-011)."""
+        findings: list[dict[str, Any]] = []
+        for lineno, line in enumerate(content.splitlines(), start=1):
+            if _GHA_ENV_INJECTION_RE.search(line):
+                findings.append({
+                    "rule_signal": "NGA-011",
+                    "path": file_path,
+                    "line": lineno,
+                    "snippet": line.strip()[:120],
+                    "confidence": 0.9,
+                })
+                break
+        return findings
+
+    def _detect_debug_secret(self, content: str, file_path: str) -> list[dict[str, Any]]:
+        """Detect ACTIONS_RUNNER_DEBUG secret exposure (NGA-014)."""
+        findings: list[dict[str, Any]] = []
+        for lineno, line in enumerate(content.splitlines(), start=1):
+            if _GHA_DEBUG_SECRET_RE.search(line):
+                findings.append({
+                    "rule_signal": "NGA-014",
+                    "path": file_path,
+                    "line": lineno,
+                    "snippet": line.strip()[:120],
+                    "confidence": 0.9,
+                })
+                break
+        return findings
+
+    def _azure_resource_nodes(
+        self,
+        steps: list[dict[str, Any]],
+        cloud_providers: list[str],
+        file_path: str,
+    ) -> list[ComponentDetection]:
+        """Emit individual DEPLOYMENT nodes for each Azure service created in the workflow."""
+        if "azure" not in cloud_providers:
+            return []
+
+        azure_nodes: list[ComponentDetection] = []
+        seen_names: set[str] = set()
+
+        for step in steps:
+            run_script = str(step.get("run") or "")
+            if not run_script:
+                continue
+
+            # Resolve environment variable references in resource group name
+            rg_m = _AZ_RESOURCE_GROUP_RE.search(run_script)
+            resource_group = rg_m.group(1) if rg_m else None
+
+            # Azure App Service (az webapp create)
+            for m in _AZ_WEBAPP_RE.finditer(run_script):
+                name = m.group(1)
+                runtime = m.group(2) if m.lastindex and m.lastindex >= 2 else None
+                if name and name not in seen_names and not name.startswith("$"):
+                    seen_names.add(name)
+                    # Clean up env var references like ${{ env.AZURE_WEBAPP_NAME }}
+                    display = _GHA_TEMPLATE_VAR_RE.sub(
+                        lambda _m: _m.group(1).replace("_", " ").title(), name
+                    )
+                    azure_nodes.append(_make_det(
+                        component_type=ComponentType.DEPLOYMENT,
+                        canonical_name=f"deployment:azure:app-service:{name}".lower()[:128],
+                        display_name=f"{display} (App Service)",
+                        adapter_name=self.name,
+                        confidence=0.90,
+                        metadata={
+                            "iac_format": "github_actions",
+                            "deployment_target": "azure",
+                            "service_type": "azure_app_service",
+                            "resource_name": name,
+                            "resource_group": resource_group,
+                            "runtime": runtime,
+                        },
+                        file_path=file_path,
+                        line=1,
+                        snippet=f"az webapp create --name {name}",
+                    ))
+
+            # Azure Static Web App (az staticwebapp create)
+            for m in _AZ_STATIC_WEB_RE.finditer(run_script):
+                name = m.group(1)
+                if name and name not in seen_names and not name.startswith("$"):
+                    seen_names.add(name)
+                    display = _GHA_TEMPLATE_VAR_RE.sub(
+                        lambda _m: _m.group(1).replace("_", " ").title(), name
+                    )
+                    azure_nodes.append(_make_det(
+                        component_type=ComponentType.DEPLOYMENT,
+                        canonical_name=f"deployment:azure:static-web-app:{name}".lower()[:128],
+                        display_name=f"{display} (Static Web App)",
+                        adapter_name=self.name,
+                        confidence=0.90,
+                        metadata={
+                            "iac_format": "github_actions",
+                            "deployment_target": "azure",
+                            "service_type": "azure_static_web_app",
+                            "resource_name": name,
+                            "resource_group": resource_group,
+                        },
+                        file_path=file_path,
+                        line=1,
+                        snippet=f"az staticwebapp create --name {name}",
+                    ))
+
+        return azure_nodes
 
     # ------------------------------------------------------------------
     # Cloud OIDC trusts → IAM
@@ -1598,6 +1890,14 @@ class GitHubActionsAdapter:
                         permissions = _cap20(job_perms)
 
                     canonical = f"iam:gha:{provider}:{principal}".lower()[:128]
+                    # Clean template syntax from display name: ${{ secrets.AZURE_CREDENTIALS }}
+                    # → "Azure Credentials"
+                    _principal_str = str(principal)
+                    _tpl_m = _GHA_TEMPLATE_VAR_RE.match(_principal_str.strip())
+                    if _tpl_m:
+                        _iam_display = _tpl_m.group(1).replace("_", " ").title()
+                    else:
+                        _iam_display = _principal_str.replace("_", " ").title()
                     meta: dict[str, Any] = {
                         "iac_format": "github_actions",
                         "iam_type": iam_type,
@@ -1612,7 +1912,7 @@ class GitHubActionsAdapter:
                         _make_det(
                             component_type=ComponentType.IAM,
                             canonical_name=canonical,
-                            display_name=str(principal),
+                            display_name=_iam_display,
                             adapter_name=self.name,
                             confidence=0.93,
                             metadata=meta,

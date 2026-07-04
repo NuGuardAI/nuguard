@@ -1,6 +1,6 @@
-"""Google ADK (Agent Development Kit) TypeScript Adapter for Xelo SBOM.
+"""Google ADK (Agent Development Kit) TypeScript Adapter for NuGuard SBOM.
 
-Parsing is performed by ``xelo.core.ts_parser`` (tree-sitter when
+Parsing is performed by ``nuguard.core.ts_parser`` (tree-sitter when
 available, regex fallback otherwise).
 
 Supports:
@@ -12,6 +12,8 @@ Supports:
 
 from __future__ import annotations
 
+import re
+from pathlib import Path
 from typing import Any
 
 from ...core.ts_parser import TSParseResult, parse_typescript
@@ -41,6 +43,21 @@ _ALL_PACKAGES = _GOOGLE_ADK_PACKAGES + _GOOGLE_AI_PACKAGES
 _AGENT_CLASSES = {"Agent", "LlmAgent", "SequentialAgent", "ParallelAgent", "LoopAgent"}
 _TOOL_CALL_NAMES = {"defineTool", "tool", "createTool", "FunctionTool"}
 _MODEL_CLASSES = {"GenerativeModel", "ChatModel", "VertexAI"}
+
+# Matches factory functions like createNavigationTools, createWeatherTools, etc.
+_CREATE_TOOLS_RE = re.compile(r"^create([A-Z][a-zA-Z]+)Tools$")
+
+# Normalizes model names like `process.env.X || 'gemini-2.0-flash'` → 'gemini-2.0-flash'
+# The closing quote is optional because _clean() may have already stripped it.
+_ENV_DEFAULT_RE = re.compile(r"process\.env\.\w+\s*\|\|\s*['\"`]([^'\"`\s,]+)")
+
+
+def _normalize_model(raw: str) -> str:
+    """Extract the actual model name from env-var-with-default expressions."""
+    m = _ENV_DEFAULT_RE.search(raw)
+    if m:
+        return m.group(1)
+    return raw.strip("'\"` ")
 
 
 def _agent_subtype(class_name: str) -> str:
@@ -110,12 +127,45 @@ class GoogleADKAdapter(TSFrameworkAdapter):
                 )
             )
 
+        # --- Factory-function tool detection: createXxxTools() imports ---
+        # Detects patterns like `import { createNavigationTools } from './tools/navigation'`
+        seen_tool_caps: set[str] = set()
+        for imp in result.imports:
+            for name in imp.names:
+                m = _CREATE_TOOLS_RE.match(name)
+                if not m:
+                    continue
+                capability = m.group(1).lower()
+                if capability in seen_tool_caps:
+                    continue
+                seen_tool_caps.add(capability)
+                display = f"{capability} tools"
+                detected.append(
+                    ComponentDetection(
+                        component_type=ComponentType.TOOL,
+                        canonical_name=canonicalize_text(f"{capability}_tools"),
+                        display_name=display,
+                        adapter_name=self.name,
+                        priority=self.priority,
+                        confidence=0.80,
+                        metadata={
+                            "creation_method": name,
+                            "framework": "google-adk",
+                            "language": "typescript",
+                        },
+                        file_path=file_path,
+                        line=0,
+                        snippet=f"import {{ {name} }} from '{imp.module}'",
+                        evidence_kind="ast_import",
+                    )
+                )
+
         # --- Explicit model objects (GenerativeModel, VertexAI) ---
         model_canonicals: dict[str, str] = {}
         for inst in result.instantiations:
             if inst.class_name not in _MODEL_CLASSES:
                 continue
-            model_name = (
+            model_name = _normalize_model(
                 self._resolve(inst, "model", "modelName", "name")
                 or self._assignment_name(source, inst.line_start)
                 or f"gemini_{inst.line_start}"
@@ -156,7 +206,7 @@ class GoogleADKAdapter(TSFrameworkAdapter):
             rels: list[RelationshipHint] = []
 
             # Model link
-            model_val = self._resolve(inst, "model")
+            model_val = _normalize_model(self._resolve(inst, "model"))
             if model_val:
                 model_canon = canonicalize_text(model_val.lower())
                 rels.append(
@@ -281,6 +331,38 @@ class GoogleADKAdapter(TSFrameworkAdapter):
                     relationships=rels,
                 )
             )
+
+        # --- Agent fallback: runner.run() pattern without explicit new Agent(...) ---
+        # Handles cases where the app uses runner.run(agent, ...) with agents defined
+        # via factory functions or other patterns not in _AGENT_CLASSES.
+        if not any(d.component_type == ComponentType.AGENT for d in detected):
+            has_runner = any(
+                "runner.run" in (c.function_name or "")
+                or "runner.run" in (c.source_snippet or "")
+                for c in result.function_calls
+            )
+            if has_runner:
+                agent_name = Path(file_path).stem.replace("_", " ").replace("-", " ").title()
+                agent_canon = canonicalize_text(agent_name.lower())
+                detected.append(
+                    ComponentDetection(
+                        component_type=ComponentType.AGENT,
+                        canonical_name=agent_canon,
+                        display_name=agent_name,
+                        adapter_name=self.name,
+                        priority=self.priority,
+                        confidence=0.75,
+                        metadata={
+                            "agent_type": "generic",
+                            "framework": "google-adk",
+                            "language": "typescript",
+                        },
+                        file_path=file_path,
+                        line=0,
+                        snippet="runner.run(...)",
+                        evidence_kind="ast_call",
+                    )
+                )
 
         return detected
 

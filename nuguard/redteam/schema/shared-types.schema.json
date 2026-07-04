@@ -70,13 +70,13 @@
     "ComponentType": {
       "type": "string",
       "enum": ["AGENT", "MODEL", "TOOL", "PROMPT", "DATASTORE", "GUARDRAIL", "AUTH", "PRIVILEGE", "CONTAINER_IMAGE", "DEPLOYMENT", "IAM", "FRAMEWORK", "API_ENDPOINT"],
-      "description": "Xelo AI-SBOM component_type values (SCREAMING_SNAKE_CASE). Used in sbom.schema.json. Maps to NuGuard NodeType via the attack graph mapper — see mapping/mapping-rules.json."
+      "description": "NuGuard AI-SBOM component_type values (SCREAMING_SNAKE_CASE). Used in sbom.schema.json. Maps to NuGuard NodeType via the attack graph mapper — see mapping/mapping-rules.json."
     },
 
     "NodeType": {
       "type": "string",
       "enum": ["agent", "model", "tool", "api", "api_endpoint", "database", "vectorstore", "prompt", "knowledge_base", "guardrail", "identity", "iam", "privilege"],
-      "description": "NuGuard Attack Surface Graph node type (lowercase). Produced by the SBOM mapper from Xelo ComponentType. See mapping/mapping-rules.json for ComponentType → NodeType mapping."
+      "description": "NuGuard Attack Surface Graph node type (lowercase). Produced by the SBOM mapper from NuGuard ComponentType. See mapping/mapping-rules.json for ComponentType → NodeType mapping."
     },
 
     "RiskAttribute": {
@@ -88,13 +88,13 @@
     "EdgeType": {
       "type": "string",
       "enum": ["INVOKES", "READS", "WRITES", "CALLS", "CALLS_ENDPOINT", "EXECUTES", "OWNS", "GUARDS"],
-      "description": "NuGuard Attack Surface Graph edge type (SCREAMING_SNAKE_CASE). Stored as an edge attribute in networkx. GUARDS is produced from Xelo's PROTECTS relationship."
+      "description": "NuGuard Attack Surface Graph edge type (SCREAMING_SNAKE_CASE). Stored as an edge attribute in networkx. GUARDS is produced from NuGuard's PROTECTS relationship."
     },
 
     "RelationshipType": {
       "type": "string",
       "enum": ["USES", "CALLS", "ACCESSES", "PROTECTS", "DEPLOYS"],
-      "description": "Xelo AI-SBOM edge relationship_type (SCREAMING_SNAKE_CASE). Maps to NuGuard EdgeType during attack graph construction: USES/CALLS → INVOKES, ACCESSES → READS/WRITES, PROTECTS → GUARDS, DEPLOYS → skipped (v1)."
+      "description": "NuGuard AI-SBOM edge relationship_type (SCREAMING_SNAKE_CASE). Maps to NuGuard EdgeType during attack graph construction: USES/CALLS → INVOKES, ACCESSES → READS/WRITES, PROTECTS → GUARDS, DEPLOYS → skipped (v1)."
     },
 
     "HttpMethod": {

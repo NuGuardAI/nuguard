@@ -1,4 +1,4 @@
-"""Tests for the xelo CLI argument parser."""
+"""Tests for the nuguard CLI argument parser."""
 
 from __future__ import annotations
 
@@ -14,7 +14,7 @@ def _parse(argv: list[str]) -> argparse.Namespace:
     # Build the same parser that main() builds, then parse
     from nuguard.sbom.cli import _add_llm_args
 
-    parser = argparse.ArgumentParser(prog="xelo")
+    parser = argparse.ArgumentParser(prog="nuguard")
     parser.add_argument("--verbose", "-v", action="store_true")
     parser.add_argument("--debug", action="store_true")
     subparsers = parser.add_subparsers(dest="command", required=True)

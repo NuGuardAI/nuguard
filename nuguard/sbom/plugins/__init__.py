@@ -16,15 +16,16 @@ from __future__ import annotations
 
 import importlib
 import importlib.metadata
-import logging
 import pkgutil
+
+from nuguard.common.logging import get_logger
 
 from ..adapters.base import FrameworkAdapter
 from .base import PluginAdapter
 
 __all__ = ["PluginAdapter", "load_plugins"]
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # __path__ is a list[str] set by Python's import system for packages.
 _pkg_path: list[str] = __path__
@@ -36,24 +37,24 @@ def load_plugins() -> list[FrameworkAdapter]:
     Discovery happens in two ways (both are tried):
 
     1. **Entry-points** — any installed package that declares an entry-point
-       under the ``xelo.plugins`` group.  Each entry-point value must be a
+       under the ``nuguard.plugins`` group.  Each entry-point value must be a
        :class:`PluginAdapter` subclass.
 
-    2. **Sub-modules** — any module directly inside this ``xelo.plugins``
+    2. **Sub-modules** — any module directly inside this ``nuguard.plugins``
        package (excluding ``__init__`` and ``base``).  Useful for shipping
-       built-in optional adapters alongside xelo itself.
+       built-in optional adapters alongside nuguard itself.
 
     Returns a list of instantiated :class:`PluginAdapter` objects sorted by
-    :attr:`~xelo.adapters.base.FrameworkAdapter.priority`.
+    :attr:`~nuguard.adapters.base.FrameworkAdapter.priority`.
     """
     # 1. Load via entry-points (third-party packages)
     try:
-        eps = importlib.metadata.entry_points(group="xelo.plugins")
+        eps = importlib.metadata.entry_points(group="nuguard.plugins")
         for ep in eps:
             try:
                 ep.load()
             except Exception as exc:  # noqa: BLE001
-                logger.warning("Failed to load xelo plugin entry-point %r: %s", ep.name, exc)
+                logger.warning("Failed to load nuguard plugin entry-point %r: %s", ep.name, exc)
     except Exception as exc:  # noqa: BLE001
         logger.debug("Entry-point discovery failed: %s", exc)
 
@@ -65,7 +66,7 @@ def load_plugins() -> list[FrameworkAdapter]:
         try:
             importlib.import_module(full_name)
         except Exception as exc:  # noqa: BLE001
-            logger.warning("Failed to import xelo plugin module %r: %s", full_name, exc)
+            logger.warning("Failed to import nuguard plugin module %r: %s", full_name, exc)
 
     # Collect all concrete subclasses (including transitively loaded ones)
     def _all_subclasses(cls: type) -> list[type]:

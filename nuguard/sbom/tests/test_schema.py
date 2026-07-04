@@ -23,11 +23,11 @@ _SCHEMA_FILE = Path(__file__).parent.parent / "schemas" / "aibom.schema.json"
 def test_committed_schema_matches_models() -> None:
     """aibom.schema.json must stay in sync with AiSbomDocument.model_json_schema().
 
-    If this test fails, run from the oss/Xelo directory::
+    If this test fails, run from the oss/NuGuard directory::
 
         python -c "
         from nuguard.sbom.models import AiSbomDocument; import json
-        open('src/xelo/schemas/aibom.schema.json', 'w').write(
+        open('src/nuguard/schemas/aibom.schema.json', 'w').write(
             json.dumps(AiSbomDocument.model_json_schema(), indent=2) + '\\n'
         )"
     """
@@ -37,7 +37,7 @@ def test_committed_schema_matches_models() -> None:
     assert committed == live, (
         "aibom.schema.json is out of sync with AiSbomDocument Pydantic models. "
         'Regenerate it with: python -c "from nuguard.sbom.models import AiSbomDocument; '
-        "import json; open('src/xelo/schemas/aibom.schema.json', 'w')"
+        "import json; open('src/nuguard/schemas/aibom.schema.json', 'w')"
         ".write(json.dumps(AiSbomDocument.model_json_schema(), indent=2) + '\\n')\""
     )
 

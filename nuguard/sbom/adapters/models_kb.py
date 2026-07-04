@@ -1,6 +1,6 @@
 """AI model knowledge base: provider families, version patterns, and documentation URLs.
 
-This module is the single source of truth for known model metadata within Xelo.
+This module is the single source of truth for known model metadata within NuGuard.
 All framework adapters import from here to ensure consistent provider/version
 attribution.
 """

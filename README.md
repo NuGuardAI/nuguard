@@ -1,14 +1,18 @@
 # NuGuard Open Source
 
-NuGuard is an open source AI application security CLI. It can generate an AI-focused SBOM from source code, run static security analysis, lint cognitive policy documents, test live AI app behavior, and red-team a live AI app with scenario-driven adversarial testing.
+NuGuard is an open source AI application security toolkit. Its goal is to provide the most extensive redteaming and behavioral validation of Agentic AI applications. A commercial version of NuGuard is available as a hosted SaaS product with additional features and support, check it at http://nuguard.ai. 
+
+With NuGuard, AI developers can focus on building their applications while NuGuard continuously tests and validates them against a wide range of security risks, including supply chain attacks, prompt injection, MCP tool misuse, API Attacks,data exfiltration, and more.
+
 
 ## What It Does
 
 - Generate an AI-SBOM from a local codebase or Git repo
-- Analyze the SBOM for structural AI security risks and dependency issues
-- Cross-check a cognitive policy against the SBOM
-- Perform static and dynamic behavioral testing against a live AI application endpoint
-- Red-team a running AI application with custom-built scenarios based on the AI-SBOM and the cognitive policy. This includes prompt injection, tool abuse, data exfiltration, and related attack scenarios that exercise the various sub-agents, tools, and capabilities of the target system.
+- Analyze the SBOM for structural AI security risks and supply-chain issues
+- Propose an AI behavioral policy based on the SBOM
+- Perform static and runtime behavioral testing purpose built around the AI-SBOM and the behavioral policy
+- Red-team a sandboxed AI application: most extensive and updated catalog of attack vectors plus custom-built scenarios. This includes prompt injection, tool abuse, data exfiltration, and related attack scenarios that exercise the various sub-agents, tools, and capabilities of the target system.
+- Automated remediation suggestions for findings, including code snippets and policy adjustments
 - Export findings in text, JSON, Markdown, and SARIF-oriented workflows
 
 ## Current CLI Surface
@@ -22,32 +26,12 @@ Implemented and usable today:
 - `nuguard behavior`
 - `nuguard redteam`
 
-Present but still stubbed / not yet implemented:
-
-- `nuguard seed`
-- `nuguard report`
-
 ## Requirements
 
 - Python 3.12+
 - `uv` for the recommended local workflow
 
-Optional external tools used by some analysis paths:
-
-- `grype`
-- `checkov`
-- `trivy`
-- `semgrep`
-
-If these tools are not installed, the corresponding checks can be skipped or may report as unavailable depending on the command path.
-
 ## Installation
-
-**MCP server (Claude / Cursor / Windsurf):** [smithery.ai/servers/NuGuardAI/nuguard](https://smithery.ai/servers/NuGuardAI/nuguard)
-
-```bash
-smithery mcp add NuGuardAI/nuguard
-```
 
 **Python CLI:**
 
@@ -73,6 +57,9 @@ Or, from the virtual environment:
 . .venv/bin/activate
 nuguard --help
 ```
+
+### Claude users can use plugin commands.
+Follow the instructions in [docs/plugin-guide.md](docs/plugin-guide.md) to set up the NuGuard plugin for Claude and use it to run commands like `/nuguard-sbom`, `/nuguard-analyze`, and `/nuguard-redteam` directly from your conversations with Claude.
 
 ## Quick Start
 
@@ -135,7 +122,18 @@ nuguard scan \
   --output-dir nuguard-reports
 ```
 
-This is the easiest way to run SBOM generation plus static analysis in one pass.
+By default this runs SBOM generation plus static analysis in one pass. To include
+policy and red-team validations, opt in to those steps and provide the required
+inputs:
+
+```bash
+nuguard scan \
+  --source . \
+  --steps sbom,analyze,policy,redteam \
+  --policy cognitive_policy.md \
+  --target http://localhost:3000 \
+  --output-dir nuguard-reports
+```
 
 ## Configuration
 
@@ -161,17 +159,6 @@ NuGuard can watch for seeded canary values during dynamic testing to produce hig
 
 More detail is available in [`docs/redteam-engine.md`](docs/redteam-engine.md).
 
-## Common Commands
-
-```bash
-nuguard --help
-nuguard sbom --help
-nuguard analyze --help
-nuguard policy --help
-nuguard behavior --help
-nuguard redteam --help
-nuguard scan --help
-```
 
 ## Development
 
@@ -218,6 +205,53 @@ Recommended release flow:
 1. Run the TestPyPI workflow manually from GitHub Actions.
 2. Verify the package install and CLI behavior from TestPyPI.
 3. Create a GitHub release to trigger the PyPI publish workflow.
+
+### Pre-Publish Sanity Checks
+
+Before publishing to TestPyPI or PyPI, run the quick multi-app sanity gate.
+
+One-shot runner:
+
+```bash
+bash tests/apps/prepublish-sanity.sh
+```
+
+This runner performs:
+
+- A fast repo smoke check (`nuguard --help` plus critical local tests)
+- Behavior runs in dynamic mode with `intent_happy_path` workflow
+- Redteam runs with `profile: ci`
+- Artifact and quality gates (non-empty reports, non-zero executed scenarios, strict endpoint-source checks, and transport-error guardrails)
+
+Prepublish config files used by the runner:
+
+- `tests/apps/openai-cs-agents-demo/nuguard.prepublish.yaml`
+- `tests/apps/Gemini-Auto-app/nuguard.prepublish.yaml`
+- `tests/apps/pinnacle-bank-app/nuguard-azure.prepublish.yaml`
+
+Run manually per app (if needed):
+
+```bash
+# OpenAI CS agents demo
+uv run nuguard sbom generate --config tests/apps/openai-cs-agents-demo/nuguard.prepublish.yaml --format json -o tests/apps/openai-cs-agents-demo/openai-cs.sbom.json
+uv run nuguard behavior --config tests/apps/openai-cs-agents-demo/nuguard.prepublish.yaml --mode dynamic --format json --format markdown --output tests/apps/openai-cs-agents-demo/reports/openai-cs-prepublish-behavior --verbose
+uv run nuguard redteam --config tests/apps/openai-cs-agents-demo/nuguard.prepublish.yaml --format json --format markdown --output tests/apps/openai-cs-agents-demo/reports/openai-cs-prepublish-redteam --verbose
+
+# Gemini Auto app
+uv run nuguard sbom generate --config tests/apps/Gemini-Auto-app/nuguard.prepublish.yaml --format json -o tests/apps/Gemini-Auto-app/gemini-auto.sbom.json
+uv run nuguard behavior --config tests/apps/Gemini-Auto-app/nuguard.prepublish.yaml --mode dynamic --format json --format markdown --output tests/apps/Gemini-Auto-app/reports/gemini-auto-prepublish-behavior --verbose
+uv run nuguard redteam --config tests/apps/Gemini-Auto-app/nuguard.prepublish.yaml --format json --format markdown --output tests/apps/Gemini-Auto-app/reports/gemini-auto-prepublish-redteam --verbose
+
+# Pinnacle Bank app
+uv run nuguard sbom generate --config tests/apps/pinnacle-bank-app/nuguard-azure.prepublish.yaml --format json -o tests/apps/pinnacle-bank-app/pinnacle-bank.sbom.json
+uv run nuguard behavior --config tests/apps/pinnacle-bank-app/nuguard-azure.prepublish.yaml --mode dynamic --format json --format markdown --output tests/apps/pinnacle-bank-app/reports/pinnacle-bank-prepublish-behavior --verbose
+uv run nuguard redteam --config tests/apps/pinnacle-bank-app/nuguard-azure.prepublish.yaml --format json --format markdown --output tests/apps/pinnacle-bank-app/reports/pinnacle-bank-prepublish-redteam --verbose
+```
+
+Important:
+
+- Do not use `|| true` in publish-gating runs.
+- Exit code `2` can indicate findings or policy gates; treat it as a signal and rely on report-quality checks to decide pass/fail.
 
 ## Repo Notes
 

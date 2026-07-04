@@ -20,16 +20,17 @@ Usage:
 """
 from __future__ import annotations
 
-import logging
 import re
 from collections import defaultdict
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from nuguard.common.logging import get_logger
+
 if TYPE_CHECKING:
     from nuguard.models.finding import Finding
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 # Minimum severity_signal (0.0–1.0) for a finding to generate a regression test.
 # Soft failures (low-confidence, marginal hits) are intentionally excluded so

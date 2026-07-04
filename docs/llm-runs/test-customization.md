@@ -1,0 +1,4 @@
+Goal is to allow the user to customize the behavior of the validation (behavior and red-team) run. 
+- Allow the user to save the test scenarios in a file and load them when running the validation (behavior and red-team) run.
+- Allow the user to change these test scenarios when running the validation (behavior and red-team) run.
+- Allow the user to specify the changed test scenarios to run when running the validation (behavior and red-team) run. This can be done by allowing the user to specify the test scenario file to run when running the validation (behavior and red-team) run. In this case, test scenarios are not created fresh but read from the specified file and then various turns are executed.

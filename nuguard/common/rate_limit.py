@@ -19,10 +19,11 @@ retry logic and constants are defined in exactly one place.
 from __future__ import annotations
 
 import asyncio
-import logging
 import random
 
-_log = logging.getLogger(__name__)
+from nuguard.common.logging import get_logger
+
+_log = get_logger(__name__)
 
 # Sentinel prefix emitted by TargetAppClient when a 429 exhausts all
 # per-request retries.
@@ -33,6 +34,12 @@ _RATE_LIMIT_PREFIX = "[HTTP 429]"
 SCENARIO_MAX_RATE_LIMIT_RETRIES: int = 3
 SCENARIO_RATE_LIMIT_BACKOFF_BASE: float = 2.0   # seconds
 SCENARIO_RATE_LIMIT_BACKOFF_CAP: float = 30.0   # seconds
+
+# Transient-error warm-up retries — fired when the target returns an app-level
+# connection-failure fallback (HTTP 200, but the orchestrator caught a cold-start
+# exception and returned a friendly error message).  The delays give Azure
+# Container Apps (minReplicas=0) time to spin up before the next attempt.
+TRANSIENT_ERROR_RETRY_DELAYS: tuple[float, ...] = (60.0, 120.0)  # seconds
 
 
 def is_rate_limited(response: str) -> bool:

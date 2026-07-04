@@ -1,6 +1,6 @@
 # NuGuard Quick Start
 
-This guide gets you from a fresh checkout to a starter cognitive policy, a first SBOM, a static analysis report, a policy check, and a red-team run.
+This guide gets you to a starter behavioral policy, a first SBOM, a static analysis report, a policy check, and a red-team run.
 
 ## Prerequisites
 
@@ -20,21 +20,22 @@ Check the CLI:
 nuguard --help
 ```
 
-## 1. Initialize a Starter Cognitive Policy With `nuguard init`
+## 1. Initialize With `nuguard init`
 
-Create a blank starter `cognitive_policy.md` with the recognized policy section headers:
-
-```bash
-nuguard init
-```
-
-To write it somewhere else:
+Create `nuguard.yaml`, `cognitive-policy.md`, and `canary.example.json` with sensible defaults:
 
 ```bash
-nuguard init --path ./docs/cognitive_policy.md
+nuguard init --target http://localhost:8080
 ```
 
-To overwrite an existing file:
+Pass `--llm` to have the LLM draft a concise `cognitive-policy.md` from your app's context
+instead of writing a blank template (requires `LITELLM_API_KEY`):
+
+```bash
+nuguard init --target http://localhost:8080 --llm
+```
+
+To overwrite existing files:
 
 ```bash
 nuguard init --force
@@ -68,6 +69,7 @@ Useful variants:
 ```bash
 nuguard analyze --sbom app.sbom.json --format json
 nuguard analyze --config nuguard.yaml --format sarif
+nuguard analyze --sbom app.sbom.json --format json --format markdown --output reports/analyze
 ```
 
 ## 5. Run the Behavior Validation
@@ -98,4 +100,12 @@ nuguard redteam \
   --format markdown
 ```
 
+## 7. Run from Claude (Plugin)
 
+NuGuard integrates directly into Claude Code and Claude Desktop. Install the plugin once and run the full pipeline — SBOM, analysis, behavior, and red-team — from the chat interface.
+
+```bash
+claude plugin add NuGuardAI/nuguard
+```
+
+See the [Plugin Guide](plugin-guide.md) for Claude Code slash commands, agents, and Claude Desktop / npx setup.

@@ -1,4 +1,4 @@
-"""MCP (Model Context Protocol) server adapter for Xelo SBOM.
+"""MCP (Model Context Protocol) server adapter for NuGuard SBOM.
 
 Detects usage of the ``mcp`` / ``fastmcp`` Python SDK:
 - ``FastMCP("server-name", ...)`` instantiation → FRAMEWORK node
@@ -112,6 +112,25 @@ class MCPServerAdapter(FrameworkAdapter):
                 continue
             auth_type = _auth_kind(inst.class_name)
             canon = canonicalize_text(f"mcp:auth:{inst.class_name.lower()}")
+            # Build AuthDetail based on class name
+            _protocols: list[str] = []
+            _strict: bool | None = None
+            _cls = inst.class_name
+            if _cls in ("BearerAuthProvider", "TokenAuth", "OAuth2Bearer"):
+                _protocols = ["bearer"]
+                _strict = True
+            elif _cls in ("OAuth2ClientCredentialsProvider", "OAuth2AuthorizationCodeProvider", "OAuthProvider", "ClientCredentialsProvider"):
+                _protocols = ["oauth2"]
+                _strict = True
+            elif _cls in ("APIKeyAuth",):
+                _protocols = ["api_key"]
+                _strict = True
+            elif _cls in ("JWTAuth",):
+                _protocols = ["jwt"]
+                _strict = True
+            _auth_detail: dict = {"protocols": _protocols}
+            if _strict is not None:
+                _auth_detail["enforcement_strict"] = _strict
             auth_detections.append(
                 ComponentDetection(
                     component_type=ComponentType.AUTH,
@@ -124,6 +143,7 @@ class MCPServerAdapter(FrameworkAdapter):
                         "framework": "mcp-server",
                         "auth_type": auth_type,
                         "auth_class": inst.class_name,
+                        "auth_detail": _auth_detail,
                     },
                     file_path=file_path,
                     line=inst.line,
@@ -283,7 +303,7 @@ class MCPServerAdapter(FrameworkAdapter):
             fw_relationships.append(
                 RelationshipHint(
                     source_canonical=fw_canonical,
-                    source_type=ComponentType.FRAMEWORK,
+                    source_type=ComponentType.TOOL,
                     target_canonical=tool.canonical_name,
                     target_type=ComponentType.TOOL,
                     relationship_type="CALLS",
@@ -293,7 +313,7 @@ class MCPServerAdapter(FrameworkAdapter):
             fw_relationships.append(
                 RelationshipHint(
                     source_canonical=fw_canonical,
-                    source_type=ComponentType.FRAMEWORK,
+                    source_type=ComponentType.TOOL,
                     target_canonical=auth.canonical_name,
                     target_type=ComponentType.AUTH,
                     relationship_type="USES",
@@ -303,7 +323,7 @@ class MCPServerAdapter(FrameworkAdapter):
             fw_relationships.append(
                 RelationshipHint(
                     source_canonical=fw_canonical,
-                    source_type=ComponentType.FRAMEWORK,
+                    source_type=ComponentType.TOOL,
                     target_canonical=ep.canonical_name,
                     target_type=ComponentType.API_ENDPOINT,
                     relationship_type="USES",
@@ -324,7 +344,7 @@ class MCPServerAdapter(FrameworkAdapter):
                 )
 
         fw_node = ComponentDetection(
-            component_type=ComponentType.FRAMEWORK,
+            component_type=ComponentType.TOOL,
             canonical_name=fw_canonical,
             display_name=fw_display,
             adapter_name=self.name,

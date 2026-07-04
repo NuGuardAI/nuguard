@@ -90,6 +90,37 @@ _RELATIONSHIP_TO_CDX_AGGREGATE: dict[str, str] = {
 }
 
 
+def _summary_properties(doc: AiSbomDocument) -> list[dict[str, str]]:
+    """Extract scan-summary fields as CycloneDX metadata properties."""
+    s = doc.summary
+    if s is None:
+        return []
+    props: list[dict[str, str]] = []
+    if s.k8s_network_policy_namespaces:
+        props.append({
+            "name": "nuguard:k8s_network_policy_namespaces",
+            "value": ",".join(s.k8s_network_policy_namespaces),
+        })
+    if s.workflow_security_findings:
+        props.append({
+            "name": "nuguard:workflow_security_findings_count",
+            "value": str(len(s.workflow_security_findings)),
+        })
+        # Emit rule signals as a comma-joined summary
+        signals = sorted({f.get("rule_signal", "") for f in s.workflow_security_findings if f.get("rule_signal")})
+        if signals:
+            props.append({
+                "name": "nuguard:workflow_security_finding_signals",
+                "value": ",".join(signals),
+            })
+    if s.github_actions_content:
+        props.append({
+            "name": "nuguard:github_actions_content_present",
+            "value": "true",
+        })
+    return props
+
+
 # CycloneDX component type mapping for AI node types
 _AI_TYPE_MAP: dict[ComponentType, str] = {
     ComponentType.AGENT: "application",
@@ -147,21 +178,32 @@ class AiSbomSerializer:
             extras = node.metadata.extras
 
             props: list[dict[str, str]] = [
-                {"name": "xelo:component_type", "value": node.component_type.value},
-                {"name": "xelo:confidence", "value": f"{node.confidence:.2f}"},
+                {"name": "nuguard:component_type", "value": node.component_type.value},
+                {"name": "nuguard:confidence", "value": f"{node.confidence:.2f}"},
             ]
             if extras.get("adapter"):
-                props.append({"name": "xelo:adapter", "value": str(extras["adapter"])})
+                props.append({"name": "nuguard:adapter", "value": str(extras["adapter"])})
             if extras.get("provider"):
-                props.append({"name": "xelo:provider", "value": str(extras["provider"])})
+                props.append({"name": "nuguard:provider", "value": str(extras["provider"])})
             if extras.get("model_family"):
-                props.append({"name": "xelo:model_family", "value": str(extras["model_family"])})
+                props.append({"name": "nuguard:model_family", "value": str(extras["model_family"])})
+            # Supply-chain provenance fields (NodeMetadata 1.5.1+)
+            if node.metadata.source_url:
+                props.append({"name": "nuguard:source_url", "value": node.metadata.source_url})
+            if node.metadata.integrity_hash:
+                props.append({"name": "nuguard:integrity_hash", "value": node.metadata.integrity_hash})
+            if node.metadata.checksum:
+                props.append({"name": "nuguard:checksum", "value": node.metadata.checksum})
+            # K8s network policy coverage
+            if node.metadata.has_network_policy is not None:
+                props.append({"name": "nuguard:has_network_policy",
+                               "value": str(node.metadata.has_network_policy).lower()})
             dc = node.metadata.data_classification or extras.get("data_classification")
             if dc and isinstance(dc, list):
-                props.append({"name": "xelo:data_classification", "value": ",".join(dc)})
+                props.append({"name": "nuguard:data_classification", "value": ",".join(dc)})
             ct = node.metadata.classified_tables or extras.get("classified_tables")
             if ct and isinstance(ct, list):
-                props.append({"name": "xelo:classified_tables", "value": ",".join(ct)})
+                props.append({"name": "nuguard:classified_tables", "value": ",".join(ct)})
             cf = node.metadata.classified_fields or extras.get("classified_fields")
             if cf and isinstance(cf, dict):
                 # Compact representation: "table:field1,field2;table2:field3"
@@ -169,7 +211,7 @@ class AiSbomSerializer:
                     f"{tbl}:{','.join(flds) if isinstance(flds, list) else ','.join(sorted(flds))}"
                     for tbl, flds in sorted(cf.items())
                 )
-                props.append({"name": "xelo:classified_fields", "value": cf_str})
+                props.append({"name": "nuguard:classified_fields", "value": cf_str})
 
             component: dict[str, Any] = {
                 "bom-ref": str(node.id),
@@ -178,6 +220,18 @@ class AiSbomSerializer:
             }
             if extras.get("version"):
                 component["version"] = str(extras["version"])
+            # CycloneDX hashes — model artifact integrity (CycloneDX 1.6 §hashes)
+            _hashes: list[dict[str, str]] = []
+            _ih = node.metadata.integrity_hash or extras.get("integrity_hash")
+            _cs = node.metadata.checksum or extras.get("checksum") or extras.get("digest")
+            if _ih:
+                _alg = "SHA-1" if len(_ih) == 40 else "SHA-256" if len(_ih) == 64 else "MD5" if len(_ih) == 32 else "SHA-256"
+                _hashes.append({"alg": _alg, "content": _ih})
+            if _cs and _cs != _ih:
+                _alg2 = "MD5" if len(_cs) == 32 else "SHA-1" if len(_cs) == 40 else "SHA-256"
+                _hashes.append({"alg": _alg2, "content": _cs})
+            if _hashes:
+                component["hashes"] = _hashes
             if cdx_type == "machine-learning-model" and extras.get("model_card_url"):
                 component["externalReferences"] = [
                     {
@@ -186,6 +240,15 @@ class AiSbomSerializer:
                         "comment": "Model card / provider documentation",
                     }
                 ]
+            _src_url = node.metadata.source_url or extras.get("source_url")
+            if _src_url:
+                component.setdefault("externalReferences", []).append(
+                    {
+                        "type": "distribution",
+                        "url": _src_url,
+                        "comment": "Model artifact or API source URL",
+                    }
+                )
             if extras.get("api_endpoint"):
                 component.setdefault("externalReferences", []).append(
                     {
@@ -208,15 +271,15 @@ class AiSbomSerializer:
                 "name": dep.name,
                 "purl": dep.purl,
                 "properties": [
-                    {"name": "xelo:dep_group", "value": dep.group},
-                    {"name": "xelo:source_file", "value": dep.source_file},
+                    {"name": "nuguard:dep_group", "value": dep.group},
+                    {"name": "nuguard:source_file", "value": dep.source_file},
                 ],
             }
             if dep.version:
                 dep_entry["version"] = dep.version
             if dep.version_spec and dep.version_spec != f"=={dep.version}":
                 dep_entry["properties"].append(
-                    {"name": "xelo:version_spec", "value": dep.version_spec}
+                    {"name": "nuguard:version_spec", "value": dep.version_spec}
                 )
             dep_components.append(dep_entry)
 
@@ -238,7 +301,7 @@ class AiSbomSerializer:
                 "timestamp": doc.generated_at.isoformat(),
                 "tools": [
                     {
-                        "vendor": "Xelo",
+                        "vendor": "NuGuard",
                         "name": doc.generator,
                         "version": __version__,
                     }
@@ -247,6 +310,7 @@ class AiSbomSerializer:
                     "type": "application",
                     "name": doc.target,
                 },
+                "properties": _summary_properties(doc),
             },
             "components": ai_components + dep_components,
             "dependencies": dependencies,
@@ -311,6 +375,17 @@ class AiSbomSerializer:
                 props.append({"name": "nuguard:model_family", "value": str(extras["model_family"])})
             if extras.get("framework"):
                 props.append({"name": "nuguard:framework", "value": str(extras["framework"])})
+            # Supply-chain provenance fields (NodeMetadata 1.5.1+)
+            if node.metadata.source_url:
+                props.append({"name": "nuguard:source_url", "value": node.metadata.source_url})
+            if node.metadata.integrity_hash:
+                props.append({"name": "nuguard:integrity_hash", "value": node.metadata.integrity_hash})
+            if node.metadata.checksum:
+                props.append({"name": "nuguard:checksum", "value": node.metadata.checksum})
+            # K8s network policy coverage
+            if node.metadata.has_network_policy is not None:
+                props.append({"name": "nuguard:has_network_policy",
+                               "value": str(node.metadata.has_network_policy).lower()})
 
             # Risk / security tags
             risk_tags: list[str] = extras.get("risk_tags") or []
@@ -367,6 +442,18 @@ class AiSbomSerializer:
             }
             if extras.get("version"):
                 component["version"] = str(extras["version"])
+            # CycloneDX hashes — model artifact integrity (CycloneDX 1.6 §hashes)
+            _hashes_ext: list[dict[str, str]] = []
+            _ih_ext = node.metadata.integrity_hash or extras.get("integrity_hash")
+            _cs_ext = node.metadata.checksum or extras.get("checksum") or extras.get("digest")
+            if _ih_ext:
+                _alg_ext = "SHA-1" if len(_ih_ext) == 40 else "SHA-256" if len(_ih_ext) == 64 else "MD5" if len(_ih_ext) == 32 else "SHA-256"
+                _hashes_ext.append({"alg": _alg_ext, "content": _ih_ext})
+            if _cs_ext and _cs_ext != _ih_ext:
+                _alg2_ext = "MD5" if len(_cs_ext) == 32 else "SHA-1" if len(_cs_ext) == 40 else "SHA-256"
+                _hashes_ext.append({"alg": _alg2_ext, "content": _cs_ext})
+            if _hashes_ext:
+                component["hashes"] = _hashes_ext
 
             # ── External references ────────────────────────────────────
             ext_refs: list[dict[str, str]] = []
@@ -375,6 +462,13 @@ class AiSbomSerializer:
                     "type": "documentation",
                     "url": str(extras["model_card_url"]),
                     "comment": "Model card / provider documentation",
+                })
+            _src_url_ext = node.metadata.source_url or extras.get("source_url")
+            if _src_url_ext:
+                ext_refs.append({
+                    "type": "distribution",
+                    "url": _src_url_ext,
+                    "comment": "Model artifact or API source URL",
                 })
             if extras.get("api_endpoint"):
                 ext_refs.append({
@@ -420,6 +514,8 @@ class AiSbomSerializer:
                         "task": extras.get("use_case") or "text-generation",
                         "architectureFamily": extras.get("model_family") or "transformer",
                     }
+                if model_card.get("modelParameters") and node.metadata.source_url:
+                    model_card["modelParameters"]["sourceUrl"] = node.metadata.source_url
                 considerations: list[dict[str, Any]] = []
                 if risk_tags:
                     considerations.append({
@@ -560,6 +656,7 @@ class AiSbomSerializer:
                 "properties": [
                     {"name": "nuguard:sbom_schema_version", "value": doc.schema_version},
                     {"name": "nuguard:format", "value": "cyclonedx-ext"},
+                    *_summary_properties(doc),
                 ],
             },
             "components": ai_components + dep_components,

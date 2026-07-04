@@ -13,14 +13,15 @@ Preview Enhanced), Notion, GitLab, and most modern doc platforms.
 """
 from __future__ import annotations
 
-import logging
 import re
 from typing import TYPE_CHECKING, Any
+
+from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
     from nuguard.sbom.models import AiSbomDocument
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 # Component types included in the relationship diagram
 _GRAPH_TYPES = {
@@ -272,7 +273,7 @@ async def build_relationship_graph_with_llm(
 
     narrative = ""
     try:
-        text, _ = await llm_client.complete_text(system=_SYSTEM, user=user_prompt)
+        text = await llm_client.complete(prompt=user_prompt, system=_SYSTEM)
         narrative = text.strip()
     except Exception as exc:
         _log.warning("relationship-graph: LLM narrative failed — diagram only: %s", exc)

@@ -6,6 +6,7 @@ import asyncio
 import json
 import re
 import signal
+import sys
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -45,7 +46,7 @@ async def run_nuguard_command(
     blocked. Kills the process on timeout (SIGTERM → 2 s → SIGKILL).
     """
     proc = await asyncio.create_subprocess_exec(
-        "nuguard",
+        sys.executable, "-m", "nuguard.cli.main",
         *args,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,

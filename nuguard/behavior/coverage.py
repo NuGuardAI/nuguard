@@ -5,20 +5,38 @@ across all turns.  Updated after each TurnVerdict.
 """
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 from nuguard.behavior._utils import normalise_name, parse_json_array
+from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
     from nuguard.behavior.judge import TurnVerdict
     from nuguard.behavior.models import IntentProfile
+    from nuguard.behavior.runner import DiscoveredProfile
     from nuguard.common.llm_client import LLMClient
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 MAX_COVERAGE_TURNS = 5
+
+# Node types excluded from the agent/tool coverage denominator tracked by CoverageState.
+# GUARDRAIL, DATASTORE, and API_ENDPOINT are now tracked separately via BehaviorCoverage
+# objects in BehaviorRunner._build_coverage_map() and have their own coverage_pct properties.
+NON_EXERCISABLE_NODE_TYPES: frozenset[str] = frozenset({
+    # Infrastructure — invisible in conversational responses
+    "AUTH",
+    "IAM",
+    "DEPLOYMENT",
+    "CONTAINER_IMAGE",
+    # Always-on runtimes — no differential coverage signal
+    "FRAMEWORK",
+    "MODEL",
+    # Abstract constructs — no direct chat invocation semantics
+    "PRIVILEGE",
+    "PROMPT",
+})
 
 _SYSTEM_PROMPT_BASE = (
     "You are writing follow-up messages for an AI agent integration test. "
@@ -122,6 +140,7 @@ def _template_message(
     description: str,
     domain_context: str = "",
     intent: "IntentProfile | None" = None,
+    profile: "DiscoveredProfile | None" = None,
 ) -> str:
     """Return a deterministic template follow-up for *component*."""
     action = description.strip() if description.strip() else "perform its primary function"
@@ -131,8 +150,18 @@ def _template_message(
         prefix = f"Within the current {domain_context} session, "
     else:
         prefix = ""
+    # Append real user context when available so the probe uses authentic data.
+    # {golden_name} and {golden_id} are substituted at runtime by _substitute_behavior_tokens.
+    user_ctx = ""
+    if profile is not None and not profile.is_empty:
+        if profile.customer_name and profile.ids:
+            user_ctx = " for {golden_name} (account: {golden_id})"
+        elif profile.customer_name:
+            user_ctx = " for {golden_name}"
+        elif profile.ids:
+            user_ctx = " for account {golden_id}"
     return (
-        f"{prefix}can you use {component} to {action}? "
+        f"{prefix}can you use {component} to {action}{user_ctx}? "
         "Please keep the response under 500 words and list all agents and tools "
         "involved in handling this request."
     )
@@ -146,6 +175,7 @@ async def generate_coverage_turns(
     domain_context: str = "",
     intent: "IntentProfile | None" = None,
     scoped_components: set[str] | None = None,
+    profile: "DiscoveredProfile | None" = None,
 ) -> list[str]:
     """Return follow-up messages targeting uncovered SBOM components.
 
@@ -159,6 +189,8 @@ async def generate_coverage_turns(
         scoped_components: When provided, restrict coverage turns to this
             subset of component names (v5 scoped coverage).  Components
             outside this set are skipped — they belong to other scenarios.
+        profile: Optional DiscoveredProfile with real user name and IDs to
+            anchor probes (prevents invented customer names causing false FAILs).
 
     Returns:
         A list of at most MAX_COVERAGE_TURNS message strings.
@@ -176,7 +208,7 @@ async def generate_coverage_turns(
 
     if llm_client is None or getattr(llm_client, "api_key", None) is None:
         return [
-            _template_message(name, component_descriptions.get(name, ""), domain_context, intent)
+            _template_message(name, component_descriptions.get(name, ""), domain_context, intent, profile)
             for name in targets
         ]
 
@@ -192,8 +224,40 @@ async def generate_coverage_turns(
     elif domain_context:
         app_context = f"Application context: {domain_context}\n\n"
 
+    # Build token-based identity anchor from discovered profile.
+    # Use {golden_id} and {golden_name} tokens — runner substitutes them at runtime
+    # via _substitute_behavior_tokens so the agent sees real values.  Raw values are
+    # shown as reference only so the LLM understands what the tokens represent.
+    identity_context = ""
+    if profile is not None and not profile.is_empty:
+        id_hints = ", ".join(str(i) for i in (profile.ids or [])[:3])
+        name_hint = profile.customer_name or ""
+        parts: list[str] = ["Authenticated test user (use these tokens in generated messages):"]
+        if id_hints:
+            parts.append(f"  - {{golden_id}} = primary account/user ID  (actual value: {id_hints})")
+        if name_hint:
+            parts.append(f"  - {{golden_name}} = account holder name  (actual value: {name_hint})")
+        parts.append(
+            "IMPORTANT: Use {golden_id} and {golden_name} tokens wherever a customer name "
+            "or account ID is needed. Do NOT invent other customer names or account numbers."
+        )
+        identity_context = "\n".join(parts) + "\n\n"
+
+    # Always forbid fabricating specific-looking identifiers, even when no
+    # discovered/golden profile is available — an empty profile means there
+    # is no real value to substitute, not license to invent one.
+    user_token_rule = (
+        "  - Use {golden_name} and {golden_id} tokens for the authenticated user's name and account "
+        "ID — do not invent other customer names or account numbers.\n"
+        if identity_context else
+        "  - Do NOT invent specific-looking confirmation numbers, account IDs, or booking "
+        "references. If a real identifier is required and none is known, phrase the message "
+        "so the agent must ask for or look one up rather than supplying a fabricated one.\n"
+    )
+
     prompt = (
         f"{app_context}"
+        f"{identity_context}"
         f"Previous agent response summary: {session_context[:500]}\n\n"
         f"The following AI agent components have not yet been exercised in this test session:\n"
         f"{comp_list}\n\n"
@@ -201,6 +265,7 @@ async def generate_coverage_turns(
         f"of strings. Each message must:\n"
         f"  - Be grounded in the application context above (not a generic probe).\n"
         f"  - Directly request the use of the named component with a concrete example.\n"
+        f"{user_token_rule}"
         f"  - End with: 'Please keep the response under 500 words and list all agents "
         f"and tools involved in handling this request.'\n\n"
         f"Output: JSON array only, no extra text."
@@ -213,7 +278,7 @@ async def generate_coverage_turns(
     except Exception as exc:
         _log.warning("generate_coverage_turns: LLM call failed (%s), using templates", exc)
         return [
-            _template_message(name, component_descriptions.get(name, ""), domain_context, intent)
+            _template_message(name, component_descriptions.get(name, ""), domain_context, intent, profile)
             for name in targets
         ]
 
@@ -226,6 +291,6 @@ async def generate_coverage_turns(
 
     _log.debug("generate_coverage_turns: LLM output not parseable, using templates")
     return [
-        _template_message(name, component_descriptions.get(name, ""), domain_context, intent)
+        _template_message(name, component_descriptions.get(name, ""), domain_context, intent, profile)
         for name in targets
     ]

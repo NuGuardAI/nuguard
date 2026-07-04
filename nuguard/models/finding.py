@@ -47,3 +47,5 @@ class Finding(BaseModel):
     golden_ids: list[str] = Field(default_factory=list)
     golden_name: str | None = None
     golden_data_excerpt: str | None = None
+    # Post-finding verification probe result (None = not run, True = reproduced, False = unconfirmed)
+    verified: bool | None = None

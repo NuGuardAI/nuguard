@@ -3,7 +3,7 @@
 Validates the full two-phase pipeline from the reference architecture:
 
   Phase 1 — Standard SBOM: cyclonedx-py CLI (or dep-scanner fallback)
-  Phase 2 — AI-BOM:        Xelo AST extractors
+  Phase 2 — AI-BOM:        NuGuard AST extractors
   Merge   — Normalization: unified CycloneDX 1.6 BOM with aibom:* enrichment
 """
 
@@ -399,24 +399,24 @@ class TestCycloneDxGeneratorCli:
 
         return _cdx_py_available()
 
-    def test_cli_generates_valid_bom_for_requirements(self, cdx_available: bool) -> None:
+    @pytest.fixture(scope="class")
+    def research_assistant_bom(self, cdx_available: bool) -> tuple[dict, str]:
+        """Generate the research_assistant BOM once for the whole class."""
         if not cdx_available:
             pytest.skip("cyclonedx-py not installed")
-        gen = CycloneDxGenerator()
-        bom, method = gen.generate(_APPS / "research_assistant")
+        return CycloneDxGenerator().generate(_APPS / "research_assistant")
+
+    def test_cli_generates_valid_bom_for_requirements(self, research_assistant_bom: tuple) -> None:
+        bom, method = research_assistant_bom
         assert bom["bomFormat"] == "CycloneDX"
         assert "cyclonedx-py" in method
 
-    def test_cli_bom_has_components(self, cdx_available: bool) -> None:
-        if not cdx_available:
-            pytest.skip("cyclonedx-py not installed")
-        bom, _ = CycloneDxGenerator().generate(_APPS / "research_assistant")
+    def test_cli_bom_has_components(self, research_assistant_bom: tuple) -> None:
+        bom, _ = research_assistant_bom
         assert bom["components"], "Expected at least one dep component from cyclonedx-py"
 
-    def test_cli_components_have_purls(self, cdx_available: bool) -> None:
-        if not cdx_available:
-            pytest.skip("cyclonedx-py not installed")
-        bom, _ = CycloneDxGenerator().generate(_APPS / "research_assistant")
+    def test_cli_components_have_purls(self, research_assistant_bom: tuple) -> None:
+        bom, _ = research_assistant_bom
         comps_with_purl = [c for c in bom["components"] if c.get("purl")]
         assert comps_with_purl, "Expected components with PURL from cyclonedx-py"
 

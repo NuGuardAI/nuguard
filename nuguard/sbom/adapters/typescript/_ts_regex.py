@@ -1,6 +1,6 @@
 """TSFrameworkAdapter base class for TypeScript/JavaScript adapters.
 
-Parsing is handled by ``xelo.core.ts_parser.TypeScriptParser``, which
+Parsing is handled by ``nuguard.core.ts_parser.TypeScriptParser``, which
 uses tree-sitter when available and falls back to regex otherwise.
 
 This module only defines the shared base class so adapters do not need to
@@ -27,7 +27,7 @@ class TSFrameworkAdapter(FrameworkAdapter):
     * ``extract()`` receives a ``TSParseResult | None`` as *parse_result*.
       When *parse_result* is ``None``, implementations must call
       ``parse_typescript(content, file_path)`` from
-      ``xelo.core.ts_parser`` themselves.
+      ``nuguard.core.ts_parser`` themselves.
     """
 
     def can_handle(self, imports_present: set[str]) -> bool:

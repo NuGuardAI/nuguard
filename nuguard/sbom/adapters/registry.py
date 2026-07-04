@@ -24,7 +24,7 @@ def intake_candidates() -> tuple[IntakeCandidate, ...]:
         candidates.append(
             IntakeCandidate(
                 adapter_name=spec.adapter_name,
-                source_path=f"xelo.adapters.frameworks:{spec.adapter_name}",
+                source_path=f"nuguard.adapters.frameworks:{spec.adapter_name}",
                 status=spec.status,
                 priority=spec.priority,
             )
@@ -45,6 +45,7 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         AutoGenAdapter,
         AzureAIAgentsAdapter,
         BedrockAgentCoreAdapter,
+        ClaudeAgentSDKAdapter,
         CrewAIAdapter,
         FastAPIAdapter,
         FlaskAdapter,
@@ -55,12 +56,14 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         LLMClientsAdapter,
         MCPServerAdapter,
         OpenAIAgentsAdapter,
+        PythonDatastoreAdapter,
         SemanticKernelAdapter,
     )
     from .typescript import (
         AgnoTSAdapter,
         AzureAIAgentsTSAdapter,
         BedrockAgentsTSAdapter,
+        ClaudeAgentSDKTSAdapter,
         DatastoreTSAdapter,
         GoogleADKAdapter,
         LangGraphTSAdapter,
@@ -86,11 +89,14 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         BedrockAgentCoreAdapter(),
         GoogleADKPythonAdapter(),
         MCPServerAdapter(),
+        ClaudeAgentSDKAdapter(),
+        PythonDatastoreAdapter(),
         FastAPIAdapter(),
         FlaskAdapter(),
         # TypeScript / JavaScript adapters
         LangGraphTSAdapter(),
         OpenAIAgentsTSAdapter(),
+        ClaudeAgentSDKTSAdapter(),
         GoogleADKAdapter(),
         LLMClientTSAdapter(),
         BedrockAgentsTSAdapter(),

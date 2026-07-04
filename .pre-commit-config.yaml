@@ -1,0 +1,36 @@
+default_stages: [pre-commit]
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      # Blocking: prevents unresolved conflict markers from being committed.
+      - id: check-merge-conflict
+      # Blocking: catches parse-time syntax errors (e.g., IndentationError).
+      - id: check-ast
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.7
+    hooks:
+      # Blocking: critical errors only (syntax + undefined names).
+      - id: ruff
+        name: ruff-critical
+        args: ["--select=E9,F821,F823", "--no-fix"]
+
+  - repo: local
+    hooks:
+      # Advisory only: manual stage means this never blocks commits unless run explicitly.
+      - id: ruff-full-advisory
+        name: ruff-full-advisory
+        entry: uv run ruff check nuguard/ tests/
+        language: system
+        pass_filenames: false
+        stages: [manual]
+
+      # Advisory only: manual stage avoids blocking local commits in a noisy baseline.
+      - id: mypy-advisory
+        name: mypy-advisory
+        entry: uv run mypy nuguard/
+        language: system
+        pass_filenames: false
+        stages: [manual]

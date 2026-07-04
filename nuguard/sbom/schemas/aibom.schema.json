@@ -10,6 +10,81 @@
       "title": "AccessType",
       "type": "string"
     },
+    "AuthDetail": {
+      "description": "Detailed authentication and authorization posture for a component.",
+      "properties": {
+        "protocols": {
+          "description": "Auth protocols in use, e.g. ['oauth2', 'bearer', 'api_key', 'basic']",
+          "items": {
+            "type": "string"
+          },
+          "title": "Protocols",
+          "type": "array"
+        },
+        "token_expiry_seconds": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Token TTL in seconds when detectable",
+          "title": "Token Expiry Seconds"
+        },
+        "mfa_required": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when MFA is required for access",
+          "title": "Mfa Required"
+        },
+        "credential_rotation_policy": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Rotation policy description, e.g. '90-day', 'on-demand'",
+          "title": "Credential Rotation Policy"
+        },
+        "enforcement_strict": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when auth is enforced on every request with no opt-out",
+          "title": "Enforcement Strict"
+        },
+        "auth_roles": {
+          "description": "Roles or scopes required for access, e.g. ['admin', 'read:users']",
+          "items": {
+            "type": "string"
+          },
+          "title": "Auth Roles",
+          "type": "array"
+        }
+      },
+      "title": "AuthDetail",
+      "type": "object"
+    },
     "ComponentType": {
       "enum": [
         "AGENT",
@@ -24,10 +99,112 @@
         "DEPLOYMENT",
         "PROMPT",
         "CONTAINER_IMAGE",
-        "IAM"
+        "IAM",
+        "DEVELOPER_TOOL_CONFIG",
+        "LIFECYCLE_SCRIPT",
+        "GITHUB_WORKFLOW",
+        "MCP_SERVER"
       ],
       "title": "ComponentType",
       "type": "string"
+    },
+    "DataHandlingDetail": {
+      "description": "Data retention, backup, anonymization, and consent configuration.",
+      "properties": {
+        "retention_days": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Data retention period in days",
+          "title": "Retention Days"
+        },
+        "purge_schedule": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Schedule or trigger for data purge, e.g. 'weekly', 'on-account-deletion'",
+          "title": "Purge Schedule"
+        },
+        "backup_frequency": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Backup frequency, e.g. 'daily', 'hourly', '7-day-retention'",
+          "title": "Backup Frequency"
+        },
+        "backup_encrypted": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when backups are encrypted",
+          "title": "Backup Encrypted"
+        },
+        "anonymization_method": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Anonymization or pseudonymization technique, e.g. 'tokenization', 'k-anonymity'",
+          "title": "Anonymization Method"
+        },
+        "consent_required": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when user consent is required before processing data",
+          "title": "Consent Required"
+        },
+        "cross_border_transfer": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when data is transferred across jurisdictional borders",
+          "title": "Cross Border Transfer"
+        }
+      },
+      "title": "DataHandlingDetail",
+      "type": "object"
     },
     "Edge": {
       "description": "A directed relationship between two Nodes.",
@@ -68,6 +245,99 @@
       "title": "Edge",
       "type": "object"
     },
+    "EncryptionDetail": {
+      "description": "Encryption and redaction posture for a component.",
+      "properties": {
+        "in_transit": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when data is encrypted in transit (TLS/SSL)",
+          "title": "In Transit"
+        },
+        "at_rest": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when data is encrypted at rest",
+          "title": "At Rest"
+        },
+        "algorithm": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Encryption algorithm, e.g. 'AES256', 'aws:kms', 'RSA-4096'",
+          "title": "Algorithm"
+        },
+        "tls_min_version": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Minimum TLS version enforced, e.g. 'TLS1.2', 'TLS1.3'",
+          "title": "Tls Min Version"
+        },
+        "redacted_fields": {
+          "description": "Field names whose values are redacted before logging or storage",
+          "items": {
+            "type": "string"
+          },
+          "title": "Redacted Fields",
+          "type": "array"
+        },
+        "log_redaction_enabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when sensitive fields are masked/redacted in logs",
+          "title": "Log Redaction Enabled"
+        },
+        "key_management": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Key management service, e.g. 'aws_kms', 'gcp_cmek', 'azure_key_vault', 'hashicorp_vault'",
+          "title": "Key Management"
+        }
+      },
+      "title": "EncryptionDetail",
+      "type": "object"
+    },
     "Evidence": {
       "description": "A single piece of detection evidence supporting a Node.",
       "properties": {
@@ -99,6 +369,73 @@
         "location"
       ],
       "title": "Evidence",
+      "type": "object"
+    },
+    "InstrumentationDetail": {
+      "description": "Observability and monitoring tooling configured for a component or application.",
+      "properties": {
+        "tools": {
+          "description": "Observability tools detected, e.g. ['opentelemetry', 'datadog', 'prometheus', 'sentry']",
+          "items": {
+            "type": "string"
+          },
+          "title": "Tools",
+          "type": "array"
+        },
+        "log_level": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Configured log level, e.g. 'DEBUG', 'INFO', 'WARNING'",
+          "title": "Log Level"
+        },
+        "tracing_enabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when distributed tracing is configured",
+          "title": "Tracing Enabled"
+        },
+        "metrics_enabled": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when metrics collection is configured",
+          "title": "Metrics Enabled"
+        },
+        "sampling_rate": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Trace or log sampling rate [0.0, 1.0] when detectable",
+          "title": "Sampling Rate"
+        }
+      },
+      "title": "InstrumentationDetail",
       "type": "object"
     },
     "Node": {
@@ -951,6 +1288,22 @@
           "description": "Inferred primary response text field in the response body",
           "title": "Response Text Key"
         },
+        "context_payload_fields": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Non-chat context fields detected in the POST request body schema, mapping field_name \u2192 kind. kind='identity': static per user (user_id, tenant_id, account_id\u2026) \u2014 auto-injected from login response or requires explicit config. kind='session': dynamic per conversation (session_id, thread_id\u2026) \u2014 auto-generated as UUID for the first request per scenario.",
+          "title": "Context Payload Fields"
+        },
         "pii_fields": {
           "anyOf": [
             {
@@ -1012,6 +1365,504 @@
           "description": "Datastore access mode inferred from ACCESSES edge: 'read' | 'write' | 'readwrite'",
           "title": "Access Type"
         },
+        "descriptive_name": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "LLM-generated human-readable label, e.g. 'User Authentication API'",
+          "title": "Descriptive Name"
+        },
+        "rate_limit_detail": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/RateLimitDetail"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Structured rate limit configuration extracted from code or IaC"
+        },
+        "auth_detail": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/AuthDetail"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Detailed authentication and authorization posture"
+        },
+        "encryption_detail": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/EncryptionDetail"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Encryption and redaction posture; supersedes encryption_at_rest for new consumers"
+        },
+        "data_handling": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/DataHandlingDetail"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Data retention, backup, anonymization, and consent configuration"
+        },
+        "dependency_names": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Package names from the manifest that appear in this component's source files",
+          "title": "Dependency Names"
+        },
+        "instrumentation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/InstrumentationDetail"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Observability and monitoring tooling detected for this component"
+        },
+        "testing": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TestingDetail"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Test coverage and CI/CD posture for this component"
+        },
+        "loc": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Total lines of source code across the files where this component is defined",
+          "title": "Loc"
+        },
+        "request_schema": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Request body JSON schema for API endpoints, keyed by Pydantic model class name",
+          "title": "Request Schema"
+        },
+        "response_schema": {
+          "anyOf": [
+            {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Response body JSON schema for API endpoints, keyed by Pydantic model class name",
+          "title": "Response Schema"
+        },
+        "has_network_policy": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "K8s workload: True when covered by a NetworkPolicy resource in the same namespace",
+          "title": "Has Network Policy"
+        },
+        "source_url": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Model artifact origin URL (HuggingFace repo, local path, or API base endpoint)",
+          "title": "Source Url"
+        },
+        "integrity_hash": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Model artifact SHA-256 or git revision hash for supply-chain verification",
+          "title": "Integrity Hash"
+        },
+        "checksum": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Model artifact checksum (md5, sha1, sha256) as a hex string",
+          "title": "Checksum"
+        },
+        "tool_config_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "AI-agent or editor config sub-type, e.g. 'claude-settings', 'mcp-config', 'cursor-config', 'vscode-config', 'gemini-config', 'smithery-config'",
+          "title": "Tool Config Type"
+        },
+        "permissions_granted": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Permission patterns granted in this config, e.g. ['Bash(*:*)', 'Read', 'Write']",
+          "title": "Permissions Granted"
+        },
+        "permissions_denied": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Permission patterns denied in this config, e.g. ['Bash(rm:*)']",
+          "title": "Permissions Denied"
+        },
+        "auto_execute": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when auto-run or auto-approve mode is enabled in this config",
+          "title": "Auto Execute"
+        },
+        "permission_scope": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Scope at which this config grants permissions: 'repo' | 'user' | 'global'",
+          "title": "Permission Scope"
+        },
+        "file_size_bytes": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Raw file size in bytes of this config file (for SC-017: large file detection)",
+          "title": "File Size Bytes"
+        },
+        "content_entropy": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Shannon entropy (bits/byte) of the file content computed at extraction time (for SC-018: high-entropy blob detection). Typical text is ~4\u20135; encrypted/base64 is >6.5.",
+          "title": "Content Entropy"
+        },
+        "script_phase": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Package lifecycle phase this script runs at, e.g. 'postinstall', 'preinstall', 'prepare', 'build-backend', 'publish-hook'",
+          "title": "Script Phase"
+        },
+        "script_body": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Lifecycle script body, truncated to 2000 chars",
+          "title": "Script Body"
+        },
+        "invokes_network": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when the script contains network download commands (curl, wget, fetch, etc.)",
+          "title": "Invokes Network"
+        },
+        "invokes_shell": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when the script pipes into a shell (| bash, | sh, | node, etc.)",
+          "title": "Invokes Shell"
+        },
+        "downloads_binary": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when the script downloads and executes a binary (Bun, node, etc.)",
+          "title": "Downloads Binary"
+        },
+        "references_credentials": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when the script references credential paths or env vars: /proc/*/environ, .npmrc, AWS_SECRET_ACCESS_KEY, GITHUB_TOKEN, etc.",
+          "title": "References Credentials"
+        },
+        "workflow_has_unpinned_global_install": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when any step in this workflow runs an unpinned global npm install or npx",
+          "title": "Workflow Has Unpinned Global Install"
+        },
+        "workflow_has_cred_access": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when any step in this workflow accesses credential paths or env vars",
+          "title": "Workflow Has Cred Access"
+        },
+        "workflow_triggers": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "GitHub Actions trigger event names parsed from the 'on:' block",
+          "title": "Workflow Triggers"
+        },
+        "workflow_permissions": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Top-level permissions block, e.g. {'id-token': 'write', 'contents': 'read'}",
+          "title": "Workflow Permissions"
+        },
+        "publishes_to": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Publish targets detected in workflow steps, e.g. ['pypi', 'npm', 'smithery']",
+          "title": "Publishes To"
+        },
+        "uses_oidc": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when any job has permissions.id-token: write (OIDC publishing)",
+          "title": "Uses Oidc"
+        },
+        "action_refs": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "All 'uses: owner/action@ref' strings found in this workflow. Unpinned refs (branch or tag, not full SHA) indicate a supply-chain risk.",
+          "title": "Action Refs"
+        },
+        "mcp_server_trusted": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when this MCP server is explicitly listed as trusted in nuguard.yaml",
+          "title": "Mcp Server Trusted"
+        },
+        "mcp_transport": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "MCP transport protocol declared in .mcp.json: 'stdio' | 'http' | 'sse'",
+          "title": "Mcp Transport"
+        },
         "extras": {
           "additionalProperties": true,
           "description": "Adapter-specific key/value pairs (provider, model_family, version, \u2026)",
@@ -1056,13 +1907,100 @@
       "title": "PackageDep",
       "type": "object"
     },
+    "RateLimitDetail": {
+      "description": "Structured rate limit configuration extracted from code or IaC.",
+      "properties": {
+        "requests_per_minute": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Maximum requests allowed per minute",
+          "title": "Requests Per Minute"
+        },
+        "requests_per_hour": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Maximum requests allowed per hour",
+          "title": "Requests Per Hour"
+        },
+        "requests_per_day": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Maximum requests allowed per day",
+          "title": "Requests Per Day"
+        },
+        "burst_size": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Burst/concurrency limit above the steady-state rate",
+          "title": "Burst Size"
+        },
+        "window_seconds": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Duration of the rate limit window in seconds",
+          "title": "Window Seconds"
+        },
+        "enforcement_type": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "How the rate limit is enforced, e.g. 'decorator', 'middleware', 'api_gateway'",
+          "title": "Enforcement Type"
+        }
+      },
+      "title": "RateLimitDetail",
+      "type": "object"
+    },
     "RelationshipType": {
       "enum": [
         "USES",
         "CALLS",
         "ACCESSES",
         "PROTECTS",
-        "DEPLOYS"
+        "DEPLOYS",
+        "DELEGATES_TO",
+        "CONTAINS"
       ],
       "title": "RelationshipType",
       "type": "string"
@@ -1308,6 +2246,152 @@
           },
           "title": "Streaming Endpoints",
           "type": "array"
+        },
+        "total_loc": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Total lines of source code scanned across all files in the repository",
+          "title": "Total Loc"
+        },
+        "tokens_used_for_enrichment": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Total LLM tokens consumed (prompt + completion) during SBOM enrichment",
+          "title": "Tokens Used For Enrichment"
+        },
+        "input_tokens_used": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "LLM prompt tokens consumed during SBOM enrichment",
+          "title": "Input Tokens Used"
+        },
+        "output_tokens_used": {
+          "anyOf": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "LLM completion tokens consumed during SBOM enrichment",
+          "title": "Output Tokens Used"
+        },
+        "llm_model_used": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "LLM model string used for SBOM enrichment, e.g. 'gemini/gemini-2.0-flash'",
+          "title": "Llm Model Used"
+        },
+        "instrumentation": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/InstrumentationDetail"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "App-wide observability and monitoring tooling summary"
+        },
+        "testing": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/TestingDetail"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "App-wide testing and CI/CD posture summary"
+        },
+        "github_actions_content": {
+          "default": "",
+          "description": "Raw concatenation of all detected GitHub Actions workflow YAML files, separated by '\n---\n'. Used by NGA-010/011/014 regex rules as a fallback when structured workflow_security_findings are not available.",
+          "title": "Github Actions Content",
+          "type": "string"
+        },
+        "workflow_security_findings": {
+          "description": "Structured security findings emitted by GitHubActionsAdapter during SBOM extraction. Each dict has keys: {rule_signal, path, line, snippet, confidence}.",
+          "items": {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          "title": "Workflow Security Findings",
+          "type": "array"
+        },
+        "k8s_network_policy_namespaces": {
+          "description": "Kubernetes namespaces that have at least one NetworkPolicy resource detected. Populated by K8sAdapter. Used by NGA-013 to assert cross-file coverage.",
+          "items": {
+            "type": "string"
+          },
+          "title": "K8S Network Policy Namespaces",
+          "type": "array"
+        },
+        "has_package_json": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when a package.json file was found at the repo root during SBOM extraction. Used by supply-chain scanner to check lockfile coverage (SC-024) without requiring a live filesystem.",
+          "title": "Has Package Json"
+        },
+        "has_lockfile": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when at least one npm lockfile (package-lock.json, pnpm-lock.yaml, or yarn.lock) was found at the repo root during SBOM extraction. Used by supply-chain scanner (SC-024) without requiring a live filesystem.",
+          "title": "Has Lockfile"
+        },
+        "minified_js_files": {
+          "description": "Relative paths to JavaScript files that contain a single line exceeding 5000 characters \u2014 a reliable indicator of minified/bundled code. Populated by the extractor during the main JS scanning pass. Used by supply-chain scanner (SC-019) without requiring a live filesystem.",
+          "items": {
+            "type": "string"
+          },
+          "title": "Minified Js Files",
+          "type": "array"
         }
       },
       "title": "ScanSummary",
@@ -1339,6 +2423,81 @@
         "path"
       ],
       "title": "SourceLocation",
+      "type": "object"
+    },
+    "TestingDetail": {
+      "description": "Testing, validation, and CI/CD posture for a component or application.",
+      "properties": {
+        "has_unit_tests": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when unit test files are detected",
+          "title": "Has Unit Tests"
+        },
+        "has_integration_tests": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "True when integration test files or suites are detected",
+          "title": "Has Integration Tests"
+        },
+        "test_frameworks": {
+          "description": "Test frameworks detected, e.g. ['pytest', 'jest', 'vitest', 'hypothesis']",
+          "items": {
+            "type": "string"
+          },
+          "title": "Test Frameworks",
+          "type": "array"
+        },
+        "ci_cd_pipeline": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "CI/CD platform detected, e.g. 'github_actions', 'gitlab_ci', 'jenkins'",
+          "title": "Ci Cd Pipeline"
+        },
+        "quality_gates": {
+          "description": "Quality gate tools detected, e.g. ['codecov', 'sonarqube', 'snyk']",
+          "items": {
+            "type": "string"
+          },
+          "title": "Quality Gates",
+          "type": "array"
+        },
+        "test_coverage_tool": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Coverage measurement tool detected, e.g. 'coverage.py', 'istanbul'",
+          "title": "Test Coverage Tool"
+        }
+      },
+      "title": "TestingDetail",
       "type": "object"
     },
     "ToolParameter": {
@@ -1389,12 +2548,12 @@
       "type": "object"
     }
   },
-  "$id": "https://nuguard.ai/schemas/aibom/1.4.0/aibom.schema.json",
+  "$id": "https://nuguard.ai/schemas/aibom/1.5.0/aibom.schema.json",
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "AI Bill of Materials document produced by Xelo.\n\nThis is the canonical output format.  Use ``AiSbomSerializer.to_json()``\nto serialise and ``AiSbomDocument.model_validate()`` to parse and validate.",
+  "description": "AI Bill of Materials document produced by NuGuard.\n\nThis is the canonical output format.  Use ``AiSbomSerializer.to_json()``\nto serialise and ``AiSbomDocument.model_validate()`` to parse and validate.",
   "properties": {
     "schema_version": {
-      "default": "1.4.0",
+      "default": "1.5.0",
       "description": "AIBOM schema version (semver); bump when format changes",
       "title": "Schema Version",
       "type": "string"

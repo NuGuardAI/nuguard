@@ -1,4 +1,4 @@
-"""xelo.adapters — pluggable framework detection adapters.
+"""nuguard.adapters — pluggable framework detection adapters.
 
 Sub-packages
 ------------

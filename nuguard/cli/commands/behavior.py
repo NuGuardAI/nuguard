@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import asyncio
-import logging
 from pathlib import Path
 from typing import Optional
 
 import typer
 from rich.console import Console
+
+from nuguard.cli.common import output_path_for_format, parse_output_formats
+from nuguard.common.logging import get_logger
 
 behavior_app = typer.Typer(
     name="behavior",
@@ -16,7 +18,7 @@ behavior_app = typer.Typer(
 
 _console = Console()
 _err_console = Console(stderr=True)
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 
 @behavior_app.callback(invoke_without_command=True)
@@ -46,8 +48,14 @@ def behavior_command(
     output: Optional[Path] = typer.Option(
         None, "--output", "-o", help="Write report to this path"
     ),
-    format: str = typer.Option(
-        "text", "--format", "-f", help="Output format: text | json | markdown"
+    format: list[str] | None = typer.Option(
+        None,
+        "--format",
+        "-f",
+        help=(
+            "Output format(s): text | json | markdown. "
+            "Repeat --format or pass comma-separated values."
+        ),
     ),
     fail_on: str = typer.Option(
         "high",
@@ -57,8 +65,17 @@ def behavior_command(
     baseline: Optional[Path] = typer.Option(
         None, "--baseline", help="Path to a previous BehaviorAnalysisResult JSON for regression detection"
     ),
-    verbose: bool = typer.Option(
-        False, "--verbose", "-v", help="Print detailed turn traces."
+    compare_to: Optional[Path] = typer.Option(
+        None, "--compare-to", help="Path to previous behavior report JSON for run-profile comparability"
+    ),
+    strict_report: bool = typer.Option(
+        False, "--strict-report", help="Fail if markdown report validation finds structural issues"
+    ),
+    verbose: Optional[bool] = typer.Option(
+        None,
+        "--verbose/--no-verbose",
+        "-v/-V",
+        help="Print detailed turn traces. Overrides behavior.verbose in nuguard.yaml.",
     ),
     static: bool = typer.Option(
         False, "--static", help="Run static analysis only (shorthand for --mode static)"
@@ -77,7 +94,8 @@ def behavior_command(
       nuguard behavior
       nuguard behavior --static --config ./nuguard.yaml
       nuguard behavior --dynamic --target http://localhost:8090
-      nuguard behavior --policy ./policy.md --output ./behavior-report.md --format markdown
+    nuguard behavior --policy ./policy.md --output ./behavior-report.md --format markdown
+    nuguard behavior --output ./behavior-report --format json --format markdown
       nuguard behavior --mode static+dynamic --fail-on critical
     """
     if ctx.invoked_subcommand is not None:
@@ -90,6 +108,22 @@ def behavior_command(
     elif dynamic and not static:
         effective_mode = "dynamic"
 
+    try:
+        formats = parse_output_formats(
+            format,
+            default_format="text",
+            allowed_formats={"text", "json", "markdown"},
+        )
+    except ValueError as exc:
+        _err_console.print(f"[red]Error:[/red] {exc}")
+        raise typer.Exit(code=2)
+
+    if len(formats) > 1 and output is None:
+        _err_console.print(
+            "[red]Error:[/red] --output is required when multiple --format values are requested"
+        )
+        raise typer.Exit(code=2)
+
     asyncio.run(
         _run_behavior(
             config_path=config,
@@ -99,9 +133,11 @@ def behavior_command(
             intent_text=intent,
             canary_path=canary,
             output_path=output,
-            fmt=format,
+            formats=formats,
             fail_on=fail_on,
             baseline_path=baseline,
+            compare_to_path=compare_to,
+            strict_report=strict_report,
             verbose=verbose,
         )
     )
@@ -115,10 +151,12 @@ async def _run_behavior(
     intent_text: Optional[str],
     canary_path: Optional[Path],
     output_path: Optional[Path],
-    fmt: str,
+    formats: list[str],
     fail_on: str,
     baseline_path: Optional[Path],
-    verbose: bool,
+    compare_to_path: Optional[Path],
+    strict_report: bool,
+    verbose: Optional[bool],
 ) -> None:
     """Internal async implementation of the behavior command."""
     from nuguard.behavior.analyzer import BehaviorAnalyzer
@@ -140,8 +178,8 @@ async def _run_behavior(
     updates: dict = {}
     if target_override:
         updates["target"] = target_override
-    if verbose:
-        updates["verbose"] = True
+    if verbose is not None:
+        updates["verbose"] = bool(verbose)
     if canary_path:
         updates["canary"] = str(canary_path)
     if updates:
@@ -187,17 +225,21 @@ async def _run_behavior(
             log_prefix="behavior",
         )
 
-    # 5. Load policy
+    # 5. Load policy + compiled controls
     resolved_policy_path = policy_path or (Path(cfg.policy_path) if cfg.policy_path else None)
     policy_obj = None
     controls = None
     if resolved_policy_path and resolved_policy_path.exists():
         try:
-            from nuguard.policy.parser import parse_policy
-            policy_obj = parse_policy(resolved_policy_path.read_text())
+            from nuguard.policy.loader import ensure_policy_controls
+            policy_obj, controls = await ensure_policy_controls(
+                resolved_policy_path,
+                use_llm=bc.use_llm,
+                llm_client=None,  # LLM client not yet built at this point; rule-based build is fast
+            )
             _console.print(f"[dim]Loaded policy: {resolved_policy_path}[/dim]")
         except Exception as exc:
-            _log.warning("Could not parse policy from %s: %s", resolved_policy_path, exc)
+            _log.warning("Could not load policy from %s: %s", resolved_policy_path, exc)
 
     # 6. Build LLM client
     llm_client = None
@@ -210,15 +252,6 @@ async def _run_behavior(
             )
         except Exception as exc:
             _log.warning("Could not build LLM client: %s", exc)
-
-    # Compile controls from policy — after LLM client so it can be passed in
-    if policy_obj is not None:
-        try:
-            from nuguard.policy.compiler import compile_controls
-            policy_text = resolved_policy_path.read_text() if resolved_policy_path else ""
-            controls = await compile_controls(policy_text, use_llm=bc.use_llm, llm_client=llm_client)
-        except Exception as exc:
-            _log.debug("Could not compile controls: %s", exc)
 
     # 7. Run analysis
     _console.print(f"[bold]Running behavior analysis[/bold]  mode={mode}")
@@ -249,30 +282,83 @@ async def _run_behavior(
             _err_console.print(f"[red]Error:[/red] Behavior analysis failed: {exc}")
             _log.exception("Behavior analysis failed")
         raise typer.Exit(code=2)
+    finally:
+        try:
+            from litellm.llms.custom_httpx.async_client_cleanup import (
+                close_litellm_async_clients,  # noqa: PLC0415
+            )
+            await close_litellm_async_clients()
+        except Exception:
+            pass
 
     # 8. Output report
+    previous_run_profile: dict = {}
+    if compare_to_path and compare_to_path.exists():
+        try:
+            import json as _json
+
+            previous_json = _json.loads(compare_to_path.read_text(encoding="utf-8"))
+            previous_run_profile = dict(previous_json.get("run_profile", {}) or {})
+        except Exception as exc:
+            _log.warning("Could not load compare-to report %s: %s", compare_to_path, exc)
+
     llm_models = [m for m in [cfg.litellm_model] if m]
     meta = ReportMeta(
         llm_models=llm_models,
+        verbose=bool(getattr(bc, "verbose", False)),
         target_url=str(getattr(bc, "target", "") or ""),
+        target_endpoint=str(getattr(bc, "target_endpoint", "") or ""),
+        effective_endpoint=str(getattr(result, "effective_endpoint", "") or ""),
+        target_endpoint_source=str(getattr(result, "target_endpoint_source", "config") or "config"),
+        endpoint_discovery_notes=list(getattr(result, "config_notes", []) or []),
+        previous_run_profile=previous_run_profile,
     )
 
-    report_text: str | None = None
-    if fmt == "json":
-        report_text = to_json(result, meta)
-    elif fmt == "markdown":
-        report_text = to_markdown(result, meta)
-    else:
-        to_text(result, meta)
+    extension_map = {
+        "text": ".txt",
+        "json": ".json",
+        "markdown": ".md",
+    }
+
+    def _render(fmt: str) -> str | None:
+        if fmt == "json":
+            return to_json(result, meta)
+        if fmt == "markdown":
+            return to_markdown(result, meta)
+        if output_path is None:
+            to_text(result, meta)
+            return None
+        # Preserve prior behavior for --format text --output ...
+        # where markdown was written to file.
+        return to_markdown(result, meta)
 
     if output_path is not None:
-        if report_text is None:
-            report_text = to_markdown(result, meta)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(report_text, encoding="utf-8")
-        _console.print(f"[green]Report written to:[/green] {output_path}")
-    elif report_text is not None:
-        _console.print(report_text)
+        for fmt in formats:
+            out_path = output_path_for_format(
+                output_path,
+                fmt=fmt,
+                all_formats=formats,
+                extension_map=extension_map,
+            )
+            report_text = _render(fmt)
+            if report_text is None:
+                continue
+            if fmt == "markdown":
+                from nuguard.output.report_validation import validate_markdown_report
+
+                issues = validate_markdown_report(report_text)
+                if issues:
+                    for issue in issues:
+                        _err_console.print(f"[yellow]Report validation warning:[/yellow] {issue}")
+                    if strict_report:
+                        raise typer.Exit(code=3)
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            out_path.write_text(report_text, encoding="utf-8")
+            _console.print(f"[green]Report written to:[/green] {out_path}")
+    else:
+        report_text = _render(formats[0])
+        if report_text is not None:
+            _console.print(report_text)
 
     # 9. Exit code based on fail_on severity
     severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}

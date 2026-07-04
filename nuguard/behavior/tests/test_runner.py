@@ -1,6 +1,7 @@
 """Unit tests for nuguard/behavior/runner.py."""
 from __future__ import annotations
 
+import uuid
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -13,6 +14,11 @@ from nuguard.behavior.models import (
     ScenarioResult,
 )
 from nuguard.behavior.runner import BehaviorRunner
+from nuguard.common.discovery import DiscoveredProfile
+from nuguard.sbom.models import AiSbomDocument, Node, NodeMetadata
+from nuguard.sbom.types import ComponentType
+
+_NS = uuid.NAMESPACE_URL
 
 
 def _make_intent() -> IntentProfile:
@@ -68,6 +74,17 @@ def _make_mock_sbom() -> MagicMock:
     sbom.nodes = []
     sbom.edges = []
     return sbom
+
+
+def _endpoint_node(name: str) -> Node:
+    nid = uuid.uuid5(_NS, f"API_ENDPOINT/{name}")
+    return Node(
+        id=nid,
+        name=name,
+        component_type=ComponentType.API_ENDPOINT,
+        confidence=1.0,
+        metadata=NodeMetadata(),
+    )
 
 
 def _make_canned_scenario_result(name: str = "test_scenario", passed: bool = True) -> ScenarioResult:
@@ -168,7 +185,7 @@ async def test_run_policy_violation_creates_finding():
     violation_result = ScenarioResult(
         scenario_id="test-id",
         scenario_name="boundary_test",
-        scenario_type="invariant_probe",
+        scenario_type="guardrail_probe",
         verdicts=[{"overall_score": 1.5, "verdict": "FAIL", "agents_mentioned": [], "tools_mentioned": [], "deviations": [{"deviation_type": "policy_violation", "description": "gambling content returned", "severity": "HIGH"}]}],
         overall_score=1.5,
         coverage_pct=0.0,
@@ -258,6 +275,177 @@ async def test_run_handles_scenario_exception():
     # The second scenario should still have run
     assert len(result.scenario_results) == 1
     assert result.scenario_results[0].scenario_name == "will_pass"
+
+
+@pytest.mark.asyncio
+async def test_run_does_not_rotate_when_target_endpoint_is_explicit() -> None:
+    """Explicit target_endpoint must fail fast on 404/405 without SBOM/probe rotation."""
+
+    class _DummyClient:
+        def __init__(self) -> None:
+            self.base_url = "http://localhost:8080"
+            self.chat_path = "/chat"
+            self.resolution_notes: list[str] = []
+            self.called_paths: list[str] = []
+
+        async def send(self, message: str, session: object) -> tuple[str, list[dict]]:
+            self.called_paths.append(self.chat_path)
+            if self.chat_path == "/chat":
+                return "[HTTP 404] not found", []
+            return "OK", []
+
+        def set_chat_endpoint(
+            self,
+            chat_path: str,
+            chat_payload_key: str,
+            chat_payload_list: bool,
+            chat_response_key: str | None = None,
+        ) -> None:
+            self.chat_path = chat_path
+
+    cfg = _make_config()
+    cfg.target_endpoint = "/chat"
+
+    sbom = AiSbomDocument(
+        target="./app",
+        nodes=[
+            Node(
+                id=uuid.uuid5(_NS, "API_ENDPOINT//chat"),
+                name="/chat",
+                component_type=ComponentType.API_ENDPOINT,
+                confidence=0.99,
+                metadata=NodeMetadata(
+                    endpoint="/chat",
+                    method="POST",
+                    chat_payload_key="message",
+                    chat_payload_list=False,
+                ),
+            ),
+            Node(
+                id=uuid.uuid5(_NS, "API_ENDPOINT//api/agent/chat"),
+                name="/api/agent/chat",
+                component_type=ComponentType.API_ENDPOINT,
+                confidence=0.99,
+                metadata=NodeMetadata(
+                    endpoint="/api/agent/chat",
+                    method="POST",
+                    chat_payload_key="message",
+                    chat_payload_list=False,
+                ),
+            ),
+        ],
+        edges=[],
+    )
+
+    runner = BehaviorRunner(
+        config=cfg,
+        sbom=sbom,
+        policy=_make_mock_policy(),
+        intent=_make_intent(),
+        llm_client=None,
+    )
+    dummy = _DummyClient()
+
+    with (
+        patch.object(runner, "_build_client", new=AsyncMock(return_value=dummy)),
+        patch.object(runner, "_build_policy_evaluator", return_value=None),
+    ):
+        result = await runner.run(
+            scenarios=[_make_scenario("explicit_endpoint")],
+            pre_scan_profile=DiscoveredProfile(customer_name="Alice", ids=["ACCT-001"]),
+        )
+
+    assert result.scan_outcome == "aborted_endpoint_unreachable"
+    assert any("Explicit endpoint precedence is enforced" in note for note in result.config_notes)
+    assert "/api/agent/chat" not in dummy.called_paths
+
+
+def test_build_coverage_map_endpoint_direct_match_confidence() -> None:
+    sbom = AiSbomDocument(target="./app", nodes=[_endpoint_node("/api/agent/chat")], edges=[])
+    runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
+
+    scenario_results = [
+        ScenarioResult(
+            scenario_id="s1",
+            scenario_name="endpoint_s1",
+            scenario_type=BehaviorScenarioType.ENDPOINT_COVERAGE.value,
+            verdicts=[
+                {
+                    "turn": 1,
+                    "target_component": "/api/agent/chat",
+                    "effective_endpoint": "/api/agent/chat?session=1",
+                    "deviations": [],
+                    "passed": True,
+                }
+            ],
+            total_turns=1,
+        )
+    ]
+
+    coverage = runner._build_coverage_map(scenario_results)
+    endpoint_cov = next(c for c in coverage if c.component_name == "/api/agent/chat")
+    assert endpoint_cov.exercised is True
+    assert endpoint_cov.mapping_confidence == "direct_match"
+    assert endpoint_cov.mapped_from_endpoint == "/api/agent/chat"
+
+
+def test_build_coverage_map_endpoint_normalized_match_confidence() -> None:
+    sbom = AiSbomDocument(target="./app", nodes=[_endpoint_node("/api/agent/chat")], edges=[])
+    runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
+
+    scenario_results = [
+        ScenarioResult(
+            scenario_id="s1",
+            scenario_name="endpoint_s1",
+            scenario_type=BehaviorScenarioType.ENDPOINT_COVERAGE.value,
+            verdicts=[
+                {
+                    "turn": 1,
+                    "target_component": "/api/unknown",
+                    "effective_endpoint": "http://localhost:8080/api/agent/chat/",
+                    "deviations": [],
+                    "passed": True,
+                }
+            ],
+            total_turns=1,
+        )
+    ]
+
+    coverage = runner._build_coverage_map(scenario_results)
+    endpoint_cov = next(c for c in coverage if c.component_name == "/api/agent/chat")
+    assert endpoint_cov.exercised is True
+    assert endpoint_cov.mapping_confidence == "normalized_match"
+    assert endpoint_cov.mapped_from_endpoint == "/api/agent/chat"
+
+
+def test_build_coverage_map_runtime_only_endpoint_fallback() -> None:
+    sbom = AiSbomDocument(target="./app", nodes=[_endpoint_node("/api/agent/chat")], edges=[])
+    runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
+
+    scenario_results = [
+        ScenarioResult(
+            scenario_id="s1",
+            scenario_name="endpoint_s1",
+            scenario_type=BehaviorScenarioType.ENDPOINT_COVERAGE.value,
+            verdicts=[
+                {
+                    "turn": 1,
+                    "target_component": "/api/not-in-sbom",
+                    "effective_endpoint": "/api/runtime-only",
+                    "deviations": [],
+                    "passed": True,
+                }
+            ],
+            total_turns=1,
+        )
+    ]
+
+    coverage = runner._build_coverage_map(scenario_results)
+    runtime_cov = next(c for c in coverage if c.component_name == "/api/runtime-only (runtime)")
+    assert runtime_cov.exercised is True
+    assert runtime_cov.mapping_confidence == "runtime_only_unmapped"
+    assert runtime_cov.mapped_from_endpoint == "/api/runtime-only"
+    assert runner._coverage_mapping_diagnostics.get("runtime_only_unmapped_endpoint_count") == 1
 
 
 # ---------------------------------------------------------------------------

@@ -4,7 +4,15 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-W0YCF4LTEJ"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+    
+      gtag('config', 'G-W0YCF4LTEJ');
+    </script>
     <!-- Primary SEO -->
     <title>NuGuard — AI Application Security Suite | SBOM · Static Analysis · Policy · Red-Team</title>
     <meta name="description"
@@ -406,7 +414,7 @@
                 <div class="card">
                     <div class="card-icon" style="background: rgba(88,196,220,0.12);">🤖</div>
                     <h3>Agents</h3>
-                    <p>Frameworks like LangGraph, CrewAI, AutoGen, OpenAI Agents SDK, Google ADK, AWS BedrockAgentCore, Azure Semantic Kernel, Agno, and more.</p>
+                    <p>Frameworks like LangGraph, Claude Agent SDK, AutoGen, OpenAI Agents SDK, Google ADK, AWS BedrockAgentCore, Azure Agent SDK, Agno, CrewAI,and more.</p>
                 </div>
                 <div class="card">
                     <div class="card-icon" style="background: rgba(188,140,255,0.12);">🧠</div>
@@ -587,6 +595,8 @@
                         Add <code style="font-family:var(--mono);font-size:0.85rem;color:var(--accent)">--llm</code> for LLM enrichment. Most features work out-of-the-box without an LLM key.
                     </p>
                     <a href="doc.html?page=quick-start" class="btn-primary" style="display: inline-flex;">Full guide →</a>
+                    <a href="doc.html?page=plugin-guide" class="btn-secondary"
+                        style="display: inline-flex; margin-top: 0.75rem;">Plugin Guide (Claude) →</a>
                     <a href="doc.html?page=behavior-guide" class="btn-secondary"
                         style="display: inline-flex; margin-top: 0.75rem;">Behavior Testing Guide →</a>
                     <a href="doc.html?page=redteam-guide" class="btn-secondary"
@@ -790,6 +800,7 @@ jobs:
             </div>
             <ul class="footer-links">
                 <li><a href="doc.html?page=quick-start">Quick Start</a></li>
+                <li><a href="doc.html?page=plugin-guide">Plugin Guide</a></li>
                 <li><a href="https://github.com/NuGuardAI/nuguard-oss" class="icon-link" aria-label="GitHub"><svg width="15"
                             height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
                             <path

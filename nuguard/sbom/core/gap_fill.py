@@ -35,14 +35,15 @@ Example usage::
 from __future__ import annotations
 
 import json
-import logging
 from pathlib import Path
 from typing import Any
+
+from nuguard.common.logging import get_logger
 
 from ..models import AiSbomDocument, Evidence, Node, NodeMetadata, SourceLocation
 from ..types import ComponentType
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # Category configuration
@@ -501,7 +502,7 @@ async def discover_missing_nodes(
         if category not in absent_categories:
             continue
 
-        if budget_tokens is not None and llm_client.tokens_used >= budget_tokens:
+        if budget_tokens is not None and sum(getattr(llm_client, "token_counts", (0, 0))) >= budget_tokens:
             _log.info("gap-fill: token budget exhausted — stopping early")
             break
 
@@ -741,8 +742,8 @@ async def _call_gap_fill_llm(
         f"Find any {category.value} components NOT listed above and return JSON."
     )
 
-    raw_text, tokens = await client.complete_text(_SYSTEM_PROMPT, user_prompt)
-    _log.debug("gap-fill[%s]: %d tokens used", category.value, tokens)
+    raw_text = await client.complete(prompt=user_prompt, system=_SYSTEM_PROMPT)
+    _log.debug("gap-fill[%s]: completed", category.value)
 
     # Strip markdown code fences if present
     text = raw_text.strip()

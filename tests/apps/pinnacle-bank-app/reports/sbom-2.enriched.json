@@ -10,7 +10,6 @@
       "component_type": "API_ENDPOINT",
       "confidence": 0.44000000000000006,
       "metadata": {
-        "description": "This component represents a generic API endpoint facilitating POST requests at the /api/chat path.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -31,7 +30,7 @@
             "validation_penalty": 0.0,
             "final_confidence": 0.44
           },
-          "description_source": "llm_generated"
+          "description_source": "none"
         }
       },
       "evidence": [
@@ -56,7 +55,6 @@
         "endpoint": "0.0.0.0:8080",
         "transport": "sse",
         "server_name": "fintech-accounts",
-        "description": "An MCP server API endpoint providing Server-Sent Events over port 8080 for real-time data streaming.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -86,7 +84,7 @@
             "validation_penalty": 0.0,
             "final_confidence": 0.9856
           },
-          "description_source": "llm_generated"
+          "description_source": "none"
         }
       },
       "evidence": [
@@ -278,7 +276,6 @@
       "component_type": "AUTH",
       "confidence": 0.616,
       "metadata": {
-        "description": "Generic authentication component providing OAuth and API key validation services for secure system access.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -307,7 +304,7 @@
             "validation_penalty": 0.0,
             "final_confidence": 0.616
           },
-          "description_source": "llm_generated"
+          "description_source": "none"
         }
       },
       "evidence": [
@@ -548,7 +545,6 @@
         "image_tag": "1.25-alpine",
         "registry": "docker.io",
         "base_image": "nginx:1.25-alpine",
-        "description": "Lightweight container image based on Alpine Linux providing the Nginx 1.25 web server and reverse proxy software.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -577,7 +573,7 @@
             "validation_penalty": 0.0,
             "final_confidence": 0.8712
           },
-          "description_source": "llm_generated"
+          "description_source": "none"
         }
       },
       "evidence": [
@@ -602,7 +598,6 @@
         "image_tag": "20-alpine",
         "registry": "docker.io",
         "base_image": "node:20-alpine",
-        "description": "A lightweight container image based on Alpine Linux providing the Node.js 20 runtime environment for application execution.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -631,7 +626,7 @@
             "validation_penalty": 0.0,
             "final_confidence": 0.8712
           },
-          "description_source": "llm_generated"
+          "description_source": "none"
         }
       },
       "evidence": [
@@ -656,7 +651,6 @@
         "image_tag": "3.11-slim",
         "registry": "docker.io",
         "base_image": "python:3.11-slim",
-        "description": "A lightweight container image based on Python 3.11 optimized for minimal size and production deployments.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -689,7 +683,7 @@
             "validation_penalty": 0.0,
             "final_confidence": 1.0
           },
-          "description_source": "llm_generated"
+          "description_source": "none"
         }
       },
       "evidence": [
@@ -899,7 +893,6 @@
       "component_type": "DATASTORE",
       "confidence": 1.0,
       "metadata": {
-        "description": "Redis is an open-source, in-memory data structure store used as a database, cache, and message broker.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "pfi_fields": [],
@@ -929,7 +922,7 @@
             "validation_penalty": 0.0,
             "final_confidence": 1.0
           },
-          "description_source": "llm_generated"
+          "description_source": "none"
         }
       },
       "evidence": [
@@ -1076,7 +1069,6 @@
       "component_type": "DATASTORE",
       "confidence": 0.44000000000000006,
       "metadata": {
-        "description": "SQLite is a self-contained, serverless, zero-configuration, transactional SQL database engine implemented as a C library.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "pfi_fields": [],
@@ -1097,7 +1089,7 @@
             "validation_penalty": 0.0,
             "final_confidence": 0.44
           },
-          "description_source": "llm_generated"
+          "description_source": "none"
         }
       },
       "evidence": [
@@ -1120,7 +1112,6 @@
       "metadata": {
         "deployment_target": "azure",
         "cloud_region": "eastus",
-        "description": "Azure Bicep deployment configuration for Nginx infrastructure resources located in the East US region managed via the Azure Developer CLI.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -1152,7 +1143,7 @@
             "validation_penalty": 0.0,
             "final_confidence": 0.9856
           },
-          "description_source": "llm_generated"
+          "description_source": "none"
         }
       },
       "evidence": [
@@ -1345,7 +1336,6 @@
       "confidence": 0.7744000000000001,
       "metadata": {
         "deployment_target": "azure",
-        "description": "Azure Bicep deployment configuration with an undefined or missing target region specification.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -1373,7 +1363,7 @@
             "validation_penalty": 0.0,
             "final_confidence": 0.7744
           },
-          "description_source": "llm_generated"
+          "description_source": "none"
         }
       },
       "evidence": [
@@ -1395,7 +1385,6 @@
       "confidence": 0.7744000000000001,
       "metadata": {
         "deployment_target": "azure",
-        "description": "Azure Bicep deployment configuration with an undefined or missing target region specification.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -1423,7 +1412,7 @@
             "validation_penalty": 0.0,
             "final_confidence": 0.7744
           },
-          "description_source": "llm_generated"
+          "description_source": "none"
         }
       },
       "evidence": [
@@ -1445,7 +1434,6 @@
       "confidence": 0.7744000000000001,
       "metadata": {
         "deployment_target": "azure",
-        "description": "Azure Bicep deployment configuration with an undefined or missing target region specification.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -1473,7 +1461,7 @@
             "validation_penalty": 0.0,
             "final_confidence": 0.7744
           },
-          "description_source": "llm_generated"
+          "description_source": "none"
         }
       },
       "evidence": [
@@ -1495,7 +1483,6 @@
       "confidence": 0.7744000000000001,
       "metadata": {
         "deployment_target": "azure",
-        "description": "Azure Bicep deployment configuration with an undefined or missing target region specification.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -1523,7 +1510,7 @@
             "validation_penalty": 0.0,
             "final_confidence": 0.7744
           },
-          "description_source": "llm_generated"
+          "description_source": "none"
         }
       },
       "evidence": [
@@ -1544,7 +1531,6 @@
       "component_type": "DEPLOYMENT",
       "confidence": 0.7920000000000001,
       "metadata": {
-        "description": "This deployment component exposes network traffic on port 80 as specified in the project Dockerfile.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -1567,7 +1553,7 @@
             "validation_penalty": 0.0,
             "final_confidence": 0.792
           },
-          "description_source": "llm_generated"
+          "description_source": "none"
         }
       },
       "evidence": [
@@ -1588,7 +1574,6 @@
       "component_type": "DEPLOYMENT",
       "confidence": 0.7920000000000001,
       "metadata": {
-        "description": "This deployment exposes network port 8001 for service communication as defined in the container configuration.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -1611,7 +1596,7 @@
             "validation_penalty": 0.0,
             "final_confidence": 0.792
           },
-          "description_source": "llm_generated"
+          "description_source": "none"
         }
       },
       "evidence": [
@@ -1632,7 +1617,6 @@
       "component_type": "DEPLOYMENT",
       "confidence": 1.0,
       "metadata": {
-        "description": "This deployment component exposes network port 8080 for containerized application traffic as specified in the Dockerfile configuration.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -1659,7 +1643,7 @@
             "validation_penalty": 0.0,
             "final_confidence": 1.0
           },
-          "description_source": "llm_generated"
+          "description_source": "none"
         }
       },
       "evidence": [
@@ -1861,7 +1845,6 @@
       "confidence": 0.9880000000000001,
       "metadata": {
         "framework": "langchain",
-        "description": "LangChain is a framework designed to facilitate the development of applications powered by large language models through modular components and chains.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -1884,7 +1867,7 @@
             "validation_penalty": 0.0,
             "final_confidence": 0.988
           },
-          "description_source": "llm_generated"
+          "description_source": "none"
         }
       },
       "evidence": [
@@ -1913,7 +1896,6 @@
       "confidence": 0.616,
       "metadata": {
         "framework": "langgraph",
-        "description": "LangGraph is a library for building stateful, multi-actor applications with LLMs by modeling agent workflows as directed cyclic graphs.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -1938,7 +1920,7 @@
             "validation_penalty": 0.0,
             "final_confidence": 0.616
           },
-          "description_source": "llm_generated"
+          "description_source": "none"
         }
       },
       "evidence": [
@@ -1987,7 +1969,7 @@
       "confidence": 1.0,
       "metadata": {
         "framework": "mcp_server",
-        "description": "Fintech-accounts is an MCP server framework providing standardized interfaces for managing and accessing financial account data within a distributed system.",
+        "description": "fintech-accounts server with 12 tools including apply_for_loan, approve_loan, and buy_crypto, using SSE transport and no authentication.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -2015,7 +1997,7 @@
             "final_confidence": 1.0
           },
           "description": "fintech-accounts server with 12 tools including apply_for_loan, approve_loan, and buy_crypto, using SSE transport and no authentication.",
-          "description_source": "llm_generated"
+          "description_source": "original_sbom"
         }
       },
       "evidence": [
@@ -2203,7 +2185,6 @@
       "component_type": "MODEL",
       "confidence": 1.0,
       "metadata": {
-        "description": "GPT-4o-mini is a lightweight large language model designed for efficient text generation and natural language processing tasks.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -2232,7 +2213,7 @@
             "validation_penalty": 0.0,
             "final_confidence": 1.0
           },
-          "description_source": "llm_generated"
+          "description_source": "none"
         }
       },
       "evidence": [
@@ -2497,7 +2478,6 @@
       "confidence": 0.44000000000000006,
       "metadata": {
         "privilege_scope": "filesystem_write",
-        "description": "This privilege grants the application write access to the local filesystem for creating or modifying files at specified output paths.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -2517,7 +2497,7 @@
             "validation_penalty": 0.0,
             "final_confidence": 0.44
           },
-          "description_source": "llm_generated"
+          "description_source": "none"
         }
       },
       "evidence": [
@@ -2539,7 +2519,6 @@
       "confidence": 0.4840000000000001,
       "metadata": {
         "privilege_scope": "network_out",
-        "description": "This component provides the application with the privilege to initiate outbound network requests using the requests library.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -2562,7 +2541,7 @@
             "validation_penalty": 0.0,
             "final_confidence": 0.484
           },
-          "description_source": "llm_generated"
+          "description_source": "none"
         }
       },
       "evidence": [
@@ -2593,7 +2572,6 @@
       "confidence": 0.616,
       "metadata": {
         "privilege_scope": "rbac",
-        "description": "This component implements role-based access control mechanisms to manage user permissions and enforce privilege security policies within the system.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -2623,7 +2601,7 @@
             "validation_penalty": 0.0,
             "final_confidence": 0.616
           },
-          "description_source": "llm_generated"
+          "description_source": "none"
         }
       },
       "evidence": [
@@ -2752,7 +2730,6 @@
       "component_type": "PROMPT",
       "confidence": 0.616,
       "metadata": {
-        "description": "A prompt template utilizing regular expressions for pattern matching and data validation within the application workflow.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
@@ -2781,7 +2758,7 @@
             "validation_penalty": 0.0,
             "final_confidence": 0.616
           },
-          "description_source": "llm_generated"
+          "description_source": "none"
         }
       },
       "evidence": [
@@ -7145,87 +7122,86 @@
       ]
     },
     {
-      "id": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "id": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "name": "Fintech App Assistant",
       "component_type": "AGENT",
       "confidence": 0.55,
       "metadata": {
-        "description": "An autonomous software agent designed to facilitate financial transactions and provide personalized account management support within the application environment.",
+        "endpoint": "/chat/message",
+        "description": "This AI application supports customer support assistance through an agentic AI workflow integrating 78 tools without voice, image, or video modality support, operating solely via text. It serves fintech-related use cases with capabilities including loan application, loan approval, asset purchase, and user broadcasting. The MCP server 'fintech-accounts' exposes 12 tools such as apply_for_loan, approve_loan, and buy_crypto, communicates over SSE transport, and does not require authentication.",
+        "accepts_user_input": true,
         "request_body_schema": {},
+        "chat_payload_key": "message",
         "chat_payload_list": false,
         "extras": {
           "source": "auto_enrichment",
-          "description_source": "llm_generated"
+          "description_source": "none"
         }
       },
       "evidence": []
     },
     {
-      "id": "470f3de3-26fc-45eb-8767-4d6d512f19a0",
+      "id": "86619ffc-c74c-4a9c-9962-8dca65ef349e",
       "name": "/api/health API",
       "component_type": "API_ENDPOINT",
       "confidence": 0.55,
       "metadata": {
         "endpoint": "/api/health",
         "method": "GET",
-        "description": "GET endpoint providing system health status and service availability information for the API.",
         "accepts_user_input": false,
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
           "source": "auto_enrichment",
-          "description_source": "llm_generated"
+          "description_source": "none"
         }
       },
       "evidence": []
     },
     {
-      "id": "340c1f0e-d593-42c2-a6b9-2fc6d548659c",
+      "id": "5f5d0e7f-750f-4697-9f7f-c68da75d8201",
       "name": "/api/agents API",
       "component_type": "API_ENDPOINT",
       "confidence": 0.55,
       "metadata": {
         "endpoint": "/api/agents",
         "method": "GET",
-        "description": "This GET endpoint retrieves a list of available agents from the system API.",
         "accepts_user_input": false,
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
           "source": "auto_enrichment",
-          "description_source": "llm_generated"
+          "description_source": "none"
         }
       },
       "evidence": []
     },
     {
-      "id": "752392f6-2766-4283-8bfe-db739a85f9c6",
+      "id": "7faa4c5d-4395-4755-a3d2-80c2d5835579",
       "name": "/api/tools API",
       "component_type": "API_ENDPOINT",
       "confidence": 0.55,
       "metadata": {
         "endpoint": "/api/tools",
         "method": "GET",
-        "description": "GET endpoint providing access to the tools collection within the API.",
         "accepts_user_input": false,
         "request_body_schema": {},
         "chat_payload_list": false,
         "extras": {
           "source": "auto_enrichment",
-          "description_source": "llm_generated"
+          "description_source": "none"
         }
       },
       "evidence": []
     },
     {
-      "id": "1278ea3a-64ab-4682-beb1-cf2829cf319d",
+      "id": "6323e86f-c8ea-4131-ba0b-fb5d83114b8d",
       "name": "/api/chat API",
       "component_type": "API_ENDPOINT",
       "confidence": 0.55,
       "metadata": {
         "endpoint": "/api/chat",
         "method": "POST",
-        "description": "POST endpoint for the chat API that processes user messages and returns conversational responses.",
         "accepts_user_input": true,
         "request_body_schema": {},
         "chat_payload_key": "message",
@@ -7233,7 +7209,81 @@
         "response_text_key": "response",
         "extras": {
           "source": "auto_enrichment",
-          "description_source": "llm_generated"
+          "description_source": "none"
+        }
+      },
+      "evidence": []
+    },
+    {
+      "id": "81887355-c465-5de3-b14d-c1cace8887f2",
+      "name": "/health API",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.6,
+      "metadata": {
+        "endpoint": "/health",
+        "method": "GET",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "source": "runtime_probe",
+          "description_source": "none"
+        }
+      },
+      "evidence": []
+    },
+    {
+      "id": "808f255c-c9b1-58f2-ba71-dd1cb8ecb0f9",
+      "name": "/chat API",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.6,
+      "metadata": {
+        "endpoint": "/chat",
+        "method": "POST",
+        "accepts_user_input": true,
+        "request_body_schema": {},
+        "chat_payload_key": "message",
+        "chat_payload_list": false,
+        "extras": {
+          "source": "runtime_probe",
+          "probe_post_405": true,
+          "description_source": "none"
+        }
+      },
+      "evidence": []
+    },
+    {
+      "id": "5cf48a09-c0b4-5a13-8fd5-287711ff1e4a",
+      "name": "/chat/message API",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.6,
+      "metadata": {
+        "endpoint": "/chat/message",
+        "method": "POST",
+        "accepts_user_input": true,
+        "request_body_schema": {},
+        "chat_payload_key": "message",
+        "chat_payload_list": false,
+        "extras": {
+          "source": "runtime_probe",
+          "probe_post_405": true,
+          "description_source": "none"
+        }
+      },
+      "evidence": []
+    },
+    {
+      "id": "9167140d-d054-5cb6-8923-dcae59bb5334",
+      "name": "/api0.0.0.0:8080 API",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.6,
+      "metadata": {
+        "endpoint": "/api0.0.0.0:8080",
+        "method": "GET",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "source": "runtime_probe",
+          "description_source": "none"
         }
       },
       "evidence": []
@@ -7386,397 +7436,397 @@
       "relationship_type": "PROTECTS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "a7c89e80-a34e-4dcd-b647-fb6df8979f11",
       "relationship_type": "USES"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "54565d36-b379-48ac-8457-a3ef1274c964",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "c85f3db4-9cd0-4385-b709-848ad21f8080",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "69b3ccbb-7e4d-4683-b108-d039af6198f3",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "57e56761-3f07-412c-ad2c-84474ebc43df",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "470510b0-7435-4e39-be91-ae36877b8a77",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "2542a094-6e08-4fb4-9047-2d9d64711950",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "ef2262c9-7a30-4277-afeb-1d6fa253cac4",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "116e04bd-2597-4a68-aeb8-dbe907447a46",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "ac3fb5ae-946a-46d1-908d-8ad2ffdb5c79",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "4b9fb86d-3c11-46a0-b277-142e2e436662",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "ba4bef17-e153-456c-a811-59a4b6d354e0",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "8dd93d30-c4d2-474e-b0d9-7e291f3c500f",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "baa039ca-fd05-4b2e-9ae2-7bdeaa0a60ef",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "1d7759f4-5d84-41d4-a0c7-452c07122a86",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "9c09d89b-be62-4549-b00c-fdea13267aae",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "9829a796-4c5f-4e20-932d-3346e060ce8d",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "d9c9dfc1-ec4d-4604-b1a0-6d53743b8c52",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "b7c2a3f4-c3fa-45ad-a724-4be868e6083a",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "46627465-4756-4b17-806c-9e1870263d54",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "bc665659-2055-4e36-8434-d296144b9102",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "a5b1a37e-c8ce-4307-86f8-9577664ab1bb",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "adffae58-6b11-4eec-8384-e2f207f1d519",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "9f5f35f8-17b9-4d38-bb57-41eda5ce7f1d",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "a82f238d-75d3-4d4e-b06b-f4c1362f0217",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "c6f16252-8263-4993-a8ea-8bc5056d25fe",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "01013cf3-3b1e-4e32-a608-9a7769c4d58a",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "af3e31ea-fb84-4466-bf95-78c9008bce66",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "3b1f3500-195f-4afa-995e-b0265074e22a",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "e9021151-44f2-476e-8474-35fb15f943d9",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "b0dda2d3-7ff8-4688-8d14-456c85f9df99",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "d361802a-e9fa-493b-bf52-05385e09b0be",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "e8e265cf-6fdc-4cc0-9c7f-681883ae1634",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "294c9e9e-e456-4473-b48f-c3b200175b7b",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "99c48006-e3a3-4537-afa7-7d8a417391e8",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "b9e53094-0567-41af-9309-866301e74cf9",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "bf026a7e-5916-4b52-b23d-899fd917b981",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "8f01ac76-6411-4419-b993-314c2c7103b4",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "4fcfe72e-c0ae-4376-ad03-eb08ee5f60f7",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "cb16f4ea-b1ba-46e7-9479-bf8eb7a593a4",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "3961d386-eff9-4021-9999-e0c1a99009c1",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "180284c9-d90c-457a-b57b-1ba67fe76e49",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "5aba6d32-fdc5-4f58-bcbf-6a98c4ed0f93",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "960028de-6f07-4476-a2f0-97ffe11381ba",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "62fb4da7-3676-41f7-bec0-44f39c9f68ce",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "1791a375-115f-45ac-a118-2548c9d9fa0e",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "06dd5b9f-fb9d-42b1-9568-49ae6a47e3e8",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "c94267e3-2c6f-4acf-929b-baa1741e6ad2",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "ae5589cd-c6a5-46d4-b36b-aced3d275a7e",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "1b09eb25-5d5c-42d4-bab7-861e81f6c00d",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "130afcd5-e7f4-4b22-87a1-b634e8428c61",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "9e4f957f-56c3-47de-a1d3-6e6bb7c04486",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "f3addcbb-edf6-4dce-9b47-165081904998",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "cd5ebdb7-3adb-4dff-b893-b02e8a4f69da",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "947e7f7b-38be-4808-86f8-6b9766d24edb",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "f990da0e-6f56-432b-ba19-cdf5c2c8f5b3",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "c9cc0bb5-bc4e-4529-91bc-d2e012c7c80c",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "e38133d9-7077-43d5-b43a-5ac1f0213054",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "b0bd81b8-b027-414a-935d-23360d87c38b",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "0c51d3e9-d702-4352-a282-06e23feb1486",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "436be4b9-2fdf-4be0-8c44-4985f603fb7d",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "943c5444-da8d-4930-9c87-2aa3c71dd9a4",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "ee3b11be-d331-4f24-bdfb-b5254e328037",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "22cf88df-da70-463e-baaf-286b86a8f785",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "207a299c-0f7b-4445-9dfb-ff8120de2ad8",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "9ec325b0-5354-422a-ae78-a11556013965",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "a3aee068-1038-4787-993e-7fff662b18da",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "5f884a52-44ac-4bb2-946a-cb146ec01163",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "0c5bbedc-2911-47c0-9893-6e9abc9d504e",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "f1aa6816-932b-4d99-bb2f-0447809c855a",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "8e0671f8-7163-4852-b707-cbbc27e1dec5",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "b26099fd-ff5d-46a8-9517-61a85548727e",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "97310fee-c8ad-4f9d-b80e-16da177872fb",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "a750c0bb-a277-4407-bf43-9296af6e8253",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "2ac21b13-eb9b-4751-b6f8-e19044035c72",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "77418287-ddaf-4b1b-bccb-d94a4f08610e",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "e7d84bf7-c134-4c02-b602-f51935a042ee",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "fdcac65d-56c6-4cfe-a2fa-90721c6158da",
       "relationship_type": "CALLS"
     },
     {
-      "source": "a69009e6-48eb-4c0b-a6a7-42a0e2ffb858",
+      "source": "7fddcd53-d51c-4265-8e44-5bd365b105c6",
       "target": "b45e3f07-6ec0-41f2-8bb4-a6189a9c335b",
       "relationship_type": "CALLS"
     },
@@ -8356,7 +8406,7 @@
       "Destination"
     ],
     "node_counts": {
-      "API_ENDPOINT": 6,
+      "API_ENDPOINT": 10,
       "AUTH": 1,
       "CONTAINER_IMAGE": 3,
       "DATASTORE": 2,
@@ -8396,5 +8446,5 @@
     ]
   },
   "relationship_graph_md": "## Component Relationship Graph\n\n- **Frameworks and Models:**\n  - Three frameworks\u2014langchain, langgraph, and fintech-accounts\u2014each use the GPT-4o-mini model for AI processing.\n  \n- **Authentication and API Protection:**\n  - A generic authentication component protects two API endpoints: a server-sent events endpoint at 0.0.0.0:8080 and a generic API endpoint.\n  - No other components or tools show explicit authentication or authorization guardrails.\n\n- **Data Stores:**\n  - Redis and SQLite data stores exist but have no direct connections to any frameworks, tools, or models, indicating no visible data flow or access paths.\n  \n- **Tools:**\n  - There are numerous tools (e.g., apply_for_loan, approve_loan, buy_crypto, get_account, etc.), but none are connected to any frameworks, models, or data stores.\n  - This lack of orchestration or integration suggests these tools are either inactive, manually invoked, or missing from the current system graph.\n\n- **Security Observations:**\n  - Only the generic authentication component protects API endpoints; no guardrails are shown for tool usage or data store access.\n  - The absence of connections between tools and frameworks/models may indicate missing enforcement of access controls or incomplete integration.\n  - Data stores are unconnected and unprotected in the graph, which could pose a risk if accessed outside the depicted architecture.\n  - No external data sources or feeds are connected, despite the presence of tools like fetch_external_feed, suggesting potential gaps in data validation or monitoring.\n\n- **Summary:**\n  - The system centers on AI frameworks using GPT-4o-mini, with minimal visible integration to tools or data stores.\n  - Authentication is limited to API endpoints, with no explicit security controls shown for tools or data access.\n  - The architecture may require further integration and security guardrails to ensure safe and controlled operations.\n\n```mermaid\nflowchart LR\n    generic_eb0f19([\"\ud83c\udf10 generic\"])\n    0_0_0_0_8080__sse__0353c1([\"\ud83c\udf10 0.0.0.0:8080 (sse)\"])\n    redis_8cea6f[(\"\ud83d\uddc4 redis\")]\n    sqlite_cde26f[(\"\ud83d\uddc4 sqlite\")]\n    framework_langchain_1d2dac[/\"\u2699 framework:langchain\"/]\n    langgraph_663d10[/\"\u2699 langgraph\"/]\n    fintech_accounts_47abb8[/\"\u2699 fintech-accounts\"/]\n    gpt_4o_mini_a7c89e[(\"\ud83e\udde0 gpt-4o-mini\")]\n    generic_2da3cc>\"\ud83d\udcac generic\"]\n    apply_for_loan_54565d(\"\ud83d\udd27 apply_for_loan\")\n    approve_loan_c85f3d(\"\ud83d\udd27 approve_loan\")\n    broadcast_all_users_69b3cc(\"\ud83d\udd27 broadcast_all_users\")\n    bulk_export_57e567(\"\ud83d\udd27 bulk_export\")\n    bulk_export_all_customers_470510(\"\ud83d\udd27 bulk_export_all_customers\")\n    buy_asset_2542a0(\"\ud83d\udd27 buy_asset\")\n    buy_crypto_ef2262(\"\ud83d\udd27 buy_crypto\")\n    call_internal_service_116e04(\"\ud83d\udd27 call_internal_service\")\n    cancel_payment_ac3fb5(\"\ud83d\udd27 cancel_payment\")\n    cancel_task_4b9fb8(\"\ud83d\udd27 cancel_task\")\n    check_sanctions_ba4bef(\"\ud83d\udd27 check_sanctions\")\n    check_transaction_limits_8dd93d(\"\ud83d\udd27 check_transaction_limits\")\n    convert_funds_baa039(\"\ud83d\udd27 convert_funds\")\n    create_document_1d7759(\"\ud83d\udd27 create_document\")\n    delete_audit_entry_9c09d8(\"\ud83d\udd27 delete_audit_entry\")\n    delete_document_9829a7(\"\ud83d\udd27 delete_document\")\n    delete_user_d9c9df(\"\ud83d\udd27 delete_user\")\n    export_all_audit_logs_b7c2a3(\"\ud83d\udd27 export_all_audit_logs\")\n    export_customer_data_466274(\"\ud83d\udd27 export_customer_data\")\n    fetch_external_feed_bc6656(\"\ud83d\udd27 fetch_external_feed\")\n    fetch_market_report_a5b1a3(\"\ud83d\udd27 fetch_market_report\")\n    file_suspicious_activity_report_adffae(\"\ud83d\udd27 file_suspicious_activity_report\")\n    flag_transaction_9f5f35(\"\ud83d\udd27 flag_transaction\")\n    freeze_card_a82f23(\"\ud83d\udd27 freeze_card\")\n    generate_report_c6f162(\"\ud83d\udd27 generate_report\")\n    get_account_01013c(\"\ud83d\udd27 get_account\")\n    get_admin_actions_af3e31(\"\ud83d\udd27 get_admin_actions\")\n    get_all_kyc_statuses_3b1f35(\"\ud83d\udd27 get_all_kyc_statuses\")\n    get_audit_log_e90211(\"\ud83d\udd27 get_audit_log\")\n    get_available_assets_b0dda2(\"\ud83d\udd27 get_available_assets\")\n    get_card_details_d36180(\"\ud83d\udd27 get_card_details\")\n    get_card_transactions_e8e265(\"\ud83d\udd27 get_card_transactions\")\n    get_crypto_price_294c9e(\"\ud83d\udd27 get_crypto_price\")\n    get_customer_summary_99c480(\"\ud83d\udd27 get_customer_summary\")\n    get_document_b9e530(\"\ud83d\udd27 get_document\")\n    get_exchange_rate_bf026a(\"\ud83d\udd27 get_exchange_rate\")\n    get_flagged_transactions_8f01ac(\"\ud83d\udd27 get_flagged_transactions\")\n    get_fraud_score_4fcfe7(\"\ud83d\udd27 get_fraud_score\")\n    get_high_risk_accounts_cb16f4(\"\ud83d\udd27 get_high_risk_accounts\")\n    get_kyc_status_3961d3(\"\ud83d\udd27 get_kyc_status\")\n    get_loan_details_180284(\"\ud83d\udd27 get_loan_details\")\n    get_market_summary_5aba6d(\"\ud83d\udd27 get_market_summary\")\n    get_notification_history_960028(\"\ud83d\udd27 get_notification_history\")\n    get_payment_status_62fb4d(\"\ud83d\udd27 get_payment_status\")\n    get_pending_compliance_items_1791a3(\"\ud83d\udd27 get_pending_compliance_items\")\n    get_portfolio_06dd5b(\"\ud83d\udd27 get_portfolio\")\n    get_price_c94267(\"\ud83d\udd27 get_price\")\n    get_regulatory_report_ae5589(\"\ud83d\udd27 get_regulatory_report\")\n    get_regulatory_requirements_1b09eb(\"\ud83d\udd27 get_regulatory_requirements\")\n    get_service_health_130afc(\"\ud83d\udd27 get_service_health\")\n    get_wallet_address_9e4f95(\"\ud83d\udd27 get_wallet_address\")\n    grant_admin_role_f3addc(\"\ud83d\udd27 grant_admin_role\")\n    initiate_payment_cd5ebd(\"\ud83d\udd27 initiate_payment\")\n    invoke_admin_api_947e7f(\"\ud83d\udd27 invoke_admin_api\")\n    list_all_accounts_f990da(\"\ud83d\udd27 list_all_accounts\")\n    list_all_users_c9cc0b(\"\ud83d\udd27 list_all_users\")\n    list_customer_documents_e38133(\"\ud83d\udd27 list_customer_documents\")\n    list_scheduled_tasks_b0bd81(\"\ud83d\udd27 list_scheduled_tasks\")\n    list_supported_currencies_0c51d3(\"\ud83d\udd27 list_supported_currencies\")\n    override_compliance_436be4(\"\ud83d\udd27 override_compliance\")\n    override_kyc_943c54(\"\ud83d\udd27 override_kyc\")\n    reject_loan_ee3b11(\"\ud83d\udd27 reject_loan\")\n    reset_user_password_22cf88(\"\ud83d\udd27 reset_user_password\")\n    run_task_immediately_207a29(\"\ud83d\udd27 run_task_immediately\")\n    schedule_task_9ec325(\"\ud83d\udd27 schedule_task\")\n    sell_asset_a3aee0(\"\ud83d\udd27 sell_asset\")\n    send_alert_5f884a(\"\ud83d\udd27 send_alert\")\n    send_otp_0c5bbe(\"\ud83d\udd27 send_otp\")\n    stream_all_transactions_f1aa68(\"\ud83d\udd27 stream_all_transactions\")\n    submit_kyc_document_8e0671(\"\ud83d\udd27 submit_kyc_document\")\n    transfer_crypto_b26099(\"\ud83d\udd27 transfer_crypto\")\n    transfer_funds_97310f(\"\ud83d\udd27 transfer_funds\")\n    unfreeze_card_a750c0(\"\ud83d\udd27 unfreeze_card\")\n    update_account_status_2ac21b(\"\ud83d\udd27 update_account_status\")\n    view_user_sessions_774182(\"\ud83d\udd27 view_user_sessions\")\n    waive_aml_check_e7d84b(\"\ud83d\udd27 waive_aml_check\")\n    whitelist_account_fdcac6(\"\ud83d\udd27 whitelist_account\")\n    generic_b45e3f(\"\ud83d\udd27 generic\")\n\n    framework_langchain_1d2dac -->|uses| gpt_4o_mini_a7c89e\n    langgraph_663d10 -->|uses| gpt_4o_mini_a7c89e\n    fintech_accounts_47abb8 -->|uses| gpt_4o_mini_a7c89e\n\n    classDef agent    fill:#4A90D9,stroke:#2C6FAC,color:#fff\n    classDef tool     fill:#7ED321,stroke:#5A9A18,color:#fff\n    classDef model    fill:#9B59B6,stroke:#7D3C98,color:#fff\n    classDef prompt   fill:#F39C12,stroke:#D68910,color:#fff\n    classDef guard    fill:#E74C3C,stroke:#C0392B,color:#fff\n    classDef store    fill:#1ABC9C,stroke:#17A589,color:#fff\n    classDef fw       fill:#95A5A6,stroke:#717D7E,color:#fff\n    classDef endpoint fill:#3498DB,stroke:#2471A3,color:#fff\n    class apply_for_loan_54565d,approve_loan_c85f3d,broadcast_all_users_69b3cc,bulk_export_57e567,bulk_export_all_customers_470510,buy_asset_2542a0,buy_crypto_ef2262,call_internal_service_116e04,cancel_payment_ac3fb5,cancel_task_4b9fb8,check_sanctions_ba4bef,check_transaction_limits_8dd93d,convert_funds_baa039,create_document_1d7759,delete_audit_entry_9c09d8,delete_document_9829a7,delete_user_d9c9df,export_all_audit_logs_b7c2a3,export_customer_data_466274,fetch_external_feed_bc6656,fetch_market_report_a5b1a3,file_suspicious_activity_report_adffae,flag_transaction_9f5f35,freeze_card_a82f23,generate_report_c6f162,get_account_01013c,get_admin_actions_af3e31,get_all_kyc_statuses_3b1f35,get_audit_log_e90211,get_available_assets_b0dda2,get_card_details_d36180,get_card_transactions_e8e265,get_crypto_price_294c9e,get_customer_summary_99c480,get_document_b9e530,get_exchange_rate_bf026a,get_flagged_transactions_8f01ac,get_fraud_score_4fcfe7,get_high_risk_accounts_cb16f4,get_kyc_status_3961d3,get_loan_details_180284,get_market_summary_5aba6d,get_notification_history_960028,get_payment_status_62fb4d,get_pending_compliance_items_1791a3,get_portfolio_06dd5b,get_price_c94267,get_regulatory_report_ae5589,get_regulatory_requirements_1b09eb,get_service_health_130afc,get_wallet_address_9e4f95,grant_admin_role_f3addc,initiate_payment_cd5ebd,invoke_admin_api_947e7f,list_all_accounts_f990da,list_all_users_c9cc0b,list_customer_documents_e38133,list_scheduled_tasks_b0bd81,list_supported_currencies_0c51d3,override_compliance_436be4,override_kyc_943c54,reject_loan_ee3b11,reset_user_password_22cf88,run_task_immediately_207a29,schedule_task_9ec325,sell_asset_a3aee0,send_alert_5f884a,send_otp_0c5bbe,stream_all_transactions_f1aa68,submit_kyc_document_8e0671,transfer_crypto_b26099,transfer_funds_97310f,unfreeze_card_a750c0,update_account_status_2ac21b,view_user_sessions_774182,waive_aml_check_e7d84b,whitelist_account_fdcac6,generic_b45e3f tool\n    class gpt_4o_mini_a7c89e model\n    class generic_2da3cc prompt\n    class redis_8cea6f,sqlite_cde26f store\n    class framework_langchain_1d2dac,langgraph_663d10,fintech_accounts_47abb8 fw\n    class generic_eb0f19,0_0_0_0_8080__sse__0353c1 endpoint\n```",
-  "_enrichment_cache_key": "5d1365bbc2e2de5ef0388839ab6178cd1528c36fac8374c7aee3afd657d34858"
+  "_enrichment_cache_key": "5cf243ce70427db8a420aa93596388b3ca7d6e1404e5514f1c7d8e2cfe6d684a"
 }

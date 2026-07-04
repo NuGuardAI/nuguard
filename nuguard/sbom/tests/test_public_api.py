@@ -3,7 +3,7 @@ from __future__ import annotations
 from nuguard.sbom import AiSbomConfig, AiSbomDocument, AiSbomExtractor, AiSbomSerializer
 
 
-def test_xelo_public_api_exports() -> None:
+def test_nuguard_public_api_exports() -> None:
     assert AiSbomDocument is not None
     assert AiSbomConfig is not None
     assert AiSbomExtractor is not None

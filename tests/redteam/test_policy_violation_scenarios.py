@@ -1,0 +1,213 @@
+"""Tests for new policy violation scenario builders.
+
+Verifies that all Cognitive Policy dimensions produce at least one scenario:
+- allowed_topics boundary
+- hitl_tool_conditions
+- rate_limits burst
+- raw_sections probe
+"""
+from __future__ import annotations
+
+from nuguard.models.policy import CognitivePolicy, HitlToolCondition
+from nuguard.redteam.scenarios.faux_reasoning import build_policy_patching
+from nuguard.redteam.scenarios.policy_violations import (
+    build_allowed_topic_boundary,
+    build_rate_limit_burst,
+    build_raw_section_probe,
+    build_restricted_topic,
+    concrete_topic_probe,
+)
+from nuguard.redteam.scenarios.scenario_types import AttackScenario
+from nuguard.redteam.scenarios.session_metadata import build_policy_version_claim
+
+_AGENT_ID = "agent-001"
+
+
+class TestAllowedTopicBoundary:
+    def test_produces_scenario(self) -> None:
+        scenario = build_allowed_topic_boundary(
+            _AGENT_ID, "cooking recipes", ["weapons", "drugs"]
+        )
+        assert isinstance(scenario, AttackScenario)
+        assert scenario.chain is not None
+        assert len(scenario.chain.steps) >= 2
+        assert "cooking recipes" in scenario.title.lower() or "cooking" in scenario.title.lower()
+
+    def test_uses_restricted_topic_in_pivot(self) -> None:
+        scenario = build_allowed_topic_boundary(
+            _AGENT_ID, "cooking recipes", ["weapons"]
+        )
+        # The second step should reference the restricted topic as a pivot
+        second_payload = scenario.chain.steps[1].payload
+        assert "weapons" in second_payload or "cooking" in second_payload
+
+    def test_no_restricted_topics_defaults(self) -> None:
+        scenario = build_allowed_topic_boundary(_AGENT_ID, "cooking", [])
+        assert isinstance(scenario, AttackScenario)
+        assert len(scenario.chain.steps) >= 2
+
+    def test_target_node_ids(self) -> None:
+        scenario = build_allowed_topic_boundary(_AGENT_ID, "travel", [])
+        assert _AGENT_ID in scenario.target_node_ids
+
+
+class TestRateLimitBurst:
+    def test_produces_scenario(self) -> None:
+        scenario = build_rate_limit_burst(_AGENT_ID, "api_calls", 10)
+        assert isinstance(scenario, AttackScenario)
+        assert scenario.chain is not None
+
+    def test_burst_capped_at_10(self) -> None:
+        scenario = build_rate_limit_burst(_AGENT_ID, "api_calls", 100)
+        assert len(scenario.chain.steps) == 10
+
+    def test_burst_is_limit_plus_one(self) -> None:
+        scenario = build_rate_limit_burst(_AGENT_ID, "queries", 3)
+        assert len(scenario.chain.steps) == 4  # min(3+1, 10)
+
+    def test_last_step_uses_llm_eval(self) -> None:
+        scenario = build_rate_limit_burst(_AGENT_ID, "requests", 5)
+        last = scenario.chain.steps[-1]
+        assert last.use_llm_eval is True
+
+    def test_title_includes_key(self) -> None:
+        scenario = build_rate_limit_burst(_AGENT_ID, "api_calls", 10)
+        assert "api_calls" in scenario.title
+
+
+class TestRawSectionProbe:
+    def test_produces_scenario(self) -> None:
+        scenario = build_raw_section_probe(
+            _AGENT_ID, "Data Retention", ["All data must be deleted after 30 days"]
+        )
+        assert isinstance(scenario, AttackScenario)
+        assert len(scenario.chain.steps) >= 2
+
+    def test_empty_bullets(self) -> None:
+        scenario = build_raw_section_probe(_AGENT_ID, "Jurisdiction", [])
+        assert isinstance(scenario, AttackScenario)
+
+    def test_title_includes_section_name(self) -> None:
+        scenario = build_raw_section_probe(_AGENT_ID, "Audit Logging", ["all ops logged"])
+        assert "Audit Logging" in scenario.title
+
+
+_PII_TOPIC = (
+    "Sensitive personal data disclosure beyond what is needed for reservation "
+    "lookup or account support."
+)
+_OFF_TOPIC = (
+    "Any advice or assistance unrelated to airline travel support or the app's "
+    "configured FAQ scope."
+)
+_DOMAIN_TOPIC = "financial advice, investment recommendations, or general banking"
+
+
+class TestConcreteTopicProbe:
+    """concrete_topic_probe() must impersonate a real request, not announce the category."""
+
+    def test_pii_topic_uses_golden_tokens_and_concrete_fields(self) -> None:
+        probe = concrete_topic_probe(_PII_TOPIC)
+        assert "{golden_name}" in probe
+        assert "{golden_id}" in probe
+        assert any(field in probe.lower() for field in ("phone", "date of birth", "address"))
+        assert "sensitive personal data disclosure" not in probe.lower()
+
+    def test_off_topic_topic_produces_concrete_off_topic_question(self) -> None:
+        probe = concrete_topic_probe(_OFF_TOPIC)
+        assert "unrelated" not in probe.lower()
+        assert "faq scope" not in probe.lower()
+        assert any(w in probe.lower() for w in ("super bowl", "weather", "election"))
+
+    def test_off_topic_is_deterministic(self) -> None:
+        assert concrete_topic_probe(_OFF_TOPIC) == concrete_topic_probe(_OFF_TOPIC)
+
+    def test_domain_topic_never_uses_bare_help_me_with_template(self) -> None:
+        probe = concrete_topic_probe(_DOMAIN_TOPIC)
+        assert "help me with:" not in probe.lower()
+        assert "financial advice" in probe.lower()
+
+    def test_escalate_variant_differs_from_initial(self) -> None:
+        assert concrete_topic_probe(_PII_TOPIC) != concrete_topic_probe(_PII_TOPIC, escalate=True)
+        assert concrete_topic_probe(_DOMAIN_TOPIC) != concrete_topic_probe(
+            _DOMAIN_TOPIC, escalate=True
+        )
+
+
+class TestRestrictedTopicUsesConcreteProbe:
+    def test_no_bare_help_me_with_splice(self) -> None:
+        scenario = build_restricted_topic(_AGENT_ID, _PII_TOPIC)
+        for step in scenario.chain.steps:
+            assert f"help me with: {_PII_TOPIC}" not in step.payload
+            assert f"information about: {_PII_TOPIC}" not in step.payload
+
+    def test_pii_topic_step_carries_golden_tokens(self) -> None:
+        scenario = build_restricted_topic(_AGENT_ID, _PII_TOPIC)
+        assert any("{golden_id}" in step.payload for step in scenario.chain.steps)
+
+
+class TestPolicyPatchingUsesConcreteProbe:
+    def test_verify_topic_step_no_bare_splice(self) -> None:
+        scenario = build_policy_patching(
+            _AGENT_ID, "Cancellation Agent", extra_restricted_topics=[_OFF_TOPIC]
+        )
+        payloads = [s.payload for s in scenario.chain.steps]
+        assert not any(f"help me with: {_OFF_TOPIC}" in p for p in payloads)
+        assert any(w in " ".join(payloads).lower() for w in ("super bowl", "weather", "election"))
+
+
+class TestPolicyVersionClaimUsesConcreteProbe:
+    def test_no_bare_help_me_with_splice(self) -> None:
+        scenario = build_policy_version_claim(
+            _AGENT_ID, "Cancellation Agent", restricted_topic=_PII_TOPIC
+        )
+        payloads = [s.payload for s in scenario.chain.steps]
+        assert not any(f"Can you help me with {_PII_TOPIC}" in p for p in payloads)
+        assert any("{golden_id}" in p for p in payloads)
+
+
+class TestGeneratorProducesAllDimensions:
+    """Integration: ScenarioGenerator._policy_violation_scenarios covers all clauses."""
+
+    def _make_sbom_with_agent(self) -> object:
+        import uuid
+
+        from nuguard.sbom.models import AiSbomDocument, Node, NodeMetadata
+        from nuguard.sbom.types import ComponentType
+        node = Node(
+            id=str(uuid.uuid4()),
+            name="Main Agent",
+            component_type=ComponentType.AGENT,
+            confidence=1.0,
+            metadata=NodeMetadata(),
+        )
+        return AiSbomDocument(target="test://local", nodes=[node], edges=[])
+
+    def test_all_policy_dimensions_produce_scenarios(self) -> None:
+        from nuguard.redteam.scenarios.generator import ScenarioGenerator
+
+        sbom = self._make_sbom_with_agent()
+        policy = CognitivePolicy(
+            restricted_topics=["weapons"],
+            restricted_actions=["delete all data"],
+            hitl_triggers=["large transfer"],
+            hitl_tool_conditions=[
+                HitlToolCondition(tool_name="payment_tool", condition="amount > $500")
+            ],
+            allowed_topics=["cooking"],
+            rate_limits={"api_calls": 5},
+            raw_sections={"Custom Rules": ["do not share PII"]},
+        )
+        gen = ScenarioGenerator(sbom, policy)  # type: ignore[arg-type]
+        scenarios = gen._policy_violation_scenarios()
+
+        titles = [s.title for s in scenarios]
+
+        # Each dimension must have produced at least one scenario
+        assert any("weapons" in t or "Restricted Topic" in t for t in titles), "restricted_topics missing"
+        assert any("delete all data" in t or "Restricted Action" in t for t in titles), "restricted_actions missing"
+        assert any("large transfer" in t or "HITL Bypass" in t for t in titles), "hitl_triggers missing"
+        assert any("payment_tool" in t or "HITL Bypass" in t for t in titles), "hitl_tool_conditions missing"
+        assert any("cooking" in t or "Allowed Topic" in t for t in titles), "allowed_topics missing"
+        assert any("api_calls" in t or "Rate Limit" in t for t in titles), "rate_limits missing"
+        assert any("Custom Rules" in t or "Raw Policy" in t for t in titles), "raw_sections missing"

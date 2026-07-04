@@ -1,12 +1,12 @@
-"""Base class for xelo plugin adapters.
+"""Base class for nuguard plugin adapters.
 
 Third-party packages can register a plugin by:
 1. Installing a package that subclasses ``PluginAdapter``.
-2. Declaring an entry-point under the ``xelo.plugins`` group, or simply
+2. Declaring an entry-point under the ``nuguard.plugins`` group, or simply
    importing the subclass before constructing ``AiSbomExtractor``.
 
 Plugins are opt-in.  Pass ``load_plugins=True`` to ``AiSbomExtractor`` or
-call ``xelo.plugins.load_plugins()`` to discover and instantiate all
+call ``nuguard.plugins.load_plugins()`` to discover and instantiate all
 registered subclasses.
 """
 
@@ -19,7 +19,7 @@ from ..adapters.base import ComponentDetection, FrameworkAdapter
 
 
 class PluginAdapter(FrameworkAdapter, ABC):
-    """Abstract base class for xelo plugin adapters.
+    """Abstract base class for nuguard plugin adapters.
 
     Subclass this to add custom framework detection.  The extractor will call
     :meth:`can_handle` for every file and, when it returns ``True``, call
@@ -38,7 +38,7 @@ class PluginAdapter(FrameworkAdapter, ABC):
     priority: int = 50
 
     #: Module-name prefixes that activate this plugin (same semantics as
-    #: :attr:`~xelo.adapters.base.FrameworkAdapter.handles_imports`).
+    #: :attr:`~nuguard.adapters.base.FrameworkAdapter.handles_imports`).
     handles_imports: list[str] = []
 
     @abstractmethod
@@ -46,11 +46,11 @@ class PluginAdapter(FrameworkAdapter, ABC):
         self,
         content: str,
         file_path: str,
-        parse_result: Any,  # xelo.ast_parser.ParseResult
+        parse_result: Any,  # nuguard.ast_parser.ParseResult
     ) -> list[ComponentDetection]:
         """Extract component detections from *file_path*.
 
-        ``parse_result`` is a ``ParseResult`` from ``xelo.ast_parser.parse()``.
+        ``parse_result`` is a ``ParseResult`` from ``nuguard.ast_parser.parse()``.
         Return an empty list when nothing of interest is found.
         """
         ...

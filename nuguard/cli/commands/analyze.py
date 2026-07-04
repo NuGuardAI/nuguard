@@ -11,13 +11,14 @@ Exit codes
 from __future__ import annotations
 
 import json
-import logging
 import re
 from pathlib import Path
 from typing import Any, Optional
 
 import typer
 
+from nuguard.cli.common import output_path_for_format, parse_output_formats
+from nuguard.common.logging import get_logger
 from nuguard.models.finding import Finding, Severity
 
 analyze_app = typer.Typer(
@@ -25,7 +26,7 @@ analyze_app = typer.Typer(
     no_args_is_help=True,
 )
 
-_log = logging.getLogger("cli.analyze")
+_log = get_logger("cli.analyze")
 
 _SEV_ORDER: dict[str, int] = {
     "critical": 0,
@@ -56,9 +57,14 @@ def analyze(
         False, "--nga",
         help="Run NGA structural rules only (NGA-001–018); skip OSV, Grype, Checkov, Trivy, Semgrep, and ATLAS native checks.",
     ),
-    format: str = typer.Option(
-        "markdown", "--format", "-f",
-        help="Output format: markdown | sarif | json.",
+    format: list[str] | None = typer.Option(
+        None,
+        "--format",
+        "-f",
+        help=(
+            "Output format(s): markdown | sarif | json. "
+            "Repeat --format or pass comma-separated values."
+        ),
     ),
     policy: str = typer.Option(
         None, "--policy",
@@ -86,9 +92,19 @@ def analyze(
                                help="Run Trivy container/fs scan (requires trivy on PATH)."),
     semgrep: bool = typer.Option(True, "--semgrep/--no-semgrep",
                                  help="Run Semgrep AI-security rules (requires semgrep on PATH)."),
-    source: str = typer.Option(
+    source: Optional[str] = typer.Option(
         None, "--source", "-s",
-        help="Path to app source directory for Checkov/Trivy/Semgrep scans.",
+        help="Path to app source directory for supply-chain, Checkov, Trivy, and Semgrep scans. Falls back to 'source:' in nuguard.yaml.",
+    ),
+    supply_chain: bool = typer.Option(True, "--supply-chain/--no-supply-chain",
+                                      help="Run supply-chain threat pack (NGA-SC-001–025)."),
+    supply_chain_profile: Optional[str] = typer.Option(
+        None, "--supply-chain-profile",
+        help="Supply-chain scan profile: ci | standard | full. [default: standard]",
+    ),
+    supply_chain_verify: Optional[str] = typer.Option(
+        None, "--supply-chain-verify",
+        help="Artifact registry verification: off | warn | fail. [default: off]",
     ),
     llm: bool = typer.Option(False, "--llm", help="Enable LLM enrichment in ATLAS pass."),
     verbose: bool = typer.Option(
@@ -130,6 +146,18 @@ def analyze(
     # --min-severity: CLI wins when explicitly set (non-None); else use config default
     min_severity = min_severity or cfg.analyze_min_severity
 
+    # --source: CLI wins; fall back to top-level source: in nuguard.yaml.
+    # Only use the config value when it's a local path — the `source:` field can also
+    # hold a remote GitHub URL used solely for SBOM generation (git clone), and passing
+    # that URL to local-scan tools (supply-chain, Semgrep, Checkov) makes no sense.
+    _cfg_source = cfg.source_path
+    if not source and _cfg_source and not _cfg_source.startswith(("http://", "https://", "git://", "git+")):
+        source = _cfg_source
+
+    # supply-chain: CLI wins; fall back to analyze: section in nuguard.yaml
+    sc_profile = supply_chain_profile or cfg.analyze_supply_chain_profile
+    sc_verify = supply_chain_verify or cfg.analyze_supply_chain_verify
+
     # NGA-only mode: disable all external scans
     if nga:
         osv = grype = checkov = trivy = semgrep = atlas = False
@@ -169,10 +197,27 @@ def analyze(
         raise typer.Exit(code=2)
     min_sev = Severity(min_sev_str) if min_sev_str != "info" else Severity.INFO
 
+    try:
+        formats = parse_output_formats(
+            format,
+            default_format="markdown",
+            allowed_formats={"markdown", "json", "sarif"},
+        )
+    except ValueError as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=2)
+
+    if len(formats) > 1 and not output:
+        typer.echo(
+            "error: --output is required when multiple --format values are requested",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
     atlas_config: dict[str, Any] = {}
     if llm:
         atlas_config["llm"] = True
-    if format == "markdown":
+    if "markdown" in formats:
         atlas_config["format"] = "markdown"
 
     try:
@@ -185,6 +230,9 @@ def analyze(
             enable_checkov=checkov,
             enable_trivy=trivy,
             enable_semgrep=semgrep,
+            enable_supply_chain=supply_chain,
+            supply_chain_profile=sc_profile,
+            supply_chain_verify_artifacts=sc_verify,
             source_path=source_path,
             atlas_config=atlas_config,
             min_severity=min_sev,
@@ -210,22 +258,46 @@ def analyze(
     # ------------------------------------------------------------------
     # Render output
     # ------------------------------------------------------------------
-    fmt = format.lower()
+    def _render(fmt: str) -> str:
+        if fmt == "json":
+            return _render_json(
+                visible,
+                sbom_path,
+                tool_status,
+                nga_audit,
+                sc_audit,
+                token_usage=token_usage,
+            )
+        if fmt == "sarif":
+            return _render_sarif(visible, sbom_path, tool_status)
+        return _render_markdown(visible, sbom_path, min_severity, tool_status, nga_audit, sc_audit)
+
+    extension_map = {
+        "markdown": ".md",
+        "json": ".json",
+        "sarif": ".sarif",
+    }
     tool_status = getattr(analyzer, "tool_status", {})
     nga_audit = getattr(analyzer, "nga_audit", [])
-    if fmt == "json":
-        report_text = _render_json(visible, sbom_path, tool_status, nga_audit)
-    elif fmt == "sarif":
-        report_text = _render_sarif(visible, sbom_path, tool_status)
-    else:
-        report_text = _render_markdown(visible, sbom_path, min_severity, tool_status, nga_audit)
+    sc_audit = getattr(analyzer, "sc_audit", [])
+    from nuguard.models.token_usage import TokenUsage  # noqa: PLC0415
+
+    token_usage: TokenUsage = getattr(analyzer, "token_usage", None) or TokenUsage()
 
     if output:
-        out_path = Path(output)
-        out_path.write_text(report_text, encoding="utf-8")
-        typer.echo(f"report written to {out_path}")
+        out_base = Path(output)
+        for fmt in formats:
+            out_path = output_path_for_format(
+                out_base,
+                fmt=fmt,
+                all_formats=formats,
+                extension_map=extension_map,
+            )
+            report_text = _render(fmt)
+            out_path.write_text(report_text, encoding="utf-8")
+            typer.echo(f"report written to {out_path}")
     else:
-        typer.echo(report_text)
+        typer.echo(_render(formats[0]))
 
     # Exit 1 if any findings at or above threshold
     raise typer.Exit(code=1 if visible else 0)
@@ -353,12 +425,81 @@ def _group_by_component(findings: list[Finding]) -> list[tuple[str, list[Finding
     )
 
 
+def _render_rule_audit_section(
+    audit: list[dict[str, Any]],
+    section_title: str,
+    description: str,
+) -> list[str]:
+    """Render a pass/fail rule audit table + per-passing-rule detail block."""
+    _AUDIT_SEV_EMOJI = {"CRITICAL": "🔴", "HIGH": "🟠", "MEDIUM": "🟡", "LOW": "🟢"}
+    _AUDIT_STATUS_ICON = {"PASS": "✅", "FAIL": "❌", "ERROR": "⚠️", "SKIPPED": "⏭️"}
+    lines: list[str] = [
+        f"## {section_title}", "",
+        description,
+        "",
+        "| Rule | Severity | Status | Evidence |",
+        "|------|----------|--------|----------|",
+    ]
+    for entry in audit:
+        rid = entry.get("rule_id", "")
+        title = entry.get("title", "")
+        sev = entry.get("severity", "")
+        status = entry.get("status", "")
+        sev_em = _AUDIT_SEV_EMOJI.get(sev, "")
+        st_icon = _AUDIT_STATUS_ICON.get(status, "❓")
+        if status == "FAIL":
+            count = entry.get("finding_count", 0)
+            affected = entry.get("affected", [])
+            detail = f"{count} finding(s)"
+            if affected:
+                detail += f" — `{'`, `'.join(str(a) for a in affected[:3])}`"
+                if len(affected) > 3:
+                    detail += f" +{len(affected) - 3} more"
+        elif status == "SKIPPED":
+            detail = entry.get("pass_reason", "not in profile")
+        else:
+            detail = entry.get("pass_reason", "")
+        lines.append(
+            f"| **{rid}** {title} | {sev_em} {sev} | {st_icon} {status} | {detail} |"
+        )
+    lines.append("")
+    # Per-rule detail for passing rules
+    pass_rules = [e for e in audit if e.get("status") == "PASS"]
+    if pass_rules:
+        lines += ["### Passing Rule Details", ""]
+        for entry in pass_rules:
+            rid = entry.get("rule_id", "")
+            title = entry.get("title", "")
+            checks = entry.get("checks", "")
+            pass_reason = entry.get("pass_reason", "")
+            lines += [
+                f"**{rid} — {title}**  ",
+                f"- Examined: {checks}  ",
+                f"- Result: {pass_reason}  ",
+            ]
+            evidence: dict[str, Any] = entry.get("pass_evidence") or {}
+            if evidence:
+                lines.append("- Evidence:  ")
+                for key, val in evidence.items():
+                    label = key.replace("_", " ")
+                    if isinstance(val, list):
+                        val_str = ", ".join(f"`{x}`" for x in val) if val else "none"
+                    elif isinstance(val, bool):
+                        val_str = str(val).lower()
+                    else:
+                        val_str = str(val)
+                    lines.append(f"  - {label}: {val_str}  ")
+            lines.append("")
+    return lines
+
+
 def _render_markdown(
     findings: list[Finding],
     sbom_path: Path,
     min_severity: str,
     tool_status: dict[str, Any] | None = None,
     nga_audit: list[dict[str, Any]] | None = None,
+    sc_audit: list[dict[str, Any]] | None = None,
 ) -> str:
     # Pre-compute deduplicated view used throughout the report.
     # Dedup is per-component (same CVE from trivy+osv → one entry, OSV canonical).
@@ -367,7 +508,7 @@ def _render_markdown(
         (comp, _dedup_component_findings(flist))
         for comp, flist in grouped_raw
     ]
-    # Flat list of canonical findings (one per unique CVE per component)
+    # Flat list of canonical findings (one per unique finding per component)
     deduped_all: list[Finding] = [f for _, entries in grouped_deduped for f, _ in entries]
 
     lines: list[str] = [
@@ -402,8 +543,8 @@ def _render_markdown(
         # Top components by unique finding count
         top_n = grouped_deduped[:5]
         lines += ["### Components with Most Findings", ""]
-        lines += ["| Component | Unique CVEs | Highest Severity |",
-                  "|-----------|-------------|-----------------|"]
+        lines += ["| Component | Unique Findings | Highest Severity |",
+                  "|-----------|-----------------|-----------------|"]
         for comp, entries in top_n:
             top_sev = entries[0][0].severity.value  # sorted by severity
             emoji = _SEV_EMOJI.get(top_sev, "")
@@ -442,12 +583,33 @@ def _render_markdown(
         for comp, entries in grouped_deduped:
             top_sev = entries[0][0].severity.value
             emoji = _SEV_EMOJI.get(top_sev, "")
-            lines += [f"### {emoji} `{comp}` ({len(entries)} unique CVE(s))", ""]
-            for f, sources in entries:
+            lines += [f"### {emoji} `{comp}` ({len(entries)} finding(s))", ""]
+
+            dep_entries = [(f, s) for f, s in entries if _canonical_vuln_id(f) is not None]
+            struct_entries = [(f, s) for f, s in entries if _canonical_vuln_id(f) is None]
+
+            # CVE/GHSA dependency findings → compact table (one row per finding)
+            if dep_entries:
+                lines += [
+                    "| Severity | ID | Title | Sources |",
+                    "|----------|----|-------|---------|",
+                ]
+                for f, sources in dep_entries:
+                    sev_emoji = _SEV_EMOJI.get(f.severity.value, "")
+                    sev_label = f.severity.value.upper()
+                    vuln_id = _canonical_vuln_id(f)  # not None by construction
+                    safe_title = f.title.replace("|", "\\|")
+                    sources_str = ", ".join(sources)
+                    lines.append(
+                        f"| {sev_emoji} {sev_label} | `{vuln_id}` | {safe_title} | {sources_str} |"
+                    )
+                lines.append("")
+
+            # Structural findings (NGA, ATLAS) → full detail blocks
+            for f, sources in struct_entries:
                 sev_emoji = _SEV_EMOJI.get(f.severity.value, "")
-                vuln_id = _canonical_vuln_id(f) or f.finding_id
                 sources_str = ", ".join(f"`{s}`" for s in sources)
-                lines += [f"#### {sev_emoji} {vuln_id}  {f.title}", ""]
+                lines += [f"#### {sev_emoji} {f.finding_id}  {f.title}", ""]
                 lines += [f"**Sources:** {sources_str}  ", ""]
                 lines += [f.description or "", ""]
                 if f.affected_component:
@@ -466,51 +628,21 @@ def _render_markdown(
     # NGA Rule Audit (verbose mode only)
     # ------------------------------------------------------------------
     if nga_audit:
-        _AUDIT_SEV_EMOJI = {"CRITICAL": "🔴", "HIGH": "🟠", "MEDIUM": "🟡", "LOW": "🟢"}
-        _AUDIT_STATUS_ICON = {"PASS": "✅", "FAIL": "❌", "ERROR": "⚠️"}
-        lines += [
-            "## NGA Rule Audit", "",
+        lines += _render_rule_audit_section(
+            nga_audit,
+            "NGA Rule Audit",
             "All 18 NGA structural rules — pass/fail status with evidence.",
-            "",
-            "| Rule | Severity | Status | Evidence |",
-            "|------|----------|--------|----------|",
-        ]
-        for entry in nga_audit:
-            rid = entry.get("rule_id", "")
-            title = entry.get("title", "")
-            sev = entry.get("severity", "")
-            status = entry.get("status", "")
-            sev_em = _AUDIT_SEV_EMOJI.get(sev, "")
-            st_icon = _AUDIT_STATUS_ICON.get(status, "❓")
-            if status == "FAIL":
-                count = entry.get("finding_count", 0)
-                affected = entry.get("affected", [])
-                detail = f"{count} finding(s)"
-                if affected:
-                    detail += f" — `{'`, `'.join(str(a) for a in affected[:3])}`"
-                    if len(affected) > 3:
-                        detail += f" +{len(affected) - 3} more"
-            else:
-                detail = entry.get("pass_reason", "")
-            lines.append(
-                f"| **{rid}** {title} | {sev_em} {sev} | {st_icon} {status} | {detail} |"
-            )
-        lines += [""]
-        # Per-rule detail for passing rules
-        pass_rules = [e for e in nga_audit if e.get("status") == "PASS"]
-        if pass_rules:
-            lines += ["### Passing Rule Details", ""]
-            for entry in pass_rules:
-                rid = entry.get("rule_id", "")
-                title = entry.get("title", "")
-                checks = entry.get("checks", "")
-                pass_reason = entry.get("pass_reason", "")
-                lines += [
-                    f"**{rid} — {title}**  ",
-                    f"- Examined: {checks}  ",
-                    f"- Result: {pass_reason}  ",
-                    "",
-                ]
+        )
+
+    # ------------------------------------------------------------------
+    # Supply Chain Rule Audit
+    # ------------------------------------------------------------------
+    if sc_audit:
+        lines += _render_rule_audit_section(
+            sc_audit,
+            "Supply Chain Rule Audit",
+            "All 25 NGA-SC supply-chain rules — pass/fail/skipped status with evidence.",
+        )
 
     return "\n".join(lines)
 
@@ -520,6 +652,8 @@ def _render_json(
     sbom_path: Path,
     tool_status: dict[str, Any] | None = None,
     nga_audit: list[dict[str, Any]] | None = None,
+    sc_audit: list[dict[str, Any]] | None = None,
+    token_usage: "Any | None" = None,
 ) -> str:
     # Severity counts
     sev_counts: dict[str, int] = {}
@@ -536,9 +670,11 @@ def _render_json(
         "total": len(findings),
         "severity_counts": sev_counts,
         "tool_status": tool_status or {},
+        "token_usage": token_usage.model_dump() if token_usage is not None else {},
         "by_component": by_component,
         "findings": [f.model_dump() for f in findings],
         **({"nga_rule_audit": nga_audit} if nga_audit else {}),
+        **({"sc_rule_audit": sc_audit} if sc_audit else {}),
     }
     return json.dumps(data, indent=2, default=str)
 

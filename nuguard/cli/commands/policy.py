@@ -5,12 +5,13 @@ from __future__ import annotations
 import asyncio
 import json
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 import typer
 from rich.console import Console
 from rich.table import Table
 
+from nuguard.cli.common import output_path_for_format, parse_output_formats
 from nuguard.cli.report_meta import ReportMeta
 from nuguard.common.logging import get_logger
 
@@ -28,6 +29,8 @@ _EXIT_CLEAN = 0
 _EXIT_FINDINGS = 1
 _EXIT_CRITICAL = 2
 _EXIT_ERROR = 3
+_MAX_POLICY_DIAG_EVIDENCE_LINES = 4
+_MAX_POLICY_DIAG_SNIPPET_CHARS = 800
 
 
 @policy_app.command("compile")
@@ -210,10 +213,13 @@ def check(
         help="Path to a custom controls JSON file.",
         exists=False,
     ),
-    output_format: str = typer.Option(
-        "text",
+    output_format: list[str] | None = typer.Option(
+        None,
         "--format",
-        help="Output format: text | json | markdown.",
+        help=(
+            "Output format(s): text | json | markdown. "
+            "Repeat --format or pass comma-separated values."
+        ),
     ),
     output_file: Optional[Path] = typer.Option(
         None,
@@ -226,11 +232,11 @@ def check(
         "--llm/--no-llm",
         help="Enable LLM fallback for controls that cannot be assessed from SBOM alone.",
     ),
-    verbose: bool = typer.Option(
-        False,
-        "--verbose",
-        "-v",
-        help="Show all controls (passed and gaps) with full evidence in verbose mode.",
+    verbose: Optional[bool] = typer.Option(
+        None,
+        "--verbose/--no-verbose",
+        "-v/-V",
+        help="Show additional diagnostics in output without changing findings.",
     ),
 ) -> None:
     """Cross-check policy against SBOM or run a compliance framework assessment.
@@ -256,13 +262,29 @@ def check(
     from nuguard.config import load_config
     from nuguard.sbom.extractor.serializer import AiSbomSerializer
 
+    cfg = load_config(config_file)
+
+    try:
+        formats = parse_output_formats(
+            output_format,
+            default_format="text",
+            allowed_formats={"text", "json", "markdown"},
+        )
+    except ValueError as exc:
+        _err_console.print(f"Error: {exc}")
+        raise typer.Exit(code=_EXIT_ERROR)
+
+    if len(formats) > 1 and output_file is None:
+        _err_console.print(
+            "Error: --output is required when multiple --format values are requested"
+        )
+        raise typer.Exit(code=_EXIT_ERROR)
+
     # Fall back to nuguard.yaml for --sbom and --policy when not provided on CLI
-    if config_file is not None:
-        cfg = load_config(config_file)
-        if sbom is None and cfg.sbom_path:
-            sbom = Path(cfg.sbom_path)
-        if policy is None and cfg.policy_path:
-            policy = Path(cfg.policy_path)
+    if sbom is None and cfg.sbom_path:
+        sbom = Path(cfg.sbom_path)
+    if policy is None and cfg.policy_path:
+        policy = Path(cfg.policy_path)
 
     if not sbom and not policy:
         _err_console.print("Provide --policy and/or --sbom (or set them in nuguard.yaml).")
@@ -295,7 +317,10 @@ def check(
             _err_console.print(f"Error reading policy: {exc}")
             raise typer.Exit(code=_EXIT_ERROR) from exc
 
+    effective_verbose = bool(verbose)
+
     all_findings: list[dict] = []
+    diagnostics: dict[str, Any] = {}
     has_critical = False
 
     # ---- Policy vs SBOM cross-check ----------------------------------------
@@ -316,33 +341,18 @@ def check(
                     "message": gap.message,
                     "searched": gap.searched,
                     "prompt_evidence": gap.prompt_evidence,
+                    "remediation": gap.remediation,
                     "status": "gap",
                 }
             )
             if gap.severity in ("high", "critical"):
                 has_critical = True
 
-        if verbose:
-            # Include passing controls in findings for verbose output
-            for ctrl in check_result.passed:
-                all_findings.append(
-                    {
-                        "source": "policy_check",
-                        "id": ctrl.check_id,
-                        "name": ctrl.name,
-                        "description": ctrl.description,
-                        "severity": "info",
-                        "section": ctrl.policy_section,
-                        "component": "",
-                        "message": "",
-                        "evidence": ctrl.evidence,
-                        "evidence_source": ctrl.evidence_source,
-                        "status": "passed",
-                    }
-                )
+        if effective_verbose:
+            diagnostics["policy_check"] = _build_policy_check_diagnostics(check_result)
 
-        if output_format == "text":
-            _print_policy_check_result(check_result, verbose=verbose)
+        if "text" in formats and output_file is None:
+            _print_policy_check_result(check_result, verbose=effective_verbose)
 
     # ---- Compliance framework assessment -----------------------------------
     if (framework or controls) and doc is not None:
@@ -384,30 +394,47 @@ def check(
             ):
                 has_critical = True
 
-        if output_format == "text":
+        if "text" in formats and output_file is None:
             _print_assessment_table(assessment)
 
     # ---- JSON / Markdown output --------------------------------------------
     meta = ReportMeta(
         llm_models=[cfg.litellm_model] if enable_llm else [],
+        verbose=effective_verbose,
     )
-    if output_format == "json":
-        payload = {"_meta": meta.to_dict(), "findings": all_findings}
-        content = json.dumps(payload, indent=2, default=str)
-        if output_file:
-            output_file.write_text(content, encoding="utf-8")
-            _console.print(f"Output written to {output_file}")
-        else:
-            typer.echo(content)
-    elif output_format == "markdown":
-        content = _policy_findings_to_markdown(all_findings, meta)
-        if output_file:
-            output_file.write_text(content, encoding="utf-8")
-            _console.print(f"Output written to {output_file}")
-        else:
-            typer.echo(content)
+
+    extension_map = {
+        "text": ".txt",
+        "json": ".json",
+        "markdown": ".md",
+    }
+
+    def _render(fmt: str) -> str:
+        if fmt == "json":
+            payload = {"_meta": meta.to_dict(), "findings": all_findings}
+            if meta.verbose and diagnostics:
+                payload["diagnostics"] = diagnostics
+            return json.dumps(payload, indent=2, default=str)
+        if fmt == "markdown":
+            return _policy_findings_to_markdown(all_findings, meta, diagnostics=diagnostics)
+        return _policy_findings_to_text(all_findings, meta, diagnostics=diagnostics)
+
+    if output_file:
+        for fmt in formats:
+            out_path = output_path_for_format(
+                output_file,
+                fmt=fmt,
+                all_formats=formats,
+                extension_map=extension_map,
+            )
+            out_path.write_text(_render(fmt), encoding="utf-8")
+            _console.print(f"Output written to {out_path}")
     else:
-        _console.print(f"[dim]{meta.to_text_line()}[/dim]")
+        fmt = formats[0]
+        if fmt == "text":
+            _console.print(f"[dim]{meta.to_text_line()}[/dim]")
+        else:
+            typer.echo(_render(fmt))
 
     if not all_findings:
         _console.print("[green]✓ No findings.[/green]")
@@ -480,7 +507,11 @@ def _print_policy_check_result(check_result: object, *, verbose: bool = False) -
         _console.print("[green]✓ No policy/SBOM gaps found.[/green]")
 
 
-def _policy_findings_to_markdown(findings: list[dict], meta: ReportMeta | None = None) -> str:
+def _policy_findings_to_markdown(
+    findings: list[dict],
+    meta: ReportMeta | None = None,
+    diagnostics: dict[str, Any] | None = None,
+) -> str:
     """Render policy check findings as a Markdown report string."""
     if meta is None:
         meta = ReportMeta()
@@ -508,16 +539,7 @@ def _policy_findings_to_markdown(findings: list[dict], meta: ReportMeta | None =
             sev = (f.get("severity") or "info").upper()
             check_id = f.get("id", "")
             name = f.get("name", "")
-            if status == "passed":
-                lines += [f"## [PASS] {check_id}: {name}", ""]
-                if f.get("description"):
-                    lines += [f"_{f['description']}_", ""]
-                if f.get("evidence"):
-                    lines += ["**Evidence:**"]
-                    for ev in f["evidence"][:5]:
-                        lines += [f"- {ev}"]
-                    lines += [""]
-            else:
+            if status != "passed":
                 heading = f"## [{sev}] {check_id}: {name}" if name else f"## [{sev}] Policy Gap: {check_id}"
                 lines += [heading, ""]
                 if f.get("description"):
@@ -537,6 +559,9 @@ def _policy_findings_to_markdown(findings: list[dict], meta: ReportMeta | None =
                     for pe in f["prompt_evidence"]:
                         lines += [f"- {pe}"]
                     lines += [""]
+                if f.get("remediation"):
+                    lines += ["**Remediation:**", ""]
+                    lines += [f"> {f['remediation']}", ""]
         elif source == "compliance":
             result = (f.get("result") or "").upper()
             sev = (f.get("severity") or "info").upper()
@@ -547,7 +572,103 @@ def _policy_findings_to_markdown(findings: list[dict], meta: ReportMeta | None =
                 lines += [""]
             if f.get("remediation"):
                 lines += [f"**Remediation:** {f['remediation']}", ""]
+
+    if meta.verbose and diagnostics and diagnostics.get("policy_check"):
+        policy_diag = diagnostics["policy_check"]
+        lines += ["## Diagnostics", ""]
+        lines += [
+            f"_Evidence lines capped at {policy_diag.get('evidence_lines_cap', _MAX_POLICY_DIAG_EVIDENCE_LINES)} per control._",
+            "",
+        ]
+
+        passed_controls = policy_diag.get("passed_controls", [])
+        if passed_controls:
+            lines += ["### Satisfied Controls", ""]
+            for ctrl in passed_controls:
+                lines += [f"#### [PASS] {ctrl.get('id', '')}: {ctrl.get('name', '')}", ""]
+                if ctrl.get("description"):
+                    lines += [f"_{ctrl['description']}_", ""]
+                for ev in ctrl.get("evidence", []):
+                    lines += [f"- {ev}"]
+                lines += [""]
     return "\n".join(lines)
+
+
+def _policy_findings_to_text(
+    findings: list[dict],
+    meta: ReportMeta | None = None,
+    diagnostics: dict[str, Any] | None = None,
+) -> str:
+    """Render policy check findings as plain text."""
+    if meta is None:
+        meta = ReportMeta()
+    lines = ["NuGuard Policy Report", meta.to_text_line(), ""]
+    if not findings:
+        lines.append("No findings.")
+        return "\n".join(lines)
+
+    for f in findings:
+        source = str(f.get("source", "")).strip() or "unknown"
+        identifier = str(f.get("id", "")).strip()
+        name = str(f.get("name", "")).strip()
+        severity = str(f.get("severity", "info")).upper()
+        status = str(f.get("status", "")).upper()
+        title = f"[{severity}] {identifier}"
+        if name:
+            title += f": {name}"
+        if status:
+            title += f" ({status})"
+        lines.append(title)
+        lines.append(f"  source: {source}")
+        message = str(f.get("message", "")).strip()
+        if message:
+            lines.append(f"  message: {message}")
+        remediation = str(f.get("remediation", "")).strip()
+        if remediation:
+            lines.append(f"  remediation: {remediation}")
+        lines.append("")
+
+    if meta.verbose and diagnostics and diagnostics.get("policy_check"):
+        passed_controls = diagnostics["policy_check"].get("passed_controls", [])
+        lines.append("Diagnostics:")
+        lines.append(f"- satisfied_controls: {len(passed_controls)}")
+        lines.append(
+            f"- evidence_lines_cap: {diagnostics['policy_check'].get('evidence_lines_cap', _MAX_POLICY_DIAG_EVIDENCE_LINES)}"
+        )
+        lines.append("")
+    return "\n".join(lines)
+
+
+def _truncate_policy_diag(value: str) -> str:
+    text = value or ""
+    if len(text) <= _MAX_POLICY_DIAG_SNIPPET_CHARS:
+        return text
+    return text[:_MAX_POLICY_DIAG_SNIPPET_CHARS] + "... [truncated]"
+
+
+def _build_policy_check_diagnostics(check_result: object) -> dict[str, Any]:
+    passed_controls: list[dict[str, Any]] = []
+    for ctrl in getattr(check_result, "passed", []):
+        passed_controls.append(
+            {
+                "id": ctrl.check_id,
+                "name": ctrl.name,
+                "description": _truncate_policy_diag(ctrl.description or ""),
+                "policy_section": ctrl.policy_section,
+                "evidence_source": ctrl.evidence_source,
+                "evidence": [
+                    _truncate_policy_diag(str(ev))
+                    for ev in (ctrl.evidence or [])[:_MAX_POLICY_DIAG_EVIDENCE_LINES]
+                ],
+                "evidence_truncated": max(0, len(ctrl.evidence or []) - _MAX_POLICY_DIAG_EVIDENCE_LINES),
+            }
+        )
+
+    return {
+        "passed_controls": passed_controls,
+        "evidence_lines_cap": _MAX_POLICY_DIAG_EVIDENCE_LINES,
+        "snippet_char_cap": _MAX_POLICY_DIAG_SNIPPET_CHARS,
+    }
 
 
 def _print_assessment_table(assessment: object) -> None:

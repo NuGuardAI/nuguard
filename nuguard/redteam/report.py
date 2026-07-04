@@ -8,13 +8,30 @@ either module with the same interface::
 from __future__ import annotations
 
 import json
-import logging
 from typing import TYPE_CHECKING, Any
+
+from nuguard.common.logging import get_logger
+from nuguard.output.report_shared import (
+    _truncate_evidence,
+    render_finding_block,
+    render_remediation_plan_section,
+)
+from nuguard.output.validation_report import (
+    _clean_response_for_display,
+    extract_redteam_scenario_details,
+    render_scenario_details_section,
+    render_validation_summary_bullets,
+)
 
 if TYPE_CHECKING:
     from nuguard.cli.report_meta import ReportMeta
+    from nuguard.models.token_usage import TokenUsage
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
+
+_MAX_DIAG_SCENARIOS = 20
+_MAX_DIAG_TURNS_PER_SCENARIO = 4
+_MAX_DIAG_SNIPPET_CHARS = 800
 
 
 # ---------------------------------------------------------------------------
@@ -27,6 +44,10 @@ def to_json(
     meta: "ReportMeta | None" = None,
     remediation_plan: list | None = None,
     scan_outcome: str = "no_findings",
+    input_tokens_used: int = 0,
+    output_tokens_used: int = 0,
+    token_usage: "TokenUsage | None" = None,
+    scenario_records: list | None = None,
 ) -> str:
     """Generate a JSON report string from red-team findings.
 
@@ -34,6 +55,9 @@ def to_json(
         findings: List of :class:`~nuguard.models.finding.Finding` objects.
         meta: Optional report metadata.
         remediation_plan: Optional list of ``RemediationArtefact`` objects.
+        input_tokens_used: Total LLM prompt tokens consumed during the run.
+        output_tokens_used: Total LLM completion tokens consumed during the run.
+        token_usage: Structured token usage (preferred over the flat int params).
 
     Returns:
         JSON string.
@@ -43,12 +67,20 @@ def to_json(
     if meta is None:
         meta = _ReportMeta()
 
+    _in = token_usage.input_tokens if token_usage is not None else input_tokens_used
+    _out = token_usage.output_tokens if token_usage is not None else output_tokens_used
+
     payload: dict[str, Any] = {
         "_meta": meta.to_dict(),
         "scan_outcome": scan_outcome,
+        "token_usage": token_usage.model_dump() if token_usage is not None else {"input_tokens": _in, "output_tokens": _out, "total_tokens": _in + _out, "llm_model": None},
+        "input_tokens_used": _in,
+        "output_tokens_used": _out,
         "findings": [f.model_dump() for f in findings],
         "remediation_plan": [a.model_dump() for a in (remediation_plan or [])],
     }
+    if meta.verbose and scenario_records:
+        payload["diagnostics"] = _build_redteam_diagnostics(scenario_records)
     return json.dumps(payload, indent=2, default=str)
 
 
@@ -57,6 +89,8 @@ def to_markdown(
     meta: "ReportMeta | None" = None,
     remediation_plan: list | None = None,
     scenario_records: list | None = None,
+    catalog_coverage: "object | None" = None,
+    coverage_tracker: "object | None" = None,
 ) -> str:
     """Render red-team findings as a Markdown report string.
 
@@ -93,7 +127,7 @@ def to_markdown(
     lines += ["## Summary", ""]
     if meta.scan_profile:
         lines += [f"- **Scan Profile**: {meta.scan_profile}", ""]
-    _WEIGHTS = {"CRITICAL": 100.0, "HIGH": 70.0, "MEDIUM": 40.0, "LOW": 10.0, "INFO": 0.0}
+    _WEIGHTS = {"CRITICAL": 100.0, "HIGH": 80.0, "MEDIUM": 50.0, "LOW": 25.0, "INFO": 0.0}
     if findings:
         _scores = [
             _WEIGHTS.get(
@@ -120,52 +154,61 @@ def to_markdown(
     if meta.finding_triggers:
         trigger_parts = [f"{k}={'on' if v else 'off'}" for k, v in meta.finding_triggers.items()]
         lines += [f"- **Finding Triggers**: {', '.join(trigger_parts)}", ""]
+    _scenario_details = None
     if scenario_records:
         lines += _attack_coverage_summary(scenario_records)
+        _scenario_details = extract_redteam_scenario_details(scenario_records)
+        _passed = sum(1 for d in _scenario_details if d.status == "PASS")
+        _type_breakdown: dict[str, int] = {}
+        for d in _scenario_details:
+            _type_breakdown[d.goal_or_type] = _type_breakdown.get(d.goal_or_type, 0) + 1
+        render_validation_summary_bullets(
+            lines,
+            total_scenarios=len(_scenario_details),
+            passed_scenarios=_passed,
+            failed_scenarios=len(_scenario_details) - _passed,
+            total_turns=sum(len(d.turns) for d in _scenario_details),
+            type_breakdown=_type_breakdown,
+        )
     # ---------------------------------------------------------------------------
 
     if scenario_records:
         lines += _scenario_coverage_table(scenario_records)
+
+    # Catalog coverage report (Phase 2 — capability-aware catalog)
+    if catalog_coverage is not None and hasattr(catalog_coverage, "to_markdown"):
+        lines += ["", catalog_coverage.to_markdown(), ""]
+
+    # Coverage tracker table (SBOM node coverage)
+    if coverage_tracker is not None and hasattr(coverage_tracker, "to_markdown"):
+        _ct_md = coverage_tracker.to_markdown()
+        if _ct_md:
+            lines += ["", _ct_md, ""]
 
     if not findings:
         lines += ["_No findings — scan complete._", ""]
         return "\n".join(lines)
 
     for f in sorted(findings, key=lambda x: list(Severity).index(x.severity)):
-        sev = f.severity.value.upper() if hasattr(f.severity, "value") else str(f.severity).upper()
-        lines += [f"## [{sev}] {f.title}", ""]
-        lines += [f.description, ""]
+        render_finding_block(lines, f, heading_level="##")
+        _verified = getattr(f, "verified", None)
+        if _verified is True:
+            lines += ["**Verification:** `[VERIFIED]` — reproduced in post-finding probe", ""]
+        elif _verified is False:
+            lines += ["**Verification:** `[UNCONFIRMED]` — could not reproduce in post-finding probe; treat as suspected", ""]
         if f.title.startswith("Inject Success Signal — "):
             lines += ["**Confidence:** Low — keyword match only, verify manually", ""]
-        if f.affected_component:
-            lines += [f"**Component:** {f.affected_component}", ""]
-        if f.goal_type:
-            lines += [f"**Type:** {f.goal_type}", ""]
         # Progress score (1–5 rubric)
         scores = getattr(f, "scores", None) or {}
         progress = scores.get("goal_progress")
         if progress is not None:
             lines += [f"**Progress score:** {progress}/5", ""]
-        # One-sentence reasoning from the judge
-        reasoning = getattr(f, "reasoning", "") or ""
-        if reasoning:
-            lines += [f"**Finding reasoning:** {reasoning}", ""]
         # Named success indicator
         success_indicator = getattr(f, "success_indicator", None)
         if success_indicator:
             lines += [f"**Success indicator:** `{success_indicator}`", ""]
-        # Evidence quote — exact substring proving the breach
-        evidence_quote = getattr(f, "evidence_quote", "") or ""
-        if evidence_quote:
-            lines += [
-                "**Evidence quote:**",
-                "> " + evidence_quote.replace("\n", "\n> "),
-                "",
-            ]
-        if f.remediation:
-            lines += [f"**Remediation:** {f.remediation}", ""]
-        if f.owasp_llm_ref:
-            lines += [f"**OWASP LLM:** {f.owasp_llm_ref}", ""]
+        # Note: evidence_quote, remediation, and owasp_llm_ref are already
+        # rendered by render_finding_block() above — do not duplicate them here.
         golden_ids = getattr(f, "golden_ids", None) or []
         golden_name = getattr(f, "golden_name", None)
         golden_excerpt = getattr(f, "golden_data_excerpt", None)
@@ -182,9 +225,75 @@ def to_markdown(
         lines += _render_hit_turns(f)
 
     if remediation_plan:
-        _append_remediation_plan(lines, remediation_plan)
+        render_remediation_plan_section(lines, remediation_plan)
+
+    if meta.verbose and _scenario_details:
+        lines += ["## Diagnostics", ""]
+        lines += [
+            f"_Scenario traces capped at {_MAX_DIAG_TURNS_PER_SCENARIO} turn(s) per scenario, "
+            f"{_MAX_DIAG_SNIPPET_CHARS} chars per request/response snippet._",
+            "",
+        ]
+        render_scenario_details_section(
+            lines,
+            _truncate_scenario_details(_scenario_details),
+            truncate_limit=_MAX_DIAG_SNIPPET_CHARS,
+        )
 
     return "\n".join(lines)
+
+
+def _truncate_scenario_details(scenario_details: list) -> list:
+    truncated = []
+    for sd in scenario_details[:_MAX_DIAG_SCENARIOS]:
+        turns = list(sd.turns[:_MAX_DIAG_TURNS_PER_SCENARIO])
+        truncated.append(
+            type(sd)(
+                index=sd.index,
+                title=sd.title,
+                scenario_type=sd.scenario_type,
+                goal_or_type=sd.goal_or_type,
+                status=sd.status,
+                turns=turns,
+                had_finding=sd.had_finding,
+            )
+        )
+    return truncated
+
+
+def _build_redteam_diagnostics(scenario_records: list) -> dict[str, Any]:
+    details = extract_redteam_scenario_details(scenario_records)
+    scenario_traces: list[dict[str, Any]] = []
+    for sd in details[:_MAX_DIAG_SCENARIOS]:
+        turns = []
+        for td in sd.turns[:_MAX_DIAG_TURNS_PER_SCENARIO]:
+            turns.append(
+                {
+                    "turn": td.turn_number,
+                    "passed": td.passed,
+                    "request": _truncate_evidence(td.request or "", limit=_MAX_DIAG_SNIPPET_CHARS),
+                    "response": _truncate_evidence(td.response or "", limit=_MAX_DIAG_SNIPPET_CHARS),
+                    "step_type": td.metadata.get("step_type", ""),
+                    "llm_eval_confidence": td.metadata.get("llm_eval_confidence", None),
+                }
+            )
+        scenario_traces.append(
+            {
+                "scenario_title": sd.title,
+                "goal_or_type": sd.goal_or_type,
+                "status": sd.status,
+                "turns": turns,
+                "turns_truncated": max(0, len(sd.turns) - _MAX_DIAG_TURNS_PER_SCENARIO),
+            }
+        )
+    return {
+        "execution_notes": {
+            "scenarios_cap": _MAX_DIAG_SCENARIOS,
+            "turns_per_scenario_cap": _MAX_DIAG_TURNS_PER_SCENARIO,
+            "snippet_char_cap": _MAX_DIAG_SNIPPET_CHARS,
+        },
+        "scenario_traces": scenario_traces,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -211,6 +320,8 @@ def _attack_coverage_summary(scenario_records: list) -> list[str]:
         "TOOL_ABUSE": "Tool Abuse",
         "API_ATTACK": "API Attack",
         "MCP_TOXIC_FLOW": "MCP Toxic",
+        "AGENTIC_TRUST_ABUSE": "Agentic Trust Abuse",
+        "RECON_INFERENCE": "Recon Inference",
     }
     _NOT_TESTED = {"skipped", "similar_miss", "failed", "aborted"}
 
@@ -251,6 +362,13 @@ def _attack_coverage_summary(scenario_records: list) -> list[str]:
     return lines
 
 
+def _r(r: Any, key: str, default: Any = None) -> Any:
+    """Dict-and-dataclass safe field getter for scenario records."""
+    if isinstance(r, dict):
+        return r.get(key, default)
+    return getattr(r, key, default)
+
+
 def _scenario_coverage_table(scenario_records: list) -> list[str]:
     """Return Markdown lines for the Scenario Coverage summary table.
 
@@ -265,7 +383,7 @@ def _scenario_coverage_table(scenario_records: list) -> list[str]:
 
     records = sorted(
         scenario_records,
-        key=lambda r: (-getattr(r, "impact_score", 0.0), 0 if r.had_finding else 1),
+        key=lambda r: (-_r(r, "impact_score", 0.0), 0 if _r(r, "had_finding", False) else 1),
     )
 
     _GOAL_ABBREV = {
@@ -276,6 +394,8 @@ def _scenario_coverage_table(scenario_records: list) -> list[str]:
         "TOOL_ABUSE": "Tool Abuse",
         "API_ATTACK": "API Attack",
         "MCP_TOXIC_FLOW": "MCP Toxic",
+        "AGENTIC_TRUST_ABUSE": "Agentic Trust Abuse",
+        "RECON_INFERENCE": "Recon Inference",
     }
 
     def _fmt_duration(s: float) -> str:
@@ -297,19 +417,24 @@ def _scenario_coverage_table(scenario_records: list) -> list[str]:
     findings_count = 0
 
     for idx, r in enumerate(records, start=1):
-        title = r.title[:60] + ("…" if len(r.title) > 60 else "")
-        goal = _GOAL_ABBREV.get(r.goal_type, r.goal_type.replace("_", " ").title())
-        finding_cell = "**YES**" if r.had_finding else "no"
-        turns_used = getattr(r, "turns_used", len(r.steps))
-        turns_budget = getattr(r, "turns_budget", 0) or turns_used
+        title_str = _r(r, "title", "") or ""
+        title = title_str[:60] + ("…" if len(title_str) > 60 else "")
+        goal_type_str = _r(r, "goal_type", "") or ""
+        goal = _GOAL_ABBREV.get(goal_type_str, goal_type_str.replace("_", " ").title())
+        had_finding = bool(_r(r, "had_finding", False))
+        finding_cell = "**YES**" if had_finding else "no"
+        turns_used = _r(r, "turns_used", None)
+        if turns_used is None:
+            turns_used = len(_r(r, "steps", []) or [])
+        turns_budget = _r(r, "turns_budget", 0) or turns_used
         turns_cell = f"{turns_used}/{turns_budget}"
-        duration = getattr(r, "duration_s", 0.0)
+        duration = _r(r, "duration_s", 0.0) or 0.0
         dur_cell = _fmt_duration(duration)
         avg_cell = _fmt_avg(duration, turns_used)
 
         total_duration += duration
         total_turns += turns_used
-        if r.had_finding:
+        if had_finding:
             findings_count += 1
 
         lines.append(
@@ -328,29 +453,6 @@ def _scenario_coverage_table(scenario_records: list) -> list[str]:
     )
     lines.append("")
     return lines
-
-
-def _append_remediation_plan(lines: list[str], remediation_plan: list) -> None:
-    """Append a Remediation Plan section to *lines*, grouped by SBOM node."""
-    from nuguard.behavior.report import _render_artefact
-
-    lines.append("## Remediation Plan")
-    lines.append("")
-    lines.append(
-        "Concrete, SBOM-node-specific remediations generated from the findings "
-        "above. Apply in priority order."
-    )
-    lines.append("")
-
-    by_component: dict[str, list] = {}
-    for art in remediation_plan:
-        by_component.setdefault(art.component, []).append(art)
-
-    for comp, arts in by_component.items():
-        lines.append(f"### {comp}")
-        lines.append("")
-        for art in arts:
-            _render_artefact(lines, art)
 
 
 def _render_hit_turns(f: Any) -> list[str]:
@@ -384,7 +486,7 @@ def _render_hit_turns(f: Any) -> list[str]:
     lines: list[str] = ["**Evidence — hit turn(s):**", ""]
     for step_num, step in hit_steps:
         stype = step.get("step_type", "?")
-        lines.append(f"**Turn {step_num} ({stype} ✅)**")
+        lines.append(f"_Turn {step_num} ({stype}):_")
         lines.append("")
         target = step.get("target_path")
         if target:
@@ -393,33 +495,29 @@ def _render_hit_turns(f: Any) -> list[str]:
             attacker_label = f"{method} {target}"
             if status is not None:
                 attacker_label += f" → HTTP {status}"
-            lines.append(f"**Attacker:** {attacker_label}")
+            lines.append(f"> **Attacker:** {attacker_label}")
         else:
             payload = (step.get("payload") or "").strip()
             if payload:
-                lines.append(f"**Attacker:** {payload}")
-        response = (step.get("response") or "").strip()
+                lines.append(f"> **Attacker:** {payload}")
+        response = _clean_response_for_display((step.get("response") or "").strip())
         if response:
-            lines.append(f"**Agent:** {_truncate_evidence(response, limit=1500)}")
+            truncated = _truncate_evidence(response, limit=1500)
+            lines.append("> **Response:**")
+            for resp_line in truncated.splitlines():
+                lines.append(f"> {resp_line}")
         llm_evidence = (step.get("llm_eval_evidence") or "").strip()
         if llm_evidence:
             conf = step.get("llm_eval_confidence") or ""
             conf_label = f" ({conf})" if conf else ""
-            lines.append(f"**LLM eval{conf_label}:** {llm_evidence}")
+            # The golden-data filter (regex/token-overlap classifier) shares the
+            # llm_eval_evidence/confidence fields with the real LLM judge but is
+            # not an LLM verdict — label it distinctly so reports don't imply a
+            # model reviewed the response when a deterministic rule fired.
+            source = step.get("evidence_source") or "llm_eval"
+            label = "Golden-data filter" if source == "golden_filter" else "LLM eval"
+            lines.append(f"> **{label}{conf_label}:** {llm_evidence}")
         lines.append("")
     return lines
 
 
-def _truncate_evidence(text: str, *, limit: int = 2500) -> str:
-    """Trim *text* to ``limit`` chars at a newline/word boundary."""
-    if len(text) <= limit:
-        return text
-    cut = text[:limit]
-    window = max(200, limit // 5)
-    last_nl = cut.rfind("\n", limit - window)
-    if last_nl != -1:
-        return cut[:last_nl] + "\n… (truncated)"
-    last_sp = cut.rfind(" ", limit - 80)
-    if last_sp != -1:
-        return cut[:last_sp] + " … (truncated)"
-    return cut + "… (truncated)"

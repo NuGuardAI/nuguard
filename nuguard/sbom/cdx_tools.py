@@ -22,17 +22,18 @@ The output is always a CycloneDX 1.6 BOM ``dict`` compatible with
 from __future__ import annotations
 
 import json
-import logging
 import re
 import subprocess
 from pathlib import Path
 from typing import Any
 
+from nuguard.common.logging import get_logger
+
 from .deps import DependencyScanner
 from .models import AiSbomDocument
 from .serializer import AiSbomSerializer
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # Internal helpers
@@ -133,7 +134,7 @@ class CycloneDxGenerator:
             )
         else:
             _log.warning(
-                "cyclonedx-py not available (install with: pip install xelo[cdx]); "
+                "cyclonedx-py not available (install with: pip install nuguard[cdx]); "
                 "using shallow dep-scanner fallback"
             )
 

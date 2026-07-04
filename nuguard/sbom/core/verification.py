@@ -8,14 +8,13 @@ Key Features:
 - Cost-aware: stops when budget exceeded
 - Configurable: can be disabled via environment variable
 - Caches results for identical code patterns
-- Works with xelo.models.Node (standalone, no backend dependency)
+- Works with nuguard.models.Node (standalone, no backend dependency)
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
-import logging
 import os
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -23,9 +22,11 @@ from functools import lru_cache
 from typing import Any
 from uuid import UUID
 
+from nuguard.common.logging import get_logger
+
 from ..models import Evidence, Node
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # Configuration from environment
@@ -34,7 +35,7 @@ _log = logging.getLogger(__name__)
 ENABLE_VERIFICATION = os.environ.get("AISBOM_ENABLE_VERIFICATION", "true").lower() == "true"
 VERIFICATION_CONFIDENCE_MIN = float(os.environ.get("AISBOM_VERIFICATION_CONFIDENCE_MIN", "0.60"))
 VERIFICATION_CONFIDENCE_MAX = float(os.environ.get("AISBOM_VERIFICATION_CONFIDENCE_MAX", "0.85"))
-VERIFICATION_COST_BUDGET = float(os.environ.get("AISBOM_VERIFICATION_COST_BUDGET", "0.05"))
+VERIFICATION_COST_BUDGET = float(os.environ.get("AISBOM_VERIFICATION_COST_BUDGET", "20.0"))
 MAX_VERIFICATIONS_PER_SCAN = int(os.environ.get("AISBOM_MAX_VERIFICATIONS", "20"))
 
 # ---------------------------------------------------------------------------

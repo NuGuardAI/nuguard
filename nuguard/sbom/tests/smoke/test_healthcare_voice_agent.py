@@ -1,7 +1,7 @@
 """
 Smoke test: NuGuardAI/Healthcare-voice-agent
 
-Clones the public repository and asserts that Xelo correctly extracts the
+Clones the public repository and asserts that NuGuard correctly extracts the
 AI Bill of Materials for a real-world healthcare AI application:
 
 Architecture under test
@@ -104,7 +104,7 @@ def _adapters(doc: AiSbomDocument) -> set[str]:
 
 
 class TestFrameworkDetection:
-    """Xelo should detect both the Python LangGraph and Google GenAI (JS) frameworks."""
+    """NuGuard should detect both the Python LangGraph and Google GenAI (JS) frameworks."""
 
     @skip_if_offline
     def test_detects_langgraph_framework(self, doc: AiSbomDocument) -> None:
@@ -129,37 +129,37 @@ class TestAgentDetection:
 
     @skip_if_offline
     def test_detects_normalize_agent(self, doc: AiSbomDocument) -> None:
-        agent_names = _names(doc, ComponentType.AGENT)
-        assert "normalize_agent" in agent_names, (
-            f"Expected 'normalize_agent' in agents; got: {agent_names}"
+        agent_names_lower = {n.lower() for n in _names(doc, ComponentType.AGENT)}
+        assert "normalize agent" in agent_names_lower, (
+            f"Expected 'normalize agent' in agents; got: {agent_names_lower}"
         )
 
     @skip_if_offline
     def test_detects_prognosis_agent(self, doc: AiSbomDocument) -> None:
-        agent_names = _names(doc, ComponentType.AGENT)
-        assert "prognosis_search_agent" in agent_names, (
-            f"Expected 'prognosis_search_agent' in agents; got: {agent_names}"
+        agent_names_lower = {n.lower() for n in _names(doc, ComponentType.AGENT)}
+        assert "prognosis search agent" in agent_names_lower, (
+            f"Expected 'prognosis search agent' in agents; got: {agent_names_lower}"
         )
 
     @skip_if_offline
     def test_detects_specialist_lookup_agent(self, doc: AiSbomDocument) -> None:
-        agent_names = _names(doc, ComponentType.AGENT)
-        assert "specialist_lookup_agent" in agent_names, (
-            f"Expected 'specialist_lookup_agent' in agents; got: {agent_names}"
+        agent_names_lower = {n.lower() for n in _names(doc, ComponentType.AGENT)}
+        assert "specialist lookup agent" in agent_names_lower, (
+            f"Expected 'specialist lookup agent' in agents; got: {agent_names_lower}"
         )
 
     @skip_if_offline
     def test_detects_recommend_specialists_agent(self, doc: AiSbomDocument) -> None:
-        agent_names = _names(doc, ComponentType.AGENT)
-        assert "recommend_specialists_agent" in agent_names, (
-            f"Expected 'recommend_specialists_agent' in agents; got: {agent_names}"
+        agent_names_lower = {n.lower() for n in _names(doc, ComponentType.AGENT)}
+        assert "recommend specialists agent" in agent_names_lower, (
+            f"Expected 'recommend specialists agent' in agents; got: {agent_names_lower}"
         )
 
     @skip_if_offline
     def test_detects_fetch_doctor_details_agent(self, doc: AiSbomDocument) -> None:
-        agent_names = _names(doc, ComponentType.AGENT)
-        assert "fetch_doctor_details_agent" in agent_names, (
-            f"Expected 'fetch_doctor_details_agent' in agents; got: {agent_names}"
+        agent_names_lower = {n.lower() for n in _names(doc, ComponentType.AGENT)}
+        assert "fetch doctor details agent" in agent_names_lower, (
+            f"Expected 'fetch doctor details agent' in agents; got: {agent_names_lower}"
         )
 
     @skip_if_offline

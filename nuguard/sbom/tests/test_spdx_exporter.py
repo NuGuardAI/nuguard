@@ -1,7 +1,7 @@
 """Tests for SPDX 3.0.1 JSON-LD export plugin — validator-hardened reference format.
 
 Covers:
-- Root document structure (@context list with xelo namespace, @graph)
+- Root document structure (@context list with nuguard namespace, @graph)
 - SPDXRef- prefixed spdxId values (human-readable segment)
 - Shared blank-node creationInfo (_:creationinfo — lowercase)
 - Element order: actors (SoftwareAgent, Tool, Org) → CI → License → SpdxDocument → components → Sbom → Relationships
@@ -11,7 +11,7 @@ Covers:
 - software_Sbom: element list, software_sbomType, name, summary
 - Package properties: software_packageVersion, releaseTime, suppliedBy
 - Relationship elements from doc.edges with completeness="complete"
-- xelo: extension properties
+- nuguard: extension properties
 - PackageDep serialised as software_Package with purl
 - Plugin .run() path via SpdxExporter
 """
@@ -96,10 +96,10 @@ class TestContext:
         urls = [c for c in spdx["@context"] if isinstance(c, str)]
         assert any("spdx.org/rdf/3.0" in u for u in urls)
 
-    def test_context_contains_xelo_namespace(self) -> None:
+    def test_context_contains_nuguard_namespace(self) -> None:
         spdx = _minimal_doc()
         ns_dicts = [c for c in spdx["@context"] if isinstance(c, dict)]
-        assert any("xelo" in d for d in ns_dicts)
+        assert any("nuguard" in d for d in ns_dicts)
 
 
 # ── @graph basics ─────────────────────────────────────────────────────────────
@@ -341,7 +341,7 @@ class TestComponentTypeMapping:
         pkgs = [
             e
             for e in _graph(spdx)
-            if e.get("type") == "software_Package" and e.get("xelo:componentType") == ctype.value
+            if e.get("type") == "software_Package" and e.get("nuguard:componentType") == ctype.value
         ]
         assert pkgs, f"{ctype.value} should produce software_Package"
 
@@ -449,7 +449,7 @@ class TestRelationships:
 
 
 class TestExtensionProperties:
-    def test_all_nodes_have_xelo_confidence(self) -> None:
+    def test_all_nodes_have_nuguard_confidence(self) -> None:
         spdx = _minimal_doc(
             nodes=[
                 _make_node(ComponentType.MODEL),
@@ -458,8 +458,8 @@ class TestExtensionProperties:
         )
         ai_pkgs = _elements_of_type(spdx, "ai_AIPackage")
         for pkg in ai_pkgs:
-            assert "xelo:confidence" in pkg
-            assert pkg["xelo:confidence"] == pytest.approx(0.75)
+            assert "nuguard:confidence" in pkg
+            assert pkg["nuguard:confidence"] == pytest.approx(0.75)
 
     def test_model_primary_purpose(self) -> None:
         spdx = _minimal_doc(nodes=[_make_node(ComponentType.MODEL)])
@@ -482,41 +482,41 @@ class TestExtensionProperties:
         spdx = _minimal_doc(nodes=[_make_node(ComponentType.DATASTORE, metadata=meta)])
         ds = _elements_of_type(spdx, "dataset_Dataset")[0]
         assert ds.get("dataset_datasetType") == "postgres"
-        assert ds.get("xelo:datasetType") == "postgres"
+        assert ds.get("nuguard:datasetType") == "postgres"
 
     def test_datastore_data_classification(self) -> None:
         meta = NodeMetadata(data_classification=["PHI", "PII"])
         spdx = _minimal_doc(nodes=[_make_node(ComponentType.DATASTORE, metadata=meta)])
         ds = _elements_of_type(spdx, "dataset_Dataset")[0]
-        assert json.loads(ds["xelo:dataClassification"]) == ["PHI", "PII"]
+        assert json.loads(ds["nuguard:dataClassification"]) == ["PHI", "PII"]
 
     def test_auth_extension_properties(self) -> None:
         meta = NodeMetadata(auth_type="oauth2", auth_class="OAuth2Provider")
         spdx = _minimal_doc(nodes=[_make_node(ComponentType.AUTH, metadata=meta)])
-        pkg = next(e for e in _graph(spdx) if e.get("xelo:componentType") == "AUTH")
-        assert pkg["xelo:authType"] == "oauth2"
-        assert pkg["xelo:authClass"] == "OAuth2Provider"
+        pkg = next(e for e in _graph(spdx) if e.get("nuguard:componentType") == "AUTH")
+        assert pkg["nuguard:authType"] == "oauth2"
+        assert pkg["nuguard:authClass"] == "OAuth2Provider"
 
     def test_iam_extension_properties(self) -> None:
         meta = NodeMetadata(iam_type="role", principal="arn:aws:iam::123:role/MyRole")
         spdx = _minimal_doc(nodes=[_make_node(ComponentType.IAM, metadata=meta)])
-        pkg = next(e for e in _graph(spdx) if e.get("xelo:componentType") == "IAM")
-        assert pkg["xelo:iamType"] == "role"
-        assert pkg["xelo:principal"] == "arn:aws:iam::123:role/MyRole"
+        pkg = next(e for e in _graph(spdx) if e.get("nuguard:componentType") == "IAM")
+        assert pkg["nuguard:iamType"] == "role"
+        assert pkg["nuguard:principal"] == "arn:aws:iam::123:role/MyRole"
 
     def test_deployment_extension(self) -> None:
         meta = NodeMetadata(deployment_target="kubernetes")
         spdx = _minimal_doc(nodes=[_make_node(ComponentType.DEPLOYMENT, metadata=meta)])
-        pkg = next(e for e in _graph(spdx) if e.get("xelo:componentType") == "DEPLOYMENT")
-        assert pkg["xelo:deploymentTarget"] == "kubernetes"
+        pkg = next(e for e in _graph(spdx) if e.get("nuguard:componentType") == "DEPLOYMENT")
+        assert pkg["nuguard:deploymentTarget"] == "kubernetes"
 
     def test_api_endpoint_extension(self) -> None:
         meta = NodeMetadata(endpoint="/api/v1/chat", transport="http", method="POST")
         spdx = _minimal_doc(nodes=[_make_node(ComponentType.API_ENDPOINT, metadata=meta)])
-        pkg = next(e for e in _graph(spdx) if e.get("xelo:componentType") == "API_ENDPOINT")
-        assert pkg["xelo:endpoint"] == "/api/v1/chat"
-        assert pkg["xelo:transport"] == "http"
-        assert pkg["xelo:method"] == "POST"
+        pkg = next(e for e in _graph(spdx) if e.get("nuguard:componentType") == "API_ENDPOINT")
+        assert pkg["nuguard:endpoint"] == "/api/v1/chat"
+        assert pkg["nuguard:transport"] == "http"
+        assert pkg["nuguard:method"] == "POST"
 
 
 # ── PackageDep serialisation ──────────────────────────────────────────────────
@@ -584,20 +584,20 @@ class TestScanSummary:
         summary = ScanSummary(frameworks=["langgraph"], modalities=["TEXT"])
         spdx = _minimal_doc(summary=summary)
         sbom = _elements_of_type(spdx, "software_Sbom")[0]
-        assert sbom.get("xelo:frameworks") == ["langgraph"]
-        assert sbom.get("xelo:modalities") == ["TEXT"]
+        assert sbom.get("nuguard:frameworks") == ["langgraph"]
+        assert sbom.get("nuguard:modalities") == ["TEXT"]
 
     def test_summary_security_findings(self) -> None:
         summary = ScanSummary(security_findings=["container_runs_as_root"])
         spdx = _minimal_doc(summary=summary)
         sbom = _elements_of_type(spdx, "software_Sbom")[0]
-        assert sbom.get("xelo:securityFindings") == ["container_runs_as_root"]
+        assert sbom.get("nuguard:securityFindings") == ["container_runs_as_root"]
 
     def test_no_summary_no_extra_fields(self) -> None:
         spdx = _minimal_doc()
         sbom = _elements_of_type(spdx, "software_Sbom")[0]
-        assert "xelo:frameworks" not in sbom
-        assert "xelo:modalities" not in sbom
+        assert "nuguard:frameworks" not in sbom
+        assert "nuguard:modalities" not in sbom
 
 
 # ── Plugin .run() path ────────────────────────────────────────────────────────

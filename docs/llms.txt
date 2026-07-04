@@ -28,7 +28,7 @@ nuguard policy check           Cognitive Policy linting and compliance assessmen
 nuguard redteam                Dynamic adversarial testing against the live application
 ```
 
-Run any single step in isolation or chain all four with `nuguard scan`.
+Run any single step in isolation or chain all four with `nuguard scan --steps sbom,analyze,policy,redteam --policy cognitive_policy.md --target <url>`.
 
 ---
 
@@ -259,6 +259,7 @@ nuguard redteam --sbom app.sbom.json --target $APP_URL \
 ```bash
 # Full pipeline: SBOM → analyze → policy → redteam
 nuguard scan --source . \
+  --steps sbom,analyze,policy,redteam \
   --policy cognitive_policy.md \
   --target http://localhost:3000 \
   --output-dir reports/
@@ -322,7 +323,8 @@ nuguard redteam --sbom app.sbom.json --target http://localhost:8000 \
 nuguard sbom plugin run sarif_export --sbom app.sbom.json --output results.sarif
 
 # 6. All in one
-nuguard scan --source . --policy cognitive_policy.md --target http://localhost:8000 \
+nuguard scan --source . --steps sbom,analyze,policy,redteam \
+  --policy cognitive_policy.md --target http://localhost:8000 \
   --output-dir ./nuguard-reports
 ```
 
@@ -376,7 +378,7 @@ Also available on the Smithery Claude marketplace (search "nuguard").
 | `nuguard_init` | 30 s | Initialize `nuguard.yaml` in a project directory |
 | `nuguard_sbom_generate` | 300 s | Generate AI-SBOM from local source or git repo |
 | `nuguard_analyze` | 300 s | Static risk analysis on an AI-SBOM |
-| `nuguard_scan` | 600 s | Full pipeline: SBOM → analyze → policy → redteam |
+| `nuguard_scan` | 600 s | Unified pipeline; defaults to SBOM → analyze, with policy/redteam when requested in `steps` |
 | `nuguard_behavior` | 300 s | Behavioral testing against a live AI app |
 | `nuguard_redteam` | 900 s | Adversarial red-team testing against a live AI app |
 | `nuguard_policy_check` | 60 s | Policy linting and compliance assessment |

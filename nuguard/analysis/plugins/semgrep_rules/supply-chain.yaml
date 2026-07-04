@@ -1,0 +1,215 @@
+rules:
+  # -------------------------------------------------------------------------
+  # NuGuard Supply-Chain Security Semgrep Rules
+  # Detects supply-chain attack patterns: npm lifecycle scripts, GitHub Actions
+  # publish-path risks, AI-agent config permission grants, and obfuscated code.
+  # -------------------------------------------------------------------------
+
+  # ── npm lifecycle: curl/wget piped to shell ────────────────────────────────
+  - id: nuguard-sc-npm-lifecycle-curl-bash
+    pattern: |
+      "postinstall": "... curl ... | bash ..."
+    message: >
+      npm postinstall script pipes curl output to bash.
+      This is the primary vector used by the Miasma supply-chain campaign
+      to execute remote payloads during `npm install`.
+    languages: [json]
+    severity: ERROR
+    metadata:
+      category: security
+      technology: [npm, supply-chain]
+      nuguard_rule: NGA-SC-012
+      owasp: "A08: Software and Data Integrity Failures"
+
+  - id: nuguard-sc-npm-lifecycle-wget-bash
+    pattern: |
+      "postinstall": "... wget ... | bash ..."
+    message: >
+      npm postinstall script pipes wget output to bash.
+      Remote code execution via install hook.
+    languages: [json]
+    severity: ERROR
+    metadata:
+      category: security
+      technology: [npm, supply-chain]
+      nuguard_rule: NGA-SC-012
+      owasp: "A08: Software and Data Integrity Failures"
+
+  # ── npm lifecycle: Bun download ────────────────────────────────────────────
+  - id: nuguard-sc-npm-lifecycle-bun
+    patterns:
+      - pattern: |
+          "postinstall": "... npx bun ..."
+      - pattern: |
+          "postinstall": "... bun install ..."
+    message: >
+      npm postinstall script downloads or runs Bun (npx bun / bun install).
+      This is the Miasma second-stage downloader technique.
+    languages: [json]
+    severity: ERROR
+    metadata:
+      category: security
+      technology: [npm, supply-chain]
+      nuguard_rule: NGA-SC-013
+
+  # ── npm lifecycle: /proc/environ access ────────────────────────────────────
+  - id: nuguard-sc-npm-lifecycle-proc-environ
+    patterns:
+      - pattern: |
+          "postinstall": "... /proc/... ..."
+      - pattern: |
+          "preinstall": "... /proc/... ..."
+    message: >
+      npm lifecycle script accesses /proc filesystem.
+      This is used by the Miasma campaign to read runner environment variables
+      including GITHUB_TOKEN, AWS credentials, and npm tokens.
+    languages: [json]
+    severity: ERROR
+    metadata:
+      category: security
+      technology: [npm, supply-chain]
+      nuguard_rule: NGA-SC-014
+
+  # ── npm lifecycle: credential path access ─────────────────────────────────
+  - id: nuguard-sc-npm-lifecycle-credential
+    patterns:
+      - pattern: |
+          "postinstall": "... .npmrc ..."
+      - pattern: |
+          "postinstall": "... AWS_SECRET_ACCESS_KEY ..."
+      - pattern: |
+          "postinstall": "... GITHUB_TOKEN ..."
+    message: >
+      npm lifecycle script references credential files or environment variables.
+      This pattern is used for credential harvesting.
+    languages: [json]
+    severity: ERROR
+    metadata:
+      category: security
+      technology: [npm, supply-chain]
+      nuguard_rule: NGA-SC-014
+
+  # ── Claude Code: broad Bash permission ────────────────────────────────────
+  - id: nuguard-sc-claude-bash-wildcard
+    pattern: |
+      {"allow": ["... Bash(*:*) ..."], ...}
+    message: >
+      .claude/settings.json grants unrestricted shell access via Bash(*:*).
+      This is a direct supply-chain attack surface: a committed config change
+      can grant an AI agent full shell access without user review.
+    languages: [json]
+    severity: WARNING
+    metadata:
+      category: security
+      technology: [claude-code, supply-chain]
+      nuguard_rule: NGA-SC-007
+
+  # ── Python setup.py: network call ─────────────────────────────────────────
+  - id: nuguard-sc-setup-py-network-urllib
+    patterns:
+      - pattern: |
+          import urllib.request
+          ...
+          class $CMD(install):
+              def run(self):
+                  ...
+      - pattern: |
+          from urllib.request import urlretrieve
+          ...
+    message: >
+      setup.py cmdclass makes a network request via urllib.
+      Build hooks run during `pip install` and should never fetch remote code.
+    languages: [python]
+    severity: WARNING
+    metadata:
+      category: security
+      technology: [python, supply-chain]
+      nuguard_rule: NGA-SC-015
+
+  - id: nuguard-sc-setup-py-network-requests
+    patterns:
+      - pattern: |
+          import requests
+          ...
+          class $CMD(install):
+              def run(self):
+                  requests.$METHOD(...)
+    message: >
+      setup.py cmdclass makes an HTTP request via the requests library.
+      Build hooks should not make outbound network calls.
+    languages: [python]
+    severity: WARNING
+    metadata:
+      category: security
+      technology: [python, supply-chain]
+      nuguard_rule: NGA-SC-015
+
+  # ── Shell: obfuscated eval pattern ────────────────────────────────────────
+  - id: nuguard-sc-shell-eval-base64
+    patterns:
+      - pattern: eval $(echo $BASE64_VAR | base64 -d)
+      - pattern: eval "$(echo $X | base64 --decode)"
+    message: >
+      Shell script evaluates a base64-decoded string.
+      This is a common obfuscation technique used by malicious install scripts
+      to hide their payload from static analysis.
+    languages: [bash]
+    severity: ERROR
+    metadata:
+      category: security
+      technology: [bash, supply-chain]
+      nuguard_rule: NGA-SC-016
+
+  # ── GitHub Actions: pull_request_target injection ─────────────────────────
+  - id: nuguard-sc-gha-prt-injection
+    pattern: |
+      on:
+        pull_request_target:
+          ...
+      jobs:
+        ...:
+          steps:
+            - run: "... ${{ github.event.pull_request.... }} ..."
+    message: >
+      GitHub Actions workflow uses pull_request_target and interpolates
+      github.event.pull_request fields into a run step.
+      An attacker can craft a PR that injects arbitrary shell commands.
+    languages: [yaml]
+    severity: ERROR
+    metadata:
+      category: security
+      technology: [github-actions, supply-chain]
+      nuguard_rule: NGA-SC-002
+      owasp: "A08: Software and Data Integrity Failures"
+
+  # ── GitHub Actions: /proc/environ in CI step ─────────────────────────────
+  - id: nuguard-sc-gha-proc-environ
+    pattern: |
+      - run: "... /proc/... ..."
+    message: >
+      GitHub Actions step reads /proc filesystem.
+      This pattern is used by the Miasma campaign to scrape runner memory
+      for credentials, tokens, and environment variables.
+    languages: [yaml]
+    severity: ERROR
+    metadata:
+      category: security
+      technology: [github-actions, supply-chain]
+      nuguard_rule: NGA-SC-005
+
+  # ── GitHub Actions: curl|bash in CI step ──────────────────────────────────
+  - id: nuguard-sc-gha-curl-bash
+    patterns:
+      - pattern: |
+          - run: "... curl ... | bash ..."
+      - pattern: |
+          - run: "... wget ... | bash ..."
+    message: >
+      GitHub Actions step pipes curl/wget output to bash.
+      This is a non-reproducible, non-verifiable install pattern.
+    languages: [yaml]
+    severity: WARNING
+    metadata:
+      category: security
+      technology: [github-actions, supply-chain]
+      nuguard_rule: NGA-SC-004

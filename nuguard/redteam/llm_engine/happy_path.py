@@ -14,14 +14,15 @@ same opener semantics.
 from __future__ import annotations
 
 import asyncio
-import logging
 import os
 from typing import TYPE_CHECKING
+
+from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
     from nuguard.common.llm_client import LLMClient
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 
 def _env_float(name: str, default: float) -> float:

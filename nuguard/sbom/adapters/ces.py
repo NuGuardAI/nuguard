@@ -9,12 +9,13 @@ pure Python imports.
 from __future__ import annotations
 
 import json
-import logging
 import re
 import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
     from nuguard.sbom.models import AiSbomDocument
@@ -27,7 +28,7 @@ from nuguard.common.ces_client import (
 from nuguard.sbom.models import Evidence, Node, NodeMetadata, SourceLocation
 from nuguard.sbom.types import ComponentType
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 # Extensions to scan for CES patterns
 _SCAN_EXTENSIONS = frozenset({

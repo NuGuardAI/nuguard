@@ -155,6 +155,30 @@ class PolicyAssessmentResult(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+class HitlToolCondition(BaseModel):
+    """A tool-scoped HITL condition parsed from a structured bullet item.
+
+    Supports the format ``tool_name: condition description`` inside a HITL
+    Triggers section, e.g.::
+
+        ## HITL Triggers
+        - Potentially harmful instructions
+        - discount_tool: discount percentage exceeds 10%
+        - payment_tool: transaction amount exceeds $500
+
+    The ``tool_name`` is matched (case-insensitive substring) against the
+    names of tool calls observed at runtime.  The ``condition`` is a
+    human-readable description used in violation evidence.
+    """
+
+    tool_name: str = Field(
+        description="Tool name keyword to match against executed tool calls"
+    )
+    condition: str = Field(
+        description="Human-readable condition that requires HITL approval"
+    )
+
+
 class CognitivePolicy(BaseModel):
     """Parsed cognitive policy for an AI application."""
 
@@ -162,6 +186,13 @@ class CognitivePolicy(BaseModel):
     restricted_topics: list[str] = Field(default_factory=list)
     restricted_actions: list[str] = Field(default_factory=list)
     hitl_triggers: list[str] = Field(default_factory=list)
+    hitl_tool_conditions: list[HitlToolCondition] = Field(
+        default_factory=list,
+        description=(
+            "Structured tool-scoped HITL conditions parsed from "
+            "'tool_name: condition' bullet items in the HITL Triggers section."
+        ),
+    )
     data_classification: list[str] = Field(default_factory=list)
     rate_limits: dict[str, int] = Field(default_factory=dict)
     raw_sections: dict[str, list[str]] = Field(

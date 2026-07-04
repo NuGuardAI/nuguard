@@ -16,13 +16,14 @@ by AuthBootstrapper before any scenarios run.
 from __future__ import annotations
 
 import base64
-import logging
 from typing import Any, Literal
 
 import httpx
 from pydantic import BaseModel, Field, model_validator
 
-_log = logging.getLogger(__name__)
+from nuguard.common.logging import get_logger
+
+_log = get_logger(__name__)
 
 _LOGIN_TIMEOUT = 15.0
 
@@ -229,6 +230,18 @@ def _extract_nested(data: dict[str, Any], key_path: str) -> str | None:
     return str(current) if current is not None else None
 
 
+# Fields in a login response that carry static user identity (same across all requests).
+_LOGIN_IDENTITY_FIELDS = frozenset({
+    "user_id", "userId", "uid", "sub", "account_id", "accountId",
+    "id", "username", "login",
+})
+# Fields in a login response that carry a dynamic session/conversation scope.
+_LOGIN_SESSION_FIELDS = frozenset({
+    "session_id", "sessionId", "conversation_id", "conversationId",
+    "thread_id", "threadId", "chat_id", "chatId",
+})
+
+
 class AuthSession:
     """Stateful auth session shared by behavior and redteam.
 
@@ -254,6 +267,14 @@ class AuthSession:
         self._token: str | None = None
         self._token_header_name: str = "Authorization"
         self._token_header_value_prefix: str = "Bearer"
+        # Extra fields extracted from the login response body (identity + session fields).
+        # Populated by _do_login(); callers use login_response_extras() to read them.
+        self._login_response_extras: dict[str, str] = {}
+        # Set to True only when login_flow auth completes with a valid token.
+        self._login_succeeded: bool = False
+        # Human-readable reason for the most recent login failure (None until
+        # _do_login fails at least once). Surfaced by callers in error_detail.
+        self._login_error: str | None = None
 
         if config.type == "login_flow" and config.login_flow:
             raw = config.login_flow.token_header
@@ -286,6 +307,41 @@ class AuthSession:
             )
             return {self._token_header_name: value}
         return self._config.to_headers()
+
+    @property
+    def login_succeeded(self) -> bool:
+        """True if login_flow completed and a valid token was acquired."""
+        return self._login_succeeded
+
+    @property
+    def login_error(self) -> str | None:
+        """Reason the most recent login attempt failed, or ``None`` if it succeeded."""
+        return self._login_error
+
+    def replace_config(self, config: AuthConfig) -> None:
+        """Swap the auth config backing headers()/refresh_if_needed().
+
+        Called by :class:`~nuguard.common.bootstrap.AuthBootstrapper` after a
+        login_flow endpoint proves broken and a fallback probe (e.g. HTTP Basic
+        auth with the original username/password) succeeds against the chat
+        endpoint instead. After this call, headers() returns the working
+        fallback credentials directly, and refresh_if_needed() — which only
+        acts on type=="login_flow" — naturally stops retrying the dead login
+        endpoint.
+        """
+        self._config = config
+
+    def login_response_extras(self) -> dict[str, str]:
+        """Return identity/session fields extracted from the login response body.
+
+        For login_flow auth, this dict may contain fields like ``user_id`` or
+        ``session_id`` that the app returned alongside the auth token.  For all
+        other auth types this always returns an empty dict.
+
+        Callers (e.g. session_resolver) can merge these into ``chat_payload_extras``
+        so body-carried user identity is set automatically without explicit config.
+        """
+        return dict(self._login_response_extras)
 
     async def refresh_if_needed(self) -> bool:
         """Re-execute login on 401 if the config permits it.
@@ -323,52 +379,65 @@ class AuthSession:
                     resp = await client.get(url, params=lf.payload)
 
             if resp.status_code not in range(200, 300):
-                _log.warning(
-                    "AuthSession: login failed — HTTP %d from %s: %s",
-                    resp.status_code,
-                    url,
-                    resp.text[:200],
+                self._login_error = (
+                    f"login endpoint {url} returned HTTP {resp.status_code}"
                 )
+                _log.warning("AuthSession: %s", self._login_error)
+                _log.debug("AuthSession: login response body: %s", resp.text[:200])
                 return
 
             try:
                 body = resp.json()
             except Exception:
-                _log.warning(
-                    "AuthSession: login response from %s is not JSON: %s",
-                    url,
-                    resp.text[:200],
-                )
+                self._login_error = f"login response from {url} is not JSON"
+                _log.warning("AuthSession: %s", self._login_error)
+                _log.debug("AuthSession: login response body: %s", resp.text[:200])
                 return
 
             token = _extract_nested(body, lf.token_response_key)
             if not token:
-                _log.warning(
-                    "AuthSession: token key %r not found in login response from %s: %s",
-                    lf.token_response_key,
-                    url,
-                    str(body)[:200],
+                response_keys = (
+                    list(body.keys()) if isinstance(body, dict) else type(body).__name__
                 )
+                self._login_error = (
+                    f"token key {lf.token_response_key!r} not found in login response "
+                    f"from {url} (response keys: {response_keys})"
+                )
+                _log.warning("AuthSession: %s", self._login_error)
+                _log.debug("AuthSession: login response body: %s", str(body)[:200])
                 return
 
             self._token = token
+            self._login_succeeded = True
+            self._login_error = None
             _log.debug(
                 "AuthSession: token acquired from %s (key=%r)",
                 url,
                 lf.token_response_key,
             )
 
+            # Capture identity / session fields from the login response so callers
+            # can inject them into subsequent chat request bodies automatically.
+            extras: dict[str, str] = {}
+            if isinstance(body, dict):
+                for field, val in body.items():
+                    if not isinstance(val, str) or not val:
+                        continue
+                    if field in _LOGIN_IDENTITY_FIELDS or field in _LOGIN_SESSION_FIELDS:
+                        extras[field] = val
+            if extras:
+                self._login_response_extras = extras
+                _log.debug(
+                    "AuthSession: extracted context fields from login response: %s",
+                    list(extras.keys()),
+                )
+
         except httpx.TimeoutException:
-            _log.warning(
-                "AuthSession: login request timed out after %ss for %s",
-                _LOGIN_TIMEOUT,
-                url,
-            )
+            self._login_error = f"login request to {url} timed out after {_LOGIN_TIMEOUT}s"
+            _log.warning("AuthSession: %s", self._login_error)
         except httpx.RequestError as exc:
-            _log.warning("AuthSession: login request failed for %s: %s", url, exc)
+            self._login_error = f"login request to {url} failed: {exc}"
+            _log.warning("AuthSession: %s", self._login_error)
         except Exception as exc:
-            _log.warning(
-                "AuthSession: unexpected error during login for %s: %s",
-                url,
-                exc,
-            )
+            self._login_error = f"unexpected error during login for {url}: {exc}"
+            _log.warning("AuthSession: %s", self._login_error)

@@ -53,3 +53,32 @@ def test_report_meta_markdown_lines_do_not_include_finding_triggers() -> None:
     # Finding Triggers belong in the Summary section (redteam/report.py),
     # not in the metadata header produced by to_markdown_lines().
     assert "Finding Triggers" not in markdown
+
+
+def test_report_meta_effective_endpoint_rendering() -> None:
+    meta = ReportMeta(
+        timestamp="2026-03-31T00:00:00+00:00",
+        target_url="http://localhost:8080",
+        target_endpoint="/chat",
+        effective_endpoint="/api/agent",
+        target_endpoint_source="probe",
+    )
+
+    markdown = "\n".join(meta.to_markdown_lines())
+    assert "**Target:** `http://localhost:8080/api/agent`" in markdown
+    assert "**Effective Endpoint:** `/api/agent` (source: probe)" in markdown
+
+
+def test_report_meta_dict_includes_endpoint_provenance() -> None:
+    meta = ReportMeta(
+        timestamp="2026-03-31T00:00:00+00:00",
+        target_url="http://localhost:8080",
+        effective_endpoint="/api/agent",
+        target_endpoint_source="sbom",
+        endpoint_discovery_notes=["SBOM endpoint selected"],
+    )
+
+    payload = meta.to_dict()
+    assert payload["effective_endpoint"] == "/api/agent"
+    assert payload["target_endpoint_source"] == "sbom"
+    assert payload["endpoint_discovery_notes"] == ["SBOM endpoint selected"]

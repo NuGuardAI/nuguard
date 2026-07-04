@@ -1,5 +1,5 @@
 ---
-name: AI SBOM Analysis
+name: sbom-analysis
 description: >
   Activate when the user opens, mentions, or asks questions about a .sbom.json file,
   an AI Bill of Materials, an aibom.json, or asks about what AI components an application
@@ -61,7 +61,7 @@ on the TOOL is a structural risk (NGA-001, NGA-009 depending on data classificat
 MODEL nodes from `CALLS` edges.
 
 **"Is this app secure?"**
-→ Don't answer from the SBOM alone — use `nuguard_analyze` and explain that structural
+→ Don't answer from the SBOM alone — run `nuguard analyze --sbom <path>` via Bash and explain that structural
 graph checks are more reliable than manual SBOM reading.
 
 **"What data does this app access?"**

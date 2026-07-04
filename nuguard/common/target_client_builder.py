@@ -16,17 +16,18 @@ via ``auth_headers``.  This module does not perform authentication.
 """
 from __future__ import annotations
 
-import logging
 import re
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
+
+from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
     from nuguard.common.auth import AuthConfig
     from nuguard.redteam.target.client import TargetAppClient
     from nuguard.sbom.models import AiSbomDocument
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # Static-site detection helpers
@@ -221,7 +222,16 @@ def resolve_auth_config_with_sbom_fallback(
         token_header="Authorization: Bearer",
         refresh_on_401=True,
     )
-    upgraded = AuthConfig(type="login_flow", login_flow=login_flow)
+    # Keep the original username/password on the upgraded config (even though
+    # type="login_flow" doesn't use them directly) so bootstrap can fall back to
+    # sending them as HTTP Basic auth straight to the chat endpoint if the login
+    # endpoint turns out not to work.
+    upgraded = AuthConfig(
+        type="login_flow",
+        login_flow=login_flow,
+        username=auth_config.username,
+        password=auth_config.password,
+    )
 
     note = (
         f"auth.type='basic' with credentials for '{auth_config.username}' was upgraded to "
@@ -299,6 +309,7 @@ def build_target_app_client(
     sbom: "AiSbomDocument | None" = None,
     adk_cfg: Any = None,
     explicitly_set: frozenset[str] | set[str] = frozenset(),
+    payload_extras: dict[str, Any] | None = None,
 ) -> "TargetAppClient":
     """Build a :class:`TargetAppClient` with SBOM-assisted config resolution.
 
@@ -405,6 +416,7 @@ def build_target_app_client(
         chat_payload_format=payload_format,
         chat_response_key=response_key,
         framework_adapter=framework_adapter,
+        chat_payload_extras=payload_extras or None,
     )
     client.resolution_notes = resolution_notes
     return client

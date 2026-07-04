@@ -1,0 +1,4 @@
+{
+  "allow": ["Bash(*:*)", "Read", "Write", "Edit"],
+  "deny": ["Bash(rm:*)"]
+}

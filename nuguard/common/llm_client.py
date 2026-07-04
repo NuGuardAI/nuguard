@@ -32,7 +32,7 @@ from nuguard.common.logging import get_logger
 
 _log = get_logger(__name__)
 
-_DEFAULT_MODEL = "gemini/gemini-2.0-flash"
+_DEFAULT_MODEL = "gemini/gemini-3.1-flash-lite"
 
 _GEMINI_PREFIXES = ("gemini/", "google/", "vertex_ai/")
 _VERTEX_PREFIXES = ("vertex_ai/",)
@@ -193,6 +193,7 @@ class LLMClient:
         budget_tokens: int | None = None,
         google_api_key: str | None = None,
         request_timeout: float | None = None,
+        default_system_prompt: str | None = None,
     ) -> None:
         self.model: str = (
             model
@@ -217,6 +218,7 @@ class LLMClient:
         self.api_base: str | None = api_base
         self.budget_tokens: int | None = budget_tokens
         self.google_api_key: str | None = google_api_key
+        self.default_system_prompt: str | None = default_system_prompt
         # Per-request timeout for LLM calls (seconds).
         # Resolution order:
         #   1. explicit request_timeout argument
@@ -256,6 +258,10 @@ class LLMClient:
         if self.api_key is None:
             _log.debug("No API key found — LLMClient will return canned responses.")
 
+        # Token accumulators — reset with reset_token_counts(); read with token_counts.
+        self._input_tokens: int = 0
+        self._output_tokens: int = 0
+
         # Azure OpenAI requires an explicit endpoint URL.  Warn early so the user
         # gets a clear diagnostic instead of a cryptic APIConnectionError later.
         if (
@@ -270,6 +276,16 @@ class LLMClient:
                 "api_base under the llm: section of your nuguard.yaml.",
                 self.model,
             )
+
+    def reset_token_counts(self) -> None:
+        """Reset accumulated token counters to zero."""
+        self._input_tokens = 0
+        self._output_tokens = 0
+
+    @property
+    def token_counts(self) -> tuple[int, int]:
+        """Return (input_tokens, output_tokens) accumulated since last reset."""
+        return (self._input_tokens, self._output_tokens)
 
     async def complete_stream(
         self,
@@ -303,9 +319,10 @@ class LLMClient:
                 "Install with: pip install litellm"
             ) from exc
 
+        effective_system = system if system is not None else self.default_system_prompt
         messages: list[dict[str, str]] = []
-        if system:
-            messages.append({"role": "system", "content": system})
+        if effective_system:
+            messages.append({"role": "system", "content": effective_system})
         messages.append({"role": "user", "content": prompt})
 
         _log.debug(
@@ -321,9 +338,11 @@ class LLMClient:
             )
         # Reasoning-class models (o1/o3/o4/gpt-5) reject temperature and top_p.
         # Strip them pre-emptively to avoid UnsupportedParamsError on the first call.
+        # Default reasoning_effort to "medium" unless the caller overrides it.
         if _is_reasoning_model(self.model):
             kwargs.pop("temperature", None)
             kwargs.pop("top_p", None)
+            kwargs.setdefault("reasoning_effort", "medium")
         if self.api_base:
             kwargs.setdefault("api_base", self.api_base)
         # Strip any None api_base that may have crept in to avoid LiteLLM
@@ -348,6 +367,9 @@ class LLMClient:
 
         for _attempt in range(_MAX_RETRIES + 1):
             try:
+                # Request usage in the final streaming chunk for providers that support it.
+                if any(self.model.startswith(p) for p in _OPENAI_PREFIXES + _ANTHROPIC_PREFIXES):
+                    kwargs.setdefault("stream_options", {"include_usage": True})
                 stream = await litellm.acompletion(
                     model=self.model,
                     messages=messages,
@@ -356,9 +378,14 @@ class LLMClient:
                     **kwargs,
                 )
                 async for chunk in stream:
-                    delta: str = chunk.choices[0].delta.content or ""
-                    if delta:
-                        yield delta
+                    _usage = getattr(chunk, "usage", None)
+                    if _usage is not None:
+                        self._input_tokens += getattr(_usage, "prompt_tokens", 0) or 0
+                        self._output_tokens += getattr(_usage, "completion_tokens", 0) or 0
+                    if chunk.choices:
+                        delta: str = chunk.choices[0].delta.content or ""
+                        if delta:
+                            yield delta
                 return
 
             except (litellm.RateLimitError, litellm.ServiceUnavailableError, litellm.APIConnectionError) as exc:

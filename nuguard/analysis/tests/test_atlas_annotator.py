@@ -13,6 +13,7 @@ from typing import Any
 from unittest.mock import patch
 
 from nuguard.analysis.plugins.atlas_annotator import AtlasAnnotatorPlugin
+from nuguard.models.token_usage import TokenUsage
 
 # ---------------------------------------------------------------------------
 # Shared fixtures
@@ -154,7 +155,7 @@ class TestLlmEnrichment:
         with (
             patch.object(plugin, "_run_osv_pass", return_value=[]),
             patch.object(plugin, "_run_grype_pass", return_value=[]),
-            patch.object(plugin, "_run_llm_enrichment", return_value=([], "overall")),
+            patch.object(plugin, "_run_llm_enrichment", return_value=([], "overall", TokenUsage())),
         ):
             result = plugin.run(_MINIMAL_SBOM, {"llm": True})
         assert result.details["basis"] == "llm"
@@ -164,7 +165,7 @@ class TestLlmEnrichment:
         with (
             patch.object(plugin, "_run_osv_pass", return_value=[]),
             patch.object(plugin, "_run_grype_pass", return_value=[]),
-            patch.object(plugin, "_run_llm_enrichment", return_value=([], "executive summary")),
+            patch.object(plugin, "_run_llm_enrichment", return_value=([], "executive summary", TokenUsage())),
         ):
             result = plugin.run(_MINIMAL_SBOM, {"llm": True})
         assert result.details.get("llm_summary") == "executive summary"
@@ -182,7 +183,7 @@ class TestLlmEnrichment:
             patch.object(
                 plugin,
                 "_run_llm_enrichment",
-                return_value=([enriched_finding], "overall"),
+                return_value=([enriched_finding], "overall", TokenUsage()),
             ),
         ):
             result = plugin.run(_MINIMAL_SBOM, {"llm": True})
@@ -194,7 +195,7 @@ class TestLlmEnrichment:
         with (
             patch.object(plugin, "_run_osv_pass", return_value=[]),
             patch.object(plugin, "_run_grype_pass", return_value=[]),
-            patch.object(plugin, "_run_llm_enrichment", return_value=([], "")),
+            patch.object(plugin, "_run_llm_enrichment", return_value=([], "", TokenUsage())),
         ):
             result = plugin.run(_MINIMAL_SBOM, {"enable_llm": True})
         assert result.details["basis"] == "llm"
@@ -242,7 +243,7 @@ class TestLlmEnrichment:
         with (
             patch.object(plugin, "_run_osv_pass", return_value=[_OSV_FINDING]),
             patch.object(plugin, "_run_grype_pass", return_value=[_GRYPE_FINDING]),
-            patch.object(plugin, "_run_llm_enrichment", return_value=([], "")),
+            patch.object(plugin, "_run_llm_enrichment", return_value=([], "", TokenUsage())),
         ):
             plugin.run(_MINIMAL_SBOM, {"llm": True})
 
@@ -260,3 +261,128 @@ class TestLlmEnrichment:
         grype_findings = [{**_GRYPE_FINDING, "advisory_id": f"GHSA-grype-{i}"} for i in range(6)]
         enriched = plugin._enrich_with_cve_context([dict(_NGA_FINDING)], osv_findings + grype_findings)
         assert len(enriched[0]["cve_context"]) == 10
+
+
+# ---------------------------------------------------------------------------
+# TestAtlasNC001TypedFields — integrity_hash / checksum typed fields
+# ---------------------------------------------------------------------------
+
+
+def _external_model_node(
+    name: str = "gpt-4o",
+    *,
+    integrity_hash: str | None = None,
+    checksum: str | None = None,
+    extras_integrity_hash: str | None = None,
+) -> dict[str, Any]:
+    """Build a minimal MODEL node dict with an external provider."""
+    meta: dict[str, Any] = {"extras": {"provider": "openai"}}
+    if integrity_hash is not None:
+        meta["integrity_hash"] = integrity_hash
+    if checksum is not None:
+        meta["checksum"] = checksum
+    if extras_integrity_hash is not None:
+        meta["extras"]["integrity_hash"] = extras_integrity_hash
+    return {
+        "id": name,
+        "name": name,
+        "component_type": "MODEL",
+        "metadata": meta,
+    }
+
+
+def _run_nc001(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Run only the NC-001 check via AtlasAnnotatorPlugin._check_nc001_external_model_no_hash."""
+    plugin = AtlasAnnotatorPlugin()
+    type_sets: dict[str, set[str]] = {"MODEL": {str(n["id"]) for n in nodes}}
+    return plugin._check_nc001_external_model_no_hash(nodes, type_sets)
+
+
+class TestAtlasNC001TypedFields:
+    def test_no_hash_fires(self) -> None:
+        """External model with no integrity_hash or checksum anywhere → NC-001 finding."""
+        nodes = [_external_model_node("gpt-4o")]
+        findings = _run_nc001(nodes)
+        assert len(findings) == 1
+        finding_id = findings[0].get("check_id") or findings[0].get("rule_id") or ""
+        assert "NC-001" in finding_id
+        assert "gpt-4o" in findings[0]["affected"]
+
+    def test_typed_integrity_hash_passes(self) -> None:
+        """External model with metadata['integrity_hash'] set → no finding."""
+        nodes = [_external_model_node("gpt-4o", integrity_hash="sha256:abc123")]
+        findings = _run_nc001(nodes)
+        assert findings == []
+
+    def test_typed_checksum_passes(self) -> None:
+        """External model with metadata['checksum'] set → no finding."""
+        nodes = [_external_model_node("gpt-4o", checksum="sha256:deadbeef")]
+        findings = _run_nc001(nodes)
+        assert findings == []
+
+    def test_extras_integrity_hash_still_works(self) -> None:
+        """External model with metadata['extras']['integrity_hash'] set → no finding (backward compat)."""
+        nodes = [_external_model_node("gpt-4o", extras_integrity_hash="abc")]
+        findings = _run_nc001(nodes)
+        assert findings == []
+
+
+# ---------------------------------------------------------------------------
+# TestAtlasNC002ReadOnlyEdge — ACCESSES read-only edge skip
+# ---------------------------------------------------------------------------
+
+
+def _model_node_for_atlas(name: str = "gpt-4o") -> dict[str, Any]:
+    """Build a minimal MODEL node for atlas NC-002 tests."""
+    return {"id": name, "name": name, "component_type": "MODEL", "metadata": {}}
+
+
+def _datastore_node_for_atlas(name: str = "patient-db") -> dict[str, Any]:
+    """Build a minimal DATASTORE node for atlas NC-002 tests."""
+    return {"id": name, "name": name, "component_type": "DATASTORE", "metadata": {}}
+
+
+def _run_nc002(
+    nodes: list[dict[str, Any]],
+    edges: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Run AtlasAnnotatorPlugin against a minimal SBOM and return NC-002 findings."""
+    plugin = AtlasAnnotatorPlugin()
+    sbom: dict[str, Any] = {
+        "nodes": nodes,
+        "edges": edges,
+        "deps": [],
+        "summary": {"frameworks": []},
+    }
+    result = plugin.run(sbom, {})
+    findings = result.details.get("findings", [])
+    return [f for f in findings if "NC-002" in (f.get("check_id") or f.get("rule_id") or "")]
+
+
+class TestAtlasNC002ReadOnlyEdge:
+    def test_write_edge_fires(self) -> None:
+        """Model→datastore via ACCESSES edge with no access_type (default write) → NC-002."""
+        model = _model_node_for_atlas("gpt-4o")
+        datastore = _datastore_node_for_atlas("patient-db")
+        edge = {
+            "source": "gpt-4o",
+            "target": "patient-db",
+            "relationship_type": "ACCESSES",
+            "access_type": None,
+        }
+        findings = _run_nc002([model, datastore], [edge])
+        assert len(findings) == 1
+        assert "patient-db" in findings[0]["affected"]
+
+    def test_read_only_edge_passes(self) -> None:
+        """Model→datastore via ACCESSES edge with access_type='read' → no NC-002 finding."""
+        model = _model_node_for_atlas("gpt-4o")
+        datastore = _datastore_node_for_atlas("patient-db")
+        edge = {
+            "source": "gpt-4o",
+            "target": "patient-db",
+            "relationship_type": "ACCESSES",
+            "access_type": "read",
+        }
+        findings = _run_nc002([model, datastore], [edge])
+        assert findings == []

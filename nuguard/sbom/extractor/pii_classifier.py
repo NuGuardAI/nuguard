@@ -7,13 +7,13 @@ model class definitions, classifying them as PII or PHI.
 from __future__ import annotations
 
 import ast
-import logging
 import re
 from pathlib import Path
 
+from nuguard.common.logging import get_logger
 from nuguard.sbom.types import DataClassification
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 # ---------------------------------------------------------------------------
 # PII field name patterns (case-insensitive substring match)

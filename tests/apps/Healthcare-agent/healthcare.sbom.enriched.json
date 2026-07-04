@@ -1,0 +1,2238 @@
+{
+  "schema_version": "1.4.0",
+  "generated_at": "2026-05-19T23:09:08Z",
+  "generator": "nuguard",
+  "target": "https://github.com/NuGuardAI/Healthcare-voice-agent",
+  "nodes": [
+    {
+      "id": "d91358e6-8ee4-4281-9756-97bff43fab4a",
+      "name": "fetch_doctor_details_agent",
+      "component_type": "AGENT",
+      "confidence": 1.0,
+      "metadata": {
+        "framework": "langgraph",
+        "description": "fetch_doctor_details_agent agent",
+        "injection_risk_score": 0.1,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "langgraph_fetch_doctor_details_agent",
+          "adapter": "langgraph",
+          "evidence_count": 1,
+          "registration_method": "add_node",
+          "framework": "langgraph",
+          "description": "Final LangGraph agent node that fetches doctor details as part of a multi-step AI workflow, passing control to the graph end after completing its task.",
+          "llm_verified": true,
+          "llm_verification_reason": "Concrete LangGraph node added to a production graph in application code, not a test or example. It is part of an AI workflow pipeline and is instantiated in the compiled state graph.",
+          "llm_confidence": 0.97,
+          "confidence_breakdown": {
+            "regex_confidence": 0.97,
+            "llm_confidence": 0.97,
+            "evidence_count": 4,
+            "evidence_sources": [
+              "llm:verified",
+              "framework:langgraph",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.97,
+            "evidence_multiplier": 1.3,
+            "validation_penalty": 0.0,
+            "final_confidence": 1.0
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "langgraph: add_node('fetch_doctor_details_agent', ...)",
+          "location": {
+            "path": "backend/langgraph_llm_agents.py",
+            "line": 211
+          }
+        }
+      ]
+    },
+    {
+      "id": "9e10fa47-5f59-44e2-90ff-2d2e75b25b75",
+      "name": "normalize_agent",
+      "component_type": "AGENT",
+      "confidence": 0.8160000000000001,
+      "metadata": {
+        "framework": "langgraph",
+        "description": "Normalizes incoming agent inputs and intermediate outputs into a consistent format for downstream LangGraph workflow steps, helping ensure reliable handoff and processing across the graph.",
+        "injection_risk_score": 0.1,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "langgraph_normalize_agent",
+          "adapter": "langgraph",
+          "evidence_count": 1,
+          "registration_method": "add_node",
+          "framework": "langgraph",
+          "confidence_breakdown": {
+            "regex_confidence": 0.85,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:langgraph",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.68,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.816
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "langgraph: add_node('normalize_agent', ...)",
+          "location": {
+            "path": "backend/langgraph_llm_agents.py",
+            "line": 207
+          }
+        }
+      ]
+    },
+    {
+      "id": "6ae66481-3e8f-43da-8ef9-19d4847eb707",
+      "name": "prognosis_search_agent",
+      "component_type": "AGENT",
+      "confidence": 0.8160000000000001,
+      "metadata": {
+        "framework": "langgraph",
+        "description": "Searches medical or operational data to gather relevant evidence for prognosis estimation, using LangGraph to coordinate retrieval steps and support downstream predictive assessment.",
+        "injection_risk_score": 0.1,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "langgraph_prognosis_search_agent",
+          "adapter": "langgraph",
+          "evidence_count": 1,
+          "registration_method": "add_node",
+          "framework": "langgraph",
+          "confidence_breakdown": {
+            "regex_confidence": 0.85,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:langgraph",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.68,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.816
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "langgraph: add_node('prognosis_search_agent', ...)",
+          "location": {
+            "path": "backend/langgraph_llm_agents.py",
+            "line": 208
+          }
+        }
+      ]
+    },
+    {
+      "id": "017e7e02-430f-4236-af86-bb385c89b098",
+      "name": "recommend_specialists_agent",
+      "component_type": "AGENT",
+      "confidence": 0.8160000000000001,
+      "metadata": {
+        "framework": "langgraph",
+        "description": "recommend_specialists_agent agent",
+        "injection_risk_score": 0.1,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "langgraph_recommend_specialists_agent",
+          "adapter": "langgraph",
+          "evidence_count": 1,
+          "registration_method": "add_node",
+          "framework": "langgraph",
+          "confidence_breakdown": {
+            "regex_confidence": 0.85,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:langgraph",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.68,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.816
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "langgraph: add_node('recommend_specialists_agent', ...)",
+          "location": {
+            "path": "backend/langgraph_llm_agents.py",
+            "line": 210
+          }
+        }
+      ]
+    },
+    {
+      "id": "a3edf5bf-2b58-4bda-921a-a7ffa569578a",
+      "name": "specialist_lookup_agent",
+      "component_type": "AGENT",
+      "confidence": 0.8160000000000001,
+      "metadata": {
+        "framework": "langgraph",
+        "description": "Retrieves domain-specific information and likely resolves specialized queries by searching authoritative sources or internal knowledge to support downstream reasoning and decisions.",
+        "injection_risk_score": 0.1,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "langgraph_specialist_lookup_agent",
+          "adapter": "langgraph",
+          "evidence_count": 1,
+          "registration_method": "add_node",
+          "framework": "langgraph",
+          "confidence_breakdown": {
+            "regex_confidence": 0.85,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:langgraph",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.68,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.816
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.85,
+          "detail": "langgraph: add_node('specialist_lookup_agent', ...)",
+          "location": {
+            "path": "backend/langgraph_llm_agents.py",
+            "line": 209
+          }
+        }
+      ]
+    },
+    {
+      "id": "c6b59d55-3f56-417c-967b-9cd32792689b",
+      "name": "generic",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.44000000000000006,
+      "metadata": {
+        "description": "Generic API endpoint handler exposed via an app.get route for handling HTTP GET requests.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "api_endpoint_generic",
+          "adapter": "api_endpoint_generic",
+          "evidence_count": 1,
+          "llm_soft_rejected": true,
+          "llm_verification_reason": "This is a standard application configuration class loading database and frontend environment variables. It is not an authentication/auth node and has no AI-related functionality.",
+          "confidence_breakdown": {
+            "regex_confidence": 0.55,
+            "llm_confidence": 0.0,
+            "evidence_count": 1,
+            "evidence_sources": [
+              "evidence:0"
+            ],
+            "base_confidence": 0.44,
+            "evidence_multiplier": 1.0,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.44
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.9,
+          "detail": "api_endpoint_generic: @app.get(",
+          "location": {
+            "path": "backend/main.py",
+            "line": 49
+          }
+        }
+      ]
+    },
+    {
+      "id": "2b6a428a-e354-4958-9290-56d1acf6dba7",
+      "name": "health_check",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.8640000000000001,
+      "metadata": {
+        "framework": "fastapi",
+        "endpoint": "/api/health",
+        "method": "GET",
+        "description": "FastAPI GET endpoint /api/health that provides application health status information.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "fastapi_endpoint_get_api_health",
+          "adapter": "fastapi",
+          "evidence_count": 1,
+          "framework": "fastapi",
+          "method": "GET",
+          "endpoint": "/api/health",
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:fastapi",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.864
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.9,
+          "detail": "fastapi: @app.get('/api/health')",
+          "location": {
+            "path": "backend/main.py",
+            "line": 51
+          }
+        }
+      ]
+    },
+    {
+      "id": "0bb54f36-c924-44e1-8c38-5be9b46ef73b",
+      "name": "serve_spa",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.8640000000000001,
+      "metadata": {
+        "framework": "fastapi",
+        "endpoint": "/{full_path:path}",
+        "method": "GET",
+        "description": "FastAPI GET endpoint that serves SPA content for any path via /{full_path:path}.",
+        "idor_surface": false,
+        "path_params": [
+          "full_path:path"
+        ],
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "fastapi_endpoint_get_full_path_path",
+          "adapter": "fastapi",
+          "evidence_count": 1,
+          "framework": "fastapi",
+          "method": "GET",
+          "endpoint": "/{full_path:path}",
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:fastapi",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.864
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.9,
+          "detail": "fastapi: @app.get('/{full_path:path}')",
+          "location": {
+            "path": "backend/main.py",
+            "line": 216
+          }
+        }
+      ]
+    },
+    {
+      "id": "16e81023-6f2e-4844-9c08-3c277b0835ec",
+      "name": "get_medical_history",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.8640000000000001,
+      "metadata": {
+        "framework": "fastapi",
+        "endpoint": "/medical-history/{user_id}",
+        "method": "GET",
+        "description": "FastAPI GET endpoint /medical-history/{user_id} retrieves a user\u2019s medical history by user ID.",
+        "idor_surface": true,
+        "path_params": [
+          "user_id"
+        ],
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "fastapi_endpoint_get_medical_history_user_id",
+          "adapter": "fastapi",
+          "evidence_count": 1,
+          "framework": "fastapi",
+          "method": "GET",
+          "endpoint": "/medical-history/{user_id}",
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:fastapi",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.864
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.9,
+          "detail": "fastapi: @app.get('/medical-history/{user_id}')",
+          "location": {
+            "path": "backend/main.py",
+            "line": 107
+          }
+        }
+      ]
+    },
+    {
+      "id": "0e21d9c2-ed08-4af8-bf35-82637c8cf317",
+      "name": "get_patient_details",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.8640000000000001,
+      "metadata": {
+        "framework": "fastapi",
+        "endpoint": "/patient-details/{user_id}",
+        "method": "GET",
+        "description": "FastAPI GET endpoint /patient-details/{user_id} that retrieves patient details for the specified user_id.",
+        "idor_surface": true,
+        "path_params": [
+          "user_id"
+        ],
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "fastapi_endpoint_get_patient_details_user_id",
+          "adapter": "fastapi",
+          "evidence_count": 1,
+          "framework": "fastapi",
+          "method": "GET",
+          "endpoint": "/patient-details/{user_id}",
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:fastapi",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.864
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.9,
+          "detail": "fastapi: @app.get('/patient-details/{user_id}')",
+          "location": {
+            "path": "backend/main.py",
+            "line": 80
+          }
+        }
+      ]
+    },
+    {
+      "id": "422d2b2e-5a7c-423e-814a-e73e881007e8",
+      "name": "create_appointment",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.8640000000000001,
+      "metadata": {
+        "framework": "fastapi",
+        "endpoint": "/appointments",
+        "method": "POST",
+        "description": "FastAPI POST /appointments endpoint that creates a new appointment resource.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "fastapi_endpoint_post_appointments",
+          "adapter": "fastapi",
+          "evidence_count": 1,
+          "framework": "fastapi",
+          "method": "POST",
+          "endpoint": "/appointments",
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:fastapi",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.864
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.9,
+          "detail": "fastapi: @app.post('/appointments')",
+          "location": {
+            "path": "backend/main.py",
+            "line": 191
+          }
+        }
+      ]
+    },
+    {
+      "id": "76008e8b-48b2-4c33-bec1-c948528f6508",
+      "name": "login",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.8640000000000001,
+      "metadata": {
+        "framework": "fastapi",
+        "endpoint": "/login",
+        "method": "POST",
+        "description": "FastAPI POST /login API endpoint for handling user login requests.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "fastapi_endpoint_post_login",
+          "adapter": "fastapi",
+          "evidence_count": 1,
+          "framework": "fastapi",
+          "method": "POST",
+          "endpoint": "/login",
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:fastapi",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.864
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.9,
+          "detail": "fastapi: @app.post('/login')",
+          "location": {
+            "path": "backend/main.py",
+            "line": 55
+          }
+        }
+      ]
+    },
+    {
+      "id": "07cd58e6-2866-4617-96c0-2a61b36028bf",
+      "name": "normalize",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.8640000000000001,
+      "metadata": {
+        "framework": "fastapi",
+        "endpoint": "/normalize",
+        "method": "POST",
+        "description": "FastAPI POST endpoint /normalize that accepts requests for normalization processing.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "fastapi_endpoint_post_normalize",
+          "adapter": "fastapi",
+          "evidence_count": 1,
+          "framework": "fastapi",
+          "method": "POST",
+          "endpoint": "/normalize",
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:fastapi",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.864
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.9,
+          "detail": "fastapi: @app.post('/normalize')",
+          "location": {
+            "path": "backend/main.py",
+            "line": 142
+          }
+        }
+      ]
+    },
+    {
+      "id": "fd4235e7-c3bc-4e34-8a40-fa0d7c75357e",
+      "name": "run_langgraph",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.8640000000000001,
+      "metadata": {
+        "framework": "fastapi",
+        "endpoint": "/run_langgraph",
+        "method": "POST",
+        "description": "FastAPI POST endpoint /run_langgraph that triggers execution of a LangGraph workflow.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "fastapi_endpoint_post_run_langgraph",
+          "adapter": "fastapi",
+          "evidence_count": 1,
+          "framework": "fastapi",
+          "method": "POST",
+          "endpoint": "/run_langgraph",
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:fastapi",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.864
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.9,
+          "detail": "fastapi: @app.post('/run_langgraph')",
+          "location": {
+            "path": "backend/main.py",
+            "line": 160
+          }
+        }
+      ]
+    },
+    {
+      "id": "bf71324d-09ec-452e-b827-57590f2dc202",
+      "name": "generic",
+      "component_type": "AUTH",
+      "confidence": 0.528,
+      "metadata": {
+        "description": "Generic authentication component that retrieves and uses environment-based credentials such as API keys and database passwords at runtime.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "auth_generic",
+          "adapter": "auth_runtime",
+          "evidence_count": 3,
+          "llm_soft_rejected": true,
+          "llm_verification_reason": "This is a standard application configuration class loading database and frontend environment variables. It is not an authentication/auth node and has no AI-related functionality.",
+          "confidence_breakdown": {
+            "regex_confidence": 0.55,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2"
+            ],
+            "base_confidence": 0.44,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.528
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "auth_runtime: os.getenv(\"DB_PASSWORD\")",
+          "location": {
+            "path": "backend/config.py",
+            "line": 9
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "auth_runtime: os.getenv(\"OPENAI_API_KEY\")",
+          "location": {
+            "path": "backend/langgraph_llm_agents.py",
+            "line": 33
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "auth_generic: apiKey",
+          "location": {
+            "path": "src/gemini.js",
+            "line": 4
+          }
+        }
+      ]
+    },
+    {
+      "id": "60b1b887-96cf-4a55-b411-01707454d53a",
+      "name": "node:20",
+      "component_type": "CONTAINER_IMAGE",
+      "confidence": 0.8712000000000001,
+      "metadata": {
+        "image_name": "node",
+        "image_tag": "20",
+        "registry": "docker.io",
+        "base_image": "node:20",
+        "description": "Official Node.js 20 container image used as the frontend build stage base image.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "container_image_node_20",
+          "adapter": "dockerfile",
+          "evidence_count": 1,
+          "base_image": "node:20",
+          "image_name": "node",
+          "image_tag": "20",
+          "image_digest": null,
+          "registry": "docker.io",
+          "dockerfile": "Dockerfile",
+          "runs_as_root": null,
+          "has_health_check": null,
+          "multi_stage_build": true,
+          "security_findings": [
+            "secrets_in_build_args"
+          ],
+          "confidence_breakdown": {
+            "regex_confidence": 0.99,
+            "llm_confidence": 0.0,
+            "evidence_count": 2,
+            "evidence_sources": [
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.792,
+            "evidence_multiplier": 1.1,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.8712
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "dockerfile",
+          "confidence": 0.99,
+          "detail": "dockerfile: FROM node:20 AS frontend-builder",
+          "location": {
+            "path": "Dockerfile",
+            "line": 2
+          }
+        }
+      ]
+    },
+    {
+      "id": "f4ab1c32-2145-453a-932b-fe1b518f854d",
+      "name": "python:3.11-slim",
+      "component_type": "CONTAINER_IMAGE",
+      "confidence": 0.8712000000000001,
+      "metadata": {
+        "image_name": "python",
+        "image_tag": "3.11-slim",
+        "registry": "docker.io",
+        "base_image": "python:3.11-slim",
+        "description": "Official Python 3.11 slim container image providing a minimal runtime environment based on Debian for Python applications.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "container_image_python_3_11_slim",
+          "adapter": "dockerfile",
+          "evidence_count": 1,
+          "base_image": "python:3.11-slim",
+          "image_name": "python",
+          "image_tag": "3.11-slim",
+          "image_digest": null,
+          "registry": "docker.io",
+          "dockerfile": "Dockerfile",
+          "runs_as_root": null,
+          "has_health_check": null,
+          "multi_stage_build": true,
+          "security_findings": [
+            "secrets_in_build_args"
+          ],
+          "confidence_breakdown": {
+            "regex_confidence": 0.99,
+            "llm_confidence": 0.0,
+            "evidence_count": 2,
+            "evidence_sources": [
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.792,
+            "evidence_multiplier": 1.1,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.8712
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "dockerfile",
+          "confidence": 0.99,
+          "detail": "dockerfile: FROM python:3.11-slim",
+          "location": {
+            "path": "Dockerfile",
+            "line": 14
+          }
+        }
+      ]
+    },
+    {
+      "id": "a784b4ab-2400-4e45-8f9c-65a0fa953baa",
+      "name": "postgres",
+      "component_type": "DATASTORE",
+      "confidence": 0.9119999999999999,
+      "metadata": {
+        "data_classification": [
+          "PHI",
+          "PII"
+        ],
+        "classified_tables": [
+          "AppointmentRequest",
+          "LoginRequest",
+          "MedicalHistoryResponse",
+          "PatientDetailsResponse",
+          "appointments",
+          "doctors",
+          "hospitals",
+          "patient_history",
+          "patients",
+          "specialists",
+          "symptoms",
+          "users"
+        ],
+        "classified_fields": {
+          "LoginRequest": [
+            "email",
+            "password"
+          ],
+          "AppointmentRequest": [
+            "patient_id"
+          ],
+          "PatientDetailsResponse": [
+            "blood_group",
+            "contact_number",
+            "date_of_birth",
+            "gender",
+            "marital_status",
+            "medical_record_number",
+            "name"
+          ],
+          "MedicalHistoryResponse": [
+            "family_medical_history",
+            "hospital_admissions",
+            "immunization_records",
+            "past_diagnoses",
+            "surgeries"
+          ],
+          "users": [
+            "email",
+            "password"
+          ],
+          "patients": [
+            "blood_group",
+            "contact_number",
+            "date_of_birth",
+            "gender",
+            "marital_status",
+            "medical_record_number",
+            "name"
+          ],
+          "patient_history": [
+            "family_medical_history",
+            "hospital_admissions",
+            "immunization_records",
+            "past_diagnoses",
+            "patient_id",
+            "surgeries"
+          ],
+          "hospitals": [
+            "address",
+            "contact_number",
+            "name"
+          ],
+          "specialists": [
+            "name"
+          ],
+          "doctors": [
+            "name"
+          ],
+          "appointments": [
+            "patient_id"
+          ],
+          "symptoms": [
+            "name"
+          ]
+        },
+        "description": "PostgreSQL is an open-source relational database management system used for storing and querying structured data.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "postgres",
+          "adapter": "datastore_generic",
+          "evidence_count": 2,
+          "normalizer": "datastore",
+          "confidence_breakdown": {
+            "regex_confidence": 0.95,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "confidence:high"
+            ],
+            "base_confidence": 0.76,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.912
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "datastore_generic: postgres",
+          "location": {
+            "path": "deploy_azure.sh",
+            "line": 87
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "datastore_generic: postgres",
+          "location": {
+            "path": "docker-compose.yml",
+            "line": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "9a10dce7-b23d-4c38-8435-3aa88930fe32",
+      "name": "generic",
+      "component_type": "DEPLOYMENT",
+      "confidence": 0.616,
+      "metadata": {
+        "description": "Deployment component for Azure CLI login and Docker-based container execution.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "deployment_generic",
+          "adapter": "deployment_generic",
+          "evidence_count": 8,
+          "detected_by_tiers": [
+            "code",
+            "iac"
+          ],
+          "llm_soft_rejected": true,
+          "llm_verification_reason": "This is a standard application configuration class loading database and frontend environment variables. It is not an authentication/auth node and has no AI-related functionality.",
+          "confidence_breakdown": {
+            "regex_confidence": 0.55,
+            "llm_confidence": 0.0,
+            "evidence_count": 5,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3",
+              "evidence:4"
+            ],
+            "base_confidence": 0.44,
+            "evidence_multiplier": 1.4,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.616
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "deployment_generic: az login",
+          "location": {
+            "path": "deploy_azure.sh",
+            "line": 23
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "deployment_generic: Docker",
+          "location": {
+            "path": "host_local.sh",
+            "line": 8
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.75,
+          "detail": "deployment_generic: docker",
+          "location": {
+            "path": "init-db.sh",
+            "line": 7
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.75,
+          "detail": "deployment_generic: docker",
+          "location": {
+            "path": "sql/init-db.sh",
+            "line": 7
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "deployment_generic: gcloud",
+          "location": {
+            "path": "deploy.sh",
+            "line": 4
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "deployment_generic: uvicorn",
+          "location": {
+            "path": "Dockerfile",
+            "line": 41
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "deployment_generic: docker",
+          "location": {
+            "path": "docker-compose.yml",
+            "line": 11
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "deployment_generic: render",
+          "location": {
+            "path": "src/main.jsx",
+            "line": 7
+          }
+        }
+      ]
+    },
+    {
+      "id": "cebaf4cf-b414-4f56-b9eb-a22a5e966b12",
+      "name": "Port 8080",
+      "component_type": "DEPLOYMENT",
+      "confidence": 0.7920000000000001,
+      "metadata": {
+        "description": "Exposed deployment port 8080 for network access by the containerized application.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "deployment_port_8080",
+          "adapter": "dockerfile",
+          "evidence_count": 1,
+          "port": 8080,
+          "protocol": "tcp",
+          "source": "dockerfile_expose",
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 2,
+            "evidence_sources": [
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.1,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.792
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "dockerfile",
+          "confidence": 0.9,
+          "detail": "dockerfile: EXPOSE 8080",
+          "location": {
+            "path": "Dockerfile",
+            "line": 38
+          }
+        }
+      ]
+    },
+    {
+      "id": "34905061-45c4-4349-9650-c58570447ffe",
+      "name": "app",
+      "component_type": "FRAMEWORK",
+      "confidence": 0.8640000000000001,
+      "metadata": {
+        "framework": "fastapi",
+        "description": "FastAPI application framework component used to build the app\u2019s API services.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "fastapi_framework_backend_main_py_app",
+          "adapter": "fastapi",
+          "evidence_count": 1,
+          "framework": "fastapi",
+          "class": "FastAPI",
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:fastapi",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.864
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.9,
+          "detail": "fastapi: ",
+          "location": {
+            "path": "backend/main.py",
+            "line": 18
+          }
+        }
+      ]
+    },
+    {
+      "id": "a4ded10d-3a30-42c5-a523-be194d7a3de9",
+      "name": "framework:langgraph",
+      "component_type": "FRAMEWORK",
+      "confidence": 1.0,
+      "metadata": {
+        "framework": "langgraph",
+        "description": "LangGraph is a framework for building stateful, multi-step LLM applications and workflows in Python.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "framework_langgraph",
+          "adapter": "langgraph",
+          "evidence_count": 4,
+          "framework": "langgraph",
+          "implementation": "vela_builtin",
+          "confidence_breakdown": {
+            "regex_confidence": 0.95,
+            "llm_confidence": 0.0,
+            "evidence_count": 6,
+            "evidence_sources": [
+              "framework:langgraph",
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3",
+              "confidence:high"
+            ],
+            "base_confidence": 0.76,
+            "evidence_multiplier": 1.4,
+            "validation_penalty": 0.0,
+            "final_confidence": 1.0
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_import",
+          "confidence": 0.95,
+          "detail": "langgraph: import langgraph",
+          "location": {
+            "path": "backend/langgraph_llm_agents.py"
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.7,
+          "detail": "langgraph: LangGraph",
+          "location": {
+            "path": "backend/main.py",
+            "line": 162
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.7,
+          "detail": "langgraph: LangGraph",
+          "location": {
+            "path": "src/context/UserContext.jsx",
+            "line": 275
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "langgraph: langgraph",
+          "location": {
+            "path": "backend/langgraph_llm_agents.py",
+            "line": 9
+          }
+        }
+      ]
+    },
+    {
+      "id": "dc2fb976-6666-40c3-a383-2a0e19d2df05",
+      "name": "llm_clients_ts",
+      "component_type": "FRAMEWORK",
+      "confidence": 0.8160000000000001,
+      "metadata": {
+        "framework": "google",
+        "description": "TypeScript framework integration that initializes GoogleGenAI clients using a Gemini API key from environment variables.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "framework_llm_clients_ts",
+          "adapter": "llm_clients_ts",
+          "evidence_count": 1,
+          "framework": "google",
+          "client_class": "GoogleGenAI",
+          "language": "typescript",
+          "confidence_breakdown": {
+            "regex_confidence": 0.85,
+            "llm_confidence": 0.0,
+            "evidence_count": 3,
+            "evidence_sources": [
+              "framework:google",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.68,
+            "evidence_multiplier": 1.2,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.816
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.85,
+          "detail": "llm_clients_ts: new GoogleGenAI({\n  apiKey: import.meta.env.VITE_GEMINI_API_KEY,\n})",
+          "location": {
+            "path": "src/gemini.js",
+            "line": 3
+          }
+        }
+      ]
+    },
+    {
+      "id": "77d12ef6-a539-4bf5-b651-dc230b016680",
+      "name": "gemini-2.0-flash",
+      "component_type": "MODEL",
+      "confidence": 0.9152000000000001,
+      "metadata": {
+        "framework": "google",
+        "description": "Google Gemini 2.0 Flash large language model used for generating content through the Gemini API.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "gemini_2_0_flash",
+          "adapter": "llm_clients_ts",
+          "evidence_count": 2,
+          "framework": "google",
+          "api_call": "ai.models.generateContent",
+          "provider": "google",
+          "model_card_url": "https://ai.google.dev/gemini-api/docs/models",
+          "api_endpoint": "https://generativelanguage.googleapis.com",
+          "language": "typescript",
+          "confidence_breakdown": {
+            "regex_confidence": 0.88,
+            "llm_confidence": 0.0,
+            "evidence_count": 4,
+            "evidence_sources": [
+              "framework:google",
+              "evidence:0",
+              "evidence:1",
+              "confidence:high"
+            ],
+            "base_confidence": 0.704,
+            "evidence_multiplier": 1.3,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.9152
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_call",
+          "confidence": 0.88,
+          "detail": "llm_clients_ts: ai.models.generateContent({\n    model: \"gemini-2.0-flash\",\n    contents: conversationHistory.join('\\",
+          "location": {
+            "path": "src/gemini.js",
+            "line": 15
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "model_generic: gemini-2.0",
+          "location": {
+            "path": "src/gemini.js",
+            "line": 16
+          }
+        }
+      ]
+    },
+    {
+      "id": "0d1d1a61-8bef-486a-9be1-9ffc8bbe1263",
+      "name": "gpt-4",
+      "component_type": "MODEL",
+      "confidence": 0.9360000000000002,
+      "metadata": {
+        "framework": "langchain",
+        "description": "OpenAI GPT-4 language model used through LangChain ChatOpenAI integrations for generative text and reasoning tasks.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "gpt_4",
+          "adapter": "langgraph",
+          "evidence_count": 2,
+          "framework": "langchain",
+          "class_name": "ChatOpenAI",
+          "provider": "openai",
+          "version": "4",
+          "api_endpoint": "https://api.openai.com/v1",
+          "model_card_url": "https://platform.openai.com/docs/models/gpt-4",
+          "model_family": "gpt",
+          "normalizer": "model-name",
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 4,
+            "evidence_sources": [
+              "framework:langchain",
+              "evidence:0",
+              "evidence:1",
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.3,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.936
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.9,
+          "detail": "langgraph: ChatOpenAI(...)",
+          "location": {
+            "path": "backend/langgraph_llm_agents.py",
+            "line": 34
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.65,
+          "detail": "model_generic: gpt-4",
+          "location": {
+            "path": "backend/langgraph_llm_agents.py",
+            "line": 31
+          }
+        }
+      ]
+    },
+    {
+      "id": "9c3af587-abf4-4dff-a040-627e2b16cca9",
+      "name": "admin",
+      "component_type": "PRIVILEGE",
+      "confidence": 0.44000000000000006,
+      "metadata": {
+        "privilege_scope": "admin",
+        "description": "Administrative privilege granting sudo-level system access.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "privilege_admin",
+          "adapter": "privilege_admin",
+          "evidence_count": 1,
+          "privilege_scope": "admin",
+          "llm_soft_rejected": true,
+          "llm_verification_reason": "The snippet is a deployment shell script for PostgreSQL setup and client installation. The referenced 'admin' is not an AI-related privilege node; it appears to relate to database administration credentials, not AI/ML functionality or an agent action.",
+          "confidence_breakdown": {
+            "regex_confidence": 0.55,
+            "llm_confidence": 0.0,
+            "evidence_count": 1,
+            "evidence_sources": [
+              "evidence:0"
+            ],
+            "base_confidence": 0.44,
+            "evidence_multiplier": 1.0,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.44
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.6,
+          "detail": "privilege_admin: sudo",
+          "location": {
+            "path": "deploy_azure.sh",
+            "line": 120
+          }
+        }
+      ]
+    },
+    {
+      "id": "25149036-bd94-4728-90a8-3a9df78331f3",
+      "name": "db_write",
+      "component_type": "PRIVILEGE",
+      "confidence": 0.9880000000000001,
+      "metadata": {
+        "privilege_scope": "db_write",
+        "description": "Database write privilege allowing creation of tables and insertion into specialists and appointments records.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "privilege_db_write",
+          "adapter": "privilege_db_write",
+          "evidence_count": 3,
+          "privilege_scope": "db_write",
+          "confidence_breakdown": {
+            "regex_confidence": 0.95,
+            "llm_confidence": 0.0,
+            "evidence_count": 4,
+            "evidence_sources": [
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "confidence:high"
+            ],
+            "base_confidence": 0.76,
+            "evidence_multiplier": 1.3,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.988
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.95,
+          "detail": "privilege_db_write: CREATE TABLE IF",
+          "location": {
+            "path": "sql/schema.sql",
+            "line": 3
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.75,
+          "detail": "privilege_db_write: INSERT INTO specialists",
+          "location": {
+            "path": "sql/populate_more_specialists.sql",
+            "line": 3
+          }
+        },
+        {
+          "kind": "regex",
+          "confidence": 0.55,
+          "detail": "privilege_db_write: INSERT INTO appointments",
+          "location": {
+            "path": "sql/functions/sp_create_appointment.sql",
+            "line": 10
+          }
+        }
+      ]
+    },
+    {
+      "id": "53558917-9d5d-4374-b56d-997b9e828107",
+      "name": "System Instruction",
+      "component_type": "PROMPT",
+      "confidence": 1.0,
+      "metadata": {
+        "description": "System prompt text literals that define assistant behavior and response constraints.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "system_instruction",
+          "adapter": "prompt_ts",
+          "evidence_count": 4,
+          "is_template": false,
+          "is_template_literal": false,
+          "template_variables": [],
+          "injection_risk_score": 0.0,
+          "role": "system",
+          "context": "systemInstruction",
+          "enclosing_function": null,
+          "content": "You are a helpful AI Medical Triage Assistant. Your goal is to gather a clear list of symptoms from the patient ",
+          "language": "typescript",
+          "description": "A system prompt instructing the Gemini model to act as a helpful AI medical triage assistant, ask one question at a time, avoid diagnosis, and provide a fixed closing message after gathering symptoms.",
+          "llm_verified": true,
+          "llm_verification_reason": "Production code defines a concrete systemInstruction passed into Gemini API generation; this is a real prompt used at runtime.",
+          "llm_confidence": 0.98,
+          "confidence_breakdown": {
+            "regex_confidence": 0.98,
+            "llm_confidence": 0.98,
+            "evidence_count": 6,
+            "evidence_sources": [
+              "llm:verified",
+              "evidence:0",
+              "evidence:1",
+              "evidence:2",
+              "evidence:3",
+              "confidence:high"
+            ],
+            "base_confidence": 0.98,
+            "evidence_multiplier": 1.4,
+            "validation_penalty": 0.0,
+            "final_confidence": 1.0
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_string_literal",
+          "confidence": 0.65,
+          "detail": "prompt_ts: ast_string_literal",
+          "location": {
+            "path": "src/gemini.js",
+            "line": 19
+          }
+        },
+        {
+          "kind": "ast_string_literal",
+          "confidence": 0.65,
+          "detail": "prompt_ts: ast_string_literal",
+          "location": {
+            "path": "src/gemini.js",
+            "line": 22
+          }
+        },
+        {
+          "kind": "ast_string_literal",
+          "confidence": 0.65,
+          "detail": "prompt_ts: ast_string_literal",
+          "location": {
+            "path": "src/gemini.js",
+            "line": 23
+          }
+        },
+        {
+          "kind": "ast_string_literal",
+          "confidence": 0.65,
+          "detail": "prompt_ts: ast_string_literal",
+          "location": {
+            "path": "src/gemini.js",
+            "line": 24
+          }
+        }
+      ]
+    },
+    {
+      "id": "e252a2e6-d547-4773-9e46-5b6a357a26e5",
+      "name": "System Message",
+      "component_type": "PROMPT",
+      "confidence": 1.0,
+      "metadata": {
+        "framework": "langchain",
+        "description": "LangChain system prompt component instantiated in LangGraph AST to define assistant behavior and response constraints.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "system_message",
+          "adapter": "langgraph",
+          "evidence_count": 1,
+          "framework": "langchain",
+          "message_type": "SystemMessage",
+          "role": "system",
+          "content": "You are an intelligent medical assistant that triages patients.",
+          "char_count": 63,
+          "is_template": false,
+          "template_variables": [],
+          "description": "System prompt instructing the LLM to act as a medical assistant that triages patient symptoms and recommends 1-2 suitable specialists from a provided list.",
+          "llm_verified": true,
+          "llm_verification_reason": "Concrete production application code constructs a LangChain SystemMessage used in an LLM invocation for medical triage; this is a real prompt template, not test or documentation code.",
+          "llm_confidence": 0.98,
+          "confidence_breakdown": {
+            "regex_confidence": 0.98,
+            "llm_confidence": 0.98,
+            "evidence_count": 4,
+            "evidence_sources": [
+              "llm:verified",
+              "framework:langchain",
+              "evidence:0",
+              "confidence:high"
+            ],
+            "base_confidence": 0.98,
+            "evidence_multiplier": 1.3,
+            "validation_penalty": 0.0,
+            "final_confidence": 1.0
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.8,
+          "detail": "langgraph: ast_instantiation",
+          "location": {
+            "path": "backend/langgraph_llm_agents.py",
+            "line": 148
+          }
+        }
+      ]
+    },
+    {
+      "id": "a95b452f-b968-4ca1-b42a-f97eadde48c6",
+      "name": "search",
+      "component_type": "TOOL",
+      "confidence": 0.44000000000000006,
+      "metadata": {
+        "description": "Search queries external or internal sources to retrieve relevant information, supporting the system\u2019s ability to find facts, documents, or results for a given request.",
+        "high_privilege": false,
+        "sql_injectable": false,
+        "ssrf_possible": false,
+        "accepts_external_url": false,
+        "reads_external_content": false,
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "extras": {
+          "canonical_name": "tool_search",
+          "adapter": "tool_search",
+          "evidence_count": 1,
+          "llm_soft_rejected": true,
+          "llm_verification_reason": "The provided context only shows an import of DDGS from duckduckgo_search; there is no concrete definition or instantiation of a TOOL named 'search' in the shown code. As presented, this is an import statement only, which should not be verified as a production AI tool node.",
+          "confidence_breakdown": {
+            "regex_confidence": 0.55,
+            "llm_confidence": 0.0,
+            "evidence_count": 1,
+            "evidence_sources": [
+              "evidence:0"
+            ],
+            "base_confidence": 0.44,
+            "evidence_multiplier": 1.0,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.44
+          },
+          "description_source": "enriched_existing"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "regex",
+          "confidence": 0.75,
+          "detail": "tool_search: duckduckgo_search",
+          "location": {
+            "path": "backend/langgraph_llm_agents.py",
+            "line": 7
+          }
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "source": "9e10fa47-5f59-44e2-90ff-2d2e75b25b75",
+      "target": "6ae66481-3e8f-43da-8ef9-19d4847eb707",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "6ae66481-3e8f-43da-8ef9-19d4847eb707",
+      "target": "a3edf5bf-2b58-4bda-921a-a7ffa569578a",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "a3edf5bf-2b58-4bda-921a-a7ffa569578a",
+      "target": "017e7e02-430f-4236-af86-bb385c89b098",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "017e7e02-430f-4236-af86-bb385c89b098",
+      "target": "d91358e6-8ee4-4281-9756-97bff43fab4a",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "9e10fa47-5f59-44e2-90ff-2d2e75b25b75",
+      "target": "0d1d1a61-8bef-486a-9be1-9ffc8bbe1263",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "6ae66481-3e8f-43da-8ef9-19d4847eb707",
+      "target": "0d1d1a61-8bef-486a-9be1-9ffc8bbe1263",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "a3edf5bf-2b58-4bda-921a-a7ffa569578a",
+      "target": "0d1d1a61-8bef-486a-9be1-9ffc8bbe1263",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "017e7e02-430f-4236-af86-bb385c89b098",
+      "target": "0d1d1a61-8bef-486a-9be1-9ffc8bbe1263",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "d91358e6-8ee4-4281-9756-97bff43fab4a",
+      "target": "0d1d1a61-8bef-486a-9be1-9ffc8bbe1263",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "34905061-45c4-4349-9650-c58570447ffe",
+      "target": "0d1d1a61-8bef-486a-9be1-9ffc8bbe1263",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "34905061-45c4-4349-9650-c58570447ffe",
+      "target": "77d12ef6-a539-4bf5-b651-dc230b016680",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "a4ded10d-3a30-42c5-a523-be194d7a3de9",
+      "target": "0d1d1a61-8bef-486a-9be1-9ffc8bbe1263",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "a4ded10d-3a30-42c5-a523-be194d7a3de9",
+      "target": "77d12ef6-a539-4bf5-b651-dc230b016680",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "dc2fb976-6666-40c3-a383-2a0e19d2df05",
+      "target": "0d1d1a61-8bef-486a-9be1-9ffc8bbe1263",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "dc2fb976-6666-40c3-a383-2a0e19d2df05",
+      "target": "77d12ef6-a539-4bf5-b651-dc230b016680",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "9a10dce7-b23d-4c38-8435-3aa88930fe32",
+      "target": "60b1b887-96cf-4a55-b411-01707454d53a",
+      "relationship_type": "DEPLOYS"
+    },
+    {
+      "source": "9a10dce7-b23d-4c38-8435-3aa88930fe32",
+      "target": "f4ab1c32-2145-453a-932b-fe1b518f854d",
+      "relationship_type": "DEPLOYS"
+    },
+    {
+      "source": "cebaf4cf-b414-4f56-b9eb-a22a5e966b12",
+      "target": "60b1b887-96cf-4a55-b411-01707454d53a",
+      "relationship_type": "DEPLOYS"
+    },
+    {
+      "source": "cebaf4cf-b414-4f56-b9eb-a22a5e966b12",
+      "target": "f4ab1c32-2145-453a-932b-fe1b518f854d",
+      "relationship_type": "DEPLOYS"
+    },
+    {
+      "source": "bf71324d-09ec-452e-b827-57590f2dc202",
+      "target": "422d2b2e-5a7c-423e-814a-e73e881007e8",
+      "relationship_type": "PROTECTS"
+    },
+    {
+      "source": "bf71324d-09ec-452e-b827-57590f2dc202",
+      "target": "c6b59d55-3f56-417c-967b-9cd32792689b",
+      "relationship_type": "PROTECTS"
+    },
+    {
+      "source": "bf71324d-09ec-452e-b827-57590f2dc202",
+      "target": "16e81023-6f2e-4844-9c08-3c277b0835ec",
+      "relationship_type": "PROTECTS"
+    },
+    {
+      "source": "bf71324d-09ec-452e-b827-57590f2dc202",
+      "target": "0e21d9c2-ed08-4af8-bf35-82637c8cf317",
+      "relationship_type": "PROTECTS"
+    },
+    {
+      "source": "bf71324d-09ec-452e-b827-57590f2dc202",
+      "target": "2b6a428a-e354-4958-9290-56d1acf6dba7",
+      "relationship_type": "PROTECTS"
+    },
+    {
+      "source": "bf71324d-09ec-452e-b827-57590f2dc202",
+      "target": "76008e8b-48b2-4c33-bec1-c948528f6508",
+      "relationship_type": "PROTECTS"
+    },
+    {
+      "source": "bf71324d-09ec-452e-b827-57590f2dc202",
+      "target": "07cd58e6-2866-4617-96c0-2a61b36028bf",
+      "relationship_type": "PROTECTS"
+    },
+    {
+      "source": "bf71324d-09ec-452e-b827-57590f2dc202",
+      "target": "fd4235e7-c3bc-4e34-8a40-fa0d7c75357e",
+      "relationship_type": "PROTECTS"
+    },
+    {
+      "source": "bf71324d-09ec-452e-b827-57590f2dc202",
+      "target": "0bb54f36-c924-44e1-8c38-5be9b46ef73b",
+      "relationship_type": "PROTECTS"
+    }
+  ],
+  "deps": [
+    {
+      "name": "fastapi",
+      "version_spec": "",
+      "purl": "pkg:pypi/fastapi",
+      "group": "runtime",
+      "source_file": "backend/requirements.txt"
+    },
+    {
+      "name": "uvicorn",
+      "version_spec": "",
+      "purl": "pkg:pypi/uvicorn",
+      "group": "runtime",
+      "source_file": "backend/requirements.txt"
+    },
+    {
+      "name": "psycopg2-binary",
+      "version_spec": "",
+      "purl": "pkg:pypi/psycopg2-binary",
+      "group": "runtime",
+      "source_file": "backend/requirements.txt"
+    },
+    {
+      "name": "langgraph",
+      "version_spec": "",
+      "purl": "pkg:pypi/langgraph",
+      "group": "runtime",
+      "source_file": "backend/requirements.txt"
+    },
+    {
+      "name": "langchain",
+      "version_spec": "",
+      "purl": "pkg:pypi/langchain",
+      "group": "runtime",
+      "source_file": "backend/requirements.txt"
+    },
+    {
+      "name": "openai",
+      "version_spec": "",
+      "purl": "pkg:pypi/openai",
+      "group": "runtime",
+      "source_file": "backend/requirements.txt"
+    },
+    {
+      "name": "google-generativeai",
+      "version_spec": "",
+      "purl": "pkg:pypi/google-generativeai",
+      "group": "runtime",
+      "source_file": "backend/requirements.txt"
+    },
+    {
+      "name": "pydantic",
+      "version_spec": "",
+      "purl": "pkg:pypi/pydantic",
+      "group": "runtime",
+      "source_file": "backend/requirements.txt"
+    },
+    {
+      "name": "python-dotenv",
+      "version_spec": "",
+      "purl": "pkg:pypi/python-dotenv",
+      "group": "runtime",
+      "source_file": "backend/requirements.txt"
+    },
+    {
+      "name": "requests",
+      "version_spec": "",
+      "purl": "pkg:pypi/requests",
+      "group": "runtime",
+      "source_file": "backend/requirements.txt"
+    },
+    {
+      "name": "tqdm",
+      "version_spec": "",
+      "purl": "pkg:pypi/tqdm",
+      "group": "runtime",
+      "source_file": "backend/requirements.txt"
+    },
+    {
+      "name": "numpy",
+      "version_spec": "",
+      "purl": "pkg:pypi/numpy",
+      "group": "runtime",
+      "source_file": "backend/requirements.txt"
+    },
+    {
+      "name": "langchain-openai",
+      "version_spec": "",
+      "purl": "pkg:pypi/langchain-openai",
+      "group": "runtime",
+      "source_file": "backend/requirements.txt"
+    },
+    {
+      "name": "duckduckgo-search",
+      "version_spec": "",
+      "purl": "pkg:pypi/duckduckgo-search",
+      "group": "runtime",
+      "source_file": "backend/requirements.txt"
+    },
+    {
+      "name": "langchain-community",
+      "version_spec": "",
+      "purl": "pkg:pypi/langchain-community",
+      "group": "runtime",
+      "source_file": "backend/requirements.txt"
+    },
+    {
+      "name": "@google/genai",
+      "version_spec": "^0.10.0",
+      "purl": "pkg:npm/%40google/genai@0.10.0",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "@google/generative-ai",
+      "version_spec": "^0.24.0",
+      "purl": "pkg:npm/%40google/generative-ai@0.24.0",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "assemblyai",
+      "version_spec": "^4.12.2",
+      "purl": "pkg:npm/assemblyai@4.12.2",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "openai",
+      "version_spec": "^4.96.0",
+      "purl": "pkg:npm/openai@4.96.0",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "react",
+      "version_spec": "^19.0.0",
+      "purl": "pkg:npm/react@19.0.0",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "react-dom",
+      "version_spec": "^19.0.0",
+      "purl": "pkg:npm/react-dom@19.0.0",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "react-router-dom",
+      "version_spec": "^7.5.0",
+      "purl": "pkg:npm/react-router-dom@7.5.0",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "recordrtc",
+      "version_spec": "^5.5.1",
+      "purl": "pkg:npm/recordrtc@5.5.1",
+      "group": "runtime",
+      "source_file": "package.json"
+    },
+    {
+      "name": "@eslint/js",
+      "version_spec": "^9.21.0",
+      "purl": "pkg:npm/%40eslint/js@9.21.0",
+      "group": "dev",
+      "source_file": "package.json"
+    },
+    {
+      "name": "@playwright/test",
+      "version_spec": "^1.57.0",
+      "purl": "pkg:npm/%40playwright/test@1.57.0",
+      "group": "dev",
+      "source_file": "package.json"
+    },
+    {
+      "name": "@types/react",
+      "version_spec": "^19.0.10",
+      "purl": "pkg:npm/%40types/react@19.0.10",
+      "group": "dev",
+      "source_file": "package.json"
+    },
+    {
+      "name": "@types/react-dom",
+      "version_spec": "^19.0.4",
+      "purl": "pkg:npm/%40types/react-dom@19.0.4",
+      "group": "dev",
+      "source_file": "package.json"
+    },
+    {
+      "name": "@vitejs/plugin-react",
+      "version_spec": "^4.3.4",
+      "purl": "pkg:npm/%40vitejs/plugin-react@4.3.4",
+      "group": "dev",
+      "source_file": "package.json"
+    },
+    {
+      "name": "eslint",
+      "version_spec": "^9.21.0",
+      "purl": "pkg:npm/eslint@9.21.0",
+      "group": "dev",
+      "source_file": "package.json"
+    },
+    {
+      "name": "eslint-plugin-react-hooks",
+      "version_spec": "^5.1.0",
+      "purl": "pkg:npm/eslint-plugin-react-hooks@5.1.0",
+      "group": "dev",
+      "source_file": "package.json"
+    },
+    {
+      "name": "eslint-plugin-react-refresh",
+      "version_spec": "^0.4.19",
+      "purl": "pkg:npm/eslint-plugin-react-refresh@0.4.19",
+      "group": "dev",
+      "source_file": "package.json"
+    },
+    {
+      "name": "globals",
+      "version_spec": "^15.15.0",
+      "purl": "pkg:npm/globals@15.15.0",
+      "group": "dev",
+      "source_file": "package.json"
+    },
+    {
+      "name": "vite",
+      "version_spec": "^6.2.0",
+      "purl": "pkg:npm/vite@6.2.0",
+      "group": "dev",
+      "source_file": "package.json"
+    },
+    {
+      "name": "cors",
+      "version_spec": "^2.8.5",
+      "purl": "pkg:npm/cors@2.8.5",
+      "group": "runtime",
+      "source_file": "backend/package.json"
+    },
+    {
+      "name": "dotenv",
+      "version_spec": "^16.5.0",
+      "purl": "pkg:npm/dotenv@16.5.0",
+      "group": "runtime",
+      "source_file": "backend/package.json"
+    },
+    {
+      "name": "express",
+      "version_spec": "^5.1.0",
+      "purl": "pkg:npm/express@5.1.0",
+      "group": "runtime",
+      "source_file": "backend/package.json"
+    }
+  ],
+  "summary": {
+    "use_case": "This application appears to be a voice-enabled medical triage and specialist recommendation system that supports search-based retrieval and multi-step agentic workflows, serving patients or users seeking guidance on symptoms and appropriate specialists. It uses LangGraph/LangChain agents to normalize input, search for prognosis or specialist information, recommend 1\u20132 specialists, and fetch doctor details, with FastAPI endpoints for patient/medical history, appointments, login, and workflow execution; voice is supported, while image and video are not. No MCP server was detected.",
+    "frameworks": [
+      "langgraph",
+      "langchain"
+    ],
+    "modalities": [
+      "TEXT",
+      "VOICE"
+    ],
+    "modality_support": {
+      "text": true,
+      "voice": true,
+      "image": false,
+      "video": false
+    },
+    "api_endpoints": [
+      "/api/health",
+      "/login",
+      "/patient-details/{user_id}",
+      "/medical-history/{user_id}",
+      "/normalize",
+      "/run_langgraph",
+      "/appointments",
+      "/{full_path:path}"
+    ],
+    "deployment_platforms": [
+      "GCP",
+      "Azure",
+      "AWS"
+    ],
+    "regions": [
+      "us-central1"
+    ],
+    "environments": [
+      "stage",
+      "dev",
+      "test",
+      "development",
+      "production"
+    ],
+    "deployment_urls": [],
+    "iac_accounts": [],
+    "node_counts": {
+      "AGENT": 5,
+      "API_ENDPOINT": 9,
+      "AUTH": 1,
+      "CONTAINER_IMAGE": 2,
+      "DATASTORE": 1,
+      "DEPLOYMENT": 2,
+      "FRAMEWORK": 3,
+      "MODEL": 2,
+      "PRIVILEGE": 2,
+      "PROMPT": 2,
+      "TOOL": 1
+    },
+    "secret_stores": [],
+    "availability_zones": [],
+    "encryption_at_rest_coverage": false,
+    "security_findings": [
+      "secrets_in_build_args"
+    ],
+    "iam_principals": [],
+    "service_accounts": [],
+    "iac_security_summary": "## Security briefing\n\n### 1) Deployment posture\n- The detected infrastructure shows two deployment nodes: **`generic`** and **`Port 8080`**, but **no explicit cloud provider, region, or availability-zone information** is present.\n- **HA / resilience posture is not evidenced** in the supplied data: there is no indication of multi-zone deployment, load balancing, failover, autoscaling, or replicated services.\n\n### 2) Secret management\n- **No secret stores are detected** (`secret_stores: []`), so there is no evidence of Vault, AWS Secrets Manager, Azure Key Vault, GCP Secret Manager, or similar integration.\n- A security finding of **`secrets_in_build_args`** is present, which indicates **plaintext-secret exposure risk during image build**. Build arguments are not an appropriate mechanism for secrets because they can be surfaced in image metadata, build logs, or CI job output.\n- Recommended posture: move sensitive values to a dedicated secret manager and consume them at runtime, not build time.\n\n### 3) Encryption\n- **Encryption at rest coverage is false** (`encryption_at_rest_coverage: false`).\n- No key management mechanism is shown, so there is **no evidence of managed KMS/CMK usage, envelope encryption, or data store encryption controls**.\n- This leaves persistent data and any image-backed or volume-backed state without demonstrated at-rest protection.\n\n### 4) IAM / least privilege\n- **No IAM principals or service accounts are detected** (`iam_principals: []`, `service_accounts: []`).\n- There is therefore **no evidence of workload identity, scoped service accounts, or OIDC-based federated access**.\n- Least-privilege posture cannot be confirmed; there is also no visible policy boundary to assess for over-permissive access.\n\n### 5) CI/CD security\n- No CI/CD metadata is provided, so **GitHub Actions runners, OIDC federation, workflow permissions, and trigger scope cannot be validated** from this dataset.\n- The presence of **secrets in build args** is the main CI/CD-related risk visible here, because it suggests build-time handling may be leaking sensitive material into the pipeline surface.\n- There is no evidence of workflow hardening such as restricted triggers, pinned actions, or minimal token permissions.\n\n### 6) Container security\n- Two base images are detected: **`node:20`** and **`python:3.11-slim`**.\n  - `slim` is preferable to full images, but **neither image is shown as pinned by digest**, so supply-chain drift is possible.\n- No data is provided about:\n  - running as **root vs non-root**\n  - **health checks**\n  - **resource limits** (CPU/memory)\n- As a result, container hardening cannot be confirmed, and missing health/resource controls remain plausible operational risks.\n\n### 7) Key risks and prioritized recommendations\n1. **Eliminate secrets in build args immediately**\n   - Replace build-time secret injection with a secret manager and runtime retrieval. Prevent secret echo in logs and build cache layers.\n2. **Enable encryption at rest and define key management**\n   - Ensure all persistent storage is encrypted and tied to a managed KMS/CMK policy where applicable.\n3. **Establish identity and workload access controls**\n   - Introduce service accounts / workload identities with least privilege and, if using CI/CD, federated OIDC with tightly scoped permissions and restricted workflow triggers.",
+    "data_classification": [
+      "PHI",
+      "PII"
+    ],
+    "classified_tables": [
+      "AppointmentRequest",
+      "LoginRequest",
+      "MedicalHistoryResponse",
+      "PatientDetailsResponse",
+      "appointments",
+      "doctors",
+      "hospitals",
+      "patient_history",
+      "patients",
+      "specialists",
+      "symptoms",
+      "users"
+    ],
+    "startup_commands": [
+      {
+        "command": "docker compose up",
+        "source": "docker-compose.yml",
+        "label": "dev"
+      },
+      {
+        "command": "npm run dev",
+        "source": "package.json",
+        "label": "dev"
+      },
+      {
+        "command": "npm run preview",
+        "source": "package.json",
+        "label": "start"
+      },
+      {
+        "command": "npm run start",
+        "source": "backend/package.json",
+        "label": "start"
+      }
+    ],
+    "env_files": [],
+    "env_var_keys": [],
+    "local_url": "http://localhost:5432",
+    "staging_urls": [],
+    "production_urls": [],
+    "log_paths": [],
+    "uses_streaming": false,
+    "streaming_endpoints": []
+  },
+  "relationship_graph_md": "## Component Relationship Graph\n\n- **Orchestration flow:** `normalize_agent` calls `prognosis_search_agent`, which calls `specialist_lookup_agent`, which calls `recommend_specialists_agent`, which calls `fetch_doctor_details_agent`. This is a chained, multi-agent pipeline.\n\n- **Model usage:** All five agents use **gpt-4**. The `app`, `framework:langgraph`, and `llm_clients_ts` components also use **gpt-4** and **gemini-2.0-flash**.\n\n- **Guardrails / access control:** A generic auth layer protects the listed API endpoints: `create_appointment`, `get_medical_history`, `get_patient_details`, `health_check`, `login`, `normalize`, `run_langgraph`, `serve_spa`, and a generic endpoint.\n\n- **Data stores:** `postgres` is present but shows **no connections** in the graph, so no reachable datastore path is shown.\n\n- **Prompts:** `System Instruction` and `System Message` are present as prompt assets, but show **no connections**.\n\n- **Tools / risk patterns:** `search` is present as a tool but has **no connections**; the graph does not show any unguarded tool use.\n\n- **Notable security observation:** The visible risk surface is primarily the authenticated API layer plus external model usage; the graph does **not** show direct datastore access or other unprotected backend dependencies.\n\n```mermaid\nflowchart LR\n    fetch_doctor_details_agent_d91358[\"\ud83e\udd16 fetch_doctor_details_agent\"]\n    normalize_agent_9e10fa[\"\ud83e\udd16 normalize_agent\"]\n    prognosis_search_agent_6ae664[\"\ud83e\udd16 prognosis_search_agent\"]\n    recommend_specialists_agent_017e7e[\"\ud83e\udd16 recommend_specialists_agent\"]\n    specialist_lookup_agent_a3edf5[\"\ud83e\udd16 specialist_lookup_agent\"]\n    generic_c6b59d([\"\ud83c\udf10 generic\"])\n    health_check_2b6a42([\"\ud83c\udf10 health_check\"])\n    serve_spa_0bb54f([\"\ud83c\udf10 serve_spa\"])\n    get_medical_history_16e810([\"\ud83c\udf10 get_medical_history\"])\n    get_patient_details_0e21d9([\"\ud83c\udf10 get_patient_details\"])\n    create_appointment_422d2b([\"\ud83c\udf10 create_appointment\"])\n    login_76008e([\"\ud83c\udf10 login\"])\n    normalize_07cd58([\"\ud83c\udf10 normalize\"])\n    run_langgraph_fd4235([\"\ud83c\udf10 run_langgraph\"])\n    postgres_a784b4[(\"\ud83d\uddc4 postgres\")]\n    app_349050[/\"\u2699 app\"/]\n    framework_langgraph_a4ded1[/\"\u2699 framework:langgraph\"/]\n    llm_clients_ts_dc2fb9[/\"\u2699 llm_clients_ts\"/]\n    gemini_2_0_flash_77d12e[(\"\ud83e\udde0 gemini-2.0-flash\")]\n    gpt_4_0d1d1a[(\"\ud83e\udde0 gpt-4\")]\n    System_Instruction_535589>\"\ud83d\udcac System Instruction\"]\n    System_Message_e252a2>\"\ud83d\udcac System Message\"]\n    search_a95b45(\"\ud83d\udd27 search\")\n\n    normalize_agent_9e10fa -->|calls| prognosis_search_agent_6ae664\n    prognosis_search_agent_6ae664 -->|calls| specialist_lookup_agent_a3edf5\n    specialist_lookup_agent_a3edf5 -->|calls| recommend_specialists_agent_017e7e\n    recommend_specialists_agent_017e7e -->|calls| fetch_doctor_details_agent_d91358\n    normalize_agent_9e10fa -->|uses| gpt_4_0d1d1a\n    prognosis_search_agent_6ae664 -->|uses| gpt_4_0d1d1a\n    specialist_lookup_agent_a3edf5 -->|uses| gpt_4_0d1d1a\n    recommend_specialists_agent_017e7e -->|uses| gpt_4_0d1d1a\n    fetch_doctor_details_agent_d91358 -->|uses| gpt_4_0d1d1a\n    app_349050 -->|uses| gpt_4_0d1d1a\n    app_349050 -->|uses| gemini_2_0_flash_77d12e\n    framework_langgraph_a4ded1 -->|uses| gpt_4_0d1d1a\n    framework_langgraph_a4ded1 -->|uses| gemini_2_0_flash_77d12e\n    llm_clients_ts_dc2fb9 -->|uses| gpt_4_0d1d1a\n    llm_clients_ts_dc2fb9 -->|uses| gemini_2_0_flash_77d12e\n\n    classDef agent    fill:#4A90D9,stroke:#2C6FAC,color:#fff\n    classDef tool     fill:#7ED321,stroke:#5A9A18,color:#fff\n    classDef model    fill:#9B59B6,stroke:#7D3C98,color:#fff\n    classDef prompt   fill:#F39C12,stroke:#D68910,color:#fff\n    classDef guard    fill:#E74C3C,stroke:#C0392B,color:#fff\n    classDef store    fill:#1ABC9C,stroke:#17A589,color:#fff\n    classDef fw       fill:#95A5A6,stroke:#717D7E,color:#fff\n    classDef endpoint fill:#3498DB,stroke:#2471A3,color:#fff\n    class fetch_doctor_details_agent_d91358,normalize_agent_9e10fa,prognosis_search_agent_6ae664,recommend_specialists_agent_017e7e,specialist_lookup_agent_a3edf5 agent\n    class search_a95b45 tool\n    class gemini_2_0_flash_77d12e,gpt_4_0d1d1a model\n    class System_Instruction_535589,System_Message_e252a2 prompt\n    class postgres_a784b4 store\n    class app_349050,framework_langgraph_a4ded1,llm_clients_ts_dc2fb9 fw\n    class generic_c6b59d,health_check_2b6a42,serve_spa_0bb54f,get_medical_history_16e810,get_patient_details_0e21d9,create_appointment_422d2b,login_76008e,normalize_07cd58,run_langgraph_fd4235 endpoint\n```",
+  "_enrichment_cache_key": "653dc7379564fc48e4496c947847934d9105ed9908ed6f4c5b4a87e1f4e7e476"
+}

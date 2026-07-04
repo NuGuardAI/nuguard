@@ -20,17 +20,17 @@ from __future__ import annotations
 
 import hashlib
 import json
-import logging
 import pathlib
 from typing import TYPE_CHECKING
 
 from nuguard.behavior.models import BehaviorScenario
+from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
     from nuguard.models.policy import CognitivePolicy
     from nuguard.sbom.models import AiSbomDocument
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 
 def _stable_json(obj: object | None) -> str:

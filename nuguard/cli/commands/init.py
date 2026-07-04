@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Optional
 
@@ -51,6 +52,39 @@ def _detect_source_lang(base: Path) -> str:
     if (base / "package.json").exists() or (base / "tsconfig.json").exists():
         return "typescript"
     return ""
+
+
+def _build_sbom_context(base: Path, sbom_rel: str | None) -> str:
+    """Extract a plain-text summary from the SBOM for use as LLM context.
+
+    Returns an empty string when no SBOM is available or readable.
+    """
+    if not sbom_rel:
+        return ""
+    try:
+        import json
+        sbom_file = base / sbom_rel.lstrip("./")
+        data = json.loads(sbom_file.read_text(encoding="utf-8"))
+        summary = data.get("summary") or {}
+        nodes: list[dict] = data.get("nodes") or []
+        lines: list[str] = []
+        if summary.get("use_case"):
+            lines.append(f"Use case: {summary['use_case']}")
+        if summary.get("frameworks"):
+            lines.append(f"Frameworks: {', '.join(str(f) for f in summary['frameworks'])}")
+        tools = [n["name"] for n in nodes if n.get("component_type") == "TOOL" and n.get("name")]
+        if tools:
+            lines.append(f"Tools: {', '.join(tools[:10])}")
+        models = [n["name"] for n in nodes if n.get("component_type") == "MODEL" and n.get("name")]
+        if models:
+            lines.append(f"Models: {', '.join(models[:5])}")
+        if summary.get("api_endpoints"):
+            eps = [e for e in summary["api_endpoints"] if e and e != "*"]
+            if eps:
+                lines.append(f"API endpoints: {', '.join(eps[:5])}")
+        return "\n".join(lines)
+    except Exception:
+        return ""
 
 
 # ---------------------------------------------------------------------------
@@ -388,6 +422,11 @@ def init_command(
         "-f",
         help="Overwrite files that already exist.",
     ),
+    use_llm: bool = typer.Option(
+        False,
+        "--llm/--no-llm",
+        help="Use an LLM to draft cognitive-policy.md with sensible defaults (requires LITELLM_API_KEY).",
+    ),
 ) -> None:
     """Create a nuguard.yaml config file with sensible defaults for this project.
 
@@ -404,6 +443,7 @@ def init_command(
       nuguard init --path ./config/nuguard.yaml # write to a specific path
       nuguard init --target http://localhost:8080
       nuguard init --target http://localhost:8080 --source ./src --force
+      nuguard init --target http://localhost:8080 --llm  # draft policy with LLM
     """
     # Resolve output directory and nuguard.yaml path
     if path is not None:
@@ -446,9 +486,41 @@ def init_command(
         created.append(str(yaml_dest))
 
     # ── Companion files ───────────────────────────────────────────────────────
+    # Read SBOM summary to give the policy drafter (LLM or static) meaningful context.
+    _sbom_path = _detect_sbom(base_dir)
+    sbom_context = _build_sbom_context(base_dir, _sbom_path)
+
+    # Build cognitive policy content — use LLM draft when --llm is set.
+    if use_llm:
+        from nuguard.common.llm_client import LLMClient
+        from nuguard.policy.compiler import draft_policy
+        llm_client = LLMClient()
+        if not getattr(llm_client, "api_key", None):
+            typer.echo(
+                "  warning  --llm requested but no API key found "
+                "(set LITELLM_API_KEY). Falling back to blank template.",
+                err=True,
+            )
+        app_desc = f"AI application at {target_url}"
+        if sbom_context:
+            app_desc_full = app_desc
+        else:
+            app_desc_full = app_desc
+            if source_dir and source_dir != "./":
+                app_desc_full += f" (source: {source_dir})"
+        policy_content = asyncio.run(
+            draft_policy(
+                app_description=app_desc_full,
+                sbom_context=sbom_context,
+                llm_client=llm_client,
+            )
+        )
+    else:
+        policy_content = _COGNITIVE_POLICY_TEMPLATE
+
     companions: list[tuple[str, str]] = [
         ("canary.example.json", _CANARY_EXAMPLE_JSON),
-        ("cognitive-policy.md", _COGNITIVE_POLICY_TEMPLATE),
+        ("cognitive-policy.md", policy_content),
     ]
     for filename, content in companions:
         dest = base_dir / filename
@@ -494,7 +566,13 @@ def init_command(
         step += 1
 
     if not policy_found:
-        typer.echo(f"  {step}. Fill in cognitive-policy.md with your app's topic and data rules")
+        if _sbom_path and not use_llm:
+            typer.echo(
+                f"  {step}. Draft cognitive-policy.md from your SBOM with:\n"
+                f"       nuguard init --llm --force"
+            )
+        else:
+            typer.echo(f"  {step}. Fill in cognitive-policy.md with your app's topic and data rules")
         step += 1
 
     if target_was_auto:

@@ -19,13 +19,14 @@ Config keys
 """
 from __future__ import annotations
 
-import logging
 from typing import Any
+
+from nuguard.common.logging import get_logger
 
 from ..models import ToolResult
 from ..plugin_base import ToolPlugin
 
-_log = logging.getLogger("toolbox.plugins.sarif")
+_log = get_logger("toolbox.plugins.sarif")
 
 _SARIF_SCHEMA = (
     "https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/"

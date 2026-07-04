@@ -48,6 +48,15 @@ def _all_hints(detections) -> list[RelationshipHint]:
     return hints
 
 
+def _tool_nodes(detections) -> list[Any]:
+    """Return TOOL nodes that are actual @tool-decorated functions, not the server node."""
+    return [
+        d for d in detections
+        if d.component_type == ComponentType.TOOL
+        and not d.canonical_name.startswith("framework:")
+    ]
+
+
 # ---------------------------------------------------------------------------
 # can_handle
 # ---------------------------------------------------------------------------
@@ -88,7 +97,7 @@ class TestCanHandle:
 
 
 # ---------------------------------------------------------------------------
-# FRAMEWORK node
+# Server (MCP server) node — always emitted as TOOL
 # ---------------------------------------------------------------------------
 
 
@@ -96,60 +105,72 @@ class TestFrameworkNode:
     def test_framework_node_always_emitted(self) -> None:
         code = 'from mcp.server.fastmcp import FastMCP\nmcp = FastMCP("my-server")\n'
         dets = _extract(code)
-        fw = _by_type(dets, ComponentType.FRAMEWORK)
-        assert len(fw) == 1
+        # MCP server node is now TOOL, not FRAMEWORK
+        server_nodes = [d for d in dets if d.adapter_name == "mcp_server" and d.canonical_name.startswith("framework:")]
+        assert len(server_nodes) == 1
 
     def test_framework_display_name_is_server_name(self) -> None:
         code = 'from mcp.server.fastmcp import FastMCP\nmcp = FastMCP("excel-mcp")\n'
         dets = _extract(code)
-        fw = _by_type(dets, ComponentType.FRAMEWORK)[0]
-        assert fw.display_name == "excel-mcp"
+        server_nodes = [d for d in dets if d.adapter_name == "mcp_server" and d.canonical_name.startswith("framework:")]
+        assert server_nodes[0].display_name == "excel-mcp"
 
     def test_framework_canonical_name(self) -> None:
         code = 'from fastmcp import FastMCP\nserver = FastMCP("demo")\n'
         dets = _extract(code)
-        fw = _by_type(dets, ComponentType.FRAMEWORK)[0]
-        assert fw.canonical_name == "framework:mcp_server"
+        server_nodes = [d for d in dets if d.adapter_name == "mcp_server" and d.canonical_name.startswith("framework:")]
+        assert server_nodes[0].canonical_name == "framework:mcp_server"
 
     def test_framework_adapter_name(self) -> None:
         code = 'from fastmcp import FastMCP\nmcp = FastMCP("srv")\n'
-        fw = _by_type(_extract(code), ComponentType.FRAMEWORK)[0]
-        assert fw.adapter_name == "mcp_server"
+        server_nodes = [d for d in _extract(code) if d.adapter_name == "mcp_server" and d.canonical_name.startswith("framework:")]
+        assert server_nodes[0].adapter_name == "mcp_server"
 
     def test_framework_confidence(self) -> None:
         code = 'from fastmcp import FastMCP\nmcp = FastMCP("srv")\n'
-        fw = _by_type(_extract(code), ComponentType.FRAMEWORK)[0]
-        assert fw.confidence == pytest.approx(0.95)
+        server_nodes = [d for d in _extract(code) if d.adapter_name == "mcp_server" and d.canonical_name.startswith("framework:")]
+        assert server_nodes[0].confidence == pytest.approx(0.95)
 
     def test_framework_metadata_has_server_name(self) -> None:
         code = 'from mcp.server.fastmcp import FastMCP\nmcp = FastMCP("invoice-agent")\n'
-        fw = _by_type(_extract(code), ComponentType.FRAMEWORK)[0]
-        assert fw.metadata.get("server_name") == "invoice-agent"
+        server_nodes = [d for d in _extract(code) if d.adapter_name == "mcp_server" and d.canonical_name.startswith("framework:")]
+        assert server_nodes[0].metadata.get("server_name") == "invoice-agent"
 
     def test_framework_metadata_framework_key(self) -> None:
         code = 'from fastmcp import FastMCP\nmcp = FastMCP("demo")\n'
-        fw = _by_type(_extract(code), ComponentType.FRAMEWORK)[0]
-        assert fw.metadata.get("framework") == "mcp_server"
+        server_nodes = [d for d in _extract(code) if d.adapter_name == "mcp_server" and d.canonical_name.startswith("framework:")]
+        assert server_nodes[0].metadata.get("framework") == "mcp_server"
 
     def test_server_class_alternative(self) -> None:
-        """MCPServer class name should also produce a FRAMEWORK node."""
+        """MCPServer class name should also produce a server node."""
         code = 'from mcp.server import MCPServer\nsrv = MCPServer("archive-server")\n'
-        fw = _by_type(_extract(code), ComponentType.FRAMEWORK)
-        assert fw, "Expected FRAMEWORK node for MCPServer class"
-        assert fw[0].display_name == "archive-server"
+        server_nodes = [d for d in _extract(code) if d.adapter_name == "mcp_server" and d.canonical_name.startswith("framework:")]
+        assert server_nodes, "Expected server node for MCPServer class"
+        assert server_nodes[0].display_name == "archive-server"
 
     def test_server_name_kwarg(self) -> None:
         """name= keyword arg form."""
         code = 'from fastmcp import FastMCP\nmcp = FastMCP(name="report-gen")\n'
-        fw = _by_type(_extract(code), ComponentType.FRAMEWORK)[0]
-        assert fw.display_name == "report-gen"
+        server_nodes = [d for d in _extract(code) if d.adapter_name == "mcp_server" and d.canonical_name.startswith("framework:")]
+        assert server_nodes[0].display_name == "report-gen"
 
     def test_framework_emitted_without_tools(self) -> None:
-        """FRAMEWORK node should be present even if no tools are defined."""
+        """Server node should be present even if no @tool functions are defined."""
         code = 'from fastmcp import FastMCP\nmcp = FastMCP("bare-server")\n'
         dets = _extract(code)
-        assert _by_type(dets, ComponentType.FRAMEWORK)
-        assert not _by_type(dets, ComponentType.TOOL)
+        server_nodes = [d for d in dets if d.adapter_name == "mcp_server" and d.canonical_name.startswith("framework:")]
+        assert server_nodes
+        # No @tool-decorated functions — only the server node itself
+        tool_dets = [d for d in dets if d.component_type == ComponentType.TOOL and not d.canonical_name.startswith("framework:")]
+        assert not tool_dets
+
+    def test_server_node_is_tool_type(self) -> None:
+        """MCP server node must be TOOL, not FRAMEWORK."""
+        code = 'from fastmcp import FastMCP\nmcp = FastMCP("my-server")\n'
+        dets = _extract(code)
+        assert not _by_type(dets, ComponentType.FRAMEWORK), "MCP server node must not be FRAMEWORK"
+        server_nodes = [d for d in dets if d.adapter_name == "mcp_server" and d.canonical_name.startswith("framework:")]
+        assert server_nodes[0].component_type == ComponentType.TOOL
 
     def test_empty_parse_returns_empty(self) -> None:
         assert _ADAPTER.extract("", "x.py", None) == []
@@ -169,7 +190,7 @@ class TestToolDetection:
             "def get_weather(city: str) -> str:\n"
             "    return 'sunny'\n"
         )
-        tools = _by_type(_extract(code), ComponentType.TOOL)
+        tools = _tool_nodes(_extract(code))
         assert len(tools) == 1
         assert tools[0].display_name == "get_weather"
 
@@ -184,7 +205,7 @@ class TestToolDetection:
             "@mcp.tool()\n"
             "def translate(text: str, lang: str): ...\n"
         )
-        tools = _by_type(_extract(code), ComponentType.TOOL)
+        tools = _tool_nodes(_extract(code))
         tool_names = {t.display_name for t in tools}
         assert tool_names == {"search", "summarise", "translate"}
 
@@ -195,35 +216,35 @@ class TestToolDetection:
             "@mcp.tool()\n"
             "def read_file(path: str): ...\n"
         )
-        tool = _by_type(_extract(code), ComponentType.TOOL)[0]
+        tool = _tool_nodes(_extract(code))[0]
         # canonicalize_text converts ':' → '_'
         assert tool.canonical_name == "mcp_tool_read_file"
 
     def test_tool_adapter_name(self) -> None:
         code = "from fastmcp import FastMCP\nmcp = FastMCP('s')\n@mcp.tool()\ndef ping(): ...\n"
-        tool = _by_type(_extract(code), ComponentType.TOOL)[0]
+        tool = _tool_nodes(_extract(code))[0]
         assert tool.adapter_name == "mcp_server"
 
     def test_tool_evidence_kind_is_ast_decorator(self) -> None:
         code = "from fastmcp import FastMCP\nmcp = FastMCP('s')\n@mcp.tool()\ndef ping(): ...\n"
-        tool = _by_type(_extract(code), ComponentType.TOOL)[0]
+        tool = _tool_nodes(_extract(code))[0]
         assert tool.evidence_kind == "ast_decorator"
 
     def test_tool_metadata_has_server_name(self) -> None:
         code = (
             "from fastmcp import FastMCP\nmcp = FastMCP('my-api')\n@mcp.tool()\ndef lookup(): ...\n"
         )
-        tool = _by_type(_extract(code), ComponentType.TOOL)[0]
+        tool = _tool_nodes(_extract(code))[0]
         assert tool.metadata.get("server_name") == "my-api"
 
     def test_tool_metadata_has_decorator(self) -> None:
         code = "from fastmcp import FastMCP\nmcp = FastMCP('s')\n@mcp.tool()\ndef do_thing(): ...\n"
-        tool = _by_type(_extract(code), ComponentType.TOOL)[0]
+        tool = _tool_nodes(_extract(code))[0]
         assert "tool()" in tool.metadata.get("decorator", "")
 
     def test_tool_confidence(self) -> None:
         code = "from fastmcp import FastMCP\nmcp = FastMCP('s')\n@mcp.tool()\ndef do_thing(): ...\n"
-        tool = _by_type(_extract(code), ComponentType.TOOL)[0]
+        tool = _tool_nodes(_extract(code))[0]
         assert tool.confidence == pytest.approx(0.92)
 
     def test_server_variable_named_server(self) -> None:
@@ -234,7 +255,7 @@ class TestToolDetection:
             "@server.tool()\n"
             "def list_files(path: str): ...\n"
         )
-        tools = _by_type(_extract(code), ComponentType.TOOL)
+        tools = _tool_nodes(_extract(code))
         assert tools
         assert tools[0].display_name == "list_files"
 
@@ -429,7 +450,7 @@ class TestRelationshipEdges:
         hints = _all_hints(_extract(code))
         calls = [h for h in hints if h.relationship_type == "CALLS"]
         assert calls, "Expected at least one CALLS edge"
-        assert calls[0].source_type == ComponentType.FRAMEWORK
+        assert calls[0].source_type == ComponentType.TOOL
         assert calls[0].target_type == ComponentType.TOOL
 
     def test_framework_calls_each_tool(self) -> None:
@@ -458,8 +479,8 @@ class TestRelationshipEdges:
             for h in hints
             if h.relationship_type == "USES" and h.target_type == ComponentType.AUTH
         ]
-        assert uses, "Expected FRAMEWORK -[USES]-> AUTH edge"
-        assert uses[0].source_type == ComponentType.FRAMEWORK
+        assert uses, "Expected server -[USES]-> AUTH edge"
+        assert uses[0].source_type == ComponentType.TOOL
 
     def test_framework_uses_api_endpoint(self) -> None:
         code = "from fastmcp import FastMCP\nmcp = FastMCP('srv')\nmcp.run(transport='sse')\n"
@@ -572,10 +593,10 @@ class TestNegatives:
 
     def test_empty_code_returns_empty(self) -> None:
         # parse('') produces a valid (empty) ParseResult, so the adapter
-        # still emits a bare FRAMEWORK stub with no server_name.
+        # still emits a bare server stub with no server_name.
         # The only way to get truly empty output is to pass parse_result=None.
         dets = _extract("")
-        assert not _by_type(dets, ComponentType.TOOL)
+        assert not _tool_nodes(dets)
         assert not _by_type(dets, ComponentType.AUTH)
         assert not _by_type(dets, ComponentType.API_ENDPOINT)
 
@@ -590,7 +611,7 @@ class TestNegatives:
             "def get_data(key: str):\n"
             "    return db.get(key)\n"
         )
-        assert not _by_type(_extract(code), ComponentType.TOOL)
+        assert not _tool_nodes(_extract(code))
 
     def test_no_endpoint_without_transport(self) -> None:
         """mcp.run() without transport kwarg should not produce API_ENDPOINT."""
@@ -624,13 +645,13 @@ class TestCombined:
             "    mcp.run(transport='sse', host='0.0.0.0', port=8080)\n"
         )
         dets = _extract(code)
-        fw = _by_type(dets, ComponentType.FRAMEWORK)
-        tools = _by_type(dets, ComponentType.TOOL)
+        server_nodes = [d for d in dets if d.adapter_name == "mcp_server" and d.canonical_name.startswith("framework:")]
+        tools = [d for d in _by_type(dets, ComponentType.TOOL) if not d.canonical_name.startswith("framework:")]
         eps = _by_type(dets, ComponentType.API_ENDPOINT)
         auths = _by_type(dets, ComponentType.AUTH)
 
-        assert len(fw) == 1
-        assert fw[0].display_name == "weather-service"
+        assert len(server_nodes) == 1
+        assert server_nodes[0].display_name == "weather-service"
         assert {t.display_name for t in tools} == {"get_temperature", "get_forecast"}
         assert len(eps) == 1
         assert eps[0].metadata["transport"] == "sse"
@@ -651,13 +672,13 @@ class TestCombined:
             "mcp.run(transport='streamable-http', host='0.0.0.0', port=9000)\n"
         )
         dets = _extract(code)
-        fw = _by_type(dets, ComponentType.FRAMEWORK)
-        tools = _by_type(dets, ComponentType.TOOL)
+        server_nodes = [d for d in dets if d.adapter_name == "mcp_server" and d.canonical_name.startswith("framework:")]
+        tools = [d for d in _by_type(dets, ComponentType.TOOL) if not d.canonical_name.startswith("framework:")]
         auths = _by_type(dets, ComponentType.AUTH)
         eps = _by_type(dets, ComponentType.API_ENDPOINT)
         hints = _all_hints(dets)
 
-        assert fw[0].display_name == "secure-api"
+        assert server_nodes[0].display_name == "secure-api"
         assert tools[0].display_name == "query_db"
         assert auths[0].display_name == "BearerAuthProvider"
         assert eps[0].metadata["transport"] == "streamable-http"

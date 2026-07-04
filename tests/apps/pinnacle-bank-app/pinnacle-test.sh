@@ -29,33 +29,46 @@ echo "---"
 echo "Preparing Pinnacle Bank Agent for NuGuard Testing..."
 
 uv run nuguard sbom generate \
-  --config "$SCRIPT_DIR/nuguard-sbom-anthropic.yaml" \
+  --config "$SCRIPT_DIR/nuguard-azure.yaml" \
   --format json \
   -o "$SCRIPT_DIR/pinnacle-bank.sbom.json"
 
 echo "SBOM generated successfully."
 
-#echo "Compiling Cognitive Policy controls..."
+echo "Compiling Cognitive Policy controls..."
 
-#uv run nuguard policy compile --config "$SCRIPT_DIR/nuguard.yaml"
+uv run nuguard policy compile --config "$SCRIPT_DIR/nuguard-azure.yaml"
 
-#echo "Cognitive Policy Check..."
+echo "Cognitive Policy Check..."
 
 # policy check exits 2 when gaps are found — expected in testing; treat as non-fatal
-#uv run nuguard policy check \
-#  --config "$SCRIPT_DIR/nuguard.yaml" \
-#  --format markdown \
-#  -o "$SCRIPT_DIR/reports/pinnacle-bank-policy-check.md" || true
+uv run nuguard policy check \
+  --config "$SCRIPT_DIR/nuguard-azure.yaml" \
+  --format markdown \
+  -o "$SCRIPT_DIR/reports/pinnacle-bank-policy-check.md" || true
 
-#echo "Done."
+echo "Done."
 
 echo "---"
+
+echo "Security Analysis Check..."
+
+# analyze exits 2 when findings are present — expected in testing; treat as non-fatal
+uv run nuguard analyze \
+  --config "$SCRIPT_DIR/nuguard-azure.yaml" \
+  --format markdown \
+  -o "$SCRIPT_DIR/reports/pinnacle-bank-sec-analysis.md" || true
+
+echo "Done."
+
+echo "---"
+
 echo "Running behavior analysis (static + dynamic)..."
 
 # behavior exits 2 when findings are present — expected in testing; treat as non-fatal.
 # --mode static+dynamic: runs SBOM×Policy alignment checks then live intent-aware probing.
 uv run nuguard behavior \
-  --config "$SCRIPT_DIR/nuguard-sbom-anthropic.yaml" \
+  --config "$SCRIPT_DIR/nuguard-azure.yaml" \
   --mode static+dynamic \
   --format markdown \
   -o "$SCRIPT_DIR/reports/pinnacle-bank-behavior.md" || true
@@ -70,7 +83,7 @@ echo "Running redteam tests ..."
 
 # redteam tests exit 2 when findings are present — expected in testing; treat as non-fatal.
 uv run nuguard redteam \
-  --config "$SCRIPT_DIR/nuguard-sbom-anthropic.yaml" \
+  --config "$SCRIPT_DIR/nuguard-azure.yaml" \
   --format markdown \
   --output "$SCRIPT_DIR/reports/pinnacle-bank-redteam.md" || true
 

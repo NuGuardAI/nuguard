@@ -1,6 +1,6 @@
 {
-  "name": "nuguard",
-  "version": "0.4.8",
+  "name": "@nuguardai/nuguard",
+  "version": "0.8.3",
   "description": "AI Application Security — SBOM generation, static analysis, behavioral validation, and adversarial red-team testing for AI agents and LLM-powered applications.",
   "keywords": [
     "mcp",
@@ -24,9 +24,14 @@
     "nuguard-mcp": "bin/nuguard-mcp.js"
   },
   "files": [
-    "bin/"
+    "bin/",
+    "README.md"
   ],
   "engines": {
     "node": ">=18"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
   }
 }

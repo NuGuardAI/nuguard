@@ -1,4 +1,4 @@
-"""Basic import and smoke tests for xelo toolbox evaluation utilities."""
+"""Basic import and smoke tests for nuguard toolbox evaluation utilities."""
 
 from __future__ import annotations
 

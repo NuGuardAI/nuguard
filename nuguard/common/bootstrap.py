@@ -3,9 +3,10 @@ before any scenario runs. Raises TargetUnavailableError for hard network
 failures; returns a TargetHealthReport for auth failures so callers can
 decide whether to abort.
 """
+
 from __future__ import annotations
 
-import logging
+import asyncio
 import time
 import uuid
 
@@ -13,13 +14,24 @@ import httpx
 
 from nuguard.common.auth import AuthConfig, AuthSession
 from nuguard.common.errors import TargetUnavailableError
+from nuguard.common.logging import get_logger
 from nuguard.models.health_report import CredentialCheckResult, TargetHealthReport
 from nuguard.redteam.target.canary import CanaryConfig
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
-# Timeout for the single bootstrap health-check request (intentionally short)
-BOOTSTRAP_TIMEOUT = 15.0
+# Timeout for a single bootstrap health-check request.
+# 30 s accommodates serverless targets (Azure Container Apps, AWS Lambda) whose
+# first request is held while the container cold-starts.
+BOOTSTRAP_TIMEOUT = 30.0
+
+# Retries for transient target_unavailable results (connection refused, timeout,
+# 502/503/504).  Cold-start containers can fail the first 1-2 probes; retrying
+# with backoff avoids a spurious "target is unreachable" hard abort.
+BOOTSTRAP_STARTUP_RETRIES = 3
+
+# Backoff base (seconds).  Retry delays: 2 s, 4 s, 8 s.
+_BACKOFF_BASE = 2.0
 
 
 class AuthBootstrapper:
@@ -46,6 +58,8 @@ class AuthBootstrapper:
         canary_config: CanaryConfig | None = None,
         run_id: str | None = None,
         timeout: float | None = None,
+        probe_payload_extras: dict[str, object] | None = None,
+        startup_retries: int | None = None,
     ) -> None:
         self._target_url = target_url.rstrip("/")
         self._endpoint = endpoint
@@ -53,6 +67,8 @@ class AuthBootstrapper:
         self._canary = canary_config
         self._run_id = run_id or str(uuid.uuid4())
         self._timeout = timeout if timeout is not None else BOOTSTRAP_TIMEOUT
+        self._startup_retries = startup_retries if startup_retries is not None else BOOTSTRAP_STARTUP_RETRIES
+        self._probe_payload_extras: dict[str, object] = probe_payload_extras or {}
         # Initialised during run() — exposed so behavior/redteam can share it
         self._session: AuthSession | None = None
 
@@ -66,7 +82,10 @@ class AuthBootstrapper:
 
         Available after run() completes.  Both behavior and redteam runners
         call bootstrapper.run() before sending any requests, then use
-        bootstrapper.session.headers() on every outbound call.
+        bootstrapper.session.headers() on every outbound call. If the
+        login_flow endpoint proved broken and a fallback probe succeeded,
+        run() has already swapped the session's auth config so headers()
+        returns the working fallback credentials.
 
         Raises RuntimeError if accessed before run() is called.
         """
@@ -96,13 +115,83 @@ class AuthBootstrapper:
             run_id=self._run_id,
         )
 
-        # Always check the default credential first, using the live session
-        # headers (which carry the acquired JWT for login_flow auth)
+        # If login_flow auth was configured but token acquisition failed, the SBOM's
+        # declared auth endpoint isn't usable. If this config came from a "basic"
+        # username/password that we upgraded to login_flow, fall back to sending
+        # those same credentials as HTTP Basic auth straight to the chat endpoint
+        # rather than failing outright. If that also fails, report the real login
+        # failure reason instead of a generic message.
+        login_flow_failed = (
+            self._default_auth.type == "login_flow"
+            and not self._session.login_succeeded
+        )
+        fallback_auth_config: AuthConfig | None = None
+        if login_flow_failed:
+            if self._default_auth.username and self._default_auth.password:
+                fallback_auth_config = AuthConfig(
+                    type="basic",
+                    username=self._default_auth.username,
+                    password=self._default_auth.password,
+                )
+            else:
+                fallback_auth_config = AuthConfig(type="none")
+            logger.warning(
+                "bootstrap: login_flow failed (%s) — falling back to %s directly to %s",
+                self._session.login_error,
+                (
+                    "the original username/password (HTTP Basic)"
+                    if fallback_auth_config.type == "basic"
+                    else "no auth"
+                ),
+                self.full_url,
+            )
+
+        # Always check the default credential. Use the fallback headers when the
+        # login flow failed; otherwise the live session headers (the acquired JWT
+        # for login_flow auth, or the static headers for other auth types).
+        # auth_type reflects what was actually sent on the wire for this probe —
+        # the fallback type (basic/none), not the originally-configured login_flow.
+        probe_auth_type = (
+            fallback_auth_config.type
+            if fallback_auth_config is not None
+            else self._default_auth.type
+        )
         result = await self._check_one(
             identity="default",
-            headers=self._session.headers(),
-            auth_type=self._default_auth.type,
+            headers=(
+                fallback_auth_config.to_headers()
+                if fallback_auth_config is not None
+                else self._session.headers()
+            ),
+            auth_type=probe_auth_type,
         )
+
+        if login_flow_failed:
+            assert fallback_auth_config is not None
+            if result.status == "ok":
+                logger.info(
+                    "bootstrap: chat endpoint accepted %s — continuing with that, "
+                    "won't retry the login endpoint again this session",
+                    (
+                        "the original username/password directly"
+                        if fallback_auth_config.type == "basic"
+                        else "the request without a token"
+                    ),
+                )
+                self._session.replace_config(fallback_auth_config)
+            else:
+                result = CredentialCheckResult(
+                    identity="default",
+                    auth_type=probe_auth_type,
+                    endpoint=self.full_url,
+                    status=result.status,
+                    http_status_code=result.http_status_code,
+                    response_time_ms=result.response_time_ms,
+                    error_detail=(
+                        f"login_flow token acquisition failed ({self._session.login_error}); "
+                        f"fallback probe to chat endpoint also failed: {result.error_detail}"
+                    ),
+                )
         report.checks.append(result)
 
         # Raise immediately if the default credential cannot reach the target at all
@@ -145,6 +234,36 @@ class AuthBootstrapper:
         headers: dict[str, str],
         auth_type: str,
     ) -> CredentialCheckResult:
+        """Probe the endpoint with retry/backoff for transient target_unavailable results.
+
+        Retries up to ``self._startup_retries`` times when the target returns a
+        transient failure (connection error, timeout, 502/503/504).  Auth failures
+        (401/403) are never retried — they indicate a credential problem, not a
+        cold-start transient.  Backoff schedule: 2 s, 4 s, 8 s, …
+        """
+        result = await self._probe_once(identity, headers, auth_type)
+        for attempt in range(self._startup_retries):
+            if result.status != "target_unavailable":
+                break
+            wait = _BACKOFF_BASE * (2 ** attempt)  # 2 s, 4 s, 8 s
+            logger.info(
+                "bootstrap: target_unavailable (attempt %d/%d) — "
+                "cold-start retry in %.0f s: %s",
+                attempt + 1,
+                self._startup_retries + 1,
+                wait,
+                result.error_detail,
+            )
+            await asyncio.sleep(wait)
+            result = await self._probe_once(identity, headers, auth_type)
+        return result
+
+    async def _probe_once(
+        self,
+        identity: str,
+        headers: dict[str, str],
+        auth_type: str,
+    ) -> CredentialCheckResult:
         """Send a single health-check POST to the endpoint and record the result.
 
         Args:
@@ -158,8 +277,10 @@ class AuthBootstrapper:
             **headers,
         }
         # Minimal well-formed payload — enough to get an auth decision from the server.
-        # Does NOT need to produce a meaningful AI response; just needs a 2xx vs 4xx.
-        probe_body = {"message": "ping"}
+        # Does NOT need to produce a meaningful AI response; just needs a 2xx vs 4xx/5xx.
+        # Extra static fields (chat_payload_extras) are merged in so apps that crash on
+        # missing required fields (e.g. vehicleState) don't trip the target_unavailable check.
+        probe_body = {**self._probe_payload_extras, "message": "ping"}
         start = time.monotonic()
 
         try:
@@ -182,6 +303,7 @@ class AuthBootstrapper:
                     status="ok",
                     http_status_code=resp.status_code,
                     response_time_ms=elapsed_ms,
+                    response_text=resp.text[:500] if resp.text else "",
                 )
 
             if resp.status_code in (401, 403):
@@ -246,7 +368,26 @@ class AuthBootstrapper:
                     response_time_ms=elapsed_ms,
                 )
 
-            # 5xx → server is returning errors; treat as target_unavailable
+            if resp.status_code == 500:
+                # HTTP 500 means the server ran but crashed on our minimal probe body
+                # (e.g. a missing required field triggers a JS/Python TypeError).
+                # The server IS reachable — treat it the same as 422: payload mismatch,
+                # not an infrastructure failure.  Actual scenario payloads use the full
+                # chat_payload_extras and will produce meaningful responses.
+                logger.debug(
+                    "bootstrap ok (500 — likely probe payload mismatch): identity=%s",
+                    identity,
+                )
+                return CredentialCheckResult(
+                    identity=identity,
+                    auth_type=auth_type,
+                    endpoint=self.full_url,
+                    status="ok",
+                    http_status_code=resp.status_code,
+                    response_time_ms=elapsed_ms,
+                )
+
+            # 502/503/504/5xx → gateway or server is down; treat as target_unavailable
             detail = f"HTTP {resp.status_code}"
             logger.warning(
                 "bootstrap target_unavailable: identity=%s %s", identity, detail

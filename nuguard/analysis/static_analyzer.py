@@ -26,15 +26,15 @@ objects before being returned.  Severity values are normalised to the
 
 from __future__ import annotations
 
-import logging
 import uuid
 from pathlib import Path
 from typing import Any
 
+from nuguard.common.logging import get_logger
 from nuguard.models.finding import Finding, Severity
 from nuguard.sbom.models import AiSbomDocument
 
-_log = logging.getLogger("analysis.static_analyzer")
+_log = get_logger("analysis.static_analyzer")
 
 # Severity normalisation map: raw string → Severity enum
 _SEV_MAP: dict[str, Severity] = {
@@ -137,12 +137,16 @@ class StaticAnalyzer:
         enable_checkov: bool = True,
         enable_trivy: bool = True,
         enable_semgrep: bool = True,
+        enable_supply_chain: bool = True,
         source_path: Path | None = None,
         atlas_config: dict[str, Any] | None = None,
         min_severity: Severity = Severity.LOW,
         verbose: bool = False,
         grype_timeout: float = 180.0,
         grype_retries: int = 3,
+        supply_chain_profile: str = "standard",
+        supply_chain_verify_artifacts: str = "off",
+        supply_chain_threat_intel_feeds: list[str] | None = None,
     ) -> None:
         self.enable_atlas   = enable_atlas
         self.enable_osv     = enable_osv
@@ -150,16 +154,25 @@ class StaticAnalyzer:
         self.enable_checkov = enable_checkov
         self.enable_trivy   = enable_trivy
         self.enable_semgrep = enable_semgrep
+        self.enable_supply_chain = enable_supply_chain
         self.source_path    = source_path
         self.atlas_config   = atlas_config or {}
         self.min_severity   = min_severity
         self.verbose        = verbose
         self.grype_timeout  = grype_timeout
         self.grype_retries  = grype_retries
+        self.supply_chain_profile = supply_chain_profile
+        self.supply_chain_verify_artifacts = supply_chain_verify_artifacts
+        self.supply_chain_threat_intel_feeds = supply_chain_threat_intel_feeds
         # Populated by analyze(); maps tool name → status string and optional detail
         self.tool_status: dict[str, dict[str, str]] = {}
         # Populated when verbose=True; per-rule pass/fail audit for NGA rules
         self.nga_audit: list[dict[str, Any]] = []
+        # Per-rule pass/fail audit for supply-chain rules (always populated)
+        self.sc_audit: list[dict[str, Any]] = []
+        # Accumulated LLM token usage across all plugins (ATLAS LLM enrichment)
+        from nuguard.models.token_usage import TokenUsage  # noqa: PLC0415
+        self.token_usage: "TokenUsage" = TokenUsage()
 
     def analyze(self, doc: AiSbomDocument) -> list[Finding]:
         """Run all detectors and return a list of ``Finding`` objects.
@@ -181,11 +194,19 @@ class StaticAnalyzer:
         m1_config: dict[str, Any] = {}
         if self.source_path:
             m1_config["source_path"] = str(self.source_path)
+        m1_config["supply_chain_profile"] = self.supply_chain_profile
+        m1_config["supply_chain_verify_artifacts"] = self.supply_chain_verify_artifacts
+        m1_config["supply_chain_threat_intel_feeds"] = self.supply_chain_threat_intel_feeds
+
+        # Build the analysis graph once; injected into NGA rules and ATLAS native
+        # checks so they can do indexed traversal instead of O(n²) flat scans.
+        from nuguard.analysis.graph import AnalysisGraph  # noqa: PLC0415
+        sbom_graph = AnalysisGraph(sbom_dict)
 
         all_findings: list[Finding] = []
 
         # Step 1: NGA structural rules (annotated with ATLAS techniques inline)
-        nga = self._run_nga(sbom_dict)
+        nga = self._run_nga(sbom_dict, sbom_graph=sbom_graph)
         all_findings.extend(nga)
         self.tool_status["nga-rules"] = {
             "status": "ok", "findings": str(len(nga)),
@@ -247,11 +268,20 @@ class StaticAnalyzer:
         # skip_nga=True so the annotator does not re-run NGA rules; Step 1
         # already annotated NGA findings with ATLAS techniques directly.
         if self.enable_atlas:
-            atlas = self._run_atlas_native(sbom_dict)
+            atlas = self._run_atlas_native(sbom_dict, sbom_graph=sbom_graph)
             all_findings.extend(atlas)
             self.tool_status["atlas"] = {"status": "ok", "findings": str(len(atlas))}
         else:
             self.tool_status["atlas"] = {"status": "disabled", "findings": "0"}
+
+        # Step 8: Supply-chain threat scan
+        if self.enable_supply_chain:
+            sc = self._run_supply_chain(sbom_dict, m1_config)
+            all_findings.extend(sc)
+            if self.tool_status.get("supply-chain", {}).get("status") not in ("skipped", "error"):
+                self.tool_status["supply-chain"] = {"status": "ok", "findings": str(len(sc))}
+        else:
+            self.tool_status["supply-chain"] = {"status": "disabled", "findings": "0"}
 
         # Filter by minimum severity
         sev_order = {Severity.CRITICAL: 0, Severity.HIGH: 1, Severity.MEDIUM: 2,
@@ -266,7 +296,11 @@ class StaticAnalyzer:
     # Internal runner helpers
     # ------------------------------------------------------------------
 
-    def _run_nga(self, sbom_dict: dict[str, Any]) -> list[Finding]:
+    def _run_nga(
+        self,
+        sbom_dict: dict[str, Any],
+        sbom_graph: "Any | None" = None,
+    ) -> list[Finding]:
         """Run NgaRulesPlugin (NGA-001…NGA-018) and annotate with ATLAS techniques."""
         try:
             from nuguard.analysis._atlas_data import NGA_TO_ATLAS  # noqa: PLC0415
@@ -275,7 +309,10 @@ class StaticAnalyzer:
             plugin = NgaRulesPlugin()
             # provider="nga-rules" skips the OSV/Grype phases inside the plugin;
             # those are run separately by _run_osv() and _run_grype().
-            result = plugin.run(sbom_dict, {"provider": "nga-rules", "verbose": self.verbose})
+            nga_config: dict[str, Any] = {"provider": "nga-rules", "verbose": self.verbose}
+            if sbom_graph is not None:
+                nga_config["sbom_graph"] = sbom_graph
+            result = plugin.run(sbom_dict, nga_config)
 
             findings: list[Finding] = []
             for raw in list(result.findings or []):
@@ -400,7 +437,50 @@ class StaticAnalyzer:
             }
             return []
 
-    def _run_atlas_native(self, sbom_dict: dict[str, Any]) -> list[Finding]:
+    def _run_supply_chain(
+        self, sbom_dict: dict[str, Any], config: dict[str, Any] | None = None
+    ) -> list[Finding]:
+        """Run SupplyChainPlugin (offline scanner + optional artifact verification)."""
+        cfg = config or {}
+        try:
+            from nuguard.analysis.plugins.supply_chain import SupplyChainPlugin  # noqa: PLC0415
+
+            plugin = SupplyChainPlugin()
+            result = plugin.run(sbom_dict, cfg)
+            if result.status == "skipped":
+                _log.info("supply-chain: skipped (%s)", result.message)
+                self.tool_status["supply-chain"] = {
+                    "status": "skipped",
+                    "findings": "0",
+                    "reason": result.message or "skipped",
+                }
+                return []
+            if result.status == "error":
+                self.tool_status["supply-chain"] = {
+                    "status": "error",
+                    "findings": "0",
+                    "reason": result.message or "error",
+                }
+                return []
+            raw_list = list(result.findings or [])
+            findings = [_raw_to_finding(r, "supply-chain") for r in raw_list]
+            self.sc_audit = list(result.details.get("sc_audit") or [])
+            _log.info("supply-chain scan: %d finding(s)", len(findings))
+            return findings
+        except Exception as exc:
+            _log.warning("supply-chain scan failed: %s", exc)
+            self.tool_status["supply-chain"] = {
+                "status": "error",
+                "findings": "0",
+                "reason": str(exc),
+            }
+            return []
+
+    def _run_atlas_native(
+        self,
+        sbom_dict: dict[str, Any],
+        sbom_graph: "Any | None" = None,
+    ) -> list[Finding]:
         """Run only the MITRE ATLAS native graph checks (NC-001..004).
 
         ``skip_nga=True`` prevents the annotator from re-running NGA rules;
@@ -413,10 +493,13 @@ class StaticAnalyzer:
             )
 
             plugin = AtlasAnnotatorPlugin()
-            config = {**self.atlas_config, "skip_nga": True}
+            config: dict[str, Any] = {**self.atlas_config, "skip_nga": True}
+            if sbom_graph is not None:
+                config["sbom_graph"] = sbom_graph
             result = plugin.run(sbom_dict, config)
             raw_list: list[dict[str, Any]] = list(result.details.get("findings") or [])
             findings = [_raw_to_finding(r, "atlas") for r in raw_list]
+            self.token_usage = self.token_usage + result.token_usage
             _log.info("ATLAS native checks: %d finding(s)", len(findings))
             return findings
         except Exception as exc:

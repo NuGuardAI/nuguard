@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-import logging
+from collections import OrderedDict
 from pathlib import Path
 from typing import Optional
 
@@ -11,14 +11,20 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from nuguard.cli.common import output_path_for_format, parse_output_formats
 from nuguard.cli.report_meta import ReportMeta
+from nuguard.common.logging import get_logger
 from nuguard.models.validate import ValidateRunResult
 
 validate_app = typer.Typer(name="validate", help="Validate AI application behaviour.")
 
 _console = Console()
 _err_console = Console(stderr=True)
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
+
+_MAX_TRACE_TURNS_PER_SCENARIO = 4
+_MAX_TRACE_SNIPPET_CHARS = 800
+_MAX_TRACE_EVIDENCE_LINES = 4
 
 
 @validate_app.callback(invoke_without_command=True)
@@ -39,8 +45,14 @@ def validate_command(
     output: Optional[Path] = typer.Option(
         None, "--output", "-o", help="Write findings JSON to this path"
     ),
-    format: str = typer.Option(
-        "text", "--format", "-f", help="Output format: text | json | markdown"
+    format: list[str] | None = typer.Option(
+        None,
+        "--format",
+        "-f",
+        help=(
+            "Output format(s): text | json | markdown. "
+            "Repeat --format or pass comma-separated values."
+        ),
     ),
     fail_on: str = typer.Option(
         "high",
@@ -49,6 +61,12 @@ def validate_command(
     ),
     baseline: Optional[Path] = typer.Option(
         None, "--baseline", help="Path to a previous CapabilityMap JSON for regression detection"
+    ),
+    verbose: Optional[bool] = typer.Option(
+        None,
+        "--verbose/--no-verbose",
+        "-v/-V",
+        help="Print detailed turn traces. Overrides validate.verbose in nuguard.yaml.",
     ),
 ) -> None:
     """Validate AI application happy-path behaviour and cognitive policy compliance.
@@ -64,15 +82,32 @@ def validate_command(
     """
     if ctx.invoked_subcommand is not None:
         return
+    try:
+        formats = parse_output_formats(
+            format,
+            default_format="text",
+            allowed_formats={"text", "json", "markdown"},
+        )
+    except ValueError as exc:
+        _err_console.print(f"[red]Error:[/red] {exc}")
+        raise typer.Exit(code=2)
+
+    if len(formats) > 1 and output is None:
+        _err_console.print(
+            "[red]Error:[/red] --output is required when multiple --format values are requested"
+        )
+        raise typer.Exit(code=2)
+
     _do_validate(
         config_path=config,
         target_override=target,
         policy_path=policy,
         canary_path=canary,
         output_path=output,
-        fmt=format,
+        formats=formats,
         fail_on=fail_on,
         baseline_path=baseline,
+        verbose=verbose,
     )
 
 
@@ -82,9 +117,10 @@ def _do_validate(
     policy_path: Optional[Path],
     canary_path: Optional[Path],
     output_path: Optional[Path],
-    fmt: str,
+    formats: list[str],
     fail_on: str,
     baseline_path: Optional[Path],
+    verbose: Optional[bool],
 ) -> None:
     from nuguard.config import load_config  # noqa: PLC0415
 
@@ -94,6 +130,8 @@ def _do_validate(
     # Apply overrides
     if target_override:
         vc = vc.model_copy(update={"target": target_override})
+
+    effective_verbose = verbose if verbose is not None else vc.verbose
 
     if not vc.target:
         _err_console.print(
@@ -139,33 +177,44 @@ def _do_validate(
     # ── Output ────────────────────────────────────────────────────────────────
     meta = ReportMeta(
         llm_models=[cfg.litellm_model] if resolved_policy_path else [],
-        verbose=vc.verbose,
+        verbose=effective_verbose,
         target_url=vc.target,
-        target_endpoint=vc.target_endpoint or "/chat",
+        target_endpoint=result.effective_endpoint or vc.target_endpoint or "/chat",
+        effective_endpoint=result.effective_endpoint or vc.target_endpoint or "/chat",
+        target_endpoint_source=result.target_endpoint_source or ("config" if vc.target_endpoint else "default"),
     )
-    if fmt == "json":
-        payload = {"_meta": meta.to_dict(), **result.model_dump()}
-        out = json.dumps(payload, indent=2, default=str)
-        if output_path:
-            output_path.write_text(out, encoding="utf-8")
-            _console.print(f"[green]Results written to[/green] {output_path}")
-        else:
-            _console.print(out)
-    elif fmt == "markdown":
-        md = _validate_result_to_markdown(result, meta)
-        if output_path:
-            output_path.write_text(md, encoding="utf-8")
-            _console.print(f"[green]Results written to[/green] {output_path}")
-        else:
-            _console.print(md)
-    else:
-        _print_validate_result(result, meta)
-        if output_path:
+    extension_map = {
+        "text": ".txt",
+        "json": ".json",
+        "markdown": ".md",
+    }
+
+    def _render(fmt: str) -> str:
+        if fmt == "json":
             payload = {"_meta": meta.to_dict(), **result.model_dump()}
-            output_path.write_text(
-                json.dumps(payload, indent=2, default=str), encoding="utf-8"
+            if meta.verbose:
+                payload["diagnostics"] = _build_validate_diagnostics(result)
+            return json.dumps(payload, indent=2, default=str)
+        if fmt == "markdown":
+            return _validate_result_to_markdown(result, meta)
+        return _validate_result_to_text(result, meta)
+
+    if output_path:
+        for fmt in formats:
+            out_path = output_path_for_format(
+                output_path,
+                fmt=fmt,
+                all_formats=formats,
+                extension_map=extension_map,
             )
-            _console.print(f"\n[green]Results written to[/green] {output_path}")
+            out_path.write_text(_render(fmt), encoding="utf-8")
+            _console.print(f"[green]Results written to[/green] {out_path}")
+    else:
+        fmt = formats[0]
+        if fmt == "text":
+            _print_validate_result(result, meta)
+        else:
+            _console.print(_render(fmt))
 
     # ── Exit code ─────────────────────────────────────────────────────────────
     from nuguard.models.finding import Severity  # noqa: PLC0415
@@ -408,27 +457,22 @@ def _validate_result_to_markdown(result: "ValidateRunResult", meta: ReportMeta |
     else:
         lines += ["## Findings", "", "_No findings — all validate scenarios passed._", ""]
 
-    # Verbose: scenario traces grouped by scenario
+    # Verbose: bounded diagnostics appendix
     if meta.verbose and result.policy_records:
-        lines += ["## Scenario Traces", ""]
-        # Group records by (scenario_name, scenario_type) preserving insertion order
-        from collections import OrderedDict  # noqa: PLC0415
-        groups: dict[tuple[str, str], list] = OrderedDict()
-        for rec in result.policy_records:
-            key = (rec.scenario_name or "unknown", rec.scenario_type or "")
-            groups.setdefault(key, []).append(rec)
+        lines += ["## Diagnostics", "", "### Scenario Traces", ""]
+        groups = _group_policy_records(result.policy_records)
 
         for (sname, stype), records in groups.items():
-            header = f"### Scenario: `{sname}`"
+            header = f"#### Scenario: `{sname}`"
             if stype:
                 header += f" ({stype})"
             lines += [header, ""]
-            for rec in records:
-                lines += [f"#### Turn {rec.turn}", ""]
+            for rec in records[:_MAX_TRACE_TURNS_PER_SCENARIO]:
+                lines += [f"##### Turn {rec.turn}", ""]
                 lines += ["**Request:**", ""]
-                lines += [f"```\n{rec.prompt}\n```", ""]
+                lines += [f"```\n{_truncate_diag_text(rec.prompt)}\n```", ""]
                 lines += ["**Response:**", ""]
-                lines += [f"```\n{rec.response or '(empty)'}\n```", ""]
+                lines += [f"```\n{_truncate_diag_text(rec.response or '(empty)')}\n```", ""]
                 if rec.tool_calls:
                     tool_names = ", ".join(
                         tc.get("name") or tc.get("function", {}).get("name", "?")
@@ -437,9 +481,102 @@ def _validate_result_to_markdown(result: "ValidateRunResult", meta: ReportMeta |
                     lines += [f"**Tool calls:** {tool_names}", ""]
                 if rec.violations:
                     lines += ["**Policy violations:**", ""]
-                    for v in rec.violations:
-                        lines += [f"- [{v.get('severity','?').upper()}] {v.get('evidence','')}", ""]
+                    for v in rec.violations[:_MAX_TRACE_EVIDENCE_LINES]:
+                        lines += [
+                            f"- [{v.get('severity','?').upper()}] "
+                            f"{_truncate_diag_text(str(v.get('evidence', '')))}"
+                        ]
+                    lines += [""]
                 if rec.canary_hits:
-                    lines += [f"**Canary hits:** {', '.join(rec.canary_hits)}", ""]
+                    lines += [
+                        f"**Canary hits:** {', '.join(rec.canary_hits[:_MAX_TRACE_EVIDENCE_LINES])}",
+                        "",
+                    ]
+            if len(records) > _MAX_TRACE_TURNS_PER_SCENARIO:
+                lines += [
+                    f"_... [truncated] {len(records) - _MAX_TRACE_TURNS_PER_SCENARIO} additional turn(s)_",
+                    "",
+                ]
 
     return "\n".join(lines)
+
+
+def _validate_result_to_text(result: "ValidateRunResult", meta: ReportMeta | None = None) -> str:
+    """Render a ValidateRunResult as plain text."""
+    if meta is None:
+        meta = ReportMeta()
+
+    lines = [
+        "Validate Results",
+        meta.to_text_line(),
+        f"Run ID: {result.run_id}",
+        f"Scenarios: {result.scenarios_executed}",
+        f"Outcome: {result.scan_outcome}",
+        "",
+    ]
+
+    if result.findings:
+        lines.append("Findings:")
+        for f in result.findings:
+            sev = str(f.get("severity", "info")).upper()
+            title = str(f.get("title", "Untitled finding"))
+            lines.append(f"- [{sev}] {title}")
+    else:
+        lines.append("No findings.")
+
+    return "\n".join(lines)
+
+
+def _truncate_diag_text(value: str) -> str:
+    text = value or ""
+    if len(text) <= _MAX_TRACE_SNIPPET_CHARS:
+        return text
+    return text[:_MAX_TRACE_SNIPPET_CHARS] + "... [truncated]"
+
+
+def _group_policy_records(policy_records: list) -> "OrderedDict[tuple[str, str], list]":
+    groups: "OrderedDict[tuple[str, str], list]" = OrderedDict()
+    for rec in policy_records:
+        key = (rec.scenario_name or "unknown", rec.scenario_type or "")
+        groups.setdefault(key, []).append(rec)
+    return groups
+
+
+def _build_validate_diagnostics(result: "ValidateRunResult") -> dict:
+    groups = _group_policy_records(result.policy_records)
+    scenario_traces: list[dict] = []
+    for (sname, stype), records in groups.items():
+        turns = []
+        for rec in records[:_MAX_TRACE_TURNS_PER_SCENARIO]:
+            turns.append(
+                {
+                    "turn": rec.turn,
+                    "request": _truncate_diag_text(rec.prompt),
+                    "response": _truncate_diag_text(rec.response or ""),
+                    "tool_calls": rec.tool_calls,
+                    "violations": [
+                        {
+                            "severity": v.get("severity", "?"),
+                            "evidence": _truncate_diag_text(str(v.get("evidence", ""))),
+                        }
+                        for v in rec.violations[:_MAX_TRACE_EVIDENCE_LINES]
+                    ],
+                    "canary_hits": rec.canary_hits[:_MAX_TRACE_EVIDENCE_LINES],
+                }
+            )
+        scenario_traces.append(
+            {
+                "scenario_name": sname,
+                "scenario_type": stype,
+                "turns": turns,
+                "turns_truncated": max(0, len(records) - _MAX_TRACE_TURNS_PER_SCENARIO),
+            }
+        )
+    return {
+        "execution_notes": {
+            "turns_per_scenario_cap": _MAX_TRACE_TURNS_PER_SCENARIO,
+            "snippet_char_cap": _MAX_TRACE_SNIPPET_CHARS,
+            "evidence_lines_cap": _MAX_TRACE_EVIDENCE_LINES,
+        },
+        "scenario_traces": scenario_traces,
+    }

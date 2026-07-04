@@ -162,6 +162,12 @@ class LangGraphAdapter(FrameworkAdapter):
             )
         detected: list[ComponentDetection] = [framework_det]
 
+        # Track whether langgraph-specific patterns are found during scanning.
+        # Used at the end to emit framework:langgraph even when no direct
+        # `import langgraph` is present (e.g. code uses add_node / StateGraph
+        # but the orchestrator only imports langchain_* packages).
+        _langgraph_pattern_count = 0
+
         # Track node canonical names for relationship building
         agent_canonicals: list[str] = []
         model_canonicals: list[str] = []
@@ -265,6 +271,12 @@ class LangGraphAdapter(FrameworkAdapter):
             detected.append(det)
             agent_canonicals.append(canon)
             node_name_map[node_name] = canon
+            _langgraph_pattern_count += 1
+
+        # 2b. StateGraph / MessageGraph instantiation → confirms langgraph usage
+        for inst in parse_result.instantiations:
+            if inst.class_name in _STATEGRAPH_CLASSES:
+                _langgraph_pattern_count += 1
 
         # 3. .add_edge() / .add_conditional_edges() → RelationshipHints
         for call in parse_result.function_calls:
@@ -285,6 +297,9 @@ class LangGraphAdapter(FrameworkAdapter):
                                 relationship_type="CALLS",
                             )
                         )
+                    _langgraph_pattern_count += 1
+            elif call.function_name == "add_conditional_edges":
+                _langgraph_pattern_count += 1
 
         # 4. ToolNode instantiations → TOOL
         # Prefer emitting the concrete tools passed into ToolNode over a generic wrapper.
@@ -351,6 +366,7 @@ class LangGraphAdapter(FrameworkAdapter):
                 )
                 detected.append(det)
                 tool_canonicals.append(canon)
+                _langgraph_pattern_count += 1
 
         # 4b. Tool-class constructors imported from *.tools.* modules → TOOL
         # e.g. `from langchain_community.tools import TavilySearchResults`
@@ -501,6 +517,7 @@ class LangGraphAdapter(FrameworkAdapter):
                     relationships=factory_rels,
                 )
             )
+            _langgraph_pattern_count += 1
 
         # 6b. Compiled graph → AGENT  (builder.compile(...) → graph_var)
         # Blocklist: standard-library / third-party objects that also have a
@@ -762,6 +779,30 @@ class LangGraphAdapter(FrameworkAdapter):
                     file_path=file_path,
                     line=lit.line,
                     snippet=lit.value[:80] + ("..." if len(lit.value) > 80 else ""),
+                    evidence_kind="ast_call",
+                )
+            )
+
+        # If langgraph-specific patterns were found (add_node, StateGraph,
+        # ToolNode, create_react_agent, add_edge) but no direct `import langgraph`
+        # was seen, also emit a framework:langgraph node at AST-backed confidence.
+        # This handles orchestrators that import only from langchain_* packages
+        # but rely on langgraph for graph wiring.
+        if _langgraph_pattern_count > 0 and not has_langgraph:
+            from ...types import ComponentType as _CT2
+
+            detected.append(
+                ComponentDetection(
+                    component_type=_CT2.FRAMEWORK,
+                    canonical_name="langgraph",
+                    display_name="langgraph",
+                    adapter_name=self.name,
+                    priority=self.priority,
+                    confidence=0.88,
+                    metadata={"framework": "langgraph"},
+                    file_path=file_path,
+                    line=0,
+                    snippet=f"langgraph patterns detected ({_langgraph_pattern_count})",
                     evidence_kind="ast_call",
                 )
             )

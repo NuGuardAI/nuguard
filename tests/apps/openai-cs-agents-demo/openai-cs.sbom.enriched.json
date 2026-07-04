@@ -1,11 +1,11 @@
 {
-  "schema_version": "1.4.0",
-  "generated_at": "2026-05-18T02:43:34Z",
+  "schema_version": "1.5.0",
+  "generated_at": "2026-07-03T06:28:32Z",
   "generator": "nuguard",
   "target": "/workspaces/nuguard/tests/apps/openai-cs-agents-demo",
   "nodes": [
     {
-      "id": "7c75af04-faba-4cee-a74d-b39aa0f27a0c",
+      "id": "604406e6-16f3-4029-97a5-8a215cf1a881",
       "name": "Cancellation Agent",
       "component_type": "AGENT",
       "confidence": 0.8832000000000001,
@@ -16,6 +16,11 @@
         "system_prompt_excerpt": "{\u2026}\nYou are a Cancellation Agent. Use the following routine to support the customer:\n1. The customer's confirmation number is {\u2026} and flight number is {\u2026}. If either is unknown, use the lookup_reservation tool to retrieve them \u2014 do not ask the customer. Once you have both, confirm them with the customer before cancelling.\n2. If the customer confirms, use the cancel_flight tool to cancel their flight.\nIf the customer asks anything else, transfer back to the triage agent.",
         "request_body_schema": {},
         "chat_payload_list": false,
+        "descriptive_name": "Cancellation Agent",
+        "dependency_names": [
+          "pydantic"
+        ],
+        "loc": 443,
         "extras": {
           "canonical_name": "openai_agents_cancellation_agent",
           "adapter": "openai_agents",
@@ -60,7 +65,7 @@
       ]
     },
     {
-      "id": "1562bc81-c32b-4b18-b24b-484c1f7b7442",
+      "id": "22bbc024-a25d-41da-a292-5d72d8dbd8e0",
       "name": "FAQ Agent",
       "component_type": "AGENT",
       "confidence": 0.8832000000000001,
@@ -71,6 +76,11 @@
         "system_prompt_excerpt": "{\u2026}\n    You are an FAQ agent. If you are speaking to a customer, you probably were transferred to from the triage agent.\n    Use the following routine to support the customer.\n    1. Identify the last question asked by the customer.\n    2. Use the faq lookup tool to get the answer. Do not rely on your own knowledge.\n    3. Respond to the customer with the answer",
         "request_body_schema": {},
         "chat_payload_list": false,
+        "descriptive_name": "FAQ Agent",
+        "dependency_names": [
+          "pydantic"
+        ],
+        "loc": 443,
         "extras": {
           "canonical_name": "openai_agents_faq_agent",
           "adapter": "openai_agents",
@@ -115,7 +125,7 @@
       ]
     },
     {
-      "id": "bc624100-4b1e-431a-a330-98b4c024a6c6",
+      "id": "b855c84f-3f66-4736-a64b-461bb45aeb4e",
       "name": "Flight Status Agent",
       "component_type": "AGENT",
       "confidence": 0.8832000000000001,
@@ -126,6 +136,11 @@
         "system_prompt_excerpt": "{\u2026}\nYou are a Flight Status Agent. Use the following routine to support the customer:\n1. The customer's confirmation number is {\u2026} and flight number is {\u2026}. If either is unknown, use the lookup_reservation tool to retrieve them \u2014 do not ask the customer. Once you have both, confirm them with the customer.\n2. Use the flight_status_tool to report the current status of the flight.\nIf the customer asks anything else, transfer back to the triage agent.",
         "request_body_schema": {},
         "chat_payload_list": false,
+        "descriptive_name": "Flight Status Agent",
+        "dependency_names": [
+          "pydantic"
+        ],
+        "loc": 443,
         "extras": {
           "canonical_name": "openai_agents_flight_status_agent",
           "adapter": "openai_agents",
@@ -170,7 +185,7 @@
       ]
     },
     {
-      "id": "4964056e-a6b5-4f80-a92d-8e1bba7ea3a3",
+      "id": "200a0699-a047-4517-95ad-f9aa40da5a85",
       "name": "Seat Booking Agent",
       "component_type": "AGENT",
       "confidence": 0.8832000000000001,
@@ -181,6 +196,11 @@
         "system_prompt_excerpt": "{\u2026}\nYou are a seat booking agent. You were transferred here from the triage agent.\nUse the following routine to support the customer:\n1. The customer's confirmation number is {\u2026} and current seat is {\u2026}. If the confirmation number is unknown, use the lookup_reservation tool to find it. Once you have it, confirm it with the customer before proceeding.\n2. Ask the customer what their desired seat number is. You can also use the display_seat_map tool to show them an interactive seat map where they c",
         "request_body_schema": {},
         "chat_payload_list": false,
+        "descriptive_name": "Seat Booking Agent",
+        "dependency_names": [
+          "pydantic"
+        ],
+        "loc": 443,
         "extras": {
           "canonical_name": "openai_agents_seat_booking_agent",
           "adapter": "openai_agents",
@@ -225,7 +245,7 @@
       ]
     },
     {
-      "id": "355a82c6-669d-4bba-a3c2-f3dab1cfed20",
+      "id": "51e7e4e8-c621-4463-8002-78c0de4bb05e",
       "name": "Triage Agent",
       "component_type": "AGENT",
       "confidence": 0.8832000000000001,
@@ -236,6 +256,11 @@
         "system_prompt_excerpt": "{\u2026} You are a helpful triaging agent for an airline customer service system. IMPORTANT: At the very start of every conversation, before responding to the customer, you MUST call the lookup_reservation tool (with no arguments) to load the customer's flight reservations from the database. Use the returned reservation data to personalise your response and to pre-populate context before handing off to any specialist agent. Never ask the customer for information already available in context (name, em",
         "request_body_schema": {},
         "chat_payload_list": false,
+        "descriptive_name": "Triage Agent",
+        "dependency_names": [
+          "pydantic"
+        ],
+        "loc": 443,
         "extras": {
           "canonical_name": "openai_agents_triage_agent",
           "adapter": "openai_agents",
@@ -280,88 +305,42 @@
       ]
     },
     {
-      "id": "e62db242-aa5b-4c50-8909-86045f80e3c6",
-      "name": "generic",
+      "id": "6d875e02-ac95-44c8-83ff-c34c96c19d48",
+      "name": "Generic",
       "component_type": "API_ENDPOINT",
-      "confidence": 1.0,
+      "confidence": 0.44000000000000006,
       "metadata": {
-        "description": "Generic API endpoint exposing GET /me and POST /chat/message operations for retrieving the current user and sending chat messages.",
+        "description": "Generic API endpoint for POST requests, defined with @app.post decorator, enabling data submission to the server.",
         "request_body_schema": {},
         "chat_payload_list": false,
+        "descriptive_name": "Generic API Endpoint",
+        "dependency_names": [
+          "fastapi",
+          "pydantic"
+        ],
+        "loc": 444,
         "extras": {
           "canonical_name": "api_endpoint_generic",
           "adapter": "api_endpoint_generic",
-          "evidence_count": 10,
-          "detected_by_tiers": [
-            "code",
-            "iac"
-          ],
+          "evidence_count": 1,
+          "llm_soft_rejected": true,
+          "llm_verification_reason": "No actual API endpoint is defined at line 137; the code shows session management and a login endpoint, but there is no network listener or transport binding (e.g., .run() or uvicorn) at that location. The detection is a false positive.",
           "confidence_breakdown": {
-            "regex_confidence": 0.98,
+            "regex_confidence": 0.55,
             "llm_confidence": 0.0,
-            "evidence_count": 6,
+            "evidence_count": 1,
             "evidence_sources": [
-              "evidence:0",
-              "evidence:1",
-              "evidence:2",
-              "evidence:3",
-              "evidence:4",
-              "confidence:high"
+              "evidence:0"
             ],
-            "base_confidence": 0.784,
-            "evidence_multiplier": 1.4,
+            "base_confidence": 0.44,
+            "evidence_multiplier": 1.0,
             "validation_penalty": 0.0,
-            "final_confidence": 1.0
+            "final_confidence": 0.44
           },
           "description_source": "llm_generated"
         }
       },
       "evidence": [
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "api_endpoint_generic: GET /me",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-f523a702c2aef22d.json",
-            "line": 599
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.9,
-          "detail": "api_endpoint_generic: GET /me",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-0ddadcbfb8384de1.json",
-            "line": 711
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.9,
-          "detail": "api_endpoint_generic: POST /chat/message",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-88f69fb453ac26dd.json",
-            "line": 237
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.9,
-          "detail": "api_endpoint_generic: GET /me",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-c8c79ffa638c560b.json",
-            "line": 703
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.8500000000000001,
-          "detail": "api_endpoint_generic: POST /chat/message",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-49caa71cd2349a13.json",
-            "line": 234
-          }
-        },
         {
           "kind": "regex",
           "confidence": 0.7,
@@ -370,57 +349,33 @@
             "path": "python-backend/api.py",
             "line": 137
           }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.65,
-          "detail": "api_endpoint_generic: POST /chat",
-          "location": {
-            "path": "redteam-prompts-openai-gpt-4-1-mini-ac850a3e193ec07a.json",
-            "line": 923
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.6,
-          "detail": "api_endpoint_generic: POST /chat",
-          "location": {
-            "path": "redteam-prompts-openai-gpt-4-1-mini-9b2e4db8a19b579a.json",
-            "line": 567
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.55,
-          "detail": "api_endpoint_generic: POST /login",
-          "location": {
-            "path": "nuguard-azure.yaml",
-            "line": 35
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.55,
-          "detail": "api_endpoint_generic: POST /login",
-          "location": {
-            "path": "nuguard-gemini.yaml",
-            "line": 34
-          }
         }
       ]
     },
     {
-      "id": "c5b45864-8058-4a46-9373-8a7dd32caa9c",
-      "name": "me",
+      "id": "4bcb2178-1c88-4170-b230-06534d558312",
+      "name": "Me",
       "component_type": "API_ENDPOINT",
       "confidence": 0.8640000000000001,
       "metadata": {
         "framework": "fastapi",
         "endpoint": "/me",
         "method": "GET",
-        "description": "FastAPI GET /me endpoint that returns the current user's information.",
+        "description": "FastAPI GET endpoint at /me returning authenticated user profile data.",
         "request_body_schema": {},
         "chat_payload_list": false,
+        "descriptive_name": "User Me API Endpoint",
+        "dependency_names": [
+          "fastapi",
+          "pydantic"
+        ],
+        "loc": 444,
+        "response_schema": {
+          "account_number": "str",
+          "name": "str",
+          "email": "str",
+          "username": "str"
+        },
         "extras": {
           "canonical_name": "fastapi_endpoint_get_me",
           "adapter": "fastapi",
@@ -428,6 +383,12 @@
           "framework": "fastapi",
           "method": "GET",
           "endpoint": "/me",
+          "response_body_schema": {
+            "account_number": "str",
+            "name": "str",
+            "email": "str",
+            "username": "str"
+          },
           "confidence_breakdown": {
             "regex_confidence": 0.9,
             "llm_confidence": 0.0,
@@ -458,21 +419,43 @@
       ]
     },
     {
-      "id": "39ae195d-a53a-4b67-968a-6a8ea224065b",
-      "name": "chat_endpoint",
+      "id": "3c24cbb0-1cac-494f-ac5d-d582991280f5",
+      "name": "Chat Endpoint",
       "component_type": "API_ENDPOINT",
       "confidence": 0.8640000000000001,
       "metadata": {
         "framework": "fastapi",
         "endpoint": "/chat",
         "method": "POST",
-        "description": "FastAPI POST /chat endpoint that accepts chat requests.",
+        "description": "POST /chat API endpoint built with FastAPI, handling chat message submissions via HTTP POST requests.",
         "request_body_schema": {
           "conversation_id": "Optional[str]",
           "message": "str"
         },
         "chat_payload_key": "message",
         "chat_payload_list": false,
+        "context_payload_fields": {
+          "conversation_id": "session"
+        },
+        "descriptive_name": "Chat Endpoint API",
+        "dependency_names": [
+          "fastapi",
+          "pydantic"
+        ],
+        "loc": 444,
+        "request_schema": {
+          "conversation_id": "Optional[str]",
+          "message": "str"
+        },
+        "response_schema": {
+          "conversation_id": "str",
+          "current_agent": "str",
+          "messages": "List[MessageResponse]",
+          "events": "List[AgentEvent]",
+          "context": "Dict[str, Any]",
+          "agents": "List[Dict[str, Any]]",
+          "guardrails": "List[GuardrailCheck]"
+        },
         "extras": {
           "canonical_name": "fastapi_endpoint_post_chat",
           "adapter": "fastapi",
@@ -484,8 +467,20 @@
             "conversation_id": "Optional[str]",
             "message": "str"
           },
+          "response_body_schema": {
+            "conversation_id": "str",
+            "current_agent": "str",
+            "messages": "List[MessageResponse]",
+            "events": "List[AgentEvent]",
+            "context": "Dict[str, Any]",
+            "agents": "List[Dict[str, Any]]",
+            "guardrails": "List[GuardrailCheck]"
+          },
           "chat_payload_key": "message",
           "chat_payload_list": false,
+          "context_payload_fields": {
+            "conversation_id": "session"
+          },
           "confidence_breakdown": {
             "regex_confidence": 0.9,
             "llm_confidence": 0.0,
@@ -516,21 +511,37 @@
       ]
     },
     {
-      "id": "c72ac339-a252-4243-99c4-9c1484bd6815",
-      "name": "login",
+      "id": "05d932fd-97d3-4c4a-93db-876fa313c513",
+      "name": "Login",
       "component_type": "API_ENDPOINT",
       "confidence": 0.8640000000000001,
       "metadata": {
         "framework": "fastapi",
         "endpoint": "/login",
         "method": "POST",
-        "description": "FastAPI POST /login endpoint that handles login requests.",
+        "description": "FastAPI POST endpoint at /login for user authentication, defined with the @app.post decorator.",
         "request_body_schema": {
           "username": "str",
           "password": "str"
         },
         "chat_payload_key": "username",
         "chat_payload_list": false,
+        "descriptive_name": "Login API Endpoint",
+        "dependency_names": [
+          "fastapi",
+          "pydantic"
+        ],
+        "loc": 444,
+        "request_schema": {
+          "username": "str",
+          "password": "str"
+        },
+        "response_schema": {
+          "token": "str",
+          "account_number": "str",
+          "name": "str",
+          "email": "str"
+        },
         "extras": {
           "canonical_name": "fastapi_endpoint_post_login",
           "adapter": "fastapi",
@@ -541,6 +552,12 @@
           "request_body_schema": {
             "username": "str",
             "password": "str"
+          },
+          "response_body_schema": {
+            "token": "str",
+            "account_number": "str",
+            "name": "str",
+            "email": "str"
           },
           "chat_payload_key": "username",
           "chat_payload_list": false,
@@ -574,17 +591,23 @@
       ]
     },
     {
-      "id": "845d1662-c549-4456-a27d-b970c2946f8a",
-      "name": "logout",
+      "id": "5a84e9eb-2a3e-425e-b16a-7cca39e7ce7a",
+      "name": "Logout",
       "component_type": "API_ENDPOINT",
       "confidence": 0.8640000000000001,
       "metadata": {
         "framework": "fastapi",
         "endpoint": "/logout",
         "method": "POST",
-        "description": "FastAPI POST /logout endpoint that handles user logout requests.",
+        "description": "FastAPI POST endpoint at /logout that terminates user sessions and clears authentication tokens.",
         "request_body_schema": {},
         "chat_payload_list": false,
+        "descriptive_name": "Logout API Endpoint",
+        "dependency_names": [
+          "fastapi",
+          "pydantic"
+        ],
+        "loc": 444,
         "extras": {
           "canonical_name": "fastapi_endpoint_post_logout",
           "adapter": "fastapi",
@@ -622,18 +645,24 @@
       ]
     },
     {
-      "id": "c462be22-0cf6-4595-9e4d-a5a46d0f37e6",
-      "name": "generic",
+      "id": "ca31ac42-0e5c-49d7-b84f-17cf24925b3e",
+      "name": "Bearer Auth",
       "component_type": "AUTH",
       "confidence": 1.0,
       "metadata": {
-        "description": "Generic bearer authentication component for validating access credentials in the system.",
+        "description": "Bearer Auth provides authentication via Bearer tokens and API keys for secure API access.",
         "request_body_schema": {},
         "chat_payload_list": false,
+        "descriptive_name": "Bearer Auth Mechanism",
+        "dependency_names": [
+          "fastapi",
+          "pydantic"
+        ],
+        "loc": 1183,
         "extras": {
           "canonical_name": "auth_generic",
           "adapter": "auth_runtime",
-          "evidence_count": 18,
+          "evidence_count": 6,
           "detected_by_tiers": [
             "code",
             "iac"
@@ -662,100 +691,10 @@
         {
           "kind": "regex",
           "confidence": 0.95,
-          "detail": "auth_generic: bearer",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-0ddadcbfb8384de1.json",
-            "line": 711
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "auth_generic: Authentication",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-49caa71cd2349a13.json",
-            "line": 200
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "auth_generic: Authentication",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-88f69fb453ac26dd.json",
-            "line": 229
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "auth_generic: bearer",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-c8c79ffa638c560b.json",
-            "line": 740
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "auth_generic: authorization",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-f523a702c2aef22d.json",
-            "line": 164
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "auth_generic: JWT",
-          "location": {
-            "path": "redteam-prompts-gemini-gemini-3-1-flash-lite-fbeb21784719b810.json",
-            "line": 741
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "auth_generic: Authentication",
-          "location": {
-            "path": "redteam-prompts-openai-gpt-4-1-mini-9b2e4db8a19b579a.json",
-            "line": 554
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "auth_generic: authorization",
-          "location": {
-            "path": "redteam-prompts-openai-gpt-4-1-mini-ac850a3e193ec07a.json",
-            "line": 297
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.95,
           "detail": "auth_generic: Bearer",
           "location": {
             "path": "python-backend/api.py",
             "line": 128
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.8500000000000001,
-          "detail": "auth_generic: api_key",
-          "location": {
-            "path": "nuguard-azure.yaml",
-            "line": 17
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.8500000000000001,
-          "detail": "auth_generic: api_key",
-          "location": {
-            "path": "nuguard-gemini.yaml",
-            "line": 17
           }
         },
         {
@@ -765,15 +704,6 @@
           "location": {
             "path": "test-azure.py",
             "line": 19
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.7,
-          "detail": "auth_generic: authorization",
-          "location": {
-            "path": "tests/output/redteam-prompts-a160735f375a7cea.json",
-            "line": 499
           }
         },
         {
@@ -805,15 +735,6 @@
         },
         {
           "kind": "regex",
-          "confidence": 0.6,
-          "detail": "auth_generic: authorization",
-          "location": {
-            "path": "tests/output/redteam-prompts-faf7f7cd6b63b9b8.json",
-            "line": 568
-          }
-        },
-        {
-          "kind": "regex",
           "confidence": 0.55,
           "detail": "auth_generic: apiKey",
           "location": {
@@ -824,11 +745,13 @@
       ]
     },
     {
-      "id": "c3de0f26-3c0c-4847-b6bd-e1c58eaaca24",
-      "name": "sqlite",
+      "id": "bc232022-bb75-4a47-85ec-8ca5920cc70f",
+      "name": "Sqlite",
       "component_type": "DATASTORE",
-      "confidence": 1.0,
+      "confidence": 0.8448000000000001,
       "metadata": {
+        "framework": "python_datastores",
+        "datastore_type": "relational",
         "data_classification": [
           "PII"
         ],
@@ -861,364 +784,60 @@
             "email"
           ]
         },
-        "description": "SQLite is a lightweight embedded relational database engine that stores data in a single file and supports standard SQL queries.",
+        "description": "Sqlite is a relational datastore component used in Python applications via the connect function.",
         "request_body_schema": {},
         "chat_payload_list": false,
+        "descriptive_name": "SQLite Datastore",
+        "loc": 186,
         "extras": {
-          "canonical_name": "sqlite",
-          "adapter": "datastore_generic",
-          "evidence_count": 12,
-          "detected_by_tiers": [
-            "code",
-            "iac"
-          ],
-          "normalizer": "datastore",
+          "canonical_name": "datastore_sqlite",
+          "adapter": "python_datastores",
+          "evidence_count": 1,
+          "datastore_type": "relational",
+          "provider": "sqlite",
+          "framework": "python_datastores",
           "confidence_breakdown": {
-            "regex_confidence": 0.98,
+            "regex_confidence": 0.88,
             "llm_confidence": 0.0,
-            "evidence_count": 6,
+            "evidence_count": 3,
             "evidence_sources": [
+              "framework:python_datastores",
               "evidence:0",
-              "evidence:1",
-              "evidence:2",
-              "evidence:3",
-              "evidence:4",
               "confidence:high"
             ],
-            "base_confidence": 0.784,
-            "evidence_multiplier": 1.4,
+            "base_confidence": 0.704,
+            "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
-            "final_confidence": 1.0
+            "final_confidence": 0.8448
           },
           "description_source": "llm_generated"
         }
       },
       "evidence": [
         {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "datastore_generic: sqlite",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-0ddadcbfb8384de1.json",
-            "line": 225
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "datastore_generic: SQLite",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-49caa71cd2349a13.json",
-            "line": 97
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "datastore_generic: sqlite",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-88f69fb453ac26dd.json",
-            "line": 125
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "datastore_generic: sqlite",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-c8c79ffa638c560b.json",
-            "line": 238
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "datastore_generic: sqlite",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-f523a702c2aef22d.json",
-            "line": 173
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "datastore_generic: sqlite",
-          "location": {
-            "path": "redteam-prompts-gemini-gemini-3-1-flash-lite-fbeb21784719b810.json",
-            "line": 237
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "datastore_generic: sqlite",
-          "location": {
-            "path": "redteam-prompts-openai-gpt-4-1-mini-9b2e4db8a19b579a.json",
-            "line": 502
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "datastore_generic: sqlite",
-          "location": {
-            "path": "tests/output/redteam-prompts-a160735f375a7cea.json",
-            "line": 452
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "datastore_generic: sqlite",
-          "location": {
-            "path": "tests/output/redteam-prompts-faf7f7cd6b63b9b8.json",
-            "line": 417
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.75,
-          "detail": "datastore_generic: SQLite",
+          "kind": "ast_call",
+          "confidence": 0.88,
+          "detail": "python_datastores: connect(...)",
           "location": {
             "path": "python-backend/database.py",
-            "line": 2
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.55,
-          "detail": "datastore_generic: SQLite",
-          "location": {
-            "path": "nuguard-azure.yaml",
-            "line": 211
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.55,
-          "detail": "datastore_generic: SQLite",
-          "location": {
-            "path": "nuguard-gemini.yaml",
-            "line": 209
+            "line": 14
           }
         }
       ]
     },
     {
-      "id": "4617b794-1ec2-4a22-b00d-8847d5eaeee3",
-      "name": "sqlite3",
-      "component_type": "DATASTORE",
-      "confidence": 0.8360000000000001,
-      "metadata": {
-        "data_classification": [
-          "PII"
-        ],
-        "classified_tables": [
-          "AirlineAgentContext",
-          "GuardrailCheck",
-          "LoginRequest",
-          "LoginResponse",
-          "UserResponse"
-        ],
-        "classified_fields": {
-          "LoginRequest": [
-            "password"
-          ],
-          "LoginResponse": [
-            "account_number",
-            "email",
-            "name"
-          ],
-          "UserResponse": [
-            "account_number",
-            "email",
-            "name"
-          ],
-          "GuardrailCheck": [
-            "name"
-          ],
-          "AirlineAgentContext": [
-            "account_number",
-            "email"
-          ]
-        },
-        "description": "SQLite3 is a lightweight embedded relational database engine used for local, file-based data storage.",
-        "request_body_schema": {},
-        "chat_payload_list": false,
-        "extras": {
-          "canonical_name": "sqlite3",
-          "adapter": "datastore_generic",
-          "evidence_count": 1,
-          "normalizer": "datastore",
-          "confidence_breakdown": {
-            "regex_confidence": 0.95,
-            "llm_confidence": 0.0,
-            "evidence_count": 2,
-            "evidence_sources": [
-              "evidence:0",
-              "confidence:high"
-            ],
-            "base_confidence": 0.76,
-            "evidence_multiplier": 1.1,
-            "validation_penalty": 0.0,
-            "final_confidence": 0.836
-          },
-          "description_source": "llm_generated"
-        }
-      },
-      "evidence": [
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "datastore_generic: sqlite3",
-          "location": {
-            "path": "redteam-prompts-openai-gpt-4-1-mini-ac850a3e193ec07a.json",
-            "line": 542
-          }
-        }
-      ]
-    },
-    {
-      "id": "cb64b0ea-2772-4fc3-a012-eaad0c90c76a",
-      "name": "generic",
-      "component_type": "DEPLOYMENT",
-      "confidence": 1.0,
-      "metadata": {
-        "description": "Generic deployment component representing an Azure resource group or deployment artifact used for infrastructure provisioning and management.",
-        "request_body_schema": {},
-        "chat_payload_list": false,
-        "extras": {
-          "canonical_name": "deployment_generic",
-          "adapter": "deployment_generic",
-          "evidence_count": 10,
-          "detected_by_tiers": [
-            "code",
-            "iac"
-          ],
-          "confidence_breakdown": {
-            "regex_confidence": 0.98,
-            "llm_confidence": 0.0,
-            "evidence_count": 6,
-            "evidence_sources": [
-              "evidence:0",
-              "evidence:1",
-              "evidence:2",
-              "evidence:3",
-              "evidence:4",
-              "confidence:high"
-            ],
-            "base_confidence": 0.784,
-            "evidence_multiplier": 1.4,
-            "validation_penalty": 0.0,
-            "final_confidence": 1.0
-          },
-          "description_source": "llm_generated"
-        }
-      },
-      "evidence": [
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "deployment_generic: az group",
-          "location": {
-            "path": ".github/workflows/deploy-azure.yml",
-            "line": 45
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.8,
-          "detail": "deployment_generic: deployment",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-49caa71cd2349a13.json",
-            "line": 98
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.7,
-          "detail": "deployment_generic: DEPLOYMENT",
-          "location": {
-            "path": "test-azure.py",
-            "line": 18
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.65,
-          "detail": "deployment_generic: render",
-          "location": {
-            "path": "redteam-prompts-gemini-gemini-3-1-flash-lite-fbeb21784719b810.json",
-            "line": 90
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.6,
-          "detail": "deployment_generic: uvicorn",
-          "location": {
-            "path": "launch-local.sh",
-            "line": 64
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.6,
-          "detail": "deployment_generic: deployment",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-f523a702c2aef22d.json",
-            "line": 1044
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.55,
-          "detail": "deployment_generic: uvicorn",
-          "location": {
-            "path": "nuguard-azure.yaml",
-            "line": 32
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.55,
-          "detail": "deployment_generic: uvicorn",
-          "location": {
-            "path": "nuguard-gemini.yaml",
-            "line": 31
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.55,
-          "detail": "deployment_generic: deployment",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-0ddadcbfb8384de1.json",
-            "line": 725
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.55,
-          "detail": "deployment_generic: render",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-c8c79ffa638c560b.json",
-            "line": 2514
-          }
-        }
-      ]
-    },
-    {
-      "id": "d4101264-e54d-4774-87a3-aec66c1adfca",
+      "id": "928332b2-d907-435e-9b97-839623cacfbb",
       "name": "Deploy to Azure",
       "component_type": "DEPLOYMENT",
       "confidence": 0.8360000000000001,
       "metadata": {
         "deployment_target": "github-actions",
         "secret_store": "github_actions_secret",
-        "description": "GitHub Actions workflow that deploys the application to Azure on push or manual dispatch.",
+        "description": "GitHub Actions workflow deploying to Azure, triggered by push and workflow_dispatch events.",
         "request_body_schema": {},
         "chat_payload_list": false,
+        "descriptive_name": "Azure Deployment Workflow",
+        "loc": 204,
         "extras": {
           "canonical_name": "deployment_github_actions_deploy_to_azure",
           "adapter": "github_actions",
@@ -1240,6 +859,8 @@
           "uses_oidc": false,
           "secret_store": "github_actions_secret",
           "ha_mode": null,
+          "workflow_security_findings": [],
+          "workflow_content": "name: Deploy to Azure\n\non:\n  push:\n    branches:\n      - main\n  workflow_dispatch:\n\nenv:\n  AZURE_WEBAPP_NAME: openai-cs-agents-backend\n  AZURE_WEBAPP_PACKAGE_PATH: './python-backend'\n  PYTHON_VERSION: '3.11'\n  NODE_VERSION: '20'\n  RESOURCE_GROUP: openai-cs-agents-demo-rg\n  LOCATION: eastus2\n  APP_SERVICE_PLAN: openai-cs-agents-plan\n  STATIC_WEB_APP_NAME: openai-cs-agents-frontend\n\njobs:\n  build-and-deploy-backend:\n    runs-on: ubuntu-latest\n    \n    steps:\n      - name: Checkout code\n        uses: actions/checkout@v4\n\n      - name: Set up Python\n        uses: actions/setup-python@v5\n        with:\n          python-version: ${{ env.PYTHON_VERSION }}\n\n      - name: Install dependencies\n        working-directory: ./python-backend\n        run: |\n          python -m pip install --upgrade pip\n          pip install -r requirements.txt\n\n      - name: Login to Azure\n        uses: azure/login@v2\n        with:\n          creds: ${{ secrets.AZURE_CREDENTIALS }}\n\n      - name: Create Resource Group (if not exists)\n        run: |\n          az group create --name ${{ env.RESOURCE_GROUP }} --location ${{ env.LOCATION }} || true\n\n      - name: Create App Service Plan (Free Tier)\n        run: |\n          az appservice plan create \\\n            --name ${{ env.APP_SERVICE_PLAN }} \\\n            --resource-group ${{ env.RESOURCE_GROUP }} \\\n            --sku F1 \\\n            --is-linux || true\n\n      - name: Create Web App\n        run: |\n          az webapp create \\\n            --name ${{ env.AZURE_WEBAPP_NAME }} \\\n            --resource-group ${{ env.RESOURCE_GROUP }} \\\n            --plan ${{ env.APP_SERVICE_PLAN }} \\\n            --runtime \"PYTHON:3.11\" || true\n\n      - name: Configure App Settings\n        run: |\n          az webapp config appsettings set \\\n            --name ${{ env.AZURE_WEBAPP_NAME }} \\\n            --resource-group ${{ env.RESOURCE_GROUP }} \\\n            --settings \\\n              OPENAI_API_KEY=\"${{ secrets.OPENAI_API_KEY }}\" \\\n              SCM_DO_BUILD_DURING_DEPLOYMENT=true \\\n              WEBSITES_PORT=8000\n\n      - name: Configure startup command\n        run: |\n          az webapp config set \\\n            --name ${{ env.AZURE_WEBAPP_NAME }} \\\n            --resource-group ${{ env.RESOURCE_GROUP }} \\\n            --startup-file \"gunicorn -w 2 -k uvicorn.workers.UvicornWorker api:app --bind 0.0.0.0:8000\"\n\n      - name: Deploy to Azure Web App\n        uses: azure/webapps-deploy@v3\n        with:\n          app-name: ${{ env.AZURE_WEBAPP_NAME }}\n          package: ${{ env.AZURE_WEBAPP_PACKAGE_PATH }}\n\n      - name: Output Backend URL\n        id: backend-url\n        run: |\n          BACKEND_URL=\"https://${{ env.AZURE_WEBAPP_NAME }}.azurewebsites.net\"\n          echo \"BACKEND_URL=$BACKEND_URL\" >> $GITHUB_OUTPUT\n          echo \"Backend deployed to: $BACKEND_URL\"\n\n    outputs:\n      backend_url: ${{ steps.backend-url.outputs.BACKEND_URL }}\n\n  build-and-deploy-frontend:\n    runs-on: ubuntu-latest\n    needs: build-and-deploy-backend\n    \n    steps:\n      - name: Checkout code\n        uses: actions/checkout@v4\n\n      - name: Set up Node.js\n        uses: actions/setup-node@v4\n        with:\n          node-version: ${{ env.NODE_VERSION }}\n\n      - name: Install pnpm\n        run: npm install -g pnpm\n\n      - name: Install dependencies\n        working-directory: ./ui\n        run: pnpm install\n\n      - name: Build frontend\n        working-directory: ./ui\n        run: pnpm run build\n        env:\n          NEXT_PUBLIC_API_BASE: ${{ needs.build-and-deploy-backend.outputs.backend_url }}\n\n      - name: Login to Azure\n        uses: azure/login@v2\n        with:\n          creds: ${{ secrets.AZURE_CREDENTIALS }}\n\n      - name: Create Static Web App (if not exists)\n        run: |\n          az staticwebapp create \\\n            --name ${{ env.STATIC_WEB_APP_NAME }} \\\n            --resource-group ${{ env.RESOURCE_GROUP }} \\\n            --location ${{ env.LOCATION }} \\\n            --sku Free || true\n\n      - name: Get Static Web App deployment token\n        id: swa-token\n        run: |\n          TOKEN=$(az staticwebapp secrets list \\\n            --name ${{ env.STATIC_WEB_APP_NAME }} \\\n            --resource-group ${{ env.RESOURCE_GROUP }} \\\n            --query \"properties.apiKey\" -o tsv)\n          echo \"::add-mask::$TOKEN\"\n          echo \"DEPLOYMENT_TOKEN=$TOKEN\" >> $GITHUB_OUTPUT\n\n      - name: Deploy to Azure Static Web Apps\n        uses: Azure/static-web-apps-deploy@v1\n        with:\n          azure_static_web_apps_api_token: ${{ steps.swa-token.outputs.DEPLOYMENT_TOKEN }}\n          repo_token: ${{ secrets.GITHUB_TOKEN }}\n          action: \"upload\"\n          app_location: \"./ui/out\"\n          output_location: \"\"\n          skip_app_build: true\n\n      - name: Output Frontend URL\n        run: |\n          FRONTEND_URL=$(az staticwebapp show \\\n            --name ${{ env.STATIC_WEB_APP_NAME }} \\\n            --resource-group ${{ env.RESOURCE_GROUP }} \\\n            --query \"defaultHostname\" -o tsv)\n          echo \"Frontend deployed to: https://$FRONTEND_URL\"\n\n  configure-cors:\n    runs-on: ubuntu-latest\n    needs: [build-and-deploy-backend, build-and-deploy-frontend]\n    \n    steps:\n      - name: Login to Azure\n        uses: azure/login@v2\n        with:\n          creds: ${{ secrets.AZURE_CREDENTIALS }}\n\n      - name: Get Static Web App URL\n        id: frontend-url\n        run: |\n          FRONTEND_URL=$(az staticwebapp show \\\n            --name ${{ env.STATIC_WEB_APP_NAME }} \\\n            --resource-group ${{ env.RESOURCE_GROUP }} \\\n            --query \"defaultHostname\" -o tsv)\n          echo \"FRONTEND_URL=https://$FRONTEND_URL\" >> $GITHUB_OUTPUT\n\n      - name: Configure CORS on Backend\n        run: |\n          FRONTEND_URL=\"${{ steps.frontend-url.outputs.FRONTEND_URL }}\"\n          # Pass ALLOWED_ORIGINS to FastAPI's CORSMiddleware via app setting.\n          # Do NOT use `az webapp cors add` together with FastAPI's own CORSMiddleware \u2014\n          # both would add Access-Control-Allow-Origin headers, causing duplicate-header\n          # rejections in browsers.  FastAPI's middleware is the single source of truth.\n          az webapp config appsettings set \\\n            --name ${{ env.AZURE_WEBAPP_NAME }} \\\n            --resource-group ${{ env.RESOURCE_GROUP }} \\\n            --settings ALLOWED_ORIGINS=\"$FRONTEND_URL,http://localhost:3250,http://localhost:3000\"\n          # Clear any previously-added Azure-level CORS origins to avoid conflicts.\n          az webapp cors remove \\\n            --name ${{ env.AZURE_WEBAPP_NAME }} \\\n            --resource-group ${{ env.RESOURCE_GROUP }} \\\n            --allowed-origins \"*\" || true\n\n      - name: Summary\n        run: |\n          echo \"=== Deployment Complete ===\"\n          echo \"Backend URL: ${{ needs.build-and-deploy-backend.outputs.backend_url }}\"\n          echo \"Frontend URL: ${{ steps.frontend-url.outputs.FRONTEND_URL }}\"\n",
           "runs_as_root": null,
           "has_health_check": null,
           "has_resource_limits": null,
@@ -1272,15 +893,21 @@
       ]
     },
     {
-      "id": "1462bcea-f7f2-415e-b5cb-1bf635c43b69",
-      "name": "app",
+      "id": "adb95c89-7aae-4989-9a69-d972b7f9dcb7",
+      "name": "FastAPI",
       "component_type": "FRAMEWORK",
       "confidence": 0.8640000000000001,
       "metadata": {
         "framework": "fastapi",
-        "description": "FastAPI application framework component for building Python web APIs and services.",
+        "description": "FastAPI is a modern Python web framework for building APIs with automatic OpenAPI documentation generation.",
         "request_body_schema": {},
         "chat_payload_list": false,
+        "descriptive_name": "FastAPI Framework",
+        "dependency_names": [
+          "fastapi",
+          "pydantic"
+        ],
+        "loc": 444,
         "extras": {
           "canonical_name": "fastapi_framework_python_backend_api_py_app",
           "adapter": "fastapi",
@@ -1317,41 +944,40 @@
       ]
     },
     {
-      "id": "d7c7b0b0-74ed-471e-ae8b-1098e8afff33",
-      "name": "framework:openai_agents",
+      "id": "4025a961-6053-4dde-b1a0-e0146cc250ef",
+      "name": "OpenAI Agents",
       "component_type": "FRAMEWORK",
-      "confidence": 1.0,
+      "confidence": 0.9880000000000001,
       "metadata": {
         "framework": "openai_agents",
-        "description": "OpenAI Agents framework for building and orchestrating AI agent applications.",
+        "description": "OpenAI Agents is a framework for building AI agent applications, imported as openai_agents.",
         "request_body_schema": {},
         "chat_payload_list": false,
+        "descriptive_name": "OpenAI Agents Framework",
+        "dependency_names": [
+          "fastapi",
+          "pydantic"
+        ],
+        "loc": 887,
         "extras": {
           "canonical_name": "framework_openai_agents",
           "adapter": "openai_agents",
-          "evidence_count": 4,
-          "detected_by_tiers": [
-            "code",
-            "iac"
-          ],
+          "evidence_count": 2,
           "framework": "openai_agents",
-          "implementation": "vela_builtin",
           "confidence_breakdown": {
-            "regex_confidence": 0.98,
+            "regex_confidence": 0.95,
             "llm_confidence": 0.0,
-            "evidence_count": 6,
+            "evidence_count": 4,
             "evidence_sources": [
               "framework:openai_agents",
               "evidence:0",
               "evidence:1",
-              "evidence:2",
-              "evidence:3",
               "confidence:high"
             ],
-            "base_confidence": 0.784,
-            "evidence_multiplier": 1.4,
+            "base_confidence": 0.76,
+            "evidence_multiplier": 1.3,
             "validation_penalty": 0.0,
-            "final_confidence": 1.0
+            "final_confidence": 0.988
           },
           "description_source": "llm_generated"
         }
@@ -1372,37 +998,24 @@
           "location": {
             "path": "python-backend/main.py"
           }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.8500000000000001,
-          "detail": "openai_agents: openai_agents",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-c8c79ffa638c560b.json",
-            "line": 1538
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.55,
-          "detail": "openai_agents: OpenAI Agents",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-f523a702c2aef22d.json",
-            "line": 1607
-          }
         }
       ]
     },
     {
-      "id": "cd6363aa-a546-48d8-9118-22e67967a69c",
+      "id": "e7a3e9b6-7d16-41b1-85a5-33ac2e738473",
       "name": "Jailbreak Guardrail",
       "component_type": "GUARDRAIL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "openai_agents",
-        "description": "OpenAI Agents guardrail named Jailbreak Guardrail that detects and blocks jailbreak attempts in agent interactions.",
+        "description": "Jailbreak Guardrail is an OpenAI Agents framework guardrail component that detects and prevents prompt injection attacks.",
         "request_body_schema": {},
         "chat_payload_list": false,
+        "descriptive_name": "Jailbreak Guardrail",
+        "dependency_names": [
+          "pydantic"
+        ],
+        "loc": 443,
         "extras": {
           "canonical_name": "openai_agents_jailbreak_guardrail",
           "adapter": "openai_agents",
@@ -1447,15 +1060,20 @@
       ]
     },
     {
-      "id": "20435ed7-87c9-4de3-8f3f-be7fa0a98fa5",
+      "id": "20c8d881-99e0-4cbe-8cef-963506a29bb6",
       "name": "Relevance Guardrail",
       "component_type": "GUARDRAIL",
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "openai_agents",
-        "description": "OpenAI Agents guardrail that evaluates whether content is relevant to the specified task or context.",
+        "description": "Relevance Guardrail is an OpenAI Agents framework guardrail component that validates response relevance to user queries.",
         "request_body_schema": {},
         "chat_payload_list": false,
+        "descriptive_name": "Relevance Guardrail",
+        "dependency_names": [
+          "pydantic"
+        ],
+        "loc": 443,
         "extras": {
           "canonical_name": "openai_agents_relevance_guardrail",
           "adapter": "openai_agents",
@@ -1500,8 +1118,8 @@
       ]
     },
     {
-      "id": "df0a0462-f7f9-49e8-a27e-1f8b704e99c9",
-      "name": "${{ secrets.AZURE_CREDENTIALS }}",
+      "id": "11c872e5-f3e1-4f76-8e31-404b02e64984",
+      "name": "Azure Credentials",
       "component_type": "IAM",
       "confidence": 0.8184000000000001,
       "metadata": {
@@ -1511,9 +1129,11 @@
         "trust_principals": [
           "github-actions"
         ],
-        "description": "GitHub Actions OIDC credential reference used for Azure authentication in IAM workflows.",
+        "description": "Azure Credentials IAM component used in GitHub Actions OIDC authentication via AZURE_CREDENTIALS secret.",
         "request_body_schema": {},
         "chat_payload_list": false,
+        "descriptive_name": "Azure Credentials IAM",
+        "loc": 204,
         "extras": {
           "canonical_name": "iam_gha_azure_secrets_azure_credentials",
           "adapter": "github_actions",
@@ -1557,90 +1177,24 @@
       ]
     },
     {
-      "id": "ddac9774-de56-4211-9934-f55d01137eeb",
-      "name": "gemini-3.1",
-      "component_type": "MODEL",
-      "confidence": 1.0,
-      "metadata": {
-        "description": "Gemini 3.1 is a machine learning model component identified as gemini-3.1 in the provided evidence.",
-        "request_body_schema": {},
-        "chat_payload_list": false,
-        "extras": {
-          "canonical_name": "gemini_3_1",
-          "adapter": "model_generic",
-          "evidence_count": 3,
-          "normalizer": "model-name",
-          "description": "Configured LLM model used by the application for AI-related operations, likely via LiteLLM, with credentials supplied from GEMINI_API_KEY.",
-          "llm_verified": true,
-          "llm_verification_reason": "The YAML config explicitly defines a production LLM model setting using gemini/gemini-3.1-flash-lite with an API key env var, which is a real model reference rather than a comment or test artifact.",
-          "llm_confidence": 0.98,
-          "confidence_breakdown": {
-            "regex_confidence": 0.98,
-            "llm_confidence": 0.98,
-            "evidence_count": 5,
-            "evidence_sources": [
-              "llm:verified",
-              "evidence:0",
-              "evidence:1",
-              "evidence:2",
-              "confidence:high"
-            ],
-            "base_confidence": 0.98,
-            "evidence_multiplier": 1.4,
-            "validation_penalty": 0.0,
-            "final_confidence": 1.0
-          },
-          "description_source": "llm_generated"
-        }
-      },
-      "evidence": [
-        {
-          "kind": "regex",
-          "confidence": 0.6,
-          "detail": "model_generic: gemini-3.1",
-          "location": {
-            "path": "nuguard-gemini.yaml",
-            "line": 16
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.55,
-          "detail": "model_generic: gemini-3.1",
-          "location": {
-            "path": "redteam-prompts-gemini-gemini-3-1-flash-lite-fbeb21784719b810.json",
-            "line": 4
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.55,
-          "detail": "model_generic: gemini-3",
-          "location": {
-            "path": "redteam-prompts-gemini-gemini-3-1-flash-lite-fbeb21784719b810.json",
-            "line": 5
-          }
-        }
-      ]
-    },
-    {
-      "id": "6ca346b0-168b-4615-add7-a816b514ae42",
+      "id": "1f9d877b-c819-497a-bef1-83bfe0de7cdf",
       "name": "gpt-4.1-mini",
       "component_type": "MODEL",
       "confidence": 1.0,
       "metadata": {
         "framework": "openai_agents",
-        "description": "OpenAI GPT-4.1 mini model used by openai_agents agents for language generation and reasoning tasks.",
+        "description": "OpenAI GPT-4.1-mini model used as an agent within the openai_agents framework for natural language processing tasks.",
         "request_body_schema": {},
         "chat_payload_list": false,
+        "descriptive_name": "GPT 4.1 Mini Model",
+        "dependency_names": [
+          "pydantic"
+        ],
+        "loc": 484,
         "extras": {
           "canonical_name": "gpt_4_1_mini",
           "adapter": "openai_agents",
-          "evidence_count": 16,
-          "detected_by_tiers": [
-            "code",
-            "iac"
-          ],
+          "evidence_count": 10,
           "normalizer": "model-name",
           "framework": "openai_agents",
           "provider": "openai",
@@ -1649,7 +1203,7 @@
           "model_card_url": "https://platform.openai.com/docs/models/gpt-4.1-mini",
           "model_family": "gpt",
           "confidence_breakdown": {
-            "regex_confidence": 0.93,
+            "regex_confidence": 0.9,
             "llm_confidence": 0.0,
             "evidence_count": 7,
             "evidence_sources": [
@@ -1661,7 +1215,7 @@
               "evidence:4",
               "confidence:high"
             ],
-            "base_confidence": 0.744,
+            "base_confidence": 0.72,
             "evidence_multiplier": 1.4,
             "validation_penalty": 0.0,
             "final_confidence": 1.0
@@ -1756,387 +1310,45 @@
           "confidence": 0.55,
           "detail": "model_generic: gpt-4.1-mini",
           "location": {
-            "path": "redteam-prompts-openai-gpt-4-1-mini-9b2e4db8a19b579a.json",
-            "line": 4
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.55,
-          "detail": "model_generic: gpt-4-1-mini",
-          "location": {
-            "path": "redteam-prompts-openai-gpt-4-1-mini-9b2e4db8a19b579a.json",
-            "line": 5
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.55,
-          "detail": "model_generic: gpt-4.1-mini",
-          "location": {
-            "path": "redteam-prompts-openai-gpt-4-1-mini-ac850a3e193ec07a.json",
-            "line": 4
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.55,
-          "detail": "model_generic: gpt-4-1-mini",
-          "location": {
-            "path": "redteam-prompts-openai-gpt-4-1-mini-ac850a3e193ec07a.json",
-            "line": 5
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.55,
-          "detail": "model_generic: gpt-4.1-mini",
-          "location": {
             "path": "test-azure.py",
             "line": 18
           }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.55,
-          "detail": "model_generic: openai/gpt-4.1-mini",
-          "location": {
-            "path": "redteam-prompts-openai-gpt-4-1-mini-9b2e4db8a19b579a.json",
-            "line": 4
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.55,
-          "detail": "model_generic: openai/gpt-4.1-mini",
-          "location": {
-            "path": "redteam-prompts-openai-gpt-4-1-mini-ac850a3e193ec07a.json",
-            "line": 4
-          }
         }
       ]
     },
     {
-      "id": "db414bdc-4f89-47aa-9987-21768d45a3b9",
-      "name": "gpt-5.4-mini",
-      "component_type": "MODEL",
-      "confidence": 1.0,
-      "metadata": {
-        "description": "OpenAI GPT-5.4 Mini is a compact generative language model for text understanding and generation.",
-        "request_body_schema": {},
-        "chat_payload_list": false,
-        "extras": {
-          "canonical_name": "gpt_5_4_mini",
-          "adapter": "model_generic",
-          "evidence_count": 15,
-          "normalizer": "model-name",
-          "description": "Azure OpenAI-hosted GPT-5.4 mini model configured as the application LLM for AI-driven prompt/SBOM generation tasks.",
-          "llm_verified": true,
-          "llm_verification_reason": "The YAML config explicitly configures an LLM model used in production settings via LiteLLM syntax: `azure/gpt-5.4-mini`. This is a concrete model reference, not a comment or test artifact.",
-          "llm_confidence": 0.99,
-          "confidence_breakdown": {
-            "regex_confidence": 0.99,
-            "llm_confidence": 0.99,
-            "evidence_count": 7,
-            "evidence_sources": [
-              "llm:verified",
-              "evidence:0",
-              "evidence:1",
-              "evidence:2",
-              "evidence:3",
-              "evidence:4",
-              "confidence:high"
-            ],
-            "base_confidence": 0.99,
-            "evidence_multiplier": 1.4,
-            "validation_penalty": 0.0,
-            "final_confidence": 1.0
-          },
-          "description_source": "llm_generated"
-        }
-      },
-      "evidence": [
-        {
-          "kind": "regex",
-          "confidence": 0.65,
-          "detail": "model_generic: gpt-5.4-mini",
-          "location": {
-            "path": "nuguard-azure.yaml",
-            "line": 16
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.6,
-          "detail": "model_generic: openai/gpt-4o",
-          "location": {
-            "path": "nuguard-azure.yaml",
-            "line": 16
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.6,
-          "detail": "model_generic: gpt-4o",
-          "location": {
-            "path": "nuguard-azure.yaml",
-            "line": 16
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.55,
-          "detail": "model_generic: gpt-5.4-mini",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-0ddadcbfb8384de1.json",
-            "line": 4
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.55,
-          "detail": "model_generic: gpt-5-4-mini",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-0ddadcbfb8384de1.json",
-            "line": 5
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.55,
-          "detail": "model_generic: gpt-5.4-mini",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-49caa71cd2349a13.json",
-            "line": 4
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.55,
-          "detail": "model_generic: gpt-5-4-mini",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-49caa71cd2349a13.json",
-            "line": 5
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.55,
-          "detail": "model_generic: gpt-5.4-mini",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-88f69fb453ac26dd.json",
-            "line": 4
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.55,
-          "detail": "model_generic: gpt-5-4-mini",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-88f69fb453ac26dd.json",
-            "line": 5
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.55,
-          "detail": "model_generic: gpt-5.4-mini",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-c8c79ffa638c560b.json",
-            "line": 4
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.55,
-          "detail": "model_generic: gpt-5-4-mini",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-c8c79ffa638c560b.json",
-            "line": 5
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.55,
-          "detail": "model_generic: gpt-5.4-mini",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-f523a702c2aef22d.json",
-            "line": 4
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.55,
-          "detail": "model_generic: gpt-5-4-mini",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-f523a702c2aef22d.json",
-            "line": 5
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.55,
-          "detail": "model_generic: openai/gpt-4o",
-          "location": {
-            "path": "nuguard-gemini.yaml",
-            "line": 16
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.55,
-          "detail": "model_generic: gpt-4o",
-          "location": {
-            "path": "nuguard-gemini.yaml",
-            "line": 16
-          }
-        }
-      ]
-    },
-    {
-      "id": "77394042-ba8a-4a4c-b3cc-f525699ec41e",
-      "name": "admin",
+      "id": "5bff4494-e455-4566-a435-07bf8e3d3a64",
+      "name": "Db Write",
       "component_type": "PRIVILEGE",
-      "confidence": 1.0,
-      "metadata": {
-        "privilege_scope": "admin",
-        "description": "Administrative privilege granting superuser access and elevated system control.",
-        "request_body_schema": {},
-        "chat_payload_list": false,
-        "extras": {
-          "canonical_name": "privilege_admin",
-          "adapter": "privilege_admin",
-          "evidence_count": 8,
-          "privilege_scope": "admin",
-          "confidence_breakdown": {
-            "regex_confidence": 0.95,
-            "llm_confidence": 0.0,
-            "evidence_count": 6,
-            "evidence_sources": [
-              "evidence:0",
-              "evidence:1",
-              "evidence:2",
-              "evidence:3",
-              "evidence:4",
-              "confidence:high"
-            ],
-            "base_confidence": 0.76,
-            "evidence_multiplier": 1.4,
-            "validation_penalty": 0.0,
-            "final_confidence": 1.0
-          },
-          "description_source": "llm_generated"
-        }
-      },
-      "evidence": [
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "privilege_admin: is_admin",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-49caa71cd2349a13.json",
-            "line": 391
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "privilege_admin: superuser",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-88f69fb453ac26dd.json",
-            "line": 374
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "privilege_admin: is_admin",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-c8c79ffa638c560b.json",
-            "line": 1290
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "privilege_admin: is_admin",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-f523a702c2aef22d.json",
-            "line": 1018
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "privilege_admin: is_admin",
-          "location": {
-            "path": "redteam-prompts-gemini-gemini-3-1-flash-lite-fbeb21784719b810.json",
-            "line": 1166
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "privilege_admin: superuser",
-          "location": {
-            "path": "redteam-prompts-openai-gpt-4-1-mini-9b2e4db8a19b579a.json",
-            "line": 737
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "privilege_admin: superuser",
-          "location": {
-            "path": "redteam-prompts-openai-gpt-4-1-mini-ac850a3e193ec07a.json",
-            "line": 925
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.9,
-          "detail": "privilege_admin: is_admin",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-0ddadcbfb8384de1.json",
-            "line": 1275
-          }
-        }
-      ]
-    },
-    {
-      "id": "3675aee3-b9fe-4c59-8e74-23b175d03a84",
-      "name": "db_write",
-      "component_type": "PRIVILEGE",
-      "confidence": 1.0,
+      "confidence": 0.8640000000000001,
       "metadata": {
         "privilege_scope": "db_write",
-        "description": "Database write privilege allowing creation of tables and deletion from the bookings table.",
+        "description": "Database write privilege enabling CREATE TABLE and DROP TABLE operations on user-defined tables.",
         "request_body_schema": {},
         "chat_payload_list": false,
+        "descriptive_name": "Database Write Privilege",
+        "dependency_names": [
+          "pydantic"
+        ],
+        "loc": 629,
         "extras": {
           "canonical_name": "privilege_db_write",
           "adapter": "privilege_db_write",
-          "evidence_count": 4,
-          "detected_by_tiers": [
-            "code",
-            "iac"
-          ],
+          "evidence_count": 2,
           "privilege_scope": "db_write",
           "confidence_breakdown": {
-            "regex_confidence": 0.93,
+            "regex_confidence": 0.9,
             "llm_confidence": 0.0,
-            "evidence_count": 5,
+            "evidence_count": 3,
             "evidence_sources": [
               "evidence:0",
               "evidence:1",
-              "evidence:2",
-              "evidence:3",
               "confidence:high"
             ],
-            "base_confidence": 0.744,
-            "evidence_multiplier": 1.4,
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.2,
             "validation_penalty": 0.0,
-            "final_confidence": 1.0
+            "final_confidence": 0.864
           },
           "description_source": "llm_generated"
         }
@@ -2153,24 +1365,6 @@
         },
         {
           "kind": "regex",
-          "confidence": 0.6,
-          "detail": "privilege_db_write: DELETE FROM bookings",
-          "location": {
-            "path": "redteam-prompts-openai-gpt-4-1-mini-9b2e4db8a19b579a.json",
-            "line": 1911
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.55,
-          "detail": "privilege_db_write: CREATE TABLE definition",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-f523a702c2aef22d.json",
-            "line": 557
-          }
-        },
-        {
-          "kind": "regex",
           "confidence": 0.55,
           "detail": "privilege_db_write: drop table users",
           "location": {
@@ -2181,124 +1375,19 @@
       ]
     },
     {
-      "id": "9ce6b03a-8fd3-455c-938c-65aea33e2907",
-      "name": "rbac",
-      "component_type": "PRIVILEGE",
-      "confidence": 1.0,
-      "metadata": {
-        "privilege_scope": "rbac",
-        "description": "Privilege-based RBAC mechanism for role and permission management, used to enforce access control and privilege escalation handling.",
-        "request_body_schema": {},
-        "chat_payload_list": false,
-        "extras": {
-          "canonical_name": "privilege_rbac",
-          "adapter": "privilege_rbac",
-          "evidence_count": 8,
-          "privilege_scope": "rbac",
-          "confidence_breakdown": {
-            "regex_confidence": 0.95,
-            "llm_confidence": 0.0,
-            "evidence_count": 6,
-            "evidence_sources": [
-              "evidence:0",
-              "evidence:1",
-              "evidence:2",
-              "evidence:3",
-              "evidence:4",
-              "confidence:high"
-            ],
-            "base_confidence": 0.76,
-            "evidence_multiplier": 1.4,
-            "validation_penalty": 0.0,
-            "final_confidence": 1.0
-          },
-          "description_source": "llm_generated"
-        }
-      },
-      "evidence": [
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "privilege_rbac: privilege escalation",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-0ddadcbfb8384de1.json",
-            "line": 421
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "privilege_rbac: privilege escalation",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-c8c79ffa638c560b.json",
-            "line": 13
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "privilege_rbac: privilege escalation",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-f523a702c2aef22d.json",
-            "line": 13
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "privilege_rbac: access control",
-          "location": {
-            "path": "redteam-prompts-gemini-gemini-3-1-flash-lite-fbeb21784719b810.json",
-            "line": 221
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "privilege_rbac: PRIVILEGE_ESCALATION",
-          "location": {
-            "path": "redteam-prompts-openai-gpt-4-1-mini-9b2e4db8a19b579a.json",
-            "line": 608
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "privilege_rbac: PRIVILEGE_ESCALATION",
-          "location": {
-            "path": "redteam-prompts-openai-gpt-4-1-mini-ac850a3e193ec07a.json",
-            "line": 561
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.8,
-          "detail": "privilege_rbac: privilege escalation",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-49caa71cd2349a13.json",
-            "line": 184
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.6,
-          "detail": "privilege_rbac: privilege escalation",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-88f69fb453ac26dd.json",
-            "line": 389
-          }
-        }
-      ]
-    },
-    {
-      "id": "e1ea29ba-e1d7-4989-a3ca-e384a265ffc2",
+      "id": "1cbf2820-6385-4a51-957d-f9a761c2f779",
       "name": "Cancellation Agent Instructions",
       "component_type": "PROMPT",
       "confidence": 0.8096000000000002,
       "metadata": {
-        "description": "Prompt instructions for a cancellation agent used by OpenAI Agents.",
+        "description": "A prompt component for AI agents, instantiated via openai_agents AST, defining cancellation behavior instructions.",
         "request_body_schema": {},
         "chat_payload_list": false,
+        "descriptive_name": "Cancellation Agent Prompt",
+        "dependency_names": [
+          "pydantic"
+        ],
+        "loc": 443,
         "extras": {
           "canonical_name": "cancellation_agent_instructions",
           "adapter": "openai_agents",
@@ -2337,14 +1426,19 @@
       ]
     },
     {
-      "id": "eab48e1f-2319-4da9-b21c-70140f29b41a",
+      "id": "f9a2c32b-35c0-4f94-a1bf-d039da753b3f",
       "name": "FAQ Agent Instructions",
       "component_type": "PROMPT",
       "confidence": 0.8096000000000002,
       "metadata": {
-        "description": "Prompt instructions for an FAQ agent, defining its behavior and response guidelines within an OpenAI Agents AST instantiation.",
+        "description": "A prompt component for an FAQ agent, instantiated via OpenAI Agents AST to handle question-answering logic.",
         "request_body_schema": {},
         "chat_payload_list": false,
+        "descriptive_name": "FAQ Agent Prompt",
+        "dependency_names": [
+          "pydantic"
+        ],
+        "loc": 443,
         "extras": {
           "canonical_name": "faq_agent_instructions",
           "adapter": "openai_agents",
@@ -2383,14 +1477,19 @@
       ]
     },
     {
-      "id": "25e98d5e-414f-45b1-bb09-3ab84695de1e",
+      "id": "4cccdf88-8365-44b0-a57f-04e1010ca0cf",
       "name": "Flight Status Agent Instructions",
       "component_type": "PROMPT",
       "confidence": 0.8096000000000002,
       "metadata": {
-        "description": "Prompt instructions for a flight status agent, instantiated as an OpenAI Agents AST component.",
+        "description": "Flight Status Agent Instructions is a PROMPT component instantiated via openai_agents ast_instantiation for agent behavior guidance.",
         "request_body_schema": {},
         "chat_payload_list": false,
+        "descriptive_name": "Flight Status Agent Prompt",
+        "dependency_names": [
+          "pydantic"
+        ],
+        "loc": 443,
         "extras": {
           "canonical_name": "flight_status_agent_instructions",
           "adapter": "openai_agents",
@@ -2429,14 +1528,19 @@
       ]
     },
     {
-      "id": "75d369f6-bdba-426c-9f07-eb90d21e03e4",
+      "id": "7fcbca45-0dc2-49c5-8640-7f6e959d6633",
       "name": "Jailbreak Guardrail Instructions",
       "component_type": "PROMPT",
       "confidence": 0.8096000000000002,
       "metadata": {
-        "description": "Prompt instructions that define guardrails for detecting and handling jailbreak attempts in agent interactions.",
+        "description": "Jailbreak Guardrail Instructions is a prompt component instantiated via openai_agents ast_instantiation to prevent adversarial inputs.",
         "request_body_schema": {},
         "chat_payload_list": false,
+        "descriptive_name": "Jailbreak Guardrail Prompt",
+        "dependency_names": [
+          "pydantic"
+        ],
+        "loc": 443,
         "extras": {
           "canonical_name": "jailbreak_guardrail_instructions",
           "adapter": "openai_agents",
@@ -2475,133 +1579,41 @@
       ]
     },
     {
-      "id": "5043dad5-62ef-40b2-87a1-c8c1981a3aab",
-      "name": "generic",
+      "id": "60a7d219-3bdf-4007-9ad9-6c59af0fe738",
+      "name": "Generic",
       "component_type": "PROMPT",
-      "confidence": 1.0,
+      "confidence": 0.44000000000000006,
       "metadata": {
-        "description": "Generic prompt component using regex-based processing.",
+        "description": "A generic prompt component identified by regex pattern matching for common prompt structures.",
         "request_body_schema": {},
         "chat_payload_list": false,
+        "descriptive_name": "Generic Prompt",
+        "dependency_names": [
+          "pydantic"
+        ],
+        "loc": 443,
         "extras": {
           "canonical_name": "prompt_generic",
           "adapter": "prompt_generic",
-          "evidence_count": 11,
-          "detected_by_tiers": [
-            "code",
-            "iac"
-          ],
+          "evidence_count": 1,
+          "llm_soft_rejected": true,
+          "llm_verification_reason": "No actual API endpoint is defined at line 137; the code shows session management and a login endpoint, but there is no network listener or transport binding (e.g., .run() or uvicorn) at that location. The detection is a false positive.",
           "confidence_breakdown": {
-            "regex_confidence": 0.98,
+            "regex_confidence": 0.55,
             "llm_confidence": 0.0,
-            "evidence_count": 6,
+            "evidence_count": 1,
             "evidence_sources": [
-              "evidence:0",
-              "evidence:1",
-              "evidence:2",
-              "evidence:3",
-              "evidence:4",
-              "confidence:high"
+              "evidence:0"
             ],
-            "base_confidence": 0.784,
-            "evidence_multiplier": 1.4,
+            "base_confidence": 0.44,
+            "evidence_multiplier": 1.0,
             "validation_penalty": 0.0,
-            "final_confidence": 1.0
+            "final_confidence": 0.44
           },
           "description_source": "llm_generated"
         }
       },
       "evidence": [
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "prompt_generic: regex",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-0ddadcbfb8384de1.json",
-            "line": 1164
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "prompt_generic: regex",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-49caa71cd2349a13.json",
-            "line": 488
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "prompt_generic: regex",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-88f69fb453ac26dd.json",
-            "line": 118
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "prompt_generic: regex",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-c8c79ffa638c560b.json",
-            "line": 1461
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "prompt_generic: regex",
-          "location": {
-            "path": "redteam-prompts-azure-gpt-5-4-mini-f523a702c2aef22d.json",
-            "line": 16
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "prompt_generic: regex",
-          "location": {
-            "path": "redteam-prompts-gemini-gemini-3-1-flash-lite-fbeb21784719b810.json",
-            "line": 1335
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "prompt_generic: regex",
-          "location": {
-            "path": "redteam-prompts-openai-gpt-4-1-mini-9b2e4db8a19b579a.json",
-            "line": 1057
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.95,
-          "detail": "prompt_generic: regex",
-          "location": {
-            "path": "redteam-prompts-openai-gpt-4-1-mini-ac850a3e193ec07a.json",
-            "line": 1004
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.6,
-          "detail": "prompt_generic: regex",
-          "location": {
-            "path": "nuguard-azure.yaml",
-            "line": 88
-          }
-        },
-        {
-          "kind": "regex",
-          "confidence": 0.6,
-          "detail": "prompt_generic: regex",
-          "location": {
-            "path": "nuguard-gemini.yaml",
-            "line": 87
-          }
-        },
         {
           "kind": "regex",
           "confidence": 0.55,
@@ -2614,14 +1626,19 @@
       ]
     },
     {
-      "id": "a0615b0b-f3fb-498b-b46a-10a6341647de",
+      "id": "2e3348c9-2816-4944-a4a8-68b007bae25f",
       "name": "Relevance Guardrail Instructions",
       "component_type": "PROMPT",
       "confidence": 0.8096000000000002,
       "metadata": {
-        "description": "Prompt instructions that define relevance guardrails for agent behavior during AST instantiation in openai_agents.",
+        "description": "Relevance Guardrail Instructions is a PROMPT component instantiated via openai_agents AST to enforce response relevance.",
         "request_body_schema": {},
         "chat_payload_list": false,
+        "descriptive_name": "Relevance Guardrail Prompt",
+        "dependency_names": [
+          "pydantic"
+        ],
+        "loc": 443,
         "extras": {
           "canonical_name": "relevance_guardrail_instructions",
           "adapter": "openai_agents",
@@ -2660,14 +1677,19 @@
       ]
     },
     {
-      "id": "d94bd6ff-2d69-4099-9a62-0098978aa243",
+      "id": "9af009c2-6615-4ce2-af0e-1ea5892830ea",
       "name": "Seat Booking Agent Instructions",
       "component_type": "PROMPT",
       "confidence": 0.8096000000000002,
       "metadata": {
-        "description": "Prompt defining instructions for a seat booking agent in an OpenAI Agents AST instantiation.",
+        "description": "Seat Booking Agent Instructions is a PROMPT component instantiated via openai_agents AST for guiding seat selection.",
         "request_body_schema": {},
         "chat_payload_list": false,
+        "descriptive_name": "Seat Booking Agent Prompt",
+        "dependency_names": [
+          "pydantic"
+        ],
+        "loc": 443,
         "extras": {
           "canonical_name": "seat_booking_agent_instructions",
           "adapter": "openai_agents",
@@ -2706,14 +1728,19 @@
       ]
     },
     {
-      "id": "813a060e-2085-46c3-b465-d1f846b31cff",
+      "id": "4f578f22-0214-4891-a1d8-674ece068fda",
       "name": "Triage Agent Instructions",
       "component_type": "PROMPT",
       "confidence": 0.8096000000000002,
       "metadata": {
-        "description": "Prompt instructions for a triage agent used to guide automated handling and classification of tasks within an OpenAI Agents workflow.",
+        "description": "Triage Agent Instructions is a PROMPT component instantiated via openai_agents AST, guiding agent decision-making.",
         "request_body_schema": {},
         "chat_payload_list": false,
+        "descriptive_name": "Triage Agent Prompt",
+        "dependency_names": [
+          "pydantic"
+        ],
+        "loc": 443,
         "extras": {
           "canonical_name": "triage_agent_instructions",
           "adapter": "openai_agents",
@@ -2752,13 +1779,13 @@
       ]
     },
     {
-      "id": "85c03864-9c7a-4586-8159-6ac69ddc6fd6",
-      "name": "baggage_tool",
+      "id": "ef93833b-4c10-4a74-b2a1-92f1c4b343c4",
+      "name": "Baggage Tool",
       "component_type": "TOOL",
       "confidence": 1.0,
       "metadata": {
         "framework": "openai_agents",
-        "description": "A tool for managing and transporting structured baggage-related data within the OpenAI Agents framework, likely used to pass contextual information between agent steps.",
+        "description": "The Baggage Tool handles air passenger baggage, including checking status, tracking lost luggage, and managing special items.",
         "high_privilege": false,
         "sql_injectable": false,
         "ssrf_possible": false,
@@ -2766,19 +1793,24 @@
         "reads_external_content": false,
         "request_body_schema": {},
         "chat_payload_list": false,
+        "descriptive_name": "Baggage Management Tool",
+        "dependency_names": [
+          "pydantic"
+        ],
+        "loc": 443,
         "extras": {
           "canonical_name": "openai_agents_tool_baggage_tool",
           "adapter": "openai_agents",
           "evidence_count": 1,
           "framework": "openai_agents",
           "decorator": "function_tool",
-          "description": "A function tool that answers baggage allowance and fee questions by returning canned baggage policy information based on the query.",
+          "description": "Tool that looks up baggage allowance and fees based on a query string.",
           "llm_verified": true,
-          "llm_verification_reason": "Concrete production code in application file defining an openai_agents function tool named baggage_tool; not a test or doc stub.",
-          "llm_confidence": 0.98,
+          "llm_verification_reason": "The baggage_tool function is decorated with @function_tool and defined in a production backend file (main.py), making it a real TOOL node used by an AI agent.",
+          "llm_confidence": 0.9,
           "confidence_breakdown": {
-            "regex_confidence": 0.98,
-            "llm_confidence": 0.98,
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.9,
             "evidence_count": 4,
             "evidence_sources": [
               "llm:verified",
@@ -2786,7 +1818,7 @@
               "evidence:0",
               "confidence:high"
             ],
-            "base_confidence": 0.98,
+            "base_confidence": 0.9,
             "evidence_multiplier": 1.3,
             "validation_penalty": 0.0,
             "final_confidence": 1.0
@@ -2807,13 +1839,13 @@
       ]
     },
     {
-      "id": "d30c1c7b-b797-4ea3-bbd6-9f0ff4d49a27",
-      "name": "cancel_flight",
+      "id": "33ecf995-4368-4f45-8dbf-9ab18820cca9",
+      "name": "Cancel Flight",
       "component_type": "TOOL",
       "confidence": 1.0,
       "metadata": {
         "framework": "openai_agents",
-        "description": "Cancels an existing flight booking or reservation, typically by identifying the booking and submitting a cancellation request through the connected travel system.",
+        "description": "Cancels a specified flight reservation, processing refunds or credits according to fare rules and applicable policies.",
         "high_privilege": false,
         "sql_injectable": false,
         "ssrf_possible": false,
@@ -2821,19 +1853,24 @@
         "reads_external_content": false,
         "request_body_schema": {},
         "chat_payload_list": false,
+        "descriptive_name": "Cancel Flight Tool",
+        "dependency_names": [
+          "pydantic"
+        ],
+        "loc": 443,
         "extras": {
           "canonical_name": "openai_agents_tool_cancel_flight",
           "adapter": "openai_agents",
           "evidence_count": 1,
           "framework": "openai_agents",
           "decorator": "function_tool",
-          "description": "Agent tool that cancels the current flight reservation using the confirmation number from the run context.",
+          "description": "Tool function for AI agent to cancel a flight using the confirmation number from the agent context.",
           "llm_verified": true,
-          "llm_verification_reason": "Concrete production code in application file using @function_tool to define an OpenAI Agents tool callable by the agent. Not a test or stub.",
-          "llm_confidence": 0.98,
+          "llm_verification_reason": "Concrete production function_tool in application code (not test) that exposes AI agent capability to cancel a flight.",
+          "llm_confidence": 0.95,
           "confidence_breakdown": {
-            "regex_confidence": 0.98,
-            "llm_confidence": 0.98,
+            "regex_confidence": 0.95,
+            "llm_confidence": 0.95,
             "evidence_count": 4,
             "evidence_sources": [
               "llm:verified",
@@ -2841,7 +1878,7 @@
               "evidence:0",
               "confidence:high"
             ],
-            "base_confidence": 0.98,
+            "base_confidence": 0.95,
             "evidence_multiplier": 1.3,
             "validation_penalty": 0.0,
             "final_confidence": 1.0
@@ -2862,13 +1899,13 @@
       ]
     },
     {
-      "id": "cdbda0a1-4b85-4952-939c-74d981dec5cf",
-      "name": "display_seat_map",
+      "id": "d2128a59-eebf-4d02-a54f-2a19a8861994",
+      "name": "Display Seat Map",
       "component_type": "TOOL",
       "confidence": 1.0,
       "metadata": {
         "framework": "openai_agents",
-        "description": "Displays the seating layout for a venue or event, helping agents and users inspect available, reserved, or selected seats before making booking decisions.",
+        "description": "Allows the AI to retrieve and display the aircraft seating layout, enabling users to visualize available and occupied seats.",
         "high_privilege": false,
         "sql_injectable": false,
         "ssrf_possible": false,
@@ -2876,19 +1913,24 @@
         "reads_external_content": false,
         "request_body_schema": {},
         "chat_payload_list": false,
+        "descriptive_name": "Display Seat Map Tool",
+        "dependency_names": [
+          "pydantic"
+        ],
+        "loc": 443,
         "extras": {
           "canonical_name": "openai_agents_tool_display_seat_map",
           "adapter": "openai_agents",
           "evidence_count": 1,
           "framework": "openai_agents",
           "decorator": "function_tool",
-          "description": "Agent tool that returns a trigger string instructing the UI to open an interactive seat map so the customer can choose a new seat.",
+          "description": "Tool that triggers an interactive seat map display in the UI for customer seat selection.",
           "llm_verified": true,
-          "llm_verification_reason": "Concrete production tool defined in application code via @function_tool; it exposes a callable UI action for the agent framework and is not test or documentation code.",
-          "llm_confidence": 0.98,
+          "llm_verification_reason": "The function is decorated with @function_tool from openai_agents, making it a concrete tool available to an AI agent in production code (main.py). It returns a string that triggers UI behavior, matching the TOOL type.",
+          "llm_confidence": 0.95,
           "confidence_breakdown": {
-            "regex_confidence": 0.98,
-            "llm_confidence": 0.98,
+            "regex_confidence": 0.95,
+            "llm_confidence": 0.95,
             "evidence_count": 4,
             "evidence_sources": [
               "llm:verified",
@@ -2896,7 +1938,7 @@
               "evidence:0",
               "confidence:high"
             ],
-            "base_confidence": 0.98,
+            "base_confidence": 0.95,
             "evidence_multiplier": 1.3,
             "validation_penalty": 0.0,
             "final_confidence": 1.0
@@ -2917,13 +1959,13 @@
       ]
     },
     {
-      "id": "9a5a358d-ce5c-44c9-8bb3-2fc69a56bd10",
-      "name": "faq_lookup_tool",
+      "id": "db210df4-de5c-4c72-9196-3a3f7ab58530",
+      "name": "Faq Lookup Tool",
       "component_type": "TOOL",
-      "confidence": 0.8160000000000001,
+      "confidence": 1.0,
       "metadata": {
         "framework": "openai_agents",
-        "description": "Retrieves relevant answers from a FAQ knowledge base to help the agent quickly respond to common questions with accurate, prewritten information.",
+        "description": "Retrieves and displays relevant answers from a predefined FAQ database to respond to user questions accurately and efficiently.",
         "high_privilege": false,
         "sql_injectable": false,
         "ssrf_possible": false,
@@ -2931,25 +1973,35 @@
         "reads_external_content": false,
         "request_body_schema": {},
         "chat_payload_list": false,
+        "descriptive_name": "FAQ Lookup Tool",
+        "dependency_names": [
+          "pydantic"
+        ],
+        "loc": 443,
         "extras": {
           "canonical_name": "openai_agents_tool_faq_lookup_tool",
           "adapter": "openai_agents",
           "evidence_count": 1,
           "framework": "openai_agents",
           "decorator": "function_tool",
+          "description": "Looks up answers to frequently asked questions about baggage policy.",
+          "llm_verified": true,
+          "llm_verification_reason": "The function is decorated with @function_tool (from OpenAI Agents SDK), defined in application code, and provides a concrete tool for an AI agent to query FAQs.",
+          "llm_confidence": 0.95,
           "confidence_breakdown": {
-            "regex_confidence": 0.85,
-            "llm_confidence": 0.0,
-            "evidence_count": 3,
+            "regex_confidence": 0.95,
+            "llm_confidence": 0.95,
+            "evidence_count": 4,
             "evidence_sources": [
+              "llm:verified",
               "framework:openai_agents",
               "evidence:0",
               "confidence:high"
             ],
-            "base_confidence": 0.68,
-            "evidence_multiplier": 1.2,
+            "base_confidence": 0.95,
+            "evidence_multiplier": 1.3,
             "validation_penalty": 0.0,
-            "final_confidence": 0.816
+            "final_confidence": 1.0
           },
           "description_source": "enriched_existing"
         }
@@ -2967,13 +2019,13 @@
       ]
     },
     {
-      "id": "8285143e-f4f6-461e-90d2-269da3957304",
-      "name": "flight_status_tool",
+      "id": "6774de5a-3b02-4557-a6e1-661688f7c72f",
+      "name": "Flight Status Tool",
       "component_type": "TOOL",
-      "confidence": 0.8160000000000001,
+      "confidence": 1.0,
       "metadata": {
         "framework": "openai_agents",
-        "description": "Retrieves current flight status information, such as departure, arrival, delays, and gate details, to help users track a flight in real time.",
+        "description": "Retrieves current flight information based on airline, flight number, or route to provide real-time status updates.",
         "high_privilege": false,
         "sql_injectable": false,
         "ssrf_possible": false,
@@ -2981,25 +2033,35 @@
         "reads_external_content": false,
         "request_body_schema": {},
         "chat_payload_list": false,
+        "descriptive_name": "Flight Status Tool",
+        "dependency_names": [
+          "pydantic"
+        ],
+        "loc": 443,
         "extras": {
           "canonical_name": "openai_agents_tool_flight_status_tool",
           "adapter": "openai_agents",
           "evidence_count": 1,
           "framework": "openai_agents",
           "decorator": "function_tool",
+          "description": "Tool function decorated with @function_tool that an AI agent can call to look up the status of a flight by flight number.",
+          "llm_verified": true,
+          "llm_verification_reason": "The function is decorated with @function_tool from openai_agents framework, providing a concrete tool for an AI agent to query flight status. It is in production code (not a test) and has clear AI functionality.",
+          "llm_confidence": 0.95,
           "confidence_breakdown": {
-            "regex_confidence": 0.85,
-            "llm_confidence": 0.0,
-            "evidence_count": 3,
+            "regex_confidence": 0.95,
+            "llm_confidence": 0.95,
+            "evidence_count": 4,
             "evidence_sources": [
+              "llm:verified",
               "framework:openai_agents",
               "evidence:0",
               "confidence:high"
             ],
-            "base_confidence": 0.68,
-            "evidence_multiplier": 1.2,
+            "base_confidence": 0.95,
+            "evidence_multiplier": 1.3,
             "validation_penalty": 0.0,
-            "final_confidence": 0.816
+            "final_confidence": 1.0
           },
           "description_source": "enriched_existing"
         }
@@ -3017,13 +2079,13 @@
       ]
     },
     {
-      "id": "e1686673-8f26-4005-89ec-4472e0ba0f0e",
-      "name": "lookup_reservation",
+      "id": "afe45cad-e0de-4423-85a9-69296ecd1d77",
+      "name": "Lookup Reservation",
       "component_type": "TOOL",
-      "confidence": 0.8160000000000001,
+      "confidence": 1.0,
       "metadata": {
         "framework": "openai_agents",
-        "description": "Looks up reservation details, likely retrieving booking information or status from an external reservation system for use by the agent.",
+        "description": "Retrieves a customer's reservation details from the database using their reservation ID or other provided identifiers.",
         "high_privilege": false,
         "sql_injectable": false,
         "ssrf_possible": false,
@@ -3031,25 +2093,35 @@
         "reads_external_content": false,
         "request_body_schema": {},
         "chat_payload_list": false,
+        "descriptive_name": "Reservation Lookup Tool",
+        "dependency_names": [
+          "pydantic"
+        ],
+        "loc": 443,
         "extras": {
           "canonical_name": "openai_agents_tool_lookup_reservation",
           "adapter": "openai_agents",
           "evidence_count": 1,
           "framework": "openai_agents",
           "decorator": "function_tool",
+          "description": "AI agent tool to look up a customer's flight reservations from the database, callable with or without a confirmation number.",
+          "llm_verified": true,
+          "llm_verification_reason": "The `lookup_reservation` function is decorated with @function_tool, making it a concrete TOOL available to an AI agent in the production code path. It provides a real capability (querying flight reservations) for the agent to invoke. The context shows it is part of an OpenAI Agents framework application.",
+          "llm_confidence": 0.85,
           "confidence_breakdown": {
             "regex_confidence": 0.85,
-            "llm_confidence": 0.0,
-            "evidence_count": 3,
+            "llm_confidence": 0.85,
+            "evidence_count": 4,
             "evidence_sources": [
+              "llm:verified",
               "framework:openai_agents",
               "evidence:0",
               "confidence:high"
             ],
-            "base_confidence": 0.68,
-            "evidence_multiplier": 1.2,
+            "base_confidence": 0.85,
+            "evidence_multiplier": 1.3,
             "validation_penalty": 0.0,
-            "final_confidence": 0.816
+            "final_confidence": 1.0
           },
           "description_source": "enriched_existing"
         }
@@ -3067,13 +2139,13 @@
       ]
     },
     {
-      "id": "afea3f64-6505-4859-a987-dda982138260",
-      "name": "update_seat",
+      "id": "c26eb8a0-377f-4f1b-951c-594ec14b568c",
+      "name": "Update Seat",
       "component_type": "TOOL",
-      "confidence": 0.8160000000000001,
+      "confidence": 1.0,
       "metadata": {
         "framework": "openai_agents",
-        "description": "Updates the currently selected seat or seat assignment in the system, applying the provided changes to seating-related data.",
+        "description": "Updates a specified seating arrangement in the database by applying changes to seat assignments or status.",
         "high_privilege": false,
         "sql_injectable": false,
         "ssrf_possible": false,
@@ -3081,25 +2153,35 @@
         "reads_external_content": false,
         "request_body_schema": {},
         "chat_payload_list": false,
+        "descriptive_name": "Update Seat Tool",
+        "dependency_names": [
+          "pydantic"
+        ],
+        "loc": 443,
         "extras": {
           "canonical_name": "openai_agents_tool_update_seat",
           "adapter": "openai_agents",
           "evidence_count": 1,
           "framework": "openai_agents",
           "decorator": "function_tool",
+          "description": "MCP/OpenAI Agents tool that updates a passenger's seat for a given reservation using the database.",
+          "llm_verified": true,
+          "llm_verification_reason": "Concrete async function decorated with @function_tool, used in production code to update seat data via an agent tool.",
+          "llm_confidence": 0.95,
           "confidence_breakdown": {
-            "regex_confidence": 0.85,
-            "llm_confidence": 0.0,
-            "evidence_count": 3,
+            "regex_confidence": 0.95,
+            "llm_confidence": 0.95,
+            "evidence_count": 4,
             "evidence_sources": [
+              "llm:verified",
               "framework:openai_agents",
               "evidence:0",
               "confidence:high"
             ],
-            "base_confidence": 0.68,
-            "evidence_multiplier": 1.2,
+            "base_confidence": 0.95,
+            "evidence_multiplier": 1.3,
             "validation_penalty": 0.0,
-            "final_confidence": 0.816
+            "final_confidence": 1.0
           },
           "description_source": "enriched_existing"
         }
@@ -3115,282 +2197,347 @@
           }
         }
       ]
+    },
+    {
+      "id": "78c1be2f-b5ac-4112-ac37-676c4482bab9",
+      "name": ".github/workflows/deploy-azure.yml",
+      "component_type": "GITHUB_WORKFLOW",
+      "confidence": 0.7200000000000001,
+      "metadata": {
+        "description": "GitHub Actions workflow for deploying Azure resources, defined in .github/workflows/deploy-azure.yml.",
+        "request_body_schema": {},
+        "chat_payload_list": false,
+        "descriptive_name": "Deploy Azure Workflow",
+        "workflow_has_unpinned_global_install": true,
+        "workflow_has_cred_access": false,
+        "workflow_triggers": [
+          "push",
+          "workflow_dispatch"
+        ],
+        "action_refs": [
+          "actions/checkout@v4",
+          "actions/setup-python@v5",
+          "azure/login@v2",
+          "azure/webapps-deploy@v3",
+          "actions/checkout@v4",
+          "actions/setup-node@v4",
+          "azure/login@v2",
+          "Azure/static-web-apps-deploy@v1",
+          "azure/login@v2"
+        ],
+        "extras": {
+          "confidence_breakdown": {
+            "regex_confidence": 0.9,
+            "llm_confidence": 0.0,
+            "evidence_count": 1,
+            "evidence_sources": [
+              "confidence:high"
+            ],
+            "base_confidence": 0.72,
+            "evidence_multiplier": 1.0,
+            "validation_penalty": 0.0,
+            "final_confidence": 0.72
+          },
+          "description_source": "llm_generated"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.9,
+          "detail": "github_workflow: .github/workflows/deploy-azure.yml",
+          "location": {
+            "path": ".github/workflows/deploy-azure.yml",
+            "line": 1
+          }
+        }
+      ]
     }
   ],
   "edges": [
     {
-      "source": "20435ed7-87c9-4de3-8f3f-be7fa0a98fa5",
-      "target": "6ca346b0-168b-4615-add7-a816b514ae42",
-      "relationship_type": "USES"
-    },
-    {
-      "source": "cd6363aa-a546-48d8-9118-22e67967a69c",
-      "target": "6ca346b0-168b-4615-add7-a816b514ae42",
-      "relationship_type": "USES"
-    },
-    {
-      "source": "7c75af04-faba-4cee-a74d-b39aa0f27a0c",
-      "target": "85c03864-9c7a-4586-8159-6ac69ddc6fd6",
+      "source": "adb95c89-7aae-4989-9a69-d972b7f9dcb7",
+      "target": "05d932fd-97d3-4c4a-93db-876fa313c513",
       "relationship_type": "CALLS"
     },
     {
-      "source": "7c75af04-faba-4cee-a74d-b39aa0f27a0c",
-      "target": "d30c1c7b-b797-4ea3-bbd6-9f0ff4d49a27",
+      "source": "adb95c89-7aae-4989-9a69-d972b7f9dcb7",
+      "target": "4bcb2178-1c88-4170-b230-06534d558312",
       "relationship_type": "CALLS"
     },
     {
-      "source": "7c75af04-faba-4cee-a74d-b39aa0f27a0c",
-      "target": "cdbda0a1-4b85-4952-939c-74d981dec5cf",
+      "source": "adb95c89-7aae-4989-9a69-d972b7f9dcb7",
+      "target": "5a84e9eb-2a3e-425e-b16a-7cca39e7ce7a",
       "relationship_type": "CALLS"
     },
     {
-      "source": "7c75af04-faba-4cee-a74d-b39aa0f27a0c",
-      "target": "9a5a358d-ce5c-44c9-8bb3-2fc69a56bd10",
+      "source": "adb95c89-7aae-4989-9a69-d972b7f9dcb7",
+      "target": "3c24cbb0-1cac-494f-ac5d-d582991280f5",
       "relationship_type": "CALLS"
     },
     {
-      "source": "7c75af04-faba-4cee-a74d-b39aa0f27a0c",
-      "target": "8285143e-f4f6-461e-90d2-269da3957304",
-      "relationship_type": "CALLS"
-    },
-    {
-      "source": "7c75af04-faba-4cee-a74d-b39aa0f27a0c",
-      "target": "ddac9774-de56-4211-9934-f55d01137eeb",
+      "source": "20c8d881-99e0-4cbe-8cef-963506a29bb6",
+      "target": "1f9d877b-c819-497a-bef1-83bfe0de7cdf",
       "relationship_type": "USES"
     },
     {
-      "source": "7c75af04-faba-4cee-a74d-b39aa0f27a0c",
-      "target": "6ca346b0-168b-4615-add7-a816b514ae42",
+      "source": "e7a3e9b6-7d16-41b1-85a5-33ac2e738473",
+      "target": "1f9d877b-c819-497a-bef1-83bfe0de7cdf",
       "relationship_type": "USES"
     },
     {
-      "source": "7c75af04-faba-4cee-a74d-b39aa0f27a0c",
-      "target": "db414bdc-4f89-47aa-9987-21768d45a3b9",
-      "relationship_type": "USES"
+      "source": "51e7e4e8-c621-4463-8002-78c0de4bb05e",
+      "target": "b855c84f-3f66-4736-a64b-461bb45aeb4e",
+      "relationship_type": "DELEGATES_TO"
     },
     {
-      "source": "1562bc81-c32b-4b18-b24b-484c1f7b7442",
-      "target": "85c03864-9c7a-4586-8159-6ac69ddc6fd6",
+      "source": "51e7e4e8-c621-4463-8002-78c0de4bb05e",
+      "target": "22bbc024-a25d-41da-a292-5d72d8dbd8e0",
+      "relationship_type": "DELEGATES_TO"
+    },
+    {
+      "source": "604406e6-16f3-4029-97a5-8a215cf1a881",
+      "target": "ef93833b-4c10-4a74-b2a1-92f1c4b343c4",
       "relationship_type": "CALLS"
     },
     {
-      "source": "1562bc81-c32b-4b18-b24b-484c1f7b7442",
-      "target": "d30c1c7b-b797-4ea3-bbd6-9f0ff4d49a27",
+      "source": "604406e6-16f3-4029-97a5-8a215cf1a881",
+      "target": "33ecf995-4368-4f45-8dbf-9ab18820cca9",
       "relationship_type": "CALLS"
     },
     {
-      "source": "1562bc81-c32b-4b18-b24b-484c1f7b7442",
-      "target": "cdbda0a1-4b85-4952-939c-74d981dec5cf",
+      "source": "604406e6-16f3-4029-97a5-8a215cf1a881",
+      "target": "d2128a59-eebf-4d02-a54f-2a19a8861994",
       "relationship_type": "CALLS"
     },
     {
-      "source": "1562bc81-c32b-4b18-b24b-484c1f7b7442",
-      "target": "9a5a358d-ce5c-44c9-8bb3-2fc69a56bd10",
+      "source": "604406e6-16f3-4029-97a5-8a215cf1a881",
+      "target": "db210df4-de5c-4c72-9196-3a3f7ab58530",
       "relationship_type": "CALLS"
     },
     {
-      "source": "1562bc81-c32b-4b18-b24b-484c1f7b7442",
-      "target": "8285143e-f4f6-461e-90d2-269da3957304",
+      "source": "604406e6-16f3-4029-97a5-8a215cf1a881",
+      "target": "6774de5a-3b02-4557-a6e1-661688f7c72f",
       "relationship_type": "CALLS"
     },
     {
-      "source": "1562bc81-c32b-4b18-b24b-484c1f7b7442",
-      "target": "ddac9774-de56-4211-9934-f55d01137eeb",
-      "relationship_type": "USES"
-    },
-    {
-      "source": "1562bc81-c32b-4b18-b24b-484c1f7b7442",
-      "target": "6ca346b0-168b-4615-add7-a816b514ae42",
-      "relationship_type": "USES"
-    },
-    {
-      "source": "1562bc81-c32b-4b18-b24b-484c1f7b7442",
-      "target": "db414bdc-4f89-47aa-9987-21768d45a3b9",
-      "relationship_type": "USES"
-    },
-    {
-      "source": "bc624100-4b1e-431a-a330-98b4c024a6c6",
-      "target": "85c03864-9c7a-4586-8159-6ac69ddc6fd6",
+      "source": "22bbc024-a25d-41da-a292-5d72d8dbd8e0",
+      "target": "ef93833b-4c10-4a74-b2a1-92f1c4b343c4",
       "relationship_type": "CALLS"
     },
     {
-      "source": "bc624100-4b1e-431a-a330-98b4c024a6c6",
-      "target": "d30c1c7b-b797-4ea3-bbd6-9f0ff4d49a27",
+      "source": "22bbc024-a25d-41da-a292-5d72d8dbd8e0",
+      "target": "33ecf995-4368-4f45-8dbf-9ab18820cca9",
       "relationship_type": "CALLS"
     },
     {
-      "source": "bc624100-4b1e-431a-a330-98b4c024a6c6",
-      "target": "cdbda0a1-4b85-4952-939c-74d981dec5cf",
+      "source": "22bbc024-a25d-41da-a292-5d72d8dbd8e0",
+      "target": "d2128a59-eebf-4d02-a54f-2a19a8861994",
       "relationship_type": "CALLS"
     },
     {
-      "source": "bc624100-4b1e-431a-a330-98b4c024a6c6",
-      "target": "9a5a358d-ce5c-44c9-8bb3-2fc69a56bd10",
+      "source": "22bbc024-a25d-41da-a292-5d72d8dbd8e0",
+      "target": "db210df4-de5c-4c72-9196-3a3f7ab58530",
       "relationship_type": "CALLS"
     },
     {
-      "source": "bc624100-4b1e-431a-a330-98b4c024a6c6",
-      "target": "8285143e-f4f6-461e-90d2-269da3957304",
+      "source": "22bbc024-a25d-41da-a292-5d72d8dbd8e0",
+      "target": "6774de5a-3b02-4557-a6e1-661688f7c72f",
       "relationship_type": "CALLS"
     },
     {
-      "source": "bc624100-4b1e-431a-a330-98b4c024a6c6",
-      "target": "ddac9774-de56-4211-9934-f55d01137eeb",
-      "relationship_type": "USES"
-    },
-    {
-      "source": "bc624100-4b1e-431a-a330-98b4c024a6c6",
-      "target": "6ca346b0-168b-4615-add7-a816b514ae42",
-      "relationship_type": "USES"
-    },
-    {
-      "source": "bc624100-4b1e-431a-a330-98b4c024a6c6",
-      "target": "db414bdc-4f89-47aa-9987-21768d45a3b9",
-      "relationship_type": "USES"
-    },
-    {
-      "source": "4964056e-a6b5-4f80-a92d-8e1bba7ea3a3",
-      "target": "85c03864-9c7a-4586-8159-6ac69ddc6fd6",
+      "source": "b855c84f-3f66-4736-a64b-461bb45aeb4e",
+      "target": "ef93833b-4c10-4a74-b2a1-92f1c4b343c4",
       "relationship_type": "CALLS"
     },
     {
-      "source": "4964056e-a6b5-4f80-a92d-8e1bba7ea3a3",
-      "target": "d30c1c7b-b797-4ea3-bbd6-9f0ff4d49a27",
+      "source": "b855c84f-3f66-4736-a64b-461bb45aeb4e",
+      "target": "33ecf995-4368-4f45-8dbf-9ab18820cca9",
       "relationship_type": "CALLS"
     },
     {
-      "source": "4964056e-a6b5-4f80-a92d-8e1bba7ea3a3",
-      "target": "cdbda0a1-4b85-4952-939c-74d981dec5cf",
+      "source": "b855c84f-3f66-4736-a64b-461bb45aeb4e",
+      "target": "d2128a59-eebf-4d02-a54f-2a19a8861994",
       "relationship_type": "CALLS"
     },
     {
-      "source": "4964056e-a6b5-4f80-a92d-8e1bba7ea3a3",
-      "target": "9a5a358d-ce5c-44c9-8bb3-2fc69a56bd10",
+      "source": "b855c84f-3f66-4736-a64b-461bb45aeb4e",
+      "target": "db210df4-de5c-4c72-9196-3a3f7ab58530",
       "relationship_type": "CALLS"
     },
     {
-      "source": "4964056e-a6b5-4f80-a92d-8e1bba7ea3a3",
-      "target": "8285143e-f4f6-461e-90d2-269da3957304",
+      "source": "b855c84f-3f66-4736-a64b-461bb45aeb4e",
+      "target": "6774de5a-3b02-4557-a6e1-661688f7c72f",
       "relationship_type": "CALLS"
     },
     {
-      "source": "4964056e-a6b5-4f80-a92d-8e1bba7ea3a3",
-      "target": "ddac9774-de56-4211-9934-f55d01137eeb",
-      "relationship_type": "USES"
-    },
-    {
-      "source": "4964056e-a6b5-4f80-a92d-8e1bba7ea3a3",
-      "target": "6ca346b0-168b-4615-add7-a816b514ae42",
-      "relationship_type": "USES"
-    },
-    {
-      "source": "4964056e-a6b5-4f80-a92d-8e1bba7ea3a3",
-      "target": "db414bdc-4f89-47aa-9987-21768d45a3b9",
-      "relationship_type": "USES"
-    },
-    {
-      "source": "355a82c6-669d-4bba-a3c2-f3dab1cfed20",
-      "target": "85c03864-9c7a-4586-8159-6ac69ddc6fd6",
+      "source": "200a0699-a047-4517-95ad-f9aa40da5a85",
+      "target": "ef93833b-4c10-4a74-b2a1-92f1c4b343c4",
       "relationship_type": "CALLS"
     },
     {
-      "source": "355a82c6-669d-4bba-a3c2-f3dab1cfed20",
-      "target": "d30c1c7b-b797-4ea3-bbd6-9f0ff4d49a27",
+      "source": "200a0699-a047-4517-95ad-f9aa40da5a85",
+      "target": "33ecf995-4368-4f45-8dbf-9ab18820cca9",
       "relationship_type": "CALLS"
     },
     {
-      "source": "355a82c6-669d-4bba-a3c2-f3dab1cfed20",
-      "target": "cdbda0a1-4b85-4952-939c-74d981dec5cf",
+      "source": "200a0699-a047-4517-95ad-f9aa40da5a85",
+      "target": "d2128a59-eebf-4d02-a54f-2a19a8861994",
       "relationship_type": "CALLS"
     },
     {
-      "source": "355a82c6-669d-4bba-a3c2-f3dab1cfed20",
-      "target": "9a5a358d-ce5c-44c9-8bb3-2fc69a56bd10",
+      "source": "200a0699-a047-4517-95ad-f9aa40da5a85",
+      "target": "db210df4-de5c-4c72-9196-3a3f7ab58530",
       "relationship_type": "CALLS"
     },
     {
-      "source": "355a82c6-669d-4bba-a3c2-f3dab1cfed20",
-      "target": "8285143e-f4f6-461e-90d2-269da3957304",
+      "source": "200a0699-a047-4517-95ad-f9aa40da5a85",
+      "target": "6774de5a-3b02-4557-a6e1-661688f7c72f",
       "relationship_type": "CALLS"
     },
     {
-      "source": "355a82c6-669d-4bba-a3c2-f3dab1cfed20",
-      "target": "ddac9774-de56-4211-9934-f55d01137eeb",
+      "source": "51e7e4e8-c621-4463-8002-78c0de4bb05e",
+      "target": "ef93833b-4c10-4a74-b2a1-92f1c4b343c4",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "51e7e4e8-c621-4463-8002-78c0de4bb05e",
+      "target": "33ecf995-4368-4f45-8dbf-9ab18820cca9",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "51e7e4e8-c621-4463-8002-78c0de4bb05e",
+      "target": "d2128a59-eebf-4d02-a54f-2a19a8861994",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "51e7e4e8-c621-4463-8002-78c0de4bb05e",
+      "target": "db210df4-de5c-4c72-9196-3a3f7ab58530",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "51e7e4e8-c621-4463-8002-78c0de4bb05e",
+      "target": "6774de5a-3b02-4557-a6e1-661688f7c72f",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "604406e6-16f3-4029-97a5-8a215cf1a881",
+      "target": "1f9d877b-c819-497a-bef1-83bfe0de7cdf",
       "relationship_type": "USES"
     },
     {
-      "source": "355a82c6-669d-4bba-a3c2-f3dab1cfed20",
-      "target": "6ca346b0-168b-4615-add7-a816b514ae42",
+      "source": "22bbc024-a25d-41da-a292-5d72d8dbd8e0",
+      "target": "1f9d877b-c819-497a-bef1-83bfe0de7cdf",
       "relationship_type": "USES"
     },
     {
-      "source": "355a82c6-669d-4bba-a3c2-f3dab1cfed20",
-      "target": "db414bdc-4f89-47aa-9987-21768d45a3b9",
+      "source": "b855c84f-3f66-4736-a64b-461bb45aeb4e",
+      "target": "1f9d877b-c819-497a-bef1-83bfe0de7cdf",
       "relationship_type": "USES"
     },
     {
-      "source": "1462bcea-f7f2-415e-b5cb-1bf635c43b69",
-      "target": "6ca346b0-168b-4615-add7-a816b514ae42",
+      "source": "200a0699-a047-4517-95ad-f9aa40da5a85",
+      "target": "1f9d877b-c819-497a-bef1-83bfe0de7cdf",
       "relationship_type": "USES"
     },
     {
-      "source": "1462bcea-f7f2-415e-b5cb-1bf635c43b69",
-      "target": "db414bdc-4f89-47aa-9987-21768d45a3b9",
+      "source": "51e7e4e8-c621-4463-8002-78c0de4bb05e",
+      "target": "1f9d877b-c819-497a-bef1-83bfe0de7cdf",
       "relationship_type": "USES"
     },
     {
-      "source": "1462bcea-f7f2-415e-b5cb-1bf635c43b69",
-      "target": "ddac9774-de56-4211-9934-f55d01137eeb",
+      "source": "4025a961-6053-4dde-b1a0-e0146cc250ef",
+      "target": "604406e6-16f3-4029-97a5-8a215cf1a881",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "4025a961-6053-4dde-b1a0-e0146cc250ef",
+      "target": "22bbc024-a25d-41da-a292-5d72d8dbd8e0",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "4025a961-6053-4dde-b1a0-e0146cc250ef",
+      "target": "b855c84f-3f66-4736-a64b-461bb45aeb4e",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "4025a961-6053-4dde-b1a0-e0146cc250ef",
+      "target": "200a0699-a047-4517-95ad-f9aa40da5a85",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "4025a961-6053-4dde-b1a0-e0146cc250ef",
+      "target": "51e7e4e8-c621-4463-8002-78c0de4bb05e",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "4025a961-6053-4dde-b1a0-e0146cc250ef",
+      "target": "ef93833b-4c10-4a74-b2a1-92f1c4b343c4",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "4025a961-6053-4dde-b1a0-e0146cc250ef",
+      "target": "33ecf995-4368-4f45-8dbf-9ab18820cca9",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "4025a961-6053-4dde-b1a0-e0146cc250ef",
+      "target": "d2128a59-eebf-4d02-a54f-2a19a8861994",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "4025a961-6053-4dde-b1a0-e0146cc250ef",
+      "target": "db210df4-de5c-4c72-9196-3a3f7ab58530",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "4025a961-6053-4dde-b1a0-e0146cc250ef",
+      "target": "6774de5a-3b02-4557-a6e1-661688f7c72f",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "4025a961-6053-4dde-b1a0-e0146cc250ef",
+      "target": "afe45cad-e0de-4423-85a9-69296ecd1d77",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "4025a961-6053-4dde-b1a0-e0146cc250ef",
+      "target": "c26eb8a0-377f-4f1b-951c-594ec14b568c",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "11c872e5-f3e1-4f76-8e31-404b02e64984",
+      "target": "f5634abd-9497-4e5e-9138-5b3d438c9b0f",
       "relationship_type": "USES"
     },
     {
-      "source": "d7c7b0b0-74ed-471e-ae8b-1098e8afff33",
-      "target": "6ca346b0-168b-4615-add7-a816b514ae42",
+      "source": "11c872e5-f3e1-4f76-8e31-404b02e64984",
+      "target": "928332b2-d907-435e-9b97-839623cacfbb",
       "relationship_type": "USES"
     },
     {
-      "source": "d7c7b0b0-74ed-471e-ae8b-1098e8afff33",
-      "target": "db414bdc-4f89-47aa-9987-21768d45a3b9",
-      "relationship_type": "USES"
-    },
-    {
-      "source": "d7c7b0b0-74ed-471e-ae8b-1098e8afff33",
-      "target": "ddac9774-de56-4211-9934-f55d01137eeb",
-      "relationship_type": "USES"
-    },
-    {
-      "source": "df0a0462-f7f9-49e8-a27e-1f8b704e99c9",
-      "target": "cb64b0ea-2772-4fc3-a012-eaad0c90c76a",
-      "relationship_type": "USES"
-    },
-    {
-      "source": "df0a0462-f7f9-49e8-a27e-1f8b704e99c9",
-      "target": "d4101264-e54d-4774-87a3-aec66c1adfca",
-      "relationship_type": "USES"
-    },
-    {
-      "source": "c462be22-0cf6-4595-9e4d-a5a46d0f37e6",
-      "target": "39ae195d-a53a-4b67-968a-6a8ea224065b",
+      "source": "ca31ac42-0e5c-49d7-b84f-17cf24925b3e",
+      "target": "3c24cbb0-1cac-494f-ac5d-d582991280f5",
       "relationship_type": "PROTECTS"
     },
     {
-      "source": "c462be22-0cf6-4595-9e4d-a5a46d0f37e6",
-      "target": "e62db242-aa5b-4c50-8909-86045f80e3c6",
+      "source": "ca31ac42-0e5c-49d7-b84f-17cf24925b3e",
+      "target": "6d875e02-ac95-44c8-83ff-c34c96c19d48",
       "relationship_type": "PROTECTS"
     },
     {
-      "source": "c462be22-0cf6-4595-9e4d-a5a46d0f37e6",
-      "target": "c72ac339-a252-4243-99c4-9c1484bd6815",
+      "source": "ca31ac42-0e5c-49d7-b84f-17cf24925b3e",
+      "target": "05d932fd-97d3-4c4a-93db-876fa313c513",
       "relationship_type": "PROTECTS"
     },
     {
-      "source": "c462be22-0cf6-4595-9e4d-a5a46d0f37e6",
-      "target": "845d1662-c549-4456-a27d-b970c2946f8a",
+      "source": "ca31ac42-0e5c-49d7-b84f-17cf24925b3e",
+      "target": "5a84e9eb-2a3e-425e-b16a-7cca39e7ce7a",
       "relationship_type": "PROTECTS"
     },
     {
-      "source": "c462be22-0cf6-4595-9e4d-a5a46d0f37e6",
-      "target": "c5b45864-8058-4a46-9373-8a7dd32caa9c",
+      "source": "ca31ac42-0e5c-49d7-b84f-17cf24925b3e",
+      "target": "4bcb2178-1c88-4170-b230-06534d558312",
       "relationship_type": "PROTECTS"
     }
   ],
@@ -3593,7 +2740,7 @@
     }
   ],
   "summary": {
-    "use_case": "This text-based application uses an agentic workflow to handle FAQ question answering and request triage/routing, with specialized agents for cancellation, flight status, seat booking, and FAQ support. It appears to serve airline or travel customers and includes guardrails for jailbreak and relevance filtering, plus FastAPI endpoints for chat/login/logout and access to data stored in SQLite. Voice, image, and video are not supported.",
+    "use_case": "This AI application serves airline customers by handling FAQ question answering, request triage and routing through a system of five specialized agents (Cancellation, FAQ, Flight Status, Seat Booking, and Triage) built with the OpenAI Agents framework. The system integrates seven tools including baggage lookup and flight cancellation functions, protected by jailbreak and relevance guardrails, and supports text-only interactions via a FastAPI API with Bearer authentication. No multimodal capabilities (voice, image, or video) are present.",
     "frameworks": [
       "openai_agents"
     ],
@@ -3614,18 +2761,17 @@
     ],
     "deployment_platforms": [
       "Azure",
-      "AWS",
-      "GitHub Actions"
+      "GitHub Actions",
+      "AWS"
     ],
     "regions": [],
     "environments": [
       "dev",
       "production",
       "test",
-      "qa",
+      "development",
       "stage",
-      "staging",
-      "development"
+      "staging"
     ],
     "deployment_urls": [
       "http://localhost:3250",
@@ -3633,22 +2779,27 @@
       "https://openai-cs-agents-backend.azurewebsites.net"
     ],
     "iac_accounts": [
-      "12345.",
+      "8c096918-b8f1-43dc-9b48-61fa2649814d",
+      "1f2cd8ec-b48a-4541-95c8-3e635f4fbe14",
+      "3a4b5e97-2764-4e14-b792-94d4b0ddd516",
+      "4ebe2efa-1cd7-44eb-b5de-3147c3084f53",
+      "1a9ff2c0-066c-49dd-8b0d-2bf324d4cf5b",
       "openai-cs-agents-demo-rg"
     ],
     "node_counts": {
       "AGENT": 5,
-      "API_ENDPOINT": 5,
-      "AUTH": 1,
-      "DATASTORE": 2,
-      "DEPLOYMENT": 2,
-      "FRAMEWORK": 2,
       "GUARDRAIL": 2,
-      "IAM": 1,
-      "MODEL": 3,
-      "PRIVILEGE": 3,
+      "FRAMEWORK": 2,
+      "MODEL": 1,
+      "TOOL": 7,
+      "DATASTORE": 1,
+      "AUTH": 1,
+      "PRIVILEGE": 1,
+      "API_ENDPOINT": 5,
+      "DEPLOYMENT": 1,
       "PROMPT": 8,
-      "TOOL": 7
+      "IAM": 1,
+      "GITHUB_WORKFLOW": 1
     },
     "secret_stores": [
       "github_actions_secret"
@@ -3662,20 +2813,15 @@
     "service_accounts": [
       "${{ secrets.AZURE_CREDENTIALS }}"
     ],
-    "iac_security_summary": "## Security briefing\n\n### 1) Deployment posture\n- **Cloud provider:** Azure only.\n- **Deployment mechanism:** GitHub Actions workflow named **\u201cDeploy to Azure\u201d**.\n- **Triggers:** `push` and `workflow_dispatch`, which creates both automated and manual deployment paths.\n- **Runner:** `ubuntu-latest`.\n- **Regions / HA / resilience:** No region, zone, multi-region, or availability-zone configuration is shown. No explicit HA or failover posture is detectable from the provided data.\n\n### 2) Secret management\n- **Secret store in use:** `github_actions_secret`.\n- **Observed secret reference:** `AZURE_CREDENTIALS` is referenced as `${{ secrets.AZURE_CREDENTIALS }}`.\n- **Plaintext-secret risk:** No plaintext secret value is shown in the data. However, the workflow relies on a stored GitHub Actions secret rather than OIDC federation.\n\n### 3) Encryption\n- **Encryption-at-rest coverage:** `false` in the aggregate security signals.\n- **Key management:** No key management, customer-managed keys, or encryption configuration is shown. Based on the provided data, there is no evidence of at-rest encryption being enabled or controlled.\n\n### 4) IAM / least-privilege\n- **IAM principal / service account:** `${{ secrets.AZURE_CREDENTIALS }}` is identified as the principal/service account.\n- **IAM type:** `managed_identity`.\n- **Scope:** `subscription`.\n- **Trust relationship:** Trust principal is `github-actions`.\n- **OIDC:** `uses_oidc: false`.\n- **Least-privilege concern:** Subscription-scope identity indicates broad access potential. No narrower scope, role assignment, or resource-group limitation is shown. Because OIDC is not used, long-lived credentials appear to be the trust mechanism.\n\n### 5) CI/CD security\n- **Runner type:** `ubuntu-latest` on GitHub-hosted runners.\n- **OIDC configuration:** Disabled.\n- **Workflow trigger surface:** `push` plus `workflow_dispatch` expands execution entry points. Manual dispatch can be useful operationally but increases the need for strict branch protections and approval controls.\n- **Secrets exposure considerations:** The workflow depends on a GitHub secret for Azure auth; if compromised, it can be reused until rotated.\n\n### 6) Container security\n- **Container nodes:** None are present in the provided configuration.\n- **Cannot assess from data:** root/non-root execution, health checks, and resource limits are not specified. No container security controls are visible.\n\n### 7) Key risks and recommendations\n1. **Replace secret-based Azure auth with OIDC federation.**  \n   Current config uses `github_actions_secret` and `uses_oidc: false`. Move to workload identity/OIDC to remove long-lived Azure credentials from GitHub Secrets.\n\n2. **Reduce IAM scope from subscription-level access.**  \n   The identity is scoped to `subscription`. Re-scope to the minimum required resource group or resource and assign the least-privilege role set needed for deployment.\n\n3. **Address missing encryption-at-rest and resilience controls.**  \n   `encryption_at_rest_coverage: false`, and no region/zone/HA data is present. Validate encryption settings for all persisted data and define explicit regional/availability-zone resilience for the deployment path.",
+    "iac_security_summary": "## Security briefing\n\n### 1) Deployment posture\n- **Cloud provider / runtime:** Azure via GitHub Actions\n- **Regions / HA / resilience:** Not evidenced\n- **Assessment:** The deployment relies on a single GitHub Actions runner (ubuntu-latest) with no specified environment or resilience configuration, increasing blast radius risk.\n\n### 2) Secret management\n- **Secret stores:** GitHub Actions secrets\n- **Credential handling:** Credential reference `${{ secrets.AZURE_CREDENTIALS }}` is used as a GitHub Actions secret placeholder; actual secret value is not exposed in the provided data.\n- **Assessment:** While secrets are referenced via GitHub\u2019s secret store, the absence of OIDC means long-lived credentials are stored as secrets, increasing exposure risk.\n\n### 3) Encryption\n- **Encryption at rest:** Not evidenced\n- **Key management:** Not evidenced\n- **Assessment:** No encryption configuration is present in the infrastructure nodes, leaving data protection posture unknown.\n\n### 4) IAM / least privilege\n- **Principals / service accounts:** `${{ secrets.AZURE_CREDENTIALS }}` used as the IAM principal and service account\n- **Scope / permissions / trust:** IAM scope is subscription-level; trust principals include GitHub Actions but no other constraints are defined.\n- **Assessment:** Subscription-wide scope with a single trust principal violates least privilege by granting excessive permissions and lacking granular resource restrictions.\n\n### 5) CI/CD security\n- **Runners / triggers:** Ubuntu-latest runner with push and workflow_dispatch triggers\n- **OIDC / credential flow:** OIDC is not used; credentials are exchanged via GitHub Actions secrets\n- **Assessment:** Without OIDC, long-lived subscription-level credentials pass through GitHub\u2019s secret store, increasing the risk of credential leakage or misuse.\n\n### 6) Container security\n- **Images / root user:** Not evidenced\n- **Health checks / resource limits:** Not evidenced\n- **Assessment:** No container configuration nodes are present, so container security posture cannot be assessed.\n\n### 7) Top 3 prioritized actions\n1. Replace secret-based authentication with OIDC between GitHub Actions and Azure to eliminate long-lived credentials.\n2. Restrict the Azure Managed Identity scope from subscription-wide to resource-group or resource-level to enforce least privilege.\n3. Define explicit deployment environments in the workflow to isolate production and non-production runs.",
     "data_classification": [
       "PII"
     ],
     "classified_tables": [
       "AirlineAgentContext",
-      "AirlineAgentContext",
-      "GuardrailCheck",
       "GuardrailCheck",
       "LoginRequest",
-      "LoginRequest",
       "LoginResponse",
-      "LoginResponse",
-      "UserResponse",
       "UserResponse"
     ],
     "startup_commands": [
@@ -3699,8 +2845,29 @@
       "$SCRIPT_DIR/reports/agentic-test-$(date +%Y%m%dT%H%M%S).log"
     ],
     "uses_streaming": false,
-    "streaming_endpoints": []
+    "streaming_endpoints": [],
+    "total_loc": 18153,
+    "tokens_used_for_enrichment": 16533,
+    "input_tokens_used": 13560,
+    "output_tokens_used": 2973,
+    "llm_model_used": "azure/DeepSeek-V4-Flash",
+    "instrumentation": {
+      "tools": [],
+      "log_level": "INFO"
+    },
+    "testing": {
+      "has_unit_tests": true,
+      "test_frameworks": [],
+      "ci_cd_pipeline": "github_actions",
+      "quality_gates": []
+    },
+    "github_actions_content": "",
+    "workflow_security_findings": [],
+    "k8s_network_policy_namespaces": [],
+    "has_package_json": false,
+    "has_lockfile": false,
+    "minified_js_files": []
   },
-  "relationship_graph_md": "## Component Relationship Graph\n\n- **Core orchestration**\n  - The system has five main agents: **Cancellation**, **FAQ**, **Flight Status**, **Seat Booking**, and **Triage**.\n  - Each of these agents can call the same shared tool set: **baggage_tool**, **cancel_flight**, **display_seat_map**, **faq_lookup_tool**, and **flight_status_tool**.\n  - All five agents can use the same three models: **gemini-3.1**, **gpt-4.1-mini**, and **gpt-5.4-mini**.\n\n- **App and framework layer**\n  - The **app** framework uses the same three models.\n  - The **framework:openai_agents** component also uses the same three models, suggesting shared agent orchestration through that framework.\n\n- **Guardrails and access control**\n  - Two guardrails are present: **Relevance Guardrail** and **Jailbreak Guardrail**.\n  - Both guardrails use **gpt-4.1-mini**.\n  - An **AUTH** component named **generic** protects the API endpoints **chat_endpoint**, **generic**, **login**, **logout**, and **me**.\n\n- **Data stores and tools**\n  - The graph shows **sqlite** and **sqlite3** datastores, but both have **no connections**.\n  - Two tools, **lookup_reservation** and **update_seat**, also show **no connections**.\n\n- **Notable security observations**\n  - Several tools are reachable by multiple agents, which increases blast radius if one agent is compromised.\n  - The graph shows **unguarded tools/endpoints by omission**: some tools exist but are not connected to any agent.\n  - No datastore access is shown, so the graph does **not** indicate direct sensitive data-store exposure.\n\n```mermaid\nflowchart LR\n    Cancellation_Agent_7c75af[\"\ud83e\udd16 Cancellation Agent\"]\n    FAQ_Agent_1562bc[\"\ud83e\udd16 FAQ Agent\"]\n    Flight_Status_Agent_bc6241[\"\ud83e\udd16 Flight Status Agent\"]\n    Seat_Booking_Agent_496405[\"\ud83e\udd16 Seat Booking Agent\"]\n    Triage_Agent_355a82[\"\ud83e\udd16 Triage Agent\"]\n    generic_e62db2([\"\ud83c\udf10 generic\"])\n    me_c5b458([\"\ud83c\udf10 me\"])\n    chat_endpoint_39ae19([\"\ud83c\udf10 chat_endpoint\"])\n    login_c72ac3([\"\ud83c\udf10 login\"])\n    logout_845d16([\"\ud83c\udf10 logout\"])\n    sqlite_c3de0f[(\"\ud83d\uddc4 sqlite\")]\n    sqlite3_4617b7[(\"\ud83d\uddc4 sqlite3\")]\n    app_1462bc[/\"\u2699 app\"/]\n    framework_openai_agents_d7c7b0[/\"\u2699 framework:openai_agents\"/]\n    Jailbreak_Guardrail_cd6363{\"\ud83d\udee1 Jailbreak Guardrail\"}\n    Relevance_Guardrail_20435e{\"\ud83d\udee1 Relevance Guardrail\"}\n    gemini_3_1_ddac97[(\"\ud83e\udde0 gemini-3.1\")]\n    gpt_4_1_mini_6ca346[(\"\ud83e\udde0 gpt-4.1-mini\")]\n    gpt_5_4_mini_db414b[(\"\ud83e\udde0 gpt-5.4-mini\")]\n    Cancellation_Agent_Instructions_e1ea29>\"\ud83d\udcac Cancellation Agent Instructions\"]\n    FAQ_Agent_Instructions_eab48e>\"\ud83d\udcac FAQ Agent Instructions\"]\n    Flight_Status_Agent_Instructions_25e98d>\"\ud83d\udcac Flight Status Agent Instructions\"]\n    Jailbreak_Guardrail_Instructions_75d369>\"\ud83d\udcac Jailbreak Guardrail Instructions\"]\n    generic_5043da>\"\ud83d\udcac generic\"]\n    Relevance_Guardrail_Instructions_a0615b>\"\ud83d\udcac Relevance Guardrail Instructions\"]\n    Seat_Booking_Agent_Instructions_d94bd6>\"\ud83d\udcac Seat Booking Agent Instructions\"]\n    Triage_Agent_Instructions_813a06>\"\ud83d\udcac Triage Agent Instructions\"]\n    baggage_tool_85c038(\"\ud83d\udd27 baggage_tool\")\n    cancel_flight_d30c1c(\"\ud83d\udd27 cancel_flight\")\n    display_seat_map_cdbda0(\"\ud83d\udd27 display_seat_map\")\n    faq_lookup_tool_9a5a35(\"\ud83d\udd27 faq_lookup_tool\")\n    flight_status_tool_828514(\"\ud83d\udd27 flight_status_tool\")\n    lookup_reservation_e16866(\"\ud83d\udd27 lookup_reservation\")\n    update_seat_afea3f(\"\ud83d\udd27 update_seat\")\n\n    Relevance_Guardrail_20435e -->|uses| gpt_4_1_mini_6ca346\n    Jailbreak_Guardrail_cd6363 -->|uses| gpt_4_1_mini_6ca346\n    Cancellation_Agent_7c75af -->|calls| baggage_tool_85c038\n    Cancellation_Agent_7c75af -->|calls| cancel_flight_d30c1c\n    Cancellation_Agent_7c75af -->|calls| display_seat_map_cdbda0\n    Cancellation_Agent_7c75af -->|calls| faq_lookup_tool_9a5a35\n    Cancellation_Agent_7c75af -->|calls| flight_status_tool_828514\n    Cancellation_Agent_7c75af -->|uses| gemini_3_1_ddac97\n    Cancellation_Agent_7c75af -->|uses| gpt_4_1_mini_6ca346\n    Cancellation_Agent_7c75af -->|uses| gpt_5_4_mini_db414b\n    FAQ_Agent_1562bc -->|calls| baggage_tool_85c038\n    FAQ_Agent_1562bc -->|calls| cancel_flight_d30c1c\n    FAQ_Agent_1562bc -->|calls| display_seat_map_cdbda0\n    FAQ_Agent_1562bc -->|calls| faq_lookup_tool_9a5a35\n    FAQ_Agent_1562bc -->|calls| flight_status_tool_828514\n    FAQ_Agent_1562bc -->|uses| gemini_3_1_ddac97\n    FAQ_Agent_1562bc -->|uses| gpt_4_1_mini_6ca346\n    FAQ_Agent_1562bc -->|uses| gpt_5_4_mini_db414b\n    Flight_Status_Agent_bc6241 -->|calls| baggage_tool_85c038\n    Flight_Status_Agent_bc6241 -->|calls| cancel_flight_d30c1c\n    Flight_Status_Agent_bc6241 -->|calls| display_seat_map_cdbda0\n    Flight_Status_Agent_bc6241 -->|calls| faq_lookup_tool_9a5a35\n    Flight_Status_Agent_bc6241 -->|calls| flight_status_tool_828514\n    Flight_Status_Agent_bc6241 -->|uses| gemini_3_1_ddac97\n    Flight_Status_Agent_bc6241 -->|uses| gpt_4_1_mini_6ca346\n    Flight_Status_Agent_bc6241 -->|uses| gpt_5_4_mini_db414b\n    Seat_Booking_Agent_496405 -->|calls| baggage_tool_85c038\n    Seat_Booking_Agent_496405 -->|calls| cancel_flight_d30c1c\n    Seat_Booking_Agent_496405 -->|calls| display_seat_map_cdbda0\n    Seat_Booking_Agent_496405 -->|calls| faq_lookup_tool_9a5a35\n    Seat_Booking_Agent_496405 -->|calls| flight_status_tool_828514\n    Seat_Booking_Agent_496405 -->|uses| gemini_3_1_ddac97\n    Seat_Booking_Agent_496405 -->|uses| gpt_4_1_mini_6ca346\n    Seat_Booking_Agent_496405 -->|uses| gpt_5_4_mini_db414b\n    Triage_Agent_355a82 -->|calls| baggage_tool_85c038\n    Triage_Agent_355a82 -->|calls| cancel_flight_d30c1c\n    Triage_Agent_355a82 -->|calls| display_seat_map_cdbda0\n    Triage_Agent_355a82 -->|calls| faq_lookup_tool_9a5a35\n    Triage_Agent_355a82 -->|calls| flight_status_tool_828514\n    Triage_Agent_355a82 -->|uses| gemini_3_1_ddac97\n    Triage_Agent_355a82 -->|uses| gpt_4_1_mini_6ca346\n    Triage_Agent_355a82 -->|uses| gpt_5_4_mini_db414b\n    app_1462bc -->|uses| gpt_4_1_mini_6ca346\n    app_1462bc -->|uses| gpt_5_4_mini_db414b\n    app_1462bc -->|uses| gemini_3_1_ddac97\n    framework_openai_agents_d7c7b0 -->|uses| gpt_4_1_mini_6ca346\n    framework_openai_agents_d7c7b0 -->|uses| gpt_5_4_mini_db414b\n    framework_openai_agents_d7c7b0 -->|uses| gemini_3_1_ddac97\n\n    classDef agent    fill:#4A90D9,stroke:#2C6FAC,color:#fff\n    classDef tool     fill:#7ED321,stroke:#5A9A18,color:#fff\n    classDef model    fill:#9B59B6,stroke:#7D3C98,color:#fff\n    classDef prompt   fill:#F39C12,stroke:#D68910,color:#fff\n    classDef guard    fill:#E74C3C,stroke:#C0392B,color:#fff\n    classDef store    fill:#1ABC9C,stroke:#17A589,color:#fff\n    classDef fw       fill:#95A5A6,stroke:#717D7E,color:#fff\n    classDef endpoint fill:#3498DB,stroke:#2471A3,color:#fff\n    class Cancellation_Agent_7c75af,FAQ_Agent_1562bc,Flight_Status_Agent_bc6241,Seat_Booking_Agent_496405,Triage_Agent_355a82 agent\n    class baggage_tool_85c038,cancel_flight_d30c1c,display_seat_map_cdbda0,faq_lookup_tool_9a5a35,flight_status_tool_828514,lookup_reservation_e16866,update_seat_afea3f tool\n    class gemini_3_1_ddac97,gpt_4_1_mini_6ca346,gpt_5_4_mini_db414b model\n    class Cancellation_Agent_Instructions_e1ea29,FAQ_Agent_Instructions_eab48e,Flight_Status_Agent_Instructions_25e98d,Jailbreak_Guardrail_Instructions_75d369,generic_5043da,Relevance_Guardrail_Instructions_a0615b,Seat_Booking_Agent_Instructions_d94bd6,Triage_Agent_Instructions_813a06 prompt\n    class Jailbreak_Guardrail_cd6363,Relevance_Guardrail_20435e guard\n    class sqlite_c3de0f,sqlite3_4617b7 store\n    class app_1462bc,framework_openai_agents_d7c7b0 fw\n    class generic_e62db2,me_c5b458,chat_endpoint_39ae19,login_c72ac3,logout_845d16 endpoint\n```",
-  "_enrichment_cache_key": "eec1479d21104b66dac976851368626405e0354b995c741ad515d290f1d5dbde"
+  "relationship_graph_md": "## Component Relationship Graph\n\n- **Entry & Auth:** FastAPI exposes endpoints (Login, Me, Logout, Chat). Bearer Auth protects all endpoints. Chat endpoint is the main AI entry point.\n- **Guardrails:** Two guardrails (Jailbreak, Relevance) run before agents, both using `gpt-4.1-mini`. No guardrail covers tool outputs or internal agent calls.\n- **Agent Orchestration:** The Triage Agent delegates to Flight Status, FAQ, Cancellation, and Seat Booking agents. All agents use `gpt-4.1-mini`.\n- **Tool Exposure:** Every agent has access to 5 tools: Baggage, Cancel Flight, Display Seat Map, Faq Lookup, Flight Status. No per-agent tool restrictions\u2014over-privileged by default.\n- **Data Stores:** Sqlite datastore has no incoming edges\u2014no agent or tool is shown reading/writing it. This may be incomplete or data is accessed via an unrepresented path.\n- **Risk Patterns:** All agents share identical tool sets, increasing blast radius if one agent is compromised. No guardrail monitors tool calls or outputs. External tool actions (cancellations, seat changes) are unguarded.\n\n```mermaid\nflowchart LR\n    Cancellation_Agent_604406[\"\ud83e\udd16 Cancellation Agent\"]\n    FAQ_Agent_22bbc0[\"\ud83e\udd16 FAQ Agent\"]\n    Flight_Status_Agent_b855c8[\"\ud83e\udd16 Flight Status Agent\"]\n    Seat_Booking_Agent_200a06[\"\ud83e\udd16 Seat Booking Agent\"]\n    Triage_Agent_51e7e4[\"\ud83e\udd16 Triage Agent\"]\n    Generic_6d875e([\"\ud83c\udf10 Generic\"])\n    Me_4bcb21([\"\ud83c\udf10 Me\"])\n    Chat_Endpoint_3c24cb([\"\ud83c\udf10 Chat Endpoint\"])\n    Login_05d932([\"\ud83c\udf10 Login\"])\n    Logout_5a84e9([\"\ud83c\udf10 Logout\"])\n    Sqlite_bc2320[(\"\ud83d\uddc4 Sqlite\")]\n    FastAPI_adb95c[/\"\u2699 FastAPI\"/]\n    OpenAI_Agents_4025a9[/\"\u2699 OpenAI Agents\"/]\n    Jailbreak_Guardrail_e7a3e9{\"\ud83d\udee1 Jailbreak Guardrail\"}\n    Relevance_Guardrail_20c8d8{\"\ud83d\udee1 Relevance Guardrail\"}\n    gpt_4_1_mini_1f9d87[(\"\ud83e\udde0 gpt-4.1-mini\")]\n    Cancellation_Agent_Instructions_1cbf28>\"\ud83d\udcac Cancellation Agent Instructions\"]\n    FAQ_Agent_Instructions_f9a2c3>\"\ud83d\udcac FAQ Agent Instructions\"]\n    Flight_Status_Agent_Instructions_4cccdf>\"\ud83d\udcac Flight Status Agent Instructions\"]\n    Jailbreak_Guardrail_Instructions_7fcbca>\"\ud83d\udcac Jailbreak Guardrail Instructions\"]\n    Generic_60a7d2>\"\ud83d\udcac Generic\"]\n    Relevance_Guardrail_Instructions_2e3348>\"\ud83d\udcac Relevance Guardrail Instructions\"]\n    Seat_Booking_Agent_Instructions_9af009>\"\ud83d\udcac Seat Booking Agent Instructions\"]\n    Triage_Agent_Instructions_4f578f>\"\ud83d\udcac Triage Agent Instructions\"]\n    Baggage_Tool_ef9383(\"\ud83d\udd27 Baggage Tool\")\n    Cancel_Flight_33ecf9(\"\ud83d\udd27 Cancel Flight\")\n    Display_Seat_Map_d2128a(\"\ud83d\udd27 Display Seat Map\")\n    Faq_Lookup_Tool_db210d(\"\ud83d\udd27 Faq Lookup Tool\")\n    Flight_Status_Tool_6774de(\"\ud83d\udd27 Flight Status Tool\")\n    Lookup_Reservation_afe45c(\"\ud83d\udd27 Lookup Reservation\")\n    Update_Seat_c26eb8(\"\ud83d\udd27 Update Seat\")\n\n    FastAPI_adb95c -->|calls| Login_05d932\n    FastAPI_adb95c -->|calls| Me_4bcb21\n    FastAPI_adb95c -->|calls| Logout_5a84e9\n    FastAPI_adb95c -->|calls| Chat_Endpoint_3c24cb\n    Relevance_Guardrail_20c8d8 -->|uses| gpt_4_1_mini_1f9d87\n    Jailbreak_Guardrail_e7a3e9 -->|uses| gpt_4_1_mini_1f9d87\n    Triage_Agent_51e7e4 -->|delegates_to| Flight_Status_Agent_b855c8\n    Triage_Agent_51e7e4 -->|delegates_to| FAQ_Agent_22bbc0\n    Cancellation_Agent_604406 -->|calls| Baggage_Tool_ef9383\n    Cancellation_Agent_604406 -->|calls| Cancel_Flight_33ecf9\n    Cancellation_Agent_604406 -->|calls| Display_Seat_Map_d2128a\n    Cancellation_Agent_604406 -->|calls| Faq_Lookup_Tool_db210d\n    Cancellation_Agent_604406 -->|calls| Flight_Status_Tool_6774de\n    FAQ_Agent_22bbc0 -->|calls| Baggage_Tool_ef9383\n    FAQ_Agent_22bbc0 -->|calls| Cancel_Flight_33ecf9\n    FAQ_Agent_22bbc0 -->|calls| Display_Seat_Map_d2128a\n    FAQ_Agent_22bbc0 -->|calls| Faq_Lookup_Tool_db210d\n    FAQ_Agent_22bbc0 -->|calls| Flight_Status_Tool_6774de\n    Flight_Status_Agent_b855c8 -->|calls| Baggage_Tool_ef9383\n    Flight_Status_Agent_b855c8 -->|calls| Cancel_Flight_33ecf9\n    Flight_Status_Agent_b855c8 -->|calls| Display_Seat_Map_d2128a\n    Flight_Status_Agent_b855c8 -->|calls| Faq_Lookup_Tool_db210d\n    Flight_Status_Agent_b855c8 -->|calls| Flight_Status_Tool_6774de\n    Seat_Booking_Agent_200a06 -->|calls| Baggage_Tool_ef9383\n    Seat_Booking_Agent_200a06 -->|calls| Cancel_Flight_33ecf9\n    Seat_Booking_Agent_200a06 -->|calls| Display_Seat_Map_d2128a\n    Seat_Booking_Agent_200a06 -->|calls| Faq_Lookup_Tool_db210d\n    Seat_Booking_Agent_200a06 -->|calls| Flight_Status_Tool_6774de\n    Triage_Agent_51e7e4 -->|calls| Baggage_Tool_ef9383\n    Triage_Agent_51e7e4 -->|calls| Cancel_Flight_33ecf9\n    Triage_Agent_51e7e4 -->|calls| Display_Seat_Map_d2128a\n    Triage_Agent_51e7e4 -->|calls| Faq_Lookup_Tool_db210d\n    Triage_Agent_51e7e4 -->|calls| Flight_Status_Tool_6774de\n    Cancellation_Agent_604406 -->|uses| gpt_4_1_mini_1f9d87\n    FAQ_Agent_22bbc0 -->|uses| gpt_4_1_mini_1f9d87\n    Flight_Status_Agent_b855c8 -->|uses| gpt_4_1_mini_1f9d87\n    Seat_Booking_Agent_200a06 -->|uses| gpt_4_1_mini_1f9d87\n    Triage_Agent_51e7e4 -->|uses| gpt_4_1_mini_1f9d87\n    OpenAI_Agents_4025a9 -->|calls| Cancellation_Agent_604406\n    OpenAI_Agents_4025a9 -->|calls| FAQ_Agent_22bbc0\n    OpenAI_Agents_4025a9 -->|calls| Flight_Status_Agent_b855c8\n    OpenAI_Agents_4025a9 -->|calls| Seat_Booking_Agent_200a06\n    OpenAI_Agents_4025a9 -->|calls| Triage_Agent_51e7e4\n    OpenAI_Agents_4025a9 -->|calls| Baggage_Tool_ef9383\n    OpenAI_Agents_4025a9 -->|calls| Cancel_Flight_33ecf9\n    OpenAI_Agents_4025a9 -->|calls| Display_Seat_Map_d2128a\n    OpenAI_Agents_4025a9 -->|calls| Faq_Lookup_Tool_db210d\n    OpenAI_Agents_4025a9 -->|calls| Flight_Status_Tool_6774de\n    OpenAI_Agents_4025a9 -->|calls| Lookup_Reservation_afe45c\n    OpenAI_Agents_4025a9 -->|calls| Update_Seat_c26eb8\n\n    classDef agent    fill:#4A90D9,stroke:#2C6FAC,color:#fff\n    classDef tool     fill:#7ED321,stroke:#5A9A18,color:#fff\n    classDef model    fill:#9B59B6,stroke:#7D3C98,color:#fff\n    classDef prompt   fill:#F39C12,stroke:#D68910,color:#fff\n    classDef guard    fill:#E74C3C,stroke:#C0392B,color:#fff\n    classDef store    fill:#1ABC9C,stroke:#17A589,color:#fff\n    classDef fw       fill:#95A5A6,stroke:#717D7E,color:#fff\n    classDef endpoint fill:#3498DB,stroke:#2471A3,color:#fff\n    class Cancellation_Agent_604406,FAQ_Agent_22bbc0,Flight_Status_Agent_b855c8,Seat_Booking_Agent_200a06,Triage_Agent_51e7e4 agent\n    class Baggage_Tool_ef9383,Cancel_Flight_33ecf9,Display_Seat_Map_d2128a,Faq_Lookup_Tool_db210d,Flight_Status_Tool_6774de,Lookup_Reservation_afe45c,Update_Seat_c26eb8 tool\n    class gpt_4_1_mini_1f9d87 model\n    class Cancellation_Agent_Instructions_1cbf28,FAQ_Agent_Instructions_f9a2c3,Flight_Status_Agent_Instructions_4cccdf,Jailbreak_Guardrail_Instructions_7fcbca,Generic_60a7d2,Relevance_Guardrail_Instructions_2e3348,Seat_Booking_Agent_Instructions_9af009,Triage_Agent_Instructions_4f578f prompt\n    class Jailbreak_Guardrail_e7a3e9,Relevance_Guardrail_20c8d8 guard\n    class Sqlite_bc2320 store\n    class FastAPI_adb95c,OpenAI_Agents_4025a9 fw\n    class Generic_6d875e,Me_4bcb21,Chat_Endpoint_3c24cb,Login_05d932,Logout_5a84e9 endpoint\n```",
+  "_enrichment_cache_key": "9de1f14e9950e90173473168b22e4350a666267549ceb81fc275bddadd46ea73"
 }

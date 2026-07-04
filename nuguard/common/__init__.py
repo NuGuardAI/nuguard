@@ -7,6 +7,7 @@ from nuguard.common.auth_runtime import (
     resolve_auth_runtime,
 )
 from nuguard.common.bootstrap import AuthBootstrapper
+from nuguard.common.discovery import DiscoveredProfile
 from nuguard.common.errors import (
     ConfigError,
     ExtractorError,
@@ -19,6 +20,7 @@ from nuguard.common.logging import get_logger
 from nuguard.common.secret_store import EncryptedBlob, SecretCipher, generate_secret_key
 
 __all__ = [
+    "DiscoveredProfile",
     "NuGuardError",
     "SbomError",
     "ValidationError",

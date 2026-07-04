@@ -12,7 +12,6 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
-import logging
 import re
 import uuid
 from dataclasses import dataclass
@@ -21,10 +20,11 @@ from typing import Any, Iterable
 
 import httpx
 
+from nuguard.common.logging import get_logger
 from nuguard.sbom.models import AiSbomDocument, Edge, Node, NodeMetadata
 from nuguard.sbom.types import AccessType, ComponentType, RelationshipType
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 _CONFIDENCE_THRESHOLD = 0.65
 _MAX_PROBE_REQUESTS = 10

@@ -1,6 +1,6 @@
-"""Common LLM Clients TypeScript Adapter for Xelo SBOM.
+"""Common LLM Clients TypeScript Adapter for NuGuard SBOM.
 
-Parsing is performed by ``xelo.core.ts_parser`` (tree-sitter when
+Parsing is performed by ``nuguard.core.ts_parser`` (tree-sitter when
 available, regex fallback otherwise).
 
 Supports:
@@ -16,9 +16,10 @@ Supports:
 
 from __future__ import annotations
 
-import logging
 import re
 from typing import Any
+
+from nuguard.common.logging import get_logger
 
 from ...core.ts_parser import TSParseResult, parse_typescript
 from ...normalization import canonicalize_text
@@ -26,7 +27,7 @@ from ...types import ComponentType
 from ..base import ComponentDetection
 from ._ts_regex import TSFrameworkAdapter
 
-_log = logging.getLogger(__name__)
+_log = get_logger(__name__)
 
 
 # ---------------------------------------------------------------------------
@@ -182,6 +183,16 @@ _MODEL_CALL_RE = re.compile(
     r"|generateContent|getGenerativeModel|getTextEmbeddingModel)\b"
 )
 
+_ENV_DEFAULT_RE = re.compile(r"process\.env\.\w+\s*\|\|\s*['\"`]([^'\"`\s,]+)")
+
+
+def _normalize_model(raw: str) -> str:
+    """Extract the actual model name from env-var-with-default expressions."""
+    m = _ENV_DEFAULT_RE.search(raw)
+    if m:
+        return m.group(1)
+    return raw.strip("'\"` ")
+
 
 class LLMClientTSAdapter(TSFrameworkAdapter):
     """Detect common LLM SDK client usage in TypeScript/JavaScript files."""
@@ -236,7 +247,7 @@ class LLMClientTSAdapter(TSFrameworkAdapter):
                         )
 
             # resolved_arguments has variable-referenced model names expanded
-            model_name = self._resolve(inst, "model", "modelName", "modelId")
+            model_name = _normalize_model(self._resolve(inst, "model", "modelName", "modelId"))
 
             # No explicit model: emit a FRAMEWORK presence node so the SDK is
             # visible in the SBOM even when the model is specified at call-site.
@@ -320,9 +331,9 @@ class LLMClientTSAdapter(TSFrameworkAdapter):
         for call in result.function_calls:
             if not _MODEL_CALL_RE.search(call.function_name):
                 continue
-            model_name = self._resolve(call, "model", "modelId")
+            model_name = _normalize_model(self._resolve(call, "model", "modelId"))
             if not model_name and call.positional_args:
-                model_name = self._clean(call.positional_args[0])
+                model_name = _normalize_model(self._clean(call.positional_args[0]))
             # Fallback: scan a small window after the call line for a model: "..." pattern.
             # Handles multi-line call objects like generateContent({ \n  model: "gemini-2.0-flash"
             if not model_name:
