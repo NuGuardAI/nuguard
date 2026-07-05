@@ -352,23 +352,28 @@ _DISCOVERY_OPENER = (
 def _dedup_scenarios_by_opener(
     scenarios: list[BehaviorScenario],
 ) -> list[BehaviorScenario]:
-    """Collapse scenarios that share both scenario_type and first-message content.
+    """Collapse scenarios that share both scenario_type and their full scripted conversation.
 
-    Two scenarios with identical (scenario_type, first_message[:100]) are
+    Two scenarios with an identical (scenario_type, all messages) are
     functionally indistinguishable and would produce the same target-app HTTP
     exchange.  Unlike the existing name-based dedup in ``scenarios.py``, this
-    catches LLM-generated scenarios that got different names but the same opener.
+    catches LLM-generated scenarios that got different names but the same script.
+
+    The key hashes every message, not just the opener — several deterministic
+    (no-LLM) builders intentionally reuse an identical Turn 1 across scenarios
+    that diverge from Turn 2 onward (e.g. one shared warm-up opener per
+    capability); keying on Turn 1 alone would wrongly collapse those into one.
 
     Note: scenario_type IS part of the key — an agent_coverage scenario and
-    an intent_happy_path scenario that share an opener serve different evaluation
+    an intent_happy_path scenario that share a script serve different evaluation
     purposes and should both run.
     """
     seen: set[str] = set()
     out: list[BehaviorScenario] = []
     dropped = 0
     for s in scenarios:
-        first_msg = (s.messages[0].strip()[:100] if s.messages else "").lower()
-        raw = f"{s.scenario_type}|{first_msg}"
+        script = "\x1f".join(m.strip().lower() for m in (s.messages or []))
+        raw = f"{s.scenario_type}|{script}"
         key = hashlib.md5(raw.encode()).hexdigest()  # noqa: S324 — not security-sensitive
         if key in seen:
             _log.debug(
@@ -530,7 +535,9 @@ async def _generate_contextual_probe(
             label="behavior:contextual_probe",
         )
         probe = (result or "").strip()
-        return probe if probe else fallback
+        if not probe or probe.startswith("[NUGUARD_CANNED_RESPONSE]"):
+            return fallback
+        return probe
     except Exception as exc:
         _log.debug("_generate_contextual_probe: LLM call failed (%s), using fallback", exc)
         return fallback

@@ -261,6 +261,11 @@ class LLMClient:
         # Token accumulators — reset with reset_token_counts(); read with token_counts.
         self._input_tokens: int = 0
         self._output_tokens: int = 0
+        # Call-health accumulators — reset with reset_token_counts(); read with
+        # canned_response_counts. Lets callers detect a run that silently
+        # degraded to canned/template fallback behavior.
+        self._call_count: int = 0
+        self._canned_count: int = 0
 
         # Azure OpenAI requires an explicit endpoint URL.  Warn early so the user
         # gets a clear diagnostic instead of a cryptic APIConnectionError later.
@@ -278,14 +283,31 @@ class LLMClient:
             )
 
     def reset_token_counts(self) -> None:
-        """Reset accumulated token counters to zero."""
+        """Reset accumulated token and call-health counters to zero.
+
+        Called at the start of a run so ``token_counts`` and
+        ``canned_response_counts`` reflect that run only.
+        """
         self._input_tokens = 0
         self._output_tokens = 0
+        self._call_count = 0
+        self._canned_count = 0
 
     @property
     def token_counts(self) -> tuple[int, int]:
         """Return (input_tokens, output_tokens) accumulated since last reset."""
         return (self._input_tokens, self._output_tokens)
+
+    @property
+    def canned_response_counts(self) -> tuple[int, int]:
+        """Return (total_calls, canned_calls) accumulated since last reset.
+
+        A high ``canned_calls / total_calls`` ratio means the LLM was mostly
+        unavailable (missing/invalid API key, auth failure, rate limits, etc.)
+        and callers fell back to deterministic/template behavior for most of
+        a run — useful for surfacing a degradation warning in reports.
+        """
+        return (self._call_count, self._canned_count)
 
     async def complete_stream(
         self,
@@ -307,6 +329,7 @@ class LLMClient:
         Yields:
             Text tokens as they arrive from the streaming LLM response.
         """
+        self._call_count += 1
         if self.api_key is None:
             yield self._canned_response(prompt)
             return
@@ -498,6 +521,7 @@ class LLMClient:
         LLM error occurs.  It produces a structured placeholder that downstream
         consumers can detect and handle gracefully.
         """
+        self._canned_count += 1
         short = prompt[:80].replace("\n", " ")
         return (
             f"[NUGUARD_CANNED_RESPONSE] Template analysis for: {short!r}. "

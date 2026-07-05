@@ -436,6 +436,22 @@ class BehaviorAnalyzer:
                 llm_model=getattr(self._llm, "model", None),
             )
 
+        # Step 8: Warn when the LLM was mostly unavailable during this run.
+        # Without this, a run that silently degraded to deterministic/structural
+        # fallbacks (bad API key, auth failure, rate limits) still produces a
+        # report that looks like normal LLM-graded output with no indication
+        # that scenario generation, turn adaptation, and judging didn't use the LLM.
+        if self._llm is not None:
+            total_calls, canned_calls = self._llm.canned_response_counts
+            if total_calls >= 5 and canned_calls / total_calls >= 0.3:
+                pct = round(100 * canned_calls / total_calls)
+                result.config_notes.append(
+                    f"LLM degraded during this run: {canned_calls}/{total_calls} LLM calls "
+                    f"({pct}%) fell back to canned/template responses. Scenario generation, "
+                    "turn adaptation, and judging used deterministic fallbacks — findings and "
+                    "PASS/FAIL verdicts in this report may not reflect full LLM-based evaluation."
+                )
+
         _log.info(
             "BehaviorAnalyzer.analyze: complete — outcome=%s, risk=%.1f, coverage=%.0f%%",
             result.scan_outcome,

@@ -69,6 +69,7 @@ def to_json(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = None) 
         "effective_endpoint": result.effective_endpoint,
         "target_endpoint_source": result.target_endpoint_source,
         "run_profile": result.run_profile,
+        "config_notes": result.config_notes,
     }
     if meta is not None:
         if hasattr(meta, "to_dict"):
@@ -101,6 +102,13 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
 
     if meta is not None:
         lines += meta.to_markdown_lines()
+
+    if result.config_notes:
+        lines.append("## ⚠ Configuration Notes")
+        lines.append("")
+        for note in result.config_notes:
+            lines.append(f"> **⚠** {note}")
+        lines.append("")
 
     # Determine analysis mode
     has_static = bool(result.static_findings)
@@ -872,6 +880,15 @@ def to_text(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = None) 
         f"Outcome:       {result.scan_outcome}",
     ]
     console.print(Panel("\n".join(summary_lines), title="Behavior Analysis Summary", border_style="blue"))
+
+    if result.config_notes:
+        console.print(
+            Panel(
+                "\n".join(result.config_notes),
+                title="⚠ Configuration Notes",
+                border_style="yellow",
+            )
+        )
 
     # Coverage table
     if result.coverage:
