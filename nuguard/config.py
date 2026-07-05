@@ -608,6 +608,34 @@ class BehaviorConfig(BaseModel):
     otel_endpoint: str | None = None
     otel_service_name: str | None = None
 
+    endpoint_aliases: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Manual overrides mapping a runtime endpoint route to its canonical "
+            "SBOM API_ENDPOINT component name, e.g. {'/api/agent/chat': '/chat API'}."
+        ),
+    )
+    component_aliases: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Manual overrides mapping a free-text agent/tool mention seen in live "
+            "agent responses to its canonical SBOM component name, e.g. "
+            "{'Nova': 'Fintech App Assistant'}. Use this for persona/brand names "
+            "with no textual overlap with the SBOM's structural component name — "
+            "fuzzy and descriptive-name matching cannot infer these on their own."
+        ),
+    )
+    sole_agent_alias_fallback: bool = Field(
+        default=True,
+        description=(
+            "When the SBOM declares exactly one AGENT node, attribute any "
+            "otherwise-unmatched agent mention to it (handles a live app's "
+            "self-chosen persona name that differs entirely from the SBOM name). "
+            "Disable if the single agent legitimately delegates to unlisted "
+            "sub-agents outside the SBOM."
+        ),
+    )
+
     # ------------------------------------------------------------------
     # v3 efficiency additions
     # ------------------------------------------------------------------

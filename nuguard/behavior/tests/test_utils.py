@@ -114,6 +114,12 @@ def test_parse_json_array_empty_string():
     ("ad-copy-writer", "adcopywriter"),
     ("", ""),
     ("SimpleAgent", "simpleagent"),
+    ("functions.cancel_payment", "cancelpayment"),
+    ("tool.cancel_payment", "cancelpayment"),
+    ("tools.Cancel Payment", "cancelpayment"),
+    ("Nova (AI Banking Assistant)", "nova"),
+    ("Nova (AI Assistant)", "nova"),
+    ("Cancel Payment", "cancelpayment"),
 ])
 def test_normalise_name(name, expected):
     assert normalise_name(name) == expected

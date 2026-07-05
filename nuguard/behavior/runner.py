@@ -219,6 +219,51 @@ def _endpoint_path_from_component_name(component_name: str) -> str:
     return _normalise_endpoint_route(name)
 
 
+_FUZZY_MATCH_THRESHOLD = 0.85
+_FUZZY_MATCH_TIE_EPSILON = 0.03
+
+
+def _fuzzy_match_component(mention: str, candidates: list[tuple[str, str]]) -> str | None:
+    """Return the unique best-matching canonical component name for *mention*, or None.
+
+    *candidates* is a list of ``(comparison_string, canonical_name)`` pairs — a
+    component may appear twice (once for its SBOM `name`, once for its
+    `descriptive_name`) since either wording might be closer to the mention.
+
+    Uses :class:`difflib.SequenceMatcher` on normalised strings (the project's
+    existing precedent for lightweight text similarity — see
+    ``nuguard/redteam/llm_engine/prompt_validation_gate.py``). Only returns a
+    match when the best score clears ``_FUZZY_MATCH_THRESHOLD`` AND no
+    *different* candidate scores within ``_FUZZY_MATCH_TIE_EPSILON`` of it —
+    ambiguous near-ties are left unmatched rather than guessed, since a wrong
+    fuzzy match is worse than an honest "unmatched".
+    """
+    from difflib import SequenceMatcher
+
+    norm_mention = normalise_name(mention)
+    if not norm_mention or not candidates:
+        return None
+
+    scored = sorted(
+        (
+            (SequenceMatcher(None, norm_mention, normalise_name(cmp_str)).ratio(), canonical)
+            for cmp_str, canonical in candidates
+        ),
+        key=lambda pair: pair[0],
+        reverse=True,
+    )
+    best_score, best_name = scored[0]
+    if best_score < _FUZZY_MATCH_THRESHOLD:
+        return None
+    for score, name in scored[1:]:
+        if name == best_name:
+            continue
+        if (best_score - score) < _FUZZY_MATCH_TIE_EPSILON:
+            return None
+        break
+    return best_name
+
+
 def _is_destructive_scenario(scenario: object) -> bool:
     """Return True when the scenario is likely to destroy or mutate user data.
 
@@ -649,6 +694,11 @@ class BehaviorRunner:
         self._component_descriptions: dict[str, str] = {}
         self._agent_names: list[str] = []
         self._tool_names: list[str] = []
+        # Alias name (e.g. metadata.descriptive_name, an LLM-generated human-readable
+        # label distinct from the SBOM's structural `name`) -> canonical component name.
+        # Lets mention-matching in _build_coverage_map() recognise mentions phrased
+        # against the descriptive label rather than the raw SBOM node name.
+        self._component_display_aliases: dict[str, str] = {}
         if sbom is not None:
             for node in getattr(sbom, "nodes", []):
                 ct = getattr(node, "component_type", None)
@@ -664,6 +714,9 @@ class BehaviorRunner:
                     or ""
                 )
                 self._component_descriptions[name] = str(desc)
+                descriptive_name = getattr(meta, "descriptive_name", None) if meta is not None else None
+                if descriptive_name and str(descriptive_name) != name:
+                    self._component_display_aliases.setdefault(str(descriptive_name), name)
                 if nt == "AGENT":
                     self._agent_names.append(name)
                 elif nt == "TOOL":
@@ -2230,16 +2283,32 @@ class BehaviorRunner:
 
         component_map: dict[str, BehaviorCoverage] = {}
         normalized_component_name: dict[str, str] = {}
+        descriptive_alias_norm_map: dict[str, str] = {}
+        fuzzy_candidates: dict[str, list[tuple[str, str]]] = {"AGENT": [], "TOOL": []}
         unmatched_mentions: set[str] = set()
         mapped_component_mentions: set[str] = set()
         component_type_mismatch_count = 0
         endpoint_runtime_only_unmapped = 0
         endpoint_norm_map: dict[str, str] = {}
         endpoint_alias_map: dict[str, str] = {}
+        descriptive_name_match_count = 0
+        fuzzy_match_count = 0
+        sole_agent_fallback_count = 0
+        config_alias_match_count = 0
 
         # Optional explicit aliases from config (runtime endpoint -> SBOM component name).
         # Example: {"/api/agent/chat": "/chat API"}
         cfg_aliases = getattr(self._config, "endpoint_aliases", None) or {}
+
+        # Optional explicit aliases from config (free-text mention -> SBOM component
+        # name), for AGENT/TOOL mentions with no textual similarity to the SBOM name
+        # at all (e.g. a persona/brand name like "Nova" for agent "Fintech App Assistant").
+        cfg_component_aliases = getattr(self._config, "component_aliases", None) or {}
+        config_alias_map: dict[str, str] = {}
+        if isinstance(cfg_component_aliases, dict):
+            for mention_alias, canonical in cfg_component_aliases.items():
+                config_alias_map[str(mention_alias)] = str(canonical)
+                config_alias_map[normalise_name(str(mention_alias))] = str(canonical)
 
         # Initialize from known agents/tools
         for name in self._agent_names:
@@ -2248,12 +2317,25 @@ class BehaviorRunner:
                 node_type="AGENT",
             )
             normalized_component_name[normalise_name(name)] = name
+            fuzzy_candidates["AGENT"].append((name, name))
         for name in self._tool_names:
             component_map[name] = BehaviorCoverage(
                 component_name=name,
                 node_type="TOOL",
             )
             normalized_component_name[normalise_name(name)] = name
+            fuzzy_candidates["TOOL"].append((name, name))
+
+        # Register SBOM metadata.descriptive_name values as a second, lower-priority
+        # lookup key — an LLM-generated human-readable label (e.g. "Sanctions
+        # Screening Tool" for tool "Check Sanctions") that live apps often echo
+        # verbatim in chat responses instead of the SBOM's structural name.
+        for alias, canonical in self._component_display_aliases.items():
+            cov = component_map.get(canonical)
+            if cov is None:
+                continue
+            descriptive_alias_norm_map[normalise_name(alias)] = canonical
+            fuzzy_candidates[cov.node_type].append((alias, canonical))
 
         # Initialize API_ENDPOINT and GUARDRAIL nodes from SBOM
         if self._sbom is not None:
@@ -2363,6 +2445,53 @@ class BehaviorRunner:
                         else:
                             cov.exercised_against_policy = True
 
+        def _resolve_agent_or_tool_mention(mention: str, node_type: str) -> tuple[str | None, str]:
+            """Resolve a free-text agent/tool mention to a canonical SBOM component name.
+
+            Tiers, most to least confident: exact match, user-config alias
+            (``component_aliases``), mechanically-normalised SBOM name,
+            SBOM ``metadata.descriptive_name``, conservative fuzzy-similarity
+            match, and — AGENT mentions only, when the SBOM declares exactly
+            one agent — a sole-agent self-reference fallback (handles a live
+            app's persona name, e.g. "Nova", that has zero textual overlap
+            with the SBOM's structural agent name).
+            """
+            if mention in component_map and component_map[mention].node_type == node_type:
+                return mention, "direct_match"
+
+            alias_target = config_alias_map.get(mention) or config_alias_map.get(normalise_name(mention))
+            if alias_target and component_map.get(alias_target) and component_map[alias_target].node_type == node_type:
+                return alias_target, "config_alias"
+
+            norm = normalise_name(mention)
+            key = normalized_component_name.get(norm)
+            if key and component_map[key].node_type == node_type:
+                return key, "normalized_match"
+
+            key = descriptive_alias_norm_map.get(norm)
+            if key and component_map[key].node_type == node_type:
+                return key, "descriptive_name_match"
+
+            fuzzy_key = _fuzzy_match_component(mention, fuzzy_candidates.get(node_type, []))
+            if fuzzy_key:
+                return fuzzy_key, "fuzzy_match"
+
+            if (
+                node_type == "AGENT"
+                and len(self._agent_names) == 1
+                and getattr(self._config, "sole_agent_alias_fallback", True)
+            ):
+                return self._agent_names[0], "sole_agent_fallback"
+
+            return None, "unmatched"
+
+        def _any_type_match(mention: str) -> str | None:
+            """Best-effort lookup ignoring node_type, used only for mismatch diagnostics."""
+            if mention in component_map:
+                return mention
+            norm = normalise_name(mention)
+            return normalized_component_name.get(norm) or descriptive_alias_norm_map.get(norm)
+
         # Update from scenario results (agents/tools via mention detection)
         for sr in scenario_results:
             for verdict_dict in sr.verdicts:
@@ -2376,45 +2505,61 @@ class BehaviorRunner:
                 )
 
                 for a in agents:
-                    key = a if a in component_map else normalized_component_name.get(normalise_name(a))
-                    if key and key in component_map and component_map[key].node_type == "AGENT":
+                    key, confidence = _resolve_agent_or_tool_mention(a, "AGENT")
+                    if key:
                         cov = component_map[key]
                         cov.exercised = True
-                        mapped_component_mentions.add(f"AGENT:{a}->{key}")
+                        cov.mapping_confidence = cov.mapping_confidence or confidence
+                        mapped_component_mentions.add(f"AGENT:{a}->{key}:{confidence}")
                         if a not in cov.evidence_mentions:
                             cov.evidence_mentions.append(a)
-                        norm_alias = normalise_name(a)
-                        if norm_alias and norm_alias not in cov.aliases_seen:
-                            cov.aliases_seen.append(norm_alias)
+                        if a not in cov.aliases_seen:
+                            cov.aliases_seen.append(a)
+                        if confidence == "descriptive_name_match":
+                            descriptive_name_match_count += 1
+                        elif confidence == "fuzzy_match":
+                            fuzzy_match_count += 1
+                        elif confidence == "sole_agent_fallback":
+                            sole_agent_fallback_count += 1
+                        elif confidence == "config_alias":
+                            config_alias_match_count += 1
                         if has_violation:
                             cov.exercised_against_policy = True
                         else:
                             cov.exercised_within_policy = True
                     elif a:
-                        if key and key in component_map:
+                        mismatch_key = _any_type_match(a)
+                        if mismatch_key:
                             component_type_mismatch_count += 1
-                            mapped_component_mentions.add(f"AGENT_TYPE_MISMATCH:{a}->{key}:{component_map[key].node_type}")
+                            mapped_component_mentions.add(f"AGENT_TYPE_MISMATCH:{a}->{mismatch_key}:{component_map[mismatch_key].node_type}")
                         else:
                             unmatched_mentions.add(a)
                 for t in tools:
-                    key = t if t in component_map else normalized_component_name.get(normalise_name(t))
-                    if key and key in component_map and component_map[key].node_type == "TOOL":
+                    key, confidence = _resolve_agent_or_tool_mention(t, "TOOL")
+                    if key:
                         cov = component_map[key]
                         cov.exercised = True
-                        mapped_component_mentions.add(f"TOOL:{t}->{key}")
+                        cov.mapping_confidence = cov.mapping_confidence or confidence
+                        mapped_component_mentions.add(f"TOOL:{t}->{key}:{confidence}")
                         if t not in cov.evidence_mentions:
                             cov.evidence_mentions.append(t)
-                        norm_alias = normalise_name(t)
-                        if norm_alias and norm_alias not in cov.aliases_seen:
-                            cov.aliases_seen.append(norm_alias)
+                        if t not in cov.aliases_seen:
+                            cov.aliases_seen.append(t)
+                        if confidence == "descriptive_name_match":
+                            descriptive_name_match_count += 1
+                        elif confidence == "fuzzy_match":
+                            fuzzy_match_count += 1
+                        elif confidence == "config_alias":
+                            config_alias_match_count += 1
                         if has_violation:
                             cov.exercised_against_policy = True
                         else:
                             cov.exercised_within_policy = True
                     elif t:
-                        if key and key in component_map:
+                        mismatch_key = _any_type_match(t)
+                        if mismatch_key:
                             component_type_mismatch_count += 1
-                            mapped_component_mentions.add(f"TOOL_TYPE_MISMATCH:{t}->{key}:{component_map[key].node_type}")
+                            mapped_component_mentions.add(f"TOOL_TYPE_MISMATCH:{t}->{mismatch_key}:{component_map[mismatch_key].node_type}")
                         else:
                             unmatched_mentions.add(t)
 
@@ -2432,9 +2577,13 @@ class BehaviorRunner:
                         evidence=str(verdict_dict.get("reasoning", "")),
                     )
                     # Attach to relevant component
-                    for mentioned in (agents + tools):
-                        key = mentioned if mentioned in component_map else normalized_component_name.get(normalise_name(str(mentioned)))
-                        if key and key in component_map:
+                    for mentioned in agents:
+                        key, _ = _resolve_agent_or_tool_mention(str(mentioned), "AGENT")
+                        if key:
+                            component_map[key].deviations.append(deviation)
+                    for mentioned in tools:
+                        key, _ = _resolve_agent_or_tool_mention(str(mentioned), "TOOL")
+                        if key:
                             component_map[key].deviations.append(deviation)
 
         if unmatched_mentions:
@@ -2447,6 +2596,10 @@ class BehaviorRunner:
             "mapped_component_mentions": sorted(mapped_component_mentions),
             "component_type_mismatch_count": component_type_mismatch_count,
             "runtime_only_unmapped_endpoint_count": endpoint_runtime_only_unmapped,
+            "descriptive_name_match_count": descriptive_name_match_count,
+            "fuzzy_match_count": fuzzy_match_count,
+            "sole_agent_fallback_count": sole_agent_fallback_count,
+            "config_alias_match_count": config_alias_match_count,
         }
 
         return list(component_map.values())
