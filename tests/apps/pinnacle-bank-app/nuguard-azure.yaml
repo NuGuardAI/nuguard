@@ -85,13 +85,18 @@ behavior:
   # Used by behavior mode to detect accidental leakage during happy-path runs
   # canary: ./canary.json
 
-  # Workflows to run in behavior mode:
-  #   capability_probe     — verify each declared tool/sub-agent is invoked correctly
-  #   happy_path           — simulate realistic multi-turn user interactions end-to-end
-  #   boundary_assertion   — verify the app correctly refuses out-of-scope requests
-  #   policy_compliance    — evaluate responses against cognitive policy clauses
-  #workflows:
-  #  - happy_path
+  # Workflow categories to run (default: all 4 — omit or leave empty to run everything)
+  #   topic_coverage        — intent happy-path scenarios grounded in allowed_topics,
+  #                           plus a per-topic fallback when the SBOM has no AGENT nodes
+  #   agent_tool_coverage   — agent, tool-chain, API endpoint, and sub-agent
+  #                           delegation coverage (all SBOM-driven)
+  #   guardrail_coverage    — guardrail-protected path probes, HITL triggers, and
+  #                           data classification boundaries
+  #   data_discovery_probe  — per-user data disclosure + cross-user IDOR
+
+  workflows:
+    - topic_coverage
+  #  - agent_tool_coverage
 
   # Produce a CapabilityMap report listing which tools/sub-agents were exercised
   #capability_map: true
@@ -129,14 +134,16 @@ redteam:
   #   full — all scenarios regardless of score
   profile: full
 
-  # Scenario types to run (omit section to run all):
-  #scenarios:
-  #  - prompt-injection
-  #  - tool-abuse
-  #  - privilege-escalation
-  #  - data-exfiltration
-  #  - policy-violation
-  #  - mcp-toxic-flow
+  scenarios:
+    - prompt-driven-threat     # jailbreaks, guardrail bypass, system-prompt extraction
+    - policy-violation         # restricted topics/actions, HITL bypass, topic boundary
+    - data-exfiltration        # PII/PHI extraction, covert encoding, cross-tenant
+    - privilege-escalation     # role/permission escalation, false-premise attacks
+    - tool-abuse               # SQL injection, SSRF, shell injection, resource exhaustion
+    - mcp-toxic-flow           # poisoned MCP tool descriptions/output, credential overreach
+    - api-attack               # auth bypass, IDOR, mass assignment, BFLA
+    - agentic-trust-abuse      # confused deputy, memory poisoning, multi-agent trust
+    - recon-inference          # refusal-oracle / boundary self-probe information gathering
 
   # Minimum pre-impact score [0–10] for a scenario to be included (default: 0.0)
   min_impact_score: 0.0

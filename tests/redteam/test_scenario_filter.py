@@ -11,6 +11,7 @@ from nuguard.models.exploit_chain import GoalType, ScenarioType
 from nuguard.redteam.executor.orchestrator import (
     _normalize_scenario_token,
     _scenario_matches_filter,
+    validate_scenario_filter,
 )
 from nuguard.redteam.scenarios.scenario_types import AttackScenario
 
@@ -60,3 +61,26 @@ def test_canonical_token_does_not_match_other_goal_types(goal_type, scenario_typ
 def test_no_filter_matches_everything():
     scenario = _make_scenario(GoalType.DATA_EXFILTRATION, ScenarioType.DIRECT_PII_EXTRACTION)
     assert _scenario_matches_filter(scenario, set()) is True
+
+
+class TestValidateScenarioFilter:
+    @pytest.mark.parametrize("goal_type,scenario_type,token", _GOAL_TYPE_CASES)
+    def test_canonical_tokens_are_all_recognized(self, goal_type, scenario_type, token):
+        assert validate_scenario_filter([token]) == []
+
+    def test_invalid_token_flagged(self):
+        # Note: "prompt-injection" is deliberately NOT used here — it coincidentally
+        # substring-matches ScenarioType.REPO_PROMPT_INJECTION, so it's "recognized"
+        # by design even though it doesn't match the GoalType a user likely intended.
+        assert validate_scenario_filter(["not-a-real-scenario-xyz"]) == ["not-a-real-scenario-xyz"]
+
+    def test_mixed_valid_and_invalid(self):
+        result = validate_scenario_filter(["policy-violation", "not-a-real-scenario-xyz"])
+        assert result == ["not-a-real-scenario-xyz"]
+
+    def test_empty_filter_returns_empty(self):
+        assert validate_scenario_filter([]) == []
+
+    def test_scenario_type_token_is_recognized(self):
+        # ScenarioType values (not just GoalType) should also be accepted.
+        assert validate_scenario_filter(["guardrail-bypass"]) == []

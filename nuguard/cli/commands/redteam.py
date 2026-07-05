@@ -197,6 +197,19 @@ def redteam(
             "Warning: all redteam finding triggers are disabled; scans may produce empty findings by design."
         )
 
+    if effective_scenarios:
+        from nuguard.redteam.executor.orchestrator import validate_scenario_filter  # noqa: PLC0415
+
+        unrecognized_scenarios = validate_scenario_filter(effective_scenarios)
+        if unrecognized_scenarios:
+            typer.echo(
+                f"Warning: redteam.scenarios contains unrecognized value(s) "
+                f"{unrecognized_scenarios} — these won't reliably match any scenario "
+                "and may silently drop coverage. Valid values: prompt-driven-threat, "
+                "policy-violation, data-exfiltration, privilege-escalation, tool-abuse, "
+                "mcp-toxic-flow, api-attack, agentic-trust-abuse, recon-inference."
+            )
+
     # Load custom catalog if provided
     custom_catalog = None
     if catalog_path:

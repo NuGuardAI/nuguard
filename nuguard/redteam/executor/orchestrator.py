@@ -21,7 +21,7 @@ if TYPE_CHECKING:
 
 from nuguard.common.console import print_turn as _common_print_turn
 from nuguard.common.logging import get_logger
-from nuguard.models.exploit_chain import ExploitChain, GoalType
+from nuguard.models.exploit_chain import ExploitChain, GoalType, ScenarioType
 from nuguard.models.finding import Finding, Severity
 from nuguard.models.policy import CognitivePolicy
 from nuguard.redteam.policy_engine.evaluator import PolicyViolation
@@ -108,6 +108,39 @@ def _scenario_matches_filter(scenario: AttackScenario, filters: set[str]) -> boo
         or token in title
         for token in filters
     )
+
+
+def _known_scenario_filter_tokens() -> set[str]:
+    """Normalized set of every valid GoalType and ScenarioType value.
+
+    Used to detect scenario_filter entries that cannot ever match anything
+    on purpose — only by accident of the fuzzy substring rule in
+    _scenario_matches_filter (e.g. a mistyped goal name that happens to be a
+    substring of some scenario's title).
+    """
+    return {_normalize_scenario_token(g.value) for g in GoalType} | {
+        _normalize_scenario_token(s.value) for s in ScenarioType
+    }
+
+
+def validate_scenario_filter(filters: list[str]) -> list[str]:
+    """Return the subset of *filters* that don't match any known GoalType/ScenarioType.
+
+    Mirrors the substring rule used by _scenario_matches_filter at match time,
+    so a token is only flagged when it could not have matched intentionally —
+    it would only ever hit a scenario by accident (e.g. matching a raw policy
+    clause embedded in a title).
+    """
+    known = _known_scenario_filter_tokens()
+    unrecognized: list[str] = []
+    for raw in filters:
+        token = _normalize_scenario_token(raw)
+        if not token:
+            continue
+        if any(token in k or k in token for k in known):
+            continue
+        unrecognized.append(raw)
+    return unrecognized
 
 
 @dataclass
@@ -493,6 +526,16 @@ class RedteamOrchestrator:
             for s in (scenario_filter or [])
             if s and s.strip()
         }
+        unrecognized_filters = validate_scenario_filter(scenario_filter or [])
+        if unrecognized_filters:
+            valid_goal_types = ", ".join(_normalize_scenario_token(g.value).replace("_", "-") for g in GoalType)
+            _log.warning(
+                "redteam.scenarios contains unrecognized value(s) %s — these will only "
+                "match scenarios by coincidence (e.g. a substring shared with a policy "
+                "clause), silently dropping most intended coverage. Valid values: %s",
+                unrecognized_filters,
+                valid_goal_types,
+            )
         self._finding_triggers = finding_triggers
         self._verbose = verbose
         self._credentials: dict[str, str] = credentials or {}
