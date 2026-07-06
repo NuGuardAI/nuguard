@@ -21,6 +21,7 @@ Design notes
 """
 from __future__ import annotations
 
+import hashlib
 import re
 from collections import defaultdict
 
@@ -81,9 +82,22 @@ def _scenario_cluster_key(scenario: AttackScenario) -> str:
     Incorporating target node IDs isolates per-agent miss clusters so that
     misses against one agent do not suppress the same attack against a different
     agent.  Up to 2 node IDs are used (covers most single- and dual-node specs).
+
+    Policy-derived scenarios (restricted-topic/action probes, HITL bypass, raw
+    section probes) additionally fold in a hash of the underlying policy clause
+    (``chain.policy_clauses[0]``). These builders reuse a handful of fixed
+    boilerplate templates across every topic — only a short clause fragment
+    differs — so the shared wording alone can push unrelated topics over the
+    Jaccard similarity threshold once enough misses accumulate. Scoping the
+    cluster by clause keeps miss-suppression confined to variants of the SAME
+    topic (e.g. explicit/curious/fiction framings of "self-harm") without
+    letting misses on one topic (e.g. off-topic chatter) silently suppress an
+    entirely different one (e.g. self-harm).
     """
     targets = "|".join(sorted(scenario.target_node_ids[:2]))
-    return f"{scenario.goal_type.value}:{targets}"
+    clause = scenario.chain.policy_clauses[0] if scenario.chain and scenario.chain.policy_clauses else ""
+    clause_suffix = f":{hashlib.sha256(clause.encode()).hexdigest()[:8]}" if clause else ""
+    return f"{scenario.goal_type.value}:{targets}{clause_suffix}"
 
 
 class SimilarityMissTracker:

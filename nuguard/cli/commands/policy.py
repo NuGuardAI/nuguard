@@ -85,9 +85,11 @@ def compile_policy(
     if effective_llm:
         from nuguard.common.llm_client import LLMClient
 
+        _model = cfg.litellm_model or ""
         llm_client = LLMClient(
             model=cfg.litellm_model,
             api_key=cfg.litellm_api_key,
+            api_base=cfg.litellm_api_base if _model.startswith("azure") else None,
         )
 
     text = resolved_policy.read_text(encoding="utf-8")

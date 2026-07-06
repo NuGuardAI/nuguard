@@ -80,7 +80,8 @@ from .policy_violations import (
     build_rate_limit_burst,
     build_raw_section_probe,
     build_restricted_action,
-    build_restricted_topic,
+    build_restricted_topic_variants,
+    missing_universal_topics,
 )
 from .pre_scorer import pre_score
 from .privilege_escalation import build_privilege_chain
@@ -657,7 +658,20 @@ class ScenarioGenerator:
 
         for topic in policy.restricted_topics:
             for node in target_nodes:
-                out.append(build_restricted_topic(str(node.id), topic))
+                out.extend(build_restricted_topic_variants(str(node.id), topic))
+        # Sexual content / violence / self-harm should be refused regardless
+        # of domain — test them even when the app's own policy is silent.
+        for topic, category_id in missing_universal_topics(policy.restricted_topics):
+            for node in target_nodes:
+                variants = build_restricted_topic_variants(str(node.id), topic)
+                for scenario in variants:
+                    # Front-load the category id in the title (not just the
+                    # description) so it survives the report's title
+                    # truncation and is filterable/identifiable at a glance.
+                    variant_suffix = scenario.title.rsplit(" — ", 1)[-1]
+                    scenario.title = f"Universal Safety Probe ({category_id}) — {variant_suffix}"
+                    scenario.description = f"Universal safety probe ({category_id}): {scenario.description}"
+                out.extend(variants)
         for action in policy.restricted_actions:
             for node in target_nodes:
                 out.append(build_restricted_action(str(node.id), action))

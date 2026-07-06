@@ -449,6 +449,198 @@ def test_build_coverage_map_runtime_only_endpoint_fallback() -> None:
 
 
 # ---------------------------------------------------------------------------
+# Agent/tool mention matching tiers (descriptive_name, fuzzy, sole-agent
+# fallback, config aliases) — reduces false "unmatched component" reports.
+# ---------------------------------------------------------------------------
+
+
+def _agent_or_tool_node(
+    name: str,
+    component_type: ComponentType,
+    descriptive_name: str | None = None,
+) -> Node:
+    nid = uuid.uuid5(_NS, f"{component_type.value}/{name}")
+    return Node(
+        id=nid,
+        name=name,
+        component_type=component_type,
+        confidence=1.0,
+        metadata=NodeMetadata(descriptive_name=descriptive_name),
+    )
+
+
+def _mention_scenario_result(agents: list[str], tools: list[str]) -> ScenarioResult:
+    return ScenarioResult(
+        scenario_id="s1",
+        scenario_name="mention_s1",
+        scenario_type=BehaviorScenarioType.INTENT_HAPPY_PATH.value,
+        verdicts=[
+            {
+                "turn": 1,
+                "agents_mentioned": agents,
+                "tools_mentioned": tools,
+                "deviations": [],
+            }
+        ],
+        total_turns=1,
+    )
+
+
+def test_build_coverage_map_descriptive_name_match():
+    """A tool mentioned by its SBOM metadata.descriptive_name (not its `name`) matches."""
+    sbom = AiSbomDocument(
+        target="./app",
+        nodes=[_agent_or_tool_node("Check Sanctions", ComponentType.TOOL, descriptive_name="Sanctions Screening Tool")],
+        edges=[],
+    )
+    runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
+
+    coverage = runner._build_coverage_map([_mention_scenario_result(agents=[], tools=["Sanctions Screening Tool"])])
+    cov = next(c for c in coverage if c.component_name == "Check Sanctions")
+    assert cov.exercised is True
+    assert cov.mapping_confidence == "descriptive_name_match"
+    assert "Sanctions Screening Tool" in cov.evidence_mentions
+    assert runner._coverage_mapping_diagnostics.get("descriptive_name_match_count") == 1
+    assert runner._coverage_mapping_diagnostics.get("mentioned_entities_unmapped") == []
+
+
+def test_build_coverage_map_call_style_prefix_normalises():
+    """A function-call-style mention (`functions.cancel_payment`) still matches via normalisation."""
+    sbom = AiSbomDocument(
+        target="./app",
+        nodes=[_agent_or_tool_node("Cancel Payment", ComponentType.TOOL)],
+        edges=[],
+    )
+    runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
+
+    coverage = runner._build_coverage_map([_mention_scenario_result(agents=[], tools=["functions.cancel_payment"])])
+    cov = next(c for c in coverage if c.component_name == "Cancel Payment")
+    assert cov.exercised is True
+    assert cov.mapping_confidence == "normalized_match"
+
+
+def test_build_coverage_map_sole_agent_fallback_resolves_persona_name():
+    """A live app's self-chosen persona name (unrelated to the SBOM name) resolves
+    to the sole AGENT node — this is the exact 'Nova' vs 'Fintech App Assistant' case."""
+    sbom = AiSbomDocument(
+        target="./app",
+        nodes=[_agent_or_tool_node("Fintech App Assistant", ComponentType.AGENT)],
+        edges=[],
+    )
+    runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
+
+    coverage = runner._build_coverage_map(
+        [_mention_scenario_result(agents=["Nova (AI Banking Assistant)"], tools=[])]
+    )
+    cov = next(c for c in coverage if c.component_name == "Fintech App Assistant")
+    assert cov.exercised is True
+    assert cov.mapping_confidence == "sole_agent_fallback"
+    assert runner._coverage_mapping_diagnostics.get("sole_agent_fallback_count") == 1
+
+
+def test_build_coverage_map_sole_agent_fallback_disabled_when_multiple_agents():
+    """The fallback must not fire when the SBOM has 2+ agents — attribution would be a guess."""
+    sbom = AiSbomDocument(
+        target="./app",
+        nodes=[
+            _agent_or_tool_node("Fintech App Assistant", ComponentType.AGENT),
+            _agent_or_tool_node("Wealth Advisor Agent", ComponentType.AGENT),
+        ],
+        edges=[],
+    )
+    runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
+
+    coverage = runner._build_coverage_map(
+        [_mention_scenario_result(agents=["Nova (AI Banking Assistant)"], tools=[])]
+    )
+    assert all(not c.exercised for c in coverage)
+    assert "Nova (AI Banking Assistant)" in runner._coverage_mapping_diagnostics.get("mentioned_entities_unmapped", [])
+
+
+def test_build_coverage_map_sole_agent_fallback_respects_config_opt_out():
+    sbom = AiSbomDocument(
+        target="./app",
+        nodes=[_agent_or_tool_node("Fintech App Assistant", ComponentType.AGENT)],
+        edges=[],
+    )
+    cfg = _make_config()
+    cfg.sole_agent_alias_fallback = False
+    runner = BehaviorRunner(config=cfg, sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
+
+    coverage = runner._build_coverage_map(
+        [_mention_scenario_result(agents=["Nova (AI Banking Assistant)"], tools=[])]
+    )
+    cov = next(c for c in coverage if c.component_name == "Fintech App Assistant")
+    assert cov.exercised is False
+    assert "Nova (AI Banking Assistant)" in runner._coverage_mapping_diagnostics.get("mentioned_entities_unmapped", [])
+
+
+def test_build_coverage_map_fuzzy_match_typo():
+    sbom = AiSbomDocument(
+        target="./app",
+        nodes=[_agent_or_tool_node("Cancel Payment", ComponentType.TOOL)],
+        edges=[],
+    )
+    runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
+
+    coverage = runner._build_coverage_map([_mention_scenario_result(agents=[], tools=["Cancel Paymant"])])
+    cov = next(c for c in coverage if c.component_name == "Cancel Payment")
+    assert cov.exercised is True
+    assert cov.mapping_confidence == "fuzzy_match"
+
+
+def test_build_coverage_map_fuzzy_match_ambiguous_tie_stays_unmatched():
+    """Two similarly-named tools scoring within epsilon of each other must not be
+    guessed between — safer to leave unmatched than pick an arbitrary winner."""
+    sbom = AiSbomDocument(
+        target="./app",
+        nodes=[
+            _agent_or_tool_node("Xylophane Tool", ComponentType.TOOL),
+            _agent_or_tool_node("Xylaphone Tool", ComponentType.TOOL),
+        ],
+        edges=[],
+    )
+    runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
+
+    coverage = runner._build_coverage_map([_mention_scenario_result(agents=[], tools=["Xylophone Tool"])])
+    assert all(not c.exercised for c in coverage)
+    assert "Xylophone Tool" in runner._coverage_mapping_diagnostics.get("mentioned_entities_unmapped", [])
+
+
+def test_build_coverage_map_config_component_alias_takes_priority():
+    sbom = AiSbomDocument(
+        target="./app",
+        nodes=[_agent_or_tool_node("Fintech App Assistant", ComponentType.AGENT)],
+        edges=[],
+    )
+    cfg = _make_config()
+    cfg.component_aliases = {"Nova": "Fintech App Assistant"}
+    runner = BehaviorRunner(config=cfg, sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
+
+    coverage = runner._build_coverage_map([_mention_scenario_result(agents=["Nova"], tools=[])])
+    cov = next(c for c in coverage if c.component_name == "Fintech App Assistant")
+    assert cov.exercised is True
+    assert cov.mapping_confidence == "config_alias"
+    assert runner._coverage_mapping_diagnostics.get("config_alias_match_count") == 1
+
+
+def test_build_coverage_map_genuinely_unmatched_mention_stays_unmatched():
+    """A mention with no plausible SBOM counterpart must remain unmatched (no false positives)."""
+    sbom = AiSbomDocument(
+        target="./app",
+        nodes=[_agent_or_tool_node("Fintech App Assistant", ComponentType.AGENT)],
+        edges=[],
+    )
+    cfg = _make_config()
+    cfg.sole_agent_alias_fallback = False
+    runner = BehaviorRunner(config=cfg, sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)
+
+    coverage = runner._build_coverage_map([_mention_scenario_result(agents=["ComplianceOfficer"], tools=[])])
+    assert all(not c.exercised for c in coverage)
+    assert "ComplianceOfficer" in runner._coverage_mapping_diagnostics.get("mentioned_entities_unmapped", [])
+
+
+# ---------------------------------------------------------------------------
 # v7.5: _adapt_message — probe deferral + scenario-type filter
 # ---------------------------------------------------------------------------
 

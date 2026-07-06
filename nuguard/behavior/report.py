@@ -69,6 +69,7 @@ def to_json(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = None) 
         "effective_endpoint": result.effective_endpoint,
         "target_endpoint_source": result.target_endpoint_source,
         "run_profile": result.run_profile,
+        "config_notes": result.config_notes,
     }
     if meta is not None:
         if hasattr(meta, "to_dict"):
@@ -101,6 +102,13 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
 
     if meta is not None:
         lines += meta.to_markdown_lines()
+
+    if result.config_notes:
+        lines.append("## ⚠ Configuration Notes")
+        lines.append("")
+        for note in result.config_notes:
+            lines.append(f"> **⚠** {note}")
+        lines.append("")
 
     # Determine analysis mode
     has_static = bool(result.static_findings)
@@ -400,7 +408,16 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
                 for name in (v.get("agents_mentioned") or []) + (v.get("tools_mentioned") or [])
             ))
             if covered:
+                # Match against both canonical component names and successfully-resolved
+                # mentions (evidence_mentions/aliases_seen) so a mention that matched via
+                # the descriptive-name/fuzzy/config-alias/sole-agent tiers in
+                # _build_coverage_map (e.g. a persona name entirely unlike the SBOM's
+                # structural name) is correctly tagged "matched" here too, instead of
+                # this independently re-deriving a stricter, canonical-name-only check.
                 coverage_norm = {normalise_name(c.component_name) for c in result.coverage}
+                for c in result.coverage:
+                    coverage_norm.update(normalise_name(m) for m in c.evidence_mentions)
+                    coverage_norm.update(normalise_name(m) for m in c.aliases_seen)
                 tagged = [f"{name} ({'matched' if normalise_name(name) in coverage_norm else 'unmatched'})" for name in covered]
                 lines.append(f"**Covered components**: {', '.join(tagged)}")
                 lines.append("")
@@ -433,9 +450,30 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
         _unmapped = [str(e) for e in (_cov_diag.get("mentioned_entities_unmapped") or [])]
         _rt_unmapped = int(_cov_diag.get("runtime_only_unmapped_endpoint_count") or 0)
         _type_mismatch = int(_cov_diag.get("component_type_mismatch_count") or 0)
-        if _unmapped or _rt_unmapped or _type_mismatch:
+        _descriptive_matches = int(_cov_diag.get("descriptive_name_match_count") or 0)
+        _fuzzy_matches = int(_cov_diag.get("fuzzy_match_count") or 0)
+        _sole_agent_matches = int(_cov_diag.get("sole_agent_fallback_count") or 0)
+        _config_alias_matches = int(_cov_diag.get("config_alias_match_count") or 0)
+        _alias_tier_total = _descriptive_matches + _fuzzy_matches + _sole_agent_matches + _config_alias_matches
+        if _unmapped or _rt_unmapped or _type_mismatch or _alias_tier_total:
             lines.append("### Coverage Diagnostics")
             lines.append("")
+            if _alias_tier_total:
+                lines.append(
+                    f"**Alias-resolved mentions** ({_alias_tier_total}) — mentions phrased "
+                    "differently than the SBOM's component name but resolved with confidence, "
+                    "so they count as exercised rather than unmapped:"
+                )
+                lines.append("")
+                if _descriptive_matches:
+                    lines.append(f"- {_descriptive_matches} via SBOM `descriptive_name` match")
+                if _fuzzy_matches:
+                    lines.append(f"- {_fuzzy_matches} via fuzzy text-similarity match")
+                if _sole_agent_matches:
+                    lines.append(f"- {_sole_agent_matches} via sole-agent self-reference fallback")
+                if _config_alias_matches:
+                    lines.append(f"- {_config_alias_matches} via configured `component_aliases`")
+                lines.append("")
             if _unmapped:
                 lines.append(
                     f"**Unmapped entity mentions** ({len(_unmapped)}) — "
@@ -872,6 +910,15 @@ def to_text(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = None) 
         f"Outcome:       {result.scan_outcome}",
     ]
     console.print(Panel("\n".join(summary_lines), title="Behavior Analysis Summary", border_style="blue"))
+
+    if result.config_notes:
+        console.print(
+            Panel(
+                "\n".join(result.config_notes),
+                title="⚠ Configuration Notes",
+                border_style="yellow",
+            )
+        )
 
     # Coverage table
     if result.coverage:

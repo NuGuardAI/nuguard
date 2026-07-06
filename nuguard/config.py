@@ -274,8 +274,6 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
             flat["redteam_v2_dry_run_only"] = bool(redteam_v2["dry_run_only"])
     if "profile" in redteam:
         flat["redteam_profile"] = redteam["profile"]
-    if "use_catalog" in redteam:
-        flat["redteam_use_catalog"] = bool(redteam["use_catalog"])
     if "catalog_path" in redteam:
         flat["redteam_catalog_path"] = str(redteam["catalog_path"])
     if "min_impact_score" in redteam:
@@ -557,9 +555,8 @@ class BehaviorConfig(BaseModel):
     workflows: list[str] = Field(
         default_factory=list,
         description=(
-            "Workflows to execute: intent_happy_path, component_coverage, "
-            "boundary_enforcement, invariant_probe. "
-            "Empty = run all."
+            "Workflow categories to execute: topic_coverage, agent_tool_coverage, "
+            "guardrail_coverage, data_discovery_probe. Empty = run all."
         ),
     )
     boundary_assertions: list[BehaviorBoundaryAssertion] = Field(default_factory=list)
@@ -610,6 +607,34 @@ class BehaviorConfig(BaseModel):
     )
     otel_endpoint: str | None = None
     otel_service_name: str | None = None
+
+    endpoint_aliases: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Manual overrides mapping a runtime endpoint route to its canonical "
+            "SBOM API_ENDPOINT component name, e.g. {'/api/agent/chat': '/chat API'}."
+        ),
+    )
+    component_aliases: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Manual overrides mapping a free-text agent/tool mention seen in live "
+            "agent responses to its canonical SBOM component name, e.g. "
+            "{'Nova': 'Fintech App Assistant'}. Use this for persona/brand names "
+            "with no textual overlap with the SBOM's structural component name — "
+            "fuzzy and descriptive-name matching cannot infer these on their own."
+        ),
+    )
+    sole_agent_alias_fallback: bool = Field(
+        default=True,
+        description=(
+            "When the SBOM declares exactly one AGENT node, attribute any "
+            "otherwise-unmatched agent mention to it (handles a live app's "
+            "self-chosen persona name that differs entirely from the SBOM name). "
+            "Disable if the single agent legitimately delegates to unlisted "
+            "sub-agents outside the SBOM."
+        ),
+    )
 
     # ------------------------------------------------------------------
     # v3 efficiency additions
@@ -950,14 +975,6 @@ class NuGuardConfig(BaseSettings):
             "or 'full' (all scenarios, ≥50 on rich SBOMs) (yaml: redteam.profile)."
         ),
     )
-    redteam_use_catalog: bool = Field(
-        default=True,
-        description=(
-            "When True, supplement legacy scenario generation with the stable-ID catalog "
-            "(docs/llm-runs/Red-team-new-design.md).  Disable for legacy-only runs "
-            "(yaml: redteam.use_catalog)."
-        ),
-    )
     redteam_catalog_path: str | None = Field(
         default=None,
         description=(
@@ -976,8 +993,7 @@ class NuGuardConfig(BaseSettings):
             "Goal types to run; empty = all 9. Values: prompt-driven-threat, "
             "policy-violation, data-exfiltration, privilege-escalation, "
             "tool-abuse, mcp-toxic-flow, api-attack, agentic-trust-abuse, "
-            "recon-inference ('prompt-injection' accepted as a legacy alias "
-            "for prompt-driven-threat) (yaml: redteam.scenarios)."
+            "recon-inference (yaml: redteam.scenarios)."
         ),
     )
     mcp_trusted_servers: list[str] = Field(

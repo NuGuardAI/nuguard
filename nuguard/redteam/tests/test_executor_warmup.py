@@ -58,7 +58,7 @@ async def test_warmup_fires_with_domain_context() -> None:
         allowed_topics=["flight booking", "seat selection"],
     )
 
-    _, results = await executor.run(_chat_chain())
+    _, results, _ = await executor.run(_chat_chain())
 
     # First result is WARMUP, second is the INJECT attack step
     assert len(results) == 2
@@ -84,7 +84,7 @@ async def test_warmup_skipped_without_domain_context() -> None:
     client = _FakeClient()
     executor = AttackExecutor(client=cast(Any, client))
 
-    _, results = await executor.run(_chat_chain())
+    _, results, _ = await executor.run(_chat_chain())
 
     assert len(results) == 1
     assert results[0].step.step_type == "INJECT"
@@ -130,7 +130,7 @@ async def test_warmup_skipped_for_http_only_chain() -> None:
 
     client.invoke_endpoint = _invoke  # type: ignore[attr-defined]
 
-    _, results = await executor.run(http_chain)
+    _, results, _ = await executor.run(http_chain)
 
     # Only the HTTP-direct step — no warmup because no chat step exists
     assert all(r.step.step_type != "WARMUP" for r in results)

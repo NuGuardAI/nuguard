@@ -17,10 +17,11 @@ if TYPE_CHECKING:
     from nuguard.models.token_usage import TokenUsage
     from nuguard.redteam.coverage.tracker import CoverageTracker
     from nuguard.redteam.target.log_reader import BufferLogReader, FileLogReader
+    from nuguard.redteam.target.session import AttackSession
 
 from nuguard.common.console import print_turn as _common_print_turn
 from nuguard.common.logging import get_logger
-from nuguard.models.exploit_chain import ExploitChain, GoalType
+from nuguard.models.exploit_chain import ExploitChain, GoalType, ScenarioType
 from nuguard.models.finding import Finding, Severity
 from nuguard.models.policy import CognitivePolicy
 from nuguard.redteam.policy_engine.evaluator import PolicyViolation
@@ -55,20 +56,8 @@ def _sev_rank(severity: Severity) -> int:
         return len(_SEV_ORDER)
 
 
-# Back-compat aliases for scenario/goal-type filter tokens (redteam.scenarios /
-# --scenarios). "prompt-injection" was the pre-rename token for what is now
-# GoalType.PROMPT_DRIVEN_THREAT; without this alias the token silently matches
-# zero scenarios (neither substring of the other), so a config still using it
-# would drop the entire PROMPT_DRIVEN_THREAT category without any error.
-_GOAL_TOKEN_ALIASES: dict[str, str] = {
-    "prompt_injection": "prompt_driven_threat",
-    "prompt_injections": "prompt_driven_threat",
-}
-
-
 def _normalize_scenario_token(value: str) -> str:
-    normalized = value.strip().lower().replace("-", "_")
-    return _GOAL_TOKEN_ALIASES.get(normalized, normalized)
+    return value.strip().lower().replace("-", "_")
 
 
 def _dedup_findings(findings: list[Finding]) -> list[Finding]:
@@ -119,6 +108,39 @@ def _scenario_matches_filter(scenario: AttackScenario, filters: set[str]) -> boo
         or token in title
         for token in filters
     )
+
+
+def _known_scenario_filter_tokens() -> set[str]:
+    """Normalized set of every valid GoalType and ScenarioType value.
+
+    Used to detect scenario_filter entries that cannot ever match anything
+    on purpose — only by accident of the fuzzy substring rule in
+    _scenario_matches_filter (e.g. a mistyped goal name that happens to be a
+    substring of some scenario's title).
+    """
+    return {_normalize_scenario_token(g.value) for g in GoalType} | {
+        _normalize_scenario_token(s.value) for s in ScenarioType
+    }
+
+
+def validate_scenario_filter(filters: list[str]) -> list[str]:
+    """Return the subset of *filters* that don't match any known GoalType/ScenarioType.
+
+    Mirrors the substring rule used by _scenario_matches_filter at match time,
+    so a token is only flagged when it could not have matched intentionally —
+    it would only ever hit a scenario by accident (e.g. matching a raw policy
+    clause embedded in a title).
+    """
+    known = _known_scenario_filter_tokens()
+    unrecognized: list[str] = []
+    for raw in filters:
+        token = _normalize_scenario_token(raw)
+        if not token:
+            continue
+        if any(token in k or k in token for k in known):
+            continue
+        unrecognized.append(raw)
+    return unrecognized
 
 
 @dataclass
@@ -459,7 +481,6 @@ class RedteamOrchestrator:
         skip_discovery: bool = False,
         discovery_max_turns: int = 3,
         chat_payload_extras: dict[str, Any] | None = None,
-        use_catalog: bool = True,
         catalog: "tuple | None" = None,
         pre_run_warmup: int = 0,
         verify_findings: bool = False,
@@ -473,7 +494,6 @@ class RedteamOrchestrator:
         self._policy_controls = policy_controls  # compiled PolicyControl list
         self._canary_config = canary_config
         self._profile = profile
-        self._use_catalog = use_catalog
         self._catalog = catalog
         self._min_impact = min_impact_score
         self._log_path = log_path
@@ -506,6 +526,16 @@ class RedteamOrchestrator:
             for s in (scenario_filter or [])
             if s and s.strip()
         }
+        unrecognized_filters = validate_scenario_filter(scenario_filter or [])
+        if unrecognized_filters:
+            valid_goal_types = ", ".join(_normalize_scenario_token(g.value).replace("_", "-") for g in GoalType)
+            _log.warning(
+                "redteam.scenarios contains unrecognized value(s) %s — these will only "
+                "match scenarios by coincidence (e.g. a substring shared with a policy "
+                "clause), silently dropping most intended coverage. Valid values: %s",
+                unrecognized_filters,
+                valid_goal_types,
+            )
         self._finding_triggers = finding_triggers
         self._verbose = verbose
         self._credentials: dict[str, str] = credentials or {}
@@ -864,35 +894,33 @@ class RedteamOrchestrator:
         all_scenarios = generator.generate(with_guided=_with_guided)
         self._coverage_tracker = cast("CoverageTracker | None", getattr(generator, "coverage_tracker", None))
 
-        # 1b. Catalog scenarios — merged in when use_catalog=True.
+        # 1b. Catalog scenarios — merged into the SBOM-driven set above.
         # The catalog is capability-aware and handles its own profile filtering,
         # so we merge after the legacy filter to avoid double-capping.
-        _use_catalog = getattr(self, "_use_catalog", True)
         self.catalog_coverage = None
-        if _use_catalog:
-            try:
-                catalog_scenarios = generator.generate_from_catalog(
-                    scan_profile=self._profile,
-                    with_guided=_with_guided,
-                    catalog=self._catalog,
-                )
-                self.catalog_coverage = generator.last_coverage
-                # Merge catalog scenarios, keeping existing legacy ones first
-                existing_keys = {
-                    (s.goal_type, s.scenario_type, tuple(s.target_node_ids))
-                    for s in all_scenarios
-                }
-                for s in catalog_scenarios:
-                    key = (s.goal_type, s.scenario_type, tuple(s.target_node_ids))
-                    if key not in existing_keys:
-                        all_scenarios.append(s)
-                _log.info(
-                    "Merged %d catalog scenarios (coverage: %d categories)",
-                    len(catalog_scenarios),
-                    self.catalog_coverage.categories_covered_count if self.catalog_coverage else 0,
-                )
-            except Exception as exc:
-                _log.warning("Catalog generation failed (non-fatal): %s", exc)
+        try:
+            catalog_scenarios = generator.generate_from_catalog(
+                scan_profile=self._profile,
+                with_guided=_with_guided,
+                catalog=self._catalog,
+            )
+            self.catalog_coverage = generator.last_coverage
+            # Merge catalog scenarios, keeping existing legacy ones first
+            existing_keys = {
+                (s.goal_type, s.scenario_type, tuple(s.target_node_ids))
+                for s in all_scenarios
+            }
+            for s in catalog_scenarios:
+                key = (s.goal_type, s.scenario_type, tuple(s.target_node_ids))
+                if key not in existing_keys:
+                    all_scenarios.append(s)
+            _log.info(
+                "Merged %d catalog scenarios (coverage: %d categories)",
+                len(catalog_scenarios),
+                self.catalog_coverage.categories_covered_count if self.catalog_coverage else 0,
+            )
+        except Exception as exc:
+            _log.warning("Catalog generation failed (non-fatal): %s", exc)
 
         # 2. Filter by profile and impact score (before enrichment — avoids wasting LLM calls)
         if self._profile == "ci":
@@ -1338,7 +1366,7 @@ class RedteamOrchestrator:
 
                     if scenario.chain is None:
                         return [], (scenario.title, scenario.goal_type.value, False), _skipped_record("failed")
-                    chain, step_results = await executor.run(scenario.chain)
+                    chain, step_results, session = await executor.run(scenario.chain)
                     if self._verbose:
                         target_url = self._target_url + self._chat_path
                         for step_idx, sr in enumerate(step_results, 1):
@@ -1360,7 +1388,7 @@ class RedteamOrchestrator:
                             )
                     step_details = self._build_step_details(step_results)
                     new_findings = self._build_findings(
-                        scenario, chain, step_results, step_details
+                        scenario, chain, step_results, step_details, session=session
                     )
                     if self._verify_findings and new_findings:
                         await self._verify_findings_probe(new_findings, step_details, executor)
@@ -1418,10 +1446,11 @@ class RedteamOrchestrator:
                                     try:
                                         if _esc_scenario.chain is None:
                                             continue
-                                        _esc_chain, _esc_results = await executor.run(_esc_scenario.chain)
+                                        _esc_chain, _esc_results, _esc_session = await executor.run(_esc_scenario.chain)
                                         _esc_step_details = self._build_step_details(_esc_results)
                                         _esc_findings = self._build_findings(
                                             _esc_scenario, _esc_chain, _esc_results, _esc_step_details,
+                                            session=_esc_session,
                                         )
                                         new_findings.extend(_esc_findings)
                                         had_finding = had_finding or bool(_esc_findings)
@@ -1978,6 +2007,7 @@ class RedteamOrchestrator:
         chain: ExploitChain,
         step_results: list[StepResult],
         step_details: list[dict],
+        session: AttackSession | None = None,
     ) -> list[Finding]:
         """Convert scenario execution results into Finding objects."""
         findings: list[Finding] = []
@@ -2018,6 +2048,15 @@ class RedteamOrchestrator:
             owasp_llm_ref=owasp_llm,
             attack_steps=step_details,
         )
+        # Attach the golden-data baseline (authenticated test account's own data)
+        # when the chain captured one via a DISCOVER step, so reports can show
+        # what self-account data findings were compared against.
+        if session is not None and session.golden_data:
+            _base.update(
+                golden_ids=list(session.golden_ids),
+                golden_name=session.golden_name or None,
+                golden_data_excerpt=session.golden_data[:500],
+            )
 
         # Canary-based finding
         if canary_hits and self._trigger_enabled("canary_hits"):

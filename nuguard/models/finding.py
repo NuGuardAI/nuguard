@@ -40,5 +40,12 @@ class Finding(BaseModel):
     scores: dict[str, int | None] = Field(default_factory=dict)  # 1-5 rubric scores
     # Redteam step-level detail — each entry describes one executed attack step
     attack_steps: list[dict] = Field(default_factory=list)
+    # Golden-data baseline — the authenticated test account's own data, captured via
+    # a DISCOVER step and used to distinguish expected self-returns from genuine
+    # cross-account leakage in IDOR/data-exfiltration scenarios. Populated only when
+    # the scenario's chain used golden-data comparison.
+    golden_ids: list[str] = Field(default_factory=list)
+    golden_name: str | None = None
+    golden_data_excerpt: str | None = None
     # Post-finding verification probe result (None = not run, True = reproduced, False = unconfirmed)
     verified: bool | None = None

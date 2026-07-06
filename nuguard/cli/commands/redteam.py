@@ -197,6 +197,19 @@ def redteam(
             "Warning: all redteam finding triggers are disabled; scans may produce empty findings by design."
         )
 
+    if effective_scenarios:
+        from nuguard.redteam.executor.orchestrator import validate_scenario_filter  # noqa: PLC0415
+
+        unrecognized_scenarios = validate_scenario_filter(effective_scenarios)
+        if unrecognized_scenarios:
+            typer.echo(
+                f"Warning: redteam.scenarios contains unrecognized value(s) "
+                f"{unrecognized_scenarios} — these won't reliably match any scenario "
+                "and may silently drop coverage. Valid values: prompt-driven-threat, "
+                "policy-violation, data-exfiltration, privilege-escalation, tool-abuse, "
+                "mcp-toxic-flow, api-attack, agentic-trust-abuse, recon-inference."
+            )
+
     # Load custom catalog if provided
     custom_catalog = None
     if catalog_path:
@@ -628,7 +641,6 @@ async def _run_redteam(
     skip_discovery: bool = False,
     discovery_max_turns: int = 3,
     chat_payload_extras: dict[str, Any] | None = None,
-    use_catalog: bool = True,
     catalog: "tuple | None" = None,
     pre_run_warmup: int = 0,
     verify_findings: bool = False,
@@ -756,7 +768,6 @@ async def _run_redteam(
                 similar_miss_threshold=similar_miss_threshold,
                 skip_discovery=skip_discovery,
                 discovery_max_turns=discovery_max_turns,
-                use_catalog=use_catalog,
                 catalog=catalog,
                 pre_run_warmup=pre_run_warmup,
                 verify_findings=verify_findings,
@@ -807,7 +818,6 @@ async def _run_redteam(
         similar_miss_threshold=similar_miss_threshold,
         skip_discovery=skip_discovery,
         discovery_max_turns=discovery_max_turns,
-        use_catalog=use_catalog,
         catalog=catalog,
         pre_run_warmup=pre_run_warmup,
         verify_findings=verify_findings,
@@ -857,7 +867,6 @@ async def _run_orchestrator(  # noqa: C901
     similar_miss_threshold: int = 4,
     skip_discovery: bool = False,
     discovery_max_turns: int = 3,
-    use_catalog: bool = True,
     catalog: "tuple | None" = None,
     pre_run_warmup: int = 0,
     verify_findings: bool = False,
@@ -922,7 +931,6 @@ async def _run_orchestrator(  # noqa: C901
         similar_miss_threshold=similar_miss_threshold,
         skip_discovery=skip_discovery,
         discovery_max_turns=discovery_max_turns,
-        use_catalog=use_catalog,
         catalog=catalog,
         pre_run_warmup=pre_run_warmup,
         verify_findings=verify_findings,

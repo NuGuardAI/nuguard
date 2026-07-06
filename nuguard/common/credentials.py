@@ -319,7 +319,11 @@ async def generate_contextual_reply(
             system=_CONTEXTUAL_REPLY_SYSTEM,
             label="nuguard:contextual_reply",
         )
-        return reply.strip() if reply and reply.strip() else confirmation_reply("confirmation")
+        reply = reply.strip() if reply else ""
+        if not reply or reply.startswith("[NUGUARD_CANNED_RESPONSE]"):
+            request_type = detect_confirmation_request(agent_response) or "confirmation"
+            return confirmation_reply(request_type)
+        return reply
     except Exception:
         request_type = detect_confirmation_request(agent_response) or "confirmation"
         return confirmation_reply(request_type)

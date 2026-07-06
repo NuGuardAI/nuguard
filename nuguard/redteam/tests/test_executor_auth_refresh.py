@@ -86,7 +86,7 @@ async def test_chat_step_retries_once_after_401_refresh() -> None:
         ],
     )
 
-    _, results = await executor.run(chain)
+    _, results, _ = await executor.run(chain)
 
     assert len(results) == 1
     assert results[0].response == "ok"
@@ -122,7 +122,7 @@ async def test_direct_http_step_retries_once_after_401_refresh() -> None:
         ],
     )
 
-    _, results = await executor.run(chain)
+    _, results, _ = await executor.run(chain)
 
     assert len(results) == 1
     assert results[0].http_status_code == 200
