@@ -1710,7 +1710,6 @@ def _endpoint_coverage_scenarios(
         chat_key = getattr(meta, "chat_payload_key", "") or ""
         req_schema: dict = getattr(meta, "request_schema", None) or {}
         req_body_schema: dict = getattr(meta, "request_body_schema", None) or {}
-        resp_schema: dict = getattr(meta, "response_schema", None) or {}
         chat_key_is_conversational = bool(chat_key) and chat_key.lower() in _CHAT_PAYLOAD_KEY_NAMES
         if not (accepts_input or chat_key_is_conversational):
             continue
