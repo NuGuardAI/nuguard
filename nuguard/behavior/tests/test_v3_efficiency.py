@@ -278,13 +278,20 @@ class TestDedupScenariosByOpener:
     def test_empty_scenarios(self):
         assert _dedup_scenarios_by_opener([]) == []
 
-    def test_first_100_chars_used_for_fingerprint(self):
-        """Scenarios sharing the same first 100 chars but differing after → deduped."""
+    def test_full_message_hash_used_for_fingerprint(self):
+        """Scenarios sharing opener prefix but differing later → both kept (full-message hash).
+
+        Commit 4767642b changed the key from ``first_msg[:100]`` to the full
+        joined message list so that deterministic builders that reuse a shared
+        Turn 1 warm-up but diverge from Turn 2 onward are not incorrectly
+        collapsed.  Two scenarios that differ anywhere in their script are now
+        considered distinct.
+        """
         base = "A" * 100
         s1 = _make_scenario("s1", messages=[base + " extra1"])
         s2 = _make_scenario("s2", messages=[base + " extra2"])
         result = _dedup_scenarios_by_opener([s1, s2])
-        assert len(result) == 1
+        assert len(result) == 2  # distinct full messages → both kept
 
     def test_no_messages_handled_gracefully(self):
         s1 = _make_scenario("s1", messages=[])
