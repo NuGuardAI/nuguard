@@ -56,7 +56,7 @@ _CRITICAL_STATES = frozenset({"external_write", "destructive"})
 class SupportsStaticRun(Protocol):
     """Duck-typed view of :class:`AttackExecutor`."""
 
-    async def run(self, chain: Any) -> tuple[Any, list[Any]]:
+    async def run(self, chain: Any) -> tuple[Any, list[Any], Any]:
         ...
 
 
@@ -307,7 +307,7 @@ class ObjectiveRunner:
         if self._compose:
             chain = await self._compose_kill_chain(chain)
         try:
-            _chain, results = await self._static.run(chain)
+            _chain, results, _session = await self._static.run(chain)
         except Exception as exc:
             _log.warning("static execution failed for %s: %s", obj.objective_id, exc)
             return ObjectiveOutcome(
@@ -377,7 +377,7 @@ class ObjectiveRunner:
             if self._compose:
                 chain = await self._compose_kill_chain(chain)
             try:
-                _, esc_results = await self._static.run(chain)
+                _, esc_results, _esc_session = await self._static.run(chain)
             except Exception as exc:
                 _log.warning(
                     "[codegen-esc] escalation chain %s failed: %s",

@@ -218,7 +218,10 @@ _CONFIRMATION_RE = re.compile(
 _CLARIFYING_RE = re.compile(
     r"(?:could\s+you|can\s+you|please)\s+(?:provide|specify|clarify|tell\s+me|share|give\s+me)\b"
     r"|which\s+(?:account|option|one)\s+(?:would\s+you|do\s+you)\b"
+    r"|which\s+(?:trip|reservation|flight|booking|account)\b.{0,40}?"
+    r"(?:relates?\s+to|does\s+this|is\s+this\s+for|are\s+you\s+referring)"
     r"|what\s+(?:account|amount|date|currency|address)\s+(?:would\s+you|do\s+you|should)\b"
+    r"|what(?:'s|\s+is)\s+your\s+.{0,40}?\b(?:number|code|id)\b"
     r"|how\s+much\s+(?:would\s+you|do\s+you)\s+like\b"
     r"|more\s+(?:details?|information|info)\b.*\?",
     re.IGNORECASE,
@@ -316,7 +319,11 @@ async def generate_contextual_reply(
             system=_CONTEXTUAL_REPLY_SYSTEM,
             label="nuguard:contextual_reply",
         )
-        return reply.strip() if reply and reply.strip() else confirmation_reply("confirmation")
+        reply = reply.strip() if reply else ""
+        if not reply or reply.startswith("[NUGUARD_CANNED_RESPONSE]"):
+            request_type = detect_confirmation_request(agent_response) or "confirmation"
+            return confirmation_reply(request_type)
+        return reply
     except Exception:
         request_type = detect_confirmation_request(agent_response) or "confirmation"
         return confirmation_reply(request_type)

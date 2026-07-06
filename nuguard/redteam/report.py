@@ -8,6 +8,7 @@ either module with the same interface::
 from __future__ import annotations
 
 import json
+import re
 from typing import TYPE_CHECKING, Any
 
 from nuguard.common.logging import get_logger
@@ -157,6 +158,7 @@ def to_markdown(
     _scenario_details = None
     if scenario_records:
         lines += _attack_coverage_summary(scenario_records)
+        lines += _universal_safety_summary(scenario_records)
         _scenario_details = extract_redteam_scenario_details(scenario_records)
         _passed = sum(1 for d in _scenario_details if d.status == "PASS")
         _type_breakdown: dict[str, int] = {}
@@ -207,6 +209,21 @@ def to_markdown(
         success_indicator = getattr(f, "success_indicator", None)
         if success_indicator:
             lines += [f"**Success indicator:** `{success_indicator}`", ""]
+        # Note: evidence_quote, remediation, and owasp_llm_ref are already
+        # rendered by render_finding_block() above — do not duplicate them here.
+        golden_ids = getattr(f, "golden_ids", None) or []
+        golden_name = getattr(f, "golden_name", None)
+        golden_excerpt = getattr(f, "golden_data_excerpt", None)
+        if golden_ids or golden_name or golden_excerpt:
+            lines += ["**Golden Data Baseline** (authenticated test account's own data, "
+                      "used to distinguish expected self-returns from genuine cross-account leakage):", ""]
+            if golden_name:
+                lines += [f"- Name: `{golden_name}`"]
+            if golden_ids:
+                lines += [f"- ID(s): {', '.join(f'`{i}`' for i in golden_ids)}"]
+            if golden_excerpt:
+                lines += ["", "```", golden_excerpt, "```"]
+            lines += [""]
         lines += _render_hit_turns(f)
 
     if remediation_plan:
@@ -228,9 +245,25 @@ def to_markdown(
     return "\n".join(lines)
 
 
+def _diagnostics_priority(sd: Any) -> int:
+    """Sort key so findings and universal-safety scenarios survive the diagnostics cap.
+
+    ``_MAX_DIAG_SCENARIOS`` slices the first N scenarios in raw execution
+    order, but universal-safety probes (sexual content, violence, self-harm)
+    are appended last by the generator and would otherwise never get a full
+    turn-by-turn transcript in a large scan. Findings always take priority;
+    ``sorted`` is stable so ordering within a tier is unaffected.
+    """
+    if sd.had_finding:
+        return 0
+    if sd.title.startswith("Universal Safety Probe ("):
+        return 1
+    return 2
+
+
 def _truncate_scenario_details(scenario_details: list) -> list:
     truncated = []
-    for sd in scenario_details[:_MAX_DIAG_SCENARIOS]:
+    for sd in sorted(scenario_details, key=_diagnostics_priority)[:_MAX_DIAG_SCENARIOS]:
         turns = list(sd.turns[:_MAX_DIAG_TURNS_PER_SCENARIO])
         truncated.append(
             type(sd)(
@@ -249,7 +282,7 @@ def _truncate_scenario_details(scenario_details: list) -> list:
 def _build_redteam_diagnostics(scenario_records: list) -> dict[str, Any]:
     details = extract_redteam_scenario_details(scenario_records)
     scenario_traces: list[dict[str, Any]] = []
-    for sd in details[:_MAX_DIAG_SCENARIOS]:
+    for sd in sorted(details, key=_diagnostics_priority)[:_MAX_DIAG_SCENARIOS]:
         turns = []
         for td in sd.turns[:_MAX_DIAG_TURNS_PER_SCENARIO]:
             turns.append(
@@ -343,6 +376,46 @@ def _attack_coverage_summary(scenario_records: list) -> list[str]:
         not_tested = data["not_tested"]
         pct = round((total - not_tested) / total * 100) if total else 0
         lines.append(f"| {label} | {total} | {not_tested} | {pct}% |")
+    lines.append("")
+    return lines
+
+
+_UNIVERSAL_SAFETY_TITLE_RE = re.compile(r"^Universal Safety Probe \(([a-z_]+)\)")
+
+
+def _universal_safety_summary(scenario_records: list) -> list[str]:
+    """Return Markdown bullet lines summarising Universal Safety Topic coverage.
+
+    Universal safety scenarios (sexual content, violence, self-harm — see
+    ``nuguard.redteam.scenarios.policy_violations._UNIVERSAL_SAFETY_TOPICS``)
+    are tested regardless of the app's own Cognitive Policy, but they're a
+    small handful of rows scattered inside a table that can have 200+ entries.
+    This surfaces per-category tested/finding counts directly in the Summary
+    so coverage of these safety-critical categories doesn't require scanning
+    the full Scenario Coverage table.  Returns ``[]`` when no universal-safety
+    scenarios are present (e.g. the app's own policy already covers all of them).
+    """
+    _NOT_TESTED = {"skipped", "similar_miss", "failed", "aborted"}
+    by_category: dict[str, dict[str, int]] = {}
+    for r in scenario_records:
+        m = _UNIVERSAL_SAFETY_TITLE_RE.match(_r(r, "title", "") or "")
+        if not m:
+            continue
+        cat = m.group(1)
+        d = by_category.setdefault(cat, {"total": 0, "not_tested": 0, "findings": 0})
+        d["total"] += 1
+        status = _r(r, "chain_status", "completed") or "completed"
+        if status in _NOT_TESTED:
+            d["not_tested"] += 1
+        if _r(r, "had_finding", False):
+            d["findings"] += 1
+    if not by_category:
+        return []
+    lines = ["- **Universal Safety Topics Tested**:", ""]
+    for cat in sorted(by_category):
+        d = by_category[cat]
+        tested = d["total"] - d["not_tested"]
+        lines.append(f"  - `{cat}`: {tested}/{d['total']} tested, {d['findings']} finding(s)")
     lines.append("")
     return lines
 
@@ -495,7 +568,13 @@ def _render_hit_turns(f: Any) -> list[str]:
         if llm_evidence:
             conf = step.get("llm_eval_confidence") or ""
             conf_label = f" ({conf})" if conf else ""
-            lines.append(f"> **LLM eval{conf_label}:** {llm_evidence}")
+            # The golden-data filter (regex/token-overlap classifier) shares the
+            # llm_eval_evidence/confidence fields with the real LLM judge but is
+            # not an LLM verdict — label it distinctly so reports don't imply a
+            # model reviewed the response when a deterministic rule fired.
+            source = step.get("evidence_source") or "llm_eval"
+            label = "Golden-data filter" if source == "golden_filter" else "LLM eval"
+            lines.append(f"> **{label}{conf_label}:** {llm_evidence}")
         lines.append("")
     return lines
 

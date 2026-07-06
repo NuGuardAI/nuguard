@@ -11,7 +11,6 @@ from nuguard.behavior.scenarios import (
     _chain_tool_scenarios,
     _dedup_cross_type,
     _deterministic_agent_scenario,
-    _deterministic_component_scenario,
     _deterministic_happy_path,
     _deterministic_tool_chain,
     _guardrail_probe_scenarios,
@@ -101,22 +100,6 @@ def test_deterministic_happy_path_empty_capabilities():
 # ---------------------------------------------------------------------------
 # Layer 2: Component Coverage (deterministic)
 # ---------------------------------------------------------------------------
-
-
-def test_deterministic_component_scenario():
-    intent = _make_intent()
-    s = _deterministic_component_scenario("CopyAgent", "AGENT", "generates ad copy", intent, 0)
-    assert s.scenario_type == BehaviorScenarioType.COMPONENT_COVERAGE
-    assert s.target_component == "CopyAgent"
-    assert len(s.messages) == 3
-    # Turn 3 should mention the component
-    assert "CopyAgent" in s.messages[2]
-
-
-def test_deterministic_component_scenario_tool():
-    intent = _make_intent()
-    s = _deterministic_component_scenario("search_tool", "TOOL", "searches the web", intent, 1)
-    assert "search_tool" in s.messages[2]
 
 
 # ---------------------------------------------------------------------------
@@ -425,7 +408,7 @@ async def test_build_scenarios_specific_workflows():
     intent = _make_intent()
 
     class ConfigOnlyHappyPath:
-        workflows = ["intent_happy_path"]
+        workflows = ["topic_coverage"]
         boundary_assertions = []
 
     scenarios = await build_scenarios(

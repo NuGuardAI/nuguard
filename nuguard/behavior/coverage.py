@@ -243,10 +243,16 @@ async def generate_coverage_turns(
         )
         identity_context = "\n".join(parts) + "\n\n"
 
+    # Always forbid fabricating specific-looking identifiers, even when no
+    # discovered/golden profile is available — an empty profile means there
+    # is no real value to substitute, not license to invent one.
     user_token_rule = (
         "  - Use {golden_name} and {golden_id} tokens for the authenticated user's name and account "
         "ID — do not invent other customer names or account numbers.\n"
-        if identity_context else ""
+        if identity_context else
+        "  - Do NOT invent specific-looking confirmation numbers, account IDs, or booking "
+        "references. If a real identifier is required and none is known, phrase the message "
+        "so the agent must ask for or look one up rather than supplying a fabricated one.\n"
     )
 
     prompt = (

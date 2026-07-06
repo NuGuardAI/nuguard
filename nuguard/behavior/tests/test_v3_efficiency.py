@@ -278,13 +278,20 @@ class TestDedupScenariosByOpener:
     def test_empty_scenarios(self):
         assert _dedup_scenarios_by_opener([]) == []
 
-    def test_first_100_chars_used_for_fingerprint(self):
-        """Scenarios sharing the same first 100 chars but differing after → deduped."""
+    def test_full_message_hash_used_for_fingerprint(self):
+        """Scenarios sharing opener prefix but differing later → both kept (full-message hash).
+
+        Commit 4767642b changed the key from ``first_msg[:100]`` to the full
+        joined message list so that deterministic builders that reuse a shared
+        Turn 1 warm-up but diverge from Turn 2 onward are not incorrectly
+        collapsed.  Two scenarios that differ anywhere in their script are now
+        considered distinct.
+        """
         base = "A" * 100
         s1 = _make_scenario("s1", messages=[base + " extra1"])
         s2 = _make_scenario("s2", messages=[base + " extra2"])
         result = _dedup_scenarios_by_opener([s1, s2])
-        assert len(result) == 1
+        assert len(result) == 2  # distinct full messages → both kept
 
     def test_no_messages_handled_gracefully(self):
         s1 = _make_scenario("s1", messages=[])
@@ -323,7 +330,7 @@ async def test_build_scenarios_parallelises_llm_calls():
     intent = IntentProfile(app_purpose="flight booking", core_capabilities=["book flights"])
 
     config = MagicMock()
-    config.workflows = ["intent_happy_path", "agent_coverage"]
+    config.workflows = ["topic_coverage", "agent_tool_coverage"]
     config.boundary_assertions = []
 
     # SBOM needs at least one AGENT node for agent_coverage to issue an LLM call
@@ -369,7 +376,7 @@ async def test_build_scenarios_layer_order_preserved():
 
     intent = IntentProfile(app_purpose="test", core_capabilities=["cap"])
     config = MagicMock()
-    config.workflows = ["intent_happy_path", "agent_coverage", "guardrail_probe"]
+    config.workflows = ["topic_coverage", "agent_tool_coverage", "guardrail_coverage"]
     config.boundary_assertions = []
 
     from nuguard.sbom.models import AiSbomDocument

@@ -190,8 +190,8 @@ troubleshooting).
    objective/channel/sink, round-robins across categories, and records a
    `CoverageReport`.
 
-The orchestrator runs the direct-builder path first, then merges catalog
-scenarios when `use_catalog=True` (default), avoiding duplicates by
+The orchestrator runs the direct-builder path first, then unconditionally merges
+catalog scenarios, avoiding duplicates by
 `(goal_type, scenario_type, target_node_ids)`. Generation is deterministic;
 LLMs are only used later for payload enrichment or guided execution.
 

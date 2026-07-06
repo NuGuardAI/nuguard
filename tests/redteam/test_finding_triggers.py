@@ -7,6 +7,7 @@ from nuguard.redteam.executor.orchestrator import RedteamOrchestrator
 from nuguard.redteam.models.guided_conversation import GuidedConversation, TurnRecord
 from nuguard.redteam.policy_engine.evaluator import PolicyViolation
 from nuguard.redteam.scenarios.scenario_types import AttackScenario
+from nuguard.redteam.target.session import AttackSession
 from nuguard.sbom.models import AiSbomDocument
 
 
@@ -30,12 +31,12 @@ def _scenario() -> AttackScenario:
     )
 
 
-def _chain() -> ExploitChain:
+def _chain(sbom_path: list[str] | None = None) -> ExploitChain:
     return ExploitChain(
         chain_id="chain-1",
         goal_type=GoalType.DATA_EXFILTRATION,
         scenario_type=ScenarioType.DIRECT_PII_EXTRACTION,
-        sbom_path=["node-1"],
+        sbom_path=sbom_path if sbom_path is not None else ["node-1"],
     )
 
 
@@ -385,6 +386,89 @@ def test_empty_llm_confidence_skip_no_finding() -> None:
         step_details=orchestrator._build_step_details([sr]),
     )
     assert findings == []
+
+
+def test_golden_data_attached_to_findings_when_session_has_baseline() -> None:
+    orchestrator = _default_orchestrator()
+    scenario = _scenario()
+    chain = _chain()
+    sr = _step_result(success=True, canary_hits=["PATIENT_ID_123"])
+    session = AttackSession(
+        session_id="sess-1",
+        target_url="http://localhost:3000",
+        chain_id="chain-1",
+        golden_data="Your account: name=Jane Doe, id=ACCT-00001",
+        golden_ids=["ACCT-00001"],
+        golden_name="Jane Doe",
+    )
+
+    findings = orchestrator._build_findings(
+        scenario=scenario,
+        chain=chain,
+        step_results=[sr],
+        step_details=orchestrator._build_step_details([sr]),
+        session=session,
+    )
+
+    assert len(findings) == 1
+    assert findings[0].golden_ids == ["ACCT-00001"]
+    assert findings[0].golden_name == "Jane Doe"
+    assert findings[0].golden_data_excerpt == session.golden_data
+
+
+def test_golden_data_absent_when_session_has_no_baseline() -> None:
+    orchestrator = _default_orchestrator()
+    scenario = _scenario()
+    chain = _chain()
+    sr = _step_result(success=True, canary_hits=["PATIENT_ID_123"])
+    session = AttackSession(
+        session_id="sess-1", target_url="http://localhost:3000", chain_id="chain-1",
+    )
+
+    findings = orchestrator._build_findings(
+        scenario=scenario,
+        chain=chain,
+        step_results=[sr],
+        step_details=orchestrator._build_step_details([sr]),
+        session=session,
+    )
+
+    assert len(findings) == 1
+    assert findings[0].golden_ids == []
+    assert findings[0].golden_name is None
+    assert findings[0].golden_data_excerpt is None
+
+
+# ---------------------------------------------------------------------------
+# affected_component fallback when target_node_ids is empty
+# ---------------------------------------------------------------------------
+
+
+def test_affected_component_falls_back_to_sbom_path_when_target_node_ids_empty() -> None:
+    """When a scenario builder leaves target_node_ids empty, _build_findings
+    should still attribute the finding using the chain's actual sbom_path
+    rather than collapsing affected_component to an empty string."""
+    orchestrator = _default_orchestrator()
+    scenario = AttackScenario(
+        scenario_id="scn-2",
+        goal_type=GoalType.DATA_EXFILTRATION,
+        scenario_type=ScenarioType.DIRECT_PII_EXTRACTION,
+        title="Extract PHI",
+        description="Attempt to exfiltrate sensitive medical data",
+        target_node_ids=[],
+    )
+    chain = _chain(sbom_path=["node-observed"])
+    step_result = _step_result(success=False, canary_hits=["PATIENT_ID_123"])
+
+    findings = orchestrator._build_findings(
+        scenario=scenario,
+        chain=chain,
+        step_results=[step_result],
+        step_details=orchestrator._build_step_details([step_result]),
+    )
+
+    assert findings
+    assert findings[0].affected_component == "node-observed"
 
 
 # ---------------------------------------------------------------------------

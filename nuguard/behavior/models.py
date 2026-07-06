@@ -97,6 +97,9 @@ class BehaviorScenario(BaseModel):
     """Agent node ID owning this scenario (used for chaining grouping)."""
     scoped_guardrail: str | None = None
     """Guardrail node name this scenario validates (guardrail-path scenarios)."""
+    warmup_turns: int = 0
+    """Number of leading scripted turns that are non-substantive warm-up —
+    excluded from deviation/finding scoring but still shown in the report."""
 
 
 # ---------------------------------------------------------------------------

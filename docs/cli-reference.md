@@ -353,7 +353,7 @@ nuguard redteam --sbom app.sbom.json --target http://localhost:8000 \
 
 # Limit to specific attack families
 nuguard redteam --sbom app.sbom.json --target http://localhost:8000 \
-  --scenarios prompt-injection,data-exfiltration
+  --scenarios prompt-driven-threat,data-exfiltration
 
 # Scan with a custom scenario catalog
 nuguard redteam --sbom app.sbom.json --target http://localhost:8000 \
@@ -379,7 +379,7 @@ nuguard redteam --sbom app.sbom.json --target $APP_URL \
 | `--canary` | — | from `nuguard.yaml` | Canary JSON file path |
 | `--catalog` | — | built-in catalog | Path to a custom scenario catalog YAML. Replaces the built-in 84-scenario catalog. Generate with `nuguard redteam catalog-export` |
 | `--profile` | — | `ci` | `ci` (high-signal only) or `full` (all scenarios) |
-| `--scenarios` | — | all | Comma-separated filter: `prompt-injection`, `tool-abuse`, `privilege-escalation`, `data-exfiltration`, `policy-violation`, `mcp-toxic-flow` |
+| `--scenarios` | — | all | Comma-separated filter: `prompt-driven-threat`, `policy-violation`, `data-exfiltration`, `privilege-escalation`, `tool-abuse`, `mcp-toxic-flow`, `api-attack`, `agentic-trust-abuse`, `recon-inference` |
 | `--min-impact-score` | — | `0.0` | Exclude scenarios below this pre-score [0–10] |
 | `--guided` / `--no-guided` | — | on when LLM set | Adaptive multi-turn guided conversations (TAP + PAIR) |
 | `--guided-max-turns` | — | `12` | Max turns per guided conversation |
@@ -429,7 +429,6 @@ See [Customizing the Catalog](./red-teaming-guide.md#customizing-the-catalog) in
 | YAML key | Default | Description |
 |---|---|---|
 | `redteam.catalog_path` | — | Path to a custom scenario catalog YAML (same as `--catalog`). Relative paths resolved from the config file directory. |
-| `redteam.use_catalog` | `true` | Include catalog scenarios. Set `false` to use only the SBOM-driven generator. |
 | `redteam.strict_outcome` | `false` | When ≥ 80% of events are 5xx/network errors, report `inconclusive_target_errors` instead of `no_findings` |
 | `redteam.emit_pytest` | `false` | Generate pytest regression tests for HIT findings (severity ≥ medium) |
 | `redteam.emit_pytest_dir` | `tests/redteam` | Directory to write generated pytest files |

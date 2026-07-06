@@ -5,26 +5,18 @@
 # Priority order (highest wins): CLI flags > nuguard.yaml > env vars > built-in defaults
 
 # ─── Project file paths ───────────────────────────────────────────────────────
-sbom: ./pinnacle-bank.sbom.json               # path to pre-generated AI-SBOM JSON
-#source: .      # generate SBOM from source dir (alternative to sbom:)
-source: https://github.com/NuGuardAI/Fintech-App
-github:
-  owner: NuGuardAI
-  repo: Fintech-App
-  branch: main
-  token: ${GITHUB_TOKEN}
-
+sbom: ./openai-cs.sbom.enriched.json               # path to pre-generated AI-SBOM JSON
+source: .      # generate SBOM from source dir (alternative to sbom:)
 policy:
   path: ./cognitive_policy.md       # Cognitive Policy Markdown to enforce during behavior
   llm: true                     # use LLM to compile richer test/boundary prompts
 
 # ─── LLM settings ─────────────────────────────────────────────────────────────
-# IMPORTANT: nuguard's analysis LLM must use a DIFFERENT quota than the target
-# app to avoid competing for Azure OpenAI TPM budget. The Pinnacle Bank backend
-# uses azure/gpt-5.4-mini via AZURE_API_BASE — use OpenAI directly here so
-# nuguard's happy-path openers, evaluators, and adapters don't exhaust the
-# same deployment and cause "having difficulty connecting" in the target app.
 llm:
+#  model: azure/gpt-5.4-mini    # any LiteLLM model string (openai/gpt-4o, etc.)
+#  api_key: ${AZURE_OPENAI_KEY}     # never put keys here; use env var interpolation
+#  api_base: ${AZURE_API_BASE}     # optional override for Azure OpenAI endpoint URL
+
   model: azure/${AZURE_DEEPSEEK_MODEL_NAME}    # any LiteLLM model string (openai/gpt-4o, etc.)
   api_key: ${AZURE_DEEPSEEK_KEY}     # never put keys here; use env var interpolation
   api_base: ${AZURE_DEEPSEEK_ENDPOINT}     # optional override for Azure OpenAI endpoint URL
@@ -42,61 +34,51 @@ target:
   # Backend URL is also recorded in the SBOM summary → deployment_urls so nuguard can surface
   # it automatically (extracted from AZURE_WEBAPP_NAME in .github/workflows/deploy-azure.yml).
   #url: http://127.0.0.1:8250   # local dev backend (pnpm dev or python -m uvicorn api:app)
-  url: https://frontend-ui.agreeablesky-8c7ba25f.eastus.azurecontainerapps.io
+  #url: https://openai-cs-agents-backend.azurewebsites.net
+  url: https://delightful-beach-0b11fc40f.3.azurestaticapps.net
   # Authentication — login_flow: POST /login → get Bearer token for subsequent requests
+  # The backend (python-backend/api.py) only recognizes Authorization: Bearer <token>
+  # obtained via /login — it does not understand HTTP Basic auth.
   auth:
-    type: basic
-    username: alice.johnson@pinnaclebank.com
-    password: alice123
-    
-  #auth:
-  #  type: login_flow
-  #  login_flow:
-  #    endpoint: /login
-  #    payload:
-  #      username: alice
-  #      password: alice123
-  #    token_response_key: token
-  #    token_header: "Authorization: Bearer"
-  #    refresh_on_401: true
-  # The actual chat API is at /api/chat (FastAPI backend).
-  # The SPA frontend at / is served by nginx — /chat is an SPA route, not an API route.
-  # Without this override NuGuard's SBOM discovery falls back to /chat → nginx → 405/HTML.
-  # endpoint: /api/chat
-
-  # CRITICAL: user identity is carried in the POST body as user_id, NOT in HTTP auth headers.
-  # The /api/chat endpoint accepts any user_id with no server-side auth check (open IDOR).
-  # Without user_id: alice in every request the backend returns an anonymous empty profile
-  # ($0 balances, KYC=0, Risk=100) and DISCOVER captures wrong golden data.
-  chat_payload_extras:
-    user_id: alice
-
-  # No HTTP auth needed — the endpoint is wide open (itself a finding).
-  # auth: type: none
+    type: login_flow
+    login_flow:
+      endpoint: /login
+      payload:
+        username: alice
+        password: alice123
+      token_response_key: token
+      token_header: "Authorization: Bearer"
+      refresh_on_401: true
 
 # ─── Behavior mode ────────────────────────────────────────────────────────────
 # nuguard behavior exercises the AI app's happy path to verify capabilities work
 # as declared and that all behaviour complies with the cognitive policy.
 #validate:
 behavior:
+
   llm: true
+
+  # Golden-data backstop: real seed records from python-backend/database.py.
+  # Used when live pre-scan discovery returns an empty profile, so generated
+  # test payloads reference Alice's actual account/confirmation numbers
+  # instead of LLM-invented placeholders.
+  golden_data:
+    "Cancellation Agent":
+      account_id: "11111111"
+      name: "Alice Johnson"
+      confirmation_number: "AA1234"
 
   # Canary seed file — records planted in the app's data store
   # Used by behavior mode to detect accidental leakage during happy-path runs
   # canary: ./canary.json
 
-  # Workflow categories to run (default: all 4 — omit or leave empty to run everything)
-  #   topic_coverage        — intent happy-path scenarios grounded in allowed_topics,
-  #                           plus a per-topic fallback when the SBOM has no AGENT nodes
-  #   agent_tool_coverage   — agent, tool-chain, API endpoint, and sub-agent
-  #                           delegation coverage (all SBOM-driven)
-  #   guardrail_coverage    — guardrail-protected path probes, HITL triggers, and
-  #                           data classification boundaries
-  #   data_discovery_probe  — per-user data disclosure + cross-user IDOR
-
-  workflows:
-    - topic_coverage
-  #  - agent_tool_coverage
+  # Workflows to run in behavior mode:
+  #   capability_probe     — verify each declared tool/sub-agent is invoked correctly
+  #   happy_path           — simulate realistic multi-turn user interactions end-to-end
+  #   boundary_assertion   — verify the app correctly refuses out-of-scope requests
+  #   policy_compliance    — evaluate responses against cognitive policy clauses
+  #workflows:
+  #  - happy_path
 
   # Produce a CapabilityMap report listing which tools/sub-agents were exercised
   #capability_map: true
@@ -115,7 +97,7 @@ behavior:
   #    expect: refused
 
   # Per-request timeout in seconds (default: 60)
-  request_timeout: 90
+  request_timeout: 60
 
   # Verbose output: include full per-turn traces in behavior report
   verbose: true
@@ -124,26 +106,50 @@ behavior:
 # nuguard redteam exercises adversarial scenarios to find break points.
 redteam:
 
+  # Golden-data backstop: same real seed record as behavior.golden_data.
+  # Eliminates the live DISCOVER step for this known test account, making
+  # {golden_id}/{golden_name} token substitution reliable on this target.
+  golden_data:
+    "Cancellation Agent":
+      account_id: "11111111"
+      name: "Alice Johnson"
+      confirmation_number: "AA1234"
+
   # Canary seed file — same file as behavior.canary (or a separate one)
   # tenant session_tokens in canary.json are used as attacker credentials for
   # cross-tenant scenarios — no extra identity config needed.
   #canary: ./canary.json
+
+  # Request body shape is auto-discovered from the SBOM (chat_endpoint node: message/false).
+  # No override needed.
+  # v2 engine settings (only used when engine: v2)
+  v2:
+    knowledge_base_version: 0.1.0   # pinned technique KB version
+    phases: []                      # phase names to run; empty = all
+  #   semantic_judge:
+  #     count: 3                      # independent LLM judges for semantic verdicts
+  #     quorum: 2                     # votes required to confirm a violation
+  #   transferability_enabled: true   # score successful objectives for transferability
+  #   max_per_phase: 0                # cap scenarios per phase; 0 = unlimited
+  #   dry_run_only: true              # enforce dry-run-only for destructive actions
 
   # Scan profile:
   #   ci   — fast; only scenarios with pre-impact score ≥ 5 (default)
   #   full — all scenarios regardless of score
   profile: full
 
-  scenarios:
-    - prompt-driven-threat     # jailbreaks, guardrail bypass, system-prompt extraction
-    - policy-violation         # restricted topics/actions, HITL bypass, topic boundary
-    - data-exfiltration        # PII/PHI extraction, covert encoding, cross-tenant
-    - privilege-escalation     # role/permission escalation, false-premise attacks
-    - tool-abuse               # SQL injection, SSRF, shell injection, resource exhaustion
-    - mcp-toxic-flow           # poisoned MCP tool descriptions/output, credential overreach
-    - api-attack               # auth bypass, IDOR, mass assignment, BFLA
-    - agentic-trust-abuse      # confused deputy, memory poisoning, multi-agent trust
-    - recon-inference          # refusal-oracle / boundary self-probe information gathering
+  # Stable-ID scenario catalog (84 scenarios across 12 attack categories).
+  # Set false to run the legacy SBOM-only generator without catalog scenarios.
+  use_catalog: true
+  
+  # Scenario types to run (omit section to run all):
+  #scenarios:
+  #  - prompt-injection
+  #  - tool-abuse
+  #  - privilege-escalation
+  #  - data-exfiltration
+  #  - policy-violation
+  #  - mcp-toxic-flow
 
   # Minimum pre-impact score [0–10] for a scenario to be included (default: 0.0)
   min_impact_score: 0.0
@@ -163,14 +169,7 @@ redteam:
 
   # Per-request HTTP timeout in seconds (default: 120)
   # Multi-agent pipelines with LLM calls can take 60–120 s; increase for slow apps
-  request_timeout: 90
-
-  # Max seconds to hold the HTTP semaphore while retrying cold-start transient errors
-  # on the FIRST request of a new chain (default: 300 = 5 minutes).
-  # After this limit, the semaphore is released so other chains can proceed rather
-  # than blocking for the full scenario_timeout.
-  # Azure Container App cold-starts typically recover within 90s; 300s is conservative.
-  max_transient_hold_seconds: 300
+  request_timeout: 60
 
   # Verbose report: include full per-scenario traces in redteam report
   verbose: true
@@ -182,38 +181,14 @@ redteam:
   strict_outcome: false
   similar_miss_threshold: 4   # set to 0 to disable
 
-  # Pre-run warmup: wake up the Azure Container App before scenarios fire.
-  # The container scales to 0 when idle (minReplicas=0) and takes 2–8 s to cold-start.
-  # Sending 2 warmup probes absorbs the cold-start penalty so scenarios don't see
-  # 0-turn TargetUnavailableError aborts on the first batch of requests.
-  pre_run_warmup: 2
-
-  # Authenticated test user — alice (user_id in POST body), email alice.johnson@pinnaclebank.com.
-  # Real balances: checking $50,000 | savings $18,420.55 | investments $37,834.90
-  # KYC Level 2, Risk Score 15, Account ID ACCT-001.
-  # These values pre-seed the golden-data cache so {golden_id}/{golden_name} tokens in
-  # adversarial payloads resolve correctly from the start without a live DISCOVER round-trip.
-  #golden_data:
-  #  "Fintech App Assistant":
-  #      account_id: "ACCT-001"
-  #      name: "Alice Johnson"
-  #      email: "alice.johnson@pinnaclebank.com"
-
-  # Post-finding verification probe: re-send the triggering payload after a finding
-  # is emitted to confirm it reproduces. Set true for high-stakes audits.
-  # Off by default to keep runs fast.
-  verify_findings: false
-
   # Guided adversarial conversations using ConversationDirector
-  concurrency: 5                     # parallel scenarios (raised from default 3 for throughput)
-  turn_delay_seconds: 0             # no inter-step sleep (models tolerate rapid requests)
   guided_conversations: true        # enable adaptive multi-turn attacks
   guided_max_turns: 8               # upper-bound cap on turns per guided scenario.
                                     # Scenario builders pick 8–12 by default; this
                                     # clamps any higher cap down. Raise/lower to
                                     # trade cost for depth.
   guided_concurrency: 3             # parallel guided conversations (default: 3)
-  scenario_timeout: 900             # cancel any single scenario after 15 minutes (increased from 300 to accommodate in-semaphore cold-start retries)
+  scenario_timeout: 180             # cancel any single scenario after 3 minutes
 
   # TAP tree exploration (RT-016) — branching multi-tactic search.
   # 0 = auto-select from profile (ci → 2, full → 3).
@@ -229,20 +204,21 @@ redteam:
   emit_pytest: false
   emit_pytest_dir: ./redteam-regression
 
-  # LLM for attack-payload generation (must tolerate adversarial content).
-  # Must use a DIFFERENT deployment than the target app to avoid TPM contention.
+  # LLM for attack-payload generation (must tolerate adversarial content)
   llm:
-    model: azure/DeepSeek-V4-Pro    # any LiteLLM model string (openai/gpt-4o, etc.)
+    model: azure/gpt-5.4-mini    # any LiteLLM model string (openai/gpt-4o, etc.)
     api_key: ${AZURE_OPENAI_KEY}
     api_base: ${AZURE_API_BASE}     # optional override for Azure OpenAI endpoint URL
 
-  # LLM for response evaluation and finding summarisation.
-  # Must use a DIFFERENT deployment than the target app to avoid TPM contention.
+  # LLM for response evaluation and finding summarisation
   eval_llm:
+  #  model: azure/gpt-5.4-mini
+  #  api_key: ${AZURE_OPENAI_KEY}
+  #  api_base: ${AZURE_API_BASE}     # optional override for Azure OpenAI endpoint URL
+
     model: azure/${AZURE_DEEPSEEK_MODEL_NAME}    # any LiteLLM model string (openai/gpt-4o, etc.)
     api_key: ${AZURE_DEEPSEEK_KEY}     # never put keys here; use env var interpolation
     api_base: ${AZURE_DEEPSEEK_ENDPOINT}     # optional override for Azure OpenAI endpoint URL
-
 
   # MCP server hostnames treated as trusted.
   # Servers absent from this list are classified 'untrusted' and eligible

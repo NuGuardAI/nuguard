@@ -160,7 +160,11 @@ async def is_unsafe_injection(prompt: str, llm_client: "LLMClient") -> bool:
             label="behavior:injection_detection",
             max_tokens=10,
         )
-        is_inject = result.strip().lower().startswith("yes")
+        result = result.strip()
+        if result.startswith("[NUGUARD_CANNED_RESPONSE]"):
+            _injection_cache[key] = False
+            return False
+        is_inject = result.lower().startswith("yes")
         _injection_cache[key] = is_inject
         return is_inject
     except Exception:

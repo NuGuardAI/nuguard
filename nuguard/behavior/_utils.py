@@ -17,15 +17,39 @@ from nuguard.common.json_utils import (  # noqa: F401 — re-exported for existi
     strip_markdown_fences,
 )
 
+_CALL_STYLE_PREFIX_RE = re.compile(r"^(?:functions?|tools?)\.", re.IGNORECASE)
+_PARENTHETICAL_RE = re.compile(r"\s*\([^)]*\)\s*")
+
+
+def _strip_call_style_prefix(name: str) -> str:
+    """Strip a leading function-call-style namespace, e.g. ``functions.cancel_payment``.
+
+    LLM judges sometimes echo tool mentions in call syntax (``functions.foo``,
+    ``tool.foo``) rather than the SBOM's human-readable display name.
+    """
+    return _CALL_STYLE_PREFIX_RE.sub("", name or "")
+
+
+def _strip_parenthetical(name: str) -> str:
+    """Strip trailing parenthetical annotations, e.g. ``'Nova (AI Assistant)'`` -> ``'Nova'``.
+
+    Live apps often append a role/persona qualifier in parentheses after a
+    self-chosen name; stripping it improves the odds of matching the bare name.
+    """
+    return _PARENTHETICAL_RE.sub(" ", name or "").strip()
+
 
 def normalise_name(name: str) -> str:
     """Return a canonical form of *name* for fuzzy duplicate detection.
 
-    Strips spaces, underscores, and hyphens and lowercases so that
-    ``'Ad Copy Writer'``, ``'AdCopyWriter'``, and ``'ad_copy_writer'``
-    all map to the same key.
+    Strips a leading call-style namespace (``functions.``, ``tool.``),
+    parenthetical annotations, spaces, underscores, and hyphens, and
+    lowercases, so that ``'Ad Copy Writer'``, ``'AdCopyWriter'``,
+    ``'ad_copy_writer'``, ``'functions.ad_copy_writer'``, and
+    ``'Ad Copy Writer (Marketing Agent)'`` all map to the same key.
     """
-    return re.sub(r"[\s_\-]+", "", (name or "")).lower()
+    cleaned = _strip_parenthetical(_strip_call_style_prefix(name or ""))
+    return re.sub(r"[\s_\-.]+", "", cleaned).lower()
 
 
 # ---------------------------------------------------------------------------
