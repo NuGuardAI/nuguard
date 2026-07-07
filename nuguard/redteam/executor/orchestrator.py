@@ -813,51 +813,51 @@ class RedteamOrchestrator:
         if not self._skip_discovery:
             from nuguard.common.console import _console as _rtconsole  # noqa: PLC0415
             _rtconsole.rule("[bold cyan]Pre-scan Discovery[/bold cyan]", style="dim cyan")
-            try:
-                from nuguard.common.discovery import (
-                    run_discovery_conversation,  # noqa: PLC0415
+            from nuguard.common.discovery import (  # noqa: PLC0415
+                DiscoveryRequest,
+                run_discovery,
+            )
+            from nuguard.common.target_client_builder import (
+                build_target_app_client as _btac,  # noqa: PLC0415
+            )
+            from nuguard.redteam.target.session import AttackSession as _AS  # noqa: PLC0415
+            _disc_client = _btac(
+                target_url=self._target_url,
+                endpoint=self._chat_path,
+                payload_key=self._chat_payload_key,
+                payload_list=self._chat_payload_list,
+                payload_format="json",
+                response_key=self._chat_response_key,
+                timeout=self._request_timeout,
+                auth_headers=effective_headers or None,
+                sbom=self._sbom,
+                payload_extras=self._chat_payload_extras or None,
+            )
+            _disc_session = _AS(
+                session_id="pre-scan-discovery",
+                target_url=self._target_url,
+                chain_id="pre-scan-discovery",
+            )
+            _use_case = ""
+            if self._sbom and self._sbom.summary:
+                _use_case = getattr(self._sbom.summary, "use_case", "") or ""
+            async with _disc_client:
+                _disc_outcome = await run_discovery(
+                    _disc_client,
+                    _disc_session,
+                    DiscoveryRequest(use_case=_use_case, max_turns=self._discovery_max_turns),
                 )
-                from nuguard.common.target_client_builder import (
-                    build_target_app_client as _btac,  # noqa: PLC0415
-                )
-                from nuguard.redteam.target.session import AttackSession as _AS  # noqa: PLC0415
-                _disc_client = _btac(
-                    target_url=self._target_url,
-                    endpoint=self._chat_path,
-                    payload_key=self._chat_payload_key,
-                    payload_list=self._chat_payload_list,
-                    payload_format="json",
-                    response_key=self._chat_response_key,
-                    timeout=self._request_timeout,
-                    auth_headers=effective_headers or None,
-                    sbom=self._sbom,
-                    payload_extras=self._chat_payload_extras or None,
-                )
-                _disc_session = _AS(
-                    session_id="pre-scan-discovery",
-                    target_url=self._target_url,
-                    chain_id="pre-scan-discovery",
-                )
-                _use_case = ""
-                if self._sbom and self._sbom.summary:
-                    _use_case = getattr(self._sbom.summary, "use_case", "") or ""
-                async with _disc_client:
-                    _pre_scan_profile = await run_discovery_conversation(
-                        _disc_client,
-                        _disc_session,
-                        use_case=_use_case,
-                        max_turns=self._discovery_max_turns,
-                    )
-                _log.info(
-                    "pre-scan discovery: name=%r ids=%s turns=%d",
-                    _pre_scan_profile.customer_name,
-                    _pre_scan_profile.ids,
-                    _pre_scan_profile.turns_sent,
-                )
-            except Exception as _disc_exc:
-                _log.warning("pre-scan discovery failed (non-fatal): %s", _disc_exc)
-                _rtconsole.print(f"  [yellow]Pre-scan discovery failed (non-fatal): {_disc_exc}[/yellow]")
-                _pre_scan_profile = None
+            _pre_scan_profile = _disc_outcome.profile
+            self.config_notes.extend(_disc_outcome.notes)
+            for _disc_note in _disc_outcome.notes:
+                _rtconsole.print(f"  [yellow]{_disc_note}[/yellow]")
+            _log.info(
+                "pre-scan discovery: name=%r ids=%s turns=%d source=%s",
+                _pre_scan_profile.customer_name,
+                _pre_scan_profile.ids,
+                _pre_scan_profile.turns_sent,
+                _pre_scan_profile.source,
+            )
 
         # DISCOVER empty-profile warning: if the discovery returned no user data,
         # check whether the response looks like an anonymous/empty session and
@@ -1077,48 +1077,21 @@ class RedteamOrchestrator:
                         _log.warning("pre-run warmup %d/%d failed (non-fatal): %s", _wu_idx + 1, self._pre_run_warmup, _wu_exc)
 
             # Build a synthetic DiscoveredProfile from statically configured golden_data
-            # when the live pre-scan discovery did not produce a profile.  This pre-seeds
-            # the executor's golden-data cache so {golden_id}/{golden_name} tokens are
-            # substituted correctly without relying on DISCOVER step responses.
+            # when the live pre-scan discovery did not produce a profile (or was skipped
+            # entirely).  This pre-seeds the executor's golden-data cache so
+            # {golden_id}/{golden_name} tokens are substituted correctly without relying
+            # on DISCOVER step responses.
             _effective_pre_scan = _pre_scan_profile
-            if _effective_pre_scan is None and self._golden_data:
+            if (_effective_pre_scan is None or _effective_pre_scan.is_empty) and self._golden_data:
                 from nuguard.common.discovery import (
-                    DiscoveredProfile as _DP,  # noqa: PLC0415
+                    profile_from_golden_data,  # noqa: PLC0415
                 )
-                _synth_ids: list[str] = []
-                _synth_name = ""
-                _ID_KEY_CANDIDATES = (
-                    "account_id", "id", "booking_ref", "booking_id",
-                    "pnr", "confirmation_number", "confirmation_code",
-                    "reference", "reservation_id", "order_id", "customer_id",
-                )
-                _NAME_KEY_CANDIDATES = (
-                    "name", "customer_name", "passenger_name",
-                    "user_name", "full_name", "first_name",
-                )
-                for _gd_entry in self._golden_data.values():
-                    if isinstance(_gd_entry, dict):
-                        _aid = next(
-                            (str(_gd_entry[k]) for k in _ID_KEY_CANDIDATES if _gd_entry.get(k)),
-                            "",
-                        )
-                        if _aid and _aid not in _synth_ids:
-                            _synth_ids.append(_aid)
-                        _nm = next(
-                            (str(_gd_entry[k]) for k in _NAME_KEY_CANDIDATES if _gd_entry.get(k)),
-                            "",
-                        )
-                        if _nm and not _synth_name:
-                            _synth_name = _nm
-                if _synth_ids or _synth_name:
-                    _effective_pre_scan = _DP(
-                        customer_name=_synth_name,
-                        ids=_synth_ids,
-                        raw_response=f"Pre-seeded from config: id={_synth_ids}, name={_synth_name!r}",
-                    )
+                _config_profile = profile_from_golden_data(self._golden_data)
+                if _config_profile is not None:
+                    _effective_pre_scan = _config_profile
                     _log.info(
                         "golden_data pre-seed: name=%r ids=%s (from config, skipping live DISCOVER)",
-                        _synth_name, _synth_ids,
+                        _config_profile.customer_name, _config_profile.ids,
                     )
 
             _warmup_app_domain, _warmup_allowed_topics = self._build_happy_path_context()

@@ -15,6 +15,7 @@ from nuguard.behavior.models import (
 )
 from nuguard.behavior.runner import BehaviorRunner
 from nuguard.common.discovery import DiscoveredProfile
+from nuguard.config import BehaviorConfig
 from nuguard.sbom.models import AiSbomDocument, Node, NodeMetadata
 from nuguard.sbom.types import ComponentType
 
@@ -43,7 +44,7 @@ def _make_scenario(
     )
 
 
-def _make_config() -> MagicMock:
+def _make_config() -> BehaviorConfig:
     cfg = MagicMock()
     cfg.target = "http://localhost:8080"
     cfg.target_url = "http://localhost:8080"
@@ -59,7 +60,7 @@ def _make_config() -> MagicMock:
     cfg.canary = None
     cfg.session_header = None
     cfg.scenario_delay_seconds = 0.0
-    return cfg
+    return cfg  # type: ignore[return-value]  # MagicMock duck-types as BehaviorConfig for these tests
 
 
 def _make_mock_policy() -> MagicMock:

@@ -493,9 +493,13 @@ def discover_chat_config_from_sbom(
     summary = getattr(sbom, "summary", None)
     raw_api_eps = getattr(summary, "api_endpoints", None) if summary is not None else None
     if isinstance(raw_api_eps, (list, tuple)):
-        chat_tokens = ("chat", "agent", "run", "message", "query", "complete",
-                       "infer", "generate", "respond", "converse", "talk",
-                       "assistant", "llm", "ai")
+        # "chat"-family tokens are a near-definitive signal of the conversational
+        # endpoint; "agent"-family tokens are common on unrelated listing/management
+        # routes (e.g. "/api/agents" that just enumerates configured agents) and
+        # must not outweigh a real chat path just because it happens to sort earlier
+        # in the SBOM's endpoint list.
+        strong_tokens = ("chat", "message", "converse", "respond", "complete", "generate")
+        weak_tokens = ("agent", "run", "query", "infer", "talk", "assistant", "llm", "ai")
         best_path: str | None = None
         best_score = -1
         for p in raw_api_eps:
@@ -503,7 +507,11 @@ def discover_chat_config_from_sbom(
             if not p or not p.startswith("/") or "{" in p or p == "/*":
                 continue
             p_l = p.lower()
-            score = sum(2 for tok in chat_tokens if tok in p_l)
+            last_segment = p_l.rstrip("/").rsplit("/", 1)[-1]
+            score = sum(3 for tok in strong_tokens if tok in p_l)
+            score += sum(1 for tok in weak_tokens if tok in p_l)
+            if last_segment in strong_tokens:
+                score += 3
             if p_l.startswith("/api/"):
                 score += 1
             if score > best_score:

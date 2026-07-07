@@ -3,6 +3,18 @@ from __future__ import annotations
 
 import re
 
+# LLM chat agents commonly wrap labels in markdown emphasis, e.g.
+# "**Account Holder Name:** Alice Johnson" or "- **Account ID:** ACCT-001".
+# The label/value separator patterns below only tolerate whitespace between
+# the label and its value, so the emphasis markers are stripped up front —
+# this is a no-op for plain-text responses.
+_MARKDOWN_EMPHASIS_RE = re.compile(r'\*{1,2}')
+
+
+def _strip_markdown_emphasis(text: str) -> str:
+    return _MARKDOWN_EMPHASIS_RE.sub('', text)
+
+
 _ID_PATTERNS: list[re.Pattern[str]] = [
     # Labelled IDs: "account_id: ACCT-0001", "customer-id=CU12345"
     re.compile(
@@ -103,6 +115,7 @@ def extract_customer_name(text: str) -> str:
     Tries multiple strategies (label prefix, greeting, possessive, contextual)
     in order of precision.  Returns an empty string when no name is found.
     """
+    text = _strip_markdown_emphasis(text)
     for pattern in _NAME_PATTERNS:
         m = pattern.search(text)
         if m:
@@ -134,6 +147,7 @@ def extract_ids(text: str) -> list[str]:
     Labelled IDs (e.g. ``account_id: ACCT-1001``) appear before bare tokens.
     UUIDs appear last.  Stop-words and airline flight-number formats are excluded.
     """
+    text = _strip_markdown_emphasis(text)
     seen: set[str] = set()
     results: list[str] = []
 
@@ -181,6 +195,7 @@ def extract_entity_map(text: str) -> dict[str, str]:
     >>> extract_entity_map("Flight: BA205, Seat: 14A, Departure: 2026-08-15")
     {'flight': 'BA205', 'seat': '14A', 'departure': '2026-08-15'}
     """
+    text = _strip_markdown_emphasis(text)
     result: dict[str, str] = {}
     for m in _ENTITY_PATTERN.finditer(text):
         full_match = m.group(0)
