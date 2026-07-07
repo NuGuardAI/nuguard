@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import hashlib
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from nuguard.behavior.alignment import check_alignment
 from nuguard.behavior.intent import extract_intent
@@ -12,6 +12,7 @@ from nuguard.behavior.recommendations import RecommendationEngine
 from nuguard.behavior.runner import BehaviorRunner
 from nuguard.behavior.scenarios import build_scenarios
 from nuguard.common.logging import get_logger
+from nuguard.config import BehaviorConfig
 from nuguard.models.token_usage import TokenUsage
 
 if TYPE_CHECKING:
@@ -35,7 +36,7 @@ class BehaviorAnalyzer:
 
     def __init__(
         self,
-        config: Any,
+        config: BehaviorConfig,
         sbom: "AiSbomDocument | None" = None,
         policy: "CognitivePolicy | None" = None,
         controls: "list[PolicyControl] | None" = None,

@@ -56,6 +56,7 @@ from nuguard.common.rate_limit import (
     is_rate_limited,
     scenario_rate_limit_backoff,
 )
+from nuguard.config import BehaviorConfig
 from nuguard.redteam.llm_engine.refusal_patterns import APP_TRANSIENT_ERROR_PATTERNS
 
 if TYPE_CHECKING:
@@ -670,7 +671,7 @@ class BehaviorRunner:
 
     def __init__(
         self,
-        config: Any,
+        config: BehaviorConfig,
         sbom: "AiSbomDocument | None" = None,
         policy: "CognitivePolicy | None" = None,
         intent: "IntentProfile | None" = None,

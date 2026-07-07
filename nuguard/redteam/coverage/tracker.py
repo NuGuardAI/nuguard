@@ -6,7 +6,8 @@ Produces a Markdown table suitable for embedding in the redteam report.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
+from typing import Any
 
 
 @dataclass
@@ -106,3 +107,15 @@ class CoverageTracker:
             lines.append("")
 
         return "\n".join(lines)
+
+    def to_dict(self) -> dict[str, Any]:
+        """JSON-safe snapshot of accumulated coverage.
+
+        Complements :meth:`to_markdown` (report rendering) with a structured
+        form consumable by :mod:`nuguard.redteam.public_api`.
+        """
+        return {
+            "nodes": [asdict(e) for e in self._nodes.values()],
+            "policy_clauses": [asdict(e) for e in self._policy_clauses.values()],
+            "capped_count": self._capped_count,
+        }

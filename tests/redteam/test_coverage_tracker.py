@@ -87,3 +87,41 @@ class TestCoverageTracker:
         tracker.record_generated("n1", "AGENT", "Agent A")
         assert tracker.total_generated == 3
         assert len(tracker._nodes) == 2
+
+    def test_to_dict_empty(self) -> None:
+        tracker = CoverageTracker()
+        assert tracker.to_dict() == {"nodes": [], "policy_clauses": [], "capped_count": 0}
+
+    def test_to_dict_shape_is_json_safe(self) -> None:
+        import json
+
+        tracker = CoverageTracker()
+        tracker.record_generated("n1", "AGENT", "Main Agent")
+        tracker.record_executed("n1")
+        tracker.record_finding("n1")
+        tracker.record_policy_clause("restricted_topics: weapons")
+        tracker.record_capped()
+
+        d = tracker.to_dict()
+        json.dumps(d)  # must not raise
+
+        assert d["capped_count"] == 1
+        assert d["nodes"] == [
+            {
+                "node_id": "n1",
+                "node_type": "AGENT",
+                "name": "Main Agent",
+                "generated": 1,
+                "executed": 1,
+                "findings": 1,
+                "skipped_reason": "",
+            }
+        ]
+        assert d["policy_clauses"][0]["node_id"] == "restricted_topics: weapons"
+
+    def test_to_dict_does_not_mutate_internal_state(self) -> None:
+        tracker = CoverageTracker()
+        tracker.record_generated("n1", "AGENT", "Agent")
+        d = tracker.to_dict()
+        d["nodes"][0]["generated"] = 999
+        assert tracker._nodes["n1"].generated == 1
