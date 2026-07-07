@@ -1646,7 +1646,8 @@ class BehaviorRunner:
         injected into scenario prompts at generation time.
         """
         from nuguard.common.discovery import (  # noqa: PLC0415
-            run_discovery_conversation,
+            DiscoveryRequest,
+            run_discovery,
         )
         from nuguard.redteam.target.session import AttackSession as _AS  # noqa: PLC0415
 
@@ -1658,15 +1659,6 @@ class BehaviorRunner:
             for _note in client.resolution_notes:
                 if "identity" in _note or "chat_payload_extras" in _note:
                     _console.print(f"  [yellow]⚠ {_note}[/yellow]")
-
-            # Extract candidate rotation lists injected by apply_sbom_context_hints
-            _candidates_map: dict[str, list[str]] = {}
-            for _k, _v in list(client._chat_payload_extras.items()):
-                if _k.startswith("__") and _k.endswith("_candidates__") and isinstance(_v, list):
-                    _field = _k[2:-len("_candidates__")]
-                    _candidates_map[_field] = _v
-                    # Remove the internal marker key from the actual payload
-                    del client._chat_payload_extras[_k]
 
             _target_url = getattr(self, "_resolved_target_url", None) or getattr(self._config, "target", "") or ""
             _disc_session = _AS(
@@ -1684,37 +1676,18 @@ class BehaviorRunner:
                 if _explicit_endpoint
                 else (list(_disc_candidates(self._sbom)[1:]) if self._sbom else [])
             )
-            profile = await run_discovery_conversation(
-                client, _disc_session, use_case=_use_case, max_turns=2,
-                fallback_endpoints=_disc_fallbacks[:4],
+            _outcome = await run_discovery(
+                client,
+                _disc_session,
+                DiscoveryRequest(use_case=_use_case, max_turns=2, fallback_endpoints=_disc_fallbacks[:4]),
             )
-
-            # If profile is empty, rotate to the next identity candidate and retry.
-            if profile.is_empty and _candidates_map:
-                for _field_name, _candidates in _candidates_map.items():
-                    for _candidate in _candidates[1:]:  # candidates[0] was already tried
-                        _log.info("discovery: retrying with %s=%r", _field_name, _candidate)
-                        _console.print(
-                            f"  [dim]Pre-scan discovery: retrying with {_field_name}={_candidate!r}[/dim]"
-                        )
-                        client._chat_payload_extras[_field_name] = _candidate
-                        _retry_session = _AS(
-                            session_id=f"behavior-discovery-{_candidate}",
-                            target_url=_target_url,
-                            chain_id="behavior-pre-scan",
-                        )
-                        profile = await run_discovery_conversation(
-                            client, _retry_session, use_case=_use_case, max_turns=2,
-                        )
-                        if not profile.is_empty:
-                            _log.info("discovery: %s=%r produced profile", _field_name, _candidate)
-                            break
-                    if not profile.is_empty:
-                        break
+            profile = _outcome.profile
+            for _disc_note in _outcome.notes:
+                _console.print(f"  [dim]{_disc_note}[/dim]")
 
             _log.info(
-                "behavior pre-scan discovery: name=%r ids=%s turns=%d",
-                profile.customer_name, profile.ids, profile.turns_sent,
+                "behavior pre-scan discovery: name=%r ids=%s turns=%d source=%s",
+                profile.customer_name, profile.ids, profile.turns_sent, profile.source,
             )
             return profile
         except Exception as exc:
@@ -1808,41 +1781,40 @@ class BehaviorRunner:
             )
         else:
             _console.rule("[bold cyan]Pre-scan Discovery[/bold cyan]", style="dim cyan")
-            try:
-                from nuguard.common.discovery import (
-                    run_discovery_conversation,  # noqa: PLC0415
-                )
-                from nuguard.common.endpoint_probe import (  # noqa: PLC0415
-                    discover_chat_candidates_from_sbom as _discover_candidates,
-                )
-                from nuguard.redteam.target.session import AttackSession as _AS  # noqa: PLC0415
-                _disc_session = _AS(
-                    session_id="behavior-discovery",
-                    target_url=target_url or "",
-                    chain_id="behavior-pre-scan",
-                )
-                _use_case = getattr(self._intent, "app_purpose", "") if self._intent else ""
-                _explicit_endpoint = bool(getattr(self._config, "target_endpoint", ""))
-                _sbom_fallbacks = (
-                    []
-                    if _explicit_endpoint
-                    else (list(_discover_candidates(self._sbom)[1:]) if self._sbom else [])
-                )
-                self._pre_scan_profile = await run_discovery_conversation(
-                    client,
-                    _disc_session,
-                    use_case=_use_case or "",
-                    max_turns=2,
-                    fallback_endpoints=_sbom_fallbacks[:4],
-                )
-                _log.info(
-                    "behavior pre-scan discovery: name=%r ids=%s",
-                    self._pre_scan_profile.customer_name,
-                    self._pre_scan_profile.ids,
-                )
-            except Exception as _disc_exc:
-                _log.warning("behavior pre-scan discovery failed (non-fatal): %s", _disc_exc)
-                _console.print(f"  [yellow]Pre-scan discovery failed (non-fatal): {_disc_exc}[/yellow]")
+            from nuguard.common.discovery import (  # noqa: PLC0415
+                DiscoveryRequest,
+                run_discovery,
+            )
+            from nuguard.common.endpoint_probe import (  # noqa: PLC0415
+                discover_chat_candidates_from_sbom as _discover_candidates,
+            )
+            from nuguard.redteam.target.session import AttackSession as _AS  # noqa: PLC0415
+            _disc_session = _AS(
+                session_id="behavior-discovery",
+                target_url=target_url or "",
+                chain_id="behavior-pre-scan",
+            )
+            _use_case = getattr(self._intent, "app_purpose", "") if self._intent else ""
+            _explicit_endpoint = bool(getattr(self._config, "target_endpoint", ""))
+            _sbom_fallbacks = (
+                []
+                if _explicit_endpoint
+                else (list(_discover_candidates(self._sbom)[1:]) if self._sbom else [])
+            )
+            _outcome = await run_discovery(
+                client,
+                _disc_session,
+                DiscoveryRequest(use_case=_use_case or "", max_turns=2, fallback_endpoints=_sbom_fallbacks[:4]),
+            )
+            self._pre_scan_profile = _outcome.profile
+            for _disc_note in _outcome.notes:
+                _console.print(f"  [dim]{_disc_note}[/dim]")
+            _log.info(
+                "behavior pre-scan discovery: name=%r ids=%s source=%s",
+                self._pre_scan_profile.customer_name,
+                self._pre_scan_profile.ids,
+                self._pre_scan_profile.source,
+            )
 
         # Pre-flight endpoint validation: send a single test request to verify the
         # configured chat endpoint is reachable before launching all scenarios.

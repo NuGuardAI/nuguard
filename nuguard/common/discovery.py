@@ -11,8 +11,9 @@ DISCOVER steps are cheap cache hits.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Literal
+
+from pydantic import BaseModel, Field
 
 from nuguard.common.id_extractor import (
     extract_customer_name,
@@ -41,17 +42,23 @@ def _console_print(msg: str) -> None:
 # DiscoveredProfile
 # ---------------------------------------------------------------------------
 
-@dataclass
-class DiscoveredProfile:
-    """Real user data extracted from the live agent during pre-scan discovery."""
+class DiscoveredProfile(BaseModel):
+    """Real user data extracted from the live agent during pre-scan discovery.
+
+    A plain Pydantic model — JSON-serializable via ``.model_dump()`` /
+    ``.model_dump_json()`` and constructible from a plain dict via
+    ``DiscoveredProfile.model_validate(data)`` — so code outside the CLI (and
+    outside the behavior/redteam packages) can consume or construct golden-data
+    profiles without importing any live connection objects.
+    """
 
     customer_name: str = ""
     """e.g. "Alice Johnson" — the authenticated user's name as returned by the agent."""
 
-    ids: list[str] = field(default_factory=list)
+    ids: list[str] = Field(default_factory=list)
     """Booking references, account IDs, etc. extracted from discovery responses."""
 
-    entity_map: dict[str, str] = field(default_factory=dict)
+    entity_map: dict[str, str] = Field(default_factory=dict)
     """Labelled entities: {"flight": "BA205", "departure": "2026-08-15", ...}."""
 
     raw_response: str = ""
@@ -66,6 +73,10 @@ class DiscoveredProfile:
     Contains the agent's self-description of what it can do, useful when all
     data-extraction turns fail.  Not used for ID/name extraction.
     """
+
+    source: Literal["live", "config", "none"] = "none"
+    """Provenance of this profile: a live DISCOVER conversation, a config-supplied
+    ``golden_data`` fallback, or "none" when no data was found by either."""
 
     @property
     def is_empty(self) -> bool:
@@ -390,3 +401,180 @@ async def run_discovery_conversation(
                 _console_print(f"  [dim]  turn {i + 1}: {r[:200]}[/dim]")
 
     return profile
+
+
+# ---------------------------------------------------------------------------
+# Shared discovery routine — single entry point for behavior and redteam
+# ---------------------------------------------------------------------------
+#
+# Both packages previously carried their own copy of "run the discovery
+# conversation, retry with alternate identity candidates if it comes back
+# empty" — with behavior's copy the only one that actually retried.  This is
+# the merged implementation: both packages now get retry behaviour, and it
+# lives in one place.
+
+
+class DiscoveryRequest(BaseModel):
+    """JSON-safe configuration for :func:`run_discovery`.
+
+    Contains only plain, serializable fields — no ``TargetAppClient`` or
+    ``AttackSession`` — so a caller outside the CLI (and outside the
+    behavior/redteam packages) can build one from a plain dict or JSON payload.
+    The live ``client``/``session`` connection objects are supplied separately
+    to :func:`run_discovery`, since making the actual HTTP calls inherently
+    requires a real connection.
+    """
+
+    use_case: str = ""
+    """Short app-purpose description (e.g. SBOM ``summary.use_case``) — drives
+    domain-specific discovery-message selection (airline/banking/healthcare/generic)."""
+
+    max_turns: int = 3
+    """Maximum HTTP turns to attempt for the initial discovery conversation."""
+
+    fallback_endpoints: list[tuple[str, str, bool, str | None]] = Field(default_factory=list)
+    """Ranked ``(path, payload_key, payload_list, response_key)`` candidates to
+    rotate through on HTTP 404/405, e.g. from
+    :func:`~nuguard.common.endpoint_probe.discover_chat_candidates_from_sbom`."""
+
+
+class DiscoveryOutcome(BaseModel):
+    """Result of :func:`run_discovery` — the profile plus resolution diagnostics."""
+
+    profile: DiscoveredProfile
+    notes: list[str] = Field(default_factory=list)
+
+
+async def run_discovery(
+    client: "TargetAppClient",
+    session: "AttackSession",
+    request: DiscoveryRequest,
+) -> DiscoveryOutcome:
+    """Run the live pre-scan discovery conversation shared by behavior and redteam.
+
+    1. Sends the domain-aware discovery conversation via
+       :func:`run_discovery_conversation`.
+    2. If the profile comes back empty *and* SBOM context-hint injection
+       (:func:`~nuguard.common.session_resolver.apply_sbom_context_hints`) stashed
+       identity-field candidates on *client* (``__<field>_candidates__`` markers —
+       set when an identity field had to be derived from ``auth.username`` rather
+       than a login response), retries once per remaining candidate value until
+       one produces data.
+
+    Does **not** apply the config ``golden_data`` fallback — call
+    :func:`profile_from_golden_data` for that separately. Callers typically want
+    the config fallback to apply even when live discovery was skipped entirely
+    (e.g. ``skip_discovery: true``), so it is a separate, independently callable
+    step rather than bundled into this function.
+
+    Returns a :class:`DiscoveryOutcome` — never raises; failures are recorded in
+    ``notes`` and an empty :class:`DiscoveredProfile` is returned instead.
+    """
+    notes: list[str] = []
+
+    # Extract identity-candidate markers up front so the retry loop below can
+    # use them regardless of how the first attempt goes.
+    candidates_map: dict[str, list[str]] = {}
+    extras = getattr(client, "_chat_payload_extras", None)
+    if isinstance(extras, dict):
+        for key, value in list(extras.items()):
+            if key.startswith("__") and key.endswith("_candidates__") and isinstance(value, list):
+                field_name = key[2:-len("_candidates__")]
+                candidates_map[field_name] = value
+                del extras[key]
+
+    try:
+        profile = await run_discovery_conversation(
+            client,
+            session,
+            use_case=request.use_case,
+            max_turns=request.max_turns,
+            fallback_endpoints=list(request.fallback_endpoints) or None,
+        )
+    except Exception as exc:
+        _log.warning("run_discovery: initial discovery conversation failed: %s", exc)
+        notes.append(f"Pre-scan discovery failed (non-fatal): {exc}")
+        profile = DiscoveredProfile()
+
+    if profile.is_empty and candidates_map:
+        from nuguard.redteam.target.session import AttackSession  # noqa: PLC0415
+
+        for field_name, candidates in candidates_map.items():
+            for candidate in candidates[1:]:  # candidates[0] was already tried
+                _log.info("run_discovery: retrying with %s=%r", field_name, candidate)
+                _console_print(
+                    f"  [dim]Pre-scan discovery: retrying with {field_name}={candidate!r}[/dim]"
+                )
+                extras[field_name] = candidate  # type: ignore[index]
+                retry_session = AttackSession(
+                    session_id=f"{session.session_id}-{candidate}",
+                    target_url=session.target_url,
+                    chain_id=session.chain_id,
+                )
+                try:
+                    profile = await run_discovery_conversation(
+                        client, retry_session, use_case=request.use_case, max_turns=request.max_turns,
+                    )
+                except Exception as exc:
+                    _log.info("run_discovery: retry with %s=%r failed: %s", field_name, candidate, exc)
+                    notes.append(f"Discovery retry with {field_name}={candidate!r} failed: {exc}")
+                    continue
+                if not profile.is_empty:
+                    _log.info("run_discovery: %s=%r produced a profile", field_name, candidate)
+                    notes.append(f"Discovery succeeded after retrying with {field_name}={candidate!r}")
+                    break
+            if not profile.is_empty:
+                break
+
+    profile.source = "live" if not profile.is_empty else "none"
+    return DiscoveryOutcome(profile=profile, notes=notes)
+
+
+# ---------------------------------------------------------------------------
+# Config golden_data fallback — shared by behavior and redteam
+# ---------------------------------------------------------------------------
+
+_GOLDEN_ID_KEYS = (
+    "account_id", "id", "booking_ref", "booking_id",
+    "pnr", "confirmation_number", "confirmation_code",
+    "reference", "reservation_id", "order_id", "customer_id",
+)
+_GOLDEN_NAME_KEYS = (
+    "name", "customer_name", "passenger_name",
+    "user_name", "full_name", "first_name",
+)
+
+
+def profile_from_golden_data(golden_data: dict[str, Any]) -> DiscoveredProfile | None:
+    """Build a synthetic :class:`DiscoveredProfile` from config-supplied golden_data.
+
+    ``golden_data`` is keyed by agent/assistant name as declared in
+    ``redteam.golden_data`` / ``behavior.golden_data`` in ``nuguard.yaml``; each
+    value is a flat dict of account/booking fields (e.g. ``account_id``, ``name``).
+
+    Returns ``None`` when no usable id or name is found in any entry — callers
+    should keep their existing profile (or ``None``) in that case rather than
+    overwriting it with an empty one.
+
+    Pure and zero-I/O — usable directly by code outside the CLI with just a
+    plain ``dict`` (e.g. loaded from JSON/YAML), no client/session required.
+    """
+    ids: list[str] = []
+    name = ""
+    for entry in golden_data.values():
+        if not isinstance(entry, dict):
+            continue
+        aid = next((str(entry[k]) for k in _GOLDEN_ID_KEYS if entry.get(k)), "")
+        if aid and aid not in ids:
+            ids.append(aid)
+        nm = next((str(entry[k]) for k in _GOLDEN_NAME_KEYS if entry.get(k)), "")
+        if nm and not name:
+            name = nm
+    if not ids and not name:
+        return None
+    return DiscoveredProfile(
+        customer_name=name,
+        ids=ids,
+        raw_response=f"Pre-seeded from config: id={ids}, name={name!r}",
+        source="config",
+    )

@@ -217,43 +217,15 @@ class BehaviorAnalyzer:
                     )
                     if _gd:
                         from nuguard.common.discovery import (  # noqa: PLC0415
-                            DiscoveredProfile as _DP,
+                            profile_from_golden_data,
                         )
-                        _ID_KEYS = (
-                            "account_id", "id", "booking_ref", "booking_id",
-                            "pnr", "confirmation_number", "confirmation_code",
-                            "reference", "reservation_id", "order_id", "customer_id",
-                        )
-                        _NAME_KEYS = (
-                            "name", "customer_name", "passenger_name",
-                            "user_name", "full_name", "first_name",
-                        )
-                        _ids: list[str] = []
-                        _name = ""
-                        for _entry in _gd.values():
-                            if isinstance(_entry, dict):
-                                _aid = next(
-                                    (str(_entry[k]) for k in _ID_KEYS if _entry.get(k)),
-                                    "",
-                                )
-                                if _aid and _aid not in _ids:
-                                    _ids.append(_aid)
-                                _nm = next(
-                                    (str(_entry[k]) for k in _NAME_KEYS if _entry.get(k)),
-                                    "",
-                                )
-                                if _nm and not _name:
-                                    _name = _nm
-                        if _ids or _name:
-                            pre_scan_profile = _DP(
-                                customer_name=_name,
-                                ids=_ids,
-                                raw_response=f"Pre-seeded from config: id={_ids}, name={_name!r}",
-                            )
+                        _config_profile = profile_from_golden_data(_gd)
+                        if _config_profile is not None:
+                            pre_scan_profile = _config_profile
                             from nuguard.common.console import _console  # noqa: PLC0415
                             _console.print(
                                 f"  [bold cyan]Pre-scan discovery (config golden_data):[/bold cyan] "
-                                f"name={_name!r}  ids={_ids}"
+                                f"name={_config_profile.customer_name!r}  ids={_config_profile.ids}"
                             )
 
                 # ── Scenario cache / build ───────────────────────────────
