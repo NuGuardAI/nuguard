@@ -244,3 +244,80 @@ async def test_run_redteam_propagates_exceptions():
         request = RedteamRunRequest(target_url="http://target")
         with pytest.raises(RuntimeError, match="target unreachable"):
             await run_redteam(request, sbom=MagicMock())
+
+
+# ---------------------------------------------------------------------------
+# remediation_plan — structured, machine-actionable remediation
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_run_redteam_populates_remediation_plan():
+    """Findings + a real SBOM should produce structured RemediationArtefact objects,
+    via the same RemediationSynthesizer the CLI uses for its report's remediation plan."""
+    from types import SimpleNamespace
+
+    from nuguard.behavior.models import RemediationArtefact, RemediationArtefactType
+
+    findings = [_finding("data_exfiltration")]
+    mock_instance = _make_mock_orchestrator(findings)
+    fake_artefact = RemediationArtefact(
+        finding_ids=["f1"],
+        component="unknown",
+        component_type="AGENT",
+        artefact_type=RemediationArtefactType.OUTPUT_GUARDRAIL,
+        priority="high",
+        rationale="d",
+    )
+
+    with (
+        patch("nuguard.redteam.public_api.RedteamOrchestrator") as mock_cls,
+        patch(
+            "nuguard.behavior.remediation.RemediationSynthesizer.synthesize_findings_async"
+        ) as mock_synth,
+    ):
+        mock_cls.return_value = mock_instance
+        mock_synth.return_value = [fake_artefact]
+        request = RedteamRunRequest(target_url="http://target")
+        result = await run_redteam(request, sbom=SimpleNamespace(nodes=[], edges=[]))
+
+    mock_synth.assert_awaited_once()
+    (finding_dicts,), _ = mock_synth.await_args
+    assert finding_dicts[0]["finding_id"] == "f1"
+    assert finding_dicts[0]["goal_type"] == "data_exfiltration"
+    assert result.remediation_plan == [fake_artefact]
+
+
+@pytest.mark.asyncio
+async def test_run_redteam_remediation_plan_empty_without_findings():
+    mock_instance = _make_mock_orchestrator([])
+
+    with patch("nuguard.redteam.public_api.RedteamOrchestrator") as mock_cls:
+        mock_cls.return_value = mock_instance
+        request = RedteamRunRequest(target_url="http://target")
+        result = await run_redteam(request, sbom=MagicMock())
+
+    assert result.remediation_plan == []
+
+
+@pytest.mark.asyncio
+async def test_run_redteam_remediation_synthesis_failure_is_swallowed():
+    """Remediation synthesis is best-effort — a failure must not fail the run."""
+    findings = [_finding("data_exfiltration")]
+    mock_instance = _make_mock_orchestrator(findings)
+
+    with (
+        patch("nuguard.redteam.public_api.RedteamOrchestrator") as mock_cls,
+        patch(
+            "nuguard.behavior.remediation.RemediationSynthesizer.synthesize_findings_async",
+            side_effect=RuntimeError("boom"),
+        ),
+    ):
+        mock_cls.return_value = mock_instance
+        request = RedteamRunRequest(target_url="http://target")
+        from types import SimpleNamespace
+
+        result = await run_redteam(request, sbom=SimpleNamespace(nodes=[], edges=[]))
+
+    assert result.remediation_plan == []
+    assert len(result.findings) == 1

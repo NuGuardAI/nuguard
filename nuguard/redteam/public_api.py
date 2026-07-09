@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, Field
 
+from nuguard.behavior.models import RemediationArtefact
 from nuguard.common.auth import AuthConfig
 from nuguard.common.logging import get_logger
 from nuguard.config import RedteamFindingTriggers
@@ -124,6 +125,54 @@ class RedteamRunResult(BaseModel):
     resolved_chat_path_source: str
     catalog_coverage: dict[str, Any] | None = None
     coverage_tracker: dict[str, Any] | None = None
+    remediation_plan: list[RemediationArtefact] = Field(default_factory=list)
+    """Concrete, SBOM-node-specific remediation artefacts for ``findings``.
+
+    Synthesized best-effort from ``findings`` via the same
+    ``RemediationSynthesizer`` the CLI uses to build its redteam report's
+    remediation plan (``nuguard.cli.commands.redteam._build_redteam_remediation_plan``),
+    with contextual LLM patch text when ``eval_llm`` is supplied to
+    :func:`run_redteam`. Empty when synthesis fails or no SBOM is available.
+    """
+
+
+async def _build_remediation_plan(
+    findings: list[Finding],
+    *,
+    sbom: "AiSbomDocument | None",
+    policy: "CognitivePolicy | None",
+    llm_client: "LLMClient | None",
+) -> list[RemediationArtefact]:
+    """Synthesize per-SBOM-node remediation artefacts from redteam findings.
+
+    Async counterpart to the CLI's ``_build_redteam_remediation_plan``
+    (``nuguard/cli/commands/redteam.py``) — uses ``synthesize_findings_async``
+    instead of the sync ``synthesize_findings`` since this runs inside
+    ``run_redteam``'s already-running event loop, so LLM patch calls need to
+    be awaited directly rather than silently skipped by the sync shim.
+    Best-effort: returns ``[]`` on missing SBOM, no findings, or any failure.
+    """
+    if sbom is None or not findings:
+        return []
+    try:
+        from nuguard.behavior.remediation import RemediationSynthesizer  # noqa: PLC0415
+
+        synthesizer = RemediationSynthesizer(sbom=sbom, policy=policy, llm_client=llm_client)
+        finding_dicts = [
+            {
+                "finding_id": f.finding_id,
+                "title": f.title,
+                "description": f.description or "",
+                "affected_component": f.affected_component or "unknown",
+                "severity": f.severity.value if hasattr(f.severity, "value") else str(f.severity),
+                "goal_type": f.goal_type or "",
+            }
+            for f in findings
+        ]
+        return await synthesizer.synthesize_findings_async(finding_dicts)
+    except Exception as exc:  # noqa: BLE001
+        _log.warning("run_redteam: remediation synthesis failed — skipping plan: %s", exc)
+        return []
 
 
 def _catalog_coverage_to_dict(report: "CoverageReport | None") -> dict[str, Any] | None:
@@ -235,6 +284,10 @@ async def run_redteam(
             )
         ]
 
+    remediation_plan = await _build_remediation_plan(
+        findings, sbom=sbom, policy=policy, llm_client=eval_llm
+    )
+
     coverage_tracker = getattr(orchestrator, "_coverage_tracker", None)
     return RedteamRunResult(
         findings=findings,
@@ -253,4 +306,5 @@ async def run_redteam(
         resolved_chat_path_source=orchestrator.resolved_chat_path_source,
         catalog_coverage=_catalog_coverage_to_dict(getattr(orchestrator, "catalog_coverage", None)),
         coverage_tracker=coverage_tracker.to_dict() if coverage_tracker is not None else None,
+        remediation_plan=remediation_plan,
     )

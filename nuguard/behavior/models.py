@@ -334,6 +334,14 @@ class BehaviorRunResult(BaseModel):
     coverage_mapping_diagnostics: dict[str, Any] = Field(default_factory=dict)
     effective_endpoint: str = ""
     target_endpoint_source: str = "config"
+    remediation_plan: list[RemediationArtefact] = Field(default_factory=list)
+    """Concrete, SBOM-node-specific remediation artefacts for ``findings``.
+
+    Populated by :func:`nuguard.behavior.public_api.run_behavior_scenarios`
+    (best-effort) via ``RemediationSynthesizer``. Empty when called directly
+    through :class:`~nuguard.behavior.runner.BehaviorRunner`, which does not
+    synthesize remediation itself.
+    """
 
 
 class BehaviorAnalysisResult(BaseModel):

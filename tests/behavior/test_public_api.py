@@ -130,7 +130,11 @@ async def test_analyze_behavior_propagates_exceptions():
 
 @pytest.mark.asyncio
 async def test_run_behavior_scenarios_constructs_runner_and_forwards_args():
-    sentinel_result = MagicMock(spec=BehaviorRunResult)
+    # A real (empty-findings) result rather than MagicMock(spec=...): the
+    # wrapper now reads result.findings and sets result.remediation_plan for
+    # remediation synthesis, and pydantic model classes don't expose field
+    # names via dir(), so a spec'd mock can't stand in for those attributes.
+    sentinel_result = BehaviorRunResult(run_id="run1")
     config = BehaviorConfig(target="http://localhost:9999")
     scenarios = [_scenario("a")]
     profile = DiscoveredProfile(customer_name="Bob", source="config")
@@ -161,6 +165,74 @@ async def test_run_behavior_scenarios_constructs_runner_and_forwards_args():
     assert [s.name for s in called_args[0]] == ["a"]
     assert called_kwargs["pre_scan_profile"] is profile
     assert result is sentinel_result
+    assert result.remediation_plan == []
+
+
+@pytest.mark.asyncio
+async def test_run_behavior_scenarios_populates_remediation_plan():
+    """Findings + a real SBOM should produce structured RemediationArtefact objects."""
+    from nuguard.behavior.models import RemediationArtefact, RemediationArtefactType
+
+    finding = {
+        "finding_id": "BA-004-1",
+        "title": "PII disclosed via datastore",
+        "description": "Agent leaked account_number in a response.",
+        "affected_component": "SupportAgent",
+        "severity": "high",
+    }
+    sentinel_result = BehaviorRunResult(run_id="run1", findings=[finding])
+    config = BehaviorConfig(target="http://localhost:9999")
+
+    fake_artefact = RemediationArtefact(
+        finding_ids=["BA-004-1"],
+        component="SupportAgent",
+        component_type="AGENT",
+        artefact_type=RemediationArtefactType.OUTPUT_GUARDRAIL,
+        priority="high",
+        rationale="Sensitive fields must not appear in agent responses.",
+    )
+
+    from types import SimpleNamespace
+
+    empty_sbom = SimpleNamespace(nodes=[], edges=[])
+
+    with (
+        patch("nuguard.behavior.public_api.BehaviorRunner") as mock_runner_cls,
+        patch("nuguard.behavior.remediation.RemediationSynthesizer.synthesize_findings_async") as mock_synth,
+    ):
+        mock_runner_cls.return_value.run = AsyncMock(return_value=sentinel_result)
+        mock_synth.return_value = [fake_artefact]
+
+        request = BehaviorRunRequest(config=config, scenarios=[_scenario("a")])
+        result = await run_behavior_scenarios(request, sbom=empty_sbom)
+
+    mock_synth.assert_awaited_once_with([finding])
+    assert result.remediation_plan == [fake_artefact]
+
+
+@pytest.mark.asyncio
+async def test_run_behavior_scenarios_remediation_synthesis_failure_is_swallowed():
+    """Remediation synthesis is best-effort — a failure must not fail the run."""
+    sentinel_result = BehaviorRunResult(
+        run_id="run1",
+        findings=[{"finding_id": "f1", "title": "t", "description": "d", "affected_component": "c", "severity": "low"}],
+    )
+    config = BehaviorConfig(target="http://localhost:9999")
+
+    from types import SimpleNamespace
+
+    with (
+        patch("nuguard.behavior.public_api.BehaviorRunner") as mock_runner_cls,
+        patch(
+            "nuguard.behavior.remediation.RemediationSynthesizer.synthesize_findings_async",
+            side_effect=RuntimeError("boom"),
+        ),
+    ):
+        mock_runner_cls.return_value.run = AsyncMock(return_value=sentinel_result)
+        request = BehaviorRunRequest(config=config, scenarios=[_scenario("a")])
+        result = await run_behavior_scenarios(request, sbom=SimpleNamespace(nodes=[], edges=[]))
+
+    assert result.remediation_plan == []
 
 
 # ---------------------------------------------------------------------------
