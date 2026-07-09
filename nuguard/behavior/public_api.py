@@ -22,6 +22,7 @@ from nuguard.behavior.models import (
     BehaviorAnalysisResult,
     BehaviorRunResult,
     BehaviorScenario,
+    RemediationArtefact,
 )
 from nuguard.behavior.runner import BehaviorRunner
 from nuguard.common.discovery import DiscoveredProfile
@@ -79,6 +80,33 @@ class BehaviorRunRequest(BaseModel):
     pre_scan_profile: DiscoveredProfile | None = None
 
 
+async def _synthesize_behavior_remediation_plan(
+    findings: list[dict],
+    *,
+    sbom: "AiSbomDocument | None",
+    policy: "CognitivePolicy | None",
+    llm_client: "LLMClient | None",
+) -> list[RemediationArtefact]:
+    """Best-effort structured remediation for a plain list of finding dicts.
+
+    Mirrors the CLI's ``_build_redteam_remediation_plan`` (which reuses this
+    same synthesizer for redteam findings): remediation synthesis enriches
+    the result but must never fail the run, so exceptions are logged and
+    swallowed. Returns ``[]`` when there is no SBOM or no findings to
+    synthesize against.
+    """
+    if sbom is None or not findings:
+        return []
+    try:
+        from nuguard.behavior.remediation import RemediationSynthesizer  # noqa: PLC0415
+
+        synthesizer = RemediationSynthesizer(sbom=sbom, policy=policy, llm_client=llm_client)
+        return await synthesizer.synthesize_findings_async(findings)
+    except Exception as exc:  # noqa: BLE001
+        _log.warning("run_behavior_scenarios: remediation synthesis failed: %s", exc)
+        return []
+
+
 async def run_behavior_scenarios(
     request: BehaviorRunRequest,
     *,
@@ -90,7 +118,12 @@ async def run_behavior_scenarios(
 ) -> BehaviorRunResult:
     """Run a list of behavior scenarios from a JSON-safe request.
 
-    Thin wrapper around ``BehaviorRunner(...).run(...)``.
+    Thin wrapper around ``BehaviorRunner(...).run(...)``. Additionally
+    synthesizes ``result.remediation_plan`` — concrete, SBOM-node-specific
+    remediation artefacts — from the run's findings, the same way
+    :meth:`~nuguard.behavior.analyzer.BehaviorAnalyzer.analyze` does for the
+    full static+dynamic pipeline. This is best-effort enrichment: it never
+    raises, and simply leaves ``remediation_plan`` empty on failure.
     """
     _log.debug("run_behavior_scenarios: %d scenario(s)", len(request.scenarios))
     runner = BehaviorRunner(
@@ -101,7 +134,11 @@ async def run_behavior_scenarios(
         llm_client=llm_client,
         judge_cache=judge_cache,
     )
-    return await runner.run(request.scenarios, pre_scan_profile=request.pre_scan_profile)
+    result = await runner.run(request.scenarios, pre_scan_profile=request.pre_scan_profile)
+    result.remediation_plan = await _synthesize_behavior_remediation_plan(
+        result.findings, sbom=sbom, policy=policy, llm_client=llm_client
+    )
+    return result
 
 
 async def discover_behavior_profile(
