@@ -27,6 +27,15 @@ if TYPE_CHECKING:
 
 _log = get_logger(__name__)
 
+
+def _word_truncate(text: str, max_len: int) -> str:
+    """Truncate *text* at a word boundary not exceeding *max_len* characters."""
+    if len(text) <= max_len:
+        return text
+    truncated = text[:max_len]
+    last_space = truncated.rfind(" ")
+    return truncated[:last_space].rstrip(".,;:") if last_space > 0 else truncated
+
 # ---------------------------------------------------------------------------
 # Privilege strategy lookup table
 # ---------------------------------------------------------------------------
@@ -1244,7 +1253,7 @@ class RemediationSynthesizer:
         # System prompt patch
         patch_text = (
             f"## Restricted Action — {tool_name}\n"
-            f"The action '{restricted_action[:100]}' is restricted by policy.\n"
+            f"The action '{_word_truncate(restricted_action, 100)}' is restricted by policy.\n"
             f"Before calling {tool_name}(), you MUST receive explicit confirmation from the user "
             f"in the same conversation turn (e.g. 'yes', 'confirm', 'go ahead').\n"
             f"Do not invoke {tool_name}() based on implied consent."
@@ -1325,11 +1334,30 @@ class RemediationSynthesizer:
         prompt_node = self._prompt_by_agent.get(component)
         location = _prompt_location(prompt_node)
 
-        policy_label = f"Policy Compliance — {component}" if component and component != "unknown" else "Policy Compliance"
+        violation_type = finding.get("finding_type") or finding.get("type") or "POLICY_VIOLATION"
+
+        # B11: strip machine-generated telemetry prefixes before embedding in patch.
+        import re as _re_local
+        _machine_pfx = _re_local.compile(
+            r"(?:Behavior finding \S+|Attack scenario '[^']+' succeeded:[^.]+\.)\s*",
+            _re_local.IGNORECASE,
+        )
+        _raw = (desc or title)
+        _clean = _machine_pfx.sub("", _raw).strip()
+        _rule_excerpt = _word_truncate(_clean, 200) if _clean else "the stated policy"
+
+        policy_label = f"Policy Compliance \u2014 {component}" if component and component != "unknown" else "Policy Compliance"
+        # B13: provide violation-type-aware actionable guidance instead of a generic placeholder.
         patch_text = (
             f"## {policy_label}\n"
-            f"The following behaviour is prohibited: {(desc or title)[:200]}\n"
-            f"Ensure all responses comply with the application's stated policy."
+            f"The following behaviour is prohibited: {_rule_excerpt}\n\n"
+            f"Enforcement guidance ({violation_type}):\n"
+            f"1. Add an input guardrail that blocks requests matching this pattern "
+            f"before they reach the agent or any tool.\n"
+            f"2. When the agent must acknowledge the request, use a standard refusal: "
+            f"\"I'm sorry, I can only assist with [allowed scope].\".\n"
+            f"3. Validate this constraint at the guardrail layer \u2014 system-prompt "
+            f"instructions alone can be overridden by adversarial framing."
         )
         return [RemediationArtefact(
             finding_ids=[finding_id],
