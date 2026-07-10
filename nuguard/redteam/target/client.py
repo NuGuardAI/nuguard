@@ -382,11 +382,16 @@ class TargetAppClient:
         The backoff schedule is :data:`~nuguard.common.rate_limit.TRANSIENT_ERROR_RETRY_DELAYS`
         for the first N attempts, then the last (largest) delay caps all subsequent waits.
         """
-        from nuguard.common.rate_limit import TRANSIENT_ERROR_RETRY_DELAYS
-        from nuguard.common.transport import RETRIABLE_OUTCOMES, classify_transport
+        from nuguard.common.rate_limit import (  # noqa: PLC0415
+            GATEWAY_ERROR_RETRY_DELAYS,
+            TRANSIENT_ERROR_RETRY_DELAYS,
+        )
+        from nuguard.common.transport import (  # noqa: PLC0415
+            RETRIABLE_OUTCOMES,
+            TransportOutcome,
+            classify_transport,
+        )
 
-        delays = list(TRANSIENT_ERROR_RETRY_DELAYS)
-        cap_delay = delays[-1] if delays else 60.0
         attempt = 0
         total_waited = 0.0
         text: str = ""
@@ -394,7 +399,30 @@ class TargetAppClient:
 
         while True:
             text, calls = await self._send_impl(payload, session)
-            if classify_transport(text) not in RETRIABLE_OUTCOMES:
+            outcome = classify_transport(text)
+            if outcome not in RETRIABLE_OUTCOMES:
+                return text, calls
+
+            # Choose the retry schedule based on the error type:
+            # - HTTP_GATEWAY_ERROR (502/503/504): short delays (2 s, 5 s) for Azure quota
+            #   blips that typically resolve in under 3 seconds.
+            # - APP_TRANSIENT (cold-start friendly text): long delays (60 s, 120 s) to
+            #   allow Azure Container Apps (minReplicas=0) time to spin up.
+            is_gateway = outcome == TransportOutcome.HTTP_GATEWAY_ERROR
+            delays = list(GATEWAY_ERROR_RETRY_DELAYS if is_gateway else TRANSIENT_ERROR_RETRY_DELAYS)
+            cap_delay = delays[-1] if delays else 5.0
+
+            # For gateway errors: enforce a hard retry cap (len(delays)) so we don’t
+            # hold the semaphore indefinitely on a persistently broken endpoint.
+            # For app-transient errors: the existing max_transient_hold_seconds gate
+            # applies (cold-start can take minutes).
+            if is_gateway and attempt >= len(delays):
+                _log.warning(
+                    "HTTP gateway error persisted after %d retry attempt(s) — "
+                    "incrementing circuit breaker and releasing.",
+                    attempt,
+                )
+                self._record_chat_error(f"HTTP gateway (after {attempt} retries)")
                 return text, calls
 
             # If the session already has prior turns, the target backend is up
@@ -410,6 +438,8 @@ class TargetAppClient:
                     len(session.turns) + 1,
                     attempt,
                 )
+                if is_gateway:
+                    self._record_chat_error(f"HTTP gateway (turn {len(session.turns) + 1})")
                 return text, calls
 
             # Release the semaphore after holding it for too long.  Systemic issues
@@ -422,12 +452,14 @@ class TargetAppClient:
                     "can proceed. Last response was retriable but target did not recover.",
                     total_waited, self._max_transient_hold_seconds,
                 )
+                if is_gateway:
+                    self._record_chat_error(f"HTTP gateway (transient hold {total_waited:.0f}s)")
                 return text, calls
 
             delay = delays[attempt] if attempt < len(delays) else cap_delay
             attempt += 1
             _log.info(
-                "Retriable transport error on first request — waiting %.0fs before retry #%d "
+                "Retriable transport error — waiting %.0fs before retry #%d "
                 "[semaphore held; no other chains will send during this window]",
                 delay, attempt,
             )
@@ -542,7 +574,14 @@ class TargetAppClient:
                 # payload (validation error, auth failure, rate limit, etc.).  Do NOT
                 # count these toward the circuit breaker; the target is functioning.
                 # Only 5xx server errors indicate genuine unavailability.
-                if status >= 500:
+                #
+                # 502/503/504 gateway errors are deferred: _send_with_transient_retry
+                # will retry with short backoff and only increment the circuit breaker
+                # after all retries are exhausted.  This prevents a single transient
+                # Azure OpenAI quota spike from inflating the shared error counter.
+                if status in (502, 503, 504):
+                    pass  # caller handles circuit-breaker accounting after retries
+                elif status >= 500:
                     self._record_chat_error(f"HTTP {status}")
                 else:
                     self._record_chat_success()

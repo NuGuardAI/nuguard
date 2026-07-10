@@ -34,8 +34,7 @@ target:
   # Backend URL is also recorded in the SBOM summary → deployment_urls so nuguard can surface
   # it automatically (extracted from AZURE_WEBAPP_NAME in .github/workflows/deploy-azure.yml).
   #url: http://127.0.0.1:8250   # local dev backend (pnpm dev or python -m uvicorn api:app)
-  #url: https://openai-cs-agents-backend.azurewebsites.net
-  url: https://delightful-beach-0b11fc40f.3.azurestaticapps.net
+  url: https://openai-cs-agents-backend.azurewebsites.net
   # Authentication — login_flow: POST /login → get Bearer token for subsequent requests
   # The backend (python-backend/api.py) only recognizes Authorization: Bearer <token>
   # obtained via /login — it does not understand HTTP Basic auth.
@@ -144,6 +143,10 @@ redteam:
   # Scan profile:
   #   ci   — fast; only scenarios with pre-impact score ≥ 5 (default)
   #   full — all scenarios regardless of score
+  # Max parallel scenarios (default: 5). Lowered to 3 to reduce concurrent Azure OpenAI
+  # load on the shared App Service backend and avoid transient HTTP 502 quota spikes.
+  concurrency: 3
+
   profile: ci
 
   # Stable-ID scenario catalog (84 scenarios across 12 attack categories).
