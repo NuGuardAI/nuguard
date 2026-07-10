@@ -21,6 +21,46 @@ class CoverageEntry:
     skipped_reason: str = ""
 
 
+def render_coverage_markdown(data: dict[str, Any]) -> str:
+    """Render a coverage-tracker JSON snapshot as Markdown.
+
+    Standalone counterpart to :meth:`CoverageTracker.to_markdown` for callers
+    that only have the JSON-safe dict form produced by
+    :meth:`CoverageTracker.to_dict` (e.g. ``RedteamRunResult.coverage_tracker``
+    from :mod:`nuguard.redteam.public_api`, which cannot carry the live object).
+    """
+    nodes = data.get("nodes") or []
+    policy_clauses = data.get("policy_clauses") or []
+    capped_count = data.get("capped_count") or 0
+
+    if not nodes and not policy_clauses:
+        return ""
+
+    lines: list[str] = ["## SBOM Coverage", ""]
+    lines.append("| Node | Type | Generated | Executed | Findings |")
+    lines.append("|---|---|---|---|---|")
+
+    all_entries = list(nodes) + list(policy_clauses)
+    for entry in sorted(all_entries, key=lambda e: (-e["generated"], e["node_type"], e["name"])):
+        name = entry["name"]
+        name_display = name[:50] + ("…" if len(name) > 50 else "")
+        lines.append(
+            f"| {name_display} | {entry['node_type']} "
+            f"| {entry['generated']} | {entry['executed']} | {entry['findings']} |"
+        )
+
+    lines.append("")
+
+    if capped_count:
+        lines.append(
+            f"_Profile note: {capped_count} additional scenario(s) were "
+            "skipped due to per-goal agent caps. Use the `full` profile to include them._"
+        )
+        lines.append("")
+
+    return "\n".join(lines)
+
+
 class CoverageTracker:
     """Accumulates coverage data across scenario generation and execution.
 
@@ -82,31 +122,7 @@ class CoverageTracker:
         return sum(e.findings for e in self._nodes.values())
 
     def to_markdown(self) -> str:
-        if not self._nodes and not self._policy_clauses:
-            return ""
-
-        lines: list[str] = ["## SBOM Coverage", ""]
-        lines.append("| Node | Type | Generated | Executed | Findings |")
-        lines.append("|---|---|---|---|---|")
-
-        all_entries = list(self._nodes.values()) + list(self._policy_clauses.values())
-        for entry in sorted(all_entries, key=lambda e: (-e.generated, e.node_type, e.name)):
-            name_display = entry.name[:50] + ("…" if len(entry.name) > 50 else "")
-            lines.append(
-                f"| {name_display} | {entry.node_type} "
-                f"| {entry.generated} | {entry.executed} | {entry.findings} |"
-            )
-
-        lines.append("")
-
-        if self._capped_count:
-            lines.append(
-                f"_Profile note: {self._capped_count} additional scenario(s) were "
-                "skipped due to per-goal agent caps. Use the `full` profile to include them._"
-            )
-            lines.append("")
-
-        return "\n".join(lines)
+        return render_coverage_markdown(self.to_dict())
 
     def to_dict(self) -> dict[str, Any]:
         """JSON-safe snapshot of accumulated coverage.

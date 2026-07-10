@@ -288,7 +288,7 @@ def scan(
 
                 from nuguard.cli.commands.redteam import _run_redteam  # noqa: PLC0415
                 (
-                    _rt_findings, _, _rt_records, _rt_outcome, _rt_notes, _, _, _, _, _, _, _
+                    _rt_findings, _, _rt_records, _rt_outcome, _rt_notes, _, _, _, _, _, _, _, _
                 ) = _asyncio.run(
                     _run_redteam(
                         sbom_doc=sbom_doc,

@@ -89,10 +89,10 @@ async def _synthesize_behavior_remediation_plan(
 ) -> list[RemediationArtefact]:
     """Best-effort structured remediation for a plain list of finding dicts.
 
-    Mirrors the CLI's ``_build_redteam_remediation_plan`` (which reuses this
-    same synthesizer for redteam findings): remediation synthesis enriches
-    the result but must never fail the run, so exceptions are logged and
-    swallowed. Returns ``[]`` when there is no SBOM or no findings to
+    Mirrors ``nuguard.redteam.public_api._build_remediation_plan`` (which
+    reuses this same synthesizer for redteam findings): remediation synthesis
+    enriches the result but must never fail the run, so exceptions are logged
+    and swallowed. Returns ``[]`` when there is no SBOM or no findings to
     synthesize against.
     """
     if sbom is None or not findings:

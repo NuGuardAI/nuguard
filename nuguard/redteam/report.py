@@ -177,13 +177,31 @@ def to_markdown(
     if scenario_records:
         lines += _scenario_coverage_table(scenario_records)
 
-    # Catalog coverage report (Phase 2 — capability-aware catalog)
-    if catalog_coverage is not None and hasattr(catalog_coverage, "to_markdown"):
-        lines += ["", catalog_coverage.to_markdown(), ""]
+    # Catalog coverage report (Phase 2 — capability-aware catalog). Accepts
+    # either the live CoverageReport object or its JSON-safe dict form
+    # (RedteamRunResult.catalog_coverage from nuguard.redteam.public_api).
+    if catalog_coverage is not None:
+        if hasattr(catalog_coverage, "to_markdown"):
+            _cc_md = catalog_coverage.to_markdown()
+        elif isinstance(catalog_coverage, dict):
+            from nuguard.redteam.catalog.coverage import render_catalog_coverage_markdown
+            _cc_md = render_catalog_coverage_markdown(catalog_coverage)
+        else:
+            _cc_md = None
+        if _cc_md:
+            lines += ["", _cc_md, ""]
 
-    # Coverage tracker table (SBOM node coverage)
-    if coverage_tracker is not None and hasattr(coverage_tracker, "to_markdown"):
-        _ct_md = coverage_tracker.to_markdown()
+    # Coverage tracker table (SBOM node coverage). Accepts either the live
+    # CoverageTracker object or its JSON-safe dict form
+    # (RedteamRunResult.coverage_tracker from nuguard.redteam.public_api).
+    if coverage_tracker is not None:
+        if hasattr(coverage_tracker, "to_markdown"):
+            _ct_md = coverage_tracker.to_markdown()
+        elif isinstance(coverage_tracker, dict):
+            from nuguard.redteam.coverage.tracker import render_coverage_markdown
+            _ct_md = render_coverage_markdown(coverage_tracker)
+        else:
+            _ct_md = None
         if _ct_md:
             lines += ["", _ct_md, ""]
 
@@ -355,8 +373,8 @@ def _attack_coverage_summary(scenario_records: list) -> list[str]:
     # Accumulate per-goal-type counts
     goal_data: dict[str, dict[str, int]] = {}
     for r in scenario_records:
-        gt = getattr(r, "goal_type", None) or "UNKNOWN"
-        status = getattr(r, "chain_status", "completed") or "completed"
+        gt = _r(r, "goal_type", None) or "UNKNOWN"
+        status = _r(r, "chain_status", "completed") or "completed"
         if gt not in goal_data:
             goal_data[gt] = {"total": 0, "not_tested": 0}
         goal_data[gt]["total"] += 1

@@ -2,9 +2,11 @@
 
 A thin async wrapper around :class:`RedteamOrchestrator` for callers outside
 the CLI: a plain, JSON-serializable request model in, a JSON-serializable
-result model out. ``RedteamOrchestrator`` itself, its constructor, ``run()``,
-and the CLI's ``_run_orchestrator()`` are untouched — everything here is
-additive.
+result model out. ``RedteamOrchestrator`` itself and its constructor and
+``run()`` are untouched — everything here is additive. The CLI's
+``nuguard.cli.commands.redteam._run_orchestrator`` calls :func:`run_redteam`
+directly for the v1 engine, so this module is the single source of truth for
+v1 scan execution and remediation-plan synthesis, not a parallel copy of it.
 
 Scope: only the v1 :class:`RedteamOrchestrator` engine is wrapped.
 ``RedteamV2Orchestrator`` (the v2 engine path) is out of scope.
@@ -128,11 +130,12 @@ class RedteamRunResult(BaseModel):
     remediation_plan: list[RemediationArtefact] = Field(default_factory=list)
     """Concrete, SBOM-node-specific remediation artefacts for ``findings``.
 
-    Synthesized best-effort from ``findings`` via the same
-    ``RemediationSynthesizer`` the CLI uses to build its redteam report's
-    remediation plan (``nuguard.cli.commands.redteam._build_redteam_remediation_plan``),
-    with contextual LLM patch text when ``eval_llm`` is supplied to
-    :func:`run_redteam`. Empty when synthesis fails or no SBOM is available.
+    Synthesized best-effort from ``findings`` via ``RemediationSynthesizer``
+    (see :func:`_build_remediation_plan` below) — the same synthesis the CLI's
+    ``nuguard redteam`` command relies on, since ``_run_orchestrator`` calls
+    :func:`run_redteam` directly. Populated with contextual LLM patch text when
+    ``eval_llm`` is supplied to :func:`run_redteam`. Empty when synthesis fails
+    or no SBOM is available.
     """
 
 
@@ -145,11 +148,10 @@ async def _build_remediation_plan(
 ) -> list[RemediationArtefact]:
     """Synthesize per-SBOM-node remediation artefacts from redteam findings.
 
-    Async counterpart to the CLI's ``_build_redteam_remediation_plan``
-    (``nuguard/cli/commands/redteam.py``) — uses ``synthesize_findings_async``
-    instead of the sync ``synthesize_findings`` since this runs inside
-    ``run_redteam``'s already-running event loop, so LLM patch calls need to
-    be awaited directly rather than silently skipped by the sync shim.
+    Uses ``synthesize_findings_async`` rather than the sync
+    ``synthesize_findings`` since this runs inside ``run_redteam``'s
+    already-running event loop, so LLM patch calls need to be awaited
+    directly rather than silently skipped by the sync shim.
     Best-effort: returns ``[]`` on missing SBOM, no findings, or any failure.
     """
     if sbom is None or not findings:
