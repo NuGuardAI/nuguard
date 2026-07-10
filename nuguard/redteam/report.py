@@ -265,6 +265,15 @@ def _truncate_scenario_details(scenario_details: list) -> list:
     truncated = []
     for sd in sorted(scenario_details, key=_diagnostics_priority)[:_MAX_DIAG_SCENARIOS]:
         turns = list(sd.turns[:_MAX_DIAG_TURNS_PER_SCENARIO])
+        # Always include finding-trigger turns even when they fall beyond the cap —
+        # without this, the diagnostic for a multi-turn scenario only shows the warmup
+        # turns and hides the evidence turn that actually triggered the finding.
+        if sd.had_finding:
+            shown_indices = set(range(len(turns)))
+            for i, t in enumerate(sd.turns[_MAX_DIAG_TURNS_PER_SCENARIO:], start=_MAX_DIAG_TURNS_PER_SCENARIO):
+                if t.passed and i not in shown_indices:
+                    turns.append(t)
+                    shown_indices.add(i)
         truncated.append(
             type(sd)(
                 index=sd.index,

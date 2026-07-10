@@ -1894,7 +1894,7 @@ class RedteamOrchestrator:
                 if sr.http_status_code is not None:
                     detail["status_code"] = sr.http_status_code
             else:
-                detail["payload"] = step.payload
+                detail["payload"] = sr.resolved_payload
             if sr.response:
                 from nuguard.output.validation_report import _clean_response_for_display
                 cleaned = _clean_response_for_display(sr.response)
@@ -1931,7 +1931,7 @@ class RedteamOrchestrator:
             )
         else:
             header = f"Triggering step {step_idx} ({step.step_type} {ok})"
-        payload = (step.payload or "").strip()
+        payload = (sr.resolved_payload or step.payload or "").strip()
         response = (sr.response or "").strip()
         if len(payload) > 800:
             payload = payload[:800] + "…"

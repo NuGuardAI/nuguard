@@ -868,7 +868,6 @@ class RemediationSynthesizer:
         ]
         # Optional input guardrail for topic blocking
         if topics:
-            short_topics = [t[:40] for t in topics[:4]]
             artefacts.append(RemediationArtefact(
                 finding_ids=[finding_id],
                 component=component,
@@ -877,7 +876,9 @@ class RemediationSynthesizer:
                 priority="medium",
                 guardrail_name=f"topic_block_{component.lower().replace(' ', '_')[:20]}",
                 guardrail_type="topic_classifier",
-                guardrail_trigger=", ".join(short_topics),
+                # Keep full canonical topic strings so downstream tooling can use them
+                # as-is; the display label in markdown is truncated separately.
+                guardrail_trigger=", ".join(topics[:4]),
                 guardrail_action="BLOCK",
                 guardrail_message="I'm sorry, that's outside my area of expertise.",
                 rationale=f"Block restricted topics at the input layer for {component}.",
@@ -1007,7 +1008,17 @@ class RemediationSynthesizer:
         desc = finding.get("description", "")
         # Extract tool name from finding title: "Unauthenticated agent '...' can access high-privilege tool '...'"
         tool_match = re.search(r"tool '([^']+)'", str(finding.get("title", "")), re.IGNORECASE)
-        tool_name = tool_match.group(1) if tool_match else "the high-privilege tool"
+        tool_name = tool_match.group(1) if tool_match else ""
+        if not tool_name:
+            # Try to resolve from SBOM: look for high-privilege tools attached to this component
+            high_priv_names = [
+                n.name for n in getattr(self._sbom, "nodes", [])
+                if getattr(getattr(n, "metadata", None), "high_privilege", False)
+            ]
+            if high_priv_names:
+                tool_name = high_priv_names[0]
+            else:
+                tool_name = ""  # will use generic recommendation below
         tool_node = self._node_by_name.get(tool_name)
         tool_desc = str(_node_meta(tool_node, "description") or "") if tool_node else ""
 
@@ -1032,6 +1043,33 @@ class RemediationSynthesizer:
         guardrail_type: str = str(strategy.get("guardrail", "auth_check"))
 
         hitl_note = " Require manager HITL approval before executing." if requires_hitl else ""
+
+        # When no specific tool name could be resolved, emit a generic architectural
+        # recommendation rather than a placeholder that reads as 'the high-privilege tool'.
+        if not tool_name:
+            return [RemediationArtefact(
+                finding_ids=[finding_id],
+                component=component,
+                component_type=_node_type(node) if node else "AGENT",
+                artefact_type=RemediationArtefactType.ARCHITECTURAL_CHANGE,
+                priority="high",
+                change_description=(
+                    f"Review and restrict the privilege level of tools accessible by '{component}'"
+                ),
+                change_detail=(
+                    f"Agent '{component}' can reach tools with elevated privileges without "
+                    f"authentication.\n\n"
+                    f"Recommended changes:\n"
+                    f"1. Audit all TOOL nodes reachable from '{component}' and label "
+                    f"   high-privilege ones (high_privilege=true in the SBOM).\n"
+                    f"2. Add an AUTH node protecting '{component}' and each high-privilege tool.\n"
+                    f"3. Ensure the application verifies a valid session token before any "
+                    f"   high-privilege tool invocation.\n"
+                    f"4. Remove or scope-limit any tools that do not require root/admin access."
+                ),
+                requires_auth=True,
+                rationale=desc,
+            )]
         patch_text = self._llm_privilege_patch(
             agent_name=component,
             tool_name=tool_name,
@@ -1130,13 +1168,28 @@ class RemediationSynthesizer:
         # Second pass: try quoted name at start of title ("Tool 'X' ...")
         if not tool_name:
             start_match = re.match(r"['\"]([^'\"]+)['\"]", title)
-            tool_name = start_match.group(1) if start_match else "the restricted tool"
+            if start_match:
+                tool_name = start_match.group(1)
+            else:
+                # Fall back to SBOM: look for a high-privilege tool reachable
+                # from this component.
+                sbom_restricted = [
+                    n.name for n in getattr(self._sbom, "nodes", [])
+                    if getattr(getattr(n, "metadata", None), "high_privilege", False)
+                ]
+                tool_name = sbom_restricted[0] if sbom_restricted else "this tool"
         tool_node = self._node_by_name.get(tool_name)
         tool_desc = str(_node_meta(tool_node, "description") or "") if tool_node else ""
 
         # Extract the restricted action text from the description
         action_match = re.search(r"restricts action '([^']+)'", desc, re.IGNORECASE)
-        restricted_action = action_match.group(1) if action_match else desc[:120]
+        # Strip machine-generated telemetry prefixes before using description as fallback.
+        _machine_prefix_re = re.compile(
+            r"Attack scenario '[^']+' succeeded:[^.]+\.\s*",
+            re.IGNORECASE,
+        )
+        _desc_clean = _machine_prefix_re.sub("", desc).strip()
+        restricted_action = action_match.group(1) if action_match else (_desc_clean[:120] or "this restricted action")
 
         # Determine if this is a write-capable / high-impact tool
         write_re = re.compile(r"\b(write|update|delete|insert|modify|create|transfer|send|post|pay|charge)\b", re.I)

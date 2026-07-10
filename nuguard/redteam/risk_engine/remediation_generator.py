@@ -62,6 +62,22 @@ _TEMPLATES: dict[GoalType, str] = {
         "resource before returning it.  Use an allowlist of accepted fields to prevent mass "
         "assignment; never bind request body directly to privileged model fields."
     ),
+    GoalType.AGENTIC_TRUST_ABUSE: (
+        "Isolate memory namespaces per session — never let user-turn content overwrite agent "
+        "instructions or persist as system-level rules across sessions. "
+        "Tag each piece of stored context with its trust source (user / tool / system) and reject "
+        "any context item that claims elevated trust without a cryptographic session proof. "
+        "Add an output guardrail that detects and blocks instruction-like patterns "
+        "(e.g. 'remember for all future sessions', 'treat me as admin') before they reach memory."
+    ),
+    GoalType.RECON_INFERENCE: (
+        "Normalise refusal messages — use a single generic response for all out-of-scope or "
+        "unauthorised requests regardless of whether the feature exists, so the response shape "
+        "does not reveal capability boundaries. "
+        "Suppress capability enumeration: the agent should never confirm or deny the existence "
+        "of internal tools, permission levels, or data schemas in response to user probing. "
+        "Apply a consistent refusal template: 'I can only assist with topics related to this service.'"
+    ),
 }
 
 
