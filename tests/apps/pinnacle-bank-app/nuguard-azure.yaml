@@ -163,7 +163,7 @@ redteam:
 
   # Per-request HTTP timeout in seconds (default: 120)
   # Multi-agent pipelines with LLM calls can take 60–120 s; increase for slow apps
-  request_timeout: 90
+  request_timeout: 60
 
   # Max seconds to hold the HTTP semaphore while retrying cold-start transient errors
   # on the FIRST request of a new chain (default: 300 = 5 minutes).
@@ -205,8 +205,8 @@ redteam:
   verify_findings: false
 
   # Guided adversarial conversations using ConversationDirector
-  concurrency: 5                     # parallel scenarios (raised from default 3 for throughput)
-  turn_delay_seconds: 0             # no inter-step sleep (models tolerate rapid requests)
+  concurrency: 3                     # parallel scenarios (raised from default 3 for throughput)
+  turn_delay_seconds: 1             # no inter-step sleep (models tolerate rapid requests)
   guided_conversations: true        # enable adaptive multi-turn attacks
   guided_max_turns: 8               # upper-bound cap on turns per guided scenario.
                                     # Scenario builders pick 8–12 by default; this
