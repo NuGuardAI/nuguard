@@ -75,6 +75,7 @@ from .mcp_attacks import build_mcp_output_poisoning, build_mcp_tool_injection, b
 from .multimodal_injection import build_multimodal_scenarios
 from .oracle_attacks import build_boundary_self_probe, build_premise_injection, build_refusal_oracle
 from .policy_violations import (
+    _clause_fragment,
     build_allowed_topic_boundary,
     build_hitl_bypass,
     build_rate_limit_burst,
@@ -2046,7 +2047,7 @@ class ScenarioGenerator:
                     build_approval_state_forgery(
                         agent_id=agent_id,
                         agent_name=agent_name,
-                        guarded_action=str(trigger)[:120],
+                        guarded_action=_clause_fragment(str(trigger), max_len=100),
                     )
                 )
             for cond in list(self._policy.hitl_tool_conditions or [])[:1]:
@@ -2064,7 +2065,7 @@ class ScenarioGenerator:
                     build_approval_state_forgery(
                         agent_id=agent_id,
                         agent_name=agent_name,
-                        guarded_action=str(restricted_action)[:120],
+                        guarded_action=_clause_fragment(str(restricted_action), max_len=100),
                     )
                 )
 

@@ -23,6 +23,8 @@ _ID_PATTERNS: list[re.Pattern[str]] = [
         re.IGNORECASE,
     ),
     # Labelled booking/confirmation/PNR codes: "confirmation: K7Q4MN", "PNR HN4P88", "PNR code: K7Q4MN"
+    # Require a non-space separator (: # =) OR an explicit label word (number/code/ref) so that
+    # "booking team" or "booking agent" is NOT captured as an ID.
     # "is"/"was" connector is handled by the dedicated pattern below (with digit requirement).
     re.compile(
         r'(?:confirmation|booking|reservation|pnr|record\s+locator)\s*'
@@ -134,6 +136,10 @@ _ID_STOP_WORDS: frozenset[str] = frozenset({
     "flight", "flights", "ticket", "tickets", "please", "provide",
     "confirm", "request", "itinerary", "service", "support", "status",
     "cancel", "cancellation", "information", "passenger", "profile",
+    # Common English words that booking-context patterns may capture via
+    # space-only separation (e.g. "booking team" → "team").
+    "team", "agent", "desk", "dept", "page", "code", "note", "name",
+    "type", "date", "time", "seat", "gate", "zone", "plan", "term",
 })
 
 # Airline/railway flight-number pattern: 2–3 letters + hyphen + 2–5 digits (e.g. DL-401, UA-892).
@@ -157,6 +163,11 @@ def extract_ids(text: str) -> list[str]:
             upper = value.upper()
             # Exclude common English words that are not real IDs
             if value.lower() in _ID_STOP_WORDS:
+                continue
+            # Reject pure-alphabetic captures shorter than 6 chars with no digits —
+            # these are plain English words caught by the space-separator booking
+            # pattern (e.g. "booking team" → "team", "booking agent" → "agent").
+            if value.isalpha() and len(value) < 6:
                 continue
             # Exclude airline/train flight numbers (e.g. DL-401, UA-892)
             if _FLIGHT_NUMBER_RE.match(value):

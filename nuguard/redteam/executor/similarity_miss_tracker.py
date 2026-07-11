@@ -158,7 +158,14 @@ class SimilarityMissTracker:
 
         Called after acquiring the execution semaphore so that results from
         concurrently-running scenarios can be incorporated before we decide.
+
+        REFUSAL_ORACLE scenarios are always exempt: their entire purpose is to
+        extract intelligence from refusals, so suppressing them on the basis of
+        prior refusals defeats the point.
         """
+        from nuguard.models.exploit_chain import ScenarioType
+        if scenario.scenario_type == ScenarioType.REFUSAL_ORACLE:
+            return False
         tokens = _scenario_tokens(scenario)
         if not tokens:
             return False

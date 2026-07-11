@@ -323,6 +323,8 @@ def redteam(
             turn_delay_seconds=cfg.redteam_turn_delay_seconds,
             scenario_delay_seconds=cfg.redteam_scenario_delay_seconds,
             similar_miss_threshold=cfg.redteam_similar_miss_threshold,
+            hard_refusal_abort_turns=cfg.redteam_hard_refusal_abort_turns,
+            stall_abort_threshold=cfg.redteam_stall_abort_threshold,
             skip_discovery=cfg.redteam_skip_discovery,
             discovery_max_turns=cfg.redteam_discovery_max_turns,
             catalog=custom_catalog,
@@ -347,6 +349,7 @@ def redteam(
             token_usage,
             resolved_chat_path,
             resolved_chat_path_source,
+            remediation_plan,
         ) = asyncio.run(runner)  # type: ignore[misc]
     except Exception as exc:
         from nuguard.common.errors import AuthError, TargetUnavailableError  # noqa: PLC0415
@@ -380,20 +383,11 @@ def redteam(
         finding_triggers=finding_triggers.model_dump(),
         scan_profile=effective_profile,
     )
-    # Synthesize per-SBOM-node remediation artefacts — best-effort, never
-    # blocks the report if it fails.  The synthesizer consults the SBOM to
+    # remediation_plan is already synthesized inside _run_orchestrator (v1) via
+    # nuguard.redteam.public_api.run_redteam(), which consults the SBOM to
     # produce concrete system-prompt patches, guardrail specs, and
-    # architectural changes targeted at each affected component.
-    _cognitive_policy = None
-    if policy_path and policy_path.exists():
-        try:
-            from nuguard.policy.parser import parse_policy as _parse_policy  # noqa: PLC0415
-            _cognitive_policy = _parse_policy(policy_path.read_text())
-        except Exception:
-            pass
-    remediation_plan = _build_redteam_remediation_plan(
-        findings, sbom_doc, cognitive_policy=_cognitive_policy
-    )
+    # architectural changes targeted at each affected component. The v2
+    # scaffold path returns an empty plan.
 
     extension_map = {
         "text": ".txt",
@@ -533,11 +527,11 @@ async def _run_redteam_v2(
     eval_llm_api_key: str | None = None,
     eval_llm_api_base: str | None = None,
     verbose: bool = False,
-) -> "tuple[list, dict[str, str], list, str, list[str], Any, int, int, Any, Any, str, str]":
+) -> "tuple[list, dict[str, str], list, str, list[str], Any, int, int, Any, Any, str, str, list]":
     """Run the v2 red-team engine and adapt its result to the CLI report tuple.
 
     Phase 0: the v2 orchestrator is a scaffold that returns no findings.  This
-    wrapper keeps the same 12-tuple shape as :func:`_run_redteam` so the shared
+    wrapper keeps the same 13-tuple shape as :func:`_run_redteam` so the shared
     output/reporting code path is reused unchanged.
     """
     from nuguard.common.llm_client import LLMClient
@@ -596,6 +590,7 @@ async def _run_redteam_v2(
         result.token_usage,
         result.resolved_chat_path,
         result.resolved_chat_path_source,
+        [],
     )
 
 
@@ -638,6 +633,8 @@ async def _run_redteam(
     turn_delay_seconds: float = 0.0,
     scenario_delay_seconds: float = 0.0,
     similar_miss_threshold: int = 4,
+    hard_refusal_abort_turns: int = 5,
+    stall_abort_threshold: int = 8,
     skip_discovery: bool = False,
     discovery_max_turns: int = 3,
     chat_payload_extras: dict[str, Any] | None = None,
@@ -647,7 +644,7 @@ async def _run_redteam(
     golden_data: "dict | None" = None,
     suppress_spa_html_auth_bypass: bool = True,
     codegen_escalation_enabled: bool = True,
-) -> "tuple[list, dict[str, str], list, str, list[str], Any, int, int, Any, Any, str, str]":
+) -> "tuple[list, dict[str, str], list, str, list[str], Any, int, int, Any, Any, str, str, list]":
     from nuguard.models.policy import CognitivePolicy
     from nuguard.redteam.target.canary import CanaryConfig
 
@@ -766,6 +763,8 @@ async def _run_redteam(
                 turn_delay_seconds=turn_delay_seconds,
                 scenario_delay_seconds=scenario_delay_seconds,
                 similar_miss_threshold=similar_miss_threshold,
+                hard_refusal_abort_turns=hard_refusal_abort_turns,
+                stall_abort_threshold=stall_abort_threshold,
                 skip_discovery=skip_discovery,
                 discovery_max_turns=discovery_max_turns,
                 catalog=catalog,
@@ -816,6 +815,8 @@ async def _run_redteam(
         turn_delay_seconds=turn_delay_seconds,
         scenario_delay_seconds=scenario_delay_seconds,
         similar_miss_threshold=similar_miss_threshold,
+        hard_refusal_abort_turns=hard_refusal_abort_turns,
+        stall_abort_threshold=stall_abort_threshold,
         skip_discovery=skip_discovery,
         discovery_max_turns=discovery_max_turns,
         catalog=catalog,
@@ -865,6 +866,8 @@ async def _run_orchestrator(  # noqa: C901
     turn_delay_seconds: float = 0.0,
     scenario_delay_seconds: float = 0.0,
     similar_miss_threshold: int = 4,
+    hard_refusal_abort_turns: int = 5,
+    stall_abort_threshold: int = 8,
     skip_discovery: bool = False,
     discovery_max_turns: int = 3,
     catalog: "tuple | None" = None,
@@ -873,10 +876,10 @@ async def _run_orchestrator(  # noqa: C901
     golden_data: "dict | None" = None,
     suppress_spa_html_auth_bypass: bool = True,
     codegen_escalation_enabled: bool = True,
-) -> "tuple[list, dict[str, str], list, str, list[str], Any, int, int, Any, Any, str, str]":
+) -> "tuple[list, dict[str, str], list, str, list[str], Any, int, int, Any, Any, str, str, list]":
     from nuguard.common.llm_client import LLMClient
-    from nuguard.redteam.executor.orchestrator import RedteamOrchestrator
     from nuguard.redteam.persona import EVAL_EXPERT_SYSTEM_PROMPT, REDTEAM_EXPERT_SYSTEM_PROMPT
+    from nuguard.redteam.public_api import RedteamRunRequest, run_redteam
 
     redteam_llm: LLMClient | None = None
     if redteam_llm_model:
@@ -895,19 +898,15 @@ async def _run_orchestrator(  # noqa: C901
             default_system_prompt=EVAL_EXPERT_SYSTEM_PROMPT,
         )
 
-    orchestrator = RedteamOrchestrator(
-        sbom=sbom_doc,  # type: ignore[arg-type]
+    request = RedteamRunRequest(
         target_url=target_url,
-        policy=cognitive_policy,  # type: ignore[arg-type]
-        policy_controls=policy_controls,
-        canary_config=canary_config,  # type: ignore[arg-type]
         profile=profile,
         min_impact_score=min_impact_score,
         chat_path=chat_path,
         chat_payload_key=chat_payload_key,
         chat_payload_list=chat_payload_list,
         chat_response_key=chat_response_key,
-        chat_payload_extras=chat_payload_extras or None,
+        concurrency=concurrency,
         guided_conversations=guided_conversations,
         guided_max_turns=guided_max_turns,
         guided_concurrency=guided_concurrency,
@@ -915,23 +914,22 @@ async def _run_orchestrator(  # noqa: C901
         tree_breadth=tree_breadth,
         tree_max_depth=tree_max_depth,
         extra_headers=extra_headers,
-        auth_config=auth_config,
         strict_outcome=strict_outcome,
         scenario_filter=scenario_filter,
-        redteam_llm=redteam_llm,
-        eval_llm=eval_llm,
-        prompt_cache_dir=Path(prompt_cache_dir) if prompt_cache_dir else None,
+        canary_config=canary_config,  # type: ignore[arg-type]
+        auth_config=auth_config,
         finding_triggers=finding_triggers,
         verbose=verbose,
         credentials=credentials,
         scenario_timeout=scenario_timeout,
-        concurrency=concurrency,
         turn_delay_seconds=turn_delay_seconds,
         scenario_delay_seconds=scenario_delay_seconds,
         similar_miss_threshold=similar_miss_threshold,
+        hard_refusal_abort_turns=hard_refusal_abort_turns,
+        stall_abort_threshold=stall_abort_threshold,
         skip_discovery=skip_discovery,
         discovery_max_turns=discovery_max_turns,
-        catalog=catalog,
+        chat_payload_extras=chat_payload_extras or None,
         pre_run_warmup=pre_run_warmup,
         verify_findings=verify_findings,
         golden_data=golden_data,
@@ -939,43 +937,35 @@ async def _run_orchestrator(  # noqa: C901
         codegen_escalation_enabled=codegen_escalation_enabled,
     )
 
-    try:
-        findings = await orchestrator.run()
-    finally:
-        try:
-            from litellm.llms.custom_httpx.async_client_cleanup import (
-                close_litellm_async_clients,  # noqa: PLC0415
-            )
-            await close_litellm_async_clients()
-        except Exception:
-            pass
-    llm_remediations: dict[str, str] = orchestrator.llm_remediations
-    scenario_records = orchestrator.scenario_records
-    catalog_coverage = getattr(orchestrator, "catalog_coverage", None)
-    coverage_tracker = getattr(orchestrator, "_coverage_tracker", None)
-
-    # Apply scenario filter if provided
-    if scenario_filter:
-        findings = [
-            f for f in findings
-            if not f.goal_type
-            or any(
-                s.lower().replace("-", "_") in (f.goal_type or "").lower()
-                for s in scenario_filter
-            )
-        ]
-
-    scan_outcome = orchestrator.scan_outcome
-    config_notes: list[str] = list(getattr(orchestrator, "config_notes", []))
-    for note in config_notes:
-        typer.echo(f"\n⚠ {note}", err=True)
-    input_tokens_used: int = getattr(orchestrator, "input_tokens_used", 0)
-    output_tokens_used: int = getattr(orchestrator, "output_tokens_used", 0)
-    from nuguard.models.token_usage import TokenUsage  # noqa: PLC0415
-    token_usage = getattr(orchestrator, "token_usage", None) or TokenUsage(
-        input_tokens=input_tokens_used, output_tokens=output_tokens_used
+    result = await run_redteam(
+        request,
+        sbom=sbom_doc,  # type: ignore[arg-type]
+        policy=cognitive_policy,  # type: ignore[arg-type]
+        policy_controls=policy_controls,
+        redteam_llm=redteam_llm,
+        eval_llm=eval_llm,
+        catalog=catalog,
+        prompt_cache_dir=Path(prompt_cache_dir) if prompt_cache_dir else None,
     )
-    return findings, llm_remediations, scenario_records, scan_outcome, config_notes, catalog_coverage, input_tokens_used, output_tokens_used, coverage_tracker, token_usage, orchestrator.resolved_chat_path, orchestrator.resolved_chat_path_source
+
+    for note in result.config_notes:
+        typer.echo(f"\n⚠ {note}", err=True)
+
+    return (
+        result.findings,
+        result.llm_remediations,
+        result.scenario_records,
+        result.scan_outcome,
+        result.config_notes,
+        result.catalog_coverage,
+        result.input_tokens_used,
+        result.output_tokens_used,
+        result.coverage_tracker,
+        result.token_usage,
+        result.resolved_chat_path,
+        result.resolved_chat_path_source,
+        result.remediation_plan,
+    )
 
 
 def _print_findings(
@@ -1088,47 +1078,6 @@ def _append_remediation_plan(lines: list[str], remediation_plan: list) -> None:
     """Delegate to :func:`nuguard.output.report_shared.render_remediation_plan_section`."""
     from nuguard.output.report_shared import render_remediation_plan_section
     render_remediation_plan_section(lines, remediation_plan)
-
-
-def _build_redteam_remediation_plan(
-    findings: list,
-    sbom_doc: object,
-    cognitive_policy: object | None,
-    llm_client: object | None = None,
-) -> list:
-    """Synthesize per-SBOM-node remediation artefacts from redteam findings.
-
-    Returns ``[]`` if no SBOM is available or synthesis fails — the caller
-    should treat this as a best-effort enrichment, not a hard dependency.
-    """
-    if sbom_doc is None or not findings:
-        return []
-    try:
-        from nuguard.behavior.remediation import RemediationSynthesizer
-
-        synthesizer = RemediationSynthesizer(
-            sbom=sbom_doc,  # type: ignore[arg-type]
-            policy=cognitive_policy,  # type: ignore[arg-type]
-            llm_client=llm_client,  # type: ignore[arg-type]
-        )
-        # Convert Finding objects to dicts the synthesizer's classifier
-        # understands.  ``goal_type`` is key — it lets the classifier route
-        # directly to the correct remediation handler without heuristics.
-        finding_dicts = [
-            {
-                "finding_id": f.finding_id,
-                "title": f.title,
-                "description": f.description or "",
-                "affected_component": f.affected_component or "unknown",
-                "severity": f.severity.value if hasattr(f.severity, "value") else str(f.severity),
-                "goal_type": f.goal_type or "",
-            }
-            for f in findings
-        ]
-        return synthesizer.synthesize_findings(finding_dicts)
-    except Exception as exc:
-        _log.warning("remediation synthesis failed — skipping plan: %s", exc)
-        return []
 
 
 def _fail_on_severity(findings: list, fail_on: str) -> None:

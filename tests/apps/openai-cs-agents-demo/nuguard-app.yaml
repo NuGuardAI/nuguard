@@ -180,10 +180,12 @@ redteam:
   # Enable in CI to catch false-clean runs caused by a broken target.
   strict_outcome: false
   similar_miss_threshold: 4   # set to 0 to disable
+  hard_refusal_abort_turns: 5  # consecutive hard/soft refusals before aborting a guided scenario
+  stall_abort_threshold: 8     # consecutive stalled turns (score ≤ 2) before aborting
 
   # Guided adversarial conversations using ConversationDirector
   guided_conversations: true        # enable adaptive multi-turn attacks
-  guided_max_turns: 8               # upper-bound cap on turns per guided scenario.
+  guided_max_turns: 10               # upper-bound cap on turns per guided scenario.
                                     # Scenario builders pick 8–12 by default; this
                                     # clamps any higher cap down. Raise/lower to
                                     # trade cost for depth.

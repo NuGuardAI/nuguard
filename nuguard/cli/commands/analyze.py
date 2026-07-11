@@ -10,6 +10,7 @@ Exit codes
 
 from __future__ import annotations
 
+import asyncio
 import json
 import re
 from pathlib import Path
@@ -220,10 +221,25 @@ def analyze(
     if "markdown" in formats:
         atlas_config["format"] = "markdown"
 
+    # LLM client for remediation-plan synthesis (best-effort; deterministic
+    # templates are used when no client is available).
+    llm_client = None
+    if llm or cfg.litellm_api_key:
+        try:
+            from nuguard.common.llm_client import LLMClient  # noqa: PLC0415
+            _model = cfg.litellm_model or ""
+            llm_client = LLMClient(
+                model=cfg.litellm_model,
+                api_key=cfg.litellm_api_key,
+                api_base=cfg.litellm_api_base if _model.startswith("azure") else None,
+            )
+        except Exception as exc:
+            _log.warning("Could not build LLM client: %s", exc)
+
     try:
-        from nuguard.analysis.static_analyzer import StaticAnalyzer  # noqa: PLC0415
+        from nuguard.analysis.public_api import AnalysisRunRequest, run_analysis  # noqa: PLC0415
         source_path = Path(source) if source else None
-        analyzer = StaticAnalyzer(
+        request = AnalysisRunRequest(
             enable_atlas=atlas,
             enable_osv=osv,
             enable_grype=grype,
@@ -233,14 +249,15 @@ def analyze(
             enable_supply_chain=supply_chain,
             supply_chain_profile=sc_profile,
             supply_chain_verify_artifacts=sc_verify,
-            source_path=source_path,
+            source_path=str(source_path) if source_path else None,
             atlas_config=atlas_config,
             min_severity=min_sev,
             verbose=verbose,
             grype_timeout=grype_timeout if grype_timeout is not None else 180.0,
             grype_retries=grype_retries if grype_retries is not None else 3,
         )
-        findings = analyzer.analyze(doc)
+        result = asyncio.run(run_analysis(request, sbom=doc, llm_client=llm_client))
+        findings = result.findings
     except Exception as exc:
         typer.echo(f"error: analysis failed: {exc}", err=True)
         _log.exception("analysis failed")
@@ -267,6 +284,7 @@ def analyze(
                 nga_audit,
                 sc_audit,
                 token_usage=token_usage,
+                remediation_plan=remediation_plan,
             )
         if fmt == "sarif":
             return _render_sarif(visible, sbom_path, tool_status)
@@ -277,12 +295,11 @@ def analyze(
         "json": ".json",
         "sarif": ".sarif",
     }
-    tool_status = getattr(analyzer, "tool_status", {})
-    nga_audit = getattr(analyzer, "nga_audit", [])
-    sc_audit = getattr(analyzer, "sc_audit", [])
-    from nuguard.models.token_usage import TokenUsage  # noqa: PLC0415
-
-    token_usage: TokenUsage = getattr(analyzer, "token_usage", None) or TokenUsage()
+    tool_status = result.tool_status
+    nga_audit = result.nga_audit
+    sc_audit = result.sc_audit
+    token_usage = result.token_usage
+    remediation_plan = result.remediation_plan
 
     if output:
         out_base = Path(output)
@@ -654,6 +671,7 @@ def _render_json(
     nga_audit: list[dict[str, Any]] | None = None,
     sc_audit: list[dict[str, Any]] | None = None,
     token_usage: "Any | None" = None,
+    remediation_plan: "list[Any] | None" = None,
 ) -> str:
     # Severity counts
     sev_counts: dict[str, int] = {}
@@ -673,6 +691,7 @@ def _render_json(
         "token_usage": token_usage.model_dump() if token_usage is not None else {},
         "by_component": by_component,
         "findings": [f.model_dump() for f in findings],
+        "remediation_plan": [a.model_dump() for a in (remediation_plan or [])],
         **({"nga_rule_audit": nga_audit} if nga_audit else {}),
         **({"sc_rule_audit": sc_audit} if sc_audit else {}),
     }

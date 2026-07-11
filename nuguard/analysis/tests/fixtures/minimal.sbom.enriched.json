@@ -1,0 +1,91 @@
+{
+  "schema_version": "1.4.0",
+  "generated_at": "2024-01-01T00:00:00Z",
+  "generator": "nuguard",
+  "target": "test-fixture",
+  "nodes": [
+    {
+      "id": "808f255c-c9b1-58f2-ba71-dd1cb8ecb0f9",
+      "name": "/chat API",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.62,
+      "metadata": {
+        "endpoint": "/chat",
+        "method": "POST",
+        "accepts_user_input": true,
+        "request_body_schema": {},
+        "chat_payload_key": "message",
+        "chat_payload_list": false,
+        "response_text_key": "response",
+        "extras": {
+          "source": "runtime_probe",
+          "description_source": "none"
+        }
+      },
+      "evidence": []
+    },
+    {
+      "id": "5cf48a09-c0b4-5a13-8fd5-287711ff1e4a",
+      "name": "/chat/message API",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.62,
+      "metadata": {
+        "endpoint": "/chat/message",
+        "method": "POST",
+        "accepts_user_input": true,
+        "request_body_schema": {},
+        "chat_payload_key": "message",
+        "chat_payload_list": false,
+        "response_text_key": "response",
+        "extras": {
+          "source": "runtime_probe",
+          "description_source": "none"
+        }
+      },
+      "evidence": []
+    },
+    {
+      "id": "10b16786-3933-56e4-81b6-f0aeee505760",
+      "name": "/api/chat API",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.62,
+      "metadata": {
+        "endpoint": "/api/chat",
+        "method": "POST",
+        "accepts_user_input": true,
+        "request_body_schema": {},
+        "chat_payload_key": "message",
+        "chat_payload_list": false,
+        "response_text_key": "response",
+        "extras": {
+          "source": "runtime_probe",
+          "description_source": "none"
+        }
+      },
+      "evidence": []
+    },
+    {
+      "id": "96e5cf0d-ad5e-519f-8f67-16f9ae37a40a",
+      "name": "/api/chat/message API",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.62,
+      "metadata": {
+        "endpoint": "/api/chat/message",
+        "method": "POST",
+        "accepts_user_input": true,
+        "request_body_schema": {},
+        "chat_payload_key": "message",
+        "chat_payload_list": false,
+        "response_text_key": "response",
+        "extras": {
+          "source": "runtime_probe",
+          "description_source": "none"
+        }
+      },
+      "evidence": []
+    }
+  ],
+  "edges": [],
+  "deps": [],
+  "_enrichment_cache_key": "5eb7adca77dedd6055358a4f68b6bba0b5445bc2e058000116eda6c245c43a44"
+}

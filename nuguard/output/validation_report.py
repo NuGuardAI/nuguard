@@ -90,12 +90,25 @@ class ScenarioDetail:
 # ---------------------------------------------------------------------------
 
 
+def _r(r: Any, key: str, default: Any = None) -> Any:
+    """Dict-and-dataclass safe field getter for scenario records.
+
+    ``scenario_records`` may be ``ScenarioRecord`` dataclass instances (the
+    CLI's direct orchestrator output) or plain dicts (``RedteamRunResult
+    .scenario_records`` from :mod:`nuguard.redteam.public_api`, converted via
+    ``dataclasses.asdict`` for JSON-safety) — both shapes must render identically.
+    """
+    if isinstance(r, dict):
+        return r.get(key, default)
+    return getattr(r, key, default)
+
+
 def extract_redteam_scenario_details(scenario_records: list[Any]) -> list[ScenarioDetail]:
     """Convert a list of ScenarioRecord objects to ScenarioDetail for rendering."""
     details: list[ScenarioDetail] = []
     for idx, r in enumerate(scenario_records, start=1):
-        chain_status = getattr(r, "chain_status", "completed") or "completed"
-        had_finding = bool(getattr(r, "had_finding", False))
+        chain_status = _r(r, "chain_status", "completed") or "completed"
+        had_finding = bool(_r(r, "had_finding", False))
         if had_finding:
             status = "FINDING"
         elif chain_status not in ("completed",):
@@ -104,7 +117,7 @@ def extract_redteam_scenario_details(scenario_records: list[Any]) -> list[Scenar
             status = "PASS"
 
         turns: list[TurnDetail] = []
-        for t_idx, step in enumerate(getattr(r, "steps", []) or [], start=1):
+        for t_idx, step in enumerate(_r(r, "steps", []) or [], start=1):
             target = step.get("target_path")
             if target:
                 method = step.get("method", "POST")
@@ -127,11 +140,11 @@ def extract_redteam_scenario_details(scenario_records: list[Any]) -> list[Scenar
                 },
             ))
 
-        goal_type = getattr(r, "goal_type", "") or getattr(r, "scenario_type", "") or ""
+        goal_type = _r(r, "goal_type", "") or _r(r, "scenario_type", "") or ""
         details.append(ScenarioDetail(
             index=idx,
-            title=getattr(r, "title", f"Scenario {idx}"),
-            scenario_type=getattr(r, "scenario_type", ""),
+            title=_r(r, "title", f"Scenario {idx}"),
+            scenario_type=_r(r, "scenario_type", ""),
             goal_or_type=goal_type,
             status=status,
             turns=turns,

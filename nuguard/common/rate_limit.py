@@ -41,6 +41,12 @@ SCENARIO_RATE_LIMIT_BACKOFF_CAP: float = 30.0   # seconds
 # Container Apps (minReplicas=0) time to spin up before the next attempt.
 TRANSIENT_ERROR_RETRY_DELAYS: tuple[float, ...] = (60.0, 120.0)  # seconds
 
+# Short-retry delays for HTTP 502/503/504 gateway errors — these are typically
+# momentary Azure OpenAI quota spikes or backend restarts that resolve in 1–3 s.
+# Using short delays avoids holding the semaphore for 60+ seconds and keeps the
+# circuit breaker silent for brief blips that recover quickly.
+GATEWAY_ERROR_RETRY_DELAYS: tuple[float, ...] = (2.0, 5.0)  # seconds
+
 
 def is_rate_limited(response: str) -> bool:
     """Return ``True`` when TargetAppClient returned a 429 sentinel.

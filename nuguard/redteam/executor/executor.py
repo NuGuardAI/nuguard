@@ -632,6 +632,19 @@ class AttackExecutor:
                         static = _mutation_variants(step.payload)
                         mutation = static[attempt % len(static)]
 
+                    # Skip mutation if it is identical to the original payload or a
+                    # previously sent variant — sending the same text twice produces
+                    # duplicate turns in the report and wastes a request slot.
+                    if not hasattr(step, "_sent_payloads"):
+                        step._sent_payloads = {step.payload}  # type: ignore[attr-defined]
+                    if mutation in step._sent_payloads:  # type: ignore[attr-defined]
+                        _log.debug(
+                            "Chain %s step %s: skipping duplicate mutation (attempt %d)",
+                            chain.chain_id, step.step_id, attempt,
+                        )
+                        continue
+                    step._sent_payloads.add(mutation)  # type: ignore[attr-defined]
+
                     try:
                         result = await self._execute_step_with_payload(
                             step, mutation, session, chain

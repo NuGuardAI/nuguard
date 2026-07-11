@@ -375,8 +375,16 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
                         lines.append(f"| {t} | {verdict} | {ci} | {rv} | {ta} | {os_} | {gaps_str} |")
                     lines.append("")
 
-                    # Evidence excerpts for FAIL turns only
+                    # Evidence excerpts for FAIL turns — always show the
+                    # highest-severity FAIL turn (it may be beyond turn 3) plus
+                    # up to 2 additional earlier failures.
                     fail_turns = [v for v in non_pass if v.get("verdict") == "FAIL"]
+                    if fail_turns:
+                        # Put worst turn (highest position) first, then keep
+                        # up to 2 earlier turns for context.
+                        last_fail = fail_turns[-1]
+                        earlier_fails = [t for t in fail_turns[:-1]][:2]
+                        fail_turns = earlier_fails + [last_fail]
                     evidence_lines: list[str] = []
                     for v in fail_turns[:3]:  # cap at 3
                         t = v.get("turn", "?")

@@ -159,7 +159,7 @@ async def _run_behavior(
     verbose: Optional[bool],
 ) -> None:
     """Internal async implementation of the behavior command."""
-    from nuguard.behavior.analyzer import BehaviorAnalyzer
+    from nuguard.behavior.public_api import BehaviorAnalysisRequest, analyze_behavior
     from nuguard.behavior.report import to_json, to_markdown, to_text
     from nuguard.cli.report_meta import ReportMeta
     from nuguard.common.llm_client import LLMClient
@@ -256,14 +256,14 @@ async def _run_behavior(
     # 7. Run analysis
     _console.print(f"[bold]Running behavior analysis[/bold]  mode={mode}")
     try:
-        analyzer = BehaviorAnalyzer(
-            config=bc,
+        request = BehaviorAnalysisRequest(config=bc, mode=mode)  # type: ignore[arg-type]
+        result = await analyze_behavior(
+            request,
             sbom=sbom,
             policy=policy_obj,
             controls=controls,
             llm_client=llm_client,
         )
-        result = await analyzer.analyze(mode=mode)
     except Exception as exc:
         from nuguard.common.errors import AuthError, TargetUnavailableError  # noqa: PLC0415
         if isinstance(exc, TargetUnavailableError):

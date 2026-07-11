@@ -11,6 +11,7 @@ import pytest
 from typer.testing import CliRunner
 
 from nuguard.cli.main import app
+from nuguard.models.token_usage import TokenUsage
 
 runner = CliRunner()
 
@@ -22,7 +23,10 @@ _FIXTURE_DIR = Path(__file__).parent / "fixtures"
 
 _SBOM_PATH = str(_FIXTURE_DIR / "minimal.sbom.json")
 
-_PATCH_ANALYZER = "nuguard.analysis.static_analyzer.StaticAnalyzer"
+# nuguard/cli/commands/analyze.py now calls StaticAnalyzer via
+# nuguard.analysis.public_api.run_analysis(); patch the symbol where it's
+# used (public_api's module-level import), not where StaticAnalyzer is defined.
+_PATCH_ANALYZER = "nuguard.analysis.public_api.StaticAnalyzer"
 
 
 def _invoke(*args: str) -> Any:
@@ -33,6 +37,9 @@ def _make_mock_analyzer() -> MagicMock:
     mock = MagicMock()
     mock.analyze.return_value = []
     mock.tool_status = {}
+    mock.nga_audit = []
+    mock.sc_audit = []
+    mock.token_usage = TokenUsage()
     return mock
 
 

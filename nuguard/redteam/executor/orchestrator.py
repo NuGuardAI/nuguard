@@ -465,6 +465,8 @@ class RedteamOrchestrator:
         guided_max_turns: int = 12,
         guided_concurrency: int = 3,
         guided_mutation_mode: str = "hard",
+        hard_refusal_abort_turns: int = 5,
+        stall_abort_threshold: int = 8,
         tree_breadth: int = 0,
         tree_max_depth: int = 0,
         extra_headers: dict[str, str] | None = None,
@@ -507,6 +509,8 @@ class RedteamOrchestrator:
         self._guided_conversations = guided_conversations
         self._guided_max_turns = guided_max_turns
         self._guided_concurrency = max(1, guided_concurrency)
+        self._hard_refusal_abort_turns = max(1, hard_refusal_abort_turns)
+        self._stall_abort_threshold = max(1, stall_abort_threshold)
         mode = guided_mutation_mode if guided_mutation_mode in {"soft", "hard"} else "hard"
         self._guided_mutation_mode: Literal["soft", "hard"] = cast(
             Literal["soft", "hard"], mode
@@ -1609,6 +1613,7 @@ class RedteamOrchestrator:
             app_domain=app_domain,
             allowed_topics=allowed_topics,
             variation_idx=variation_idx,
+            stall_abort_threshold=self._stall_abort_threshold,
         )
         guided_executor._director = director  # swap in scenario-specific director
 
@@ -1894,7 +1899,7 @@ class RedteamOrchestrator:
                 if sr.http_status_code is not None:
                     detail["status_code"] = sr.http_status_code
             else:
-                detail["payload"] = step.payload
+                detail["payload"] = sr.resolved_payload
             if sr.response:
                 from nuguard.output.validation_report import _clean_response_for_display
                 cleaned = _clean_response_for_display(sr.response)
@@ -1931,7 +1936,7 @@ class RedteamOrchestrator:
             )
         else:
             header = f"Triggering step {step_idx} ({step.step_type} {ok})"
-        payload = (step.payload or "").strip()
+        payload = (sr.resolved_payload or step.payload or "").strip()
         response = (sr.response or "").strip()
         if len(payload) > 800:
             payload = payload[:800] + "…"
