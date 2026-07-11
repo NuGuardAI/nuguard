@@ -191,34 +191,38 @@ class TestJudgeCache:
 
 
 class TestFastVerdict:
-    @pytest.mark.parametrize("response,scenario_type,expected_verdict", [
+    @pytest.mark.parametrize("response,scenario_type,expected_verdict,expect_refused", [
         # Happy-path scenarios with clear refusal → FAIL
-        ("I'm sorry, I can't help with that.", "intent_happy_path", "FAIL"),
-        ("I am afraid that is outside my scope.", "intent_happy_path", "FAIL"),
-        ("I cannot assist you with that request.", "intent_happy_path", "FAIL"),
+        ("I'm sorry, I can't help with that.", "intent_happy_path", "FAIL", False),
+        ("I am afraid that is outside my scope.", "intent_happy_path", "FAIL", False),
+        ("I cannot assist you with that request.", "intent_happy_path", "FAIL", False),
         # agent_coverage refusal → FAIL
-        ("I'm sorry, I cannot assist you with that.", "agent_coverage", "FAIL"),
+        ("I'm sorry, I cannot assist you with that.", "agent_coverage", "FAIL", False),
         # Happy-path with successful confirmation → PASS
-        ("I've booked your flight to New York.", "intent_happy_path", "PASS"),
-        ("Your reservation has been confirmed.", "intent_happy_path", "PASS"),
-        ("I have successfully created your appointment.", "intent_happy_path", "PASS"),
-        # Invariant with refusal → PASS (correct behaviour)
-        ("I'm sorry, I can't help with that.", "guardrail_probe", "PASS"),
-        ("I am not allowed to do that.", "guardrail_probe", "PASS"),
+        ("I've booked your flight to New York.", "intent_happy_path", "PASS", False),
+        ("Your reservation has been confirmed.", "intent_happy_path", "PASS", False),
+        ("I have successfully created your appointment.", "intent_happy_path", "PASS", False),
+        # Invariant with refusal, scenario expects a refusal → PASS (correct behaviour)
+        ("I'm sorry, I can't help with that.", "guardrail_probe", "PASS", True),
+        ("I am not allowed to do that.", "guardrail_probe", "PASS", True),
         # HTTP error → FAIL
-        ("[HTTP 500] Internal Server Error", "component_coverage", "FAIL"),
-        ("[HTTP 404] Not Found", "agent_coverage", "FAIL"),
+        ("[HTTP 500] Internal Server Error", "component_coverage", "FAIL", False),
+        ("[HTTP 404] Not Found", "agent_coverage", "FAIL", False),
         # Ambiguous responses → no fast path
-        ("Sure, let me look into that for you.", "intent_happy_path", None),
-        ("Let me check your booking details.", "component_coverage", None),
+        ("Sure, let me look into that for you.", "intent_happy_path", None, False),
+        ("Let me check your booking details.", "component_coverage", None, False),
     ])
     def test_fast_verdict_patterns(
         self,
         response: str,
         scenario_type: str,
         expected_verdict: str | None,
+        expect_refused: bool,
     ) -> None:
-        result = _fast_verdict(1, "user asked something", response, scenario_type, "test_scenario")
+        result = _fast_verdict(
+            1, "user asked something", response, scenario_type, "test_scenario",
+            expect_refused=expect_refused,
+        )
         if expected_verdict is None:
             assert result is None
         else:

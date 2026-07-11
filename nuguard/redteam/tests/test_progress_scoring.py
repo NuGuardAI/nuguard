@@ -245,7 +245,7 @@ def test_success_score_constant() -> None:
 
 
 def test_stall_abort_threshold_constant() -> None:
-    assert ConversationDirector.STALL_ABORT_THRESHOLD == 6
+    assert ConversationDirector.STALL_ABORT_THRESHOLD == 8
 
 
 # ── Heuristic fallback ────────────────────────────────────────────────────────

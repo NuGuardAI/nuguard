@@ -579,7 +579,11 @@ class TargetAppClient:
                 # will retry with short backoff and only increment the circuit breaker
                 # after all retries are exhausted.  This prevents a single transient
                 # Azure OpenAI quota spike from inflating the shared error counter.
-                if status in (502, 503, 504):
+                # That deferral only applies when a semaphore is configured — that's
+                # the only case send() actually routes through _send_with_transient_retry
+                # (see send() above). Without a semaphore, _send_impl is called directly
+                # and nothing else will ever record the error, so it must count here.
+                if status in (502, 503, 504) and self._request_sem is not None:
                     pass  # caller handles circuit-breaker accounting after retries
                 elif status >= 500:
                     self._record_chat_error(f"HTTP {status}")
