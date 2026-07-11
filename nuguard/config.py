@@ -290,6 +290,10 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_scenario_timeout"] = float(redteam["scenario_timeout"])
     if "similar_miss_threshold" in redteam:
         flat["redteam_similar_miss_threshold"] = int(redteam["similar_miss_threshold"])
+    if "hard_refusal_abort_turns" in redteam:
+        flat["redteam_hard_refusal_abort_turns"] = int(redteam["hard_refusal_abort_turns"])
+    if "stall_abort_threshold" in redteam:
+        flat["redteam_stall_abort_threshold"] = int(redteam["stall_abort_threshold"])
     if "skip_discovery" in redteam:
         flat["redteam_skip_discovery"] = bool(redteam["skip_discovery"])
     if "discovery_max_turns" in redteam:
@@ -1028,6 +1032,23 @@ class NuGuardConfig(BaseSettings):
             "scenarios are suppressed (yaml: redteam.similar_miss_threshold). "
             "Prevents repeating the same failing attack angle across many scenarios. "
             "Set to 0 to disable."
+        ),
+    )
+    redteam_hard_refusal_abort_turns: int = Field(
+        default=5,
+        description=(
+            "Number of consecutive hard/soft refusals in a guided conversation before "
+            "aborting the scenario (yaml: redteam.hard_refusal_abort_turns). "
+            "Increase for agents with aggressive topic guardrails."
+        ),
+    )
+    redteam_stall_abort_threshold: int = Field(
+        default=8,
+        description=(
+            "Number of consecutive stalled turns (progress score ≤ 2) in a guided "
+            "conversation before aborting the scenario "
+            "(yaml: redteam.stall_abort_threshold). "
+            "Increase to give the attacker more turns when the agent gives partial responses."
         ),
     )
     redteam_skip_discovery: bool = Field(

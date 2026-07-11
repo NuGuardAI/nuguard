@@ -85,6 +85,8 @@ class RedteamRunRequest(BaseModel):
     turn_delay_seconds: float = 5.0
     scenario_delay_seconds: float = 0.0
     similar_miss_threshold: int = 4
+    hard_refusal_abort_turns: int = 5
+    stall_abort_threshold: int = 8
     skip_discovery: bool = False
     discovery_max_turns: int = 3
     chat_payload_extras: dict[str, Any] | None = None
@@ -250,6 +252,8 @@ async def run_redteam(
         turn_delay_seconds=request.turn_delay_seconds,
         scenario_delay_seconds=request.scenario_delay_seconds,
         similar_miss_threshold=request.similar_miss_threshold,
+        hard_refusal_abort_turns=request.hard_refusal_abort_turns,
+        stall_abort_threshold=request.stall_abort_threshold,
         skip_discovery=request.skip_discovery,
         discovery_max_turns=request.discovery_max_turns,
         chat_payload_extras=request.chat_payload_extras,

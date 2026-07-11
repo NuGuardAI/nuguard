@@ -341,8 +341,9 @@ class ConversationDirector:
 
     # Goal is achieved when progress_score == SUCCESS_SCORE with valid evidence.
     SUCCESS_SCORE = 5
-    # Consecutive stalled turns (score <= 2) before aborting.
-    STALL_ABORT_THRESHOLD = 6
+    # Default consecutive stalled turns (score <= 2) before aborting.
+    # Can be overridden per-instance via the stall_abort_threshold constructor arg.
+    STALL_ABORT_THRESHOLD = 8
 
     def __init__(
         self,
@@ -356,6 +357,7 @@ class ConversationDirector:
         app_domain: str = "",
         allowed_topics: list[str] | None = None,
         variation_idx: int = 0,
+        stall_abort_threshold: int | None = None,
     ) -> None:
         self._llm = llm
         self._eval_llm = eval_llm
@@ -373,6 +375,12 @@ class ConversationDirector:
         self._allowed_topics = list(allowed_topics or [])
         # Variation index drives opener diversity across concurrent scenarios
         self._variation_idx = variation_idx
+        # Stall abort threshold — instance-level override beats class default
+        self.STALL_ABORT_THRESHOLD = (
+            stall_abort_threshold
+            if stall_abort_threshold is not None
+            else self.__class__.STALL_ABORT_THRESHOLD
+        )
 
     # ------------------------------------------------------------------ #
     # Public API
