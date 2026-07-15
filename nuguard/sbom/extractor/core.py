@@ -2890,7 +2890,13 @@ def _dedup_deployment_nodes(doc: "AiSbomDocument") -> None:  # noqa: F821
         by_target.setdefault(target, []).append(node)
 
     gha_nodes = by_target.get("github-actions", [])
-    generic_nodes = by_target.get("unknown", []) + [
+    # Only true generic-keyword-bucket nodes (deployment_generic adapter) are
+    # removal candidates below. Using by_target["unknown"] here too would also
+    # sweep in unrelated, structured DEPLOYMENT nodes that simply don't set a
+    # deployment_target extra (e.g. a Dockerfile EXPOSE-port node or an nginx
+    # proxy_pass node) — those would then satisfy the substring check against
+    # their own canonical name and get wrongly removed.
+    generic_nodes = [
         n for n in deployment_nodes
         if n.metadata.extras.get("adapter") == "deployment_generic"
     ]
