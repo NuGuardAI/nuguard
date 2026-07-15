@@ -23,7 +23,6 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, Field
 
-from nuguard.behavior.models import RemediationArtefact
 from nuguard.common.auth import AuthConfig
 from nuguard.common.logging import get_logger
 from nuguard.config import RedteamFindingTriggers
@@ -32,6 +31,8 @@ from nuguard.models.health_report import TargetHealthReport
 from nuguard.models.token_usage import TokenUsage
 from nuguard.redteam.executor.orchestrator import RedteamOrchestrator
 from nuguard.redteam.target.canary import CanaryConfig
+from nuguard.remediation.backfill import backfill_finding_remediation
+from nuguard.remediation.models import RemediationArtefact
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -118,7 +119,6 @@ class RedteamRunResult(BaseModel):
     ]
     config_notes: list[str] = Field(default_factory=list)
     llm_executive_summary: str | None = None
-    llm_remediations: dict[str, str] = Field(default_factory=dict)
     llm_coding_brief: str | None = None
     scenarios_run: int = 0
     input_tokens_used: int = 0
@@ -136,8 +136,8 @@ class RedteamRunResult(BaseModel):
     (see :func:`_build_remediation_plan` below) — the same synthesis the CLI's
     ``nuguard redteam`` command relies on, since ``_run_orchestrator`` calls
     :func:`run_redteam` directly. Populated with contextual LLM patch text when
-    ``eval_llm`` is supplied to :func:`run_redteam`. Empty when synthesis fails
-    or no SBOM is available.
+    ``remediation_llm_client`` (falling back to ``eval_llm``) is supplied to
+    :func:`run_redteam`. Empty when synthesis fails or no SBOM is available.
     """
 
 
@@ -159,7 +159,7 @@ async def _build_remediation_plan(
     if sbom is None or not findings:
         return []
     try:
-        from nuguard.behavior.remediation import RemediationSynthesizer  # noqa: PLC0415
+        from nuguard.remediation.synthesizer import RemediationSynthesizer  # noqa: PLC0415
 
         synthesizer = RemediationSynthesizer(sbom=sbom, policy=policy, llm_client=llm_client)
         finding_dicts = [
@@ -202,6 +202,7 @@ async def run_redteam(
     policy_controls: "list | None" = None,
     redteam_llm: "LLMClient | None" = None,
     eval_llm: "LLMClient | None" = None,
+    remediation_llm_client: "LLMClient | None" = None,
     app_log_reader: "FileLogReader | BufferLogReader | None" = None,
     catalog: "tuple | None" = None,
     log_path: "Path | None" = None,
@@ -291,8 +292,20 @@ async def run_redteam(
         ]
 
     remediation_plan = await _build_remediation_plan(
-        findings, sbom=sbom, policy=policy, llm_client=eval_llm
+        findings, sbom=sbom, policy=policy, llm_client=remediation_llm_client or eval_llm
     )
+    backfill_finding_remediation(findings, remediation_plan)
+
+    llm_coding_brief: str | None = None
+    if eval_llm and findings:
+        try:
+            from nuguard.redteam.llm_engine.summary_generator import (
+                LLMSummaryGenerator,  # noqa: PLC0415
+            )
+
+            llm_coding_brief = await LLMSummaryGenerator(eval_llm).coding_agent_brief(findings)
+        except Exception as exc:  # noqa: BLE001
+            _log.warning("run_redteam: coding agent brief generation failed: %s", exc)
 
     coverage_tracker = getattr(orchestrator, "_coverage_tracker", None)
     return RedteamRunResult(
@@ -301,8 +314,7 @@ async def run_redteam(
         scan_outcome=orchestrator.scan_outcome,  # type: ignore[arg-type]
         config_notes=list(orchestrator.config_notes),
         llm_executive_summary=orchestrator.llm_executive_summary,
-        llm_remediations=orchestrator.llm_remediations,
-        llm_coding_brief=orchestrator.llm_coding_brief,
+        llm_coding_brief=llm_coding_brief,
         scenarios_run=orchestrator.scenarios_run,
         input_tokens_used=orchestrator.input_tokens_used,
         output_tokens_used=orchestrator.output_tokens_used,

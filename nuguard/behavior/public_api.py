@@ -22,12 +22,13 @@ from nuguard.behavior.models import (
     BehaviorAnalysisResult,
     BehaviorRunResult,
     BehaviorScenario,
-    RemediationArtefact,
 )
 from nuguard.behavior.runner import BehaviorRunner
 from nuguard.common.discovery import DiscoveredProfile
 from nuguard.common.logging import get_logger
 from nuguard.config import BehaviorConfig
+from nuguard.remediation.backfill import backfill_finding_remediation
+from nuguard.remediation.models import RemediationArtefact
 
 if TYPE_CHECKING:
     from nuguard.behavior.judge_cache import JudgeCache
@@ -53,6 +54,7 @@ async def analyze_behavior(
     policy: "CognitivePolicy | None" = None,
     controls: "list[PolicyControl] | None" = None,
     llm_client: "LLMClient | None" = None,
+    remediation_llm_client: "LLMClient | None" = None,
 ) -> BehaviorAnalysisResult:
     """Run static+dynamic behavior analysis from a JSON-safe request.
 
@@ -68,6 +70,7 @@ async def analyze_behavior(
         policy=policy,
         controls=controls,
         llm_client=llm_client,
+        remediation_llm_client=remediation_llm_client,
     )
     return await analyzer.analyze(mode=request.mode)
 
@@ -98,7 +101,7 @@ async def _synthesize_behavior_remediation_plan(
     if sbom is None or not findings:
         return []
     try:
-        from nuguard.behavior.remediation import RemediationSynthesizer  # noqa: PLC0415
+        from nuguard.remediation.synthesizer import RemediationSynthesizer  # noqa: PLC0415
 
         synthesizer = RemediationSynthesizer(sbom=sbom, policy=policy, llm_client=llm_client)
         return await synthesizer.synthesize_findings_async(findings)
@@ -114,6 +117,7 @@ async def run_behavior_scenarios(
     policy: "CognitivePolicy | None" = None,
     intent: "IntentProfile | None" = None,
     llm_client: "LLMClient | None" = None,
+    remediation_llm_client: "LLMClient | None" = None,
     judge_cache: "JudgeCache | None" = None,
 ) -> BehaviorRunResult:
     """Run a list of behavior scenarios from a JSON-safe request.
@@ -122,8 +126,9 @@ async def run_behavior_scenarios(
     synthesizes ``result.remediation_plan`` — concrete, SBOM-node-specific
     remediation artefacts — from the run's findings, the same way
     :meth:`~nuguard.behavior.analyzer.BehaviorAnalyzer.analyze` does for the
-    full static+dynamic pipeline. This is best-effort enrichment: it never
-    raises, and simply leaves ``remediation_plan`` empty on failure.
+    full static+dynamic pipeline, and backfills each finding's flat
+    ``remediation`` string from that plan. This is best-effort enrichment: it
+    never raises, and simply leaves ``remediation_plan`` empty on failure.
     """
     _log.debug("run_behavior_scenarios: %d scenario(s)", len(request.scenarios))
     runner = BehaviorRunner(
@@ -136,8 +141,9 @@ async def run_behavior_scenarios(
     )
     result = await runner.run(request.scenarios, pre_scan_profile=request.pre_scan_profile)
     result.remediation_plan = await _synthesize_behavior_remediation_plan(
-        result.findings, sbom=sbom, policy=policy, llm_client=llm_client
+        result.findings, sbom=sbom, policy=policy, llm_client=remediation_llm_client or llm_client
     )
+    backfill_finding_remediation(result.findings, result.remediation_plan)
     return result
 
 

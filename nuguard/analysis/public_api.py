@@ -18,10 +18,11 @@ from typing import TYPE_CHECKING, Any
 from pydantic import BaseModel, Field
 
 from nuguard.analysis.static_analyzer import StaticAnalyzer
-from nuguard.behavior.models import RemediationArtefact
 from nuguard.common.logging import get_logger
 from nuguard.models.finding import Finding, Severity
 from nuguard.models.token_usage import TokenUsage
+from nuguard.remediation.backfill import backfill_finding_remediation
+from nuguard.remediation.models import RemediationArtefact
 
 if TYPE_CHECKING:
     from nuguard.common.llm_client import LLMClient
@@ -96,7 +97,7 @@ async def _build_remediation_plan(
     if sbom is None or not findings:
         return []
     try:
-        from nuguard.behavior.remediation import RemediationSynthesizer  # noqa: PLC0415
+        from nuguard.remediation.synthesizer import RemediationSynthesizer  # noqa: PLC0415
 
         synthesizer = RemediationSynthesizer(sbom=sbom, policy=policy, llm_client=llm_client)
         finding_dicts = [
@@ -153,6 +154,7 @@ async def run_analysis(
     remediation_plan = await _build_remediation_plan(
         findings, sbom=sbom, policy=policy, llm_client=llm_client
     )
+    backfill_finding_remediation(findings, remediation_plan)
 
     return AnalysisRunResult(
         findings=findings,

@@ -209,7 +209,7 @@ async def test_run_analysis_populates_remediation_plan():
     via the same RemediationSynthesizer behavior/redteam public APIs use."""
     from types import SimpleNamespace
 
-    from nuguard.behavior.models import RemediationArtefact, RemediationArtefactType
+    from nuguard.remediation.models import RemediationArtefact, RemediationArtefactType
 
     findings = [_finding()]
     mock_instance = _make_mock_analyzer(findings)
@@ -225,7 +225,7 @@ async def test_run_analysis_populates_remediation_plan():
     with (
         patch("nuguard.analysis.public_api.StaticAnalyzer") as mock_cls,
         patch(
-            "nuguard.behavior.remediation.RemediationSynthesizer.synthesize_findings_async"
+            "nuguard.remediation.synthesizer.RemediationSynthesizer.synthesize_findings_async"
         ) as mock_synth,
     ):
         mock_cls.return_value = mock_instance
@@ -263,7 +263,7 @@ async def test_run_analysis_remediation_synthesis_failure_is_swallowed():
     with (
         patch("nuguard.analysis.public_api.StaticAnalyzer") as mock_cls,
         patch(
-            "nuguard.behavior.remediation.RemediationSynthesizer.synthesize_findings_async",
+            "nuguard.remediation.synthesizer.RemediationSynthesizer.synthesize_findings_async",
             side_effect=RuntimeError("boom"),
         ),
     ):

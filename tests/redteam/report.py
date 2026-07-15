@@ -49,7 +49,6 @@ def write_redteam_report(
     verbose: bool = False,
     scenario_records: list["ScenarioRecord"] | None = None,
     llm_executive_summary: str | None = None,
-    llm_remediations: dict[str, str] | None = None,
     llm_coding_brief: str | None = None,
     prompt_cache_path: "Path | None" = None,
     eval_llm_model: str | None = None,
@@ -338,13 +337,8 @@ def write_redteam_report(
             if finding.evidence:
                 _h(f"**Evidence:** {finding.evidence}")
                 _h("")
-            # Use LLM remediation if available, else static
-            finding_remediation = (
-                (llm_remediations or {}).get(finding.finding_id)
-                or finding.remediation
-            )
-            if finding_remediation:
-                _h(f"**Remediation:** {finding_remediation}")
+            if finding.remediation:
+                _h(f"**Remediation:** {finding.remediation}")
                 _h("")
             refs: list[str] = []
             if finding.owasp_asi_ref:

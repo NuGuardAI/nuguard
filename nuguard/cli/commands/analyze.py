@@ -222,19 +222,12 @@ def analyze(
         atlas_config["format"] = "markdown"
 
     # LLM client for remediation-plan synthesis (best-effort; deterministic
-    # templates are used when no client is available).
-    llm_client = None
-    if llm or cfg.litellm_api_key:
-        try:
-            from nuguard.common.llm_client import LLMClient  # noqa: PLC0415
-            _model = cfg.litellm_model or ""
-            llm_client = LLMClient(
-                model=cfg.litellm_model,
-                api_key=cfg.litellm_api_key,
-                api_base=cfg.litellm_api_base if _model.startswith("azure") else None,
-            )
-        except Exception as exc:
-            _log.warning("Could not build LLM client: %s", exc)
+    # templates are used when no client is available). Uses the shared
+    # redteam.llm -> redteam.eval_llm -> llm fallback chain so remediation
+    # text is authored by the highest-capability model configured.
+    from nuguard.remediation.llm import resolve_remediation_llm_client  # noqa: PLC0415
+
+    llm_client = resolve_remediation_llm_client(cfg)
 
     try:
         from nuguard.analysis.public_api import AnalysisRunRequest, run_analysis  # noqa: PLC0415
