@@ -335,7 +335,11 @@ def default_registry() -> tuple[DetectionAdapter, ...]:
                         re.IGNORECASE,
                     ),
                 ),
-                canonical_name="deployment:generic",
+                # No canonical_name: distinct matched keywords (docker, vercel,
+                # kustomize, ...) must become distinct nodes rather than collapsing
+                # into one "generic" bucket that erases which technologies are
+                # actually in use. See the MODEL per-match-name splitting in
+                # extractor/core.py, which this adapter now also relies on.
             ),
             # Web search / information-retrieval tools used by AI agents.
             # Covers direct library usage, LangChain community wrappers, and

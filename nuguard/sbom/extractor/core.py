@@ -986,28 +986,32 @@ class AiSbomExtractor:
                 detection = rx_adapter.detect(_regex_content)
                 if detection is None:
                     continue
-                # For MODEL adapter with per-match naming (canonical_name=None on
-                # the adapter), emit one node per distinct model name so that a
-                # single file containing multiple different models (e.g. a mock
-                # route.ts listing gpt-5, deepseek-v3.2, gemini-3-pro) gets a
-                # separate node for each instead of only the first match.
-                if detection.component_type == ComponentType.MODEL and not getattr(
-                    rx_adapter, "canonical_name", None
-                ):
-                    # Group matches by their normalised model name; keep first
+                # For adapters with per-match naming (canonical_name=None on the
+                # adapter), emit one node per distinct matched name so that a
+                # single file containing multiple different entities of the same
+                # type (e.g. a mock route.ts listing gpt-5, deepseek-v3.2,
+                # gemini-3-pro; or a CI workflow using both docker and vercel)
+                # gets a separate node for each instead of only the first match.
+                # Originally MODEL-only; also applies to DEPLOYMENT so distinct
+                # deployment technologies don't collapse into one "generic" node.
+                if detection.component_type in (
+                    ComponentType.MODEL,
+                    ComponentType.DEPLOYMENT,
+                ) and not getattr(rx_adapter, "canonical_name", None):
+                    # Group matches by their normalised name; keep first
                     # occurrence as the representative match for location/snippet.
-                    _model_first: dict[str, AdapterMatch] = {}
-                    _model_count: dict[str, int] = {}
+                    _match_first: dict[str, AdapterMatch] = {}
+                    _match_count: dict[str, int] = {}
                     for _m in detection.matches:
                         _key = _m.snippet.strip().lower()
-                        if _key not in _model_first:
-                            _model_first[_key] = _m
-                            _model_count[_key] = 1
+                        if _key not in _match_first:
+                            _match_first[_key] = _m
+                            _match_count[_key] = 1
                         else:
-                            _model_count[_key] += 1
-                    for _raw_lower, _first_match in _model_first.items():
+                            _match_count[_key] += 1
+                    for _raw_lower, _first_match in _match_first.items():
                         _raw_name = _first_match.snippet.strip()
-                        _cnt = _model_count[_raw_lower]
+                        _cnt = _match_count[_raw_lower]
                         _conf = min(0.95, 0.50 + 0.05 * _cnt)
                         _comp_det = ComponentDetection(
                             component_type=detection.component_type,
@@ -2547,11 +2551,25 @@ def _dedup_by_name_prefix(
     (e.g. ``gemini-2.0``) while an AST adapter extracts the full string
     (``gemini-2.0-flash``) from an adjacent line of the same call.
     The shorter entry is dropped and its evidence absorbed by the longer one.
+
+    A prefix match only counts as a truncation if it ends on a delimiter
+    boundary in the longer name (e.g. the ``-`` in ``gemini-2.0-flash``).
+    Without this, auto-generated numeric-ID names collide by coincidence —
+    e.g. ``Prompt 407`` is a raw string-prefix of ``Prompt 4078`` even though
+    they are unrelated string literals at different line numbers.
+
+    DEPLOYMENT is excluded entirely: its generic keyword nodes (e.g.
+    "docker", accumulated from every file mentioning that word across the
+    repo) are always a word-boundary-respecting prefix of specific IaC node
+    names that start with the same technology (e.g. "Docker Release"), even
+    though they are not the same entity — merging would silently reattribute
+    the generic bucket's unrelated evidence to one specific workflow node.
     """
     keys_to_remove: set[tuple[ComponentType, str]] = set()
     files_by_key: dict[tuple[ComponentType, str], set[str]] = {
         key: {ev.location.path for ev in acc.evidence if ev.location}
         for key, acc in node_map.items()
+        if key[0] != ComponentType.DEPLOYMENT
     }
 
     # Compare only key pairs that actually share at least one source file.
@@ -2583,6 +2601,11 @@ def _dedup_by_name_prefix(
                     continue
                 if not name_b.startswith(name_a):
                     break
+                # Require a delimiter boundary right after the prefix so we
+                # don't treat coincidental numeric-ID overlaps (prompt_407 /
+                # prompt_4078) as a truncated/full name pair.
+                if name_b[len(name_a)].isalnum():
+                    continue
                 if len(name_b) > len(winner_name):
                     winner_key = key_b
                     winner_name = name_b
@@ -2639,20 +2662,31 @@ def _dedup_by_location(
             # both be kept.
             if not (has_regex_evidence.get(winner, False) or has_regex_evidence.get(loser, False)):
                 continue
-            # FRAMEWORK nodes with different canonical names are distinct
-            # frameworks even when detected on the same source line (e.g. a
-            # comment mentioning both "autogen" and "crewai" triggers both regex
-            # adapters at the same line).  Keep them separate so each framework
-            # gets its own node in the SBOM.
-            if winner[0] == ComponentType.FRAMEWORK and winner[1] != loser[1]:
+            # FRAMEWORK/DEPLOYMENT nodes with different canonical names are
+            # distinct entities even when detected on the same source line.
+            # For FRAMEWORK: a comment mentioning both "autogen" and "crewai"
+            # triggers both regex adapters at the same line. For DEPLOYMENT: a
+            # generic keyword node (e.g. "docker") accumulates evidence from
+            # every file mentioning that word across the whole repo, so a
+            # single coincidental same-line hit against a specific IaC node
+            # (e.g. "deployment_github_actions_docker_release", whose slug
+            # trivially contains the keyword as a substring) must not absorb
+            # that node's unrelated evidence from every other file. Keep both
+            # kinds separate so each gets its own node in the SBOM.
+            if winner[0] in (ComponentType.FRAMEWORK, ComponentType.DEPLOYMENT) and winner[1] != loser[1]:
                 continue
-            # FRAMEWORK nodes with different canonical names are distinct
-            # frameworks even when detected on the same source line (e.g. a
-            # comment mentioning both "autogen" and "crewai" triggers both regex
-            # adapters at the same line).  Keep them separate so each framework
-            # gets its own node in the SBOM.
-            if winner[0] == ComponentType.FRAMEWORK and winner[1] != loser[1]:
-                continue
+            # MODEL nodes: two canonical names at the same location are
+            # usually the same model detected twice with different boundaries
+            # (e.g. regex hit "gpt-5.4" and "openai/gpt-5.4" on one token —
+            # one name contains the other as a substring). But a
+            # fallback/comparison list like `[claude-sonnet-4-6,
+            # claude-haiku-4-5]` puts two genuinely different models on the
+            # same line, and neither name is a substring of the other — keep
+            # those separate instead of one silently absorbing the other's
+            # evidence.
+            if winner[0] == ComponentType.MODEL and winner[1] != loser[1]:
+                if winner[1] not in loser[1] and loser[1] not in winner[1]:
+                    continue
             # Absorb evidence so the winner node reflects all source locations
             node_map[winner].evidence.extend(node_map[loser].evidence)
             keys_to_remove.add(loser)
@@ -2862,23 +2896,24 @@ def _dedup_deployment_nodes(doc: "AiSbomDocument") -> None:  # noqa: F821
     ]
     nodes_to_remove = []
 
-    # Remove generic deployment nodes when real IaC nodes already cover the same platform
-    real_iac_targets = {
-        t for t in by_target
-        if t not in ("unknown", "github-actions")
-        and any(
-            n.metadata.extras.get("adapter") != "deployment_generic"
-            for n in by_target[t]
-        )
-    }
-    gha_cloud_providers: set[str] = set()
-    for gha in gha_nodes:
-        gha_cloud_providers.update(gha.metadata.extras.get("cloud_providers") or [])
+    # A generic keyword node (e.g. "docker", "vercel", "kustomize" — one per
+    # matched technology, see the deployment_generic adapter) is only
+    # redundant when a more specific, non-generic DEPLOYMENT node already
+    # names that same technology (e.g. "deployment_github_actions_docker_
+    # release" already covers "docker"). Checking "any GHA/IaC node exists
+    # at all" is not enough: having CI/CD workflows or a cloud deployment
+    # target says nothing about whether e.g. Vercel or Kustomize usage is
+    # covered elsewhere, and would otherwise wipe out every generic node
+    # whenever the repo has so much as one GitHub Actions workflow.
+    specific_canonical_names = [
+        (n.metadata.extras.get("canonical_name") or "").lower()
+        for n in deployment_nodes
+        if n.metadata.extras.get("adapter") != "deployment_generic"
+    ]
 
     for generic_node in generic_nodes:
-        # Drop generic nodes when a real IaC node covers the same cloud, or when there
-        # are GHA nodes that already represent the deployment CI/CD pipeline
-        if real_iac_targets or gha_nodes:
+        generic_canon = (generic_node.metadata.extras.get("canonical_name") or "").lower()
+        if generic_canon and any(generic_canon in specific for specific in specific_canonical_names):
             if generic_node not in nodes_to_remove:
                 nodes_to_remove.append(generic_node)
 
