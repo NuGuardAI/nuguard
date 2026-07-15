@@ -1,7 +1,6 @@
-"""LLM-powered executive summary and remediation brief generator."""
+"""LLM-powered executive summary and coding-agent brief generator."""
 from __future__ import annotations
 
-import re
 from typing import TYPE_CHECKING
 
 from nuguard.common.llm_client import LLMClient
@@ -16,18 +15,6 @@ _log = get_logger(__name__)
 _EXEC_SUMMARY_SYSTEM = (
     "You are a security engineer summarising an AI red-team scan report. "
     "Write concise, technical prose. Do NOT use bullet lists or headers."
-)
-
-_REMEDIATION_SYSTEM = (
-    "You are a security engineer writing remediation steps for a developer. "
-    "Use imperative sentences. Be concrete. Max 5 steps."
-)
-
-_REMEDIATION_BATCH_SYSTEM = (
-    "You are a security engineer writing remediation steps for a developer. "
-    "You will receive multiple findings grouped by component and attack goal. "
-    "For each finding, write concise, actionable steps. "
-    "Use imperative sentences. Be concrete. Max 5 steps per finding."
 )
 
 _BEHAVIOR_EXEC_SUMMARY_SYSTEM = (
@@ -49,7 +36,14 @@ def _sev_counts(findings: list[Finding]) -> dict[str, int]:
 
 
 class LLMSummaryGenerator:
-    """Generates executive summary and per-finding remediations using the eval LLM."""
+    """Generates executive summaries and the coding-agent brief using the eval LLM.
+
+    Per-finding remediation text is generated elsewhere — by
+    :class:`nuguard.remediation.synthesizer.RemediationSynthesizer` — and
+    backfilled onto ``Finding.remediation`` via
+    :func:`nuguard.remediation.backfill.backfill_finding_remediation` before
+    :meth:`coding_agent_brief` is called.
+    """
 
     def __init__(self, llm: LLMClient) -> None:
         self._llm = llm
@@ -176,214 +170,24 @@ class LLMSummaryGenerator:
             _log.warning("Behavior executive summary generation failed: %s", exc)
             return ""
 
-    async def remediation(
-        self,
-        finding: Finding,
-        sbom_nodes: dict[str, object],
-    ) -> str:
-        """
-        Return LLM-generated remediation for a single finding.
-        Includes filepath only when finding.sbom_path has exactly one node
-        with a known source_file metadata field.
-        """
-        # Resolve SBOM node details
-        sbom_path_descriptions = finding.sbom_path_descriptions or []
-        source_file: str | None = None
-
-        if len(finding.sbom_path) == 1:
-            node = sbom_nodes.get(finding.sbom_path[0])
-            if node is not None:
-                meta = getattr(node, "metadata", None)
-                if meta:
-                    source_file = getattr(meta, "source_file", None)
-
-        # Build attack steps summary
-        step_lines = []
-        for i, step in enumerate(finding.attack_steps[:5], 1):
-            step_type = step.get("step_type", "?")
-            ok = "succeeded" if step.get("succeeded") else "failed"
-            resp = (step.get("response") or "")[:150].replace("\n", " ")
-            step_lines.append(f"  Step {i} ({step_type}, {ok}): {resp}")
-
-        prompt_lines = [
-            f"Finding: {finding.title}",
-            f"Severity: {finding.severity}",
-            f"Attack goal: {finding.goal_type or 'unknown'}",
-            f"Affected component: {finding.affected_component or 'unknown'}",
-            f"Evidence: {(finding.evidence or finding.description or '')[:300]}",
-        ]
-        if sbom_path_descriptions:
-            prompt_lines.append(f"SBOM path: {' \u2192 '.join(sbom_path_descriptions)}")
-        if source_file:
-            prompt_lines.append(f"Source file: {source_file}")
-        if step_lines:
-            prompt_lines.append("Attack steps that succeeded:")
-            prompt_lines.extend(step_lines)
-
-        prompt_lines.append("")
-        if source_file:
-            prompt_lines.append(
-                "Write a specific, actionable remediation. Reference the source file path."
-            )
-        else:
-            prompt_lines.append(
-                "Write a specific, actionable remediation. "
-                "Do NOT reference specific filenames — this component appears in multiple locations."
-            )
-        prompt_lines += [
-            "Rules:",
-            '- Use imperative sentences ("Add a guard\u2026", "Replace X with Y\u2026")',
-            "- Be concrete enough that a coding agent can implement without asking questions",
-            "- Max 5 steps; shorter is better",
-            "- Do not restate what the attack did — only what to fix",
-        ]
-
-        _log.debug(
-            "summary-gen | remediation: finding=%r severity=%s component=%s",
-            finding.title, finding.severity, finding.affected_component,
-        )
-        try:
-            result = await self._llm.complete(
-                "\n".join(prompt_lines), system=_REMEDIATION_SYSTEM,
-                label=f"summary-gen | remediation finding={finding.finding_id!r}",
-            )
-            if result.startswith("[NUGUARD_CANNED_RESPONSE]"):
-                return ""
-            return result.strip()
-        except Exception as exc:
-            _log.warning("Remediation generation failed for %s: %s", finding.finding_id, exc)
-            return ""
-
-    async def remediation_batch(
-        self,
-        findings: list[Finding],
-        sbom_nodes: dict[str, object],
-    ) -> dict[str, str]:
-        """Return ``{finding_id: remediation_text}`` for all findings.
-
-        Groups findings by ``(affected_component, goal_type)`` and issues one
-        LLM call per cluster.  Falls back to per-finding calls for any cluster
-        whose bulk response cannot be parsed.
-        """
-        if not findings:
-            return {}
-
-        # Group by (affected_component, goal_type)
-        clusters: dict[tuple[str, str], list[Finding]] = {}
-        for f in findings:
-            key = (f.affected_component or "unknown", f.goal_type or "unknown")
-            clusters.setdefault(key, []).append(f)
-
-        _log.info(
-            "summary-gen | remediation_batch: %d findings across %d clusters",
-            len(findings), len(clusters),
-        )
-
-        result: dict[str, str] = {}
-        for (component, goal_type), cluster_findings in clusters.items():
-            cluster_result = await self._remediation_cluster(
-                cluster_findings, component, goal_type, sbom_nodes
-            )
-            result.update(cluster_result)
-        return result
-
-    async def _remediation_cluster(
-        self,
-        findings: list[Finding],
-        component: str,
-        goal_type: str,
-        sbom_nodes: dict[str, object],
-    ) -> dict[str, str]:
-        """One LLM call for all findings in a (component, goal_type) cluster.
-
-        Parses per-finding sections from the response. Falls back to individual
-        `remediation()` calls if parsing fails or the bulk call errors.
-        """
-        if len(findings) == 1:
-            rem = await self.remediation(findings[0], sbom_nodes)
-            return {findings[0].finding_id: rem} if rem else {}
-
-        # Build combined prompt
-        finding_blocks = []
-        for i, f in enumerate(findings, 1):
-            source_file: str | None = None
-            if len(f.sbom_path) == 1:
-                node = sbom_nodes.get(f.sbom_path[0])
-                if node is not None:
-                    meta = getattr(node, "metadata", None)
-                    if meta:
-                        source_file = getattr(meta, "source_file", None)
-            evidence_text = (f.evidence or f.description or "")[:200]
-            block = [
-                f"## FINDING {i}: {f.title}",
-                f"ID: {f.finding_id}",
-                f"Severity: {f.severity}",
-                f"Evidence: {evidence_text}",
-            ]
-            if source_file:
-                block.append(f"Source file: {source_file}")
-            finding_blocks.append("\n".join(block))
-
-        prompt = (
-            f"Component: {component}\n"
-            f"Attack goal: {goal_type}\n\n"
-            + "\n\n".join(finding_blocks)
-            + "\n\n"
-            "For each finding above, write 3–5 concrete remediation steps. "
-            "Format output as:\n\n"
-            "## FINDING 1\n<steps>\n\n## FINDING 2\n<steps>\n\n..."
-            "\n\nDo NOT include the finding title or ID in your output — just the steps."
-        )
-
-        label = f"summary-gen | remediation-cluster component={component!r} n={len(findings)}"
-        try:
-            raw = await self._llm.complete(
-                prompt, system=_REMEDIATION_BATCH_SYSTEM, label=label,
-            )
-            if not raw.startswith("[NUGUARD_CANNED_RESPONSE]"):
-                # Parse sections by "## FINDING N"
-                parts = re.split(r"(?m)^## FINDING\s+\d+\s*\n?", raw)
-                # parts[0] is preamble (empty), then one section per finding
-                finding_sections = [p.strip() for p in parts if p.strip()]
-                if len(finding_sections) >= len(findings):
-                    result: dict[str, str] = {}
-                    for f, section in zip(findings, finding_sections):
-                        if section:
-                            result[f.finding_id] = section
-                    if result:
-                        _log.debug(
-                            "remediation-cluster: parsed %d/%d findings for %r/%r",
-                            len(result), len(findings), component, goal_type,
-                        )
-                        return result
-                _log.info(
-                    "remediation-cluster: parse mismatch (got %d sections for %d findings) "
-                    "— falling back for %r/%r",
-                    len(finding_sections), len(findings), component, goal_type,
-                )
-        except Exception as exc:
-            _log.warning("remediation-cluster failed for %r/%r: %s", component, goal_type, exc)
-
-        # Fallback: per-finding calls
-        result = {}
-        for f in findings:
-            rem = await self.remediation(f, sbom_nodes)
-            if rem:
-                result[f.finding_id] = rem
-        return result
-
     async def coding_agent_brief(
         self,
         findings: list[Finding],
-        remediations: dict[str, str],
     ) -> str:
-        """Return the full coding-agent brief as a Markdown string."""
+        """Return the full coding-agent brief as a Markdown string.
+
+        Sources each finding's remediation text from ``finding.remediation``
+        — callers should run
+        :func:`nuguard.remediation.backfill.backfill_finding_remediation`
+        before invoking this so that text reflects the LLM-synthesized
+        remediation plan rather than being blank.
+        """
         if not findings:
             return ""
 
         findings_text = []
         for f in findings:
-            rem = remediations.get(f.finding_id, f.remediation or "")
+            rem = f.remediation or ""
             findings_text.append(
                 f"**[{f.severity}] {f.title}**\n"
                 f"Component: {f.affected_component or 'unknown'}\n"
@@ -400,7 +204,7 @@ class LLMSummaryGenerator:
             "3. Reference the relevant OWASP control.\n\n"
             "Do not include explanatory prose between tasks. Format:\n\n"
             "## Remediation Tasks\n\n"
-            "1. **[{severity}] {component}** \u2014 {precise action}.  ({OWASP ref})\n"
+            "1. **[{severity}] {component}** — {precise action}.  ({OWASP ref})\n"
             "2. ..."
         )
         _log.debug("summary-gen | coding-agent-brief: %d findings", len(findings))

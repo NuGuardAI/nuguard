@@ -32,6 +32,10 @@ class BehaviorAnalyzer:
         policy: Optional parsed CognitivePolicy.
         controls: Optional compiled PolicyControl list.
         llm_client: Optional LLM client.
+        remediation_llm_client: Optional LLM client for remediation-text
+            synthesis specifically (see
+            :func:`nuguard.remediation.llm.resolve_remediation_llm_client`).
+            Falls back to ``llm_client`` when not supplied.
     """
 
     def __init__(
@@ -41,12 +45,14 @@ class BehaviorAnalyzer:
         policy: "CognitivePolicy | None" = None,
         controls: "list[PolicyControl] | None" = None,
         llm_client: "LLMClient | None" = None,
+        remediation_llm_client: "LLMClient | None" = None,
     ) -> None:
         self._config = config
         self._sbom = sbom
         self._policy = policy
         self._controls = controls
         self._llm = llm_client
+        self._remediation_llm = remediation_llm_client or llm_client
         self._rec_engine = RecommendationEngine()
 
     async def analyze(
@@ -343,19 +349,24 @@ class BehaviorAnalyzer:
             "target_fingerprint": hashlib.sha256(fingerprint_seed.encode("utf-8")).hexdigest(),
         }
 
-        # Step 5b: Synthesize concrete remediation artefacts in parallel.
-        # synthesize_async() properly awaits LLM patch calls; the sync synthesize()
-        # silently skips them when called from inside a running event loop.
-        from nuguard.behavior.remediation import RemediationSynthesizer
+        # Step 5b: Synthesize concrete remediation artefacts in parallel, then
+        # backfill each finding's flat `remediation` string from the result.
+        # synthesize_findings_async() properly awaits LLM patch calls (unlike
+        # the sync synthesize_findings(), which silently skips them when
+        # called from inside a running event loop).
+        from nuguard.remediation.backfill import backfill_finding_remediation
+        from nuguard.remediation.synthesizer import RemediationSynthesizer
 
+        all_findings = static_findings + dynamic_findings
         result.remediation_plan = await RemediationSynthesizer(
             sbom=self._sbom,
             policy=self._policy,
-            llm_client=self._llm,
-        ).synthesize_async(result)
+            llm_client=self._remediation_llm,
+        ).synthesize_findings_async(all_findings)
+        backfill_finding_remediation(result.static_findings, result.remediation_plan)
+        backfill_finding_remediation(result.dynamic_findings, result.remediation_plan)
 
         # Step 6: Determine outcome
-        all_findings = static_findings + dynamic_findings
         has_critical = any(str(f.get("severity", "")).lower() == "critical" for f in all_findings)
         has_high = any(str(f.get("severity", "")).lower() == "high" for f in all_findings)
         if has_critical:

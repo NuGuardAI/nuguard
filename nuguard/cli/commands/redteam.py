@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, Any, Optional
 
 if TYPE_CHECKING:
     from nuguard.common.auth import AuthConfig
+    from nuguard.common.llm_client import LLMClient
     from nuguard.config import RedteamFindingTriggers, RedteamV2Settings
     from nuguard.models.token_usage import TokenUsage
 
@@ -144,6 +145,9 @@ def redteam(
     from nuguard.config import load_config
 
     cfg = load_config(config_path)
+    from nuguard.remediation.llm import resolve_remediation_llm_client
+
+    remediation_llm_client = resolve_remediation_llm_client(cfg)
     sbom_path = sbom or (Path(cfg.sbom_path) if cfg.sbom_path else None)
     policy_path = policy or (Path(cfg.policy_path) if cfg.policy_path else None)
     target_url = target or cfg.target_url
@@ -314,6 +318,7 @@ def redteam(
             eval_llm_model=cfg.redteam_eval_llm_model or cfg.litellm_model or None,
             eval_llm_api_key=cfg.redteam_eval_llm_api_key or cfg.litellm_api_key or None,
             eval_llm_api_base=cfg.redteam_eval_llm_api_base,
+            remediation_llm_client=remediation_llm_client,
             prompt_cache_dir=cfg.redteam_prompt_cache_dir,
             # ^ eval_llm falls back to top-level llm.model/api_key when redteam.eval_llm is not set
             finding_triggers=finding_triggers,
@@ -338,7 +343,6 @@ def redteam(
     try:
         (
             findings,
-            llm_remediations,
             scenario_records,
             scan_outcome,
             config_notes,
@@ -452,13 +456,12 @@ def redteam(
             typer.echo(f"Findings written to {out_path}")
 
         # Write machine-readable remediation plan alongside the main output
-        if llm_remediations and findings:
+        if findings:
             from nuguard.output.json_generator import write_remediation_plan as _write_rp
             rp_path = output.parent / (output.stem + ".remediation-plan.json")
             try:
                 _write_rp(
                     findings=findings,
-                    remediations=llm_remediations,
                     output_path=rp_path,
                     target_url=target_url or "",
                 )
@@ -527,7 +530,7 @@ async def _run_redteam_v2(
     eval_llm_api_key: str | None = None,
     eval_llm_api_base: str | None = None,
     verbose: bool = False,
-) -> "tuple[list, dict[str, str], list, str, list[str], Any, int, int, Any, Any, str, str, list]":
+) -> "tuple[list, list, str, list[str], Any, int, int, Any, Any, str, str, list]":
     """Run the v2 red-team engine and adapt its result to the CLI report tuple.
 
     Phase 0: the v2 orchestrator is a scaffold that returns no findings.  This
@@ -579,7 +582,6 @@ async def _run_redteam_v2(
             pass
     return (
         result.findings,
-        {},
         result.scenario_records,
         result.scan_outcome,
         result.config_notes,
@@ -624,6 +626,7 @@ async def _run_redteam(
     eval_llm_model: str | None = None,
     eval_llm_api_key: str | None = None,
     eval_llm_api_base: str | None = None,
+    remediation_llm_client: "LLMClient | None" = None,
     prompt_cache_dir: str | None = None,
     finding_triggers: "RedteamFindingTriggers | None" = None,
     verbose: bool = False,
@@ -644,7 +647,7 @@ async def _run_redteam(
     golden_data: "dict | None" = None,
     suppress_spa_html_auth_bypass: bool = True,
     codegen_escalation_enabled: bool = True,
-) -> "tuple[list, dict[str, str], list, str, list[str], Any, int, int, Any, Any, str, str, list]":
+) -> "tuple[list, list, str, list[str], Any, int, int, Any, Any, str, str, list]":
     from nuguard.models.policy import CognitivePolicy
     from nuguard.redteam.target.canary import CanaryConfig
 
@@ -754,6 +757,7 @@ async def _run_redteam(
                 eval_llm_model=eval_llm_model,
                 eval_llm_api_key=eval_llm_api_key,
                 eval_llm_api_base=eval_llm_api_base,
+                remediation_llm_client=remediation_llm_client,
                 prompt_cache_dir=prompt_cache_dir,
                 finding_triggers=finding_triggers,
                 verbose=verbose,
@@ -806,6 +810,7 @@ async def _run_redteam(
         eval_llm_model=eval_llm_model,
         eval_llm_api_key=eval_llm_api_key,
         eval_llm_api_base=eval_llm_api_base,
+        remediation_llm_client=remediation_llm_client,
         prompt_cache_dir=prompt_cache_dir,
         finding_triggers=finding_triggers,
         verbose=verbose,
@@ -857,6 +862,7 @@ async def _run_orchestrator(  # noqa: C901
     eval_llm_model: str | None = None,
     eval_llm_api_key: str | None = None,
     eval_llm_api_base: str | None = None,
+    remediation_llm_client: "LLMClient | None" = None,
     prompt_cache_dir: str | None = None,
     finding_triggers: "RedteamFindingTriggers | None" = None,
     verbose: bool = False,
@@ -876,7 +882,7 @@ async def _run_orchestrator(  # noqa: C901
     golden_data: "dict | None" = None,
     suppress_spa_html_auth_bypass: bool = True,
     codegen_escalation_enabled: bool = True,
-) -> "tuple[list, dict[str, str], list, str, list[str], Any, int, int, Any, Any, str, str, list]":
+) -> "tuple[list, list, str, list[str], Any, int, int, Any, Any, str, str, list]":
     from nuguard.common.llm_client import LLMClient
     from nuguard.redteam.persona import EVAL_EXPERT_SYSTEM_PROMPT, REDTEAM_EXPERT_SYSTEM_PROMPT
     from nuguard.redteam.public_api import RedteamRunRequest, run_redteam
@@ -944,6 +950,7 @@ async def _run_orchestrator(  # noqa: C901
         policy_controls=policy_controls,
         redteam_llm=redteam_llm,
         eval_llm=eval_llm,
+        remediation_llm_client=remediation_llm_client,
         catalog=catalog,
         prompt_cache_dir=Path(prompt_cache_dir) if prompt_cache_dir else None,
     )
@@ -953,7 +960,6 @@ async def _run_orchestrator(  # noqa: C901
 
     return (
         result.findings,
-        result.llm_remediations,
         result.scenario_records,
         result.scan_outcome,
         result.config_notes,

@@ -27,7 +27,6 @@ from nuguard.models.policy import CognitivePolicy
 from nuguard.redteam.policy_engine.evaluator import PolicyViolation
 from nuguard.redteam.risk_engine import (
     compliance_mapper,
-    remediation_generator,
     severity_scorer,
 )
 from nuguard.redteam.scenarios.generator import ScenarioGenerator
@@ -583,8 +582,6 @@ class RedteamOrchestrator:
         }
         # LLM output attributes — populated by run()
         self.llm_executive_summary: str | None = None
-        self.llm_remediations: dict[str, str] = {}
-        self.llm_coding_brief: str | None = None
         self.prompt_cache_path: Path | None = None
         self.llm_enriched_scenarios: int = 0          # total scenarios that got LLM payloads (pre-filter)
         self.llm_enriched_executed: int = 0           # enriched scenarios that were actually executed
@@ -1241,9 +1238,6 @@ class RedteamOrchestrator:
                     or getattr(self._sbom.summary, "frameworks_detected", None)
                     or []
                 )
-            node_by_id: dict[str, object] = {
-                str(node.id): node for node in self._sbom.nodes if node.id
-            }
             summary_gen = LLMSummaryGenerator(self._eval_llm)
             self.llm_executive_summary = await summary_gen.executive_summary(
                 target_url=self._target_url,
@@ -1252,11 +1246,6 @@ class RedteamOrchestrator:
                 frameworks=frameworks,
                 duration_s=0.0,  # duration not tracked here; report layer has it
             )
-            self.llm_remediations = await summary_gen.remediation_batch(findings, node_by_id)
-            if self.llm_remediations:
-                self.llm_coding_brief = await summary_gen.coding_agent_brief(
-                    findings, self.llm_remediations
-                )
 
         return findings
 
@@ -1798,7 +1787,6 @@ class RedteamOrchestrator:
                     f"(final progress={conv.final_progress}/5)."
                 ),
                 affected_component=effective_affected,
-                remediation=remediation_generator.generate(conv.goal_type, scenario.title),
                 goal_type=conv.goal_type.value,
                 chain_id=f"guided-{conv.conversation_id}",
                 sbom_path=conv.sbom_path,
@@ -2054,9 +2042,6 @@ class RedteamOrchestrator:
                         f"Canary value(s) {canary_hits[:3]} were found in the agent response, "
                         f"confirming data exfiltration via scenario: {scenario.title}"
                     ),
-                    remediation=remediation_generator.generate(
-                        scenario.goal_type, scenario.title
-                    ),
                     policy_clauses_violated=chain.policy_clauses,
                     evidence=f"Canary values found: {canary_hits} | Attack steps: {step_summary}",
                 )
@@ -2080,9 +2065,6 @@ class RedteamOrchestrator:
                         description=(
                             f"Tool-call trace analysis detected suspicious tool invocation: "
                             f"{'; '.join(tool_trace_details[:3])}"
-                        ),
-                        remediation=remediation_generator.generate(
-                            scenario.goal_type, scenario.title
                         ),
                         evidence=f"Tool trace: {'; '.join(tool_trace_details[:5])} | Steps: {step_summary}",
                     )
@@ -2114,9 +2096,6 @@ class RedteamOrchestrator:
                                 f"Artifact scanner detected covert exfiltration artifact: "
                                 f"{'; '.join(artifact_details[:3])}"
                             ),
-                            remediation=remediation_generator.generate(
-                                scenario.goal_type, scenario.title
-                            ),
                             evidence=f"Artifact: {'; '.join(artifact_details[:5])} | Steps: {step_summary}",
                         )
                     )
@@ -2142,11 +2121,6 @@ class RedteamOrchestrator:
                         title=violation_title,
                         severity=sev,
                         description=violation.evidence,
-                        remediation=remediation_generator.generate(
-                            scenario.goal_type,
-                            scenario.title,
-                            violation_type=violation.type,
-                        ),
                         policy_clauses_violated=[violation.policy_clause],
                         evidence=(
                             f"{violation.evidence}\n\n"
@@ -2183,9 +2157,6 @@ class RedteamOrchestrator:
                             f"Attack scenario '{scenario.title}' succeeded: "
                             f"success signals detected in {len(critical_hits)} step(s)."
                         ),
-                        remediation=remediation_generator.generate(
-                            scenario.goal_type, scenario.title
-                        ),
                         evidence=f"Attack steps: {step_summary}",
                     )
                 )
@@ -2209,9 +2180,6 @@ class RedteamOrchestrator:
                         description=(
                             f"INJECT steps succeeded in scenario '{scenario.title}' "
                             f"without higher-confidence canary/policy/critical triggers."
-                        ),
-                        remediation=remediation_generator.generate(
-                            scenario.goal_type, scenario.title
                         ),
                         evidence=f"Attack steps: {step_summary}",
                     )

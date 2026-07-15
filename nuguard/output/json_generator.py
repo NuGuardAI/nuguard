@@ -12,7 +12,6 @@ if TYPE_CHECKING:
 
 def write_remediation_plan(
     findings: list["Finding"],
-    remediations: dict[str, str],
     output_path: Path,
     *,
     target_url: str = "",
@@ -21,16 +20,17 @@ def write_remediation_plan(
     """Write a machine-readable remediation plan to *output_path* as JSON.
 
     The plan is structured for consumption by coding agents, CI pipelines, and
-    dashboards. Each finding entry includes the full finding context plus the
-    LLM-generated remediation text (when available).
+    dashboards. Each finding entry includes the full finding context plus its
+    ``remediation`` text — synthesized by
+    :class:`~nuguard.remediation.synthesizer.RemediationSynthesizer` and
+    backfilled onto each ``Finding`` via
+    :func:`~nuguard.remediation.backfill.backfill_finding_remediation` before
+    this is called.
 
     Parameters
     ----------
     findings:
         The list of ``Finding`` objects from the redteam scan.
-    remediations:
-        ``{finding_id: remediation_text}`` from
-        :meth:`~nuguard.redteam.llm_engine.summary_generator.LLMSummaryGenerator.remediation_batch`.
     output_path:
         Destination path. Parent directory must exist.
     target_url:
@@ -44,15 +44,12 @@ def write_remediation_plan(
         "scan_id": scan_id or "",
         "target": target_url or "",
         "total_findings": len(findings),
-        "findings": [
-            _finding_to_dict(f, remediations.get(f.finding_id, ""))
-            for f in findings
-        ],
+        "findings": [_finding_to_dict(f) for f in findings],
     }
     output_path.write_text(json.dumps(plan, indent=2), encoding="utf-8")
 
 
-def _finding_to_dict(f: "Finding", remediation_text: str) -> dict:
+def _finding_to_dict(f: "Finding") -> dict:
     """Convert a Finding to a remediation-plan dict entry."""
     scores = getattr(f, "scores", None) or {}
     return {
@@ -68,7 +65,7 @@ def _finding_to_dict(f: "Finding", remediation_text: str) -> dict:
         "success_indicator": getattr(f, "success_indicator", None),
         "progress_score": scores.get("goal_progress"),
         # Remediation
-        "remediation": remediation_text or f.remediation or "",
+        "remediation": f.remediation or "",
         # SBOM / compliance refs
         "sbom_path": f.sbom_path or [],
         "sbom_path_descriptions": f.sbom_path_descriptions or [],

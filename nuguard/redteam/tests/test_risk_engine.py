@@ -7,7 +7,6 @@ from nuguard.models.exploit_chain import GoalType
 from nuguard.models.finding import Finding, Severity
 from nuguard.redteam.risk_engine import (
     aggregate_score,
-    generate_remediation,
     highest_severity,
     owasp_asi_ref,
     owasp_llm_ref,
@@ -102,26 +101,6 @@ def test_owasp_asi_ref_returns_string_for_all_goal_types() -> None:
     for goal_type in GoalType:
         ref = owasp_asi_ref(goal_type)
         assert isinstance(ref, str) and ref
-
-
-# --- generate_remediation ---------------------------------------------------
-
-
-def test_generate_remediation_returns_nonempty_for_all_goal_types() -> None:
-    for goal_type in GoalType:
-        result = generate_remediation(goal_type)
-        assert isinstance(result, str) and result
-
-
-def test_generate_remediation_tool_abuse_mentions_sanitize_or_ssrf() -> None:
-    result = generate_remediation(GoalType.TOOL_ABUSE)
-    lower = result.lower()
-    assert "sanitiz" in lower or "parameterized" in lower or "parameterised" in lower or "ssrf" in lower.upper() or "SSRF" in result
-
-
-def test_generate_remediation_with_affected_component_includes_component() -> None:
-    result = generate_remediation(GoalType.TOOL_ABUSE, affected_component="my_tool")
-    assert "my_tool" in result
 
 
 # --- aggregate_score ---------------------------------------------------------

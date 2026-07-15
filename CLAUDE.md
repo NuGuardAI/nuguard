@@ -50,6 +50,7 @@ nuguard/
 ├── graph/          # Attack graph builder (SBOM → enriched graph)
 ├── analysis/       # Static SBOM analysis — detector plugins
 ├── policy/         # Cognitive Policy parsing and violation checking
+├── remediation/    # Shared remediation-artefact synthesis (behavior, redteam, analysis)
 ├── models/         # Shared Pydantic models (AttackGraph, ExploitChain, Scan, Finding, Policy)
 ├── db/             # SQLite (default) or Postgres (async SQLAlchemy)
 ├── output/         # SARIF / JSON / Markdown report generators
@@ -105,8 +106,9 @@ nuguard/redteam/
 ├── policy_engine/
 │   └── evaluator.py    # PolicyEvaluator — checks responses against CognitivePolicy
 ├── risk_engine/
-│   ├── remediation_generator.py  # Template-based remediation advice per GoalType
-│   └── remediation_synthesizer.py  # LLM-based remediation narrative
+│   └── severity_scorer.py, compliance_mapper.py, risk_scorer.py  # Severity + OWASP/ATLAS refs
+│       # Remediation-artefact synthesis lives in nuguard/remediation/ (shared with
+│       # behavior and analysis) — see RemediationSynthesizer, resolve_remediation_llm_client.
 ├── target/
 │   ├── client.py       # TargetAppClient — HTTP client with circuit breaker
 │   └── canary.py       # CanaryScanner — watches for canary value leaks in responses

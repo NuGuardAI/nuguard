@@ -253,6 +253,10 @@ async def _run_behavior(
         except Exception as exc:
             _log.warning("Could not build LLM client: %s", exc)
 
+    from nuguard.remediation.llm import resolve_remediation_llm_client
+
+    remediation_llm_client = resolve_remediation_llm_client(cfg)
+
     # 7. Run analysis
     _console.print(f"[bold]Running behavior analysis[/bold]  mode={mode}")
     try:
@@ -263,6 +267,7 @@ async def _run_behavior(
             policy=policy_obj,
             controls=controls,
             llm_client=llm_client,
+            remediation_llm_client=remediation_llm_client,
         )
     except Exception as exc:
         from nuguard.common.errors import AuthError, TargetUnavailableError  # noqa: PLC0415

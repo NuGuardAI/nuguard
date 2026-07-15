@@ -146,7 +146,7 @@ def _privilege_notes(art: Any) -> str:
 
 def _render_artefact(lines: list[str], art: Any) -> None:
     """Render one RemediationArtefact as Markdown bullets."""
-    from nuguard.behavior.models import RemediationArtefactType
+    from nuguard.remediation.models import RemediationArtefactType
 
     atype = art.artefact_type
     priority_badge = f"[{art.priority.upper()}]"

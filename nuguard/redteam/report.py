@@ -96,7 +96,7 @@ def to_markdown(
     """Render red-team findings as a Markdown report string.
 
     When *remediation_plan* is supplied (a list of ``RemediationArtefact``
-    objects produced by :class:`~nuguard.behavior.remediation.RemediationSynthesizer`),
+    objects produced by :class:`~nuguard.remediation.synthesizer.RemediationSynthesizer`),
     a ``## Remediation Plan`` section is appended with concrete, SBOM-node
     specific patches, guardrails and architectural changes grouped by
     component — matching the behavior report's layout.

@@ -240,7 +240,6 @@ def _run_redteam(app_name: str) -> None:
             config, runner, {}, 0, [], time.monotonic() - start_time, None,
             verbose=app_cfg.redteam_verbose or _VERBOSE,
             llm_executive_summary=None,
-            llm_remediations=None,
             llm_coding_brief=None,
             prompt_cache_path=None,
             eval_llm_model=None,
@@ -314,8 +313,10 @@ def _run_redteam(app_name: str) -> None:
             scenario_records=scenario_records,
             verbose=app_cfg.redteam_verbose or _VERBOSE,
             llm_executive_summary=orchestrator.llm_executive_summary if orchestrator else None,
-            llm_remediations=orchestrator.llm_remediations if orchestrator else None,
-            llm_coding_brief=orchestrator.llm_coding_brief if orchestrator else None,
+            # llm_coding_brief is now computed by nuguard.redteam.public_api.run_redteam()
+            # (not the orchestrator itself) after remediation-plan backfill; this harness
+            # calls RedteamOrchestrator.run() directly, so it's not available here.
+            llm_coding_brief=None,
             prompt_cache_path=orchestrator.prompt_cache_path if orchestrator else None,
             eval_llm_model=eval_llm.model if eval_llm else None,
             llm_enriched_scenarios=orchestrator.llm_enriched_scenarios if orchestrator else 0,
@@ -343,7 +344,6 @@ def _write_report(  # type: ignore[no-untyped-def]
     scenario_records=None,
     verbose: bool = False,
     llm_executive_summary: str | None = None,
-    llm_remediations: "dict[str, str] | None" = None,
     llm_coding_brief: str | None = None,
     prompt_cache_path: "Path | None" = None,
     eval_llm_model: str | None = None,
@@ -371,7 +371,6 @@ def _write_report(  # type: ignore[no-untyped-def]
         verbose=verbose,
         scenario_records=scenario_records,
         llm_executive_summary=llm_executive_summary,
-        llm_remediations=llm_remediations,
         llm_coding_brief=llm_coding_brief,
         prompt_cache_path=prompt_cache_path,
         eval_llm_model=eval_llm_model,

@@ -55,8 +55,6 @@ def _make_mock_orchestrator(findings: list[Finding]) -> MagicMock:
     instance.scan_outcome = "high_findings"
     instance.config_notes = ["note1"]
     instance.llm_executive_summary = "summary"
-    instance.llm_remediations = {"r": "text"}
-    instance.llm_coding_brief = "brief"
     instance.scenarios_run = 3
     instance.input_tokens_used = 10
     instance.output_tokens_used = 20
@@ -163,8 +161,10 @@ async def test_run_redteam_constructs_orchestrator_and_builds_result():
     assert result.scan_outcome == "high_findings"
     assert result.config_notes == ["note1"]
     assert result.llm_executive_summary == "summary"
-    assert result.llm_remediations == {"r": "text"}
-    assert result.llm_coding_brief == "brief"
+    # llm_coding_brief is computed by run_redteam itself (not read off the
+    # orchestrator) and only populated when eval_llm is supplied — not the
+    # case here.
+    assert result.llm_coding_brief is None
     assert result.scenarios_run == 3
     assert result.token_usage.input_tokens == 10
     assert result.health_report is not None
@@ -257,7 +257,7 @@ async def test_run_redteam_populates_remediation_plan():
     via the same RemediationSynthesizer the CLI uses for its report's remediation plan."""
     from types import SimpleNamespace
 
-    from nuguard.behavior.models import RemediationArtefact, RemediationArtefactType
+    from nuguard.remediation.models import RemediationArtefact, RemediationArtefactType
 
     findings = [_finding("data_exfiltration")]
     mock_instance = _make_mock_orchestrator(findings)
@@ -273,7 +273,7 @@ async def test_run_redteam_populates_remediation_plan():
     with (
         patch("nuguard.redteam.public_api.RedteamOrchestrator") as mock_cls,
         patch(
-            "nuguard.behavior.remediation.RemediationSynthesizer.synthesize_findings_async"
+            "nuguard.remediation.synthesizer.RemediationSynthesizer.synthesize_findings_async"
         ) as mock_synth,
     ):
         mock_cls.return_value = mock_instance
@@ -286,6 +286,8 @@ async def test_run_redteam_populates_remediation_plan():
     assert finding_dicts[0]["finding_id"] == "f1"
     assert finding_dicts[0]["goal_type"] == "data_exfiltration"
     assert result.remediation_plan == [fake_artefact]
+    # Finding.remediation is backfilled from the matching artefact's rationale.
+    assert result.findings[0].remediation == "d"
 
 
 @pytest.mark.asyncio
@@ -309,7 +311,7 @@ async def test_run_redteam_remediation_synthesis_failure_is_swallowed():
     with (
         patch("nuguard.redteam.public_api.RedteamOrchestrator") as mock_cls,
         patch(
-            "nuguard.behavior.remediation.RemediationSynthesizer.synthesize_findings_async",
+            "nuguard.remediation.synthesizer.RemediationSynthesizer.synthesize_findings_async",
             side_effect=RuntimeError("boom"),
         ),
     ):

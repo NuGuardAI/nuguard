@@ -169,7 +169,6 @@ def _ba_001_system_prompt_restricted_topic(
                         f"with topics it should refuse."
                     ),
                     affected_component=name,
-                    remediation=f"Remove references to '{topic}' from {name}'s system prompt.",
                 )
             )
     return findings
@@ -212,7 +211,6 @@ def _ba_002_risky_tool_no_guardrail(
                         f"but has no PROTECTED_BY guardrail edge in the SBOM."
                     ),
                     affected_component=name,
-                    remediation=f"Add an input validation guardrail before {name}.",
                 )
             )
     return findings
@@ -294,10 +292,6 @@ def _ba_003_restricted_action_tool_edge(
                 f"Policy restricts action '{action}', but agent '{agent_name}' "
                 f"has a CALLS edge to tool '{tool_name}' which implements this action."
             )
-            remediation = (
-                f"Remove or guard the CALLS edge from '{agent_name}' to "
-                f"'{tool_name}', or restrict the tool's access."
-            )
         else:
             agents_str = ", ".join(f"'{a}'" for a in sorted(agent_names))
             description = (
@@ -306,11 +300,6 @@ def _ba_003_restricted_action_tool_edge(
                 f"In a fully-connected agent graph this means any agent can invoke "
                 f"this restricted action."
             )
-            remediation = (
-                f"Add an authorisation guard on tool '{tool_name}' that validates "
-                f"the calling agent's role before executing the restricted action, "
-                f"or remove CALLS edges from agents that should not invoke it."
-            )
         findings.append(
             Finding(
                 finding_id=f"BA-003-{uuid.uuid4().hex[:8]}",
@@ -318,7 +307,6 @@ def _ba_003_restricted_action_tool_edge(
                 severity=Severity.HIGH,
                 description=description,
                 affected_component=tool_name,
-                remediation=remediation,
             )
         )
     return findings
@@ -364,7 +352,6 @@ def _ba_004_pii_datastore_no_guardrail(
                         f"but has no PROTECTED_BY guardrail edge in the SBOM."
                     ),
                     affected_component=name,
-                    remediation=f"Add a data-access guardrail protecting '{name}'.",
                 )
             )
     return findings
@@ -409,7 +396,6 @@ def _ba_005_no_auth_high_privilege(
                                 f"has access to high-privilege tool '{tool_name}'."
                             ),
                             affected_component=agent_name,
-                            remediation=f"Add authentication requirement to '{agent_name}'.",
                         )
                     )
     return findings
@@ -469,10 +455,6 @@ def _ba_006_untrusted_mcp_write(
                                 f"edge to write-capable tool '{tool_name}'."
                             ),
                             affected_component=server_name,
-                            remediation=(
-                                f"Restrict or remove write-capable tool access for untrusted "
-                                f"MCP server '{server_name}'."
-                            ),
                         )
                     )
     return findings
@@ -548,9 +530,6 @@ def _ba_007_blocked_topics_gap(
                         f"does not include them in blocked_topics."
                     ),
                     affected_component=agent_name,
-                    remediation=(
-                        f"Add {uncovered!r} to '{agent_name}'s blocked_topics configuration."
-                    ),
                 )
             )
     return findings
@@ -605,9 +584,6 @@ def _ba_008_hitl_gate_missing(
                         f"in the SBOM to implement this gate."
                     ),
                     affected_component="system",
-                    remediation=(
-                        f"Add a GUARDRAIL node or configure HITL escalation for '{trigger}'."
-                    ),
                 )
             )
     return findings
@@ -654,10 +630,6 @@ def _ba_009_unprotected_sensitive_endpoints(
                     f"flag and no AUTH → PROTECTS edge in the SBOM."
                 ),
                 affected_component=name,
-                remediation=(
-                    f"Set auth_required=True on '{name}' or add an AUTH node with a "
-                    "PROTECTS edge to enforce access control."
-                ),
             )
         )
     return findings
@@ -698,9 +670,6 @@ def _ba_010_unguarded_privilege(
                     f"or GUARDRAIL → PROTECTS edge. Privilege escalation is possible."
                 ),
                 affected_component=name,
-                remediation=(
-                    f"Add an AUTH or GUARDRAIL node with a PROTECTS edge to '{name}'."
-                ),
             )
         )
     return findings
@@ -754,10 +723,6 @@ def _ba_011_write_datastore_no_control(
                     f"GUARDRAIL or AUTH protection on the datastore path."
                 ),
                 affected_component=ds_name,
-                remediation=(
-                    f"Add HITL, an AUTH node, or a GUARDRAIL node with a PROTECTS edge "
-                    f"to '{ds_name}' to control write access."
-                ),
             )
         )
     return findings
@@ -822,10 +787,6 @@ def _ba_012_external_model_sensitive_data(
                     f"is replaced or compromised."
                 ),
                 affected_component=agent_name,
-                remediation=(
-                    "Pin the model version with an integrity_hash or checksum. "
-                    "Consider isolating sensitive data paths from externally-sourced models."
-                ),
             )
         )
     return findings
@@ -878,10 +839,6 @@ def _ba_013_prompt_restricted_topic(
                         f"text matches policy restricted topic(s): {', '.join(matches)}."
                     ),
                     affected_component=agent_name,
-                    remediation=(
-                        f"Review prompt '{prompt_name}' and remove or reframe references "
-                        f"to restricted topics: {', '.join(matches)}."
-                    ),
                 )
             )
     return findings
@@ -941,10 +898,6 @@ def _ba_014_unsafe_delegation(
                         f"but no GUARDRAIL or AUTH PROTECTS boundary guards the handoff."
                     ),
                     affected_component=src_name,
-                    remediation=(
-                        f"Add a GUARDRAIL or AUTH node with a PROTECTS edge to '{tgt_name}' "
-                        f"to enforce a privilege boundary on the delegation path."
-                    ),
                 )
             )
     return findings
@@ -998,10 +951,6 @@ def _ba_015_deployment_security_posture(
                     f"issues: {', '.join(issues)}."
                 ),
                 affected_component=name,
-                remediation=(
-                    f"Address deployment posture for '{name}': "
-                    + "; ".join(issues) + "."
-                ),
             )
         )
     return findings
@@ -1041,10 +990,6 @@ def _ba_016_sensitive_endpoint_no_protection(
                     f"auth_required flag, no AUTH → PROTECTS, and no GUARDRAIL → PROTECTS edge."
                 ),
                 affected_component=name,
-                remediation=(
-                    f"Set auth_required=True on '{name}' and add an AUTH or GUARDRAIL "
-                    f"node with a PROTECTS edge."
-                ),
             )
         )
     return findings

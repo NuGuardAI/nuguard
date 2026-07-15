@@ -6,9 +6,13 @@ For each finding it looks up the affected SBOM node, reads available metadata
 and produces a concrete ``RemediationArtefact`` — either a system prompt patch,
 a guardrail spec, or an architectural change recommendation.
 
-The synthesizer is deterministic by default.  When an ``LLMClient`` is
-provided it uses it to generate contextual patch text for
-``SYSTEM_PROMPT_PATCH`` artefacts; all other artefact types use templates.
+The synthesizer is deterministic by default. When an ``LLMClient`` is
+provided, every handler's explanatory/free-text fields (system-prompt patch
+text, or the rationale for guardrail/architectural artefacts) are authored by
+the LLM using the "surgical fix" prompts in :mod:`nuguard.remediation.prompts`;
+structured/enum-like fields (guardrail_type, guardrail_trigger,
+guardrail_action, edge_to_remove) always stay deterministic so nothing
+downstream can be corrupted by a hallucinated value.
 """
 from __future__ import annotations
 
@@ -16,16 +20,27 @@ import re
 import uuid
 from typing import TYPE_CHECKING, Any
 
-from nuguard.behavior.models import RemediationArtefact, RemediationArtefactType
 from nuguard.common.logging import get_logger
+from nuguard.remediation.models import RemediationArtefact, RemediationArtefactType
+from nuguard.remediation.prompts import (
+    ARCHITECTURAL_RATIONALE_SYSTEM,
+    ARCHITECTURAL_RATIONALE_USER,
+    GUARDRAIL_RATIONALE_SYSTEM,
+    GUARDRAIL_RATIONALE_USER,
+    PRIVILEGE_PATCH_SYSTEM,
+    PRIVILEGE_PATCH_USER,
+    SYSTEM_PROMPT_PATCH_SYSTEM,
+    SYSTEM_PROMPT_PATCH_USER,
+)
 
 if TYPE_CHECKING:
-    from nuguard.behavior.models import BehaviorAnalysisResult
     from nuguard.common.llm_client import LLMClient
     from nuguard.models.policy import CognitivePolicy
     from nuguard.sbom.models import AiSbomDocument, Node
 
 _log = get_logger(__name__)
+
+_CANNED_RESPONSE_PREFIX = "[NUGUARD_CANNED_RESPONSE]"
 
 
 def _word_truncate(text: str, max_len: int) -> str:
@@ -90,32 +105,6 @@ _PRIVILEGE_STRATEGY: dict[str, dict[str, Any]] = {
         "risk": "horizontal privilege escalation via missing role checks",
     },
 }
-
-# LLM prompt templates
-_LLM_PATCH_SYSTEM = (
-    "You are a security engineer fixing an AI agent's system prompt. "
-    "Write ONLY the new or replacement section text to fix the policy violation described. "
-    "Be specific and actionable. Under 60 words. Do not explain — output the section text only."
-)
-
-_LLM_PATCH_USER = (
-    "Agent purpose: {agent_purpose}\n"
-    "Policy violation: {violation}\n"
-    "Existing prompt excerpt:\n---\n{prompt_excerpt}\n---\n"
-    "Write the new '## {section}' section to add to the system prompt:"
-)
-
-_LLM_PRIVILEGE_PATCH_SYSTEM = (
-    "You are a security engineer writing an access-control restriction for an AI agent's system prompt. "
-    "Write ONLY the new restriction text. Under 60 words. Output the restriction text only."
-)
-
-_LLM_PRIVILEGE_PATCH_USER = (
-    "Agent: {agent_name} — {agent_purpose}\n"
-    "High-privilege tool: {tool_name} — {tool_desc}\n"
-    "Privilege granted: {privilege_scope} ({risk})\n"
-    "Write the 'Access Controls' instruction stating when the tool may and may not be called:"
-)
 
 
 # ---------------------------------------------------------------------------
@@ -270,6 +259,17 @@ _GOAL_TYPE_DTYPE: dict[str, str] = {
     "api_attack": "privilege_escalation",
 }
 
+# dtypes whose primary SYSTEM_PROMPT_PATCH artefact gets its patch_text
+# authored by the LLM. Excludes "sensitive_data_request" and
+# "privilege_escalation", which already have dedicated async handlers with
+# their own LLM-authored patch text.
+_PROMPT_TEXT_UPGRADE_DTYPES = {
+    "blocked_topics_missing",
+    "intent_misalignment",
+    "policy_violation_generic",
+    "generic",
+}
+
 
 def _classify_finding(finding: dict) -> str:
     """Return a string category for the finding."""
@@ -398,43 +398,21 @@ class RemediationSynthesizer:
                 _build_lookup_maps(sbom)
             )
 
-    def synthesize(self, result: "BehaviorAnalysisResult") -> list[RemediationArtefact]:
-        """Return concrete remediation artefacts for all findings in *result*.
-
-        Args:
-            result: Complete BehaviorAnalysisResult with static and dynamic findings.
-
-        Returns:
-            Sorted, deduplicated list of RemediationArtefact objects.
-        """
-        all_findings = list(result.static_findings) + list(result.dynamic_findings)
-        return self.synthesize_findings(all_findings, result=result)
-
-    async def synthesize_async(self, result: "BehaviorAnalysisResult") -> list[RemediationArtefact]:
-        """Async version of synthesize() — runs all per-finding synthesis in parallel.
-
-        Preferred over synthesize() when called from an async context (e.g. analyzer.py)
-        because it properly awaits _llm_patch_async / _llm_privilege_patch_async instead
-        of silently skipping them (the sync shims return "" when a loop is running).
-        """
-        all_findings = list(result.static_findings) + list(result.dynamic_findings)
-        return await self.synthesize_findings_async(all_findings, result=result)
-
     async def synthesize_findings_async(
         self,
         findings: list[dict],
-        *,
-        result: "BehaviorAnalysisResult | None" = None,
     ) -> list[RemediationArtefact]:
-        """Async version of synthesize_findings() — parallel per-finding synthesis.
+        """Async, parallel per-finding synthesis — the entry point used by
+        behavior, redteam, and analysis alike.
 
-        Fires all _synthesize_one_async() coroutines concurrently with asyncio.gather,
-        including the LLM patch calls inside each. Falls back gracefully on exceptions.
+        Fires all ``_synthesize_one_async()`` coroutines concurrently with
+        ``asyncio.gather``, including any LLM calls inside each. Falls back
+        gracefully on exceptions.
         """
         import asyncio
 
         batches = await asyncio.gather(
-            *(self._synthesize_one_async(f, result) for f in findings),
+            *(self._synthesize_one_async(f) for f in findings),
             return_exceptions=True,
         )
         artefacts: list[RemediationArtefact] = []
@@ -450,213 +428,9 @@ class RemediationSynthesizer:
                     artefacts.append(art)
         return _merge_artefacts(artefacts)
 
-    async def _synthesize_one_async(
-        self,
-        finding: dict,
-        result: "BehaviorAnalysisResult | None" = None,
-    ) -> list[RemediationArtefact]:
-        """Async version of _synthesize_one — awaits LLM patch calls directly."""
-        component = str(finding.get("affected_component", "unknown"))
-        finding_id = str(finding.get("finding_id", ""))
-        severity = str(finding.get("severity", "medium")).lower()
-        priority = severity if severity in ("critical", "high", "medium", "low") else "medium"
-        node = self._node_by_name.get(component)
-        dtype = _classify_finding(finding)
-
-        _log.debug("RemediationSynthesizer(async): finding=%s dtype=%s component=%s", finding_id, dtype, component)
-
-        if dtype == "data_handling":
-            return await self._patch_data_handling_async(component, node, finding, finding_id, priority)
-        if dtype == "privilege_escalation":
-            return await self._remediate_privilege_escalation_async(component, node, finding, finding_id, priority)
-        # All other dtypes produce no LLM calls — delegate to the sync path
-        return self._synthesize_one(finding, result)
-
-    async def _patch_data_handling_async(
-        self,
-        component: str,
-        node: "Node | None",
-        finding: dict,
-        finding_id: str,
-        priority: str,
-    ) -> list[RemediationArtefact]:
-        prompt_node = self._prompt_by_agent.get(component)
-        location = _prompt_location(prompt_node)
-        existing = _prompt_content(prompt_node)
-        patch_text = await self._llm_patch_async(
-            section="Data Handling Rules",
-            violation=finding.get("description", "Agent asks for sensitive credentials"),
-            prompt_excerpt=existing[:400],
-            intent_purpose=getattr(getattr(self, "_intent", None), "app_purpose", ""),
-        ) or (
-            "## Data Handling Rules\n"
-            "- NEVER ask the user for their password, PIN, or full card number.\n"
-            "- If authentication is required, direct the user to the secure login portal.\n"
-            "- You may confirm the last 4 digits of an account number but never the full number.\n"
-            "- Do not store, log, or repeat any credential the user provides."
-        )
-        return [RemediationArtefact(
-            finding_ids=[finding_id],
-            component=component,
-            component_type=_node_type(node) if node else "AGENT",
-            artefact_type=RemediationArtefactType.SYSTEM_PROMPT_PATCH,
-            priority=priority,
-            patch_location=location or None,
-            patch_section="Data Handling Rules",
-            patch_text=patch_text,
-            rationale=finding.get("description", "Agent violates data handling rules."),
-        )]
-
-    async def _remediate_privilege_escalation_async(
-        self,
-        component: str,
-        node: "Node | None",
-        finding: dict,
-        finding_id: str,
-        priority: str,
-    ) -> list[RemediationArtefact]:
-        # Resolve the privilege path — same logic as the sync version
-        priv_names = self._privilege_map.get(component, [])
-        tool_name = str(finding.get("tool_name", "")) or (priv_names[0].split(":")[-1] if priv_names else "high-privilege-tool")
-        tool_desc = str(finding.get("tool_description", "") or finding.get("description", ""))[:200]
-        priv_scope = ""
-        if priv_names:
-            priv_scope = priv_names[0].split(":")[-1].strip()
-
-        strategy = _PRIVILEGE_STRATEGY.get(priv_scope, {
-            "guardrail": "auth_check",
-            "requires_auth": True,
-            "requires_hitl": False,
-            "risk": "unauthorised access to a high-privilege operation",
-        })
-        requires_hitl: bool = bool(strategy.get("requires_hitl", False))
-        risk: str = str(strategy.get("risk", "privilege escalation"))
-
-        hitl_note = " Require manager HITL approval before executing." if requires_hitl else ""
-        patch_text = await self._llm_privilege_patch_async(
-            agent_name=component,
-            tool_name=tool_name,
-            tool_desc=tool_desc,
-            privilege_scope=priv_scope or "high-privilege",
-            risk=risk,
-        ) or (
-            f"## Access Controls — {tool_name}\n"
-            f"Before calling {tool_name}(), confirm that the customer is authenticated.\n"
-            f"If no active session is detected, direct the user to log in before proceeding.\n"
-            f"Never invoke {tool_name}() for an unauthenticated caller.{hitl_note}"
-        )
-        # Delegate artefact construction to the sync path after we have the patch text
-        # by temporarily injecting the result into a finding copy the sync path will use.
-        # Simpler: just construct the artefacts directly here (mirrors sync version).
-        return await self._build_privilege_artefacts_async(
-            component, node, finding, finding_id, priority, tool_name, patch_text, strategy, priv_scope
-        )
-
-    async def _build_privilege_artefacts_async(
-        self,
-        component: str,
-        node: "Node | None",
-        finding: dict,
-        finding_id: str,
-        priority: str,
-        tool_name: str,
-        patch_text: str,
-        strategy: dict,
-        priv_scope: str,
-    ) -> list[RemediationArtefact]:
-        """Construct privilege-escalation artefacts (mirrors sync _remediate_privilege_escalation)."""
-        requires_auth: bool = bool(strategy.get("requires_auth", True))
-        requires_hitl: bool = bool(strategy.get("requires_hitl", False))
-        risk: str = str(strategy.get("risk", "privilege escalation"))
-        guardrail_type: str = str(strategy.get("guardrail", "auth_check"))
-        hitl_note = " Require manager HITL approval before executing." if requires_hitl else ""
-
-        artefacts: list[RemediationArtefact] = [
-            RemediationArtefact(
-                finding_ids=[finding_id],
-                component=component,
-                component_type=_node_type(node) if node else "AGENT",
-                artefact_type=RemediationArtefactType.ARCHITECTURAL_CHANGE,
-                priority="critical",
-                change_description=(
-                    f"Add AUTH node protecting '{component}' → '{tool_name}' "
-                    f"(privilege: {priv_scope or 'high-privilege'})"
-                ),
-                change_detail=(
-                    f"Agent '{component}' can reach high-privilege tool '{tool_name}' "
-                    f"({risk}) without authentication.\n\n"
-                    f"Required changes:\n"
-                    f"1. Add an AUTH node (type: bearer/basic/oauth2) to the SBOM.\n"
-                    f"2. Add a PROTECTS edge: AUTH → '{component}'.\n"
-                    f"3. Add a PROTECTS edge: AUTH → '{tool_name}'.\n"
-                    f"4. The application must verify a valid session token before any "
-                    f"'{tool_name}' invocation."
-                ),
-                rationale=finding.get("description", f"Privilege escalation via {tool_name}."),
-            ),
-        ]
-        if requires_auth:
-            artefacts.append(RemediationArtefact(
-                finding_ids=[finding_id],
-                component=component,
-                component_type=_node_type(node) if node else "AGENT",
-                artefact_type=RemediationArtefactType.INPUT_GUARDRAIL,
-                priority=priority,
-                guardrail_name=guardrail_type,
-                guardrail_type=guardrail_type,
-                guardrail_trigger="pre-tool-call",
-                guardrail_action="BLOCK",
-                guardrail_message=f"Authentication required before invoking {tool_name}.",
-                rationale=f"Guardrail required before any {tool_name} invocation.{hitl_note}",
-            ))
-        if patch_text:
-            artefacts.append(RemediationArtefact(
-                finding_ids=[finding_id],
-                component=component,
-                component_type=_node_type(node) if node else "AGENT",
-                artefact_type=RemediationArtefactType.SYSTEM_PROMPT_PATCH,
-                priority=priority,
-                patch_section="Access Controls",
-                patch_text=patch_text,
-                rationale=f"System prompt must enforce authentication before {tool_name}.",
-            ))
-        return artefacts
-
-    def synthesize_findings(
-        self,
-        findings: list[dict],
-        *,
-        result: "BehaviorAnalysisResult | None" = None,
-    ) -> list[RemediationArtefact]:
-        """Return remediation artefacts for a plain list of finding dicts.
-
-        Callers outside the behavior module (e.g. the redteam CLI) should
-        use this entry point — it bypasses the ``BehaviorAnalysisResult``
-        wrapper but reuses the same SBOM-aware, per-node synthesis logic.
-
-        Each finding dict should carry at least ``finding_id``, ``title``,
-        ``description``, ``severity``, and ``affected_component``.  Redteam
-        findings should also include ``goal_type`` so the classifier can
-        route them directly without heuristics.
-        """
-        artefacts: list[RemediationArtefact] = []
-        seen_keys: set[str] = set()
-        for finding in findings:
-            produced = self._synthesize_one(finding, result)
-            for art in produced:
-                key = f"{art.component}:{art.artefact_type.value}:{(art.patch_section or art.guardrail_name or art.change_description or '')[:60]}"
-                if key not in seen_keys:
-                    seen_keys.add(key)
-                    artefacts.append(art)
-
-        return _merge_artefacts(artefacts)
-
-    def _synthesize_one(
-        self,
-        finding: dict,
-        result: "BehaviorAnalysisResult | None" = None,
-    ) -> list[RemediationArtefact]:
-        """Return 0–2 artefacts for a single finding."""
+    async def _synthesize_one_async(self, finding: dict) -> list[RemediationArtefact]:
+        """Build artefacts for one finding, enriching with LLM-authored
+        surgical text where the artefact type allows it (see module docstring)."""
         component = str(finding.get("affected_component", "unknown"))
         finding_id = str(finding.get("finding_id", ""))
         severity = str(finding.get("severity", "medium")).lower()
@@ -666,6 +440,26 @@ class RemediationSynthesizer:
 
         _log.debug("RemediationSynthesizer: finding=%s dtype=%s component=%s", finding_id, dtype, component)
 
+        if dtype == "sensitive_data_request":
+            return await self._patch_data_handling_async(component, node, finding, finding_id, priority)
+        if dtype == "privilege_escalation":
+            return await self._remediate_privilege_escalation_async(component, node, finding, finding_id, priority)
+
+        artefacts = self._dispatch_deterministic(dtype, component, node, finding, finding_id, priority)
+        if self._llm is not None:
+            await self._enrich_artefacts_async(artefacts, dtype, component, finding)
+        return artefacts
+
+    def _dispatch_deterministic(
+        self,
+        dtype: str,
+        component: str,
+        node: "Node | None",
+        finding: dict,
+        finding_id: str,
+        priority: str,
+    ) -> list[RemediationArtefact]:
+        """Build the deterministic (template-based) artefact list for *dtype*."""
         if dtype == "privilege_escalation":
             return self._remediate_privilege_escalation(component, node, finding, finding_id, priority)
         if dtype == "restricted_action_reachable":
@@ -688,6 +482,88 @@ class RemediationSynthesizer:
             return self._patch_generic_violation(component, node, finding, finding_id, priority)
         # generic — produce a minimal system_prompt_patch
         return self._patch_generic_violation(component, node, finding, finding_id, priority)
+
+    async def _enrich_artefacts_async(
+        self,
+        artefacts: list[RemediationArtefact],
+        dtype: str,
+        component: str,
+        finding: dict,
+    ) -> None:
+        """Best-effort: replace patch_text/rationale on *artefacts* in place
+        with LLM-authored surgical text. Leaves template text on any failure
+        or when the LLM is unavailable/returns a canned response."""
+        evidence = str(finding.get("description") or finding.get("title") or "")[:300]
+        for artefact in artefacts:
+            if (
+                artefact.artefact_type == RemediationArtefactType.SYSTEM_PROMPT_PATCH
+                and dtype in _PROMPT_TEXT_UPGRADE_DTYPES
+            ):
+                prompt_node = self._prompt_by_agent.get(component)
+                new_text = await self._llm_patch_async(
+                    section=artefact.patch_section or "Security Rules",
+                    violation=evidence,
+                    prompt_excerpt=_prompt_content(prompt_node)[:400],
+                    intent_purpose="",
+                )
+                if new_text:
+                    artefact.patch_text = new_text
+                continue
+            if artefact.artefact_type == RemediationArtefactType.ARCHITECTURAL_CHANGE:
+                new_rationale = await self._llm_architectural_rationale_async(
+                    component=component,
+                    evidence=evidence,
+                    change_description=artefact.change_description or "",
+                )
+            else:
+                new_rationale = await self._llm_guardrail_rationale_async(
+                    component=component,
+                    evidence=evidence,
+                    guardrail_type=artefact.guardrail_type or artefact.artefact_type.value,
+                    guardrail_trigger=artefact.guardrail_trigger or "",
+                    guardrail_action=artefact.guardrail_action or "",
+                )
+            if new_rationale:
+                artefact.rationale = new_rationale
+
+    def synthesize_findings(
+        self,
+        findings: list[dict],
+    ) -> list[RemediationArtefact]:
+        """Synchronous, template-only synthesis (no LLM enrichment).
+
+        Prefer :meth:`synthesize_findings_async` whenever an event loop is
+        available — this entry point exists for callers outside an async
+        context and never produces LLM-authored text.
+
+        Each finding dict should carry at least ``finding_id``, ``title``,
+        ``description``, ``severity``, and ``affected_component``.  Redteam
+        findings should also include ``goal_type`` so the classifier can
+        route them directly without heuristics.
+        """
+        artefacts: list[RemediationArtefact] = []
+        seen_keys: set[str] = set()
+        for finding in findings:
+            produced = self._synthesize_one(finding)
+            for art in produced:
+                key = f"{art.component}:{art.artefact_type.value}:{(art.patch_section or art.guardrail_name or art.change_description or '')[:60]}"
+                if key not in seen_keys:
+                    seen_keys.add(key)
+                    artefacts.append(art)
+
+        return _merge_artefacts(artefacts)
+
+    def _synthesize_one(self, finding: dict) -> list[RemediationArtefact]:
+        """Return 0–2 artefacts for a single finding (template-only)."""
+        component = str(finding.get("affected_component", "unknown"))
+        finding_id = str(finding.get("finding_id", ""))
+        severity = str(finding.get("severity", "medium")).lower()
+        priority = severity if severity in ("critical", "high", "medium", "low") else "medium"
+        node = self._node_by_name.get(component)
+        dtype = _classify_finding(finding)
+
+        _log.debug("RemediationSynthesizer: finding=%s dtype=%s component=%s", finding_id, dtype, component)
+        return self._dispatch_deterministic(dtype, component, node, finding, finding_id, priority)
 
     # ------------------------------------------------------------------
     # 1. Sensitive data request — agent asks for password / PII
@@ -718,6 +594,41 @@ class RemediationSynthesizer:
             "- Do not store, log, or repeat any credential the user provides."
         )
 
+        return [RemediationArtefact(
+            finding_ids=[finding_id],
+            component=component,
+            component_type=_node_type(node) if node else "AGENT",
+            artefact_type=RemediationArtefactType.SYSTEM_PROMPT_PATCH,
+            priority=priority,
+            patch_location=location or None,
+            patch_section="Data Handling Rules",
+            patch_text=patch_text,
+            rationale=finding.get("description", "Agent violates data handling rules."),
+        )]
+
+    async def _patch_data_handling_async(
+        self,
+        component: str,
+        node: "Node | None",
+        finding: dict,
+        finding_id: str,
+        priority: str,
+    ) -> list[RemediationArtefact]:
+        prompt_node = self._prompt_by_agent.get(component)
+        location = _prompt_location(prompt_node)
+        existing = _prompt_content(prompt_node)
+        patch_text = await self._llm_patch_async(
+            section="Data Handling Rules",
+            violation=finding.get("description", "Agent asks for sensitive credentials"),
+            prompt_excerpt=existing[:400],
+            intent_purpose=getattr(getattr(self, "_intent", None), "app_purpose", ""),
+        ) or (
+            "## Data Handling Rules\n"
+            "- NEVER ask the user for their password, PIN, or full card number.\n"
+            "- If authentication is required, direct the user to the secure login portal.\n"
+            "- You may confirm the last 4 digits of an account number but never the full number.\n"
+            "- Do not store, log, or repeat any credential the user provides."
+        )
         return [RemediationArtefact(
             finding_ids=[finding_id],
             component=component,
@@ -1046,10 +957,8 @@ class RemediationSynthesizer:
             "requires_hitl": False,
             "risk": "unauthorised access to a high-privilege operation",
         })
-        requires_auth: bool = bool(strategy.get("requires_auth", True))
         requires_hitl: bool = bool(strategy.get("requires_hitl", False))
         risk: str = str(strategy.get("risk", "privilege escalation"))
-        guardrail_type: str = str(strategy.get("guardrail", "auth_check"))
 
         hitl_note = " Require manager HITL approval before executing." if requires_hitl else ""
 
@@ -1092,7 +1001,75 @@ class RemediationSynthesizer:
             f"Never invoke {tool_name}() for an unauthenticated caller.{hitl_note}"
         )
 
-        artefacts = [
+        return self._build_privilege_artefacts(
+            component, node, finding, finding_id, priority, tool_name, patch_text, strategy, priv_scope
+        )
+
+    async def _remediate_privilege_escalation_async(
+        self,
+        component: str,
+        node: "Node | None",
+        finding: dict,
+        finding_id: str,
+        priority: str,
+    ) -> list[RemediationArtefact]:
+        # Resolve the privilege path — same logic as the sync version
+        priv_names = self._privilege_map.get(component, [])
+        tool_name = str(finding.get("tool_name", "")) or (priv_names[0].split(":")[-1] if priv_names else "high-privilege-tool")
+        tool_desc = str(finding.get("tool_description", "") or finding.get("description", ""))[:200]
+        priv_scope = ""
+        if priv_names:
+            priv_scope = priv_names[0].split(":")[-1].strip()
+
+        strategy = _PRIVILEGE_STRATEGY.get(priv_scope, {
+            "guardrail": "auth_check",
+            "requires_auth": True,
+            "requires_hitl": False,
+            "risk": "unauthorised access to a high-privilege operation",
+        })
+        requires_hitl: bool = bool(strategy.get("requires_hitl", False))
+        risk: str = str(strategy.get("risk", "privilege escalation"))
+
+        hitl_note = " Require manager HITL approval before executing." if requires_hitl else ""
+        patch_text = await self._llm_privilege_patch_async(
+            agent_name=component,
+            tool_name=tool_name,
+            tool_desc=tool_desc,
+            privilege_scope=priv_scope or "high-privilege",
+            risk=risk,
+        ) or (
+            f"## Access Controls — {tool_name}\n"
+            f"Before calling {tool_name}(), confirm that the customer is authenticated.\n"
+            f"If no active session is detected, direct the user to log in before proceeding.\n"
+            f"Never invoke {tool_name}() for an unauthenticated caller.{hitl_note}"
+        )
+        return self._build_privilege_artefacts(
+            component, node, finding, finding_id, priority, tool_name, patch_text, strategy, priv_scope
+        )
+
+    def _build_privilege_artefacts(
+        self,
+        component: str,
+        node: "Node | None",
+        finding: dict,
+        finding_id: str,
+        priority: str,
+        tool_name: str,
+        patch_text: str,
+        strategy: dict,
+        priv_scope: str,
+    ) -> list[RemediationArtefact]:
+        """Construct privilege-escalation artefacts (shared by sync + async paths)."""
+        desc = finding.get("description", "")
+        priv_names = self._privilege_map.get(tool_name, []) or self._privilege_map.get(component, [])
+        priv_node_name = priv_names[0] if priv_names else ""
+        requires_auth: bool = bool(strategy.get("requires_auth", True))
+        requires_hitl: bool = bool(strategy.get("requires_hitl", False))
+        risk: str = str(strategy.get("risk", "privilege escalation"))
+        guardrail_type: str = str(strategy.get("guardrail", "auth_check"))
+        hitl_note = " Require manager HITL approval before executing." if requires_hitl else ""
+
+        artefacts: list[RemediationArtefact] = [
             RemediationArtefact(
                 finding_ids=[finding_id],
                 component=component,
@@ -1118,9 +1095,11 @@ class RemediationSynthesizer:
                 privilege_node=priv_node_name or None,
                 requires_auth=requires_auth,
                 requires_hitl=requires_hitl,
-                rationale=desc,
+                rationale=desc or f"Privilege escalation via {tool_name}.",
             ),
-            RemediationArtefact(
+        ]
+        if requires_auth:
+            artefacts.append(RemediationArtefact(
                 finding_ids=[finding_id],
                 component=tool_name,
                 component_type="TOOL",
@@ -1135,9 +1114,10 @@ class RemediationSynthesizer:
                 privilege_node=priv_node_name or None,
                 requires_auth=requires_auth,
                 requires_hitl=requires_hitl,
-                rationale=f"Block unauthenticated calls to high-privilege tool '{tool_name}'.",
-            ),
-            RemediationArtefact(
+                rationale=f"Block unauthenticated calls to high-privilege tool '{tool_name}'.{hitl_note}",
+            ))
+        if patch_text:
+            artefacts.append(RemediationArtefact(
                 finding_ids=[finding_id],
                 component=component,
                 component_type=_node_type(node) if node else "AGENT",
@@ -1149,9 +1129,8 @@ class RemediationSynthesizer:
                 privilege_node=priv_node_name or None,
                 requires_auth=requires_auth,
                 requires_hitl=requires_hitl,
-                rationale=desc,
-            ),
-        ]
+                rationale=desc or f"System prompt must enforce authentication before {tool_name}.",
+            ))
         return artefacts
 
     # ------------------------------------------------------------------
@@ -1336,18 +1315,16 @@ class RemediationSynthesizer:
 
         violation_type = finding.get("finding_type") or finding.get("type") or "POLICY_VIOLATION"
 
-        # B11: strip machine-generated telemetry prefixes before embedding in patch.
-        import re as _re_local
-        _machine_pfx = _re_local.compile(
+        # Strip machine-generated telemetry prefixes before embedding in patch.
+        _machine_pfx = re.compile(
             r"(?:Behavior finding \S+|Attack scenario '[^']+' succeeded:[^.]+\.)\s*",
-            _re_local.IGNORECASE,
+            re.IGNORECASE,
         )
         _raw = (desc or title)
         _clean = _machine_pfx.sub("", _raw).strip()
         _rule_excerpt = _word_truncate(_clean, 200) if _clean else "the stated policy"
 
-        policy_label = f"Policy Compliance \u2014 {component}" if component and component != "unknown" else "Policy Compliance"
-        # B13: provide violation-type-aware actionable guidance instead of a generic placeholder.
+        policy_label = f"Policy Compliance — {component}" if component and component != "unknown" else "Policy Compliance"
         patch_text = (
             f"## {policy_label}\n"
             f"The following behaviour is prohibited: {_rule_excerpt}\n\n"
@@ -1356,7 +1333,7 @@ class RemediationSynthesizer:
             f"before they reach the agent or any tool.\n"
             f"2. When the agent must acknowledge the request, use a standard refusal: "
             f"\"I'm sorry, I can only assist with [allowed scope].\".\n"
-            f"3. Validate this constraint at the guardrail layer \u2014 system-prompt "
+            f"3. Validate this constraint at the guardrail layer — system-prompt "
             f"instructions alone can be overridden by adversarial framing."
         )
         return [RemediationArtefact(
@@ -1372,8 +1349,26 @@ class RemediationSynthesizer:
         )]
 
     # ------------------------------------------------------------------
-    # LLM patch generation helpers
+    # LLM call helpers
     # ------------------------------------------------------------------
+
+    async def _call_llm_async(self, prompt: str, *, system: str, label: str) -> str:
+        """Shared LLM invocation: streams a completion, guards against the
+        no-API-key canned response, and swallows errors. Returns "" on any
+        failure so every caller falls back to its deterministic template."""
+        if self._llm is None:
+            return ""
+        try:
+            result = ""
+            async for chunk in self._llm.complete_stream(prompt, system=system, label=label):
+                result += chunk
+            result = result.strip()
+            if result.startswith(_CANNED_RESPONSE_PREFIX):
+                return ""
+            return result
+        except Exception as exc:
+            _log.debug("RemediationSynthesizer: LLM call failed (%s): %s", label, exc)
+            return ""
 
     async def _llm_patch_async(
         self,
@@ -1386,26 +1381,15 @@ class RemediationSynthesizer:
 
         Returns empty string on failure so caller falls back to template.
         """
-        if self._llm is None:
-            return ""
-        try:
-            prompt = _LLM_PATCH_USER.format(
-                agent_purpose=intent_purpose or "an AI assistant",
-                violation=violation[:300],
-                prompt_excerpt=prompt_excerpt[:600],
-                section=section,
-            )
-            result = ""
-            async for chunk in self._llm.complete_stream(  # type: ignore[union-attr]
-                prompt,
-                system=_LLM_PATCH_SYSTEM,
-                label="behavior:remediation_patch",
-            ):
-                result += chunk
-            return result.strip()
-        except Exception as exc:
-            _log.debug("RemediationSynthesizer._llm_patch_async: failed: %s", exc)
-            return ""
+        prompt = SYSTEM_PROMPT_PATCH_USER.format(
+            agent_purpose=intent_purpose or "an AI assistant",
+            violation=violation[:300],
+            prompt_excerpt=prompt_excerpt[:600],
+            section=section,
+        )
+        return await self._call_llm_async(
+            prompt, system=SYSTEM_PROMPT_PATCH_SYSTEM, label="remediation:prompt_patch"
+        )
 
     def _llm_patch(
         self,
@@ -1416,8 +1400,8 @@ class RemediationSynthesizer:
     ) -> str:
         """Sync shim — only works outside a running event loop (e.g. redteam CLI).
 
-        Callers inside an async context should use synthesize_async() instead
-        so that _llm_patch_async() is awaited properly.
+        Callers inside an async context should use synthesize_findings_async()
+        instead so that _llm_patch_async() is awaited properly.
         """
         if self._llm is None:
             return ""
@@ -1443,28 +1427,17 @@ class RemediationSynthesizer:
         risk: str,
     ) -> str:
         """Generate contextual privilege-restriction patch using the LLM (async)."""
-        if self._llm is None:
-            return ""
-        try:
-            prompt = _LLM_PRIVILEGE_PATCH_USER.format(
-                agent_name=agent_name,
-                agent_purpose="",
-                tool_name=tool_name,
-                tool_desc=tool_desc[:200],
-                privilege_scope=privilege_scope,
-                risk=risk,
-            )
-            result = ""
-            async for chunk in self._llm.complete_stream(  # type: ignore[union-attr]
-                prompt,
-                system=_LLM_PRIVILEGE_PATCH_SYSTEM,
-                label="behavior:privilege_patch",
-            ):
-                result += chunk
-            return result.strip()
-        except Exception as exc:
-            _log.debug("RemediationSynthesizer._llm_privilege_patch_async: failed: %s", exc)
-            return ""
+        prompt = PRIVILEGE_PATCH_USER.format(
+            agent_name=agent_name,
+            agent_purpose="",
+            tool_name=tool_name,
+            tool_desc=tool_desc[:200],
+            privilege_scope=privilege_scope,
+            risk=risk,
+        )
+        return await self._call_llm_async(
+            prompt, system=PRIVILEGE_PATCH_SYSTEM, label="remediation:privilege_patch"
+        )
 
     def _llm_privilege_patch(
         self,
@@ -1489,3 +1462,43 @@ class RemediationSynthesizer:
         except Exception as exc:
             _log.debug("RemediationSynthesizer._llm_privilege_patch: failed: %s", exc)
             return ""
+
+    async def _llm_guardrail_rationale_async(
+        self,
+        component: str,
+        evidence: str,
+        guardrail_type: str,
+        guardrail_trigger: str,
+        guardrail_action: str,
+    ) -> str:
+        """Generate a finding-specific rationale for an (already-decided)
+        guardrail spec. Returns "" on failure so the caller keeps its
+        template rationale."""
+        prompt = GUARDRAIL_RATIONALE_USER.format(
+            component=component,
+            evidence=evidence,
+            guardrail_type=guardrail_type,
+            guardrail_trigger=guardrail_trigger,
+            guardrail_action=guardrail_action,
+        )
+        return await self._call_llm_async(
+            prompt, system=GUARDRAIL_RATIONALE_SYSTEM, label="remediation:guardrail_rationale"
+        )
+
+    async def _llm_architectural_rationale_async(
+        self,
+        component: str,
+        evidence: str,
+        change_description: str,
+    ) -> str:
+        """Generate a finding-specific rationale for an (already-decided)
+        architectural change. Returns "" on failure so the caller keeps its
+        template rationale."""
+        prompt = ARCHITECTURAL_RATIONALE_USER.format(
+            component=component,
+            evidence=evidence,
+            change_description=change_description,
+        )
+        return await self._call_llm_async(
+            prompt, system=ARCHITECTURAL_RATIONALE_SYSTEM, label="remediation:architectural_rationale"
+        )

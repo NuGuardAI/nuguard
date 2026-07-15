@@ -107,7 +107,12 @@ async def test_analyze_behavior_constructs_analyzer_and_forwards_mode():
         )
 
     mock_cls.assert_called_once_with(
-        config=config, sbom=sbom, policy=policy, controls=controls, llm_client=llm_client
+        config=config,
+        sbom=sbom,
+        policy=policy,
+        controls=controls,
+        llm_client=llm_client,
+        remediation_llm_client=None,
     )
     mock_instance.analyze.assert_awaited_once_with(mode="dynamic")
     assert result is sentinel_result
@@ -171,7 +176,7 @@ async def test_run_behavior_scenarios_constructs_runner_and_forwards_args():
 @pytest.mark.asyncio
 async def test_run_behavior_scenarios_populates_remediation_plan():
     """Findings + a real SBOM should produce structured RemediationArtefact objects."""
-    from nuguard.behavior.models import RemediationArtefact, RemediationArtefactType
+    from nuguard.remediation.models import RemediationArtefact, RemediationArtefactType
 
     finding = {
         "finding_id": "BA-004-1",
@@ -198,7 +203,7 @@ async def test_run_behavior_scenarios_populates_remediation_plan():
 
     with (
         patch("nuguard.behavior.public_api.BehaviorRunner") as mock_runner_cls,
-        patch("nuguard.behavior.remediation.RemediationSynthesizer.synthesize_findings_async") as mock_synth,
+        patch("nuguard.remediation.synthesizer.RemediationSynthesizer.synthesize_findings_async") as mock_synth,
     ):
         mock_runner_cls.return_value.run = AsyncMock(return_value=sentinel_result)
         mock_synth.return_value = [fake_artefact]
@@ -206,8 +211,13 @@ async def test_run_behavior_scenarios_populates_remediation_plan():
         request = BehaviorRunRequest(config=config, scenarios=[_scenario("a")])
         result = await run_behavior_scenarios(request, sbom=empty_sbom)
 
-    mock_synth.assert_awaited_once_with([finding])
+    # mock_synth.await_args holds a reference to result.findings' dicts, which
+    # backfill_finding_remediation() mutates in place after this call — so the
+    # recorded call args reflect the post-backfill state by the time we assert.
+    expected_finding = dict(finding, remediation=fake_artefact.rationale)
+    mock_synth.assert_awaited_once_with([expected_finding])
     assert result.remediation_plan == [fake_artefact]
+    assert result.findings[0]["remediation"] == fake_artefact.rationale
 
 
 @pytest.mark.asyncio
@@ -224,7 +234,7 @@ async def test_run_behavior_scenarios_remediation_synthesis_failure_is_swallowed
     with (
         patch("nuguard.behavior.public_api.BehaviorRunner") as mock_runner_cls,
         patch(
-            "nuguard.behavior.remediation.RemediationSynthesizer.synthesize_findings_async",
+            "nuguard.remediation.synthesizer.RemediationSynthesizer.synthesize_findings_async",
             side_effect=RuntimeError("boom"),
         ),
     ):
