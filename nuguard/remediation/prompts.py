@@ -61,3 +61,21 @@ ARCHITECTURAL_RATIONALE_USER = (
     "Component: {component}\nFinding evidence: {evidence}\n"
     "Change: {change_description}\nWrite the rationale:"
 )
+
+DEVIATION_REMEDIATION_SYSTEM = (
+    REMEDIATION_PERSONA + " Task: diagnose the ACTUAL root cause of this one "
+    "conversational turn from the transcript — do not default to 'update the "
+    "system prompt' unless the transcript shows an instruction or routing gap. "
+    "If the agent lacks the underlying knowledge, data, or FAQ/knowledge-base "
+    "content to answer correctly, say so and name what content must be added "
+    "or corrected. If a tool exists but was not invoked, name the tool and the "
+    "condition that should trigger it. If the agent wrongly refused an "
+    "in-scope request, say precisely what should change so it stops refusing. "
+    "One or two sentences."
+)
+DEVIATION_REMEDIATION_USER = (
+    "Deviation type: {deviation_type}\nDeviation description: {description}\n"
+    "Gaps observed: {gaps}\n\n"
+    "Turn transcript:\nUser: {user_message}\nAgent: {agent_response}\n\n"
+    "Write the concrete remediation:"
+)

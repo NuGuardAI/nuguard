@@ -335,6 +335,31 @@ def test_to_markdown_uses_deviation_evidence_heading_not_findings_heading():
     assert "**[MEDIUM] capability_gap**" in md
 
 
+def test_to_markdown_uses_llm_authored_deviation_remediation_over_template():
+    verdicts = [
+        {
+            "turn": 1,
+            "verdict": "FAIL",
+            "scores": {},
+            "overall_score": 1.0,
+            "gaps": ["No FAQ answer was retrieved for the wheelchair assistance question."],
+            "deviations": [
+                {
+                    "deviation_type": "capability_gap",
+                    "description": "No FAQ answer was retrieved for the wheelchair assistance question.",
+                    "severity": "medium",
+                    "remediation": "Add a wheelchair-assistance entry to the FAQ knowledge base.",
+                }
+            ],
+        }
+    ]
+    sr = _make_scenario_result(score=1.0, verdicts=verdicts, deviations=[{"deviation_type": "capability_gap"}])
+    result = _make_result(scenario_results=[sr])
+    md = to_markdown(result)
+    assert "Add a wheelchair-assistance entry to the FAQ knowledge base." in md
+    assert "Review the agent's system prompt and tool configuration" not in md
+
+
 def test_to_markdown_covered_components_tagged_matched_unmatched():
     verdicts = [
         {

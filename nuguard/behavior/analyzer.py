@@ -355,6 +355,7 @@ class BehaviorAnalyzer:
         # the sync synthesize_findings(), which silently skips them when
         # called from inside a running event loop).
         from nuguard.remediation.backfill import backfill_finding_remediation
+        from nuguard.remediation.deviation import enrich_deviation_remediations_async
         from nuguard.remediation.synthesizer import RemediationSynthesizer
 
         all_findings = static_findings + dynamic_findings
@@ -365,6 +366,12 @@ class BehaviorAnalyzer:
         ).synthesize_findings_async(all_findings)
         backfill_finding_remediation(result.static_findings, result.remediation_plan)
         backfill_finding_remediation(result.dynamic_findings, result.remediation_plan)
+
+        # Deviation Evidence (per-turn) in the report renders raw per-turn
+        # deviations, not Finding objects, so the backfill above never
+        # reaches them — enrich those separately, grounded in the actual
+        # turn transcript rather than a keyword-bucketed template.
+        await enrich_deviation_remediations_async(result.scenario_results, self._remediation_llm)
 
         # Step 6: Determine outcome
         has_critical = any(str(f.get("severity", "")).lower() == "critical" for f in all_findings)

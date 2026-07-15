@@ -597,7 +597,7 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
                     for gap in gaps:
                         lines.append(f"- {gap}")
                     lines.append("")
-                hint = _deviation_remediation_hint(dtype, desc)
+                hint = dev.get("remediation") or _deviation_remediation_hint(dtype, desc)
                 if hint:
                     lines.append(f"**Remediation:** {hint}")
                     lines.append("")
@@ -795,7 +795,12 @@ def _render_behavior_attack_steps(lines: list[str], finding: dict) -> None:
 
 
 def _deviation_remediation_hint(deviation_type: str, description: str) -> str:
-    """Return a short, template-based remediation hint for a deviation."""
+    """Fallback, template-based remediation hint for a deviation.
+
+    Used only when LLM-authored text (``deviation["remediation"]``, set by
+    :func:`nuguard.remediation.deviation.enrich_deviation_remediations_async`)
+    is unavailable, e.g. no remediation LLM client configured.
+    """
     desc_lower = description.lower()
     if deviation_type == "intent_misalignment":
         return (
