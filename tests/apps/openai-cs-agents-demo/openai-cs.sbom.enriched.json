@@ -310,7 +310,7 @@
       "component_type": "API_ENDPOINT",
       "confidence": 0.44000000000000006,
       "metadata": {
-        "description": "Generic API endpoint for POST requests, defined with @app.post decorator, enabling data submission to the application.",
+        "description": "Generic API endpoint for POST requests, defined using the @app.post decorator in a web application framework.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Generic API Endpoint",
@@ -361,7 +361,7 @@
         "framework": "fastapi",
         "endpoint": "/me",
         "method": "GET",
-        "description": "FastAPI GET endpoint at /me returning authenticated user data, defined with @app.get decorator.",
+        "description": "FastAPI GET endpoint at /me returning authenticated user profile data.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Me API Endpoint",
@@ -427,7 +427,7 @@
         "framework": "fastapi",
         "endpoint": "/chat",
         "method": "POST",
-        "description": "POST /chat API endpoint built with FastAPI, handling chat message submissions via HTTP POST requests.",
+        "description": "POST /chat API endpoint implemented with FastAPI framework for handling chat requests.",
         "request_body_schema": {
           "conversation_id": "Optional[str]",
           "message": "str"
@@ -599,7 +599,7 @@
         "framework": "fastapi",
         "endpoint": "/logout",
         "method": "POST",
-        "description": "API endpoint for user session termination, implemented as a POST request to /logout using the FastAPI framework.",
+        "description": "FastAPI POST endpoint at /logout that terminates user sessions and clears authentication tokens.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Logout API Endpoint",
@@ -650,7 +650,7 @@
       "component_type": "AUTH",
       "confidence": 1.0,
       "metadata": {
-        "description": "Bearer Auth provides authentication via Bearer tokens and API keys for secure API access.",
+        "description": "Bearer Auth component provides authentication via Bearer tokens and API keys for secure API access.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Bearer Authentication Module",
@@ -784,7 +784,7 @@
             "email"
           ]
         },
-        "description": "Sqlite is a relational datastore used in Python applications via the connect function for local database storage.",
+        "description": "Sqlite is a relational datastore used in Python applications, accessed via the connect function from python_datastores.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "SQLite Datastore",
@@ -899,7 +899,7 @@
       "confidence": 0.8640000000000001,
       "metadata": {
         "framework": "fastapi",
-        "description": "FastAPI is a modern Python web framework for building APIs with automatic OpenAPI documentation generation.",
+        "description": "FastAPI is a modern, fast web framework for building APIs with Python 3.6+ based on standard Python type hints.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "FastAPI Framework",
@@ -1008,7 +1008,7 @@
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "openai_agents",
-        "description": "Jailbreak Guardrail is an OpenAI Agents framework guardrail component that detects and mitigates jailbreak attempts.",
+        "description": "Jailbreak Guardrail is a guardrail component in the openai_agents framework that detects and prevents prompt injection attacks.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Jailbreak Guardrail Filter",
@@ -1066,7 +1066,7 @@
       "confidence": 0.8832000000000001,
       "metadata": {
         "framework": "openai_agents",
-        "description": "Relevance Guardrail is an OpenAI Agents framework guardrail component that validates output relevance for agent interactions.",
+        "description": "Relevance Guardrail is an OpenAI Agents framework guardrail component that validates response relevance.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Relevance Guardrail Filter",
@@ -1183,7 +1183,7 @@
       "confidence": 1.0,
       "metadata": {
         "framework": "openai_agents",
-        "description": "OpenAI GPT-4.1-mini model used as an agent within the openai_agents framework for conversational AI tasks.",
+        "description": "OpenAI GPT-4.1-mini model used as an agent within the openai_agents framework for natural language processing tasks.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "GPT-4.1 Mini Model",
@@ -1323,7 +1323,7 @@
       "confidence": 0.8640000000000001,
       "metadata": {
         "privilege_scope": "db_write",
-        "description": "Database write privilege enabling CREATE TABLE and DROP TABLE operations on user-defined tables.",
+        "description": "Database write privilege enabling table creation and deletion operations.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Database Write Privilege",
@@ -1431,7 +1431,7 @@
       "component_type": "PROMPT",
       "confidence": 0.8096000000000002,
       "metadata": {
-        "description": "FAQ Agent Instructions is a PROMPT component instantiated via openai_agents AST, providing guidance for FAQ interactions.",
+        "description": "A prompt component for an FAQ agent, instantiated via OpenAI Agents AST to handle question-answering logic.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "FAQ Agent Prompt",
@@ -1482,7 +1482,7 @@
       "component_type": "PROMPT",
       "confidence": 0.8096000000000002,
       "metadata": {
-        "description": "Flight Status Agent Instructions is a PROMPT component instantiated via openai_agents for guiding agent behavior.",
+        "description": "Flight Status Agent Instructions is a PROMPT component instantiated via openai_agents for guiding flight status queries.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Flight Status Agent Prompt",
@@ -1533,7 +1533,7 @@
       "component_type": "PROMPT",
       "confidence": 0.8096000000000002,
       "metadata": {
-        "description": "A prompt component used to define guardrails against jailbreak attempts, instantiated via openai_agents AST.",
+        "description": "A prompt component designed to prevent jailbreak attempts, instantiated via openai_agents AST.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Jailbreak Guardrail Prompt",
@@ -1733,7 +1733,7 @@
       "component_type": "PROMPT",
       "confidence": 0.8096000000000002,
       "metadata": {
-        "description": "Triage Agent Instructions is a prompt component instantiated via openai_agents AST, guiding agent decision-making.",
+        "description": "Triage Agent Instructions is a PROMPT component instantiated via openai_agents ast_instantiation.",
         "request_body_schema": {},
         "chat_payload_list": false,
         "descriptive_name": "Triage Agent Prompt",
@@ -2869,5 +2869,5 @@
     "minified_js_files": []
   },
   "relationship_graph_md": "## Component Relationship Graph\n\n- **Entry Points**: The FastAPI framework exposes four API endpoints (`Login`, `Me`, `Logout`, `Chat Endpoint`), all protected by Bearer Auth. No unauthenticated access to any endpoint is shown.\n\n- **Guardrails**: Two guardrails (`Relevance` and `Jailbreak`) sit before agents, both using `gpt-4.1-mini` for classification. They protect the Triage Agent only.\n\n- **Agent Delegation**: The `Triage Agent` delegates to `Flight Status`, `FAQ`, `Cancellation`, and `Seat Booking` agents. All four sub\u2011agents call the same five unguarded tools (`Baggage`, `Cancel Flight`, `Display Seat Map`, `Faq Lookup`, `Flight Status`).\n\n- **Tool Exposure**: Every agent (including Triage) can reach every tool. Tools like `Cancel Flight` and `Lookup Reservation` have no access controls or audit logs shown. The framework (`OpenAI Agents`) directly calls all tools and all agents\u2014bypassing guardrails.\n\n- **Data Store**: `Sqlite` is declared but has no edges\u2014no agent or tool connects to it, suggesting it is unused or misconfigured.\n\n- **Risk Pattern**: Sub\u2011agents operate without guardrail coverage, and all tools are unguarded. A jailbroken agent could invoke destructive tools (e.g., `Cancel Flight`) without constraint.\n\n```mermaid\nflowchart LR\n    Cancellation_Agent_c9d8f3[\"\ud83e\udd16 Cancellation Agent\"]\n    FAQ_Agent_fbd124[\"\ud83e\udd16 FAQ Agent\"]\n    Flight_Status_Agent_d283b8[\"\ud83e\udd16 Flight Status Agent\"]\n    Seat_Booking_Agent_6fb6b2[\"\ud83e\udd16 Seat Booking Agent\"]\n    Triage_Agent_5be487[\"\ud83e\udd16 Triage Agent\"]\n    Generic_404e26([\"\ud83c\udf10 Generic\"])\n    Me_aca6c9([\"\ud83c\udf10 Me\"])\n    Chat_Endpoint_e8ae22([\"\ud83c\udf10 Chat Endpoint\"])\n    Login_603657([\"\ud83c\udf10 Login\"])\n    Logout_c0e4d3([\"\ud83c\udf10 Logout\"])\n    Sqlite_f8eb54[(\"\ud83d\uddc4 Sqlite\")]\n    FastAPI_5dfe7c[/\"\u2699 FastAPI\"/]\n    OpenAI_Agents_9dae9a[/\"\u2699 OpenAI Agents\"/]\n    Jailbreak_Guardrail_cc5444{\"\ud83d\udee1 Jailbreak Guardrail\"}\n    Relevance_Guardrail_2c3ea2{\"\ud83d\udee1 Relevance Guardrail\"}\n    gpt_4_1_mini_15fc8e[(\"\ud83e\udde0 gpt-4.1-mini\")]\n    Cancellation_Agent_Instructions_fdfc12>\"\ud83d\udcac Cancellation Agent Instructions\"]\n    FAQ_Agent_Instructions_17c282>\"\ud83d\udcac FAQ Agent Instructions\"]\n    Flight_Status_Agent_Instructions_ce7818>\"\ud83d\udcac Flight Status Agent Instructions\"]\n    Jailbreak_Guardrail_Instructions_f1b43a>\"\ud83d\udcac Jailbreak Guardrail Instructions\"]\n    Generic_759170>\"\ud83d\udcac Generic\"]\n    Relevance_Guardrail_Instructions_7e6e45>\"\ud83d\udcac Relevance Guardrail Instructions\"]\n    Seat_Booking_Agent_Instructions_5de153>\"\ud83d\udcac Seat Booking Agent Instructions\"]\n    Triage_Agent_Instructions_20875a>\"\ud83d\udcac Triage Agent Instructions\"]\n    Baggage_Tool_55c92c(\"\ud83d\udd27 Baggage Tool\")\n    Cancel_Flight_69cb0e(\"\ud83d\udd27 Cancel Flight\")\n    Display_Seat_Map_45b160(\"\ud83d\udd27 Display Seat Map\")\n    Faq_Lookup_Tool_e1b274(\"\ud83d\udd27 Faq Lookup Tool\")\n    Flight_Status_Tool_4a614d(\"\ud83d\udd27 Flight Status Tool\")\n    Lookup_Reservation_8bd4c2(\"\ud83d\udd27 Lookup Reservation\")\n    Update_Seat_a60e3c(\"\ud83d\udd27 Update Seat\")\n\n    FastAPI_5dfe7c -->|calls| Login_603657\n    FastAPI_5dfe7c -->|calls| Me_aca6c9\n    FastAPI_5dfe7c -->|calls| Logout_c0e4d3\n    FastAPI_5dfe7c -->|calls| Chat_Endpoint_e8ae22\n    Relevance_Guardrail_2c3ea2 -->|uses| gpt_4_1_mini_15fc8e\n    Jailbreak_Guardrail_cc5444 -->|uses| gpt_4_1_mini_15fc8e\n    Triage_Agent_5be487 -->|delegates_to| Flight_Status_Agent_d283b8\n    Triage_Agent_5be487 -->|delegates_to| FAQ_Agent_fbd124\n    Cancellation_Agent_c9d8f3 -->|calls| Baggage_Tool_55c92c\n    Cancellation_Agent_c9d8f3 -->|calls| Cancel_Flight_69cb0e\n    Cancellation_Agent_c9d8f3 -->|calls| Display_Seat_Map_45b160\n    Cancellation_Agent_c9d8f3 -->|calls| Faq_Lookup_Tool_e1b274\n    Cancellation_Agent_c9d8f3 -->|calls| Flight_Status_Tool_4a614d\n    FAQ_Agent_fbd124 -->|calls| Baggage_Tool_55c92c\n    FAQ_Agent_fbd124 -->|calls| Cancel_Flight_69cb0e\n    FAQ_Agent_fbd124 -->|calls| Display_Seat_Map_45b160\n    FAQ_Agent_fbd124 -->|calls| Faq_Lookup_Tool_e1b274\n    FAQ_Agent_fbd124 -->|calls| Flight_Status_Tool_4a614d\n    Flight_Status_Agent_d283b8 -->|calls| Baggage_Tool_55c92c\n    Flight_Status_Agent_d283b8 -->|calls| Cancel_Flight_69cb0e\n    Flight_Status_Agent_d283b8 -->|calls| Display_Seat_Map_45b160\n    Flight_Status_Agent_d283b8 -->|calls| Faq_Lookup_Tool_e1b274\n    Flight_Status_Agent_d283b8 -->|calls| Flight_Status_Tool_4a614d\n    Seat_Booking_Agent_6fb6b2 -->|calls| Baggage_Tool_55c92c\n    Seat_Booking_Agent_6fb6b2 -->|calls| Cancel_Flight_69cb0e\n    Seat_Booking_Agent_6fb6b2 -->|calls| Display_Seat_Map_45b160\n    Seat_Booking_Agent_6fb6b2 -->|calls| Faq_Lookup_Tool_e1b274\n    Seat_Booking_Agent_6fb6b2 -->|calls| Flight_Status_Tool_4a614d\n    Triage_Agent_5be487 -->|calls| Baggage_Tool_55c92c\n    Triage_Agent_5be487 -->|calls| Cancel_Flight_69cb0e\n    Triage_Agent_5be487 -->|calls| Display_Seat_Map_45b160\n    Triage_Agent_5be487 -->|calls| Faq_Lookup_Tool_e1b274\n    Triage_Agent_5be487 -->|calls| Flight_Status_Tool_4a614d\n    Cancellation_Agent_c9d8f3 -->|uses| gpt_4_1_mini_15fc8e\n    FAQ_Agent_fbd124 -->|uses| gpt_4_1_mini_15fc8e\n    Flight_Status_Agent_d283b8 -->|uses| gpt_4_1_mini_15fc8e\n    Seat_Booking_Agent_6fb6b2 -->|uses| gpt_4_1_mini_15fc8e\n    Triage_Agent_5be487 -->|uses| gpt_4_1_mini_15fc8e\n    OpenAI_Agents_9dae9a -->|calls| Cancellation_Agent_c9d8f3\n    OpenAI_Agents_9dae9a -->|calls| FAQ_Agent_fbd124\n    OpenAI_Agents_9dae9a -->|calls| Flight_Status_Agent_d283b8\n    OpenAI_Agents_9dae9a -->|calls| Seat_Booking_Agent_6fb6b2\n    OpenAI_Agents_9dae9a -->|calls| Triage_Agent_5be487\n    OpenAI_Agents_9dae9a -->|calls| Baggage_Tool_55c92c\n    OpenAI_Agents_9dae9a -->|calls| Cancel_Flight_69cb0e\n    OpenAI_Agents_9dae9a -->|calls| Display_Seat_Map_45b160\n    OpenAI_Agents_9dae9a -->|calls| Faq_Lookup_Tool_e1b274\n    OpenAI_Agents_9dae9a -->|calls| Flight_Status_Tool_4a614d\n    OpenAI_Agents_9dae9a -->|calls| Lookup_Reservation_8bd4c2\n    OpenAI_Agents_9dae9a -->|calls| Update_Seat_a60e3c\n\n    classDef agent    fill:#4A90D9,stroke:#2C6FAC,color:#fff\n    classDef tool     fill:#7ED321,stroke:#5A9A18,color:#fff\n    classDef model    fill:#9B59B6,stroke:#7D3C98,color:#fff\n    classDef prompt   fill:#F39C12,stroke:#D68910,color:#fff\n    classDef guard    fill:#E74C3C,stroke:#C0392B,color:#fff\n    classDef store    fill:#1ABC9C,stroke:#17A589,color:#fff\n    classDef fw       fill:#95A5A6,stroke:#717D7E,color:#fff\n    classDef endpoint fill:#3498DB,stroke:#2471A3,color:#fff\n    class Cancellation_Agent_c9d8f3,FAQ_Agent_fbd124,Flight_Status_Agent_d283b8,Seat_Booking_Agent_6fb6b2,Triage_Agent_5be487 agent\n    class Baggage_Tool_55c92c,Cancel_Flight_69cb0e,Display_Seat_Map_45b160,Faq_Lookup_Tool_e1b274,Flight_Status_Tool_4a614d,Lookup_Reservation_8bd4c2,Update_Seat_a60e3c tool\n    class gpt_4_1_mini_15fc8e model\n    class Cancellation_Agent_Instructions_fdfc12,FAQ_Agent_Instructions_17c282,Flight_Status_Agent_Instructions_ce7818,Jailbreak_Guardrail_Instructions_f1b43a,Generic_759170,Relevance_Guardrail_Instructions_7e6e45,Seat_Booking_Agent_Instructions_5de153,Triage_Agent_Instructions_20875a prompt\n    class Jailbreak_Guardrail_cc5444,Relevance_Guardrail_2c3ea2 guard\n    class Sqlite_f8eb54 store\n    class FastAPI_5dfe7c,OpenAI_Agents_9dae9a fw\n    class Generic_404e26,Me_aca6c9,Chat_Endpoint_e8ae22,Login_603657,Logout_c0e4d3 endpoint\n```",
-  "_enrichment_cache_key": "cc98ba9fef27297e47df26377e5f565a40692eafd8aba499a75268aab2f54ced"
+  "_enrichment_cache_key": "f5eb5ffbd6644314bc1e1f8d6d45ab9d3ef5f12c22ab48607bc232aaee8b347d"
 }
