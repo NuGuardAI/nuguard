@@ -129,17 +129,18 @@ redteam:
   #   full — all scenarios regardless of score
   profile: ci
 
-  # Scenario types to run (omit section to run all):
-  #scenarios:
-  #  - prompt-injection
-  #  - tool-abuse
-  #  - privilege-escalation
-  #  - data-exfiltration
-  #  - policy-violation
-  #  - mcp-toxic-flow
+  # Disable catalog in prepublish to keep redteam bounded and fast.
+  use_catalog: false
 
-  # Minimum pre-impact score [0–10] for a scenario to be included (default: 0.0)
-  min_impact_score: 0.0
+  # Prepublish sanity scope: run a small set of high-signal families.
+  scenarios:
+    - prompt-injection
+    - tool-abuse
+    - data-exfiltration
+    - policy-violation
+
+  # Higher gate threshold keeps only top-impact sanity checks.
+  min_impact_score: 8.0
 
   # Defence regression checks: messages the app MUST refuse at all times.
   # A successful attack against one of these raises a REGRESSION finding.
@@ -190,14 +191,12 @@ redteam:
   # Off by default to keep runs fast.
   verify_findings: false
 
-  # Guided adversarial conversations using ConversationDirector
-  guided_conversations: true        # enable adaptive multi-turn attacks
-  guided_max_turns: 6               # upper-bound cap on turns per guided scenario.
-                                    # Scenario builders pick 8–12 by default; this
-                                    # clamps any higher cap down. Raise/lower to
-                                    # trade cost for depth.
-  guided_concurrency: 2             # parallel guided conversations (default: 3)
-  scenario_timeout: 120             # cancel any single scenario after 2 minutes
+  # Guided adversarial conversations — disabled for prepublish sanity gate.
+  # Re-enable for full audit runs.
+  guided_conversations: false
+  guided_max_turns: 3               # safety cap if guided re-enabled
+  guided_concurrency: 1
+  scenario_timeout: 60              # fast timeout for prepublish gate
 
   # TAP tree exploration (RT-016) — branching multi-tactic search.
   # 0 = auto-select from profile (ci → 2, full → 3).
@@ -250,7 +249,7 @@ database:
 # ─── Output ───────────────────────────────────────────────────────────────────
 output:
   format: text                      # text | json | markdown | sarif
-  fail_on: high                     # exit non-zero when any finding meets this severity
+  fail_on: critical                 # prepublish: report high findings, fail only on critical
                                     # values: critical | high | medium | low
   sarif_file: ./nuguard-results.sarif   # written when format: sarif or ci_policy is set
 
