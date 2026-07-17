@@ -1,7 +1,6 @@
 """Tests for new policy violation scenario builders.
 
 Verifies that all Cognitive Policy dimensions produce at least one scenario:
-- allowed_topics boundary
 - hitl_tool_conditions
 - rate_limits burst
 - raw_sections probe
@@ -11,7 +10,6 @@ from __future__ import annotations
 from nuguard.models.policy import CognitivePolicy, HitlToolCondition
 from nuguard.redteam.scenarios.faux_reasoning import build_policy_patching
 from nuguard.redteam.scenarios.policy_violations import (
-    build_allowed_topic_boundary,
     build_rate_limit_burst,
     build_raw_section_probe,
     build_restricted_topic,
@@ -23,34 +21,6 @@ from nuguard.redteam.scenarios.scenario_types import AttackScenario
 from nuguard.redteam.scenarios.session_metadata import build_policy_version_claim
 
 _AGENT_ID = "agent-001"
-
-
-class TestAllowedTopicBoundary:
-    def test_produces_scenario(self) -> None:
-        scenario = build_allowed_topic_boundary(
-            _AGENT_ID, "cooking recipes", ["weapons", "drugs"]
-        )
-        assert isinstance(scenario, AttackScenario)
-        assert scenario.chain is not None
-        assert len(scenario.chain.steps) >= 2
-        assert "cooking recipes" in scenario.title.lower() or "cooking" in scenario.title.lower()
-
-    def test_uses_restricted_topic_in_pivot(self) -> None:
-        scenario = build_allowed_topic_boundary(
-            _AGENT_ID, "cooking recipes", ["weapons"]
-        )
-        # The second step should reference the restricted topic as a pivot
-        second_payload = scenario.chain.steps[1].payload
-        assert "weapons" in second_payload or "cooking" in second_payload
-
-    def test_no_restricted_topics_defaults(self) -> None:
-        scenario = build_allowed_topic_boundary(_AGENT_ID, "cooking", [])
-        assert isinstance(scenario, AttackScenario)
-        assert len(scenario.chain.steps) >= 2
-
-    def test_target_node_ids(self) -> None:
-        scenario = build_allowed_topic_boundary(_AGENT_ID, "travel", [])
-        assert _AGENT_ID in scenario.target_node_ids
 
 
 class TestRateLimitBurst:
@@ -205,7 +175,6 @@ class TestGeneratorProducesAllDimensions:
             hitl_tool_conditions=[
                 HitlToolCondition(tool_name="payment_tool", condition="amount > $500")
             ],
-            allowed_topics=["cooking"],
             rate_limits={"api_calls": 5},
             raw_sections={"Custom Rules": ["do not share PII"]},
         )
@@ -219,7 +188,6 @@ class TestGeneratorProducesAllDimensions:
         assert any("delete all data" in t or "Restricted Action" in t for t in titles), "restricted_actions missing"
         assert any("large transfer" in t or "HITL Bypass" in t for t in titles), "hitl_triggers missing"
         assert any("payment_tool" in t or "HITL Bypass" in t for t in titles), "hitl_tool_conditions missing"
-        assert any("cooking" in t or "Allowed Topic" in t for t in titles), "allowed_topics missing"
         assert any("api_calls" in t or "Rate Limit" in t for t in titles), "rate_limits missing"
         assert any("Custom Rules" in t or "Raw Policy" in t for t in titles), "raw_sections missing"
 
