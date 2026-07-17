@@ -76,7 +76,6 @@ from .multimodal_injection import build_multimodal_scenarios
 from .oracle_attacks import build_boundary_self_probe, build_premise_injection, build_refusal_oracle
 from .policy_violations import (
     _clause_fragment,
-    build_allowed_topic_boundary,
     build_hitl_bypass,
     build_rate_limit_burst,
     build_raw_section_probe,
@@ -683,9 +682,6 @@ class ScenarioGenerator:
             trigger_text = f"{cond.tool_name}: {cond.condition}"
             for node in target_nodes:
                 out.append(build_hitl_bypass(str(node.id), trigger_text))
-        for topic in policy.allowed_topics:
-            for node in target_nodes:
-                out.append(build_allowed_topic_boundary(str(node.id), topic, policy.restricted_topics))
         for key, limit in policy.rate_limits.items():
             for node in target_nodes[:1]:
                 out.append(build_rate_limit_burst(str(node.id), key, limit))
