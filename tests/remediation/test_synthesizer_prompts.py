@@ -109,3 +109,75 @@ async def test_no_llm_client_produces_template_only():
 
     patch = next(a for a in artefacts if a.artefact_type == RemediationArtefactType.SYSTEM_PROMPT_PATCH)
     assert "Out of Scope" in patch.patch_text
+
+
+class TestEvidencePriorityInLLMEnrichment:
+    """_enrich_artefacts_async() builds its `evidence` string as
+    evidence_quote -> reasoning -> description -> title (synthesizer.py, the
+    scenario_type-routing fix's Step 3) so the LLM prompt is grounded in the
+    specific proof of breach rather than generic telemetry text like "Attack
+    scenario 'X' succeeded: success signals detected in N step(s)."."""
+
+    @pytest.mark.asyncio
+    async def test_evidence_quote_used_over_generic_description_system_prompt_patch(self) -> None:
+        llm = _FakeLLM(response="patched")
+        synth = RemediationSynthesizer(llm_client=llm)
+        finding = {
+            **_blocked_topics_finding(),
+            "description": "Attack scenario 'X' succeeded: success signals detected in 1 step(s).",
+            "evidence_quote": "SPECIFIC_PROOF_STRING_12345",
+        }
+
+        await synth.synthesize_findings_async([finding])
+
+        prompts = [c["prompt"] for c in llm.calls if c["system"] == SYSTEM_PROMPT_PATCH_SYSTEM]
+        assert prompts, "expected a SYSTEM_PROMPT_PATCH_SYSTEM call"
+        assert any("SPECIFIC_PROOF_STRING_12345" in p for p in prompts)
+        assert not any("success signals detected" in p for p in prompts)
+
+    @pytest.mark.asyncio
+    async def test_reasoning_used_over_generic_description_guardrail_rationale(self) -> None:
+        llm = _FakeLLM(response="rationale text")
+        synth = RemediationSynthesizer(llm_client=llm)
+        finding = {
+            **_data_leak_finding(),
+            "description": "Attack scenario 'Y' succeeded: success signals detected in 1 step(s).",
+            "reasoning": "SPECIFIC_REASONING_STRING_67890",
+        }
+
+        await synth.synthesize_findings_async([finding])
+
+        prompts = [c["prompt"] for c in llm.calls if c["system"] == GUARDRAIL_RATIONALE_SYSTEM]
+        assert prompts, "expected a GUARDRAIL_RATIONALE_SYSTEM call"
+        assert any("SPECIFIC_REASONING_STRING_67890" in p for p in prompts)
+        assert not any("success signals detected" in p for p in prompts)
+
+    @pytest.mark.asyncio
+    async def test_evidence_quote_takes_priority_over_reasoning(self) -> None:
+        llm = _FakeLLM(response="rationale text")
+        synth = RemediationSynthesizer(llm_client=llm)
+        finding = {
+            **_data_leak_finding(),
+            "evidence_quote": "EVIDENCE_QUOTE_WINS",
+            "reasoning": "REASONING_SHOULD_NOT_APPEAR",
+        }
+
+        await synth.synthesize_findings_async([finding])
+
+        prompts = [c["prompt"] for c in llm.calls if c["system"] == GUARDRAIL_RATIONALE_SYSTEM]
+        assert any("EVIDENCE_QUOTE_WINS" in p for p in prompts)
+        assert not any("REASONING_SHOULD_NOT_APPEAR" in p for p in prompts)
+
+    @pytest.mark.asyncio
+    async def test_falls_back_to_description_when_no_evidence_quote_or_reasoning(self) -> None:
+        # Regression guard: findings without the new fields (pre-existing
+        # data, or behavior/analysis findings which never populate them)
+        # must keep working exactly as before this change.
+        llm = _FakeLLM(response="patched")
+        synth = RemediationSynthesizer(llm_client=llm)
+        finding = _blocked_topics_finding()  # no evidence_quote/reasoning keys at all
+
+        await synth.synthesize_findings_async([finding])
+
+        prompts = [c["prompt"] for c in llm.calls if c["system"] == SYSTEM_PROMPT_PATCH_SYSTEM]
+        assert any(finding["description"] in p for p in prompts)

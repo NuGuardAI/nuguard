@@ -257,6 +257,182 @@ _GOAL_TYPE_DTYPE: dict[str, str] = {
     "policy_violation": "policy_violation_generic",
     "mcp_toxic_flow": "restricted_action_reachable",
     "api_attack": "privilege_escalation",
+    "agentic_trust_abuse": "agentic_trust_boundary",
+    "recon_inference": "policy_violation_generic",
+}
+
+# Redteam ``ScenarioType`` → synthesizer dtype. Checked before ``goal_type``
+# in ``_classify_finding`` because it identifies the *specific* attack
+# technique rather than the coarse goal family (e.g. PROMPT_DRIVEN_THREAT
+# spans everything from system-prompt extraction to approval forgery, which
+# need different remediation). Closed, exact-match dict — no keyword or
+# substring matching — so an unrecognised value falls straight through to
+# the goal_type/heuristic fallback below rather than guessing.
+#
+# Exhaustiveness over every ScenarioType member is enforced by
+# tests/remediation/test_synthesizer.py so a newly added ScenarioType that's
+# never assigned a bucket fails CI instead of silently falling back.
+_SCENARIO_TYPE_DTYPE: dict[str, str] = {
+    # -- blocked_topics_missing: content/topic-boundary & jailbreak techniques
+    "SYSTEM_PROMPT_EXTRACTION": "blocked_topics_missing",
+    "GUARDRAIL_BYPASS": "blocked_topics_missing",
+    "INDIRECT_INJECTION": "blocked_topics_missing",
+    "MULTI_TURN_REDIRECTION": "blocked_topics_missing",
+    "CONTEXT_FLOODING": "blocked_topics_missing",
+    "STRUCTURAL_INJECTION": "blocked_topics_missing",
+    "MANY_SHOT_JAILBREAK": "blocked_topics_missing",
+    "CRESCENDO": "blocked_topics_missing",
+    "SKELETON_KEY": "blocked_topics_missing",
+    "PAYLOAD_SPLITTING": "blocked_topics_missing",
+    "ENCODING_EVASION": "blocked_topics_missing",
+    "MULTI_LANGUAGE_BYPASS": "blocked_topics_missing",
+    "HOMOGLYPH_LEETSPEAK": "blocked_topics_missing",
+    "PREMISE_INJECTION": "blocked_topics_missing",
+    "FICTIONAL_FRAMING_BYPASS": "blocked_topics_missing",
+    "FALSE_POLICY_PREMISE": "blocked_topics_missing",
+    "OUT_OF_DOMAIN_ADVICE": "blocked_topics_missing",
+    "AUTHORITY_BIAS_PHISHING": "blocked_topics_missing",
+    "MULTIMODAL_INJECTION": "blocked_topics_missing",
+    # -- hitl_gate_missing: approval / authorization-claim integrity
+    "HITL_BYPASS": "hitl_gate_missing",
+    "APPROVAL_SPOOF": "hitl_gate_missing",
+    "UPSTREAM_APPROVAL_FABRICATION": "hitl_gate_missing",
+    "APPROVAL_SUMMARY_MISMATCH": "hitl_gate_missing",
+    "CONSENT_LAUNDERING": "hitl_gate_missing",
+    "PARTIAL_APPROVAL_OVERREACH": "hitl_gate_missing",
+    "FAUX_REASONING_INJECTION": "hitl_gate_missing",
+    "POLICY_PATCHING": "hitl_gate_missing",
+    "APPROVAL_STATE_FORGERY": "hitl_gate_missing",
+    "SESSION_METADATA_FORGERY": "hitl_gate_missing",
+    # -- privilege_escalation: authorization / privilege-scope failures
+    "PRIVILEGE_CHAIN": "privilege_escalation",
+    "AUTH_BYPASS": "privilege_escalation",
+    "BOLA_READ": "privilege_escalation",
+    "BOLA_WRITE": "privilege_escalation",
+    "BFLA": "privilege_escalation",
+    "RBAC_OVERRIDE": "privilege_escalation",
+    "HANDOFF_PRIVILEGE_ESCALATION": "privilege_escalation",
+    "OAUTH_SCOPE_ESCALATION": "privilege_escalation",
+    "TOKEN_REPLAY": "privilege_escalation",
+    "SCHEMA_IDENTITY_OVERRIDE": "privilege_escalation",
+    # -- data_leak: data/PII exfiltration, including covert channels
+    "DIRECT_PII_EXTRACTION": "data_leak",
+    "CROSS_TENANT_EXFILTRATION": "data_leak",
+    "COVERT_ENCODING": "data_leak",
+    "DATASTORE_PROBE": "data_leak",
+    "BULK_DATA_EXPORT": "data_leak",
+    "ACCOUNT_ID_PROBE": "data_leak",
+    "PRIVATE_DOC_EXTRACTION": "data_leak",
+    "RAG_CITATION_OVERREACH": "data_leak",
+    "AGGREGATED_PII": "data_leak",
+    "SENSITIVE_HISTORY_DISCLOSURE": "data_leak",
+    "CROSS_SESSION_LEAK": "data_leak",
+    "MARKDOWN_IMAGE_EXFIL": "data_leak",
+    "MARKDOWN_LINK_EXFIL": "data_leak",
+    "URL_ENCODING_EXFIL": "data_leak",
+    "STRUCTURED_FIELD_SMUGGLING": "data_leak",
+    "METADATA_SMUGGLING": "data_leak",
+    "INVISIBLE_UNICODE": "data_leak",
+    "TELEMETRY_PRETEXT_EXFIL": "data_leak",
+    "MCP_CROSS_SERVER_EXFIL": "data_leak",
+    "RAG_ACL_BYPASS": "data_leak",
+    "RAG_CHUNK_SMUGGLING": "data_leak",
+    "RAG_NAMESPACE_BLEED": "data_leak",
+    "RAG_NEAREST_NEIGHBOR_ENUM": "data_leak",
+    "STREAMING_EXFIL": "data_leak",
+    "DIRECT_DATASTORE_ACCESS": "data_leak",
+    # -- restricted_action_reachable: destructive / restricted tool actions
+    "RESTRICTED_ACTION": "restricted_action_reachable",
+    "MCP_WEB_FETCH": "restricted_action_reachable",
+    "MCP_EMAIL": "restricted_action_reachable",
+    "MCP_GITHUB": "restricted_action_reachable",
+    "MCP_RAG": "restricted_action_reachable",
+    "MCP_TOOL_INJECTION": "restricted_action_reachable",
+    "MCP_SHADOW_TOOL": "restricted_action_reachable",
+    "UNAUTHORIZED_MESSAGE_SEND": "restricted_action_reachable",
+    "DESTRUCTIVE_RECORD_MUTATION": "restricted_action_reachable",
+    "UNSAFE_NAVIGATION_ACTION": "restricted_action_reachable",
+    "UNSAFE_DEVICE_COMMAND": "restricted_action_reachable",
+    "UNAUTHORIZED_TRANSACTION": "restricted_action_reachable",
+    "MASS_NOTIFICATION": "restricted_action_reachable",
+    "DISABLE_SAFETY_CONTROL": "restricted_action_reachable",
+    "PERSISTENT_TASK_CREATION": "restricted_action_reachable",
+    "TOOL_CHAIN_EXPLOIT": "restricted_action_reachable",
+    "FRAUD_WORKFLOW": "restricted_action_reachable",
+    "HIDDEN_ACTION_PAYLOAD": "restricted_action_reachable",
+    "EXCESSIVE_AGENCY": "restricted_action_reachable",
+    # -- risky_tool: injection into a tool/backend call
+    "SQL_INJECTION": "risky_tool",
+    "SSRF": "risky_tool",
+    "MASS_ASSIGNMENT": "risky_tool",
+    "IDOR": "risky_tool",
+    "DATASTORE_SQL_INJECTION": "risky_tool",
+    "SHELL_INJECTION": "risky_tool",
+    "SANDBOX_ESCAPE": "risky_tool",
+    # -- policy_violation_generic: safe default — no confident domain-specific
+    # fit yet (mostly RAG-pipeline/architectural and reconnaissance/oracle
+    # techniques); _patch_generic_violation embeds the finding's own
+    # description rather than a mismatched specific claim.
+    "RAG_POISONING": "policy_violation_generic",
+    "REFUSAL_ORACLE": "policy_violation_generic",
+    "FALSE_VERIFICATION": "policy_violation_generic",
+    "DEBUG_ADMIN_EXPOSURE": "policy_violation_generic",
+    "TOOL_DISCOVERY_LEAK": "policy_violation_generic",
+    "UNEXPECTED_CODE_GENERATION": "policy_violation_generic",
+    "FALSE_ACTION_CLAIM": "policy_violation_generic",
+    "RESOURCE_EXHAUSTION": "policy_violation_generic",
+    "HALLUCINATED_AUTHORITY": "policy_violation_generic",
+    "RAG_DOCUMENT_POISONING": "policy_violation_generic",
+    "RAG_EMBEDDING_HIJACK": "policy_violation_generic",
+    "CODE_GEN_ESCALATION": "policy_violation_generic",
+    "RAG_STALE_RETRIEVAL": "policy_violation_generic",
+    "RAG_CITATION_LAUNDERING": "policy_violation_generic",
+    "RESPONSE_SCHEMA_PROBE": "policy_violation_generic",
+    "SCHEMA_TYPE_CONFUSION": "policy_violation_generic",
+    "BOUNDARY_SELF_PROBE": "policy_violation_generic",
+    # -- agentic_trust_boundary: trust boundaries BETWEEN agents/sub-agents
+    "CONFUSED_DEPUTY": "agentic_trust_boundary",
+    "MULTI_AGENT_TRUST": "agentic_trust_boundary",
+    "GOAL_HIJACKING": "agentic_trust_boundary",
+    "SUBAGENT_OUTPUT_INJECTION": "agentic_trust_boundary",
+    "AGENT_IMPERSONATION": "agentic_trust_boundary",
+    "PLANNER_EXECUTOR_MISMATCH": "agentic_trust_boundary",
+    "INTENT_ROUTING_CONFUSION": "agentic_trust_boundary",
+    "CROSS_AGENT_INJECTION": "agentic_trust_boundary",
+    "OWNERLESS_AGENT_ACTION": "agentic_trust_boundary",
+    "CROSS_AGENT_CRED_BLEED": "agentic_trust_boundary",
+    "DELEGATED_IDENTITY_CONFUSION": "agentic_trust_boundary",
+    # -- memory_session_integrity: persistent memory / session state integrity
+    "MEMORY_POISONING": "memory_session_integrity",
+    "PROFILE_FIELD_POISONING": "memory_session_integrity",
+    "CROSS_SESSION_BACKDOOR": "memory_session_integrity",
+    "FALSE_IDENTITY_MEMORY": "memory_session_integrity",
+    "SUMMARY_POISONING": "memory_session_integrity",
+    "MEMORY_AUTH_DRIFT": "memory_session_integrity",
+    "CREDENTIAL_PERSISTENCE": "memory_session_integrity",
+    "SESSION_FIXATION": "memory_session_integrity",
+    # -- output_handling: model output used unsafely downstream (code/SQL/URL/config)
+    "OUTPUT_XSS_INJECTION": "output_handling",
+    "OUTPUT_TOOL_ARG_INJECTION": "output_handling",
+    "OUTPUT_SQL_TENANT_BYPASS": "output_handling",
+    "OUTPUT_SSRF": "output_handling",
+    "OUTPUT_CONFIG_INJECTION": "output_handling",
+    "OUTPUT_FILE_CONFUSION": "output_handling",
+    "PARAM_CONFUSION_INJECTION": "output_handling",
+    "STRUCTURED_OUTPUT_COERCION": "output_handling",
+    # -- supply_chain_secrets: CI/CD, secrets, and supply-chain probing
+    "CREDENTIAL_OVERREACH": "supply_chain_secrets",
+    "REPO_PROMPT_INJECTION": "supply_chain_secrets",
+    "SECRET_FILE_READ": "supply_chain_secrets",
+    "DELAYED_CI_EXFIL": "supply_chain_secrets",
+    "VERIFIER_SABOTAGE": "supply_chain_secrets",
+    "ENV_VAR_PROBE": "supply_chain_secrets",
+    "CI_SECRET_PROBE": "supply_chain_secrets",
+    "CLOUD_METADATA_SSRF": "supply_chain_secrets",
+    "DEPENDENCY_CVE_PROBE": "supply_chain_secrets",
+    "QUALITY_GATE_INFERENCE": "supply_chain_secrets",
+    "ARTIFACT_INTEGRITY_PROBE": "supply_chain_secrets",
+    "CROSS_ENV_CREDENTIAL_REUSE": "supply_chain_secrets",
 }
 
 # dtypes whose primary SYSTEM_PROMPT_PATCH artefact gets its patch_text
@@ -273,10 +449,25 @@ _PROMPT_TEXT_UPGRADE_DTYPES = {
 
 def _classify_finding(finding: dict) -> str:
     """Return a string category for the finding."""
-    # Redteam shortcut: if the finding carries a ``goal_type`` (set by the
+    # Redteam shortcut #1 (checked first): if the finding carries a
+    # ``scenario_type`` (set by the RedteamOrchestrator from
+    # AttackScenario.scenario_type), trust it — it identifies the specific
+    # attack technique rather than the coarse goal family, so it produces
+    # more accurate routing than ``goal_type`` alone (e.g. PROMPT_DRIVEN_THREAT
+    # spans both system-prompt extraction and approval forgery, which need
+    # different remediation).
+    scenario_type = str(finding.get("scenario_type", "") or "").strip().upper()
+    if scenario_type:
+        mapped = _SCENARIO_TYPE_DTYPE.get(scenario_type)
+        if mapped:
+            return mapped
+
+    # Redteam shortcut #2: if the finding carries a ``goal_type`` (set by the
     # RedteamOrchestrator when it builds Finding objects), trust it.  This
     # keeps redteam findings from being misclassified by the behavior-module
     # heuristic classifier below, which was tuned for ``BA-*`` finding IDs.
+    # Also the fallback for redteam findings with no ``scenario_type`` (e.g.
+    # data predating this field).
     goal_type = str(finding.get("goal_type", "") or "").strip().lower()
     if goal_type:
         mapped = _GOAL_TYPE_DTYPE.get(goal_type)
@@ -320,6 +511,38 @@ def _classify_finding(finding: dict) -> str:
 # ---------------------------------------------------------------------------
 
 
+def _artefact_dedup_key(art: RemediationArtefact) -> str:
+    """Cross-finding dedup identity for one artefact.
+
+    Two artefacts collapse to the same key only if they'd tell the reader
+    the same thing — i.e. their actual instructive content (and rationale)
+    matches — not merely because they share a component-derived display
+    label. ``patch_section``/``guardrail_name``/``change_description`` are
+    often a pure function of ``component`` alone (e.g.
+    ``f"Out of Scope — {component}"``), so keying on them collapses
+    genuinely distinct findings on the same component before they ever
+    reach :func:`_merge_artefacts`, silently dropping one finding's
+    remediation entirely instead of merging it.
+
+    ``rationale`` is included alongside the instruction fields because a
+    generic fallback template can produce byte-identical ``patch_text``/
+    guardrail spec for two different findings while ``rationale`` (usually
+    sourced from the finding's own description) still differs — content
+    alone isn't sufficient to prove two artefacts are really duplicates.
+    """
+    if art.artefact_type == RemediationArtefactType.SYSTEM_PROMPT_PATCH:
+        content = art.patch_text or art.patch_section or ""
+    elif art.artefact_type == RemediationArtefactType.ARCHITECTURAL_CHANGE:
+        content = art.change_detail or art.change_description or ""
+    else:  # INPUT_GUARDRAIL / OUTPUT_GUARDRAIL
+        content = (
+            f"{art.guardrail_type}|{art.guardrail_trigger}|{art.guardrail_action}"
+            if (art.guardrail_type or art.guardrail_trigger or art.guardrail_action)
+            else (art.guardrail_name or "")
+        )
+    return f"{art.component}:{art.artefact_type.value}:{content}:{art.rationale}"
+
+
 def _merge_artefacts(artefacts: list[RemediationArtefact]) -> list[RemediationArtefact]:
     """Merge artefacts that target the same (component, artefact_type).
 
@@ -339,10 +562,13 @@ def _merge_artefacts(artefacts: list[RemediationArtefact]) -> list[RemediationAr
         # Merge patch texts
         finding_ids: list[str] = []
         patch_parts: list[str] = []
+        rationale_parts: list[str] = []
         for a in group:
             finding_ids.extend(a.finding_ids)
             if a.patch_text:
                 patch_parts.append(a.patch_text)
+            if a.rationale:
+                rationale_parts.append(a.rationale)
         base = group[0]
         merged.append(RemediationArtefact(
             finding_ids=finding_ids,
@@ -353,7 +579,12 @@ def _merge_artefacts(artefacts: list[RemediationArtefact]) -> list[RemediationAr
             patch_location=base.patch_location,
             patch_section="Security Rules",
             patch_text="\n\n".join(patch_parts),
-            rationale=f"Merged {len(group)} system prompt patches for {comp}",
+            # Preserve each artefact's own rationale (deduped, order kept)
+            # instead of discarding them behind a content-free "Merged N..."
+            # placeholder — the specific reasons still need to reach the
+            # report even when several findings land on the same patch.
+            rationale="\n".join(dict.fromkeys(rationale_parts))
+            or f"Merged {len(group)} system prompt patches for {comp}",
         ))
 
     # Sort by priority
@@ -422,7 +653,7 @@ class RemediationSynthesizer:
                 _log.debug("synthesize_findings_async: one finding failed: %s", batch)
                 continue
             for art in batch:
-                key = f"{art.component}:{art.artefact_type.value}:{(art.patch_section or art.guardrail_name or art.change_description or '')[:60]}"
+                key = _artefact_dedup_key(art)
                 if key not in seen_keys:
                     seen_keys.add(key)
                     artefacts.append(art)
@@ -480,6 +711,14 @@ class RemediationSynthesizer:
             return self._add_input_guardrail_risky(component, node, finding, finding_id, priority)
         if dtype == "policy_violation_generic":
             return self._patch_generic_violation(component, node, finding, finding_id, priority)
+        if dtype == "agentic_trust_boundary":
+            return self._remediate_agentic_trust_boundary(component, node, finding, finding_id, priority)
+        if dtype == "memory_session_integrity":
+            return self._remediate_memory_session_integrity(component, node, finding, finding_id, priority)
+        if dtype == "output_handling":
+            return self._add_output_handling_guardrail(component, node, finding, finding_id, priority)
+        if dtype == "supply_chain_secrets":
+            return self._add_input_guardrail_supply_chain(component, node, finding, finding_id, priority)
         # generic — produce a minimal system_prompt_patch
         return self._patch_generic_violation(component, node, finding, finding_id, priority)
 
@@ -493,7 +732,17 @@ class RemediationSynthesizer:
         """Best-effort: replace patch_text/rationale on *artefacts* in place
         with LLM-authored surgical text. Leaves template text on any failure
         or when the LLM is unavailable/returns a canned response."""
-        evidence = str(finding.get("description") or finding.get("title") or "")[:300]
+        # Prefer the specific, technique-grounded evidence (the exact
+        # substring of the agent's response that proves the breach, or the
+        # evaluator's one-sentence reasoning) over the generic telemetry
+        # text in description/title ("Attack scenario 'X' succeeded...").
+        evidence = str(
+            finding.get("evidence_quote")
+            or finding.get("reasoning")
+            or finding.get("description")
+            or finding.get("title")
+            or ""
+        )[:300]
         for artefact in artefacts:
             if (
                 artefact.artefact_type == RemediationArtefactType.SYSTEM_PROMPT_PATCH
@@ -546,7 +795,7 @@ class RemediationSynthesizer:
         for finding in findings:
             produced = self._synthesize_one(finding)
             for art in produced:
-                key = f"{art.component}:{art.artefact_type.value}:{(art.patch_section or art.guardrail_name or art.change_description or '')[:60]}"
+                key = _artefact_dedup_key(art)
                 if key not in seen_keys:
                     seen_keys.add(key)
                     artefacts.append(art)
@@ -1347,6 +1596,147 @@ class RemediationSynthesizer:
             patch_text=patch_text,
             rationale=desc or title,
         )]
+
+    # ------------------------------------------------------------------
+    # 8. Agentic trust boundary — confused deputy, sub-agent/handoff trust,
+    #    cross-agent injection, identity/credential confusion
+    # ------------------------------------------------------------------
+
+    def _remediate_agentic_trust_boundary(
+        self,
+        component: str,
+        node: "Node | None",
+        finding: dict,
+        finding_id: str,
+        priority: str,
+    ) -> list[RemediationArtefact]:
+        desc = finding.get("description", "")
+        title = finding.get("title", "")
+        return [
+            RemediationArtefact(
+                finding_ids=[finding_id],
+                component=component,
+                component_type=_node_type(node) if node else "AGENT",
+                artefact_type=RemediationArtefactType.ARCHITECTURAL_CHANGE,
+                priority=priority,
+                change_description=f"Verify agent/sub-agent identity and re-validate trust boundary for {component}",
+                change_detail=(
+                    "Do not treat content received from another agent, sub-agent, or "
+                    "planner/executor handoff as trusted instructions by default:\n"
+                    "- Verify the sender's identity (signed/authenticated agent ID) before "
+                    "acting on delegated instructions or a claimed peer approval.\n"
+                    "- Re-validate that an executor's action actually matches the plan/intent "
+                    "handed to it, rather than trusting the executor's own report of what it did.\n"
+                    "- Treat sub-agent OUTPUT as untrusted data, not as directives, unless it "
+                    "passes the same input validation applied to direct user input."
+                ),
+                rationale=desc or title or "Cross-agent trust boundary was not enforced.",
+            ),
+        ]
+
+    # ------------------------------------------------------------------
+    # 9. Memory / session integrity — memory poisoning, cross-session
+    #    backdoors, false identity/session metadata carried across turns
+    # ------------------------------------------------------------------
+
+    def _remediate_memory_session_integrity(
+        self,
+        component: str,
+        node: "Node | None",
+        finding: dict,
+        finding_id: str,
+        priority: str,
+    ) -> list[RemediationArtefact]:
+        desc = finding.get("description", "")
+        title = finding.get("title", "")
+        return [
+            RemediationArtefact(
+                finding_ids=[finding_id],
+                component=component,
+                component_type=_node_type(node) if node else "AGENT",
+                artefact_type=RemediationArtefactType.ARCHITECTURAL_CHANGE,
+                priority=priority,
+                change_description=f"Validate persisted memory/session state before reuse for {component}",
+                change_detail=(
+                    "Persisted memory, profile fields, and session metadata must be treated as "
+                    "untrusted once written by a prior turn or session:\n"
+                    "- Re-validate identity/role/authorization claims stored in memory or "
+                    "session state at the point of use, not just at write time.\n"
+                    "- Scope memory writes to the account/session that produced them; reject "
+                    "or flag memory content that contradicts the authenticated user's own record.\n"
+                    "- Do not let a summarization or compaction step silently introduce new "
+                    "claims (e.g. approval status, identity) that were not in the original "
+                    "transcript."
+                ),
+                rationale=desc or title or "Persisted memory/session state was trusted without re-validation.",
+            ),
+        ]
+
+    # ------------------------------------------------------------------
+    # 10. Output handling — model output consumed downstream as code, SQL,
+    #     URLs, or config without validation
+    # ------------------------------------------------------------------
+
+    def _add_output_handling_guardrail(
+        self,
+        component: str,
+        node: "Node | None",
+        finding: dict,
+        finding_id: str,
+        priority: str,
+    ) -> list[RemediationArtefact]:
+        desc = finding.get("description", "")
+        return [
+            RemediationArtefact(
+                finding_ids=[finding_id],
+                component=component,
+                component_type=_node_type(node) if node else "TOOL",
+                artefact_type=RemediationArtefactType.OUTPUT_GUARDRAIL,
+                priority=priority,
+                guardrail_name=f"output_validator_{component.lower().replace(' ', '_')[:20]}",
+                guardrail_type="output_redactor",
+                guardrail_trigger=(
+                    r"<script|javascript:|on\w+\s*=|['\"]\s*;\s*--|\bunion\s+select\b|"
+                    r"file://|\.\./"
+                ),
+                guardrail_action="BLOCK",
+                guardrail_message="Response withheld: output failed structural validation before downstream use.",
+                rationale=desc or "Model output was consumed downstream (code/SQL/URL/config) without validation.",
+            ),
+        ]
+
+    # ------------------------------------------------------------------
+    # 11. Supply chain / secrets hygiene — CI, env var, cloud metadata,
+    #     dependency, and artifact-integrity probing
+    # ------------------------------------------------------------------
+
+    def _add_input_guardrail_supply_chain(
+        self,
+        component: str,
+        node: "Node | None",
+        finding: dict,
+        finding_id: str,
+        priority: str,
+    ) -> list[RemediationArtefact]:
+        desc = finding.get("description", "")
+        return [
+            RemediationArtefact(
+                finding_ids=[finding_id],
+                component=component,
+                component_type=_node_type(node) if node else "TOOL",
+                artefact_type=RemediationArtefactType.INPUT_GUARDRAIL,
+                priority=priority,
+                guardrail_name=f"secrets_probe_guard_{component.lower().replace(' ', '_')[:20]}",
+                guardrail_type="regex",
+                guardrail_trigger=(
+                    r"\b(env(ironment)?\s*var|\.env\b|api[_-]?key|secret|token|"
+                    r"169\.254\.169\.254|metadata\.google|ci[_-]?secret|credential)\b"
+                ),
+                guardrail_action="BLOCK",
+                guardrail_message="I can't retrieve environment variables, credentials, or CI/deployment secrets.",
+                rationale=desc or "Request probed for environment/CI secrets or a cloud metadata endpoint.",
+            ),
+        ]
 
     # ------------------------------------------------------------------
     # LLM call helpers

@@ -6,7 +6,10 @@ Focuses on: (1) JSON round-tripping of the new request/result models,
 request's fields plus the separately-passed collaborators and reads back the
 orchestrator's instance attributes into RedteamRunResult, proving no
 functionality is lost relative to the CLI's `_run_orchestrator`, and (3) the
-duplicated post-run scenario_filter block matches the CLI's copy.
+post-run scenario_filter re-check (run_redteam() is the single
+implementation — the CLI calls it directly, it isn't duplicated) matches
+findings on goal_type, scenario_type, and title, the same as the
+orchestrator's own pre-run filter.
 """
 from __future__ import annotations
 
@@ -26,13 +29,14 @@ from nuguard.redteam.public_api import RedteamRunRequest, RedteamRunResult, run_
 from nuguard.redteam.target.canary import CanaryConfig
 
 
-def _finding(goal_type: str = "prompt_driven_threat") -> Finding:
+def _finding(goal_type: str = "prompt_driven_threat", scenario_type: str | None = None) -> Finding:
     return Finding(
         finding_id="f1",
         title="t",
         severity=Severity.HIGH,
         description="d",
         goal_type=goal_type,
+        scenario_type=scenario_type,
     )
 
 
@@ -208,9 +212,7 @@ async def test_run_redteam_passes_config_scalar_and_embedded_model_fields():
 
 
 @pytest.mark.asyncio
-async def test_run_redteam_applies_scenario_filter_post_run_like_cli():
-    """Regression test tying the duplicated scenario_filter block to the CLI's
-    copy (nuguard/cli/commands/redteam.py:_run_orchestrator)."""
+async def test_run_redteam_applies_scenario_filter_post_run():
     findings = [_finding("prompt_driven_threat"), _finding("data_exfiltration")]
     mock_instance = _make_mock_orchestrator(findings)
 
@@ -221,6 +223,28 @@ async def test_run_redteam_applies_scenario_filter_post_run_like_cli():
 
     assert len(result.findings) == 1
     assert result.findings[0].goal_type == "prompt_driven_threat"
+
+
+@pytest.mark.asyncio
+async def test_run_redteam_scenario_type_level_filter_does_not_drop_finding():
+    """Regression test for the bug where a scenario-type-level filter (e.g.
+    "APPROVAL_STATE_FORGERY") correctly selected which scenario ran, via the
+    orchestrator's own pre-run filter, but then had its resulting finding
+    silently dropped by this post-run re-check — because the re-check only
+    ever compared the filter token against goal_type, never scenario_type."""
+    findings = [
+        _finding("prompt_driven_threat", scenario_type="APPROVAL_STATE_FORGERY"),
+        _finding("data_exfiltration", scenario_type="DIRECT_PII_EXTRACTION"),
+    ]
+    mock_instance = _make_mock_orchestrator(findings)
+
+    with patch("nuguard.redteam.public_api.RedteamOrchestrator") as mock_cls:
+        mock_cls.return_value = mock_instance
+        request = RedteamRunRequest(target_url="http://target", scenario_filter=["APPROVAL_STATE_FORGERY"])
+        result = await run_redteam(request, sbom=MagicMock())
+
+    assert len(result.findings) == 1
+    assert result.findings[0].scenario_type == "APPROVAL_STATE_FORGERY"
 
 
 @pytest.mark.asyncio

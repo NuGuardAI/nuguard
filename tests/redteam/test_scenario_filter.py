@@ -8,9 +8,11 @@ from __future__ import annotations
 import pytest
 
 from nuguard.models.exploit_chain import GoalType, ScenarioType
+from nuguard.models.finding import Finding
 from nuguard.redteam.executor.orchestrator import (
     _normalize_scenario_token,
     _scenario_matches_filter,
+    finding_matches_scenario_filter,
     validate_scenario_filter,
 )
 from nuguard.redteam.scenarios.scenario_types import AttackScenario
@@ -84,3 +86,72 @@ class TestValidateScenarioFilter:
     def test_scenario_type_token_is_recognized(self):
         # ScenarioType values (not just GoalType) should also be accepted.
         assert validate_scenario_filter(["guardrail-bypass"]) == []
+
+
+def _make_finding(
+    *,
+    goal_type: str | None,
+    scenario_type: str | None = None,
+    title: str = "Unrelated Test Finding Title",
+) -> Finding:
+    return Finding(
+        finding_id="f1",
+        title=title,
+        severity="high",
+        description="test",
+        goal_type=goal_type,
+        scenario_type=scenario_type,
+    )
+
+
+class TestFindingMatchesScenarioFilter:
+    """finding_matches_scenario_filter() is run_redteam()'s post-run
+    re-check against the findings the orchestrator actually returned. It
+    must accept everything the orchestrator's own pre-run filter
+    (_scenario_matches_filter) would have let through, or a scenario that
+    was correctly selected to run ends up having its finding silently
+    dropped from the final output — the exact bug this covers."""
+
+    def test_regression_scenario_type_level_filter_no_longer_drops_finding(self) -> None:
+        # The exact reported bug: goal_type is PROMPT_DRIVEN_THREAT (not a
+        # substring match for the filter token below), but scenario_type is
+        # the specific technique the user actually filtered for.
+        finding = _make_finding(goal_type="PROMPT_DRIVEN_THREAT", scenario_type="APPROVAL_STATE_FORGERY")
+        assert finding_matches_scenario_filter(finding, {"approval_state_forgery"}) is True
+
+    def test_goal_type_level_filter_still_works(self) -> None:
+        finding = _make_finding(goal_type="PROMPT_DRIVEN_THREAT", scenario_type="APPROVAL_STATE_FORGERY")
+        assert finding_matches_scenario_filter(finding, {"prompt_driven_threat"}) is True
+
+    def test_title_level_filter_still_works(self) -> None:
+        # Title matching only normalizes hyphens/case, not spaces (mirroring
+        # _scenario_matches_filter exactly) — so a matching token must use
+        # spaces the same way the title does, not underscores.
+        finding = _make_finding(
+            goal_type="PROMPT_DRIVEN_THREAT",
+            scenario_type="SYSTEM_PROMPT_EXTRACTION",
+            title="Guided System Prompt Leak - Support Agent",
+        )
+        assert finding_matches_scenario_filter(finding, {"system prompt leak"}) is True
+
+    def test_unrelated_scenario_type_filter_does_not_match(self) -> None:
+        finding = _make_finding(goal_type="DATA_EXFILTRATION", scenario_type="DIRECT_PII_EXTRACTION")
+        assert finding_matches_scenario_filter(finding, {"approval_state_forgery"}) is False
+
+    def test_no_filter_matches_everything(self) -> None:
+        finding = _make_finding(goal_type="PROMPT_DRIVEN_THREAT", scenario_type="APPROVAL_STATE_FORGERY")
+        assert finding_matches_scenario_filter(finding, set()) is True
+
+    def test_finding_without_goal_type_always_matches(self) -> None:
+        # Preserves the pre-fix behaviour: a finding that never set goal_type
+        # (e.g. from a non-redteam origin reusing this same filter) must not
+        # be dropped just because it can't be matched against anything.
+        finding = _make_finding(goal_type=None, scenario_type=None)
+        assert finding_matches_scenario_filter(finding, {"approval_state_forgery"}) is True
+
+    def test_finding_without_scenario_type_falls_back_to_goal_type_and_title(self) -> None:
+        # Pre-scenario_type data (or behavior/analysis findings, which never
+        # set it) must still work via goal_type/title alone, unchanged.
+        finding = _make_finding(goal_type="DATA_EXFILTRATION", scenario_type=None)
+        assert finding_matches_scenario_filter(finding, {"data_exfiltration"}) is True
+        assert finding_matches_scenario_filter(finding, {"approval_state_forgery"}) is False
