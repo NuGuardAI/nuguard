@@ -2,6 +2,12 @@
 
 Track user-facing documentation updates here, especially changes to CLI behavior, workflows, and troubleshooting guidance.
 
+## v0.8.8 - 2026-07-22
+
+### Fixed
+- Redteam remediation advice is now classified by the specific `scenario_type` of the attack (e.g. Approval State Forgery, Agent Impersonation, Memory Poisoning) instead of only the coarse `goal_type`, so distinct attack techniques that previously collapsed into the same generic or mismatched-domain advice now get specific, correctly-scoped guidance.
+- `nuguard redteam --scenarios <SCENARIO_TYPE>` (a specific attack-technique filter, e.g. `APPROVAL_STATE_FORGERY`) no longer silently drops the resulting finding and its remediation from the final report — the post-run filter now matches on `scenario_type` and `title`, not just `goal_type`.
+
 ## v0.7.9 - 2026-06-22
 
 ### Changed
