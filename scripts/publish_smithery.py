@@ -157,7 +157,7 @@ def _git_commits_ahead_of_origin() -> int:
 # Pre-flight checks
 # ---------------------------------------------------------------------------
 
-def preflight(version: str, allow_dirty: bool, allow_branch: bool) -> list[str]:
+def preflight(version: str, allow_dirty: bool, allow_branch: bool, skip_git_tag: bool) -> list[str]:
     errors: list[str] = []
     warnings: list[str] = []
 
@@ -200,12 +200,16 @@ def preflight(version: str, allow_dirty: bool, allow_branch: bool) -> list[str]:
                 "  Pass --allow-branch to skip this check."
             )
 
-    # Git tag collision
-    tag = f"v{version}"
-    if _git_tag_exists(tag):
-        errors.append(
-            f"Git tag {tag!r} already exists. Bump the version first."
-        )
+    # Git tag collision — only relevant if this run will try to create the
+    # tag itself. When --skip-git-tag is passed (e.g. the release-triggered
+    # CI path, where creating the GitHub Release is what created the tag),
+    # the tag already existing is expected, not a collision.
+    if not skip_git_tag:
+        tag = f"v{version}"
+        if _git_tag_exists(tag):
+            errors.append(
+                f"Git tag {tag!r} already exists. Bump the version first."
+            )
 
     for w in warnings:
         print(f"  WARNING: {w}")
@@ -406,7 +410,7 @@ def main() -> int:
 
     # Pre-flight
     print("Pre-flight checks …")
-    errors = preflight(version, args.allow_dirty, args.allow_branch)
+    errors = preflight(version, args.allow_dirty, args.allow_branch, args.skip_git_tag)
     if errors:
         print()
         for e in errors:
