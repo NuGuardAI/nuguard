@@ -24,6 +24,7 @@ class Finding(BaseModel):
     references: list[str] = Field(default_factory=list)
     # Redteam-specific fields
     goal_type: str | None = None
+    scenario_type: str | None = None
     sbom_path: list[str] = Field(default_factory=list)
     sbom_path_descriptions: list[str] = Field(default_factory=list)
     policy_clauses_violated: list[str] = Field(default_factory=list)

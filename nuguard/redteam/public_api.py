@@ -170,6 +170,9 @@ async def _build_remediation_plan(
                 "affected_component": f.affected_component or "unknown",
                 "severity": f.severity.value if hasattr(f.severity, "value") else str(f.severity),
                 "goal_type": f.goal_type or "",
+                "scenario_type": f.scenario_type or "",
+                "evidence_quote": f.evidence_quote or "",
+                "reasoning": f.reasoning or "",
             }
             for f in findings
         ]

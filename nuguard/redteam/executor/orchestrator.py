@@ -2006,6 +2006,7 @@ class RedteamOrchestrator:
         # Fields shared by every Finding produced from this scenario/chain.
         _base: dict = dict(
             goal_type=scenario.goal_type,
+            scenario_type=scenario.scenario_type,
             chain_id=chain.chain_id,
             sbom_path=chain.sbom_path,
             sbom_path_descriptions=sbom_path_descriptions,
