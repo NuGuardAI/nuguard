@@ -29,7 +29,10 @@ from nuguard.config import RedteamFindingTriggers
 from nuguard.models.finding import Finding
 from nuguard.models.health_report import TargetHealthReport
 from nuguard.models.token_usage import TokenUsage
-from nuguard.redteam.executor.orchestrator import RedteamOrchestrator
+from nuguard.redteam.executor.orchestrator import (
+    RedteamOrchestrator,
+    finding_matches_scenario_filter,
+)
 from nuguard.redteam.target.canary import CanaryConfig
 from nuguard.remediation.backfill import backfill_finding_remediation
 from nuguard.remediation.models import RemediationArtefact
@@ -281,18 +284,17 @@ async def run_redteam(
         except Exception:  # noqa: BLE001
             pass
 
-    # Mirrors nuguard/cli/commands/redteam.py:_run_orchestrator's post-run
-    # scenario_filter re-application verbatim.
+    # Defensive re-check of scenario_filter against the returned findings —
+    # the orchestrator's own pre-run filtering (_scenario_matches_filter,
+    # which checks goal_type, scenario_type, AND title) is what actually
+    # decides which scenarios execute; this only needs to be consistent with
+    # it. Previously checked goal_type alone, so a scenario-type-level
+    # filter (e.g. "APPROVAL_STATE_FORGERY") would pass the orchestrator's
+    # pre-run filter but then have its resulting finding silently dropped
+    # here, since the token is never a substring of the finding's goal_type.
     if request.scenario_filter:
-        findings = [
-            f
-            for f in findings
-            if not f.goal_type
-            or any(
-                s.lower().replace("-", "_") in (f.goal_type or "").lower()
-                for s in request.scenario_filter
-            )
-        ]
+        _filters = {s.strip().lower().replace("-", "_") for s in request.scenario_filter if s and s.strip()}
+        findings = [f for f in findings if finding_matches_scenario_filter(f, _filters)]
 
     remediation_plan = await _build_remediation_plan(
         findings, sbom=sbom, policy=policy, llm_client=remediation_llm_client or eval_llm

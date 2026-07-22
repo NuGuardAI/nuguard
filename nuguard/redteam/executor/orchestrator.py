@@ -109,6 +109,36 @@ def _scenario_matches_filter(scenario: AttackScenario, filters: set[str]) -> boo
     )
 
 
+def finding_matches_scenario_filter(finding: Finding, filters: set[str]) -> bool:
+    """Post-run counterpart to :func:`_scenario_matches_filter`.
+
+    ``run_redteam()`` re-checks the scenario_filter against the *findings*
+    it got back (a defensive re-check after the orchestrator's own,
+    already-correct pre-run filtering) — but findings only carry
+    ``goal_type``/``scenario_type``/``title`` as plain strings, not an
+    ``AttackScenario``, so this mirrors the same three-field, both-directions
+    substring rule rather than sharing code directly with
+    :func:`_scenario_matches_filter`.
+
+    A finding with no ``goal_type`` at all always passes (preserves prior
+    behaviour for findings from paths that don't set it, e.g. non-redteam
+    origins reusing this same filter).
+    """
+    if not filters:
+        return True
+    if not finding.goal_type:
+        return True
+    goal = _normalize_scenario_token(finding.goal_type)
+    scenario_type = _normalize_scenario_token(finding.scenario_type) if finding.scenario_type else ""
+    title = _normalize_scenario_token(finding.title or "")
+    return any(
+        token in goal or goal in token
+        or (scenario_type and (token in scenario_type or scenario_type in token))
+        or (title and token in title)
+        for token in filters
+    )
+
+
 def _known_scenario_filter_tokens() -> set[str]:
     """Normalized set of every valid GoalType and ScenarioType value.
 
