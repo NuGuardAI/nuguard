@@ -72,8 +72,6 @@ The attack catalog (`catalog.yaml`) tags every scenario against the OWASP Top 10
 
 ## Comparison
 
-<p align="center"><strong>How NuGuard compares</strong></p>
-
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="../documentation/docs/assets/comparison-dark.svg">
