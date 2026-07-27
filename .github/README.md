@@ -19,6 +19,7 @@
 <p align="center">
   <a href="#what-it-does">What it does</a> ·
   <a href="#framework-coverage">Framework coverage</a> ·
+  <a href="#comparison">Comparison</a> ·
   <a href="#getting-started">Getting started</a> ·
   <a href="#faq">FAQ</a>
 </p>
@@ -38,35 +39,9 @@ NuGuard is an open source AI application security toolkit. It generates an AI Bi
 
 ## Example
 
-<table>
-<tr>
-<td width="50%" valign="top">
-
 <p align="center">
-  <img src="../documentation/docs/assets/demo.svg" alt="NuGuard SBOM generation and red-team run against a live vulnerable fintech app: 122-node SBOM generated, then 9 findings (7 HIGH, 2 LOW) including SQL injection and IDOR, risk score 67.8/100." width="100%">
+  <img src="../documentation/docs/assets/demo.svg" alt="NuGuard SBOM generation and red-team run against a live vulnerable fintech app: 122-node SBOM generated, then 9 findings (7 HIGH, 2 LOW) including SQL injection and IDOR, risk score 67.8/100." width="700">
 </p>
-
-<p align="center">
-
-
-
-</p>
-
-</td>
-<td width="49%" valign="middle">
-
-<p align="center"><strong>How NuGuard compares</strong></p>
-
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="../documentation/docs/assets/comparison-dark.svg">
-    <img src="../documentation/docs/assets/comparison-light.svg" alt="Capability comparison cards. NuGuard: AI-SBOM generation, supply-chain analysis, policy engine, adaptive multi-turn attacks, OWASP LLM Top 10 mapping, auto remediation — all six. Garak: adaptive multi-turn attacks only. Promptfoo: adaptive multi-turn attacks and OWASP LLM Top 10 mapping." width="150%">
-  </picture>
-</p>
-
-</td>
-</tr>
-</table>
 
 [**→ View the full report**](../documentation/docs/assets/demo-redteam-report.md) — every scenario, turn-by-turn transcripts, and the generated remediation plan.
 
@@ -96,6 +71,17 @@ The attack catalog (`catalog.yaml`) tags every scenario against the OWASP Top 10
 </td>
 </tr>
 </table>
+
+## Comparison
+
+<p align="center"><strong>How NuGuard compares</strong></p>
+
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../documentation/docs/assets/comparison-dark.svg">
+    <img src="../documentation/docs/assets/comparison-light.svg" alt="Capability comparison cards. NuGuard: AI-SBOM generation, supply-chain analysis, policy engine, adaptive multi-turn attacks, OWASP LLM Top 10 mapping, auto remediation — all six. Garak: adaptive multi-turn attacks only. Promptfoo: adaptive multi-turn attacks and OWASP LLM Top 10 mapping." width="700">
+  </picture>
+</p>
 
 ## Hosted Version
 
