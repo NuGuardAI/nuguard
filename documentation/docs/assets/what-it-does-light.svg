@@ -1,0 +1,51 @@
+<svg width="920" height="280" viewBox="0 0 920 280" xmlns="http://www.w3.org/2000/svg" font-family="system-ui,-apple-system,'Segoe UI',sans-serif">
+  <rect width="920" height="280" fill="#fcfcfb"/>
+
+  <!-- row 1 -->
+  <g text-anchor="middle">
+    <text x="124" y="50" font-size="26">📄</text>
+    <text x="124" y="72" font-size="12.5" font-weight="600" fill="#0b0b0b">SBOM</text>
+    <text x="124" y="90" font-size="10" fill="#52514e">From local code or</text>
+    <text x="124" y="104" font-size="10" fill="#52514e">a remote repo</text>
+
+    <text x="348" y="50" font-size="26">🔍</text>
+    <text x="348" y="72" font-size="12.5" font-weight="600" fill="#0b0b0b">Analyze</text>
+    <text x="348" y="90" font-size="10" fill="#52514e">Static risk scan, no</text>
+    <text x="348" y="104" font-size="10" fill="#52514e">running app needed</text>
+
+    <text x="572" y="50" font-size="26">📝</text>
+    <text x="572" y="72" font-size="12.5" font-weight="600" fill="#0b0b0b">Policy</text>
+    <text x="572" y="90" font-size="10" fill="#52514e">Propose, lint, and</text>
+    <text x="572" y="104" font-size="10" fill="#52514e">compliance-check</text>
+
+    <text x="796" y="50" font-size="26">🤖</text>
+    <text x="796" y="72" font-size="12.5" font-weight="600" fill="#0b0b0b">Behavior</text>
+    <text x="796" y="90" font-size="10" fill="#52514e">Runtime test vs.</text>
+    <text x="796" y="104" font-size="10" fill="#52514e">declared intent</text>
+  </g>
+
+  <rect x="20" y="126" width="880" height="1" fill="#e1e0d9"/>
+
+  <!-- row 2 -->
+  <g text-anchor="middle">
+    <text x="124" y="176" font-size="26">⚔️</text>
+    <text x="124" y="198" font-size="12.5" font-weight="600" fill="#0b0b0b">Red-team</text>
+    <text x="124" y="216" font-size="10" fill="#52514e">125 adversarial</text>
+    <text x="124" y="230" font-size="10" fill="#52514e">scenarios, live or sandboxed</text>
+
+    <text x="348" y="176" font-size="26">🐤</text>
+    <text x="348" y="198" font-size="12.5" font-weight="600" fill="#0b0b0b">Canaries</text>
+    <text x="348" y="216" font-size="10" fill="#52514e">Seeded values for high-</text>
+    <text x="348" y="230" font-size="10" fill="#52514e">confidence exfil findings</text>
+
+    <text x="572" y="176" font-size="26">🔧</text>
+    <text x="572" y="198" font-size="12.5" font-weight="600" fill="#0b0b0b">Remediate</text>
+    <text x="572" y="216" font-size="10" fill="#52514e">Fix suggestions with</text>
+    <text x="572" y="230" font-size="10" fill="#52514e">code snippets</text>
+
+    <text x="796" y="176" font-size="26">📤</text>
+    <text x="796" y="198" font-size="12.5" font-weight="600" fill="#0b0b0b">Export</text>
+    <text x="796" y="216" font-size="10" fill="#52514e">Text, JSON, Markdown,</text>
+    <text x="796" y="230" font-size="10" fill="#52514e">SARIF</text>
+  </g>
+</svg>

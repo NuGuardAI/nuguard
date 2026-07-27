@@ -109,14 +109,8 @@ NuGuard supports project configuration through `nuguard.yaml`. Scaffold one with
 
 CLI flags take precedence over `nuguard.yaml`, which takes precedence over environment variables and built-in defaults.
 
-<table>
-<tr><td>
-
 ### 📖 Need the full flag reference?
 
 Every command, every flag, every default — covered in the CLI reference doc.
 
 [![Read the CLI Reference](https://img.shields.io/badge/→_Read_the_CLI_Reference-111111?style=for-the-badge)](cli-reference.md)
-
-</td></tr>
-</table>

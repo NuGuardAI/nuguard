@@ -29,29 +29,17 @@ NuGuard is an open source AI application security toolkit. It generates an AI Bi
 
 ## What It Does
 
-<table align="center">
-<tr>
-<td align="center" width="25%">📄<br><strong>SBOM</strong><br><sub>From local code or a remote repo</sub></td>
-<td align="center" width="25%">🔍<br><strong>Analyze</strong><br><sub>Static risk scan, no running app needed</sub></td>
-<td align="center" width="25%">📝<br><strong>Policy</strong><br><sub>Propose, lint, and compliance-check</sub></td>
-<td align="center" width="25%">🤖<br><strong>Behavior</strong><br><sub>Runtime test vs. declared intent</sub></td>
-</tr>
-<tr>
-<td align="center" width="25%">⚔️<br><strong>Red-team</strong><br><sub>125 adversarial scenarios, live or sandboxed</sub></td>
-<td align="center" width="25%">🐤<br><strong>Canaries</strong><br><sub>Seeded values for high-confidence exfil findings</sub></td>
-<td align="center" width="25%">🔧<br><strong>Remediate</strong><br><sub>Fix suggestions with code snippets</sub></td>
-<td align="center" width="25%">📤<br><strong>Export</strong><br><sub>Text, JSON, Markdown, SARIF</sub></td>
-</tr>
-</table>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../documentation/docs/assets/what-it-does-dark.svg">
+    <img src="../documentation/docs/assets/what-it-does-light.svg" alt="SBOM: from local code or a remote repo. Analyze: static risk scan, no running app needed. Policy: propose, lint, and compliance-check. Behavior: runtime test vs declared intent. Red-team: 125 adversarial scenarios, live or sandboxed. Canaries: seeded values for high-confidence exfil findings. Remediate: fix suggestions with code snippets. Export: text, JSON, Markdown, SARIF." width="920">
+  </picture>
+</p>
 
 ## Example
 
-<table>
-<tr>
-<td width="40%" valign="top">
-
 <p align="center">
-  <img src="../documentation/docs/assets/demo.svg" alt="NuGuard SBOM generation and red-team run against a live vulnerable fintech app: 122-node SBOM generated, then 9 findings (7 HIGH, 2 LOW) including SQL injection and IDOR, risk score 67.8/100." width="100%">
+  <img src="../documentation/docs/assets/demo.svg" alt="NuGuard SBOM generation and red-team run against a live vulnerable fintech app: 122-node SBOM generated, then 9 findings (7 HIGH, 2 LOW) including SQL injection and IDOR, risk score 67.8/100." width="700">
 </p>
 
 <p align="center">
@@ -60,21 +48,14 @@ NuGuard is an open source AI application security toolkit. It generates an AI Bi
 
 </p>
 
-</td>
-<td width="30%" valign="middle">
-
 <p align="center"><strong>How NuGuard compares</strong></p>
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="../documentation/docs/assets/comparison-dark.svg">
-    <img src="../documentation/docs/assets/comparison-light.svg" alt="Capability comparison cards. NuGuard: AI-SBOM generation, supply-chain analysis, policy engine, adaptive multi-turn attacks, OWASP LLM Top 10 mapping, auto remediation — all six. Garak: adaptive multi-turn attacks only. Promptfoo: adaptive multi-turn attacks and OWASP LLM Top 10 mapping." width="100%">
+    <img src="../documentation/docs/assets/comparison-light.svg" alt="Capability comparison cards. NuGuard: AI-SBOM generation, supply-chain analysis, policy engine, adaptive multi-turn attacks, OWASP LLM Top 10 mapping, auto remediation — all six. Garak: adaptive multi-turn attacks only. Promptfoo: adaptive multi-turn attacks and OWASP LLM Top 10 mapping." width="700">
   </picture>
 </p>
-
-</td>
-</tr>
-</table>
 
 Draws from a catalog of 125 scenarios across 18 attack categories, tagged against the OWASP LLM Top 10 (see [Framework Coverage](#framework-coverage)).
 
@@ -82,17 +63,12 @@ Draws from a catalog of 125 scenarios across 18 attack categories, tagged agains
 
 ## Framework Coverage
 
-<table>
-<tr>
-<td width="35%" valign="middle">
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="../documentation/docs/assets/owasp-coverage-dark.svg">
-  <img src="../documentation/docs/assets/owasp-coverage-light.svg" alt="Donut chart: 10 out of 10 OWASP LLM Top 10 categories covered." width="260">
-</picture>
-
-</td>
-<td width="65%" valign="middle">
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="../documentation/docs/assets/owasp-coverage-dark.svg">
+    <img src="../documentation/docs/assets/owasp-coverage-light.svg" alt="Donut chart: 10 out of 10 OWASP LLM Top 10 categories covered." width="260">
+  </picture>
+</p>
 
 The attack catalog (`catalog.yaml`) tags every scenario against the OWASP Top 10 for LLM Applications (2025) — all 10 categories are covered.
 
@@ -100,10 +76,6 @@ The attack catalog (`catalog.yaml`) tags every scenario against the OWASP Top 10
 - **18** attack categories, spanning prompt injection, tool abuse, data exfiltration, supply chain, and more
 - Scenarios can map to more than one OWASP category, so per-category counts sum to more than 125
 - MITRE ATLAS and NIST AI RMF mapping — planned for a future catalog release
-
-</td>
-</tr>
-</table>
 
 ## Hosted Version
 
@@ -113,20 +85,11 @@ The attack catalog (`catalog.yaml`) tags every scenario against the OWASP Top 10
 
 ## Getting Started
 
-<table>
-<tr><td>
-
 ### 🚀 Ready to run NuGuard?
 
 Installation, the full CLI surface, a quick-start walkthrough, and the configuration reference — all in one guide.
 
 [![Read the Getting Started guide](https://img.shields.io/badge/→_Read_the_Getting_Started_Guide-111111?style=for-the-badge)](../documentation/docs/getting-started.md)
-
-</td></tr>
-</table>
-
-<table>
-<tr><td>
 
 ### ⚙️ Need advanced red-team config?
 
@@ -134,22 +97,13 @@ Canaries, guided conversations, and finding triggers — covered in the Red-Team
 
 [![Read the Red-Team Design doc](https://img.shields.io/badge/→_Read_the_Red--Team_Design_Doc-111111?style=for-the-badge)](../documentation/docs/redteam-design.md#canaries-quick-setup)
 
-</td></tr>
-</table>
-
 ## Contributing
-
-<table>
-<tr><td>
 
 ### 🤝 Want to contribute?
 
 Dev setup, running tests and lint, and the pull request process are covered in the Contributing guide.
 
 [![Read the Contributing guide](https://img.shields.io/badge/→_Read_the_Contributing_Guide-111111?style=for-the-badge)](CONTRIBUTING.md)
-
-</td></tr>
-</table>
 
 ## Repo Notes
 
