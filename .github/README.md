@@ -79,12 +79,6 @@ The attack catalog (`catalog.yaml`) tags every scenario against the OWASP Top 10
   </picture>
 </p>
 
-## Hosted Version
-
-<p align="center">
-  <a href="http://nuguard.ai"><strong>NuGuard.ai</strong></a> — a managed SaaS version of NuGuard, with additional features and support on top of everything in this repo.
-</p>
-
 ## Getting Started
 
 ### 🚀 Ready to run NuGuard?
@@ -98,6 +92,12 @@ Installation, the full CLI surface, a quick-start walkthrough, and the configura
 Canaries, guided conversations, and finding triggers — covered in the Red-Team Design doc.
 
 [![Read the Red-Team Design doc](https://img.shields.io/badge/→_Read_the_Red--Team_Design_Doc-111111?style=for-the-badge)](../documentation/docs/redteam-design.md#canaries-quick-setup)
+
+## Hosted Version
+
+<p align="center">
+  <a href="http://nuguard.ai"><strong>NuGuard.ai</strong></a> — a managed SaaS version of NuGuard, with additional features and support on top of everything in this repo.
+</p>
 
 ## Contributing
 
