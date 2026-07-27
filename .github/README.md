@@ -38,8 +38,12 @@ NuGuard is an open source AI application security toolkit. It generates an AI Bi
 
 ## Example
 
+<table>
+<tr>
+<td width="40%" valign="top">
+
 <p align="center">
-  <img src="../documentation/docs/assets/demo.svg" alt="NuGuard SBOM generation and red-team run against a live vulnerable fintech app: 122-node SBOM generated, then 9 findings (7 HIGH, 2 LOW) including SQL injection and IDOR, risk score 67.8/100." width="700">
+  <img src="../documentation/docs/assets/demo.svg" alt="NuGuard SBOM generation and red-team run against a live vulnerable fintech app: 122-node SBOM generated, then 9 findings (7 HIGH, 2 LOW) including SQL injection and IDOR, risk score 67.8/100." width="100%">
 </p>
 
 <p align="center">
@@ -48,27 +52,37 @@ NuGuard is an open source AI application security toolkit. It generates an AI Bi
 
 </p>
 
+</td>
+<td width="30%" valign="middle">
+
 <p align="center"><strong>How NuGuard compares</strong></p>
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="../documentation/docs/assets/comparison-dark.svg">
-    <img src="../documentation/docs/assets/comparison-light.svg" alt="Capability comparison cards. NuGuard: AI-SBOM generation, supply-chain analysis, policy engine, adaptive multi-turn attacks, OWASP LLM Top 10 mapping, auto remediation — all six. Garak: adaptive multi-turn attacks only. Promptfoo: adaptive multi-turn attacks and OWASP LLM Top 10 mapping." width="700">
+    <img src="../documentation/docs/assets/comparison-light.svg" alt="Capability comparison cards. NuGuard: AI-SBOM generation, supply-chain analysis, policy engine, adaptive multi-turn attacks, OWASP LLM Top 10 mapping, auto remediation — all six. Garak: adaptive multi-turn attacks only. Promptfoo: adaptive multi-turn attacks and OWASP LLM Top 10 mapping." width="100%">
   </picture>
 </p>
+
+</td>
+</tr>
+</table>
 
 Draws from a catalog of 125 scenarios across 18 attack categories, tagged against the OWASP LLM Top 10 (see [Framework Coverage](#framework-coverage)).
 
-
-
 ## Framework Coverage
 
-<p align="center">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="../documentation/docs/assets/owasp-coverage-dark.svg">
-    <img src="../documentation/docs/assets/owasp-coverage-light.svg" alt="Donut chart: 10 out of 10 OWASP LLM Top 10 categories covered." width="260">
-  </picture>
-</p>
+<table>
+<tr>
+<td width="35%" valign="middle">
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="../documentation/docs/assets/owasp-coverage-dark.svg">
+  <img src="../documentation/docs/assets/owasp-coverage-light.svg" alt="Donut chart: 10 out of 10 OWASP LLM Top 10 categories covered." width="260">
+</picture>
+
+</td>
+<td width="65%" valign="middle">
 
 The attack catalog (`catalog.yaml`) tags every scenario against the OWASP Top 10 for LLM Applications (2025) — all 10 categories are covered.
 
@@ -76,6 +90,10 @@ The attack catalog (`catalog.yaml`) tags every scenario against the OWASP Top 10
 - **18** attack categories, spanning prompt injection, tool abuse, data exfiltration, supply chain, and more
 - Scenarios can map to more than one OWASP category, so per-category counts sum to more than 125
 - MITRE ATLAS and NIST AI RMF mapping — planned for a future catalog release
+
+</td>
+</tr>
+</table>
 
 ## Hosted Version
 
