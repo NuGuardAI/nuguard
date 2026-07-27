@@ -128,16 +128,6 @@ Filter by category or profile, or set `enabled: false` per scenario in a catalog
 
 [Apache 2.0](../LICENSE).
 
-## Star History
-
-<a href="https://star-history.com/#NuGuardAI/nuguard&Date">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=NuGuardAI/nuguard&type=Date&theme=dark" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=NuGuardAI/nuguard&type=Date" />
-    <img alt="Star History Chart" src="https://api.star-history.com/svg?repos=NuGuardAI/nuguard&type=Date" />
-  </picture>
-</a>
-
 ---
 
 <sub>
