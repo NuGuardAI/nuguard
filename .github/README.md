@@ -48,7 +48,7 @@ NuGuard is an open source AI application security toolkit. It generates an AI Bi
 
 <p align="center">
 
-[**→ View the full report**](../documentation/docs/assets/demo-redteam-report.md) — every scenario, turn-by-turn transcripts, and the generated remediation plan.
+
 
 </p>
 
@@ -60,13 +60,15 @@ NuGuard is an open source AI application security toolkit. It generates an AI Bi
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="../documentation/docs/assets/comparison-dark.svg">
-    <img src="../documentation/docs/assets/comparison-light.svg" alt="Capability comparison cards. NuGuard: AI-SBOM generation, supply-chain analysis, policy engine, adaptive multi-turn attacks, OWASP LLM Top 10 mapping, auto remediation — all six. Garak: adaptive multi-turn attacks only. Promptfoo: adaptive multi-turn attacks and OWASP LLM Top 10 mapping." width="100%">
+    <img src="../documentation/docs/assets/comparison-light.svg" alt="Capability comparison cards. NuGuard: AI-SBOM generation, supply-chain analysis, policy engine, adaptive multi-turn attacks, OWASP LLM Top 10 mapping, auto remediation — all six. Garak: adaptive multi-turn attacks only. Promptfoo: adaptive multi-turn attacks and OWASP LLM Top 10 mapping." width="150%">
   </picture>
 </p>
 
 </td>
 </tr>
 </table>
+
+[**→ View the full report**](../documentation/docs/assets/demo-redteam-report.md) — every scenario, turn-by-turn transcripts, and the generated remediation plan.
 
 Draws from a catalog of 125 scenarios across 18 attack categories, tagged against the OWASP LLM Top 10 (see [Framework Coverage](#framework-coverage)).
 
