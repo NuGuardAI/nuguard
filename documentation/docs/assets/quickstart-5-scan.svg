@@ -1,0 +1,24 @@
+<svg width="760" height="260" viewBox="0 0 760 260" xmlns="http://www.w3.org/2000/svg" font-family="ui-monospace,'Cascadia Code','SF Mono',Consolas,monospace">
+  <rect width="760" height="260" rx="10" fill="#0d1117"/>
+  <rect width="760" height="34" rx="10" fill="#161b22"/>
+  <rect y="24" width="760" height="10" fill="#161b22"/>
+  <circle cx="22" cy="17" r="6" fill="#ff5f56"/>
+  <circle cx="42" cy="17" r="6" fill="#ffbd2e"/>
+  <circle cx="62" cy="17" r="6" fill="#27c93f"/>
+
+  <g font-size="12.5">
+    <text x="20" y="60" fill="#7ee787">$ <tspan fill="#c9d1d9">nuguard scan --source . --output-dir nuguard-reports</tspan></text>
+    <text x="20" y="80" fill="#8b949e">default: SBOM + static analysis in one pass</text>
+
+    <rect x="20" y="98" width="720" height="1" fill="#30363d"/>
+
+    <text x="20" y="122" fill="#8b949e">opt in to policy + red-team:</text>
+
+    <text x="20" y="146" fill="#7ee787">$ <tspan fill="#c9d1d9">nuguard scan \</tspan></text>
+    <text x="38" y="166" fill="#c9d1d9">--source . \</text>
+    <text x="38" y="186" fill="#c9d1d9">--steps sbom,analyze,policy,redteam \</text>
+    <text x="38" y="206" fill="#c9d1d9">--policy cognitive_policy.md \</text>
+    <text x="38" y="226" fill="#c9d1d9">--target http://localhost:3000 \</text>
+    <text x="38" y="246" fill="#c9d1d9">--output-dir nuguard-reports</text>
+  </g>
+</svg>

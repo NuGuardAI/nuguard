@@ -1,0 +1,10 @@
+<svg width="300" height="300" viewBox="0 0 300 300" xmlns="http://www.w3.org/2000/svg" font-family="system-ui,-apple-system,'Segoe UI',sans-serif">
+  <rect width="300" height="300" fill="#1a1a19"/>
+  <text x="150" y="28" font-size="14" font-weight="600" fill="#ffffff" text-anchor="middle">OWASP LLM Top 10 coverage</text>
+
+  <circle cx="150" cy="172" r="85" fill="none" stroke="#2c2c2a" stroke-width="22"/>
+  <circle cx="150" cy="172" r="85" fill="none" stroke="#3987e5" stroke-width="22"/>
+
+  <text x="150" y="168" font-size="34" font-weight="600" fill="#3987e5" text-anchor="middle">10 / 10</text>
+  <text x="150" y="190" font-size="12" fill="#c3c2b7" text-anchor="middle">categories covered</text>
+</svg>

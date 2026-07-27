@@ -1,0 +1,66 @@
+<svg width="920" height="560" viewBox="0 0 920 560" xmlns="http://www.w3.org/2000/svg" font-family="system-ui,-apple-system,'Segoe UI',sans-serif">
+  <rect width="920" height="560" fill="#fcfcfb"/>
+  <text x="24" y="32" font-size="15" font-weight="600" fill="#0b0b0b">Configuration reference — nuguard.yaml</text>
+  <text x="24" y="52" font-size="11.5" fill="#52514e">Scaffold with <tspan font-family="ui-monospace,Consolas,monospace" fill="#2a78d6">nuguard init</tspan>, or start from <tspan font-family="ui-monospace,Consolas,monospace" fill="#2a78d6">nuguard.yaml.example</tspan></text>
+  <rect x="24" y="66" width="872" height="1" fill="#e1e0d9"/>
+
+  <g font-size="11.5">
+    <!-- sbom -->
+    <text x="24" y="108" font-family="ui-monospace,Consolas,monospace" font-weight="600" fill="#2a78d6">sbom</text>
+    <text x="190" y="108" fill="#0b0b0b">Existing SBOM path</text>
+    <rect x="24" y="122" width="872" height="1" fill="#e1e0d9"/>
+
+    <!-- source -->
+    <text x="24" y="144" font-family="ui-monospace,Consolas,monospace" font-weight="600" fill="#2a78d6">source</text>
+    <text x="190" y="144" fill="#0b0b0b">Source directory for generation</text>
+    <rect x="24" y="158" width="872" height="1" fill="#e1e0d9"/>
+
+    <!-- policy -->
+    <text x="24" y="180" font-family="ui-monospace,Consolas,monospace" font-weight="600" fill="#2a78d6">policy</text>
+    <text x="190" y="180" fill="#0b0b0b">Cognitive policy path</text>
+    <rect x="24" y="194" width="872" height="1" fill="#e1e0d9"/>
+
+    <!-- target (2 lines) -->
+    <text x="24" y="216" font-family="ui-monospace,Consolas,monospace" font-weight="600" fill="#2a78d6">target</text>
+    <text x="190" y="216" fill="#0b0b0b">Live app URL, endpoint path, request/response payload shape, and auth</text>
+    <text x="190" y="234" fill="#0b0b0b">(bearer / API key / basic / login-flow) — shared by behavior and redteam, set once</text>
+    <rect x="24" y="250" width="872" height="1" fill="#e1e0d9"/>
+
+    <!-- llm -->
+    <text x="24" y="272" font-family="ui-monospace,Consolas,monospace" font-weight="600" fill="#2a78d6">llm</text>
+    <text x="190" y="272" fill="#0b0b0b">Model settings for LLM-assisted features</text>
+    <rect x="24" y="286" width="872" height="1" fill="#e1e0d9"/>
+
+    <!-- sbom_generation -->
+    <text x="24" y="308" font-family="ui-monospace,Consolas,monospace" font-weight="600" fill="#2a78d6">sbom_generation</text>
+    <text x="190" y="308" fill="#0b0b0b">Toggle LLM enrichment of SBOM nodes (llm: true), requires LITELLM_API_KEY</text>
+    <rect x="24" y="322" width="872" height="1" fill="#e1e0d9"/>
+
+    <!-- behavior -->
+    <text x="24" y="344" font-family="ui-monospace,Consolas,monospace" font-weight="600" fill="#2a78d6">behavior</text>
+    <text x="190" y="344" fill="#0b0b0b">Target URL, endpoint, and test profile settings</text>
+    <rect x="24" y="358" width="872" height="1" fill="#e1e0d9"/>
+
+    <!-- redteam (2 lines) -->
+    <text x="24" y="380" font-family="ui-monospace,Consolas,monospace" font-weight="600" fill="#2a78d6">redteam</text>
+    <text x="190" y="380" fill="#0b0b0b">Target URL, endpoint, canary file, profiles, scenario filters, guided</text>
+    <text x="190" y="398" fill="#0b0b0b">conversation settings, and finding trigger controls (finding_triggers.*)</text>
+    <rect x="24" y="414" width="872" height="1" fill="#e1e0d9"/>
+
+    <!-- analyze -->
+    <text x="24" y="436" font-family="ui-monospace,Consolas,monospace" font-weight="600" fill="#2a78d6">analyze</text>
+    <text x="190" y="436" fill="#0b0b0b">Minimum severity threshold</text>
+    <rect x="24" y="450" width="872" height="1" fill="#e1e0d9"/>
+
+    <!-- database -->
+    <text x="24" y="472" font-family="ui-monospace,Consolas,monospace" font-weight="600" fill="#2a78d6">database</text>
+    <text x="190" y="472" fill="#0b0b0b">SQLite or Postgres-backed storage settings</text>
+    <rect x="24" y="486" width="872" height="1" fill="#e1e0d9"/>
+
+    <!-- output -->
+    <text x="24" y="508" font-family="ui-monospace,Consolas,monospace" font-weight="600" fill="#2a78d6">output</text>
+    <text x="190" y="508" fill="#0b0b0b">Output format and failure threshold</text>
+  </g>
+
+  <text x="24" y="536" font-size="11" fill="#898781">Precedence: CLI flags → nuguard.yaml → environment variables → built-in defaults</text>
+</svg>
