@@ -1,0 +1,38 @@
+<svg width="900" height="140" viewBox="0 0 900 140" xmlns="http://www.w3.org/2000/svg" font-family="system-ui,-apple-system,'Segoe UI',sans-serif">
+  <rect width="900" height="140" fill="#fcfcfb"/>
+
+  <g font-size="10.5" fill="#898781" text-anchor="middle">
+    <text x="192" y="24">→</text>
+    <text x="366" y="24">→</text>
+    <text x="540" y="24">→</text>
+    <text x="714" y="24">→</text>
+  </g>
+
+  <!-- 1 SBOM -->
+  <rect x="27" y="34" width="150" height="70" rx="10" fill="none" stroke="#2a78d6" stroke-width="1.5"/>
+  <text x="102" y="58" font-size="12" font-weight="600" fill="#0b0b0b" text-anchor="middle">1 · SBOM</text>
+  <text x="102" y="80" font-size="10.5" fill="#52514e" text-anchor="middle">sbom generate</text>
+
+  <!-- 2 Analyze -->
+  <rect x="201" y="34" width="150" height="70" rx="10" fill="none" stroke="#2a78d6" stroke-width="1.5"/>
+  <text x="276" y="58" font-size="12" font-weight="600" fill="#0b0b0b" text-anchor="middle">2 · Analyze</text>
+  <text x="276" y="80" font-size="10.5" fill="#52514e" text-anchor="middle">analyze</text>
+
+  <!-- 3 Behavior -->
+  <rect x="375" y="34" width="150" height="70" rx="10" fill="none" stroke="#2a78d6" stroke-width="1.5"/>
+  <text x="450" y="58" font-size="12" font-weight="600" fill="#0b0b0b" text-anchor="middle">3 · Behavior</text>
+  <text x="450" y="80" font-size="10.5" fill="#52514e" text-anchor="middle">behavior</text>
+
+  <!-- 4 Red-team -->
+  <rect x="549" y="34" width="150" height="70" rx="10" fill="none" stroke="#2a78d6" stroke-width="1.5"/>
+  <text x="624" y="58" font-size="12" font-weight="600" fill="#0b0b0b" text-anchor="middle">4 · Red-team</text>
+  <text x="624" y="80" font-size="10.5" fill="#52514e" text-anchor="middle">redteam</text>
+
+  <!-- 5 Scan (all-in-one) -->
+  <rect x="723" y="34" width="150" height="70" rx="10" fill="none" stroke="#eb6834" stroke-width="1.5"/>
+  <text x="798" y="52" font-size="12" font-weight="600" fill="#0b0b0b" text-anchor="middle">5 · All-in-one</text>
+  <text x="798" y="70" font-size="10.5" fill="#52514e" text-anchor="middle">scan</text>
+  <text x="798" y="84" font-size="9" fill="#898781" text-anchor="middle">runs 1–4 together</text>
+
+  <text x="450" y="124" font-size="10.5" fill="#898781" text-anchor="middle">Each step below is runnable on its own — commands and flags follow.</text>
+</svg>

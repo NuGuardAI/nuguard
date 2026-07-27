@@ -2,7 +2,7 @@
 name = "nuguard"
 version = "0.8.8"
 description = "AI application security — SBOM generation, vulnerability scanning, behavioral validation, and adversarial red-teaming for AI Agents"
-readme = "README.md"
+readme = "documentation/README.md"
 license = { text = "Apache-2.0" }
 requires-python = ">=3.12"
 authors = [
@@ -89,7 +89,7 @@ packages = ["nuguard"]
 [tool.hatch.build.targets.sdist]
 include = [
     "/nuguard",
-    "/README.md",
+    "/documentation/README.md",
     "/pyproject.toml",
     "/Makefile",
     "/canary.example.json",

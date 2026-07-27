@@ -1,0 +1,22 @@
+<svg width="760" height="190" viewBox="0 0 760 190" xmlns="http://www.w3.org/2000/svg" font-family="ui-monospace,'Cascadia Code','SF Mono',Consolas,monospace">
+  <rect width="760" height="190" rx="10" fill="#0d1117"/>
+  <rect width="760" height="34" rx="10" fill="#161b22"/>
+  <rect y="24" width="760" height="10" fill="#161b22"/>
+  <circle cx="22" cy="17" r="6" fill="#ff5f56"/>
+  <circle cx="42" cy="17" r="6" fill="#ffbd2e"/>
+  <circle cx="62" cy="17" r="6" fill="#27c93f"/>
+
+  <g font-size="12.5">
+    <text x="20" y="62" fill="#7ee787">$ <tspan fill="#c9d1d9">nuguard redteam \</tspan></text>
+    <text x="38" y="82" fill="#c9d1d9">--config nuguard.yaml \</text>
+    <text x="38" y="102" fill="#c9d1d9">--output reports/redteam.md \</text>
+    <text x="38" y="122" fill="#c9d1d9">--format markdown</text>
+
+    <text x="20" y="156" fill="#8b949e">Richer coverage:</text>
+    <text x="150" y="156" fill="#58a6ff">--policy</text>
+    <text x="220" y="156" fill="#58a6ff">--canary</text>
+    <text x="292" y="156" fill="#58a6ff">--config</text>
+
+    <text x="20" y="176" fill="#8b949e">cognitive policy · canary values · alternate config file</text>
+  </g>
+</svg>
