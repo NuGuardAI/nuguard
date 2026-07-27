@@ -6,7 +6,7 @@ This module owns marketplace and agent-host distribution rules. Runtime manifest
 |------|------|
 | Install targets | Claude Code, ClawHub.ai/OpenClaw, Gemini CLI, and generic MCP-compatible agents; MCP server wired via `.mcp.json`. |
 | Manifest files | `.claude-plugin/plugin.json`, `marketplace.json`, `.claude-plugin/marketplace.json`, `gemini-extension.json`, `openclaw.plugin.json`. |
-| MCP server | Canonical entry point: the `@nuguardai/nuguard` npm launcher (`npx @nuguardai/nuguard`, see `npm/README.md`), which tries `nuguard-mcp` on `PATH`, then `python -m nuguard.mcp`, then `uvx --from nuguard[mcp] nuguard-mcp`, then a one-time `pip install`. The root `.mcp.json` and `.claude-plugin/plugin.json`'s `mcpServers` field currently point at an empty placeholder — not yet wired. Smithery listing: `https://smithery.ai/servers/NuGuardAI/nuguard`. |
+| MCP server | Canonical entry point: `.mcp.json` → `uvx --from nuguard[mcp] nuguard-mcp`; Smithery listing: `https://smithery.ai/servers/NuGuardAI/nuguard`. |
 | Sync | Canonical version: `.claude-plugin/plugin.json`; version field must match `pyproject.toml` and `smithery.yaml`. |
 
 ## Install
