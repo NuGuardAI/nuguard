@@ -40,7 +40,7 @@ NuGuard is an open source AI application security toolkit. It generates an AI Bi
 
 <table>
 <tr>
-<td width="40%" valign="top">
+<td width="50%" valign="top">
 
 <p align="center">
   <img src="../documentation/docs/assets/demo.svg" alt="NuGuard SBOM generation and red-team run against a live vulnerable fintech app: 122-node SBOM generated, then 9 findings (7 HIGH, 2 LOW) including SQL injection and IDOR, risk score 67.8/100." width="100%">
@@ -53,7 +53,7 @@ NuGuard is an open source AI application security toolkit. It generates an AI Bi
 </p>
 
 </td>
-<td width="30%" valign="middle">
+<td width="49%" valign="middle">
 
 <p align="center"><strong>How NuGuard compares</strong></p>
 
