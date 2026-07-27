@@ -45,8 +45,6 @@ NuGuard is an open source AI application security toolkit. It generates an AI Bi
 
 [**→ View the full report**](../documentation/docs/assets/demo-redteam-report.md) — every scenario, turn-by-turn transcripts, and the generated remediation plan.
 
-Draws from a catalog of 125 scenarios across 18 attack categories, tagged against the OWASP LLM Top 10 (see [Framework Coverage](#framework-coverage)).
-
 ## Framework Coverage
 
 <table>
