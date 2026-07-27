@@ -36,7 +36,7 @@ Run all pre-commit hooks on demand (e.g. before opening a PR):
 make precommit-run
 ```
 
-All four checks (`test`, `lint`, `fmt` check, and pre-commit) should pass locally before you open a PR — the [PR Tests](../.github/workflows/pr-tests.yml) workflow re-runs lint and type checks on every pull request.
+All four checks (`test`, `lint`, `fmt` check, and pre-commit) should pass locally before you open a PR — the [PR Tests](workflows/pr-tests.yml) workflow re-runs lint and type checks on every pull request.
 
 ## Pull Request Guidelines
 

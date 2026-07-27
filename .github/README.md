@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/nuguard-logo.png" alt="NuGuard" width="120">
+  <img src="../documentation/docs/nuguard-logo.png" alt="NuGuard" width="120">
 </p>
 
 <h1 align="center">NuGuard</h1>
@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache 2.0"></a>
+  <a href="../LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License: Apache 2.0"></a>
   <a href="https://github.com/NuGuardAI/nuguard/actions/workflows/pr-tests.yml"><img src="https://github.com/NuGuardAI/nuguard/actions/workflows/pr-tests.yml/badge.svg?branch=Develop" alt="PR Tests"></a>
   <a href="https://pypi.org/project/nuguard/"><img src="https://img.shields.io/pypi/v/nuguard.svg" alt="PyPI"></a>
   <a href="https://pypi.org/project/nuguard/"><img src="https://img.shields.io/pypi/pyversions/nuguard.svg" alt="Python versions"></a>
@@ -51,12 +51,12 @@ NuGuard is an open source AI application security toolkit. It generates an AI Bi
 <td width="40%" valign="top">
 
 <p align="center">
-  <img src="docs/assets/demo.svg" alt="NuGuard SBOM generation and red-team run against a live vulnerable fintech app: 122-node SBOM generated, then 9 findings (7 HIGH, 2 LOW) including SQL injection and IDOR, risk score 67.8/100." width="100%">
+  <img src="../documentation/docs/assets/demo.svg" alt="NuGuard SBOM generation and red-team run against a live vulnerable fintech app: 122-node SBOM generated, then 9 findings (7 HIGH, 2 LOW) including SQL injection and IDOR, risk score 67.8/100." width="100%">
 </p>
 
 <p align="center">
 
-[**→ View the full report**](docs/assets/demo-redteam-report.md) — every scenario, turn-by-turn transcripts, and the generated remediation plan.
+[**→ View the full report**](../documentation/docs/assets/demo-redteam-report.md) — every scenario, turn-by-turn transcripts, and the generated remediation plan.
 
 </p>
 
@@ -67,8 +67,8 @@ NuGuard is an open source AI application security toolkit. It generates an AI Bi
 
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/assets/comparison-dark.svg">
-    <img src="docs/assets/comparison-light.svg" alt="Capability comparison cards. NuGuard: AI-SBOM generation, supply-chain analysis, policy engine, adaptive multi-turn attacks, OWASP LLM Top 10 mapping, auto remediation — all six. Garak: adaptive multi-turn attacks only. Promptfoo: adaptive multi-turn attacks and OWASP LLM Top 10 mapping." width="100%">
+    <source media="(prefers-color-scheme: dark)" srcset="../documentation/docs/assets/comparison-dark.svg">
+    <img src="../documentation/docs/assets/comparison-light.svg" alt="Capability comparison cards. NuGuard: AI-SBOM generation, supply-chain analysis, policy engine, adaptive multi-turn attacks, OWASP LLM Top 10 mapping, auto remediation — all six. Garak: adaptive multi-turn attacks only. Promptfoo: adaptive multi-turn attacks and OWASP LLM Top 10 mapping." width="100%">
   </picture>
 </p>
 
@@ -87,8 +87,8 @@ Draws from a catalog of 125 scenarios across 18 attack categories, tagged agains
 <td width="35%" valign="middle">
 
 <picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/owasp-coverage-dark.svg">
-  <img src="docs/assets/owasp-coverage-light.svg" alt="Donut chart: 10 out of 10 OWASP LLM Top 10 categories covered." width="260">
+  <source media="(prefers-color-scheme: dark)" srcset="../documentation/docs/assets/owasp-coverage-dark.svg">
+  <img src="../documentation/docs/assets/owasp-coverage-light.svg" alt="Donut chart: 10 out of 10 OWASP LLM Top 10 categories covered." width="260">
 </picture>
 
 </td>
@@ -120,7 +120,7 @@ The attack catalog (`catalog.yaml`) tags every scenario against the OWASP Top 10
 
 Installation, the full CLI surface, a quick-start walkthrough, and the configuration reference — all in one guide.
 
-[![Read the Getting Started guide](https://img.shields.io/badge/→_Read_the_Getting_Started_Guide-111111?style=for-the-badge)](docs/getting-started.md)
+[![Read the Getting Started guide](https://img.shields.io/badge/→_Read_the_Getting_Started_Guide-111111?style=for-the-badge)](../documentation/docs/getting-started.md)
 
 </td></tr>
 </table>
@@ -132,7 +132,7 @@ Installation, the full CLI surface, a quick-start walkthrough, and the configura
 
 Canaries, guided conversations, and finding triggers — covered in the Red-Team Design doc.
 
-[![Read the Red-Team Design doc](https://img.shields.io/badge/→_Read_the_Red--Team_Design_Doc-111111?style=for-the-badge)](docs/redteam-design.md#canaries-quick-setup)
+[![Read the Red-Team Design doc](https://img.shields.io/badge/→_Read_the_Red--Team_Design_Doc-111111?style=for-the-badge)](../documentation/docs/redteam-design.md#canaries-quick-setup)
 
 </td></tr>
 </table>
@@ -170,7 +170,7 @@ Filter by category or profile, or set `enabled: false` per scenario in a catalog
 
 ## License
 
-[Apache 2.0](./LICENSE).
+[Apache 2.0](../LICENSE).
 
 ## Star History
 
@@ -186,15 +186,15 @@ Filter by category or profile, or set `enabled: false` per scenario in a catalog
 
 <sub>
 <strong>Docs:</strong>
-<a href="docs/getting-started.md">Getting started</a> ·
-<a href="docs/quick-start.md">Quick start</a> ·
-<a href="docs/cli-reference.md">CLI reference</a> ·
-<a href="docs/policy-engine-guide.md">Policy engine</a> ·
-<a href="docs/static-analysis-guide.md">Static analysis</a> ·
-<a href="docs/redteam-design.md">Red-team design</a> ·
-<a href="docs/plugin-guide.md">Claude plugin</a> ·
-<a href="docs/publishing.md">Publishing</a> ·
-<a href="docs/troubleshooting.md">Troubleshooting</a> ·
+<a href="../documentation/docs/getting-started.md">Getting started</a> ·
+<a href="../documentation/docs/quick-start.md">Quick start</a> ·
+<a href="../documentation/docs/cli-reference.md">CLI reference</a> ·
+<a href="../documentation/docs/policy-engine-guide.md">Policy engine</a> ·
+<a href="../documentation/docs/static-analysis-guide.md">Static analysis</a> ·
+<a href="../documentation/docs/redteam-design.md">Red-team design</a> ·
+<a href="../documentation/docs/plugin-guide.md">Claude plugin</a> ·
+<a href="../documentation/docs/publishing.md">Publishing</a> ·
+<a href="../documentation/docs/troubleshooting.md">Troubleshooting</a> ·
 <a href="SECURITY.md">Security</a> ·
 <a href="CONTRIBUTING.md">Contributing</a>
 </sub>

@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  See the <a href="../README.md">project README</a> for what NuGuard does and the attack catalog / OWASP coverage overview.
+  See the <a href="../../.github/README.md">project README</a> for what NuGuard does and the attack catalog / OWASP coverage overview.
 </p>
 
 <p align="center">
