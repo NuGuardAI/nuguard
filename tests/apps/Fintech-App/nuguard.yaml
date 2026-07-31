@@ -10,11 +10,9 @@ sbom: ./app.sbom.json                 # output path for generated SBOM
 policy: ./cognitive_policy.md         # cognitive policy (copy from nuguard repo if needed)
 
 # ─── LLM settings ─────────────────────────────────────────────────────────────
-# Live-verified 2026-07-26 against the Foundry openai/v1-compatible surface.
 llm:
-  model: openai/${CHATBOT_MODEL}
-  api_key: ${CHATBOT_API_KEY}
-  api_base: ${CHATBOT_API_ENDPOINT}
+  model: azure/gpt-4o                 # matches the Azure OpenAI deployment used by the app
+  # Set AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT in your environment
 
 # ─── SBOM generation ──────────────────────────────────────────────────────────
 sbom_generation:
@@ -22,24 +20,15 @@ sbom_generation:
 
   # Orchestrator API — update to your deployed URL or keep localhost for Docker
   # target: http://localhost:8001
-target:
-  url: https://frontend-ui.purplewave-810bc652.eastus.azurecontainerapps.io
-  endpoint: /api/chat
-  auth:
-    type: bearer
-    header: "Authorization: Bearer ${TARGET_TOKEN}"
+target:  
+  url: https://frontend-ui.agreeablesky-8c7ba25f.eastus.azurecontainerapps.io/
+  #target_endpoint: /api/chat
 
 # ─── Red-team ─────────────────────────────────────────────────────────────────
 redteam:
 
-  # LLM-assisted adaptive/multi-turn attacks. Live-verified 2026-07-26.
-  llm:
-    model: openai/${REDTEAM_LLM_MODEL}
-    api_key: ${REDTEAM_LLM_API_KEY}
-    api_base: ${REDTEAM_LLM_ENDPOINT}
-
   # Canary file — seeded with FinTech GOAT's known account data
-  # canary: ./canary.json  # not present in this fixture; omitted to avoid a hard error
+  canary: ./canary.json
 
   # Full profile — run all scenarios (fintech-goat has 36 deliberate vulns)
   profile: full
