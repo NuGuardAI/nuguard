@@ -71,11 +71,19 @@ Once connected, the MCP server exposes NuGuard's full pipeline:
 
 | Command | Description |
 |---|---|
+| `nuguard init` | Scaffold a `nuguard.yaml` config file |
 | `nuguard sbom` | Generate an AI Bill of Materials from source code |
 | `nuguard analyze` | Static analysis of an AI-SBOM for security risks |
 | `nuguard policy` | Validate a cognitive policy document against a scan |
 | `nuguard behavior` | Behavioral testing against a live AI application |
 | `nuguard redteam` | Adversarial red-teaming with scenario-driven attacks |
+| `nuguard scan` | Unified pipeline: SBOM → analyze, with optional policy/redteam steps |
+| `nuguard target verify` | Check target connectivity and auth before a run |
+| `nuguard seed` | Seed canary data into the target before red-teaming |
+| `nuguard validate` | Validate AI application behavior |
+| `nuguard report` | Generate reports for a completed red-team run |
+| `nuguard findings` | List findings from a completed red-team run |
+| `nuguard replay` | Deterministically replay a completed red-team run |
 
 ## Links
 

@@ -417,18 +417,45 @@
                 gfm: true,
             });
 
-            // Intercept .md links inside rendered content
+            // Intercept .md links (optionally with a #anchor) inside rendered content
             function interceptDocLinks(container) {
                 container.querySelectorAll('a[href]').forEach(function (a) {
                     const href = a.getAttribute('href');
                     if (!href || href.startsWith('http') || href.startsWith('#') || href.startsWith('mailto')) return;
-                    if (href.endsWith('.md')) {
+                    const match = href.match(/^(?:\.\/)?([^#]+)\.md(#.*)?$/);
+                    if (match) {
                         a.addEventListener('click', function (e) {
                             e.preventDefault();
-                            const pageName = href.replace(/^\.\//, '').replace(/\.md$/, '');
-                            window.location.href = 'doc.html?page=' + pageName;
+                            const pageName = match[1];
+                            const hash = match[2] || '';
+                            window.location.href = 'doc.html?page=' + pageName + hash;
                         });
                     }
+                });
+            }
+
+            // GitHub-style heading slugs so #anchor links have something to scroll to
+            // (marked 12 no longer auto-assigns heading ids)
+            function assignHeadingIds(container) {
+                const seen = {};
+                container.querySelectorAll('h1, h2, h3, h4, h5, h6').forEach(function (h) {
+                    // Respect an id already set on the heading (e.g. raw HTML headings
+                    // with a hand-picked id to dodge slug quirks) — don't clobber it.
+                    if (h.id) return;
+
+                    // Mirror GitHub's slugger: strip punctuation, then turn each
+                    // remaining space into its own hyphen (runs of spaces are NOT
+                    // collapsed — "A & B" -> "a--b", matching GitHub's anchors).
+                    let slug = h.textContent.toLowerCase().trim()
+                        .replace(/[^\w\s-]/g, '')
+                        .replace(/\s/g, '-');
+                    if (seen[slug]) {
+                        seen[slug] += 1;
+                        slug = slug + '-' + seen[slug];
+                    } else {
+                        seen[slug] = 0;
+                    }
+                    h.id = slug;
                 });
             }
 
@@ -451,12 +478,25 @@
                         hljs.highlightElement(block);
                     });
 
-                    // Wire up .md links
+                    // Assign heading ids, then wire up .md / #anchor links
+                    assignHeadingIds(content);
                     interceptDocLinks(content);
 
                     // Update page title from first h1 if present
                     const h1 = content.querySelector('h1');
                     if (h1) document.title = h1.textContent + ' — NuGuard OSS Docs';
+
+                    // Jump to the requested anchor, if any; otherwise land at the top
+                    if (window.location.hash) {
+                        const target = document.getElementById(window.location.hash.slice(1));
+                        if (target) {
+                            target.scrollIntoView();
+                        } else {
+                            window.scrollTo(0, 0);
+                        }
+                    } else {
+                        window.scrollTo(0, 0);
+                    }
                 })
                 .catch(function (err) {
                     const loading = document.getElementById('doc-loading');

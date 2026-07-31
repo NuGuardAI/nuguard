@@ -5,7 +5,7 @@ on:
     branches:
       - develop
     paths:
-      - "docs/**"
+      - "documentation/docs/**"
   pull_request:
     types: [opened, synchronize, reopened, closed]
     branches:
@@ -33,7 +33,7 @@ jobs:
           azure_static_web_apps_api_token: ${{ secrets.AZURE_SWA_DOCS_TOKEN }}
           repo_token: ${{ secrets.GITHUB_TOKEN }}
           action: upload
-          app_location: docs
+          app_location: documentation/docs
           output_location: ""
           skip_app_build: true
           skip_deploy_on_missing_secrets: true

@@ -1,0 +1,50 @@
+<svg width="560" height="400" viewBox="0 0 560 400" xmlns="http://www.w3.org/2000/svg" font-family="system-ui,-apple-system,'Segoe UI',sans-serif">
+
+  <!-- shared row labels -->
+  <g font-size="12" fill="#52514e">
+    <text x="30" y="106">AI-SBOM generation</text>
+    <text x="30" y="136">Supply-chain analysis</text>
+    <text x="30" y="166">Policy engine</text>
+    <text x="30" y="196">Adaptive multi-turn attacks</text>
+    <text x="30" y="226">OWASP LLM Top 10 mapping</text>
+    <text x="30" y="256">Auto remediation</text>
+  </g>
+
+  <!-- NuGuard card -->
+  <rect x="240" y="82" width="100" height="196" rx="10" fill="none" stroke="#2a78d6" stroke-width="1.5"/>
+  <text x="290" y="76" font-size="13" font-weight="600" fill="#2a78d6" text-anchor="middle">NuGuard</text>
+  <g font-size="15" fill="#2a78d6" text-anchor="middle">
+    <text x="290" y="102">✓</text>
+    <text x="290" y="132">✓</text>
+    <text x="290" y="162">✓</text>
+    <text x="290" y="192">✓</text>
+    <text x="290" y="222">✓</text>
+    <text x="290" y="252">✓</text>
+  </g>
+
+  <!-- Promptfoo card -->
+  <rect x="350" y="82" width="100" height="196" rx="10" fill="none" stroke="#c3c2b7" stroke-width="1"/>
+  <text x="400" y="76" font-size="13" font-weight="600" fill="#52514e" text-anchor="middle">Promptfoo</text>
+  <g font-size="15" text-anchor="middle">
+    <text x="400" y="102" fill="#c3c2b7">–</text>
+    <text x="400" y="132" fill="#c3c2b7">–</text>
+    <text x="400" y="162" fill="#c3c2b7">–</text>
+    <text x="400" y="192" fill="#1baf7a">✓</text>
+    <text x="400" y="222" fill="#1baf7a">✓</text>
+    <text x="400" y="252" fill="#c3c2b7">–</text>
+  </g>
+
+  <!-- Garak card -->
+  <rect x="460" y="82" width="90" height="196" rx="10" fill="none" stroke="#c3c2b7" stroke-width="1"/>
+  <text x="505" y="76" font-size="13" font-weight="600" fill="#52514e" text-anchor="middle">Garak</text>
+  <g font-size="15" text-anchor="middle">
+    <text x="505" y="102" fill="#c3c2b7">–</text>
+    <text x="505" y="132" fill="#c3c2b7">–</text>
+    <text x="505" y="162" fill="#c3c2b7">–</text>
+    <text x="505" y="192" fill="#eb6834">✓</text>
+    <text x="505" y="222" fill="#c3c2b7">–</text>
+    <text x="505" y="252" fill="#c3c2b7">–</text>
+  </g>
+
+  <text x="30" y="328" font-size="11" fill="#898781">Based on each project's public docs, 2026-07.</text>
+</svg>
