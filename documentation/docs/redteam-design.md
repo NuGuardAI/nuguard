@@ -11,6 +11,14 @@ evidence, remediation, and compliance mapping.
 
 ---
 
+## Canaries: Quick Setup
+
+NuGuard can watch for seeded canary values during dynamic testing to produce high-confidence exfiltration findings. Start from [`canary.example.json`](../../canary.example.json), create your local `canary.json`, seed those records into your app yourself (database, vector store, or file store — see the file's own instructions), then point `nuguard redteam` at it with `--canary`.
+
+See [§8 Evidence and Reporting](#8-evidence-and-reporting) below for how canary hits are detected and scored.
+
+---
+
 ## 1. Goals
 
 1. **SBOM-grounded attacks.** Every scenario is derived from real components

@@ -1,25 +1,25 @@
 # NuGuard Plugin Guide
 
-NuGuard exposes AI security tools — SBOM generation, static analysis, behavioral testing, and adversarial red-teaming — directly to Claude. Ask Claude to audit your AI application and it will orchestrate the full pipeline, interpret findings, and recommend fixes without you leaving the chat.
+**Talk to your coding agent, get an AI security audit.** NuGuard exposes SBOM generation, static analysis, behavioral testing, and adversarial red-teaming as tools your agent can call directly — no separate terminal, no context-switching. Ask it to audit your AI application and it orchestrates the full pipeline, interprets the findings, and recommends fixes right there in the chat.
+
+**How it works, in short:**
+
+1. **Install** — pick your coding agent below and connect NuGuard to it.
+2. **Configure** — point it at your app (one wizard command, or a `nuguard.yaml` file).
+3. **Ask** — "audit this app with NuGuard" and it takes it from there.
 
 ---
 
-## Installation
+## 📦 Installation
 
-Choose the method that matches your environment:
+Each panel below is self-contained — expand the one that matches your agent and follow it top to bottom.
 
-| I'm using… | Recommended method |
-|---|---|
-| Claude Code (CLI or IDE extension) | [Claude Code plugin](#claude-code-plugin-recommended) |
-| Claude Desktop (macOS / Windows app) | [uv](#uv-or-pip), [pip](#uv-or-pip), or [npx](#npx-no-python-required) |
-| Smithery | [Smithery](#smithery) |
-| CI / scripting / no Claude UI | [uv or pip](#uv-or-pip) |
+<details open>
+<summary id="claude-code"><strong>💻 Claude Code</strong> — recommended, one-command install</summary>
 
----
+<br>
 
-### Claude Code plugin (recommended)
-
-The plugin wires slash commands, agents, and skills in one step — no manual config editing required.
+The plugin wires up slash commands, agents, and skills in one step — no manual config editing required.
 
 **From the Claude Code UI:** open the plugin marketplace, search for **NuGuard**, and click **Install**.
 
@@ -29,7 +29,9 @@ The plugin wires slash commands, agents, and skills in one step — no manual co
 claude plugin marketplace add NuGuardAI/nuguard
 claude plugin install nuguard
 ```
-**From the Claude Code:**
+
+**From inside a Claude Code chat:**
+
 ```
 /plugin marketplace add NuGuardAI/nuguard
 /plugin install nuguard
@@ -51,32 +53,44 @@ The wizard collects your LLM API key, model, target URL, and auth details, then 
 
 **Tip:** If you have multiple projects, run `/nuguard-config` in each one to set project-specific targets and credentials. The slash commands will always use the config from the current project context.
 
-**Example usage:**
-```use nuguard to generate an SBOM for this project and analyze it for security risks```
+**Try it:**
+```
+use nuguard to generate an SBOM for this project and analyze it for security risks
 ```
 
----
+[⬆ Back to agent picker](#choose-your-coding-agent)
 
-### uv or pip
+</details>
 
-Install the package once, then NuGuard is available everywhere with no extra tooling.
+<details>
+<summary id="claude-desktop"><strong>🖥️ Claude Desktop</strong> — connects as an MCP server</summary>
 
-If you have [uv](https://docs.astral.sh/uv/) (recommended):
+<br>
+
+Claude Desktop doesn't support the plugin marketplace, so it connects to NuGuard as an MCP server instead. Pick whichever option matches what's already on your machine — you only need one.
+
+**Option A — you have Python installed (recommended):**
+
+Install the package once with [`uv`](https://docs.astral.sh/uv/) (fast, recommended) or plain `pip`:
 
 ```bash
 uv pip install "nuguard[mcp]"
 ```
 
-Otherwise, use pip:
-
 ```bash
 pip install "nuguard[mcp]"
 ```
 
-For Claude Desktop, add to your config file:
+**Option B — you don't have Python, but you do have Node.js:**
+
+`npx` (bundled with Node.js) downloads and runs NuGuard automatically the first time it's needed — nothing to install ahead of time.
+
+Either way, add this to your Claude Desktop config file:
 
 - **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
 - **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+
+If you installed via Option A (`uv`/`pip`):
 
 ```json
 {
@@ -92,33 +106,7 @@ For Claude Desktop, add to your config file:
 }
 ```
 
-For Claude Code (project-local), add a `.mcp.json` at your project root:
-
-```json
-{
-  "mcpServers": {
-    "nuguard": {
-      "type": "stdio",
-      "command": "nuguard-mcp"
-    }
-  }
-}
-```
-
-Restart Claude Desktop or reload the Claude Code window after saving. The NuGuard tools appear in the tools panel (hammer icon).
-
-> **Tip:** Using a virtual environment? Activate it first, or point directly to the venv's binary:
-> ```json
-> { "command": "/path/to/.venv/bin/nuguard-mcp" }
-> ```
-
----
-
-### npx (no Python required)
-
-If you have Node.js (which includes `npx`) but not Python, `npx` downloads and runs the wrapper on first use with no interactive prompts:
-
-For Claude Desktop:
+If you're using Option B (`npx`):
 
 ```json
 {
@@ -135,27 +123,77 @@ For Claude Desktop:
 }
 ```
 
-For Claude Code:
+Restart Claude Desktop after saving. The NuGuard tools appear in the tools panel (hammer icon).
+
+> **Using a virtual environment?** Activate it first, or point directly to the venv's binary:
+> ```json
+> { "command": "/path/to/.venv/bin/nuguard-mcp" }
+> ```
+
+> **Have `uv` and want to skip a permanent install entirely?** Use `uvx` instead, which runs NuGuard on demand:
+> ```json
+> {
+>   "mcpServers": {
+>     "nuguard": {
+>       "command": "uvx",
+>       "args": ["--from", "nuguard[mcp]", "nuguard-mcp"],
+>       "env": { "LITELLM_API_KEY": "your-api-key-here" }
+>     }
+>   }
+> }
+> ```
+
+[⬆ Back to agent picker](#choose-your-coding-agent)
+
+</details>
+
+<details>
+<summary id="cursor-windsurf-cline-and-other-editors"><strong>🧩 Cursor, Windsurf, Cline, and Other Editors</strong> — any MCP-compatible editor</summary>
+
+<br>
+
+NuGuard runs as a standard [MCP](https://modelcontextprotocol.io) server, so any editor or agent that supports MCP — Cursor, Windsurf, Cline, and others — can connect to it using the same server definition, even though each editor stores that config in a different place. Check your editor's MCP / tool settings for the exact file location, then add:
 
 ```json
 {
   "mcpServers": {
     "nuguard": {
-      "type": "stdio",
       "command": "npx",
-      "args": ["-y", "nuguard"]
+      "args": ["-y", "nuguard"],
+      "env": {
+        "LITELLM_API_KEY": "your-api-key-here",
+        "NUGUARD_DEFAULT_CONFIG": "/absolute/path/to/nuguard.yaml"
+      }
     }
   }
 }
 ```
 
-The npm wrapper uses the same runtime detection waterfall as the plugin (see below), so it will use pip-installed nuguard if present, or install it automatically.
+`npx` (bundled with Node.js) is the lowest-friction option since it needs nothing pre-installed. If you have Python and `uv` installed instead, swap the `command` and `args` for:
 
----
+```json
+"command": "nuguard-mcp"
+```
 
-### Smithery
+(after running `uv pip install "nuguard[mcp]"` — see [Claude Desktop](#claude-desktop) above for the full install step) or:
 
-If you use Smithery:
+```json
+"command": "uvx",
+"args": ["--from", "nuguard[mcp]", "nuguard-mcp"]
+```
+
+Reload your editor's window after saving the config. The NuGuard tools should appear wherever your editor lists connected MCP tools.
+
+[⬆ Back to agent picker](#choose-your-coding-agent)
+
+</details>
+
+<details>
+<summary id="smithery"><strong>🛒 Smithery</strong> — one-click install via the MCP registry</summary>
+
+<br>
+
+[Smithery](https://smithery.ai) is a registry that many coding agents (Cursor, Windsurf, Claude Desktop, Claude Code, and others) can install MCP servers from directly, without you hand-writing any JSON config.
 
 ```bash
 smithery mcp add NuGuardAI/nuguard
@@ -171,33 +209,33 @@ During install, Smithery prompts for three optional settings:
 | `nuguard_config_path` | Absolute path to a `nuguard.yaml` config — sets the default for all tool calls |
 | `redteam_llm_model` | LiteLLM model for red-team payload generation (e.g. `openai/gpt-4o`) |
 
-Secrets are passed as environment variables to the `nuguard-mcp` process and never travel through Claude's context.
+Secrets are passed as environment variables to the `nuguard-mcp` process and never travel through the agent's context.
 
-> **Note:** Smithery provisions only the seven NuGuard tools. Slash commands, skills, and the security-auditor agent require the Claude Code plugin.
+> **Note:** Smithery provisions only the seven NuGuard tools. Slash commands, skills, and the security-auditor agent require the [Claude Code plugin](#claude-code).
 
----
+[⬆ Back to agent picker](#choose-your-coding-agent)
 
-### uvx (uv users)
+</details>
 
-If you use [uv](https://docs.astral.sh/uv/), you can run NuGuard directly without a permanent install:
+<details>
+<summary id="ci--scripting-no-chat-ui"><strong>⚙️ CI / Scripting</strong> — no chat UI, just the CLI</summary>
 
-```json
-{
-  "mcpServers": {
-    "nuguard": {
-      "command": "uvx",
-      "args": ["--from", "nuguard[mcp]", "nuguard-mcp"],
-      "env": {
-        "LITELLM_API_KEY": "your-api-key-here"
-      }
-    }
-  }
-}
+<br>
+
+No chat interface involved — you're calling NuGuard from a pipeline or script. Install the package directly and use the `nuguard` CLI (see the [Quick Start guide](quick-start.md)) instead of the MCP server:
+
+```bash
+uv pip install nuguard   # recommended if you have uv
+pip install nuguard      # otherwise
 ```
 
+[⬆ Back to agent picker](#choose-your-coding-agent)
+
+</details>
+
 ---
 
-## Configuration
+## ⚙️ Configuration
 
 ### Quick setup with the Claude Code plugin
 
@@ -222,9 +260,9 @@ It collects:
 
 Settings are saved to `.claude/nuguard.local.md` — a project-local file that is never committed (already in `.gitignore`). Re-run `/nuguard-config` any time to update values.
 
-### Using a nuguard.yaml (all install methods)
+### Using a nuguard.yaml (all other install methods)
 
-For Smithery or manual Claude Desktop installs, create `nuguard.yaml` in your project directory. Run the wizard or use the template from `nuguard.yaml.example`. The NUGUARD_DEFAULT_CONFIG environment variable tells NuGuard where to find it:
+For Smithery, Claude Desktop, or any other MCP-based install, create `nuguard.yaml` in your project directory. Use the template from `nuguard.yaml.example`. The `NUGUARD_DEFAULT_CONFIG` environment variable tells NuGuard where to find it:
 
 ```bash
 export NUGUARD_DEFAULT_CONFIG=/absolute/path/to/nuguard.yaml
@@ -240,9 +278,14 @@ This reads `.claude/nuguard.local.md` and creates `nuguard.yaml`, `cognitive-pol
 
 ---
 
-## Available Tools
+## 🧰 Available Tools
 
-### `nuguard_init`
+Seven tools cover the full pipeline. Expand any one for its parameters.
+
+<details>
+<summary><code>nuguard_init</code> — scaffold a <code>nuguard.yaml</code> for a project</summary>
+
+<br>
 
 Initialize a `nuguard.yaml` config file in a project directory. Also creates `canary.example.json` and `cognitive-policy.md`.
 
@@ -253,11 +296,14 @@ Initialize a `nuguard.yaml` config file in a project directory. Also creates `ca
 | `source_dir` | string | — | Source code directory for SBOM generation |
 | `force` | bool | `false` | Overwrite existing files |
 
----
+</details>
 
-### `nuguard_sbom_generate`
+<details>
+<summary><code>nuguard_sbom_generate</code> — build an AI Bill of Materials</summary>
 
-Generate an AI Bill of Materials from source code or a git repository.
+<br>
+
+Generate an AI Bill of Materials from source code or a git repository. Either `source` or `from_repo` must be provided.
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
@@ -268,11 +314,12 @@ Generate an AI Bill of Materials from source code or a git repository.
 | `llm` | bool | `false` | Enable LLM enrichment |
 | `config_path` | string | — | Path to `nuguard.yaml` |
 
-Either `source` or `from_repo` must be provided.
+</details>
 
----
+<details>
+<summary><code>nuguard_analyze</code> — static risk analysis, no live app needed</summary>
 
-### `nuguard_analyze`
+<br>
 
 Run static risk analysis on an AI-SBOM.
 
@@ -290,11 +337,14 @@ Run static risk analysis on an AI-SBOM.
 | `source` | string | — | Source directory for Checkov / Trivy / Semgrep |
 | `config_path` | string | — | Path to `nuguard.yaml` |
 
----
+</details>
 
-### `nuguard_scan`
+<details>
+<summary><code>nuguard_scan</code> — the unified pipeline, everything in one call</summary>
 
-Run the unified security scan pipeline. It defaults to SBOM generation plus static analysis; include `policy,redteam` in `steps` for policy and red-team validation.
+<br>
+
+Runs the unified security scan pipeline. Defaults to SBOM generation plus static analysis; include `policy,redteam` in `steps` for policy and red-team validation. Returns artifact paths (`sbom.json`, `findings.json`, `findings.sarif`, `report.md`) and a severity summary.
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
@@ -307,13 +357,14 @@ Run the unified security scan pipeline. It defaults to SBOM generation plus stat
 | `llm` | bool | `false` | LLM enrichment |
 | `config_path` | string | — | Path to `nuguard.yaml` |
 
-Returns artifact paths (`sbom.json`, `findings.json`, `findings.sarif`, `report.md`) and a severity summary.
+</details>
 
----
+<details>
+<summary><code>nuguard_behavior</code> — verify the app behaves as intended</summary>
 
-### `nuguard_behavior`
+<br>
 
-Run intent-aware behavioral testing against a live AI application.
+Run intent-aware behavioral testing against a live AI application. Static mode checks SBOM–policy alignment without hitting the live app. Dynamic mode sends probe conversations and judges each turn for intent drift, policy violations, and data leakage.
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
@@ -324,13 +375,14 @@ Run intent-aware behavioral testing against a live AI application.
 | `output` | string | — | Write report to this file |
 | `fail_on` | string | `"high"` | Severity threshold |
 
-Static mode checks SBOM–policy alignment without hitting the live app. Dynamic mode sends probe conversations and judges each turn for intent drift, policy violations, and data leakage.
+</details>
 
----
+<details>
+<summary><code>nuguard_redteam</code> — adversarial attacks against a live app</summary>
 
-### `nuguard_redteam`
+<br>
 
-Run adversarial red-team testing against a live AI application.
+Run adversarial red-team testing against a live AI application. Requires a running target app and an LLM configured for attack payload generation (`NUGUARD_REDTEAM_LLM_MODEL`).
 
 | Parameter | Type | Default | Description |
 |---|---|---|---|
@@ -344,11 +396,12 @@ Run adversarial red-team testing against a live AI application.
 | `fail_on` | string | `"high"` | Severity threshold |
 | `timeout_seconds` | int | `900` | Red-team scans can be long-running |
 
-Requires a running target app and an LLM configured for attack payload generation (`NUGUARD_REDTEAM_LLM_MODEL`).
+</details>
 
----
+<details>
+<summary><code>nuguard_policy_check</code> — compliance mapping against your Cognitive Policy</summary>
 
-### `nuguard_policy_check`
+<br>
 
 Cross-check a Cognitive Policy against an AI-SBOM and run compliance assessments (OWASP LLM Top 10, NIST AI RMF, EU AI Act).
 
@@ -361,9 +414,16 @@ Cross-check a Cognitive Policy against an AI-SBOM and run compliance assessments
 | `output` | string | — | Write compliance report to this file |
 | `verbose` | bool | `false` | Show all controls with evidence |
 
+</details>
+
 ---
 
-## Example: Azure OpenAI-backed agent
+## 🧪 See It In Action
+
+<details>
+<summary>Full walkthrough — auditing an Azure OpenAI-backed agent, from first prompt to fix</summary>
+
+<br>
 
 This walkthrough uses NuGuard to audit an AI application that calls Azure OpenAI. LiteLLM is used for NuGuard's own analysis; the target app uses its own Azure credentials independently.
 
@@ -458,9 +518,11 @@ Result (~4 min):
 > 2. Sanitize uploaded filenames and other external string inputs before they reach the agent's context window.
 > 3. Add a HITL confirmation step before any blob write or delete operation.
 
+</details>
+
 ---
 
-## Environment Variables
+## 🔑 Environment Variables
 
 | Variable | Description |
 |---|---|
@@ -477,9 +539,13 @@ export NUGUARD_DEFAULT_CONFIG=/home/me/projects/cs-bot/nuguard.yaml
 
 ---
 
-## Troubleshooting
+## 🛠️ Troubleshooting
 
-**Tools don't appear in Claude Desktop**  
+<details>
+<summary>Tools don't appear in Claude Desktop</summary>
+
+<br>
+
 Restart Claude Desktop after editing `claude_desktop_config.json`. On macOS and Windows, Claude Desktop does not inherit your shell PATH, so relative command names may not resolve. Use the absolute path to whichever binary you chose:
 
 ```json
@@ -491,7 +557,13 @@ Restart Claude Desktop after editing `claude_desktop_config.json`. On macOS and 
 
 Find the absolute path with `which nuguard-mcp` (macOS/Linux) or `where nuguard-mcp` (Windows).
 
-**`nuguard-mcp: no suitable Python runtime found`**  
+</details>
+
+<details>
+<summary><code>nuguard-mcp: no suitable Python runtime found</code></summary>
+
+<br>
+
 The `npx` launcher could not find Python or uvx. Install one of:
 ```bash
 uv pip install "nuguard[mcp]"   # recommended if you have uv
@@ -499,20 +571,46 @@ pip install "nuguard[mcp]"      # alternative — also installs the nuguard-mcp 
 ```
 or install [uv](https://docs.astral.sh/uv/) and the launcher will use `uvx` automatically.
 
-**`nuguard-mcp` not found after `pip install nuguard[mcp]`**  
+</details>
+
+<details>
+<summary><code>nuguard-mcp</code> not found after <code>pip install nuguard[mcp]</code></summary>
+
+<br>
+
 pip installed into a virtual environment whose `bin/` directory is not on your PATH. Either activate the venv before starting Claude Desktop, or use the absolute path:
 ```json
 { "command": "/path/to/.venv/bin/nuguard-mcp" }
 ```
 
-**`nuguard_redteam` times out**  
+</details>
+
+<details>
+<summary><code>nuguard_redteam</code> times out</summary>
+
+<br>
+
 The default timeout is 900 s. For large `profile=full` scans pass `timeout_seconds=1800`. Also check `redteam.request_timeout` in `nuguard.yaml` — it should match your app's response SLA.
 
-**`status: "error"` with no findings**  
+</details>
+
+<details>
+<summary><code>status: "error"</code> with no findings</summary>
+
+<br>
+
 Check the `stderr` field in the response. Common causes: `sbom` path doesn't exist, `config_path` points to a directory, or `LITELLM_API_KEY` is not set when `llm=true`.
 
-**Grype / Checkov / Trivy not running**  
+</details>
+
+<details>
+<summary>Grype / Checkov / Trivy not running</summary>
+
+<br>
+
 These are optional external tools. Install them or disable them per-call:
 ```
 nuguard_analyze(sbom="...", enable_grype=false, enable_trivy=false)
 ```
+
+</details>

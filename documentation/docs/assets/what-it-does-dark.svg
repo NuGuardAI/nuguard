@@ -1,0 +1,50 @@
+<svg width="920" height="280" viewBox="0 0 920 280" xmlns="http://www.w3.org/2000/svg" font-family="system-ui,-apple-system,'Segoe UI',sans-serif">
+
+  <!-- row 1 -->
+  <g text-anchor="middle">
+    <text x="124" y="50" font-size="26">📄</text>
+    <text x="124" y="72" font-size="12.5" font-weight="600" fill="#ffffff">SBOM</text>
+    <text x="124" y="90" font-size="10" fill="#c3c2b7">From local code or</text>
+    <text x="124" y="104" font-size="10" fill="#c3c2b7">a remote repo</text>
+
+    <text x="348" y="50" font-size="26">🔍</text>
+    <text x="348" y="72" font-size="12.5" font-weight="600" fill="#ffffff">Analyze</text>
+    <text x="348" y="90" font-size="10" fill="#c3c2b7">Static risk scan, no</text>
+    <text x="348" y="104" font-size="10" fill="#c3c2b7">running app needed</text>
+
+    <text x="572" y="50" font-size="26">📝</text>
+    <text x="572" y="72" font-size="12.5" font-weight="600" fill="#ffffff">Policy</text>
+    <text x="572" y="90" font-size="10" fill="#c3c2b7">Propose, lint, and</text>
+    <text x="572" y="104" font-size="10" fill="#c3c2b7">compliance-check</text>
+
+    <text x="796" y="50" font-size="26">🤖</text>
+    <text x="796" y="72" font-size="12.5" font-weight="600" fill="#ffffff">Behavior</text>
+    <text x="796" y="90" font-size="10" fill="#c3c2b7">Runtime test vs.</text>
+    <text x="796" y="104" font-size="10" fill="#c3c2b7">declared intent</text>
+  </g>
+
+  <rect x="20" y="126" width="880" height="1" fill="#2c2c2a"/>
+
+  <!-- row 2 -->
+  <g text-anchor="middle">
+    <text x="124" y="176" font-size="26">⚔️</text>
+    <text x="124" y="198" font-size="12.5" font-weight="600" fill="#ffffff">Red-team</text>
+    <text x="124" y="216" font-size="10" fill="#c3c2b7">125 adversarial</text>
+    <text x="124" y="230" font-size="10" fill="#c3c2b7">scenarios, live or sandboxed</text>
+
+    <text x="348" y="176" font-size="26">🐤</text>
+    <text x="348" y="198" font-size="12.5" font-weight="600" fill="#ffffff">Canaries</text>
+    <text x="348" y="216" font-size="10" fill="#c3c2b7">Seeded values for high-</text>
+    <text x="348" y="230" font-size="10" fill="#c3c2b7">confidence exfil findings</text>
+
+    <text x="572" y="176" font-size="26">🔧</text>
+    <text x="572" y="198" font-size="12.5" font-weight="600" fill="#ffffff">Remediate</text>
+    <text x="572" y="216" font-size="10" fill="#c3c2b7">Fix suggestions with</text>
+    <text x="572" y="230" font-size="10" fill="#c3c2b7">code snippets</text>
+
+    <text x="796" y="176" font-size="26">📤</text>
+    <text x="796" y="198" font-size="12.5" font-weight="600" fill="#ffffff">Export</text>
+    <text x="796" y="216" font-size="10" fill="#c3c2b7">Text, JSON, Markdown,</text>
+    <text x="796" y="230" font-size="10" fill="#c3c2b7">SARIF</text>
+  </g>
+</svg>
