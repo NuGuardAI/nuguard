@@ -301,8 +301,10 @@ def test_coverage_report_has_skipped_with_reasons() -> None:
 
     assert len(coverage.skipped) > 0
     reasons = {reason for _, _, reason in coverage.skipped}
-    # Should have capability_missing or builder_pending reasons
+    # Disabled specs have an explicit safety/configuration reason; builder
+    # failures remain distinguishable as builder_pending.
     assert any("capability" in r or "pending" in r for r in reasons)
+    assert "spec_disabled" in reasons
 
 
 def test_ci_profile_returns_fewer_scenarios_than_full() -> None:
