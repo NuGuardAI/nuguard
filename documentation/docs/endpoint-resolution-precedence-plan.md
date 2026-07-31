@@ -1,6 +1,6 @@
 # Endpoint Resolution Patch Plan (Config Must Win)
 
-Status: Planned
+Status: Completed
 
 Scope: `validate`, `behavior`, and `redteam` endpoint resolution for target chat paths.
 
