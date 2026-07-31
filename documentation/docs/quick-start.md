@@ -1,111 +1,21 @@
 # NuGuard Quick Start
 
-This guide gets you to a starter behavioral policy, a first SBOM, a static analysis report, a policy check, and a red-team run.
+Pick the workflow you want to run below. Each one links to a guide with a copy-paste-able command block — swap in your own values (target URL, source path, etc.) and it just runs — plus a list of the things you're most likely to want to change.
 
-## Prerequisites
+## Running a Static Analysis
 
-- Python 3.12+
+Structural and supply-chain risk from an AI-SBOM. No running app needed.
 
-## Install
+[![Read the Static Analysis Guide](https://img.shields.io/badge/→_Read_the_Static_Analysis_Guide-1f6feb?style=for-the-badge)](static-analysis-guide.md#quick-start)
 
-Install the published package:
+## Running a Behavior Test
 
-```bash
-pip install nuguard
-```
+Verifies your app behaves as intended against its Cognitive Policy — multi-turn scenarios judged against a live target.
 
-Check the CLI:
+[![Read the Behavior Guide](https://img.shields.io/badge/→_Read_the_Behavior_Guide-8957e5?style=for-the-badge)](behavior-guide.md#quick-start)
 
-```bash
-nuguard --help
-```
+## Running a Red Team Test
 
-## 1. Initialize With `nuguard init`
+Adversarial attack scenarios — prompt injection, data exfiltration, tool abuse, and more — against a live target.
 
-Create `nuguard.yaml`, `cognitive-policy.md`, and `canary.example.json` with sensible defaults:
-
-```bash
-nuguard init --target http://localhost:8080
-```
-
-Pass `--llm` to have the LLM draft a concise `cognitive-policy.md` from your app's context
-instead of writing a blank template (requires `LITELLM_API_KEY`):
-
-```bash
-nuguard init --target http://localhost:8080 --llm
-```
-
-To overwrite existing files:
-
-```bash
-nuguard init --force
-```
-
-## 2. Generate an AI-SBOM
-
-Generate from the current repository:
-
-```bash
-nuguard sbom generate --source . --output app.sbom.json
-```
-
-Generate from a Git repository:
-
-```bash
-nuguard sbom generate \
-  --from-repo https://github.com/org/repo \
-  --ref main \
-  --output app.sbom.json
-```
-
-## 3. Run Static Analysis
-
-```bash
-nuguard analyze --sbom app.sbom.json --format markdown
-```
-
-Useful variants:
-
-```bash
-nuguard analyze --sbom app.sbom.json --format json
-nuguard analyze --config nuguard.yaml --format sarif
-nuguard analyze --sbom app.sbom.json --format json --format markdown --output reports/analyze
-```
-
-## 5. Run the Behavior Validation
-
-Run the behavior validation (static and dynamic tests) based on the cognitive policy. Dynamic tests will run against the live application. Make sure to configure the target application URL and any necessary credentials in `nuguard.yaml` before running.
-
-```bash
-nuguard behavior \
-  --config nuguard.yaml \
-  --format markdown \
-  --output reports/behavior.md
-```
-
-## 6. Red-Team a Live AI App
-
-For red-team canaries, start from the tracked example file (optional step but useful to check for accurate data exfiltration validation):
-
-```bash
-cp canary.example.json canary.json
-```
-
-Run against a live application with the canary file for validation:
-
-```bash
-nuguard redteam \
-  --config nuguard.yaml \
-  --output reports/redteam.md \
-  --format markdown
-```
-
-## 7. Run from Claude (Plugin)
-
-NuGuard integrates directly into Claude Code and Claude Desktop. Install the plugin once and run the full pipeline — SBOM, analysis, behavior, and red-team — from the chat interface.
-
-```bash
-claude plugin add NuGuardAI/nuguard
-```
-
-See the [Plugin Guide](plugin-guide.md) for Claude Code slash commands, agents, and Claude Desktop / npx setup.
+[![Read the Red-Team Guide](https://img.shields.io/badge/→_Read_the_Red--Team_Guide-da3633?style=for-the-badge)](red-teaming-guide.md#quick-start)

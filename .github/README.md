@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="../documentation/docs/nuguard-logo.png" alt="NuGuard" width="120">
+  <img src="../documentation/docs/nuguard-logo.png" alt="NuGuard" width="72">
 </p>
 
 <h1 align="center">NuGuard</h1>
@@ -81,11 +81,22 @@ The attack catalog (`catalog.yaml`) tags every scenario against the OWASP Top 10
 
 ## Getting Started
 
+Install, then generate an SBOM, statically analyze it, and red-team a live target:
+
+```bash
+pip install nuguard
+
+nuguard init --target <your-app-url>
+nuguard sbom generate --source <path-to-your-app> --output app.sbom.json
+nuguard analyze --sbom app.sbom.json --format markdown
+nuguard redteam --config nuguard.yaml --format markdown --output reports/redteam.md
+```
+
 ### 🚀 Ready to run NuGuard?
 
-Installation, the full CLI surface, a quick-start walkthrough, and the configuration reference — all in one guide.
+Installation, the full CLI surface, and the configuration reference — all in one guide.
 
-[![Read the Getting Started guide](https://img.shields.io/badge/→_Read_the_Getting_Started_Guide-111111?style=for-the-badge)](../documentation/docs/getting-started.md)
+[![Read the Quick Start guide](https://img.shields.io/badge/→_Read_the_Quick_Start_Guide-111111?style=for-the-badge)](../documentation/docs/quick-start.md)
 
 ### ⚙️ Need advanced red-team config?
 
@@ -93,11 +104,25 @@ Canaries, guided conversations, and finding triggers — covered in the Red-Team
 
 [![Read the Red-Team Design doc](https://img.shields.io/badge/→_Read_the_Red--Team_Design_Doc-111111?style=for-the-badge)](../documentation/docs/redteam-design.md#canaries-quick-setup)
 
+### 🤖 Using coding agents?
+
+Install the NuGuard plugin and run SBOM, analysis, behavior, and red-team scans directly from Claude Code or Claude Desktop.
+
+[![Read the Plugin Guide](https://img.shields.io/badge/→_Read_the_Plugin_Guide-111111?style=for-the-badge)](../documentation/docs/plugin-guide.md)
+
 ## Hosted Version
 
-<p align="center">
-  <a href="http://nuguard.ai"><strong>NuGuard.ai</strong></a> — a managed SaaS version of NuGuard, with additional features and support on top of everything in this repo.
-</p>
+<table align="center">
+<tr>
+<td align="center" width="600">
+
+### 🌐 [NuGuard.ai](http://nuguard.ai)
+
+A managed SaaS version of NuGuard, with additional features and support on top of everything in this repo.
+
+</td>
+</tr>
+</table>
 
 ## Contributing
 

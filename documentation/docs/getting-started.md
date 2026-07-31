@@ -69,23 +69,27 @@ Follow [`plugin-guide.md`](plugin-guide.md) to set up the NuGuard plugin for Cla
   </picture>
 </p>
 
-### 1. Generate an AI-SBOM
+Pick a workflow. Each guide has a copy-paste-able command and the settings you're most likely to change.
 
-<img src="assets/quickstart-1-sbom.svg" alt="nuguard sbom generate --source . --output app.sbom.json. Or scan a remote repository: nuguard sbom generate --from-repo https://github.com/org/repo --ref main --output app.sbom.json" width="760">
+### 📋 Running a Static Analysis
 
-### 2. Run Static Analysis
+Structural and supply-chain risk from an AI-SBOM — no live target needed.
 
-<img src="assets/quickstart-2-analyze.svg" alt="nuguard analyze --sbom app.sbom.json --format markdown. Formats: markdown for human review, json for automation, sarif for code scanning pipelines." width="760">
+[![Read the Static Analysis Guide](https://img.shields.io/badge/→_Read_the_Static_Analysis_Guide-111111?style=for-the-badge)](static-analysis-guide.md#quick-start)
 
-### 3. Behavioral Testing
+### 🧪 Running a Behavior Test
 
-<img src="assets/quickstart-3-behavior.svg" alt="nuguard behavior --sbom app.sbom.json --target http://localhost:3000 --format markdown" width="760">
+Verify your app behaves as intended against its Cognitive Policy.
 
-### 4. Red-Team a Live App
+[![Read the Behavior Guide](https://img.shields.io/badge/→_Read_the_Behavior_Guide-111111?style=for-the-badge)](behavior-guide.md#quick-start)
 
-<img src="assets/quickstart-4-redteam.svg" alt="nuguard redteam --config nuguard.yaml --output reports/redteam.md --format markdown. Richer coverage: --policy for cognitive policy, --canary for canary values, --config for an alternate config file." width="760">
+### ⚔️ Running a Red Team Test
 
-### 5. Run the Unified Pipeline
+Adversarial attack scenarios against a live target.
+
+[![Read the Red-Team Guide](https://img.shields.io/badge/→_Read_the_Red--Team_Guide-111111?style=for-the-badge)](red-teaming-guide.md#quick-start)
+
+### Run Everything at Once
 
 <img src="assets/quickstart-5-scan.svg" alt="nuguard scan --source . --output-dir nuguard-reports (default: SBOM plus static analysis). To opt in to policy and red-team: nuguard scan --source . --steps sbom,analyze,policy,redteam --policy cognitive_policy.md --target http://localhost:3000 --output-dir nuguard-reports" width="760">
 

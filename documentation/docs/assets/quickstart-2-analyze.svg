@@ -1,5 +1,5 @@
-<svg width="760" height="130" viewBox="0 0 760 130" xmlns="http://www.w3.org/2000/svg" font-family="ui-monospace,'Cascadia Code','SF Mono',Consolas,monospace">
-  <rect width="760" height="130" rx="10" fill="#0d1117"/>
+<svg width="760" height="110" viewBox="0 0 760 110" xmlns="http://www.w3.org/2000/svg" font-family="ui-monospace,'Cascadia Code','SF Mono',Consolas,monospace">
+  <rect width="760" height="110" rx="10" fill="#0d1117"/>
   <rect width="760" height="34" rx="10" fill="#161b22"/>
   <rect y="24" width="760" height="10" fill="#161b22"/>
   <circle cx="22" cy="17" r="6" fill="#ff5f56"/>
@@ -7,14 +7,7 @@
   <circle cx="62" cy="17" r="6" fill="#27c93f"/>
 
   <g font-size="12.5">
-    <text x="20" y="62" fill="#7ee787">$ <tspan fill="#c9d1d9">nuguard analyze --sbom app.sbom.json --format markdown</tspan></text>
-
-    <text x="20" y="96" fill="#8b949e">Formats:</text>
-    <text x="90" y="96" fill="#58a6ff">markdown</text>
-    <text x="168" y="96" fill="#8b949e">human review ·</text>
-    <text x="272" y="96" fill="#58a6ff">json</text>
-    <text x="304" y="96" fill="#8b949e">automation ·</text>
-    <text x="400" y="96" fill="#58a6ff">sarif</text>
-    <text x="440" y="96" fill="#8b949e">code scanning pipelines</text>
+    <text x="20" y="62" fill="#7ee787">$ <tspan fill="#c9d1d9">nuguard sbom generate --source </tspan><tspan fill="#58a6ff">&lt;path-to-your-app&gt;</tspan><tspan fill="#c9d1d9"> --output app.sbom.json</tspan></text>
+    <text x="20" y="94" fill="#7ee787">$ <tspan fill="#c9d1d9">nuguard analyze --sbom app.sbom.json --format markdown</tspan></text>
   </g>
 </svg>
