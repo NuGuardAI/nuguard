@@ -15,7 +15,7 @@
 #   requests<2.26  → Bundles old urllib3 (transitive vuln)
 
 # ── Server framework ────────────────────────────────────────────────────────
-fastmcp>=2.0.0
+fastmcp>=3.4.5
 uvicorn[standard]>=0.24.0
 
 # ── Async task queue (Celery 5 — upgraded from deprecated 3.x) ────────────────
