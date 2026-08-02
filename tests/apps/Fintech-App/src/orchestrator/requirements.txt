@@ -9,7 +9,7 @@
 #                           LangChain < 0.0.312 has known prompt injection issues.
 
 # ── Web framework ────────────────────────────────────────────────────────────
-fastapi>=0.104.0
+fastapi>=0.141.1
 uvicorn[standard]>=0.52.0
 websockets>=12.0
 
