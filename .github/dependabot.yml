@@ -7,6 +7,8 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 10
+    exclude-paths:
+      - "tests/apps/**"
     ignore:
       # test fixture apps are deliberately pinned / vendored — see .gitattributes
       - dependency-name: "*"
@@ -41,3 +43,5 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    exclude-paths:
+      - "tests/apps/**"
