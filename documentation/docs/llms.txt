@@ -345,8 +345,8 @@ json_str = AiSbomSerializer.to_json(doc)
 
 ## Community & Support
 
-- GitHub: https://github.com/NuGuardAI/nuguard-oss
-- Issues: https://github.com/NuGuardAI/nuguard-oss/issues
+- GitHub: https://github.com/NuGuardAI/nuguard
+- Issues: https://github.com/NuGuardAI/nuguard/issues
 - Discord: https://discord.gg/EF99Ck7a
 - NuGuard AI: https://nuguard.ai/
 
