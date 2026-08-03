@@ -269,7 +269,7 @@ Common issues:
 
 Related docs:
 
-- [docs/quick-start.md](/workspaces/nuguard-oss/docs/quick-start.md)
-- [docs/cli-reference.md](/workspaces/nuguard-oss/docs/cli-reference.md)
-- [docs/troubleshooting.md](/workspaces/nuguard-oss/docs/troubleshooting.md)
-- [docs/sbom-schema.md](/workspaces/nuguard-oss/docs/sbom-schema.md)
+- [docs/quick-start.md](quick-start.md)
+- [docs/cli-reference.md](cli-reference.md)
+- [docs/troubleshooting.md](troubleshooting.md)
+- [docs/sbom-schema.md](sbom-schema.md)

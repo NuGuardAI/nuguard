@@ -101,8 +101,8 @@ nuguard sbom validate --file app.sbom.json
 
 If you need a minimal known-good example, compare against:
 
-- [docs/sample-sbom.json](/workspaces/nuguard-oss/docs/sample-sbom.json)
-- [docs/sbom-schema.md](/workspaces/nuguard-oss/docs/sbom-schema.md)
+- [docs/sample-sbom.json](sample-sbom.json)
+- [docs/sbom-schema.md](sbom-schema.md)
 
 ## Static Analysis
 
@@ -296,7 +296,7 @@ This repo’s packaging config excludes:
 
 If artifact contents drift, inspect:
 
-- [pyproject.toml](/workspaces/nuguard-oss/pyproject.toml)
+- [pyproject.toml](../../pyproject.toml)
 
 ## GitHub Actions and Trusted Publishing
 
@@ -335,7 +335,7 @@ Check the publisher registration in PyPI or TestPyPI:
 For this repo, expected values are:
 
 - project: `nuguard`
-- repo: `nuguard-oss`
+- repo: `nuguard`
 
 ## Git Issues
 
@@ -349,7 +349,7 @@ Be careful not to remove the lock while another git operation is genuinely activ
 
 ## More References
 
-- [docs/quick-start.md](/workspaces/nuguard-oss/docs/quick-start.md)
-- [docs/cli-reference.md](/workspaces/nuguard-oss/docs/cli-reference.md)
-- [docs/sbom-schema.md](/workspaces/nuguard-oss/docs/sbom-schema.md)
-- [README.md](/workspaces/nuguard-oss/README.md)
+- [docs/quick-start.md](quick-start.md)
+- [docs/cli-reference.md](cli-reference.md)
+- [docs/sbom-schema.md](sbom-schema.md)
+- [README.md](../../.github/README.md)
