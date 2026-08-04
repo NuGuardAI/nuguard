@@ -1,12 +1,14 @@
 """Semgrep Go AI-security rule tests for bundled ai-security.yaml.
 
 Runs the four Go rules against annotated fixture files. Skips when semgrep is
-not installed on PATH (same behaviour as SemgrepScannerPlugin).
+not installed on PATH (same behaviour as SemgrepScannerPlugin). In CI, missing
+semgrep is a hard failure so rule-behaviour regressions cannot silently skip.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 from collections import defaultdict
@@ -35,6 +37,11 @@ def _run_semgrep_on_fixtures() -> dict[str, list[dict[str, object]]]:
     """Run bundled rules on all Go fixture files; return findings keyed by filename."""
     binary = _semgrep_binary()
     if binary is None:
+        if os.environ.get("CI"):
+            pytest.fail(
+                "semgrep is required in CI for Go rule-behaviour tests; "
+                "install semgrep before running pytest"
+            )
         pytest.skip("semgrep not installed — Go rule tests skipped")
 
     files = sorted(_FIXTURES.glob("*.go"))
@@ -101,9 +108,10 @@ def _assert_no_rule(
 
 
 class TestGoPromptInjectionSprintf:
-    def test_positive_assignment_and_inline(
+    def test_case1_untrusted_through_sprintf_to_llm(
         self, semgrep_findings: dict[str, list[dict[str, object]]]
     ) -> None:
+        """user/external/dynamic input -> fmt.Sprintf -> LLM = MATCH."""
         lines = _rule_lines(
             semgrep_findings,
             "prompt_injection_positive.go",
@@ -111,18 +119,40 @@ class TestGoPromptInjectionSprintf:
         )
         assert lines == [13, 23]
 
-    def test_negative_ordinary_sprintf(
+    def test_case2_trusted_literal_sprintf_to_llm(
         self, semgrep_findings: dict[str, list[dict[str, object]]]
     ) -> None:
+        """trusted literal/constant -> fmt.Sprintf -> LLM = NO MATCH."""
         _assert_no_rule(
             semgrep_findings,
             "prompt_injection_negative.go",
             "nuguard-go-llm-prompt-injection-sprintf",
         )
 
-    def test_negative_static_prompt(
+    def test_case3_trusted_app_config_sprintf_to_llm(
         self, semgrep_findings: dict[str, list[dict[str, object]]]
     ) -> None:
+        """trusted application-configuration value -> fmt.Sprintf -> LLM = NO MATCH."""
+        _assert_no_rule(
+            semgrep_findings,
+            "prompt_injection_negative.go",
+            "nuguard-go-llm-prompt-injection-sprintf",
+        )
+
+    def test_case4_sprintf_without_llm_sink(
+        self, semgrep_findings: dict[str, list[dict[str, object]]]
+    ) -> None:
+        """user/dynamic input -> fmt.Sprintf but no LLM sink = NO MATCH."""
+        _assert_no_rule(
+            semgrep_findings,
+            "prompt_injection_negative.go",
+            "nuguard-go-llm-prompt-injection-sprintf",
+        )
+
+    def test_case5_direct_string_param_to_llm_without_sprintf(
+        self, semgrep_findings: dict[str, list[dict[str, object]]]
+    ) -> None:
+        """string parameter -> LLM directly, with no fmt.Sprintf = NO MATCH."""
         _assert_no_rule(
             semgrep_findings,
             "prompt_injection_negative.go",
@@ -137,7 +167,7 @@ class TestGoHardcodedApiKey:
             "hardcoded_key_positive.go",
             "nuguard-go-hardcoded-api-key",
         )
-        assert lines == [8, 14, 20]
+        assert lines == [16, 22, 28, 34]
 
     def test_negative_env_and_store(
         self, semgrep_findings: dict[str, list[dict[str, object]]]
@@ -179,7 +209,7 @@ class TestGoInsecureTls:
             "insecure_tls_positive.go",
             "nuguard-go-llm-insecure-tls",
         )
-        assert lines == [11, 29]
+        assert lines == [27, 45, 63]
 
     def test_negative_secure_and_unrelated(
         self, semgrep_findings: dict[str, list[dict[str, object]]]

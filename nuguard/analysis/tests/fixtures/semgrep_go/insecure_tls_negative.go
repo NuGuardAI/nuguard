@@ -57,5 +57,5 @@ func UnrelatedHTTPClientField(cfg genericHTTPConfig) {
 	}
 	httpClient := &http.Client{Transport: transport}
 	cfg.HTTPClient = httpClient
-	_ = cfg.HTTPClient.Get("https://example.com")
+	_, _ = cfg.HTTPClient.Get("https://example.com")
 }

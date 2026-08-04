@@ -178,19 +178,42 @@ rules:
 
   - id: nuguard-go-llm-prompt-injection-sprintf
     mode: taint
+    # Issue #180 scope: untrusted string input must flow through fmt.Sprintf
+    # before reaching an LLM sink. USER-labeled sources alone are not enough;
+    # sinks require the FORMATTED label produced only by sprintf propagators.
+    # Trusted literals/constants/config fields are not USER sources, so
+    # trusted fmt.Sprintf -> LLM is not reported. Direct string-param -> LLM
+    # (no sprintf) keeps only USER and therefore does not match.
     pattern-sources:
-      - patterns:
-          - pattern: fmt.Sprintf($FMT, ..., $INPUT, ...)
-          - pattern-not: fmt.Sprintf($FMT)
+      - label: USER
+        patterns:
+          - pattern: |
+              func $FN(..., $INPUT string, ...) {
+                ...
+              }
+          - focus-metavariable: $INPUT
+    pattern-propagators:
+      - pattern: $TO = fmt.Sprintf(..., $FROM, ...)
+        from: $FROM
+        to: $TO
+        label: FORMATTED
+        requires: USER
+      - pattern: fmt.Sprintf(..., $FROM, ...)
+        from: $FROM
+        to: $FROM
+        label: FORMATTED
+        requires: USER
+        by-side-effect: false
     pattern-sinks:
-      - patterns:
+      - requires: FORMATTED
+        patterns:
           - pattern: $CLIENT.$METHOD($CTX, $REQ)
           - metavariable-regex:
               metavariable: $METHOD
               regex: ^(CreateChatCompletion|CreateCompletion|GenerateContent|CreateMessage|SendMessage|GenerateText)$
     message: >
-      Potential prompt injection: dynamic input is interpolated into an LLM
-      prompt via fmt.Sprintf and passed to an AI/LLM API call. Validate and
+      Potential prompt injection: untrusted string input is interpolated into an
+      LLM prompt via fmt.Sprintf and passed to an AI/LLM API call. Validate and
       sanitize untrusted input before including it in prompts, or use a
       parameterised template approach.
     languages: [go]
@@ -214,21 +237,18 @@ rules:
               metavariable: $KEY
               regex: '"(sk-|AIza)'
           - pattern-not: $CFG.AuthToken = os.Getenv(...)
-          - pattern-not: $CFG.AuthToken = os.LookupEnv(...)
       - patterns:
           - pattern: $CFG.APIKey = $KEY
           - metavariable-regex:
               metavariable: $KEY
               regex: '"(sk-|AIza)'
           - pattern-not: $CFG.APIKey = os.Getenv(...)
-          - pattern-not: $CFG.APIKey = os.LookupEnv(...)
       - patterns:
           - pattern: $CFG.ApiKey = $KEY
           - metavariable-regex:
               metavariable: $KEY
               regex: '"(sk-|AIza)'
           - pattern-not: $CFG.ApiKey = os.Getenv(...)
-          - pattern-not: $CFG.ApiKey = os.LookupEnv(...)
     message: >
       Hardcoded AI service API key or auth token detected. Store secrets in
       environment variables or a secrets manager. Never commit API keys to
@@ -306,6 +326,9 @@ rules:
       owasp: "LLM04: Model Denial of Service"
 
   - id: nuguard-go-llm-insecure-tls
+    # Match both value-form constructors (e.g. go-openai NewClientWithConfig(cfg))
+    # and pointer-deref forms (NewClientWithConfig(*cfg)) used by some providers.
+    # Passing a pointer config variable without dereference is covered by $CFG.
     pattern-either:
       - patterns:
           - pattern: |
@@ -323,7 +346,51 @@ rules:
                 ...
                 $CFG.HTTPClient = $HTTP
                 ...
+                $CLIENT := $NEW(..., $CFG, ...)
+                ...
+                $CLIENT.$METHOD($CTX, $REQ)
+                ...
+              }
+          - metavariable-regex:
+              metavariable: $METHOD
+              regex: ^(CreateChatCompletion|CreateCompletion|GenerateContent|CreateMessage|SendMessage|GenerateText)$
+      - patterns:
+          - pattern: |
+              func $FN(...) {
+                ...
+                $TRANSPORT := &http.Transport{
+                  TLSClientConfig: &tls.Config{
+                    InsecureSkipVerify: true,
+                  },
+                }
+                ...
+                $HTTP := &http.Client{
+                  Transport: $TRANSPORT,
+                }
+                ...
+                $CFG.HTTPClient = $HTTP
+                ...
                 $CLIENT := $NEW(..., *$CFG, ...)
+                ...
+                $CLIENT.$METHOD($CTX, $REQ)
+                ...
+              }
+          - metavariable-regex:
+              metavariable: $METHOD
+              regex: ^(CreateChatCompletion|CreateCompletion|GenerateContent|CreateMessage|SendMessage|GenerateText)$
+      - patterns:
+          - pattern: |
+              func $FN(...) {
+                ...
+                $CFG.HTTPClient = &http.Client{
+                  Transport: &http.Transport{
+                    TLSClientConfig: &tls.Config{
+                      InsecureSkipVerify: true,
+                    },
+                  },
+                }
+                ...
+                $CLIENT := $NEW(..., $CFG, ...)
                 ...
                 $CLIENT.$METHOD($CTX, $REQ)
                 ...

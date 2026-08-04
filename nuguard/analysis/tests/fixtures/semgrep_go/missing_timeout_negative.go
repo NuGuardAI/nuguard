@@ -35,7 +35,7 @@ func BoundedContextWithDeadline() {
 
 func NonLLMBackgroundContext(db *sql.DB) {
 	ctx := context.Background()
-	_ = db.QueryContext(ctx, "SELECT 1")
+	_, _ = db.QueryContext(ctx, "SELECT 1")
 }
 
 func LLMWithParameterContext(ctx context.Context) {
