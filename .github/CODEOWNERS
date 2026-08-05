@@ -1,0 +1,3 @@
+# Workflow files control what CI enforces and what has access to repo secrets.
+# Require the engineering team to review any change here before it can merge.
+/.github/workflows/ @NuGuardAI/ent:engineering

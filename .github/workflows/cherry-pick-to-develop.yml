@@ -1,0 +1,126 @@
+name: Cherry-pick bug fix to develop
+
+# push (not pull_request) so github.ref resolves cleanly to refs/heads/main,
+# matching the cherry-pick-bot environment's branch policy. pull_request-family
+# events resolve to refs/pull/<n>/merge instead, which never matches a literal
+# branch name in an environment's deployment branch policy — using push avoids
+# that ambiguity instead of working around it.
+#
+# Also safe for the same reason as cherry-pick-to-develop always was: this only
+# fires after a commit has already landed on main, so the workflow definition
+# that runs is already the reviewed version on main.
+on:
+  push:
+    branches: [main]
+
+# find-pr reads commit/PR data with the default token; cherry-pick's actual
+# writes (push, PR create, issue comment) all go through the separate
+# CHERRY_PICK_BOT_TOKEN secret, never GITHUB_TOKEN, so read-only suffices here.
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  find-pr:
+    runs-on: ubuntu-latest
+    outputs:
+      is_bug_merge: ${{ steps.pr.outputs.is_bug_merge }}
+      pr_number: ${{ steps.pr.outputs.pr_number }}
+    steps:
+      - name: Identify the PR this push came from
+        id: pr
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          pr_number=$(gh api "repos/${{ github.repository }}/commits/${{ github.sha }}/pulls" \
+            --jq '.[0].number // empty')
+
+          if [[ -z "$pr_number" ]]; then
+            echo "is_bug_merge=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          pr_json=$(gh pr view "$pr_number" --repo "${{ github.repository }}" \
+            --json headRefName,baseRefName,state)
+          head_ref=$(echo "$pr_json" | jq -r .headRefName)
+          base_ref=$(echo "$pr_json" | jq -r .baseRefName)
+          state=$(echo "$pr_json" | jq -r .state)
+
+          if [[ "$state" == "MERGED" && "$head_ref" == bug/* && "$base_ref" == "main" ]]; then
+            echo "is_bug_merge=true" >> "$GITHUB_OUTPUT"
+            echo "pr_number=$pr_number" >> "$GITHUB_OUTPUT"
+          else
+            echo "is_bug_merge=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  cherry-pick:
+    needs: find-pr
+    if: needs.find-pr.outputs.is_bug_merge == 'true'
+    runs-on: ubuntu-latest
+    environment: cherry-pick-bot
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.CHERRY_PICK_BOT_TOKEN }}
+
+      - name: Configure git identity
+        run: |
+          git config user.name "nuguard-bot"
+          git config user.email "nuguard-bot@users.noreply.github.com"
+
+      - name: Cherry-pick the commit onto a new branch
+        id: cherry
+        env:
+          PR_NUMBER: ${{ needs.find-pr.outputs.pr_number }}
+        run: |
+          set -e
+          BRANCH="cherry-pick/${PR_NUMBER}-into-develop"
+          git fetch origin develop
+          git checkout -b "$BRANCH" origin/develop
+
+          # -m 1 is only valid on an actual merge commit (2+ parents) — it
+          # errors on a single-parent commit ("mainline was specified but
+          # commit ... is not a merge"). This repo currently allows both
+          # regular merges and squash merges, so detect which shape this
+          # commit actually has rather than assuming one.
+          PARENT_COUNT=$(git cat-file -p "${{ github.sha }}" | grep -c '^parent ')
+          if [ "$PARENT_COUNT" -ge 2 ]; then
+            CHERRY_PICK_CMD="git cherry-pick -m 1 ${{ github.sha }}"
+          else
+            CHERRY_PICK_CMD="git cherry-pick ${{ github.sha }}"
+          fi
+
+          if $CHERRY_PICK_CMD; then
+            git push origin "$BRANCH"
+            echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
+            echo "conflict=false" >> "$GITHUB_OUTPUT"
+          else
+            git cherry-pick --abort
+            echo "conflict=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Open cherry-pick PR
+        if: steps.cherry.outputs.conflict == 'false'
+        env:
+          GH_TOKEN: ${{ secrets.CHERRY_PICK_BOT_TOKEN }}
+          PR_NUMBER: ${{ needs.find-pr.outputs.pr_number }}
+        run: |
+          gh pr create \
+            --repo "${{ github.repository }}" \
+            --base develop \
+            --head "${{ steps.cherry.outputs.branch }}" \
+            --title "Cherry-pick #${PR_NUMBER} into develop" \
+            --body "Automated cherry-pick of #${PR_NUMBER} (merged into \`main\`) onto \`develop\`. Please review and merge — not auto-merged." \
+            --label "cherry-pick"
+
+      - name: Notify on conflict
+        if: steps.cherry.outputs.conflict == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.CHERRY_PICK_BOT_TOKEN }}
+          PR_NUMBER: ${{ needs.find-pr.outputs.pr_number }}
+        run: |
+          gh issue comment "${PR_NUMBER}" \
+            --repo "${{ github.repository }}" \
+            --body "⚠️ Automated cherry-pick to \`develop\` failed due to a merge conflict. A maintainer needs to cherry-pick this manually."

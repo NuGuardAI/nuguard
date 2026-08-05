@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security Vulnerability
+    url: https://github.com/NuGuardAI/nuguard/security/policy
+    about: Please report security vulnerabilities privately per SECURITY.md — do not open a public issue.
+  - name: Question / Discussion
+    url: https://github.com/NuGuardAI/nuguard/discussions
+    about: For general questions or discussion that isn't a bug or feature request.
