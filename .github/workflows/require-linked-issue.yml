@@ -1,0 +1,54 @@
+name: Require linked issue
+
+# pull_request_target for the same reason as enforce-base-branch.yml: this job
+# only reads PR metadata via the GraphQL API, it never checks out or runs the
+# PR's code, so using the base branch's workflow definition is safe.
+on:
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened]
+
+jobs:
+  require-linked-issue:
+    if: vars.ENFORCE_GIT_WORKFLOW == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Check for a linked issue
+        id: check
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const query = `
+              query($owner: String!, $repo: String!, $number: Int!) {
+                repository(owner: $owner, name: $repo) {
+                  pullRequest(number: $number) {
+                    closingIssuesReferences(first: 1) {
+                      totalCount
+                    }
+                  }
+                }
+              }
+            `;
+            const result = await github.graphql(query, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              number: context.issue.number,
+            });
+            const count = result.repository.pullRequest.closingIssuesReferences.totalCount;
+            core.setOutput("invalid", count === 0 ? "true" : "false");
+
+      - name: Comment asking for a linked issue
+        if: steps.check.outputs.invalid == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh pr comment "${{ github.event.pull_request.number }}" \
+            --repo "${{ github.repository }}" \
+            --body "🚫 This PR isn't linked to an issue. Add \`Closes #123\` (or \`Fixes\`/\`Resolves\`) to the description, or link one via the **Development** panel on the right, then push again."
+
+      - name: Fail if no linked issue
+        if: steps.check.outputs.invalid == 'true'
+        run: |
+          echo "::error::This PR must be linked to an issue."
+          exit 1

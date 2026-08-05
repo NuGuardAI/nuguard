@@ -1,0 +1,54 @@
+name: Enforce PR base branch
+
+# Runs as pull_request_target (not pull_request) so the checks always execute
+# using the workflow definition already merged on the base branch, not
+# whatever a contributor's own branch contains. Safe here because this job
+# never checks out or executes the PR's code — it only reads PR metadata.
+on:
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened]
+
+jobs:
+  check-base:
+    if: vars.ENFORCE_GIT_WORKFLOW == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Determine expected base branch
+        id: validate
+        env:
+          HEAD_REF: ${{ github.head_ref }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          expected=""
+          case "$HEAD_REF" in
+            feat/*) expected="develop" ;;
+            bug/*) expected="main" ;;
+            cherry-pick/*) expected="develop" ;;
+          esac
+
+          if [[ -n "$expected" && "$BASE_REF" != "$expected" ]]; then
+            echo "expected=$expected" >> "$GITHUB_OUTPUT"
+            echo "invalid=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "invalid=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Comment with the correct base branch
+        if: steps.validate.outputs.invalid == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          EXPECTED: ${{ steps.validate.outputs.expected }}
+        run: |
+          gh pr comment "${{ github.event.pull_request.number }}" \
+            --repo "${{ github.repository }}" \
+            --body "🚫 \`${{ github.head_ref }}\` must target \`$EXPECTED\`, not \`${{ github.base_ref }}\`. Please change the base branch — click **Edit** at the top of this PR and set base to \`$EXPECTED\` — then push again."
+
+      - name: Fail if base branch is wrong
+        if: steps.validate.outputs.invalid == 'true'
+        env:
+          EXPECTED: ${{ steps.validate.outputs.expected }}
+        run: |
+          echo "::error::${{ github.head_ref }} must target $EXPECTED, not ${{ github.base_ref }}"
+          exit 1
