@@ -800,9 +800,63 @@ def _parse_with_regex(
         )
         for item in strings
         if (item.line, item.value) not in import_keys
+        and not _is_regex_struct_tag(masked, item.start)
     ]
 
     return result
+
+
+def _is_regex_struct_tag(
+    masked: str,
+    position: int,
+) -> bool:
+    """Return whether a scanned string is a Go struct tag.
+
+    The fallback scanner has already replaced comments and string contents
+    with spaces. A string is treated as a tag when it follows field syntax on
+    the same line and the nearest unmatched opening brace starts a struct body.
+    """
+    line_start = (
+        masked.rfind(
+            "\n",
+            0,
+            position,
+        )
+        + 1
+    )
+
+    if not masked[line_start:position].strip():
+        return False
+
+    nested_braces = 0
+
+    for index in range(
+        position - 1,
+        -1,
+        -1,
+    ):
+        char = masked[index]
+
+        if char == "}":
+            nested_braces += 1
+            continue
+
+        if char != "{":
+            continue
+
+        if nested_braces:
+            nested_braces -= 1
+            continue
+
+        return (
+            re.search(
+                r"\bstruct\s*$",
+                masked[:index],
+            )
+            is not None
+        )
+
+    return False
 
 
 def _regex_imports(content: str) -> list[GoImport]:

@@ -231,6 +231,45 @@ func (server *Server) Register() {
     assert any(item.value == "search" and item.is_raw for item in result.string_literals)
 
 
+def test_regex_fallback_excludes_struct_tags(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        go_parser,
+        "get_go_parser",
+        lambda: None,
+    )
+
+    result = parse_go(
+        r"""package main
+
+type Embedded struct{}
+
+type Tagged struct {
+    Name string `json:"name"`
+    Alias string "xml:\"alias\""
+    Embedded `yaml:",inline"`
+}
+
+func run() {
+    raw := `keep raw`
+    interpreted := "keep interpreted"
+    _, _ = raw, interpreted
+}
+"""
+    )
+
+    assert result.used_tree_sitter is False
+    assert result.parse_error is None
+
+    values = {item.value for item in result.string_literals}
+
+    assert values == {
+        "keep raw",
+        "keep interpreted",
+    }
+
+
 def test_empty_source_returns_empty_result() -> None:
     result = parse_go(
         "",
