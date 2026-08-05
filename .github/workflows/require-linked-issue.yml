@@ -3,6 +3,11 @@ name: Require linked issue
 # pull_request_target for the same reason as enforce-base-branch.yml: this job
 # only reads PR metadata via the GraphQL API, it never checks out or runs the
 # PR's code, so using the base branch's workflow definition is safe.
+#
+# No comment-on-failure step: the org's Actions permission ceiling is
+# read-only, so GITHUB_TOKEN can't post PR comments regardless of what
+# permissions: this job declares. The ::error:: annotation below still
+# surfaces on the PR's Checks tab without needing any write permission.
 on:
   pull_request_target:
     types: [opened, edited, synchronize, reopened]
@@ -11,8 +16,6 @@ jobs:
   require-linked-issue:
     if: vars.ENFORCE_GIT_WORKFLOW == 'true'
     runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
     steps:
       - name: Check for a linked issue
         id: check
@@ -36,19 +39,8 @@ jobs:
               number: context.issue.number,
             });
             const count = result.repository.pullRequest.closingIssuesReferences.totalCount;
-            core.setOutput("invalid", count === 0 ? "true" : "false");
-
-      - name: Comment asking for a linked issue
-        if: steps.check.outputs.invalid == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh pr comment "${{ github.event.pull_request.number }}" \
-            --repo "${{ github.repository }}" \
-            --body "🚫 This PR isn't linked to an issue. Add \`Closes #123\` (or \`Fixes\`/\`Resolves\`) to the description, or link one via the **Development** panel on the right, then push again."
-
-      - name: Fail if no linked issue
-        if: steps.check.outputs.invalid == 'true'
-        run: |
-          echo "::error::This PR must be linked to an issue."
-          exit 1
+            if (count === 0) {
+              core.setFailed(
+                "This PR must be linked to an issue. Add 'Closes #123' to the description, or link one via the Development panel."
+              );
+            }

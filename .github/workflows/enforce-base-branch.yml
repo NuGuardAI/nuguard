@@ -4,6 +4,12 @@ name: Enforce PR base branch
 # using the workflow definition already merged on the base branch, not
 # whatever a contributor's own branch contains. Safe here because this job
 # never checks out or executes the PR's code — it only reads PR metadata.
+#
+# No comment-on-failure step: the org's Actions permission ceiling is
+# read-only, so GITHUB_TOKEN can't post PR comments regardless of what
+# permissions: this job declares (a job can only narrow the token's ceiling,
+# never expand past the repo/org default). The ::error:: annotation below
+# still surfaces on the PR's Checks tab without needing any write permission.
 on:
   pull_request_target:
     types: [opened, edited, synchronize, reopened]
@@ -12,11 +18,8 @@ jobs:
   check-base:
     if: vars.ENFORCE_GIT_WORKFLOW == 'true'
     runs-on: ubuntu-latest
-    permissions:
-      pull-requests: write
     steps:
-      - name: Determine expected base branch
-        id: validate
+      - name: Validate base branch matches branch type
         env:
           HEAD_REF: ${{ github.head_ref }}
           BASE_REF: ${{ github.base_ref }}
@@ -29,26 +32,6 @@ jobs:
           esac
 
           if [[ -n "$expected" && "$BASE_REF" != "$expected" ]]; then
-            echo "expected=$expected" >> "$GITHUB_OUTPUT"
-            echo "invalid=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "invalid=false" >> "$GITHUB_OUTPUT"
+            echo "::error::${HEAD_REF} must target ${expected}, not ${BASE_REF}. Change the base branch (Edit, top of this PR) to ${expected} and push again."
+            exit 1
           fi
-
-      - name: Comment with the correct base branch
-        if: steps.validate.outputs.invalid == 'true'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          EXPECTED: ${{ steps.validate.outputs.expected }}
-        run: |
-          gh pr comment "${{ github.event.pull_request.number }}" \
-            --repo "${{ github.repository }}" \
-            --body "🚫 \`${{ github.head_ref }}\` must target \`$EXPECTED\`, not \`${{ github.base_ref }}\`. Please change the base branch — click **Edit** at the top of this PR and set base to \`$EXPECTED\` — then push again."
-
-      - name: Fail if base branch is wrong
-        if: steps.validate.outputs.invalid == 'true'
-        env:
-          EXPECTED: ${{ steps.validate.outputs.expected }}
-        run: |
-          echo "::error::${{ github.head_ref }} must target $EXPECTED, not ${{ github.base_ref }}"
-          exit 1
