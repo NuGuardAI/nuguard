@@ -22,7 +22,6 @@ permissions:
 
 jobs:
   find-pr:
-    if: vars.ENFORCE_GIT_WORKFLOW == 'true'
     runs-on: ubuntu-latest
     outputs:
       is_bug_merge: ${{ steps.pr.outputs.is_bug_merge }}

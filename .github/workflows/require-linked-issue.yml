@@ -18,7 +18,6 @@ permissions:
 
 jobs:
   require-linked-issue:
-    if: vars.ENFORCE_GIT_WORKFLOW == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Check for a linked issue
