@@ -36,7 +36,7 @@ nuguard/
 ├── analysis/       # Static SBOM analysis — detector plugins
 ├── policy/         # Cognitive Policy parsing and violation checking
 ├── models/         # Shared Pydantic models (AttackGraph, ExploitChain, Scan, Finding, Policy)
-├── db/             # SQLite (default) or Postgres (async SQLAlchemy)
+├── db/             # SQLite (default); Postgres planned (async SQLAlchemy, not yet implemented)
 ├── output/         # SARIF / JSON / Markdown report generators
 ├── cli/            # Typer app — main.py wires sub-commands from commands/
 ├── config.py       # nuguard.yaml loader with ${ENV_VAR} interpolation

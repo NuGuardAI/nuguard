@@ -129,9 +129,9 @@ def select_scenarios(
             skipped.append((spec.id, spec.category.value, "profile_capped"))
             continue
 
-        # --- not yet implemented ----
+        # --- explicitly disabled ----
         if not spec.enabled:
-            skipped.append((spec.id, spec.category.value, "builder_pending"))
+            skipped.append((spec.id, spec.category.value, "spec_disabled"))
             continue
 
         # --- guided flag ---
