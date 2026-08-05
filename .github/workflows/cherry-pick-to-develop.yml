@@ -71,7 +71,7 @@ jobs:
           git config user.name "nuguard-bot"
           git config user.email "nuguard-bot@users.noreply.github.com"
 
-      - name: Cherry-pick the squash commit onto a new branch
+      - name: Cherry-pick the commit onto a new branch
         id: cherry
         env:
           PR_NUMBER: ${{ needs.find-pr.outputs.pr_number }}
@@ -80,11 +80,20 @@ jobs:
           BRANCH="cherry-pick/${PR_NUMBER}-into-develop"
           git fetch origin develop
           git checkout -b "$BRANCH" origin/develop
-          # No -m flag: squash-merged commits have a single parent, not two —
-          # -m is only valid on an actual merge commit and errors otherwise.
-          # This repo is squash-merge-only, so every push to main is a single
-          # ordinary commit.
-          if git cherry-pick "${{ github.sha }}"; then
+
+          # -m 1 is only valid on an actual merge commit (2+ parents) — it
+          # errors on a single-parent commit ("mainline was specified but
+          # commit ... is not a merge"). This repo currently allows both
+          # regular merges and squash merges, so detect which shape this
+          # commit actually has rather than assuming one.
+          PARENT_COUNT=$(git cat-file -p "${{ github.sha }}" | grep -c '^parent ')
+          if [ "$PARENT_COUNT" -ge 2 ]; then
+            CHERRY_PICK_CMD="git cherry-pick -m 1 ${{ github.sha }}"
+          else
+            CHERRY_PICK_CMD="git cherry-pick ${{ github.sha }}"
+          fi
+
+          if $CHERRY_PICK_CMD; then
             git push origin "$BRANCH"
             echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
             echo "conflict=false" >> "$GITHUB_OUTPUT"
