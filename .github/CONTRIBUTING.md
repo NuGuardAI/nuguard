@@ -7,6 +7,10 @@ Thanks for contributing. This project accepts issues and pull requests from the 
 - Read the [Code of Conduct](./CODE_OF_CONDUCT.md).
 - For security-sensitive reports, use [SECURITY.md](./SECURITY.md) instead of public issues.
 - Check existing issues and pull requests to avoid duplicate work.
+- When opening an issue, pick the **Bug Report** or **Feature Request** template
+  (`.github/ISSUE_TEMPLATE/`) — each auto-applies the matching `bug`/`enhancement`
+  label and ends with a hidden `<!-- issue-type: bug -->` / `<!-- issue-type: feature -->`
+  marker for automation; leave it in place.
 
 ## Development Setup
 
@@ -45,6 +49,10 @@ All four checks (`test`, `lint`, `fmt` check, and pre-commit) should pass locall
 - Update docs when user-facing behavior changes.
 - Do not include secrets, credentials, or private data.
 - Run `make test` and `make lint` locally before opening the PR.
+- When opening a PR, use the "Choose a template" link to pick either the **Bug Fix**
+  or **Feature** template (`.github/PULL_REQUEST_TEMPLATE/`). Each ends with a hidden
+  `<!-- pr-type: bug -->` / `<!-- pr-type: feature -->` marker — leave it in place; it's
+  read by automation to classify the PR, not meant to be edited.
 
 Include in the PR description:
 
