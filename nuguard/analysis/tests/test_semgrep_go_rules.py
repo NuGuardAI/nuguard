@@ -228,7 +228,5 @@ class TestGoRuleInventory:
         fired: set[str] = set()
         for rows in semgrep_findings.values():
             for row in rows:
-                rule_id = str(row["rule_id"])
-                if rule_id in _GO_RULE_IDS:
-                    fired.add(rule_id)
+                fired.add(str(row["rule_id"]))
         assert fired == _GO_RULE_IDS

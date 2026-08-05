@@ -198,6 +198,11 @@ rules:
         to: $TO
         label: FORMATTED
         requires: USER
+      - pattern: $TO := fmt.Sprintf(..., $FROM, ...)
+        from: $FROM
+        to: $TO
+        label: FORMATTED
+        requires: USER
       - pattern: fmt.Sprintf(..., $FROM, ...)
         from: $FROM
         to: $FROM
@@ -290,7 +295,19 @@ rules:
           - pattern-not: |
               $CTX := context.Background()
               ...
+              $CTX, $_ = context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.$METHOD($CTX, $REQ)
+          - pattern-not: |
+              $CTX := context.Background()
+              ...
               $CTX, $_ := context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.$METHOD($CTX, $REQ)
+          - pattern-not: |
+              $CTX := context.Background()
+              ...
+              $CTX, $_ = context.WithDeadline($CTX, ...)
               ...
               $CLIENT.$METHOD($CTX, $REQ)
       - patterns:
@@ -310,7 +327,83 @@ rules:
           - pattern-not: |
               $CTX := context.TODO()
               ...
+              $CTX, $_ = context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.$METHOD($CTX, $REQ)
+          - pattern-not: |
+              $CTX := context.TODO()
+              ...
               $CTX, $_ := context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.$METHOD($CTX, $REQ)
+          - pattern-not: |
+              $CTX := context.TODO()
+              ...
+              $CTX, $_ = context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.$METHOD($CTX, $REQ)
+      - patterns:
+          - pattern: |
+              $CTX = context.Background()
+              ...
+              $CLIENT.$METHOD($CTX, $REQ)
+          - metavariable-regex:
+              metavariable: $METHOD
+              regex: ^(CreateChatCompletion|CreateCompletion|GenerateContent|CreateMessage|SendMessage|GenerateText)$
+          - pattern-not: |
+              $CTX = context.Background()
+              ...
+              $CTX, $_ := context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.$METHOD($CTX, $REQ)
+          - pattern-not: |
+              $CTX = context.Background()
+              ...
+              $CTX, $_ = context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.$METHOD($CTX, $REQ)
+          - pattern-not: |
+              $CTX = context.Background()
+              ...
+              $CTX, $_ := context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.$METHOD($CTX, $REQ)
+          - pattern-not: |
+              $CTX = context.Background()
+              ...
+              $CTX, $_ = context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.$METHOD($CTX, $REQ)
+      - patterns:
+          - pattern: |
+              $CTX = context.TODO()
+              ...
+              $CLIENT.$METHOD($CTX, $REQ)
+          - metavariable-regex:
+              metavariable: $METHOD
+              regex: ^(CreateChatCompletion|CreateCompletion|GenerateContent|CreateMessage|SendMessage|GenerateText)$
+          - pattern-not: |
+              $CTX = context.TODO()
+              ...
+              $CTX, $_ := context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.$METHOD($CTX, $REQ)
+          - pattern-not: |
+              $CTX = context.TODO()
+              ...
+              $CTX, $_ = context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.$METHOD($CTX, $REQ)
+          - pattern-not: |
+              $CTX = context.TODO()
+              ...
+              $CTX, $_ := context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.$METHOD($CTX, $REQ)
+          - pattern-not: |
+              $CTX = context.TODO()
+              ...
+              $CTX, $_ = context.WithDeadline($CTX, ...)
               ...
               $CLIENT.$METHOD($CTX, $REQ)
     message: >
@@ -418,15 +511,6 @@ rules:
           - metavariable-regex:
               metavariable: $METHOD
               regex: ^(CreateChatCompletion|CreateCompletion|GenerateContent|CreateMessage|SendMessage|GenerateText)$
-    pattern-not:
-      - pattern: |
-          $CFG.HTTPClient = &http.Client{
-            Transport: &http.Transport{
-              TLSClientConfig: &tls.Config{
-                InsecureSkipVerify: false,
-              },
-            },
-          }
     message: >
       HTTP client TLS configuration disables certificate verification
       (InsecureSkipVerify: true) on an HTTP client assigned to a config that is
