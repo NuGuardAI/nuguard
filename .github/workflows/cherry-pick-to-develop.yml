@@ -13,6 +13,13 @@ on:
   push:
     branches: [main]
 
+# find-pr reads commit/PR data with the default token; cherry-pick's actual
+# writes (push, PR create, issue comment) all go through the separate
+# CHERRY_PICK_BOT_TOKEN secret, never GITHUB_TOKEN, so read-only suffices here.
+permissions:
+  contents: read
+  pull-requests: read
+
 jobs:
   find-pr:
     if: vars.ENFORCE_GIT_WORKFLOW == 'true'

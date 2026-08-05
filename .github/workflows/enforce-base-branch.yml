@@ -14,6 +14,10 @@ on:
   pull_request_target:
     types: [opened, edited, synchronize, reopened]
 
+# This job only reads github.head_ref/base_ref from event context — no API
+# calls, no checkout — so it needs no permissions at all.
+permissions: {}
+
 jobs:
   check-base:
     if: vars.ENFORCE_GIT_WORKFLOW == 'true'

@@ -12,6 +12,10 @@ on:
   pull_request_target:
     types: [opened, edited, synchronize, reopened]
 
+# Queries PR data via GraphQL — needs read access to pull requests, nothing else.
+permissions:
+  pull-requests: read
+
 jobs:
   require-linked-issue:
     if: vars.ENFORCE_GIT_WORKFLOW == 'true'
