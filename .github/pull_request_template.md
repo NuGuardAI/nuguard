@@ -1,12 +1,22 @@
+## PR Type
+
+<!--
+Check exactly ONE box below. This is the single source of truth automation
+reads to classify the PR (e.g. a GitHub Action looking for "[x] Bug fix" vs
+"[x] Feature") — do not remove or rephrase these two lines.
+-->
+- [ ] Bug fix
+- [ ] Feature
+
 ## What
 
-What changes did you make at a high level?
+What changed at a high level?
 
 Example:
 - Added...
 - Updated...
 - Refactored...
-- Moved...
+- Fixed...
 
 ## Why
 
@@ -14,9 +24,20 @@ Why are these changes helpful or necessary?
 
 **Example:**
 - New feature requested...
-- Refactoring in preparation for...
+- Reported in issue #...
 - Addressing design feedback...
 - Fast-follow to previous PR...
+
+## Root Cause
+
+<!-- Bug fixes only — delete this section for feature PRs. -->
+
+What was actually causing the bug?
+
+**Example:**
+- An off-by-one error in...
+- A race condition between...
+- Missing null check on...
 
 ## How
 
@@ -33,9 +54,10 @@ Example:
 What are all the steps to testing your code changes?
 
 **Example:**
+- [ ] Reproduce the original issue on `main` using these steps: ...
+- [ ] Confirm the issue no longer occurs on this branch
 - [ ] Enable `feature_flag`
 - [ ] Go to this page: /a-test-page
-- [ ] Simulate "Browser Feature"
 - [ ] Etc...
 
 ## Checks
@@ -43,7 +65,7 @@ What are all the steps to testing your code changes?
 - [ ] `make test` passes (`uv run pytest tests/ -v`)
 - [ ] `make lint` passes (`ruff check` + `mypy`)
 - [ ] `make fmt` applied, no diff
-- [ ] Added/updated tests covering this feature
+- [ ] Added/updated tests covering this change (regression test for bugs, new coverage for features)
 
 ## Other Notes
 
@@ -53,5 +75,3 @@ What, if anything, hasn't been addressed in these code changes but should be in 
 - ABC wasn't working as expected...
 - XYZ needs more research...
 - A fast-follow PR is already planned for addressing 1, 2, 3...
-
-<!-- pr-type: feature -->

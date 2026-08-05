@@ -49,10 +49,10 @@ All four checks (`test`, `lint`, `fmt` check, and pre-commit) should pass locall
 - Update docs when user-facing behavior changes.
 - Do not include secrets, credentials, or private data.
 - Run `make test` and `make lint` locally before opening the PR.
-- When opening a PR, use the "Choose a template" link to pick either the **Bug Fix**
-  or **Feature** template (`.github/PULL_REQUEST_TEMPLATE/`). Each ends with a hidden
-  `<!-- pr-type: bug -->` / `<!-- pr-type: feature -->` marker — leave it in place; it's
-  read by automation to classify the PR, not meant to be edited.
+- Opening a PR auto-fills the description from `.github/pull_request_template.md`.
+  Check exactly one box under **PR Type** (`Bug fix` or `Feature`) — that checkbox is
+  what automation reads to classify the PR, so leave the two lines in place even if
+  you trim other sections. Delete the **Root Cause** section for feature PRs.
 
 Include in the PR description:
 
