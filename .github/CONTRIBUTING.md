@@ -42,6 +42,14 @@ make precommit-run
 
 All four checks (`test`, `lint`, `fmt` check, and pre-commit) should pass locally before you open a PR — the [PR Tests](workflows/pr-tests.yml) workflow re-runs lint and type checks on every pull request.
 
+## Branch Naming
+
+Branch names are enforced server-side by a repository ruleset — a push that doesn't match is rejected outright, not just flagged in review.
+
+- Format: `feat/<short-description>` or `bug/<short-description>` — lowercase, hyphenated (e.g. `feat/add-pr-templates`, `bug/fix-null-check`).
+- `main` and `develop` are exempt from the rule.
+- Only applies going forward: existing branches that predate the rule aren't affected, and it only blocks *creating* a new non-conforming branch, not pushing further commits to one you already have.
+
 ## Pull Request Guidelines
 
 - Keep PRs focused and small enough to review.
