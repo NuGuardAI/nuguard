@@ -10,6 +10,11 @@ Python:
 JavaScript / TypeScript:
 - ``package.json``    — dependencies, devDependencies, peerDependencies
 
+C# / .NET:
+- ``*.csproj`` — NuGet ``PackageReference`` entries
+- ``packages.config`` — legacy NuGet package declarations
+- ``Directory.Packages.props`` — central package management
+
 The scanner is intentionally shallow: it reads *declared* dependencies, not the
 full transitive closure.  For a complete lock-file SBOM combine this with
 ``pip-audit`` / ``cyclonedx-python`` (Python) or ``cyclonedx-npm`` (JS).
@@ -21,6 +26,7 @@ import json
 import os
 import re
 import sys
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict
@@ -39,7 +45,7 @@ else:
 
 
 class PackageDep(BaseModel):
-    """A single declared package dependency (Python or JavaScript)."""
+    """A single declared package dependency."""
 
     model_config = ConfigDict(frozen=True)
 
@@ -61,11 +67,11 @@ class LifecycleScript(BaseModel):
 
     model_config = ConfigDict(frozen=True)
 
-    name: str        # script name, e.g. "postinstall", "preinstall", "build-backend"
-    body: str        # script body, truncated to 2000 chars
+    name: str  # script name, e.g. "postinstall", "preinstall", "build-backend"
+    body: str  # script body, truncated to 2000 chars
     source_file: str  # relative path to package.json / pyproject.toml / setup.py
-    ecosystem: str   # "npm" | "python"
-    phase: str       # "install-hook" | "build-hook" | "publish-hook"
+    ecosystem: str  # "npm" | "python"
+    phase: str  # "install-hook" | "build-hook" | "publish-hook"
 
 
 # ---------------------------------------------------------------------------
@@ -75,6 +81,7 @@ class LifecycleScript(BaseModel):
 _SPLIT_RE = re.compile(r"[><=!~\[;\s]")
 _COMMENT_RE = re.compile(r"#.*$")
 _DIGIT_START = re.compile(r"\d")
+_NUGET_VERSION_RE = re.compile(r"^\d+(?:\.\d+){0,3}(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$")
 _MANIFEST_SKIP_DIRS = {
     ".venv",
     "venv",
@@ -145,6 +152,57 @@ def _to_npm_purl(name: str, spec: str) -> str:
     return f"pkg:npm/{encoded}"
 
 
+def _nuget_version_spec(raw_version: str) -> str:
+    """Normalize concrete NuGet versions and preserve unresolved expressions."""
+    version = raw_version.strip()
+    if _NUGET_VERSION_RE.fullmatch(version):
+        return f"=={version}"
+    return version
+
+
+def _to_nuget_purl(name: str, spec: str) -> str:
+    """Build a ``pkg:nuget/`` PURL when *spec* contains a concrete version."""
+    package_name = name.strip()
+    version = spec.strip()
+    if version.startswith("=="):
+        version = version[2:].strip()
+    if _NUGET_VERSION_RE.fullmatch(version):
+        return f"pkg:nuget/{package_name}@{version}"
+    return f"pkg:nuget/{package_name}"
+
+
+def _xml_local_name(tag: str) -> str:
+    """Return an XML tag or attribute name without its namespace."""
+    return tag.rsplit("}", 1)[-1]
+
+
+def _xml_attr(element: ET.Element, name: str) -> str:
+    """Read an XML attribute by local name, including namespaced attributes."""
+    direct = element.attrib.get(name)
+    if direct is not None:
+        return direct.strip()
+    for key, value in element.attrib.items():
+        if _xml_local_name(key) == name:
+            return value.strip()
+    return ""
+
+
+def _xml_child_text(element: ET.Element, name: str) -> str:
+    """Read the text of a direct XML child by local name."""
+    for child in element:
+        if isinstance(child.tag, str) and _xml_local_name(child.tag) == name:
+            return (child.text or "").strip()
+    return ""
+
+
+def _parse_xml(path: Path) -> ET.Element | None:
+    """Parse *path*, returning ``None`` for unreadable or malformed XML."""
+    try:
+        return ET.parse(path).getroot()
+    except (ET.ParseError, OSError):
+        return None
+
+
 def _poetry_spec(ver: object) -> str:
     if isinstance(ver, str) and _DIGIT_START.match(ver):
         return f"=={ver}"
@@ -170,6 +228,9 @@ def _collect_manifest_candidates(root: Path) -> dict[str, list[Path]]:
     requirements_paths: list[Path] = []
     setup_cfg_paths: list[Path] = []
     package_json_paths: list[Path] = []
+    csproj_paths: list[Path] = []
+    packages_config_paths: list[Path] = []
+    directory_packages_props_paths: list[Path] = []
 
     for current_root, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if d not in _MANIFEST_SKIP_DIRS]
@@ -184,6 +245,12 @@ def _collect_manifest_candidates(root: Path) -> dict[str, list[Path]]:
                 setup_cfg_paths.append(path)
             elif filename == "package.json":
                 package_json_paths.append(path)
+            elif filename.endswith(".csproj"):
+                csproj_paths.append(path)
+            elif filename == "packages.config":
+                packages_config_paths.append(path)
+            elif filename == "Directory.Packages.props":
+                directory_packages_props_paths.append(path)
             elif filename.endswith(".txt") and (
                 filename.startswith("requirements") or in_requirements_dir
             ):
@@ -194,6 +261,11 @@ def _collect_manifest_candidates(root: Path) -> dict[str, list[Path]]:
         "requirements": sorted(set(requirements_paths)),
         "setup_cfg": _root_first_sorted(root, setup_cfg_paths, "setup.cfg"),
         "package_json": _root_first_sorted(root, package_json_paths, "package.json"),
+        "csproj": sorted(set(csproj_paths)),
+        "packages_config": _root_first_sorted(root, packages_config_paths, "packages.config"),
+        "directory_packages_props": _root_first_sorted(
+            root, directory_packages_props_paths, "Directory.Packages.props"
+        ),
     }
 
 
@@ -203,7 +275,7 @@ def _collect_manifest_candidates(root: Path) -> dict[str, list[Path]]:
 
 
 class DependencyScanner:
-    """Scan a project root directory and collect declared Python dependencies.
+    """Scan a project root directory and collect declared package dependencies.
 
     Usage::
 
@@ -225,15 +297,31 @@ class DependencyScanner:
         """
         seen: dict[str, PackageDep] = {}
         manifest_candidates = _collect_manifest_candidates(root)
+        directory_package_versions = self._read_directory_package_versions(
+            manifest_candidates["directory_packages_props"]
+        )
         for dep in [
             *self._scan_pyproject(root, manifest_candidates["pyproject"]),
             *self._scan_requirements(root, manifest_candidates["requirements"]),
             *self._scan_setup_cfg(root, manifest_candidates["setup_cfg"]),
             *self._scan_package_json(root, manifest_candidates["package_json"]),
+            *self._scan_csproj(
+                root,
+                manifest_candidates["csproj"],
+                directory_package_versions,
+            ),
+            *self._scan_packages_config(root, manifest_candidates["packages_config"]),
+            *self._scan_directory_packages_props(
+                root,
+                manifest_candidates["directory_packages_props"],
+                directory_package_versions,
+            ),
         ]:
             # Strip version from PURL for dedup key so pkg:pypi/foo and
             # pkg:npm/foo are treated as distinct entries.
             key = dep.purl.split("@")[0] if "@" in dep.purl else dep.purl
+            if key.startswith("pkg:nuget/"):
+                key = key.casefold()
             seen.setdefault(key, dep)
         return list(seen.values())
 
@@ -241,7 +329,9 @@ class DependencyScanner:
     # Manifest parsers
     # ------------------------------------------------------------------
 
-    def _scan_pyproject(self, root: Path, candidate_paths: list[Path] | None = None) -> list[PackageDep]:
+    def _scan_pyproject(
+        self, root: Path, candidate_paths: list[Path] | None = None
+    ) -> list[PackageDep]:
         """Parse ``pyproject.toml`` files found under *root*.
 
         Scans the root-level file first; then recursively finds any
@@ -339,7 +429,9 @@ class DependencyScanner:
 
         return deps
 
-    def _scan_requirements(self, root: Path, candidate_paths: list[Path] | None = None) -> list[PackageDep]:
+    def _scan_requirements(
+        self, root: Path, candidate_paths: list[Path] | None = None
+    ) -> list[PackageDep]:
         """Return deps from all requirements files found anywhere under *root*.
 
         Recursively globs for ``requirements*.txt`` (e.g. ``requirements.txt``,
@@ -367,7 +459,9 @@ class DependencyScanner:
                 pass
         return deps
 
-    def _scan_setup_cfg(self, root: Path, candidate_paths: list[Path] | None = None) -> list[PackageDep]:
+    def _scan_setup_cfg(
+        self, root: Path, candidate_paths: list[Path] | None = None
+    ) -> list[PackageDep]:
         if candidate_paths is None:
             candidate_paths = _collect_manifest_candidates(root)["setup_cfg"]
         if not candidate_paths:
@@ -396,7 +490,9 @@ class DependencyScanner:
                         deps.append(dep)
         return deps
 
-    def _scan_package_json(self, root: Path, candidate_paths: list[Path] | None = None) -> list[PackageDep]:
+    def _scan_package_json(
+        self, root: Path, candidate_paths: list[Path] | None = None
+    ) -> list[PackageDep]:
         """Parse ``package.json`` files and return npm deps with versions.
 
         Reads the standard dependency sections:
@@ -452,6 +548,160 @@ class DependencyScanner:
                     )
         return deps
 
+    def _read_directory_package_versions(
+        self,
+        candidate_paths: list[Path],
+    ) -> dict[Path, dict[str, tuple[str, str]]]:
+        """Read central NuGet versions, keyed by props path and package ID."""
+        versions_by_path: dict[Path, dict[str, tuple[str, str]]] = {}
+        for path in candidate_paths:
+            package_versions: dict[str, tuple[str, str]] = {}
+            versions_by_path[path] = package_versions
+            xml_root = _parse_xml(path)
+            if xml_root is None:
+                continue
+            for element in xml_root.iter():
+                if not isinstance(element.tag, str):
+                    continue
+                if _xml_local_name(element.tag) != "PackageVersion":
+                    continue
+                name = _xml_attr(element, "Include") or _xml_attr(element, "Update")
+                raw_version = _xml_attr(element, "Version") or _xml_child_text(element, "Version")
+                if not name or not raw_version:
+                    continue
+                package_versions.setdefault(name.casefold(), (name, raw_version))
+        return versions_by_path
+
+    @staticmethod
+    def _nearest_directory_package_versions(
+        project_path: Path,
+        versions_by_path: dict[Path, dict[str, tuple[str, str]]],
+    ) -> dict[str, tuple[str, str]]:
+        """Return the nearest ancestor ``Directory.Packages.props`` map."""
+        matching_paths = [path for path in versions_by_path if path.parent in project_path.parents]
+        if not matching_paths:
+            return {}
+        nearest = max(
+            matching_paths,
+            key=lambda path: len(path.parent.parts),
+        )
+        return versions_by_path[nearest]
+
+    def _scan_csproj(
+        self,
+        root: Path,
+        candidate_paths: list[Path] | None = None,
+        directory_package_versions: (dict[Path, dict[str, tuple[str, str]]] | None) = None,
+    ) -> list[PackageDep]:
+        """Parse NuGet ``PackageReference`` entries from C# project files."""
+        paths = candidate_paths
+        versions_by_path = directory_package_versions
+        if paths is None or versions_by_path is None:
+            candidates = _collect_manifest_candidates(root)
+            if paths is None:
+                paths = candidates["csproj"]
+            if versions_by_path is None:
+                versions_by_path = self._read_directory_package_versions(
+                    candidates["directory_packages_props"]
+                )
+
+        deps: list[PackageDep] = []
+        for path in paths:
+            xml_root = _parse_xml(path)
+            if xml_root is None:
+                continue
+            src = str(path.relative_to(root))
+            central_versions = self._nearest_directory_package_versions(path, versions_by_path)
+            for element in xml_root.iter():
+                if not isinstance(element.tag, str):
+                    continue
+                if _xml_local_name(element.tag) != "PackageReference":
+                    continue
+                name = _xml_attr(element, "Include") or _xml_attr(element, "Update")
+                if not name:
+                    continue
+                raw_version = _xml_attr(element, "Version") or _xml_child_text(element, "Version")
+                if not raw_version:
+                    central = central_versions.get(name.casefold())
+                    raw_version = central[1] if central is not None else ""
+                spec = _nuget_version_spec(raw_version)
+                deps.append(
+                    PackageDep(
+                        name=name,
+                        version_spec=spec,
+                        purl=_to_nuget_purl(name, spec),
+                        group="runtime",
+                        source_file=src,
+                    )
+                )
+        return deps
+
+    def _scan_packages_config(
+        self,
+        root: Path,
+        candidate_paths: list[Path] | None = None,
+    ) -> list[PackageDep]:
+        """Parse legacy NuGet ``packages.config`` files."""
+        if candidate_paths is None:
+            candidate_paths = _collect_manifest_candidates(root)["packages_config"]
+
+        deps: list[PackageDep] = []
+        for path in candidate_paths:
+            xml_root = _parse_xml(path)
+            if xml_root is None:
+                continue
+            src = str(path.relative_to(root))
+            for element in xml_root.iter():
+                if not isinstance(element.tag, str):
+                    continue
+                if _xml_local_name(element.tag) != "package":
+                    continue
+                name = _xml_attr(element, "id")
+                raw_version = _xml_attr(element, "version")
+                if not name or not raw_version:
+                    continue
+                spec = _nuget_version_spec(raw_version)
+                is_dev = _xml_attr(element, "developmentDependency").casefold() == "true"
+                deps.append(
+                    PackageDep(
+                        name=name,
+                        version_spec=spec,
+                        purl=_to_nuget_purl(name, spec),
+                        group="dev" if is_dev else "runtime",
+                        source_file=src,
+                    )
+                )
+        return deps
+
+    def _scan_directory_packages_props(
+        self,
+        root: Path,
+        candidate_paths: list[Path] | None = None,
+        directory_package_versions: (dict[Path, dict[str, tuple[str, str]]] | None) = None,
+    ) -> list[PackageDep]:
+        """Emit dependencies declared by central package management files."""
+        if candidate_paths is None:
+            candidate_paths = _collect_manifest_candidates(root)["directory_packages_props"]
+        if directory_package_versions is None:
+            directory_package_versions = self._read_directory_package_versions(candidate_paths)
+
+        deps: list[PackageDep] = []
+        for path in candidate_paths:
+            src = str(path.relative_to(root))
+            package_versions = directory_package_versions.get(path, {})
+            for name, raw_version in package_versions.values():
+                spec = _nuget_version_spec(raw_version)
+                deps.append(
+                    PackageDep(
+                        name=name,
+                        version_spec=spec,
+                        purl=_to_nuget_purl(name, spec),
+                        group="runtime",
+                        source_file=src,
+                    )
+                )
+        return deps
+
     # ------------------------------------------------------------------
     # Supply-chain extensions — no changes to existing scan() interface
     # ------------------------------------------------------------------
@@ -469,8 +719,15 @@ class DependencyScanner:
 
         # ── npm lifecycle scripts ─────────────────────────────────────
         _NPM_LIFECYCLE = {
-            "preinstall", "install", "postinstall", "prepare",
-            "prepack", "postpack", "prepublish", "prepublishOnly", "publish",
+            "preinstall",
+            "install",
+            "postinstall",
+            "prepare",
+            "prepack",
+            "postpack",
+            "prepublish",
+            "prepublishOnly",
+            "publish",
         }
         for path in candidates["package_json"]:
             src = str(path.relative_to(root))
@@ -495,13 +752,15 @@ class DependencyScanner:
                     hook_phase = "publish-hook"
                 else:
                     hook_phase = "build-hook"
-                scripts.append(LifecycleScript(
-                    name=phase,
-                    body=body[:2000],
-                    source_file=src,
-                    ecosystem="npm",
-                    phase=hook_phase,
-                ))
+                scripts.append(
+                    LifecycleScript(
+                        name=phase,
+                        body=body[:2000],
+                        source_file=src,
+                        ecosystem="npm",
+                        phase=hook_phase,
+                    )
+                )
 
         # ── Python build hooks ────────────────────────────────────────
         scripts.extend(self.parse_python_build_hooks(root))
@@ -522,25 +781,29 @@ class DependencyScanner:
             build_sys = data.get("build-system", {})
             backend = build_sys.get("build-backend")
             if backend and isinstance(backend, str):
-                scripts.append(LifecycleScript(
-                    name="build-backend",
-                    body=backend[:2000],
-                    source_file=src,
-                    ecosystem="python",
-                    phase="build-hook",
-                ))
+                scripts.append(
+                    LifecycleScript(
+                        name="build-backend",
+                        body=backend[:2000],
+                        source_file=src,
+                        ecosystem="python",
+                        phase="build-hook",
+                    )
+                )
             tool = data.get("tool", {})
             hatch = tool.get("hatch", {})
             for hook_name, hook_cfg in hatch.get("build", {}).get("hooks", {}).items():
                 if isinstance(hook_cfg, dict):
                     body = json.dumps(hook_cfg)[:2000]
-                    scripts.append(LifecycleScript(
-                        name=f"hatch.build.hooks.{hook_name}",
-                        body=body,
-                        source_file=src,
-                        ecosystem="python",
-                        phase="build-hook",
-                    ))
+                    scripts.append(
+                        LifecycleScript(
+                            name=f"hatch.build.hooks.{hook_name}",
+                            body=body,
+                            source_file=src,
+                            ecosystem="python",
+                            phase="build-hook",
+                        )
+                    )
 
         # setup.py presence: flag for manual review
         for setup_py in root.rglob("setup.py"):
@@ -551,13 +814,15 @@ class DependencyScanner:
                 body = setup_py.read_text(encoding="utf-8", errors="replace")[:2000]
             except OSError:
                 continue
-            scripts.append(LifecycleScript(
-                name="setup.py",
-                body=body,
-                source_file=src,
-                ecosystem="python",
-                phase="build-hook",
-            ))
+            scripts.append(
+                LifecycleScript(
+                    name="setup.py",
+                    body=body,
+                    source_file=src,
+                    ecosystem="python",
+                    phase="build-hook",
+                )
+            )
         return scripts
 
     def parse_lockfiles(self, root: Path) -> list[dict[str, str]]:
@@ -584,16 +849,22 @@ class DependencyScanner:
         for pkg_key, pkg_data in packages.items():
             if not isinstance(pkg_data, dict):
                 continue
-            name = pkg_key.removeprefix("node_modules/") if pkg_key.startswith("node_modules/") else pkg_key
+            name = (
+                pkg_key.removeprefix("node_modules/")
+                if pkg_key.startswith("node_modules/")
+                else pkg_key
+            )
             if not name:
                 continue
-            records.append({
-                "name": name,
-                "version": str(pkg_data.get("version", "")),
-                "resolved_url": str(pkg_data.get("resolved", "")),
-                "integrity_hash": str(pkg_data.get("integrity", "")),
-                "ecosystem": "npm",
-            })
+            records.append(
+                {
+                    "name": name,
+                    "version": str(pkg_data.get("version", "")),
+                    "resolved_url": str(pkg_data.get("resolved", "")),
+                    "integrity_hash": str(pkg_data.get("integrity", "")),
+                    "ecosystem": "npm",
+                }
+            )
         return records
 
     def _parse_uv_lockfile(self, root: Path) -> list[dict[str, str]]:
@@ -612,22 +883,28 @@ class DependencyScanner:
                 continue
             name = str(pkg.get("name", ""))
             version = str(pkg.get("version", ""))
-            for src in pkg.get("source", {}).values() if isinstance(pkg.get("source"), dict) else []:
-                records.append({
-                    "name": name,
-                    "version": version,
-                    "resolved_url": str(src),
-                    "integrity_hash": "",
-                    "ecosystem": "python",
-                })
+            for src in (
+                pkg.get("source", {}).values() if isinstance(pkg.get("source"), dict) else []
+            ):
+                records.append(
+                    {
+                        "name": name,
+                        "version": version,
+                        "resolved_url": str(src),
+                        "integrity_hash": "",
+                        "ecosystem": "python",
+                    }
+                )
                 break
             else:
                 if name:
-                    records.append({
-                        "name": name,
-                        "version": version,
-                        "resolved_url": "",
-                        "integrity_hash": "",
-                        "ecosystem": "python",
-                    })
+                    records.append(
+                        {
+                            "name": name,
+                            "version": version,
+                            "resolved_url": "",
+                            "integrity_hash": "",
+                            "ecosystem": "python",
+                        }
+                    )
         return records
