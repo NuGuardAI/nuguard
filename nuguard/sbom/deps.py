@@ -200,6 +200,7 @@ def _collect_manifest_candidates(root: Path) -> dict[str, list[Path]]:
         "go_mod": _root_first_sorted(root, go_mod_paths, "go.mod"),
     }
 
+
 def _to_go_purl(module: str, version: str) -> str:
     """Build a ``pkg:go/`` PURL for a Go module."""
     module_clean = module.strip()
@@ -465,88 +466,94 @@ class DependencyScanner:
         return deps
 
     def _scan_go_mod(self, root: Path, candidate_paths: list[Path] | None = None) -> list[PackageDep]:
-            """Parse ``go.mod`` and ``go.sum`` files and return Go module dependencies.
+        """Parse ``go.mod`` and ``go.sum`` files and return Go module dependencies.
 
-            Parses both single-line require directives:
-                require github.com/gin-gonic/gin v1.9.1
-            And block require directives:
-                require (
-                    github.com/google/uuid v1.3.0
-                )
-            Also parses ``go.sum`` for exact pinned module versions.
-            """
-            if candidate_paths is None:
-                candidate_paths = _collect_manifest_candidates(root)["go_mod"]
+        Parses both single-line require directives:
+            require github.com/gin-gonic/gin v1.9.1
+        And block require directives:
+            require (
+                github.com/google/uuid v1.3.0
+            )
+        Also parses ``go.sum`` for exact pinned module versions.
+        """
+        if candidate_paths is None:
+            candidate_paths = _collect_manifest_candidates(root)["go_mod"]
 
-            deps: list[PackageDep] = []
-            for path in candidate_paths:
-                src = str(path.relative_to(root))
-                try:
-                    content = path.read_text(encoding="utf-8")
-                except OSError:
-                    continue
+        # Ensure go.sum paths are processed before go.mod so exact version pins win
+        sorted_candidates = sorted(
+            candidate_paths,
+            key=lambda p: 0 if p.name == "go.sum" else 1
+        )
 
-                # Parse go.sum
-                if path.name == "go.sum":
-                    for line in content.splitlines():
-                        parts = line.strip().split()
-                        if len(parts) >= 2:
-                            mod, ver = parts[0], parts[1].split("/go.mod")[0]
-                            deps.append(
-                                PackageDep(
-                                    name=mod,
-                                    version_spec=f"=={ver}",
-                                    purl=_to_go_purl(mod, ver),
-                                    group="runtime",
-                                    source_file=src,
-                                )
-                            )
-                    continue
+        deps: list[PackageDep] = []
+        for path in sorted_candidates:
+            src = str(path.relative_to(root))
+            try:
+                content = path.read_text(encoding="utf-8")
+            except OSError:
+                continue
 
-                # Parse go.mod
-                in_require_block = False
+            # Parse go.sum
+            if path.name == "go.sum":
                 for line in content.splitlines():
-                    line = line.strip()
-                    if not line or line.startswith("//"):
-                        continue
-
-                    if line == "require (" or line.startswith("require ("):
-                        in_require_block = True
-                        continue
-
-                    if in_require_block:
-                        if line == ")":
-                            in_require_block = False
-                            continue
-                        parts = line.split()
-                        if len(parts) >= 2:
-                            mod, ver = parts[0], parts[1]
-                            group = "runtime" if "// indirect" not in line else "optional:indirect"
-                            deps.append(
-                                PackageDep(
-                                    name=mod,
-                                    version_spec=f"=={ver}",
-                                    purl=_to_go_purl(mod, ver),
-                                    group=group,
-                                    source_file=src,
-                                )
+                    parts = line.strip().split()
+                    if len(parts) >= 2:
+                        mod, ver = parts[0], parts[1].split("/go.mod")[0]
+                        deps.append(
+                            PackageDep(
+                                name=mod,
+                                version_spec=f"=={ver}",
+                                purl=_to_go_purl(mod, ver),
+                                group="runtime",
+                                source_file=src,
                             )
-                    elif line.startswith("require "):
-                        parts = line.split()
-                        if len(parts) >= 3:
-                            mod, ver = parts[1], parts[2]
-                            group = "runtime" if "// indirect" not in line else "optional:indirect"
-                            deps.append(
-                                PackageDep(
-                                    name=mod,
-                                    version_spec=f"=={ver}",
-                                    purl=_to_go_purl(mod, ver),
-                                    group=group,
-                                    source_file=src,
-                                )
-                            )
+                        )
+                continue
 
-            return deps
+            # Parse go.mod
+            in_require_block = False
+            for line in content.splitlines():
+                line = line.strip()
+                if not line or line.startswith("//"):
+                    continue
+
+                if line == "require (" or line.startswith("require ("):
+                    in_require_block = True
+                    continue
+
+                if in_require_block:
+                    if line == ")":
+                        in_require_block = False
+                        continue
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        mod, ver = parts[0], parts[1]
+                        group = "runtime" if "// indirect" not in line else "optional:indirect"
+                        deps.append(
+                            PackageDep(
+                                name=mod,
+                                version_spec=f"=={ver}",
+                                purl=_to_go_purl(mod, ver),
+                                group=group,
+                                source_file=src,
+                            )
+                        )
+                elif line.startswith("require "):
+                    parts = line.split()
+                    if len(parts) >= 3:
+                        mod, ver = parts[1], parts[2]
+                        group = "runtime" if "// indirect" not in line else "optional:indirect"
+                        deps.append(
+                            PackageDep(
+                                name=mod,
+                                version_spec=f"=={ver}",
+                                purl=_to_go_purl(mod, ver),
+                                group=group,
+                                source_file=src,
+                            )
+                        )
+
+        return deps
     # ------------------------------------------------------------------
     # Supply-chain extensions — no changes to existing scan() interface
     # ------------------------------------------------------------------

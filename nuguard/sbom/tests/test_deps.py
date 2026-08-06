@@ -467,7 +467,7 @@ class TestEdgeCases:
 class TestGoModScanner:
     """Tests for Go module parsing from go.mod and go.sum files."""
 
-    def test_scan_go_mod_single_and_block_require(self, tmp_path: Path):
+    def test_scan_go_mod_single_and_block_require(self, tmp_path: Path) -> None:
         go_mod_content = """
 module github.com/myorg/myapp
 
@@ -498,7 +498,7 @@ require (
         direct_dep = next(d for d in deps if d.name == "github.com/gin-gonic/gin")
         assert direct_dep.group == "runtime"
 
-    def test_scan_go_sum_pins(self, tmp_path: Path):
+    def test_scan_go_sum_pins(self, tmp_path: Path) -> None:
         go_sum_content = """
 github.com/gin-gonic/gin v1.9.1 h1:4A3XlY04t2a
 github.com/gin-gonic/gin v1.9.1/go.mod h1:A0A3XlY04t2a
