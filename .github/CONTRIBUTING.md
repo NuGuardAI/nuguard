@@ -61,6 +61,8 @@ Branch names are enforced server-side by a repository ruleset — a push that do
   Check exactly one box under **PR Type** (`Bug fix` or `Feature`) — that checkbox is
   what automation reads to classify the PR, so leave the two lines in place even if
   you trim other sections. Delete the **Root Cause** section for feature PRs.
+- Ensure that all `feat/*` branches are set up from develop and open PRs for develop
+- Ensure that all `bug/*` branches are set up from main and open PRs for main
 
 Include in the PR description:
 
