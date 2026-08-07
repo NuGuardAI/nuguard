@@ -152,22 +152,34 @@ def _to_npm_purl(name: str, spec: str) -> str:
     return f"pkg:npm/{encoded}"
 
 
+def _concrete_nuget_version(spec: str) -> str | None:
+    """Return the exact version represented by a concrete NuGet specifier."""
+    version = spec.strip()
+
+    if version.startswith("=="):
+        version = version[2:].strip()
+    elif version.startswith("[") and version.endswith("]") and "," not in version:
+        version = version[1:-1].strip()
+
+    return version if _NUGET_VERSION_RE.fullmatch(version) else None
+
+
 def _nuget_version_spec(raw_version: str) -> str:
     """Normalize concrete NuGet versions and preserve unresolved expressions."""
     version = raw_version.strip()
-    if _NUGET_VERSION_RE.fullmatch(version):
-        return f"=={version}"
-    return version
+    concrete_version = _concrete_nuget_version(version)
+
+    return f"=={concrete_version}" if concrete_version else version
 
 
 def _to_nuget_purl(name: str, spec: str) -> str:
     """Build a ``pkg:nuget/`` PURL when *spec* contains a concrete version."""
     package_name = name.strip()
-    version = spec.strip()
-    if version.startswith("=="):
-        version = version[2:].strip()
-    if _NUGET_VERSION_RE.fullmatch(version):
-        return f"pkg:nuget/{package_name}@{version}"
+    concrete_version = _concrete_nuget_version(spec)
+
+    if concrete_version:
+        return f"pkg:nuget/{package_name}@{concrete_version}"
+
     return f"pkg:nuget/{package_name}"
 
 
@@ -568,22 +580,69 @@ class DependencyScanner:
     ) -> dict[Path, dict[str, tuple[str, str]]]:
         """Read central NuGet versions, keyed by props path and package ID."""
         versions_by_path: dict[Path, dict[str, tuple[str, str]]] = {}
+
         for path in candidate_paths:
             package_versions: dict[str, tuple[str, str]] = {}
             versions_by_path[path] = package_versions
+
             xml_root = _parse_xml(path)
+
             if xml_root is None:
                 continue
+
             for element in xml_root.iter():
                 if not isinstance(element.tag, str):
                     continue
+
                 if _xml_local_name(element.tag) != "PackageVersion":
                     continue
-                name = _xml_attr(element, "Include") or _xml_attr(element, "Update")
-                raw_version = _xml_attr(element, "Version") or _xml_child_text(element, "Version")
+
+                include_name = _xml_attr(
+                    element,
+                    "Include",
+                )
+
+                update_name = _xml_attr(
+                    element,
+                    "Update",
+                )
+
+                name = include_name or update_name
+
+                raw_version = _xml_attr(
+                    element,
+                    "Version",
+                ) or _xml_child_text(
+                    element,
+                    "Version",
+                )
+
                 if not name or not raw_version:
                     continue
-                package_versions.setdefault(name.casefold(), (name, raw_version))
+
+                key = name.casefold()
+
+                if update_name:
+                    existing = package_versions.get(key)
+
+                    # Update mutates an item already declared in this file.
+                    # Imported props-chain evaluation remains out of scope.
+                    if existing is not None:
+                        package_versions[key] = (
+                            existing[0],
+                            raw_version,
+                        )
+
+                    continue
+
+                package_versions.setdefault(
+                    key,
+                    (
+                        name,
+                        raw_version,
+                    ),
+                )
+
         return versions_by_path
 
     @staticmethod
@@ -610,44 +669,112 @@ class DependencyScanner:
         """Parse NuGet ``PackageReference`` entries from C# project files."""
         paths = candidate_paths
         versions_by_path = directory_package_versions
+
         if paths is None or versions_by_path is None:
             candidates = _collect_manifest_candidates(root)
+
             if paths is None:
                 paths = candidates["csproj"]
+
             if versions_by_path is None:
                 versions_by_path = self._read_directory_package_versions(
                     candidates["directory_packages_props"]
                 )
 
         deps: list[PackageDep] = []
+
         for path in paths:
             xml_root = _parse_xml(path)
+
             if xml_root is None:
                 continue
+
             src = str(path.relative_to(root))
-            central_versions = self._nearest_directory_package_versions(path, versions_by_path)
+
+            central_versions = self._nearest_directory_package_versions(
+                path,
+                versions_by_path,
+            )
+
+            references: dict[
+                str,
+                tuple[str, str],
+            ] = {}
+
             for element in xml_root.iter():
                 if not isinstance(element.tag, str):
                     continue
+
                 if _xml_local_name(element.tag) != "PackageReference":
                     continue
-                name = _xml_attr(element, "Include") or _xml_attr(element, "Update")
+
+                include_name = _xml_attr(
+                    element,
+                    "Include",
+                )
+
+                update_name = _xml_attr(
+                    element,
+                    "Update",
+                )
+
+                name = include_name or update_name
+
                 if not name:
                     continue
-                raw_version = _xml_attr(element, "Version") or _xml_child_text(element, "Version")
+
+                raw_version = _xml_attr(
+                    element,
+                    "Version",
+                ) or _xml_child_text(
+                    element,
+                    "Version",
+                )
+
+                key = name.casefold()
+
+                if update_name:
+                    existing = references.get(key)
+
+                    # Update mutates a reference already declared in this
+                    # project. Imported reference evaluation is out of scope.
+                    if existing is not None:
+                        references[key] = (
+                            existing[0],
+                            raw_version or existing[1],
+                        )
+
+                    continue
+
+                references.setdefault(
+                    key,
+                    (
+                        name,
+                        raw_version,
+                    ),
+                )
+
+            for name, raw_version in references.values():
                 if not raw_version:
                     central = central_versions.get(name.casefold())
+
                     raw_version = central[1] if central is not None else ""
+
                 spec = _nuget_version_spec(raw_version)
+
                 deps.append(
                     PackageDep(
                         name=name,
                         version_spec=spec,
-                        purl=_to_nuget_purl(name, spec),
+                        purl=_to_nuget_purl(
+                            name,
+                            spec,
+                        ),
                         group="runtime",
                         source_file=src,
                     )
                 )
+
         return deps
 
     def _scan_packages_config(

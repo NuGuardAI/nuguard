@@ -4,7 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from nuguard.sbom.deps import DependencyScanner, _to_nuget_purl
+from nuguard.sbom.deps import (
+    DependencyScanner,
+    _nuget_version_spec,
+    _to_nuget_purl,
+)
 
 
 class TestNugetPurl:
@@ -18,6 +22,28 @@ class TestNugetPurl:
         assert (
             _to_nuget_purl("Azure.AI.OpenAI", "$(AzureOpenAIVersion)")
             == "pkg:nuget/Azure.AI.OpenAI"
+        )
+
+    def test_exact_bracket_version_is_concrete(self) -> None:
+        assert _nuget_version_spec("[1.2.3]") == "==1.2.3"
+
+        assert (
+            _to_nuget_purl(
+                "Example.Package",
+                "[1.2.3]",
+            )
+            == "pkg:nuget/Example.Package@1.2.3"
+        )
+
+    def test_version_range_is_not_concrete(self) -> None:
+        assert _nuget_version_spec("[1.2.3,2.0.0)") == "[1.2.3,2.0.0)"
+
+        assert (
+            _to_nuget_purl(
+                "Example.Package",
+                "[1.2.3,2.0.0)",
+            )
+            == "pkg:nuget/Example.Package"
         )
 
 
@@ -159,6 +185,74 @@ class TestCsprojScanning:
         )
 
         assert dep.purl == "pkg:nuget/Azure.AI.OpenAI@2.2.0"
+
+    def test_central_package_version_update_overrides_include(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        (tmp_path / "Directory.Packages.props").write_text(
+            """<Project><ItemGroup>
+  <PackageVersion Include="Microsoft.SemanticKernel"
+                  Version="1.0.0" />
+  <PackageVersion Update="microsoft.semantickernel"
+                  Version="2.0.0" />
+</ItemGroup></Project>
+""",
+            encoding="utf-8",
+        )
+
+        (tmp_path / "App.csproj").write_text(
+            """<Project><ItemGroup>
+  <PackageReference Include="Microsoft.SemanticKernel" />
+</ItemGroup></Project>
+""",
+            encoding="utf-8",
+        )
+
+        matches = [
+            dep
+            for dep in DependencyScanner().scan(tmp_path)
+            if (dep.name.casefold() == "microsoft.semantickernel")
+        ]
+
+        assert len(matches) == 1
+
+        dep = matches[0]
+
+        assert dep.name == "Microsoft.SemanticKernel"
+
+        assert dep.version_spec == "==2.0.0"
+
+        assert dep.purl == "pkg:nuget/Microsoft.SemanticKernel@2.0.0"
+
+        assert dep.source_file == "App.csproj"
+
+    def test_package_reference_update_mutates_existing_reference(
+        self,
+        tmp_path: Path,
+    ) -> None:
+        (tmp_path / "App.csproj").write_text(
+            """<Project><ItemGroup>
+  <PackageReference Include="Azure.AI.OpenAI" />
+  <PackageReference Update="azure.ai.openai"
+                    Version="[2.1.0]" />
+</ItemGroup></Project>
+""",
+            encoding="utf-8",
+        )
+
+        deps = DependencyScanner().scan(tmp_path)
+
+        assert len(deps) == 1
+
+        dep = deps[0]
+
+        assert dep.name == "Azure.AI.OpenAI"
+        assert dep.version_spec == "==2.1.0"
+
+        assert dep.purl == "pkg:nuget/Azure.AI.OpenAI@2.1.0"
+
+        assert dep.source_file == "App.csproj"
 
 
 class TestPackagesConfigScanning:
