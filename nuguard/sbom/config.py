@@ -91,6 +91,7 @@ class AiSbomConfig(BaseModel):
     include_extensions: set[str] = Field(
         default_factory=lambda: {
             ".py",
+            ".go",
             ".pyw",
             ".ts",
             ".tsx",
