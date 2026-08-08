@@ -355,3 +355,24 @@ def test_unterminated_strings_are_masked_and_reported() -> None:
         assert expected_error in result.parse_error.lower()
         assert [item.name for item in result.type_declarations] == ["Real"]
         assert [item.name for item in result.method_declarations] == ["Run"]
+
+
+def test_combined_attribute_sections_are_split() -> None:
+    result = parse_csharp(
+        """public class SearchPlugin
+{
+    [KernelFunction, Description("query, text")]
+    public string Search(string query) => query;
+}
+"""
+    )
+
+    assert len(result.method_declarations) == 1
+
+    method = result.method_declarations[0]
+
+    assert method.name == "Search"
+    assert method.attributes == (
+        "KernelFunction",
+        'Description("query, text")',
+    )

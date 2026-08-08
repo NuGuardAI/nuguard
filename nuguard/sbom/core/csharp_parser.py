@@ -1038,13 +1038,16 @@ def _containing(
 
 
 def _attributes(raw: str) -> tuple[str, ...]:
-    return tuple(
-        match.group(1).strip()
-        for match in re.finditer(
-            r"\[([^\]]+)\]",
-            raw,
-        )
-    )
+    """Extract individual attributes from one or more attribute sections."""
+    attributes: list[str] = []
+
+    for match in re.finditer(
+        r"\[([^\]]+)\]",
+        raw,
+    ):
+        attributes.extend(item.strip() for item in _split(match.group(1)) if item.strip())
+
+    return tuple(attributes)
 
 
 def _base_types(
