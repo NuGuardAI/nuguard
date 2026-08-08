@@ -221,6 +221,38 @@ class TestGoInsecureTls:
         )
 
 
+class TestGoOfficialSdkSinks:
+    """Issue #223: qualified official SDK sinks (never bare New)."""
+
+    def test_official_positive_prompt_injection(
+        self, semgrep_findings: dict[str, list[dict[str, object]]]
+    ) -> None:
+        lines = _rule_lines(
+            semgrep_findings,
+            "official_sdk_positive.go",
+            "nuguard-go-llm-prompt-injection-sprintf",
+        )
+        # Chat.Completions.New, Messages.New, Converse(...optFn), GenerateContent
+        assert lines == [54, 65, 84, 90]
+
+    def test_official_positive_missing_timeout(
+        self, semgrep_findings: dict[str, list[dict[str, object]]]
+    ) -> None:
+        lines = _rule_lines(
+            semgrep_findings,
+            "official_sdk_positive.go",
+            "nuguard-go-llm-missing-context-timeout",
+        )
+        # Includes Bedrock InvokeModel/Converse calls that pass a trailing optFn.
+        assert lines == [54, 59, 65, 70, 77, 84, 90]
+
+    def test_bare_new_is_not_llm_sink(
+        self, semgrep_findings: dict[str, list[dict[str, object]]]
+    ) -> None:
+        for rule_id in _GO_RULE_IDS:
+            _assert_no_rule(semgrep_findings, "official_sdk_negative.go", rule_id)
+
+
 class TestGoRuleInventory:
     def test_only_expected_go_rules_fire_on_fixtures(
         self, semgrep_findings: dict[str, list[dict[str, object]]]

@@ -173,7 +173,9 @@ rules:
       nuguard_rule: NGA-008
 
   # -------------------------------------------------------------------------
-  # Go AI/LLM security rules (issue #180)
+  # Go AI/LLM security rules (issues #180 / #223)
+  # #223 adds qualified official non-streaming SDK sinks; TLS / credential
+  # option flows remain unchanged (WithHTTPClient follow-up).
   # -------------------------------------------------------------------------
 
   - id: nuguard-go-llm-prompt-injection-sprintf
@@ -184,6 +186,8 @@ rules:
     # Trusted literals/constants/config fields are not USER sources, so
     # trusted fmt.Sprintf -> LLM is not reported. Direct string-param -> LLM
     # (no sprintf) keeps only USER and therefore does not match.
+    # Issue #223: qualified official sinks (never bare New); Bedrock uses
+    # Converse/InvokeModel with optional trailing optFns (...).
     pattern-sources:
       - label: USER
         patterns:
@@ -216,6 +220,24 @@ rules:
           - metavariable-regex:
               metavariable: $METHOD
               regex: ^(CreateChatCompletion|CreateCompletion|GenerateContent|CreateMessage|SendMessage|GenerateText)$
+      - requires: FORMATTED
+        patterns:
+          - pattern: $CLIENT.Chat.Completions.New($CTX, $REQ, ...)
+      - requires: FORMATTED
+        patterns:
+          - pattern: $CLIENT.Responses.New($CTX, $REQ, ...)
+      - requires: FORMATTED
+        patterns:
+          - pattern: $CLIENT.Messages.New($CTX, $REQ, ...)
+      - requires: FORMATTED
+        patterns:
+          - pattern: $CLIENT.Converse($CTX, $REQ, ...)
+      - requires: FORMATTED
+        patterns:
+          - pattern: $CLIENT.InvokeModel($CTX, $REQ, ...)
+      - requires: FORMATTED
+        patterns:
+          - pattern: $CLIENT.Models.GenerateContent($CTX, $MODEL, $CONTENTS, $CONFIG, ...)
     message: >
       Potential prompt injection: untrusted string input is interpolated into an
       LLM prompt via fmt.Sprintf and passed to an AI/LLM API call. Validate and
@@ -406,6 +428,726 @@ rules:
               $CTX, $_ = context.WithDeadline($CTX, ...)
               ...
               $CLIENT.$METHOD($CTX, $REQ)
+      - patterns:
+          - pattern: $CLIENT.Chat.Completions.New(context.Background(), $REQ, ...)
+      - patterns:
+          - pattern: $CLIENT.Responses.New(context.Background(), $REQ, ...)
+      - patterns:
+          - pattern: $CLIENT.Messages.New(context.Background(), $REQ, ...)
+      - patterns:
+          - pattern: $CLIENT.Converse(context.Background(), $REQ, ...)
+      - patterns:
+          - pattern: $CLIENT.InvokeModel(context.Background(), $REQ, ...)
+      - patterns:
+          - pattern: $CLIENT.Models.GenerateContent(context.Background(), $MODEL, $CONTENTS, $CONFIG, ...)
+      - patterns:
+          - pattern: $CLIENT.Chat.Completions.New(context.TODO(), $REQ, ...)
+      - patterns:
+          - pattern: $CLIENT.Responses.New(context.TODO(), $REQ, ...)
+      - patterns:
+          - pattern: $CLIENT.Messages.New(context.TODO(), $REQ, ...)
+      - patterns:
+          - pattern: $CLIENT.Converse(context.TODO(), $REQ, ...)
+      - patterns:
+          - pattern: $CLIENT.InvokeModel(context.TODO(), $REQ, ...)
+      - patterns:
+          - pattern: $CLIENT.Models.GenerateContent(context.TODO(), $MODEL, $CONTENTS, $CONFIG, ...)
+      - patterns:
+          - pattern: |
+              $CTX := context.Background()
+              ...
+              $CLIENT.Chat.Completions.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX := context.Background()
+              ...
+              $CTX, $_ := context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.Chat.Completions.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX := context.Background()
+              ...
+              $CTX, $_ = context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.Chat.Completions.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX := context.Background()
+              ...
+              $CTX, $_ := context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.Chat.Completions.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX := context.Background()
+              ...
+              $CTX, $_ = context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.Chat.Completions.New($CTX, $REQ, ...)
+      - patterns:
+          - pattern: |
+              $CTX := context.Background()
+              ...
+              $CLIENT.Responses.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX := context.Background()
+              ...
+              $CTX, $_ := context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.Responses.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX := context.Background()
+              ...
+              $CTX, $_ = context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.Responses.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX := context.Background()
+              ...
+              $CTX, $_ := context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.Responses.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX := context.Background()
+              ...
+              $CTX, $_ = context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.Responses.New($CTX, $REQ, ...)
+      - patterns:
+          - pattern: |
+              $CTX := context.Background()
+              ...
+              $CLIENT.Messages.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX := context.Background()
+              ...
+              $CTX, $_ := context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.Messages.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX := context.Background()
+              ...
+              $CTX, $_ = context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.Messages.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX := context.Background()
+              ...
+              $CTX, $_ := context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.Messages.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX := context.Background()
+              ...
+              $CTX, $_ = context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.Messages.New($CTX, $REQ, ...)
+      - patterns:
+          - pattern: |
+              $CTX := context.Background()
+              ...
+              $CLIENT.Converse($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX := context.Background()
+              ...
+              $CTX, $_ := context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.Converse($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX := context.Background()
+              ...
+              $CTX, $_ = context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.Converse($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX := context.Background()
+              ...
+              $CTX, $_ := context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.Converse($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX := context.Background()
+              ...
+              $CTX, $_ = context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.Converse($CTX, $REQ, ...)
+      - patterns:
+          - pattern: |
+              $CTX := context.Background()
+              ...
+              $CLIENT.InvokeModel($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX := context.Background()
+              ...
+              $CTX, $_ := context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.InvokeModel($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX := context.Background()
+              ...
+              $CTX, $_ = context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.InvokeModel($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX := context.Background()
+              ...
+              $CTX, $_ := context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.InvokeModel($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX := context.Background()
+              ...
+              $CTX, $_ = context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.InvokeModel($CTX, $REQ, ...)
+      - patterns:
+          - pattern: |
+              $CTX := context.Background()
+              ...
+              $CLIENT.Models.GenerateContent($CTX, $MODEL, $CONTENTS, $CONFIG, ...)
+          - pattern-not: |
+              $CTX := context.Background()
+              ...
+              $CTX, $_ := context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.Models.GenerateContent($CTX, $MODEL, $CONTENTS, $CONFIG, ...)
+          - pattern-not: |
+              $CTX := context.Background()
+              ...
+              $CTX, $_ = context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.Models.GenerateContent($CTX, $MODEL, $CONTENTS, $CONFIG, ...)
+          - pattern-not: |
+              $CTX := context.Background()
+              ...
+              $CTX, $_ := context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.Models.GenerateContent($CTX, $MODEL, $CONTENTS, $CONFIG, ...)
+          - pattern-not: |
+              $CTX := context.Background()
+              ...
+              $CTX, $_ = context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.Models.GenerateContent($CTX, $MODEL, $CONTENTS, $CONFIG, ...)
+      - patterns:
+          - pattern: |
+              $CTX := context.TODO()
+              ...
+              $CLIENT.Chat.Completions.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX := context.TODO()
+              ...
+              $CTX, $_ := context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.Chat.Completions.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX := context.TODO()
+              ...
+              $CTX, $_ = context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.Chat.Completions.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX := context.TODO()
+              ...
+              $CTX, $_ := context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.Chat.Completions.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX := context.TODO()
+              ...
+              $CTX, $_ = context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.Chat.Completions.New($CTX, $REQ, ...)
+      - patterns:
+          - pattern: |
+              $CTX := context.TODO()
+              ...
+              $CLIENT.Responses.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX := context.TODO()
+              ...
+              $CTX, $_ := context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.Responses.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX := context.TODO()
+              ...
+              $CTX, $_ = context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.Responses.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX := context.TODO()
+              ...
+              $CTX, $_ := context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.Responses.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX := context.TODO()
+              ...
+              $CTX, $_ = context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.Responses.New($CTX, $REQ, ...)
+      - patterns:
+          - pattern: |
+              $CTX := context.TODO()
+              ...
+              $CLIENT.Messages.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX := context.TODO()
+              ...
+              $CTX, $_ := context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.Messages.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX := context.TODO()
+              ...
+              $CTX, $_ = context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.Messages.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX := context.TODO()
+              ...
+              $CTX, $_ := context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.Messages.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX := context.TODO()
+              ...
+              $CTX, $_ = context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.Messages.New($CTX, $REQ, ...)
+      - patterns:
+          - pattern: |
+              $CTX := context.TODO()
+              ...
+              $CLIENT.Converse($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX := context.TODO()
+              ...
+              $CTX, $_ := context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.Converse($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX := context.TODO()
+              ...
+              $CTX, $_ = context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.Converse($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX := context.TODO()
+              ...
+              $CTX, $_ := context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.Converse($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX := context.TODO()
+              ...
+              $CTX, $_ = context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.Converse($CTX, $REQ, ...)
+      - patterns:
+          - pattern: |
+              $CTX := context.TODO()
+              ...
+              $CLIENT.InvokeModel($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX := context.TODO()
+              ...
+              $CTX, $_ := context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.InvokeModel($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX := context.TODO()
+              ...
+              $CTX, $_ = context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.InvokeModel($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX := context.TODO()
+              ...
+              $CTX, $_ := context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.InvokeModel($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX := context.TODO()
+              ...
+              $CTX, $_ = context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.InvokeModel($CTX, $REQ, ...)
+      - patterns:
+          - pattern: |
+              $CTX := context.TODO()
+              ...
+              $CLIENT.Models.GenerateContent($CTX, $MODEL, $CONTENTS, $CONFIG, ...)
+          - pattern-not: |
+              $CTX := context.TODO()
+              ...
+              $CTX, $_ := context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.Models.GenerateContent($CTX, $MODEL, $CONTENTS, $CONFIG, ...)
+          - pattern-not: |
+              $CTX := context.TODO()
+              ...
+              $CTX, $_ = context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.Models.GenerateContent($CTX, $MODEL, $CONTENTS, $CONFIG, ...)
+          - pattern-not: |
+              $CTX := context.TODO()
+              ...
+              $CTX, $_ := context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.Models.GenerateContent($CTX, $MODEL, $CONTENTS, $CONFIG, ...)
+          - pattern-not: |
+              $CTX := context.TODO()
+              ...
+              $CTX, $_ = context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.Models.GenerateContent($CTX, $MODEL, $CONTENTS, $CONFIG, ...)
+      - patterns:
+          - pattern: |
+              $CTX = context.Background()
+              ...
+              $CLIENT.Chat.Completions.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX = context.Background()
+              ...
+              $CTX, $_ := context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.Chat.Completions.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX = context.Background()
+              ...
+              $CTX, $_ = context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.Chat.Completions.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX = context.Background()
+              ...
+              $CTX, $_ := context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.Chat.Completions.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX = context.Background()
+              ...
+              $CTX, $_ = context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.Chat.Completions.New($CTX, $REQ, ...)
+      - patterns:
+          - pattern: |
+              $CTX = context.Background()
+              ...
+              $CLIENT.Responses.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX = context.Background()
+              ...
+              $CTX, $_ := context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.Responses.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX = context.Background()
+              ...
+              $CTX, $_ = context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.Responses.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX = context.Background()
+              ...
+              $CTX, $_ := context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.Responses.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX = context.Background()
+              ...
+              $CTX, $_ = context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.Responses.New($CTX, $REQ, ...)
+      - patterns:
+          - pattern: |
+              $CTX = context.Background()
+              ...
+              $CLIENT.Messages.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX = context.Background()
+              ...
+              $CTX, $_ := context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.Messages.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX = context.Background()
+              ...
+              $CTX, $_ = context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.Messages.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX = context.Background()
+              ...
+              $CTX, $_ := context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.Messages.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX = context.Background()
+              ...
+              $CTX, $_ = context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.Messages.New($CTX, $REQ, ...)
+      - patterns:
+          - pattern: |
+              $CTX = context.Background()
+              ...
+              $CLIENT.Converse($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX = context.Background()
+              ...
+              $CTX, $_ := context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.Converse($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX = context.Background()
+              ...
+              $CTX, $_ = context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.Converse($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX = context.Background()
+              ...
+              $CTX, $_ := context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.Converse($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX = context.Background()
+              ...
+              $CTX, $_ = context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.Converse($CTX, $REQ, ...)
+      - patterns:
+          - pattern: |
+              $CTX = context.Background()
+              ...
+              $CLIENT.InvokeModel($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX = context.Background()
+              ...
+              $CTX, $_ := context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.InvokeModel($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX = context.Background()
+              ...
+              $CTX, $_ = context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.InvokeModel($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX = context.Background()
+              ...
+              $CTX, $_ := context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.InvokeModel($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX = context.Background()
+              ...
+              $CTX, $_ = context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.InvokeModel($CTX, $REQ, ...)
+      - patterns:
+          - pattern: |
+              $CTX = context.Background()
+              ...
+              $CLIENT.Models.GenerateContent($CTX, $MODEL, $CONTENTS, $CONFIG, ...)
+          - pattern-not: |
+              $CTX = context.Background()
+              ...
+              $CTX, $_ := context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.Models.GenerateContent($CTX, $MODEL, $CONTENTS, $CONFIG, ...)
+          - pattern-not: |
+              $CTX = context.Background()
+              ...
+              $CTX, $_ = context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.Models.GenerateContent($CTX, $MODEL, $CONTENTS, $CONFIG, ...)
+          - pattern-not: |
+              $CTX = context.Background()
+              ...
+              $CTX, $_ := context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.Models.GenerateContent($CTX, $MODEL, $CONTENTS, $CONFIG, ...)
+          - pattern-not: |
+              $CTX = context.Background()
+              ...
+              $CTX, $_ = context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.Models.GenerateContent($CTX, $MODEL, $CONTENTS, $CONFIG, ...)
+      - patterns:
+          - pattern: |
+              $CTX = context.TODO()
+              ...
+              $CLIENT.Chat.Completions.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX = context.TODO()
+              ...
+              $CTX, $_ := context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.Chat.Completions.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX = context.TODO()
+              ...
+              $CTX, $_ = context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.Chat.Completions.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX = context.TODO()
+              ...
+              $CTX, $_ := context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.Chat.Completions.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX = context.TODO()
+              ...
+              $CTX, $_ = context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.Chat.Completions.New($CTX, $REQ, ...)
+      - patterns:
+          - pattern: |
+              $CTX = context.TODO()
+              ...
+              $CLIENT.Responses.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX = context.TODO()
+              ...
+              $CTX, $_ := context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.Responses.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX = context.TODO()
+              ...
+              $CTX, $_ = context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.Responses.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX = context.TODO()
+              ...
+              $CTX, $_ := context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.Responses.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX = context.TODO()
+              ...
+              $CTX, $_ = context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.Responses.New($CTX, $REQ, ...)
+      - patterns:
+          - pattern: |
+              $CTX = context.TODO()
+              ...
+              $CLIENT.Messages.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX = context.TODO()
+              ...
+              $CTX, $_ := context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.Messages.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX = context.TODO()
+              ...
+              $CTX, $_ = context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.Messages.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX = context.TODO()
+              ...
+              $CTX, $_ := context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.Messages.New($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX = context.TODO()
+              ...
+              $CTX, $_ = context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.Messages.New($CTX, $REQ, ...)
+      - patterns:
+          - pattern: |
+              $CTX = context.TODO()
+              ...
+              $CLIENT.Converse($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX = context.TODO()
+              ...
+              $CTX, $_ := context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.Converse($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX = context.TODO()
+              ...
+              $CTX, $_ = context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.Converse($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX = context.TODO()
+              ...
+              $CTX, $_ := context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.Converse($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX = context.TODO()
+              ...
+              $CTX, $_ = context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.Converse($CTX, $REQ, ...)
+      - patterns:
+          - pattern: |
+              $CTX = context.TODO()
+              ...
+              $CLIENT.InvokeModel($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX = context.TODO()
+              ...
+              $CTX, $_ := context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.InvokeModel($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX = context.TODO()
+              ...
+              $CTX, $_ = context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.InvokeModel($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX = context.TODO()
+              ...
+              $CTX, $_ := context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.InvokeModel($CTX, $REQ, ...)
+          - pattern-not: |
+              $CTX = context.TODO()
+              ...
+              $CTX, $_ = context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.InvokeModel($CTX, $REQ, ...)
+      - patterns:
+          - pattern: |
+              $CTX = context.TODO()
+              ...
+              $CLIENT.Models.GenerateContent($CTX, $MODEL, $CONTENTS, $CONFIG, ...)
+          - pattern-not: |
+              $CTX = context.TODO()
+              ...
+              $CTX, $_ := context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.Models.GenerateContent($CTX, $MODEL, $CONTENTS, $CONFIG, ...)
+          - pattern-not: |
+              $CTX = context.TODO()
+              ...
+              $CTX, $_ = context.WithTimeout($CTX, ...)
+              ...
+              $CLIENT.Models.GenerateContent($CTX, $MODEL, $CONTENTS, $CONFIG, ...)
+          - pattern-not: |
+              $CTX = context.TODO()
+              ...
+              $CTX, $_ := context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.Models.GenerateContent($CTX, $MODEL, $CONTENTS, $CONFIG, ...)
+          - pattern-not: |
+              $CTX = context.TODO()
+              ...
+              $CTX, $_ = context.WithDeadline($CTX, ...)
+              ...
+              $CLIENT.Models.GenerateContent($CTX, $MODEL, $CONTENTS, $CONFIG, ...)
     message: >
       AI/LLM request uses an unbounded root context (context.Background or
       context.TODO) with no timeout or deadline. Unbounded LLM calls can hang
