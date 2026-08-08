@@ -25,6 +25,36 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
+            // GitHub only populates closingIssuesReferences (below) when the PR targets the
+            // repo's default branch — that field mirrors the auto-close-on-merge relationship,
+            // which GitHub disables for non-default-branch PRs. So a develop-targeted PR with
+            // a correct "Closes #123" in its body still reports totalCount: 0. Parse the body
+            // for closing keywords ourselves first, so the check works regardless of base
+            // branch; keep the GraphQL query as a fallback for issues linked manually via the
+            // PR's Development panel (no keyword in the body) on default-branch PRs.
+            const CLOSING_KEYWORDS = "close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved";
+            const KEYWORD_RE = new RegExp(`\\b(?:${CLOSING_KEYWORDS})\\s+#(\\d+)`, "gi");
+
+            const body = context.payload.pull_request.body || "";
+            const referenced = new Set();
+            let match;
+            while ((match = KEYWORD_RE.exec(body)) !== null) {
+              referenced.add(parseInt(match[1], 10));
+            }
+
+            for (const num of referenced) {
+              try {
+                await github.rest.issues.get({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  issue_number: num,
+                });
+                return; // found a real issue referenced with a closing keyword — done
+              } catch (e) {
+                // Not a real issue (or was deleted) — keep checking any other referenced numbers.
+              }
+            }
+
             const query = `
               query($owner: String!, $repo: String!, $number: Int!) {
                 repository(owner: $owner, name: $repo) {
