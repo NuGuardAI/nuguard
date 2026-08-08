@@ -216,3 +216,142 @@ def test_empty_source_is_false_and_preserves_context() -> None:
     assert not result
     assert result.file_path == "Empty.cs"
     assert result.parse_error is None
+
+
+def test_method_parser_handles_nested_parameters_and_initializer() -> None:
+    result = parse_csharp(
+        """public class Service : BaseService
+{
+    public Service(
+        string name = nameof(DefaultName),
+        Func<(int X, int Y), Task> handler = null)
+        : base(CreateOptions())
+    {
+    }
+
+    public void Run(
+        (int X, int Y) point,
+        Action<Func<int, string>> callback)
+    {
+    }
+}
+"""
+    )
+
+    assert [method.name for method in result.method_declarations] == [
+        "Service",
+        "Run",
+    ]
+
+    constructor, method = result.method_declarations
+
+    assert constructor.is_constructor
+    assert constructor.parameters == (
+        "string name = nameof(DefaultName)",
+        "Func<(int X, int Y), Task> handler = null",
+    )
+    assert ": base(CreateOptions())" in constructor.signature
+
+    assert method.parameters == (
+        "(int X, int Y) point",
+        "Action<Func<int, string>> callback",
+    )
+
+
+def test_method_calls_inside_bodies_are_not_declarations() -> None:
+    result = parse_csharp(
+        """public class PromptBuilder
+{
+    public string Run()
+    {
+        return BuildPrompt();
+    }
+
+    private string BuildPrompt() => "prompt";
+}
+"""
+    )
+
+    assert [method.name for method in result.method_declarations] == [
+        "Run",
+        "BuildPrompt",
+    ]
+
+
+def test_raw_string_uses_matching_quote_delimiter_length() -> None:
+    result = parse_csharp(
+        "public class RawPrompt\n"
+        "{\n"
+        "    public void Run()\n"
+        "    {\n"
+        '        var prompt = """"text with """ inside"""";\n'
+        "    }\n"
+        "}\n"
+    )
+
+    assert result.parse_error is None
+    assert len(result.string_literals) == 1
+
+    literal = result.string_literals[0]
+
+    assert literal.is_raw
+    assert literal.value == 'text with """ inside'
+    assert literal.assigned_to == "prompt"
+    assert literal.enclosing_method == "Run"
+
+
+def test_multiline_string_assignment_preserves_target() -> None:
+    result = parse_csharp(
+        """public class PromptBuilder
+{
+    public string Build()
+    {
+        var prompt =
+            "You are a careful assistant.";
+        return prompt;
+    }
+}
+"""
+    )
+
+    assert len(result.string_literals) == 1
+    assert result.string_literals[0].assigned_to == "prompt"
+
+
+def test_unterminated_strings_are_masked_and_reported() -> None:
+    cases = (
+        (
+            '"',
+            "unterminated regular string",
+        ),
+        (
+            '@"',
+            "unterminated verbatim string",
+        ),
+        (
+            '""""',
+            "unterminated raw string",
+        ),
+    )
+
+    for opener, expected_error in cases:
+        source = (
+            "public class Real\n"
+            "{\n"
+            "    public void Run()\n"
+            "    {\n"
+            f"        var broken = {opener}unterminated\n"
+            "        public class Fake\n"
+            "        {\n"
+            "            public void Bad() {}\n"
+            "        }\n"
+            "    }\n"
+            "}\n"
+        )
+
+        result = parse_csharp(source)
+
+        assert result.parse_error is not None
+        assert expected_error in result.parse_error.lower()
+        assert [item.name for item in result.type_declarations] == ["Real"]
+        assert [item.name for item in result.method_declarations] == ["Run"]

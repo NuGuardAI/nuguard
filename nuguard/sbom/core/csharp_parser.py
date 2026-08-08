@@ -139,16 +139,6 @@ class _Span:
 
 _IDENTIFIER = r"@?[A-Za-z_]\w*"
 
-_TOKEN_RE = re.compile(
-    r"(?P<line_comment>//[^\n]*)"
-    r"|(?P<block_comment>/\*.*?\*/)"
-    r'|(?P<raw>\$*""".*?""")'
-    r'|(?P<verbatim>(?:\$@|@\$|@)"(?:""|[^"])*")'
-    r'|(?P<regular>\$?"(?:\\.|[^"\\\r\n])*")'
-    r"|(?P<char>'(?:\\.|[^'\\\r\n])')",
-    re.DOTALL,
-)
-
 _USING_RE = re.compile(
     rf"(?m)^[ \t]*(?P<global>global\s+)?using\s+"
     rf"(?:(?P<static>static)\s+)?"
@@ -169,17 +159,23 @@ _TYPE_RE = re.compile(
     rf"\s*(?P<terminator>{{|;)"
 )
 
-_METHOD_RE = re.compile(
-    rf"(?m)(?P<start>^[ \t]*|(?<=[{{}};]))"
+_TYPE_TOKEN = (
+    rf"(?:global::)?{_IDENTIFIER}"
+    rf"(?:\.{_IDENTIFIER})*"
+    rf"(?:\s*<[^;{{}}()\n]+>)?"
+    rf"(?:\s*\[\s*\])*\??"
+)
+
+_METHOD_HEAD_RE = re.compile(
+    rf"(?m)(?P<start>^[ \t]*|(?<=[{{}};])[ \t]*)"
     rf"(?P<attributes>(?:(?:\[[^\]\n]+\])[ \t\r\n]*)*)"
     rf"(?P<modifiers>(?:(?:public|private|protected|internal|static|"
     rf"abstract|virtual|override|sealed|new|async|extern|unsafe|partial|"
     rf"readonly|ref|required)\s+)*)"
-    rf"(?:(?P<return>[A-Za-z_][\w.<>,?\[\]\s:]*)\s+)?"
-    rf"(?P<name>{_IDENTIFIER})(?:\s*<[^>{{}};()\n]+>)?\s*"
-    rf"\((?P<params>[^()]*)\)\s*"
-    rf"(?:(?:where\s+[^{{}};=]+)\s*)?"
-    rf"(?P<terminator>{{|=>|;)"
+    rf"(?:(?P<return>{_TYPE_TOKEN})\s+)?"
+    rf"(?P<name>{_IDENTIFIER})"
+    rf"(?:\s*<[^>{{}};()\n]+>)?\s*"
+    rf"(?P<open>\()"
 )
 
 _NON_METHOD_NAMES = {
@@ -245,6 +241,7 @@ def parse_csharp(
         method_declarations=methods,
         string_literals=_build_literals(
             content,
+            masked,
             literal_tokens,
             newlines,
             method_spans,
@@ -266,68 +263,403 @@ def _mask_non_code(
     source: str,
     newlines: list[int],
 ) -> tuple[str, list[_LiteralToken], str | None]:
+    """Mask comments, strings, and characters while preserving offsets."""
     masked = list(source)
     tokens: list[_LiteralToken] = []
+    errors: list[str] = []
+    index = 0
+    end: int | None
+    closing: int | None
 
-    for match in _TOKEN_RE.finditer(source):
-        for index in range(
-            match.start(),
-            match.end(),
-        ):
-            if masked[index] not in {"\n", "\r"}:
-                masked[index] = " "
+    while index < len(source):
+        if source.startswith("//", index):
+            end = source.find("\n", index)
 
-        kind = match.lastgroup
+            if end < 0:
+                end = len(source)
 
-        if kind in {
-            "line_comment",
-            "block_comment",
-            "char",
-        }:
+            _mask_range(
+                masked,
+                index,
+                end,
+            )
+            index = end
             continue
 
-        raw = match.group(0)
-        is_raw = kind == "raw"
-        is_verbatim = kind == "verbatim"
-        is_interpolated = raw.startswith("$") or raw.startswith("@$")
+        if source.startswith("/*", index):
+            closing = source.find(
+                "*/",
+                index + 2,
+            )
 
-        if is_raw:
-            dollars = len(raw) - len(raw.lstrip("$"))
-            value = raw[dollars + 3 : -3]
-            braces = max(dollars, 1)
-        else:
-            quote = raw.find('"')
-            value = raw[quote + 1 : -1]
+            if closing < 0:
+                _mask_range(
+                    masked,
+                    index,
+                    len(source),
+                )
+                errors.append(f"Unterminated block comment near line {_line(newlines, index)}")
+                break
+
+            end = closing + 2
+            _mask_range(
+                masked,
+                index,
+                end,
+            )
+            index = end
+            continue
+
+        raw_opener = _raw_string_opener(
+            source,
+            index,
+        )
+
+        if raw_opener is not None:
+            (
+                dollar_count,
+                quote_count,
+                content_start,
+            ) = raw_opener
+
+            closing = _raw_string_close(
+                source,
+                content_start,
+                quote_count,
+            )
+
+            if closing is None:
+                _mask_range(
+                    masked,
+                    index,
+                    len(source),
+                )
+                errors.append(f"Unterminated raw string near line {_line(newlines, index)}")
+                break
+
+            end = closing + quote_count
+            value = source[content_start:closing]
+            is_interpolated = dollar_count > 0
+
+            _mask_range(
+                masked,
+                index,
+                end,
+            )
+
+            tokens.append(
+                _LiteralToken(
+                    start=index,
+                    end=end,
+                    value=value,
+                    is_verbatim=False,
+                    is_interpolated=(is_interpolated),
+                    is_raw=True,
+                    expressions=(
+                        _interpolations(
+                            value,
+                            max(
+                                dollar_count,
+                                1,
+                            ),
+                        )
+                        if is_interpolated
+                        else ()
+                    ),
+                )
+            )
+
+            index = end
+            continue
+
+        quoted_prefix = _quoted_string_prefix(
+            source,
+            index,
+        )
+
+        if quoted_prefix is not None:
+            (
+                prefix,
+                is_verbatim,
+                is_interpolated,
+            ) = quoted_prefix
+            body_start = index + len(prefix)
+            end = _quoted_string_end(
+                source,
+                body_start,
+                is_verbatim,
+            )
+
+            if end is None:
+                _mask_range(
+                    masked,
+                    index,
+                    len(source),
+                )
+                string_kind = "verbatim" if is_verbatim else "regular"
+                errors.append(
+                    f"Unterminated {string_kind} string near line {_line(newlines, index)}"
+                )
+                break
+
+            value = source[body_start : end - 1]
 
             if is_verbatim:
-                value = value.replace('""', '"')
+                value = value.replace(
+                    '""',
+                    '"',
+                )
             else:
                 value = _decode_escapes(value)
 
-            braces = 1
-
-        tokens.append(
-            _LiteralToken(
-                start=match.start(),
-                end=match.end(),
-                value=value,
-                is_verbatim=is_verbatim,
-                is_interpolated=is_interpolated,
-                is_raw=is_raw,
-                expressions=(_interpolations(value, braces) if is_interpolated else ()),
+            _mask_range(
+                masked,
+                index,
+                end,
             )
-        )
 
-    result = "".join(masked)
-    unterminated = result.find("/*")
+            tokens.append(
+                _LiteralToken(
+                    start=index,
+                    end=end,
+                    value=value,
+                    is_verbatim=is_verbatim,
+                    is_interpolated=(is_interpolated),
+                    is_raw=False,
+                    expressions=(
+                        _interpolations(
+                            value,
+                            1,
+                        )
+                        if is_interpolated
+                        else ()
+                    ),
+                )
+            )
 
-    error = (
-        f"Unterminated block comment near line {_line(newlines, unterminated)}"
-        if unterminated >= 0
-        else None
+            index = end
+            continue
+
+        if source[index] == "'":
+            end = _character_literal_end(
+                source,
+                index,
+            )
+
+            if end is None:
+                _mask_range(
+                    masked,
+                    index,
+                    len(source),
+                )
+                errors.append(f"Unterminated character literal near line {_line(newlines, index)}")
+                break
+
+            _mask_range(
+                masked,
+                index,
+                end,
+            )
+            index = end
+            continue
+
+        index += 1
+
+    return (
+        "".join(masked),
+        tokens,
+        "; ".join(errors) if errors else None,
     )
 
-    return result, tokens, error
+
+def _mask_range(
+    masked: list[str],
+    start: int,
+    end: int,
+) -> None:
+    """Mask a source range without changing line positions."""
+    for index in range(start, end):
+        if masked[index] not in {
+            "\n",
+            "\r",
+        }:
+            masked[index] = " "
+
+
+def _raw_string_opener(
+    source: str,
+    start: int,
+) -> tuple[int, int, int] | None:
+    """Return dollar count, quote count, and content start."""
+    cursor = start
+
+    while cursor < len(source) and source[cursor] == "$":
+        cursor += 1
+
+    quote_start = cursor
+
+    while cursor < len(source) and source[cursor] == '"':
+        cursor += 1
+
+    quote_count = cursor - quote_start
+
+    if quote_count < 3:
+        return None
+
+    return (
+        quote_start - start,
+        quote_count,
+        cursor,
+    )
+
+
+def _raw_string_close(
+    source: str,
+    start: int,
+    quote_count: int,
+) -> int | None:
+    """Find a raw-string closing delimiter of the same length."""
+    cursor = start
+
+    while cursor < len(source):
+        if source[cursor] != '"':
+            cursor += 1
+            continue
+
+        run_start = cursor
+
+        while cursor < len(source) and source[cursor] == '"':
+            cursor += 1
+
+        if cursor - run_start == quote_count:
+            return run_start
+
+    return None
+
+
+def _quoted_string_prefix(
+    source: str,
+    start: int,
+) -> tuple[str, bool, bool] | None:
+    """Return prefix, verbatim flag, and interpolation flag."""
+    prefixes = (
+        (
+            '$@"',
+            True,
+            True,
+        ),
+        (
+            '@$"',
+            True,
+            True,
+        ),
+        (
+            '@"',
+            True,
+            False,
+        ),
+        (
+            '$"',
+            False,
+            True,
+        ),
+        (
+            '"',
+            False,
+            False,
+        ),
+    )
+
+    for (
+        prefix,
+        is_verbatim,
+        is_interpolated,
+    ) in prefixes:
+        if source.startswith(
+            prefix,
+            start,
+        ):
+            return (
+                prefix,
+                is_verbatim,
+                is_interpolated,
+            )
+
+    return None
+
+
+def _quoted_string_end(
+    source: str,
+    start: int,
+    is_verbatim: bool,
+) -> int | None:
+    """Return the offset immediately after a closing quote."""
+    cursor = start
+
+    while cursor < len(source):
+        char = source[cursor]
+
+        if is_verbatim:
+            if char == '"':
+                if cursor + 1 < len(source) and source[cursor + 1] == '"':
+                    cursor += 2
+                    continue
+
+                return cursor + 1
+
+            cursor += 1
+            continue
+
+        if char == "\\":
+            if cursor + 1 >= len(source) or source[cursor + 1] in {"\n", "\r"}:
+                return None
+
+            cursor += 2
+            continue
+
+        if char == '"':
+            return cursor + 1
+
+        if char in {
+            "\n",
+            "\r",
+        }:
+            return None
+
+        cursor += 1
+
+    return None
+
+
+def _character_literal_end(
+    source: str,
+    start: int,
+) -> int | None:
+    """Return the offset immediately after a character literal."""
+    cursor = start + 1
+
+    while cursor < len(source):
+        char = source[cursor]
+
+        if char == "\\":
+            if cursor + 1 >= len(source):
+                return None
+
+            cursor += 2
+            continue
+
+        if char == "'":
+            return cursor + 1
+
+        if char in {
+            "\n",
+            "\r",
+        }:
+            return None
+
+        cursor += 1
+
+    return None
 
 
 def _decode_escapes(value: str) -> str:
@@ -489,8 +821,29 @@ def _extract_methods(
     declarations: list[CSharpMethodDeclaration] = []
     spans: list[_Span] = []
 
-    for match in _METHOD_RE.finditer(masked):
-        if any(start <= match.start("name") < end for start, end in type_headers):
+    for match in _METHOD_HEAD_RE.finditer(masked):
+        name_position = match.start("name")
+
+        if any(start <= name_position < end for start, end in type_headers):
+            continue
+
+        # Once a method has been found, do not reinterpret calls or
+        # statements inside its body as additional declarations.
+        if (
+            _containing(
+                spans,
+                name_position,
+            )
+            is not None
+        ):
+            continue
+
+        containing = _containing(
+            type_spans,
+            name_position,
+        )
+
+        if containing is None:
             continue
 
         name = match.group("name").removeprefix("@")
@@ -498,22 +851,48 @@ def _extract_methods(
         if name in _NON_METHOD_NAMES:
             continue
 
-        containing = _containing(
-            type_spans,
-            match.start("name"),
-        )
-
         return_type = (match.group("return") or "").strip() or None
 
-        is_constructor = bool(containing and containing.name == name and return_type is None)
+        if return_type is not None and return_type.casefold() in {
+            "return",
+            "throw",
+            "yield",
+            "await",
+        }:
+            continue
+
+        is_constructor = bool(containing.name == name and return_type is None)
 
         if return_type is None and not is_constructor:
             continue
 
-        body_start = match.start("terminator")
-        end = match.end("terminator")
+        open_paren = match.start("open")
+        close_paren = _matching(
+            masked,
+            open_paren,
+            "(",
+            ")",
+        )
 
-        if match.group("terminator") == "{":
+        if close_paren is None:
+            continue
+
+        terminator_info = _method_terminator(
+            masked,
+            close_paren + 1,
+        )
+
+        if terminator_info is None:
+            continue
+
+        (
+            body_start,
+            terminator,
+        ) = terminator_info
+        terminator_end = body_start + len(terminator)
+        end = terminator_end
+
+        if terminator == "{":
             closing = _matching(
                 masked,
                 body_start,
@@ -523,27 +902,27 @@ def _extract_methods(
 
             end = len(source) if closing is None else closing + 1
 
-        elif match.group("terminator") == "=>":
+        elif terminator == "=>":
             semicolon = masked.find(
                 ";",
-                body_start,
+                terminator_end,
             )
 
             end = len(source) if semicolon < 0 else semicolon + 1
 
+        parameters_text = source[open_paren + 1 : close_paren]
+
         declaration = CSharpMethodDeclaration(
             name=name,
             return_type=return_type,
-            parameters=tuple(
-                part.strip() for part in _split(match.group("params")) if part.strip()
-            ),
+            parameters=tuple(part.strip() for part in _split(parameters_text) if part.strip()),
             modifiers=tuple((match.group("modifiers") or "").split()),
             attributes=_attributes(source[match.start("attributes") : match.end("attributes")]),
-            containing_type=(containing.name if containing else None),
+            containing_type=(containing.name),
             is_constructor=is_constructor,
             line=_line(
                 newlines,
-                match.start("name"),
+                name_position,
             ),
             line_end=_line(
                 newlines,
@@ -552,7 +931,7 @@ def _extract_methods(
                     match.start(),
                 ),
             ),
-            signature=source[match.start() : match.end()].strip(),
+            signature=source[match.start() : terminator_end].strip(),
         )
 
         declarations.append(declaration)
@@ -567,6 +946,56 @@ def _extract_methods(
         )
 
     return declarations, spans
+
+
+def _method_terminator(
+    source: str,
+    start: int,
+) -> tuple[int, str] | None:
+    """Find a declaration terminator after a balanced parameter list."""
+    depths = {
+        "(": 0,
+        "[": 0,
+        "<": 0,
+    }
+    closing = {
+        ")": "(",
+        "]": "[",
+        ">": "<",
+    }
+    cursor = start
+
+    while cursor < len(source):
+        if not any(depths.values()) and source.startswith(
+            "=>",
+            cursor,
+        ):
+            return cursor, "=>"
+
+        char = source[cursor]
+
+        if not any(depths.values()):
+            if char == "{":
+                return cursor, "{"
+
+            if char == ";":
+                return cursor, ";"
+
+            if char == "}":
+                return None
+
+        if char in depths:
+            depths[char] += 1
+        elif char in closing:
+            opener = closing[char]
+            depths[opener] = max(
+                depths[opener] - 1,
+                0,
+            )
+
+        cursor += 1
+
+    return None
 
 
 def _matching(
@@ -668,6 +1097,7 @@ def _split(value: str) -> list[str]:
 
 def _build_literals(
     source: str,
+    masked: str,
     tokens: list[_LiteralToken],
     newlines: list[int],
     method_spans: list[_Span],
@@ -691,15 +1121,18 @@ def _build_literals(
                     newlines,
                     token.end - 1,
                 ),
-                assigned_to=_assignment_target(
-                    source,
-                    token.start,
+                assigned_to=(
+                    _assignment_target(
+                        source,
+                        masked,
+                        token.start,
+                    )
                 ),
                 enclosing_method=(method.name if method else None),
-                is_verbatim=token.is_verbatim,
-                is_interpolated=token.is_interpolated,
+                is_verbatim=(token.is_verbatim),
+                is_interpolated=(token.is_interpolated),
                 is_raw=token.is_raw,
-                interpolation_expressions=token.expressions,
+                interpolation_expressions=(token.expressions),
             )
         )
 
@@ -708,23 +1141,47 @@ def _build_literals(
 
 def _assignment_target(
     source: str,
+    masked: str,
     position: int,
 ) -> str | None:
-    prefix = source[
-        source.rfind(
-            "\n",
-            0,
-            position,
+    """Return the assignment target before a string literal."""
+    statement_start = (
+        max(
+            masked.rfind(
+                ";",
+                0,
+                position,
+            ),
+            masked.rfind(
+                "{",
+                0,
+                position,
+            ),
+            masked.rfind(
+                "}",
+                0,
+                position,
+            ),
         )
-        + 1 : position
-    ]
+        + 1
+    )
+
+    prefix = masked[statement_start:position]
 
     match = re.search(
-        rf"(?P<name>{_IDENTIFIER})\s*=\s*$",
+        rf"(?P<name>{_IDENTIFIER})"
+        rf"\s*=\s*$",
         prefix,
     )
 
-    return match.group("name").removeprefix("@") if match else None
+    if match is None:
+        return None
+
+    # Access source so this helper continues to validate compatible offsets.
+    if len(source) != len(masked):
+        return None
+
+    return match.group("name").removeprefix("@")
 
 
 __all__ = [
