@@ -17,6 +17,7 @@ from nuguard.sbom.adapters.csharp import (
 )
 from nuguard.sbom.adapters.csharp._source import (
     find_calls,
+    string_constants,
 )
 from nuguard.sbom.core.csharp_parser import (
     parse_csharp,
@@ -480,3 +481,202 @@ public class Greeter
         )
         == []
     )
+
+
+def test_review_fixes_use_only_const_strings() -> None:
+    source = """const string ModelName = "gpt-4o";
+var mutable = "first";
+mutable = "second";
+"""
+    result = parse_csharp(source)
+
+    assert string_constants(result) == {"ModelName": "gpt-4o"}
+
+
+def test_fully_qualified_legacy_azure_client_is_azure() -> None:
+    source = """var client =
+    new Azure.AI.OpenAI.OpenAIClient(
+        new Uri("https://example.openai.azure.com"),
+        credential);
+"""
+
+    detections = _extract(
+        CSharpLLMClientsAdapter(),
+        source,
+    )
+    providers = {
+        detection.metadata["provider"]
+        for detection in _by_type(
+            detections,
+            ComponentType.FRAMEWORK,
+        )
+    }
+
+    assert providers == {"azure"}
+
+
+def test_anthropic_model_scan_ignores_comments_and_strings() -> None:
+    source = """using Anthropic;
+var client = new AnthropicClient(apiKey);
+var text = "Model = \\"claude-fake\\"";
+// Model = Model.ClaudeFake;
+"""
+
+    detections = _extract(
+        CSharpLLMClientsAdapter(),
+        source,
+    )
+
+    assert (
+        _by_type(
+            detections,
+            ComponentType.MODEL,
+        )
+        == []
+    )
+
+
+def test_anthropic_string_model_assignment_is_detected() -> None:
+    source = """using Anthropic;
+var client = new AnthropicClient(apiKey);
+var request = new MessageParameters
+{
+    Model = "claude-3-5-sonnet",
+};
+"""
+
+    detections = _extract(
+        CSharpLLMClientsAdapter(),
+        source,
+    )
+    models = _by_type(
+        detections,
+        ComponentType.MODEL,
+    )
+
+    assert [model.display_name for model in models] == ["claude-3-5-sonnet"]
+
+
+def test_semantic_kernel_marker_in_string_is_ignored() -> None:
+    source = 'var marker = "Microsoft.SemanticKernel";'
+
+    assert (
+        _extract(
+            CSharpSemanticKernelAdapter(),
+            source,
+        )
+        == []
+    )
+
+
+def test_mlnet_marker_in_string_is_ignored() -> None:
+    source = 'var marker = "MLContext";'
+
+    assert (
+        _extract(
+            CSharpMLNetAdapter(),
+            source,
+        )
+        == []
+    )
+
+
+def test_mlnet_emits_multiple_independent_pipelines() -> None:
+    source = """using Microsoft.ML;
+var ml = new MLContext();
+var first = ml.Transforms.Text.FeaturizeText(
+    "Features1", "Text1");
+var second = ml.Transforms.Text.FeaturizeText(
+    "Features2", "Text2");
+"""
+
+    detections = _extract(
+        CSharpMLNetAdapter(),
+        source,
+    )
+    pipelines = [
+        detection for detection in detections if detection.metadata.get("pipeline") is True
+    ]
+
+    assert {pipeline.display_name for pipeline in pipelines} == {
+        "first",
+        "second",
+    }
+
+
+def test_mlnet_ignores_unrelated_fit_calls() -> None:
+    source = """using Microsoft.ML;
+var ml = new MLContext();
+var result = curveFitter.Fit(data);
+"""
+
+    detections = _extract(
+        CSharpMLNetAdapter(),
+        source,
+    )
+
+    assert not any(detection.metadata.get("trained_model") is True for detection in detections)
+
+
+def test_aspnet_builder_marker_in_string_is_ignored() -> None:
+    source = 'var marker = "WebApplication.CreateBuilder";'
+
+    assert (
+        _extract(
+            CSharpAspNetCoreAdapter(),
+            source,
+        )
+        == []
+    )
+
+
+def test_controller_allow_anonymous_overrides_method_authorize() -> None:
+    source = """using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+[ApiController, AllowAnonymous, Route("api/chat")]
+public class ChatController : ControllerBase
+{
+    [HttpPost, Authorize]
+    public string Complete(ChatRequest request) =>
+        client.CompleteChat(request.Message);
+}
+public record ChatRequest(string Message);
+"""
+
+    detections = _extract(
+        CSharpAspNetCoreAdapter(),
+        source,
+    )
+    endpoint = _by_type(
+        detections,
+        ComponentType.API_ENDPOINT,
+    )[0]
+
+    assert endpoint.metadata["auth_required"] is False
+
+
+def test_minimal_api_allow_anonymous_and_response_schema() -> None:
+    source = """using Microsoft.AspNetCore.Builder;
+public record ChatRequest(string Prompt);
+public record ChatResponse(string Answer);
+var app = WebApplication.CreateBuilder(args).Build();
+app.MapPost(
+    "/chat",
+    (ChatRequest request) =>
+        new ChatResponse("ok"))
+    .RequireAuthorization()
+    .AllowAnonymous();
+"""
+
+    detections = _extract(
+        CSharpAspNetCoreAdapter(),
+        source,
+    )
+    endpoint = _by_type(
+        detections,
+        ComponentType.API_ENDPOINT,
+    )[0]
+
+    assert endpoint.metadata["auth_required"] is False
+    assert endpoint.metadata["response_body_schema"] == {"Answer": "string"}
+    assert endpoint.metadata["response_text_key"] == "Answer"

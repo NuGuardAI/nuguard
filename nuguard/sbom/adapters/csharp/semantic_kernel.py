@@ -66,7 +66,30 @@ class CSharpSemanticKernelAdapter(CSharpFrameworkAdapter):
             parse_result,
         )
 
-        if not self._detect(result) and "Microsoft.SemanticKernel" not in content:
+        calls = find_calls(
+            content,
+            _KERNEL_CALLS | set(_SERVICE_CALLS) | _PLUGIN_CALLS | _PLANNER_CLASSES,
+        )
+        has_kernel_call = any(
+            (call.name == "CreateBuilder" and (call.receiver or "").split(".")[-1] == "Kernel")
+            or (call.name == "KernelBuilder" and call.is_constructor)
+            or call.name in _SERVICE_CALLS
+            or call.name in _PLUGIN_CALLS
+            or (call.name in _PLANNER_CLASSES and call.is_constructor)
+            for call in calls
+        )
+        has_kernel_attribute = any(
+            any(
+                (
+                    attribute.split("(", 1)[0].split(".")[-1].removesuffix("Attribute")
+                    == "KernelFunction"
+                )
+                for attribute in method.attributes
+            )
+            for method in result.method_declarations
+        )
+
+        if not self._detect(result) and not has_kernel_call and not has_kernel_attribute:
             return []
 
         constants = string_constants(result)
@@ -97,11 +120,6 @@ class CSharpSemanticKernelAdapter(CSharpFrameworkAdapter):
                 evidence_kind="ast_import",
             )
         ]
-
-        calls = find_calls(
-            content,
-            _KERNEL_CALLS | set(_SERVICE_CALLS) | _PLUGIN_CALLS | _PLANNER_CLASSES,
-        )
 
         builder_variables: set[str] = set()
 

@@ -125,7 +125,7 @@ def find_calls(
         prefix = masked[max(0, match.start() - 12) : match.start()]
         is_constructor = bool(re.search(r"\bnew\s*$", prefix))
         assigned_to = _assignment_target(
-            source,
+            masked,
             match.start(),
         )
         end = close_paren + 1
@@ -268,11 +268,55 @@ def split_top_level(value: str) -> list[str]:
 def string_constants(
     result: CSharpParseResult,
 ) -> dict[str, str]:
-    """Build a variable-to-string map from parsed literal results."""
+    """Return unambiguous C# ``const`` string declarations.
+
+    Mutable variables are deliberately excluded because a file-wide
+    name-to-value dictionary cannot safely model reassignment or scope.
+    Duplicate constant names with different values are also omitted.
+    """
+    source = result.source
+
+    if not source:
+        return {}
+
+    masked = mask_non_code(source)
+    values: dict[str, set[str]] = {}
+
+    for token in _TOKEN_RE.finditer(source):
+        if token.lastgroup not in {
+            "raw",
+            "verbatim",
+            "regular",
+        }:
+            continue
+
+        start = token.start()
+        boundary = max(
+            masked.rfind(";", 0, start),
+            masked.rfind("{", 0, start),
+            masked.rfind("}", 0, start),
+        )
+        prefix = masked[boundary + 1 : start]
+        declaration = re.search(
+            rf"\bconst\s+(?:string|var)\s+"
+            rf"(?P<name>{_IDENTIFIER})"
+            rf"\s*=\s*$",
+            prefix,
+        )
+
+        if declaration is None:
+            continue
+
+        value = _decode_string(token.group(0))
+
+        if value is None:
+            continue
+
+        name = declaration.group("name").removeprefix("@")
+        values.setdefault(name, set()).add(value)
+
     return {
-        literal.assigned_to: literal.value
-        for literal in result.string_literals
-        if literal.assigned_to and literal.value
+        name: next(iter(candidates)) for name, candidates in values.items() if len(candidates) == 1
     }
 
 
@@ -446,7 +490,8 @@ def _assignment_target(
 ) -> str | None:
     boundary = max(
         source.rfind(";", 0, position),
-        source.rfind("\n", 0, position),
+        source.rfind("{", 0, position),
+        source.rfind("}", 0, position),
     )
     prefix = source[boundary + 1 : position]
     match = re.search(

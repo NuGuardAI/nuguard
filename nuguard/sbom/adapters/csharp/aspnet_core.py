@@ -11,9 +11,11 @@ from ..base import ComponentDetection, RelationshipHint
 from ._csharp_base import CSharpFrameworkAdapter
 from ._source import (
     find_calls,
+    mask_non_code,
     method_source,
     parse_arguments,
     resolve_expression,
+    split_top_level,
     statement_tail,
     string_constants,
 )
@@ -131,7 +133,19 @@ class CSharpAspNetCoreAdapter(CSharpFrameworkAdapter):
             parse_result,
         )
 
-        if not self._detect(result) and "WebApplication.CreateBuilder" not in content:
+        builder_call = next(
+            (
+                call
+                for call in find_calls(
+                    content,
+                    {"CreateBuilder"},
+                )
+                if (call.receiver or "").split(".")[-1] == "WebApplication"
+            ),
+            None,
+        )
+
+        if not self._detect(result) and builder_call is None:
             return []
 
         constants = string_constants(result)
@@ -280,9 +294,15 @@ class CSharpAspNetCoreAdapter(CSharpFrameworkAdapter):
                     method_attributes,
                     "Authorize",
                 )
-            ) and not _has_attribute(
-                method_attributes,
-                "AllowAnonymous",
+            ) and not (
+                _has_attribute(
+                    controller_attributes,
+                    "AllowAnonymous",
+                )
+                or _has_attribute(
+                    method_attributes,
+                    "AllowAnonymous",
+                )
             )
 
             params = [
@@ -388,10 +408,20 @@ class CSharpAspNetCoreAdapter(CSharpFrameworkAdapter):
                 handler,
                 request_name,
             )
-            auth_required = "RequireAuthorization" in statement_tail(
-                content,
-                call.end,
+            tail = mask_non_code(
+                statement_tail(
+                    content,
+                    call.end,
+                )
             )
+            auth_required = "RequireAuthorization" in tail and "AllowAnonymous" not in tail
+            response_type = _minimal_response_type(handler)
+            response_schema = _schema_for_type(
+                content,
+                result,
+                response_type,
+            )
+            response_key = _response_key(response_schema)
             normalized_route = _normalize_route(route)
             method = _MAP_METHODS[call.name]
 
@@ -408,9 +438,9 @@ class CSharpAspNetCoreAdapter(CSharpFrameworkAdapter):
                     evidence_kind="ast_call",
                     auth_required=(auth_required),
                     request_schema=(request_schema),
-                    response_schema={},
+                    response_schema=(response_schema),
                     chat_key=chat_key,
-                    response_key=None,
+                    response_key=response_key,
                 )
             )
 
@@ -519,7 +549,11 @@ def _declaration_attributes(
                 depth -= 1
 
                 if depth == 0:
-                    recovered.append(signature[start + 1 : cursor].strip())
+                    recovered.extend(
+                        item.strip()
+                        for item in split_top_level(signature[start + 1 : cursor])
+                        if item.strip()
+                    )
                     cursor += 1
                     break
 
@@ -666,17 +700,58 @@ def _is_ai_endpoint(
     if _AI_ROUTE_RE.search(route_and_name):
         return True
 
-    if _AI_CODE_RE.search(body):
+    code = mask_non_code(body)
+
+    if _AI_CODE_RE.search(code):
         return True
 
     return ai_imported and bool(
         re.search(
             r"\b(?:client|kernel|"
             r"model|prompt)\b",
-            body,
+            code,
             re.IGNORECASE,
         )
     )
+
+
+def _minimal_response_type(
+    handler: str,
+) -> str:
+    """Infer a DTO instantiated by a Minimal API handler."""
+    code = mask_non_code(handler)
+    type_pattern = (
+        r"(?P<type>(?:global::)?"
+        r"[A-Za-z_]\w*"
+        r"(?:\.[A-Za-z_]\w*)*)"
+    )
+    patterns = (
+        (
+            r"\breturn\s+"
+            r"(?:await\s+)?"
+            r"(?:Results\.\w+\s*"
+            r"\(\s*)?"
+            r"new\s+" + type_pattern + r"\s*\("
+        ),
+        (
+            r"=>\s*"
+            r"(?:Results\.\w+\s*"
+            r"\(\s*)?"
+            r"new\s+" + type_pattern + r"\s*\("
+        ),
+    )
+
+    for pattern in patterns:
+        match = re.search(
+            pattern,
+            code,
+            re.DOTALL,
+        )
+
+        if match is not None:
+            return _base_type(match.group("type"))
+
+    return ""
 
 
 def _lambda_parameters(

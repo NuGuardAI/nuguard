@@ -14,6 +14,7 @@ from ._source import (
     find_calls,
     first_argument,
     line_number,
+    mask_non_code,
     resolve_expression,
     string_constants,
 )
@@ -51,10 +52,10 @@ _MODEL_API_CALLS = {
     "GenerateResponse",
     "GenerateResponseAsync",
 }
-_MODEL_ASSIGNMENT_RE = re.compile(
-    r"\bModel\s*=\s*(?P<value>"
-    r'\$?@?"(?:""|\\.|[^"])*"'
-    r"|[A-Za-z_]\w*(?:\.[A-Za-z_]\w*)*)",
+_MODEL_ENUM_ASSIGNMENT_RE = re.compile(
+    r"\bModel\s*=\s*"
+    r"(?P<value>[A-Za-z_]\w*"
+    r"(?:\.[A-Za-z_]\w*)*)",
     re.MULTILINE,
 )
 
@@ -81,17 +82,19 @@ class CSharpLLMClientsAdapter(CSharpFrameworkAdapter):
             file_path,
             parse_result,
         )
+        code = mask_non_code(content)
         providers = _providers_from_result(result)
 
         strong_markers = (
             "AzureOpenAIClient",
+            "Azure.AI.OpenAI.OpenAIClient",
             "AnthropicClient",
             "OpenAI.Chat.ChatClient",
             "OpenAI.Responses.ResponsesClient",
             "OpenAI.Embeddings.EmbeddingClient",
         )
 
-        if not providers and not any(marker in content for marker in strong_markers):
+        if not providers and not any(marker in code for marker in strong_markers):
             return []
 
         constants = string_constants(result)
@@ -191,8 +194,33 @@ class CSharpLLMClientsAdapter(CSharpFrameworkAdapter):
                     )
                 )
 
-        if "anthropic" in providers or "AnthropicClient" in content:
-            for match in _MODEL_ASSIGNMENT_RE.finditer(content):
+        if "anthropic" in providers or "AnthropicClient" in code:
+            for literal in result.string_literals:
+                if (literal.assigned_to or "").casefold() != "model":
+                    continue
+
+                model_name = literal.value.strip()
+
+                if not model_name:
+                    continue
+
+                provider_lines.setdefault(
+                    "anthropic",
+                    literal.line,
+                )
+                detections.append(
+                    _model_node(
+                        adapter=self,
+                        provider="anthropic",
+                        model_name=model_name,
+                        file_path=file_path,
+                        line=literal.line,
+                        snippet=f'Model = "{model_name}"',
+                        client_class="AnthropicClient",
+                    )
+                )
+
+            for match in _MODEL_ENUM_ASSIGNMENT_RE.finditer(code):
                 model_name = resolve_expression(
                     match.group("value"),
                     constants,
@@ -216,7 +244,7 @@ class CSharpLLMClientsAdapter(CSharpFrameworkAdapter):
                         model_name=model_name,
                         file_path=file_path,
                         line=line,
-                        snippet=" ".join(match.group(0).split()),
+                        snippet=" ".join(content[match.start() : match.end()].split()),
                         client_class="AnthropicClient",
                     )
                 )
@@ -270,13 +298,14 @@ def _provider_for_call(
     imported: set[str],
     client_providers: dict[str, str],
 ) -> str | None:
-    if name == "OpenAIClient" and imported == {"azure"}:
+    receiver_text = receiver or ""
+
+    if name == "OpenAIClient" and (imported == {"azure"} or "Azure.AI.OpenAI" in receiver_text):
         return "azure"
 
     if name in _CLIENT_CLASSES:
         return _CLIENT_CLASSES[name]
 
-    receiver_text = receiver or ""
     receiver_root = receiver_text.split(
         ".",
         1,

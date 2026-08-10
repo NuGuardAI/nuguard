@@ -41,7 +41,22 @@ class CSharpMLNetAdapter(CSharpFrameworkAdapter):
             parse_result,
         )
 
-        if not self._detect(result) and "MLContext" not in content:
+        calls = find_calls(content)
+        context_calls = [
+            call
+            for call in calls
+            if (
+                call.name == "MLContext"
+                and call.is_constructor
+                and (
+                    self._detect(result)
+                    or not call.receiver
+                    or (call.receiver or "").endswith("Microsoft.ML")
+                )
+            )
+        ]
+
+        if not self._detect(result) and not context_calls:
             return []
 
         root = "framework:mlnet"
@@ -72,9 +87,10 @@ class CSharpMLNetAdapter(CSharpFrameworkAdapter):
             )
         ]
 
-        pipeline_emitted = False
+        emitted_pipeline_ids: set[str] = set()
+        estimator_variables: set[str] = set()
 
-        for call in find_calls(content):
+        for call in calls:
             receiver = call.receiver or ""
 
             if call.name == "MLContext" and call.is_constructor:
@@ -111,6 +127,9 @@ class CSharpMLNetAdapter(CSharpFrameworkAdapter):
                 continue
 
             if ".Trainers" in receiver:
+                if call.assigned_to:
+                    estimator_variables.add(call.assigned_to)
+
                 task = _task_from_receiver(receiver)
                 display = call.name
                 canonical = canonicalize_text(f"mlnet:trainer:{task}:{display}")
@@ -147,10 +166,15 @@ class CSharpMLNetAdapter(CSharpFrameworkAdapter):
                 continue
 
             if ".Transforms" in receiver:
-                if pipeline_emitted:
+                pipeline_id = call.assigned_to or f"line:{call.line}"
+
+                if call.assigned_to:
+                    estimator_variables.add(call.assigned_to)
+
+                if pipeline_id in emitted_pipeline_ids:
                     continue
 
-                display = call.assigned_to or "ML.NET pipeline"
+                display = call.assigned_to or f"ML.NET pipeline {call.line}"
                 canonical = canonicalize_text(f"mlnet:pipeline:{display}")
                 detections.append(
                     ComponentDetection(
@@ -172,10 +196,23 @@ class CSharpMLNetAdapter(CSharpFrameworkAdapter):
                         evidence_kind="ast_call",
                     )
                 )
-                pipeline_emitted = True
+                emitted_pipeline_ids.add(pipeline_id)
                 continue
 
             if call.name == "Fit" and call.receiver:
+                receiver_root = call.receiver.split(
+                    ".",
+                    1,
+                )[0]
+                is_known_estimator = (
+                    receiver_root in estimator_variables
+                    or ".Transforms" in call.receiver
+                    or ".Trainers" in call.receiver
+                )
+
+                if not is_known_estimator:
+                    continue
+
                 display = call.assigned_to or f"trained_model_{call.line}"
                 canonical = canonicalize_text(f"mlnet:model:{display}")
                 detections.append(
