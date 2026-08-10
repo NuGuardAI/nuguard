@@ -360,6 +360,18 @@ def extract_deployment_context(files: Sequence[tuple[str, str]]) -> dict[str, li
             or "google_cloud_project" in text_lower
         ):
             platforms.append("GCP")
+        # Cloud Run is more specific than the generic "GCP" marker above.
+        # Trigger on the Cloud Run service config API or the official
+        # GitHub Actions deploy step (issue #220 — these are the two
+        # most common ways an AI app ships to Cloud Run).
+        if (
+            "serving.knative.dev" in text_lower
+            or "deploy-cloudrun" in text_lower
+            or "run.googleapis.com" in text_lower
+            or ".a.run.app" in text_lower
+            or "cloudrun" in lower_path
+        ):
+            platforms.append("Cloud Run")
         if ".github/workflows/" in lower_path:
             platforms.append("GitHub Actions")
         if "kubernetes" in lower_path or "/k8s/" in lower_path or "apiVersion:" in text:
