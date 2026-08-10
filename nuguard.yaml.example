@@ -36,6 +36,9 @@ llm:
 sbom_generation:
   llm: true                        # set true to enrich SBOM nodes with LLM descriptions
                                     # requires LITELLM_API_KEY to be set
+  # llm_concurrency: 5              # max in-flight LLM calls during enrichment
+                                    # (issue #197). Override with NUGUARD_LLM_CONCURRENCY
+                                    # or --llm-concurrency. 1 = sequential (legacy).
 
 # ─── Target application — shared by behavior and redteam ──────────────────────
 # Set once here; both commands pick it up automatically.

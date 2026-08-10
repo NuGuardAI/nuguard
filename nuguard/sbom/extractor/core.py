@@ -2101,7 +2101,11 @@ class AiSbomExtractor:
             return text, sum(client.token_counts) - _before
 
         results, v_stats = await verify_uncertain_nodes(
-            doc.nodes, evidence_map, _llm_call, file_contents=file_contents
+            doc.nodes,
+            evidence_map,
+            _llm_call,
+            file_contents=file_contents,
+            concurrency=config.llm_concurrency,
         )
         doc.nodes = apply_verification_results(doc.nodes, results)
         _log.info("llm verification: %s", v_stats.to_dict())
