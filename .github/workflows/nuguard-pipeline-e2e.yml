@@ -44,7 +44,7 @@ jobs:
         run: uv sync --dev
 
       - name: Run prepublish sanity suite (openai-cs only)
-        run: ./tests/apps/prepublish-sanity.sh openai-cs
+        run: bash tests/apps/prepublish-sanity.sh openai-cs
 
       - name: Upload reports
         if: always()
@@ -91,7 +91,7 @@ jobs:
         run: uv sync --dev
 
       - name: Run prepublish sanity suite (${{ matrix.app }})
-        run: ./tests/apps/prepublish-sanity.sh ${{ matrix.app }}
+        run: bash tests/apps/prepublish-sanity.sh ${{ matrix.app }}
 
       - name: Upload reports
         if: always()
