@@ -46,6 +46,48 @@ BEHAVIOR_SUMMARIES=()
 REDTEAM_SUMMARIES=()
 DURATIONS=()
 
+# Appends the behavior/redteam markdown reports for one app to the GitHub
+# Actions Job Summary (visible directly on the run page, no artifact download
+# needed). No-op outside of Actions, where GITHUB_STEP_SUMMARY is unset.
+# Called on both the success path and every failure path below so a failed
+# run's partial report (whatever exists) is still visible, not just its
+# ::error:: annotation.
+write_job_summary() {
+  local app_name="$1"
+  local behavior_md="$2"
+  local redteam_md="$3"
+  local failure_note="$4"
+
+  if [[ -z "${GITHUB_STEP_SUMMARY:-}" ]]; then
+    return 0
+  fi
+
+  {
+    echo "## NuGuard prepublish sanity — ${app_name}"
+    echo
+    if [[ -n "$failure_note" ]]; then
+      echo "> **FAILED:** ${failure_note}"
+      echo
+    fi
+    if [[ -f "$behavior_md" ]]; then
+      echo "<details><summary>Behavior report</summary>"
+      echo
+      cat "$behavior_md"
+      echo
+      echo "</details>"
+      echo
+    fi
+    if [[ -f "$redteam_md" ]]; then
+      echo "<details><summary>Redteam report</summary>"
+      echo
+      cat "$redteam_md"
+      echo
+      echo "</details>"
+      echo
+    fi
+  } >> "$GITHUB_STEP_SUMMARY"
+}
+
 run_with_allowed_rc() {
   local label="$1"
   local allowed_csv="$2"
@@ -60,6 +102,8 @@ run_with_allowed_rc() {
   if [[ ",${allowed_csv}," != *",${rc},"* ]]; then
     echo "::error title=NuGuard prepublish sanity failed::${label} exited with code ${rc} (allowed: ${allowed_csv})."
     echo "[FAIL] ${label} exited with code ${rc} (allowed: ${allowed_csv})." >&2
+    write_job_summary "${name:-unknown}" "${behavior_base:-}.md" "${redteam_base:-}.md" \
+      "${label} exited with code ${rc} (allowed: ${allowed_csv})."
     exit 1
   fi
 
@@ -149,6 +193,8 @@ PY
 )"; then
     echo "::error title=NuGuard prepublish sanity failed::${name}: behavior gate check failed: ${behavior_summary}"
     echo "[FAIL] ${name}: behavior gate check failed: ${behavior_summary}" >&2
+    write_job_summary "$name" "${behavior_base}.md" "${redteam_base}.md" \
+      "behavior gate check failed: ${behavior_summary}"
     exit 1
   fi
 
@@ -206,6 +252,8 @@ PY
 )"; then
     echo "::error title=NuGuard prepublish sanity failed::${name}: redteam gate check failed: ${redteam_summary}"
     echo "[FAIL] ${name}: redteam gate check failed: ${redteam_summary}" >&2
+    write_job_summary "$name" "${behavior_base}.md" "${redteam_base}.md" \
+      "redteam gate check failed: ${redteam_summary}"
     exit 1
   fi
 
@@ -219,6 +267,7 @@ PY
   echo "[PASS] ${name} behavior -> ${behavior_summary}"
   echo "[PASS] ${name} redteam -> ${redteam_summary}"
   echo "[PASS] ${name} duration -> ${duration}s"
+  write_job_summary "$name" "${behavior_base}.md" "${redteam_base}.md" ""
 done
 
 if [[ -n "$FILTER_APP" && "$matched_filter" -eq 0 ]]; then
