@@ -58,6 +58,7 @@ run_with_allowed_rc() {
   set -e
 
   if [[ ",${allowed_csv}," != *",${rc},"* ]]; then
+    echo "::error title=NuGuard prepublish sanity failed::${label} exited with code ${rc} (allowed: ${allowed_csv})."
     echo "[FAIL] ${label} exited with code ${rc} (allowed: ${allowed_csv})." >&2
     exit 1
   fi
@@ -118,7 +119,7 @@ for entry in "${APP_RUNS[@]}"; do
   redteam_json="${redteam_base}.json"
 
   # Behavior gates: non-empty artifact, scenarios_executed > 0, explicit endpoint resolution.
-  behavior_summary="$(uv run python - "$behavior_json" "$expected_endpoint" <<'PY'
+  if ! behavior_summary="$(uv run python - "$behavior_json" "$expected_endpoint" 2>&1 <<'PY'
 import json
 import pathlib
 import sys
@@ -145,11 +146,15 @@ if expected and effective and effective != expected:
 outcome = str(data.get("scan_outcome") or "unknown")
 print(f"outcome={outcome};scenarios={executed};endpoint_source={source or 'unknown'};effective_endpoint={effective or 'unknown'}")
 PY
-)"
+)"; then
+    echo "::error title=NuGuard prepublish sanity failed::${name}: behavior gate check failed: ${behavior_summary}"
+    echo "[FAIL] ${name}: behavior gate check failed: ${behavior_summary}" >&2
+    exit 1
+  fi
 
   # Redteam gates: non-empty artifact, scenarios executed, no inconclusive target-errors,
   # explicit endpoint resolution, and not overwhelmingly aborted/failed.
-  redteam_summary="$(uv run python - "$redteam_json" "$expected_endpoint" <<'PY'
+  if ! redteam_summary="$(uv run python - "$redteam_json" "$expected_endpoint" 2>&1 <<'PY'
 import json
 import pathlib
 import sys
@@ -198,7 +203,11 @@ print(
     )
 )
 PY
-)"
+)"; then
+    echo "::error title=NuGuard prepublish sanity failed::${name}: redteam gate check failed: ${redteam_summary}"
+    echo "[FAIL] ${name}: redteam gate check failed: ${redteam_summary}" >&2
+    exit 1
+  fi
 
   app_end="$(date +%s)"
   duration="$((app_end - app_start))"
@@ -213,6 +222,7 @@ PY
 done
 
 if [[ -n "$FILTER_APP" && "$matched_filter" -eq 0 ]]; then
+  echo "::error title=NuGuard prepublish sanity failed::no app named '${FILTER_APP}' found in APP_RUNS."
   echo "[FAIL] no app named '${FILTER_APP}' found in APP_RUNS." >&2
   exit 1
 fi
