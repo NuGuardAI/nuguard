@@ -18,6 +18,7 @@ class AdapterMatch:
     pattern: str
     line: int
     snippet: str
+    groups: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -79,6 +80,7 @@ class RegexAdapter(DetectionAdapter):
                         pattern=pattern.pattern,
                         line=line,
                         snippet=match.group(0)[:120],
+                        groups={k: v for k, v in match.groupdict().items() if v is not None},
                     )
                 )
 

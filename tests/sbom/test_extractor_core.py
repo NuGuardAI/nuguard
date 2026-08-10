@@ -355,3 +355,91 @@ def test_deployment_generic_adapter_separates_distinct_technologies(tmp_path) ->
     assert "docker" in deployment_names
     assert "vercel" in deployment_names
     assert "generic" not in deployment_names
+
+
+def test_api_endpoint_generic_adapter_separates_distinct_routes(tmp_path) -> None:
+    """A file with several distinct routes not recognized by any framework
+    AST adapter must produce one API_ENDPOINT node per route, not a single
+    'Generic' bucket node that hides which paths exist and merges unrelated
+    evidence (regression: a doc-comment mentioning 'POST /api/chat' was
+    getting merged into the same node as an unrelated '@router.get(' hit)."""
+    source_dir = tmp_path / "sample-app"
+    source_dir.mkdir()
+    (source_dir / "routes.js").write_text(
+        "app.get('/health', handler);\n"
+        "app.post('/webhooks/register', handler);\n",
+        encoding="utf-8",
+    )
+
+    config = AiSbomConfig(include_extensions={".js"}, enable_llm=False, max_files=20)
+    doc = AiSbomExtractor().extract_from_path(source_dir, config)
+
+    endpoint_nodes = [n for n in doc.nodes if n.component_type == ComponentType.API_ENDPOINT]
+    paths = {n.metadata.endpoint for n in endpoint_nodes}
+    assert paths == {"/health", "/webhooks/register"}
+    assert "generic" not in {n.name.lower() for n in endpoint_nodes}
+
+
+def test_api_endpoint_generic_and_fastapi_adapter_merge_same_route(tmp_path) -> None:
+    """The same route detected by both the FastAPI AST adapter (which infers
+    request_body_schema) and the generic regex fallback (evidence-only) must
+    collapse into a single node, keeping the AST-derived schema."""
+    source_dir = tmp_path / "sample-app"
+    source_dir.mkdir()
+    (source_dir / "main.py").write_text(
+        "from fastapi import FastAPI\n"
+        "from pydantic import BaseModel\n\n"
+        "app = FastAPI()\n\n"
+        "class ChatRequest(BaseModel):\n"
+        "    message: str\n\n"
+        "@app.post('/api/chat')\n"
+        "async def chat(body: ChatRequest):\n"
+        "    return {'reply': 'hi'}\n",
+        encoding="utf-8",
+    )
+
+    config = AiSbomConfig(include_extensions={".py"}, enable_llm=False, max_files=20)
+    doc = AiSbomExtractor().extract_from_path(source_dir, config)
+
+    endpoint_nodes = [
+        n
+        for n in doc.nodes
+        if n.component_type == ComponentType.API_ENDPOINT and n.metadata.endpoint == "/api/chat"
+    ]
+    assert len(endpoint_nodes) == 1
+    assert endpoint_nodes[0].metadata.request_body_schema == {"message": "str"}
+
+
+def test_summary_api_endpoints_all_have_matching_nodes(tmp_path) -> None:
+    """Every path nuguard reports in summary.api_endpoints must be backed by
+    an API_ENDPOINT node — otherwise downstream consumers of the node graph
+    (analyze, redteam scenario generation) silently miss routes the summary
+    claims exist."""
+    source_dir = tmp_path / "sample-app"
+    source_dir.mkdir()
+    (source_dir / "main.py").write_text(
+        "from fastapi import FastAPI\n\n"
+        "app = FastAPI()\n\n"
+        "@app.get('/api/health')\n"
+        "async def health():\n"
+        "    return {'status': 'ok'}\n",
+        encoding="utf-8",
+    )
+    (source_dir / "auth_routes.py").write_text(
+        "from fastapi import APIRouter\n\n"
+        "router = APIRouter()\n\n"
+        "@router.post('/api/auth/login')\n"
+        "async def login():\n"
+        "    return {'token': 'x'}\n",
+        encoding="utf-8",
+    )
+
+    config = AiSbomConfig(include_extensions={".py"}, enable_llm=False, max_files=20)
+    doc = AiSbomExtractor().extract_from_path(source_dir, config)
+
+    node_paths = {
+        n.metadata.endpoint for n in doc.nodes if n.component_type == ComponentType.API_ENDPOINT
+    }
+    assert doc.summary is not None
+    for path in doc.summary.api_endpoints:
+        assert path in node_paths, f"{path} in summary.api_endpoints has no matching node"
