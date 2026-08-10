@@ -27,6 +27,14 @@ def behavior_command(
     config: Optional[Path] = typer.Option(
         None, "--config", "-c", help="Path to nuguard.yaml"
     ),
+    sbom: Optional[str] = typer.Option(
+        None,
+        "--sbom",
+        help=(
+            "Path to AI-SBOM JSON file to seed behavior analysis with. "
+            "Falls back to 'sbom:' in nuguard.yaml when --config is set."
+        ),
+    ),
     mode: str = typer.Option(
         "static+dynamic",
         "--mode",
@@ -196,7 +204,7 @@ async def _run_behavior(
     # 4. Load AI-SBOM and auto-enrich if confidence is low
     sbom = None
     sbom_path_obj: Path | None = None
-    raw_sbom_path = cfg.sbom_path
+    raw_sbom_path = sbom or cfg.sbom_path
     if raw_sbom_path:
         sbom_path_obj = Path(raw_sbom_path)
         try:
