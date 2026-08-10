@@ -10,6 +10,7 @@ Only imported when ``AiSbomConfig.enable_llm=True``.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from typing import TYPE_CHECKING, Any
 
@@ -65,18 +66,22 @@ async def complete_structured(
         return {}
 
 
+_DESCRIPTION_BATCH_SIZE = 25
+_DESCRIPTION_BATCH_CONCURRENCY = 5
+
+
 async def enrich_node_descriptions(
     nodes: list,  # list[Node] — avoid circular import
     llm_client: "_CommonLLMClient",
 ) -> None:
     """Use LLM to write descriptions for AGENT/TOOL nodes missing or short ones.
 
-    Mutates nodes in-place. Skips nodes where description is already >30 chars.
+    Batches nodes into chunked structured calls (instead of one call per node)
+    to minimise round trips, running chunks concurrently. Mutates nodes
+    in-place. Skips nodes where description is already >30 chars.
     Called from AiSbomExtractor._llm_enrich() after other enrichment steps.
     """
-    _SYSTEM = (
-        "You are an AI security analyst writing concise descriptions for AI system components."
-    )
+    targets = []
     for node in nodes:
         component_type = getattr(node, "component_type", None)
         ct_str = str(getattr(component_type, "value", component_type)) if component_type is not None else ""
@@ -91,32 +96,84 @@ async def enrich_node_descriptions(
         if len(description) >= 30:
             continue  # already has a sufficient description
 
-        name = getattr(node, "name", "") or ""
-        framework = getattr(meta, "framework", None) or "unknown"
-        excerpt = (getattr(meta, "system_prompt_excerpt", None) or "")[:300]
-        parameters = getattr(meta, "parameters", None) or []
-        param_names = ", ".join(p.name for p in parameters if p.name)
+        targets.append((node, ct_str, meta))
+
+    if not targets:
+        return
+
+    _SYSTEM = (
+        "You are an AI security analyst writing concise descriptions for AI system components. "
+        "Given a list of components, return a JSON object mapping each component's id to a "
+        "single sentence (15-40 words) describing what it does."
+    )
+
+    async def _run_batch(batch: list[tuple[Any, str, Any]]) -> None:
+        items = []
+        for node, ct_str, meta in batch:
+            name = getattr(node, "name", "") or ""
+            framework = getattr(meta, "framework", None) or "unknown"
+            excerpt = (getattr(meta, "system_prompt_excerpt", None) or "")[:300]
+            parameters = getattr(meta, "parameters", None) or []
+            param_names = ", ".join(p.name for p in parameters if p.name)
+            items.append(
+                {
+                    "id": str(node.id),
+                    "name": name,
+                    "type": ct_str,
+                    "framework": framework,
+                    "system_prompt_excerpt": excerpt,
+                    "parameters": param_names,
+                }
+            )
 
         user_prompt = (
-            f"Component name: {name}\n"
-            f"Type: {ct_str}\n"
-            f"Framework: {framework}\n"
-            f"System prompt excerpt: {excerpt}\n"
-            f"Parameters: {param_names}\n\n"
-            "Write a single sentence (15-40 words) describing what this component does. "
-            "Reply with ONLY the description text."
+            f"Components (JSON list):\n{json.dumps(items, ensure_ascii=False)}\n\n"
+            "Return a JSON object: {\"<id>\": \"<description sentence>\", ...} for every "
+            "component."
         )
+        response_schema: dict[str, Any] = {
+            "type": "object",
+            "additionalProperties": {"type": "string"},
+        }
 
         try:
-            text = await llm_client.complete(prompt=user_prompt, system=_SYSTEM)
-            text = text.strip()
-            if text:
-                meta.description = text[:200]
-                _log.debug("enrich_node_descriptions: set description for %s (%s)", name, ct_str)
-        except Exception as exc:
-            _log.warning(
-                "enrich_node_descriptions: failed for node %s (%s): %s", name, ct_str, exc
+            result = await complete_structured(
+                llm_client,
+                system=_SYSTEM,
+                user=user_prompt,
+                response_schema=response_schema,
             )
+        except Exception as exc:
+            _log.warning("enrich_node_descriptions: batch call failed: %s", exc)
+            return
+
+        if not isinstance(result, dict):
+            return
+        id_map = {str(node.id): (node, meta) for node, _ct_str, meta in batch}
+        for node_id_str, text in result.items():
+            if not isinstance(text, str):
+                continue
+            text = text.strip()
+            if not text or node_id_str not in id_map:
+                continue
+            node, meta = id_map[node_id_str]
+            meta.description = text[:200]
+            _log.debug(
+                "enrich_node_descriptions: set description for %s",
+                getattr(node, "name", "") or "",
+            )
+
+    batches = [
+        targets[i : i + _DESCRIPTION_BATCH_SIZE]
+        for i in range(0, len(targets), _DESCRIPTION_BATCH_SIZE)
+    ]
+    semaphore = asyncio.Semaphore(_DESCRIPTION_BATCH_CONCURRENCY)
+
+    async def _run_batch_limited(batch: list[tuple[Any, str, Any]]) -> None:
+        async with semaphore:
+            await _run_batch(batch)
+
+    await asyncio.gather(*(_run_batch_limited(batch) for batch in batches))
 
 
 async def enrich_descriptive_names(
