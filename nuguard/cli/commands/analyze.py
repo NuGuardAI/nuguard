@@ -189,6 +189,10 @@ def analyze(
         typer.echo(f"error: SBOM validation failed: {exc}", err=True)
         raise typer.Exit(code=2)
 
+    # Re-run topology enrichment in case the SBOM file predates it (idempotent).
+    from nuguard.sbom.enricher import enrich as _enrich_topology  # noqa: PLC0415
+    _enrich_topology(doc)
+
     # ------------------------------------------------------------------
     # Run analysis
     # ------------------------------------------------------------------
