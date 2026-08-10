@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse, urlunparse
 
 from ..models import InstrumentationDetail, Node, TestingDetail
+from .route_patterns import ROUTE_PATTERNS
 
 if TYPE_CHECKING:
     from nuguard.common.llm_client import LLMClient
@@ -26,13 +27,7 @@ if TYPE_CHECKING:
 # Pattern constants
 # ---------------------------------------------------------------------------
 
-_ENDPOINT_PATTERNS = [
-    re.compile(
-        r"@(?:app|router)\.(?:get|post|put|patch|delete|options|head)\(\s*[\"']([^\"']+)[\"']"
-    ),
-    re.compile(r"@(?:app|blueprint)\.route\(\s*[\"']([^\"']+)[\"']"),
-    re.compile(r"\b(?:app|router)\.(?:get|post|put|patch|delete|use)\(\s*[\"']([^\"']+)[\"']"),
-]
+_ENDPOINT_PATTERNS = ROUTE_PATTERNS
 
 _URL_PATTERN = re.compile(r"https?://[^\s\"'`<>,]+")
 # GitHub Actions env vars that encode well-known Azure hostname patterns, e.g.
@@ -332,7 +327,8 @@ def extract_api_endpoints(files: Sequence[tuple[str, str]]) -> list[str]:
         if not path.lower().endswith((".py", ".ts", ".tsx", ".js", ".jsx")):
             continue
         for pattern in _ENDPOINT_PATTERNS:
-            endpoints.extend(pattern.findall(content or ""))
+            for match in pattern.finditer(content or ""):
+                endpoints.append(match.group("path"))
     return _uniq(ep for ep in endpoints if ep and ep != "/")
 
 
@@ -607,7 +603,17 @@ def build_scan_summary(
             frameworks.append(framework)
 
     deployment = extract_deployment_context(files)
-    endpoints = extract_api_endpoints(files)
+    # API_ENDPOINT nodes are the authoritative, deduped source (they're what
+    # `analyze`/`redteam` actually consume); the regex sweep over `files` is
+    # kept as a supplementary source so a route that — despite sharing regex
+    # patterns with the node-building adapters — still isn't backed by a node
+    # doesn't silently disappear from the summary.
+    node_endpoint_paths = [
+        node.metadata.endpoint
+        for node in nodes
+        if _node_type_str(node) == "API_ENDPOINT" and node.metadata.endpoint
+    ]
+    endpoints = _uniq(node_endpoint_paths + extract_api_endpoints(files))
     modality_support = infer_modalities_support(nodes, files)
     use_case_summary = build_deterministic_use_case_summary(nodes, modality_support)
     modalities = [k.upper() for k, enabled in modality_support.items() if enabled]

@@ -1028,6 +1028,46 @@ class AiSbomExtractor:
                         )
                         self._merge_detection(node_map, _comp_det)
                     continue
+                # API_ENDPOINT: group per-match by the parsed (method, path) —
+                # not raw snippet text, since different route-declaration styles
+                # (decorator vs. bare "METHOD /path") produce different snippets
+                # for the same logical route. The canonical_name scheme
+                # (endpoint:{METHOD}:{path}) matches the one used by the FastAPI/
+                # Flask AST adapters, so a route found by both a generic regex
+                # match and a framework-specific adapter merges into one node
+                # instead of producing a duplicate.
+                if detection.component_type == ComponentType.API_ENDPOINT and not getattr(
+                    rx_adapter, "canonical_name", None
+                ):
+                    _ep_first: dict[tuple[str, str], AdapterMatch] = {}
+                    for _m in detection.matches:
+                        _path = _m.groups.get("path")
+                        if not _path or _path == "/":
+                            continue
+                        _method = (_m.groups.get("method") or "").upper()
+                        _ep_key = (_method, _path)
+                        if _ep_key not in _ep_first:
+                            _ep_first[_ep_key] = _m
+                    for (_ep_method, _ep_path), _first_match in _ep_first.items():
+                        _ep_meta = dict(detection.metadata)
+                        _ep_meta["endpoint"] = _ep_path
+                        if _ep_method:
+                            _ep_meta["method"] = _ep_method
+                        _comp_det = ComponentDetection(
+                            component_type=detection.component_type,
+                            canonical_name=f"endpoint:{_ep_method or 'ANY'}:{_ep_path}",
+                            display_name=_ep_path,
+                            adapter_name=detection.adapter_name,
+                            priority=detection.priority,
+                            confidence=0.55,
+                            metadata=_ep_meta,
+                            file_path=rel_path,
+                            line=_first_match.line,
+                            snippet=_first_match.snippet,
+                            evidence_kind="regex",
+                        )
+                        self._merge_detection(node_map, _comp_det)
+                    continue
                 confidence = min(0.95, 0.50 + 0.05 * len(detection.matches))
                 canonical = canonicalize_text(detection.canonical_name)
                 # For MODEL type, keep the full canonical name (e.g., "llama3.2:3b"
