@@ -36,6 +36,12 @@ APP_RUNS=(
   "pinnacle-bank|tests/apps/pinnacle-bank-app/nuguard-azure.prepublish.yaml|tests/apps/pinnacle-bank-app/pinnacle-bank.sbom.json|tests/apps/pinnacle-bank-app/reports/pinnacle-bank-prepublish-behavior|tests/apps/pinnacle-bank-app/reports/pinnacle-bank-prepublish-redteam|/api/chat"
 )
 
+# Optional first argument restricts the run to a single app (matching the
+# "name" field above), e.g. `prepublish-sanity.sh openai-cs`. Used by CI to
+# run a fast one-app check on develop-branch PRs while still reusing the full
+# matrix (no argument) for main-branch PRs and manual prepublish runs.
+FILTER_APP="${1:-}"
+
 BEHAVIOR_SUMMARIES=()
 REDTEAM_SUMMARIES=()
 DURATIONS=()
@@ -66,8 +72,15 @@ uv run nuguard --help > /dev/null 2>&1
 uv run pytest tests/test_config.py tests/test_secret_store.py -q
 
 echo "[2/3] App prepublish sanity runs"
+matched_filter=0
 for entry in "${APP_RUNS[@]}"; do
   IFS='|' read -r name cfg sbom_out behavior_base redteam_base expected_endpoint <<< "$entry"
+
+  if [[ -n "$FILTER_APP" && "$name" != "$FILTER_APP" ]]; then
+    continue
+  fi
+  matched_filter=1
+
   mkdir -p "$(dirname "$behavior_base")"
 
   echo "---"
@@ -95,6 +108,7 @@ for entry in "${APP_RUNS[@]}"; do
   run_with_allowed_rc "${name}: redteam" "0,1,2" \
     uv run nuguard redteam \
       --config "$cfg" \
+      --profile ci \
       --format json \
       --format markdown \
       --output "$redteam_base" \
@@ -197,6 +211,11 @@ PY
   echo "[PASS] ${name} redteam -> ${redteam_summary}"
   echo "[PASS] ${name} duration -> ${duration}s"
 done
+
+if [[ -n "$FILTER_APP" && "$matched_filter" -eq 0 ]]; then
+  echo "[FAIL] no app named '${FILTER_APP}' found in APP_RUNS." >&2
+  exit 1
+fi
 
 echo "[3/3] Final summary"
 echo "Behavior summaries:"
