@@ -1,8 +1,17 @@
 # Verbose Flag Specification (Cross-Command)
 
-Status: Proposed
+Status: Partially Implemented
 
 Scope: `nuguard behavior`, `nuguard redteam`, `nuguard validate`, `nuguard policy check`
+
+> **Status note (issue #163):** The contract in this spec is partially adopted.
+> Today every scoped command accepts `--verbose/--no-verbose` with CLI flag
+> > command config > default precedence, persists `verbose` in report
+> metadata via `ReportMeta`, and keeps terminal vs. report behavior
+> separate. Detailed phases below (findings-invariance refactor, bounded
+> diagnostics envelope, cap enforcement) are aspirational and not yet
+> completed in full; this status will move to `Implemented` once they
+> land.
 
 ## Purpose
 
