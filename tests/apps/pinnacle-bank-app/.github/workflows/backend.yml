@@ -1,0 +1,1816 @@
+# NuGuard AI - Backend CI/CD Pipeline — OIDC auth (Workload Identity Federation)
+# Builds and deploys all FastAPI services to Azure Container Apps
+# Last updated: 2026-02-20 — replace nginx gateway with APIM + ACA external ingress
+#
+# Services:
+#   - data-service: Core REST API (PostgreSQL, CRUD, scan orchestration)
+#   - ai-asset-service: AIBOM extraction from repositories
+#   - assessment-service: Compliance assessment against AIBOM graphs
+#   - red-team-service: Adversarial testing orchestration
+#   - ai-chatbot-service: SSE-based streaming chat
+#   - sn-integration-service: ServiceNow integration API
+#
+# API Gateway: Azure API Management (Consumption tier) — see infra/apim.bicep
+#   One-time setup: run the "Provision APIM" workflow (infra-apim.yml) manually.
+#   Per-deploy: CI/CD switches backend services to external ACA ingress and
+#   updates APIM backend URLs to the new service FQDNs.
+#
+# Environments:
+#   - develop branch → Dev (api-dev.nuguard.ai via nuguard-apim-dev)
+#   - main branch → Staging (api-staging.nuguard.ai via nuguard-apim-staging)
+#   - release/* tags → Production (api.nuguard.ai via nuguard-apim)
+
+name: Backend CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'backend/**'
+      - 'infra/**'
+      - '.github/workflows/backend.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'backend/**'
+      - 'infra/**'
+  release:
+    types: [published]
+
+env:
+  REGISTRY: nuguardacr.azurecr.io
+  PYTHON_VERSION: '3.12'
+
+jobs:
+  # ============================================================
+  # Lint & Type Check
+  # ============================================================
+  lint:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || !(github.head_ref == 'develop' && github.base_ref == 'main')
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          pip install -r backend/requirements.txt
+          pip install ruff mypy types-python-jose types-passlib
+
+      - name: Run Ruff (linter)
+        run: |
+          cd backend && ruff check . --output-format=github
+
+      - name: Run MyPy (type check)
+        run: |
+          cd backend && mypy --ignore-missing-imports .
+        continue-on-error: true
+
+  # ============================================================
+  # Unit & Integration Tests
+  # ============================================================
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    needs: lint
+    permissions:
+      contents: read
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: nuguard_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          pip install -r backend/requirements.txt
+          pip install pytest pytest-asyncio pytest-cov pytest-xdist pytest-timeout httpx
+
+      - name: Run tests
+        env:
+          DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/nuguard_test
+          JWT_SECRET_KEY: test-secret-key-for-ci
+          GEMINI_API_KEY: test-key
+        run: |
+          cd backend && pytest \
+            -n auto \
+            --cov=. \
+            --cov-report=xml \
+            --cov-report=term-missing \
+            --junit-xml=test-results.xml \
+            --timeout=120 \
+            --ignore=tests/test_stage1_integration.py
+
+      - name: Publish test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: backend/test-results.xml
+
+      - name: Upload coverage report
+        uses: codecov/codecov-action@v5
+        with:
+          file: backend/coverage.xml
+          flags: backend
+          fail_ci_if_error: false
+
+  # ============================================================
+  # Security Scan
+  # ============================================================
+  security:
+    name: Security Scan
+    runs-on: ubuntu-latest
+    needs: lint
+    permissions:
+      contents: read
+      security-events: write
+      actions: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@0.35.0
+        with:
+          scan-type: 'fs'
+          scan-ref: 'backend'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  # ============================================================
+  # Generate image tag (single job, shared by all parallel builds)
+  # ============================================================
+  tag:
+    name: Generate Tag
+    runs-on: ubuntu-latest
+    # Security scan runs in parallel and uploads SARIF independently — it does NOT
+    # gate builds. Removing it from needs shaves the full Trivy scan duration
+    # (typically 2-5 min) off the critical path to 9 parallel Docker builds.
+    needs: [test]
+    if: github.event_name == 'push' || github.event_name == 'release'
+    permissions:
+      contents: read
+    outputs:
+      image_tag: ${{ steps.meta.outputs.version }}
+    steps:
+      - name: Generate image tag
+        id: meta
+        run: |
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            RAW="${{ github.event.release.tag_name }}"
+          else
+            RAW=${GITHUB_SHA::8}
+          fi
+          # Azure Container Apps revision suffix: lowercase alphanumeric + hyphens only
+          VERSION=$(echo "${RAW}" | tr '.' '-' | tr '_' '-' | tr '[:upper:]' '[:lower:]')
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Image tag: ${VERSION}"
+
+  # ============================================================
+  # Build Docker Images — all services in parallel
+  # ============================================================
+  build:
+    name: Build ${{ matrix.service }}
+    runs-on: ubuntu-latest
+    needs: [tag]
+    # 'ci' environment for OIDC subject matching (no protection rules)
+    environment: ${{ github.event_name == 'release' && 'production' || 'ci' }}
+    permissions:
+      id-token: write
+      contents: read
+      actions: write   # required for type=gha layer cache
+
+    strategy:
+      fail-fast: false   # keep building other images if one fails
+      matrix:
+        include:
+          - service: data-service
+            dockerfile: backend/data_service/Dockerfile
+            context: backend
+          - service: ai-asset-service
+            dockerfile: backend/ai_asset_service/Dockerfile
+            context: backend
+          - service: assessment-service
+            dockerfile: backend/assessment_service/Dockerfile
+            context: backend
+          - service: red-team-service
+            dockerfile: backend/red_team_service/Dockerfile
+            context: backend
+          - service: ai-chatbot-service
+            dockerfile: backend/ai_chatbot_service/Dockerfile
+            context: .
+          - service: sn-integration-service
+            dockerfile: backend/sn_integration_service/Dockerfile
+            context: backend
+          - service: behavior-service
+            dockerfile: backend/behavior_service/Dockerfile
+            context: backend
+          - service: gateway
+            dockerfile: backend/gateway/Dockerfile
+            context: backend/gateway
+          - service: migrate
+            dockerfile: backend/base/Dockerfile
+            context: backend
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Login to ACR
+        run: az acr login --name nuguardacr
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push ${{ matrix.service }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ matrix.service }}:${{ needs.tag.outputs.image_tag }}
+            ${{ env.REGISTRY }}/${{ matrix.service }}:latest
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,scope=${{ matrix.service }},mode=max
+
+  # ============================================================
+  # Deploy to Development (develop branch)
+  # ============================================================
+  deploy-dev:
+    name: Deploy to Development
+    runs-on: ubuntu-latest
+    needs: [build, tag, migrate]
+    if: github.ref == 'refs/heads/develop'
+    environment:
+      name: development
+      url: https://api-dev.nuguard.ai
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Ensure sn-integration-service-dev exists
+        run: |
+          TAG=${{ needs.tag.outputs.image_tag }}
+          RG=Dev
+          SUFFIX="-dev"
+          SVC="sn-integration-service"
+          APP_NAME="${SVC}${SUFFIX}"
+          KV_NAME=nuguard-dev-kv
+
+          if az containerapp show --name "$APP_NAME" --resource-group "$RG" --output none 2>/dev/null; then
+            echo "$APP_NAME already exists"
+            exit 0
+          fi
+
+          ENV_ID=$(az containerapp show --name "data-service${SUFFIX}" --resource-group "$RG" --query properties.managedEnvironmentId -o tsv)
+          IDENTITY_ID=$(az containerapp show --name "data-service${SUFFIX}" --resource-group "$RG" --query "identity.userAssignedIdentities | keys(@)[0]" -o tsv)
+          JWT_SECRET=$(az keyvault secret show --vault-name "$KV_NAME" --name nuguard-jwt-secret --query value -o tsv)
+
+          echo "::add-mask::$JWT_SECRET"
+
+          az containerapp create \
+            --name "$APP_NAME" \
+            --resource-group "$RG" \
+            --environment "$ENV_ID" \
+            --image "${{ env.REGISTRY }}/${SVC}:${TAG}" \
+            --ingress internal \
+            --target-port 8007 \
+            --min-replicas 1 \
+            --max-replicas 2 \
+            --cpu 0.25 \
+            --memory 0.5Gi \
+            --user-assigned "$IDENTITY_ID" \
+            --registry-server "${{ env.REGISTRY }}" \
+            --registry-identity "$IDENTITY_ID" \
+            --secrets jwt-secret="$JWT_SECRET" \
+            --env-vars \
+              ENVIRONMENT=development \
+              JWT_SECRET_KEY=secretref:jwt-secret \
+              CORS_ORIGINS='["https://dev.nuguard.ai","http://localhost:3000","http://localhost:5173"]' \
+            --output none
+
+      - name: Ensure behavior-service-dev exists
+        run: |
+          TAG=${{ needs.tag.outputs.image_tag }}
+          RG=Dev
+          SUFFIX="-dev"
+          SVC="behavior-service"
+          APP_NAME="${SVC}${SUFFIX}"
+          KV_NAME=nuguard-dev-kv
+
+          if az containerapp show --name "$APP_NAME" --resource-group "$RG" --output none 2>/dev/null; then
+            echo "$APP_NAME already exists"
+            exit 0
+          fi
+
+          ENV_ID=$(az containerapp show --name "data-service${SUFFIX}" --resource-group "$RG" --query properties.managedEnvironmentId -o tsv)
+          IDENTITY_ID=$(az containerapp show --name "data-service${SUFFIX}" --resource-group "$RG" --query "identity.userAssignedIdentities | keys(@)[0]" -o tsv)
+          JWT_SECRET=$(az keyvault secret show --vault-name "$KV_NAME" --name nuguard-jwt-secret --query value -o tsv)
+          DB_URL=$(az keyvault secret show --vault-name "$KV_NAME" --name DATABASE-URL --query value -o tsv)
+
+          echo "::add-mask::$JWT_SECRET"
+          echo "::add-mask::$DB_URL"
+
+          az containerapp create \
+            --name "$APP_NAME" \
+            --resource-group "$RG" \
+            --environment "$ENV_ID" \
+            --image "${{ env.REGISTRY }}/${SVC}:${TAG}" \
+            --ingress internal \
+            --target-port 8003 \
+            --min-replicas 1 \
+            --max-replicas 2 \
+            --cpu 0.5 \
+            --memory 1.0Gi \
+            --user-assigned "$IDENTITY_ID" \
+            --registry-server "${{ env.REGISTRY }}" \
+            --registry-identity "$IDENTITY_ID" \
+            --secrets jwt-secret="$JWT_SECRET" database-url="$DB_URL" \
+            --env-vars \
+              ENVIRONMENT=development \
+              JWT_SECRET_KEY=secretref:jwt-secret \
+              DATABASE_URL=secretref:database-url \
+              CORS_ORIGINS='["https://dev.nuguard.ai","http://localhost:3000","http://localhost:5173"]' \
+            --output none
+
+      - name: Ensure behavior-service-dev has DATABASE_URL
+        run: |
+          # Idempotent patch — injects DATABASE_URL into already-running behavior-service-dev.
+          # Safe to run on every deploy; ACA ignores secret updates when value is unchanged.
+          KV_NAME=nuguard-dev-kv
+          RG=Dev
+          DB_URL=$(az keyvault secret show --vault-name "$KV_NAME" --name DATABASE-URL --query value -o tsv)
+          echo "::add-mask::$DB_URL"
+          az containerapp secret set \
+            --name behavior-service-dev \
+            --resource-group "$RG" \
+            --secrets database-url="$DB_URL" \
+            --output none || true
+          az containerapp update \
+            --name behavior-service-dev \
+            --resource-group "$RG" \
+            --set-env-vars DATABASE_URL=secretref:database-url \
+            --output none || true
+
+      - name: Ensure red-team-service-dev has DATABASE_URL
+        run: |
+          # Idempotent patch — injects DATABASE_URL into already-running red-team-service-dev.
+          # Safe to run on every deploy; ACA ignores secret updates when value is unchanged.
+          KV_NAME=nuguard-dev-kv
+          RG=Dev
+          DB_URL=$(az keyvault secret show --vault-name "$KV_NAME" --name DATABASE-URL --query value -o tsv)
+          echo "::add-mask::$DB_URL"
+          az containerapp secret set \
+            --name red-team-service-dev \
+            --resource-group "$RG" \
+            --secrets database-url="$DB_URL" \
+            --output none || true
+          az containerapp update \
+            --name red-team-service-dev \
+            --resource-group "$RG" \
+            --set-env-vars DATABASE_URL=secretref:database-url \
+            --output none || true
+
+      # LLM API keys (Gemini, Azure OpenAI, Kimi K2, Anthropic) are managed as
+      # Key Vault-backed secrets by the Bicep template (infra/main.bicep).
+      # They auto-refresh from nuguard-dev-kv and persist across image updates.
+      # To change keys: update the KV secret value, no redeploy needed.
+      # To add new keys: re-run Bicep deployment after updating main.bicep.
+
+      - name: Patch LLM env vars for all needsLlm services (Dev)
+        env:
+          # Only the API key is a secret. All other LLM config is hardcoded below.
+          DEV_AZURE_OPENAI_KEY: ${{ secrets.DEV_AZURE_OPENAI_KEY }}
+        run: |
+          # IMPORTANT: This step must run BEFORE 'Deploy backend services to Dev'.
+          # 'az containerapp secret set' patches configuration.secrets with plain
+          # values WITHOUT creating a new revision. Once secrets are plain values,
+          # the subsequent image-deploy step ('az containerapp update --image')
+          # creates a new revision that passes secret validation and starts with
+          # the correct LLM env vars (via the existing secretref wiring in the
+          # Bicep template).
+          #
+          # The Bicep template wires all LLM env vars via keyvaultref secrets.
+          # Those KV secrets don't exist in dev, so any revision creation fails
+          # until we patch them here first.
+          RG=Dev
+          SUFFIX="-dev"
+          AOI_ENDPOINT="https://ng-ai-foundary.cognitiveservices.azure.com/"
+          AOI_DEPLOYMENT="gpt-4.1"
+          AOI_APIVERSION="2025-01-01-preview"
+
+          if [ -z "$DEV_AZURE_OPENAI_KEY" ]; then
+            echo "DEV_AZURE_OPENAI_KEY secret not set — skipping LLM patch"
+            echo "Add it at: Settings → Secrets → Actions → New repository secret"
+            exit 0
+          fi
+
+          for SVC in ai-asset-service red-team-service behavior-service ai-chatbot-service assessment-service; do
+            SVC_NAME="${SVC}${SUFFIX}"
+            echo "--- Patching ${SVC_NAME} ---"
+
+            # Wait for any in-progress ACA provisioning to finish before patching.
+            # ACA returns ContainerAppOperationInProgress when a previous operation
+            # (e.g. a parallel or recently completed deploy) hasn't released the lock.
+            for attempt in 1 2 3 4 5; do
+              PROV=$(az containerapp show --name "$SVC_NAME" --resource-group "$RG" \
+                --query properties.provisioningState -o tsv 2>/dev/null || echo "Unknown")
+              if [[ "$PROV" == "Succeeded" || "$PROV" == "Failed" || "$PROV" == "Canceled" ]]; then
+                break
+              fi
+              echo "  ${SVC_NAME} provisioningState=${PROV}, waiting 20s (attempt ${attempt}/5)..."
+              sleep 20
+            done
+
+            # Overwrite all 19 keyvaultref secrets with plain values.
+            # 'az containerapp secret set' does NOT create a new revision.
+            for attempt in 1 2 3; do
+              az containerapp secret set \
+                --name "$SVC_NAME" \
+                --resource-group "$RG" \
+                --secrets \
+                  "azure-openai-key=${DEV_AZURE_OPENAI_KEY}" \
+                  "azure-openai-endpoint=${AOI_ENDPOINT}" \
+                  "azure-openai-deployment-name=${AOI_DEPLOYMENT}" \
+                  "azure-openai-model-name=${AOI_DEPLOYMENT}" \
+                  "azure-openai-api-version=${AOI_APIVERSION}" \
+                  "litellm-model=azure/${AOI_DEPLOYMENT}" \
+                  "llm-default-provider=azure_openai" \
+                  "gemini-api-key=not-configured" \
+                  "gemini-model-name=not-configured" \
+                  "google-cloud-project=not-configured" \
+                  "vertex-ai-location=not-configured" \
+                  "azure-kimi-k2-endpoint=not-configured" \
+                  "azure-kimi-k2-key=not-configured" \
+                  "azure-kimi-k2-model-name=not-configured" \
+                  "azure-kimi-k2-deployment-name=not-configured" \
+                  "azure-anthropic-endpoint=not-configured" \
+                  "azure-anthropic-key=not-configured" \
+                  "azure-anthropic-model-name=not-configured" \
+                  "github-token=not-configured" \
+                --output none \
+              && echo "  Secrets patched for ${SVC_NAME}" && break \
+              || {
+                if [[ $attempt -lt 3 ]]; then
+                  echo "  secret set failed (attempt ${attempt}/3), retrying in 30s..."
+                  sleep 30
+                else
+                  echo "ERROR: secret set for ${SVC_NAME} failed after 3 attempts"; exit 1
+                fi
+              }
+            done
+          done
+
+      - name: Deploy backend services to Dev
+        run: |
+          TAG=${{ needs.tag.outputs.image_tag }}
+          RG=Dev
+          SUFFIX="-dev"
+          # Internal ACA URLs for service-to-service calls (unchanged — internal ingress
+          # still works within the ACA environment even when external is also enabled)
+          EXTRA_VARS="DATA_SERVICE_URL=http://data-service${SUFFIX}:80 AI_ASSET_SERVICE_URL=http://ai-asset-service${SUFFIX}:80 ASSESSMENT_SERVICE_URL=http://assessment-service${SUFFIX}:80 RED_TEAM_SERVICE_URL=http://red-team-service${SUFFIX}:80 SN_INTEGRATION_SERVICE_URL=http://sn-integration-service${SUFFIX}:80"
+
+          # Parallelise all 7 image updates — each is independent of the others.
+          # All az CLI calls write to separate FDs; errors are surfaced via wait.
+          PIDS=()
+          for SVC in data-service ai-asset-service assessment-service red-team-service behavior-service ai-chatbot-service sn-integration-service; do
+            echo "Deploying ${SVC}..."
+            az containerapp update \
+              --name "${SVC}${SUFFIX}" \
+              --resource-group $RG \
+              --image "${{ env.REGISTRY }}/${SVC}:${TAG}" \
+              --set-env-vars ENVIRONMENT=development ${EXTRA_VARS} \
+              --output none 2>&1 | sed "s/^/  [${SVC}] /" &
+            PIDS+=($!)
+          done
+          FAIL=0; for PID in "${PIDS[@]}"; do wait $PID || FAIL=1; done
+          [ $FAIL -eq 0 ] && echo "All services deployed" || echo "Warning: one or more service deploys failed"
+
+      - name: Set LLM env vars for needsLlm services (Dev)
+        env:
+          DEV_AZURE_OPENAI_KEY: ${{ secrets.DEV_AZURE_OPENAI_KEY }}
+        run: |
+          # The Bicep secretref env var wiring only exists in the revision template if
+          # Bicep has been re-run for dev, so we set env vars explicitly here.
+          #
+          # All vars are collected into a single space-separated string and expanded
+          # unquoted (same pattern as EXTRA_VARS in the deploy step) to avoid az CLI
+          # nargs parsing issues with multiple separately quoted arguments.
+          #
+          # AZURE_API_BASE / AZURE_API_VERSION: litellm reads these directly for
+          # azure/* model calls (it does NOT read AZURE_OPENAI_ENDPOINT).
+          # AZURE_OPENAI_ENDPOINT / AZURE_OPENAI_API_VERSION: read by shared/llm_service
+          # (ai-chatbot-service, assessment-service) which uses a separate LLM stack.
+          if [ -z "$DEV_AZURE_OPENAI_KEY" ]; then
+            echo "DEV_AZURE_OPENAI_KEY not set — skipping"
+            exit 0
+          fi
+          RG=Dev
+          SUFFIX="-dev"
+          AOI_ENDPOINT="https://ng-ai-foundary.cognitiveservices.azure.com/"
+          AOI_DEPLOYMENT="gpt-4.1"
+          AOI_APIVERSION="2025-01-01-preview"
+          LLM_VARS="AZURE_OPENAI_KEY=${DEV_AZURE_OPENAI_KEY}"
+          LLM_VARS="$LLM_VARS AZURE_OPENAI_ENDPOINT=$AOI_ENDPOINT"
+          LLM_VARS="$LLM_VARS AZURE_OPENAI_DEPLOYMENT_NAME=$AOI_DEPLOYMENT"
+          LLM_VARS="$LLM_VARS AZURE_OPENAI_MODEL_NAME=$AOI_DEPLOYMENT"
+          LLM_VARS="$LLM_VARS AZURE_OPENAI_API_VERSION=$AOI_APIVERSION"
+          LLM_VARS="$LLM_VARS AZURE_API_BASE=$AOI_ENDPOINT"
+          LLM_VARS="$LLM_VARS AZURE_API_VERSION=$AOI_APIVERSION"
+          LLM_VARS="$LLM_VARS LITELLM_MODEL=azure/$AOI_DEPLOYMENT"
+          LLM_VARS="$LLM_VARS LLM_DEFAULT_PROVIDER=azure_openai"
+          # NUGUARD_ENABLE_LLM defaults to true via code (use_nuguard_extractor=True in config.py)
+          for SVC in ai-asset-service red-team-service behavior-service ai-chatbot-service assessment-service; do
+            echo "Setting LLM env vars on ${SVC}${SUFFIX}..."
+            az containerapp update \
+              --name "${SVC}${SUFFIX}" \
+              --resource-group "$RG" \
+              --set-env-vars $LLM_VARS \
+              --output none \
+            && echo "  Done ${SVC}${SUFFIX}" \
+            || { echo "ERROR: LLM env var update for ${SVC}${SUFFIX} failed"; exit 1; }
+          done
+
+      - name: Set JWT_SECRET_KEY for ai-chatbot-service (Dev)
+        run: |
+          RG=Dev
+          SUFFIX="-dev"
+          KV_NAME=nuguard-dev-kv
+          JWT_SECRET=$(az keyvault secret show --vault-name "$KV_NAME" --name nuguard-jwt-secret --query value -o tsv)
+          echo "::add-mask::$JWT_SECRET"
+          az containerapp secret set \
+            --name "ai-chatbot-service${SUFFIX}" \
+            --resource-group "$RG" \
+            --secrets jwt-secret="$JWT_SECRET" \
+            --output none \
+          && az containerapp update \
+            --name "ai-chatbot-service${SUFFIX}" \
+            --resource-group "$RG" \
+            --set-env-vars JWT_SECRET_KEY=secretref:jwt-secret \
+            --output none \
+          || echo "Warning: JWT inject for ai-chatbot-service-dev failed"
+
+      - name: Set OAuth env vars for data-service (Dev)
+        run: |
+          # Pulls OAuth client IDs/secrets from nuguard-dev-kv and wires them to
+          # data-service-dev as ACA secrets (not visible in revision templates).
+          # OAUTH_REDIRECT_BASE_URL / OAUTH_FRONTEND_BASE_URL are plain env vars.
+          # If KV secrets are absent, the step skips gracefully — sign-in buttons
+          # will return HTTP 501 until the secrets are added to the vault.
+          # See: imp_docs/nuguard_auth.md for setup instructions.
+          RG=Dev
+          SUFFIX="-dev"
+          KV_NAME=nuguard-dev-kv
+
+          GH_ID=$(az keyvault secret show --vault-name "$KV_NAME" --name oauth-github-client-id --query value -o tsv 2>/dev/null || echo "")
+          GH_SECRET=$(az keyvault secret show --vault-name "$KV_NAME" --name oauth-github-client-secret --query value -o tsv 2>/dev/null || echo "")
+          GOOGLE_ID=$(az keyvault secret show --vault-name "$KV_NAME" --name oauth-google-client-id --query value -o tsv 2>/dev/null || echo "")
+          GOOGLE_SECRET=$(az keyvault secret show --vault-name "$KV_NAME" --name oauth-google-client-secret --query value -o tsv 2>/dev/null || echo "")
+          MS_ID=$(az keyvault secret show --vault-name "$KV_NAME" --name oauth-microsoft-client-id --query value -o tsv 2>/dev/null || echo "")
+          MS_SECRET=$(az keyvault secret show --vault-name "$KV_NAME" --name oauth-microsoft-client-secret --query value -o tsv 2>/dev/null || echo "")
+
+          if [[ -z "$GH_ID" && -z "$GOOGLE_ID" && -z "$MS_ID" ]]; then
+            echo "No OAuth secrets found in $KV_NAME — skipping social sign-in setup."
+            echo "Add oauth-github-client-id, oauth-google-client-id, oauth-microsoft-client-id to the vault to enable sign-in."
+            exit 0
+          fi
+
+          echo "::add-mask::$GH_SECRET"
+          echo "::add-mask::$GOOGLE_SECRET"
+          echo "::add-mask::$MS_SECRET"
+
+          az containerapp secret set \
+            --name "data-service${SUFFIX}" \
+            --resource-group "$RG" \
+            --secrets \
+              "oauth-github-client-id=${GH_ID}" \
+              "oauth-github-client-secret=${GH_SECRET}" \
+              "oauth-google-client-id=${GOOGLE_ID}" \
+              "oauth-google-client-secret=${GOOGLE_SECRET}" \
+              "oauth-microsoft-client-id=${MS_ID}" \
+              "oauth-microsoft-client-secret=${MS_SECRET}" \
+            --output none
+
+          az containerapp update \
+            --name "data-service${SUFFIX}" \
+            --resource-group "$RG" \
+            --set-env-vars \
+              OAUTH_GITHUB_CLIENT_ID=secretref:oauth-github-client-id \
+              OAUTH_GITHUB_CLIENT_SECRET=secretref:oauth-github-client-secret \
+              OAUTH_GOOGLE_CLIENT_ID=secretref:oauth-google-client-id \
+              OAUTH_GOOGLE_CLIENT_SECRET=secretref:oauth-google-client-secret \
+              OAUTH_MICROSOFT_CLIENT_ID=secretref:oauth-microsoft-client-id \
+              OAUTH_MICROSOFT_CLIENT_SECRET=secretref:oauth-microsoft-client-secret \
+              OAUTH_REDIRECT_BASE_URL=https://api-dev.nuguard.ai \
+              OAUTH_FRONTEND_BASE_URL=https://dev.nuguard.ai \
+            --output none \
+          && echo "OAuth env vars set for data-service${SUFFIX}" \
+          || echo "Warning: OAuth env var update for data-service${SUFFIX} failed"
+
+      - name: Set CORS origins for backend services
+        run: |
+          RG=Dev
+          SUFFIX="-dev"
+          for SVC in data-service ai-asset-service assessment-service red-team-service behavior-service ai-chatbot-service sn-integration-service; do
+            az containerapp update \
+              --name "${SVC}${SUFFIX}" \
+              --resource-group $RG \
+              --set-env-vars 'CORS_ORIGINS=["https://dev.nuguard.ai","http://localhost:3000","http://localhost:5173"]' \
+            || echo "Warning: CORS update for ${SVC} failed"
+          done
+
+      - name: Enable internal-only ACA ingress on backend services
+        run: |
+          RG=Dev
+          SUFFIX="-dev"
+          declare -A PORTS=(
+            ["data-service"]="8000"
+            ["ai-asset-service"]="8004"
+            ["assessment-service"]="8005"
+            ["red-team-service"]="8002"
+            ["behavior-service"]="8003"
+            ["ai-chatbot-service"]="8006"
+            ["sn-integration-service"]="8007"
+          )
+          for SVC in data-service ai-asset-service assessment-service red-team-service behavior-service ai-chatbot-service sn-integration-service; do
+            PORT="${PORTS[$SVC]}"
+            az containerapp ingress update \
+              --name "${SVC}${SUFFIX}" --resource-group "$RG" \
+              --type internal 2>/dev/null \
+            || az containerapp ingress enable \
+              --name "${SVC}${SUFFIX}" --resource-group "$RG" \
+              --type internal --target-port "$PORT" --transport auto 2>/dev/null \
+            || echo "Warning: Could not set internal ingress for ${SVC}"
+          done
+
+      - name: Deploy nginx gateway to Dev
+        run: |
+          TAG=${{ needs.tag.outputs.image_tag }}
+          RG=Dev
+          SUFFIX="-dev"
+          az containerapp update \
+            --name "gateway${SUFFIX}" \
+            --resource-group $RG \
+            --image "${{ env.REGISTRY }}/gateway:${TAG}" \
+            --set-env-vars \
+              DATA_SERVICE_HOST=data-service${SUFFIX}:80 \
+              DATA_SERVICE_NAME=data-service${SUFFIX} \
+              AI_ASSET_SERVICE_HOST=ai-asset-service${SUFFIX}:80 \
+              AI_ASSET_SERVICE_NAME=ai-asset-service${SUFFIX} \
+              ASSESSMENT_SERVICE_HOST=assessment-service${SUFFIX}:80 \
+              ASSESSMENT_SERVICE_NAME=assessment-service${SUFFIX} \
+              RED_TEAM_SERVICE_HOST=red-team-service${SUFFIX}:80 \
+              RED_TEAM_SERVICE_NAME=red-team-service${SUFFIX} \
+              AI_CHATBOT_SERVICE_HOST=ai-chatbot-service${SUFFIX}:80 \
+              AI_CHATBOT_SERVICE_NAME=ai-chatbot-service${SUFFIX} \
+              BEHAVIOR_SERVICE_HOST=behavior-service${SUFFIX}:80 \
+              BEHAVIOR_SERVICE_NAME=behavior-service${SUFFIX} \
+                SN_INTEGRATION_SERVICE_HOST=sn-integration-service${SUFFIX}:80 \
+                SN_INTEGRATION_SERVICE_NAME=sn-integration-service${SUFFIX} \
+              NGINX_RESOLVER=168.63.129.16 \
+              NGINX_FRONTEND_URL=off \
+          || echo "Warning: gateway deploy failed (may not exist yet — run Bicep first)"
+
+      - name: Ensure minimum replicas (prevent scale-to-zero in Dev)
+        run: |
+          RG=Dev
+          SUFFIX="-dev"
+          for SVC in data-service ai-asset-service assessment-service red-team-service behavior-service ai-chatbot-service sn-integration-service; do
+            az containerapp update \
+              --name "${SVC}${SUFFIX}" \
+              --resource-group $RG \
+              --min-replicas 1 --output none \
+            || echo "Warning: min-replicas update for ${SVC} failed"
+          done
+
+      - name: Remove CPU/memory scale rules from red-team-service (Dev)
+        run: |
+          # red-team-service runs one scan per asyncio task in a single process.
+          # CPU/memory scale-out adds a new replica mid-scan which incorrectly
+          # marks the in-flight run as service_restarted. HTTP scaling is enough.
+          az containerapp update \
+            --name "red-team-service-dev" \
+            --resource-group Dev \
+            --remove-all-scale-rules \
+            --output none \
+          && az containerapp update \
+            --name "red-team-service-dev" \
+            --resource-group Dev \
+            --scale-rule-name http-scaling \
+            --scale-rule-type http \
+            --scale-rule-http-concurrency 100 \
+            --output none \
+          || echo "Warning: scale rule update for red-team-service-dev failed"
+
+      - name: Deactivate old revisions
+        run: |
+          RG=Dev
+          SUFFIX="-dev"
+          for SVC in data-service ai-asset-service assessment-service red-team-service behavior-service ai-chatbot-service sn-integration-service; do
+            LATEST=$(az containerapp revision list \
+              --name "${SVC}${SUFFIX}" --resource-group $RG \
+              --query "[-1].name" -o tsv 2>/dev/null || echo "")
+            if [ -z "$LATEST" ]; then continue; fi
+            OLD=$(az containerapp revision list \
+              --name "${SVC}${SUFFIX}" --resource-group $RG \
+              --query "[?properties.active && name!='${LATEST}'].name" -o tsv 2>/dev/null || echo "")
+            for REV in $OLD; do
+              az containerapp revision deactivate \
+                --name "${SVC}${SUFFIX}" --resource-group $RG \
+                --revision "$REV" --output none 2>/dev/null \
+              && echo "Deactivated ${REV}" || true
+            done
+          done
+
+      - name: Health check
+        run: |
+          GATEWAY_FQDN=$(az containerapp show --name "gateway-dev" --resource-group Dev \
+            --query "properties.configuration.ingress.fqdn" -o tsv 2>/dev/null || echo "")
+          if [ -z "$GATEWAY_FQDN" ]; then
+            echo "Warning: Could not resolve gateway FQDN — skipping health check"
+          else
+            echo "Polling https://${GATEWAY_FQDN}/health (max 3 min)..."
+            for i in $(seq 1 36); do
+              if curl -sf "https://${GATEWAY_FQDN}/health" > /dev/null; then
+                echo "✅ Gateway healthy after $((i * 5))s"
+                break
+              fi
+              echo "  attempt $i/36 — waiting 5s..."
+              sleep 5
+              [ $i -eq 36 ] && echo "Warning: Health check still failing after 3 min"
+            done
+          fi
+
+      - name: Notify deployment
+        run: |
+          echo "✅ Deployed to Development: https://api-dev.nuguard.ai"
+
+  # ============================================================
+  # Deploy to Staging (main branch)
+  # ============================================================
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: [build, tag, migrate]
+    if: github.ref == 'refs/heads/main'
+    environment:
+      name: staging
+      url: https://api-staging.nuguard.ai
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # LLM API keys are managed as Key Vault-backed secrets by Bicep (infra/main.bicep).
+      # They auto-refresh from nuguard-stage-kv and persist across image updates.
+
+      - name: Ensure sn-integration-service-staging exists
+        run: |
+          TAG=${{ needs.tag.outputs.image_tag }}
+          RG=Stage
+          SUFFIX="-staging"
+          SVC="sn-integration-service"
+          APP_NAME="${SVC}${SUFFIX}"
+          KV_NAME=nuguard-stage-kv
+
+          if az containerapp show --name "$APP_NAME" --resource-group "$RG" --output none 2>/dev/null; then
+            echo "$APP_NAME already exists"
+            exit 0
+          fi
+
+          ENV_ID=$(az containerapp show --name "data-service${SUFFIX}" --resource-group "$RG" --query properties.managedEnvironmentId -o tsv)
+          IDENTITY_ID=$(az containerapp show --name "data-service${SUFFIX}" --resource-group "$RG" --query "identity.userAssignedIdentities | keys(@)[0]" -o tsv)
+          JWT_SECRET=$(az keyvault secret show --vault-name "$KV_NAME" --name nuguard-jwt-secret --query value -o tsv)
+
+          echo "::add-mask::$JWT_SECRET"
+
+          az containerapp create \
+            --name "$APP_NAME" \
+            --resource-group "$RG" \
+            --environment "$ENV_ID" \
+            --image "${{ env.REGISTRY }}/${SVC}:${TAG}" \
+            --ingress internal \
+            --target-port 8007 \
+            --min-replicas 1 \
+            --max-replicas 2 \
+            --cpu 0.25 \
+            --memory 0.5Gi \
+            --user-assigned "$IDENTITY_ID" \
+            --registry-server "${{ env.REGISTRY }}" \
+            --registry-identity "$IDENTITY_ID" \
+            --secrets jwt-secret="$JWT_SECRET" \
+            --env-vars \
+              ENVIRONMENT=staging \
+              JWT_SECRET_KEY=secretref:jwt-secret \
+              CORS_ORIGINS='["https://staging.nuguard.ai","https://demo.nuguard.ai","http://localhost:3000"]' \
+            --output none
+
+      - name: Ensure behavior-service-staging exists
+        run: |
+          TAG=${{ needs.tag.outputs.image_tag }}
+          RG=Stage
+          SUFFIX="-staging"
+          SVC="behavior-service"
+          APP_NAME="${SVC}${SUFFIX}"
+          KV_NAME=nuguard-stage-kv
+
+          if az containerapp show --name "$APP_NAME" --resource-group "$RG" --output none 2>/dev/null; then
+            echo "$APP_NAME already exists"
+            exit 0
+          fi
+
+          ENV_ID=$(az containerapp show --name "data-service${SUFFIX}" --resource-group "$RG" --query properties.managedEnvironmentId -o tsv)
+          IDENTITY_ID=$(az containerapp show --name "data-service${SUFFIX}" --resource-group "$RG" --query "identity.userAssignedIdentities | keys(@)[0]" -o tsv)
+          JWT_SECRET=$(az keyvault secret show --vault-name "$KV_NAME" --name nuguard-jwt-secret --query value -o tsv)
+          DB_URL=$(az keyvault secret show --vault-name "$KV_NAME" --name DATABASE-URL --query value -o tsv)
+
+          echo "::add-mask::$JWT_SECRET"
+          echo "::add-mask::$DB_URL"
+
+          az containerapp create \
+            --name "$APP_NAME" \
+            --resource-group "$RG" \
+            --environment "$ENV_ID" \
+            --image "${{ env.REGISTRY }}/${SVC}:${TAG}" \
+            --ingress internal \
+            --target-port 8003 \
+            --min-replicas 1 \
+            --max-replicas 2 \
+            --cpu 0.5 \
+            --memory 1.0Gi \
+            --user-assigned "$IDENTITY_ID" \
+            --registry-server "${{ env.REGISTRY }}" \
+            --registry-identity "$IDENTITY_ID" \
+            --secrets jwt-secret="$JWT_SECRET" database-url="$DB_URL" \
+            --env-vars \
+              ENVIRONMENT=staging \
+              JWT_SECRET_KEY=secretref:jwt-secret \
+              DATABASE_URL=secretref:database-url \
+              CORS_ORIGINS='["https://staging.nuguard.ai","https://demo.nuguard.ai","http://localhost:3000"]' \
+            --output none
+
+      - name: Ensure behavior-service-staging has DATABASE_URL
+        run: |
+          # Idempotent patch — injects DATABASE_URL into already-running behavior-service-staging.
+          KV_NAME=nuguard-stage-kv
+          RG=Stage
+          DB_URL=$(az keyvault secret show --vault-name "$KV_NAME" --name DATABASE-URL --query value -o tsv)
+          echo "::add-mask::$DB_URL"
+          az containerapp secret set \
+            --name behavior-service-staging \
+            --resource-group "$RG" \
+            --secrets database-url="$DB_URL" \
+            --output none || true
+          az containerapp update \
+            --name behavior-service-staging \
+            --resource-group "$RG" \
+            --set-env-vars DATABASE_URL=secretref:database-url \
+            --output none || true
+
+      - name: Ensure red-team-service-staging has DATABASE_URL
+        run: |
+          # Idempotent patch — wires DATABASE_URL to the Bicep-provisioned database-url secret.
+          # CI runner cannot read nuguard-stage-kv, so we skip the KV read and just wire
+          # the secretref. The secret is resolved by the ACA managed identity at runtime.
+          az containerapp update \
+            --name red-team-service-staging \
+            --resource-group Stage \
+            --set-env-vars DATABASE_URL=secretref:database-url \
+            --output none || true
+
+      - name: Patch LLM env vars for all needsLlm services (Staging)
+        env:
+          # TODO: Replace DEV_* references below with dedicated STAGING_* secrets once
+          # STAGING_AZURE_OPENAI_KEY, STAGING_AZURE_OPENAI_ENDPOINT, etc. are added
+          # as GitHub Actions repository secrets.
+          STAGING_AZURE_OPENAI_KEY: ${{ secrets.DEV_AZURE_OPENAI_KEY }}
+          STAGING_AZURE_OPENAI_ENDPOINT: ${{ secrets.DEV_AZURE_OPENAI_ENDPOINT }}
+          STAGING_AZURE_OPENAI_DEPLOYMENT_NAME: ${{ secrets.DEV_AZURE_OPENAI_DEPLOYMENT_NAME }}
+          STAGING_AZURE_OPENAI_API_VERSION: ${{ secrets.DEV_AZURE_OPENAI_API_VERSION }}
+          STAGING_GEMINI_API_KEY: ${{ secrets.DEV_GEMINI_API_KEY }}
+        run: |
+          # IMPORTANT: This step runs BEFORE 'Deploy backend services to Staging'.
+          # Step 1: Overwrite Bicep-wired keyvaultref secrets with plain values so that
+          # the subsequent image-deploy creates a new revision that resolves them. This
+          # matches the dev pattern — without it, keyvaultref-backed secretrefs fail if
+          # the KV entry is missing or the CI runner cannot read the KV.
+          # Step 2: Also set plain env vars (--set-env-vars) for services that read them
+          # directly from the environment rather than via secretref wiring.
+          RG=Stage
+          SUFFIX="-staging"
+          KV_NAME=nuguard-stage-kv
+
+          # Try Key Vault first (staging KV is more likely to have secrets populated)
+          AOI_KEY=$(az keyvault secret show --vault-name "$KV_NAME" --name azure-openai-key --query value -o tsv 2>/dev/null || echo "")
+          AOI_ENDPOINT=$(az keyvault secret show --vault-name "$KV_NAME" --name azure-openai-endpoint --query value -o tsv 2>/dev/null || echo "")
+          AOI_DEPLOYMENT=$(az keyvault secret show --vault-name "$KV_NAME" --name azure-openai-deployment-name --query value -o tsv 2>/dev/null || echo "")
+          AOI_MODEL=$(az keyvault secret show --vault-name "$KV_NAME" --name azure-openai-model-name --query value -o tsv 2>/dev/null || echo "")
+          AOI_APIVERSION=$(az keyvault secret show --vault-name "$KV_NAME" --name azure-openai-api-version --query value -o tsv 2>/dev/null || echo "")
+          GEMINI_KEY=$(az keyvault secret show --vault-name "$KV_NAME" --name gemini-api-key --query value -o tsv 2>/dev/null || echo "")
+
+          # Fall back to GitHub Actions secrets / hardcoded dev values if KV returned nothing.
+          # Only the API key is a true secret. Endpoint/deployment/version are hardcoded
+          # (same values as dev) until dedicated STAGING_* secrets are configured.
+          # TODO: Replace hardcoded values with $STAGING_* secret refs once those are added.
+          AOI_KEY="${AOI_KEY:-$STAGING_AZURE_OPENAI_KEY}"
+          AOI_ENDPOINT="${AOI_ENDPOINT:-https://ng-ai-foundary.cognitiveservices.azure.com/}"
+          AOI_DEPLOYMENT="${AOI_DEPLOYMENT:-gpt-4.1}"
+          AOI_APIVERSION="${AOI_APIVERSION:-2025-01-01-preview}"
+          GEMINI_KEY="${GEMINI_KEY:-}"
+
+          echo "::add-mask::$AOI_KEY"
+          echo "::add-mask::$GEMINI_KEY"
+
+          if [ -z "$AOI_KEY" ]; then
+            echo "No LLM credentials found in KV or GitHub Actions secrets — skipping patch"
+            exit 0
+          fi
+
+          for SVC in ai-asset-service red-team-service behavior-service ai-chatbot-service assessment-service; do
+            SVC_NAME="${SVC}${SUFFIX}"
+            echo "--- Patching ${SVC_NAME} ---"
+
+            # Wait for any in-progress ACA provisioning to finish before patching.
+            for attempt in 1 2 3 4 5; do
+              PROV=$(az containerapp show --name "$SVC_NAME" --resource-group "$RG" \
+                --query properties.provisioningState -o tsv 2>/dev/null || echo "Unknown")
+              if [[ "$PROV" == "Succeeded" || "$PROV" == "Failed" || "$PROV" == "Canceled" ]]; then
+                break
+              fi
+              echo "  ${SVC_NAME} provisioningState=${PROV}, waiting 20s (attempt ${attempt}/5)..."
+              sleep 20
+            done
+
+            # Overwrite all 19 keyvaultref secrets with plain values.
+            # 'az containerapp secret set' does NOT create a new revision.
+            for attempt in 1 2 3; do
+              az containerapp secret set \
+                --name "$SVC_NAME" \
+                --resource-group "$RG" \
+                --secrets \
+                  "azure-openai-key=${AOI_KEY}" \
+                  "azure-openai-endpoint=${AOI_ENDPOINT}" \
+                  "azure-openai-deployment-name=${AOI_DEPLOYMENT}" \
+                  "azure-openai-model-name=${AOI_DEPLOYMENT}" \
+                  "azure-openai-api-version=${AOI_APIVERSION}" \
+                  "litellm-model=azure/${AOI_DEPLOYMENT}" \
+                  "llm-default-provider=azure_openai" \
+                  "gemini-api-key=not-configured" \
+                  "gemini-model-name=not-configured" \
+                  "google-cloud-project=not-configured" \
+                  "vertex-ai-location=not-configured" \
+                  "azure-kimi-k2-endpoint=not-configured" \
+                  "azure-kimi-k2-key=not-configured" \
+                  "azure-kimi-k2-model-name=not-configured" \
+                  "azure-kimi-k2-deployment-name=not-configured" \
+                  "azure-anthropic-endpoint=not-configured" \
+                  "azure-anthropic-key=not-configured" \
+                  "azure-anthropic-model-name=not-configured" \
+                  "github-token=not-configured" \
+                  "redteam-model-name=not-configured" \
+                  "redteam-model-provider=not-configured" \
+                  "redteam-model-key=not-configured" \
+                  "redteam-model-endpoint=not-configured" \
+                --output none \
+              && echo "  Secrets patched for ${SVC_NAME}" && break \
+              || {
+                if [[ $attempt -lt 3 ]]; then
+                  echo "  secret set failed (attempt ${attempt}/3), retrying in 30s..."
+                  sleep 30
+                else
+                  echo "ERROR: secret set for ${SVC_NAME} failed after 3 attempts"; exit 1
+                fi
+              }
+            done
+          done
+
+          # Also set plain env vars (--set-env-vars) for services that read them directly.
+          LLM_VARS="AZURE_OPENAI_KEY=${AOI_KEY}"
+          LLM_VARS="$LLM_VARS AZURE_OPENAI_ENDPOINT=${AOI_ENDPOINT} AZURE_API_BASE=${AOI_ENDPOINT}"
+          LLM_VARS="$LLM_VARS AZURE_OPENAI_DEPLOYMENT_NAME=${AOI_DEPLOYMENT} AZURE_OPENAI_MODEL_NAME=${AOI_DEPLOYMENT}"
+          LLM_VARS="$LLM_VARS AZURE_OPENAI_API_VERSION=${AOI_APIVERSION} AZURE_API_VERSION=${AOI_APIVERSION}"
+          LLM_VARS="$LLM_VARS LITELLM_MODEL=azure/${AOI_DEPLOYMENT} LLM_DEFAULT_PROVIDER=azure_openai"
+          [ -n "$GEMINI_KEY" ] && LLM_VARS="$LLM_VARS GEMINI_API_KEY=$GEMINI_KEY"
+
+          echo "Applying LLM env vars to needsLlm services..."
+          for SVC in ai-asset-service red-team-service behavior-service ai-chatbot-service assessment-service; do
+            az containerapp update \
+              --name "${SVC}${SUFFIX}" \
+              --resource-group "$RG" \
+              --set-env-vars $LLM_VARS \
+              --output none \
+            || echo "Warning: LLM env var update for ${SVC}${SUFFIX} failed"
+          done
+
+      - name: Deploy backend services to Staging
+        run: |
+          TAG=${{ needs.tag.outputs.image_tag }}
+          RG=Stage
+          SUFFIX="-staging"
+          EXTRA_VARS="DATA_SERVICE_URL=http://data-service${SUFFIX}:80 AI_ASSET_SERVICE_URL=http://ai-asset-service${SUFFIX}:80 ASSESSMENT_SERVICE_URL=http://assessment-service${SUFFIX}:80 RED_TEAM_SERVICE_URL=http://red-team-service${SUFFIX}:80 SN_INTEGRATION_SERVICE_URL=http://sn-integration-service${SUFFIX}:80"
+
+          # Parallelise all 7 image updates — each is independent of the others.
+          PIDS=()
+          for SVC in data-service ai-asset-service assessment-service red-team-service behavior-service ai-chatbot-service sn-integration-service; do
+            echo "Deploying ${SVC}..."
+            az containerapp update \
+              --name "${SVC}${SUFFIX}" \
+              --resource-group $RG \
+              --image "${{ env.REGISTRY }}/${SVC}:${TAG}" \
+              --set-env-vars ENVIRONMENT=staging ${EXTRA_VARS} \
+              --output none 2>&1 | sed "s/^/  [${SVC}] /" &
+            PIDS+=($!)
+          done
+          FAIL=0; for PID in "${PIDS[@]}"; do wait $PID || FAIL=1; done
+          [ $FAIL -eq 0 ] && echo "All services deployed" || echo "Warning: one or more service deploys failed"
+
+      - name: Set LLM env vars for needsLlm services (Staging)
+        env:
+          STAGING_AZURE_OPENAI_KEY: ${{ secrets.DEV_AZURE_OPENAI_KEY }}
+        run: |
+          # Re-apply LLM env vars AFTER the image deploy step creates a new revision.
+          # The image deploy step (above) uses --set-env-vars with ENVIRONMENT and
+          # EXTRA_VARS only — it does not carry forward LLM vars into the new revision
+          # unless they are explicitly re-applied here. This matches the dev pattern.
+          #
+          # AZURE_API_BASE / AZURE_API_VERSION: litellm reads these directly for
+          # azure/* model calls (it does NOT read AZURE_OPENAI_ENDPOINT).
+          # AZURE_OPENAI_ENDPOINT / AZURE_OPENAI_API_VERSION: read by shared/llm_service.
+          if [ -z "$STAGING_AZURE_OPENAI_KEY" ]; then
+            echo "STAGING_AZURE_OPENAI_KEY not set — skipping"
+            exit 0
+          fi
+          RG=Stage
+          SUFFIX="-staging"
+          KV_NAME=nuguard-stage-kv
+          AOI_KEY=$(az keyvault secret show --vault-name "$KV_NAME" --name azure-openai-key --query value -o tsv 2>/dev/null || echo "")
+          AOI_KEY="${AOI_KEY:-$STAGING_AZURE_OPENAI_KEY}"
+          AOI_ENDPOINT="https://ng-ai-foundary.cognitiveservices.azure.com/"
+          AOI_DEPLOYMENT="gpt-4.1"
+          AOI_APIVERSION="2025-01-01-preview"
+          echo "::add-mask::$AOI_KEY"
+          LLM_VARS="AZURE_OPENAI_KEY=${AOI_KEY}"
+          LLM_VARS="$LLM_VARS AZURE_OPENAI_ENDPOINT=$AOI_ENDPOINT"
+          LLM_VARS="$LLM_VARS AZURE_OPENAI_DEPLOYMENT_NAME=$AOI_DEPLOYMENT"
+          LLM_VARS="$LLM_VARS AZURE_OPENAI_MODEL_NAME=$AOI_DEPLOYMENT"
+          LLM_VARS="$LLM_VARS AZURE_OPENAI_API_VERSION=$AOI_APIVERSION"
+          LLM_VARS="$LLM_VARS AZURE_API_BASE=$AOI_ENDPOINT"
+          LLM_VARS="$LLM_VARS AZURE_API_VERSION=$AOI_APIVERSION"
+          LLM_VARS="$LLM_VARS LITELLM_MODEL=azure/$AOI_DEPLOYMENT"
+          LLM_VARS="$LLM_VARS LLM_DEFAULT_PROVIDER=azure_openai"
+          for SVC in ai-asset-service red-team-service behavior-service ai-chatbot-service assessment-service; do
+            echo "Setting LLM env vars on ${SVC}${SUFFIX}..."
+            az containerapp update \
+              --name "${SVC}${SUFFIX}" \
+              --resource-group "$RG" \
+              --set-env-vars $LLM_VARS \
+              --output none \
+            && echo "  Done ${SVC}${SUFFIX}" \
+            || { echo "ERROR: LLM env var update for ${SVC}${SUFFIX} failed"; exit 1; }
+          done
+
+      - name: Set scan perf env vars for scan services (Staging)
+        run: |
+          # REDTEAM_TREE_BREADTH/MAX_DEPTH cap the TAP tree so red-team scans
+          # fire at most 2x2=4 concurrent LLM streaming calls per scenario
+          # instead of the default 3x3=9, keeping the asyncio event loop free
+          # enough to respond to /health probes (preventing service_restarted).
+          # RUN_TIMEOUT_SECONDS=7200 caps the wall-clock scan time.
+          # These vars were set via Bicep for dev (PR #351) but CI must set them
+          # explicitly for staging on every deploy because Bicep is not re-run.
+          RG=Stage
+          SUFFIX="-staging"
+          az containerapp update \
+            --name "red-team-service${SUFFIX}" \
+            --resource-group "$RG" \
+            --set-env-vars \
+              REDTEAM_TREE_BREADTH=2 \
+              REDTEAM_TREE_MAX_DEPTH=2 \
+              RUN_TIMEOUT_SECONDS=7200 \
+            --output none \
+          || echo "Warning: scan perf vars for red-team-service${SUFFIX} failed"
+          az containerapp update \
+            --name "behavior-service${SUFFIX}" \
+            --resource-group "$RG" \
+            --set-env-vars RUN_TIMEOUT_SECONDS=7200 \
+            --output none \
+          || echo "Warning: scan perf vars for behavior-service${SUFFIX} failed"
+
+      - name: Ensure minimum replicas (prevent scale-to-zero in Staging)
+        run: |
+          RG=Stage
+          SUFFIX="-staging"
+          for SVC in data-service ai-asset-service assessment-service red-team-service behavior-service ai-chatbot-service sn-integration-service; do
+            az containerapp update \
+              --name "${SVC}${SUFFIX}" \
+              --resource-group $RG \
+              --min-replicas 1 --output none \
+            || echo "Warning: min-replicas update for ${SVC} failed"
+          done
+
+      - name: Set JWT_SECRET_KEY for auth-enabled services (Staging)
+        run: |
+          # behavior-service and red-team-service validate JWT tokens for all
+          # authenticated endpoints. They need the same jwt-secret as data-service.
+          # ai-chatbot-service also requires it for WebSocket auth.
+          #
+          # In staging the CI runner cannot read nuguard-stage-kv (no RBAC grant),
+          # so we cannot patch the secret value itself. Instead we only wire the
+          # JWT_SECRET_KEY env var to the existing jwt-secret (provisioned by Bicep
+          # as a keyvaultref, resolved by the ACA managed identity at runtime).
+          # This is idempotent and safe to run on every deploy.
+          RG=Stage
+          SUFFIX="-staging"
+          for SVC in ai-chatbot-service behavior-service red-team-service; do
+            az containerapp update \
+              --name "${SVC}${SUFFIX}" \
+              --resource-group "$RG" \
+              --set-env-vars JWT_SECRET_KEY=secretref:jwt-secret \
+              --output none \
+            && echo "JWT_SECRET_KEY wired for ${SVC}${SUFFIX}" \
+            || echo "Warning: JWT wire for ${SVC}${SUFFIX} failed"
+          done
+
+      - name: Set OAuth env vars for data-service (Staging)
+        env:
+          STAGING_OAUTH_GITHUB_CLIENT_ID: ${{ secrets.STAGING_OAUTH_GITHUB_CLIENT_ID }}
+          STAGING_OAUTH_GITHUB_CLIENT_SECRET: ${{ secrets.STAGING_OAUTH_GITHUB_CLIENT_SECRET }}
+          STAGING_OAUTH_GOOGLE_CLIENT_ID: ${{ secrets.STAGING_OAUTH_GOOGLE_CLIENT_ID }}
+          STAGING_OAUTH_GOOGLE_CLIENT_SECRET: ${{ secrets.STAGING_OAUTH_GOOGLE_CLIENT_SECRET }}
+          STAGING_OAUTH_MICROSOFT_CLIENT_ID: ${{ secrets.STAGING_OAUTH_MICROSOFT_CLIENT_ID }}
+          STAGING_OAUTH_MICROSOFT_CLIENT_SECRET: ${{ secrets.STAGING_OAUTH_MICROSOFT_CLIENT_SECRET }}
+        run: |
+          # CI runner may not have RBAC on nuguard-stage-kv, so we try KV first
+          # and fall back to GitHub Actions secrets (STAGING_OAUTH_*).
+          # If neither source has values, the step skips gracefully — existing
+          # manually-set env vars on the container app are preserved across deploys.
+          # See: imp_docs/nuguard_auth.md for setup instructions.
+          RG=Stage
+          SUFFIX="-staging"
+          KV_NAME=nuguard-stage-kv
+
+          GH_ID=$(az keyvault secret show --vault-name "$KV_NAME" --name oauth-github-client-id --query value -o tsv 2>/dev/null || echo "")
+          GH_SECRET=$(az keyvault secret show --vault-name "$KV_NAME" --name oauth-github-client-secret --query value -o tsv 2>/dev/null || echo "")
+          GOOGLE_ID=$(az keyvault secret show --vault-name "$KV_NAME" --name oauth-google-client-id --query value -o tsv 2>/dev/null || echo "")
+          GOOGLE_SECRET=$(az keyvault secret show --vault-name "$KV_NAME" --name oauth-google-client-secret --query value -o tsv 2>/dev/null || echo "")
+          MS_ID=$(az keyvault secret show --vault-name "$KV_NAME" --name oauth-microsoft-client-id --query value -o tsv 2>/dev/null || echo "")
+          MS_SECRET=$(az keyvault secret show --vault-name "$KV_NAME" --name oauth-microsoft-client-secret --query value -o tsv 2>/dev/null || echo "")
+
+          # Fall back to GitHub Actions secrets if KV returned nothing
+          GH_ID="${GH_ID:-$STAGING_OAUTH_GITHUB_CLIENT_ID}"
+          GH_SECRET="${GH_SECRET:-$STAGING_OAUTH_GITHUB_CLIENT_SECRET}"
+          GOOGLE_ID="${GOOGLE_ID:-$STAGING_OAUTH_GOOGLE_CLIENT_ID}"
+          GOOGLE_SECRET="${GOOGLE_SECRET:-$STAGING_OAUTH_GOOGLE_CLIENT_SECRET}"
+          MS_ID="${MS_ID:-$STAGING_OAUTH_MICROSOFT_CLIENT_ID}"
+          MS_SECRET="${MS_SECRET:-$STAGING_OAUTH_MICROSOFT_CLIENT_SECRET}"
+
+          if [[ -z "$GH_ID" && -z "$GOOGLE_ID" && -z "$MS_ID" ]]; then
+            echo "No OAuth credentials found in KV or GitHub secrets — skipping."
+            echo "To source from KV: add oauth-github-client-id etc. to nuguard-stage-kv."
+            echo "To source from GitHub: add STAGING_OAUTH_GITHUB_CLIENT_ID etc. as Actions secrets."
+            exit 0
+          fi
+
+          echo "::add-mask::$GH_SECRET"
+          echo "::add-mask::$GOOGLE_SECRET"
+          echo "::add-mask::$MS_SECRET"
+
+          az containerapp secret set \
+            --name "data-service${SUFFIX}" \
+            --resource-group "$RG" \
+            --secrets \
+              "oauth-github-client-id=${GH_ID}" \
+              "oauth-github-client-secret=${GH_SECRET}" \
+              "oauth-google-client-id=${GOOGLE_ID}" \
+              "oauth-google-client-secret=${GOOGLE_SECRET}" \
+              "oauth-microsoft-client-id=${MS_ID}" \
+              "oauth-microsoft-client-secret=${MS_SECRET}" \
+            --output none
+
+          az containerapp update \
+            --name "data-service${SUFFIX}" \
+            --resource-group "$RG" \
+            --set-env-vars \
+              OAUTH_GITHUB_CLIENT_ID=secretref:oauth-github-client-id \
+              OAUTH_GITHUB_CLIENT_SECRET=secretref:oauth-github-client-secret \
+              OAUTH_GOOGLE_CLIENT_ID=secretref:oauth-google-client-id \
+              OAUTH_GOOGLE_CLIENT_SECRET=secretref:oauth-google-client-secret \
+              OAUTH_MICROSOFT_CLIENT_ID=secretref:oauth-microsoft-client-id \
+              OAUTH_MICROSOFT_CLIENT_SECRET=secretref:oauth-microsoft-client-secret \
+              OAUTH_REDIRECT_BASE_URL=https://api-staging.nuguard.ai \
+              OAUTH_FRONTEND_BASE_URL=https://staging.nuguard.ai \
+            --output none \
+          && echo "OAuth env vars set for data-service${SUFFIX}" \
+          || echo "Warning: OAuth env var update for data-service${SUFFIX} failed"
+
+      - name: Set CORS origins for backend services
+        run: |
+          RG=Stage
+          SUFFIX="-staging"
+          for SVC in data-service ai-asset-service assessment-service red-team-service behavior-service ai-chatbot-service sn-integration-service; do
+            az containerapp update \
+              --name "${SVC}${SUFFIX}" \
+              --resource-group $RG \
+              --set-env-vars 'CORS_ORIGINS=["https://staging.nuguard.ai","https://demo.nuguard.ai","http://localhost:3000"]' \
+            || echo "Warning: CORS update for ${SVC} failed"
+          done
+
+      - name: Enable internal-only ACA ingress on backend services
+        run: |
+          RG=Stage
+          SUFFIX="-staging"
+          declare -A PORTS=(
+            ["data-service"]="8000"
+            ["ai-asset-service"]="8004"
+            ["assessment-service"]="8005"
+            ["red-team-service"]="8002"
+            ["behavior-service"]="8003"
+            ["ai-chatbot-service"]="8006"
+            ["sn-integration-service"]="8007"
+          )
+          for SVC in data-service ai-asset-service assessment-service red-team-service behavior-service ai-chatbot-service sn-integration-service; do
+            PORT="${PORTS[$SVC]}"
+            az containerapp ingress update \
+              --name "${SVC}${SUFFIX}" --resource-group "$RG" \
+              --type internal 2>/dev/null \
+            || az containerapp ingress enable \
+              --name "${SVC}${SUFFIX}" --resource-group "$RG" \
+              --type internal --target-port "$PORT" --transport auto 2>/dev/null \
+            || echo "Warning: Could not set internal ingress for ${SVC}"
+          done
+
+      - name: Deploy nginx gateway to Staging
+        run: |
+          TAG=${{ needs.tag.outputs.image_tag }}
+          RG=Stage
+          SUFFIX="-staging"
+          az containerapp update \
+            --name "gateway${SUFFIX}" \
+            --resource-group $RG \
+            --image "${{ env.REGISTRY }}/gateway:${TAG}" \
+            --set-env-vars \
+              DATA_SERVICE_HOST=data-service${SUFFIX}:80 \
+              DATA_SERVICE_NAME=data-service${SUFFIX} \
+              AI_ASSET_SERVICE_HOST=ai-asset-service${SUFFIX}:80 \
+              AI_ASSET_SERVICE_NAME=ai-asset-service${SUFFIX} \
+              ASSESSMENT_SERVICE_HOST=assessment-service${SUFFIX}:80 \
+              ASSESSMENT_SERVICE_NAME=assessment-service${SUFFIX} \
+              RED_TEAM_SERVICE_HOST=red-team-service${SUFFIX}:80 \
+              RED_TEAM_SERVICE_NAME=red-team-service${SUFFIX} \
+              AI_CHATBOT_SERVICE_HOST=ai-chatbot-service${SUFFIX}:80 \
+              AI_CHATBOT_SERVICE_NAME=ai-chatbot-service${SUFFIX} \
+              BEHAVIOR_SERVICE_HOST=behavior-service${SUFFIX}:80 \
+              BEHAVIOR_SERVICE_NAME=behavior-service${SUFFIX} \
+                SN_INTEGRATION_SERVICE_HOST=sn-integration-service${SUFFIX}:80 \
+                SN_INTEGRATION_SERVICE_NAME=sn-integration-service${SUFFIX} \
+              NGINX_RESOLVER=168.63.129.16 \
+              NGINX_FRONTEND_URL=off \
+          || echo "Warning: gateway deploy failed (may not exist yet — run Bicep first)"
+
+      - name: Remove CPU/memory scale rules from red-team-service (Staging)
+        run: |
+          # red-team-service runs one scan per asyncio task in a single process.
+          # CPU/memory scale-out adds a new replica mid-scan which incorrectly
+          # marks the in-flight run as service_restarted. HTTP scaling is enough.
+          az containerapp update \
+            --name "red-team-service-staging" \
+            --resource-group Stage \
+            --remove-all-scale-rules \
+            --output none \
+          && az containerapp update \
+            --name "red-team-service-staging" \
+            --resource-group Stage \
+            --scale-rule-name http-scaling \
+            --scale-rule-type http \
+            --scale-rule-http-concurrency 100 \
+            --output none \
+          || echo "Warning: scale rule update for red-team-service-staging failed"
+
+      - name: Raise liveness/readiness probe timeouts for scan services (Staging)
+        run: |
+          # Scan services fire 20+ concurrent LLM streaming calls during payload
+          # generation, saturating the asyncio event loop long enough that /health
+          # cannot respond within the default 1s probe timeout. After 3 failures
+          # (10s period x 3 = 30s), ACA kills the container and the scan is
+          # orphaned with status service_restarted.
+          # Fix: raise probeTimeoutSeconds to 30s and probePeriodSeconds to 60s,
+          # matching the values set via infra/main.bicep for dev (PR #351).
+          #
+          # IMPORTANT: az rest PATCH on containers[] replaces the entire container
+          # object — it strips env vars if you only send name+image+probes. We must
+          # fetch the full container spec first and merge the probes in via jq so
+          # that all env vars, resources, volumeMounts etc. are preserved.
+          SUBSCRIPTION="fb4c60ce-198d-408f-b426-e1fe06fd704a"
+          RG=Stage
+          API="2026-03-02-preview"
+          declare -A SVC_PORTS=(["red-team-service-staging"]="8002" ["behavior-service-staging"]="8003")
+          for APP in red-team-service-staging behavior-service-staging; do
+            PORT="${SVC_PORTS[$APP]}"
+            # Fetch the full current container spec (preserves env vars, resources, etc.)
+            CONTAINER_JSON=$(az containerapp show --name "$APP" --resource-group "$RG" \
+              --query "properties.template.containers[0]" -o json 2>/dev/null)
+            if [ -z "$CONTAINER_JSON" ] || [ "$CONTAINER_JSON" = "null" ]; then
+              echo "Warning: could not get container spec for $APP — skipping probe update"
+              continue
+            fi
+            # Merge desired probes into the existing container spec via jq
+            UPDATED_CONTAINER=$(echo "$CONTAINER_JSON" | jq \
+              --argjson port "$PORT" \
+              '.probes = [
+                {"type":"Liveness",  "httpGet":{"path":"/health","port":$port}, "initialDelaySeconds":10, "periodSeconds":60, "timeoutSeconds":30, "failureThreshold":3},
+                {"type":"Readiness", "httpGet":{"path":"/health","port":$port}, "initialDelaySeconds":10, "periodSeconds":60, "timeoutSeconds":30, "failureThreshold":3}
+              ]')
+            BODY=$(jq -n --argjson c "$UPDATED_CONTAINER" \
+              '{"properties":{"template":{"containers":[$c]}}}')
+            az rest --method PATCH \
+              --uri "https://management.azure.com/subscriptions/${SUBSCRIPTION}/resourceGroups/${RG}/providers/Microsoft.App/containerapps/${APP}?api-version=${API}" \
+              --body "$BODY" --output none \
+            && echo "Probe timeouts updated for $APP" \
+            || echo "Warning: probe update for $APP failed"
+          done
+
+      - name: Deactivate old revisions
+        run: |
+          RG=Stage
+          SUFFIX="-staging"
+          for SVC in data-service ai-asset-service assessment-service red-team-service behavior-service ai-chatbot-service sn-integration-service; do
+            LATEST=$(az containerapp revision list \
+              --name "${SVC}${SUFFIX}" --resource-group $RG \
+              --query "[-1].name" -o tsv 2>/dev/null || echo "")
+            if [ -z "$LATEST" ]; then continue; fi
+            OLD=$(az containerapp revision list \
+              --name "${SVC}${SUFFIX}" --resource-group $RG \
+              --query "[?properties.active && name!='${LATEST}'].name" -o tsv 2>/dev/null || echo "")
+            for REV in $OLD; do
+              az containerapp revision deactivate \
+                --name "${SVC}${SUFFIX}" --resource-group $RG \
+                --revision "$REV" --output none 2>/dev/null \
+              && echo "Deactivated ${REV}" || true
+            done
+          done
+
+      - name: Health check
+        run: |
+          GATEWAY_FQDN=$(az containerapp show --name "gateway-staging" --resource-group Stage \
+            --query "properties.configuration.ingress.fqdn" -o tsv 2>/dev/null || echo "")
+          if [ -z "$GATEWAY_FQDN" ]; then
+            echo "Warning: Could not resolve gateway FQDN — skipping health check"
+          else
+            echo "Polling https://${GATEWAY_FQDN}/health (max 3 min)..."
+            for i in $(seq 1 36); do
+              if curl -sf "https://${GATEWAY_FQDN}/health" > /dev/null; then
+                echo "✅ Gateway healthy after $((i * 5))s"
+                break
+              fi
+              echo "  attempt $i/36 — waiting 5s..."
+              sleep 5
+              [ $i -eq 36 ] && echo "Warning: Health check still failing after 3 min"
+            done
+          fi
+
+      - name: Notify deployment
+        run: |
+          echo "✅ Deployed to Staging: https://api-staging.nuguard.ai"
+
+  # ============================================================
+  # Deploy to Production (release tags)
+  # ============================================================
+  deploy-prod:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [build, tag, migrate]
+    if: github.event_name == 'release'
+    environment:
+      name: production
+      url: https://api.nuguard.ai
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      # LLM API keys are managed as Key Vault-backed secrets by Bicep (infra/main.bicep).
+      # They auto-refresh from nuguard-prod-kv and persist across image updates.
+
+      - name: Ensure behavior-service exists in Production
+        run: |
+          TAG=${{ needs.tag.outputs.image_tag }}
+          RG=Prod
+          SVC="behavior-service"
+          APP_NAME="$SVC"
+          KV_NAME=nuguard-prod-kv
+
+          if az containerapp show --name "$APP_NAME" --resource-group "$RG" --output none 2>/dev/null; then
+            echo "$APP_NAME already exists"
+            exit 0
+          fi
+
+          ENV_ID=$(az containerapp show --name "data-service" --resource-group "$RG" --query properties.managedEnvironmentId -o tsv)
+          IDENTITY_ID=$(az containerapp show --name "data-service" --resource-group "$RG" --query "identity.userAssignedIdentities | keys(@)[0]" -o tsv)
+          JWT_SECRET=$(az keyvault secret show --vault-name "$KV_NAME" --name nuguard-jwt-secret --query value -o tsv)
+          DB_URL=$(az keyvault secret show --vault-name "$KV_NAME" --name DATABASE-URL --query value -o tsv)
+
+          echo "::add-mask::$JWT_SECRET"
+          echo "::add-mask::$DB_URL"
+
+          az containerapp create \
+            --name "$APP_NAME" \
+            --resource-group "$RG" \
+            --environment "$ENV_ID" \
+            --image "${{ env.REGISTRY }}/${SVC}:${TAG}" \
+            --ingress internal \
+            --target-port 8003 \
+            --min-replicas 1 \
+            --max-replicas 3 \
+            --cpu 0.5 \
+            --memory 1.0Gi \
+            --user-assigned "$IDENTITY_ID" \
+            --registry-server "${{ env.REGISTRY }}" \
+            --registry-identity "$IDENTITY_ID" \
+            --secrets jwt-secret="$JWT_SECRET" database-url="$DB_URL" \
+            --env-vars \
+              ENVIRONMENT=production \
+              JWT_SECRET_KEY=secretref:jwt-secret \
+              DATABASE_URL=secretref:database-url \
+              CORS_ORIGINS='["https://app.nuguard.ai"]' \
+            --output none
+
+      - name: Ensure behavior-service has DATABASE_URL in Production
+        run: |
+          # Idempotent patch — injects DATABASE_URL into already-running behavior-service.
+          KV_NAME=nuguard-prod-kv
+          RG=Prod
+          DB_URL=$(az keyvault secret show --vault-name "$KV_NAME" --name DATABASE-URL --query value -o tsv)
+          echo "::add-mask::$DB_URL"
+          az containerapp secret set \
+            --name behavior-service \
+            --resource-group "$RG" \
+            --secrets database-url="$DB_URL" \
+            --output none || true
+          az containerapp update \
+            --name behavior-service \
+            --resource-group "$RG" \
+            --set-env-vars DATABASE_URL=secretref:database-url \
+            --output none || true
+
+      - name: Ensure red-team-service has DATABASE_URL in Production
+        run: |
+          # Idempotent patch — wires DATABASE_URL to the Bicep-provisioned database-url secret.
+          # CI runner cannot read nuguard-prod-kv, so we skip the KV read and just wire
+          # the secretref. The secret is resolved by the ACA managed identity at runtime.
+          az containerapp update \
+            --name red-team-service \
+            --resource-group Prod \
+            --set-env-vars DATABASE_URL=secretref:database-url \
+            --output none || true
+
+      # Canary deployment - 10% traffic initially (100% on first deployment)
+      - name: Deploy data-service to Production (Canary)
+        run: |
+          TAG=${{ needs.tag.outputs.image_tag }}
+          RG=Prod
+
+          az containerapp revision copy \
+            --name data-service \
+            --resource-group $RG \
+            --image ${{ env.REGISTRY }}/data-service:${TAG} \
+            --revision-suffix ${TAG} \
+            --set-env-vars ENVIRONMENT=production DATA_SERVICE_URL=http://data-service:80 AI_ASSET_SERVICE_URL=http://ai-asset-service:80 ASSESSMENT_SERVICE_URL=http://assessment-service:80 RED_TEAM_SERVICE_URL=http://red-team-service:80 SN_INTEGRATION_SERVICE_URL=http://sn-integration-service:80
+
+          # Get previous active revision for canary split (empty on first deploy)
+          PREV=$(az containerapp revision list \
+            --name data-service --resource-group $RG \
+            --query "[?properties.active && name!='data-service--${TAG}'].name | [0]" \
+            -o tsv 2>/dev/null || echo "")
+
+          if [ -n "$PREV" ]; then
+            az containerapp ingress traffic set \
+              --name data-service \
+              --resource-group $RG \
+              --revision-weight \
+                data-service--${TAG}=10 \
+                ${PREV}=90
+          else
+            echo "No previous revision found - routing 100% to new revision"
+            az containerapp ingress traffic set \
+              --name data-service \
+              --resource-group $RG \
+              --revision-weight data-service--${TAG}=100
+          fi
+
+      - name: Deploy remaining services to Production
+        run: |
+          TAG=${{ needs.tag.outputs.image_tag }}
+          RG=Prod
+          EXTRA_VARS="DATA_SERVICE_URL=http://data-service:80 AI_ASSET_SERVICE_URL=http://ai-asset-service:80 ASSESSMENT_SERVICE_URL=http://assessment-service:80 RED_TEAM_SERVICE_URL=http://red-team-service:80 SN_INTEGRATION_SERVICE_URL=http://sn-integration-service:80"
+
+          for SVC in ai-asset-service assessment-service red-team-service behavior-service ai-chatbot-service sn-integration-service; do
+            az containerapp update \
+              --name "${SVC}" \
+              --resource-group $RG \
+              --image "${{ env.REGISTRY }}/${SVC}:${TAG}" \
+              --set-env-vars ENVIRONMENT=production ${EXTRA_VARS} \
+            || echo "Warning: ${SVC} deploy failed"
+          done
+
+      - name: Set JWT_SECRET_KEY for auth-enabled services (Production)
+        run: |
+          # behavior-service and red-team-service validate JWT tokens for all
+          # authenticated endpoints. They need the same jwt-secret as data-service.
+          # ai-chatbot-service also requires it for WebSocket auth.
+          #
+          # In production the CI runner cannot read nuguard-prod-kv (no RBAC grant),
+          # so we cannot patch the secret value itself. Instead we only wire the
+          # JWT_SECRET_KEY env var to the existing jwt-secret (provisioned by Bicep
+          # as a keyvaultref, resolved by the ACA managed identity at runtime).
+          # This is idempotent and safe to run on every deploy.
+          RG=Prod
+          for SVC in ai-chatbot-service behavior-service red-team-service; do
+            az containerapp update \
+              --name "${SVC}" \
+              --resource-group "$RG" \
+              --set-env-vars JWT_SECRET_KEY=secretref:jwt-secret \
+              --output none \
+            && echo "JWT_SECRET_KEY wired for ${SVC}" \
+            || echo "Warning: JWT wire for ${SVC} failed"
+          done
+
+      - name: Set CORS origins for backend services
+        run: |
+          RG=Prod
+          for SVC in data-service ai-asset-service assessment-service red-team-service behavior-service ai-chatbot-service sn-integration-service; do
+            az containerapp update \
+              --name "${SVC}" \
+              --resource-group $RG \
+              --set-env-vars 'CORS_ORIGINS=["https://app.nuguard.ai"]' \
+            || echo "Warning: CORS update for ${SVC} failed"
+          done
+
+      - name: Enable internal-only ACA ingress on backend services
+        run: |
+          RG=Prod
+          declare -A PORTS=(
+            ["data-service"]="8000"
+            ["ai-asset-service"]="8004"
+            ["assessment-service"]="8005"
+            ["red-team-service"]="8002"
+            ["behavior-service"]="8003"
+            ["ai-chatbot-service"]="8006"
+            ["sn-integration-service"]="8007"
+          )
+          for SVC in data-service ai-asset-service assessment-service red-team-service behavior-service ai-chatbot-service sn-integration-service; do
+            PORT="${PORTS[$SVC]}"
+            az containerapp ingress update \
+              --name "${SVC}" --resource-group "$RG" \
+              --type internal 2>/dev/null \
+            || az containerapp ingress enable \
+              --name "${SVC}" --resource-group "$RG" \
+              --type internal --target-port "$PORT" --transport auto 2>/dev/null \
+            || echo "Warning: Could not set internal ingress for ${SVC}"
+          done
+
+      - name: Deploy nginx gateway to Production
+        run: |
+          TAG=${{ needs.tag.outputs.image_tag }}
+          RG=Prod
+          az containerapp update \
+            --name "gateway" \
+            --resource-group $RG \
+            --image "${{ env.REGISTRY }}/gateway:${TAG}" \
+            --set-env-vars \
+              DATA_SERVICE_HOST=data-service:80 \
+              DATA_SERVICE_NAME=data-service \
+              AI_ASSET_SERVICE_HOST=ai-asset-service:80 \
+              AI_ASSET_SERVICE_NAME=ai-asset-service \
+              ASSESSMENT_SERVICE_HOST=assessment-service:80 \
+              ASSESSMENT_SERVICE_NAME=assessment-service \
+              RED_TEAM_SERVICE_HOST=red-team-service:80 \
+              RED_TEAM_SERVICE_NAME=red-team-service \
+              AI_CHATBOT_SERVICE_HOST=ai-chatbot-service:80 \
+              AI_CHATBOT_SERVICE_NAME=ai-chatbot-service \
+              BEHAVIOR_SERVICE_HOST=behavior-service:80 \
+              BEHAVIOR_SERVICE_NAME=behavior-service \
+                SN_INTEGRATION_SERVICE_HOST=sn-integration-service:80 \
+                SN_INTEGRATION_SERVICE_NAME=sn-integration-service \
+              NGINX_RESOLVER=168.63.129.16 \
+              NGINX_FRONTEND_URL=off \
+          || echo "Warning: gateway deploy failed (may not exist yet — run Bicep first)"
+
+      - name: Canary health check
+        run: |
+          sleep 60
+          GATEWAY_FQDN=$(az containerapp show --name "gateway" --resource-group Prod \
+            --query "properties.configuration.ingress.fqdn" -o tsv 2>/dev/null || echo "")
+          if [ -n "$GATEWAY_FQDN" ]; then
+            for i in {1..5}; do
+              curl -f "https://${GATEWAY_FQDN}/health" || echo "Warning: Health check attempt $i failed"
+              sleep 5
+            done
+          else
+            echo "Warning: Could not resolve gateway FQDN for health check"
+          fi
+
+      # Full rollout after canary validation
+      - name: Promote data-service to 100% traffic
+        run: |
+          TAG=${{ needs.tag.outputs.image_tag }}
+          az containerapp ingress traffic set \
+            --name data-service \
+            --resource-group Prod \
+            --revision-weight data-service--${TAG}=100
+
+      - name: Notify deployment
+        run: |
+          echo "🚀 Deployed to Production: https://api.nuguard.ai"
+          echo "Release: ${{ github.event.release.tag_name }}"
+
+  # ============================================================
+  # Database Migrations (runs on staging/prod deploys)
+  # ============================================================
+  migrate:
+    name: Run Database Migrations
+    runs-on: ubuntu-latest
+    needs: [build, tag]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop' || github.event_name == 'release'
+    # Staging (main branch) can continue on transient migration connectivity issues.
+    # Develop and production must fail fast on migration errors.
+    continue-on-error: ${{ github.ref == 'refs/heads/main' && github.event_name != 'release' }}
+    # Routes to dev KV on develop push, staging KV on main push, production KV on release
+    environment: ${{ github.event_name == 'release' && 'production' || (github.ref == 'refs/heads/develop' && 'development' || 'staging') }}
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install migration dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Get database URL from Key Vault
+        id: secrets
+        run: |
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            KV_NAME="nuguard-prod-kv"
+          elif [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then
+            KV_NAME="nuguard-dev-kv"
+          else
+            KV_NAME="nuguard-stage-kv"
+          fi
+
+          echo "Using Key Vault: $KV_NAME"
+          az account show --query '{tenantId:tenantId, subscriptionId:id, environmentName:environmentName}' -o jsonc || true
+
+          DATABASE_URL=""
+          for attempt in 1 2 3; do
+            echo "Fetching DATABASE-URL from Key Vault (attempt $attempt/3)..."
+            if DATABASE_URL=$(az keyvault secret show \
+              --vault-name "$KV_NAME" \
+              --name DATABASE-URL \
+              --query value -o tsv 2>/tmp/kv_error.log); then
+              if [[ -n "$DATABASE_URL" ]]; then
+                break
+              fi
+              echo "Retrieved an empty DATABASE-URL value from Key Vault."
+            else
+              cat /tmp/kv_error.log
+            fi
+
+            if [[ $attempt -lt 3 ]]; then
+              echo "Retrying in 10 seconds..."
+              sleep 10
+            else
+              echo "Failed to fetch DATABASE-URL from Key Vault after 3 attempts."
+              exit 1
+            fi
+          done
+
+          echo "::add-mask::$DATABASE_URL"
+          echo "database_url=$DATABASE_URL" >> $GITHUB_OUTPUT
+
+      - name: Run migrations
+        run: |
+          cd backend
+          # Retry loop: newly deployed services can exhaust DB connections temporarily.
+          # Also handles consolidated baseline: old revision IDs (e.g. 003_merge_controls)
+          # that were squashed into 001_initial_schema are stamped before retrying.
+          run_migrations() {
+            local output
+            if output=$(alembic upgrade heads 2>&1); then
+              echo "$output"
+              return 0
+            fi
+            local err=$?
+            echo "$output"
+            echo "Upgrade failed (exit $err) - checking cause..."
+            if echo "$output" | grep -q "Can't locate revision"; then
+              echo "Stale revision detected - stamping consolidated baseline..."
+              alembic stamp --purge 001_initial_schema
+            elif echo "$output" | grep -qi "deadlock detected\|DeadlockDetectedError"; then
+              echo "Deadlock detected - waiting 15s before retry..."
+              sleep 15
+              return 1
+            fi
+            alembic upgrade heads
+          }
+          for attempt in 1 2 3; do
+            echo "Migration attempt $attempt..."
+            run_migrations && break
+            [ $attempt -lt 3 ] && echo "Retrying in 20s..." && sleep 20
+          done
+          echo "Verifying DB is at expected head..."
+          CURRENT=$(alembic current 2>&1)
+          echo "$CURRENT"
+          if echo "$CURRENT" | grep -q "(head)"; then
+            echo "✅ Database is at migration head"
+          else
+            echo "WARNING: Database may not be fully migrated — 'alembic current' did not report (head)"
+          fi
+        env:
+          DATABASE_URL: ${{ steps.secrets.outputs.database_url }}

@@ -6,13 +6,17 @@
 
 # ─── Project file paths ───────────────────────────────────────────────────────
 sbom: ./pinnacle-bank.sbom.json               # path to pre-generated AI-SBOM JSON
-#source: .      # generate SBOM from source dir (alternative to sbom:)
-source: https://github.com/NuGuardAI/Fintech-App
-github:
-  owner: NuGuardAI
-  repo: Fintech-App
-  branch: main
-  token: ${GITHUB_TOKEN}
+source: .      # app source vendored locally (see README note below) — generate SBOM from source dir
+# Cloning the private NuGuardAI/Fintech-App repo requires a token with cross-repo
+# read access, which the default Actions token doesn't have. The app source is
+# vendored directly into this directory instead so prepublish/CI runs need no
+# GitHub credentials at all.
+#source: https://github.com/NuGuardAI/Fintech-App
+#github:
+#  owner: NuGuardAI
+#  repo: Fintech-App
+#  branch: main
+#  token: ${GITHUB_TOKEN}
 
 policy:
   path: ./cognitive_policy.md       # Cognitive Policy Markdown to enforce during behavior
