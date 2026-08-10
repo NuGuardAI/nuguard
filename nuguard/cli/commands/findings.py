@@ -21,9 +21,19 @@ def findings(
 ) -> None:
     """List findings for TEST_ID.
 
-    TODO: Implement findings retrieval and display.
+    .. note::
+
+        Placeholder. A run-history store (see issue #161) is required before
+        findings from past ``--test-id`` runs can be looked up. Until then,
+        use ``nuguard redteam --output <path>.json`` to write the latest
+        findings to a file and inspect that file directly.
     """
     if ctx.invoked_subcommand is not None:
         return
-    typer.echo("nuguard findings: not yet implemented.")
+    typer.echo(
+        "nuguard findings: not yet implemented. "
+        "Issue #161 tracks adding a run-history store, which this command depends on. "
+        "Workaround: run `nuguard redteam --output findings.json` and inspect the JSON file.",
+        err=True,
+    )
     raise typer.Exit(code=3)

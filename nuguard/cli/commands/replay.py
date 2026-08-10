@@ -21,9 +21,21 @@ def replay(
 ) -> None:
     """Replay TEST_ID deterministically against TARGET.
 
-    TODO: Implement signed trace replay logic.
+    .. note::
+
+        Placeholder. A run-history store plus signed trace replay (see
+        issue #161) is required before a previously-run scan can be
+        byte-for-byte replayed. Until then, re-run the original
+        ``nuguard redteam`` / ``nuguard behavior`` invocation with the
+        same ``nuguard.yaml`` to obtain a comparable result.
     """
     if ctx.invoked_subcommand is not None:
         return
-    typer.echo("nuguard replay: not yet implemented.")
+    typer.echo(
+        "nuguard replay: not yet implemented. "
+        "Issue #161 tracks adding a run-history store with signed trace replay, "
+        "which this command depends on. Workaround: re-run the original "
+        "`nuguard redteam` or `nuguard behavior` command with the same nuguard.yaml.",
+        err=True,
+    )
     raise typer.Exit(code=3)
