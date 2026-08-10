@@ -110,7 +110,7 @@ def analyze(
     llm: bool = typer.Option(False, "--llm", help="Enable LLM enrichment in ATLAS pass."),
     verbose: bool = typer.Option(
         False, "--verbose", "-v",
-        help="Show all 18 NGA rules (pass and fail) with evidence on why each passed.",
+        help="Show all 21 NGA rules (pass and fail) with evidence on why each passed.",
     ),
     output: str = typer.Option(
         None, "--output", "-o",
@@ -641,7 +641,7 @@ def _render_markdown(
         lines += _render_rule_audit_section(
             nga_audit,
             "NGA Rule Audit",
-            "All 18 NGA structural rules — pass/fail status with evidence.",
+            "All 21 NGA structural rules — pass/fail status with evidence.",
         )
 
     # ------------------------------------------------------------------
