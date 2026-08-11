@@ -23,7 +23,7 @@ def _patch_framework_adapter(return_value=None):
 
 def _patch_discover(return_value=("/chat", "message", False, None)):
     return patch(
-        "nuguard.redteam.executor.orchestrator._discover_chat_config",
+        "nuguard.common.endpoint_probe.discover_chat_config_from_sbom",
         return_value=return_value,
     )
 
@@ -258,7 +258,7 @@ class TestSbomDiscovery:
             _patch_client() as MockClient,
             _patch_framework_adapter(None),
             patch(
-                "nuguard.redteam.executor.orchestrator._discover_chat_config",
+                "nuguard.common.endpoint_probe.discover_chat_config_from_sbom",
                 side_effect=RuntimeError("discovery boom"),
             ),
         ):

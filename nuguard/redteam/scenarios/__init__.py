@@ -1,5 +1,4 @@
-"""Attack scenario generators."""
-from .generator import ScenarioGenerator
+"""Attack scenario data types."""
 from .scenario_types import AttackScenario
 
-__all__ = ["AttackScenario", "ScenarioGenerator"]
+__all__ = ["AttackScenario"]
