@@ -16,12 +16,21 @@ the same change without leaving the others unprotected.
 
 from __future__ import annotations
 
+import re
+
 import pytest
 from typer.testing import CliRunner
 
 from nuguard.cli.main import app
 
 runner = CliRunner()
+
+# Rich emits ANSI escape sequences between characters in its styled help
+# panels (e.g. ``\x1b[1;36m-\x1b[0m\x1b[1;36m-target\x1b[0m``), which breaks
+# a literal substring match on flag tokens like ``--target``. Strip them
+# before asserting so the tests pin the semantic help text rather than
+# terminal formatting.
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
 
 # ---------------------------------------------------------------------------
@@ -47,9 +56,14 @@ def test_seed_help_advertises_target_and_canary_options() -> None:
     """Even as a stub, ``nuguard seed --help`` should document its options."""
     result = runner.invoke(app, ["seed", "--help"])
     assert result.exit_code == 0
-    assert "--target" in result.output
-    assert "--seed-file" in result.output
-    assert "--output-canary" in result.output
+    # Strip ANSI escape codes before asserting — see _ANSI_RE rationale at
+    # the top of this file. Rich's per-character styling inserts ESC
+    # sequences between the two dashes of ``--target`` so a literal
+    # substring match fails in CI even though the flag is documented.
+    plain = _ANSI_RE.sub("", result.output)
+    assert "--target" in plain
+    assert "--seed-file" in plain
+    assert "--output-canary" in plain
 
 
 # ---------------------------------------------------------------------------
