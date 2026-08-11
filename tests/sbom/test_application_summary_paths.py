@@ -78,6 +78,93 @@ def test_windows_style_infra_path_matches_hint() -> None:
     assert "Azure" in result["deployment_platforms"]
 
 
+# ---------------------------------------------------------------------------
+# Path-only path-hint tests (regression-pin the actual fix on PR #241)
+# ---------------------------------------------------------------------------
+#
+# These tests use content that does NOT independently trigger Kubernetes/Azure
+# detection — only the path-hint match (e.g. ``docker``, ``infra/``) should
+# cause the file's URL to flow into ``deployment_urls``. Without the path
+# normalization, the raw backslash-separated path never matches the forward
+# slash hint and the URL is silently dropped. Reviewer nit on PR #241:
+# the existing ``test_windows_style_kubernetes_path_matches_hint`` and
+# ``test_windows_style_infra_path_matches_hint`` tests above were vacuous
+# because they happened to pass via content-based detection regardless of
+# the path normalization.
+
+
+def test_windows_style_kubernetes_path_extracts_url_via_path_hint() -> None:
+    """A backslash-separated path containing ``/k8s/`` (with leading slash)
+    must extract URLs from content that does NOT independently trigger
+    Kubernetes detection.
+
+    The content here contains no ``apiVersion:`` and no other Kubernetes
+    marker — the URL is only captured because the path-hint match
+    (``/k8s/`` substring) fires after path normalization converts the
+    backslashes to forward slashes. Without the normalization, the raw
+    path ``myapp\\\\k8s\\\\frontend.yaml`` never matches the ``/k8s/``
+    hint (which requires a forward-slash separator before ``k8s``).
+    """
+    files = [
+        (
+            "myapp\\k8s\\frontend.yaml",
+            "# Plain config with a load balancer URL\n"
+            "url: https://k8s-lb.example.com/api\n",
+        ),
+    ]
+    result = extract_deployment_context(files)
+    assert "https://k8s-lb.example.com/api" in result["deployment_urls"], (
+        f"Expected path-hint to surface URL on Windows k8s path; got "
+        f"{result['deployment_urls']!r}"
+    )
+
+
+def test_windows_style_infra_path_extracts_url_via_path_hint() -> None:
+    """A backslash-separated ``infra`` path must extract URLs from content
+    that does NOT independently trigger Azure/Terraform detection.
+
+    The content here contains no ``azurerm_`` resource and no other Azure
+    marker — the URL is only captured because the path-hint match
+    (``infra/``) fires after path normalization. Without the normalization,
+    ``deployment_urls`` would be empty.
+    """
+    files = [
+        (
+            "infra\\README.md",
+            "README: deploys to https://infra-deploy.example.com/qa\n",
+        ),
+    ]
+    result = extract_deployment_context(files)
+    assert "https://infra-deploy.example.com/qa" in result["deployment_urls"], (
+        f"Expected path-hint to surface URL on Windows infra path; got "
+        f"{result['deployment_urls']!r}"
+    )
+
+
+def test_windows_style_deployment_path_extracts_url_via_path_hint() -> None:
+    """A backslash-separated path containing ``infra/`` (with trailing
+    forward slash) must extract URLs from content that does NOT
+    independently trigger Azure/Terraform detection.
+
+    Pins the path-hint normalization for hints that require a trailing
+    forward slash. The content is a plain text file with a URL but no
+    platform-specific markers. Without path normalization, the raw
+    backslash path ``app\\\\infra\\\\notes.txt`` never matches the
+    ``infra/`` hint and the URL is silently dropped.
+    """
+    files = [
+        (
+            "app\\infra\\notes.txt",
+            "App is deployed at https://app-infra-deploy.example.com/qa\n",
+        ),
+    ]
+    result = extract_deployment_context(files)
+    assert "https://app-infra-deploy.example.com/qa" in result["deployment_urls"], (
+        f"Expected path-hint to surface URL on Windows infra path; got "
+        f"{result['deployment_urls']!r}"
+    )
+
+
 def test_posix_paths_still_work() -> None:
     """Forward-slash paths continue to work after the normalization change."""
     files = [
