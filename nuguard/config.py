@@ -232,13 +232,15 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
     # already does this on lines 199-203; the override must accept the same
     # aliases so users who wrote ``endpoint:`` (the canonical form documented
     # in nuguard.yaml.example line 47) see their override take effect.
+    # Precedence matches the shared block: ``endpoint`` wins over
+    # ``target_endpoint`` when both are set in the same block.
     redteam = data.get("redteam", {}) or {}
     if "target" in redteam:
         flat["target_url"] = redteam["target"]
-    if "target_endpoint" in redteam:
-        flat["target_endpoint"] = redteam["target_endpoint"]
-    elif "endpoint" in redteam:
+    if "endpoint" in redteam:
         flat["target_endpoint"] = redteam["endpoint"]
+    elif "target_endpoint" in redteam:
+        flat["target_endpoint"] = redteam["target_endpoint"]
     if "chat_payload_key" in redteam:
         flat["redteam_chat_payload_key"] = redteam["chat_payload_key"]
     if "chat_payload_list" in redteam:
@@ -430,7 +432,11 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
                 # `endpoint:` and `target_endpoint:` are aliases in the shared
                 # block; mirror that here so a user who writes `behavior.endpoint:`
                 # to override the shared endpoint actually wins the merge.
-                if "endpoint" in b and "target_endpoint" not in b:
+                # Precedence matches the shared block on lines 410-413:
+                # ``endpoint`` wins over ``target_endpoint`` when both are
+                # set in the same block, so we collapse ``endpoint`` into
+                # ``target_endpoint`` unconditionally if it's present.
+                if "endpoint" in b:
                     b["target_endpoint"] = b["endpoint"]
                 b = {**_shared_for_behavior, **b}
             flat["behavior_config"] = b
