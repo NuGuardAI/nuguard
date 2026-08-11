@@ -14,6 +14,7 @@ implemented.
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -22,6 +23,13 @@ from typer.testing import CliRunner
 from nuguard.cli.main import app
 
 runner = CliRunner()
+
+# Rich emits ANSI escape sequences between characters in its styled help
+# panels (e.g. ``\x1b[1;36m-\x1b[0m\x1b[1;36m-verbose\x1b[0m``), which breaks
+# a literal substring match on flag tokens like ``--verbose``. Strip them
+# before asserting so the tests pin the semantic help text rather than
+# terminal formatting.
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
 
 
 # ---------------------------------------------------------------------------
@@ -42,8 +50,13 @@ def test_verbose_flag_exposed_in_help(command: list[str]) -> None:
     """Every in-scope command must document --verbose/--no-verbose."""
     result = runner.invoke(app, command)
     assert result.exit_code == 0, result.output
-    assert "--verbose" in result.output
-    assert "--no-verbose" in result.output
+    # Rich emits ANSI escape sequences between characters in its styled help
+    # panels (e.g. ``\x1b[1;36m-\x1b[0m\x1b[1;36m-verbose\x1b[0m``), which
+    # breaks a literal substring match on ``--verbose`` even though the
+    # CLI correctly exposes the flag. Strip ANSI codes before asserting.
+    plain = _ANSI_RE.sub("", result.output)
+    assert "--verbose" in plain
+    assert "--no-verbose" in plain
 
 
 # ---------------------------------------------------------------------------
