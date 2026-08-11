@@ -174,7 +174,7 @@ async def nuguard_sbom_generate(
 async def nuguard_analyze(
     sbom: Annotated[str, "Path to the AI-SBOM JSON file to analyze."],
     config_path: Annotated[str | None, "Path to nuguard.yaml."] = None,
-    nga_only: Annotated[bool, "Run only the 18 NGA structural rules; skip external tools."] = False,
+    nga_only: Annotated[bool, "Run only the 21 NGA structural rules; skip external tools."] = False,
     min_severity: Annotated[str, "Minimum severity to report: critical | high | medium | low | info."] = "medium",
     source: Annotated[str | None, "Source directory for Checkov / Trivy / Semgrep scans."] = None,
     enable_atlas: Annotated[bool, "Enable MITRE ATLAS technique mapping."] = True,
@@ -188,7 +188,7 @@ async def nuguard_analyze(
 ) -> dict:
     """Run static risk analysis on an AI-SBOM.
 
-    Evaluates 18 NGA structural rules (NGA-001 to NGA-018) and optionally runs
+    Evaluates 21 NGA structural rules (NGA-001 to NGA-021) and optionally runs
     MITRE ATLAS mapping, OSV / Grype CVE scans, Checkov IaC, Trivy container
     scans, and Semgrep AI-security rules. Returns findings grouped by severity.
     Exit status: 'ok' (no findings), 'findings' (issues found), 'error' (crash).
