@@ -226,12 +226,19 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
             if _sa_type == "login_flow" and isinstance(_shared_auth.get("login_flow"), dict):
                 flat["redteam_auth_login_flow"] = _shared_auth["login_flow"]
 
-    # Redteam section — overrides shared target block when keys are present
+    # Redteam section — overrides shared target block when keys are present.
+    # Both `endpoint:` and `target_endpoint:` are accepted as aliases, mirroring
+    # the shared ``target:`` block (which accepts both names). The shared block
+    # already does this on lines 199-203; the override must accept the same
+    # aliases so users who wrote ``endpoint:`` (the canonical form documented
+    # in nuguard.yaml.example line 47) see their override take effect.
     redteam = data.get("redteam", {}) or {}
     if "target" in redteam:
         flat["target_url"] = redteam["target"]
     if "target_endpoint" in redteam:
         flat["target_endpoint"] = redteam["target_endpoint"]
+    elif "endpoint" in redteam:
+        flat["target_endpoint"] = redteam["endpoint"]
     if "chat_payload_key" in redteam:
         flat["redteam_chat_payload_key"] = redteam["chat_payload_key"]
     if "chat_payload_list" in redteam:
@@ -419,7 +426,12 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
                     )
                 if "auth" in shared_target and isinstance(shared_target["auth"], dict):
                     _shared_for_behavior.setdefault("auth", shared_target["auth"])
-                # behavior.* wins — merge shared as the lower-precedence base
+                # behavior.* wins — merge shared as the lower-precedence base.
+                # `endpoint:` and `target_endpoint:` are aliases in the shared
+                # block; mirror that here so a user who writes `behavior.endpoint:`
+                # to override the shared endpoint actually wins the merge.
+                if "endpoint" in b and "target_endpoint" not in b:
+                    b["target_endpoint"] = b["endpoint"]
                 b = {**_shared_for_behavior, **b}
             flat["behavior_config"] = b
 

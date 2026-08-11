@@ -342,6 +342,35 @@ class TestSharedTargetBlock:
         """)
         assert flat["target_endpoint"] == "/api/redteam"
 
+    def test_redteam_endpoint_alias_overrides_shared_endpoint(self) -> None:
+        """The shared ``target:`` block accepts both ``endpoint:`` and
+        ``target_endpoint:`` as aliases for the same field. The redteam
+        override block must accept the same alias so users who write
+        ``redteam.endpoint:`` (the canonical form documented in
+        nuguard.yaml.example line 47) actually see their override take
+        effect. Previously the alias was silently ignored."""
+        flat = _flatten("""
+            target:
+              url: http://shared.test
+              endpoint: /api/chat
+            redteam:
+              endpoint: /api/redteam
+        """)
+        assert flat["target_endpoint"] == "/api/redteam"
+
+    def test_behavior_endpoint_alias_overrides_shared_endpoint(self) -> None:
+        """Same contract for the behavior override block: ``behavior.endpoint:``
+        must override the shared ``target.endpoint:`` value, mirroring the
+        alias-pair behavior the shared block already provides."""
+        flat = _flatten("""
+            target:
+              url: http://shared.test
+              endpoint: /api/chat
+            behavior:
+              endpoint: /api/behavior
+        """)
+        assert flat["behavior_config"]["target_endpoint"] == "/api/behavior"
+
     def test_shared_chat_payload_key_propagates(self) -> None:
         flat = _flatten("""
             target:
