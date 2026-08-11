@@ -361,15 +361,28 @@ def extract_deployment_context(files: Sequence[tuple[str, str]]) -> dict[str, li
         ):
             platforms.append("GCP")
         # Cloud Run is more specific than the generic "GCP" marker above.
-        # Trigger on the Cloud Run service config API or the official
-        # GitHub Actions deploy step (issue #220 — these are the two
-        # most common ways an AI app ships to Cloud Run).
-        if (
-            "serving.knative.dev" in text_lower
-            or "deploy-cloudrun" in text_lower
-            or "run.googleapis.com" in text_lower
-            or ".a.run.app" in text_lower
-            or "cloudrun" in lower_path
+        # Most triggers (the official deploy-cloudrun GitHub Action,
+        # ``run.googleapis.com`` annotations, ``*.a.run.app`` URLs, and
+        # the ``cloudrun`` path substring) are Cloud Run-specific on
+        # their own. The Knative service API (``serving.knative.dev``)
+        # is the only weak signal: Knative Serving is open source and
+        # commonly self-hosted on plain GKE/EKS/AKS, so a manifest
+        # using that API alone is not necessarily Cloud Run. Require
+        # at least one strong co-signal alongside the Knative API to
+        # mark the scan as Cloud Run.
+        knative_api_seen = "serving.knative.dev" in text_lower
+        has_cloud_run_cosignal = (
+            "run.googleapis.com" in text_lower or ".a.run.app" in text_lower
+        )
+        has_cloud_run_only_signal = (
+            "deploy-cloudrun" in text_lower or "cloudrun" in lower_path
+        )
+        # Cloud Run is detected when either:
+        # - any Cloud-Run-specific signal fires (deploy-cloudrun, cloudrun path), OR
+        # - the Knative service API appears together with a Cloud Run
+        #   co-signal (run.googleapis.com annotation or *.a.run.app URL).
+        if has_cloud_run_only_signal or (
+            knative_api_seen and has_cloud_run_cosignal
         ):
             platforms.append("Cloud Run")
         if ".github/workflows/" in lower_path:

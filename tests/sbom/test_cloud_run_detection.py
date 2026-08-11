@@ -200,3 +200,77 @@ spec:
         f"Expected plain Kubernetes, not Cloud Run; got {platforms!r}"
     )
     assert "Kubernetes" in platforms
+
+
+# ---------------------------------------------------------------------------
+# Knative co-signal requirement (reviewer nit on PR #249)
+# ---------------------------------------------------------------------------
+
+
+def test_self_hosted_knative_service_is_not_marked_as_cloud_run() -> None:
+    """A Knative Service YAML without any Cloud Run co-signal must NOT be marked 'Cloud Run'.
+
+    Knative Serving is open source and commonly self-hosted on plain GKE/EKS/AKS,
+    so the Knative service API (``serving.knative.dev/v1``) alone is not
+    Cloud-Run-specific. Without a co-signal like a ``run.googleapis.com``
+    annotation or a ``*.a.run.app`` runtime URL, the scan must surface
+    only ``Kubernetes`` (and ``GCP`` if the cluster is on GCP), not
+    ``Cloud Run``.
+    """
+    files = [
+        (
+            "k8s/knative-service.yaml",
+            """\
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: self-hosted-ai
+  namespace: default
+spec:
+  template:
+    spec:
+      containers:
+      - image: registry.example.com/my-org/ai:latest
+""",
+        ),
+    ]
+    result = extract_deployment_context(files)
+    platforms = result["deployment_platforms"]
+    assert "Cloud Run" not in platforms, (
+        f"Self-hosted Knative should not be marked 'Cloud Run'; got {platforms!r}"
+    )
+    assert "Kubernetes" in platforms
+
+
+def test_knative_service_with_run_app_url_is_marked_as_cloud_run() -> None:
+    """A Knative Service YAML that mentions a ``*.a.run.app`` URL must be marked 'Cloud Run'.
+
+    Pins the positive case that pairs the Knative API (a weak signal) with
+    the ``*.a.run.app`` co-signal (a strong Cloud Run-specific marker).
+    Without the co-signal, the bare Knative API would not be enough.
+    """
+    files = [
+        (
+            "cloudrun/service.yaml",
+            """\
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: ai-service
+spec:
+  template:
+    spec:
+      containers:
+      - image: gcr.io/my-project/ai:latest
+""",
+        ),
+        (
+            "docs/url.txt",
+            "Service is reachable at https://my-ai-service-xyz.a.run.app",
+        ),
+    ]
+    result = extract_deployment_context(files)
+    platforms = result["deployment_platforms"]
+    assert "Cloud Run" in platforms, (
+        f"Knative + *.a.run.app should mark 'Cloud Run'; got {platforms!r}"
+    )
