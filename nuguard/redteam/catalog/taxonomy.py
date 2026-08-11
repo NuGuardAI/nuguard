@@ -32,6 +32,12 @@ class ScenarioCategory(str, Enum):
     AGENT_IDENTITY = "Agent Identity and Credential"  # N
     API_SCHEMA = "API Schema Exploitation"            # S
     SUPPLY_CHAIN = "Supply Chain and CI/CD"           # V
+    # Not a fixed attack shape like the categories above — a chain synthesised
+    # at scan time from >=2 individually-minor weaknesses discovered by
+    # traversing the target's AttackGraph (see nuguard.graph). goal_type on a
+    # W-series spec is the chain's terminal objective, reusing the existing
+    # GoalType values; the spec itself can't be pre-authored with a payload.
+    COMPOSED_EXPLOITATION = "Composed Weakness Chains"  # W
 
 
 class DeliveryChannel(str, Enum):
@@ -106,6 +112,7 @@ class EvidenceType(str, Enum):
     TOKEN_SCOPE = "token_scope"           # OAuth scope presented/received
     REVOCATION_CHECK = "revocation_check" # whether token was actually revoked
     OWNER_TRACE = "owner_trace"           # accountable owner of an action
+    CHAIN_TRACE = "chain_trace"           # ordered node/step sequence a composed chain traversed
 
 
 class SafeExecution(str, Enum):

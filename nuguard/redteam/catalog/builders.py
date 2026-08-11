@@ -1190,4 +1190,11 @@ BUILDER_FACTORIES: dict[str, BuilderFn] = {
     "quality_gate_inference":     _build_quality_gate_inference,
     "artifact_integrity_probe":   _build_artifact_integrity_probe,
     "cross_env_credential_reuse": _build_cross_env_credential_reuse,
+    # ── Composed weakness chains (W-series) ───────────────────────────────────
+    # No fixed payload shape to adapt — the chain is discovered per-target by
+    # traversing the AttackGraph, so there's nothing to build yet. All W-series
+    # specs are enabled=False; this stub exists so the registry stays valid
+    # (every builder_key must resolve) until a planning step can call in with
+    # a discovered chain description.
+    "composed_chain":             _stub("composed_chain"),
 }

@@ -4,8 +4,8 @@ These tests enforce the structural invariants of the catalog defined in
 ``docs/redteam-design.md`` and implemented in
 ``nuguard/redteam/catalog/``:
 
-1. All 125 stable IDs are present and unique.
-2. Each series (D/C/T/A/I/M/P/G/J/E/B/K/R/O/H/N/S/V) is contiguous with no gaps.
+1. All 130 stable IDs are present and unique.
+2. Each series (D/C/T/A/I/M/P/G/J/E/B/K/R/O/H/N/S/V/W) is contiguous with no gaps.
 3. Every ``builder_key`` resolves in ``BUILDER_FACTORIES``.
 4. Every field value is a valid enum member (no typos).
 5. Taxonomy invariants hold (required_capabilities non-empty, evidence_types
@@ -54,14 +54,15 @@ EXPECTED_ID_SERIES: dict[str, int] = {
     "N": 6,
     "S": 8,
     "V": 7,
+    "W": 5,
 }
-EXPECTED_TOTAL = sum(EXPECTED_ID_SERIES.values())  # 125
+EXPECTED_TOTAL = sum(EXPECTED_ID_SERIES.values())  # 130
 
 
 # ── Tests ─────────────────────────────────────────────────────────────────────
 
 def test_total_spec_count() -> None:
-    """Catalog must contain exactly 125 specs."""
+    """Catalog must contain exactly 130 specs."""
     assert len(SCENARIO_CATALOG) == EXPECTED_TOTAL, (
         f"Expected {EXPECTED_TOTAL} specs, got {len(SCENARIO_CATALOG)}"
     )
