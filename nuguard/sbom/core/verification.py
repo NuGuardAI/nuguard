@@ -453,7 +453,27 @@ async def verify_uncertain_nodes(
             actual_cost = tokens * 0.00001
             async with shared_lock:
                 shared_cost[0] += actual_cost
-            result = parse_verification_response(response, node)
+
+            # parse_verification_response also has to live inside the per-node
+            # try/except — valid JSON that isn't a dict (e.g. a list, number,
+            # or string) raises AttributeError on ``data.get(...)`` because the
+            # parser only catches JSONDecodeError/KeyError/TypeError/ValueError.
+            # Without this wrapper an AttributeError would propagate out of the
+            # per-node scope, escape asyncio.gather() (which is called without
+            # ``return_exceptions=True``), and abort the entire verification
+            # batch instead of just this node.
+            try:
+                result = parse_verification_response(response, node)
+            except Exception as exc:  # noqa: BLE001
+                _log.warning(
+                    "Verification skipped for node %r: response parse failed: %s",
+                    node.name,
+                    exc,
+                )
+                async with shared_lock:
+                    stats.skipped_count += 1
+                return None
+
             result.verification_cost = actual_cost
             async with shared_lock:
                 if result.verified:

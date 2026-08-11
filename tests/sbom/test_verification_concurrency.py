@@ -217,6 +217,45 @@ async def test_verify_uncertain_nodes_skips_failed_node_under_concurrency() -> N
     assert stats.verified_count == 4
 
 
+@pytest.mark.asyncio
+async def test_verify_uncertain_nodes_skips_unparseable_response_under_concurrency() -> None:
+    """A successful LLM call whose response fails to parse must skip just that node.
+
+    Regression: ``parse_verification_response`` only catches
+    ``(json.JSONDecodeError, KeyError, TypeError, ValueError)`` — valid JSON
+    that isn't a dict (e.g. ``[1, 2, 3]``, ``42``, ``"hello"``) raises
+    ``AttributeError`` on ``data.get(...)``, which previously escaped the
+    per-node scope, propagated through ``asyncio.gather()`` (called without
+    ``return_exceptions=True``), and aborted the whole verification batch.
+    """
+
+    class _UnparseableClient:
+        """First call returns a valid JSON list (not a dict), subsequent calls
+        return a normal verification payload."""
+
+        def __init__(self) -> None:
+            self.calls = 0
+
+        async def complete(self, prompt: str, system: str) -> tuple[str, int]:
+            self.calls += 1
+            if self.calls == 1:
+                return "[1, 2, 3]", 1000  # valid JSON, not a dict -> AttributeError
+            return '{"verified": true, "confidence": 0.9, "reason": "stub"}', 1000
+
+    nodes, evidence_map = _build_candidates(5)
+    client = _UnparseableClient()
+
+    results, stats = await verify_uncertain_nodes(
+        nodes, evidence_map, client.complete, concurrency=2
+    )
+
+    # 4 candidates verified; 1 skipped because parse_verification_response
+    # raised AttributeError on the list-shaped JSON.
+    assert len(results) == 4
+    assert stats.skipped_count == 1
+    assert stats.verified_count == 4
+
+
 # ---------------------------------------------------------------------------
 # Concurrency=0 / negative must coerce to 1 (defensive)
 # ---------------------------------------------------------------------------
