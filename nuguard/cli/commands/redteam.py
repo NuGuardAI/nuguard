@@ -237,6 +237,11 @@ def redteam(
         typer.echo(f"Error loading SBOM: {exc}", err=True)
         raise typer.Exit(code=1)
 
+    # Re-run topology enrichment in case the SBOM file predates it (idempotent).
+    from nuguard.sbom.enricher import enrich as _enrich_topology  # noqa: PLC0415
+
+    _enrich_topology(sbom_doc)
+
     # Resolve target URL — explicit > SBOM discovery
     if not target_url:
         target_url = _resolve_target_url(sbom_doc, launch=launch)
