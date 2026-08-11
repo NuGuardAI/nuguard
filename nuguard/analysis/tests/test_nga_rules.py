@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from nuguard.analysis.graph import AnalysisGraph
 from nuguard.analysis.plugins.nga_rules import (
     _RULES,
     _rule_nga001_phi_to_external_llm,
@@ -35,6 +36,7 @@ from nuguard.analysis.plugins.nga_rules import (
     _rule_nga013_no_k8s_network_policy,
     _rule_nga014_actions_runner_debug,
     _rule_nga015_no_resource_limits,
+    _rule_nga021_idor_surface_no_protection,
 )
 
 # ---------------------------------------------------------------------------
@@ -506,6 +508,36 @@ class TestNga006:
         findings = self._run([_model_node("gpt-4", "openai")])
         assert findings == []
 
+    def test_fires_when_auth_required_is_false(self) -> None:
+        """auth_required=False (computed by the enricher from AUTH edges) fires NGA-006."""
+        node = {
+            "id": "api",
+            "name": "inference-api",
+            "component_type": "API_ENDPOINT",
+            "metadata": {"auth_required": False},
+        }
+        findings = self._run([node])
+        assert len(findings) == 1
+        assert findings[0]["rule_id"] == "NGA-006"
+
+    def test_no_finding_when_auth_required_true_and_protected_by_edge(self) -> None:
+        """auth_required=True with a real protecting AUTH edge does not fire.
+
+        This mirrors the state the enricher actually produces: auth_required is
+        only True when an AUTH→PROTECTS edge exists, so protected_targets already
+        excludes the endpoint before the auth_required check is even reached.
+        """
+        auth_node = {"id": "auth", "name": "auth", "component_type": "AUTH", "metadata": {}}
+        api_node = {
+            "id": "api",
+            "name": "inference-api",
+            "component_type": "API_ENDPOINT",
+            "metadata": {"auth_required": True},
+        }
+        edge = {"source": "auth", "target": "api"}
+        findings = self._run([auth_node, api_node], edges=[edge])
+        assert findings == []
+
 
 # ---------------------------------------------------------------------------
 # NGA-012 — Missing HITL for irreversible tool actions
@@ -569,11 +601,12 @@ class TestRulesRegistry:
         assert names[2] == "_rule_nga003_secrets_in_env"
         assert names[3] == "_rule_nga004_runs_as_root"
         assert names[4] == "_rule_nga005_unencrypted_pii_datastore"
-        # NGA-019 and NGA-020 are present (added after NGA-018)
+        # NGA-019, NGA-020, NGA-021 are present (added after NGA-018)
         assert "_rule_nga019_unguarded_write_to_sensitive_datastore" in " ".join(names)
         assert "_rule_nga020_unguarded_agent_delegation" in " ".join(names)
-        # Rules run NGA-001 to NGA-020 with no gaps
-        assert len(_RULES) == 20
+        assert "_rule_nga021_idor_surface_no_protection" in " ".join(names)
+        # Rules run NGA-001 to NGA-021 with no gaps
+        assert len(_RULES) == 21
 
     def test_all_rules_return_list(self) -> None:
         for rule in _RULES:
@@ -913,3 +946,84 @@ class TestNga015ResourceLimitsAsymmetry:
         ]
         findings = self._run(nodes)
         assert findings == []
+
+
+# ---------------------------------------------------------------------------
+# NGA-021 — IDOR-prone endpoint without authorization checks
+# ---------------------------------------------------------------------------
+
+
+class TestNga021:
+    def _run(
+        self,
+        nodes: list[dict[str, Any]],
+        edges: list[dict[str, Any]] | None = None,
+    ) -> list[dict[str, Any]]:
+        graph = AnalysisGraph({"nodes": nodes, "edges": edges or []})
+        return _rule_nga021_idor_surface_no_protection(nodes=nodes, graph=graph)
+
+    def test_fires_on_idor_surface_endpoint_with_no_protection(self) -> None:
+        node = {
+            "id": "api",
+            "name": "get-user-profile",
+            "component_type": "API_ENDPOINT",
+            "metadata": {"idor_surface": True, "path_params": ["user_id"]},
+        }
+        findings = self._run([node])
+        assert len(findings) == 1
+        assert findings[0]["rule_id"] == "NGA-021"
+        assert findings[0]["severity"] == "HIGH"
+        assert "get-user-profile" in findings[0]["affected"]
+
+    def test_no_finding_when_protected_by_auth_edge(self) -> None:
+        auth_node = {"id": "auth", "name": "auth", "component_type": "AUTH", "metadata": {}}
+        api_node = {
+            "id": "api",
+            "name": "get-user-profile",
+            "component_type": "API_ENDPOINT",
+            "metadata": {"idor_surface": True, "path_params": ["user_id"]},
+        }
+        edge = {"source": "auth", "target": "api", "relationship_type": "PROTECTS"}
+        findings = self._run([auth_node, api_node], edges=[edge])
+        assert findings == []
+
+    def test_no_finding_when_protected_by_guardrail_edge(self) -> None:
+        guardrail = {"id": "guard", "name": "guard", "component_type": "GUARDRAIL", "metadata": {}}
+        api_node = {
+            "id": "api",
+            "name": "get-user-profile",
+            "component_type": "API_ENDPOINT",
+            "metadata": {"idor_surface": True, "path_params": ["user_id"]},
+        }
+        edge = {"source": "guard", "target": "api", "relationship_type": "PROTECTS"}
+        findings = self._run([guardrail, api_node], edges=[edge])
+        assert findings == []
+
+    def test_no_finding_when_idor_surface_false(self) -> None:
+        node = {
+            "id": "api",
+            "name": "list-public-posts",
+            "component_type": "API_ENDPOINT",
+            "metadata": {"idor_surface": False},
+        }
+        findings = self._run([node])
+        assert findings == []
+
+    def test_no_finding_when_idor_surface_none(self) -> None:
+        node = _api_node("plain-endpoint")
+        findings = self._run([node])
+        assert findings == []
+
+    def test_no_finding_no_api_nodes(self) -> None:
+        findings = self._run([_model_node("gpt-4", "openai")])
+        assert findings == []
+
+    def test_no_finding_without_graph(self) -> None:
+        """Rule requires graph traversal; returns [] gracefully when graph is None."""
+        node = {
+            "id": "api",
+            "name": "get-user-profile",
+            "component_type": "API_ENDPOINT",
+            "metadata": {"idor_surface": True, "path_params": ["user_id"]},
+        }
+        assert _rule_nga021_idor_surface_no_protection(nodes=[node], graph=None) == []
