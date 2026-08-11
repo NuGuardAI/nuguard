@@ -11,7 +11,6 @@ can be supplied on the CLI instead of only via ``nuguard.yaml``.
 
 from __future__ import annotations
 
-import json
 import shutil
 from pathlib import Path
 
@@ -118,7 +117,13 @@ def test_behavior_creates_missing_parent_dir_for_output(fresh_tmp: Path) -> None
 
 
 def test_behavior_accepts_sbom_flag(fresh_tmp: Path) -> None:
-    """``nuguard behavior --sbom <path>`` must load the SBOM from the CLI flag."""
+    """``nuguard behavior --sbom <path>`` must load the SBOM from the CLI flag.
+
+    The proof is the literal "Loaded SBOM:" log line on stdout — not just a
+    successful exit or an output file. The CLI ``--sbom`` flag is the only
+    source for this log line; without it the orchestrator's
+    ``cfg.sbom_path`` is empty and the SBOM-load step is skipped silently.
+    """
     out_path = fresh_tmp / "behavior_sbom_flag.md"
     result = runner.invoke(
         app,
@@ -131,11 +136,30 @@ def test_behavior_accepts_sbom_flag(fresh_tmp: Path) -> None:
         catch_exceptions=False,
     )
     assert result.exit_code == 0, result.output
-    assert "Loaded SBOM:" in result.output or out_path.exists()
+    # Concrete assertion: the CLI flag reached the orchestrator and was used
+    # to load the SBOM. Without the forwarding fix, this log line is absent.
+    # Rich soft-wraps long paths and may insert a space inside the path
+    # (e.g. ``minimal.sbom .json``); we strip inter-word whitespace before
+    # substring matching. The assertion still proves that the literal path
+    # supplied via ``--sbom`` reached the orchestrator — a different (or
+    # missing) path would never produce this string.
+    normalised = result.output.replace(" ", "").replace("\n", "")
+    assert "LoadedSBOM:" in normalised, (
+        f"Expected 'Loaded SBOM:' in output, got:\n{result.output}"
+    )
+    assert str(_FIXTURE_SBOM).replace(" ", "") in normalised, (
+        f"Expected fixture path {str(_FIXTURE_SBOM)!r} in output, got:\n{result.output}"
+    )
 
 
 def test_behavior_sbom_flag_takes_precedence_over_config(tmp_path: Path) -> None:
-    """CLI ``--sbom`` should be used when set, ignoring ``sbom:`` in nuguard.yaml."""
+    """CLI ``--sbom`` should be used when set, ignoring ``sbom:`` in nuguard.yaml.
+
+    The bogus path configured in ``sbom:`` would error loudly if reached
+    ("Could not load SBOM from /nonexistent/path.sbom.json" warning + exit
+    non-zero with --mode static). Since ``--sbom`` is also supplied, the
+    CLI value must win and load the real fixture.
+    """
     config = tmp_path / "nuguard.yaml"
     config.write_text(
         "behavior:\n  target: http://localhost:1\nsbom: /nonexistent/path.sbom.json\n",
@@ -153,6 +177,18 @@ def test_behavior_sbom_flag_takes_precedence_over_config(tmp_path: Path) -> None
         ],
         catch_exceptions=False,
     )
-    # Should succeed using the CLI flag, ignoring the bogus sbom: in config.
     assert result.exit_code == 0, result.output
-    assert out_path.exists()
+    # Concrete assertion: the CLI flag won the precedence race, so the load
+    # log line shows the fixture path, not the bogus config path. Strip
+    # whitespace so Rich's soft-wrap (e.g. inserting a space inside a long
+    # path) does not mask a real "Loaded SBOM: <config path>" leak.
+    normalised = result.output.replace(" ", "").replace("\n", "")
+    assert "LoadedSBOM:" in normalised, (
+        f"Expected 'Loaded SBOM:' in output, got:\n{result.output}"
+    )
+    assert str(_FIXTURE_SBOM).replace(" ", "") in normalised, (
+        f"Expected fixture path {str(_FIXTURE_SBOM)!r} in output, got:\n{result.output}"
+    )
+    assert "/nonexistent/path.sbom.json".replace(" ", "") not in normalised, (
+        "Configured bogus sbom: path should have been overridden by --sbom."
+    )
