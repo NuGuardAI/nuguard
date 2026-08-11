@@ -2461,12 +2461,28 @@ class AiSbomExtractor:
     # Accepting such a ref would let a hostile ref string (e.g. one pasted from
     # a malicious README) trick ``git clone`` into invoking other git options
     # such as ``--upload-pack=<command>`` — a known argument-injection vector.
-    _SAFE_REF_RE = re.compile(r"^[^-,\s\x00][^,\s\x00]*$")
+    _SAFE_REF_RE = re.compile(r"^[^-,\s\x00][^,\s\x00]*\Z")
     # Same defence for the URL: even though the CLI validates it as http(s)
     # upstream, ``extract_from_repo`` is a public API callable from any
     # embedding, so we re-validate here to avoid the same injection class.
-    # Only http(s)/ssh transports are accepted at the clone boundary.
-    _SAFE_URL_RE = re.compile(r"^(https?|ssh)://[^\s\x00]*$")
+    # Accepted at the clone boundary:
+    #   - http(s)://host/path
+    #   - ssh://[user@]host[:port]/path
+    #   - scp-style SSH: [user@]host:path  where the path either starts
+    #     with ``/`` (absolute) or with a non-flag character (so a
+    #     hostile provider cannot smuggle a flag through
+    #     ``git@host:--option``). ``extract_from_repo`` historically
+    #     accepted the scp form, so the regex preserves that compatibility
+    #     while still rejecting anything that smells like an injected flag.
+    # The scp path sub-pattern forbids ``-``/``,``/``\s``/``\x00``/``\Z`` at
+    # the start (no leading flag or whitespace) and continues with
+    # safe characters. The host portion also forbids ``-`` so a hostile
+    # user@ portion cannot itself look like an option.
+    _SAFE_URL_RE = re.compile(
+        r"(?:https?|ssh)://[^\s\x00]*\Z"
+        r"|"
+        r"[A-Za-z0-9._-]+@[A-Za-z0-9._-]+:[^-,:\s\x00][^,\s\x00]*\Z"
+    )
 
     @staticmethod
     def _clone_repo(url: str, ref: str, dest: Path) -> None:

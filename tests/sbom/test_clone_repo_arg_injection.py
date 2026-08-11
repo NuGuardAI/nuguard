@@ -45,6 +45,11 @@ from nuguard.sbom.extractor import AiSbomExtractor
         # Whitespace-only / empty.
         " ",
         "",
+        # Trailing newline only — Python's ``$`` matches before a trailing
+        # newline, so a bare ``^...$`` regex would let ``"main\n"`` through.
+        # The hardening regex uses ``\Z`` (or ``re.fullmatch``) so this is
+        # rejected.
+        "main\n",
     ],
 )
 def test_clone_repo_rejects_unsafe_refs(bad_ref: str, tmp_path: Path) -> None:
@@ -103,6 +108,12 @@ def test_clone_repo_rejects_unsafe_urls(bad_url: str, tmp_path: Path) -> None:
         "https://github.com/example/repo.git",
         "http://internal.example.com/team/repo.git",
         "ssh://git@example.com/repo.git",
+        # scp-style SSH — historically accepted by ``extract_from_repo`` and
+        # still a valid git transport. The hardening regex explicitly permits
+        # this form so we don't regress existing callers that use it.
+        "git@github.com:example/repo.git",
+        "git@github.com:/example/repo.git",
+        "git@gitlab.com:group/subgroup/project.git",
     ],
 )
 def test_clone_repo_accepts_well_formed_urls(good_url: str, tmp_path: Path) -> None:
@@ -123,6 +134,40 @@ def test_clone_repo_accepts_well_formed_urls(good_url: str, tmp_path: Path) -> N
     assert "--" in cmd
     assert good_url in cmd
     assert str(tmp_path) in cmd
+
+
+@pytest.mark.parametrize(
+    "hostile_scp_url",
+    [
+        # scp-style URL with a leading-dash path. The colon already
+        # separates host from path, but a hostile provider could try
+        # ``git@host:--upload-pack=evil`` to look like a flag. The regex
+        # rejects this even though the scp form is otherwise permitted.
+        "git@github.com:--upload-pack=evil",
+        "git@github.com:-flag",
+        "git@github.com:--",
+        "git@github.com: --option",
+        "git@github.com:,foo",
+    ],
+)
+def test_clone_repo_rejects_hostile_scp_urls(hostile_scp_url: str, tmp_path: Path) -> None:
+    """An scp-style URL whose path begins with ``-`` must raise ValueError.
+
+    Companion to ``test_clone_repo_accepts_well_formed_urls`` for the scp
+    form: the hardening regex permits legitimate scp URLs
+    (``git@host:path``) but still rejects scp URLs whose path portion
+    starts with ``-`` so a hostile provider cannot smuggle a flag through.
+    """
+    with patch("nuguard.sbom.extractor.core.subprocess.run") as run_mock:
+        with pytest.raises(ValueError, match="Invalid repository URL"):
+            AiSbomExtractor._clone_repo(
+                url=hostile_scp_url,
+                ref="main",
+                dest=tmp_path,
+            )
+    assert run_mock.call_count == 0, (
+        "subprocess.run must NOT be invoked for a hostile scp URL"
+    )
 
 
 def test_clone_repo_preserves_ref_in_subprocess(tmp_path: Path) -> None:
