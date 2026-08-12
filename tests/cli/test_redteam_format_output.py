@@ -23,11 +23,17 @@ These tests pin the contract:
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
+from unittest.mock import patch
+
+from typer.testing import CliRunner
 
 from nuguard.cli.commands.redteam import _render_findings_text
+from nuguard.cli.main import app
 from nuguard.cli.report_meta import ReportMeta
 from nuguard.models.finding import Finding, Severity
+from nuguard.models.token_usage import TokenUsage
 
 
 def _make_findings() -> list[Finding]:
@@ -55,6 +61,45 @@ def _make_findings() -> list[Finding]:
             owasp_asi_ref="ASI-02",
         ),
     ]
+
+
+def _make_minimal_sbom(tmp_path: Path) -> Path:
+    """Write a minimal valid AI-SBOM JSON file the redteam CLI will accept."""
+    sbom_path = tmp_path / "minimal.sbom.json"
+    sbom_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "1.5.0",
+                "generator": "nuguard",
+                "target": "https://github.com/test/test",
+                "nodes": [],
+                "edges": [],
+                "deps": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    return sbom_path
+
+
+def _mock_run_redteam_outcome():
+    """Return a coroutine that yields the 13-tuple ``_run_redteam`` produces."""
+    async def _coro(*_args, **_kwargs):
+        return (
+            _make_findings(),  # findings
+            [],                 # scenario_records
+            "no_findings",      # scan_outcome
+            [],                 # config_notes
+            None,               # catalog_coverage
+            0,                  # input_tokens_used
+            0,                  # output_tokens_used
+            None,               # coverage_tracker
+            TokenUsage(),       # token_usage
+            "/chat",            # resolved_chat_path
+            "default",          # resolved_chat_path_source
+            [],                 # remediation_plan
+        )
+    return _coro
 
 
 # ---------------------------------------------------------------------------
@@ -140,71 +185,91 @@ def test_render_text_empty_findings_has_no_table_block() -> None:
 
 
 def test_dispatch_text_format_writes_plain_text_file(tmp_path: Path) -> None:
-    """Replicate the redteam --output dispatch loop and verify a ``.txt`` file
-    that ``fmt='text'`` produces contains plain text — NOT JSON.
+    """End-to-end: ``nuguard redteam --output foo.txt --format text`` writes
+    the plain-text report, not JSON.
 
-    This mirrors the inline dispatch in
-    ``nuguard/cli/commands/redteam.py:421-460`` after the fix.
+    Regression for #254 — the pre-fix dispatch fell through to the JSON
+    ``else`` branch when ``fmt='text'`` was requested, producing a JSON file
+    with a ``.txt`` extension. This test exercises the real CLI through
+    ``CliRunner`` so it will fail the moment the production dispatch loop
+    stops routing ``text`` to :func:`_render_findings_text`.
     """
-    findings = _make_findings()
-    meta = ReportMeta(verbose=False)
-
+    sbom_path = _make_minimal_sbom(tmp_path)
     output = tmp_path / "redteam.txt"
-    effective_formats = ["text"]
-    extension_map = {"text": ".txt", "json": ".json", "markdown": ".md", "sarif": ".sarif"}
 
-    # --- Inline dispatch (mirrors redteam.py --output branch) ---
-    for fmt in effective_formats:
-        if len(effective_formats) > 1:
-            out_path = output.with_suffix(extension_map[fmt])
-        else:
-            out_path = output
-        if fmt == "text":
-            out_path.write_text(
-                _render_findings_text(findings, meta, "no_findings", colour=False),
-                encoding="utf-8",
-            )
-        elif fmt == "markdown":
-            out_path.write_text("MARKDOWN", encoding="utf-8")
-        elif fmt == "sarif":
-            out_path.write_text("SARIF", encoding="utf-8")
-        else:
-            # Bug path: should not be reached for fmt == "text".
-            out_path.write_text("BUG: JSON INSTEAD OF TEXT", encoding="utf-8")
+    runner = CliRunner()
+    with patch(
+        "nuguard.cli.commands.redteam._run_redteam",
+        new=_mock_run_redteam_outcome(),
+    ):
+        result = runner.invoke(
+            app,
+            [
+                "redteam",
+                "--sbom", str(sbom_path),
+                "--target", "http://localhost:9999",
+                "--output", str(output),
+                "--format", "text",
+            ],
+        )
+
+    assert output.exists(), (
+        f"Output file was not written to {output}.\nstdout:\n{result.stdout}"
+    )
 
     content = output.read_text(encoding="utf-8")
     assert not content.lstrip().startswith("{"), (
-        "fmt='text' must write plain text, not JSON (regression for #254)."
+        "--format text --output must write plain text, not JSON (regression for #254)."
     )
     assert "\x1b[" not in content, "File output must not contain ANSI escapes."
     assert "NuGuard Red-Team" in content
     assert "2 finding(s)" in content
 
+    # exit_code 0 (clean) or 2 (fail-on threshold tripped by CRITICAL/HIGH
+    # findings) are both acceptable — the dispatch contract is that the file
+    # is written before the threshold check runs.
+    assert result.exit_code in (0, 2), (
+        f"Unexpected exit code {result.exit_code}; stdout:\n{result.stdout}"
+    )
+
 
 def test_dispatch_json_format_still_writes_json_file(tmp_path: Path) -> None:
-    """Sanity check: --format json --output foo.json still writes valid JSON.
+    """Sanity check: ``--format json --output foo.json`` still writes valid JSON.
 
-    The fix must not regress the JSON output path.
+    The fix must not regress the JSON output path. Same end-to-end shape as
+    the text-format test above — exercises the real CLI dispatcher.
     """
-    import json as _json
-
-    from nuguard.redteam.report import to_json
-
-    findings = _make_findings()
-    meta = ReportMeta(verbose=False)
+    sbom_path = _make_minimal_sbom(tmp_path)
     output = tmp_path / "redteam.json"
-    effective_formats = ["json"]
-    extension_map = {"text": ".txt", "json": ".json", "markdown": ".md", "sarif": ".sarif"}
 
-    for fmt in effective_formats:
-        out_path = output.with_suffix(extension_map[fmt])
-        if fmt == "json":
-            out_path.write_text(
-                to_json(findings, meta=meta, scan_outcome="no_findings"),
-                encoding="utf-8",
-            )
+    runner = CliRunner()
+    with patch(
+        "nuguard.cli.commands.redteam._run_redteam",
+        new=_mock_run_redteam_outcome(),
+    ):
+        result = runner.invoke(
+            app,
+            [
+                "redteam",
+                "--sbom", str(sbom_path),
+                "--target", "http://localhost:9999",
+                "--output", str(output),
+                "--format", "json",
+            ],
+        )
+
+    assert output.exists(), (
+        f"Output file was not written to {output}.\nstdout:\n{result.stdout}"
+    )
 
     content = output.read_text(encoding="utf-8")
-    parsed = _json.loads(content)
+    parsed = json.loads(content)
     assert "_meta" in parsed
     assert len(parsed["findings"]) == 2
+
+    # exit_code 0 (clean) or 2 (fail-on threshold tripped by CRITICAL/HIGH
+    # findings) are both acceptable — the dispatch contract is that the file
+    # is written before the threshold check runs.
+    assert result.exit_code in (0, 2), (
+        f"Unexpected exit code {result.exit_code}; stdout:\n{result.stdout}"
+    )
