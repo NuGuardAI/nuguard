@@ -362,5 +362,14 @@ def test_check_missing_policy_exits(sbom_file: Path, tmp_path: Path) -> None:
 
 
 def test_show_unknown_policy_exits() -> None:
+    """The stub show command reports "not found" until a registry exists (issue #162)."""
     result = runner.invoke(app, ["policy", "show", "--policy-id", "nonexistent-id"])
     assert result.exit_code != 0
+    assert "not found" in result.output.lower() or "not found" in (result.stderr or "").lower()
+
+
+def test_show_command_is_hidden_from_help() -> None:
+    """``policy show`` is a deprecated stub and must be hidden from --help output."""
+    result = runner.invoke(app, ["policy", "--help"])
+    assert result.exit_code == 0
+    assert "show" not in result.output
