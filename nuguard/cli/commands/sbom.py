@@ -257,17 +257,22 @@ def _do_generate(
     effective_llm = llm or cfg.sbom_llm_enabled
     _sbom_model = cfg.litellm_model or ""
     _sbom_api_base = cfg.litellm_api_base if _sbom_model.startswith("azure") else None
-    sbom_overrides: dict[str, object] = {
-        "enable_llm": effective_llm,
-        "llm_model": _sbom_model,
-        "llm_api_key": cfg.litellm_api_key or None,
-        "llm_api_base": _sbom_api_base,
-    }
     # Issue #197: only pass llm_concurrency when explicitly set in nuguard.yaml
-    # so the AiSbomConfig default (5) is used otherwise.
-    if cfg.sbom_llm_concurrency is not None:
-        sbom_overrides["llm_concurrency"] = cfg.sbom_llm_concurrency
-    config = AiSbomConfig(**sbom_overrides)
+    # so the AiSbomConfig default (which itself reads NUGUARD_LLM_CONCURRENCY /
+    # AISBOM_LLM_CONCURRENCY) is used otherwise.
+    from nuguard.sbom.config import _default_llm_concurrency  # noqa: PLC0415
+
+    config = AiSbomConfig(
+        enable_llm=effective_llm,
+        llm_model=_sbom_model,
+        llm_api_key=cfg.litellm_api_key or None,
+        llm_api_base=_sbom_api_base,
+        llm_concurrency=(
+            cfg.sbom_llm_concurrency
+            if cfg.sbom_llm_concurrency is not None
+            else _default_llm_concurrency()
+        ),
+    )
     gen = SbomGenerator(config=config)
 
     try:
