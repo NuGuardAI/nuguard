@@ -79,18 +79,14 @@ def test_windows_style_infra_path_matches_hint() -> None:
 
 
 # ---------------------------------------------------------------------------
-# Path-only path-hint tests (regression-pin the actual fix on PR #241)
+# Path-only path-hint tests (regression for the Windows path-normalization fix)
 # ---------------------------------------------------------------------------
 #
 # These tests use content that does NOT independently trigger Kubernetes/Azure
 # detection — only the path-hint match (e.g. ``docker``, ``infra/``) should
 # cause the file's URL to flow into ``deployment_urls``. Without the path
 # normalization, the raw backslash-separated path never matches the forward
-# slash hint and the URL is silently dropped. Reviewer nit on PR #241:
-# the existing ``test_windows_style_kubernetes_path_matches_hint`` and
-# ``test_windows_style_infra_path_matches_hint`` tests above were vacuous
-# because they happened to pass via content-based detection regardless of
-# the path normalization.
+# slash hint and the URL is silently dropped.
 
 
 def test_windows_style_kubernetes_path_extracts_url_via_path_hint() -> None:

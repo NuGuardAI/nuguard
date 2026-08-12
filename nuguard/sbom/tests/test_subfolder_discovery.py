@@ -44,8 +44,7 @@ def test_pyproject_toml_in_arbitrary_subfolder(tmp_path: Path) -> None:
     _touch(
         tmp_path,
         "packages/core/pyproject.toml",
-        '[project]\nname = "core"\nversion = "0.1.0"\n'
-        'dependencies = ["pydantic>=2.7"]\n',
+        '[project]\nname = "core"\nversion = "0.1.0"\ndependencies = ["pydantic>=2.7"]\n',
     )
     deps = DependencyScanner().scan(tmp_path)
     purls = {d.purl for d in deps}
@@ -62,11 +61,9 @@ def test_deep_nested_requirements(tmp_path: Path) -> None:
 
 def test_multiple_subfolder_manifests_all_discovered(tmp_path: Path) -> None:
     """All sub-folder manifests are found in one scan, not just the first."""
-    _touch(tmp_path, "frontend/package.json",
-           json.dumps({"dependencies": {"react": "^18.0.0"}}))
+    _touch(tmp_path, "frontend/package.json", json.dumps({"dependencies": {"react": "^18.0.0"}}))
     _touch(tmp_path, "backend/api/requirements.txt", "fastapi>=0.100\n")
-    _touch(tmp_path, "workers/queue/package.json",
-           json.dumps({"dependencies": {"bull": "^4.0.0"}}))
+    _touch(tmp_path, "workers/queue/package.json", json.dumps({"dependencies": {"bull": "^4.0.0"}}))
 
     deps = DependencyScanner().scan(tmp_path)
     purls = {d.purl for d in deps}
@@ -79,10 +76,12 @@ def test_subfolder_manifest_filtered_in_venv(tmp_path: Path) -> None:
     """Manifests inside venv / node_modules are still filtered out."""
     _touch(tmp_path, "real/requirements.txt", "flask>=2.0\n")
     _touch(tmp_path, "real/.venv/requirements.txt", "django>=4.2\n")
-    _touch(tmp_path, "web/package.json",
-           json.dumps({"dependencies": {"react": "^18.0.0"}}))
-    _touch(tmp_path, "web/node_modules/lodash/package.json",
-           json.dumps({"dependencies": {"lodash": "^4.0.0"}}))
+    _touch(tmp_path, "web/package.json", json.dumps({"dependencies": {"react": "^18.0.0"}}))
+    _touch(
+        tmp_path,
+        "web/node_modules/lodash/package.json",
+        json.dumps({"dependencies": {"lodash": "^4.0.0"}}),
+    )
 
     deps = DependencyScanner().scan(tmp_path)
     purls = {d.purl for d in deps}
