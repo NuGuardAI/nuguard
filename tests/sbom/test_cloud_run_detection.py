@@ -245,9 +245,11 @@ spec:
 def test_knative_service_with_run_app_url_is_marked_as_cloud_run() -> None:
     """A Knative Service YAML that mentions a ``*.a.run.app`` URL must be marked 'Cloud Run'.
 
-    Pins the positive case that pairs the Knative API (a weak signal) with
-    the ``*.a.run.app`` co-signal (a strong Cloud Run-specific marker).
-    Without the co-signal, the bare Knative API would not be enough.
+    Pins the positive case where the Knative service API (a weak signal)
+    appears in one file and a Cloud Run ``*.a.run.app`` URL (a strong
+    Cloud Run-specific marker) appears in a separate file. The URL is a
+    standalone Cloud Run trigger, so the marker fires regardless of whether
+    the Knative API is present.
     """
     files = [
         (
@@ -273,4 +275,69 @@ spec:
     platforms = result["deployment_platforms"]
     assert "Cloud Run" in platforms, (
         f"Knative + *.a.run.app should mark 'Cloud Run'; got {platforms!r}"
+    )
+
+# ---------------------------------------------------------------------------
+# Standalone Cloud Run signal triggers (issue #220)
+# ---------------------------------------------------------------------------
+
+
+def test_run_app_url_alone_marks_cloud_run_and_implies_gcp() -> None:
+    """A bare ``*.a.run.app`` URL is itself a Cloud Run signal (issue #220).
+
+    Pins the contract that ``run.googleapis.com``, ``*.a.run.app``, and
+    the ``deploy-cloudrun`` GH Action are standalone Cloud Run triggers
+    (not just co-signals that require the Knative service API alongside).
+
+    A file containing only a ``*.a.run.app`` URL with no other GCP marker
+    must still surface both ``Cloud Run`` and ``GCP`` — downstream code
+    relying on the coarse ``GCP`` marker keeps working.
+    """
+    files = [
+        (
+            "docs/url.txt",
+            "Service is reachable at https://my-ai-service-xyz.a.run.app",
+        ),
+    ]
+    result = extract_deployment_context(files)
+    platforms = result["deployment_platforms"]
+    assert "Cloud Run" in platforms, (
+        f"*.a.run.app URL alone should mark 'Cloud Run'; got {platforms!r}"
+    )
+    assert "GCP" in platforms, (
+        f"Cloud Run should imply GCP; got {platforms!r}"
+    )
+
+
+def test_run_googleapis_api_annotation_alone_marks_cloud_run() -> None:
+    """A bare ``run.googleapis.com`` annotation is itself a Cloud Run signal.
+
+    The Cloud Run runtime API annotation is specific to Cloud Run (issue
+    #220), even when no other GCP/Cloud Run marker is present in the file.
+    """
+    files = [
+        (
+            "service.yaml",
+            """\
+apiVersion: serving.knative.dev/v1
+kind: Service
+metadata:
+  name: ai-service
+  annotations:
+    run.googleapis.com/launch-stage: BETA
+spec:
+  template:
+    spec:
+      containers:
+      - image: gcr.io/proj/img:tag
+""",
+        ),
+    ]
+    result = extract_deployment_context(files)
+    platforms = result["deployment_platforms"]
+    assert "Cloud Run" in platforms, (
+        f"run.googleapis.com annotation alone should mark 'Cloud Run'; got {platforms!r}"
+    )
+    assert "GCP" in platforms, (
+        f"Cloud Run should imply GCP; got {platforms!r}"
     )

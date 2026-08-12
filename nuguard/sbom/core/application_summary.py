@@ -361,30 +361,28 @@ def extract_deployment_context(files: Sequence[tuple[str, str]]) -> dict[str, li
         ):
             platforms.append("GCP")
         # Cloud Run is more specific than the generic "GCP" marker above.
-        # Most triggers (the official deploy-cloudrun GitHub Action,
-        # ``run.googleapis.com`` annotations, ``*.a.run.app`` URLs, and
-        # the ``cloudrun`` path substring) are Cloud Run-specific on
-        # their own. The Knative service API (``serving.knative.dev``)
-        # is the only weak signal: Knative Serving is open source and
-        # commonly self-hosted on plain GKE/EKS/AKS, so a manifest
-        # using that API alone is not necessarily Cloud Run. Require
-        # at least one strong co-signal alongside the Knative API to
-        # mark the scan as Cloud Run.
-        knative_api_seen = "serving.knative.dev" in text_lower
-        has_cloud_run_cosignal = (
-            "run.googleapis.com" in text_lower or ".a.run.app" in text_lower
+        # All the following are Cloud Run-specific signals (issue #220):
+        #   - the official ``google-github-actions/deploy-cloudrun`` GH Action,
+        #   - ``run.googleapis.com`` annotations (Cloud Run runtime API),
+        #   - ``*.a.run.app`` URLs (Cloud Run default domain),
+        #   - the ``cloudrun`` path substring (e.g. ``cloudrun/service.yaml``).
+        # The Knative service API (``serving.knative.dev``) is intentionally
+        # NOT a Cloud Run trigger: Knative Serving is open source and
+        # commonly self-hosted on plain GKE/EKS/AKS, so a manifest using
+        # that API alone is not necessarily Cloud Run (issue #220 nit).
+        has_cloud_run_signal = (
+            "deploy-cloudrun" in text_lower
+            or "run.googleapis.com" in text_lower
+            or ".a.run.app" in text_lower
+            or "cloudrun" in lower_path
         )
-        has_cloud_run_only_signal = (
-            "deploy-cloudrun" in text_lower or "cloudrun" in lower_path
-        )
-        # Cloud Run is detected when either:
-        # - any Cloud-Run-specific signal fires (deploy-cloudrun, cloudrun path), OR
-        # - the Knative service API appears together with a Cloud Run
-        #   co-signal (run.googleapis.com annotation or *.a.run.app URL).
-        if has_cloud_run_only_signal or (
-            knative_api_seen and has_cloud_run_cosignal
-        ):
+        if has_cloud_run_signal:
             platforms.append("Cloud Run")
+            # Cloud Run is a GCP product; ensure the coarse "GCP" marker
+            # also fires so downstream consumers relying on GCP don't
+            # silently break when a repo only references Cloud Run signals.
+            if "GCP" not in platforms:
+                platforms.append("GCP")
         if ".github/workflows/" in lower_path:
             platforms.append("GitHub Actions")
         if "kubernetes" in lower_path or "/k8s/" in lower_path or "apiVersion:" in text:
