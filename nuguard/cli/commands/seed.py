@@ -22,12 +22,10 @@ def seed(
 ) -> None:
     """Seed canary data into TARGET before running red-team tests.
 
-    .. note::
-
-        Placeholder. A run-history store (see issue #161) is required before
-        the canary-seed workflow can be persisted. Until then, pass
-        ``--canary <file.json>`` directly to ``nuguard redteam`` to inject
-        a canary value without a prior ``nuguard seed`` run.
+    Placeholder. A run-history store (see issue #161) is required before
+    the canary-seed workflow can be persisted. Until then, pass
+    ``--canary <file.json>`` directly to ``nuguard redteam`` to inject
+    a canary value without a prior ``nuguard seed`` run.
     """
     if ctx.invoked_subcommand is not None:
         return

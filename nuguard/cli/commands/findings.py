@@ -21,12 +21,10 @@ def findings(
 ) -> None:
     """List findings for TEST_ID.
 
-    .. note::
-
-        Placeholder. A run-history store (see issue #161) is required before
-        findings from past ``--test-id`` runs can be looked up. Until then,
-        use ``nuguard redteam --output <path>.json`` to write the latest
-        findings to a file and inspect that file directly.
+    Placeholder. A run-history store (see issue #161) is required before
+    findings from past ``--test-id`` runs can be looked up. Until then,
+    use ``nuguard redteam --output <path>.json`` to write the latest
+    findings to a file and inspect that file directly.
     """
     if ctx.invoked_subcommand is not None:
         return

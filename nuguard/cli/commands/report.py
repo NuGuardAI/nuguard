@@ -21,12 +21,10 @@ def report(
 ) -> None:
     """Generate a report for TEST_ID.
 
-    .. note::
-
-        Placeholder. A run-history store (see issue #161) is required before
-        reports from past ``--test-id`` runs can be regenerated. Until then,
-        use ``nuguard redteam --output <path>.<fmt>`` (or ``--format
-        markdown|sarif|json``) to write the report inline.
+    Placeholder. A run-history store (see issue #161) is required before
+    reports from past ``--test-id`` runs can be regenerated. Until then,
+    use ``nuguard redteam --output <path>.<fmt>`` (or ``--format
+    markdown|sarif|json``) to write the report inline.
     """
     if ctx.invoked_subcommand is not None:
         return

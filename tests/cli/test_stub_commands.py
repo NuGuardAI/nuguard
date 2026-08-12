@@ -44,12 +44,20 @@ def test_seed_command_is_a_stub() -> None:
     Plain ``nuguard seed`` with no args is intercepted by Typer's
     ``no_args_is_help`` and prints help instead — that's expected (the
     stub is reached once the user supplies any actual flag).
+
+    The "not yet implemented" message is emitted to stderr (not stdout)
+    so automated callers can pipe stdout without leaving the message in
+    their captured output. We check ``result.stderr`` directly (not
+    ``result.output``, which mixes stdout and stderr) to pin this
+    contract.
     """
     result = runner.invoke(app, ["seed", "--target", "http://example.test"])
     assert result.exit_code == 3
-    combined = (result.output + (result.stderr or "")).lower()
-    assert "not yet implemented" in combined
-    assert "#161" in combined
+    assert "not yet implemented" in (result.stderr or "").lower()
+    assert "#161" in (result.stderr or "")
+    # Stdout must be empty for the stub path — anything on stdout would
+    # show up in piped output and break the "machine-friendly" contract.
+    assert (result.stdout or "") == ""
 
 
 def test_seed_help_advertises_target_and_canary_options() -> None:
@@ -72,14 +80,16 @@ def test_seed_help_advertises_target_and_canary_options() -> None:
 
 
 def test_report_command_is_a_stub() -> None:
-    """``nuguard report`` exits non-zero with a #161-aware message."""
+    """``nuguard report`` exits non-zero with a #161-aware message on stderr."""
     result = runner.invoke(app, ["report", "--test-id", "abc-123"])
     assert result.exit_code == 3
-    combined = (result.output + (result.stderr or "")).lower()
-    assert "not yet implemented" in combined
-    assert "#161" in combined
+    stderr = (result.stderr or "").lower()
+    assert "not yet implemented" in stderr
+    assert "#161" in stderr
     # Should also point at the workaround (--output on redteam).
-    assert "--output" in combined or "redteam" in combined
+    assert "--output" in stderr or "redteam" in stderr
+    # Stdout must be empty for the stub path.
+    assert (result.stdout or "") == ""
 
 
 def test_report_requires_test_id() -> None:
@@ -94,12 +104,13 @@ def test_report_requires_test_id() -> None:
 
 
 def test_findings_command_is_a_stub() -> None:
-    """``nuguard findings`` exits non-zero with a #161-aware message."""
+    """``nuguard findings`` exits non-zero with a #161-aware message on stderr."""
     result = runner.invoke(app, ["findings", "--test-id", "abc-123"])
     assert result.exit_code == 3
-    combined = (result.output + (result.stderr or "")).lower()
-    assert "not yet implemented" in combined
-    assert "#161" in combined
+    stderr = (result.stderr or "").lower()
+    assert "not yet implemented" in stderr
+    assert "#161" in stderr
+    assert (result.stdout or "") == ""
 
 
 def test_findings_requires_test_id() -> None:
@@ -114,12 +125,13 @@ def test_findings_requires_test_id() -> None:
 
 
 def test_replay_command_is_a_stub() -> None:
-    """``nuguard replay`` exits non-zero with a #161-aware message."""
+    """``nuguard replay`` exits non-zero with a #161-aware message on stderr."""
     result = runner.invoke(app, ["replay", "--test-id", "abc-123"])
     assert result.exit_code == 3
-    combined = (result.output + (result.stderr or "")).lower()
-    assert "not yet implemented" in combined
-    assert "#161" in combined
+    stderr = (result.stderr or "").lower()
+    assert "not yet implemented" in stderr
+    assert "#161" in stderr
+    assert (result.stdout or "") == ""
 
 
 def test_replay_requires_test_id() -> None:
