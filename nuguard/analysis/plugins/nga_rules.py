@@ -22,6 +22,9 @@ NGA-015  AI workloads without CPU/memory resource limits        LOW
 NGA-016  Container image using latest tag                       LOW
 NGA-017  AI workload missing health check                       LOW
 NGA-018  Multiple AI agents sharing a datastore, no IAM isolation  LOW
+NGA-019  Unguarded write path to sensitive datastore                HIGH
+NGA-020  Unguarded agent delegation chain                           MEDIUM
+NGA-021  IDOR-prone endpoint without authorization checks           HIGH
 """
 
 from __future__ import annotations
@@ -636,6 +639,7 @@ def _rule_nga006_missing_auth_on_api_endpoint(
         and (
             _node_extras(n).get("no_auth_required") is True
             or (n.get("metadata") or {}).get("no_auth_required") is True
+            or (n.get("metadata") or {}).get("auth_required") is False
             or not any(e.get("target") == n["id"] for e in edges)
         )
     ]
@@ -1494,6 +1498,47 @@ def _rule_nga020_unguarded_agent_delegation(
     return findings
 
 
+# ── NGA-021 ──────────────────────────────────────────────────────────────────
+
+
+def _rule_nga021_idor_surface_no_protection(
+    nodes: list[dict[str, Any]],
+    graph: AnalysisGraph | None = None,
+    **_: Any,
+) -> list[dict[str, Any]]:
+    """HIGH — API endpoint with user/tenant-scoped path params and no auth/guardrail protection."""
+    if graph is None:
+        return []  # Requires graph traversal; no fallback
+
+    findings: list[dict[str, Any]] = []
+    for ep in graph.nodes_of_type("API_ENDPOINT"):
+        meta = ep.get("metadata") or {}
+        if meta.get("idor_surface") is not True:
+            continue
+        ep_id = str(ep["id"])
+        if graph.has_protection(ep_id):
+            continue
+        ep_name = ep.get("name", "")
+        path_params = meta.get("path_params") or []
+        evidence = (
+            f"Endpoint '{ep_name}' has user/tenant-scoped path parameter(s) "
+            f"({', '.join(path_params) if path_params else 'unspecified'}) and no AUTH "
+            "or GUARDRAIL node protects it — a caller could substitute another "
+            "user's identifier to access their data."
+        )
+        findings.append(_finding(
+            "NGA-021", "HIGH",
+            f"IDOR-prone endpoint without authorization checks: '{ep_name}'",
+            evidence,
+            [ep_name],
+            f"Add object-level authorization checks on '{ep_name}' so the caller's "
+            "authenticated identity is verified against the requested path parameter "
+            "(e.g. reject requests where the session user does not own the resource).",
+            evidence=evidence,
+        ))
+    return findings
+
+
 # ── Rule registry ─────────────────────────────────────────────────────────────
 
 _RULES: list[Callable[..., list[dict[str, Any]]]] = [
@@ -1517,6 +1562,7 @@ _RULES: list[Callable[..., list[dict[str, Any]]]] = [
     _rule_nga018_shared_datastore_no_iam_isolation,  # NGA-018 LOW
     _rule_nga019_unguarded_write_to_sensitive_datastore,  # NGA-019 HIGH
     _rule_nga020_unguarded_agent_delegation,         # NGA-020 MEDIUM
+    _rule_nga021_idor_surface_no_protection,         # NGA-021 HIGH
 ]
 
 # Per-rule metadata used by verbose audit mode (parallel to _RULES).
@@ -1640,6 +1686,12 @@ _RULE_META: list[dict[str, str]] = [
         "title": "Unguarded agent delegation chain",
         "checks": "AGENT→DELEGATES_TO→AGENT edges where neither side has guardrail coverage",
         "pass_reason": "All agent delegation chains have at least one guardrail boundary",
+    },
+    {
+        "rule_id": "NGA-021", "severity": "HIGH",
+        "title": "IDOR-prone endpoint without authorization checks",
+        "checks": "API_ENDPOINT nodes with idor_surface path params and no AUTH/GUARDRAIL protection",
+        "pass_reason": "No IDOR-prone endpoints found, or all are protected by an AUTH/GUARDRAIL node",
     },
 ]
 
@@ -1820,6 +1872,12 @@ def _build_pass_evidence(
     if rule_id == "NGA-020":
         return {
             "agent_nodes_checked": [n.get("name", "") for n in nodes if n.get("component_type") in _AGENT_TYPES],
+            "requires_graph": True,
+        }
+
+    if rule_id == "NGA-021":
+        return {
+            "api_endpoint_nodes_checked": [n.get("name", "") for n in nodes if n.get("component_type") in _API_ENDPOINT_TYPES],
             "requires_graph": True,
         }
 
