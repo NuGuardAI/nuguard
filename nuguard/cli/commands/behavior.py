@@ -32,7 +32,8 @@ def behavior_command(
         "--sbom",
         help=(
             "Path to AI-SBOM JSON file to seed behavior analysis with. "
-            "Falls back to 'sbom:' in nuguard.yaml when --config is set."
+            "Falls back to 'sbom:' in nuguard.yaml (located via --config or "
+            "the current working directory)."
         ),
     ),
     mode: str = typer.Option(

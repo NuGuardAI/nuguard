@@ -192,3 +192,70 @@ def test_behavior_sbom_flag_takes_precedence_over_config(tmp_path: Path) -> None
     assert "/nonexistent/path.sbom.json".replace(" ", "") not in normalised, (
         "Configured bogus sbom: path should have been overridden by --sbom."
     )
+
+
+# ---------------------------------------------------------------------------
+# redteam parent-dir auto-creation (issue #233 parity with analyze/behavior)
+# ---------------------------------------------------------------------------
+
+
+def test_redteam_creates_missing_parent_dir_for_output(fresh_tmp: Path) -> None:
+    """``nuguard redteam --output <nested>/report.<fmt>`` must auto-create parents.
+
+    Issues #233 aligns CLI behaviour across analyze / redteam / behavior so
+    the three commands all auto-create the parent directory of ``--output``.
+    analyze and behavior are covered above; this test pins the redteam
+    path. The redteam orchestrator is mocked to return a no-findings
+    13-tuple so the test does not depend on a live target or the LLM.
+    """
+    import json as _json
+    from unittest.mock import patch as _patch
+
+    from nuguard.models.token_usage import TokenUsage as _TokenUsage
+
+    out_path = fresh_tmp / "a" / "b" / "c" / "redteam.json"
+    assert not out_path.parent.exists()
+
+    async def _fake_run_redteam(*_args, **_kwargs):
+        # Empty findings — the test only cares about the parent-dir mkdir,
+        # not the redteam content itself.
+        return (
+            [],     # findings
+            [],     # scenario_records
+            "no_findings",  # scan_outcome
+            [],     # config_notes
+            None,   # catalog_coverage
+            0,      # input_tokens_used
+            0,      # output_tokens_used
+            None,   # coverage_tracker
+            _TokenUsage(),  # token_usage
+            "/chat",  # resolved_chat_path
+            "default",  # resolved_chat_path_source
+            [],     # remediation_plan
+        )
+
+    with _patch("nuguard.cli.commands.redteam._run_redteam", new=_fake_run_redteam):
+        result = runner.invoke(
+            app,
+            [
+                "redteam",
+                "--sbom", str(_FIXTURE_SBOM),
+                "--target", "http://localhost:9999",
+                "--output", str(out_path),
+                "--format", "json",
+            ],
+        )
+
+    # exit_code 0 (clean) or 2 (fail-on threshold tripped by any finding)
+    # are both acceptable — the contract is that the parent dir is created
+    # and the file is written before the threshold check runs.
+    assert result.exit_code in (0, 2), result.output
+    assert out_path.parent.exists(), (
+        f"Expected parent dir {out_path.parent} to be created; stdout:\n{result.output}"
+    )
+    assert out_path.exists(), (
+        f"Expected redteam report at {out_path}; stdout:\n{result.output}"
+    )
+    # The output file must be valid JSON — proves the dispatch loop ran
+    # through the JSON-format branch, not the text-format branch.
+    _json.loads(out_path.read_text(encoding="utf-8"))
