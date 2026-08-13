@@ -73,6 +73,8 @@ _DESCRIPTION_BATCH_CONCURRENCY = 5
 async def enrich_node_descriptions(
     nodes: list,  # list[Node] — avoid circular import
     llm_client: "_CommonLLMClient",
+    *,
+    concurrency: int | None = None,
 ) -> None:
     """Use LLM to write descriptions for AGENT/TOOL nodes missing or short ones.
 
@@ -80,6 +82,12 @@ async def enrich_node_descriptions(
     to minimise round trips, running chunks concurrently. Mutates nodes
     in-place. Skips nodes where description is already >30 chars.
     Called from AiSbomExtractor._llm_enrich() after other enrichment steps.
+
+    Args:
+        nodes: AGENT/TOOL nodes to enrich.
+        llm_client: LLM client used for description generation.
+        concurrency: Max in-flight batch calls.  When ``None``, falls back to
+            :data:`_DESCRIPTION_BATCH_CONCURRENCY`.
     """
     targets = []
     for node in nodes:
@@ -167,7 +175,8 @@ async def enrich_node_descriptions(
         targets[i : i + _DESCRIPTION_BATCH_SIZE]
         for i in range(0, len(targets), _DESCRIPTION_BATCH_SIZE)
     ]
-    semaphore = asyncio.Semaphore(_DESCRIPTION_BATCH_CONCURRENCY)
+    _effective_concurrency = concurrency if concurrency is not None else _DESCRIPTION_BATCH_CONCURRENCY
+    semaphore = asyncio.Semaphore(_effective_concurrency)
 
     async def _run_batch_limited(batch: list[tuple[Any, str, Any]]) -> None:
         async with semaphore:

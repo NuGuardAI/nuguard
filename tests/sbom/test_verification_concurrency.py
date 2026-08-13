@@ -185,6 +185,46 @@ async def test_verify_uncertain_nodes_respects_cost_budget_under_concurrency() -
     assert stats.total_cost <= low_budget + 0.05
 
 
+@pytest.mark.asyncio
+async def test_verify_uncertain_nodes_budget_reservation_prevents_concurrent_overshoot() -> None:
+    """The estimated cost is reserved under the lock so concurrent calls
+    cannot collectively blow through a small budget.
+
+    Regression for the reviewer finding: without reserving ``cost_per_call``
+    before the LLM call, every in-flight task can observe the same
+    ``shared_cost`` and pass the budget check, letting a low budget be
+    exceeded by up to the concurrency limit.  With a budget that fits only
+    one call and high concurrency, the reservation must keep total cost
+    within the budget rather than overshooting by (concurrency - 1) calls.
+    """
+    nodes, evidence_map = _build_candidates(20)
+    recorder = _ConcurrencyRecorder(delay=0.0)
+    # 1000 tokens × 0.00001 = $0.01 per call; reserve cost_per_call = 0.001.
+    # Budget $0.0015 fits exactly one call's reservation (0.001) but not two
+    # (0.002).  Without a reservation, all 4 concurrent tasks would observe
+    # shared_cost == 0 and start, overshooting to ~4 × actual cost.
+    tight_budget = 0.0015
+
+    results, stats = await verify_uncertain_nodes(
+        nodes,
+        evidence_map,
+        recorder.complete,
+        cost_budget=tight_budget,
+        concurrency=4,
+    )
+
+    assert stats.budget_exceeded is True
+    # At most one call should have completed (the reservation serializes the
+    # budget check, so the second task sees the reserved cost and is skipped).
+    assert len(results) <= 1
+    # Total cost reflects the actual spend of the (at most one) completed call,
+    # which can legitimately exceed the estimate-based budget — but it must not
+    # reflect multiple concurrent calls.  Without the reservation, all 4
+    # concurrent tasks would start and total_cost would be ~4 × the single
+    # call's actual cost.
+    assert stats.total_cost <= 2 * (recorder.tokens_per_call * 0.00001)
+
+
 # ---------------------------------------------------------------------------
 # LLM exception handling
 # ---------------------------------------------------------------------------

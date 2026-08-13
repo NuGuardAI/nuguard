@@ -432,27 +432,35 @@ async def verify_uncertain_nodes(
         reference and ``shared_cost[0]`` for the running cost total.
         """
         async with semaphore:
-            # Re-check the budget under the lock; another in-flight call may
-            # have pushed us over while we were waiting on the semaphore.
+            # Reserve the estimated call cost under the lock before releasing
+            # it for the LLM call.  Reserving prevents the budget from being
+            # exceeded by up to the concurrency limit: without a reservation,
+            # every in-flight task can observe the same ``shared_cost`` and
+            # pass the check, letting a low budget be blown through by the
+            # number of concurrent calls.
             async with shared_lock:
                 if shared_cost[0] + cost_per_call > cost_budget:
                     stats.budget_exceeded = True
                     stats.skipped_count += 1
                     return None
+                shared_cost[0] += cost_per_call
 
             try:
                 response, tokens = await llm_call_fn(system_prompt, user_prompt)
             except Exception as exc:  # noqa: BLE001
                 # On API/network failure, skip verification entirely — node keeps
                 # its original confidence rather than being incorrectly rejected.
+                # Release the reservation we made above.
                 _log.warning("Verification skipped for node %r: %s", node.name, exc)
                 async with shared_lock:
+                    shared_cost[0] -= cost_per_call
                     stats.skipped_count += 1
                 return None
 
             actual_cost = tokens * 0.00001
             async with shared_lock:
-                shared_cost[0] += actual_cost
+                # Reconcile the reservation with the actual token cost.
+                shared_cost[0] += actual_cost - cost_per_call
 
             # parse_verification_response also has to live inside the per-node
             # try/except — valid JSON that isn't a dict (e.g. a list, number,

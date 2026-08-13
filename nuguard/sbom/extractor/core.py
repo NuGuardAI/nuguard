@@ -2096,9 +2096,20 @@ class AiSbomExtractor:
 
         # Step 1: Verify uncertain detections
         async def _llm_call(system: str, user: str) -> tuple[str, int]:
+            # ``client.token_counts`` is a cumulative counter shared by every
+            # in-flight verification call, so a before/after delta can include
+            # tokens consumed by other overlapping calls (double-counting or,
+            # when another call lands between the two reads, a negative value).
+            # Clamp to a non-negative delta: the cumulative counters only ever
+            # increase, so the observed increase is a safe upper bound for this
+            # call's own usage.  The delta is used only for reporting stats
+            # (verification_cost / total_cost) — the concurrency budget uses
+            # the fixed ``cost_per_call`` estimate, so this does not affect
+            # budget enforcement.
             _before = sum(client.token_counts)
             text = await client.complete(prompt=user, system=system)
-            return text, sum(client.token_counts) - _before
+            _delta = sum(client.token_counts) - _before
+            return text, max(0, _delta)
 
         results, v_stats = await verify_uncertain_nodes(
             doc.nodes,
@@ -2144,7 +2155,7 @@ class AiSbomExtractor:
         # Step 5: Enrich descriptions for AGENT/TOOL nodes missing them
         try:
             from ..llm_client import enrich_node_descriptions
-            await enrich_node_descriptions(doc.nodes, client)
+            await enrich_node_descriptions(doc.nodes, client, concurrency=config.llm_concurrency)
             _log.info("description-enrichment: completed for agent/tool nodes")
         except Exception as exc:
             _log.warning("description-enrichment: unexpected error — continuing without: %s", exc)
