@@ -27,10 +27,10 @@ if TYPE_CHECKING:
 
 _log = get_logger(__name__)
 
-# 1–5 rubric scale stored into Finding.scores["severity_signal"].
-# Normalised to 0.0–1.0 by pytest_emitter._finding_sev_float, which maps the
-# signal values onto the severity-enum floats below (NOT /5.0 — that mapped
-# LOW → 0.4 and dropped LOW findings from the regression suite).
+# 1–5 severity-signal rubric stored into Finding.scores["severity_signal"]
+# (1 = INFO … 5 = CRITICAL).  pytest_emitter._finding_sev_float maps each
+# value onto its 0.42–1.0 test-name scale (NOT /5.0 — that mapped LOW → 0.4
+# and dropped LOW findings from the regression suite).
 _SEVERITY_SIGNAL = {
     Severity.CRITICAL: 5,
     Severity.HIGH: 4,
