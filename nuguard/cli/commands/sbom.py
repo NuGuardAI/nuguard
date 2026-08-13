@@ -127,7 +127,7 @@ def _validate_inputs(
     if not os.access(out_parent, os.W_OK):
         _err(
             f"No write permission to output directory '{out_parent}'.",
-            ...
+            "Check the directory permissions and try again.",
         )
 
     # ── Source directory ──────────────────────────────────────────────────────
