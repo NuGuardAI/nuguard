@@ -686,7 +686,7 @@ async def _run_redteam(
         # — so scenario generation always sees the derived risk attributes.
         from nuguard.sbom.enricher import enrich as _enrich_topology_post
 
-        _enrich_topology_post(sbom_doc)
+        _enrich_topology_post(sbom_doc)  # type: ignore[arg-type]
 
     # Load policy + compiled controls
     cognitive_policy: CognitivePolicy | None = None
