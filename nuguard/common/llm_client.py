@@ -383,9 +383,9 @@ class LLMClient:
         if self.request_timeout is not None:
             kwargs.setdefault("timeout", self.request_timeout)
 
-        _MAX_RETRIES = 4
-        _BASE_DELAY = 2.0   # seconds before first retry
-        _MAX_DELAY = 60.0   # cap on any single sleep
+        _MAX_RETRIES = 3
+        _BASE_DELAY = 1.0   # seconds before first retry
+        _MAX_DELAY = 5.0    # cap on any single sleep
         _stripped_unsupported = False  # guard: strip-and-retry only once
 
         for _attempt in range(_MAX_RETRIES + 1):

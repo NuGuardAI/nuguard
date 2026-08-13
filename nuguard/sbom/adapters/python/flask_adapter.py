@@ -285,10 +285,12 @@ class FlaskAdapter(FrameworkAdapter):
                 receiver, path_str, methods = route_info
                 method = methods[0].upper() if methods else "GET"
                 func_name = node.name
-                # Key on HTTP method + route path so the same endpoint defined
-                # across multiple Blueprint/service files is deduplicated into
-                # one node with evidence from all files.
-                canon = f"flask:endpoint:{method}:{path_str}"
+                # Key on HTTP method + route path only (no framework prefix) so
+                # the same endpoint defined across multiple Blueprint/service
+                # files — or found by both this adapter and the generic
+                # api_endpoint_generic regex fallback — dedupes into one node
+                # with evidence from all sources.
+                canon = f"endpoint:{method}:{path_str}"
 
                 chat_key: str | None = None
                 ctx_fields: dict[str, str] = {}

@@ -113,16 +113,21 @@ def _validate_inputs(
             f"Output path '{output}' is a directory.",
             "Provide a file path, e.g. --output app.sbom.json",
         )
+    # Auto-create the parent directory so `--output` behaves consistently with
+    # `nuguard behavior` (and analyze/redteam, which create parents on write).
     out_parent = output.parent
-    if not out_parent.exists():
+    try:
+        out_parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
         _err(
-            f"Output directory '{out_parent}' does not exist.",
-            "Create the directory first or choose an existing path.",
+            f"Could not create output directory '{out_parent}': {exc}",
+            "Check the path and directory permissions.",
         )
-    if out_parent.exists() and not os.access(out_parent, os.W_OK):
+    
+    if not os.access(out_parent, os.W_OK):
         _err(
             f"No write permission to output directory '{out_parent}'.",
-            "Check directory permissions.",
+            "Check the directory permissions and try again.",
         )
 
     # ── Source directory ──────────────────────────────────────────────────────
@@ -419,6 +424,48 @@ def register(
         raise typer.Exit(code=3) from exc
 
     _console.print(f"[green]SBOM registered.[/green] ID: [bold]{sbom_id}[/bold]")
+
+
+@sbom_app.command("enrich")
+def enrich_cmd(
+    file: Path = typer.Option(
+        ...,
+        "--file",
+        "-f",
+        help="Path to the SBOM JSON file to re-enrich.",
+        exists=True,
+        file_okay=True,
+        dir_okay=False,
+        resolve_path=True,
+    ),
+    output: Optional[Path] = typer.Option(
+        None,
+        "--output",
+        "-o",
+        help="Output path (default: overwrite FILE in place).",
+    ),
+) -> None:
+    """Re-run topology-based enrichment on FILE and write the result back.
+
+    Derives auth_required, idor_surface, path_params, and other risk
+    attributes from the SBOM's node graph and persists them to disk, so
+    ``analyze``/``behavior``/``redteam`` can consume an already-enriched
+    file without recomputing anything. Safe to run repeatedly (idempotent).
+    """
+    from nuguard.sbom.enricher import enrich
+    from nuguard.sbom.serializer import AiSbomSerializer
+
+    try:
+        doc = AiSbomSerializer.from_json(file.read_text(encoding="utf-8"))
+    except Exception as exc:
+        _err_console.print(f"Error reading SBOM: {exc}")
+        raise typer.Exit(code=3) from exc
+
+    enrich(doc)
+
+    target = output or file
+    target.write_text(AiSbomSerializer.to_json(doc), encoding="utf-8")
+    _console.print(f"[green]✓ Enriched SBOM written to {target}[/green]")
 
 
 @sbom_app.command("show")

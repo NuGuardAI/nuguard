@@ -110,6 +110,20 @@ def test_generate_bad_source_exits_nonzero(tmp_path: Path) -> None:
     assert result.exit_code != 0
 
 
+def test_generate_creates_missing_parent_dir(tmp_path: Path) -> None:
+    # --output into a not-yet-existing directory should succeed and create the
+    # parent, matching `nuguard behavior` (analyze/redteam also create parents).
+    out = tmp_path / "nested" / "deep" / "app.sbom.json"
+    result = runner.invoke(
+        app,
+        ["sbom", "generate", "--source", str(_FIXTURE_APP), "--output", str(out)],
+    )
+    assert result.exit_code == 0, result.output
+    assert out.exists()
+    data = json.loads(out.read_text())
+    assert "nodes" in data
+
+
 # ---------------------------------------------------------------------------
 # nuguard sbom validate
 # ---------------------------------------------------------------------------
@@ -165,6 +179,66 @@ def test_register_and_show(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> N
 
 def test_show_unknown_id_exits(tmp_path: Path) -> None:
     result = runner.invoke(app, ["sbom", "show", "--sbom-id", "nonexistent-id"])
+    assert result.exit_code != 0
+
+
+# ---------------------------------------------------------------------------
+# nuguard sbom enrich
+# ---------------------------------------------------------------------------
+
+
+def _write_pre_fix_sbom(tmp_path: Path) -> Path:
+    """Write a minimal SBOM with an AUTH->PROTECTS->API_ENDPOINT edge but no
+    ``auth_required`` set, mimicking a file generated before the enricher fix."""
+    from nuguard.sbom.models import AiSbomDocument, Edge, Node
+    from nuguard.sbom.types import ComponentType, RelationshipType
+
+    auth_node = Node(name="auth", component_type=ComponentType.AUTH, confidence=1.0)
+    endpoint = Node(name="get-user", component_type=ComponentType.API_ENDPOINT, confidence=1.0)
+    edge = Edge(
+        source=auth_node.id,
+        target=endpoint.id,
+        relationship_type=RelationshipType.PROTECTS,
+    )
+    doc = AiSbomDocument(target="t", nodes=[auth_node, endpoint], edges=[edge])
+
+    sbom_file = tmp_path / "stale.sbom.json"
+    sbom_file.write_text(AiSbomSerializer.to_json(doc), encoding="utf-8")
+    data = json.loads(sbom_file.read_text())
+    assert "auth_required" not in json.dumps(data)  # sanity: field truly absent
+    return sbom_file
+
+
+def test_enrich_populates_auth_required_in_place(tmp_path: Path) -> None:
+    sbom_file = _write_pre_fix_sbom(tmp_path)
+    result = runner.invoke(app, ["sbom", "enrich", "--file", str(sbom_file)])
+    assert result.exit_code == 0, result.output
+
+    doc = AiSbomDocument.model_validate(json.loads(sbom_file.read_text()))
+    endpoint = next(n for n in doc.nodes if n.component_type == "API_ENDPOINT")
+    assert endpoint.metadata.auth_required is True
+
+
+def test_enrich_writes_to_output_path_without_modifying_source(tmp_path: Path) -> None:
+    sbom_file = _write_pre_fix_sbom(tmp_path)
+    out_file = tmp_path / "enriched.sbom.json"
+    result = runner.invoke(
+        app, ["sbom", "enrich", "--file", str(sbom_file), "--output", str(out_file)]
+    )
+    assert result.exit_code == 0, result.output
+    assert out_file.exists()
+
+    doc = AiSbomDocument.model_validate(json.loads(out_file.read_text()))
+    endpoint = next(n for n in doc.nodes if n.component_type == "API_ENDPOINT")
+    assert endpoint.metadata.auth_required is True
+
+    # Source file is untouched
+    src_data = json.loads(sbom_file.read_text())
+    assert "auth_required" not in json.dumps(src_data)
+
+
+def test_enrich_missing_file_exits(tmp_path: Path) -> None:
+    result = runner.invoke(app, ["sbom", "enrich", "--file", str(tmp_path / "nope.json")])
     assert result.exit_code != 0
 
 

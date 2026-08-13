@@ -405,11 +405,13 @@ class FastAPIAdapter(FrameworkAdapter):
 
                 receiver, method, path_str = ep_info
                 func_name = node.name
-                # Key on HTTP method + route path so the same endpoint defined
-                # across multiple service files (e.g. GET /health in autogen,
-                # crewai, and agent_backend) is deduplicated into one node with
-                # evidence from all files, rather than one node per file.
-                canon = f"fastapi:endpoint:{method.upper()}:{path_str}"
+                # Key on HTTP method + route path only (no framework prefix) so
+                # the same endpoint defined across multiple service files (e.g.
+                # GET /health in autogen, crewai, and agent_backend) — or found
+                # by both this adapter and the generic api_endpoint_generic
+                # regex fallback — dedupes into one node with evidence from all
+                # sources, rather than one node per file/adapter.
+                canon = f"endpoint:{method.upper()}:{path_str}"
 
                 ep_auth: str | None = _extract_depends_auth_type(node, auth_vars)
                 if ep_auth is None:
