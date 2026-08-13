@@ -116,7 +116,13 @@ def _validate_inputs(
     # Auto-create the parent directory so `--output` behaves consistently with
     # `nuguard behavior` (and analyze/redteam, which create parents on write).
     out_parent = output.parent
-    out_parent.mkdir(parents=True, exist_ok=True)
+try:
+        out_parent.mkdir(parents=True, exist_ok=True)
+    except OSError as exc:
+        _err(
+            f"Could not create output directory '{out_parent}': {exc}",
+            "Check the path and directory permissions.",
+        )
     if not os.access(out_parent, os.W_OK):
         _err(
             f"No write permission to output directory '{out_parent}'.",
