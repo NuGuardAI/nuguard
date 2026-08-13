@@ -4,16 +4,21 @@ Issue #220 reports that nuguard's discovery under-detects GCP Cloud Run
 deployments. This file pins the current Cloud Run-specific markers so
 that:
 
-* The Cloud Run Kubernetes-style service YAML (``apiVersion:
-  serving.knative.dev/v1``) is recognised as both "GCP" and
-  "Cloud Run".
+* The ``google-github-actions/deploy-cloudrun`` GitHub Action,
+  ``run.googleapis.com`` annotations, ``*.a.run.app`` URLs, and the
+  ``cloudrun`` substring anywhere in a path are standalone Cloud Run
+  triggers, and any Cloud Run signal also implies the coarse "GCP"
+  marker.
+* The Knative service API (``apiVersion: serving.knative.dev/v1``) alone
+  is intentionally NOT a Cloud Run trigger — Knative Serving is open
+  source and commonly self-hosted, so it requires a Cloud Run co-signal
+  (e.g. ``run.googleapis.com`` / ``*.a.run.app``) to be classified as
+  Cloud Run.
 * GitHub Actions workflows that use
   ``google-github-actions/deploy-cloudrun`` are recognised as
   "Cloud Run" + "GCP" + "GitHub Actions".
 * Cloud Run runtime URLs (``*.a.run.app``) inside workflow files are
   captured as deployment URLs.
-* File names containing ``cloudrun`` (no extension) trigger the
-  Cloud Run platform marker.
 
 The platform list is also asserted to remain deduplicated when the
 file content triggers both the coarse "GCP" and the specific
