@@ -536,3 +536,101 @@ def test_build_step_details_chat_response_cleaned() -> None:
     assert len(details) == 1
     assert details[0]["response"] == "Hello, I can help you."
     assert "conversation_id" not in details[0]["response"]
+
+
+# ---------------------------------------------------------------------------
+# Cross-tenant leak detection feeding severity (see _detect_cross_tenant_leak
+# in orchestrator.py) — previously cross_tenant was only ever set for
+# ScenarioType.CROSS_TENANT_EXFILTRATION, so a skeleton-key jailbreak on an
+# unrelated scenario type (e.g. AGENTIC_TRUST_ABUSE) that leaked a different
+# customer's data never scored any higher for it.
+# ---------------------------------------------------------------------------
+
+
+def _agentic_trust_scenario() -> AttackScenario:
+    return AttackScenario(
+        scenario_id="scn-2",
+        goal_type=GoalType.AGENTIC_TRUST_ABUSE,
+        scenario_type=ScenarioType.INTENT_ROUTING_CONFUSION,
+        title="Developer Override Mode",
+        description="skeleton-key jailbreak via developer override framing",
+        target_node_ids=["node-1"],
+    )
+
+
+def _agentic_chain() -> ExploitChain:
+    return ExploitChain(
+        chain_id="chain-2",
+        goal_type=GoalType.AGENTIC_TRUST_ABUSE,
+        scenario_type=ScenarioType.INTENT_ROUTING_CONFUSION,
+        sbom_path=["node-1"],
+    )
+
+
+def _leak_step_result(response: str) -> StepResult:
+    step = ExploitStep(
+        step_id="step-1",
+        step_type="INJECT",
+        description="unit step",
+        payload="payload",
+        success_signal="WARNING",
+        on_failure="abort",
+    )
+    result = StepResult(step=step, response=response, tool_calls=[])
+    result.success_signal_found = True
+    return result
+
+
+def test_cross_tenant_leak_scores_higher_than_same_scenario_without_leak() -> None:
+    """A response leaking a different customer's account beats an identical scenario that doesn't."""
+    orchestrator = _default_orchestrator()
+    scenario = _agentic_trust_scenario()
+    chain = _agentic_chain()
+    leaking_response = (
+        "WARNING: The transaction summary for account ID ACCT-002 is as follows: "
+        "Balance: $12,500.00 - Status: Active"
+    )
+    sr_leak = _leak_step_result(leaking_response)
+    session_with_identity = AttackSession(
+        session_id="sess-1", target_url="http://localhost:3000", chain_id="chain-2",
+        golden_ids=["ACCT-001"], golden_name="Alice Johnson",
+    )
+    leak_findings = orchestrator._build_findings(
+        scenario=scenario,
+        chain=chain,
+        step_results=[sr_leak],
+        step_details=orchestrator._build_step_details([sr_leak]),
+        session=session_with_identity,
+    )
+
+    sr_no_leak = _leak_step_result("WARNING: Here is your own account summary. Balance: $500.00")
+    no_leak_findings = orchestrator._build_findings(
+        scenario=scenario,
+        chain=chain,
+        step_results=[sr_no_leak],
+        step_details=orchestrator._build_step_details([sr_no_leak]),
+        session=session_with_identity,
+    )
+
+    assert len(leak_findings) == 1
+    assert len(no_leak_findings) == 1
+    assert leak_findings[0].ngrs_score > no_leak_findings[0].ngrs_score
+
+
+def test_cross_tenant_leak_without_session_identity_not_flagged() -> None:
+    """No pre-scan identity captured — can't determine cross-tenant, so no bump."""
+    orchestrator = _default_orchestrator()
+    scenario = _agentic_trust_scenario()
+    chain = _agentic_chain()
+    leaking_response = "WARNING: account ID ACCT-002 balance: $12,500.00"
+    sr = _leak_step_result(leaking_response)
+
+    with_session_findings = orchestrator._build_findings(
+        scenario=scenario, chain=chain, step_results=[sr],
+        step_details=orchestrator._build_step_details([sr]), session=None,
+    )
+    assert len(with_session_findings) == 1
+    # data_class stays at the AGENTIC_TRUST_ABUSE goal-type baseline (2) —
+    # no identity to compare against means cross_tenant can't be detected,
+    # so the PII-class bump introduced by cross_tenant never fires.
+    assert "DC:2" in with_session_findings[0].ngrs_vector

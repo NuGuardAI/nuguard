@@ -105,6 +105,7 @@ markers = [
     "benchmark_redteam: Full benchmark redteam CLI scan (opt-in: NUGUARD_REDTEAM_BENCHMARK=1)",
     "analyze_e2e: E2E analyze pipeline from GitHub clone (opt-in: NUGUARD_ANALYZE_E2E=1)",
     "smoke: Smoke tests for key extraction scenarios",
+    "redteam_judge_eval: Judge-accuracy corpus replay against a real LLM (opt-in, needs an LLM API key)",
 ]
 
 [tool.ruff]

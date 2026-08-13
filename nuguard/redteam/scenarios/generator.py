@@ -270,6 +270,18 @@ _ATTACK_PHASE: dict[str, int] = {
 }
 
 
+def attack_phase_for(scenario_type_value: str) -> int:
+    """Return the escalation phase (1-9) for a ``ScenarioType.value``.
+
+    Shared by both :meth:`ScenarioGenerator.generate` (legacy/SBOM-driven
+    path) and :meth:`ScenarioGenerator.generate_from_catalog` (capability-
+    aware catalog path) so scenarios from either source carry a comparable
+    ``attack_phase`` and can be merged into one phase-ordered dispatch list
+    instead of the catalog scenarios bypassing escalation ordering entirely.
+    """
+    return _ATTACK_PHASE.get(scenario_type_value, 5)
+
+
 def _tool_risk_group(tool_name: str, description: str) -> tuple[str, bool]:
     """Return ``(group_label, is_high_risk)`` for a tool.
 
@@ -414,7 +426,8 @@ class ScenarioGenerator:
         # This ensures scenarios execute in the correct escalation order without
         # running destructive tests before the attack surface has been mapped.
         def _phase_blended_key(s: AttackScenario) -> tuple[int, float]:
-            phase = _ATTACK_PHASE.get(s.scenario_type.value, 5)
+            phase = attack_phase_for(s.scenario_type.value)
+            s.attack_phase = phase
             base = s.impact_score
             node = self._node_by_id.get(s.target_node_ids[0] if s.target_node_ids else "")
             if node and node.metadata:
@@ -464,7 +477,11 @@ class ScenarioGenerator:
         Uses capability-aware selection: only specs whose
         ``required_capabilities`` are satisfied by the target's
         :class:`AppCapabilityProfile` are instantiated.  Returns scenarios
-        sorted by ``impact_score`` descending, capped to the profile target.
+        sorted by escalation phase ascending (see ``attack_phase_for``),
+        then ``impact_score`` descending within each phase, capped to the
+        profile target — the same phase-then-impact ordering as
+        :meth:`generate`, so catalog-sourced scenarios carry real escalation
+        discipline instead of being merged in by impact score alone.
 
         Also populates ``self.last_coverage`` with a :class:`CoverageReport`.
 
@@ -485,6 +502,9 @@ class ScenarioGenerator:
             catalog=catalog,
         )
         self.last_coverage = coverage
+        for sc in scenarios:
+            sc.attack_phase = attack_phase_for(sc.scenario_type.value)
+        scenarios.sort(key=lambda s: (s.attack_phase, -s.impact_score))
         # Backfill target_tool_names (same post-processing as generate())
         for sc in scenarios:
             if sc.target_tool_names:

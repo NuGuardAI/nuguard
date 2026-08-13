@@ -95,7 +95,7 @@ class RedteamRunRequest(BaseModel):
     discovery_max_turns: int = 3
     chat_payload_extras: dict[str, Any] | None = None
     pre_run_warmup: int = 0
-    verify_findings: bool = False
+    verify_findings: bool = True
     golden_data: dict[str, Any] | None = None
     suppress_spa_html_auth_bypass: bool = True
     codegen_escalation_enabled: bool = True

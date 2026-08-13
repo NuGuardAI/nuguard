@@ -78,6 +78,8 @@ def render_finding_block(
         owasp_asi = finding.get("owasp_asi_ref") or ""
         policy_clause = finding.get("policy_clause") or ""
         goal_type = finding.get("goal_type") or ""
+        ngrs_score = finding.get("ngrs_score")
+        ngrs_vector = finding.get("ngrs_vector") or ""
     else:
         title = finding.title or ""
         finding_id = getattr(finding, "finding_id", "") or ""
@@ -92,9 +94,12 @@ def render_finding_block(
         evidence_quote = getattr(finding, "evidence_quote", "") or ""
         remediation = getattr(finding, "remediation", "") or ""
         owasp_llm = getattr(finding, "owasp_llm_ref", "") or ""
-        owasp_asi = ""
-        policy_clause = ""
+        owasp_asi = getattr(finding, "owasp_asi_ref", "") or ""
+        policy_clauses = getattr(finding, "policy_clauses_violated", None) or []
+        policy_clause = "; ".join(policy_clauses)
         goal_type = str(finding.goal_type) if getattr(finding, "goal_type", None) else ""
+        ngrs_score = getattr(finding, "ngrs_score", None)
+        ngrs_vector = getattr(finding, "ngrs_vector", "") or ""
 
     heading = f"{heading_level} [{sev}] {title}"
     if finding_id:
@@ -112,6 +117,10 @@ def render_finding_block(
         lines.append("")
     if policy_clause:
         lines.append(f"**Policy Clause:** {policy_clause}")
+        lines.append("")
+    if ngrs_score is not None:
+        vector_suffix = f" — `{ngrs_vector}`" if ngrs_vector else ""
+        lines.append(f"**NGRS:** {ngrs_score}/100{vector_suffix}")
         lines.append("")
     if reasoning:
         lines.append(f"**Finding:** {reasoning}")

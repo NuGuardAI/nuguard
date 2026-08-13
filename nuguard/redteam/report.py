@@ -128,18 +128,14 @@ def to_markdown(
     lines += ["## Summary", ""]
     if meta.scan_profile:
         lines += [f"- **Scan Profile**: {meta.scan_profile}", ""]
-    _WEIGHTS = {"CRITICAL": 100.0, "HIGH": 80.0, "MEDIUM": 50.0, "LOW": 25.0, "INFO": 0.0}
-    if findings:
-        _scores = [
-            _WEIGHTS.get(
-                f.severity.value.upper() if hasattr(f.severity, "value") else str(f.severity).upper(),
-                10.0,
-            )
-            for f in findings
-        ]
-        _risk_score = round(sum(_scores) / len(_scores), 1)
-    else:
-        _risk_score = 0.0
+    # Single source of truth for the aggregate risk score — previously this
+    # computed its own mean independently of (and with different weights
+    # than) risk_engine.aggregate_score(), which averages each finding's
+    # NGRS score. aggregate_score() returns [0, 10]; scale to /100 to match
+    # this report's existing display convention.
+    from nuguard.redteam.risk_engine import aggregate_score as _aggregate_score
+
+    _risk_score = round(_aggregate_score(findings) * 10, 1)
     lines += [f"- **Overall Risk Score**: {_risk_score:.1f} / 100", ""]
     total = len(findings)
     lines += [f"- **Total Findings**: {total}", ""]

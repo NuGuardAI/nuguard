@@ -1268,12 +1268,14 @@ class NuGuardConfig(BaseSettings):
         ),
     )
     redteam_verify_findings: bool = Field(
-        default=False,
+        default=True,
         description=(
             "Re-probe the target with the exact successful payload after a finding is "
             "emitted to confirm it reproduces (yaml: redteam.verify_findings). "
-            "Off by default to keep runs fast; enable for high-stakes audits. "
-            "Adds a verified/unconfirmed badge to each finding in the report."
+            "On by default — one extra request per confirmed finding, not per scenario. "
+            "The probe reuses the judge that produced the original finding and feeds the "
+            "result into the finding's NGRS likelihood score, in addition to the "
+            "verified/unconfirmed badge in the report. Set to false to skip it."
         ),
     )
     redteam_suppress_spa_html_auth_bypass: bool = Field(
