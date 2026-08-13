@@ -426,6 +426,7 @@ def redteam(
                 all_formats=effective_formats,
                 extension_map=extension_map,
             )
+            out_path.parent.mkdir(parents=True, exist_ok=True)
             if fmt == "text":
                 # Plain-text report — no ANSI escapes in a file. Identical
                 # content to what ``nuguard redteam`` emits to stdout.
