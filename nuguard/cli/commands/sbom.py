@@ -118,16 +118,17 @@ def _validate_inputs(
     out_parent = output.parent
     try:
         out_parent.mkdir(parents=True, exist_ok=True)
-            except OSError as exc:
-                _err(
-                    f"Could not create output directory '{out_parent}': {exc}",
-                    "Check the path and directory permissions.",
-                )
-            if not os.access(out_parent, os.W_OK):
-                _err(
-                    f"No write permission to output directory '{out_parent}'.",
-                    "Check directory permissions.",
-                )
+    except OSError as exc:
+        _err(
+            f"Could not create output directory '{out_parent}': {exc}",
+            "Check the path and directory permissions.",
+        )
+    
+    if not os.access(out_parent, os.W_OK):
+        _err(
+            f"No write permission to output directory '{out_parent}'.",
+            ...
+        )
 
     # ── Source directory ──────────────────────────────────────────────────────
     if source is not None:
