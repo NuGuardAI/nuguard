@@ -53,8 +53,13 @@ def test_seed_command_is_a_stub() -> None:
     """
     result = runner.invoke(app, ["seed", "--target", "http://example.test"])
     assert result.exit_code == 3
-    assert "not yet implemented" in (result.stderr or "").lower()
-    assert "#161" in (result.stderr or "")
+    stderr = (result.stderr or "").lower()
+    assert "not yet implemented" in stderr
+    assert "#161" in stderr
+    # The stub must point the user at the working alternative so the
+    # guidance can't silently regress while the store is unimplemented.
+    assert "--canary" in stderr
+    assert "redteam" in stderr
     # Stdout must be empty for the stub path — anything on stdout would
     # show up in piped output and break the "machine-friendly" contract.
     assert (result.stdout or "") == ""
@@ -110,6 +115,10 @@ def test_findings_command_is_a_stub() -> None:
     stderr = (result.stderr or "").lower()
     assert "not yet implemented" in stderr
     assert "#161" in stderr
+    # The stub must point at the documented workaround (nuguard redteam
+    # --output findings.json) so the guidance can't silently regress.
+    assert "redteam" in stderr
+    assert "--output" in stderr
     assert (result.stdout or "") == ""
 
 
@@ -131,6 +140,11 @@ def test_replay_command_is_a_stub() -> None:
     stderr = (result.stderr or "").lower()
     assert "not yet implemented" in stderr
     assert "#161" in stderr
+    # The stub must point at the documented workaround (re-run nuguard
+    # redteam/behavior with the same nuguard.yaml) so the guidance can't
+    # silently regress.
+    assert "redteam" in stderr or "behavior" in stderr
+    assert "nuguard.yaml" in stderr
     assert (result.stdout or "") == ""
 
 
