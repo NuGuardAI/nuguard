@@ -110,6 +110,20 @@ def test_generate_bad_source_exits_nonzero(tmp_path: Path) -> None:
     assert result.exit_code != 0
 
 
+def test_generate_creates_missing_parent_dir(tmp_path: Path) -> None:
+    # --output into a not-yet-existing directory should succeed and create the
+    # parent, matching `nuguard behavior` (analyze/redteam also create parents).
+    out = tmp_path / "nested" / "deep" / "app.sbom.json"
+    result = runner.invoke(
+        app,
+        ["sbom", "generate", "--source", str(_FIXTURE_APP), "--output", str(out)],
+    )
+    assert result.exit_code == 0, result.output
+    assert out.exists()
+    data = json.loads(out.read_text())
+    assert "nodes" in data
+
+
 # ---------------------------------------------------------------------------
 # nuguard sbom validate
 # ---------------------------------------------------------------------------
