@@ -3,6 +3,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
+from ..core.route_patterns import ROUTE_PATTERNS as _ROUTE_PATTERNS
 from ..normalization import canonicalize_text
 from ..types import ComponentType
 from .base import DetectionAdapter, FrameworkAdapter, RegexAdapter
@@ -293,11 +294,12 @@ def default_registry() -> tuple[DetectionAdapter, ...]:
                 name="api_endpoint_generic",
                 component_type=ComponentType.API_ENDPOINT,
                 priority=160,
-                patterns=(
-                    re.compile(r"\b(GET|POST|PUT|DELETE|PATCH)\s+/[\w/{}:-]+"),
-                    re.compile(r"@(app|router)\.(get|post|put|delete|patch)\(", re.IGNORECASE),
-                ),
-                canonical_name="api_endpoint:generic",
+                # Shares its patterns with application_summary.extract_api_endpoints
+                # so summary.api_endpoints and API_ENDPOINT nodes never diverge.
+                # canonical_name=None puts each distinct (method, path) match into
+                # its own node (see extractor/core.py's per-match grouping) instead
+                # of collapsing every route in the repo into one generic node.
+                patterns=_ROUTE_PATTERNS,
             ),
             RegexAdapter(
                 name="deployment_generic",

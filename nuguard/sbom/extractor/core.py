@@ -1028,6 +1028,46 @@ class AiSbomExtractor:
                         )
                         self._merge_detection(node_map, _comp_det)
                     continue
+                # API_ENDPOINT: group per-match by the parsed (method, path) —
+                # not raw snippet text, since different route-declaration styles
+                # (decorator vs. bare "METHOD /path") produce different snippets
+                # for the same logical route. The canonical_name scheme
+                # (endpoint:{METHOD}:{path}) matches the one used by the FastAPI/
+                # Flask AST adapters, so a route found by both a generic regex
+                # match and a framework-specific adapter merges into one node
+                # instead of producing a duplicate.
+                if detection.component_type == ComponentType.API_ENDPOINT and not getattr(
+                    rx_adapter, "canonical_name", None
+                ):
+                    _ep_first: dict[tuple[str, str], AdapterMatch] = {}
+                    for _m in detection.matches:
+                        _path = _m.groups.get("path")
+                        if not _path or _path == "/":
+                            continue
+                        _method = (_m.groups.get("method") or "").upper()
+                        _ep_key = (_method, _path)
+                        if _ep_key not in _ep_first:
+                            _ep_first[_ep_key] = _m
+                    for (_ep_method, _ep_path), _first_match in _ep_first.items():
+                        _ep_meta = dict(detection.metadata)
+                        _ep_meta["endpoint"] = _ep_path
+                        if _ep_method:
+                            _ep_meta["method"] = _ep_method
+                        _comp_det = ComponentDetection(
+                            component_type=detection.component_type,
+                            canonical_name=f"endpoint:{_ep_method or 'ANY'}:{_ep_path}",
+                            display_name=_ep_path,
+                            adapter_name=detection.adapter_name,
+                            priority=detection.priority,
+                            confidence=0.55,
+                            metadata=_ep_meta,
+                            file_path=rel_path,
+                            line=_first_match.line,
+                            snippet=_first_match.snippet,
+                            evidence_kind="regex",
+                        )
+                        self._merge_detection(node_map, _comp_det)
+                    continue
                 confidence = min(0.95, 0.50 + 0.05 * len(detection.matches))
                 canonical = canonicalize_text(detection.canonical_name)
                 # For MODEL type, keep the full canonical name (e.g., "llama3.2:3b"
@@ -2413,11 +2453,69 @@ class AiSbomExtractor:
 
         return doc
 
+    # Git rejects positional refs that begin with ``-`` by refusing them as
+    # "ambiguous argument", but only after it has already consumed earlier
+    # options.  Some versions of git also accept leading ``-`` arguments as
+    # flags in older builds (see CVE-2017-1000117 et al.), so we reject the
+    # value up-front rather than rely on the child process's behaviour.
+    # Accepting such a ref would let a hostile ref string (e.g. one pasted from
+    # a malicious README) trick ``git clone`` into invoking other git options
+    # such as ``--upload-pack=<command>`` — a known argument-injection vector.
+    _SAFE_REF_RE = re.compile(r"^[^-,\s\x00][^,\s\x00]*\Z")
+    # Same defence for the URL: even though the CLI validates it as http(s)
+    # upstream, ``extract_from_repo`` is a public API callable from any
+    # embedding, so we re-validate here to avoid the same injection class.
+    # Accepted at the clone boundary:
+    #   - http(s)://host/path
+    #   - ssh://[user@]host[:port]/path
+    #   - scp-style SSH: [user@]host:path  where the path either starts
+    #     with ``/`` (absolute) or with a non-flag character (so a
+    #     hostile provider cannot smuggle a flag through
+    #     ``git@host:--option``). ``extract_from_repo`` historically
+    #     accepted the scp form, so the regex preserves that compatibility
+    #     while still rejecting anything that smells like an injected flag.
+    # The scp path sub-pattern forbids ``-``/``,``/``\s``/``\x00``/``\Z`` at
+    # the start (no leading flag or whitespace) and continues with
+    # safe characters. The host portion also forbids ``-`` so a hostile
+    # user@ portion cannot itself look like an option.
+    _SAFE_URL_RE = re.compile(
+        r"(?:https?|ssh)://[^\s\x00]*\Z"
+        r"|"
+        r"[A-Za-z0-9._-]+@[A-Za-z0-9._-]+:[^-,:\s\x00][^,\s\x00]*\Z"
+    )
+
     @staticmethod
     def _clone_repo(url: str, ref: str, dest: Path) -> None:
         if shutil.which("git") is None:
             raise RuntimeError("git executable not found on PATH")
-        cmd = ["git", "clone", "--depth", "1", "--branch", ref, url, str(dest)]
+        # Reject argument-injection attempts.  ``ref`` and ``url`` are passed
+        # to ``git clone`` as positional arguments; if either starts with
+        # ``-`` git may interpret it as a flag (``--upload-pack=<cmd>``,
+        # ``--config=<key>=<value>``, etc.), giving the ref provider a way to
+        # run arbitrary commands on the operator's machine.
+        if not AiSbomExtractor._SAFE_REF_RE.match(ref):
+            raise ValueError(
+                f"Invalid git ref {ref!r}: must not be empty, start with '-', "
+                "or contain whitespace."
+            )
+        if not AiSbomExtractor._SAFE_URL_RE.match(url):
+            raise ValueError(
+                f"Invalid repository URL {url!r}: must be an absolute URL with "
+                "an explicit scheme (e.g. https://...)."
+            )
+        # Use ``--`` to terminate option parsing so any future ref/url values
+        # that pass validation can never be reinterpreted as flags.
+        cmd = [
+            "git",
+            "clone",
+            "--depth",
+            "1",
+            "--branch",
+            ref,
+            "--",
+            url,
+            str(dest),
+        ]
         _log.debug("running: %s", " ".join(cmd))
         try:
             result = subprocess.run(cmd, check=True, capture_output=True)

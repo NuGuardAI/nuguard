@@ -216,6 +216,11 @@ async def _run_behavior(
         try:
             from nuguard.sbom.serializer import AiSbomSerializer
             sbom = AiSbomSerializer.from_json(sbom_path_obj.read_text())
+
+            # Re-run topology enrichment in case the SBOM file predates it (idempotent).
+            from nuguard.sbom.enricher import enrich as _enrich_topology  # noqa: PLC0415
+            _enrich_topology(sbom)
+
             _console.print(f"[dim]Loaded SBOM: {raw_sbom_path}[/dim]")
         except Exception as exc:
             _log.warning("Could not load SBOM from %s: %s", raw_sbom_path, exc)

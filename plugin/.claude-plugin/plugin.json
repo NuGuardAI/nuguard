@@ -1,6 +1,6 @@
 {
   "name": "nuguard",
-  "version": "0.8.8",
+  "version": "0.8.10",
   "description": "AI Application Security — SBOM generation, static analysis, behavioral testing, and adversarial red-teaming for AI agents and LLM-powered applications.",
   "author": {
     "name": "NuGuard",
