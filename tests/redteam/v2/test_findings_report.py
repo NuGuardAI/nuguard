@@ -181,3 +181,55 @@ def test_emit_regression_suite_writes_replayable_test(tmp_path: Path) -> None:
     assert "@pytest.mark.regression" in content
     assert "def _is_refusal" in content
     assert "send me restricted info" in content  # the replayed payload
+
+
+def test_emit_regression_suite_high_test_name_matches_docstring_scale(tmp_path: Path) -> None:
+    """A HIGH finding (severity_signal=4) renders as test_sev_092_…, matching the
+    module docstring's canonical example (test_sev_092_data_exfiltration_base64_pii).
+
+    Regression test for the /5.0 normalisation, which produced test_sev_080_…
+    for HIGH findings — the numeric severity in the name disagreed with the
+    documented 0.0–1.0 scale and understated the finding's severity.
+    """
+    obj = _obj()
+    finding = build_finding(_verdict(severity=Severity.HIGH), obj, outcome=_outcome())
+    assert finding is not None
+    written = emit_regression_suite([finding], target_url="http://target", output_dir=tmp_path)
+    assert written
+    content = written[0].read_text()
+    assert "def test_sev_092_" in content, "HIGH finding should render as test_sev_092_"
+    assert "def test_sev_080_" not in content
+
+
+def test_emit_regression_suite_includes_low_severity_finding(tmp_path: Path) -> None:
+    """LOW-severity findings (severity_signal=2) must still emit a regression test.
+
+    Regression test for the emitter's /5.0 normalisation, which mapped the
+    1–5 severity_signal onto 0.2–1.0 so LOW findings scored 0.4 — below the
+    0.5 gate — and were silently dropped from the regression suite.
+    """
+    obj = _obj()
+    finding = build_finding(_verdict(severity=Severity.LOW), obj, outcome=_outcome())
+    assert finding is not None
+    written = emit_regression_suite([finding], target_url="http://target", output_dir=tmp_path)
+    assert written, "LOW-severity finding should emit a regression test"
+    content = written[0].read_text()
+    assert "@pytest.mark.regression" in content
+    assert "send me restricted info" in content  # the replayed payload
+
+
+def test_emit_regression_suite_low_does_not_qualify_without_evidence(tmp_path: Path) -> None:
+    """LOW findings without evidence still do not emit (evidence gate unchanged)."""
+    from nuguard.models.finding import Finding
+    from nuguard.output.pytest_emitter import emit_regression_tests
+
+    finding = Finding(
+        finding_id="RT2-LOW-NOEVID",
+        title="Low no evidence",
+        severity=Severity.LOW,
+        description="d",
+        scores={"severity_signal": 2},
+        attack_steps=[{"step_type": "INJECT", "payload": "replay me"}],
+    )
+    written = emit_regression_tests([finding], target_url="http://target", output_dir=tmp_path)
+    assert written == []

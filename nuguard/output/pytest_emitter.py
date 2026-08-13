@@ -200,12 +200,20 @@ def _qualifies(finding: "Finding") -> bool:
 
 def _finding_sev_float(finding: "Finding") -> float:
     """Derive a 0.0–1.0 severity signal from available finding fields."""
-    # Prefer explicit severity_signal score if stored in scores dict
+    # Prefer explicit severity_signal score if stored in scores dict.
+    # The only producer is redteam/v2/findings/builder._SEVERITY_SIGNAL, which
+    # stores 1 (INFO) … 5 (CRITICAL).  Normalise to the documented 0.0–1.0
+    # scale by mapping each signal value onto the severity-enum floats below,
+    # so the signal and the fallback agree (previously dividing by 5.0 mapped
+    # HIGH → 0.8 and MEDIUM → 0.6, which disagreed with the severity-enum
+    # floats used everywhere else — HIGH findings rendered as test_sev_080
+    # instead of the documented test_sev_092 scale).
+    _SIGNAL_MAP = {5: 1.0, 4: 0.92, 3: 0.75, 2: 0.58, 1: 0.42}  # 1–5 → 0.0–1.0
     raw = finding.scores.get("severity_signal")
     if raw is not None:
         try:
-            return float(raw) / 5.0  # normalise 1–5 scale to 0–1
-        except (TypeError, ValueError):
+            return _SIGNAL_MAP[int(raw)]
+        except (KeyError, TypeError, ValueError):
             pass
     # Fall back to severity enum → float
     _sev_map = {"critical": 1.0, "high": 0.8, "medium": 0.5, "low": 0.2, "info": 0.0}
