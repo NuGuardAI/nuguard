@@ -113,13 +113,11 @@ def _validate_inputs(
             f"Output path '{output}' is a directory.",
             "Provide a file path, e.g. --output app.sbom.json",
         )
+    # Auto-create the parent directory so `--output` behaves consistently with
+    # `nuguard behavior` (and analyze/redteam, which create parents on write).
     out_parent = output.parent
-    if not out_parent.exists():
-        _err(
-            f"Output directory '{out_parent}' does not exist.",
-            "Create the directory first or choose an existing path.",
-        )
-    if out_parent.exists() and not os.access(out_parent, os.W_OK):
+    out_parent.mkdir(parents=True, exist_ok=True)
+    if not os.access(out_parent, os.W_OK):
         _err(
             f"No write permission to output directory '{out_parent}'.",
             "Check directory permissions.",
