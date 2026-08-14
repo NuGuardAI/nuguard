@@ -430,19 +430,25 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
                 lines.append(f"**Covered components**: {', '.join(tagged)}")
                 lines.append("")
 
-    # Coverage Map
+    # Coverage Map — only components actually exercised during the scan, to
+    # keep the report focused (the full SBOM catalog is available separately).
     if result.coverage:
+        matched_coverage = [cov for cov in result.coverage if cov.exercised]
         lines.append("## Coverage Map")
         lines.append("")
-        lines.append("| Component | Type | Exercised | Within Policy | Deviations | Aliases Seen |")
-        lines.append("|-----------|------|-----------|---------------|------------|--------------|")
-        for cov in result.coverage:
-            ex = "Yes" if cov.exercised else "No"
-            wp = "Yes" if cov.exercised_within_policy else ("No" if cov.exercised else "-")
-            dev_count = len(cov.deviations)
-            aliases = ", ".join(cov.aliases_seen[:3]) if cov.aliases_seen else "-"
-            lines.append(f"| {cov.component_name} | {cov.node_type} | {ex} | {wp} | {dev_count} | {aliases} |")
-        lines.append("")
+        if matched_coverage:
+            lines.append("| Component | Type | Exercised | Within Policy | Deviations | Aliases Seen |")
+            lines.append("|-----------|------|-----------|---------------|------------|--------------|")
+            for cov in matched_coverage:
+                ex = "Yes" if cov.exercised else "No"
+                wp = "Yes" if cov.exercised_within_policy else ("No" if cov.exercised else "-")
+                dev_count = len(cov.deviations)
+                aliases = ", ".join(cov.aliases_seen[:3]) if cov.aliases_seen else "-"
+                lines.append(f"| {cov.component_name} | {cov.node_type} | {ex} | {wp} | {dev_count} | {aliases} |")
+            lines.append("")
+        else:
+            lines.append("_No components were exercised during this scan._")
+            lines.append("")
         unmatched_mentions = sorted({m for cov in result.coverage for m in (cov.unmatched_mentions or [])})
         if unmatched_mentions:
             lines.append("**Unmatched Mentions:**")
@@ -451,7 +457,7 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
                 lines.append(f"- {mention}")
             lines.append("")
         if result.scenario_results:
-            render_behavior_coverage_evidence(lines, result.coverage, result.scenario_results)
+            render_behavior_coverage_evidence(lines, matched_coverage, result.scenario_results)
 
         # Coverage mapping diagnostics — surfaces hallucinated/unmapped entity mentions
         _cov_diag = result.coverage_mapping_diagnostics or {}
