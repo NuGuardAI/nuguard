@@ -104,34 +104,50 @@ jobs:
           fi
 
           if $CHERRY_PICK_CMD; then
-            git push origin "$BRANCH"
-            echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
             echo "conflict=false" >> "$GITHUB_OUTPUT"
           else
-            git cherry-pick --abort
+            # Leave the conflict markers in place and commit them as-is,
+            # rather than aborting, so a human can resolve the conflict
+            # directly on the PR/branch instead of starting from scratch.
+            git add -A
+            git commit -m "Cherry-pick #${PR_NUMBER}: UNRESOLVED CONFLICTS — needs manual resolution"
             echo "conflict=true" >> "$GITHUB_OUTPUT"
           fi
+          git push origin "$BRANCH"
+          echo "branch=$BRANCH" >> "$GITHUB_OUTPUT"
 
       - name: Open cherry-pick PR
-        if: steps.cherry.outputs.conflict == 'false'
         id: open_pr
         env:
           GH_TOKEN: ${{ steps.generate-token.outputs.token }}
           PR_NUMBER: ${{ needs.find-pr.outputs.pr_number }}
+          CONFLICT: ${{ steps.cherry.outputs.conflict }}
         run: |
+          if [[ "$CONFLICT" == "true" ]]; then
+            title="Cherry-pick #${PR_NUMBER} into develop (CONFLICTS — needs manual resolution)"
+            body="Automated cherry-pick of #${PR_NUMBER} (merged into \`main\`) onto \`develop\` hit a merge conflict. Conflict markers are committed as-is on this branch — resolve them here (or locally), then mark this PR ready for review and merge manually. Not set to auto-merge. Closes #${PR_NUMBER}."
+            draft_flag="--draft"
+          else
+            title="Cherry-pick #${PR_NUMBER} into develop"
+            body="Automated cherry-pick of #${PR_NUMBER} (merged into \`main\`) onto \`develop\`. Auto-merges once required checks pass. Closes #${PR_NUMBER}."
+            draft_flag=""
+          fi
+
           url=$(gh pr create \
             --repo "${{ github.repository }}" \
             --base develop \
             --head "${{ steps.cherry.outputs.branch }}" \
-            --title "Cherry-pick #${PR_NUMBER} into develop" \
-            --body "Automated cherry-pick of #${PR_NUMBER} (merged into \`main\`) onto \`develop\`. Auto-merges once required checks pass. Closes #${PR_NUMBER}." \
-            --label "cherry-pick")
+            --title "$title" \
+            --body "$body" \
+            --label "cherry-pick" \
+            $draft_flag)
           echo "url=$url" >> "$GITHUB_OUTPUT"
 
       # Enables GitHub's native auto-merge: the PR merges itself the moment
       # every required status check (and any required review, per develop's
-      # branch protection) is satisfied. On a conflict, no PR is ever created
-      # (see the conflict branch below), so there is nothing here to merge.
+      # branch protection) is satisfied. Skipped entirely on a conflict — that
+      # PR is opened as a draft with unresolved conflict markers committed in
+      # it and needs a human to resolve and merge it manually.
       - name: Enable auto-merge
         if: steps.cherry.outputs.conflict == 'false'
         env:
@@ -147,4 +163,4 @@ jobs:
         run: |
           gh issue comment "${PR_NUMBER}" \
             --repo "${{ github.repository }}" \
-            --body "⚠️ Automated cherry-pick to \`develop\` failed due to a merge conflict. A maintainer needs to cherry-pick this manually."
+            --body "⚠️ Automated cherry-pick to \`develop\` hit a merge conflict. Draft PR opened with the conflict markers committed as-is — a maintainer needs to resolve them and merge manually: ${{ steps.open_pr.outputs.url }}"
