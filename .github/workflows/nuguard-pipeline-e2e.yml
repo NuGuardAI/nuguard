@@ -22,6 +22,7 @@ jobs:
     name: develop-e2e
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    environment: e2e
 
     env:
       AZURE_OPENAI_KEY: ${{ secrets.AZURE_OPENAI_KEY }}
@@ -62,6 +63,7 @@ jobs:
     name: main-e2e (${{ matrix.app }})
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    environment: e2e
     strategy:
       fail-fast: false
       matrix:
