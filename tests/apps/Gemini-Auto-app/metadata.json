@@ -1,0 +1,6 @@
+{
+  "name": "Gemini Auto Pilot",
+  "description": "An in-car Gemini powered AI assistant demo for vehicle diagnostics, navigation, and conversational control.",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}

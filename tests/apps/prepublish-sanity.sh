@@ -36,9 +36,57 @@ APP_RUNS=(
   "pinnacle-bank|tests/apps/pinnacle-bank-app/nuguard-azure.prepublish.yaml|tests/apps/pinnacle-bank-app/pinnacle-bank.sbom.json|tests/apps/pinnacle-bank-app/reports/pinnacle-bank-prepublish-behavior|tests/apps/pinnacle-bank-app/reports/pinnacle-bank-prepublish-redteam|/api/chat"
 )
 
+# Optional first argument restricts the run to a single app (matching the
+# "name" field above), e.g. `prepublish-sanity.sh openai-cs`. Used by CI to
+# run a fast one-app check on develop-branch PRs while still reusing the full
+# matrix (no argument) for main-branch PRs and manual prepublish runs.
+FILTER_APP="${1:-}"
+
 BEHAVIOR_SUMMARIES=()
 REDTEAM_SUMMARIES=()
 DURATIONS=()
+
+# Appends the behavior/redteam markdown reports for one app to the GitHub
+# Actions Job Summary (visible directly on the run page, no artifact download
+# needed). No-op outside of Actions, where GITHUB_STEP_SUMMARY is unset.
+# Called on both the success path and every failure path below so a failed
+# run's partial report (whatever exists) is still visible, not just its
+# ::error:: annotation.
+write_job_summary() {
+  local app_name="$1"
+  local behavior_md="$2"
+  local redteam_md="$3"
+  local failure_note="$4"
+
+  if [[ -z "${GITHUB_STEP_SUMMARY:-}" ]]; then
+    return 0
+  fi
+
+  {
+    echo "## NuGuard prepublish sanity — ${app_name}"
+    echo
+    if [[ -n "$failure_note" ]]; then
+      echo "> **FAILED:** ${failure_note}"
+      echo
+    fi
+    if [[ -f "$behavior_md" ]]; then
+      echo "<details><summary>Behavior report</summary>"
+      echo
+      cat "$behavior_md"
+      echo
+      echo "</details>"
+      echo
+    fi
+    if [[ -f "$redteam_md" ]]; then
+      echo "<details><summary>Redteam report</summary>"
+      echo
+      cat "$redteam_md"
+      echo
+      echo "</details>"
+      echo
+    fi
+  } >> "$GITHUB_STEP_SUMMARY"
+}
 
 run_with_allowed_rc() {
   local label="$1"
@@ -52,7 +100,10 @@ run_with_allowed_rc() {
   set -e
 
   if [[ ",${allowed_csv}," != *",${rc},"* ]]; then
+    echo "::error title=NuGuard prepublish sanity failed::${label} exited with code ${rc} (allowed: ${allowed_csv})."
     echo "[FAIL] ${label} exited with code ${rc} (allowed: ${allowed_csv})." >&2
+    write_job_summary "${name:-unknown}" "${behavior_base:-}.md" "${redteam_base:-}.md" \
+      "${label} exited with code ${rc} (allowed: ${allowed_csv})."
     exit 1
   fi
 
@@ -66,8 +117,15 @@ uv run nuguard --help > /dev/null 2>&1
 uv run pytest tests/test_config.py tests/test_secret_store.py -q
 
 echo "[2/3] App prepublish sanity runs"
+matched_filter=0
 for entry in "${APP_RUNS[@]}"; do
   IFS='|' read -r name cfg sbom_out behavior_base redteam_base expected_endpoint <<< "$entry"
+
+  if [[ -n "$FILTER_APP" && "$name" != "$FILTER_APP" ]]; then
+    continue
+  fi
+  matched_filter=1
+
   mkdir -p "$(dirname "$behavior_base")"
 
   echo "---"
@@ -95,6 +153,7 @@ for entry in "${APP_RUNS[@]}"; do
   run_with_allowed_rc "${name}: redteam" "0,1,2" \
     uv run nuguard redteam \
       --config "$cfg" \
+      --profile ci \
       --format json \
       --format markdown \
       --output "$redteam_base" \
@@ -104,7 +163,7 @@ for entry in "${APP_RUNS[@]}"; do
   redteam_json="${redteam_base}.json"
 
   # Behavior gates: non-empty artifact, scenarios_executed > 0, explicit endpoint resolution.
-  behavior_summary="$(uv run python - "$behavior_json" "$expected_endpoint" <<'PY'
+  if ! behavior_summary="$(uv run python - "$behavior_json" "$expected_endpoint" 2>&1 <<'PY'
 import json
 import pathlib
 import sys
@@ -131,11 +190,17 @@ if expected and effective and effective != expected:
 outcome = str(data.get("scan_outcome") or "unknown")
 print(f"outcome={outcome};scenarios={executed};endpoint_source={source or 'unknown'};effective_endpoint={effective or 'unknown'}")
 PY
-)"
+)"; then
+    echo "::error title=NuGuard prepublish sanity failed::${name}: behavior gate check failed: ${behavior_summary}"
+    echo "[FAIL] ${name}: behavior gate check failed: ${behavior_summary}" >&2
+    write_job_summary "$name" "${behavior_base}.md" "${redteam_base}.md" \
+      "behavior gate check failed: ${behavior_summary}"
+    exit 1
+  fi
 
   # Redteam gates: non-empty artifact, scenarios executed, no inconclusive target-errors,
   # explicit endpoint resolution, and not overwhelmingly aborted/failed.
-  redteam_summary="$(uv run python - "$redteam_json" "$expected_endpoint" <<'PY'
+  if ! redteam_summary="$(uv run python - "$redteam_json" "$expected_endpoint" 2>&1 <<'PY'
 import json
 import pathlib
 import sys
@@ -184,7 +249,13 @@ print(
     )
 )
 PY
-)"
+)"; then
+    echo "::error title=NuGuard prepublish sanity failed::${name}: redteam gate check failed: ${redteam_summary}"
+    echo "[FAIL] ${name}: redteam gate check failed: ${redteam_summary}" >&2
+    write_job_summary "$name" "${behavior_base}.md" "${redteam_base}.md" \
+      "redteam gate check failed: ${redteam_summary}"
+    exit 1
+  fi
 
   app_end="$(date +%s)"
   duration="$((app_end - app_start))"
@@ -196,7 +267,14 @@ PY
   echo "[PASS] ${name} behavior -> ${behavior_summary}"
   echo "[PASS] ${name} redteam -> ${redteam_summary}"
   echo "[PASS] ${name} duration -> ${duration}s"
+  write_job_summary "$name" "${behavior_base}.md" "${redteam_base}.md" ""
 done
+
+if [[ -n "$FILTER_APP" && "$matched_filter" -eq 0 ]]; then
+  echo "::error title=NuGuard prepublish sanity failed::no app named '${FILTER_APP}' found in APP_RUNS."
+  echo "[FAIL] no app named '${FILTER_APP}' found in APP_RUNS." >&2
+  exit 1
+fi
 
 echo "[3/3] Final summary"
 echo "Behavior summaries:"
