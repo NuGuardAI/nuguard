@@ -1,0 +1,63 @@
+# nuguard.yaml — NuGuard config for FinTech GOAT red-team target
+# Run from this directory: uv --directory C:\Users\kani2\nuguard run nuguard <command>
+# Or if installed globally: nuguard <command>
+#
+# Priority order (highest wins): CLI flags > nuguard.yaml > env vars > built-in defaults
+
+# ─── Project file paths ───────────────────────────────────────────────────────
+source: ./src                         # generate SBOM from the src/ directory
+sbom: ./app.sbom.json                 # output path for generated SBOM
+policy: ./cognitive_policy.md         # cognitive policy (copy from nuguard repo if needed)
+
+# ─── LLM settings ─────────────────────────────────────────────────────────────
+llm:
+  model: azure/gpt-4o                 # matches the Azure OpenAI deployment used by the app
+  # Set AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT in your environment
+
+# ─── SBOM generation ──────────────────────────────────────────────────────────
+sbom_generation:
+  llm: false                          # set true to enrich SBOM nodes with LLM descriptions
+
+# ─── Red-team ─────────────────────────────────────────────────────────────────
+redteam:
+  # Hosted Azure Container Apps target
+  target: https://frontend-ui.agreeablesky-8c7ba25f.eastus.azurecontainerapps.io
+  target_endpoint: /api/chat
+
+  # Canary file — seeded with FinTech GOAT's known account data
+  canary: ./canary.json
+
+  # CI profile — fast scan; full profile (profile: full) has a known pydantic bug in NuGuard v0.2.0
+  profile: ci
+  min_impact_score: 0.0
+
+  # All relevant scenario types for an AI banking app
+  scenarios:
+    - prompt-injection
+    - tool-abuse
+    - privilege-escalation
+    - data-exfiltration
+    - policy-violation
+    - mcp-toxic-flow
+
+  # Increase timeout — multi-agent LLM pipelines can be slow
+  request_timeout: 120
+  verbose: true
+  strict_outcome: false
+
+  # MCP services running internally — treated as trusted
+  mcp_trusted_servers:
+    - mcp-banking-server
+    - mcp-accounts
+    - mcp-admin
+    - mcp-audit
+
+# ─── Static analysis ──────────────────────────────────────────────────────────
+analyze:
+  min_severity: low                   # catch everything — this is a vuln target
+
+# ─── Output ───────────────────────────────────────────────────────────────────
+output:
+  format: markdown
+  fail_on: low
+  sarif_file: ./nuguard-results.sarif
