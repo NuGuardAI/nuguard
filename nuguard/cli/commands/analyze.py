@@ -110,7 +110,7 @@ def analyze(
     llm: bool = typer.Option(False, "--llm", help="Enable LLM enrichment in ATLAS pass."),
     verbose: bool = typer.Option(
         False, "--verbose", "-v",
-        help="Show all 18 NGA rules (pass and fail) with evidence on why each passed.",
+        help="Show all 21 NGA rules (pass and fail) with evidence on why each passed.",
     ),
     output: str = typer.Option(
         None, "--output", "-o",
@@ -188,6 +188,10 @@ def analyze(
     except Exception as exc:
         typer.echo(f"error: SBOM validation failed: {exc}", err=True)
         raise typer.Exit(code=2)
+
+    # Re-run topology enrichment in case the SBOM file predates it (idempotent).
+    from nuguard.sbom.enricher import enrich as _enrich_topology  # noqa: PLC0415
+    _enrich_topology(doc)
 
     # ------------------------------------------------------------------
     # Run analysis
@@ -304,6 +308,7 @@ def analyze(
                 extension_map=extension_map,
             )
             report_text = _render(fmt)
+            out_path.parent.mkdir(parents=True, exist_ok=True)
             out_path.write_text(report_text, encoding="utf-8")
             typer.echo(f"report written to {out_path}")
     else:
@@ -641,7 +646,7 @@ def _render_markdown(
         lines += _render_rule_audit_section(
             nga_audit,
             "NGA Rule Audit",
-            "All 18 NGA structural rules — pass/fail status with evidence.",
+            "All 21 NGA structural rules — pass/fail status with evidence.",
         )
 
     # ------------------------------------------------------------------

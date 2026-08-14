@@ -143,7 +143,7 @@ def enrich(doc: AiSbomDocument) -> None:
         n.id for n in doc.nodes if n.component_type == ComponentType.PRIVILEGE
     }
 
-    _enrich_api_endpoints(doc, targets)
+    _enrich_api_endpoints(doc, targets, sources_of_type)
     _enrich_tools(doc, tool_frameworks, framework_auth, privilege_node_ids, targets)
     _enrich_agents(doc, targets, node_by_id)
     _backfill_descriptions(doc)
@@ -159,6 +159,7 @@ def enrich(doc: AiSbomDocument) -> None:
 def _enrich_api_endpoints(
     doc: AiSbomDocument,
     targets: Callable[[UUID, str], set[UUID]],
+    sources_of_type: Callable[[UUID, str, str], list[Node]],
 ) -> None:
     for node in doc.nodes:
         if node.component_type != ComponentType.API_ENDPOINT:
@@ -178,9 +179,13 @@ def _enrich_api_endpoints(
                 _IDOR_PARAM_PATTERNS.search(p) for p in meta.path_params
             )
 
-        # auth_required: infer False only when not already set (adapter didn't know)
-        # (set to True by default; will be corrected below if no AUTH node found)
-        # — this is left to the graph enricher since we'd need AUTH→PROTECTS→ENDPOINT
+        # auth_required: derived from AUTH→PROTECTS→ENDPOINT edges, unless an
+        # adapter already set it explicitly.
+        if meta.auth_required is None:
+            protecting_auth = sources_of_type(
+                node.id, RelationshipType.PROTECTS, ComponentType.AUTH
+            )
+            meta.auth_required = bool(protecting_auth)
 
 
 # ---------------------------------------------------------------------------
