@@ -261,7 +261,7 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         }
     if "canary" in redteam:
         flat["canary_path"] = redteam["canary"]
-    if "engine" in redteam:
+    if "engine" in redteam and redteam["engine"] is not None:
         flat["redteam_engine"] = str(redteam["engine"])
     redteam_v2 = redteam.get("v2", {}) or {}
     if isinstance(redteam_v2, dict):
@@ -287,12 +287,14 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
             flat["redteam_v2_dry_run_only"] = bool(redteam_v2["dry_run_only"])
     if "profile" in redteam:
         flat["redteam_profile"] = redteam["profile"]
-    if "catalog_path" in redteam:
+    if "catalog_path" in redteam and redteam["catalog_path"] is not None:
         flat["redteam_catalog_path"] = str(redteam["catalog_path"])
     if "min_impact_score" in redteam:
         flat["min_impact_score"] = float(redteam["min_impact_score"])
-    if "scenarios" in redteam:
-        flat["redteam_scenarios"] = redteam["scenarios"]
+    if "scenarios" in redteam and redteam["scenarios"] is not None:
+        flat["redteam_scenarios"] = [
+            s for s in redteam["scenarios"] if s is not None
+        ]
     if "mcp_trusted_servers" in redteam:
         flat["mcp_trusted_servers"] = redteam["mcp_trusted_servers"]
     if "verbose" in redteam:
@@ -311,7 +313,7 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_skip_discovery"] = bool(redteam["skip_discovery"])
     if "discovery_max_turns" in redteam:
         flat["redteam_discovery_max_turns"] = int(redteam["discovery_max_turns"])
-    if "prompt_cache_dir" in redteam:
+    if "prompt_cache_dir" in redteam and redteam["prompt_cache_dir"] is not None:
         flat["redteam_prompt_cache_dir"] = str(redteam["prompt_cache_dir"])
     if "app_env" in redteam and isinstance(redteam["app_env"], dict):
         flat["redteam_app_env"] = {
@@ -341,7 +343,7 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_max_transient_hold_seconds"] = float(redteam["max_transient_hold_seconds"])
     if "scenario_delay_seconds" in redteam:
         flat["redteam_scenario_delay_seconds"] = float(redteam["scenario_delay_seconds"])
-    if "guided_mutation_mode" in redteam:
+    if "guided_mutation_mode" in redteam and redteam["guided_mutation_mode"] is not None:
         flat["redteam_guided_mutation_mode"] = str(redteam["guided_mutation_mode"])
     if "tree_breadth" in redteam:
         flat["redteam_tree_breadth"] = int(redteam["tree_breadth"])
@@ -349,9 +351,9 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_tree_max_depth"] = int(redteam["tree_max_depth"])
     if "emit_pytest" in redteam:
         flat["emit_pytest"] = bool(redteam["emit_pytest"])
-    if "emit_pytest_dir" in redteam:
+    if "emit_pytest_dir" in redteam and redteam["emit_pytest_dir"] is not None:
         flat["emit_pytest_dir"] = str(redteam["emit_pytest_dir"])
-    if "guided_mutation_mode" in redteam:
+    if "guided_mutation_mode" in redteam and redteam["guided_mutation_mode"] is not None:
         flat["redteam_guided_mutation_mode"] = str(redteam["guided_mutation_mode"])
     if "strict_outcome" in redteam:
         flat["redteam_strict_outcome"] = bool(redteam["strict_outcome"])

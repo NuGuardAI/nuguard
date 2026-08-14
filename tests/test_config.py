@@ -21,6 +21,14 @@ def _flatten(yaml_text: str) -> dict:
     return _flatten_yaml(data)
 
 
+def _expand_flatten(yaml_text: str) -> dict:
+    """Full pipeline: env expansion (mirroring load_config) then flatten."""
+    from nuguard.config import _expand_env_vars
+
+    data = yaml.safe_load(textwrap.dedent(yaml_text))
+    return _flatten_yaml(_expand_env_vars(data))
+
+
 class TestFlattenYamlValidateSection:
     def test_validate_target_goes_to_validate_config(self) -> None:
         flat = _flatten("""
@@ -600,17 +608,9 @@ class TestUnsetEnvVarNoneFiltering:
     HTTP client as ``X-Tenant-Id: None``.
     """
 
-    @staticmethod
-    def _expand_flatten(yaml_text: str) -> dict:
-        """Full pipeline: env expansion (mirroring load_config) then flatten."""
-        from nuguard.config import _expand_env_vars
-
-        data = yaml.safe_load(textwrap.dedent(yaml_text))
-        return _flatten_yaml(_expand_env_vars(data))
-
     def test_shared_headers_drop_unset_env_vars(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("MY_TENANT", raising=False)
-        flat = self._expand_flatten("""
+        flat = _expand_flatten("""
             target:
               url: http://shared.test
               headers:
@@ -622,7 +622,7 @@ class TestUnsetEnvVarNoneFiltering:
 
     def test_redteam_headers_drop_unset_env_vars(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("MY_TENANT", raising=False)
-        flat = self._expand_flatten("""
+        flat = _expand_flatten("""
             redteam:
               target: http://app.test
               headers:
@@ -635,7 +635,7 @@ class TestUnsetEnvVarNoneFiltering:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.delenv("MY_TENANT", raising=False)
-        flat = self._expand_flatten("""
+        flat = _expand_flatten("""
             target:
               url: http://shared.test
               headers:
@@ -648,7 +648,7 @@ class TestUnsetEnvVarNoneFiltering:
 
     def test_redteam_app_env_drops_unset_env_vars(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("MY_SECRET", raising=False)
-        flat = self._expand_flatten("""
+        flat = _expand_flatten("""
             redteam:
               target: http://app.test
               app_env:
@@ -661,7 +661,7 @@ class TestUnsetEnvVarNoneFiltering:
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.delenv("CUSTOMER_PROFILE", raising=False)
-        flat = self._expand_flatten("""
+        flat = _expand_flatten("""
             redteam:
               target: http://app.test
               app_env:
@@ -672,10 +672,102 @@ class TestUnsetEnvVarNoneFiltering:
 
     def test_env_default_fallback_still_keeps_value(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("MY_TENANT", raising=False)
-        flat = self._expand_flatten("""
+        flat = _expand_flatten("""
             redteam:
               target: http://app.test
               headers:
                 X-Tenant-Id: ${MY_TENANT:-fallback-tenant}
         """)
         assert flat["redteam_headers"] == {"X-Tenant-Id": "fallback-tenant"}
+
+
+class TestUnsetEnvVarScalarFields:
+    """Unset ${VAR} in scalar redteam fields must not crash config loading.
+
+    ``_flatten_yaml`` used to stringify the ``None`` produced by an unset
+    placeholder into the literal ``"None"`` for scalar fields.  For
+    Literal-typed fields (``engine``, ``guided_mutation_mode``) that crashed
+    ``load_config`` with a pydantic ValidationError — and unlike the behavior
+    command, ``nuguard redteam`` does not wrap ``load_config`` in a
+    try/except, so the raw traceback escaped to the user.  Path-valued
+    fields silently carried a literal ``'None'`` path (``Path('.../None')``)
+    into runtime, where ``PromptCache.save`` would create a directory named
+    ``None``.
+    """
+
+    def test_engine_unset_falls_back_to_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("RT_ENGINE", raising=False)
+        flat = _expand_flatten("""
+            redteam:
+              target: http://app.test
+              engine: ${RT_ENGINE}
+        """)
+        assert "redteam_engine" not in flat
+        from nuguard.config import NuGuardConfig
+
+        cfg = NuGuardConfig(**flat)
+        assert cfg.redteam_engine == "v1"
+
+    def test_guided_mutation_mode_unset_falls_back_to_default(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("GMM", raising=False)
+        flat = _expand_flatten("""
+            redteam:
+              target: http://app.test
+              guided_mutation_mode: ${GMM}
+        """)
+        assert "redteam_guided_mutation_mode" not in flat
+        from nuguard.config import NuGuardConfig
+
+        cfg = NuGuardConfig(**flat)
+        assert cfg.redteam_guided_mutation_mode == "hard"
+
+    def test_scenarios_drop_unset_items(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("M", raising=False)
+        flat = _expand_flatten("""
+            redteam:
+              target: http://app.test
+              scenarios:
+                - ${M}
+                - policy-violation
+        """)
+        assert flat["redteam_scenarios"] == ["policy-violation"]
+
+    def test_prompt_cache_dir_unset_not_none_path(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("PCD", raising=False)
+        flat = _expand_flatten("""
+            redteam:
+              target: http://app.test
+              prompt_cache_dir: ${PCD}
+        """)
+        assert "redteam_prompt_cache_dir" not in flat
+
+    def test_catalog_path_unset_is_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("CP", raising=False)
+        flat = _expand_flatten("""
+            redteam:
+              target: http://app.test
+              catalog_path: ${CP}
+        """)
+        assert "redteam_catalog_path" not in flat
+
+    def test_emit_pytest_dir_unset_falls_back_to_default(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("EPD", raising=False)
+        flat = _expand_flatten("""
+            redteam:
+              target: http://app.test
+              emit_pytest_dir: ${EPD}
+        """)
+        assert "emit_pytest_dir" not in flat
+
+    def test_engine_set_via_env_still_works(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("RT_ENGINE", "v2")
+        flat = _expand_flatten("""
+            redteam:
+              target: http://app.test
+              engine: ${RT_ENGINE}
+        """)
+        assert flat["redteam_engine"] == "v2"
