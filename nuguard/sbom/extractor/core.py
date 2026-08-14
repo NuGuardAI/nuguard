@@ -62,6 +62,7 @@ from ..adapters.json_adapters import (
     PromptJSONAdapter,
 )
 from ..adapters.nginx import NginxAdapter, is_nginx_file
+from ..adapters.prompt_sql import PromptSQLAdapter
 from ..adapters.registry import default_framework_adapters, default_registry
 from ..adapters.typescript._ts_regex import TSFrameworkAdapter
 from ..adapters.yaml_adapters import (
@@ -573,7 +574,7 @@ class AiSbomExtractor:
         self,
         framework_adapters: tuple[FrameworkAdapter, ...] | None = None,
         regex_adapters: tuple[DetectionAdapter, ...] | None = None,
-        sql_adapters: tuple[DataClassificationSQLAdapter, ...] | None = None,
+        sql_adapters: tuple[Any, ...] | None = None,
         dockerfile_adapter: DockerfileAdapter | None = None,
         yaml_adapters: tuple[Any, ...] | None = None,
         json_adapters: tuple[Any, ...] | None = None,
@@ -597,7 +598,9 @@ class AiSbomExtractor:
             self.framework_adapters = base_adapters
         self.regex_adapters = regex_adapters if regex_adapters is not None else default_registry()
         self.sql_adapters = (
-            sql_adapters if sql_adapters is not None else (DataClassificationSQLAdapter(),)
+            sql_adapters
+            if sql_adapters is not None
+            else (DataClassificationSQLAdapter(), PromptSQLAdapter())
         )
         self.dockerfile_adapter = (
             dockerfile_adapter if dockerfile_adapter is not None else DockerfileAdapter()
@@ -822,9 +825,9 @@ class AiSbomExtractor:
                         for det in _extract_python_prompt_dicts(content, rel_path):
                             self._merge_detection(node_map, det)
 
-            # Phase 1b: SQL schema — data classification
+            # Phase 1b: SQL schema — data classification + prompt/template extraction
             elif is_sql:
-                _log.debug("running SQL data classification on %s", rel_path)
+                _log.debug("running SQL adapters on %s", rel_path)
                 for sql_adapter in self.sql_adapters:
                     try:
                         detections = sql_adapter.scan(content, rel_path)
@@ -834,7 +837,18 @@ class AiSbomExtractor:
                         )
                         continue
                     for det in detections:
-                        _dc_metadata.append(det.metadata)
+                        # Data-classification DATASTORE detections feed the PII/PHI
+                        # enrichment pass (_enrich_datastores) rather than becoming
+                        # nodes directly; everything else (e.g. PROMPT detections
+                        # from PromptSQLAdapter) goes through the normal merge path,
+                        # mirroring the Python-file branch's discrimination above.
+                        if (
+                            det.component_type == ComponentType.DATASTORE
+                            and det.metadata.get("source") in ("sql_schema", "python_model")
+                        ):
+                            _dc_metadata.append(det.metadata)
+                        else:
+                            self._merge_detection(node_map, det)
 
             # Phase 1c: TypeScript/JavaScript AST-aware framework adapters
             # Also detect minified single-line JS (>5 KB line) for SC-019
