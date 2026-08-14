@@ -1871,11 +1871,10 @@ class BehaviorRunner:
                 self._pre_scan_profile.source,
             )
 
-            # Capability discovery: if the SBOM has AGENT nodes missing a
-            # system-prompt excerpt, tool edges, or sub-agent edges, ask the
-            # live agent directly and merge findings back into the in-memory
-            # SBOM before scenarios are built. Only fires when a real gap
-            # exists, so a well-populated SBOM sends no extra turns.
+            # Capability discovery: ask the live agent about its tools (always
+            # cross-checked against the SBOM) and, when actually missing from
+            # the SBOM, its system-prompt excerpt and sub-agents. Findings are
+            # merged into the in-memory SBOM before scenarios are built.
             if bool(getattr(self._config, "capability_discovery", True)):
                 from nuguard.common.discovery import (  # noqa: PLC0415
                     apply_capability_discovery,

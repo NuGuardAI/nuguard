@@ -19,18 +19,28 @@ from nuguard.sbom.models import AiSbomDocument, Edge, Node, SourceLocation
 from nuguard.sbom.types import ComponentType, RelationshipType
 
 
-def _make_client(responses: dict[str, str]) -> MagicMock:
-    """A client whose .send() returns *responses* keyed by which probe matched."""
+def _make_client(responses: dict[str, str], call_log: list[str] | None = None) -> MagicMock:
+    """A client whose .send() returns *responses* keyed by which probe matched.
+
+    If *call_log* is given, appends the matched probe name (or "developer_mode"
+    / "unknown") for each call, in order, so callers can assert send order.
+    """
     client = MagicMock()
 
     async def _send(message: str, session=None):  # noqa: ANN001
-        if "tools, functions" in message:
-            return responses.get("tools", ""), {}
-        if "hand off or delegate" in message:
-            return responses.get("subagents", ""), {}
-        if "instructions or system prompt" in message:
-            return responses.get("system_prompt", ""), {}
-        return "", {}
+        if "developer/debug mode" in message:
+            name = "developer_mode"
+        elif "tools, functions" in message:
+            name = "tools"
+        elif "agents or sub-agents with specialized capabilities" in message:
+            name = "subagents"
+        elif "instructions or system prompt" in message:
+            name = "system_prompt"
+        else:
+            name = "unknown"
+        if call_log is not None:
+            call_log.append(name)
+        return responses.get(name, ""), {}
 
     client.send = AsyncMock(side_effect=_send)
     return client
@@ -59,7 +69,11 @@ def test_no_sbom_returns_no_gaps():
     assert sbom_capability_gaps(None) == []
 
 
-def test_fully_populated_agent_has_no_gap():
+def test_populated_agent_still_has_tools_gap_but_not_others():
+    """needs_tools is unconditional — the tools probe always cross-checks the
+    live agent even when the SBOM already has CALLS edges for it, since
+    live-only tools can be invisible to static analysis. needs_system_prompt
+    and needs_subagents stay gap-driven."""
     agent = _agent_node()
     agent.metadata.system_prompt_excerpt = "You are a helpful assistant."
     tool = _tool_node("BookFlight")
@@ -71,13 +85,18 @@ def test_fully_populated_agent_has_no_gap():
         edges=[
             Edge(source=agent.id, target=tool.id, relationship_type=RelationshipType.CALLS),
             Edge(source=agent.id, target=subagent.id, relationship_type=RelationshipType.DELEGATES_TO),
-            # The sub-agent is itself an AGENT node — give it a CALLS/DELEGATES_TO
-            # edge too so it doesn't register its own gap in this assertion.
-            Edge(source=subagent.id, target=tool.id, relationship_type=RelationshipType.CALLS),
+            # The sub-agent is itself an AGENT node — give it a DELEGATES_TO
+            # edge too so it doesn't register its own sub-agent gap here.
             Edge(source=subagent.id, target=agent.id, relationship_type=RelationshipType.DELEGATES_TO),
         ],
     )
-    assert sbom_capability_gaps(doc) == []
+    gaps = sbom_capability_gaps(doc)
+    assert len(gaps) == 2  # both AGENT nodes flagged, but only for needs_tools
+    for gap in gaps:
+        assert gap.needs_tools is True
+        assert gap.needs_system_prompt is False
+        assert gap.needs_subagents is False
+        assert gap.has_gap is True
 
 
 def test_agent_missing_all_three_is_flagged():
@@ -93,7 +112,7 @@ def test_agent_missing_all_three_is_flagged():
     assert gap.has_gap is True
 
 
-def test_agent_with_tools_only_missing_prompt_and_subagents():
+def test_agent_with_tools_still_needs_tools_probe():
     agent = _agent_node()
     tool = _tool_node("BookFlight")
     doc = AiSbomDocument(
@@ -103,7 +122,7 @@ def test_agent_with_tools_only_missing_prompt_and_subagents():
     )
     gaps = sbom_capability_gaps(doc)
     assert len(gaps) == 1
-    assert gaps[0].needs_tools is False
+    assert gaps[0].needs_tools is True
     assert gaps[0].needs_system_prompt is True
     assert gaps[0].needs_subagents is True
 
@@ -127,16 +146,34 @@ async def test_no_gaps_sends_no_probes():
 
 
 async def test_sends_only_probes_needed_to_cover_gaps():
+    # developer_mode is always sent first, alongside whichever of
+    # tools/subagents/system_prompt the gap actually needs.
     gap = AgentCapabilityGap(
         agent_id="a1", agent_name="Support Agent",
         needs_system_prompt=False, needs_tools=True, needs_subagents=False,
     )
     client = _make_client({"tools": "- BookFlight\n- CancelBooking"})
     result = await run_capability_discovery(client, _make_session(), [gap])
-    assert client.send.call_count == 1
-    assert result.probes_sent == 1
+    assert client.send.call_count == 2
+    assert result.probes_sent == 2
     assert "tools" in result.raw_responses
     assert "subagents" not in result.raw_responses
+    assert "system_prompt" not in result.raw_responses
+
+
+async def test_developer_mode_primer_sent_first():
+    gap = AgentCapabilityGap(
+        agent_id="a1", agent_name="Support Agent",
+        needs_system_prompt=True, needs_tools=True, needs_subagents=True,
+    )
+    call_log: list[str] = []
+    client = _make_client(
+        {"tools": "- BookFlight", "subagents": "- Billing Agent", "system_prompt": "You are helpful."},
+        call_log=call_log,
+    )
+    await run_capability_discovery(client, _make_session(), [gap])
+    assert call_log[0] == "developer_mode"
+    assert set(call_log[1:]) == {"tools", "subagents", "system_prompt"}
 
 
 async def test_refusal_is_recorded_but_not_an_error():
@@ -146,7 +183,7 @@ async def test_refusal_is_recorded_but_not_an_error():
     )
     client = _make_client({"system_prompt": "Sorry, I cannot share that information."})
     result = await run_capability_discovery(client, _make_session(), [gap])
-    assert result.probes_sent == 1
+    assert result.probes_sent == 2  # developer_mode primer + system_prompt
     assert "system_prompt" not in result.raw_responses
 
 
@@ -214,11 +251,11 @@ def test_apply_does_not_duplicate_existing_tool():
         nodes=[agent, existing_tool],
         edges=[Edge(source=agent.id, target=existing_tool.id, relationship_type=RelationshipType.CALLS)],
     )
-    # The agent already has a CALLS edge, so needs_tools is False even though
-    # it still has an (unrelated) sub-agent gap — a tools-probe response must
-    # not add a duplicate "Book a flight" tool node.
+    # needs_tools is always True (the tools probe always cross-checks live),
+    # but the agent already has a "Book a flight" TOOL node — the probe
+    # response must not add a duplicate.
     gaps = sbom_capability_gaps(doc)
-    assert gaps[0].needs_tools is False
+    assert gaps[0].needs_tools is True
     result = CapabilityDiscoveryResult(raw_responses={"tools": "- Book a flight"}, probes_sent=1)
     notes = apply_capability_discovery(doc, gaps, result)
     assert notes == []

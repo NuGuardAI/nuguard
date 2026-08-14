@@ -305,15 +305,16 @@ redteam:
   skip_discovery: false             # set true to skip the discovery phase entirely
   discovery_max_turns: 3            # max turns during discovery (stops early on success)
 
-  # Gap-driven capability discovery: if the AI-SBOM has AGENT nodes missing a
-  # system-prompt excerpt, tool edges, or sub-agent edges, ask the live agent
-  # directly ("what tools/sub-agents do you have", "what are your instructions")
-  # and merge findings back into the in-memory SBOM before scenario generation.
+  # Capability discovery: primes the agent into a developer/debug persona, then
+  # asks it directly what tools it can invoke (always cross-checked against the
+  # AI-SBOM, since live-only tools can be invisible to static analysis) and,
+  # only when actually missing from the SBOM, its sub-agents and system prompt.
+  # Findings merge into the in-memory SBOM before scenario generation.
   # Findings are tagged confidence=0.5, evidence kind="dynamic_probe" to stay
   # distinguishable from static-analysis results, and (when a --sbom/--from-repo
   # path is known) persisted into the same <name>.sbom.enriched.json artifact
-  # used by SBOM auto-enrichment. Only fires when a real gap exists, so a
-  # well-populated SBOM sends no extra turns.
+  # used by SBOM auto-enrichment, de-duped against tools/sub-agents already in
+  # the SBOM.
   capability_discovery: true        # set false to disable the extra probes
 
   # Guided adversarial conversations using ConversationDirector
