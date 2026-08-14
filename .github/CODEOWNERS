@@ -1,3 +1,8 @@
 # Workflow files control what CI enforces and what has access to repo secrets.
 # Require the engineering team to review any change here before it can merge.
 /.github/workflows/ @NuGuardAI/ent:engineering
+
+# This script runs inside the e2e workflow jobs with AZURE_OPENAI_KEY /
+# AZURE_API_BASE already injected as env vars, so it's an equally direct path
+# to those secrets as the workflow file itself.
+/tests/apps/prepublish-sanity.sh @NuGuardAI/ent:engineering
