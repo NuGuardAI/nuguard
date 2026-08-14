@@ -60,6 +60,8 @@ from nuguard.config import BehaviorConfig
 from nuguard.redteam.llm_engine.refusal_patterns import APP_TRANSIENT_ERROR_PATTERNS
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from nuguard.behavior.models import IntentProfile
     from nuguard.common.discovery import DiscoveredProfile
     from nuguard.common.llm_client import LLMClient
@@ -673,6 +675,7 @@ class BehaviorRunner:
         self,
         config: BehaviorConfig,
         sbom: "AiSbomDocument | None" = None,
+        sbom_path: "Path | None" = None,
         policy: "CognitivePolicy | None" = None,
         intent: "IntentProfile | None" = None,
         llm_client: "LLMClient | None" = None,
@@ -680,6 +683,7 @@ class BehaviorRunner:
     ) -> None:
         self._config = config
         self._sbom = sbom
+        self._sbom_path = sbom_path
         self._policy = policy
         self._intent = intent
         self._llm = llm_client
@@ -1646,6 +1650,25 @@ class BehaviorRunner:
             matched_topic=getattr(scenario, "matched_topic", None),
         )
 
+    def _persist_capability_discovery_sbom(self, notes: list[str]) -> None:
+        """Write the in-memory SBOM (post capability discovery) to the same
+        ``<name>.sbom.enriched.json`` artifact used by auto-enrichment, so the
+        two persistence steps combine into one file instead of two.
+
+        No-op when nothing changed or no source SBOM path is known.
+        """
+        if not notes or self._sbom_path is None or self._sbom is None:
+            return
+        from nuguard.common.auto_sbom_enricher import (  # noqa: PLC0415
+            persist_capability_discovery_sbom,
+        )
+        try:
+            artifact = persist_capability_discovery_sbom(self._sbom, self._sbom_path)
+            _log.info("behavior capability discovery: persisted SBOM to %s", artifact)
+            _console.print(f"  [dim]Capability discovery merged into {artifact}[/dim]")
+        except Exception as exc:
+            _log.warning("behavior capability discovery: could not persist SBOM artifact: %s", exc)
+
     async def discover(self) -> "DiscoveredProfile | None":
         """Run pre-scan discovery against the live agent and return the profile.
 
@@ -1700,6 +1723,27 @@ class BehaviorRunner:
                 "behavior pre-scan discovery: name=%r ids=%s turns=%d source=%s",
                 profile.customer_name, profile.ids, profile.turns_sent, profile.source,
             )
+
+            if bool(getattr(self._config, "capability_discovery", True)):
+                from nuguard.common.discovery import (  # noqa: PLC0415
+                    apply_capability_discovery,
+                    run_capability_discovery,
+                    sbom_capability_gaps,
+                )
+                _cap_gaps = sbom_capability_gaps(self._sbom)
+                if _cap_gaps and self._sbom is not None:
+                    _cap_result = await run_capability_discovery(
+                        client, _disc_session, _cap_gaps,
+                    )
+                    _cap_notes = apply_capability_discovery(self._sbom, _cap_gaps, _cap_result)
+                    for _cap_note in _cap_notes:
+                        _console.print(f"  [dim]{_cap_note}[/dim]")
+                    _log.info(
+                        "behavior capability discovery: probes_sent=%d notes=%d",
+                        _cap_result.probes_sent, len(_cap_notes),
+                    )
+                    self._persist_capability_discovery_sbom(_cap_notes)
+
             return profile
         except Exception as exc:
             _log.warning("BehaviorRunner.discover failed (non-fatal): %s", exc)
@@ -1826,6 +1870,31 @@ class BehaviorRunner:
                 self._pre_scan_profile.ids,
                 self._pre_scan_profile.source,
             )
+
+            # Capability discovery: if the SBOM has AGENT nodes missing a
+            # system-prompt excerpt, tool edges, or sub-agent edges, ask the
+            # live agent directly and merge findings back into the in-memory
+            # SBOM before scenarios are built. Only fires when a real gap
+            # exists, so a well-populated SBOM sends no extra turns.
+            if bool(getattr(self._config, "capability_discovery", True)):
+                from nuguard.common.discovery import (  # noqa: PLC0415
+                    apply_capability_discovery,
+                    run_capability_discovery,
+                    sbom_capability_gaps,
+                )
+                _cap_gaps = sbom_capability_gaps(self._sbom)
+                if _cap_gaps and self._sbom is not None:
+                    _cap_result = await run_capability_discovery(
+                        client, _disc_session, _cap_gaps,
+                    )
+                    _cap_notes = apply_capability_discovery(self._sbom, _cap_gaps, _cap_result)
+                    for _cap_note in _cap_notes:
+                        _console.print(f"  [dim]{_cap_note}[/dim]")
+                    _log.info(
+                        "behavior capability discovery: probes_sent=%d notes=%d",
+                        _cap_result.probes_sent, len(_cap_notes),
+                    )
+                    self._persist_capability_discovery_sbom(_cap_notes)
 
         # Pre-flight endpoint validation: send a single test request to verify the
         # configured chat endpoint is reachable before launching all scenarios.

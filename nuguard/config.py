@@ -298,6 +298,8 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_skip_discovery"] = bool(redteam["skip_discovery"])
     if "discovery_max_turns" in redteam:
         flat["redteam_discovery_max_turns"] = int(redteam["discovery_max_turns"])
+    if "capability_discovery" in redteam:
+        flat["redteam_capability_discovery"] = bool(redteam["capability_discovery"])
     if "prompt_cache_dir" in redteam:
         flat["redteam_prompt_cache_dir"] = str(redteam["prompt_cache_dir"])
     if "app_env" in redteam and isinstance(redteam["app_env"], dict):
@@ -578,6 +580,14 @@ class BehaviorConfig(BaseModel):
     use_llm: bool = Field(
         default=False,
         validation_alias=AliasChoices("use_llm", "llm"),
+    )
+    capability_discovery: bool = Field(
+        default=True,
+        description=(
+            "Probe the live agent for tools, sub-agents, and its system prompt when the "
+            "AI-SBOM is missing them, and merge the findings back into the in-memory SBOM "
+            "before scenario generation. Only fires for AGENT nodes with an actual gap."
+        ),
     )
     turn_delay_seconds: float = Field(
         default=0.0,
@@ -1065,6 +1075,17 @@ class NuGuardConfig(BaseSettings):
         description=(
             "Maximum turns to send during pre-scan discovery (yaml: redteam.discovery_max_turns). "
             "Discovery stops early when a name or ID is extracted."
+        ),
+    )
+    redteam_capability_discovery: bool = Field(
+        default=True,
+        description=(
+            "Probe the live agent for tools, sub-agents, and its system prompt when the "
+            "AI-SBOM is missing them, and merge the findings back into the in-memory SBOM "
+            "before scenario generation (yaml: redteam.capability_discovery). Only fires "
+            "for AGENT nodes with an actual gap, so a well-populated SBOM sends no extra "
+            "turns. Findings are tagged with confidence 0.5 and evidence kind "
+            "'dynamic_probe' to distinguish them from static-analysis results."
         ),
     )
     redteam_prompt_cache_dir: str = Field(

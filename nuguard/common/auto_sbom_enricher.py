@@ -774,6 +774,30 @@ def _enriched_output_path(sbom_path: Path) -> Path:
     return sbom_path.with_name(f"{sbom_path.name}.enriched.json")
 
 
+def enriched_sbom_artifact_path(sbom_path: Path) -> Path:
+    """Public alias of :func:`_enriched_output_path` for callers outside this module."""
+    return _enriched_output_path(sbom_path)
+
+
+def persist_capability_discovery_sbom(sbom: AiSbomDocument, sbom_path: Path) -> Path:
+    """Write *sbom* to the same ``<name>.sbom.enriched.json`` artifact used by
+    :func:`maybe_auto_enrich_sbom`, so gap-driven capability discovery (live
+    tool/sub-agent/system-prompt probing — see
+    :mod:`nuguard.common.discovery`) combines with the existing enrichment
+    artifact instead of writing a second file.
+
+    Unlike :func:`_write_enriched`, no ``_enrichment_cache_key`` is embedded:
+    capability discovery depends on the live target's runtime responses, which
+    can change between runs, so the next :func:`maybe_auto_enrich_sbom` call
+    must not treat this artifact as a valid cache hit — it will always
+    recompute (and may overwrite this file again) rather than silently
+    reusing stale runtime-derived nodes.
+    """
+    out_path = _enriched_output_path(sbom_path)
+    _write_enriched(sbom, out_path, cache_key=None)
+    return out_path
+
+
 def _enrichment_cache_key(
     sbom: AiSbomDocument,
     target_url: str | None,

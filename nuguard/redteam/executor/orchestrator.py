@@ -511,6 +511,7 @@ class RedteamOrchestrator:
         self,
         sbom: AiSbomDocument,
         target_url: str,
+        sbom_path: Path | None = None,
         policy: CognitivePolicy | None = None,
         policy_controls: list | None = None,
         canary_config: CanaryConfig | None = None,
@@ -548,6 +549,7 @@ class RedteamOrchestrator:
         similar_miss_threshold: int = 4,
         skip_discovery: bool = False,
         discovery_max_turns: int = 3,
+        capability_discovery: bool = True,
         chat_payload_extras: dict[str, Any] | None = None,
         catalog: "tuple | None" = None,
         pre_run_warmup: int = 0,
@@ -557,6 +559,7 @@ class RedteamOrchestrator:
         codegen_escalation_enabled: bool = True,
     ) -> None:
         self._sbom = sbom
+        self._sbom_path = sbom_path
         self._target_url = target_url
         self._policy = policy
         self._policy_controls = policy_controls  # compiled PolicyControl list
@@ -615,6 +618,7 @@ class RedteamOrchestrator:
         self._similar_miss_threshold = max(1, similar_miss_threshold)
         self._skip_discovery = skip_discovery
         self._discovery_max_turns = max(1, discovery_max_turns)
+        self._capability_discovery = capability_discovery
         self._chat_payload_extras: dict[str, Any] = chat_payload_extras or {}
         self._pre_run_warmup = max(0, pre_run_warmup)
         self._verify_findings = verify_findings
@@ -926,12 +930,31 @@ class RedteamOrchestrator:
             _use_case = ""
             if self._sbom and self._sbom.summary:
                 _use_case = getattr(self._sbom.summary, "use_case", "") or ""
+            # 0b. Capability discovery is prepared here (gap detection needs no
+            # HTTP call) but the probe itself is sent inside the same
+            # `async with _disc_client` block below, since the client's HTTP
+            # session is closed on exit and cannot be reused afterward.
+            _cap_gaps: list[Any] = []
+            if self._capability_discovery:
+                from nuguard.common.discovery import (  # noqa: PLC0415
+                    sbom_capability_gaps,
+                )
+                _cap_gaps = sbom_capability_gaps(self._sbom)
+
             async with _disc_client:
                 _disc_outcome = await run_discovery(
                     _disc_client,
                     _disc_session,
                     DiscoveryRequest(use_case=_use_case, max_turns=self._discovery_max_turns),
                 )
+                _cap_result = None
+                if _cap_gaps:
+                    from nuguard.common.discovery import (  # noqa: PLC0415
+                        run_capability_discovery,
+                    )
+                    _cap_result = await run_capability_discovery(
+                        _disc_client, _disc_session, _cap_gaps,
+                    )
             _pre_scan_profile = _disc_outcome.profile
             self.config_notes.extend(_disc_outcome.notes)
             for _disc_note in _disc_outcome.notes:
@@ -943,6 +966,29 @@ class RedteamOrchestrator:
                 _pre_scan_profile.turns_sent,
                 _pre_scan_profile.source,
             )
+
+            if _cap_gaps and _cap_result is not None:
+                from nuguard.common.discovery import (  # noqa: PLC0415
+                    apply_capability_discovery,
+                )
+                _cap_notes = apply_capability_discovery(self._sbom, _cap_gaps, _cap_result)
+                self.config_notes.extend(_cap_notes)
+                for _cap_note in _cap_notes:
+                    _rtconsole.print(f"  [yellow]{_cap_note}[/yellow]")
+                _log.info(
+                    "capability discovery: probes_sent=%d notes=%d",
+                    _cap_result.probes_sent, len(_cap_notes),
+                )
+                if _cap_notes and self._sbom_path is not None:
+                    from nuguard.common.auto_sbom_enricher import (  # noqa: PLC0415
+                        persist_capability_discovery_sbom,
+                    )
+                    try:
+                        _cap_artifact = persist_capability_discovery_sbom(self._sbom, self._sbom_path)
+                        _log.info("capability discovery: persisted SBOM to %s", _cap_artifact)
+                        _rtconsole.print(f"  [dim]Capability discovery merged into {_cap_artifact}[/dim]")
+                    except Exception as exc:
+                        _log.warning("capability discovery: could not persist SBOM artifact: %s", exc)
 
         # DISCOVER empty-profile warning: if the discovery returned no user data,
         # check whether the response looks like an anonymous/empty session and

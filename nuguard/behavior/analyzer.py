@@ -16,6 +16,8 @@ from nuguard.config import BehaviorConfig
 from nuguard.models.token_usage import TokenUsage
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from nuguard.common.llm_client import LLMClient
     from nuguard.models.policy import CognitivePolicy, PolicyControl
     from nuguard.sbom.models import AiSbomDocument
@@ -42,6 +44,7 @@ class BehaviorAnalyzer:
         self,
         config: BehaviorConfig,
         sbom: "AiSbomDocument | None" = None,
+        sbom_path: "Path | None" = None,
         policy: "CognitivePolicy | None" = None,
         controls: "list[PolicyControl] | None" = None,
         llm_client: "LLMClient | None" = None,
@@ -49,6 +52,7 @@ class BehaviorAnalyzer:
     ) -> None:
         self._config = config
         self._sbom = sbom
+        self._sbom_path = sbom_path
         self._policy = policy
         self._controls = controls
         self._llm = llm_client
@@ -204,6 +208,7 @@ class BehaviorAnalyzer:
                 runner = BehaviorRunner(
                     config=self._config,
                     sbom=self._sbom,
+                    sbom_path=self._sbom_path,
                     policy=self._policy,
                     intent=intent,
                     llm_client=self._llm,

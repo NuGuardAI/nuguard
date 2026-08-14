@@ -129,6 +129,11 @@ behavior:
   # Parallel LLM judge calls across all active scenarios (default: 5, max: 20)
   judge_concurrency: 5
 
+  # Gap-driven capability discovery — same behavior as redteam.capability_discovery
+  # above: probe the live agent for tools/sub-agents/system prompt only when the
+  # AI-SBOM is missing them, and merge findings back before scenario generation.
+  capability_discovery: true
+
   # Inter-turn pause in seconds to avoid 429 rate-limit errors (default: 0.0)
   # turn_delay_seconds: 0.5
 
@@ -299,6 +304,17 @@ redteam:
   # before generating attack payloads.
   skip_discovery: false             # set true to skip the discovery phase entirely
   discovery_max_turns: 3            # max turns during discovery (stops early on success)
+
+  # Gap-driven capability discovery: if the AI-SBOM has AGENT nodes missing a
+  # system-prompt excerpt, tool edges, or sub-agent edges, ask the live agent
+  # directly ("what tools/sub-agents do you have", "what are your instructions")
+  # and merge findings back into the in-memory SBOM before scenario generation.
+  # Findings are tagged confidence=0.5, evidence kind="dynamic_probe" to stay
+  # distinguishable from static-analysis results, and (when a --sbom/--from-repo
+  # path is known) persisted into the same <name>.sbom.enriched.json artifact
+  # used by SBOM auto-enrichment. Only fires when a real gap exists, so a
+  # well-populated SBOM sends no extra turns.
+  capability_discovery: true        # set false to disable the extra probes
 
   # Guided adversarial conversations using ConversationDirector
   # build_guided_tool_redteam() derives the goal description from each TOOL node's

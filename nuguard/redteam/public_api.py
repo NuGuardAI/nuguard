@@ -93,6 +93,7 @@ class RedteamRunRequest(BaseModel):
     stall_abort_threshold: int = 8
     skip_discovery: bool = False
     discovery_max_turns: int = 3
+    capability_discovery: bool = True
     chat_payload_extras: dict[str, Any] | None = None
     pre_run_warmup: int = 0
     verify_findings: bool = True
@@ -204,6 +205,7 @@ async def run_redteam(
     request: RedteamRunRequest,
     *,
     sbom: "AiSbomDocument",
+    sbom_path: "Path | None" = None,
     policy: "CognitivePolicy | None" = None,
     policy_controls: "list | None" = None,
     redteam_llm: "LLMClient | None" = None,
@@ -226,6 +228,7 @@ async def run_redteam(
     orchestrator = RedteamOrchestrator(
         sbom=sbom,
         target_url=request.target_url,
+        sbom_path=sbom_path,
         policy=policy,
         policy_controls=policy_controls,
         canary_config=request.canary_config,
@@ -263,6 +266,7 @@ async def run_redteam(
         stall_abort_threshold=request.stall_abort_threshold,
         skip_discovery=request.skip_discovery,
         discovery_max_turns=request.discovery_max_turns,
+        capability_discovery=request.capability_discovery,
         chat_payload_extras=request.chat_payload_extras,
         catalog=catalog,
         pre_run_warmup=request.pre_run_warmup,
