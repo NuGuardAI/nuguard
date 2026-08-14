@@ -40,3 +40,33 @@ def test_resolve_auth_runtime_defaults_to_none() -> None:
     resolved = resolve_auth_runtime()
     assert resolved.auth_config.type == "none"
     assert resolved.initial_headers == {}
+
+def test_resolve_auth_runtime_drops_none_string_headers() -> None:
+    """A header whose value collapsed to the literal string "None" must not
+    reach the outbound request headers or become the auth seed."""
+    resolved = resolve_auth_runtime(
+        auth_config=AuthConfig(type="none"),
+        headers_override={
+            "X-Tenant-Id": "None",
+            "X-API-Key": "static-key",
+        },
+    )
+
+    assert resolved.initial_headers == {"X-API-Key": "static-key"}
+    assert resolved.auth_config.type == "api_key"
+
+
+def test_resolve_auth_runtime_drops_none_string_authorization() -> None:
+    """Even an Authorization header that collapsed to "None" must be dropped
+    rather than seeded as a broken auth config."""
+    resolved = resolve_auth_runtime(
+        auth_config=AuthConfig(type="none"),
+        headers_override={
+            "Authorization": "None",
+            "X-Request-Id": "abc",
+        },
+    )
+
+    assert resolved.initial_headers == {"X-Request-Id": "abc"}
+    # The surviving header still seeds auth (api_key), but never "None".
+    assert resolved.auth_config.type == "api_key"

@@ -811,6 +811,12 @@ class BehaviorRunner:
             _log.debug("_build_client: bootstrap skipped: %s", exc)
             bootstrap_headers = getattr(runtime, "initial_headers", {}) or {}
 
+        # Merge explicit behavior.headers (shared target.headers or behavior.headers)
+        # underneath bootstrapped/auth headers so auth always wins on conflicts.
+        _cfg_headers: dict[str, str] = dict(getattr(self._config, "headers", None) or {})
+        if _cfg_headers:
+            bootstrap_headers = {**_cfg_headers, **(bootstrap_headers or {})}
+
         # Merge login-response identity/session fields and SBOM context hints
         # into chat_payload_extras so the correct user identity is sent in every
         # request (covers apps like Pinnacle Bank where user_id is a body field).
