@@ -63,6 +63,7 @@ _SCENARIO_WEIGHTS: dict[str, dict[str, float]] = {
     # agent_coverage / component_coverage: component_invoked is critical
     "agent_coverage": {**_DEFAULT_WEIGHTS, "component_invoked": 0.55, "topic_alignment": 0.10},
     "component_coverage": {**_DEFAULT_WEIGHTS, "component_invoked": 0.55, "topic_alignment": 0.10},
+    "guided_coverage": {**_DEFAULT_WEIGHTS, "component_invoked": 0.55, "topic_alignment": 0.10},
     # guardrail_probe: response validity is most important (no errors, proper escalation)
     "guardrail_probe": {**_DEFAULT_WEIGHTS, "response_validity": 0.50, "component_invoked": 0.30},
     # intent_happy_path / topic_path: balanced
@@ -308,7 +309,7 @@ def detect_too_short(response: str) -> list[Signal]:
 
 def detect_clear_refusal_on_allowed_topic(head: str, scenario_type: str) -> list[Signal]:
     """Stock refusal on an agent_coverage / intent_happy_path / component_coverage scenario."""
-    if scenario_type not in ("agent_coverage", "intent_happy_path", "component_coverage"):
+    if scenario_type not in ("agent_coverage", "intent_happy_path", "component_coverage", "guided_coverage"):
         return []
     m = _CLEAR_REFUSAL.search(head)
     if not m:

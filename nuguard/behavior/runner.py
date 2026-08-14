@@ -62,6 +62,7 @@ from nuguard.redteam.llm_engine.refusal_patterns import APP_TRANSIENT_ERROR_PATT
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from nuguard.behavior.coverage_director import CoverageDirector
     from nuguard.behavior.models import IntentProfile
     from nuguard.common.discovery import DiscoveredProfile
     from nuguard.common.llm_client import LLMClient
@@ -453,6 +454,7 @@ _GOAL_STOP_RE = re.compile(
 # Priority: higher index = kept when two scenarios share a goal.
 _TYPE_PRIORITY: dict[str, int] = {
     BehaviorScenarioType.COMPONENT_COVERAGE.value: 0,
+    BehaviorScenarioType.GUIDED_COVERAGE.value: 0,
     BehaviorScenarioType.AGENT_COVERAGE.value: 1,
     BehaviorScenarioType.INTENT_HAPPY_PATH.value: 2,
     BehaviorScenarioType.GUARDRAIL_PROBE.value: 3,
@@ -624,6 +626,7 @@ async def _adapt_message(
     if stype in (
         BehaviorScenarioType.AGENT_COVERAGE.value,
         BehaviorScenarioType.COMPONENT_COVERAGE.value,
+        BehaviorScenarioType.GUIDED_COVERAGE.value,
     ):
         return message, pii_probed, hook_probed, None
 
@@ -862,6 +865,15 @@ class BehaviorRunner:
         self._resolved_target_url = client.base_url
         return client
 
+    def _coverage_director(self) -> "CoverageDirector":
+        """Lazily build (and cache) the CoverageDirector for guided coverage scenarios."""
+        director = getattr(self, "_coverage_director_instance", None)
+        if director is None:
+            from nuguard.behavior.coverage_director import CoverageDirector
+            director = CoverageDirector(llm_client=self._llm, intent=self._intent)
+            self._coverage_director_instance = director
+        return director
+
     def _build_policy_evaluator(self) -> Any:
         """Build the PolicyEvaluator if a policy is available."""
         if self._policy is None:
@@ -966,7 +978,7 @@ class BehaviorRunner:
 
         max_turns = min(
             len(scenario.messages) + _adaptive_coverage_cap(self._config),
-            _ADAPTIVE_SESSION_CAP,
+            _session_turn_cap(self._config),
         )
 
         # State for adaptive loop
@@ -1116,21 +1128,40 @@ class BehaviorRunner:
                     _coverage_stall_count = 0
                 _uncovered_prev = _uncovered_frozen
                 last_response = session.last_response
-                coverage_messages = await generate_coverage_turns(
-                    uncovered=uncovered,
-                    session_context=last_response[:500],
-                    component_descriptions=self._component_descriptions,
-                    llm_client=self._llm,
-                    domain_context=getattr(self._intent, "app_purpose", "") if self._intent else "",
-                    intent=self._intent,
-                    scoped_components=scoped_component_set,
-                    profile=self._pre_scan_profile,
-                )
-                if not coverage_messages:
-                    break
-                pending_messages = coverage_messages
-                coverage_turns_used += len(coverage_messages)
-                message = pending_messages.pop(0)  # send coverage turns as-is
+                if scenario.scenario_type == BehaviorScenarioType.GUIDED_COVERAGE:
+                    # Turn-by-turn adaptive coverage: one LLM-picked message per
+                    # turn, reacting to the full last response, instead of a
+                    # pre-generated batch played back regardless of context.
+                    scoped_uncovered = (
+                        uncovered & scoped_component_set if scoped_component_set is not None else uncovered
+                    )
+                    message = await self._coverage_director().next_message(
+                        uncovered=scoped_uncovered,
+                        last_response=last_response,
+                        component_descriptions=self._component_descriptions,
+                        allowed_topics=list(getattr(self._policy, "allowed_topics", None) or []) if self._policy else None,
+                        domain_context=getattr(self._intent, "app_purpose", "") if self._intent else "",
+                        profile=self._pre_scan_profile,
+                    )
+                    if not message:
+                        break
+                    coverage_turns_used += 1
+                else:
+                    coverage_messages = await generate_coverage_turns(
+                        uncovered=uncovered,
+                        session_context=last_response[:500],
+                        component_descriptions=self._component_descriptions,
+                        llm_client=self._llm,
+                        domain_context=getattr(self._intent, "app_purpose", "") if self._intent else "",
+                        intent=self._intent,
+                        scoped_components=scoped_component_set,
+                        profile=self._pre_scan_profile,
+                    )
+                    if not coverage_messages:
+                        break
+                    pending_messages = coverage_messages
+                    coverage_turns_used += len(coverage_messages)
+                    message = pending_messages.pop(0)  # send coverage turns as-is
                 _log.debug("_run_scenario: using coverage turn for uncovered: %s", list(uncovered)[:3])
             else:
                 break
@@ -2659,7 +2690,12 @@ class BehaviorRunner:
 def _adaptive_coverage_cap(config: Any) -> int:
     """Return the max number of adaptive coverage turns allowed."""
     from nuguard.behavior.coverage import MAX_COVERAGE_TURNS
-    return MAX_COVERAGE_TURNS
+    return int(getattr(config, "coverage_turns_per_scenario", None) or MAX_COVERAGE_TURNS)
+
+
+def _session_turn_cap(config: Any) -> int:
+    """Return the max total turns (scripted + coverage) allowed in a scenario session."""
+    return int(getattr(config, "max_session_turns", None) or _ADAPTIVE_SESSION_CAP)
 
 
 def _generate_data_reactive_turns(

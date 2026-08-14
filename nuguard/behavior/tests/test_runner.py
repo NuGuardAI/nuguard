@@ -725,3 +725,96 @@ async def test_adapt_message_no_context_passthrough():
     msg, pii, hook, deferred = await _adapt_message("Hello", None, scenario)
     assert msg == "Hello"
     assert deferred is None
+
+
+# ---------------------------------------------------------------------------
+# Configurable coverage/session turn budgets
+# ---------------------------------------------------------------------------
+
+
+def test_adaptive_coverage_cap_uses_config_value():
+    from nuguard.behavior.runner import _adaptive_coverage_cap
+
+    config = BehaviorConfig(coverage_turns_per_scenario=8)
+    assert _adaptive_coverage_cap(config) == 8
+
+
+def test_adaptive_coverage_cap_falls_back_to_default():
+    from nuguard.behavior.coverage import MAX_COVERAGE_TURNS
+    from nuguard.behavior.runner import _adaptive_coverage_cap
+
+    assert _adaptive_coverage_cap(object()) == MAX_COVERAGE_TURNS
+
+
+def test_session_turn_cap_uses_config_value():
+    from nuguard.behavior.runner import _session_turn_cap
+
+    config = BehaviorConfig(max_session_turns=25)
+    assert _session_turn_cap(config) == 25
+
+
+def test_session_turn_cap_falls_back_to_default():
+    from nuguard.behavior.runner import _ADAPTIVE_SESSION_CAP, _session_turn_cap
+
+    assert _session_turn_cap(object()) == _ADAPTIVE_SESSION_CAP
+
+
+# ---------------------------------------------------------------------------
+# GUIDED_COVERAGE scenarios: driven turn-by-turn by CoverageDirector
+# ---------------------------------------------------------------------------
+
+
+def _make_sbom_with_tool(tool_name: str) -> AiSbomDocument:
+    return AiSbomDocument(
+        target="test",
+        nodes=[
+            Node(
+                name=tool_name,
+                component_type=ComponentType.TOOL,
+                confidence=1.0,
+                metadata=NodeMetadata(),
+            )
+        ],
+    )
+
+
+@pytest.mark.asyncio
+async def test_guided_coverage_scenario_uses_coverage_director_not_batch_gen():
+    """GUIDED_COVERAGE scenarios must be driven one message at a time via
+    CoverageDirector.next_message(), never via the batch generate_coverage_turns()."""
+    runner = BehaviorRunner(
+        config=BehaviorConfig(target="http://localhost:8080", target_endpoint="/chat"),
+        sbom=_make_sbom_with_tool("transfer_funds"),
+        policy=_make_mock_policy(),
+        intent=_make_intent(),
+        llm_client=None,
+    )
+    runner._pre_scan_profile = None
+
+    mock_client = AsyncMock()
+    mock_client.base_url = "http://localhost:8080"
+    mock_client.send = AsyncMock(return_value=("Sure, I can help with that.", []))
+
+    fake_director = MagicMock()
+    fake_director.next_message = AsyncMock(side_effect=["Can you move $50 to savings?", None])
+
+    scenario = BehaviorScenario(
+        scenario_type=BehaviorScenarioType.GUIDED_COVERAGE,
+        name="guided_assistant_0",
+        messages=["I need help with banking. Can you help me get started?"],
+        scoped_tools=["transfer_funds"],
+        primary_agent="assistant",
+    )
+
+    with (
+        patch.object(runner, "_coverage_director", return_value=fake_director),
+        patch("nuguard.behavior.runner.generate_coverage_turns", new=AsyncMock()) as batch_gen,
+    ):
+        result = await runner._run_scenario(scenario, mock_client, None)
+
+    assert result.scenario_name == "guided_assistant_0"
+    # Opening scripted message + one director-picked follow-up = 2 turns, then
+    # the director returning None ends the scenario.
+    assert mock_client.send.await_count == 2
+    fake_director.next_message.assert_awaited()
+    batch_gen.assert_not_awaited()

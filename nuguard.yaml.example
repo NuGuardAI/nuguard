@@ -140,6 +140,24 @@ behavior:
   # Pause between scenarios in seconds to avoid 429 rate-limit errors (default: 0.0)
   # scenario_delay_seconds: 1.0
 
+  # Max adaptive coverage-turns appended to a scenario to probe SBOM components
+  # (agents/tools) not yet exercised by its scripted messages (default: 5)
+  # coverage_turns_per_scenario: 8
+
+  # Hard cap on total turns (scripted + coverage) in a single scenario session
+  # (default: 10)
+  # max_session_turns: 16
+
+  # Max tools grouped into a single tool_coverage/component_coverage scenario chain
+  # (default: 4). Larger values produce fewer, longer multi-turn scenarios for the
+  # same tool coverage — useful for SBOMs with many tools (e.g. 50+).
+  # tool_chain_size: 8
+
+  # Use a live, LLM-steered conversation (CoverageDirector) to exercise uncovered
+  # agents/tools turn-by-turn instead of pre-generated tool-chain scripts. Produces
+  # more natural conversations at the cost of extra adaptive LLM calls (default: false)
+  # guided_coverage: true
+
   # Cross-run scenario prompt cache directory (empty string disables caching)
   # prompt_cache_dir: ./tests/output
 

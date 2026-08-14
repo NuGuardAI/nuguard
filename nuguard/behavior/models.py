@@ -29,6 +29,7 @@ class BehaviorScenarioType(str, Enum):
     GUARDRAIL_PROBE = "guardrail_probe"            # Layer 3: HITL + data classification
     DATA_DISCOVERY_PROBE = "data_discovery_probe"  # Layer 4: discover + react to user data
     ENDPOINT_COVERAGE = "endpoint_coverage"        # Layer 5: first-class API_ENDPOINT coverage
+    GUIDED_COVERAGE = "guided_coverage"            # Layer 2c: live LLM-steered tool/agent coverage
 
 
 class BehaviorFindingType(str, Enum):

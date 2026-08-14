@@ -233,7 +233,11 @@ def _do_generate(
     # Always load nuguard.yaml so sbom_generation.llm, llm.model, and llm.api_key
     # are honoured even when --source is supplied on the CLI.
     from nuguard.config import load_config  # noqa: PLC0415
-    cfg = load_config(config_file)
+    try:
+        cfg = load_config(config_file)
+    except Exception as exc:
+        _err_console.print(f"Error: failed to load config: {exc}")
+        raise typer.Exit(code=1) from exc
 
     # Fall back to nuguard.yaml's source field when --source is not provided.
     # If source: is a URL (https://github.com/…) treat it as --from-repo so it

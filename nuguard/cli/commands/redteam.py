@@ -144,7 +144,11 @@ def redteam(
     # Resolve from nuguard.yaml if not provided on CLI
     from nuguard.config import load_config
 
-    cfg = load_config(config_path)
+    try:
+        cfg = load_config(config_path)
+    except Exception as exc:
+        typer.echo(f"Error: failed to load config: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
     from nuguard.remediation.llm import resolve_remediation_llm_client
 
     remediation_llm_client = resolve_remediation_llm_client(cfg)

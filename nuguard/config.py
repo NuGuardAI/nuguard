@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 import yaml  # type: ignore[import-untyped]
-from pydantic import AliasChoices, BaseModel, Field, field_validator
+from pydantic import AliasChoices, BaseModel, Field, ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from nuguard.common.auth import LoginFlowConfig
@@ -393,6 +393,12 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
     if "behavior" in data:
         b = data.get("behavior") or {}
         if isinstance(b, dict):
+            # A YAML key written with no value (e.g. "workflows:") parses to None,
+            # not an empty list/string — that almost always means "leave this at
+            # its default", not "explicitly set to null". Drop such keys so
+            # BehaviorConfig's own defaults (e.g. workflows: [] = run all) apply
+            # instead of failing type validation.
+            b = {k: val for k, val in b.items() if val is not None}
             # Inject shared target fields as defaults into the behavior dict so that
             # BehaviorConfig picks them up without requiring duplication in nuguard.yaml.
             # Keys already present in the behavior block take precedence.
@@ -429,6 +435,8 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
     if "validate" in data:
         v = data.get("validate") or {}
         if isinstance(v, dict):
+            # Same empty-key footgun as the behavior section above.
+            v = {k: val for k, val in v.items() if val is not None}
             flat["validate_config"] = v
 
     # Redteam structured auth block
@@ -596,6 +604,37 @@ class BehaviorConfig(BaseModel):
     scenario_delay_seconds: float = Field(
         default=0.0,
         description="Pause between scenarios in seconds to avoid 429 rate-limit errors.",
+    )
+    coverage_turns_per_scenario: int = Field(
+        default=5,
+        ge=1,
+        description=(
+            "Max adaptive coverage-turns appended to a scenario to probe SBOM "
+            "components not yet exercised by its scripted messages."
+        ),
+    )
+    max_session_turns: int = Field(
+        default=10,
+        ge=1,
+        description="Hard cap on total turns (scripted + coverage) in a single scenario session.",
+    )
+    tool_chain_size: int = Field(
+        default=4,
+        ge=1,
+        description=(
+            "Max tools grouped into a single tool_coverage/component_coverage scenario "
+            "chain. Larger values produce fewer, longer multi-turn scenarios for the "
+            "same tool coverage."
+        ),
+    )
+    guided_coverage: bool = Field(
+        default=False,
+        description=(
+            "Use a live, LLM-steered conversation (CoverageDirector) to exercise "
+            "uncovered agents/tools turn-by-turn instead of pre-generated tool-chain "
+            "scripts. Produces more natural conversations at the cost of extra "
+            "adaptive LLM calls per turn."
+        ),
     )
     chat_payload_key: str = "message"
     chat_payload_list: bool = False
@@ -1567,4 +1606,20 @@ def load_config(config_file: Path | None = None) -> NuGuardConfig:
         yaml_overrides = _rebase_relative_paths(yaml_overrides, candidate.parent)
         break
 
-    return NuGuardConfig(**yaml_overrides)
+    # A YAML key written with no value (e.g. "workflows:") parses to None, not
+    # an empty list/string — that means "leave this at its default", not
+    # "explicitly set to null". Drop such top-level keys so field defaults
+    # apply instead of failing type validation (e.g. list[str] fields).
+    yaml_overrides = {k: v for k, v in yaml_overrides.items() if v is not None}
+
+    try:
+        return NuGuardConfig(**yaml_overrides)
+    except ValidationError as exc:
+        field_issues = "; ".join(
+            f"{'.'.join(str(p) for p in err['loc'])}: {err['msg']}" for err in exc.errors()
+        )
+        raise ConfigError(
+            f"Invalid nuguard.yaml configuration — {field_issues}. "
+            "Check the field(s) above against nuguard.yaml.example, or remove "
+            "them to use their default value."
+        ) from exc

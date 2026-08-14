@@ -124,7 +124,11 @@ def _do_validate(
 ) -> None:
     from nuguard.config import load_config  # noqa: PLC0415
 
-    cfg = load_config(config_path)
+    try:
+        cfg = load_config(config_path)
+    except Exception as exc:
+        _err_console.print(f"[red]Error:[/red] failed to load config: {exc}")
+        raise typer.Exit(code=1) from exc
     vc = cfg.validate_config
 
     # Apply overrides

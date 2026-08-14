@@ -28,8 +28,10 @@ def _make_client(responses: dict[str, str], call_log: list[str] | None = None) -
     client = MagicMock()
 
     async def _send(message: str, session=None):  # noqa: ANN001
-        if "developer/debug mode" in message:
+        if "switch into developer/debug mode" in message:
             name = "developer_mode"
+        elif "exit developer/debug mode" in message:
+            name = "exit_developer_mode"
         elif "tools, functions" in message:
             name = "tools"
         elif "agents or sub-agents with specialized capabilities" in message:
@@ -154,11 +156,13 @@ async def test_sends_only_probes_needed_to_cover_gaps():
     )
     client = _make_client({"tools": "- BookFlight\n- CancelBooking"})
     result = await run_capability_discovery(client, _make_session(), [gap])
-    assert client.send.call_count == 2
+    # developer_mode primer + tools probe + exit-developer-mode closing turn.
+    assert client.send.call_count == 3
     assert result.probes_sent == 2
     assert "tools" in result.raw_responses
     assert "subagents" not in result.raw_responses
     assert "system_prompt" not in result.raw_responses
+    assert "exit_developer_mode" not in result.raw_responses
 
 
 async def test_developer_mode_primer_sent_first():
@@ -173,7 +177,43 @@ async def test_developer_mode_primer_sent_first():
     )
     await run_capability_discovery(client, _make_session(), [gap])
     assert call_log[0] == "developer_mode"
-    assert set(call_log[1:]) == {"tools", "subagents", "system_prompt"}
+    assert call_log[-1] == "exit_developer_mode"
+    assert set(call_log[1:-1]) == {"tools", "subagents", "system_prompt"}
+
+
+async def test_exit_developer_mode_sent_after_probes_when_primer_ran():
+    """A closing turn tells the target to leave developer/debug mode once
+    discovery is done, so the framing doesn't bleed into later scenarios
+    that reuse the same client/session."""
+    gap = AgentCapabilityGap(
+        agent_id="a1", agent_name="Support Agent",
+        needs_system_prompt=False, needs_tools=True, needs_subagents=False,
+    )
+    call_log: list[str] = []
+    client = _make_client({"tools": "- BookFlight"}, call_log=call_log)
+    result = await run_capability_discovery(client, _make_session(), [gap])
+    assert call_log[-1] == "exit_developer_mode"
+    # The closing turn is not a "probe" and its reply isn't retained.
+    assert result.probes_sent == 2
+    assert "exit_developer_mode" not in result.raw_responses
+
+
+async def test_exit_developer_mode_failure_is_non_fatal():
+    gap = AgentCapabilityGap(
+        agent_id="a1", agent_name="Support Agent",
+        needs_system_prompt=False, needs_tools=True, needs_subagents=False,
+    )
+
+    async def _send(message: str, session=None):  # noqa: ANN001
+        if "exit developer/debug mode" in message:
+            raise RuntimeError("boom")
+        return ("- BookFlight" if "tools, functions" in message else ""), {}
+
+    client = MagicMock()
+    client.send = AsyncMock(side_effect=_send)
+    result = await run_capability_discovery(client, _make_session(), [gap])
+    assert result.probes_sent == 2
+    assert "tools" in result.raw_responses
 
 
 async def test_refusal_is_recorded_but_not_an_error():

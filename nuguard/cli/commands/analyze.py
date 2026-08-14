@@ -139,7 +139,11 @@ def analyze(
     # Load config and resolve effective flag values
     # ------------------------------------------------------------------
     from nuguard.config import load_config  # noqa: PLC0415
-    cfg = load_config(config)
+    try:
+        cfg = load_config(config)
+    except Exception as exc:
+        typer.echo(f"error: failed to load config: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
 
     # --nga: CLI flag wins; fall back to config field
     nga = nga or cfg.analyze_nga_only

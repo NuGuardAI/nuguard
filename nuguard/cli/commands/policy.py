@@ -65,7 +65,11 @@ def compile_policy(
     from nuguard.policy.compiler import compile_controls
     from nuguard.policy.loader import compiled_path_for, save_controls
 
-    cfg = load_config(config_file)
+    try:
+        cfg = load_config(config_file)
+    except Exception as exc:
+        _err_console.print(f"Error: failed to load config: {exc}")
+        raise typer.Exit(code=_EXIT_ERROR) from exc
 
     resolved_policy: Optional[Path] = policy_file
     if resolved_policy is None and cfg.policy_path:
@@ -264,7 +268,11 @@ def check(
     from nuguard.config import load_config
     from nuguard.sbom.extractor.serializer import AiSbomSerializer
 
-    cfg = load_config(config_file)
+    try:
+        cfg = load_config(config_file)
+    except Exception as exc:
+        _err_console.print(f"Error: failed to load config: {exc}")
+        raise typer.Exit(code=_EXIT_ERROR) from exc
 
     try:
         formats = parse_output_formats(
