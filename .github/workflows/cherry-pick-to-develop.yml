@@ -124,7 +124,9 @@ jobs:
             --base develop \
             --head "${{ steps.cherry.outputs.branch }}" \
             --title "Cherry-pick #${PR_NUMBER} into develop" \
-            --body "Automated cherry-pick of #${PR_NUMBER} (merged into \`main\`) onto \`develop\`. Auto-merges once required checks pass." \
+            --body "Automated cherry-pick of #${PR_NUMBER} (merged into \`main\`) onto \`develop\`. Auto-merges once required checks pass.
+
+Closes #${PR_NUMBER}." \
             --label "cherry-pick")
           echo "url=$url" >> "$GITHUB_OUTPUT"
 
