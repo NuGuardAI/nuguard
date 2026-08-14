@@ -14,8 +14,12 @@ on:
     branches: [main]
 
 # find-pr reads commit/PR data with the default token; cherry-pick's actual
-# writes (push, PR create, issue comment) all go through the separate
-# CHERRY_PICK_BOT_TOKEN secret, never GITHUB_TOKEN, so read-only suffices here.
+# writes (push, PR create, merge, issue comment) all go through a token minted
+# for the nuguard-oss GitHub App (contents: write, pull-requests: write), never
+# GITHUB_TOKEN, so read-only suffices here. Using the App's own identity
+# (rather than a personal-account PAT) means a future branch-protection bypass
+# rule can target this bot specifically without also exempting anyone's
+# personal PRs.
 permissions:
   contents: read
   pull-requests: read
@@ -59,11 +63,18 @@ jobs:
     runs-on: ubuntu-latest
     environment: cherry-pick-bot
     steps:
+      - name: Generate a token for the nuguard-oss GitHub App
+        id: generate-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ vars.NUGUARD_OSS_APP_ID }}
+          private-key: ${{ secrets.NUGUARD_OSS_APP_PRIVATE_KEY }}
+
       - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.CHERRY_PICK_BOT_TOKEN }}
+          token: ${{ steps.generate-token.outputs.token }}
 
       - name: Configure git identity
         run: |
@@ -105,7 +116,7 @@ jobs:
         if: steps.cherry.outputs.conflict == 'false'
         id: open_pr
         env:
-          GH_TOKEN: ${{ secrets.CHERRY_PICK_BOT_TOKEN }}
+          GH_TOKEN: ${{ steps.generate-token.outputs.token }}
           PR_NUMBER: ${{ needs.find-pr.outputs.pr_number }}
         run: |
           url=$(gh pr create \
@@ -124,14 +135,14 @@ jobs:
       - name: Enable auto-merge
         if: steps.cherry.outputs.conflict == 'false'
         env:
-          GH_TOKEN: ${{ secrets.CHERRY_PICK_BOT_TOKEN }}
+          GH_TOKEN: ${{ steps.generate-token.outputs.token }}
         run: |
           gh pr merge --auto --merge "${{ steps.open_pr.outputs.url }}"
 
       - name: Notify on conflict
         if: steps.cherry.outputs.conflict == 'true'
         env:
-          GH_TOKEN: ${{ secrets.CHERRY_PICK_BOT_TOKEN }}
+          GH_TOKEN: ${{ steps.generate-token.outputs.token }}
           PR_NUMBER: ${{ needs.find-pr.outputs.pr_number }}
         run: |
           gh issue comment "${PR_NUMBER}" \
