@@ -85,13 +85,13 @@ behavior:
   # Used by behavior mode to detect accidental leakage during happy-path runs
   # canary: ./canary.json
 
-  # Workflows to run in behavior mode:
-  #   capability_probe     — verify each declared tool/sub-agent is invoked correctly
-  #   happy_path           — simulate realistic multi-turn user interactions end-to-end
-  #   boundary_assertion   — verify the app correctly refuses out-of-scope requests
-  #   policy_compliance    — evaluate responses against cognitive policy clauses
+  # Workflows to run in behavior mode (v8 names — see nuguard/behavior/scenarios.py):
+  #   topic_coverage       — intent-driven happy paths + allowed-topic fallback probes
+  #   agent_tool_coverage  — SBOM-driven agent, tool, endpoint, and delegation coverage
+  #   guardrail_coverage   — HITL triggers, data classification, and guardrail-path probes
+  #   data_discovery_probe — ask what data the agent holds, then react
   workflows:
-    - intent_happy_path
+    - topic_coverage
 
   # Keep prepublish runs fast while still requiring non-zero execution signal.
   max_scenarios: 12
