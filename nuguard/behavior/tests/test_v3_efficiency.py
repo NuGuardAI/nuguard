@@ -245,6 +245,40 @@ class TestFastVerdict:
         assert result is not None
         assert result.verdict == "FAIL"
 
+    def test_conflicting_signals_defer_to_llm(self):
+        """A response matching BOTH a refusal phrase and a happy-confirm phrase
+        is ambiguous — the evidence-bundle model must recognise the conflict
+        and return None (defer to the LLM judge) rather than silently picking
+        whichever pattern happens to be checked first."""
+        response = "I'm sorry, I can't help with that, but I've booked your flight to New York."
+        result = _fast_verdict(1, "req", response, "intent_happy_path", "s")
+        assert result is None
+
+    def test_deterministic_signal_wins_over_conflict(self):
+        """An HTTP error is deterministic and always wins outright, even if
+        the body also happens to contain a happy-confirm phrase."""
+        response = "[HTTP 500] Internal Server Error — but I've booked your flight to New York."
+        result = _fast_verdict(1, "req", response, "intent_happy_path", "s")
+        assert result is not None
+        assert result.verdict == "FAIL"
+        assert result.confidence == "high"
+
+    def test_fast_verdict_confidence_and_evidence_populated(self):
+        result = _fast_verdict(1, "req", "I'm sorry, I can't help.", "intent_happy_path", "s")
+        assert result is not None
+        assert result.confidence in ("high", "medium", "low")
+        assert result.evidence
+
+    def test_fast_verdict_http_error_confidence_high(self):
+        result = _fast_verdict(1, "req", "[HTTP 500] Internal Server Error", "component_coverage", "s")
+        assert result is not None
+        assert result.confidence == "high"
+
+    def test_fast_verdict_heuristic_pass_confidence_medium(self):
+        result = _fast_verdict(1, "req", "I've booked your flight to New York.", "intent_happy_path", "s")
+        assert result is not None
+        assert result.confidence == "medium"
+
 
 # ---------------------------------------------------------------------------
 # _dedup_scenarios_by_opener()

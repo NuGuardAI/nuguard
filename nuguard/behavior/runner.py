@@ -1246,6 +1246,8 @@ class BehaviorRunner:
                         "severity": "high",
                     }],
                     latency_ms=latency_ms,
+                    confidence="high",
+                    evidence=send_error[:200],
                 )
                 if verbose:
                     _print_turn(
