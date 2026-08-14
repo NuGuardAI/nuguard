@@ -67,10 +67,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        app:
-          - openai-cs
-          - gemini-auto
-          - pinnacle-bank
+        include:
+          - app: openai-cs
+            report_dir: tests/apps/openai-cs-agents-demo/reports
+          - app: gemini-auto
+            report_dir: tests/apps/Gemini-Auto-app/reports
+          - app: pinnacle-bank
+            report_dir: tests/apps/pinnacle-bank-app/reports
 
     env:
       AZURE_OPENAI_KEY: ${{ secrets.AZURE_OPENAI_KEY }}
@@ -100,5 +103,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: nuguard-e2e-main-${{ matrix.app }}
-          path: tests/apps/**/reports/**
+          path: ${{ matrix.report_dir }}/**
           if-no-files-found: ignore
