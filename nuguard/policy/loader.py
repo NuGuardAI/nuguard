@@ -11,7 +11,7 @@ from nuguard.models.policy import PolicyControl
 if TYPE_CHECKING:
     from nuguard.common.llm_client import LLMClient
     from nuguard.models.policy import CognitivePolicy
-    from nuguard.sbom.models import SourceLocation
+    from nuguard.policy.sbom_provenance import ComponentEvidenceCandidate
 
 _log = get_logger(__name__)
 
@@ -82,7 +82,7 @@ async def ensure_policy_controls(
     policy_path: Path,
     use_llm: bool = False,
     llm_client: "LLMClient | None" = None,
-    component_evidence: "dict[str, SourceLocation] | None" = None,
+    component_evidence: "list[ComponentEvidenceCandidate] | None" = None,
 ) -> "tuple[CognitivePolicy, list[PolicyControl]]":
     """Return a parsed CognitivePolicy and compiled PolicyControl list.
 
@@ -100,7 +100,7 @@ async def ensure_policy_controls(
                      the JSON needs to be (re-)built.  Ignored when the JSON
                      already exists.
         llm_client:  LLMClient instance used when *use_llm* is ``True``.
-        component_evidence: Optional map of SBOM component name -> SourceLocation
+        component_evidence: Optional list of SBOM component evidence candidates
                      for best-effort source-code evidence attachment. Ignored
                      when the JSON already exists.
 
@@ -111,7 +111,7 @@ async def ensure_policy_controls(
     from nuguard.policy.parser import parse_policy  # noqa: PLC0415
 
     text = policy_path.read_text(encoding="utf-8")
-    cognitive_policy = parse_policy(text, source_path=policy_path.name)
+    cognitive_policy = parse_policy(text)
 
     compiled = compiled_path_for(policy_path)
     if compiled.exists():
@@ -127,7 +127,6 @@ async def ensure_policy_controls(
             text,
             use_llm=use_llm,
             llm_client=llm_client,
-            source_path=policy_path.name,
             component_evidence=component_evidence,
         )
         save_controls(controls, compiled)

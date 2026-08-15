@@ -20,6 +20,7 @@ from nuguard.common.logging import get_logger
 from nuguard.models.policy import CognitivePolicy, PolicyControl, PolicyOrigin
 from nuguard.policy.best_practices import apply_best_practice_defaults
 from nuguard.policy.parser import parse_policy
+from nuguard.policy.sbom_provenance import ComponentEvidenceCandidate
 from nuguard.sbom.models import SourceLocation
 
 if TYPE_CHECKING:
@@ -181,17 +182,73 @@ _SECTION_SEVERITY = {
 }
 
 
+_STOPWORDS = {
+    "the", "a", "an", "to", "of", "and", "or", "in", "on", "for", "without",
+    "that", "this", "with", "by", "from", "is", "are", "must", "not", "any",
+    "all", "your", "you", "it", "as", "at", "be", "can", "will", "their",
+}
+_MIN_SHARED_TOKENS = 3
+_MAX_COMPONENT_MATCHES = 2
+_TOKEN_RE = re.compile(r"[a-z0-9]+")
+
+
+def _stem(word: str) -> str:
+    """Naive plural stemming so 'transfers' matches 'transfer', etc."""
+    if len(word) > 4 and word.endswith("s") and not word.endswith("ss"):
+        return word[:-1]
+    return word
+
+
+def _tokenize(text: str) -> set[str]:
+    return {
+        _stem(w)
+        for w in _TOKEN_RE.findall(text.lower())
+        if len(w) >= 3 and w not in _STOPWORDS
+    }
+
+
 def _match_component_evidence(
-    description: str, component_evidence: dict[str, SourceLocation] | None
-) -> SourceLocation | None:
-    """Best-effort case-insensitive substring match of a component name in *description*."""
-    if not component_evidence:
-        return None
+    description: str, candidates: list[ComponentEvidenceCandidate] | None
+) -> list[SourceLocation]:
+    """Best-effort match of SBOM components against a control's description.
+
+    A candidate qualifies when either its bare name is a literal substring of
+    the description (precise, ranked highest), or the token overlap between
+    the description and the candidate's match_text has at least
+    ``_MIN_SHARED_TOKENS`` shared words (catches reordered/paraphrased
+    overlap, e.g. "fund transfer" vs "Fund transfers between accounts").
+    Returns up to ``_MAX_COMPONENT_MATCHES`` locations, deduped and ranked by
+    match strength.
+    """
+    if not candidates:
+        return []
+
     lowered = description.lower()
-    for name, location in component_evidence.items():
-        if name and name.lower() in lowered:
-            return location
-    return None
+    desc_tokens = _tokenize(description)
+
+    scored: list[tuple[int, SourceLocation]] = []
+    for cand in candidates:
+        substring_hit = len(cand.name) >= 4 and cand.name.lower() in lowered
+        shared = desc_tokens & _tokenize(cand.match_text)
+        if not substring_hit and len(shared) < _MIN_SHARED_TOKENS:
+            continue
+        score = len(shared) + (100 if substring_hit else 0)
+        scored.append((score, cand.location))
+
+    scored.sort(key=lambda item: -item[0])
+
+    seen: set[tuple[str, int | None]] = set()
+    result: list[SourceLocation] = []
+    for _score, location in scored:
+        key = (location.path, location.line)
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(location)
+        if len(result) >= _MAX_COMPONENT_MATCHES:
+            break
+
+    return result
 
 
 def _slugify(text: str, max_len: int | None = None) -> str:
@@ -210,7 +267,7 @@ def _slugify(text: str, max_len: int | None = None) -> str:
 
 def _rule_based_controls(
     policy: CognitivePolicy,
-    component_evidence: dict[str, SourceLocation] | None = None,
+    component_evidence: list[ComponentEvidenceCandidate] | None = None,
 ) -> list[PolicyControl]:
     """Derive PolicyControl list from a CognitivePolicy without an LLM."""
     controls: list[PolicyControl] = []
@@ -223,13 +280,9 @@ def _rule_based_controls(
         boundary_prompts: list[str],
     ) -> None:
         nonlocal counter
-        evidence: list[SourceLocation] = []
-        doc_location = policy.item_evidence.get(f"{section}:{description}")
-        if doc_location is not None:
-            evidence.append(doc_location)
-        component_location = _match_component_evidence(description, component_evidence)
-        if component_location is not None:
-            evidence.append(component_location)
+        evidence: list[SourceLocation] = _match_component_evidence(
+            description, component_evidence
+        )
 
         controls.append(
             PolicyControl(
@@ -335,8 +388,7 @@ def _rule_based_controls(
 async def _llm_controls(
     text: str,
     llm_client: "LLMClient",
-    source_path: str = "cognitive_policy.md",
-    component_evidence: dict[str, SourceLocation] | None = None,
+    component_evidence: list[ComponentEvidenceCandidate] | None = None,
 ) -> list[PolicyControl]:
     """Ask the LLM to generate PolicyControl list from raw policy text."""
     response = await llm_client.complete(
@@ -348,7 +400,7 @@ async def _llm_controls(
     # Canned response means the LLM was unavailable (no key, connection error, etc.)
     if response.startswith("[NUGUARD_CANNED_RESPONSE]"):
         _log.warning("LLM unavailable; falling back to rule-based policy compilation")
-        policy = parse_policy(text, source_path=source_path)
+        policy = parse_policy(text)
         return _rule_based_controls(policy, component_evidence=component_evidence)
 
     # Strip markdown fences if the model wrapped the JSON
@@ -369,7 +421,7 @@ async def _llm_controls(
             exc,
             response[:200],
         )
-        policy = parse_policy(text, source_path=source_path)
+        policy = parse_policy(text)
         return _rule_based_controls(policy, component_evidence=component_evidence)
 
     controls: list[PolicyControl] = []
@@ -381,20 +433,14 @@ async def _llm_controls(
 
     if not controls:
         _log.warning("LLM returned no valid controls; falling back to rule-based")
-        policy = parse_policy(text, source_path=source_path)
+        policy = parse_policy(text)
         return _rule_based_controls(policy, component_evidence=component_evidence)
 
-    # The LLM doesn't report which line it drew from — attach doc-level
-    # evidence (whole file, no line) plus a best-effort component match.
+    # The LLM doesn't cite the input document — evidence comes only from a
+    # best-effort match against real SBOM components/system prompts.
     for control in controls:
         control.origin = PolicyOrigin.POLICY_DOCUMENT.value
-        evidence: list[SourceLocation] = [SourceLocation(path=source_path, line=None)]
-        component_location = _match_component_evidence(
-            control.description, component_evidence
-        )
-        if component_location is not None:
-            evidence.append(component_location)
-        control.evidence = evidence
+        control.evidence = _match_component_evidence(control.description, component_evidence)
 
     return controls
 
@@ -408,8 +454,7 @@ async def compile_controls(
     text: str,
     use_llm: bool = False,
     llm_client: "LLMClient | None" = None,
-    source_path: str = "cognitive_policy.md",
-    component_evidence: dict[str, SourceLocation] | None = None,
+    component_evidence: list[ComponentEvidenceCandidate] | None = None,
 ) -> list[PolicyControl]:
     """Compile a Cognitive Policy Markdown document into PolicyControl objects.
 
@@ -418,22 +463,21 @@ async def compile_controls(
         use_llm:    When True (and *llm_client* is provided), use the LLM to
                     generate richer test and boundary prompts.
         llm_client: LLMClient instance.  Required when *use_llm* is True.
-        source_path: Filename recorded in evidence for doc-sourced controls.
-        component_evidence: Optional map of SBOM component name -> SourceLocation,
-                    used for a best-effort match against each control's
-                    description to add source-code evidence on top of the
-                    policy-document evidence.
+        component_evidence: Optional list of SBOM component evidence candidates
+                    (see nuguard.policy.sbom_provenance), used for a best-effort
+                    match against each control's description to attach
+                    source-code/system-prompt evidence.
 
     Returns:
         List of PolicyControl instances ready for behavior / redteam use,
         including any injected NuGuard best-practice defaults for sections
         the document left uncovered.
     """
-    policy = parse_policy(text, source_path=source_path)
+    policy = parse_policy(text)
 
     if use_llm and llm_client is not None:
         controls = await _llm_controls(
-            text, llm_client, source_path=source_path, component_evidence=component_evidence
+            text, llm_client, component_evidence=component_evidence
         )
     else:
         if use_llm and llm_client is None:

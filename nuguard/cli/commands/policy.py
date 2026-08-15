@@ -97,7 +97,7 @@ def compile_policy(
             api_base=cfg.litellm_api_base if _model.startswith("azure") else None,
         )
 
-    component_evidence = {}
+    component_evidence = []
     if cfg.sbom_path:
         component_evidence = build_component_evidence(Path(cfg.sbom_path))
 
@@ -113,7 +113,6 @@ def compile_policy(
                 text,
                 use_llm=effective_llm,
                 llm_client=llm_client,
-                source_path=resolved_policy.name,
                 component_evidence=component_evidence,
             )
         )

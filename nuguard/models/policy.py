@@ -208,15 +208,6 @@ class CognitivePolicy(BaseModel):
         default_factory=dict,
         description="Unrecognised Markdown sections preserved verbatim",
     )
-    item_evidence: dict[str, SourceLocation] = Field(
-        default_factory=dict,
-        description=(
-            "Maps 'section_field:item_text' -> SourceLocation in the policy "
-            "Markdown document. Populated by parse_policy; consumed by the "
-            "compiler to attach provenance to compiled PolicyControls. Not "
-            "written to cognitive_policy.json."
-        ),
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -263,8 +254,11 @@ class PolicyControl(BaseModel):
     evidence: list[SourceLocation] = Field(
         default_factory=list,
         description=(
-            "Where this control's statement was found: the policy Markdown "
-            "file/line and, best-effort, the original source file/line of a "
-            "referenced SBOM component. Empty for nuguard_best_practice controls."
+            "Best-effort source-code/system-prompt evidence grounding this "
+            "control in the actual application (SBOM component locations). "
+            "Does NOT include a pointer to the input Cognitive Policy "
+            "document itself — see 'origin' for whether the control's text "
+            "came from that document or a NuGuard default. Empty when no "
+            "SBOM match was found."
         ),
     )

@@ -111,7 +111,7 @@ def test_validate_missing_file_exits(tmp_path: Path) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_compile_writes_origin_and_evidence(policy_file: Path, tmp_path: Path) -> None:
+def test_compile_writes_origin_and_no_doc_self_reference(policy_file: Path, tmp_path: Path) -> None:
     dest = tmp_path / "compiled.json"
     result = runner.invoke(
         app,
@@ -125,8 +125,10 @@ def test_compile_writes_origin_and_evidence(policy_file: Path, tmp_path: Path) -
     doc_controls = [c for c in controls if c["origin"] == "policy_document"]
     assert doc_controls
     for c in doc_controls:
-        assert c["evidence"]
-        assert all(ev["path"] == policy_file.name for ev in c["evidence"])
+        # No control should cite the input policy document itself as evidence.
+        assert all(ev["path"] != policy_file.name for ev in c["evidence"])
+    # No SBOM was provided, so no component evidence is possible either.
+    assert all(c["evidence"] == [] for c in doc_controls)
 
 
 def test_compile_with_sbom_adds_component_evidence(

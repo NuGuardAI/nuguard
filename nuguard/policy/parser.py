@@ -25,7 +25,6 @@ import re
 
 from nuguard.common.logging import get_logger
 from nuguard.models.policy import CognitivePolicy, HitlToolCondition
-from nuguard.sbom.models import SourceLocation
 
 _log = get_logger(__name__)
 
@@ -63,19 +62,19 @@ def _strip_heading(text: str) -> str:
     return text.lstrip("#").strip()
 
 
-def _extract_bullets(lines: list[tuple[str, int]]) -> list[tuple[str, int]]:
-    """Return all bullet-list items from *lines* as (item_text, line_no) pairs."""
-    items: list[tuple[str, int]] = []
-    for line, line_no in lines:
+def _extract_bullets(lines: list[str]) -> list[str]:
+    """Return all bullet-list items from *lines*."""
+    items: list[str] = []
+    for line in lines:
         m = _BULLET_RE.match(line.strip())
         if m:
-            items.append((m.group(1).strip(), line_no))
+            items.append(m.group(1).strip())
     return items
 
 
 def _parse_hitl_triggers(
-    bullets: list[tuple[str, int]],
-) -> tuple[list[tuple[str, int]], list[tuple[HitlToolCondition, int]]]:
+    bullets: list[str],
+) -> tuple[list[str], list[HitlToolCondition]]:
     """Split HITL bullet items into plain keyword triggers and tool-scoped conditions.
 
     A bullet is treated as a tool-scoped condition when it matches the pattern
@@ -84,18 +83,17 @@ def _parse_hitl_triggers(
     plain keyword triggers matched against the prompt text at runtime.
 
     Returns:
-        Tuple of (keyword_triggers, tool_conditions), each paired with the
-        source line number the bullet was found on.
+        Tuple of (keyword_triggers, tool_conditions).
     """
-    keyword_triggers: list[tuple[str, int]] = []
-    tool_conditions: list[tuple[HitlToolCondition, int]] = []
-    for item, line_no in bullets:
+    keyword_triggers: list[str] = []
+    tool_conditions: list[HitlToolCondition] = []
+    for item in bullets:
         m = _TOOL_CONDITION_RE.match(item.strip())
         if m:
             tool_name = m.group(1).strip()
             condition = m.group(2).strip()
             tool_conditions.append(
-                (HitlToolCondition(tool_name=tool_name, condition=condition), line_no)
+                HitlToolCondition(tool_name=tool_name, condition=condition)
             )
             _log.debug(
                 "hitl_triggers: parsed tool-scoped condition tool=%r condition=%r",
@@ -103,25 +101,25 @@ def _parse_hitl_triggers(
                 condition,
             )
         else:
-            keyword_triggers.append((item, line_no))
+            keyword_triggers.append(item)
     return keyword_triggers, tool_conditions
 
 
-def _parse_rate_limits(lines: list[tuple[str, int]]) -> dict[str, tuple[int, int]]:
-    """Parse key: value pairs from *lines* into a dict[str, (value, line_no)].
+def _parse_rate_limits(lines: list[str]) -> dict[str, int]:
+    """Parse key: value pairs from *lines* into a dict[str, int].
 
     Only lines that match the ``key: value`` pattern and whose value is a
     valid integer are included.  Non-integer values are logged and skipped.
     """
-    result: dict[str, tuple[int, int]] = {}
-    for line, line_no in lines:
+    result: dict[str, int] = {}
+    for line in lines:
         stripped = line.strip().lstrip("-* ").strip()
         m = _KV_RE.match(stripped)
         if m:
             key = m.group(1).strip()
             raw_val = m.group(2).strip()
             try:
-                result[key] = (int(raw_val), line_no)
+                result[key] = int(raw_val)
             except ValueError:
                 _log.debug(
                     "rate_limits: could not parse value %r for key %r — skipping",
@@ -131,7 +129,7 @@ def _parse_rate_limits(lines: list[tuple[str, int]]) -> dict[str, tuple[int, int
     return result
 
 
-def parse_policy(text: str, source_path: str = "cognitive_policy.md") -> CognitivePolicy:
+def parse_policy(text: str) -> CognitivePolicy:
     """Parse a Cognitive Policy Markdown document into a CognitivePolicy.
 
     The algorithm:
@@ -143,8 +141,6 @@ def parse_policy(text: str, source_path: str = "cognitive_policy.md") -> Cogniti
 
     Args:
         text: Raw Markdown policy text.
-        source_path: Path recorded in per-item evidence (``item_evidence``),
-            typically the policy document's filename.
 
     Returns:
         Populated CognitivePolicy instance.
@@ -157,21 +153,14 @@ def parse_policy(text: str, source_path: str = "cognitive_policy.md") -> Cogniti
     data_classification: list[str] = []
     rate_limits: dict[str, int] = {}
     raw_sections: dict[str, list[str]] = {}
-    item_evidence: dict[str, SourceLocation] = {}
 
-    def _record(field: str, item_text: str, line_no: int) -> None:
-        item_evidence[f"{field}:{item_text}"] = SourceLocation(
-            path=source_path, line=line_no
-        )
-
-    # Split into (heading_text, body_lines) pairs, each body line paired with
-    # its 1-based line number in the original document.
+    # Split into (heading_text, body_lines) pairs.
     # We treat any heading level (one or more #) as a section delimiter.
-    sections: list[tuple[str, list[tuple[str, int]]]] = []
+    sections: list[tuple[str, list[str]]] = []
     current_heading: str | None = None
-    current_lines: list[tuple[str, int]] = []
+    current_lines: list[str] = []
 
-    for line_no, line in enumerate(text.splitlines(), start=1):
+    for line in text.splitlines():
         m = _HEADING_RE.match(line)
         if m:
             # Save previous section
@@ -180,7 +169,7 @@ def parse_policy(text: str, source_path: str = "cognitive_policy.md") -> Cogniti
             current_heading = m.group(1).strip()
             current_lines = []
         else:
-            current_lines.append((line, line_no))
+            current_lines.append(line)
 
     # Flush the last section
     if current_heading is not None:
@@ -191,43 +180,23 @@ def parse_policy(text: str, source_path: str = "cognitive_policy.md") -> Cogniti
         field = _HEADING_MAP.get(key)
 
         if field == "allowed_topics":
-            for item, line_no in _extract_bullets(body):
-                allowed_topics.append(item)
-                _record(field, item, line_no)
+            allowed_topics.extend(_extract_bullets(body))
         elif field == "restricted_topics":
-            for item, line_no in _extract_bullets(body):
-                restricted_topics.append(item)
-                _record(field, item, line_no)
+            restricted_topics.extend(_extract_bullets(body))
         elif field == "restricted_actions":
-            for item, line_no in _extract_bullets(body):
-                restricted_actions.append(item)
-                _record(field, item, line_no)
+            restricted_actions.extend(_extract_bullets(body))
         elif field == "hitl_triggers":
             kw, tool_conds = _parse_hitl_triggers(_extract_bullets(body))
-            for item, line_no in kw:
-                hitl_triggers.append(item)
-                _record("hitl_triggers", item, line_no)
-            for cond, line_no in tool_conds:
-                hitl_tool_conditions.append(cond)
-                _record(
-                    "hitl_tool_conditions", f"{cond.tool_name}: {cond.condition}", line_no
-                )
+            hitl_triggers.extend(kw)
+            hitl_tool_conditions.extend(tool_conds)
         elif field == "data_classification":
-            for item, line_no in _extract_bullets(body):
-                data_classification.append(item)
-                _record(field, item, line_no)
+            data_classification.extend(_extract_bullets(body))
         elif field == "rate_limits":
-            for key_name, (value, line_no) in _parse_rate_limits(body).items():
-                rate_limits[key_name] = value
-                _record("rate_limits", f"{key_name}: {value}", line_no)
+            rate_limits.update(_parse_rate_limits(body))
         else:
             # Unrecognised section — keep verbatim bullet items (or all lines)
             bullets = _extract_bullets(body)
-            raw_sections[heading] = (
-                [item for item, _ in bullets]
-                if bullets
-                else [line for line, _ in body if line.strip()]
-            )
+            raw_sections[heading] = bullets if bullets else [line for line in body if line.strip()]
 
     return CognitivePolicy(
         allowed_topics=allowed_topics,
@@ -238,5 +207,4 @@ def parse_policy(text: str, source_path: str = "cognitive_policy.md") -> Cogniti
         data_classification=data_classification,
         rate_limits=rate_limits,
         raw_sections=raw_sections,
-        item_evidence=item_evidence,
     )

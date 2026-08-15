@@ -1,4 +1,4 @@
-"""Tests for nuguard.policy.parser line-number/provenance tracking."""
+"""Tests for nuguard.policy.parser basic parsing correctness."""
 
 from __future__ import annotations
 
@@ -29,65 +29,60 @@ _POLICY_TEXT = """\
 """
 
 
-def test_parse_policy_default_source_path() -> None:
+def test_parse_policy_allowed_topics() -> None:
     policy = parse_policy(_POLICY_TEXT)
-    loc = policy.item_evidence["allowed_topics:Finance questions"]
-    assert loc.path == "cognitive_policy.md"
+    assert policy.allowed_topics == ["Finance questions", "Account balance"]
 
 
-def test_parse_policy_custom_source_path() -> None:
-    policy = parse_policy(_POLICY_TEXT, source_path="my-policy.md")
-    for loc in policy.item_evidence.values():
-        assert loc.path == "my-policy.md"
-
-
-def test_parse_policy_records_correct_line_numbers() -> None:
-    policy = parse_policy(_POLICY_TEXT, source_path="p.md")
-    lines = _POLICY_TEXT.splitlines()
-
-    assert lines[3] == "- Finance questions"
-    loc = policy.item_evidence["allowed_topics:Finance questions"]
-    assert loc.line == 4  # 1-based
-
-    assert lines[4] == "- Account balance"
-    loc2 = policy.item_evidence["allowed_topics:Account balance"]
-    assert loc2.line == 5
-
-
-def test_parse_policy_restricted_topics_evidence() -> None:
+def test_parse_policy_restricted_topics() -> None:
     policy = parse_policy(_POLICY_TEXT)
-    assert "restricted_topics:Politics" in policy.item_evidence
+    assert policy.restricted_topics == ["Politics"]
 
 
-def test_parse_policy_restricted_actions_evidence() -> None:
+def test_parse_policy_restricted_actions() -> None:
     policy = parse_policy(_POLICY_TEXT)
-    assert "restricted_actions:Wire transfers" in policy.item_evidence
+    assert policy.restricted_actions == ["Wire transfers"]
 
 
-def test_parse_policy_hitl_keyword_trigger_evidence() -> None:
+def test_parse_policy_hitl_keyword_trigger() -> None:
     policy = parse_policy(_POLICY_TEXT)
-    assert "hitl_triggers:Suspicious activity" in policy.item_evidence
+    assert policy.hitl_triggers == ["Suspicious activity"]
 
 
-def test_parse_policy_hitl_tool_condition_evidence() -> None:
+def test_parse_policy_hitl_tool_condition() -> None:
     policy = parse_policy(_POLICY_TEXT)
-    key = "hitl_tool_conditions:payment_tool: amount exceeds $500"
-    assert key in policy.item_evidence
     assert len(policy.hitl_tool_conditions) == 1
     assert policy.hitl_tool_conditions[0].tool_name == "payment_tool"
+    assert policy.hitl_tool_conditions[0].condition == "amount exceeds $500"
 
 
-def test_parse_policy_data_classification_evidence() -> None:
+def test_parse_policy_data_classification() -> None:
     policy = parse_policy(_POLICY_TEXT)
-    assert "data_classification:PII fields" in policy.item_evidence
+    assert policy.data_classification == ["PII fields"]
 
 
-def test_parse_policy_rate_limits_evidence() -> None:
+def test_parse_policy_rate_limits() -> None:
     policy = parse_policy(_POLICY_TEXT)
-    assert "rate_limits:requests_per_minute: 60" in policy.item_evidence
-    assert policy.rate_limits["requests_per_minute"] == 60
+    assert policy.rate_limits == {"requests_per_minute": 60}
 
 
-def test_parse_policy_empty_doc_has_no_evidence() -> None:
+def test_parse_policy_empty_doc() -> None:
     policy = parse_policy("# Cognitive Policy\n")
-    assert policy.item_evidence == {}
+    assert policy.allowed_topics == []
+    assert policy.restricted_topics == []
+    assert policy.restricted_actions == []
+    assert policy.hitl_triggers == []
+    assert policy.rate_limits == {}
+
+
+def test_parse_policy_unrecognised_section_preserved_verbatim() -> None:
+    text = """\
+# Cognitive Policy
+
+## Agent Scope Restrictions
+- The agent must only act on behalf of the authenticated session user.
+"""
+    policy = parse_policy(text)
+    assert policy.raw_sections["Agent Scope Restrictions"] == [
+        "The agent must only act on behalf of the authenticated session user."
+    ]
