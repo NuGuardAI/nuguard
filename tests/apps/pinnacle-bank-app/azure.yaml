@@ -1,0 +1,202 @@
+# Azure Developer CLI manifest for FinTech GOAT.
+# Deploy with azd into the NuGuard-AI Platform subscription:
+# fb4c60ce-198d-408f-b426-e1fe06fd704a
+
+name: Refined-FinTech-App
+
+metadata:
+  template: Refined-FinTech-App@1.0.0
+  description: Deliberately vulnerable FinTech AI application for NuGuard red-team testing.
+
+infra:
+  provider: bicep
+  path: infra
+  module: main
+
+pipeline:
+  provider: github
+
+services:
+  mcp-banking-server:
+    project: src/mcp_server
+    language: py
+    host: containerapp
+    docker:
+      path: Dockerfile
+      context: .
+
+  mcp-accounts:
+    project: src/mcp-accounts
+    language: py
+    host: containerapp
+    docker:
+      path: Dockerfile
+      context: .
+
+  mcp-payments:
+    project: src/mcp-payments
+    language: py
+    host: containerapp
+    docker:
+      path: Dockerfile
+      context: .
+
+  mcp-cards:
+    project: src/mcp-cards
+    language: py
+    host: containerapp
+    docker:
+      path: Dockerfile
+      context: .
+
+  mcp-loans:
+    project: src/mcp-loans
+    language: py
+    host: containerapp
+    docker:
+      path: Dockerfile
+      context: .
+
+  mcp-investments:
+    project: src/mcp-investments
+    language: py
+    host: containerapp
+    docker:
+      path: Dockerfile
+      context: .
+
+  mcp-fraud:
+    project: src/mcp-fraud
+    language: py
+    host: containerapp
+    docker:
+      path: Dockerfile
+      context: .
+
+  mcp-market-data:
+    project: src/mcp-market-data
+    language: py
+    host: containerapp
+    docker:
+      path: Dockerfile
+      context: .
+
+  mcp-fx:
+    project: src/mcp-fx
+    language: py
+    host: containerapp
+    docker:
+      path: Dockerfile
+      context: .
+
+  mcp-crypto:
+    project: src/mcp-crypto
+    language: py
+    host: containerapp
+    docker:
+      path: Dockerfile
+      context: .
+
+  mcp-kyc:
+    project: src/mcp-kyc
+    language: py
+    host: containerapp
+    docker:
+      path: Dockerfile
+      context: .
+
+  mcp-aml:
+    project: src/mcp-aml
+    language: py
+    host: containerapp
+    docker:
+      path: Dockerfile
+      context: .
+
+  mcp-compliance:
+    project: src/mcp-compliance
+    language: py
+    host: containerapp
+    docker:
+      path: Dockerfile
+      context: .
+
+  mcp-notifications:
+    project: src/mcp-notifications
+    language: py
+    host: containerapp
+    docker:
+      path: Dockerfile
+      context: .
+
+  mcp-audit:
+    project: src/mcp-audit
+    language: py
+    host: containerapp
+    docker:
+      path: Dockerfile
+      context: .
+
+  mcp-reporting:
+    project: src/mcp-reporting
+    language: py
+    host: containerapp
+    docker:
+      path: Dockerfile
+      context: .
+
+  mcp-documents:
+    project: src/mcp-documents
+    language: py
+    host: containerapp
+    docker:
+      path: Dockerfile
+      context: .
+
+  mcp-admin:
+    project: src/mcp-admin
+    language: py
+    host: containerapp
+    docker:
+      path: Dockerfile
+      context: .
+
+  mcp-data-export:
+    project: src/mcp-data-export
+    language: py
+    host: containerapp
+    docker:
+      path: Dockerfile
+      context: .
+
+  mcp-internal-bridge:
+    project: src/mcp-internal-bridge
+    language: py
+    host: containerapp
+    docker:
+      path: Dockerfile
+      context: .
+
+  mcp-scheduler:
+    project: src/mcp-scheduler
+    language: py
+    host: containerapp
+    docker:
+      path: Dockerfile
+      context: .
+
+  agent-orchestrator:
+    project: src/orchestrator
+    language: py
+    host: containerapp
+    docker:
+      path: Dockerfile
+      context: .
+
+  frontend-ui:
+    project: src/frontend
+    language: js
+    host: containerapp
+    docker:
+      path: Dockerfile
+      context: .

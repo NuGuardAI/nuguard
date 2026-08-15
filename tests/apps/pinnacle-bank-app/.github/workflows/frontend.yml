@@ -1,0 +1,246 @@
+# NuGuard AI - Frontend CI/CD Pipeline
+# Deploys React SPA to Azure Static Web Apps
+# 
+# Environments:
+#   - develop branch → Dev (dev.nuguard.ai)
+#   - main branch → Staging (staging.nuguard.ai)
+#   - release/* tags → Production (app.nuguard.ai)
+
+name: Frontend CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend.yml'
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches: [main, develop]
+    paths:
+      - 'frontend/**'
+      - '.github/workflows/frontend.yml'
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  # ============================================================
+  # Lint & Type Check
+  # ============================================================
+  lint:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || !(github.head_ref == 'develop' && github.base_ref == 'main')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Run ESLint
+        run: npm run lint
+        working-directory: frontend
+
+      - name: TypeScript type check
+        run: npx tsc --noEmit
+        working-directory: frontend
+
+      - name: Run unit tests
+        run: npm run test:coverage
+        working-directory: frontend
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./frontend/coverage/coverage-final.json
+          flags: frontend
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  # ============================================================
+  # Build
+  # ============================================================
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+        working-directory: frontend
+
+      - name: Determine environment and API gateway URL
+        id: env-config
+        run: |
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            echo "gateway=https://api.nuguard.ai" >> $GITHUB_OUTPUT
+            echo "environment=production" >> $GITHUB_OUTPUT
+          elif [[ "${{ github.ref }}" == "refs/heads/main" ]]; then
+            echo "gateway=https://api-staging.nuguard.ai" >> $GITHUB_OUTPUT
+            echo "environment=staging" >> $GITHUB_OUTPUT
+          else
+            echo "gateway=https://api-dev.nuguard.ai" >> $GITHUB_OUTPUT
+            echo "environment=development" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build application
+        run: npm run build
+        working-directory: frontend
+        env:
+          VITE_USE_MOCK_MODE: 'false'
+          VITE_ENVIRONMENT: ${{ steps.env-config.outputs.environment }}
+          VITE_DATA_SERVICE_URL: ${{ steps.env-config.outputs.gateway }}/api/data
+          VITE_ASSETS_SERVICE_URL: ${{ steps.env-config.outputs.gateway }}/api/assets
+          VITE_COMPLIANCE_SERVICE_URL: ${{ steps.env-config.outputs.gateway }}/api/compliance
+          VITE_REDTEAM_SERVICE_URL: ${{ steps.env-config.outputs.gateway }}/api/redteam
+          VITE_CHAT_SERVICE_URL: ${{ steps.env-config.outputs.gateway }}/api/chat
+          VITE_BEHAVIOR_SERVICE_URL: ${{ steps.env-config.outputs.gateway }}/api/behavior
+          VITE_ENABLE_SBOM_GRAPH: ${{ steps.env-config.outputs.environment == 'development' && 'true' || 'false' }}
+          VITE_ENABLE_DEMO_CREDENTIALS: ${{ steps.env-config.outputs.environment != 'development' && 'false' || 'true' }}
+
+      - name: Verify developer guides are not in deploy artifact
+        run: npm run check:frontend-artifacts
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+          retention-days: 7
+
+  # ============================================================
+  # Deploy to Development (develop branch)
+  # ============================================================
+  deploy-dev:
+    name: Deploy to Development
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    environment:
+      name: development
+      url: https://dev.nuguard.ai
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+
+      - name: Deploy to Azure Static Web Apps (Dev)
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_SWA_TOKEN_DEV }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: 'upload'
+          app_location: 'frontend/dist'
+          output_location: ''
+          skip_api_build: true
+          skip_app_build: true
+
+      - name: Notify deployment
+        run: |
+          echo "✅ Deployed to Development: https://dev.nuguard.ai"
+
+  # ============================================================
+  # Deploy to Staging (main branch)
+  # ============================================================
+  deploy-staging:
+    name: Deploy to Staging
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment:
+      name: staging
+      url: https://staging.nuguard.ai
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+
+      - name: Deploy to Azure Static Web Apps (Staging)
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_SWA_TOKEN_STAGING }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: 'upload'
+          app_location: 'frontend/dist'
+          output_location: ''
+          skip_api_build: true
+          skip_app_build: true
+
+      - name: Notify deployment
+        run: |
+          echo "✅ Deployed to Staging: https://staging.nuguard.ai"
+          echo "✅ Demo environment: https://demo.nuguard.ai"
+
+  # ============================================================
+  # Deploy to Production (release tags)
+  # ============================================================
+  deploy-prod:
+    name: Deploy to Production
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.event_name == 'release'
+    environment:
+      name: production
+      url: https://app.nuguard.ai
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist
+
+      - name: Deploy to Azure Static Web Apps (Production)
+        uses: Azure/static-web-apps-deploy@v1
+        with:
+          azure_static_web_apps_api_token: ${{ secrets.AZURE_SWA_TOKEN_PROD }}
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          action: 'upload'
+          app_location: 'frontend/dist'
+          output_location: ''
+          skip_api_build: true
+          skip_app_build: true
+
+      - name: Notify deployment
+        run: |
+          echo "🚀 Deployed to Production: https://app.nuguard.ai"
+          echo "Release: ${{ github.event.release.tag_name }}"

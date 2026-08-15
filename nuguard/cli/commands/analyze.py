@@ -312,6 +312,7 @@ def analyze(
                 extension_map=extension_map,
             )
             report_text = _render(fmt)
+            out_path.parent.mkdir(parents=True, exist_ok=True)
             out_path.write_text(report_text, encoding="utf-8")
             typer.echo(f"report written to {out_path}")
     else:

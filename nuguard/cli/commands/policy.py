@@ -725,7 +725,7 @@ def _print_assessment_table(assessment: object) -> None:
     _console.print(table)
 
 
-@policy_app.command("show")
+@policy_app.command("show", hidden=True)
 def show(
     policy_id: str = typer.Option(
         ...,
@@ -733,6 +733,17 @@ def show(
         help="ID of the stored policy to display.",
     ),
 ) -> None:
-    """Display a stored cognitive policy by ID."""
-    _err_console.print(f"Policy '{policy_id}' not found.")
+    """Display a stored cognitive policy by ID.
+
+    .. deprecated::
+        Always reports "not found" — there is no persisted-policy store.
+        Kept as a hidden no-op stub so old automation scripts that invoke it
+        don't get a Typer "no such command" error; the subcommand will be
+        reintroduced once a policy registry exists (see issue #162).
+    """
+    _err_console.print(
+        f"Policy '{policy_id}' not found. "
+        "(Policy registry is not implemented yet; use `policy compile` to "
+        "produce a JSON file alongside the source Markdown.)"
+    )
     raise typer.Exit(code=_EXIT_FINDINGS)

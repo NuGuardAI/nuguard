@@ -1,0 +1,233 @@
+# NuGuard AI - E2E Testing Pipeline
+# Runs Playwright tests against staging environment
+# Used as release gate for production deployments
+
+name: E2E Tests
+
+on:
+  # Run on staging deployments
+  workflow_run:
+    workflows: ["Frontend CI/CD", "Backend CI/CD"]
+    types: [completed]
+    branches: [main]
+  
+  # Manual trigger for testing
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to test'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - staging
+          - production
+      
+  # Run nightly on staging
+  schedule:
+    - cron: '0 2 * * *'  # 2 AM UTC daily
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  # ============================================================
+  # E2E Tests
+  # ============================================================
+  e2e-tests:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install dependencies
+        run: |
+          npm ci
+          npx playwright install --with-deps chromium firefox
+        working-directory: frontend
+
+      - name: Determine test environment
+        id: env
+        run: |
+          if [[ "${{ github.event.inputs.environment }}" == "production" ]]; then
+            echo "base_url=https://app.nuguard.ai" >> $GITHUB_OUTPUT
+            echo "api_url=https://api.nuguard.ai" >> $GITHUB_OUTPUT
+          else
+            echo "base_url=https://staging.nuguard.ai" >> $GITHUB_OUTPUT
+            echo "api_url=https://api-staging.nuguard.ai" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Wait for deployment to be ready
+        run: |
+          echo "Checking API health..."
+          for i in {1..30}; do
+            if curl -sf "${{ steps.env.outputs.api_url }}/health"; then
+              echo "API is ready!"
+              break
+            fi
+            echo "Waiting for API... ($i/30)"
+            sleep 10
+          done
+
+      - name: Run Playwright tests
+        run: npx playwright test
+        working-directory: frontend
+        env:
+          TEST_BASE_URL: ${{ steps.env.outputs.base_url }}
+          TEST_API_URL: ${{ steps.env.outputs.api_url }}
+          # Test credentials from secrets
+          TEST_ADMIN_EMAIL: ${{ secrets.TEST_ADMIN_EMAIL }}
+          TEST_ADMIN_PASSWORD: ${{ secrets.TEST_ADMIN_PASSWORD }}
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: playwright-report
+          path: frontend/playwright-report/
+          retention-days: 30
+
+      - name: Upload test videos
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: test-videos
+          path: frontend/test-results/
+          retention-days: 7
+
+  # ============================================================
+  # API Integration Tests
+  # ============================================================
+  api-tests:
+    name: API Integration Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install test dependencies
+        run: pip install -r backend/requirements.txt pytest-asyncio
+
+      - name: Determine test environment
+        id: env
+        run: |
+          if [[ "${{ github.event.inputs.environment }}" == "production" ]]; then
+            echo "api_url=https://api.nuguard.ai" >> $GITHUB_OUTPUT
+          else
+            echo "api_url=https://api-staging.nuguard.ai" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run API tests
+        run: |
+          cd backend && pytest tests/ -m integration -v --tb=short \
+            --ignore=tests/test_stage1_integration.py \
+            -p no:cacheprovider
+        env:
+          TEST_API_URL: ${{ steps.env.outputs.api_url }}
+          TEST_ADMIN_EMAIL: ${{ secrets.TEST_ADMIN_EMAIL }}
+          TEST_ADMIN_PASSWORD: ${{ secrets.TEST_ADMIN_PASSWORD }}
+
+  # ============================================================
+  # Performance Baseline Tests
+  # ============================================================
+  performance-tests:
+    name: Performance Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install k6
+        run: |
+          sudo gpg -k
+          sudo gpg --no-default-keyring --keyring /usr/share/keyrings/k6-archive-keyring.gpg --keyserver hkp://keyserver.ubuntu.com:80 --recv-keys C5AD17C747E3415A3642D57D77C6C491D6AC1D69
+          echo "deb [signed-by=/usr/share/keyrings/k6-archive-keyring.gpg] https://dl.k6.io/deb stable main" | sudo tee /etc/apt/sources.list.d/k6.list
+          sudo apt-get update
+          sudo apt-get install k6
+
+      - name: Determine test environment
+        id: env
+        run: |
+          if [[ "${{ github.event.inputs.environment }}" == "production" ]]; then
+            echo "api_url=https://api.nuguard.ai" >> $GITHUB_OUTPUT
+          else
+            echo "api_url=https://api-staging.nuguard.ai" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Run performance baseline tests
+        run: |
+          k6 run tests/performance/baseline.js \
+            --env API_URL=${{ steps.env.outputs.api_url }} \
+            --out json=results.json
+        continue-on-error: true
+
+      - name: Upload performance results
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-results
+          path: results.json
+          retention-days: 30
+
+  # ============================================================
+  # Release Gate Check
+  # ============================================================
+  release-gate:
+    name: Release Gate Check
+    runs-on: ubuntu-latest
+    needs: [e2e-tests, api-tests, performance-tests]
+    if: always()
+    
+    steps:
+      - name: Check test results
+        run: |
+          if [[ "${{ needs.e2e-tests.result }}" != "success" ]]; then
+            echo "❌ E2E tests failed - release gate blocked"
+            exit 1
+          fi
+          
+          if [[ "${{ needs.api-tests.result }}" != "success" ]]; then
+            echo "❌ API tests failed - release gate blocked"
+            exit 1
+          fi
+          
+          # Performance tests are advisory, not blocking
+          if [[ "${{ needs.performance-tests.result }}" != "success" ]]; then
+            echo "⚠️ Performance tests failed - review required but not blocking"
+          fi
+          
+          echo "✅ All release gates passed!"
+
+      - name: Create release gate status
+        run: |
+          echo "Release Gate Summary:"
+          echo "- E2E Tests: ${{ needs.e2e-tests.result }}"
+          echo "- API Tests: ${{ needs.api-tests.result }}"
+          echo "- Performance Tests: ${{ needs.performance-tests.result }}"

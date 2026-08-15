@@ -1,0 +1,108 @@
+name: Deploy to Cloud Run
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  PROJECT_ID: platform-dev-2025
+  SERVICE: gemini-auto-pilot
+  REGION: us-west2
+  IMAGE: us-west2-docker.pkg.dev/platform-dev-2025/gemini-auto-pilot/app
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Set up Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Configure Docker for Artifact Registry
+        run: gcloud auth configure-docker us-west2-docker.pkg.dev --quiet
+
+      - name: Build Docker image
+        run: |
+          docker build \
+            --build-arg VITE_GEMINI_API_KEY="${{ secrets.VITE_GEMINI_API_KEY }}" \
+            --build-arg VITE_GEMINI_MODEL="${{ vars.VITE_GEMINI_MODEL }}" \
+            --build-arg VITE_GOOGLE_MAPS_API_KEY="${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}" \
+            --build-arg GOOGLE_MAPS_PLATFORM_KEY="${{ secrets.VITE_GOOGLE_MAPS_API_KEY }}" \
+            --build-arg VITE_GOOGLE_OAUTH_CLIENT_ID="${{ secrets.VITE_GOOGLE_OAUTH_CLIENT_ID }}" \
+            --build-arg VITE_GOOGLE_PROJECT_ID="${{ vars.VITE_GOOGLE_PROJECT_ID }}" \
+            -t ${{ env.IMAGE }}:${{ github.sha }} \
+            -t ${{ env.IMAGE }}:latest \
+            .
+
+      - name: Push Docker image
+        run: |
+          docker push ${{ env.IMAGE }}:${{ github.sha }}
+          docker push ${{ env.IMAGE }}:latest
+
+      - name: Update Cloud Run app container
+        env:
+          NEW_IMAGE: ${{ env.IMAGE }}:${{ github.sha }}
+          NEW_API_KEY: ${{ secrets.VITE_GEMINI_API_KEY }}
+          OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
+          JWT_SECRET: ${{ secrets.JWT_SECRET }}
+          OAUTH_CLIENT_ID: ${{ secrets.OAUTH_CLIENT_ID }}
+          OAUTH_CLIENT_SECRET: ${{ secrets.OAUTH_CLIENT_SECRET }}
+        run: |
+          gcloud run services describe $SERVICE --region=$REGION --format=yaml > service.yaml
+
+          python3 -c "
+          import yaml, os
+          with open('service.yaml') as f:
+              svc = yaml.safe_load(f)
+          ann = svc['spec']['template']['metadata'].get('annotations', {})
+          ann.pop('run.googleapis.com/sources', None)
+          ann.pop('run.googleapis.com/base-images', None)
+          svc['spec']['template']['spec'].pop('runtimeClassName', None)
+          for c in svc['spec']['template']['spec']['containers']:
+              if c.get('name') == 'app-container':
+                  c['image'] = os.environ['NEW_IMAGE']
+                  envs = c.get('env', [])
+                  runtime_vars = {
+                      'GEMINI_API_KEY': os.environ.get('NEW_API_KEY', ''),
+                      'VITE_GEMINI_API_KEY': os.environ.get('NEW_API_KEY', ''),
+                      'OPENWEATHER_API_KEY': os.environ.get('OPENWEATHER_API_KEY', ''),
+                      'JWT_SECRET': os.environ.get('JWT_SECRET', ''),
+                      'OAUTH_CLIENT_ID': os.environ.get('OAUTH_CLIENT_ID', ''),
+                      'OAUTH_CLIENT_SECRET': os.environ.get('OAUTH_CLIENT_SECRET', ''),
+                  }
+                  # Update existing env vars or append new ones
+                  existing = {e['name'] for e in envs}
+                  for name, value in runtime_vars.items():
+                      if not value:
+                          continue
+                      if name in existing:
+                          for e in envs:
+                              if e['name'] == name:
+                                  e['value'] = value
+                      else:
+                          envs.append({'name': name, 'value': value})
+                  c['env'] = envs
+                  break
+          with open('service.yaml', 'w') as f:
+              yaml.dump(svc, f)
+          "
+
+          gcloud run services replace service.yaml --region=$REGION
+
+      - name: Show service URL
+        run: |
+          gcloud run services describe $SERVICE \
+            --region $REGION \
+            --format "value(status.url)"

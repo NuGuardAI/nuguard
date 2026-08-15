@@ -27,6 +27,15 @@ def behavior_command(
     config: Optional[Path] = typer.Option(
         None, "--config", "-c", help="Path to nuguard.yaml"
     ),
+    sbom: Optional[str] = typer.Option(
+        None,
+        "--sbom",
+        help=(
+            "Path to AI-SBOM JSON file to seed behavior analysis with. "
+            "Falls back to 'sbom:' in nuguard.yaml (located via --config or "
+            "the current working directory)."
+        ),
+    ),
     mode: str = typer.Option(
         "static+dynamic",
         "--mode",
@@ -127,6 +136,7 @@ def behavior_command(
     asyncio.run(
         _run_behavior(
             config_path=config,
+            sbom_override=sbom,
             mode=effective_mode,
             target_override=target,
             policy_path=policy,
@@ -145,6 +155,7 @@ def behavior_command(
 
 async def _run_behavior(
     config_path: Optional[Path],
+    sbom_override: Optional[str],
     mode: str,
     target_override: Optional[str],
     policy_path: Optional[Path],
@@ -194,9 +205,12 @@ async def _run_behavior(
         raise typer.Exit(code=1)
 
     # 4. Load AI-SBOM and auto-enrich if confidence is low
+    # Precedence: --sbom CLI override > cfg.sbom_path config fallback.
+    # The local ``sbom`` below is the parsed SBOM doc; do not reuse the name
+    # for the path so the CLI override param can be threaded through cleanly.
     sbom = None
     sbom_path_obj: Path | None = None
-    raw_sbom_path = cfg.sbom_path
+    raw_sbom_path = sbom_override or cfg.sbom_path
     if raw_sbom_path:
         sbom_path_obj = Path(raw_sbom_path)
         try:
