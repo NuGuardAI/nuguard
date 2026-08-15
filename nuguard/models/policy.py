@@ -7,6 +7,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from nuguard.sbom.models import SourceLocation
+
 # ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
@@ -28,6 +30,13 @@ class ControlType(str, Enum):
     AUTOMATED = "automated"
     ATTESTATION_REQUIRED = "attestation_required"
     NOT_APPLICABLE = "not_applicable"
+
+
+class PolicyOrigin(str, Enum):
+    """Where a compiled PolicyControl's statement came from."""
+
+    POLICY_DOCUMENT = "policy_document"
+    NUGUARD_BEST_PRACTICE = "nuguard_best_practice"
 
 
 # ---------------------------------------------------------------------------
@@ -199,6 +208,15 @@ class CognitivePolicy(BaseModel):
         default_factory=dict,
         description="Unrecognised Markdown sections preserved verbatim",
     )
+    item_evidence: dict[str, SourceLocation] = Field(
+        default_factory=dict,
+        description=(
+            "Maps 'section_field:item_text' -> SourceLocation in the policy "
+            "Markdown document. Populated by parse_policy; consumed by the "
+            "compiler to attach provenance to compiled PolicyControls. Not "
+            "written to cognitive_policy.json."
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -233,4 +251,20 @@ class PolicyControl(BaseModel):
     boundary_prompts: list[str] = Field(
         default_factory=list,
         description="User messages that attempt to violate this control (should be refused/escalated)",
+    )
+    origin: str = Field(
+        default=PolicyOrigin.POLICY_DOCUMENT.value,
+        description=(
+            "policy_document (derived from the user's Cognitive Policy Markdown) "
+            "or nuguard_best_practice (NuGuard built-in default, injected because "
+            "the document left this section uncovered)"
+        ),
+    )
+    evidence: list[SourceLocation] = Field(
+        default_factory=list,
+        description=(
+            "Where this control's statement was found: the policy Markdown "
+            "file/line and, best-effort, the original source file/line of a "
+            "referenced SBOM component. Empty for nuguard_best_practice controls."
+        ),
     )

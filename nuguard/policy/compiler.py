@@ -17,8 +17,10 @@ import re
 from typing import TYPE_CHECKING
 
 from nuguard.common.logging import get_logger
-from nuguard.models.policy import CognitivePolicy, PolicyControl
+from nuguard.models.policy import CognitivePolicy, PolicyControl, PolicyOrigin
+from nuguard.policy.best_practices import apply_best_practice_defaults
 from nuguard.policy.parser import parse_policy
+from nuguard.sbom.models import SourceLocation
 
 if TYPE_CHECKING:
     from nuguard.common.llm_client import LLMClient
@@ -163,6 +165,7 @@ _SECTION_TYPE_MAP = {
     "restricted_topics": "topic_restriction",
     "restricted_actions": "action_restriction",
     "hitl_triggers": "hitl",
+    "hitl_tool_conditions": "hitl",
     "data_classification": "data_protection",
     "rate_limits": "rate_limit",
 }
@@ -172,9 +175,23 @@ _SECTION_SEVERITY = {
     "restricted_topics": "high",
     "restricted_actions": "high",
     "hitl_triggers": "high",
+    "hitl_tool_conditions": "high",
     "data_classification": "medium",
     "rate_limits": "low",
 }
+
+
+def _match_component_evidence(
+    description: str, component_evidence: dict[str, SourceLocation] | None
+) -> SourceLocation | None:
+    """Best-effort case-insensitive substring match of a component name in *description*."""
+    if not component_evidence:
+        return None
+    lowered = description.lower()
+    for name, location in component_evidence.items():
+        if name and name.lower() in lowered:
+            return location
+    return None
 
 
 def _slugify(text: str, max_len: int | None = None) -> str:
@@ -191,7 +208,10 @@ def _slugify(text: str, max_len: int | None = None) -> str:
     return cleaned.rstrip(".,;:")
 
 
-def _rule_based_controls(policy: CognitivePolicy) -> list[PolicyControl]:
+def _rule_based_controls(
+    policy: CognitivePolicy,
+    component_evidence: dict[str, SourceLocation] | None = None,
+) -> list[PolicyControl]:
     """Derive PolicyControl list from a CognitivePolicy without an LLM."""
     controls: list[PolicyControl] = []
     counter = 1
@@ -203,6 +223,14 @@ def _rule_based_controls(policy: CognitivePolicy) -> list[PolicyControl]:
         boundary_prompts: list[str],
     ) -> None:
         nonlocal counter
+        evidence: list[SourceLocation] = []
+        doc_location = policy.item_evidence.get(f"{section}:{description}")
+        if doc_location is not None:
+            evidence.append(doc_location)
+        component_location = _match_component_evidence(description, component_evidence)
+        if component_location is not None:
+            evidence.append(component_location)
+
         controls.append(
             PolicyControl(
                 id=f"CTRL-{counter:03d}",
@@ -212,6 +240,8 @@ def _rule_based_controls(policy: CognitivePolicy) -> list[PolicyControl]:
                 severity=_SECTION_SEVERITY[section],
                 test_prompts=test_prompts,
                 boundary_prompts=boundary_prompts,
+                origin=PolicyOrigin.POLICY_DOCUMENT.value,
+                evidence=evidence,
             )
         )
         counter += 1
@@ -302,7 +332,12 @@ def _rule_based_controls(policy: CognitivePolicy) -> list[PolicyControl]:
 # ---------------------------------------------------------------------------
 
 
-async def _llm_controls(text: str, llm_client: "LLMClient") -> list[PolicyControl]:
+async def _llm_controls(
+    text: str,
+    llm_client: "LLMClient",
+    source_path: str = "cognitive_policy.md",
+    component_evidence: dict[str, SourceLocation] | None = None,
+) -> list[PolicyControl]:
     """Ask the LLM to generate PolicyControl list from raw policy text."""
     response = await llm_client.complete(
         prompt=text,
@@ -313,8 +348,8 @@ async def _llm_controls(text: str, llm_client: "LLMClient") -> list[PolicyContro
     # Canned response means the LLM was unavailable (no key, connection error, etc.)
     if response.startswith("[NUGUARD_CANNED_RESPONSE]"):
         _log.warning("LLM unavailable; falling back to rule-based policy compilation")
-        policy = parse_policy(text)
-        return _rule_based_controls(policy)
+        policy = parse_policy(text, source_path=source_path)
+        return _rule_based_controls(policy, component_evidence=component_evidence)
 
     # Strip markdown fences if the model wrapped the JSON
     cleaned = re.sub(r"^```(?:json)?\s*", "", response.strip())
@@ -334,8 +369,8 @@ async def _llm_controls(text: str, llm_client: "LLMClient") -> list[PolicyContro
             exc,
             response[:200],
         )
-        policy = parse_policy(text)
-        return _rule_based_controls(policy)
+        policy = parse_policy(text, source_path=source_path)
+        return _rule_based_controls(policy, component_evidence=component_evidence)
 
     controls: list[PolicyControl] = []
     for item in raw_list:
@@ -346,8 +381,20 @@ async def _llm_controls(text: str, llm_client: "LLMClient") -> list[PolicyContro
 
     if not controls:
         _log.warning("LLM returned no valid controls; falling back to rule-based")
-        policy = parse_policy(text)
-        return _rule_based_controls(policy)
+        policy = parse_policy(text, source_path=source_path)
+        return _rule_based_controls(policy, component_evidence=component_evidence)
+
+    # The LLM doesn't report which line it drew from — attach doc-level
+    # evidence (whole file, no line) plus a best-effort component match.
+    for control in controls:
+        control.origin = PolicyOrigin.POLICY_DOCUMENT.value
+        evidence: list[SourceLocation] = [SourceLocation(path=source_path, line=None)]
+        component_location = _match_component_evidence(
+            control.description, component_evidence
+        )
+        if component_location is not None:
+            evidence.append(component_location)
+        control.evidence = evidence
 
     return controls
 
@@ -361,6 +408,8 @@ async def compile_controls(
     text: str,
     use_llm: bool = False,
     llm_client: "LLMClient | None" = None,
+    source_path: str = "cognitive_policy.md",
+    component_evidence: dict[str, SourceLocation] | None = None,
 ) -> list[PolicyControl]:
     """Compile a Cognitive Policy Markdown document into PolicyControl objects.
 
@@ -369,15 +418,28 @@ async def compile_controls(
         use_llm:    When True (and *llm_client* is provided), use the LLM to
                     generate richer test and boundary prompts.
         llm_client: LLMClient instance.  Required when *use_llm* is True.
+        source_path: Filename recorded in evidence for doc-sourced controls.
+        component_evidence: Optional map of SBOM component name -> SourceLocation,
+                    used for a best-effort match against each control's
+                    description to add source-code evidence on top of the
+                    policy-document evidence.
 
     Returns:
-        List of PolicyControl instances ready for behavior / redteam use.
+        List of PolicyControl instances ready for behavior / redteam use,
+        including any injected NuGuard best-practice defaults for sections
+        the document left uncovered.
     """
+    policy = parse_policy(text, source_path=source_path)
+
     if use_llm and llm_client is not None:
-        return await _llm_controls(text, llm_client)
+        controls = await _llm_controls(
+            text, llm_client, source_path=source_path, component_evidence=component_evidence
+        )
+    else:
+        if use_llm and llm_client is None:
+            _log.warning(
+                "use_llm=True but no llm_client provided; falling back to rule-based"
+            )
+        controls = _rule_based_controls(policy, component_evidence=component_evidence)
 
-    if use_llm and llm_client is None:
-        _log.warning("use_llm=True but no llm_client provided; falling back to rule-based")
-
-    policy = parse_policy(text)
-    return _rule_based_controls(policy)
+    return apply_best_practice_defaults(policy, controls, next_id=len(controls) + 1)

@@ -107,6 +107,59 @@ def test_validate_missing_file_exits(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# nuguard policy compile
+# ---------------------------------------------------------------------------
+
+
+def test_compile_writes_origin_and_evidence(policy_file: Path, tmp_path: Path) -> None:
+    dest = tmp_path / "compiled.json"
+    result = runner.invoke(
+        app,
+        ["policy", "compile", "--policy", str(policy_file), "--output", str(dest)],
+    )
+    assert result.exit_code == 0, result.output
+    assert dest.exists()
+
+    controls = json.loads(dest.read_text())
+    assert controls
+    doc_controls = [c for c in controls if c["origin"] == "policy_document"]
+    assert doc_controls
+    for c in doc_controls:
+        assert c["evidence"]
+        assert all(ev["path"] == policy_file.name for ev in c["evidence"])
+
+
+def test_compile_with_sbom_adds_component_evidence(
+    policy_file: Path, sbom_file: Path, tmp_path: Path
+) -> None:
+    cfg = tmp_path / "nuguard.yaml"
+    cfg.write_text(f"sbom: {sbom_file}\n", encoding="utf-8")
+    dest = tmp_path / "compiled.json"
+    result = runner.invoke(
+        app,
+        [
+            "policy",
+            "compile",
+            "--policy",
+            str(policy_file),
+            "--config",
+            str(cfg),
+            "--output",
+            str(dest),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    controls = json.loads(dest.read_text())
+    assert controls
+    # Not asserting a specific component match (fixture-dependent) — just that
+    # compilation with an SBOM present still succeeds and produces valid
+    # origin/evidence-shaped controls.
+    for c in controls:
+        assert c["origin"] in ("policy_document", "nuguard_best_practice")
+        assert isinstance(c["evidence"], list)
+
+
+# ---------------------------------------------------------------------------
 # nuguard policy check
 # ---------------------------------------------------------------------------
 

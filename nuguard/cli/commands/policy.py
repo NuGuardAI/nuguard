@@ -64,6 +64,7 @@ def compile_policy(
     from nuguard.config import load_config
     from nuguard.policy.compiler import compile_controls
     from nuguard.policy.loader import compiled_path_for, save_controls
+    from nuguard.policy.sbom_provenance import build_component_evidence
 
     try:
         cfg = load_config(config_file)
@@ -96,6 +97,10 @@ def compile_policy(
             api_base=cfg.litellm_api_base if _model.startswith("azure") else None,
         )
 
+    component_evidence = {}
+    if cfg.sbom_path:
+        component_evidence = build_component_evidence(Path(cfg.sbom_path))
+
     text = resolved_policy.read_text(encoding="utf-8")
     _console.print(
         f"Compiling [bold]{resolved_policy.name}[/bold] "
@@ -104,7 +109,13 @@ def compile_policy(
 
     try:
         controls = asyncio.run(
-            compile_controls(text, use_llm=effective_llm, llm_client=llm_client)
+            compile_controls(
+                text,
+                use_llm=effective_llm,
+                llm_client=llm_client,
+                source_path=resolved_policy.name,
+                component_evidence=component_evidence,
+            )
         )
     except Exception as exc:
         _err_console.print(f"Error during compilation: {exc}")
