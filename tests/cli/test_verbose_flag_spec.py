@@ -64,37 +64,130 @@ def test_verbose_flag_exposed_in_help(command: list[str]) -> None:
 # ---------------------------------------------------------------------------
 
 
+def _run_validate_to_markdown(
+    config: Path,
+    output: Path,
+    cli_flags: list[str],
+    *,
+    policy_record_present: bool = True,
+) -> str:
+    """Run ``nuguard validate`` end-to-end with a canned result.
+
+    The validate command's heavy lifting happens inside ``_do_validate``,
+    which for a real invocation would call ``_run_validate`` against a live
+    target. We monkeypatch the module-level ``_run_validate`` in
+    ``nuguard.cli.commands.validate`` to return a fabricated
+    ``ValidateRunResult`` carrying one policy record, then write the report
+    to a markdown file and return its contents. This lets the test observe
+    the REAL CLI-vs-config precedence (``effective_verbose = verbose if
+    verbose is not None else config.verbose``): a verbose report includes the
+    ``## Diagnostics`` appendix, a non-verbose one omits it.
+    """
+    from nuguard.cli.commands import validate as validate_mod
+    from nuguard.models.validate import (
+        CapabilityMap,
+        TurnPolicyRecord,
+        ValidateRunResult,
+    )
+
+    policy_records = (
+        [
+            TurnPolicyRecord(
+                turn=1,
+                prompt="hello",
+                response="hi",
+                tool_calls=[],
+                violations=[],
+                canary_hits=[],
+                scenario_name="happy-path",
+                scenario_type="test",
+            )
+        ]
+        if policy_record_present
+        else []
+    )
+
+    fake_result = ValidateRunResult(
+        run_id="test-run",
+        capability_map=CapabilityMap(run_id="test-run"),
+        policy_records=policy_records,
+        scenarios_executed=1,
+        scan_outcome="no_findings",
+    )
+
+    async def fake_run_validate(**kwargs: object) -> ValidateRunResult:
+        return fake_result
+
+    # The helper is not a pytest fixture, so patch manually and guarantee
+    # restoration via try/finally.
+    original = validate_mod._run_validate
+    validate_mod._run_validate = fake_run_validate  # type: ignore[assignment]
+    try:
+        result = runner.invoke(
+            app,
+            [
+                "validate",
+                "--config", str(config),
+                *cli_flags,
+                "--output", str(output),
+                "--format", "markdown",
+            ],
+        )
+    finally:
+        validate_mod._run_validate = original
+
+    assert result.exit_code == 0, result.output
+    return output.read_text(encoding="utf-8")
+
+
 def test_validate_cli_verbose_overrides_config(tmp_path: Path) -> None:
     """CLI --verbose must override the verbose: false config setting."""
     config = tmp_path / "nuguard.yaml"
-    config.write_text("validate:\n  verbose: false\n", encoding="utf-8")
-    result = runner.invoke(
-        app,
-        [
-            "validate",
-            "--config", str(config),
-            "--verbose",
-            "--help",
-        ],
-    )
-    # --help exits 0 with --verbose accepted
-    assert result.exit_code == 0, result.output
+    config.write_text("validate:\n  verbose: false\n  target: http://localhost:9999\n", encoding="utf-8")
+    out = tmp_path / "report.md"
+    payload = _run_validate_to_markdown(config, out, ["--verbose"])
+    # --verbose wins over config verbose: false → diagnostics emitted.
+    assert "## Diagnostics" in payload
 
 
 def test_validate_no_verbose_overrides_config(tmp_path: Path) -> None:
     """CLI --no-verbose must override the verbose: true config setting."""
     config = tmp_path / "nuguard.yaml"
-    config.write_text("validate:\n  verbose: true\n", encoding="utf-8")
-    result = runner.invoke(
-        app,
-        [
-            "validate",
-            "--config", str(config),
-            "--no-verbose",
-            "--help",
-        ],
+    config.write_text("validate:\n  verbose: true\n  target: http://localhost:9999\n", encoding="utf-8")
+    out = tmp_path / "report.md"
+    payload = _run_validate_to_markdown(config, out, ["--no-verbose"])
+    # --no-verbose wins over config verbose: true → diagnostics omitted.
+    assert "## Diagnostics" not in payload
+
+
+def test_validate_config_verbose_true_drives_diagnostics(tmp_path: Path) -> None:
+    """With no CLI flag, config verbose: true drives the diagnostics.
+
+    Guards the config→default side of the precedence chain so a future
+    regression where the config value stops being read is caught.
+    """
+    config = tmp_path / "nuguard.yaml"
+    config.write_text("validate:\n  verbose: true\n  target: http://localhost:9999\n", encoding="utf-8")
+    out = tmp_path / "report.md"
+    payload = _run_validate_to_markdown(config, out, [])
+    assert "## Diagnostics" in payload
+
+
+def test_validate_nonverbose_without_policy_records_has_no_diagnostics(
+    tmp_path: Path,
+) -> None:
+    """A run with no policy records must not emit diagnostics.
+
+    Guards that the absence is driven by the negative branch (and not by
+    accidentally gating the appendix on the record list being non-empty).
+    """
+    config = tmp_path / "nuguard.yaml"
+    config.write_text("validate:\n  verbose: true\n  target: http://localhost:9999\n", encoding="utf-8")
+    out = tmp_path / "report.md"
+    payload = _run_validate_to_markdown(
+        config, out, [], policy_record_present=False
     )
-    assert result.exit_code == 0, result.output
+    assert "## Diagnostics" not in payload
 
 
 # ---------------------------------------------------------------------------
@@ -129,14 +222,9 @@ def test_redteam_findings_invariant_between_verbose_modes() -> None:
 
     finding = Finding(
         finding_id="finding-1",
-        rule_id="RT-TEST-001",
         severity=Severity.HIGH,
         title="test finding",
         description="x",
-        target_node_id="n1",
-        goal_type="PROMPT_DRIVEN_THREAT",
-        attack_family="PROMPT_INJECTION",
-        attack_vector="direct",
     )
     meta_v = ReportMeta(verbose=True)
     meta_nv = ReportMeta(verbose=False)
