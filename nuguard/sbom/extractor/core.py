@@ -2096,20 +2096,16 @@ class AiSbomExtractor:
 
         # Step 1: Verify uncertain detections
         async def _llm_call(system: str, user: str) -> tuple[str, int]:
-            # ``client.token_counts`` is a cumulative counter shared by every
-            # in-flight verification call, so a before/after delta can include
-            # tokens consumed by other overlapping calls (double-counting or,
-            # when another call lands between the two reads, a negative value).
-            # Clamp to a non-negative delta: the cumulative counters only ever
-            # increase, so the observed increase is a safe upper bound for this
-            # call's own usage.  The delta is used only for reporting stats
-            # (verification_cost / total_cost) — the concurrency budget uses
-            # the fixed ``cost_per_call`` estimate, so this does not affect
-            # budget enforcement.
-            _before = sum(client.token_counts)
+            # Fixed in #246. ``client.token_counts`` is a cumulative counter
+            # shared by every in-flight verification call, so a before/after
+            # delta of it can attribute tokens consumed by OTHER overlapping
+            # calls to this call (inflated cost stats, and the "verification
+            # cost" line in the report). Use the per-call counter that
+            # ``LLMClient.complete`` accumulates under this coroutine's own
+            # context instead — concurrent calls each read their own counter
+            # and no cross-call attribution is possible.
             text = await client.complete(prompt=user, system=system)
-            _delta = sum(client.token_counts) - _before
-            return text, max(0, _delta)
+            return text, sum(client.call_token_counts)
 
         results, v_stats = await verify_uncertain_nodes(
             doc.nodes,

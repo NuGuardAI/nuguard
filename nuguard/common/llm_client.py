@@ -22,6 +22,7 @@ in the model string.
 from __future__ import annotations
 
 import asyncio
+import contextvars
 import json
 import os
 import random
@@ -32,6 +33,20 @@ from nuguard.common.logging import get_logger
 
 _log = get_logger(__name__)
 
+
+# Per-call token accounting context. ``_call_token_slots`` holds the live
+# mutable accumulator for the CURRENT in-flight ``complete_stream`` call, so
+# the caller can attribute tokens to exactly the call it made without reading
+# the shared cumulative ``token_counts`` (which concurrent calls mutate).
+# ``_CALL_COUNTER_READY`` turns the mechanism off outside ``complete()``
+# so token_counts-based heuristics elsewhere (e.g. gap-fill budgets) keep
+# their pre-existing shared-counter semantics.
+_call_token_slots: contextvars.ContextVar[list[int] | None] = contextvars.ContextVar(
+    "nuguard_call_token_slots", default=None
+)
+_CALL_COUNTER_READY: contextvars.ContextVar[bool] = contextvars.ContextVar(
+    "nuguard_call_counter_ready", default=False
+)
 _DEFAULT_MODEL = "gemini/gemini-3.1-flash-lite"
 
 _GEMINI_PREFIXES = ("gemini/", "google/", "vertex_ai/")
@@ -299,6 +314,25 @@ class LLMClient:
         return (self._input_tokens, self._output_tokens)
 
     @property
+    def call_token_counts(self) -> tuple[int, int]:
+        """Return the token usage attributed to the CURRENT in-flight call.
+
+        Only valid from inside a ``complete()`` call made through
+        :meth:`complete` (which arms the per-call accumulator). Outside that
+        window (e.g. a bare ``complete_stream`` caller) returns ``(0, 0)`` so
+        callers can fall back to :meth:`token_counts`.
+
+        The attribute is per-context: concurrent ``complete()`` calls on the
+        same client each read their own counter, which is exactly what makes
+        before/after deltas of the shared cumulative :meth:`token_counts`
+        racy under concurrency (issue #246).
+        """
+        slots = _call_token_slots.get()
+        if slots is None:
+            return (0, 0)
+        return (slots[0], slots[1])
+
+    @property
     def canned_response_counts(self) -> tuple[int, int]:
         """Return (total_calls, canned_calls) accumulated since last reset.
 
@@ -403,8 +437,20 @@ class LLMClient:
                 async for chunk in stream:
                     _usage = getattr(chunk, "usage", None)
                     if _usage is not None:
-                        self._input_tokens += getattr(_usage, "prompt_tokens", 0) or 0
-                        self._output_tokens += getattr(_usage, "completion_tokens", 0) or 0
+                        _p = getattr(_usage, "prompt_tokens", 0) or 0
+                        _c = getattr(_usage, "completion_tokens", 0) or 0
+                        self._input_tokens += _p
+                        self._output_tokens += _c
+                        if _CALL_COUNTER_READY.get():
+                            # Attribute this call's usage to the per-call
+                            # accumulator (the current coroutine's context)
+                            # instead of relying on a before/after delta of
+                            # the shared cumulative counters (racy under
+                            # concurrent calls — issue #246).
+                            _slots = _call_token_slots.get()
+                            if _slots is not None:
+                                _slots[0] += _p
+                                _slots[1] += _c
                     if chunk.choices:
                         delta: str = chunk.choices[0].delta.content or ""
                         if delta:
@@ -509,10 +555,27 @@ class LLMClient:
         rate-limit, network, invalid response) returns :meth:`_canned_response`
         so callers can continue without crashing.
         """
-        chunks: list[str] = []
-        async for chunk in self.complete_stream(prompt, system, label, **kwargs):
-            chunks.append(chunk)
-        return "".join(chunks)
+        # Issue #246: ``complete`` exposes a per-call token read so concurrent
+        # callers can attribute usage to exactly their own call instead of a
+        # before/after ``sum(token_counts)`` delta of the shared cumulative
+        # counters (racy under concurrency). Outside the tolled path
+        # (``_CALL_COUNTER_READY``), the per-call read returns (0, 0) and
+        # callers keep using the shared counters as before.
+        async def _inner() -> str:
+            chunks: list[str] = []
+            async for chunk in self.complete_stream(prompt, system, label, **kwargs):
+                chunks.append(chunk)
+            return "".join(chunks)
+
+        if _CALL_COUNTER_READY.get():
+            return await _inner()
+        try:
+            _call_token_slots.set([0, 0])
+            _CALL_COUNTER_READY.set(True)
+            return await _inner()
+        finally:
+            _CALL_COUNTER_READY.set(False)
+            _call_token_slots.set(None)
 
     def _canned_response(self, prompt: str) -> str:
         """Return a deterministic template response for *prompt*.

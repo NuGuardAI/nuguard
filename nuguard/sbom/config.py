@@ -103,6 +103,7 @@ def _default_llm_concurrency() -> int:
 
 
 class AiSbomConfig(BaseModel):
+    model_config = {"validate_assignment": True}
     max_files: int = Field(default=1000, ge=1, le=10000)
     max_file_size_bytes: int = Field(default=1024 * 1024, ge=1024)
     include_extensions: set[str] = Field(
