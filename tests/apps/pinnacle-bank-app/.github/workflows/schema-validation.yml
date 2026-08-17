@@ -1,0 +1,299 @@
+# NuGuard AI - Schema Synchronization Validation
+# Ensures API schemas, database models, and frontend types stay in sync
+#
+# Runs on:
+#   - PRs touching backend/shared/schemas.py, models.py, or frontend/src/schemas.ts
+#   - Daily scheduled check to catch drift
+#
+# Tests:
+#   1. Backend schema sync tests (Pydantic ↔ SQLAlchemy)
+#   2. OpenAPI spec generation
+#   3. Frontend type validation (optional, when generation is set up)
+
+name: Schema Validation
+
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'backend/shared/schemas.py'
+      - 'backend/shared/models/**'
+      - 'frontend/src/schemas.ts'
+      - 'frontend/src/schemas/**'
+      - '.github/workflows/schema-validation.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'backend/shared/schemas.py'
+      - 'backend/shared/models/**'
+      - 'frontend/src/schemas.ts'
+      - 'frontend/src/schemas/**'
+  schedule:
+    # Run daily at 6am UTC to catch any schema drift
+    - cron: '0 6 * * *'
+  workflow_dispatch:  # Allow manual trigger
+
+permissions:
+  contents: read
+
+env:
+  PYTHON_VERSION: '3.12'
+  NODE_VERSION: '22'
+
+jobs:
+  # ============================================================
+  # Backend Schema Sync Tests
+  # ============================================================
+  backend-schema-sync:
+    name: Backend Schema Sync
+    runs-on: ubuntu-latest
+    if: github.event_name != 'pull_request' || !(github.head_ref == 'develop' && github.base_ref == 'main')
+    
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: nuguard_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: |
+          pip install -r backend/requirements.txt
+          pip install pytest pytest-asyncio
+
+      - name: Run schema sync tests
+        env:
+          DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/nuguard_test
+        run: |
+          cd backend
+          python -m pytest tests/test_schema_sync.py -v --tb=short
+        continue-on-error: false  # Fail build if schema sync tests fail
+
+  # ============================================================
+  # OpenAPI Spec Generation Check
+  # ============================================================
+  openapi-check:
+    name: OpenAPI Spec Check
+    runs-on: ubuntu-latest
+    needs: backend-schema-sync
+    
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: nuguard_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: 'pip'
+          cache-dependency-path: backend/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Generate OpenAPI spec
+        env:
+          DATABASE_URL: postgresql+asyncpg://test:test@localhost:5432/nuguard_test
+          GEMINI_API_KEY: dummy-for-startup
+        run: |
+          cd backend/data_service
+          python -c "
+          import json
+          from main import app
+          spec = app.openapi()
+          with open('../../docs/openapi.generated.json', 'w') as f:
+              json.dump(spec, f, indent=2)
+          print('OpenAPI spec generated successfully')
+          print(f'Endpoints: {len(spec.get(\"paths\", {}))}')
+          print(f'Schemas: {len(spec.get(\"components\", {}).get(\"schemas\", {}))}')
+          "
+
+      - name: Validate OpenAPI spec structure
+        run: |
+          cd docs
+          python -c "
+          import json
+          with open('openapi.generated.json') as f:
+              spec = json.load(f)
+          
+          # Check critical schemas exist
+          schemas = spec.get('components', {}).get('schemas', {})
+          
+          required_schemas = [
+              'FindingResponse',
+              'CoveredControlResponse', 
+              'ScanResponse',
+              # ApplicationResponse is served by ai_asset_service (/api/assets/)
+              # not data_service, so it is intentionally absent from this spec.
+          ]
+          
+          missing = [s for s in required_schemas if s not in schemas]
+          if missing:
+              raise ValueError(f'Missing required schemas: {missing}')
+          
+          # Validate FindingResponse has policy_name
+          finding_schema = schemas.get('FindingResponse', {})
+          finding_props = finding_schema.get('properties', {})
+          if 'policy_name' not in finding_props:
+              raise ValueError('FindingResponse is missing policy_name field!')
+          
+          print('✓ All required schemas present')
+          print('✓ FindingResponse has policy_name field')
+          print('OpenAPI spec validation passed')
+          "
+
+      - name: Upload OpenAPI spec artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: openapi-spec
+          path: docs/openapi.generated.json
+          retention-days: 7
+
+  # ============================================================
+  # Frontend Schema Validation (Optional - when types are generated)
+  # ============================================================
+  frontend-schema-check:
+    name: Frontend Schema Check
+    runs-on: ubuntu-latest
+    needs: openapi-check
+    if: github.event_name != 'schedule'  # Skip on daily cron
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: package-lock.json
+
+      - name: Install frontend dependencies
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Download OpenAPI spec
+        uses: actions/download-artifact@v4
+        with:
+          name: openapi-spec
+          path: docs/
+
+      - name: Generate TypeScript types from OpenAPI
+        run: |
+          cd frontend
+          npx openapi-typescript ../docs/openapi.generated.json -o src/schemas.generated.ts
+        continue-on-error: true  # Don't fail yet - types may need manual review
+
+      - name: Check for schema drift
+        run: |
+          cd frontend/src
+          if [ -f schemas.generated.ts ]; then
+            echo "✓ Generated types from OpenAPI spec"
+            echo "Generated file size: $(wc -l < schemas.generated.ts) lines"
+            
+            # Check if critical types exist
+            if grep -q "FindingResponse" schemas.generated.ts; then
+              echo "✓ FindingResponse type generated"
+            fi
+            
+            if grep -q "policy_name" schemas.generated.ts; then
+              echo "✓ policy_name field present in generated types"
+            else
+              echo "⚠ Warning: policy_name may be missing from generated types"
+            fi
+          else
+            echo "⚠ schemas.generated.ts not created - check openapi-typescript output"
+          fi
+
+  # ============================================================
+  # Notify on Schema Drift
+  # ============================================================
+  notify-drift:
+    name: Notify on Drift
+    runs-on: ubuntu-latest
+    needs: [backend-schema-sync, openapi-check]
+    if: failure() && github.event_name == 'schedule'
+    permissions:
+      contents: read
+      issues: write
+    
+    steps:
+      - name: Create issue for schema drift
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = '⚠️ Schema Drift Detected';
+            const body = `
+            ## Schema Synchronization Check Failed
+            
+            The daily schema validation check has detected potential schema drift between:
+            - Backend Pydantic schemas (\`backend/shared/schemas.py\`)
+            - SQLAlchemy models (\`backend/shared/models.py\`)
+            - Frontend Zod schemas (\`frontend/src/schemas.ts\`)
+            
+            ### Action Required
+            1. Check the [workflow run](${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId})
+            2. Review the failing tests to identify mismatched fields
+            3. Update schemas to ensure consistency across all layers
+            
+            ### Common Fixes
+            - Add missing fields to Pydantic response schemas
+            - Update serializers to include new model fields
+            - Regenerate frontend types from OpenAPI spec
+            
+            /cc @${context.actor}
+            `;
+            
+            // Check if similar issue already exists
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'schema-drift'
+            });
+            
+            if (issues.data.length === 0) {
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: title,
+                body: body,
+                labels: ['schema-drift', 'bug', 'automated']
+              });
+            }

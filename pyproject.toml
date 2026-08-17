@@ -35,6 +35,7 @@ dependencies = [
     "tree-sitter-typescript>=0.23",
     "python-dotenv>=1.0",
     "pathspec>=0.12",
+    "tree-sitter-go>=0.23",
 ]
 
 [project.optional-dependencies]
@@ -98,7 +99,7 @@ include = [
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
-addopts = "--import-mode=importlib --ignore=tests/apps/contact-center-ai-samples --ignore=tests/apps/blissful-store --ignore=tests/apps/claude-cookbooks --ignore=tests/apps/ai-agents-google-adk/test_bedrock_haiku.py --ignore=tests/apps/ai-agents-google-adk/test_openai_gpt.py"
+addopts = "--import-mode=importlib --ignore=tests/apps/contact-center-ai-samples --ignore=tests/apps/blissful-store --ignore=tests/apps/claude-cookbooks --ignore=tests/apps/ai-agents-google-adk/test_bedrock_haiku.py --ignore=tests/apps/ai-agents-google-adk/test_openai_gpt.py --ignore=tests/apps/pinnacle-bank-app/e2e_tests"
 testpaths = ["tests", "nuguard/sbom/tests"]
 markers = [
     "redteam_e2e: E2E redteam scan against a live fixture app (opt-in: NUGUARD_REDTEAM_E2E=1)",

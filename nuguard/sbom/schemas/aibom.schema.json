@@ -1874,7 +1874,7 @@
       "type": "object"
     },
     "PackageDep": {
-      "description": "A single declared package dependency (Python or JavaScript).",
+      "description": "A single declared package dependency.",
       "properties": {
         "name": {
           "title": "Name",

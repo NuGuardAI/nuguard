@@ -342,7 +342,13 @@ def extract_deployment_context(files: Sequence[tuple[str, str]]) -> dict[str, li
     deployment_urls: list[str] = []
 
     for path, content in files:
-        lower_path = path.lower()
+        # Normalize separators so workflow-path hints match on Windows too.
+        # Scanned file paths can use backslashes on Windows; the hint set uses
+        # POSIX style (".github/workflows/", "/k8s/", "infra/"). Comparing the
+        # raw lower_path on Windows would miss these matches and silently drop
+        # deployment URLs discovered from workflow content. See issue #234.
+        normalized_path = path.replace("\\", "/")
+        lower_path = normalized_path.lower()
         text = content or ""
         text_lower = text.lower()
 

@@ -426,6 +426,7 @@ def redteam(
                 all_formats=effective_formats,
                 extension_map=extension_map,
             )
+            out_path.parent.mkdir(parents=True, exist_ok=True)
             if fmt == "text":
                 # Plain-text report — no ANSI escapes in a file. Identical
                 # content to what ``nuguard redteam`` emits to stdout.
@@ -678,6 +679,14 @@ async def _run_redteam(
             probe_auth_header=auth_config.header if (auth_config and auth_config.type != "none") else None,
             log_prefix="redteam",
         )
+
+        # enrich_sbom_for_run() may return a cached artifact loaded from disk
+        # or a freshly rebuilt SBOM, neither of which is guaranteed to have
+        # gone through topology enrichment. Re-run it here — it's idempotent
+        # — so scenario generation always sees the derived risk attributes.
+        from nuguard.sbom.enricher import enrich as _enrich_topology_post
+
+        _enrich_topology_post(sbom_doc)  # type: ignore[arg-type]
 
     # Load policy + compiled controls
     cognitive_policy: CognitivePolicy | None = None

@@ -1,0 +1,47 @@
+steps:
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'build'
+      - '--tag=gcr.io/$PROJECT_ID/${_SERVICE_NAME}:$COMMIT_SHA'
+      - '--build-arg=VITE_GEMINI_API_KEY=${_VITE_GEMINI_API_KEY}'
+      - '--build-arg=VITE_GEMINI_MODEL=${_VITE_GEMINI_MODEL}'
+      - '--build-arg=VITE_GOOGLE_MAPS_API_KEY=${_VITE_GOOGLE_MAPS_API_KEY}'
+      - '--build-arg=VITE_GOOGLE_OAUTH_CLIENT_ID=${_VITE_GOOGLE_OAUTH_CLIENT_ID}'
+      - '--build-arg=VITE_GOOGLE_PROJECT_ID=${_VITE_GOOGLE_PROJECT_ID}'
+      - '.'
+
+  - name: 'gcr.io/cloud-builders/docker'
+    args:
+      - 'push'
+      - 'gcr.io/$PROJECT_ID/${_SERVICE_NAME}:$COMMIT_SHA'
+
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - '${_SERVICE_NAME}'
+      - '--image=gcr.io/$PROJECT_ID/${_SERVICE_NAME}:$COMMIT_SHA'
+      - '--region=${_REGION}'
+      - '--platform=managed'
+      - '--allow-unauthenticated'
+      - '--set-env-vars=JWT_SECRET=${_JWT_SECRET},OAUTH_CLIENT_ID=${_OAUTH_CLIENT_ID},OAUTH_CLIENT_SECRET=${_OAUTH_CLIENT_SECRET},OPENWEATHER_API_KEY=${_OPENWEATHER_API_KEY},GOOGLE_MAPS_PLATFORM_KEY=${_GOOGLE_MAPS_PLATFORM_KEY}'
+
+images:
+  - 'gcr.io/$PROJECT_ID/${_SERVICE_NAME}:$COMMIT_SHA'
+
+substitutions:
+  _SERVICE_NAME: gemini-auto-pilot
+  _REGION: us-central1
+  # Build-time (Vite) variables — set these in Cloud Build trigger substitutions
+  _VITE_GEMINI_API_KEY: ''
+  _VITE_GEMINI_MODEL: gemini-3.1-flash-lite
+  _VITE_GOOGLE_MAPS_API_KEY: ''
+  _VITE_GOOGLE_OAUTH_CLIENT_ID: ''
+  _VITE_GOOGLE_PROJECT_ID: ''
+  # Runtime variables — set these in Cloud Build trigger substitutions
+  _JWT_SECRET: ''
+  _OAUTH_CLIENT_ID: ''
+  _OAUTH_CLIENT_SECRET: ''
+  _OPENWEATHER_API_KEY: ''
+  _GOOGLE_MAPS_PLATFORM_KEY: ''

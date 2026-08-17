@@ -463,3 +463,53 @@ class TestEdgeCases:
         assert "openai" in names
         # pywin32 may or may not be included depending on marker stripping,
         # but it should not cause a crash
+
+class TestGoModScanner:
+    """Tests for Go module parsing from go.mod and go.sum files."""
+
+    def test_scan_go_mod_single_and_block_require(self, tmp_path: Path) -> None:
+        go_mod_content = """
+module github.com/myorg/myapp
+
+go 1.21
+
+require github.com/gin-gonic/gin v1.9.1
+
+require (
+    github.com/google/uuid v1.3.0
+    golang.org/x/crypto v0.14.0 // indirect
+)
+"""
+        go_mod_path = tmp_path / "go.mod"
+        go_mod_path.write_text(go_mod_content, encoding="utf-8")
+
+        scanner = DependencyScanner()
+        deps = scanner.scan(tmp_path)
+
+        purls = {d.purl for d in deps}
+        assert "pkg:go/github.com/gin-gonic/gin@v1.9.1" in purls
+        assert "pkg:go/github.com/google/uuid@v1.3.0" in purls
+        assert "pkg:go/golang.org/x/crypto@v0.14.0" in purls
+
+        # Verify group mapping for indirect vs direct dependencies
+        indirect_dep = next(d for d in deps if d.name == "golang.org/x/crypto")
+        assert indirect_dep.group == "optional:indirect"
+
+        direct_dep = next(d for d in deps if d.name == "github.com/gin-gonic/gin")
+        assert direct_dep.group == "runtime"
+
+    def test_scan_go_sum_pins(self, tmp_path: Path) -> None:
+        go_sum_content = """
+github.com/gin-gonic/gin v1.9.1 h1:4A3XlY04t2a
+github.com/gin-gonic/gin v1.9.1/go.mod h1:A0A3XlY04t2a
+github.com/google/uuid v1.3.0 h1:t6JiO
+"""
+        go_sum_path = tmp_path / "go.sum"
+        go_sum_path.write_text(go_sum_content, encoding="utf-8")
+
+        scanner = DependencyScanner()
+        deps = scanner.scan(tmp_path)
+
+        purls = {d.purl for d in deps}
+        assert "pkg:go/github.com/gin-gonic/gin@v1.9.1" in purls
+        assert "pkg:go/github.com/google/uuid@v1.3.0" in purls
