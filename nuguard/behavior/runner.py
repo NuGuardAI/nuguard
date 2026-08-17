@@ -813,7 +813,13 @@ class BehaviorRunner:
 
         # Merge explicit behavior.headers (shared target.headers or behavior.headers)
         # underneath bootstrapped/auth headers so auth always wins on conflicts.
-        _cfg_headers: dict[str, str] = dict(getattr(self._config, "headers", None) or {})
+        # Normalize first so a literal "None"/"" string header value (unset
+        # ${VAR} = None -> stringified anywhere upstream) can't reach the target.
+        from nuguard.common.auth_runtime import _normalize_headers  # noqa: PLC0415
+
+        _cfg_headers: dict[str, str] = _normalize_headers(
+            getattr(self._config, "headers", None)
+        )
         if _cfg_headers:
             bootstrap_headers = {**_cfg_headers, **(bootstrap_headers or {})}
 
