@@ -1,0 +1,50 @@
+"""Unit tests for the auth-detection RegexAdapters in nuguard.sbom.adapters.registry.
+
+Covers the distinction between the ordinary "reads a secret from env" finding
+(auth_runtime) and the higher-severity "hardcoded fallback secret" finding
+(auth_runtime_insecure_default) — see the registry.py Tier 1 / Tier 1b comments.
+"""
+from __future__ import annotations
+
+from nuguard.sbom.adapters.base import RegexAdapter
+from nuguard.sbom.adapters.registry import default_registry
+
+
+def _adapter(name: str) -> RegexAdapter:
+    for a in default_registry():
+        if isinstance(a, RegexAdapter) and a.name == name:
+            return a
+    raise AssertionError(f"no RegexAdapter named {name!r} in default_registry()")
+
+
+class TestInsecureDefaultSecretDetection:
+    def test_two_arg_literal_default_flagged_insecure(self) -> None:
+        adapter = _adapter("auth_runtime_insecure_default")
+        code = 'SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-here")\n'
+        detection = adapter.detect(code)
+        assert detection is not None
+        assert detection.metadata["insecure_default"] is True
+        assert detection.canonical_name == "auth:generic:insecure_default"
+
+    def test_one_arg_no_default_not_flagged_insecure(self) -> None:
+        insecure_adapter = _adapter("auth_runtime_insecure_default")
+        runtime_adapter = _adapter("auth_runtime")
+        code = 'SECRET_KEY = os.getenv("SECRET_KEY")\n'
+        assert insecure_adapter.detect(code) is None
+        detection = runtime_adapter.detect(code)
+        assert detection is not None
+        assert "insecure_default" not in detection.metadata
+
+    def test_two_arg_none_default_not_flagged_insecure(self) -> None:
+        """A None default is not a hardcoded secret — must fall through to the
+        tier-1 (no-default) pattern's severity, not the insecure-default one."""
+        adapter = _adapter("auth_runtime_insecure_default")
+        code = 'SECRET_KEY = os.getenv("SECRET_KEY", None)\n'
+        assert adapter.detect(code) is None
+
+    def test_two_arg_variable_default_not_flagged_insecure(self) -> None:
+        """A default sourced from another variable/call isn't a literal
+        hardcoded secret — must not be flagged as insecure_default."""
+        adapter = _adapter("auth_runtime_insecure_default")
+        code = "SECRET_KEY = os.getenv('SECRET_KEY', fallback_secret)\n"
+        assert adapter.detect(code) is None

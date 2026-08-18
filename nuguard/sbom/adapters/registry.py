@@ -270,6 +270,36 @@ def default_registry() -> tuple[DetectionAdapter, ...]:
                 # credential env-var names in config/template prose, not runtime access.
                 skip_path_parts=frozenset({"data-generators", "data_generators", "generators"}),
             ),
+            # Tier 1b (priority 134): the insecure-default variant of the pattern
+            # directly above — os.getenv("SECRET_KEY", "hardcoded-fallback") — kept
+            # as a separate, higher-severity finding rather than folded into
+            # auth_runtime's canonical_name, since a hardcoded fallback secret used
+            # whenever the env var is unset is a materially worse finding than
+            # ordinary env-based configuration and callers shouldn't have to
+            # re-parse the snippet to tell the two apart. A second positional
+            # argument only counts here when it's a plain string literal — None,
+            # another os.getenv(...)/secrets-manager call, or a variable reference
+            # for the default all fall through to the tier-1 (no-default) pattern
+            # instead, since none of those are a hardcoded secret.
+            RegexAdapter(
+                name="auth_runtime_insecure_default",
+                component_type=ComponentType.AUTH,
+                priority=134,
+                patterns=(
+                    re.compile(
+                        r"""os\.(?:getenv|environ\.get)\s*\(\s*['"][^'"]*"""
+                        r"""(?:API_KEY|SECRET|TOKEN|PASSWORD|CREDENTIAL)[^'"]*['"]"""
+                        r"""\s*,\s*['"][^'"]*['"]\s*\)""",
+                        re.IGNORECASE,
+                    ),
+                ),
+                canonical_name="auth:generic:insecure_default",
+                metadata={
+                    "insecure_default": True,
+                    "severity_note": "Hardcoded fallback secret used if the environment variable is unset.",
+                },
+                skip_path_parts=frozenset({"data-generators", "data_generators", "generators"}),
+            ),
             # Tier 2 (priority 140): broader auth keyword patterns.
             #   Excluded from non-runtime paths (YAML configs, data-generator dirs)
             #   to reduce false positives.
