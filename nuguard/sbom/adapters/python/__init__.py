@@ -10,6 +10,7 @@ from .datastores import PythonDatastoreAdapter
 from .fastapi_adapter import FastAPIAdapter
 from .flask_adapter import FlaskAdapter
 from .google_adk import GoogleADKPythonAdapter
+from .guardrail_heuristic import GuardrailHeuristicAdapter
 from .guardrails_ai import GuardrailsAIAdapter
 from .langgraph import LangGraphAdapter
 from .llamaindex import LlamaIndexAdapter
@@ -31,6 +32,7 @@ __all__ = [
     "FastAPIAdapter",
     "FlaskAdapter",
     "GoogleADKPythonAdapter",
+    "GuardrailHeuristicAdapter",
     "GuardrailsAIAdapter",
     "LangGraphAdapter",
     "LlamaIndexAdapter",
