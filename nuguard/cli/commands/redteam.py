@@ -426,7 +426,15 @@ def redteam(
                 all_formats=effective_formats,
                 extension_map=extension_map,
             )
-            if fmt == "markdown":
+            out_path.parent.mkdir(parents=True, exist_ok=True)
+            if fmt == "text":
+                # Plain-text report — no ANSI escapes in a file. Identical
+                # content to what ``nuguard redteam`` emits to stdout.
+                out_path.write_text(
+                    _render_findings_text(findings, meta, scan_outcome, colour=False),
+                    encoding="utf-8",
+                )
+            elif fmt == "markdown":
                 out_path.write_text(
                     _findings_to_markdown(
                         findings,
@@ -671,6 +679,14 @@ async def _run_redteam(
             probe_auth_header=auth_config.header if (auth_config and auth_config.type != "none") else None,
             log_prefix="redteam",
         )
+
+        # enrich_sbom_for_run() may return a cached artifact loaded from disk
+        # or a freshly rebuilt SBOM, neither of which is guaranteed to have
+        # gone through topology enrichment. Re-run it here — it's idempotent
+        # — so scenario generation always sees the derived risk attributes.
+        from nuguard.sbom.enricher import enrich as _enrich_topology_post
+
+        _enrich_topology_post(sbom_doc)  # type: ignore[arg-type]
 
     # Load policy + compiled controls
     cognitive_policy: CognitivePolicy | None = None
@@ -979,6 +995,85 @@ async def _run_orchestrator(  # noqa: C901
     )
 
 
+_SEV_COLOUR: dict[str, str] = {
+    "critical": "red",
+    "high": "red",
+    "medium": "yellow",
+    "low": "blue",
+    "info": "white",
+}
+
+
+def _render_findings_text(
+    findings: list,
+    meta: "ReportMeta",
+    scan_outcome: str = "no_findings",
+    *,
+    colour: bool = False,
+) -> str:
+    """Render findings as a plain-text report.
+
+    Returns a multi-line string suitable for writing to a file or echoing to a
+    terminal. When ``colour`` is ``True``, the severity label is wrapped in
+    ANSI escapes via :func:`typer.style` (used for stdout). When ``False``
+    (default), the output is plain text with no escape sequences — suitable
+    for on-disk reports that downstream tools may parse.
+
+    Args:
+        findings: List of :class:`~nuguard.models.finding.Finding` objects.
+        meta: Report metadata header.
+        scan_outcome: One-line scan outcome string ("no_findings", etc.).
+        colour: If ``True``, wrap severity labels with ANSI colour codes.
+
+    Returns:
+        Plain-text report as a single string.
+    """
+    from nuguard.models.finding import Severity as _Severity
+
+    if not findings:
+        lines = [
+            meta.to_text_line(),
+            f"Outcome: {scan_outcome}",
+            "No findings — scan complete",
+        ]
+        return "\n".join(lines) + "\n"
+
+    _ORDER = [
+        _Severity.CRITICAL,
+        _Severity.HIGH,
+        _Severity.MEDIUM,
+        _Severity.LOW,
+        _Severity.INFO,
+    ]
+
+    out: list[str] = []
+    out.append("")
+    out.append("─" * 60)
+    out.append(f"  NuGuard Red-Team — {len(findings)} finding(s)")
+    out.append(f"  {meta.to_text_line()}")
+    out.append(f"  Outcome: {scan_outcome}")
+    out.append("─" * 60)
+    for f in sorted(findings, key=lambda x: _ORDER.index(x.severity)):
+        sev_key = f.severity.value if hasattr(f.severity, "value") else str(f.severity)
+        sev_text = sev_key.upper()
+        if colour:
+            colour_name = _SEV_COLOUR.get(sev_key, "white")
+            sev_label = typer.style(sev_text, fg=colour_name, bold=True)
+        else:
+            sev_label = sev_text
+        out.append("")
+        out.append(f"[{sev_label}] {f.title}")
+        out.append(f"  {f.description[:200]}")
+        if f.remediation:
+            out.append(f"  Fix: {f.remediation[:150]}")
+        if f.owasp_asi_ref:
+            out.append(f"  Ref: {f.owasp_asi_ref}")
+    out.append("")
+    out.append("─" * 60)
+    out.append("")
+    return "\n".join(out)
+
+
 def _print_findings(
     findings: list,
     format: str,
@@ -992,8 +1087,6 @@ def _print_findings(
     coverage_tracker: object | None = None,
 ) -> None:
     """Print findings to stdout in the requested format."""
-    from nuguard.models.finding import Severity
-
     if meta is None:
         meta = ReportMeta()
 
@@ -1028,35 +1121,9 @@ def _print_findings(
         )
         return
 
-    if not findings:
-        typer.echo(meta.to_text_line())
-        typer.echo(f"Outcome: {scan_outcome}")
-        typer.echo("No findings — scan complete")
-        return
-
-    _SEV_COLOUR = {
-        Severity.CRITICAL: "red",
-        Severity.HIGH: "red",
-        Severity.MEDIUM: "yellow",
-        Severity.LOW: "blue",
-        Severity.INFO: "white",
-    }
-
-    typer.echo(f"\n{'─' * 60}")
-    typer.echo(f"  NuGuard Red-Team — {len(findings)} finding(s)")
-    typer.echo(f"  {meta.to_text_line()}")
-    typer.echo(f"  Outcome: {scan_outcome}")
-    typer.echo(f"{'─' * 60}")
-    for f in sorted(findings, key=lambda x: list(Severity).index(x.severity)):
-        colour = _SEV_COLOUR.get(f.severity, "white")
-        sev_label = typer.style(f.severity.upper(), fg=colour, bold=True)
-        typer.echo(f"\n[{sev_label}] {f.title}")
-        typer.echo(f"  {f.description[:200]}")
-        if f.remediation:
-            typer.echo(f"  Fix: {f.remediation[:150]}")
-        if f.owasp_asi_ref:
-            typer.echo(f"  Ref: {f.owasp_asi_ref}")
-    typer.echo(f"\n{'─' * 60}\n")
+    # Default and explicit "text" path — emit the plain-text report (with
+    # ANSI colour escapes when stdout is a TTY).
+    typer.echo(_render_findings_text(findings, meta, scan_outcome, colour=True))
 
 
 def _scenario_coverage_table(scenario_records: list) -> list[str]:

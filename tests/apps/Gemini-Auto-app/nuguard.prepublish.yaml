@@ -1,9 +1,14 @@
-source: https://github.com/NuGuardAI/Gemini-Car-Assistant
-github:
-  owner: NuGuardAI
-  repo: Gemini-Car-Assistant
-  branch: main
-  token: ${GITHUB_TOKEN}
+source: .      # app source vendored locally (see README note below) — generate SBOM from source dir
+# Cloning the private NuGuardAI/Gemini-Car-Assistant repo requires a token with
+# cross-repo read access, which the default Actions token doesn't have. The app
+# source is vendored directly into this directory instead so prepublish/CI runs
+# need no GitHub credentials at all.
+#source: https://github.com/NuGuardAI/Gemini-Car-Assistant
+#github:
+#  owner: NuGuardAI
+#  repo: Gemini-Car-Assistant
+#  branch: main
+#  token: ${GITHUB_TOKEN}
 
 policy:
   path: ./cognitive_policy.md
@@ -88,14 +93,15 @@ behavior:
   # Verbose output: include full per-turn traces in behavior report
   verbose: true
 
-  # Workflows to run (v7+):
-  #   intent_happy_path    — exercises declared capabilities on happy paths
-  #   component_coverage   — one multi-turn scenario per SBOM tool/agent node
-  #   invariant_probe      — probes behavioral invariants and policy constraints
+  # Workflows to run (v8 names — see nuguard/behavior/scenarios.py):
+  #   topic_coverage       — intent-driven happy paths + allowed-topic fallback probes
+  #   agent_tool_coverage  — SBOM-driven agent, tool, endpoint, and delegation coverage
+  #   guardrail_coverage   — HITL triggers, data classification, and guardrail-path probes
+  #   data_discovery_probe — ask what data the agent holds, then react
   # Note: boundary_enforcement was removed in v7; boundary testing is now handled
-  # by nuguard redteam. boundary_assertions below still run via invariant_probe.
+  # by nuguard redteam. boundary_assertions below still run via guardrail_coverage.
   workflows:
-    - intent_happy_path
+    - topic_coverage
 
   # Boundary assertions: requests the app MUST refuse
   boundary_assertions:
