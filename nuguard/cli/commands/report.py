@@ -21,9 +21,17 @@ def report(
 ) -> None:
     """Generate a report for TEST_ID.
 
-    TODO: Implement report generation.
+    Placeholder. A run-history store (see issue #161) is required before
+    reports from past ``--test-id`` runs can be regenerated. Until then,
+    use ``nuguard redteam --output <path>.<fmt>`` (or ``--format
+    markdown|sarif|json``) to write the report inline.
     """
     if ctx.invoked_subcommand is not None:
         return
-    typer.echo("nuguard report: not yet implemented.")
+    typer.echo(
+        "nuguard report: not yet implemented. "
+        "Issue #161 tracks adding a run-history store, which this command depends on. "
+        "Workaround: run `nuguard redteam --output report.<fmt> --format <fmt>` directly.",
+        err=True,
+    )
     raise typer.Exit(code=3)
