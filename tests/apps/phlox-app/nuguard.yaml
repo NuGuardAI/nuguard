@@ -1,0 +1,81 @@
+# nuguard.yaml — Phlox (local Docker target)
+# Phlox: https://github.com/bloodworks-io/phlox — local-first AI medical scribe
+# (FastAPI backend, React frontend, SQLCipher DB, MCP tool support).
+#
+# Priority order (highest wins): CLI flags > env vars > .env file > nuguard.yaml > defaults
+# Run from this directory: uv run nuguard <command> --config nuguard.yaml
+
+# ─── Source for SBOM generation ───────────────────────────────────────────────
+# GitHub URL — nuguard clones it internally for static scanning; nothing is
+# vendored into this repo.
+source: https://github.com/bloodworks-io/phlox
+sbom: ./phlox.sbom.json
+
+# ─── Cognitive policy ──────────────────────────────────────────────────────────
+# Not checked in — drafted at runtime from the SBOM by `nuguard init --llm`
+# (see phlox-test.sh), then compiled to cognitive-policy.json.
+policy:
+  path: ./cognitive-policy.md
+  llm: true
+
+# ─── LLM settings (NuGuard's own scenario generation / judging) ───────────────
+llm:
+  model: openai/gpt-4o-mini            # LiteLLM resolves the key from OPENAI_API_KEY
+  # api_key: ${OPENAI_API_KEY}         # optional — litellm reads OPENAI_API_KEY automatically
+
+# ─── SBOM generation ───────────────────────────────────────────────────────────
+sbom_generation:
+  llm: true                            # enrich SBOM nodes with LLM descriptions
+
+# ─── Target application ────────────────────────────────────────────────────────
+target:
+  url: http://localhost:5000
+
+  # Chat/agent endpoint — confirm against the generated SBOM; Phlox's chat
+  # route may differ (e.g. /api/chat or /api/agent/chat).
+  # endpoint: /api/chat
+
+  auth:
+    # Phlox ships with no built-in auth by default (single-user, local-first).
+    # Switch to proxy_auth headers here if you enabled PROXY_AUTH_ENABLED.
+    type: none
+
+# ─── Behavior testing ──────────────────────────────────────────────────────────
+behavior:
+  llm: true
+  canary: ./canary.json
+  request_timeout: 60
+  scenario_concurrency: 3
+  isolate_scenarios: true
+  judge_concurrency: 5
+  capability_discovery: true
+
+# ─── Red-team ───────────────────────────────────────────────────────────────────
+redteam:
+  target: http://localhost:5000
+  canary: ./canary.json
+  profile: ci
+  min_impact_score: 0.0
+
+  # Relevant to a clinical-data agent with MCP tool support.
+  scenarios:
+    - prompt-injection
+    - tool-abuse
+    - privilege-escalation
+    - data-exfiltration
+    - policy-violation
+    - mcp-toxic-flow
+
+  request_timeout: 120
+  verbose: true
+  strict_outcome: false
+
+# ─── Static analysis ────────────────────────────────────────────────────────────
+analyze:
+  min_severity: low
+
+# ─── Output ──────────────────────────────────────────────────────────────────────
+output:
+  format: markdown
+  fail_on: low
+  sarif_file: ./reports/phlox-nuguard-results.sarif

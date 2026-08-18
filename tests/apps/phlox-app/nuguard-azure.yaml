@@ -1,0 +1,55 @@
+# nuguard-azure.yaml — Phlox hosted on Azure Container Instances
+# Deploy first with deploy-azure-aci.sh, then fill in the FQDN it prints below.
+
+source: https://github.com/bloodworks-io/phlox
+sbom: ./phlox.sbom.json
+
+policy:
+  path: ./cognitive-policy.md
+  llm: true
+
+llm:
+  model: openai/gpt-4o-mini
+
+sbom_generation:
+  llm: true
+
+target:
+  # Replace with the FQDN printed by deploy-azure-aci.sh, e.g.:
+  # http://phlox-nuguard-<suffix>.<region>.azurecontainer.io:5000
+  url: http://REPLACE_WITH_ACI_FQDN:5000
+  auth:
+    type: none
+
+behavior:
+  llm: true
+  canary: ./canary.json
+  request_timeout: 90
+  scenario_concurrency: 3
+  isolate_scenarios: true
+  judge_concurrency: 5
+  capability_discovery: true
+
+redteam:
+  target: http://REPLACE_WITH_ACI_FQDN:5000
+  canary: ./canary.json
+  profile: ci
+  min_impact_score: 0.0
+  scenarios:
+    - prompt-injection
+    - tool-abuse
+    - privilege-escalation
+    - data-exfiltration
+    - policy-violation
+    - mcp-toxic-flow
+  request_timeout: 150
+  verbose: true
+  strict_outcome: false
+
+analyze:
+  min_severity: low
+
+output:
+  format: markdown
+  fail_on: low
+  sarif_file: ./reports/phlox-azure-nuguard-results.sarif
