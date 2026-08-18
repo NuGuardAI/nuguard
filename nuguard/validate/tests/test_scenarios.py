@@ -120,3 +120,53 @@ def test_boundary_assertion_forbid_pattern():
     )
     scenarios = build_scenarios(cfg)
     assert scenarios[0].forbid_pattern == r"\d{3}-\d{2}-\d{4}"
+
+
+def test_agent_routing_builds_one_scenario_per_agent_node():
+    """Regression: agent_routing must build scenarios from SBOM AGENT nodes.
+
+    Pre-fix, the workflow read a nonexistent ``node_type`` attribute on
+    ``Node`` (the field is ``component_type``), so it always produced zero
+    scenarios and logged a misleading "no AGENT nodes found" warning even
+    when the SBOM contained AGENT nodes.
+    """
+    from nuguard.sbom.models import AiSbomDocument, Node
+    from nuguard.sbom.types import ComponentType
+
+    nodes = [
+        Node(name="medical_triage_agent", component_type=ComponentType.AGENT, confidence=0.9),
+        Node(name="billing_agent", component_type=ComponentType.AGENT, confidence=0.8),
+        Node(name="payment_tool", component_type=ComponentType.TOOL, confidence=0.7),
+    ]
+    sbom = AiSbomDocument(
+        target="test-app",
+        generated_at="2026-08-18T00:00:00Z",
+        schema_version="1.0",
+        nodes=nodes,
+    )
+    scenarios = build_scenarios(_config(workflows=["agent_routing"]), sbom=sbom)
+
+    assert len(scenarios) == 2
+    assert all(s.scenario_type == ValidateScenarioType.AGENT_ROUTING for s in scenarios)
+    assert {s.target_agents[0] for s in scenarios} == {"medical_triage_agent", "billing_agent"}
+
+
+def test_agent_routing_excludes_non_agent_nodes():
+    """TOOL / MODEL nodes must not produce agent-routing scenarios."""
+    from nuguard.sbom.models import AiSbomDocument, Node
+    from nuguard.sbom.types import ComponentType
+
+    nodes = [
+        Node(name="triage_agent", component_type=ComponentType.AGENT, confidence=0.9),
+        Node(name="llm_model", component_type=ComponentType.MODEL, confidence=0.8),
+    ]
+    sbom = AiSbomDocument(
+        target="test-app",
+        generated_at="2026-08-18T00:00:00Z",
+        schema_version="1.0",
+        nodes=nodes,
+    )
+    scenarios = build_scenarios(_config(workflows=["agent_routing"]), sbom=sbom)
+
+    assert len(scenarios) == 1
+    assert scenarios[0].target_agents == ["triage_agent"]
