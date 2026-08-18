@@ -76,6 +76,7 @@ def render_finding_block(
         remediation = finding.get("remediation") or ""
         owasp_llm = finding.get("owasp_llm_ref") or ""
         owasp_asi = finding.get("owasp_asi_ref") or ""
+        mitre_atlas = finding.get("mitre_atlas_technique") or ""
         policy_clause = finding.get("policy_clause") or ""
         goal_type = finding.get("goal_type") or ""
         ngrs_score = finding.get("ngrs_score")
@@ -95,6 +96,7 @@ def render_finding_block(
         remediation = getattr(finding, "remediation", "") or ""
         owasp_llm = getattr(finding, "owasp_llm_ref", "") or ""
         owasp_asi = getattr(finding, "owasp_asi_ref", "") or ""
+        mitre_atlas = getattr(finding, "mitre_atlas_technique", "") or ""
         policy_clauses = getattr(finding, "policy_clauses_violated", None) or []
         policy_clause = "; ".join(policy_clauses)
         goal_type = str(finding.goal_type) if getattr(finding, "goal_type", None) else ""
@@ -138,6 +140,9 @@ def render_finding_block(
         lines.append("")
     if owasp_asi:
         lines.append(f"**OWASP ASI:** {owasp_asi}")
+        lines.append("")
+    if mitre_atlas:
+        lines.append(f"**MITRE ATLAS:** {mitre_atlas}")
         lines.append("")
 
 

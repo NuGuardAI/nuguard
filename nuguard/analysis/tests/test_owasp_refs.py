@@ -9,11 +9,11 @@ Covers:
 """
 from __future__ import annotations
 
-from nuguard.analysis._atlas_data import NGA_TO_ATLAS
-from nuguard.analysis._owasp_data import NGA_TO_OWASP, RuleOwaspRefs, owasp_refs_for
 from nuguard.analysis.plugins.nga_rules import _RULE_META as NGA_RULE_META
 from nuguard.analysis.static_analyzer import _raw_to_finding
 from nuguard.analysis.supply_chain_scanner import _RULE_META as SC_RULE_META
+from nuguard.common.control_mappings.atlas import NGA_TO_ATLAS
+from nuguard.common.control_mappings.owasp import NGA_TO_OWASP, RuleOwaspRefs, owasp_refs_for_rule
 
 _ALL_RULE_IDS = [m["rule_id"] for m in NGA_RULE_META] + [m["rule_id"] for m in SC_RULE_META]
 
@@ -38,7 +38,7 @@ class TestCoverage:
         assert len(_ALL_RULE_IDS) == len(set(_ALL_RULE_IDS))
 
     def test_owasp_refs_for_unmapped_id_returns_empty(self) -> None:
-        refs = owasp_refs_for("NGA-DOES-NOT-EXIST")
+        refs = owasp_refs_for_rule("NGA-DOES-NOT-EXIST")
         assert refs == RuleOwaspRefs()
 
 

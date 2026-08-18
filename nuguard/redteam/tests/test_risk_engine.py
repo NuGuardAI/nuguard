@@ -140,15 +140,16 @@ def test_owasp_llm_ref_prompt_driven_threat_starts_llm01() -> None:
     assert ref.startswith("LLM01")
 
 
-def test_owasp_llm_ref_data_exfiltration_starts_llm06() -> None:
+def test_owasp_llm_ref_data_exfiltration_starts_llm02() -> None:
+    # OWASP LLM Top 10 (2026) short code — see nuguard.common.control_mappings.owasp
     ref = owasp_llm_ref(GoalType.DATA_EXFILTRATION)
     assert ref is not None
-    assert ref.startswith("LLM06")
+    assert ref.startswith("LLM02")
 
 
 def test_owasp_llm_ref_prompt_driven_threat_exact_value() -> None:
     ref = owasp_llm_ref(GoalType.PROMPT_DRIVEN_THREAT)
-    assert ref == "LLM01 – Prompt Injection"
+    assert ref == "LLM01:2026"
 
 
 def test_owasp_llm_ref_returns_string_for_all_goal_types() -> None:

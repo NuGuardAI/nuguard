@@ -207,6 +207,8 @@ async def test_run_policy_violation_creates_finding():
     assert isinstance(result, BehaviorRunResult)
     assert len(result.findings) > 0
     assert any("policy_violation" in str(f) or "gambling" in str(f) for f in result.findings)
+    assert all(f.get("owasp_llm_ref") for f in result.findings)
+    assert all(f.get("mitre_atlas_technique") for f in result.findings)
 
 
 @pytest.mark.asyncio

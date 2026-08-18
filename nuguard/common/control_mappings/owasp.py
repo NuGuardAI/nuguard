@@ -1,9 +1,18 @@
-"""NGA rule -> OWASP LLM Top 10 (2026) / OWASP Top 10 for Agentic Applications (2026) mapping.
+"""Shared OWASP LLM Top 10 (2026) / OWASP Top 10 for Agentic Applications (2026) mappings.
+
+Used by all three finding-producing packages (analysis, behavior, redteam) so every
+Finding cites the same short-code format regardless of which package produced it.
 
 Citations use the source documents' own short codes (e.g. "LLM01:2026", "ASI04") so they
 stay stable across NuGuard releases even as the underlying OWASP entry descriptions evolve.
-Mirrors the ``NGA_TO_ATLAS`` dict in ``_atlas_data.py`` — same rule_id keys, same
+Mirrors the ``NGA_TO_ATLAS`` dict in ``atlas.py`` — same rule_id keys, same
 "map every rule, no silent gaps" convention.
+
+Three lookup tables, one per producer's natural key:
+  - ``NGA_TO_OWASP``      — analysis/ static rules, keyed by NGA rule_id
+  - ``BA_RULE_TO_OWASP``  — behavior/ static alignment rules, keyed by BA rule_id
+  - ``GOAL_TYPE_TO_OWASP``— redteam/ scenarios, keyed by GoalType (coarse fallback;
+    individual scenarios may set a more specific ref that takes precedence)
 
 Sources:
   OWASP Top 10 for LLM Applications 2026 (genai.owasp.org)
@@ -12,6 +21,8 @@ Sources:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+
+from nuguard.models.exploit_chain import GoalType
 
 
 @dataclass(frozen=True)
@@ -88,6 +99,83 @@ _NGA_SUPPLY_CHAIN: dict[str, RuleOwaspRefs] = {
 NGA_TO_OWASP: dict[str, RuleOwaspRefs] = {**_NGA_STRUCTURAL, **_NGA_SUPPLY_CHAIN}
 
 
-def owasp_refs_for(rule_id: str) -> RuleOwaspRefs:
-    """Return the OWASP citations for *rule_id*, or an empty ``RuleOwaspRefs`` if unmapped."""
+def owasp_refs_for_rule(rule_id: str) -> RuleOwaspRefs:
+    """Return the OWASP citations for an analysis NGA *rule_id*, or empty if unmapped."""
     return NGA_TO_OWASP.get(rule_id, RuleOwaspRefs())
+
+
+# ---------------------------------------------------------------------------
+# BA-xxx (behavior static alignment rules — nuguard/behavior/alignment.py)
+# ---------------------------------------------------------------------------
+
+BA_RULE_TO_OWASP: dict[str, RuleOwaspRefs] = {
+    "BA-001": RuleOwaspRefs(owasp_llm=("LLM08:2026",)),  # restricted topic in system prompt -> Hidden Context Exposure
+    "BA-002": RuleOwaspRefs(owasp_llm=("LLM03:2026",), owasp_agentic=("ASI02",)),  # risky tool, no guardrail
+    "BA-003": RuleOwaspRefs(owasp_llm=("LLM03:2026",), owasp_agentic=("ASI02",)),  # restricted-action tool reachable
+    "BA-004": RuleOwaspRefs(owasp_llm=("LLM02:2026",)),  # PII datastore without guardrail
+    "BA-005": RuleOwaspRefs(owasp_llm=("LLM03:2026",), owasp_agentic=("ASI03",)),  # no-auth agent, high-priv tool
+    "BA-006": RuleOwaspRefs(owasp_llm=("LLM04:2026",), owasp_agentic=("ASI04",)),  # untrusted MCP server, write tool
+    "BA-007": RuleOwaspRefs(owasp_llm=("LLM01:2026",), owasp_agentic=("ASI01",)),  # blocked_topics doesn't cover restricted_topics
+    "BA-008": RuleOwaspRefs(owasp_llm=("LLM03:2026",), owasp_agentic=("ASI09",)),  # no HITL gate for hitl_triggers
+    "BA-009": RuleOwaspRefs(owasp_llm=("LLM02:2026",), owasp_agentic=("ASI03",)),  # AUTH doesn't protect sensitive endpoints/agents
+    "BA-010": RuleOwaspRefs(owasp_llm=("LLM03:2026",), owasp_agentic=("ASI03",)),  # high-priv component reachable w/o AUTH/GUARDRAIL
+    "BA-011": RuleOwaspRefs(owasp_llm=("LLM02:2026",), owasp_agentic=("ASI06",)),  # DATASTORE write access lacks HITL/auth/guardrail
+    "BA-012": RuleOwaspRefs(owasp_llm=("LLM02:2026",)),  # sensitive data reaches external MODEL
+    "BA-013": RuleOwaspRefs(owasp_llm=("LLM08:2026",)),  # restricted topic in AGENT's PROMPT
+    "BA-014": RuleOwaspRefs(owasp_llm=("LLM03:2026",), owasp_agentic=("ASI07",)),  # handoff to higher-priv agent w/o boundary
+    "BA-015": RuleOwaspRefs(owasp_llm=("LLM04:2026",), owasp_agentic=("ASI04",)),  # DEPLOYS path security posture issues
+    "BA-016": RuleOwaspRefs(owasp_llm=("LLM02:2026",), owasp_agentic=("ASI03",)),  # API_ENDPOINT returns sensitive data w/o auth
+}
+
+
+def owasp_refs_for_ba_rule(rule_id: str) -> RuleOwaspRefs:
+    """Return the OWASP citations for a behavior BA-*** *rule_id*, or empty if unmapped."""
+    return BA_RULE_TO_OWASP.get(rule_id, RuleOwaspRefs())
+
+
+# ---------------------------------------------------------------------------
+# GoalType (redteam scenarios — coarse fallback keyed on the 9-value GoalType
+# enum). Individual scenario builders may set a more specific owasp_llm_ref /
+# owasp_asi_ref on the ExploitChain, which takes precedence over this table.
+# ---------------------------------------------------------------------------
+
+GOAL_TYPE_TO_OWASP: dict[GoalType, RuleOwaspRefs] = {
+    GoalType.PROMPT_DRIVEN_THREAT: RuleOwaspRefs(owasp_llm=("LLM01:2026",), owasp_agentic=("ASI01",)),
+    GoalType.DATA_EXFILTRATION: RuleOwaspRefs(owasp_llm=("LLM02:2026",), owasp_agentic=("ASI10",)),
+    GoalType.PRIVILEGE_ESCALATION: RuleOwaspRefs(owasp_llm=("LLM03:2026",), owasp_agentic=("ASI03",)),
+    GoalType.TOOL_ABUSE: RuleOwaspRefs(owasp_llm=("LLM06:2026",), owasp_agentic=("ASI02",)),
+    GoalType.POLICY_VIOLATION: RuleOwaspRefs(owasp_llm=("LLM01:2026",), owasp_agentic=("ASI09",)),
+    GoalType.MCP_TOXIC_FLOW: RuleOwaspRefs(owasp_llm=("LLM04:2026",), owasp_agentic=("ASI04",)),
+    GoalType.API_ATTACK: RuleOwaspRefs(owasp_llm=("LLM02:2026",), owasp_agentic=("ASI03",)),
+    GoalType.AGENTIC_TRUST_ABUSE: RuleOwaspRefs(owasp_llm=("LLM03:2026",), owasp_agentic=("ASI03",)),
+    GoalType.RECON_INFERENCE: RuleOwaspRefs(owasp_llm=("LLM02:2026",), owasp_agentic=("ASI02",)),
+}
+
+
+def owasp_refs_for_goal(goal_type: GoalType) -> RuleOwaspRefs:
+    """Return the OWASP citations for a redteam *goal_type*, or empty if unmapped."""
+    return GOAL_TYPE_TO_OWASP.get(goal_type, RuleOwaspRefs())
+
+
+# ---------------------------------------------------------------------------
+# BehaviorFindingType (behavior dynamic findings — nuguard/behavior/runner.py).
+# Keyed by the plain finding_type string (nuguard.behavior.models.BehaviorFindingType
+# values, plus "DATA_LEAK" for the canary-hit deviation_type). Coarse fallback, same
+# role as GOAL_TYPE_TO_OWASP for redteam.
+# ---------------------------------------------------------------------------
+
+BEHAVIOR_FINDING_TYPE_TO_OWASP: dict[str, RuleOwaspRefs] = {
+    "CAPABILITY_GAP": RuleOwaspRefs(owasp_agentic=("ASI08",)),
+    "TOOL_CHAIN_BROKEN": RuleOwaspRefs(owasp_llm=("LLM03:2026",), owasp_agentic=("ASI08",)),
+    "INTENT_MISALIGNMENT": RuleOwaspRefs(owasp_llm=("LLM01:2026",), owasp_agentic=("ASI09",)),
+    "POLICY_VIOLATION": RuleOwaspRefs(owasp_llm=("LLM01:2026",), owasp_agentic=("ASI09",)),
+    "SECRET_DISCLOSURE": RuleOwaspRefs(owasp_llm=("LLM02:2026",), owasp_agentic=("ASI10",)),
+    "DATA_LEAK": RuleOwaspRefs(owasp_llm=("LLM02:2026",), owasp_agentic=("ASI10",)),
+    "DATA_HANDLING_VIOLATION": RuleOwaspRefs(owasp_llm=("LLM02:2026",), owasp_agentic=("ASI06",)),
+    "ESCALATION_BYPASS": RuleOwaspRefs(owasp_llm=("LLM03:2026",), owasp_agentic=("ASI03",)),
+}
+
+
+def owasp_refs_for_finding_type(finding_type: str) -> RuleOwaspRefs:
+    """Return the OWASP citations for a behavior dynamic-finding *finding_type*."""
+    return BEHAVIOR_FINDING_TYPE_TO_OWASP.get(str(finding_type).upper(), RuleOwaspRefs())

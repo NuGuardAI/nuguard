@@ -49,6 +49,8 @@ from nuguard.behavior.models import (
 from nuguard.behavior.turn_context import TurnContext, extract_turn_context
 from nuguard.common.console import _console
 from nuguard.common.console import print_turn as _common_print_turn
+from nuguard.common.control_mappings.atlas import atlas_refs_for_finding_type, atlas_technique_label
+from nuguard.common.control_mappings.owasp import owasp_refs_for_finding_type
 from nuguard.common.logging import get_logger
 from nuguard.common.rate_limit import (
     SCENARIO_MAX_RATE_LIMIT_RETRIES,
@@ -81,6 +83,17 @@ _DESTRUCTIVE_KEYWORDS = frozenset({
 _GAP_FINDING_MIN_OCCURRENCES = 2
 
 _GAP_FINDING_TYPES = frozenset({"CAPABILITY_GAP", "INTENT_MISALIGNMENT", "TOOL_CHAIN_BROKEN"})
+
+
+def _dynamic_finding_control_refs(finding_type: str) -> dict[str, str | None]:
+    """OWASP LLM/Agentic + MITRE ATLAS kwargs for a dynamic-finding *finding_type* dict."""
+    owasp = owasp_refs_for_finding_type(finding_type)
+    atlas = atlas_refs_for_finding_type(finding_type)
+    return {
+        "owasp_llm_ref": ", ".join(owasp.owasp_llm) or None,
+        "owasp_asi_ref": ", ".join(owasp.owasp_agentic) or None,
+        "mitre_atlas_technique": atlas_technique_label(atlas[0][0]) if atlas else None,
+    }
 
 
 def _classify_gap(gap_text: str) -> tuple[str, str]:
@@ -1607,6 +1620,7 @@ class BehaviorRunner:
                     "affected_component": _component,
                     "finding_type": "POLICY_VIOLATION",
                     "policy_clause": violation.get("policy_clause", ""),
+                    **_dynamic_finding_control_refs("POLICY_VIOLATION"),
                 })
                 # Mirror into scenario_deviations so run() aggregation can include
                 # these in BehaviorRunResult.findings and compute scan_outcome correctly.
@@ -1634,6 +1648,7 @@ class BehaviorRunner:
                     "description": f"Canary values found in response: {canary_hits}",
                     "affected_component": _component,
                     "finding_type": "SECRET_DISCLOSURE",
+                    **_dynamic_finding_control_refs("SECRET_DISCLOSURE"),
                 })
                 scenario_deviations.append({
                     "deviation_type": "data_leak",
@@ -2159,9 +2174,10 @@ class BehaviorRunner:
                     seen_findings.add(dedup_key)
                     _attack_step = dev.get("attack_step")
                     _component = _resolve_affected_component(orig)
+                    _dev_finding_type = str(dev.get("deviation_type", "policy_violation")).upper()
                     all_findings.append({
                         "finding_id": _make_finding_id(
-                            finding_type=str(dev.get("deviation_type", "policy_violation")).upper(),
+                            finding_type=_dev_finding_type,
                             severity=str(dev.get("severity", "medium")).lower(),
                             component=_component,
                             summary=dev.get("description", ""),
@@ -2175,7 +2191,8 @@ class BehaviorRunner:
                         "description": dev.get("description", ""),
                         "affected_component": _component,
                         "attack_steps": [_attack_step] if _attack_step else [],
-                        "finding_type": str(dev.get("deviation_type", "policy_violation")).upper(),
+                        "finding_type": _dev_finding_type,
+                        **_dynamic_finding_control_refs(_dev_finding_type),
                     })
 
         # Aggregate gap strings from all scenario verdicts into bucketed findings.
@@ -2271,6 +2288,7 @@ class BehaviorRunner:
                 "evidence_turn_count": unique_evidence_turn_count,
                 "duplicate_turns_removed": duplicate_turns_removed,
                 "attack_steps": gap_attack_steps,
+                **_dynamic_finding_control_refs(ftype),
             })
 
         # Flush judge cache to disk once all scenarios are done (v3).

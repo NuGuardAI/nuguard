@@ -30,7 +30,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from nuguard.analysis._owasp_data import owasp_refs_for
+from nuguard.common.control_mappings.owasp import owasp_refs_for_rule
 from nuguard.common.logging import get_logger
 from nuguard.models.finding import Finding, Severity
 from nuguard.sbom.models import AiSbomDocument
@@ -85,7 +85,7 @@ def _raw_to_finding(raw: dict[str, Any], source: str) -> Finding:
     # OWASP LLM Top 10 / Agentic Top 10 citations: prefer an explicit reference
     # already carried on the raw finding (e.g. semgrep's YAML `owasp` metadata),
     # falling back to the NGA_TO_OWASP rule_id lookup table.
-    owasp_refs = owasp_refs_for(rule_id)
+    owasp_refs = owasp_refs_for_rule(rule_id)
     owasp_llm_ref = raw.get("owasp_llm_ref") or (
         ", ".join(owasp_refs.owasp_llm) if owasp_refs.owasp_llm else None
     )
@@ -317,8 +317,8 @@ class StaticAnalyzer:
     ) -> list[Finding]:
         """Run NgaRulesPlugin (NGA-001…NGA-021) and annotate with ATLAS techniques."""
         try:
-            from nuguard.analysis._atlas_data import NGA_TO_ATLAS  # noqa: PLC0415
             from nuguard.analysis.plugins.nga_rules import NgaRulesPlugin  # noqa: PLC0415
+            from nuguard.common.control_mappings.atlas import NGA_TO_ATLAS  # noqa: PLC0415
 
             plugin = NgaRulesPlugin()
             # provider="nga-rules" skips the OSV/Grype phases inside the plugin;

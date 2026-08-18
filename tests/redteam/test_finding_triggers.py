@@ -634,3 +634,69 @@ def test_cross_tenant_leak_without_session_identity_not_flagged() -> None:
     # no identity to compare against means cross_tenant can't be detected,
     # so the PII-class bump introduced by cross_tenant never fires.
     assert "DC:2" in with_session_findings[0].ngrs_vector
+
+
+def test_scenario_level_owasp_ref_wins_over_goal_type_fallback() -> None:
+    """A chain-level owasp_llm_ref/owasp_asi_ref (set via make_scenario) is more
+    specific than the goal-type table and must take precedence over it.
+    """
+    orchestrator = _orchestrator(
+        RedteamFindingTriggers(
+            canary_hits=True,
+            policy_violations=False,
+            critical_success_hits=False,
+            any_inject_success=False,
+        )
+    )
+    scenario = _scenario()
+    chain = ExploitChain(
+        chain_id="chain-1",
+        goal_type=GoalType.DATA_EXFILTRATION,
+        scenario_type=ScenarioType.DIRECT_PII_EXTRACTION,
+        sbom_path=["node-1"],
+        owasp_asi_ref="ASI06",
+        owasp_llm_ref="LLM09:2026",
+        mitre_atlas_technique="AML.T0043 – Craft Adversarial Data",
+    )
+    step_result = _step_result(success=False, canary_hits=["PATIENT_ID_123"])
+
+    findings = orchestrator._build_findings(
+        scenario=scenario,
+        chain=chain,
+        step_results=[step_result],
+        step_details=orchestrator._build_step_details([step_result]),
+    )
+
+    assert len(findings) == 1
+    assert findings[0].owasp_asi_ref == "ASI06"
+    assert findings[0].owasp_llm_ref == "LLM09:2026"
+    assert findings[0].mitre_atlas_technique == "AML.T0043 – Craft Adversarial Data"
+
+
+def test_goal_type_fallback_used_when_scenario_sets_no_owasp_ref() -> None:
+    """When the chain doesn't set an owasp/atlas literal, fall back to the
+    goal-type table instead of leaving the Finding's refs empty.
+    """
+    orchestrator = _orchestrator(
+        RedteamFindingTriggers(
+            canary_hits=True,
+            policy_violations=False,
+            critical_success_hits=False,
+            any_inject_success=False,
+        )
+    )
+    scenario = _scenario()
+    chain = _chain()  # no owasp_*/mitre_atlas literals set
+    step_result = _step_result(success=False, canary_hits=["PATIENT_ID_123"])
+
+    findings = orchestrator._build_findings(
+        scenario=scenario,
+        chain=chain,
+        step_results=[step_result],
+        step_details=orchestrator._build_step_details([step_result]),
+    )
+
+    assert len(findings) == 1
+    assert findings[0].owasp_llm_ref == "LLM02:2026"
+    assert findings[0].owasp_asi_ref == "ASI10"
+    assert findings[0].mitre_atlas_technique is not None

@@ -393,7 +393,7 @@ class TestAtlasCoverage:
     technique_id referenced anywhere in NGA_TO_ATLAS must resolve in TECHNIQUES."""
 
     def test_every_rule_has_atlas_mapping(self) -> None:
-        from nuguard.analysis._atlas_data import NGA_TO_ATLAS
+        from nuguard.common.control_mappings.atlas import NGA_TO_ATLAS
         from nuguard.analysis.plugins.nga_rules import _RULE_META as NGA_RULE_META
         from nuguard.analysis.supply_chain_scanner import _RULE_META as SC_RULE_META
 
@@ -402,7 +402,7 @@ class TestAtlasCoverage:
         assert missing == [], f"Rules missing ATLAS mapping: {missing}"
 
     def test_every_mapped_technique_id_resolves(self) -> None:
-        from nuguard.analysis._atlas_data import NGA_TO_ATLAS, TECHNIQUES
+        from nuguard.common.control_mappings.atlas import NGA_TO_ATLAS, TECHNIQUES
 
         unresolved = sorted({
             tech_id

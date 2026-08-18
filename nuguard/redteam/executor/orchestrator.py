@@ -1978,7 +1978,8 @@ class RedteamOrchestrator:
                 sbom_path_descriptions=sbom_path_descriptions,
                 owasp_asi_ref=conv.owasp_asi_ref or compliance_mapper.owasp_asi_ref(conv.goal_type),
                 owasp_llm_ref=conv.owasp_llm_ref or compliance_mapper.owasp_llm_ref(conv.goal_type),
-                mitre_atlas_technique=conv.mitre_atlas_technique,
+                mitre_atlas_technique=conv.mitre_atlas_technique
+                or compliance_mapper.mitre_atlas_ref(conv.goal_type),
                 evidence=transcript,
                 reasoning=bt_reasoning,
                 evidence_quote=bt_evidence_quote,
@@ -2221,8 +2222,13 @@ class RedteamOrchestrator:
         _cross_tenant = scenario.scenario_type == ScenarioType.CROSS_TENANT_EXFILTRATION or (
             _detect_cross_tenant_leak(step_results, session)
         )
-        owasp_asi = compliance_mapper.owasp_asi_ref(scenario.goal_type)
-        owasp_llm = compliance_mapper.owasp_llm_ref(scenario.goal_type)
+        # A scenario/chain-level literal (set via make_scenario(...) by the builder)
+        # is more specific than the goal-type table and takes precedence over it.
+        owasp_asi = chain.owasp_asi_ref or compliance_mapper.owasp_asi_ref(scenario.goal_type)
+        owasp_llm = chain.owasp_llm_ref or compliance_mapper.owasp_llm_ref(scenario.goal_type)
+        mitre_atlas_technique = chain.mitre_atlas_technique or compliance_mapper.mitre_atlas_ref(
+            scenario.goal_type
+        )
 
         # Fields shared by every Finding produced from this scenario/chain.
         _base: dict = dict(
@@ -2234,6 +2240,7 @@ class RedteamOrchestrator:
             affected_component=affected,
             owasp_asi_ref=owasp_asi,
             owasp_llm_ref=owasp_llm,
+            mitre_atlas_technique=mitre_atlas_technique,
             attack_steps=step_details,
         )
         # Attach the golden-data baseline (authenticated test account's own data)

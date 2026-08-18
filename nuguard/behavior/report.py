@@ -276,8 +276,9 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
             sev = _norm_sev(findings_group[0].get("severity", ""))
             fid = findings_group[0].get("finding_id", "")
             tool_names = [f.get("affected_component", "?") for f in findings_group]
-            owasp_llm = "LLM08 – Excessive Agency"
-            owasp_asi = "ASI02 – Tool Misuse and Exploitation"
+            owasp_llm = findings_group[0].get("owasp_llm_ref") or ""
+            owasp_asi = findings_group[0].get("owasp_asi_ref") or ""
+            mitre_atlas = findings_group[0].get("mitre_atlas_technique") or ""
             heading = f"### [{sev}] Restricted Action Reachable — '{rule_key}'"
             if fid:
                 heading += f" — {fid}"
@@ -291,10 +292,15 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
                 rem = rem_finding.get("remediation", "")
                 lines.append(f"- `{tn}` — {rem}")
             lines.append("")
-            lines.append(f"**OWASP LLM:** {owasp_llm}")
-            lines.append("")
-            lines.append(f"**OWASP ASI:** {owasp_asi}")
-            lines.append("")
+            if owasp_llm:
+                lines.append(f"**OWASP LLM:** {owasp_llm}")
+                lines.append("")
+            if owasp_asi:
+                lines.append(f"**OWASP ASI:** {owasp_asi}")
+                lines.append("")
+            if mitre_atlas:
+                lines.append(f"**MITRE ATLAS:** {mitre_atlas}")
+                lines.append("")
 
         # Render ungrouped findings individually (BA-001, BA-004, BA-005, etc.)
         for finding in ungrouped_static:
@@ -306,6 +312,7 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
             remediation = finding.get("remediation", "")
             owasp_asi_ref = finding.get("owasp_asi_ref") or ""
             owasp_llm_ref = finding.get("owasp_llm_ref") or ""
+            mitre_atlas_ref = finding.get("mitre_atlas_technique") or ""
             heading = f"### [{sev}] {title}"
             if fid:
                 heading += f" — {fid}"
@@ -323,6 +330,9 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
                 lines.append("")
             if owasp_asi_ref:
                 lines.append(f"**OWASP ASI:** {owasp_asi_ref}")
+                lines.append("")
+            if mitre_atlas_ref:
+                lines.append(f"**MITRE ATLAS:** {mitre_atlas_ref}")
                 lines.append("")
 
     # Dynamic Analysis Results

@@ -1,7 +1,14 @@
-"""Static MITRE ATLAS v2 dataset used by AtlasAnnotatorPlugin.
+"""Shared static MITRE ATLAS v2 dataset, used by analysis/, behavior/, and redteam/.
 
-All data is embedded here so the plugin works fully offline.  When ATLAS
-releases a new version, update ATLAS_VERSION and the dicts below.
+All data is embedded here so lookups work fully offline.  When ATLAS releases a new
+version, update ATLAS_VERSION and the dicts below.
+
+Three lookup tables, one per producer's natural key:
+  - ``NGA_TO_ATLAS``      — analysis/ static rules, keyed by NGA rule_id
+  - ``BA_RULE_TO_ATLAS``  — behavior/ static alignment rules, keyed by BA rule_id
+  - ``GOAL_TYPE_TO_ATLAS``— redteam/ scenarios, keyed by GoalType (coarse fallback;
+    individual scenario builders may set a more specific mitre_atlas_technique literal,
+    which takes precedence over this table)
 
 Sources:
   https://atlas.mitre.org/techniques
@@ -9,6 +16,8 @@ Sources:
   https://atlas.mitre.org/tactics
 """
 from __future__ import annotations
+
+from nuguard.models.exploit_chain import GoalType
 
 ATLAS_VERSION = "v2"
 ATLAS_BASE_URL = "https://atlas.mitre.org"
@@ -515,3 +524,91 @@ DB_ACCESS_KEYWORDS: frozenset[str] = frozenset({
     "dynamodb", "cassandra", "elasticsearch", "table", "schema",
     "record", "persist", "storage",
 })
+
+
+def atlas_technique_label(technique_id: str) -> str:
+    """Return the canonical ``"AML.T0054 – LLM Prompt Injection"``-style label for
+    *technique_id*, or the bare id if it isn't in the catalogue.
+
+    Scenario builders can call this instead of hand-typing labels, so the
+    human-readable name always matches the catalogue entry in ``TECHNIQUES``.
+    """
+    tech = TECHNIQUES.get(technique_id)
+    if tech is None:
+        return technique_id
+    return f"{technique_id} – {tech['technique_name']}"
+
+
+# ---------------------------------------------------------------------------
+# BA-xxx (behavior static alignment rules — nuguard/behavior/alignment.py)
+# ---------------------------------------------------------------------------
+
+BA_RULE_TO_ATLAS: dict[str, list[tuple[str, str]]] = {
+    "BA-001": [("AML.T0037", "HIGH")],   # restricted topic in system prompt
+    "BA-002": [("AML.T0047", "HIGH"), ("AML.T0036", "MEDIUM")],  # risky tool, no guardrail
+    "BA-003": [("AML.T0047", "HIGH")],   # restricted-action tool reachable
+    "BA-004": [("AML.T0037", "HIGH")],   # PII datastore without guardrail
+    "BA-005": [("AML.T0036", "HIGH")],   # no-auth agent, high-priv tool
+    "BA-006": [("AML.T0010", "HIGH"), ("AML.T0048", "MEDIUM")],  # untrusted MCP server, write tool
+    "BA-007": [("AML.T0054", "HIGH")],   # blocked_topics doesn't cover restricted_topics
+    "BA-008": [("AML.T0047", "HIGH")],   # no HITL gate for hitl_triggers
+    "BA-009": [("AML.T0040", "HIGH")],   # AUTH doesn't protect sensitive endpoints/agents
+    "BA-010": [("AML.T0040", "HIGH")],   # high-priv component reachable w/o AUTH/GUARDRAIL
+    "BA-011": [("AML.T0020", "HIGH")],   # DATASTORE write access lacks HITL/auth/guardrail
+    "BA-012": [("AML.T0024", "MEDIUM")],  # sensitive data reaches external MODEL
+    "BA-013": [("AML.T0037", "HIGH")],   # restricted topic in AGENT's PROMPT
+    "BA-014": [("AML.T0054", "MEDIUM")],  # handoff to higher-priv agent w/o boundary
+    "BA-015": [("AML.T0010", "MEDIUM")],  # DEPLOYS path security posture issues
+    "BA-016": [("AML.T0037", "HIGH"), ("AML.T0000", "MEDIUM")],  # API_ENDPOINT returns sensitive data w/o auth
+}
+
+
+def atlas_refs_for_ba_rule(rule_id: str) -> list[tuple[str, str]]:
+    """Return the ATLAS technique refs for a behavior BA-*** *rule_id*, or empty if unmapped."""
+    return BA_RULE_TO_ATLAS.get(rule_id, [])
+
+
+# ---------------------------------------------------------------------------
+# GoalType (redteam scenarios — coarse fallback keyed on the 9-value GoalType
+# enum). Individual scenario builders may set a more specific
+# mitre_atlas_technique literal on the ExploitChain, which takes precedence.
+# ---------------------------------------------------------------------------
+
+GOAL_TYPE_TO_ATLAS: dict[GoalType, list[tuple[str, str]]] = {
+    GoalType.PROMPT_DRIVEN_THREAT: [("AML.T0054", "HIGH"), ("AML.T0051", "HIGH")],
+    GoalType.DATA_EXFILTRATION: [("AML.T0024", "HIGH"), ("AML.T0037", "MEDIUM")],
+    GoalType.PRIVILEGE_ESCALATION: [("AML.T0047", "HIGH"), ("AML.T0036", "MEDIUM")],
+    GoalType.TOOL_ABUSE: [("AML.T0036", "HIGH")],
+    GoalType.POLICY_VIOLATION: [("AML.T0051", "MEDIUM")],
+    GoalType.MCP_TOXIC_FLOW: [("AML.T0010", "HIGH"), ("AML.T0048", "MEDIUM")],
+    GoalType.API_ATTACK: [("AML.T0037", "HIGH"), ("AML.T0000", "MEDIUM")],
+    GoalType.AGENTIC_TRUST_ABUSE: [("AML.T0054", "MEDIUM"), ("AML.T0036", "MEDIUM")],
+    GoalType.RECON_INFERENCE: [("AML.T0000", "HIGH"), ("AML.T0016", "MEDIUM")],
+}
+
+
+def atlas_refs_for_goal(goal_type: GoalType) -> list[tuple[str, str]]:
+    """Return the ATLAS technique refs for a redteam *goal_type*, or empty if unmapped."""
+    return GOAL_TYPE_TO_ATLAS.get(goal_type, [])
+
+
+# ---------------------------------------------------------------------------
+# BehaviorFindingType (behavior dynamic findings — nuguard/behavior/runner.py).
+# Keyed by the plain finding_type string, mirroring BEHAVIOR_FINDING_TYPE_TO_OWASP.
+# ---------------------------------------------------------------------------
+
+BEHAVIOR_FINDING_TYPE_TO_ATLAS: dict[str, list[tuple[str, str]]] = {
+    "CAPABILITY_GAP": [("AML.T0016", "LOW")],
+    "TOOL_CHAIN_BROKEN": [("AML.T0047", "MEDIUM")],
+    "INTENT_MISALIGNMENT": [("AML.T0054", "MEDIUM")],
+    "POLICY_VIOLATION": [("AML.T0051", "MEDIUM")],
+    "SECRET_DISCLOSURE": [("AML.T0024", "HIGH"), ("AML.T0037", "MEDIUM")],
+    "DATA_LEAK": [("AML.T0024", "HIGH"), ("AML.T0037", "MEDIUM")],
+    "DATA_HANDLING_VIOLATION": [("AML.T0037", "HIGH")],
+    "ESCALATION_BYPASS": [("AML.T0047", "HIGH"), ("AML.T0036", "MEDIUM")],
+}
+
+
+def atlas_refs_for_finding_type(finding_type: str) -> list[tuple[str, str]]:
+    """Return the ATLAS technique refs for a behavior dynamic-finding *finding_type*."""
+    return BEHAVIOR_FINDING_TYPE_TO_ATLAS.get(str(finding_type).upper(), [])

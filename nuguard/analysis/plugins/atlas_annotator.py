@@ -7,7 +7,7 @@ weakness:
 Pass 1 — NGA signal mapping
   Runs the NgaRulesPlugin (offline, no network required).  Every NGA-xxx
   finding is enriched with an ``atlas`` block containing matching techniques
-  from the static NGA → ATLAS mapping table in ``_atlas_data.py``.
+  from the static NGA → ATLAS mapping table in ``nuguard.common.control_mappings.atlas``.
 
 Pass 2 — Native ATLAS graph checks
   Directly inspects the SBOM graph for additional structural patterns that
@@ -79,7 +79,9 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any, cast
 
-from nuguard.analysis._atlas_data import (
+from nuguard.analysis.models import AnalysisResult
+from nuguard.analysis.plugin_base import AnalysisPlugin
+from nuguard.common.control_mappings.atlas import (
     ATLAS_VERSION,
     DB_ACCESS_KEYWORDS,
     EXTERNAL_PROVIDERS,
@@ -90,8 +92,6 @@ from nuguard.analysis._atlas_data import (
     TACTICS,
     TECHNIQUES,
 )
-from nuguard.analysis.models import AnalysisResult
-from nuguard.analysis.plugin_base import AnalysisPlugin
 from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
