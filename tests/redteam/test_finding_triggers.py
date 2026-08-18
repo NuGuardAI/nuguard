@@ -700,3 +700,59 @@ def test_goal_type_fallback_used_when_scenario_sets_no_owasp_ref() -> None:
     assert findings[0].owasp_llm_ref == "LLM02:2026"
     assert findings[0].owasp_asi_ref == "ASI10"
     assert findings[0].mitre_atlas_technique is not None
+
+
+def test_affected_component_uses_plain_node_name_not_type_suffixed_label() -> None:
+    """Finding.affected_component must be a plain node name (matching behavior/'s
+    convention) so it lines up with RemediationSynthesizer._node_by_name, which is
+    keyed by plain node.name — not the "name (TYPE)" label used for narrative text.
+    """
+    import uuid
+
+    from nuguard.sbom.models import Node
+    from nuguard.sbom.types import ComponentType
+
+    node_id = uuid.uuid5(uuid.NAMESPACE_URL, "node-1")
+    node = Node(
+        id=node_id,
+        name="Fintech App Assistant",
+        component_type=ComponentType.AGENT,
+        confidence=0.9,
+    )
+    sbom = AiSbomDocument(target="unit-test", nodes=[node], edges=[])
+    orchestrator = RedteamOrchestrator(
+        sbom=sbom,
+        target_url="http://localhost:3000",
+        finding_triggers=RedteamFindingTriggers(
+            canary_hits=True,
+            policy_violations=False,
+            critical_success_hits=False,
+            any_inject_success=False,
+        ),
+    )
+    scenario = AttackScenario(
+        scenario_id="scn-1",
+        goal_type=GoalType.DATA_EXFILTRATION,
+        scenario_type=ScenarioType.DIRECT_PII_EXTRACTION,
+        title="Extract PHI",
+        description="Attempt to exfiltrate sensitive medical data",
+        target_node_ids=[str(node_id)],
+    )
+    chain = ExploitChain(
+        chain_id="chain-1",
+        goal_type=GoalType.DATA_EXFILTRATION,
+        scenario_type=ScenarioType.DIRECT_PII_EXTRACTION,
+        sbom_path=[str(node_id)],
+    )
+    step_result = _step_result(success=False, canary_hits=["PATIENT_ID_123"])
+
+    findings = orchestrator._build_findings(
+        scenario=scenario,
+        chain=chain,
+        step_results=[step_result],
+        step_details=orchestrator._build_step_details([step_result]),
+    )
+
+    assert len(findings) == 1
+    assert findings[0].affected_component == "Fintech App Assistant"
+    assert "(AGENT)" not in findings[0].affected_component

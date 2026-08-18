@@ -86,7 +86,7 @@ def _make_record() -> ScenarioRecord:
         scenario_type="prompt_injection",
         description="test scenario",
         impact_score=7.0,
-        affected="Agent (AGENT)",
+        affected="Agent",
         chain_status="completed",
         had_finding=False,
     )

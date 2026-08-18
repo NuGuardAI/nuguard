@@ -645,11 +645,19 @@ class RedteamOrchestrator:
         # Verbose per-scenario records — populated regardless of whether a finding was raised
         self.scenario_records: list[ScenarioRecord] = []
         # Node lookup: str(id) → "name (TYPE)" — use str() so UUID objects and
-        # string IDs both resolve correctly against scenario.target_node_ids
+        # string IDs both resolve correctly against scenario.target_node_ids.
+        # For narrative/diagnostic text only (log lines, sbom_path_descriptions) —
+        # NOT for Finding.affected_component, which must be a plain name so it
+        # matches RemediationSynthesizer._node_by_name (keyed by node.name).
         self._node_label: dict[str, str] = {
             str(node.id): f"{node.name} ({node.component_type.value})"
             for node in sbom.nodes
             if node.id
+        }
+        # Plain-name counterpart of _node_label, for Finding.affected_component /
+        # ScenarioRecord.affected — matches behavior/'s convention of no type suffix.
+        self._node_name: dict[str, str] = {
+            str(node.id): node.name for node in sbom.nodes if node.id
         }
         # LLM output attributes — populated by run()
         self.llm_executive_summary: str | None = None
@@ -1425,7 +1433,7 @@ class RedteamOrchestrator:
         ) -> tuple[list[Finding], tuple[str, str, bool], ScenarioRecord]:
             nonlocal consecutive_unavailable
             affected = ", ".join(
-                self._node_label.get(nid, nid) for nid in scenario.target_node_ids[:2]
+                self._node_name.get(nid, nid) for nid in scenario.target_node_ids[:2]
             )
 
             def _skipped_record(status: str) -> ScenarioRecord:
@@ -2212,7 +2220,7 @@ class RedteamOrchestrator:
         # rather than losing attribution entirely.
         _node_ids_for_label = scenario.target_node_ids[:2] or chain.sbom_path[:2]
         affected = ", ".join(
-            self._node_label.get(nid, nid) for nid in _node_ids_for_label
+            self._node_name.get(nid, nid) for nid in _node_ids_for_label
         )
         sbom_path_descriptions = [
             self._node_label.get(nid, nid) for nid in chain.sbom_path

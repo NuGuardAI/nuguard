@@ -232,8 +232,20 @@ def _render_artefact(lines: list[str], art: Any) -> None:
         lines.append("")
 
 
+_PRIORITY_ORDER: dict[str, int] = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+
+
+def _priority_rank(art: Any) -> int:
+    """Sort key for a RemediationArtefact's priority — lower sorts first (more urgent)."""
+    return _PRIORITY_ORDER.get(str(getattr(art, "priority", "")).lower(), len(_PRIORITY_ORDER))
+
+
 def render_remediation_plan_section(lines: list[str], remediation_plan: list) -> None:
-    """Append a ``## Remediation Plan`` section to *lines*, grouped by SBOM node."""
+    """Append a ``## Remediation Plan`` section to *lines*, grouped by SBOM node.
+
+    Component groups and the artefacts within each group are ordered by priority
+    (critical → high → medium → low) so "Apply in priority order" is actually true.
+    """
     lines.append("## Remediation Plan")
     lines.append("")
     lines.append(
@@ -246,8 +258,12 @@ def render_remediation_plan_section(lines: list[str], remediation_plan: list) ->
     for art in remediation_plan:
         by_component.setdefault(art.component, []).append(art)
 
-    for comp, arts in by_component.items():
+    ordered_components = sorted(
+        by_component.items(), key=lambda kv: min(_priority_rank(a) for a in kv[1])
+    )
+
+    for comp, arts in ordered_components:
         lines.append(f"### {comp}")
         lines.append("")
-        for art in arts:
+        for art in sorted(arts, key=_priority_rank):
             _render_artefact(lines, art)

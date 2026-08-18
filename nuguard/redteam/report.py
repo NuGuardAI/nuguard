@@ -203,6 +203,8 @@ def to_markdown(
 
     if not findings:
         lines += ["_No findings — scan complete._", ""]
+        if remediation_plan:
+            render_remediation_plan_section(lines, remediation_plan)
         return "\n".join(lines)
 
     for f in sorted(findings, key=lambda x: list(Severity).index(x.severity)):

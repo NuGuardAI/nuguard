@@ -666,38 +666,21 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
             render_finding_block(lines, finding, heading_level="###")
             _render_behavior_attack_steps(lines, finding)
 
-    # Recommendations & Remediation Plan — merged into a single section
-    if result.recommendations or result.remediation_plan:
-        lines.append("## Recommendations & Remediation Plan")
+    # Recommendations — behavior-specific, no redteam equivalent
+    if result.recommendations:
+        lines.append("## Recommendations")
         lines.append("")
-        if result.recommendations:
-            for rec in result.recommendations:
-                lines.append(f"### [{rec.priority.upper()}] {rec.recommendation_type}: {rec.description}")
-                if rec.component and rec.component != "unknown":
-                    lines.append(f"*Component*: {rec.component}")
-                lines.append("")
-                lines.append(f"*Rationale*: {rec.rationale}")
-                lines.append("")
-        if result.remediation_plan:
-            if result.recommendations:
-                lines.append("### Remediation Artefacts")
-                lines.append("")
-                lines.append(
-                    "Concrete, SBOM-node-specific remediations generated from the findings "
-                    "above. Apply in priority order."
-                )
-                lines.append("")
-                from nuguard.output.report_shared import _render_artefact
-                by_component: dict[str, list] = {}
-                for art in result.remediation_plan:
-                    by_component.setdefault(art.component, []).append(art)
-                for comp, arts in by_component.items():
-                    lines.append(f"#### {comp}")
-                    lines.append("")
-                    for art in arts:
-                        _render_artefact(lines, art)
-            else:
-                render_remediation_plan_section(lines, result.remediation_plan)
+        for rec in result.recommendations:
+            lines.append(f"### [{rec.priority.upper()}] {rec.recommendation_type}: {rec.description}")
+            if rec.component and rec.component != "unknown":
+                lines.append(f"*Component*: {rec.component}")
+            lines.append("")
+            lines.append(f"*Rationale*: {rec.rationale}")
+            lines.append("")
+
+    # Remediation Plan — same shared renderer redteam uses, for a consistent format
+    if result.remediation_plan:
+        render_remediation_plan_section(lines, result.remediation_plan)
 
     if getattr(meta, "verbose", False) and _scenario_details:
         lines.append("## Diagnostics")
