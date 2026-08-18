@@ -56,6 +56,12 @@ jobs:
       - name: Install dependencies
         run: uv sync --dev --extra mcp
 
+      # Semgrep is an optional runtime scanner dependency, but Go rule-behaviour
+      # tests need the executable. Pin the version used for local validation so
+      # CI does not silently drift onto an incompatible Semgrep release.
+      - name: Install Semgrep for rule-behaviour tests
+        run: uv pip install "semgrep==1.172.0"
+
       - name: Run package unit tests
         run: uv run pytest nuguard/ -q
 
