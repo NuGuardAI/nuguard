@@ -342,6 +342,96 @@ class TestSharedTargetBlock:
         """)
         assert flat["target_endpoint"] == "/api/redteam"
 
+    def test_redteam_endpoint_alias_overrides_shared_endpoint(self) -> None:
+        """The shared ``target:`` block accepts both ``endpoint:`` and
+        ``target_endpoint:`` as aliases for the same field. The redteam
+        override block must accept the same alias so users who write
+        ``redteam.endpoint:`` (the canonical form documented in
+        nuguard.yaml.example line 47) actually see their override take
+        effect. Previously the alias was silently ignored."""
+        flat = _flatten("""
+            target:
+              url: http://shared.test
+              endpoint: /api/chat
+            redteam:
+              endpoint: /api/redteam
+        """)
+        assert flat["target_endpoint"] == "/api/redteam"
+
+    def test_behavior_endpoint_alias_overrides_shared_endpoint(self) -> None:
+        """Same contract for the behavior override block: ``behavior.endpoint:``
+        must override the shared ``target.endpoint:`` value, mirroring the
+        alias-pair behavior the shared block already provides."""
+        flat = _flatten("""
+            target:
+              url: http://shared.test
+              endpoint: /api/chat
+            behavior:
+              endpoint: /api/behavior
+        """)
+        assert flat["behavior_config"]["target_endpoint"] == "/api/behavior"
+
+    def test_redteam_endpoint_wins_over_target_endpoint_when_both_set(self) -> None:
+        """Precedence mirrors the shared ``target:`` block: ``endpoint`` wins
+        over ``target_endpoint`` when both keys are set in the same block.
+
+        Reviewer nit on PR #257: the previous override block used the
+        inverted order (``target_endpoint`` wins), which was inconsistent
+        with the shared block. When a user explicitly sets both keys,
+        ``endpoint`` (the canonical form documented in nuguard.yaml.example)
+        must take precedence.
+        """
+        flat = _flatten("""
+            target:
+              url: http://shared.test
+              endpoint: /api/chat
+            redteam:
+              endpoint: /api/redteam-canonical
+              target_endpoint: /api/redteam-alias
+        """)
+        assert flat["target_endpoint"] == "/api/redteam-canonical"
+
+    def test_behavior_endpoint_wins_over_target_endpoint_when_both_set(self) -> None:
+        """Same precedence contract for the behavior override block: when
+        both ``behavior.endpoint`` and ``behavior.target_endpoint`` are set,
+        ``endpoint`` (canonical) wins. Mirrors the shared ``target:`` block.
+        """
+        flat = _flatten("""
+            target:
+              url: http://shared.test
+              endpoint: /api/chat
+            behavior:
+              endpoint: /api/behavior-canonical
+              target_endpoint: /api/behavior-alias
+        """)
+        assert flat["behavior_config"]["target_endpoint"] == "/api/behavior-canonical"
+
+    def test_redteam_target_endpoint_used_when_endpoint_absent(self) -> None:
+        """The long-form ``target_endpoint:`` still works as an alias when
+        ``endpoint:`` is absent — we only flipped the precedence when both
+        are present, not the alias resolution itself.
+        """
+        flat = _flatten("""
+            target:
+              url: http://shared.test
+            redteam:
+              target_endpoint: /api/redteam-long
+        """)
+        assert flat["target_endpoint"] == "/api/redteam-long"
+
+    def test_behavior_target_endpoint_used_when_endpoint_absent(self) -> None:
+        """Long-form ``behavior.target_endpoint:`` still wins the shared
+        ``target.endpoint:`` value when ``behavior.endpoint:`` is absent.
+        """
+        flat = _flatten("""
+            target:
+              url: http://shared.test
+              endpoint: /api/chat
+            behavior:
+              target_endpoint: /api/behavior-long
+        """)
+        assert flat["behavior_config"]["target_endpoint"] == "/api/behavior-long"
+
     def test_shared_chat_payload_key_propagates(self) -> None:
         flat = _flatten("""
             target:

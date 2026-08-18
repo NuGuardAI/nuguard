@@ -1,0 +1,244 @@
+# NuGuard AI - Environment Smoke Tests
+#
+# Verifies that a deployed environment is correctly wired end-to-end:
+#   1. Gateway /health responds 200
+#   2. CORS headers allow the SWA frontend origin
+#   3. Frontend SWA returns 200 (app is reachable)
+#   4. Auth endpoint rejects unauthenticated requests (403/401 — not 502/404)
+#   5. Key API routes are routed correctly through the gateway
+#
+# Trigger manually from the Actions tab, or automatically on pushes to
+# develop/main (using each branch's latest workflow file).
+
+name: Smoke Tests
+
+on:
+  push:
+    branches: [main, develop]
+
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to test'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+          - dev
+          - staging
+          - prod
+
+permissions:
+  contents: read
+
+jobs:
+  # ============================================================
+  # Resolve environment URLs from trigger context
+  # ============================================================
+  resolve-env:
+    name: Resolve Environment
+    runs-on: ubuntu-latest
+    outputs:
+      api_url: ${{ steps.urls.outputs.api_url }}
+      frontend_url: ${{ steps.urls.outputs.frontend_url }}
+      env_name: ${{ steps.urls.outputs.env_name }}
+    steps:
+      - name: Determine target environment
+        id: urls
+        run: |
+          # workflow_dispatch: use the explicit input
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            ENV="${{ github.event.inputs.environment }}"
+          # push on develop -> dev; push on main -> staging
+          elif [[ "${{ github.ref_name }}" == "develop" ]]; then
+            ENV="dev"
+          elif [[ "${{ github.ref_name }}" == "main" ]]; then
+            ENV="staging"
+          else
+            echo "Unsupported branch/event combination: event=${{ github.event_name }}, ref=${{ github.ref_name }}"
+            exit 1
+          fi
+
+          case "$ENV" in
+            dev)
+              echo "api_url=https://api-dev.nuguard.ai"       >> $GITHUB_OUTPUT
+              echo "frontend_url=https://dev.nuguard.ai"      >> $GITHUB_OUTPUT
+              echo "env_name=development"                      >> $GITHUB_OUTPUT
+              ;;
+            staging)
+              echo "api_url=https://api-staging.nuguard.ai"   >> $GITHUB_OUTPUT
+              echo "frontend_url=https://staging.nuguard.ai"  >> $GITHUB_OUTPUT
+              echo "env_name=staging"                         >> $GITHUB_OUTPUT
+              ;;
+            prod)
+              echo "api_url=https://api.nuguard.ai"           >> $GITHUB_OUTPUT
+              echo "frontend_url=https://app.nuguard.ai"      >> $GITHUB_OUTPUT
+              echo "env_name=production"                      >> $GITHUB_OUTPUT
+              ;;
+          esac
+
+  # ============================================================
+  # Smoke Tests
+  # ============================================================
+  smoke:
+    name: Smoke Tests (${{ needs.resolve-env.outputs.env_name }})
+    runs-on: ubuntu-latest
+    needs: resolve-env
+
+    env:
+      API_URL: ${{ needs.resolve-env.outputs.api_url }}
+      FRONTEND_URL: ${{ needs.resolve-env.outputs.frontend_url }}
+      ENV_NAME: ${{ needs.resolve-env.outputs.env_name }}
+
+    steps:
+      - name: Wait for services to stabilise
+        # Give ACA replicas time to become ready after a fresh deploy
+        run: sleep 20
+
+      - name: Workflow diagnostics
+        run: |
+          echo "Workflow ref: ${{ github.ref }}"
+          echo "Workflow SHA: ${{ github.sha }}"
+          echo "Event: ${{ github.event_name }}"
+          echo "Ref name: ${{ github.ref_name }}"
+          echo "API URL: $API_URL"
+          echo "Frontend URL: $FRONTEND_URL"
+          echo "Auth probe path: $API_URL/api/data/auth/me"
+
+      # ----------------------------------------------------------
+      # Test 1: Gateway health endpoint
+      # ----------------------------------------------------------
+      - name: '[1] Gateway health check'
+        run: |
+          echo "Testing $API_URL/health ..."
+          RESPONSE=$(curl -sf --max-time 15 "$API_URL/health")
+          echo "Response: $RESPONSE"
+          echo "$RESPONSE" | grep -q '"status"' || (echo "FAIL: no status field in response" && exit 1)
+          echo "$RESPONSE" | grep -q 'healthy'  || (echo "FAIL: status is not healthy" && exit 1)
+          echo "PASS: gateway health OK"
+
+      # ----------------------------------------------------------
+      # Test 2: CORS — preflight from the SWA frontend origin
+      # ----------------------------------------------------------
+      - name: '[2] CORS preflight from frontend origin'
+        run: |
+          echo "Testing CORS preflight: $FRONTEND_URL → $API_URL/api/data/auth/login ..."
+          HEADERS=$(curl -si --max-time 15 \
+            -X OPTIONS \
+            -H "Origin: $FRONTEND_URL" \
+            -H "Access-Control-Request-Method: POST" \
+            -H "Access-Control-Request-Headers: Content-Type,Authorization" \
+            "$API_URL/api/data/auth/login")
+          echo "$HEADERS"
+
+          # The response must include Access-Control-Allow-Origin matching the frontend
+          echo "$HEADERS" | grep -i "access-control-allow-origin" | grep -q "$FRONTEND_URL" \
+            || (echo "FAIL: CORS header missing or wrong origin" && exit 1)
+
+          # Must also allow credentials (needed for httpOnly refresh token cookie)
+          echo "$HEADERS" | grep -i "access-control-allow-credentials" | grep -q "true" \
+            || (echo "FAIL: Access-Control-Allow-Credentials: true missing" && exit 1)
+
+          echo "PASS: CORS preflight OK"
+
+      # ----------------------------------------------------------
+      # Test 3: Frontend SWA is reachable and serves HTML
+      # ----------------------------------------------------------
+      - name: '[3] Frontend reachability'
+        run: |
+          echo "Testing $FRONTEND_URL ..."
+          BODY=$(curl -sf --max-time 15 -L "$FRONTEND_URL")
+          echo "$BODY" | grep -q '<html' || (echo "FAIL: response does not look like HTML" && exit 1)
+          echo "PASS: frontend is reachable"
+
+      # ----------------------------------------------------------
+      # Test 4: Unauthenticated API request gets 401/403, not 404/502
+      # ----------------------------------------------------------
+      - name: '[4] Auth guard returns 401 (not 502/404)'
+        run: |
+          echo "Testing unauthenticated GET $API_URL/api/data/auth/me ..."
+          HTTP_CODE=$(curl -so /dev/null -w "%{http_code}" --max-time 15 \
+            -H "Origin: $FRONTEND_URL" \
+            "$API_URL/api/data/auth/me")
+          echo "HTTP status: $HTTP_CODE"
+          [ "$HTTP_CODE" = "401" ] || [ "$HTTP_CODE" = "403" ] \
+            || (echo "FAIL: expected 401/403 but got $HTTP_CODE" && exit 1)
+          echo "PASS: auth guard is active"
+
+      # ----------------------------------------------------------
+      # Test 5: Gateway routing — /api/data/ reaches data-service
+      # ----------------------------------------------------------
+      - name: '[5] Gateway routes /api/data/ to data-service'
+        run: |
+          echo "Testing $API_URL/api/data/health ..."
+          RESPONSE=$(curl -sf --max-time 15 "$API_URL/api/data/health")
+          echo "Response: $RESPONSE"
+          echo "$RESPONSE" | grep -q 'data-service' \
+            || (echo "FAIL: data-service not identified in health response" && exit 1)
+          echo "PASS: /api/data/ routes correctly"
+
+      # ----------------------------------------------------------
+      # Test 6: Gateway routing — /api/assets/ reaches ai-asset-service
+      # The service exposes /health at container level only; through the
+      # gateway we probe an authenticated endpoint and expect 401 (not 502).
+      # ----------------------------------------------------------
+      - name: '[6] Gateway routes /api/assets/ to ai-asset-service'
+        run: |
+          echo "Testing $API_URL/api/assets/scans (unauthenticated → expect 401) ..."
+          HTTP_CODE=$(curl -so /dev/null -w "%{http_code}" --max-time 15 \
+            "$API_URL/api/assets/scans")
+          echo "HTTP status: $HTTP_CODE"
+          [ "$HTTP_CODE" = "401" ] || [ "$HTTP_CODE" = "403" ] \
+            || (echo "FAIL: expected 401/403 but got $HTTP_CODE (502=gateway can't reach service)" && exit 1)
+          echo "PASS: /api/assets/ routes correctly"
+
+      # ----------------------------------------------------------
+      # Test 7: Gateway routing — /api/compliance/ reaches assessment-service
+      # Same approach: probe an authenticated endpoint and expect 401 (not 502).
+      # ----------------------------------------------------------
+      - name: '[7] Gateway routes /api/compliance/ to assessment-service'
+        run: |
+          echo "Testing $API_URL/api/compliance/assessments (unauthenticated → expect 401) ..."
+          HTTP_CODE=$(curl -so /dev/null -w "%{http_code}" --max-time 15 \
+            "$API_URL/api/compliance/assessments")
+          echo "HTTP status: $HTTP_CODE"
+          [ "$HTTP_CODE" = "401" ] || [ "$HTTP_CODE" = "403" ] \
+            || (echo "FAIL: expected 401/403 but got $HTTP_CODE (502=gateway can't reach service)" && exit 1)
+          echo "PASS: /api/compliance/ routes correctly"
+
+      # ----------------------------------------------------------
+      # Test 8: Gateway routing — /api/behavior/ reaches behavior-service
+      # ----------------------------------------------------------
+      - name: '[8] Gateway routes /api/behavior/ to behavior-service'
+        run: |
+          echo "Testing $API_URL/api/behavior/scenarios (unauthenticated → expect 401) ..."
+          HTTP_CODE=$(curl -so /dev/null -w "%{http_code}" --max-time 15 \
+            "$API_URL/api/behavior/scenarios")
+          echo "HTTP status: $HTTP_CODE"
+          [ "$HTTP_CODE" = "401" ] || [ "$HTTP_CODE" = "403" ] \
+            || (echo "FAIL: expected 401/403 but got $HTTP_CODE (502=gateway can't reach service)" && exit 1)
+          echo "PASS: /api/behavior/ routes correctly"
+
+      # ----------------------------------------------------------
+      # Test 9: NGINX_FRONTEND_URL=off — non-API routes return 404, not 502
+      # ----------------------------------------------------------
+      - name: '[9] Non-API gateway route returns 404 not 502'
+        run: |
+          echo "Testing that the gateway does not 502 on non-API paths ..."
+          HTTP_CODE=$(curl -so /dev/null -w "%{http_code}" --max-time 15 \
+            "$API_URL/some-random-path-that-does-not-exist")
+          echo "HTTP status: $HTTP_CODE"
+          [ "$HTTP_CODE" = "404" ] \
+            || (echo "FAIL: expected 404 but got $HTTP_CODE (502 = NGINX_FRONTEND_URL loopback bug)" && exit 1)
+          echo "PASS: gateway returns 404 for non-API paths (NGINX_FRONTEND_URL=off is working)"
+
+      # ----------------------------------------------------------
+      # Summary
+      # ----------------------------------------------------------
+      - name: Summary
+        if: always()
+        run: |
+          echo ""
+          echo "Smoke test results for: $ENV_NAME"
+          echo "  API:      $API_URL"
+          echo "  Frontend: $FRONTEND_URL"
