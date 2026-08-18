@@ -15,6 +15,9 @@ from nuguard.sbom.adapters.csharp import (
     CSharpMLNetAdapter,
     CSharpSemanticKernelAdapter,
 )
+from nuguard.sbom.adapters.csharp import (
+    _source as csharp_source,
+)
 from nuguard.sbom.adapters.csharp._source import (
     find_calls,
     string_constants,
@@ -914,3 +917,140 @@ builder.Plugins.AddFromType<SearchPlugin>(
     }
 
     assert {"Weather", "Prompts", "Search"} <= tools
+
+
+def test_find_calls_name_filter_only_parses_selected_arguments(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    parse_count = 0
+    original = csharp_source.parse_arguments
+
+    def counting_parse_arguments(
+        value: str,
+    ) -> tuple[dict[str, str], list[str]]:
+        nonlocal parse_count
+        parse_count += 1
+        return original(value)
+
+    monkeypatch.setattr(
+        csharp_source,
+        "parse_arguments",
+        counting_parse_arguments,
+    )
+    source = "\n".join(f"service.Call{index}(value);" for index in range(250))
+    source += "\nvar model = ml.BinaryClassification.Trainers.Sdca().Fit(data);"
+
+    calls = csharp_source.find_calls(
+        source,
+        {"Fit"},
+    )
+
+    assert len(calls) == 1
+    assert parse_count == 1
+    assert calls[0].receiver == "ml.BinaryClassification.Trainers.Sdca()"
+    assert calls[0].assigned_to == "model"
+
+
+@pytest.mark.parametrize(
+    "binding_attribute",
+    [
+        "FromForm",
+        "FromHeader",
+        "FromQuery",
+        "FromRoute",
+    ],
+)
+def test_aspnet_non_body_primitive_binding_is_not_request_body(
+    binding_attribute: str,
+) -> None:
+    source = f"""using Microsoft.AspNetCore.Mvc;
+[ApiController]
+[Route("api/chat")]
+public class ChatController : ControllerBase
+{{
+    [HttpPost]
+    public string Complete(
+        [{binding_attribute}] string prompt) =>
+        client.CompleteChat(prompt);
+}}
+"""
+
+    endpoint = _by_type(
+        _extract(
+            CSharpAspNetCoreAdapter(),
+            source,
+        ),
+        ComponentType.API_ENDPOINT,
+    )[0]
+
+    assert "request_body_schema" not in endpoint.metadata
+    assert "chat_payload_key" not in endpoint.metadata
+
+
+def test_aspnet_query_bound_complex_type_is_not_request_body() -> None:
+    source = """using Microsoft.AspNetCore.Mvc;
+public record ChatRequest(string Prompt);
+[ApiController]
+[Route("api/chat")]
+public class ChatController : ControllerBase
+{
+    [HttpPost]
+    public string Complete(
+        [FromQuery] ChatRequest request) =>
+        client.CompleteChat(request.Prompt);
+}
+"""
+
+    endpoint = _by_type(
+        _extract(
+            CSharpAspNetCoreAdapter(),
+            source,
+        ),
+        ComponentType.API_ENDPOINT,
+    )[0]
+
+    assert "request_body_schema" not in endpoint.metadata
+    assert "chat_payload_key" not in endpoint.metadata
+
+
+def test_minimal_api_unattributed_primitive_is_not_request_body() -> None:
+    source = """using Microsoft.AspNetCore.Builder;
+var app = WebApplication.CreateBuilder(args).Build();
+app.MapPost(
+    "/chat",
+    (string prompt) =>
+        client.CompleteChat(prompt));
+"""
+
+    endpoint = _by_type(
+        _extract(
+            CSharpAspNetCoreAdapter(),
+            source,
+        ),
+        ComponentType.API_ENDPOINT,
+    )[0]
+
+    assert "request_body_schema" not in endpoint.metadata
+    assert "chat_payload_key" not in endpoint.metadata
+
+
+def test_minimal_api_from_body_primitive_remains_request_body() -> None:
+    source = """using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Mvc;
+var app = WebApplication.CreateBuilder(args).Build();
+app.MapPost(
+    "/chat",
+    ([FromBody] string prompt) =>
+        client.CompleteChat(prompt));
+"""
+
+    endpoint = _by_type(
+        _extract(
+            CSharpAspNetCoreAdapter(),
+            source,
+        ),
+        ComponentType.API_ENDPOINT,
+    )[0]
+
+    assert endpoint.metadata["request_body_schema"] == {"prompt": "string"}
+    assert endpoint.metadata["chat_payload_key"] == "prompt"
