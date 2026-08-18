@@ -204,6 +204,21 @@ async def test_target_unavailable_abort():
     assert result.succeeded is False
 
 
+@pytest.mark.asyncio
+async def test_consecutive_http_error_responses_abort() -> None:
+    """3 consecutive [HTTP 405]-style responses (no exception raised) must abort
+    the conversation before max_turns, tagged as a target-health failure."""
+    conv = _make_conv(max_turns=20)
+    client = _make_client(response="[HTTP 405]")
+    director = _make_director()
+    executor = _make_executor(client=client, director=director)
+
+    result = await executor.run(conv, _make_session())
+    assert result.abort_reason == "consecutive_request_failures"
+    assert result.succeeded is False
+    assert len(result.turns) < 20
+
+
 # ── Executor: canary hit overrides progress ───────────────────────────────────
 
 

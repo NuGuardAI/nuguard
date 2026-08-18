@@ -516,3 +516,16 @@ def test_to_markdown_remediation_plan_is_separate_section_matching_redteam_forma
     assert "### Remediation Artefacts" not in md
     # Remediation Plan must come after Recommendations, as two sibling H2 sections.
     assert md.index("## Recommendations") < md.index("## Remediation Plan")
+
+
+def test_to_markdown_aborted_endpoint_unreachable_shows_note():
+    """The pre-flight-abort outcome must render its own explanatory banner
+    (previously silently unrecognized, indistinguishable from a normal
+    'no findings' report)."""
+    result = _make_result(
+        static_findings=[{"finding_id": "F-1", "severity": "high", "title": "s1", "description": "d"}],
+        dynamic_scan_outcome="aborted_endpoint_unreachable",
+    )
+    md = to_markdown(result)
+    assert "aborted before any scenario ran" in md
+    assert "target_endpoint" in md

@@ -390,6 +390,7 @@ class BehaviorAnalyzer:
         elif _dynamic_run_result is not None and _dynamic_run_result.scan_outcome in (
             "aborted_target_unavailable",
             "inconclusive_target_errors",
+            "aborted_endpoint_unreachable",
         ):
             # No findings from either phase; propagate target-health outcome from runner
             result.scan_outcome = _dynamic_run_result.scan_outcome

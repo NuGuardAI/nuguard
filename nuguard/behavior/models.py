@@ -332,9 +332,10 @@ class BehaviorAnalysisResult(BaseModel):
 
     dynamic_scan_outcome: str | None = None
     """Outcome from the dynamic runner phase alone (before static findings override it).
-    Set to ``aborted_target_unavailable`` or ``inconclusive_target_errors`` when the
-    dynamic phase encountered target errors, even if static findings changed the final
-    ``scan_outcome``.
+    Set to ``aborted_target_unavailable``, ``inconclusive_target_errors``, or
+    ``aborted_endpoint_unreachable`` (pre-flight check failed before any scenario ran)
+    when the dynamic phase encountered target errors, even if static findings changed
+    the final ``scan_outcome``.
     """
 
     @computed_field  # type: ignore[misc]

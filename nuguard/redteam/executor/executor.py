@@ -530,6 +530,7 @@ class AttackExecutor:
                     )
                     self._client.reset_circuit_breaker()
                     chain.status = "aborted"
+                    chain.abort_reason = "target_unavailable"
                     _step_aborted = True
                     break
                 _resp_lower_step = result.response.lower()
@@ -585,6 +586,7 @@ class AttackExecutor:
                         chain.chain_id, _consecutive_failures,
                     )
                     chain.status = "aborted"
+                    chain.abort_reason = "consecutive_request_failures"
                     break
             else:
                 _consecutive_failures = 0
@@ -681,6 +683,7 @@ class AttackExecutor:
                         )
                         self._client.reset_circuit_breaker()
                         chain.status = "aborted"
+                        chain.abort_reason = "target_unavailable"
                         break
                     last_response = result.response
                     if result.success_signal_found:

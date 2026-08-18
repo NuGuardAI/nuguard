@@ -132,11 +132,22 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
     lines.append(f"- **Scan Outcome**: `{result.scan_outcome}`")
     lines.append(f"- **Run ID**: `{result.run_id}`")
     _dyn_outcome = getattr(result, "dynamic_scan_outcome", None)
-    if result.static_findings and _dyn_outcome in ("aborted_target_unavailable", "inconclusive_target_errors"):
+    if result.static_findings and _dyn_outcome in (
+        "aborted_target_unavailable",
+        "inconclusive_target_errors",
+        "aborted_endpoint_unreachable",
+    ):
         if _dyn_outcome == "aborted_target_unavailable":
             lines.append(
                 "> **Note:** Dynamic scenario testing was aborted — the target was unreachable. "
                 "All scenario probes returned HTTP errors. Findings below are from static analysis only."
+            )
+        elif _dyn_outcome == "aborted_endpoint_unreachable":
+            lines.append(
+                "> **Note:** Dynamic scenario testing was aborted before any scenario ran — "
+                "the configured chat endpoint returned HTTP 404/405. Fix `target_endpoint` in "
+                "nuguard.yaml or remove it to allow fallback discovery. Findings below are from "
+                "static analysis only."
             )
         else:
             lines.append(

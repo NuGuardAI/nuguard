@@ -277,9 +277,19 @@ def _compute_scan_outcome(
         with the default ``strict=False`` the outcome falls back to ``no_findings``
         so that existing CI pipelines are not disrupted.
     ``aborted_target_unavailable``
-        Every executed scenario has ``chain_status == "aborted"`` or ``"skipped"``
-        (the circuit breaker tripped), indicating the target was unreachable.
+        Every executed scenario has ``chain_status`` of ``"aborted"``, ``"skipped"``,
+        or a target-health-tagged abort (``"aborted:target_unavailable"`` /
+        ``"aborted:consecutive_request_failures"``) — the circuit breaker tripped,
+        indicating the target was unreachable or structurally broken. A guided
+        conversation aborting for a legitimate reason (``"aborted:max_turns"``,
+        ``"aborted:hard_refusal"``) does NOT count toward this.
     """
+    _HEALTH_ABORT_STATUSES = (
+        "aborted",
+        "skipped",
+        "aborted:target_unavailable",
+        "aborted:consecutive_request_failures",
+    )
     if findings:
         def _sev(f: object) -> str:
             s = getattr(f, "severity", None)
@@ -292,7 +302,7 @@ def _compute_scan_outcome(
         return "findings"
 
     # Check for full abort (circuit breaker fired on every scenario)
-    if records and all(r.chain_status in ("aborted", "skipped") for r in records):
+    if records and all(r.chain_status in _HEALTH_ABORT_STATUSES for r in records):
         return "aborted_target_unavailable"
 
     if strict and records:
@@ -1509,6 +1519,11 @@ class RedteamOrchestrator:
                     if self._verify_findings and new_findings:
                         await self._verify_findings_probe(new_findings, step_details, executor, session)
                     had_finding = bool(new_findings)
+                    _chain_status = (
+                        f"aborted:{chain.abort_reason}"
+                        if chain.status == "aborted" and chain.abort_reason
+                        else chain.status
+                    )
                     record = ScenarioRecord(
                         title=scenario.title,
                         goal_type=scenario.goal_type.value,
@@ -1516,7 +1531,7 @@ class RedteamOrchestrator:
                         description=scenario.description,
                         impact_score=scenario.impact_score,
                         affected=affected,
-                        chain_status=chain.status,
+                        chain_status=_chain_status,
                         had_finding=had_finding,
                         steps=step_details,
                         duration_s=time.perf_counter() - _t0,
@@ -1591,7 +1606,34 @@ class RedteamOrchestrator:
                 _timeout = self._scenario_timeout if self._scenario_timeout > 0 else None
                 try:
                     result = await asyncio.wait_for(_execute_body(), timeout=_timeout)
-                    consecutive_unavailable = 0
+                    # A scenario that completed without raising can still signal a
+                    # structurally broken target — e.g. every step got "[HTTP 405]"
+                    # and the per-chain/per-conversation circuit breaker aborted it
+                    # internally (chain_status "aborted:target_unavailable" /
+                    # "aborted:consecutive_request_failures"). Count that the same
+                    # as a raised TargetUnavailableError for the run-level breaker
+                    # below, instead of resetting as if the scenario ran cleanly.
+                    _record = result[2]
+                    if getattr(_record, "chain_status", "") in (
+                        "aborted:target_unavailable",
+                        "aborted:consecutive_request_failures",
+                    ):
+                        consecutive_unavailable += 1
+                        if consecutive_unavailable >= _ABORT_THRESHOLD:
+                            _log.error(
+                                "Target endpoint structurally failing %d consecutive "
+                                "scenarios (chain_status=%s) — aborting remaining scenarios.",
+                                consecutive_unavailable, _record.chain_status,
+                            )
+                            abort_event.set()
+                        else:
+                            _log.warning(
+                                "Target scenario failed with a health-related abort "
+                                "(%d/%d) — continuing. chain_status=%s",
+                                consecutive_unavailable, _ABORT_THRESHOLD, _record.chain_status,
+                            )
+                    else:
+                        consecutive_unavailable = 0
                     # Record executed nodes in coverage tracker.
                     if self._coverage_tracker is not None:
                         for _nid in scenario.target_node_ids:
