@@ -29,6 +29,11 @@ class ParsedInstantiation:
     assigned_to: str | None  # variable the result is assigned to
     line: int
     line_end: int
+    # Enclosing function/class name (mirrors ParsedStringLiteral.context) — set
+    # for `return SomeClass(...)` inside a factory function so adapters can
+    # name the produced node after the factory when no other identity is
+    # available (e.g. the class is built and returned, not assigned to a var).
+    context: str | None = None
 
 
 @dataclass
@@ -40,6 +45,8 @@ class ParsedCall:
     assigned_to: str | None
     line: int
     line_end: int
+    # Enclosing function/class name — see ParsedInstantiation.context above.
+    context: str | None = None
 
 
 @dataclass
@@ -379,6 +386,8 @@ class _AstExtractor(ast.NodeVisitor):
                 if isinstance(arg, ast.Name):
                     self.guardrail_agent_vars.add(arg.id)
 
+        context = self._scope_stack[-1] if self._scope_stack else None
+
         # Heuristic: Title-case top-level names are class instantiations
         top = func_name.split(".")[-1]
         if top and top[0].isupper():
@@ -390,6 +399,7 @@ class _AstExtractor(ast.NodeVisitor):
                     assigned_to=assigned_to,
                     line=line,
                     line_end=line_end,
+                    context=context,
                 )
             )
         else:
@@ -402,6 +412,7 @@ class _AstExtractor(ast.NodeVisitor):
                     assigned_to=assigned_to,
                     line=line,
                     line_end=line_end,
+                    context=context,
                 )
             )
 

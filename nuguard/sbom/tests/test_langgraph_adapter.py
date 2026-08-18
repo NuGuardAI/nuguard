@@ -282,6 +282,76 @@ class TestToolDetection:
 
 
 # ---------------------------------------------------------------------------
+# Dynamic StructuredTool / Tool.from_function detection
+# ---------------------------------------------------------------------------
+
+
+class TestDynamicToolFactoryDetection:
+    def test_structured_tool_constructor_uses_name_kwarg(self) -> None:
+        code = (
+            "from langchain_core.tools import StructuredTool\n\n"
+            "direct_tool = StructuredTool(\n"
+            "    name='direct',\n"
+            "    func=lambda x: x,\n"
+            "    description='a direct tool',\n"
+            ")\n"
+        )
+        tools = _by_type(_extract(code), ComponentType.TOOL)
+        assert any(t.display_name == "direct" for t in tools)
+        # Must not also fire the generic tool-class-constructor heuristic
+        # (section 4b) for the same instantiation — that would double-count
+        # under the assigned variable name instead of the real tool name.
+        assert not any(t.display_name == "direct_tool" for t in tools)
+
+    def test_structured_tool_from_function_uses_name_kwarg(self) -> None:
+        code = (
+            "from langchain_core.tools import StructuredTool\n\n"
+            "weather_tool = StructuredTool.from_function(\n"
+            "    func=lambda city: city,\n"
+            "    name='get_weather',\n"
+            "    description='Get the weather',\n"
+            ")\n"
+        )
+        tools = _by_type(_extract(code), ComponentType.TOOL)
+        matches = [t for t in tools if t.display_name == "get_weather"]
+        assert matches
+        assert matches[0].metadata.get("dynamic_name") is not True
+
+    def test_tool_from_function_uses_name_kwarg(self) -> None:
+        code = (
+            "from langchain_core.tools import Tool\n\n"
+            "search_tool = Tool.from_function(\n"
+            "    func=lambda q: q,\n"
+            "    name='search',\n"
+            "    description='Search the web',\n"
+            ")\n"
+        )
+        tools = _by_type(_extract(code), ComponentType.TOOL)
+        assert any(t.display_name == "search" for t in tools)
+
+    def test_factory_function_returning_structured_tool_named_after_factory(self) -> None:
+        """A factory function that builds the tool's name from its own
+        parameters (not a string literal) can't have its name resolved
+        statically — fall back to the enclosing function name, flagged
+        dynamic_name=True, rather than silently dropping the tool."""
+        code = (
+            "from langchain_core.tools import StructuredTool\n\n"
+            "def create_live_api_tool(name, description, api_url):\n"
+            "    def _call(**kwargs):\n"
+            "        return requests.get(api_url, params=kwargs)\n"
+            "    return StructuredTool.from_function(\n"
+            "        func=_call,\n"
+            "        name=name,\n"
+            "        description=description,\n"
+            "    )\n"
+        )
+        tools = _by_type(_extract(code), ComponentType.TOOL)
+        matches = [t for t in tools if t.display_name == "create_live_api_tool"]
+        assert matches, f"expected a TOOL named after the factory function, got {[t.display_name for t in tools]}"
+        assert matches[0].metadata.get("dynamic_name") is True
+
+
+# ---------------------------------------------------------------------------
 # Model detection
 # ---------------------------------------------------------------------------
 
