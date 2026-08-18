@@ -37,6 +37,14 @@ VERIFICATION_CONFIDENCE_MIN = float(os.environ.get("AISBOM_VERIFICATION_CONFIDEN
 VERIFICATION_CONFIDENCE_MAX = float(os.environ.get("AISBOM_VERIFICATION_CONFIDENCE_MAX", "0.85"))
 VERIFICATION_COST_BUDGET = float(os.environ.get("AISBOM_VERIFICATION_COST_BUDGET", "20.0"))
 MAX_VERIFICATIONS_PER_SCAN = int(os.environ.get("AISBOM_MAX_VERIFICATIONS", "20"))
+# Upper bound on a single verification call's token spend, used to derive the
+# per-call cost reservation.  1000 tokens × $0.00001/token = $0.01, well under
+# the default $20.00 budget and far above the old flat $0.001 estimate — so a
+# reservation is guaranteed to cover the actual cost of any real call, making
+# the budget admission bound an actual ceiling rather than an estimate.
+# VERIFICATION_COST_PER_TOKEN = 0.00001
+_VERIFICATION_CALL_TOKEN_CAP = 1000
+VERIFICATION_CALL_COST_CAP = _VERIFICATION_CALL_TOKEN_CAP * 0.00001
 
 # ---------------------------------------------------------------------------
 # Result types
@@ -413,9 +421,9 @@ async def verify_uncertain_nodes(
         system_prompt, user_prompt = build_verification_prompt(
             node, evidence_list, file_content
         )
-        prepared.append((node, system_prompt, user_prompt, 0.001))
+        prepared.append((node, system_prompt, user_prompt, VERIFICATION_CALL_COST_CAP))
 
-    cost_per_call = 0.001
+    cost_per_call = VERIFICATION_CALL_COST_CAP
 
     async def _verify_one(
         node: Node,
@@ -432,12 +440,15 @@ async def verify_uncertain_nodes(
         reference and ``shared_cost[0]`` for the running cost total.
         """
         async with semaphore:
-            # Reserve the estimated call cost under the lock before releasing
+            # Reserve the per-call cost ceiling under the lock before releasing
             # it for the LLM call.  Reserving prevents the budget from being
             # exceeded by up to the concurrency limit: without a reservation,
             # every in-flight task can observe the same ``shared_cost`` and
             # pass the check, letting a low budget be blown through by the
-            # number of concurrent calls.
+            # number of concurrent calls.  The reservation is an upper bound:
+            # ``VERIFICATION_CALL_COST_CAP`` is derived from a token cap that
+            # comfortably exceeds any real verification response, so the budget
+            # admission check is a guaranteed ceiling on concurrent spend.
             async with shared_lock:
                 if shared_cost[0] + cost_per_call > cost_budget:
                     stats.budget_exceeded = True
@@ -457,10 +468,16 @@ async def verify_uncertain_nodes(
                     stats.skipped_count += 1
                 return None
 
-            actual_cost = tokens * 0.00001
+            # Report the true per-call spend (unclamped) so reports reflect
+            # actual usage, but reconcile the budget reservation against the
+            # capped cost: a single pathological call (huge token count) must
+            # not push ``shared_cost`` above what the budget admission assumed
+            # for the in-flight calls.
+            reported_cost = tokens * 0.00001
+            capped_cost = min(tokens, _VERIFICATION_CALL_TOKEN_CAP) * 0.00001
             async with shared_lock:
-                # Reconcile the reservation with the actual token cost.
-                shared_cost[0] += actual_cost - cost_per_call
+                # Reconcile the reservation with the (capped) actual token cost.
+                shared_cost[0] += capped_cost - cost_per_call
 
             # parse_verification_response also has to live inside the per-node
             # try/except — valid JSON that isn't a dict (e.g. a list, number,
@@ -482,7 +499,7 @@ async def verify_uncertain_nodes(
                     stats.skipped_count += 1
                 return None
 
-            result.verification_cost = actual_cost
+            result.verification_cost = reported_cost
             async with shared_lock:
                 if result.verified:
                     stats.verified_count += 1

@@ -85,3 +85,44 @@ async def test_call_token_counts_attributes_only_own_usage(
         assert own == 150, f"call attributed {own}, expected 150"
     # The shared cumulative counter still records the TOTAL across all calls.
     assert sum(client.token_counts) == concurrency * 150
+
+
+async def _run_complete_with_usage(client: LLMClient) -> tuple[str, int]:
+    """The production read pattern for verification: call complete(), then read
+    ``call_token_counts`` AFTER it returns."""
+    text = await client.complete(prompt="prompt")
+    return text, sum(client.call_token_counts)
+
+
+@pytest.mark.parametrize("concurrency", [1, 4])
+async def test_call_token_counts_readable_after_complete_returns(
+    concurrency: int,
+) -> None:
+    """Regression: the per-call usage must remain readable AFTER complete() returns.
+
+    The verification path (extractor/core.py ``_llm_call``) does
+    ``await client.complete(...)`` then reads ``sum(client.call_token_counts)``.
+    Previously ``complete()`` cleared the per-call accumulator in its ``finally``
+    before returning control to the caller, so that post-return read always saw
+    ``(0, 0)`` — every verification recorded zero cost and the budget
+    reconciliation was a no-op.
+    """
+    client = LLMClient(model="another provider/another provider-3.1-flash-lite", api_key="test")
+    usage = _Usage()
+
+    async def fake_complete_stream(prompt: str, system: str | None = None, label: str = "", **kwargs: object):
+        gen = _make_stream_that_records_usage(client, usage, [])
+        async for chunk in gen:
+            yield chunk
+
+    client.complete_stream = fake_complete_stream  # type: ignore[method-assign]
+    try:
+        results = await asyncio.gather(
+            *(_run_complete_with_usage(client) for _ in range(concurrency))
+        )
+    finally:
+        client.complete_stream = LLMClient.complete_stream  # type: ignore[method-assign]
+
+    for _text, tokens in results:
+        assert tokens == 150, f"post-complete read saw {tokens}, expected 150"
+    assert sum(client.token_counts) == concurrency * 150

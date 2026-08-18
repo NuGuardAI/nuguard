@@ -558,9 +558,13 @@ class LLMClient:
         # Issue #246: ``complete`` exposes a per-call token read so concurrent
         # callers can attribute usage to exactly their own call instead of a
         # before/after ``sum(token_counts)`` delta of the shared cumulative
-        # counters (racy under concurrency). Outside the tolled path
-        # (``_CALL_COUNTER_READY``), the per-call read returns (0, 0) and
-        # callers keep using the shared counters as before.
+        # counters (racy under concurrency).  The per-call accumulator lives in
+        # the *caller's* context (``_call_token_slots``), is populated while
+        # the stream consumes the response, and is re-armed with the captured
+        # value before this method returns so the caller's post-return
+        # ``call_token_counts`` read observes this call's own usage.  Outside
+        # the tolled path (``_CALL_COUNTER_READY``), the per-call read returns
+        # (0, 0) and callers keep using the shared counters as before.
         async def _inner() -> str:
             chunks: list[str] = []
             async for chunk in self.complete_stream(prompt, system, label, **kwargs):
@@ -569,13 +573,19 @@ class LLMClient:
 
         if _CALL_COUNTER_READY.get():
             return await _inner()
+        _call_token_slots.set([0, 0])
+        _CALL_COUNTER_READY.set(True)
         try:
-            _call_token_slots.set([0, 0])
-            _CALL_COUNTER_READY.set(True)
             return await _inner()
         finally:
+            # Capture the per-call usage populated by complete_stream, then
+            # re-arm the caller's context slot with that captured value so
+            # ``call_token_counts`` remains readable after we return.  The
+            # nested (``_CALL_COUNTER_READY`` already set) path above returns
+            # early and leaves the outer call's live slots untouched.
+            done = _call_token_slots.get() or [0, 0]
             _CALL_COUNTER_READY.set(False)
-            _call_token_slots.set(None)
+            _call_token_slots.set(done)
 
     def _canned_response(self, prompt: str) -> str:
         """Return a deterministic template response for *prompt*.

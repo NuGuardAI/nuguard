@@ -175,7 +175,11 @@ async def enrich_node_descriptions(
         targets[i : i + _DESCRIPTION_BATCH_SIZE]
         for i in range(0, len(targets), _DESCRIPTION_BATCH_SIZE)
     ]
-    _effective_concurrency = concurrency if concurrency is not None else _DESCRIPTION_BATCH_CONCURRENCY
+    # Normalize the caller-supplied concurrency exactly like
+    # ``verify_uncertain_nodes`` does: 0 or a negative value would otherwise
+    # create a zero-permit semaphore (deadlock) or raise from
+    # ``asyncio.Semaphore``.
+    _effective_concurrency = concurrency if concurrency is not None and concurrency >= 1 else _DESCRIPTION_BATCH_CONCURRENCY
     semaphore = asyncio.Semaphore(_effective_concurrency)
 
     async def _run_batch_limited(batch: list[tuple[Any, str, Any]]) -> None:
