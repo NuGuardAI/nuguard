@@ -144,6 +144,60 @@ def test_executor_error_isolated(minimal_sbom_doc: AiSbomDocument) -> None:
     assert "exec failed" in outcome.reason
 
 
+def test_executor_target_unavailable_flags_transport_error(
+    minimal_sbom_doc: AiSbomDocument,
+) -> None:
+    """A propagated TargetUnavailableError must surface as a transport-error
+    outcome so the v2 scheduler's phase-abort still fires.
+
+    Regression: the executor used to swallow TargetUnavailableError (resetting
+    the client's circuit breaker), so the endpoint outage was invisible to the
+    scheduler.  Now the exception propagates; the runner translates it into the
+    same all-transport-error signal the scheduler aborts phases on.
+    """
+    from nuguard.common.errors import TargetUnavailableError
+
+    class _DeadStatic:
+        async def run(self, chain):
+            raise TargetUnavailableError("Chat endpoint returned 3 consecutive errors")
+
+    runner, objectives = _runner(minimal_sbom_doc, _DeadStatic())
+    obj = _buildable_objective(runner, objectives)
+    outcome = asyncio.run(runner(_ctx(obj)))
+    assert outcome.status == "executed"
+    assert outcome.succeeded is False
+    assert outcome.target_transport_error is True
+    assert outcome.target_transport_class == "request_error"
+
+
+def test_scheduler_aborts_remaining_phases_on_transport_error(
+    minimal_sbom_doc: AiSbomDocument,
+) -> None:
+    """All-transport-error objectives in a phase must abort later phases."""
+    from nuguard.common.errors import TargetUnavailableError
+
+    class _DeadStatic:
+        async def run(self, chain):
+            raise TargetUnavailableError("Chat endpoint returned 3 consecutive errors")
+
+    runner, objectives = _runner(minimal_sbom_doc, _DeadStatic())
+    # All buildable static objectives die on a dead target — every phase ends
+    # up all-transport-error and later phases must be skipped.
+    buildable = [
+        o for o in objectives if o.builder_key and runner.synthesize_scenario(o) is not None
+    ]
+    assert len(buildable) > 1  # at least two phases of work
+
+    sched = PhasedScheduler(concurrency=3)
+    results = asyncio.run(sched.run(buildable, runner))
+    statuses = [r.status for r in results]
+    # Scenarios in the first phase complete as transport errors; everything in
+    # later phases is skipped rather than executed against the dead endpoint.
+    assert any(s == "completed" for s in statuses)
+    assert any(s == "skipped_transport_error" for s in statuses)
+    assert all(not r.critical for r in results)
+
+
 # ── kill-chain composition ────────────────────────────────────────────────────────
 def test_killchain_never_injects_bracket_notation(
     minimal_sbom_doc: AiSbomDocument,

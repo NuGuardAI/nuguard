@@ -26,7 +26,9 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Protocol
 
 from nuguard.common.console import print_turn as _print_turn
+from nuguard.common.errors import TargetUnavailableError
 from nuguard.common.logging import get_logger
+from nuguard.redteam.executor.executor import _step_result_for_unavailable
 from nuguard.redteam.v2.scheduler.scheduler import RunContext
 
 if TYPE_CHECKING:
@@ -308,6 +310,18 @@ class ObjectiveRunner:
             chain = await self._compose_kill_chain(chain)
         try:
             _chain, results, _session = await self._static.run(chain)
+        except TargetUnavailableError as exc:
+            # The executor now propagates TargetUnavailableError so the v1
+            # orchestrator can trip its circuit breaker.  Here in v2 the
+            # scheduler aborts phases via target_transport_error outcomes
+            # instead, so translate the exception into a synthetic
+            # transport-error step result and summarise through the normal
+            # deterministic path.
+            _log.warning(
+                "static execution failed for %s: target unavailable (%s) — marking as transport error",
+                obj.objective_id, exc,
+            )
+            results = [_step_result_for_unavailable(exc)]
         except Exception as exc:
             _log.warning("static execution failed for %s: %s", obj.objective_id, exc)
             return ObjectiveOutcome(
@@ -415,6 +429,16 @@ class ObjectiveRunner:
             if self._client is not None else None
         try:
             result_conv = await self._guided.run(conv, session)  # type: ignore[union-attr]
+        except TargetUnavailableError as exc:
+            _log.warning(
+                "guided execution failed for %s: target unavailable (%s) — marking as transport error",
+                obj.objective_id, exc,
+            )
+            return ObjectiveOutcome(
+                obj.objective_id, "executed", family=obj.family,
+                scenario_id=getattr(scenario, "scenario_id", None), reason=str(exc),
+                target_transport_error=True, target_transport_class="request_error",
+            )
         except Exception as exc:
             _log.warning("guided execution failed for %s: %s", obj.objective_id, exc)
             return ObjectiveOutcome(
