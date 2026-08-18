@@ -123,6 +123,72 @@ class TestEndpointMetadata:
         assert eps[0].metadata["endpoint"] == "/status"
 
 
+class TestWebSocketRoutes:
+    """WebSocket routes (@router.websocket / @app.websocket) must be detected as
+    API_ENDPOINT nodes with method='WEBSOCKET', not silently dropped."""
+
+    def test_unprefixed_app_websocket_route_detected(self) -> None:
+        code = (
+            "from fastapi import FastAPI, WebSocket\n"
+            "app = FastAPI()\n\n"
+            "@app.websocket('/ws/{token}')\n"
+            "async def ws_endpoint(websocket: WebSocket, token: str):\n"
+            "    await websocket.accept()\n"
+        )
+        eps = _endpoints(_extract(code))
+        assert len(eps) == 1
+        assert eps[0].metadata["method"] == "WEBSOCKET"
+        assert eps[0].metadata["endpoint"] == "/ws/{token}"
+        # HTTP-only schema detection must not run for WebSocket routes.
+        assert "request_body_schema" not in eps[0].metadata
+
+    def test_router_websocket_route_composes_prefix(self, tmp_path) -> None:
+        source_dir = tmp_path / "sample-app"
+        (source_dir / "server").mkdir(parents=True)
+
+        (source_dir / "server" / "ws.py").write_text(
+            "from fastapi import APIRouter, WebSocket\n\n"
+            "router = APIRouter()\n\n"
+            "@router.websocket('/voice/{bot_id}')\n"
+            "async def voice_ws(websocket: WebSocket, bot_id: str):\n"
+            "    await websocket.accept()\n",
+            encoding="utf-8",
+        )
+        (source_dir / "server" / "server.py").write_text(
+            "from fastapi import FastAPI\n"
+            "from server.ws import router as ws_router\n\n"
+            "app = FastAPI()\n"
+            "app.include_router(ws_router, prefix='/ws')\n",
+            encoding="utf-8",
+        )
+
+        config = AiSbomConfig(include_extensions={".py"}, enable_llm=False, max_files=20)
+        doc = AiSbomExtractor().extract_from_path(source_dir, config)
+
+        ws_nodes = [
+            n
+            for n in doc.nodes
+            if n.component_type == ComponentType.API_ENDPOINT
+            and n.metadata.endpoint == "/ws/voice/{bot_id}"
+        ]
+        assert len(ws_nodes) == 1
+        assert ws_nodes[0].metadata.method == "WEBSOCKET"
+
+    def test_no_auth_websocket_route_omits_auth_type(self) -> None:
+        """A public WebSocket route with no Depends()-injected auth callable must
+        not carry an auth_type — the same "no auth" signal HTTP endpoints get."""
+        code = (
+            "from fastapi import FastAPI, WebSocket\n"
+            "app = FastAPI()\n\n"
+            "@app.websocket('/public/bot/ws/{token}')\n"
+            "async def public_ws(websocket: WebSocket, token: str):\n"
+            "    await websocket.accept()\n"
+        )
+        eps = _endpoints(_extract(code))
+        assert len(eps) == 1
+        assert "auth_type" not in eps[0].metadata
+
+
 class TestRouterPrefixComposition:
     """Unit tests for the AST helpers driving the cross-file prefix pre-pass."""
 

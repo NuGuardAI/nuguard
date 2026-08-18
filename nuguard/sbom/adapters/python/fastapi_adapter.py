@@ -67,6 +67,12 @@ _RATE_LIMIT_RE = re.compile(r"(\d+)\s*/\s*(second|minute|hour|day)s?", re.IGNORE
 
 _HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options", "trace"}
 
+# WebSocket routes (@router.websocket(...) / @app.websocket(...)) are a distinct
+# transport, kept in a separate set rather than merged into _HTTP_METHODS so that
+# HTTP-only logic (request/response body schema detection, response_model=) can be
+# explicitly skipped for them instead of silently producing nonsense.
+_WS_METHODS = {"websocket"}
+
 _PROMPT_FIELD_NAMES = {
     "message", "query", "prompt", "input", "text",
     "user_query", "user_input", "user_message",
@@ -511,25 +517,34 @@ class FastAPIAdapter(FrameworkAdapter):
                     else f"endpoint:{method.upper()}::{file_path}"
                 )
 
+                is_websocket = method in _WS_METHODS
+
                 ep_auth: str | None = _extract_depends_auth_type(node, auth_vars)
                 if ep_auth is None:
                     ep_auth = _extract_security_auth_type(decorator, auth_vars)
 
-                schema, chat_key, chat_list, resp_key, ctx_fields, resp_schema = _extract_endpoint_schema(
-                    node, model_schemas, _effective_external
-                )
+                # Pydantic request/response body schema detection is an HTTP-only
+                # concept (WebSocket handlers take a WebSocket object, not a JSON
+                # body) — skip it rather than run AST logic that assumes HTTP
+                # semantics and could produce misleading schema metadata.
+                if is_websocket:
+                    schema = chat_key = chat_list = resp_key = ctx_fields = resp_schema = None
+                else:
+                    schema, chat_key, chat_list, resp_key, ctx_fields, resp_schema = _extract_endpoint_schema(
+                        node, model_schemas, _effective_external
+                    )
 
-                # Also extract response_model= kwarg from the route decorator itself
-                # (FastAPI convention: @app.post("/path", response_model=MyModel))
-                if not resp_schema and isinstance(decorator, ast.Call):
-                    for _kw in decorator.keywords:
-                        if _kw.arg == "response_model" and isinstance(_kw.value, ast.Name):
-                            _resp_model_name = _kw.value.id
-                            if _resp_model_name in model_schemas:
-                                resp_schema = model_schemas[_resp_model_name]
-                                if not resp_key:
-                                    resp_key = _infer_response_text_key(resp_schema)
-                            break
+                    # Also extract response_model= kwarg from the route decorator itself
+                    # (FastAPI convention: @app.post("/path", response_model=MyModel))
+                    if not resp_schema and isinstance(decorator, ast.Call):
+                        for _kw in decorator.keywords:
+                            if _kw.arg == "response_model" and isinstance(_kw.value, ast.Name):
+                                _resp_model_name = _kw.value.id
+                                if _resp_model_name in model_schemas:
+                                    resp_schema = model_schemas[_resp_model_name]
+                                    if not resp_key:
+                                        resp_key = _infer_response_text_key(resp_schema)
+                                break
 
                 metadata: dict[str, Any] = {
                     "framework": "fastapi",
@@ -647,14 +662,14 @@ class FastAPIAdapter(FrameworkAdapter):
 def _parse_route_decorator(
     decorator: ast.expr,
 ) -> tuple[str, str, str] | None:
-    """Parse @app.get('/path') → (receiver, method, path_str) or None."""
+    """Parse @app.get('/path') or @app.websocket('/ws') → (receiver, method, path_str) or None."""
     if not isinstance(decorator, ast.Call):
         return None
     func = decorator.func
     if not isinstance(func, ast.Attribute):
         return None
     method = func.attr.lower()
-    if method not in _HTTP_METHODS:
+    if method not in _HTTP_METHODS and method not in _WS_METHODS:
         return None
 
     receiver = ""
