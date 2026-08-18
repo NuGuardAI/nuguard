@@ -20,8 +20,11 @@ policy:
 
 # ─── LLM settings (NuGuard's own scenario generation / judging) ───────────────
 llm:
-  model: openai/gpt-4o-mini            # LiteLLM resolves the key from OPENAI_API_KEY
+  # model: openai/gpt-4o-mini            # LiteLLM resolves the key from OPENAI_API_KEY
   # api_key: ${OPENAI_API_KEY}         # optional — litellm reads OPENAI_API_KEY automatically
+  model: azure/${AZURE_DEEPSEEK_MODEL_NAME}    
+  api_key: ${AZURE_DEEPSEEK_KEY}     # never put keys here; use env var interpolation
+  api_base: ${AZURE_DEEPSEEK_ENDPOINT}     # optional override for Azure OpenAI endpoint URL
 
 # ─── SBOM generation ───────────────────────────────────────────────────────────
 sbom_generation:
@@ -54,7 +57,7 @@ behavior:
 redteam:
   target: http://localhost:5000
   canary: ./canary.json
-  profile: ci
+  profile: full
   min_impact_score: 0.0
 
   # Relevant to a clinical-data agent with MCP tool support.

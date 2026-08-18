@@ -29,6 +29,7 @@ internally for the duration of the scan.
 | `deploy-azure-aci.sh` | Deploy Phlox to a single Azure Container Instance |
 | `deploy-gcp-cloudrun.sh` | Deploy Phlox to Google Cloud Run |
 | `canary.json` | Synthetic patient/clinician records for behavior/redteam canary scanning |
+| `phlox.ground-truth.sbom.json` | Hand-curated ground-truth AI-SBOM (schema per `documentation/docs/sample-sbom.json`) — benchmark `nuguard sbom generate` output against this to check extractor accuracy on the real Phlox codebase |
 | `phlox-test.sh` | Full pipeline: sbom → policy draft/compile/check → analyze → behavior → redteam |
 | `run-behavior.sh` / `run-redteam.sh` | Run one stage in isolation |
 

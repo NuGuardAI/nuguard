@@ -11,6 +11,7 @@ logs/
 
 # NuGuard-generated artifacts
 *.sbom.json
+!phlox.ground-truth.sbom.json
 cognitive-policy.md
 cognitive-policy.json
 reports/*.md

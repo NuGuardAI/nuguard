@@ -1,0 +1,707 @@
+{
+  "_comment": [
+    "phlox.ground-truth.sbom.json — hand-curated ground-truth AI-SBOM for",
+    "https://github.com/bloodworks-io/phlox, in the schema documented at",
+    "documentation/docs/sample-sbom.json (see nuguard/sbom/schemas/aibom.schema.json",
+    "for the full ComponentType/RelationshipType enums).",
+    "",
+    "Purpose: a manually-verified reference to benchmark `nuguard sbom generate",
+    "--from-repo https://github.com/bloodworks-io/phlox` output against — i.e. did",
+    "the extractor find the real agent/tool/datastore/auth surface documented here.",
+    "This is NOT nuguard-generated output; every node's evidence.location was",
+    "verified against the source at the commit referenced by `target` below.",
+    "It intentionally covers representative components, not every single tool",
+    "or endpoint in the ~40k LOC codebase."
+  ],
+
+  "schema_version": "1.5.0",
+  "generated_at": "2026-08-18T00:00:00Z",
+  "generator": "manual-ground-truth",
+  "target": "https://github.com/bloodworks-io/phlox",
+
+  "nodes": [
+    {
+      "id": "a1000001-0000-4000-8000-000000000001",
+      "name": "phlox-chat-engine",
+      "component_type": "AGENT",
+      "confidence": 1.0,
+      "metadata": {
+        "framework": "custom",
+        "model_name": "PRIMARY_MODEL",
+        "description": "Tool-calling clinical assistant loop. Streams LLM responses, dispatches tool calls (patient records, literature search, MCP tools), and supports interleaved thinking/tool-calling up to a max iteration cap.",
+        "descriptive_name": "Phlox Chat Engine",
+        "dependency_names": ["openai", "fastapi"],
+        "loc": 420,
+        "extras": {
+          "canonical_name": "ChatEngine"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 1.0,
+          "detail": "custom: ChatEngine class with tool-calling loop (get_streaming_response)",
+          "location": { "path": "server/chat/engine.py", "line": 42 }
+        }
+      ]
+    },
+    {
+      "id": "a1000001-0000-4000-8000-000000000002",
+      "name": "primary-model",
+      "component_type": "MODEL",
+      "confidence": 0.97,
+      "metadata": {
+        "description": "Configurable OpenAI-compatible chat model (config.PRIMARY_MODEL) reached via AsyncLLMClient — any remote OpenAI/Ollama-compatible endpoint, or the bundled llama.cpp server in desktop 'local' mode.",
+        "descriptive_name": "Primary LLM (OpenAI-compatible)",
+        "dependency_names": ["openai"],
+        "loc": 60,
+        "extras": { "config_key": "PRIMARY_MODEL" }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.97,
+          "detail": "AsyncOpenAI client construction against config LLM_BASE_URL/LLM_API_KEY",
+          "location": { "path": "server/llm_client/client.py", "line": 58 }
+        }
+      ]
+    },
+    {
+      "id": "a1000001-0000-4000-8000-000000000003",
+      "name": "embedding-model",
+      "component_type": "MODEL",
+      "confidence": 0.9,
+      "metadata": {
+        "description": "OpenAI-compatible embedding model (config.EMBEDDING_MODEL) used to embed RAG document chunks for sqlite-vec similarity search.",
+        "descriptive_name": "RAG Embedding Model",
+        "loc": 20,
+        "extras": { "config_key": "EMBEDDING_MODEL" }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.9,
+          "detail": "OpenAICompatibleProvider constructed from LLM_BASE_URL/EMBEDDING_MODEL in _reload_embedding_function",
+          "location": { "path": "server/rag/vector_store.py", "line": 74 }
+        }
+      ]
+    },
+    {
+      "id": "a1000001-0000-4000-8000-000000000004",
+      "name": "reasoning-system-prompt",
+      "component_type": "PROMPT",
+      "confidence": 0.85,
+      "metadata": {
+        "description": "System prompt driving the 'Chart Insights' reasoning pass — an educational peer-review analysis of a clinical note that may itself call PubMed/wiki/previous-encounter tools.",
+        "descriptive_name": "Reasoning / Chart Insights system prompt",
+        "loc": 15
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.85,
+          "detail": "DEFAULT_PROMPTS['prompts']['reasoning']['system'] used to build initial_prompt in stream_chart_insights_with_tools",
+          "location": { "path": "server/nlp_tools/reasoning.py", "line": 66 }
+        }
+      ]
+    },
+    {
+      "id": "a1000001-0000-4000-8000-000000000005",
+      "name": "transcript_search",
+      "component_type": "TOOL",
+      "confidence": 0.95,
+      "metadata": {
+        "description": "Fuzzy-searches the current patient transcript for terms/topics.",
+        "descriptive_name": "Transcript Search Tool",
+        "no_auth_required": true,
+        "high_privilege": false,
+        "loc": 30
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.95,
+          "detail": "built-in tool definition 'transcript_search'",
+          "location": { "path": "server/chat/tools/registry.py", "line": 27 }
+        }
+      ]
+    },
+    {
+      "id": "a1000001-0000-4000-8000-000000000006",
+      "name": "get_relevant_literature",
+      "component_type": "TOOL",
+      "confidence": 0.95,
+      "metadata": {
+        "description": "Retrieves relevant local knowledge-base literature (sqlite-vec RAG) for a disease/question pair.",
+        "descriptive_name": "Local Literature Search Tool",
+        "no_auth_required": true,
+        "high_privilege": false,
+        "loc": 60
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.95,
+          "detail": "built-in tool definition 'get_relevant_literature'; execute() queries VectorStoreManager",
+          "location": { "path": "server/chat/tools/literature_search.py", "line": 110 }
+        }
+      ]
+    },
+    {
+      "id": "a1000001-0000-4000-8000-000000000007",
+      "name": "pubmed_search",
+      "component_type": "TOOL",
+      "confidence": 0.95,
+      "metadata": {
+        "description": "Searches PubMed (eutils.ncbi.nlm.nih.gov) for research articles. Disabled by default (ships in disabled_tools) because query text may contain PHI.",
+        "descriptive_name": "PubMed Search Tool",
+        "no_auth_required": true,
+        "high_privilege": false,
+        "ssrf_possible": false,
+        "loc": 55
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.95,
+          "detail": "httpx call to PUBMED_API_BASE; query passed through sanitize_pubmed_query first",
+          "location": { "path": "server/chat/tools/pubmed_search.py", "line": 22 }
+        }
+      ]
+    },
+    {
+      "id": "a1000001-0000-4000-8000-000000000008",
+      "name": "wiki_search",
+      "component_type": "TOOL",
+      "confidence": 0.95,
+      "metadata": {
+        "description": "Searches Wikipedia for general medical background. Disabled by default (ships in disabled_tools) because query text may contain PHI.",
+        "descriptive_name": "Wikipedia Search Tool",
+        "no_auth_required": true,
+        "high_privilege": false,
+        "loc": 45
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.95,
+          "detail": "httpx call to WIKIPEDIA_API_BASE",
+          "location": { "path": "server/chat/tools/wiki_search.py", "line": 21 }
+        }
+      ]
+    },
+    {
+      "id": "a1000001-0000-4000-8000-000000000009",
+      "name": "get_previous_encounter",
+      "component_type": "TOOL",
+      "confidence": 0.95,
+      "metadata": {
+        "description": "Retrieves a patient's most recent prior encounter by UR number or fuzzy name match.",
+        "descriptive_name": "Previous Encounter Lookup Tool",
+        "no_auth_required": true,
+        "high_privilege": false,
+        "loc": 60
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.95,
+          "detail": "built-in tool 'get_previous_encounter'; execute() calls get_latest_encounter",
+          "location": { "path": "server/chat/tools/previous_encounter.py", "line": 63 }
+        }
+      ]
+    },
+    {
+      "id": "a1000001-0000-4000-8000-00000000000a",
+      "name": "create_note",
+      "component_type": "TOOL",
+      "confidence": 0.95,
+      "metadata": {
+        "description": "Creates a new patient encounter record for a given date, pre-filling persistent fields from history.",
+        "descriptive_name": "Create Encounter Note Tool",
+        "no_auth_required": true,
+        "high_privilege": true,
+        "loc": 90
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.95,
+          "detail": "built-in tool 'create_note'; create_patient_note() calls save_patient",
+          "location": { "path": "server/chat/tools/create_note.py", "line": 32 }
+        }
+      ]
+    },
+    {
+      "id": "a1000001-0000-4000-8000-00000000000b",
+      "name": "search_patient",
+      "component_type": "TOOL",
+      "confidence": 0.95,
+      "metadata": {
+        "description": "Searches patients by name (fuzzy), UR number, DOB, or encounter date across the whole patient database.",
+        "descriptive_name": "Patient Search Tool",
+        "no_auth_required": true,
+        "high_privilege": false,
+        "loc": 50
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.95,
+          "detail": "built-in tool 'search_patient'; execute() calls search_patients_aggregate",
+          "location": { "path": "server/chat/tools/search_patient.py", "line": 23 }
+        }
+      ]
+    },
+    {
+      "id": "a1000001-0000-4000-8000-00000000000c",
+      "name": "search_patient_notes",
+      "component_type": "TOOL",
+      "confidence": 0.95,
+      "metadata": {
+        "description": "Fuzzy full-text search across a patient's historical encounter notes/letters for a search term.",
+        "descriptive_name": "Patient Notes Search Tool",
+        "no_auth_required": true,
+        "high_privilege": false,
+        "loc": 65
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.95,
+          "detail": "built-in tool 'search_patient_notes'; get_patient_notes() reads encounters+patient_profiles",
+          "location": { "path": "server/chat/tools/search_patient_notes.py", "line": 128 }
+        }
+      ]
+    },
+    {
+      "id": "a1000001-0000-4000-8000-00000000000d",
+      "name": "todo_list",
+      "component_type": "TOOL",
+      "confidence": 0.9,
+      "metadata": {
+        "description": "List/add/complete/delete items on the clinician's global todo list (not patient-scoped).",
+        "descriptive_name": "Todo List Tool",
+        "no_auth_required": true,
+        "high_privilege": false,
+        "loc": 30
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.9,
+          "detail": "built-in tool definition 'todo_list' (action: list|add|complete|delete)",
+          "location": { "path": "server/chat/tools/registry.py", "line": 273 }
+        }
+      ]
+    },
+    {
+      "id": "a1000001-0000-4000-8000-00000000000e",
+      "name": "fill_pdf_form",
+      "component_type": "TOOL",
+      "confidence": 0.9,
+      "metadata": {
+        "description": "Fills a PDF form template with LLM-provided field values, returning a form_fill artifact the frontend renders client-side via pdf-lib.",
+        "descriptive_name": "PDF Form Fill Tool",
+        "no_auth_required": true,
+        "high_privilege": false,
+        "loc": 40
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.9,
+          "detail": "fill_form() returns artifact_message for the PDF form-fill flow",
+          "location": { "path": "server/chat/tools/pdf_forms.py", "line": 30 }
+        }
+      ]
+    },
+    {
+      "id": "a1000001-0000-4000-8000-00000000000f",
+      "name": "mcp_tool",
+      "component_type": "TOOL",
+      "confidence": 0.92,
+      "metadata": {
+        "description": "Dynamic passthrough handler for tools registered on user-configured external MCP servers. Arguments are sanitized for PHI unless the server's allow_sensitive_data flag is set.",
+        "descriptive_name": "MCP Tool Passthrough Handler",
+        "no_auth_required": true,
+        "high_privilege": true,
+        "loc": 80
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.92,
+          "detail": "execute() dispatches any function_name matching 'mcp_*' to call_mcp_tool()",
+          "location": { "path": "server/chat/tools/mcp_tool.py", "line": 53 }
+        }
+      ]
+    },
+    {
+      "id": "a1000001-0000-4000-8000-000000000010",
+      "name": "phi-external-search-sanitization",
+      "component_type": "GUARDRAIL",
+      "confidence": 0.93,
+      "metadata": {
+        "description": "Strips patient identifiers (name, DOB, MRN/UR, phone, address, standalone years) from query strings before they leave the app via PubMed, Wikipedia, or an MCP server without allow_sensitive_data.",
+        "descriptive_name": "PHI Sanitization Guardrail",
+        "loc": 83
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.93,
+          "detail": "sanitize_query_for_external_search() / sanitize_pubmed_query()",
+          "location": { "path": "server/chat/tools/sanitization.py", "line": 14 }
+        }
+      ]
+    },
+    {
+      "id": "a1000001-0000-4000-8000-000000000011",
+      "name": "external-mcp-server",
+      "component_type": "MCP_SERVER",
+      "confidence": 0.9,
+      "metadata": {
+        "mcp_server_url": null,
+        "mcp_server_trusted": false,
+        "mcp_transport": "streamable-http",
+        "descriptive_name": "User-configured external MCP server"
+      },
+      "evidence": [
+        {
+          "kind": "config",
+          "confidence": 0.9,
+          "detail": "mcp_servers table (name, url, allow_sensitive_data default 0) added by migration v5; McpServerClient connects via SSE/Streamable HTTP",
+          "location": { "path": "server/database/core/migrations/v5_mcp_servers.py", "line": 9 }
+        },
+        {
+          "kind": "ast",
+          "confidence": 0.9,
+          "detail": "McpServerClient — client for a single MCP server using Streamable HTTP transport",
+          "location": { "path": "server/mcp/client.py", "line": 24 }
+        }
+      ]
+    },
+    {
+      "id": "a1000001-0000-4000-8000-000000000012",
+      "name": "phlox-clinical-db",
+      "component_type": "DATASTORE",
+      "confidence": 0.98,
+      "metadata": {
+        "datastore_type": "sqlite",
+        "descriptive_name": "Phlox Clinical Database (phlox_database.sqlite)",
+        "data_classification": ["PII", "PHI"],
+        "classified_tables": ["encounters", "patient_profiles", "todos", "mcp_servers", "user_settings"],
+        "classified_fields": {
+          "patient_profiles": ["first_name", "last_name", "dob", "gender", "address", "phone", "ur_number"],
+          "encounters": ["template_data", "raw_transcription", "final_letter", "encounter_summary"]
+        },
+        "pii_fields": ["first_name", "last_name", "dob", "address", "phone", "ur_number"],
+        "access_type": "readwrite",
+        "encryption_at_rest": true,
+        "encryption_detail": {
+          "at_rest": true,
+          "algorithm": "SQLCipher (AES-256, PBKDF2-HMAC-SHA512 key derivation)",
+          "key_management": "env var DB_ENCRYPTION_KEY or /run/secrets/db_encryption_key (Docker); user passphrase (desktop, not cached in OS keychain)"
+        },
+        "loc": 200
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.98,
+          "detail": "PatientDatabase — SQLCipher-encrypted connection, keyed via PRAGMA key",
+          "location": { "path": "server/database/core/connection.py", "line": 72 }
+        }
+      ]
+    },
+    {
+      "id": "a1000001-0000-4000-8000-000000000013",
+      "name": "phlox-documents-db",
+      "component_type": "DATASTORE",
+      "confidence": 0.93,
+      "metadata": {
+        "datastore_type": "sqlite-vec",
+        "descriptive_name": "RAG Vector Store (documents.sqlite)",
+        "data_classification": [],
+        "access_type": "readwrite",
+        "encryption_at_rest": false,
+        "encryption_detail": {
+          "at_rest": false
+        },
+        "loc": 300,
+        "extras": {
+          "note": "Intended for non-PHI reference literature only; unlike phlox_database.sqlite this file is NOT SQLCipher-encrypted, so PHI must never be stored here."
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.93,
+          "detail": "SqliteVecBackend — plain sqlite3 connection to DOCUMENTS_DB_PATH, no SQLCipher key",
+          "location": { "path": "server/rag/backends/sqlite_vec.py", "line": 25 }
+        }
+      ]
+    },
+    {
+      "id": "a1000001-0000-4000-8000-000000000014",
+      "name": "/api/chat",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.95,
+      "metadata": {
+        "endpoint": "/api/chat",
+        "method": "POST",
+        "auth_required": false,
+        "accepts_user_input": true,
+        "returns_sensitive_data": true,
+        "rate_limited": true,
+        "rate_limit_detail": {
+          "requests_per_minute": 30,
+          "burst_size": 2,
+          "enforcement_type": "middleware"
+        },
+        "descriptive_name": "Chat / Agent Endpoint",
+        "loc": 30
+      },
+      "evidence": [
+        {
+          "kind": "ast_decorator",
+          "confidence": 0.95,
+          "detail": "fastapi: @router.post('', response_model=ChatResponse) mounted at prefix /api/chat; returns StreamingResponse (SSE)",
+          "location": { "path": "server/api/chat.py", "line": 150 }
+        }
+      ]
+    },
+    {
+      "id": "a1000001-0000-4000-8000-000000000015",
+      "name": "/api/config/mcp",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.92,
+      "metadata": {
+        "endpoint": "/api/config/mcp",
+        "method": "POST",
+        "auth_required": false,
+        "accepts_user_input": true,
+        "returns_sensitive_data": false,
+        "rate_limited": true,
+        "descriptive_name": "MCP Server Registration Endpoint",
+        "loc": 35,
+        "extras": {
+          "note": "Accepts an arbitrary url for a new MCP server with no server-side allow-list — SSRF/toxic-flow relevant surface."
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_decorator",
+          "confidence": 0.92,
+          "detail": "fastapi: @router.post('/mcp') add_mcp_server(data: McpServerCreate) — url is free-form",
+          "location": { "path": "server/api/config/mcp.py", "line": 22 }
+        }
+      ]
+    },
+    {
+      "id": "a1000001-0000-4000-8000-000000000016",
+      "name": "/api/audit",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.85,
+      "metadata": {
+        "endpoint": "/api/audit",
+        "method": "GET",
+        "auth_required": false,
+        "accepts_user_input": false,
+        "returns_sensitive_data": false,
+        "descriptive_name": "Audit Log Read/Export Endpoint",
+        "loc": 25
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.85,
+          "detail": "audit router mounted at /api/audit; test_audit_endpoints_not_self_audited confirms GET /api/audit route",
+          "location": { "path": "server/tests/test_audit.py", "line": 56 }
+        }
+      ]
+    },
+    {
+      "id": "a1000001-0000-4000-8000-000000000017",
+      "name": "proxy-auth-middleware",
+      "component_type": "AUTH",
+      "confidence": 0.9,
+      "metadata": {
+        "descriptive_name": "Reverse-Proxy Header Authentication",
+        "auth_detail": {
+          "protocols": ["header"],
+          "enforcement_strict": false
+        },
+        "loc": 40,
+        "extras": {
+          "note": "Disabled by default (PROXY_AUTH_ENABLED=false); Phlox has no built-in auth otherwise. Trusts the X-Forwarded-User header from a reverse proxy."
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.9,
+          "detail": "app.add_middleware(ProxyAuthMiddleware) gated on PROXY_AUTH_ENABLED",
+          "location": { "path": "server/server.py", "line": 148 }
+        }
+      ]
+    },
+    {
+      "id": "a1000001-0000-4000-8000-000000000018",
+      "name": "local-token-middleware",
+      "component_type": "AUTH",
+      "confidence": 0.9,
+      "metadata": {
+        "descriptive_name": "Desktop Local Bearer Token Auth",
+        "auth_detail": {
+          "protocols": ["bearer"],
+          "enforcement_strict": true
+        },
+        "loc": 25,
+        "extras": {
+          "note": "Desktop (Tauri) mode only — fails closed if the token is unset. Not applied in Docker mode."
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.9,
+          "detail": "app.add_middleware(LocalTokenMiddleware) when not IS_DOCKER; 256-bit token generated via secrets.token_hex(32)",
+          "location": { "path": "server/server.py", "line": 145 }
+        }
+      ]
+    },
+    {
+      "id": "a1000001-0000-4000-8000-000000000019",
+      "name": "python:3.12-slim",
+      "component_type": "CONTAINER_IMAGE",
+      "confidence": 0.95,
+      "metadata": {
+        "image_name": "python",
+        "image_tag": "3.12-slim",
+        "registry": "docker.io",
+        "base_image": "python:3.12-slim",
+        "runs_as_root": false,
+        "has_health_check": false,
+        "descriptive_name": "Phlox Server Runtime Container",
+        "loc": 71,
+        "extras": {
+          "note": "Multi-stage build; stage 1 (node:24-slim) builds the React app, stage 2 runs the FastAPI server as non-root user 'phlox' (uid 1000)."
+        }
+      },
+      "evidence": [
+        {
+          "kind": "dockerfile",
+          "confidence": 0.95,
+          "detail": "dockerfile: FROM python:3.12-slim (stage 2); USER phlox; CMD python -m server.server",
+          "location": { "path": "Dockerfile", "line": 18 }
+        }
+      ]
+    },
+    {
+      "id": "a1000001-0000-4000-8000-00000000001a",
+      "name": ".github/workflows/ci.yml",
+      "component_type": "GITHUB_WORKFLOW",
+      "confidence": 0.8,
+      "metadata": {
+        "descriptive_name": "CI Workflow",
+        "loc": 0
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.8,
+          "detail": "README CI badge links to .github/workflows/ci.yml; CHANGELOG references 'harden CI build workflow security'",
+          "location": { "path": "README.md", "line": 9 }
+        }
+      ]
+    }
+  ],
+
+  "edges": [
+    { "source": "a1000001-0000-4000-8000-000000000001", "target": "a1000001-0000-4000-8000-000000000002", "relationship_type": "CALLS" },
+    { "source": "a1000001-0000-4000-8000-000000000001", "target": "a1000001-0000-4000-8000-000000000004", "relationship_type": "USES" },
+    { "source": "a1000001-0000-4000-8000-000000000001", "target": "a1000001-0000-4000-8000-000000000005", "relationship_type": "CALLS" },
+    { "source": "a1000001-0000-4000-8000-000000000001", "target": "a1000001-0000-4000-8000-000000000006", "relationship_type": "CALLS" },
+    { "source": "a1000001-0000-4000-8000-000000000001", "target": "a1000001-0000-4000-8000-000000000007", "relationship_type": "CALLS" },
+    { "source": "a1000001-0000-4000-8000-000000000001", "target": "a1000001-0000-4000-8000-000000000008", "relationship_type": "CALLS" },
+    { "source": "a1000001-0000-4000-8000-000000000001", "target": "a1000001-0000-4000-8000-000000000009", "relationship_type": "CALLS" },
+    { "source": "a1000001-0000-4000-8000-000000000001", "target": "a1000001-0000-4000-8000-00000000000a", "relationship_type": "CALLS" },
+    { "source": "a1000001-0000-4000-8000-000000000001", "target": "a1000001-0000-4000-8000-00000000000b", "relationship_type": "CALLS" },
+    { "source": "a1000001-0000-4000-8000-000000000001", "target": "a1000001-0000-4000-8000-00000000000c", "relationship_type": "CALLS" },
+    { "source": "a1000001-0000-4000-8000-000000000001", "target": "a1000001-0000-4000-8000-00000000000d", "relationship_type": "CALLS" },
+    { "source": "a1000001-0000-4000-8000-000000000001", "target": "a1000001-0000-4000-8000-00000000000e", "relationship_type": "CALLS" },
+    { "source": "a1000001-0000-4000-8000-000000000001", "target": "a1000001-0000-4000-8000-00000000000f", "relationship_type": "CALLS" },
+
+    { "source": "a1000001-0000-4000-8000-000000000006", "target": "a1000001-0000-4000-8000-000000000013", "relationship_type": "ACCESSES", "access_type": "read" },
+    { "source": "a1000001-0000-4000-8000-000000000009", "target": "a1000001-0000-4000-8000-000000000012", "relationship_type": "ACCESSES", "access_type": "read" },
+    { "source": "a1000001-0000-4000-8000-00000000000a", "target": "a1000001-0000-4000-8000-000000000012", "relationship_type": "ACCESSES", "access_type": "readwrite" },
+    { "source": "a1000001-0000-4000-8000-00000000000b", "target": "a1000001-0000-4000-8000-000000000012", "relationship_type": "ACCESSES", "access_type": "read" },
+    { "source": "a1000001-0000-4000-8000-00000000000c", "target": "a1000001-0000-4000-8000-000000000012", "relationship_type": "ACCESSES", "access_type": "read" },
+    { "source": "a1000001-0000-4000-8000-00000000000d", "target": "a1000001-0000-4000-8000-000000000012", "relationship_type": "ACCESSES", "access_type": "readwrite" },
+
+    { "source": "a1000001-0000-4000-8000-000000000010", "target": "a1000001-0000-4000-8000-000000000007", "relationship_type": "PROTECTS" },
+    { "source": "a1000001-0000-4000-8000-000000000010", "target": "a1000001-0000-4000-8000-000000000008", "relationship_type": "PROTECTS" },
+    { "source": "a1000001-0000-4000-8000-000000000010", "target": "a1000001-0000-4000-8000-00000000000f", "relationship_type": "PROTECTS" },
+
+    { "source": "a1000001-0000-4000-8000-00000000000f", "target": "a1000001-0000-4000-8000-000000000011", "relationship_type": "CALLS" },
+
+    { "source": "a1000001-0000-4000-8000-000000000017", "target": "a1000001-0000-4000-8000-000000000014", "relationship_type": "PROTECTS" },
+    { "source": "a1000001-0000-4000-8000-000000000017", "target": "a1000001-0000-4000-8000-000000000015", "relationship_type": "PROTECTS" },
+    { "source": "a1000001-0000-4000-8000-000000000017", "target": "a1000001-0000-4000-8000-000000000016", "relationship_type": "PROTECTS" },
+    { "source": "a1000001-0000-4000-8000-000000000018", "target": "a1000001-0000-4000-8000-000000000014", "relationship_type": "PROTECTS" }
+  ],
+
+  "deps": [
+    { "name": "fastapi", "version_spec": "", "purl": "pkg:pypi/fastapi", "group": "runtime", "source_file": "server/pyproject.toml" },
+    { "name": "uvicorn", "version_spec": "", "purl": "pkg:pypi/uvicorn", "group": "runtime", "source_file": "server/pyproject.toml" },
+    { "name": "openai", "version_spec": "", "purl": "pkg:pypi/openai", "group": "runtime", "source_file": "server/pyproject.toml" },
+    { "name": "sqlcipher3", "version_spec": "", "purl": "pkg:pypi/sqlcipher3", "group": "runtime", "source_file": "server/pyproject.toml" },
+    { "name": "mcp", "version_spec": "", "purl": "pkg:pypi/mcp", "group": "runtime", "source_file": "server/pyproject.toml" },
+    { "name": "sqlite-vec", "version_spec": "", "purl": "pkg:pypi/sqlite-vec", "group": "runtime", "source_file": "server/pyproject.toml" },
+    { "name": "pypdf", "version_spec": "", "purl": "pkg:pypi/pypdf", "group": "runtime", "source_file": "server/pyproject.toml" },
+    { "name": "httpx", "version_spec": "", "purl": "pkg:pypi/httpx", "group": "runtime", "source_file": "server/pyproject.toml" },
+    { "name": "apscheduler", "version_spec": "", "purl": "pkg:pypi/apscheduler", "group": "runtime", "source_file": "server/pyproject.toml" },
+    { "name": "rapidfuzz", "version_spec": "", "purl": "pkg:pypi/rapidfuzz", "group": "runtime", "source_file": "server/pyproject.toml" },
+    { "name": "tiktoken", "version_spec": "", "purl": "pkg:pypi/tiktoken", "group": "runtime", "source_file": "server/pyproject.toml" },
+    { "name": "platformdirs", "version_spec": "", "purl": "pkg:pypi/platformdirs", "group": "runtime", "source_file": "server/pyproject.toml" },
+    { "name": "react", "version_spec": "", "purl": "pkg:npm/react", "group": "runtime", "source_file": "package.json" },
+    { "name": "@chakra-ui/react", "version_spec": "", "purl": "pkg:npm/%40chakra-ui/react", "group": "runtime", "source_file": "package.json" },
+    { "name": "vite", "version_spec": "", "purl": "pkg:npm/vite", "group": "dev", "source_file": "package.json" }
+  ],
+
+  "summary": {
+    "use_case": "Local-first AI medical scribe: ambient clinical note generation, an agentic chat assistant with access to patient records and a local literature knowledge base, task/todo management, correspondence generation, and PDF form filling.",
+    "frameworks": [],
+    "modalities": ["TEXT", "VOICE"],
+    "modality_support": { "text": true, "voice": true },
+    "api_endpoints": ["/api/chat", "/api/config/mcp", "/api/audit", "/api/transcribe/audio", "/api/rag/files", "/api/note", "/api/templates", "/api/letter", "/api/pdf-forms"],
+    "deployment_platforms": ["Docker/Podman", "Desktop (Tauri — macOS/Linux)"],
+    "environments": ["docker", "desktop"],
+    "node_counts": {
+      "AGENT": 1,
+      "MODEL": 2,
+      "PROMPT": 1,
+      "TOOL": 11,
+      "GUARDRAIL": 1,
+      "MCP_SERVER": 1,
+      "DATASTORE": 2,
+      "API_ENDPOINT": 3,
+      "AUTH": 2,
+      "CONTAINER_IMAGE": 1,
+      "GITHUB_WORKFLOW": 1
+    },
+    "data_classification": ["PII", "PHI"],
+    "classified_tables": ["encounters", "patient_profiles", "todos", "mcp_servers"],
+    "encryption_at_rest_coverage": false,
+    "env_files": [".env.example"],
+    "env_var_keys": ["DB_ENCRYPTION_KEY", "ALLOWED_ORIGINS", "PORT", "PROXY_AUTH_ENABLED", "PROXY_AUTH_USER_HEADER", "RATE_LIMIT_ENABLED"],
+    "local_url": "http://localhost:5000",
+    "uses_streaming": true,
+    "streaming_endpoints": ["/api/chat"],
+    "total_loc": 1934
+  },
+
+  "relationship_graph_md": "```mermaid\nflowchart LR\n  chat_engine --> primary_model\n  chat_engine --> mcp_tool --> external_mcp_server\n  chat_engine --> create_note --> clinical_db\n  chat_engine --> get_relevant_literature --> documents_db\n  phi_sanitization -. protects .-> pubmed_search\n  phi_sanitization -. protects .-> wiki_search\n  phi_sanitization -. protects .-> mcp_tool\n  proxy_auth -. protects .-> chat_endpoint\n```\n\nThe ChatEngine agent tool-calls into ~10 built-in tools plus any dynamically-registered external MCP server tools. Patient-record tools read/write the SQLCipher-encrypted clinical database; the literature tool reads the separate, unencrypted RAG vector store. External-facing tools (PubMed, Wikipedia, MCP) are PHI-sanitized before any request leaves the process. Auth is opt-in: proxy-header auth for Docker deployments (off by default) and a local bearer token for desktop builds only."
+}
