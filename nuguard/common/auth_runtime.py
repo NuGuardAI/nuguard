@@ -24,7 +24,7 @@ def _normalize_headers(headers_override: Mapping[str, str] | None) -> dict[str, 
     return {
         str(name): str(value)
         for name, value in headers_override.items()
-        if str(name).strip()
+        if str(name).strip() and str(value).strip() not in ("None", "")
     }
 
 
