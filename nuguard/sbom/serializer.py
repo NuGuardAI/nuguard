@@ -51,6 +51,7 @@ from __future__ import annotations
 
 import json
 import re
+import uuid
 from typing import Any
 
 from nuguard import __version__
@@ -134,6 +135,21 @@ _AI_TYPE_MAP: dict[ComponentType, str] = {
     ComponentType.API_ENDPOINT: "library",
     ComponentType.DEPLOYMENT: "library",
 }
+
+
+def _cyclonedx_serial_number(doc: AiSbomDocument) -> str:
+    """Return a spec-compliant ``urn:uuid:<UUID>`` for a CycloneDX BOM.
+
+    The CycloneDX 1.5/1.6 JSON schema requires ``serialNumber`` to match
+    ``^urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$``.
+    Previously the code interpolated ``doc.schema_version`` (a semver like
+    ``"1.5.0"``) plus a timestamp into the URN, producing an invalid value
+    (e.g. ``urn:uuid:1.5.0-20260813T210215Z``) that CycloneDX validators
+    reject.  A deterministic UUID5 seeded from the document identity keeps the
+    serialNumber stable for the same document while remaining schema-valid.
+    """
+    seed = f"{doc.schema_version}:{doc.generated_at.isoformat()}"
+    return f"urn:uuid:{uuid.uuid5(uuid.NAMESPACE_URL, seed)}"
 
 
 class AiSbomSerializer:
@@ -296,7 +312,7 @@ class AiSbomSerializer:
             "bomFormat": "CycloneDX",
             "specVersion": spec_version,
             "version": 1,
-            "serialNumber": f"urn:uuid:{doc.schema_version}-{doc.generated_at.strftime('%Y%m%dT%H%M%SZ')}",
+            "serialNumber": _cyclonedx_serial_number(doc),
             "metadata": {
                 "timestamp": doc.generated_at.isoformat(),
                 "tools": [
@@ -639,7 +655,7 @@ class AiSbomSerializer:
             "bomFormat": "CycloneDX",
             "specVersion": spec_version,
             "version": 1,
-            "serialNumber": f"urn:uuid:{doc.schema_version}-{doc.generated_at.strftime('%Y%m%dT%H%M%SZ')}",
+            "serialNumber": _cyclonedx_serial_number(doc),
             "metadata": {
                 "timestamp": doc.generated_at.isoformat(),
                 "tools": [
