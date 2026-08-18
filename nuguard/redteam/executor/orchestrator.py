@@ -805,7 +805,13 @@ class RedteamOrchestrator:
                 detail=default_check.error_detail,
             )
         bootstrap_headers = bootstrapper.session.headers()
-        effective_headers = dict(self._extra_headers)
+        # Normalize the static extra headers so a literal "None"/"" string
+        # value (unset ${VAR} → None → stringified anywhere upstream) can't
+        # reach the target. Login-flow/bootstrapped headers override the
+        # normalized static defaults below.
+        from nuguard.common.auth_runtime import _normalize_headers  # noqa: PLC0415
+
+        effective_headers = _normalize_headers(self._extra_headers)
         # Login-flow/bootstrapped session headers must override static defaults.
         if bootstrap_headers:
             effective_headers.update(bootstrap_headers)
