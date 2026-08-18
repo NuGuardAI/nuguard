@@ -126,7 +126,7 @@ class CSharpMLNetAdapter(CSharpFrameworkAdapter):
                 )
                 continue
 
-            if ".Trainers" in receiver:
+            if call.name != "Fit" and ".Trainers" in receiver:
                 if call.assigned_to:
                     estimator_variables.add(call.assigned_to)
 
@@ -165,7 +165,7 @@ class CSharpMLNetAdapter(CSharpFrameworkAdapter):
                 )
                 continue
 
-            if ".Transforms" in receiver:
+            if call.name != "Fit" and ".Transforms" in receiver:
                 pipeline_id = call.assigned_to or f"line:{call.line}"
 
                 if call.assigned_to:

@@ -262,6 +262,13 @@ class CSharpAspNetCoreAdapter(CSharpFrameworkAdapter):
                 continue
 
             http_method, action_route = http_attribute
+
+            if not action_route:
+                action_route = _route_attribute(
+                    method_attributes,
+                    constants,
+                )
+
             base_route = _route_attribute(
                 controller_attributes,
                 constants,
@@ -314,10 +321,11 @@ class CSharpAspNetCoreAdapter(CSharpFrameworkAdapter):
                 request_type,
                 request_name,
             ) = _request_parameter(params)
-            request_schema = _schema_for_type(
+            request_schema = _request_schema(
                 content,
                 result,
                 request_type,
+                request_name,
             )
             chat_key = _chat_key(
                 request_schema,
@@ -398,10 +406,11 @@ class CSharpAspNetCoreAdapter(CSharpFrameworkAdapter):
                 request_type,
                 request_name,
             ) = _request_parameter(params)
-            request_schema = _schema_for_type(
+            request_schema = _request_schema(
                 content,
                 result,
                 request_type,
+                request_name,
             )
             chat_key = _chat_key(
                 request_schema,
@@ -480,7 +489,12 @@ def _endpoint_node(
 
     if chat_key:
         metadata["chat_payload_key"] = chat_key
-        metadata["chat_payload_list"] = False
+        metadata["chat_payload_list"] = _is_collection_type(
+            request_schema.get(
+                chat_key,
+                "",
+            )
+        )
 
     if response_key:
         metadata["response_text_key"] = response_key
@@ -664,7 +678,14 @@ def _combine_routes(
     action_name: str,
 ) -> str:
     controller = controller_name.removesuffix("Controller")
-    combined = "/".join(part.strip("/") for part in (base, action) if part.strip("/"))
+    action_template = action.strip()
+
+    if action_template.startswith("~/"):
+        combined = action_template[1:]
+    elif action_template.startswith("/"):
+        combined = action_template
+    else:
+        combined = "/".join(part.strip("/") for part in (base, action_template) if part.strip("/"))
     combined = re.sub(
         r"\[controller\]",
         controller,
@@ -826,18 +847,80 @@ def _request_parameter(
         key=lambda item: not item[2],
     )
 
-    for type_name, name, _ in ordered:
+    for type_name, name, from_body in ordered:
         base = _base_type(type_name)
 
-        if base in _PRIMITIVE_TYPES or base in _INFRASTRUCTURE_TYPES:
+        if base in _INFRASTRUCTURE_TYPES:
             continue
 
-        if base.startswith("I") and len(base) > 1 and base[1].isupper():
+        if base in _PRIMITIVE_TYPES:
+            if from_body or name.casefold() in _PROMPT_FIELDS:
+                return type_name, name
+
             continue
 
-        return base, name
+        if (
+            base.startswith("I")
+            and len(base) > 1
+            and base[1].isupper()
+            and not _is_collection_type(type_name)
+        ):
+            continue
+
+        return type_name, name
 
     return "", None
+
+
+def _request_schema(
+    content: str,
+    result: Any,
+    type_name: str,
+    parameter_name: str | None,
+) -> dict[str, str]:
+    schema = _schema_for_type(
+        content,
+        result,
+        type_name,
+    )
+
+    if schema or not parameter_name:
+        return schema
+
+    base = _base_type(type_name)
+
+    if base in _PRIMITIVE_TYPES or _is_collection_type(type_name):
+        return {parameter_name: type_name}
+
+    return {}
+
+
+def _is_collection_type(
+    type_name: str,
+) -> bool:
+    clean = re.sub(
+        r"\s+",
+        "",
+        type_name,
+    ).rstrip("?")
+
+    if clean.endswith("[]"):
+        return True
+
+    root = clean.split("<", 1)[0].split(".")[-1]
+
+    return root in {
+        "Collection",
+        "HashSet",
+        "IAsyncEnumerable",
+        "ICollection",
+        "IEnumerable",
+        "IList",
+        "IReadOnlyCollection",
+        "IReadOnlyList",
+        "ImmutableArray",
+        "List",
+    }
 
 
 def _schema_for_type(
