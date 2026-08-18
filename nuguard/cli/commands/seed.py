@@ -22,9 +22,17 @@ def seed(
 ) -> None:
     """Seed canary data into TARGET before running red-team tests.
 
-    TODO: Implement canary seeding logic.
+    Placeholder. A run-history store (see issue #161) is required before
+    the canary-seed workflow can be persisted. Until then, pass
+    ``--canary <file.json>`` directly to ``nuguard redteam`` to inject
+    a canary value without a prior ``nuguard seed`` run.
     """
     if ctx.invoked_subcommand is not None:
         return
-    typer.echo("nuguard seed: not yet implemented.")
+    typer.echo(
+        "nuguard seed: not yet implemented. "
+        "Issue #161 tracks adding a run-history store, which this command depends on. "
+        "Workaround: pass --canary <file.json> to `nuguard redteam` directly.",
+        err=True,
+    )
     raise typer.Exit(code=3)
