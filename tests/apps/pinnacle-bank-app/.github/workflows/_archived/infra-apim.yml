@@ -1,0 +1,117 @@
+# NuGuard — One-time APIM provisioning workflow
+#
+# Run this ONCE per environment when first setting up APIM, or to update
+# global policies (CORS origins, rate limits). NOT needed for regular deploys;
+# backend.yml updates backend service URLs automatically on each push.
+#
+# After provisioning, update the DNS CNAME records:
+#   dev:     api-dev.nuguard.ai     → <apimGatewayUrl from output>
+#   staging: api-staging.nuguard.ai → <apimGatewayUrl from output>
+#   prod:    api.nuguard.ai         → <apimGatewayUrl from output>
+
+name: Provision APIM
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Target environment'
+        required: true
+        type: choice
+        options: [dev, staging, prod]
+      publisher_email:
+        description: 'APIM publisher email'
+        required: false
+        default: 'api@nuguard.ai'
+
+jobs:
+  provision:
+    name: Provision APIM (${{ inputs.environment }})
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment == 'prod' && 'production' || (inputs.environment == 'staging' && 'staging' || 'development') }}
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Azure Login (OIDC)
+        uses: azure/login@v2
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: Set environment variables
+        id: env
+        run: |
+          case "${{ inputs.environment }}" in
+            dev)
+              echo "rg=Dev" >> $GITHUB_OUTPUT
+              echo "origins=[\"https://dev.nuguard.ai\",\"http://localhost:3000\",\"http://localhost:5173\"]" >> $GITHUB_OUTPUT
+              ;;
+            staging)
+              echo "rg=Stage" >> $GITHUB_OUTPUT
+              echo "origins=[\"https://staging.nuguard.ai\",\"https://demo.nuguard.ai\",\"http://localhost:3000\"]" >> $GITHUB_OUTPUT
+              ;;
+            prod)
+              echo "rg=Prod" >> $GITHUB_OUTPUT
+              echo "origins=[\"https://app.nuguard.ai\"]" >> $GITHUB_OUTPUT
+              ;;
+          esac
+
+      - name: Deploy APIM via Bicep
+        id: deploy
+        run: |
+          set -euo pipefail
+
+          DEPLOY_OUTPUT=$(az deployment group create \
+            --resource-group "${{ steps.env.outputs.rg }}" \
+            --template-file infra/apim.bicep \
+            --parameters \
+              environment="${{ inputs.environment }}" \
+              publisherEmail="${{ inputs.publisher_email }}" \
+              allowedOrigins='${{ steps.env.outputs.origins }}' \
+            --output json)
+
+          echo "$DEPLOY_OUTPUT" > /tmp/apim-deploy.json
+
+          GATEWAY_URL=$(echo "$DEPLOY_OUTPUT" | \
+            python3 -c "import sys,json; d=json.load(sys.stdin); print(d['properties']['outputs']['apimGatewayUrl']['value'])")
+          APIM_NAME=$(echo "$DEPLOY_OUTPUT" | \
+            python3 -c "import sys,json; d=json.load(sys.stdin); print(d['properties']['outputs']['apimName']['value'])")
+
+          echo "apim_gateway_url=${GATEWAY_URL}" >> $GITHUB_OUTPUT
+          echo "apim_name=${APIM_NAME}" >> $GITHUB_OUTPUT
+
+      - name: Print DNS instructions
+        run: |
+          ENV="${{ inputs.environment }}"
+          GATEWAY="${{ steps.deploy.outputs.apim_gateway_url }}"
+          APIM="${{ steps.deploy.outputs.apim_name }}"
+
+          echo ""
+          echo "========================================================"
+          echo "  APIM Provisioned: ${APIM}"
+          echo "  Gateway URL:      ${GATEWAY}"
+          echo "========================================================"
+          echo ""
+          echo "Next step — update DNS CNAME record:"
+          case "$ENV" in
+            dev)     echo "  api-dev.nuguard.ai     CNAME  ${GATEWAY#https://}" ;;
+            staging) echo "  api-staging.nuguard.ai CNAME  ${GATEWAY#https://}" ;;
+            prod)    echo "  api.nuguard.ai         CNAME  ${GATEWAY#https://}" ;;
+          esac
+          echo ""
+          case "$ENV" in
+            prod)    HOSTNAME="api.nuguard.ai" ;;
+            *)       HOSTNAME="api-${ENV}.nuguard.ai" ;;
+          esac
+          echo "Then configure the custom domain in APIM:"
+          echo "  az apim update --name ${APIM} --resource-group ${{ steps.env.outputs.rg }} \\"
+          echo "    --hostname-configurations type=Proxy,hostName=${HOSTNAME}"
+          echo ""
+          echo "Backend service URLs will be updated automatically on the next"
+          echo "backend.yml CI/CD run (push to develop/main or release tag)."
