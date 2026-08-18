@@ -86,8 +86,10 @@ def _default_budget_tokens() -> int:
 
 
 class AiSbomConfig(BaseModel):
-    max_files: int = Field(default=1000, ge=1, le=10000)
-    max_file_size_bytes: int = Field(default=1024 * 1024, ge=1024)
+    # None = no limit on the number of files scanned/walked, for both local-folder
+    # and GitHub repo discovery (they share the same _iter_files walker).
+    max_files: int | None = Field(default=None, ge=1)
+    max_file_size_bytes: int = Field(default=100 * 1024 * 1024, ge=1024)
     include_extensions: set[str] = Field(
         default_factory=lambda: {
             ".py",
@@ -109,6 +111,12 @@ class AiSbomConfig(BaseModel):
             ".sh",
             ".bash",
             ".md",
+            ".rs",
+            ".rb",
+            ".java",
+            ".cs",
+            ".toml",
+            ".cfg",
         }
     )
     exclude_patterns: list[str] = Field(

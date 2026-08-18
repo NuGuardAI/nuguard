@@ -36,6 +36,8 @@ canary.local.json
 
 # Test run artifacts (E2E outputs, scan reports)
 tests/output/
+tests/apps/ChapterApps
+
 /reports/
 /redteam-report.json
 /*.sbom.json
