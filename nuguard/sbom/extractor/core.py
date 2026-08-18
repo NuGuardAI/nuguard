@@ -690,8 +690,21 @@ class AiSbomExtractor:
         # server.py). This is a fast AST-only pass — no detection, no merging.
         _global_model_schemas: dict[str, dict[str, str]] = {}
         _global_router_prefixes: dict[str, str] = {}
+        # rel_path -> [tool_function_name, ...] for files with @tool-decorated
+        # functions — used below (after the main per-file loop) to resolve
+        # cross-file TOOL -[ACCESSES]-> DATASTORE hints. Populated outside the
+        # try so a partial pre-pass still contributes what it found.
+        _tool_defining_files: dict[str, list[str]] = {}
+        # (rel_path, module_level_var_name) -> datastore canonical_name, populated
+        # by the main per-file loop below as PythonDatastoreAdapter's real,
+        # fully-disambiguated detections come in — see the DATASTORE branch
+        # inside the Python-file adapter loop.
+        _ds_symbol_index: dict[tuple[str, str], str] = {}
         try:
             import ast as _ast  # noqa: PLC0415  # isort:skip
+            from nuguard.sbom.adapters.python.datastores import (  # noqa: PLC0415, I001
+                _collect_tool_decorated_function_names as _collect_py_tool_names,
+            )
             from nuguard.sbom.adapters.python.fastapi_adapter import (  # noqa: PLC0415, I001
                 _collect_include_router_calls as _collect_py_includes,
                 _collect_model_schemas as _collect_py_models,
@@ -721,6 +734,9 @@ class AiSbomExtractor:
                 _router_decls[_router_rel] = _collect_py_router_decls(_py_tree)
                 _router_includes[_router_rel] = _collect_py_includes(_py_tree)
                 _router_imports[_router_rel] = _collect_py_router_imports(_py_tree)
+                _tool_names = _collect_py_tool_names(_py_tree)
+                if _tool_names:
+                    _tool_defining_files[_router_rel] = _tool_names
 
             def _resolve_import_to_relpath(rel_path: str, level: int, module: str) -> str | None:
                 """Best-effort resolve a (possibly relative) import to a scanned .py rel path."""
@@ -818,6 +834,8 @@ class AiSbomExtractor:
                     )
         except Exception as _pre_exc:
             _log.debug("cross-file model/router pre-pass failed (non-fatal): %s", _pre_exc)
+            _resolve_import_to_relpath = None  # type: ignore[assignment]
+            _router_imports = {}
 
         # Inject the global indices into adapters that support them.
         for _adapter in self.framework_adapters:
@@ -926,6 +944,15 @@ class AiSbomExtractor:
                                     _dc_metadata.append(det.metadata)
                                 else:
                                     self._merge_detection(node_map, det)
+                                    _ds_symbol = det.metadata.get("module_level_symbol")
+                                    if det.component_type == ComponentType.DATASTORE and _ds_symbol:
+                                        # Record which (file, local variable name)
+                                        # resolved to this datastore, using this
+                                        # adapter's own fully-disambiguated
+                                        # provider resolution — consumed below
+                                        # (after this file loop) to resolve
+                                        # cross-file TOOL -> DATASTORE hints.
+                                        _ds_symbol_index[(rel_path, _ds_symbol)] = det.canonical_name
 
                         # Phase 1a-prime: module-level Python prompt constants.
                         # Runs on ALL .py files regardless of framework imports so that
@@ -1228,6 +1255,45 @@ class AiSbomExtractor:
 
         # Enrich DATASTORE nodes with PII/PHI classification metadata
         self._enrich_datastores(node_map, _dc_metadata)
+
+        # Cross-file TOOL -[ACCESSES]-> DATASTORE hints: a file that defines
+        # @tool-decorated functions but only *imports* its datastore client
+        # (rather than instantiating one directly) gets no same-file hint from
+        # PythonDatastoreAdapter, since that adapter never emits a relationship
+        # for datastores detected in another file. Resolve the import (reusing
+        # the same _resolve_import_to_relpath used for router prefixes in the
+        # pre-pass above) against _ds_symbol_index, which was populated from
+        # this adapter's own fully-disambiguated provider resolution as
+        # DATASTORE detections came in above — not re-derived independently,
+        # so the canonical name always matches the real node.
+        try:
+            if _resolve_import_to_relpath is None:
+                raise RuntimeError("pre-pass import resolver unavailable")  # noqa: TRY301
+            for _tool_rel, _tool_fn_names in _tool_defining_files.items():
+                for _local_name, (_lvl, _mod, _orig) in _router_imports.get(_tool_rel, {}).items():
+                    _target_rel = _resolve_import_to_relpath(_tool_rel, _lvl, _mod)
+                    if not _target_rel:
+                        continue
+                    _ds_canon = _ds_symbol_index.get((_target_rel, _orig))
+                    if not _ds_canon:
+                        continue
+                    for _fn_name in _tool_fn_names:
+                        _tool_key = (ComponentType.TOOL, canonicalize_text(f"langchain:tool:{_fn_name}"))
+                        _ds_key = (ComponentType.DATASTORE, canonicalize_text(_ds_canon))
+                        _acc = node_map.get(_tool_key)
+                        if _acc is None or _ds_key not in node_map:
+                            continue
+                        _acc.relationships.append(
+                            RelationshipHint(
+                                source_canonical=canonicalize_text(f"langchain:tool:{_fn_name}"),
+                                source_type=ComponentType.TOOL,
+                                target_canonical=_ds_canon,
+                                target_type=ComponentType.DATASTORE,
+                                relationship_type="ACCESSES",
+                            )
+                        )
+        except Exception as _cross_ds_exc:
+            _log.debug("cross-file datastore ACCESSES resolution failed (non-fatal): %s", _cross_ds_exc)
 
         # Deduplicate nodes that share (component_type, file, line) — e.g. a
         # regex adapter and an AST adapter both firing on the same token.
