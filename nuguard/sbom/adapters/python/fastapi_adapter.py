@@ -55,6 +55,22 @@ _AUTH_CLASS_PROTOCOLS: dict[str, list[str]] = {
 # Classes with strict enforcement by default
 _AUTH_STRICT_CLASSES = {"OAuth2PasswordBearer", "HTTPBearer", "APIKeyHeader"}
 
+# The constructor keyword argument that identifies a given auth class's
+# *scheme* (as opposed to just its call site) — e.g. two files each doing
+# OAuth2PasswordBearer(tokenUrl="token") are the same scheme, real code
+# duplication, not two independent auth mechanisms. Classes with no entry
+# here (HTTPBearer/HTTPBasic/HTTPDigest) take no meaningfully-distinguishing
+# constructor argument, so any two instantiations of the same class are
+# treated as the same scheme.
+_AUTH_SCHEME_KEY_ARG: dict[str, str] = {
+    "OAuth2PasswordBearer": "tokenUrl",
+    "OAuth2PasswordRequestForm": "tokenUrl",
+    "OAuth2": "tokenUrl",
+    "APIKeyHeader": "name",
+    "APIKeyCookie": "name",
+    "APIKeyQuery": "name",
+}
+
 # Rate limit decorator function names
 _RATE_LIMIT_UNIT_SECONDS = {
     "second": 1, "seconds": 1,
@@ -131,6 +147,31 @@ def _get_call_name(call: ast.Call) -> str | None:
         return call.func.id
     if isinstance(call.func, ast.Attribute):
         return call.func.attr
+    return None
+
+
+def _auth_scheme_key(class_name: str, call: ast.Call) -> str | None:
+    """Return a value identifying this auth instantiation's *scheme* for
+    cross-file dedup, or ``None`` when it can't be resolved statically.
+
+    For classes with no natural scheme-identifying argument (see
+    ``_AUTH_SCHEME_KEY_ARG``), any instantiation of the class counts as the
+    same scheme. Otherwise, only a resolvable string-literal value for that
+    argument counts — a dynamically-built value (an f-string, a variable, a
+    settings lookup) can't be compared across files without evaluating it,
+    so callers must fall back to the existing per-file/var canonical name
+    rather than risk merging two actually-different schemes.
+    """
+    key_arg = _AUTH_SCHEME_KEY_ARG.get(class_name)
+    if key_arg is None:
+        return f"<{class_name}>"
+    for kw in call.keywords:
+        if kw.arg == key_arg and isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
+            return kw.value.value
+    if call.args:
+        first = call.args[0]
+        if isinstance(first, ast.Constant) and isinstance(first.value, str):
+            return first.value
     return None
 
 
@@ -450,7 +491,19 @@ class FastAPIAdapter(FrameworkAdapter):
 
             elif class_name in _AUTH_CLASSES:
                 auth_type = _AUTH_CLASSES[class_name]
-                canon = f"fastapi:auth:{file_path}:{var_name}"
+                # Cross-file dedup: two instantiations of the same class with
+                # the same resolvable scheme key (e.g. tokenUrl="token") are
+                # the same auth scheme, not two independent mechanisms — see
+                # _auth_scheme_key. Falls back to the previous per-file/var
+                # canonical name when the scheme key can't be resolved
+                # statically, so two genuinely-different (or unresolvable)
+                # schemes are never merged.
+                _scheme_key = _auth_scheme_key(class_name, call)
+                canon = (
+                    f"auth:{class_name}:{_scheme_key}"
+                    if _scheme_key is not None
+                    else f"fastapi:auth:{file_path}:{var_name}"
+                )
                 auth_detail: dict[str, Any] = {
                     "protocols": _AUTH_CLASS_PROTOCOLS.get(class_name, [auth_type]),
                 }

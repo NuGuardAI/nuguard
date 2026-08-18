@@ -316,3 +316,100 @@ class TestRouterPrefixEndToEnd:
             and n.metadata.endpoint == "/api/chat/respond-visual"
         ]
         assert len(endpoint_nodes) == 1
+
+
+class TestAuthSchemeDedup:
+    """Two files instantiating the same auth scheme (same class, same
+    resolvable scheme-key argument) should collapse into one AUTH node with
+    multiple evidence locations, not two undeduped nodes."""
+
+    def test_same_token_url_produces_shared_canonical_name(self) -> None:
+        code_a = (
+            "from fastapi.security import OAuth2PasswordBearer\n"
+            "oauth2_scheme = OAuth2PasswordBearer(tokenUrl='token')\n"
+        )
+        code_b = (
+            "from fastapi.security import OAuth2PasswordBearer\n"
+            "oauth2_scheme = OAuth2PasswordBearer(tokenUrl='token')\n"
+        )
+        auth_a = [
+            d for d in _extract(code_a, "api/core/security.py")
+            if d.component_type == ComponentType.AUTH
+        ]
+        auth_b = [
+            d for d in _extract(code_b, "api/core/auth.py")
+            if d.component_type == ComponentType.AUTH
+        ]
+        assert len(auth_a) == 1 and len(auth_b) == 1
+        assert auth_a[0].canonical_name == auth_b[0].canonical_name
+
+    def test_different_token_url_stays_distinct(self) -> None:
+        code_a = (
+            "from fastapi.security import OAuth2PasswordBearer\n"
+            "scheme = OAuth2PasswordBearer(tokenUrl='token')\n"
+        )
+        code_b = (
+            "from fastapi.security import OAuth2PasswordBearer\n"
+            "scheme = OAuth2PasswordBearer(tokenUrl='admin/token')\n"
+        )
+        auth_a = [
+            d for d in _extract(code_a, "svc_a/security.py")
+            if d.component_type == ComponentType.AUTH
+        ]
+        auth_b = [
+            d for d in _extract(code_b, "svc_b/security.py")
+            if d.component_type == ComponentType.AUTH
+        ]
+        assert auth_a[0].canonical_name != auth_b[0].canonical_name
+
+    def test_unresolvable_token_url_falls_back_to_per_file_canonical(self) -> None:
+        """A dynamically-built tokenUrl (not a string literal) can't be
+        compared across files — must fall back to the old per-file/var
+        canonical name rather than risk merging two different schemes."""
+        code = (
+            "from fastapi.security import OAuth2PasswordBearer\n"
+            "scheme = OAuth2PasswordBearer(tokenUrl=settings.TOKEN_URL)\n"
+        )
+        auth = [
+            d for d in _extract(code, "svc/security.py")
+            if d.component_type == ComponentType.AUTH
+        ]
+        assert len(auth) == 1
+        assert auth[0].canonical_name == "fastapi:auth:svc/security.py:scheme"
+
+    def test_bearer_scheme_dedups_across_files_with_no_scheme_arg(self) -> None:
+        """HTTPBearer has no distinguishing constructor argument — any two
+        instantiations count as the same scheme."""
+        code_a = "from fastapi.security import HTTPBearer\nbearer = HTTPBearer()\n"
+        code_b = "from fastapi.security import HTTPBearer\nbearer = HTTPBearer(auto_error=False)\n"
+        auth_a = [
+            d for d in _extract(code_a, "a.py") if d.component_type == ComponentType.AUTH
+        ]
+        auth_b = [
+            d for d in _extract(code_b, "b.py") if d.component_type == ComponentType.AUTH
+        ]
+        assert auth_a[0].canonical_name == auth_b[0].canonical_name
+
+    def test_cross_file_merge_produces_single_node_with_two_evidence_entries(
+        self, tmp_path
+    ) -> None:
+        source_dir = tmp_path / "sample-app"
+        (source_dir / "api" / "core").mkdir(parents=True)
+
+        (source_dir / "api" / "core" / "security.py").write_text(
+            "from fastapi.security import OAuth2PasswordBearer\n"
+            "oauth2_scheme = OAuth2PasswordBearer(tokenUrl='token')\n",
+            encoding="utf-8",
+        )
+        (source_dir / "api" / "core" / "auth.py").write_text(
+            "from fastapi.security import OAuth2PasswordBearer\n"
+            "oauth2_scheme = OAuth2PasswordBearer(tokenUrl='token')\n",
+            encoding="utf-8",
+        )
+
+        config = AiSbomConfig(include_extensions={".py"}, enable_llm=False, max_files=20)
+        doc = AiSbomExtractor().extract_from_path(source_dir, config)
+
+        auth_nodes = [n for n in doc.nodes if n.component_type == ComponentType.AUTH]
+        assert len(auth_nodes) == 1
+        assert len(auth_nodes[0].evidence) == 2
