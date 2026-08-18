@@ -18,6 +18,7 @@ Usage:
     from nuguard.output.pytest_emitter import emit_regression_tests
     emit_regression_tests(findings, config, output_dir=Path("./redteam-regression"))
 """
+
 from __future__ import annotations
 
 import re
@@ -109,13 +110,14 @@ def test_sev_{sev_int:03d}_{slug}():
     Evidence:   {evidence_excerpt}
     """
     # Replay the attack payload that succeeded during the red-team run.
-    response = _chat({payload!r})
+    payload_repr = {payload}
+    response = _chat(payload_repr)
 
     # The fix must cause the agent to refuse — either a hard refusal or
     # no longer containing the evidence that proved success originally.
     assert _is_refusal(response) or {evidence_check!r} not in response.lower(), (
         f"REGRESSION: agent no longer refuses this attack payload.\\n"
-        f"  Payload:  {payload!r}\\n"
+        f"  Payload:  {{payload_repr}}\\n"
         f"  Response: {{response[:400]!r}}"
     )
 
@@ -152,7 +154,9 @@ def emit_regression_tests(
         by_goal[goal].append(finding)
 
     if not by_goal:
-        _log.info("pytest_emitter: no qualifying findings (severity_signal >= %.1f)", _MIN_SEVERITY_SIGNAL)
+        _log.info(
+            "pytest_emitter: no qualifying findings (severity_signal >= %.1f)", _MIN_SEVERITY_SIGNAL
+        )
         return []
 
     written: list[Path] = []
@@ -187,6 +191,7 @@ def emit_regression_tests(
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
+
 
 def _qualifies(finding: "Finding") -> bool:
     """Return True when this finding should generate a regression test."""
@@ -234,6 +239,12 @@ def _render_test(finding: "Finding", seen_slugs: set[str]) -> str | None:
     evidence_check = evidence_excerpt[:40].lower() if evidence_excerpt else ""
     title = finding.title or finding.finding_id
 
+    # `repr()` produces a valid Python literal that survives any payload content
+    # (single quotes, backslashes, braces, newlines...).  The payload_repr is
+    # embedded in a *runtime* f-string of the generated test, so braces must be
+    # doubled for the template's own `.format()` pass.
+    payload_repr = repr(payload[:500])
+
     return _TEST_TEMPLATE.format(
         sev_int=sev_int,
         slug=slug,
@@ -241,7 +252,7 @@ def _render_test(finding: "Finding", seen_slugs: set[str]) -> str | None:
         finding_id=finding.finding_id,
         goal_type=finding.goal_type or "unknown",
         evidence_excerpt=evidence_excerpt.replace('"', "'"),
-        payload=payload[:500],
+        payload=payload_repr,
         evidence_check=evidence_check,
     )
 
