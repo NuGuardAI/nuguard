@@ -48,3 +48,42 @@ class TestInsecureDefaultSecretDetection:
         adapter = _adapter("auth_runtime_insecure_default")
         code = "SECRET_KEY = os.getenv('SECRET_KEY', fallback_secret)\n"
         assert adapter.detect(code) is None
+
+
+class TestCloudSecretsManagerDetection:
+    def test_aws_secrets_manager_detected(self) -> None:
+        adapter = _adapter("auth_aws_secrets_manager")
+        code = (
+            "client = boto3.client('secretsmanager')\n"
+            "resp = client.get_secret_value(SecretId='prod/openai-key')\n"
+        )
+        detection = adapter.detect(code)
+        assert detection is not None
+        assert detection.metadata["auth_type"] == "cloud_secrets_manager"
+        assert detection.metadata["provider"] == "aws"
+
+    def test_azure_key_vault_detected(self) -> None:
+        adapter = _adapter("auth_azure_key_vault")
+        code = (
+            "client = SecretClient(vault_url='https://vault.vault.azure.net/', "
+            "credential=DefaultAzureCredential())\n"
+            "secret = client.get_secret('openai-key')\n"
+        )
+        detection = adapter.detect(code)
+        assert detection is not None
+        assert detection.metadata["provider"] == "azure"
+
+    def test_gcp_secret_manager_detected(self) -> None:
+        adapter = _adapter("auth_gcp_secret_manager")
+        code = (
+            "client = secretmanager.SecretManagerServiceClient()\n"
+            "resp = client.access_secret_version(name=name)\n"
+        )
+        detection = adapter.detect(code)
+        assert detection is not None
+        assert detection.metadata["provider"] == "gcp"
+
+    def test_unrelated_boto3_client_not_flagged_as_secrets_manager(self) -> None:
+        adapter = _adapter("auth_aws_secrets_manager")
+        code = "client = boto3.client('s3')\n"
+        assert adapter.detect(code) is None

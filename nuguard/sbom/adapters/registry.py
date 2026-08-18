@@ -300,6 +300,46 @@ def default_registry() -> tuple[DetectionAdapter, ...]:
                 },
                 skip_path_parts=frozenset({"data-generators", "data_generators", "generators"}),
             ),
+            # Tier 1c (priority 133): cloud secrets-manager reads. A managed
+            # secrets store is at least as common a credential source as an env
+            # var in a cloud-deployed app, and was previously invisible to AUTH
+            # detection entirely. One adapter per provider (rather than bundled
+            # into auth_runtime) so each gets its own canonical_name/provider tag
+            # instead of collapsing three distinct cloud services into one node.
+            RegexAdapter(
+                name="auth_aws_secrets_manager",
+                component_type=ComponentType.AUTH,
+                priority=133,
+                patterns=(
+                    re.compile(r"""boto3\.client\(\s*['"]secretsmanager['"]""", re.IGNORECASE),
+                ),
+                canonical_name="auth:cloud_secrets_manager:aws",
+                metadata={"auth_type": "cloud_secrets_manager", "provider": "aws"},
+                skip_path_parts=frozenset({"data-generators", "data_generators", "generators"}),
+            ),
+            RegexAdapter(
+                name="auth_azure_key_vault",
+                component_type=ComponentType.AUTH,
+                priority=133,
+                patterns=(
+                    # azure-keyvault-secrets: SecretClient(vault_url=..., credential=...)
+                    re.compile(r"""SecretClient\s*\(\s*vault_url\s*="""),
+                ),
+                canonical_name="auth:cloud_secrets_manager:azure",
+                metadata={"auth_type": "cloud_secrets_manager", "provider": "azure"},
+                skip_path_parts=frozenset({"data-generators", "data_generators", "generators"}),
+            ),
+            RegexAdapter(
+                name="auth_gcp_secret_manager",
+                component_type=ComponentType.AUTH,
+                priority=133,
+                patterns=(
+                    re.compile(r"""secretmanager\.SecretManagerServiceClient\s*\("""),
+                ),
+                canonical_name="auth:cloud_secrets_manager:gcp",
+                metadata={"auth_type": "cloud_secrets_manager", "provider": "gcp"},
+                skip_path_parts=frozenset({"data-generators", "data_generators", "generators"}),
+            ),
             # Tier 2 (priority 140): broader auth keyword patterns.
             #   Excluded from non-runtime paths (YAML configs, data-generator dirs)
             #   to reduce false positives.
