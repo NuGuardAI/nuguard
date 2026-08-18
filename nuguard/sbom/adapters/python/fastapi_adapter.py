@@ -150,6 +150,65 @@ def _collect_model_schemas(tree: ast.AST) -> dict[str, dict[str, str]]:
     return schemas
 
 
+def _collect_router_declarations(tree: ast.AST) -> dict[str, str]:
+    """Return ``{var_name: own_prefix}`` for ``x = APIRouter(prefix="...")``."""
+    declared: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+            continue
+        target = node.targets[0]
+        if not isinstance(target, ast.Name) or not isinstance(node.value, ast.Call):
+            continue
+        if _get_call_name(node.value) != "APIRouter":
+            continue
+        prefix = ""
+        for kw in node.value.keywords:
+            if kw.arg == "prefix" and isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
+                prefix = kw.value.value
+        declared[target.id] = prefix
+    return declared
+
+
+def _collect_include_router_calls(tree: ast.AST) -> list[tuple[str, str | None, str]]:
+    """Return ``(receiver_var, included_var, mount_prefix)`` for each
+    ``<receiver>.include_router(<included>, prefix="...")`` call."""
+    calls: list[tuple[str, str | None, str]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if not isinstance(func, ast.Attribute) or func.attr != "include_router":
+            continue
+        if not isinstance(func.value, ast.Name):
+            continue
+        included_name: str | None = None
+        if node.args and isinstance(node.args[0], ast.Name):
+            included_name = node.args[0].id
+        mount_prefix = ""
+        for kw in node.keywords:
+            if kw.arg == "prefix" and isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
+                mount_prefix = kw.value.value
+        calls.append((func.value.id, included_name, mount_prefix))
+    return calls
+
+
+def _collect_router_imports(tree: ast.AST) -> dict[str, tuple[int, str, str]]:
+    """Return ``{local_name: (relative_level, dotted_module, original_name)}``
+    for ``from [.]module import name [as local_name]`` statements.
+
+    ``relative_level`` is 0 for absolute imports, N>=1 for ``from .`` / ``from ..``.
+    """
+    imports: dict[str, tuple[int, str, str]] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        module = node.module or ""
+        level = node.level or 0
+        for alias in node.names:
+            imports[alias.asname or alias.name] = (level, module, alias.name)
+    return imports
+
+
 def _infer_chat_payload_key(fields: dict[str, str]) -> tuple[str | None, bool]:
     for name in _PROMPT_FIELD_NAMES:
         if name in fields:
@@ -291,6 +350,11 @@ class FastAPIAdapter(FrameworkAdapter):
 
     def __init__(self) -> None:
         self._global_model_schemas: dict[str, dict[str, str]] = {}
+        self._global_router_prefixes: dict[str, str] = {}
+
+    def set_global_router_prefixes(self, prefixes: dict[str, str]) -> None:
+        """Provide cross-file composed router prefixes, keyed by ``f"{file_path}::{var_name}"``."""
+        self._global_router_prefixes = prefixes
 
     def set_global_model_schemas(self, schemas: dict[str, dict[str, str]]) -> None:
         """Provide cross-file Pydantic model definitions for imported model resolution."""
@@ -405,13 +469,35 @@ class FastAPIAdapter(FrameworkAdapter):
 
                 receiver, method, path_str = ep_info
                 func_name = node.name
+
+                # Compose the router mount prefix (resolved cross-file by
+                # core.py's pre-pass, e.g. app.include_router(x, prefix="/api/x"))
+                # onto the raw decorator path, so nested routers report their
+                # real reachable path instead of just the local route suffix.
+                _prefix = (
+                    self._global_router_prefixes.get(f"{file_path}::{receiver}", "")
+                    if receiver
+                    else ""
+                )
+                composed_path = f"{_prefix}{path_str}" if path_str is not None else path_str
+
                 # Key on HTTP method + route path only (no framework prefix) so
                 # the same endpoint defined across multiple service files (e.g.
                 # GET /health in autogen, crewai, and agent_backend) — or found
                 # by both this adapter and the generic api_endpoint_generic
                 # regex fallback — dedupes into one node with evidence from all
                 # sources, rather than one node per file/adapter.
-                canon = f"endpoint:{method.upper()}:{path_str}"
+                #
+                # An empty composed path (no prefix resolved and path_str == "")
+                # is a common FastAPI idiom for a router's root endpoint
+                # (@router.post("", ...)) and is unrelated to a missing path —
+                # the file path must disambiguate it, otherwise every empty-path
+                # route in the codebase collapses into one node.
+                canon = (
+                    f"endpoint:{method.upper()}:{composed_path}"
+                    if composed_path
+                    else f"endpoint:{method.upper()}::{file_path}"
+                )
 
                 ep_auth: str | None = _extract_depends_auth_type(node, auth_vars)
                 if ep_auth is None:
@@ -437,8 +523,8 @@ class FastAPIAdapter(FrameworkAdapter):
                     "framework": "fastapi",
                     "method": method.upper(),
                 }
-                if path_str:
-                    metadata["endpoint"] = path_str
+                if composed_path is not None:
+                    metadata["endpoint"] = composed_path
                 if ep_auth:
                     metadata["auth_type"] = ep_auth
                 if schema:

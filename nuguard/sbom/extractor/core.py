@@ -683,30 +683,134 @@ class AiSbomExtractor:
             return f"{num_bytes / (1024 * 1024 * 1024):.2f} GiB"
 
         # Pre-pass: build a cross-file Pydantic model schema index so FastAPI (and Flask)
-        # adapters can resolve request-body models that are imported from other modules.
-        # This is a fast AST-only pass — no detection, no merging.
+        # adapters can resolve request-body models that are imported from other modules,
+        # and a cross-file FastAPI router-prefix index so nested
+        # app.include_router(router, prefix=...) mounts compose correctly across files
+        # (e.g. a router declared in config/__init__.py and mounted with a prefix in
+        # server.py). This is a fast AST-only pass — no detection, no merging.
         _global_model_schemas: dict[str, dict[str, str]] = {}
+        _global_router_prefixes: dict[str, str] = {}
         try:
             import ast as _ast  # noqa: PLC0415  # isort:skip
-            from nuguard.sbom.adapters.python.fastapi_adapter import (  # noqa: PLC0415
+            from nuguard.sbom.adapters.python.fastapi_adapter import (  # noqa: PLC0415, I001
+                _collect_include_router_calls as _collect_py_includes,
                 _collect_model_schemas as _collect_py_models,
-            )  # isort:skip
+                _collect_router_declarations as _collect_py_router_decls,
+                _collect_router_imports as _collect_py_router_imports,
+            )
+
+            # rel_path -> {var_name: own_prefix}
+            _router_decls: dict[str, dict[str, str]] = {}
+            # rel_path -> [(receiver_var, included_var, mount_prefix)]
+            _router_includes: dict[str, list[tuple[str, str | None, str]]] = {}
+            # rel_path -> {local_name: (relative_level, dotted_module, original_name)}
+            _router_imports: dict[str, dict[str, tuple[int, str, str]]] = {}
+            _all_py_rel_paths: set[str] = set()
+
             for _py_path, _ in self._iter_files(root, config):
                 if _py_path.suffix != ".py":
                     continue
+                _router_rel = str(_py_path.relative_to(root))
+                _all_py_rel_paths.add(_router_rel)
                 try:
                     _py_src = _py_path.read_text(encoding="utf-8", errors="ignore")
                     _py_tree = _ast.parse(_py_src)
-                    _global_model_schemas.update(_collect_py_models(_py_tree))
                 except Exception:
-                    pass
-        except Exception as _pre_exc:
-            _log.debug("cross-file model pre-pass failed (non-fatal): %s", _pre_exc)
+                    continue
+                _global_model_schemas.update(_collect_py_models(_py_tree))
+                _router_decls[_router_rel] = _collect_py_router_decls(_py_tree)
+                _router_includes[_router_rel] = _collect_py_includes(_py_tree)
+                _router_imports[_router_rel] = _collect_py_router_imports(_py_tree)
 
-        # Inject the global model index into adapters that support it.
+            def _resolve_import_to_relpath(rel_path: str, level: int, module: str) -> str | None:
+                """Best-effort resolve a (possibly relative) import to a scanned .py rel path."""
+                if level > 0:
+                    parts = rel_path.replace("\\", "/").split("/")[:-1]
+                    up = level - 1
+                    if up > 0:
+                        parts = parts[:-up] if up <= len(parts) else []
+                    base_parts = parts + ([p for p in module.split(".") if p] if module else [])
+                else:
+                    if not module:
+                        return None
+                    base_parts = [p for p in module.split(".") if p]
+                if not base_parts:
+                    return None
+                candidate_module = "/".join(base_parts) + ".py"
+                candidate_pkg = "/".join([*base_parts, "__init__"]) + ".py"
+                for known in _all_py_rel_paths:
+                    _known_norm = known.replace("\\", "/")
+                    if _known_norm == candidate_module or _known_norm == candidate_pkg:
+                        return known
+                # Absolute imports may be rooted at a package name outside the scan
+                # root's own path prefix — fall back to a suffix match.
+                suffix_module = "/".join(base_parts) + ".py"
+                suffix_pkg = "/".join([*base_parts, "__init__"]) + ".py"
+                for known in _all_py_rel_paths:
+                    _known_norm = known.replace("\\", "/")
+                    if _known_norm.endswith("/" + suffix_module) or _known_norm.endswith("/" + suffix_pkg):
+                        return known
+                return None
+
+            _prefix_cache: dict[tuple[str, str], str] = {}
+
+            def _resolve_router_prefix(
+                rel_path: str, var_name: str, _seen: frozenset[tuple[str, str]] = frozenset()
+            ) -> str:
+                key = (rel_path, var_name)
+                if key in _prefix_cache:
+                    return _prefix_cache[key]
+                if key in _seen:
+                    return ""  # cycle guard
+                own_prefix = _router_decls.get(rel_path, {}).get(var_name, "")
+
+                mount_prefix = ""
+                parent_composed = ""
+                for _mrel, _calls in _router_includes.items():
+                    _found = False
+                    for receiver, included, m_prefix in _calls:
+                        if included is None:
+                            continue
+                        target_rel: str | None = None
+                        target_var: str | None = None
+                        if included in _router_decls.get(_mrel, {}):
+                            target_rel, target_var = _mrel, included
+                        else:
+                            _imp = _router_imports.get(_mrel, {}).get(included)
+                            if _imp is not None:
+                                _lvl, _mod, _orig = _imp
+                                _resolved = _resolve_import_to_relpath(_mrel, _lvl, _mod)
+                                if _resolved is not None:
+                                    target_rel, target_var = _resolved, _orig
+                        if target_rel == rel_path and target_var == var_name:
+                            mount_prefix = m_prefix
+                            if receiver != "app":
+                                parent_composed = _resolve_router_prefix(
+                                    _mrel, receiver, _seen | {key}
+                                )
+                            _found = True
+                            break
+                    if _found:
+                        break
+
+                composed = f"{parent_composed}{mount_prefix}{own_prefix}"
+                _prefix_cache[key] = composed
+                return composed
+
+            for _router_rel, _vars in _router_decls.items():
+                for _var in _vars:
+                    _global_router_prefixes[f"{_router_rel}::{_var}"] = _resolve_router_prefix(
+                        _router_rel, _var
+                    )
+        except Exception as _pre_exc:
+            _log.debug("cross-file model/router pre-pass failed (non-fatal): %s", _pre_exc)
+
+        # Inject the global indices into adapters that support them.
         for _adapter in self.framework_adapters:
             if hasattr(_adapter, "set_global_model_schemas"):
                 _adapter.set_global_model_schemas(_global_model_schemas)
+            if hasattr(_adapter, "set_global_router_prefixes"):
+                _adapter.set_global_router_prefixes(_global_router_prefixes)
 
         for file_path, file_size in self._iter_files(root, config):
             try:
@@ -2609,7 +2713,7 @@ class AiSbomExtractor:
                     continue
                 yield path, size
                 count += 1
-                if count >= config.max_files:
+                if config.max_files is not None and count >= config.max_files:
                     return
 
 

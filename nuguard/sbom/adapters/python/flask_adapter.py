@@ -290,7 +290,16 @@ class FlaskAdapter(FrameworkAdapter):
                 # files — or found by both this adapter and the generic
                 # api_endpoint_generic regex fallback — dedupes into one node
                 # with evidence from all sources.
-                canon = f"endpoint:{method}:{path_str}"
+                #
+                # Empty path_str ("") is a valid Blueprint-root route
+                # (@bp.route("", ...)) and must be disambiguated by file path,
+                # otherwise every empty-path route in the codebase collapses
+                # into one node.
+                canon = (
+                    f"endpoint:{method}:{path_str}"
+                    if path_str
+                    else f"endpoint:{method}::{file_path}"
+                )
 
                 chat_key: str | None = None
                 ctx_fields: dict[str, str] = {}
@@ -302,7 +311,7 @@ class FlaskAdapter(FrameworkAdapter):
                     "framework": "flask",
                     "method": method,
                 }
-                if path_str:
+                if path_str is not None:
                     metadata["endpoint"] = path_str
                 if chat_key:
                     metadata["chat_payload_key"] = chat_key
