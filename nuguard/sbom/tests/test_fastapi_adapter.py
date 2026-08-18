@@ -145,6 +145,17 @@ class TestRouterPrefixComposition:
             ("app", "config_router", "/api/config")
         ]
 
+    def test_collect_include_router_calls_module_attribute_style(self) -> None:
+        """include_router(chat.router, ...) — the pattern used when a router is
+        imported via its owning submodule (`from server.api import chat`) rather
+        than directly (`from server.api.chat import router`)."""
+        tree = ast.parse(
+            "app.include_router(chat.router, prefix='/api/chat')\n"
+        )
+        assert _collect_include_router_calls(tree) == [
+            ("app", "chat.router", "/api/chat")
+        ]
+
     def test_collect_router_imports_relative(self) -> None:
         tree = ast.parse("from .config import router as config_router\n")
         assert _collect_router_imports(tree) == {"config_router": (1, "config", "router")}
@@ -200,5 +211,42 @@ class TestRouterPrefixEndToEnd:
             for n in doc.nodes
             if n.component_type == ComponentType.API_ENDPOINT
             and n.metadata.endpoint == "/api/config/mcp"
+        ]
+        assert len(endpoint_nodes) == 1
+
+    def test_module_attribute_include_router_composes_prefix(self, tmp_path) -> None:
+        """Regression fixture mirroring Phlox's actual shape: server/api/chat.py
+        declares a bare router, and server/server.py does
+        `from server.api import chat` then `app.include_router(chat.router,
+        prefix="/api/chat")` — the module-attribute style, not a direct
+        `from server.api.chat import router` import."""
+        source_dir = tmp_path / "sample-app"
+        (source_dir / "server" / "api").mkdir(parents=True)
+        (source_dir / "server" / "api" / "__init__.py").write_text("", encoding="utf-8")
+
+        (source_dir / "server" / "api" / "chat.py").write_text(
+            "from fastapi import APIRouter\n\n"
+            "router = APIRouter()\n\n"
+            "@router.post('/respond-visual')\n"
+            "async def respond_visual():\n"
+            "    return {}\n",
+            encoding="utf-8",
+        )
+        (source_dir / "server" / "server.py").write_text(
+            "from fastapi import FastAPI\n"
+            "from server.api import chat\n\n"
+            "app = FastAPI()\n"
+            "app.include_router(chat.router, prefix='/api/chat')\n",
+            encoding="utf-8",
+        )
+
+        config = AiSbomConfig(include_extensions={".py"}, enable_llm=False, max_files=20)
+        doc = AiSbomExtractor().extract_from_path(source_dir, config)
+
+        endpoint_nodes = [
+            n
+            for n in doc.nodes
+            if n.component_type == ComponentType.API_ENDPOINT
+            and n.metadata.endpoint == "/api/chat/respond-visual"
         ]
         assert len(endpoint_nodes) == 1

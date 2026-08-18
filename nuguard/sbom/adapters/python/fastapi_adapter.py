@@ -170,8 +170,16 @@ def _collect_router_declarations(tree: ast.AST) -> dict[str, str]:
 
 
 def _collect_include_router_calls(tree: ast.AST) -> list[tuple[str, str | None, str]]:
-    """Return ``(receiver_var, included_var, mount_prefix)`` for each
-    ``<receiver>.include_router(<included>, prefix="...")`` call."""
+    """Return ``(receiver_var, included_ref, mount_prefix)`` for each
+    ``<receiver>.include_router(<included>, prefix="...")`` call.
+
+    ``included_ref`` is the bare variable name for ``include_router(router, ...)``,
+    or ``"<module_alias>.<attr>"`` for the module-attribute style
+    ``include_router(chat.router, ...)`` — e.g. ``from server.api import chat``
+    followed by ``app.include_router(chat.router, prefix=...)``, a common pattern
+    when a router is imported via its owning submodule rather than
+    ``from server.api.chat import router`` directly.
+    """
     calls: list[tuple[str, str | None, str]] = []
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
@@ -181,14 +189,18 @@ def _collect_include_router_calls(tree: ast.AST) -> list[tuple[str, str | None, 
             continue
         if not isinstance(func.value, ast.Name):
             continue
-        included_name: str | None = None
-        if node.args and isinstance(node.args[0], ast.Name):
-            included_name = node.args[0].id
+        included_ref: str | None = None
+        if node.args:
+            arg0 = node.args[0]
+            if isinstance(arg0, ast.Name):
+                included_ref = arg0.id
+            elif isinstance(arg0, ast.Attribute) and isinstance(arg0.value, ast.Name):
+                included_ref = f"{arg0.value.id}.{arg0.attr}"
         mount_prefix = ""
         for kw in node.keywords:
             if kw.arg == "prefix" and isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
                 mount_prefix = kw.value.value
-        calls.append((func.value.id, included_name, mount_prefix))
+        calls.append((func.value.id, included_ref, mount_prefix))
     return calls
 
 

@@ -773,7 +773,21 @@ class AiSbomExtractor:
                             continue
                         target_rel: str | None = None
                         target_var: str | None = None
-                        if included in _router_decls.get(_mrel, {}):
+                        if "." in included:
+                            # Module-attribute style: include_router(chat.router, ...)
+                            # where "chat" was imported via `from server.api import chat`.
+                            # Resolve "chat" to its own dotted module path, then combine
+                            # with the original import's module to get the submodule's
+                            # dotted path (e.g. "server.api" + "chat" -> "server.api.chat").
+                            _mod_alias, _attr = included.split(".", 1)
+                            _imp = _router_imports.get(_mrel, {}).get(_mod_alias)
+                            if _imp is not None:
+                                _lvl, _mod, _orig = _imp
+                                _combined_mod = f"{_mod}.{_orig}" if _mod else _orig
+                                _resolved = _resolve_import_to_relpath(_mrel, _lvl, _combined_mod)
+                                if _resolved is not None:
+                                    target_rel, target_var = _resolved, _attr
+                        elif included in _router_decls.get(_mrel, {}):
                             target_rel, target_var = _mrel, included
                         else:
                             _imp = _router_imports.get(_mrel, {}).get(included)
