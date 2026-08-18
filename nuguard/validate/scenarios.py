@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING
 from nuguard.common.logging import get_logger
 from nuguard.config import ValidateConfig
 from nuguard.models.validate import ValidateScenario, ValidateScenarioType
+from nuguard.sbom.types import ComponentType
 
 if TYPE_CHECKING:
     from nuguard.sbom.models import AiSbomDocument
@@ -63,7 +64,7 @@ def _agent_routing_scenarios_from_sbom(sbom: "AiSbomDocument") -> list[ValidateS
         agent_names = [
             node.name
             for node in sbom.nodes
-            if getattr(node, "node_type", None) == "AGENT" and getattr(node, "name", None)
+            if node.component_type == ComponentType.AGENT and node.name
         ]
     except Exception:
         agent_names = []
