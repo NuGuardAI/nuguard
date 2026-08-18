@@ -233,6 +233,13 @@ TECHNIQUES: dict[str, dict[str, object]] = {
         "mitigation_ids": ["AML.M0015"],
         "technique_url":  f"{ATLAS_BASE_URL}/techniques/AML.T0054",
     },
+    "AML.T0029": {
+        "technique_id":   "AML.T0029",
+        "technique_name": "Denial of ML Service",
+        "tactic_id":      "AML.TA0010",
+        "mitigation_ids": ["AML.M0004"],
+        "technique_url":  f"{ATLAS_BASE_URL}/techniques/AML.T0029",
+    },
 }
 
 # ---------------------------------------------------------------------------
@@ -297,6 +304,108 @@ NGA_TO_ATLAS: dict[str, list[tuple[str, str]]] = {
     "NGA-015": [
         ("AML.T0029", "MEDIUM"),  # Denial of ML Service — unbounded resource consumption
     ],
+    # NGA-009: No audit logging enabled
+    "NGA-009": [
+        ("AML.T0016", "MEDIUM"),  # Verify Victim ML Model — no log trail to detect probing
+    ],
+    # NGA-010: pull_request_target with untrusted context injection
+    "NGA-010": [
+        ("AML.T0010", "HIGH"),    # Acquire Public ML Artifacts — untrusted fork content reaches CI
+        ("AML.T0036", "MEDIUM"),  # Develop Capabilities — privileged CI context abused
+    ],
+    # NGA-011: GITHUB_ENV written from untrusted input
+    "NGA-011": [
+        ("AML.T0010", "HIGH"),    # Acquire Public ML Artifacts — untrusted content injects env vars
+        ("AML.T0036", "MEDIUM"),  # Develop Capabilities — env injection into later CI steps
+    ],
+    # NGA-013: No K8s NetworkPolicy for AI workload
+    "NGA-013": [
+        ("AML.T0036", "MEDIUM"),  # Develop Capabilities — unrestricted lateral movement
+    ],
+    # NGA-014: ACTIONS_RUNNER_DEBUG secret exposure
+    "NGA-014": [
+        ("AML.T0040", "HIGH"),    # ML Model Inference API Access — leaked secrets in debug logs
+        ("AML.T0016", "MEDIUM"),  # Verify Victim ML Model — verbose logs aid reconnaissance
+    ],
+    # NGA-016: Container image using 'latest' tag
+    "NGA-016": [
+        ("AML.T0010", "HIGH"),    # Acquire Public ML Artifacts — mutable tag can be swapped
+        ("AML.T0048", "MEDIUM"),  # Compromise ML Model — silent image substitution
+    ],
+    # NGA-017: AI workload missing health check
+    "NGA-017": [
+        ("AML.T0016", "LOW"),     # Verify Victim ML Model — degraded service harder to detect
+    ],
+    # NGA-018: Shared datastore, no IAM isolation
+    "NGA-018": [
+        ("AML.T0037", "HIGH"),    # Data from Information Repositories — cross-agent data access
+    ],
+    # NGA-019: Unguarded write path to sensitive datastore
+    "NGA-019": [
+        ("AML.T0020", "HIGH"),    # Poison Training Data — unguarded write path
+        ("AML.T0037", "HIGH"),    # Data from Information Repositories — sensitive data exposed
+    ],
+    # NGA-020: Unguarded agent delegation chain
+    "NGA-020": [
+        ("AML.T0054", "HIGH"),    # LLM Prompt Injection — propagates across delegation boundary
+        ("AML.T0036", "MEDIUM"),  # Develop Capabilities — chained agent capabilities
+    ],
+    # NGA-021: IDOR-prone endpoint without authorization checks
+    "NGA-021": [
+        ("AML.T0037", "HIGH"),    # Data from Information Repositories — cross-account data access
+        ("AML.T0000", "MEDIUM"),  # Active Scanning — path-param enumeration
+    ],
+    # NGA-022: Untrusted MCP tool with no guardrail
+    "NGA-022": [
+        ("AML.T0010", "HIGH"),    # Acquire Public ML Artifacts — untrusted MCP server as source
+        ("AML.T0048", "MEDIUM"),  # Compromise ML Model — poisoned tool descriptor/response
+    ],
+    # NGA-023: Unprotected vector/embedding store
+    "NGA-023": [
+        ("AML.T0037", "HIGH"),    # Data from Information Repositories — embeddings recoverable
+        ("AML.T0024", "MEDIUM"),  # Exfiltration via ML Inference API — retrieval-layer extraction
+    ],
+    # NGA-024: Unauthenticated inter-agent delegation
+    "NGA-024": [
+        ("AML.T0054", "MEDIUM"),  # LLM Prompt Injection — spoofed delegated instructions
+        ("AML.T0040", "MEDIUM"),  # ML Model Inference API Access — unauthenticated agent-to-agent call
+    ],
+    # NGA-025: Credential embedded in system prompt / hidden context
+    "NGA-025": [
+        ("AML.T0037", "HIGH"),    # Data from Information Repositories — secret embedded in context
+        ("AML.T0024", "MEDIUM"),  # Exfiltration via ML Inference API — leaked via prompt extraction
+    ],
+    # NGA-026: AI endpoint without application-level rate limiting
+    "NGA-026": [
+        ("AML.T0029", "HIGH"),    # Denial of ML Service — unbounded request volume/cost
+        ("AML.T0040", "MEDIUM"),  # ML Model Inference API Access — unmetered API abuse
+    ],
+    # ── NGA-SC-xxx: supply-chain rules ──────────────────────────────────────
+    "NGA-SC-001": [("AML.T0010", "HIGH"), ("AML.T0048", "MEDIUM")],
+    "NGA-SC-002": [("AML.T0010", "HIGH"), ("AML.T0036", "MEDIUM")],
+    "NGA-SC-003": [("AML.T0010", "HIGH"), ("AML.T0048", "MEDIUM")],
+    "NGA-SC-004": [("AML.T0010", "HIGH"), ("AML.T0036", "MEDIUM")],
+    "NGA-SC-005": [("AML.T0040", "HIGH"), ("AML.T0016", "MEDIUM")],
+    "NGA-SC-006": [("AML.T0010", "HIGH"), ("AML.T0048", "HIGH")],
+    "NGA-SC-007": [("AML.T0036", "HIGH"), ("AML.T0047", "MEDIUM")],
+    "NGA-SC-008": [("AML.T0010", "MEDIUM")],
+    "NGA-SC-009": [("AML.T0010", "HIGH"), ("AML.T0048", "MEDIUM")],
+    "NGA-SC-010": [("AML.T0036", "HIGH")],
+    "NGA-SC-011": [("AML.T0010", "HIGH"), ("AML.T0036", "HIGH")],
+    "NGA-SC-012": [("AML.T0036", "HIGH"), ("AML.T0047", "HIGH")],
+    "NGA-SC-013": [("AML.T0036", "HIGH")],
+    "NGA-SC-014": [("AML.T0040", "HIGH")],
+    "NGA-SC-015": [("AML.T0010", "MEDIUM"), ("AML.T0036", "MEDIUM")],
+    "NGA-SC-016": [("AML.T0036", "MEDIUM")],
+    "NGA-SC-017": [("AML.T0036", "LOW")],
+    "NGA-SC-018": [("AML.T0040", "MEDIUM")],
+    "NGA-SC-019": [("AML.T0036", "LOW")],
+    "NGA-SC-020": [("AML.T0036", "LOW")],
+    "NGA-SC-021": [("AML.T0036", "MEDIUM")],
+    "NGA-SC-022": [("AML.T0010", "MEDIUM")],
+    "NGA-SC-023": [("AML.T0010", "HIGH"), ("AML.T0048", "MEDIUM")],
+    "NGA-SC-024": [("AML.T0010", "MEDIUM")],
+    "NGA-SC-025": [("AML.T0048", "HIGH"), ("AML.T0010", "HIGH")],
 }
 
 # ---------------------------------------------------------------------------

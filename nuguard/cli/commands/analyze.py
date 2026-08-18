@@ -635,6 +635,10 @@ def _render_markdown(
                     lines += [f"**Affected:** `{_component_label(f)}`  ", ""]
                 if f.remediation:
                     lines += [f"**Remediation:** {f.remediation}  ", ""]
+                if f.owasp_llm_ref:
+                    lines += [f"**OWASP LLM Top 10:** {f.owasp_llm_ref}  ", ""]
+                if f.owasp_asi_ref:
+                    lines += [f"**OWASP Agentic Top 10:** {f.owasp_asi_ref}  ", ""]
                 if f.mitre_atlas_technique:
                     lines += [f"**ATLAS Techniques:** {f.mitre_atlas_technique}  ", ""]
                 if f.references:
@@ -650,7 +654,7 @@ def _render_markdown(
         lines += _render_rule_audit_section(
             nga_audit,
             "NGA Rule Audit",
-            "All 21 NGA structural rules — pass/fail status with evidence.",
+            "All 26 NGA structural rules — pass/fail status with evidence.",
         )
 
     # ------------------------------------------------------------------

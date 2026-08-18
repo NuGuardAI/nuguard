@@ -209,6 +209,10 @@ def _build_rule(rule_id: str, f: dict[str, Any]) -> dict[str, Any]:
     desc  = f.get("description") or title
     refs: list[str] = f.get("references") or []
     url = f.get("url") or f.get("advisory_url") or (refs[0] if refs else "")
+    tags = [str(f.get("severity", "")).upper()]
+    tags += [t.strip() for t in str(f.get("owasp_llm_ref") or "").split(",") if t.strip()]
+    tags += [t.strip() for t in str(f.get("owasp_asi_ref") or "").split(",") if t.strip()]
+    tags += [t.strip() for t in str(f.get("mitre_atlas_technique") or "").split(",") if t.strip()]
     return {
         "id": rule_id,
         "name": title,
@@ -216,7 +220,7 @@ def _build_rule(rule_id: str, f: dict[str, Any]) -> dict[str, Any]:
         "fullDescription": {"text": str(desc)[:4096]},
         "helpUri": str(url) if url else "",
         "properties": {
-            "tags": [str(f.get("severity", "")).upper()],
+            "tags": tags,
         },
     }
 

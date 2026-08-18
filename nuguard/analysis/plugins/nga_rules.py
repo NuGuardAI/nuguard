@@ -25,6 +25,11 @@ NGA-018  Multiple AI agents sharing a datastore, no IAM isolation  LOW
 NGA-019  Unguarded write path to sensitive datastore                HIGH
 NGA-020  Unguarded agent delegation chain                           MEDIUM
 NGA-021  IDOR-prone endpoint without authorization checks           HIGH
+NGA-022  Tool sourced from an untrusted MCP server                  HIGH
+NGA-023  Vector/embedding store without auth or encryption          HIGH
+NGA-024  Unauthenticated inter-agent delegation                     MEDIUM
+NGA-025  Credential embedded in system prompt / hidden context      HIGH
+NGA-026  AI endpoint without application-level rate limiting        MEDIUM
 """
 
 from __future__ import annotations
@@ -1539,6 +1544,220 @@ def _rule_nga021_idor_surface_no_protection(
     return findings
 
 
+# ── NGA-022 ──────────────────────────────────────────────────────────────────
+
+# Known vector/embedding store technology names (mirrors registry.py's regex adapter)
+_VECTOR_STORE_NAMES = re.compile(
+    r"pinecone|faiss|chroma|chromadb|weaviate|qdrant|milvus", re.IGNORECASE,
+)
+
+
+def _rule_nga022_untrusted_mcp_tool(
+    nodes: list[dict[str, Any]],
+    graph: AnalysisGraph | None = None,
+    **_: Any,
+) -> list[dict[str, Any]]:
+    """HIGH — TOOL sourced from an untrusted MCP server with no compensating guardrail."""
+    untrusted = []
+    for n in nodes:
+        if n.get("component_type") != "TOOL":
+            continue
+        meta = n.get("metadata") or {}
+        if not meta.get("mcp_server_url"):
+            continue
+        if meta.get("trust_level") != "untrusted":
+            continue
+        if graph is not None and graph.has_protection(str(n["id"])):
+            continue
+        untrusted.append(n)
+
+    if not untrusted:
+        return []
+
+    return [
+        _finding(
+            "NGA-022", "HIGH",
+            "Tool sourced from an untrusted MCP server",
+            f"{len(untrusted)} tool(s) are exposed by an MCP server not on the trusted "
+            "allowlist and have no GUARDRAIL/AUTH node protecting them. A malicious or "
+            "compromised MCP server can poison tool descriptions or return manipulated "
+            "responses that hijack agent behaviour.",
+            [n.get("name", "") for n in untrusted],
+            "Pin, sign, and verify MCP servers before granting them tool access; add the "
+            "server to redteam.mcp_trusted_servers only after review, or place a guardrail "
+            "between the agent and the tool to validate its outputs.",
+        )
+    ]
+
+
+# ── NGA-023 ──────────────────────────────────────────────────────────────────
+
+
+def _rule_nga023_unprotected_vector_store(
+    nodes: list[dict[str, Any]], **_: Any
+) -> list[dict[str, Any]]:
+    """HIGH — Vector/embedding datastore with no auth or encryption posture."""
+    unprotected = []
+    for n in nodes:
+        if n.get("component_type") not in _DATASTORE_TYPES:
+            continue
+        meta = n.get("metadata") or {}
+        datastore_type = meta.get("datastore_type") or ""
+        if not _VECTOR_STORE_NAMES.search(datastore_type):
+            continue
+        has_auth = bool(meta.get("auth_detail") or meta.get("auth_type"))
+        has_encryption = bool(
+            meta.get("encryption_detail") or meta.get("encryption_at_rest")
+        )
+        if has_auth and has_encryption:
+            continue
+        unprotected.append(n)
+
+    if not unprotected:
+        return []
+
+    return [
+        _finding(
+            "NGA-023", "HIGH",
+            "Vector/embedding store without auth or encryption",
+            f"{len(unprotected)} vector/embedding datastore(s) have no authentication "
+            "and/or encryption posture recorded. Retrieved embeddings can be inverted "
+            "to recover source text, and shared similarity search often applies access "
+            "control only after the embedding-space query has already run.",
+            [n.get("name", "") for n in unprotected],
+            "Enforce tenant scoping inside the index query, authenticate the "
+            "embedding/similarity-search endpoint, and encrypt vectors at rest with "
+            "keys managed separately from the application layer.",
+        )
+    ]
+
+
+# ── NGA-024 ──────────────────────────────────────────────────────────────────
+
+
+def _rule_nga024_unauthenticated_agent_delegation(
+    graph: AnalysisGraph | None = None, **_: Any
+) -> list[dict[str, Any]]:
+    """MEDIUM — Agent delegation target has no auth/encryption metadata."""
+    if graph is None:
+        return []  # Requires graph traversal; no fallback
+
+    findings: list[dict[str, Any]] = []
+    seen_pairs: set[tuple[str, str]] = set()
+    for src_agent in graph.nodes_of_type("AGENT"):
+        src_id = str(src_agent["id"])
+        for tgt_agent in graph.targets(src_id, "DELEGATES_TO"):
+            tgt_id = str(tgt_agent["id"])
+            pair = (src_id, tgt_id)
+            if pair in seen_pairs:
+                continue
+            seen_pairs.add(pair)
+            tgt_meta = tgt_agent.get("metadata") or {}
+            has_auth = bool(tgt_meta.get("auth_detail") or tgt_meta.get("auth_type"))
+            has_encryption = bool(
+                tgt_meta.get("encryption_detail") or tgt_meta.get("encryption_at_rest")
+            )
+            if has_auth or has_encryption:
+                continue
+            src_name = src_agent.get("name", "")
+            tgt_name = tgt_agent.get("name", "")
+            evidence = (
+                f"'{src_name}' DELEGATES_TO '{tgt_name}', which carries no auth or "
+                "encryption metadata for the receiving side of the delegation."
+            )
+            findings.append(_finding(
+                "NGA-024", "MEDIUM",
+                f"Unauthenticated inter-agent delegation: '{src_name}' → '{tgt_name}'",
+                evidence,
+                [src_name, tgt_name],
+                f"Require mutual authentication (e.g. mTLS or signed tokens) and "
+                f"encryption between '{src_name}' and '{tgt_name}' so a network "
+                "position cannot spoof or tamper with delegated instructions.",
+                evidence=evidence,
+            ))
+    return findings
+
+
+# ── NGA-025 ──────────────────────────────────────────────────────────────────
+
+# Credential/secret-like patterns to catch when embedded in prompt text
+_PROMPT_SECRET_PATTERNS = re.compile(
+    r"AKIA[0-9A-Z]{16}|"                                  # AWS access key
+    r"sk-[A-Za-z0-9]{20,}|"                                # OpenAI-style secret key
+    r"ghp_[A-Za-z0-9]{20,}|"                                # GitHub token
+    r"-----BEGIN [A-Z ]*PRIVATE KEY-----|"                 # PEM private key
+    r"(?:api[_-]?key|secret|password|token)\s*[:=]\s*['\"]?[A-Za-z0-9_\-]{8,}",
+    re.IGNORECASE,
+)
+
+
+def _rule_nga025_hidden_context_secret_leak(
+    nodes: list[dict[str, Any]], **_: Any
+) -> list[dict[str, Any]]:
+    """HIGH — System prompt or hidden context contains an embedded credential."""
+    leaking = []
+    for n in nodes:
+        ct = n.get("component_type")
+        meta = n.get("metadata") or {}
+        text = ""
+        if ct == "PROMPT":
+            text = _node_extras(n).get("content") or ""
+        elif ct == "AGENT":
+            text = meta.get("system_prompt_excerpt") or ""
+        if text and _PROMPT_SECRET_PATTERNS.search(text):
+            leaking.append(n)
+
+    if not leaking:
+        return []
+
+    return [
+        _finding(
+            "NGA-025", "HIGH",
+            "Credential embedded in system prompt / hidden context",
+            f"{len(leaking)} prompt/agent node(s) contain what looks like a credential, "
+            "API key, or secret literal inside the prompt text. Hidden context is "
+            "discoverable — assume any content in it can be exposed to a user via "
+            "system-prompt leakage or extraction.",
+            [n.get("name", "") for n in leaking],
+            "Remove credentials, connection strings, and tokens from system prompts and "
+            "hidden context entirely; externalize them to a secrets manager the model "
+            "never sees directly, and rotate any credential found embedded in a prompt.",
+        )
+    ]
+
+
+# ── NGA-026 ──────────────────────────────────────────────────────────────────
+
+
+def _rule_nga026_endpoint_no_rate_limit(
+    nodes: list[dict[str, Any]], **_: Any
+) -> list[dict[str, Any]]:
+    """MEDIUM — AI-facing API endpoint with no application-level rate limiting."""
+    unlimited = [
+        n for n in nodes
+        if n.get("component_type") in _API_ENDPOINT_TYPES
+        and (n.get("metadata") or {}).get("rate_limited") is not True
+        and not (n.get("metadata") or {}).get("rate_limit_detail")
+    ]
+    if not unlimited:
+        return []
+
+    return [
+        _finding(
+            "NGA-026", "MEDIUM",
+            "AI endpoint without application-level rate limiting",
+            f"{len(unlimited)} API endpoint(s) serving AI traffic have no rate-limiting "
+            "or budget ceiling configured. Attackers can trigger disproportionately "
+            "expensive inference at negligible cost to themselves (denial of wallet, "
+            "reasoning-loop exhaustion, or resource-intensive agent-tool fan-out).",
+            [n.get("name", "") for n in unlimited],
+            "Apply token-aware rate limiting and hard spending caps per API key/user/"
+            "session on every AI-facing endpoint, with pre-flight request-size "
+            "validation and agent-level circuit breakers on tool-call loops.",
+        )
+    ]
+
+
 # ── Rule registry ─────────────────────────────────────────────────────────────
 
 _RULES: list[Callable[..., list[dict[str, Any]]]] = [
@@ -1563,6 +1782,11 @@ _RULES: list[Callable[..., list[dict[str, Any]]]] = [
     _rule_nga019_unguarded_write_to_sensitive_datastore,  # NGA-019 HIGH
     _rule_nga020_unguarded_agent_delegation,         # NGA-020 MEDIUM
     _rule_nga021_idor_surface_no_protection,         # NGA-021 HIGH
+    _rule_nga022_untrusted_mcp_tool,                 # NGA-022 HIGH
+    _rule_nga023_unprotected_vector_store,           # NGA-023 HIGH
+    _rule_nga024_unauthenticated_agent_delegation,   # NGA-024 MEDIUM
+    _rule_nga025_hidden_context_secret_leak,         # NGA-025 HIGH
+    _rule_nga026_endpoint_no_rate_limit,             # NGA-026 MEDIUM
 ]
 
 # Per-rule metadata used by verbose audit mode (parallel to _RULES).
@@ -1692,6 +1916,36 @@ _RULE_META: list[dict[str, str]] = [
         "title": "IDOR-prone endpoint without authorization checks",
         "checks": "API_ENDPOINT nodes with idor_surface path params and no AUTH/GUARDRAIL protection",
         "pass_reason": "No IDOR-prone endpoints found, or all are protected by an AUTH/GUARDRAIL node",
+    },
+    {
+        "rule_id": "NGA-022", "severity": "HIGH",
+        "title": "Tool sourced from an untrusted MCP server",
+        "checks": "TOOL nodes with mcp_server_url set and trust_level=untrusted, no GUARDRAIL/AUTH protection",
+        "pass_reason": "No untrusted-MCP tools found, or all are protected by a GUARDRAIL/AUTH node",
+    },
+    {
+        "rule_id": "NGA-023", "severity": "HIGH",
+        "title": "Vector/embedding store without auth or encryption",
+        "checks": "DATASTORE nodes matching known vector-store tech names vs. auth_detail/encryption_detail",
+        "pass_reason": "No vector/embedding stores found, or all have auth and encryption posture recorded",
+    },
+    {
+        "rule_id": "NGA-024", "severity": "MEDIUM",
+        "title": "Unauthenticated inter-agent delegation",
+        "checks": "DELEGATES_TO edge targets vs. target AGENT's auth_detail/encryption_detail",
+        "pass_reason": "No delegation targets found, or all have auth/encryption metadata recorded",
+    },
+    {
+        "rule_id": "NGA-025", "severity": "HIGH",
+        "title": "Credential embedded in system prompt / hidden context",
+        "checks": "PROMPT extras.content and AGENT system_prompt_excerpt vs. credential-like patterns",
+        "pass_reason": "No credential-like patterns found in prompt or hidden-context text",
+    },
+    {
+        "rule_id": "NGA-026", "severity": "MEDIUM",
+        "title": "AI endpoint without application-level rate limiting",
+        "checks": "API_ENDPOINT nodes vs. rate_limited / rate_limit_detail",
+        "pass_reason": "No AI-facing endpoints found, or all have rate limiting configured",
     },
 ]
 
@@ -1879,6 +2133,34 @@ def _build_pass_evidence(
         return {
             "api_endpoint_nodes_checked": [n.get("name", "") for n in nodes if n.get("component_type") in _API_ENDPOINT_TYPES],
             "requires_graph": True,
+        }
+
+    if rule_id == "NGA-022":
+        return {
+            "tool_nodes_checked": [n.get("name", "") for n in nodes if n.get("component_type") == "TOOL"],
+        }
+
+    if rule_id == "NGA-023":
+        return {
+            "datastore_nodes_checked": [n.get("name", "") for n in nodes if n.get("component_type") in _DATASTORE_TYPES],
+        }
+
+    if rule_id == "NGA-024":
+        return {
+            "agent_nodes_checked": [n.get("name", "") for n in nodes if n.get("component_type") in _AGENT_TYPES],
+            "requires_graph": True,
+        }
+
+    if rule_id == "NGA-025":
+        return {
+            "prompt_and_agent_nodes_checked": [
+                n.get("name", "") for n in nodes if n.get("component_type") in ("PROMPT", "AGENT")
+            ],
+        }
+
+    if rule_id == "NGA-026":
+        return {
+            "api_endpoint_nodes_checked": [n.get("name", "") for n in nodes if n.get("component_type") in _API_ENDPOINT_TYPES],
         }
 
     return {}

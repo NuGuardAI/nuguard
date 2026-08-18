@@ -386,3 +386,28 @@ class TestAtlasNC002ReadOnlyEdge:
         }
         findings = _run_nc002([model, datastore], [edge])
         assert findings == []
+
+
+class TestAtlasCoverage:
+    """Every NGA-xxx / NGA-SC-xxx rule must have a NGA_TO_ATLAS entry, and every
+    technique_id referenced anywhere in NGA_TO_ATLAS must resolve in TECHNIQUES."""
+
+    def test_every_rule_has_atlas_mapping(self) -> None:
+        from nuguard.analysis._atlas_data import NGA_TO_ATLAS
+        from nuguard.analysis.plugins.nga_rules import _RULE_META as NGA_RULE_META
+        from nuguard.analysis.supply_chain_scanner import _RULE_META as SC_RULE_META
+
+        all_ids = [m["rule_id"] for m in NGA_RULE_META] + [m["rule_id"] for m in SC_RULE_META]
+        missing = [rid for rid in all_ids if rid not in NGA_TO_ATLAS]
+        assert missing == [], f"Rules missing ATLAS mapping: {missing}"
+
+    def test_every_mapped_technique_id_resolves(self) -> None:
+        from nuguard.analysis._atlas_data import NGA_TO_ATLAS, TECHNIQUES
+
+        unresolved = sorted({
+            tech_id
+            for entries in NGA_TO_ATLAS.values()
+            for tech_id, _confidence in entries
+            if tech_id not in TECHNIQUES
+        })
+        assert unresolved == [], f"NGA_TO_ATLAS references unknown technique IDs: {unresolved}"
