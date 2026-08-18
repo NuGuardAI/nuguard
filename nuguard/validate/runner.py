@@ -25,6 +25,7 @@ from nuguard.models.validate import (
 from nuguard.redteam.target.canary import CanaryConfig, CanaryScanner
 from nuguard.redteam.target.client import TargetAppClient
 from nuguard.redteam.target.session import AttackSession
+from nuguard.sbom.types import ComponentType
 from nuguard.validate.scenarios import build_scenarios
 
 if TYPE_CHECKING:
@@ -247,8 +248,8 @@ class ValidateRunner:
             try:
                 for node in self._sbom.nodes:
                     if (
-                        getattr(node, "node_type", None) == "AGENT"
-                        and getattr(node, "name", None)
+                        node.component_type == ComponentType.AGENT
+                        and node.name
                         and node.name not in cap_entries
                     ):
                         cap_entries[node.name] = CapabilityEntry(
