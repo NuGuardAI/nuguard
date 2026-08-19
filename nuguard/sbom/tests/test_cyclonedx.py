@@ -56,8 +56,44 @@ class TestBomStructure:
         assert bom["version"] >= 1
 
     def test_serial_number_format(self, bom: dict[str, Any]) -> None:
+        """serialNumber must be a valid urn:uuid: URN (CycloneDX 1.6 §6.3.1).
+
+        The CycloneDX JSON schema requires the value to match
+        ``^urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$``.
+        Regression: this previously emitted ``urn:uuid:1.5.0-<timestamp>``
+        (schema_version + timestamp interpolated in place of a UUID), which
+        CycloneDX validators reject.
+        """
         sn = bom.get("serialNumber", "")
-        assert sn.startswith("urn:uuid:"), f"serialNumber should start with urn:uuid:, got {sn!r}"
+        assert re.fullmatch(
+            r"urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+            sn,
+        ), f"serialNumber is not a valid CycloneDX urn:uuid, got {sn!r}"
+
+    def test_serial_number_deterministic_for_same_document(self) -> None:
+        """Serializing the same document twice yields the same serialNumber.
+
+        The serialNumber is derived deterministically from the document
+        identity (schema_version + generated_at), so repeated serialization of
+        an unchanged document must not produce a different URN.
+        """
+        doc = _extract("customer_service_bot")
+        sn1 = AiSbomSerializer.to_cyclonedx(doc)["serialNumber"]
+        sn2 = AiSbomSerializer.to_cyclonedx(doc)["serialNumber"]
+        assert sn1 == sn2
+        assert re.fullmatch(
+            r"urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+            sn1,
+        )
+
+    def test_serial_number_format_extended(self) -> None:
+        """The extended CycloneDX format must also emit a valid serialNumber."""
+        doc = _extract("customer_service_bot")
+        sn = AiSbomSerializer.to_cyclonedx_extended(doc)["serialNumber"]
+        assert re.fullmatch(
+            r"urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}",
+            sn,
+        ), f"extended serialNumber is not a valid urn:uuid, got {sn!r}"
 
     def test_metadata_present(self, bom: dict[str, Any]) -> None:
         assert "metadata" in bom
