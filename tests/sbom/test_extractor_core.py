@@ -18,7 +18,7 @@ from nuguard.sbom.models import (
     ScanSummary,
     SourceLocation,
 )
-from nuguard.sbom.types import ComponentType
+from nuguard.sbom.types import ComponentType, RelationshipType
 
 
 def _accumulator(
@@ -77,6 +77,56 @@ def test_iter_files_skips_versioned_virtualenv_directories(tmp_path) -> None:
 
     assert "app.py" in names
     assert "vendored.py" not in names
+
+
+def test_default_config_has_no_file_count_limit() -> None:
+    """Local-folder and GitHub scanning share _iter_files; the default config
+    must not cap the number of files walked."""
+    assert AiSbomConfig().max_files is None
+
+
+def test_default_config_max_file_size_is_10mb() -> None:
+    assert AiSbomConfig().max_file_size_bytes == 10 * 1024 * 1024
+
+
+def test_iter_files_scans_more_than_1000_files_by_default(tmp_path) -> None:
+    source_dir = tmp_path / "sample-app"
+    source_dir.mkdir()
+    for i in range(1050):
+        (source_dir / f"file_{i}.py").write_text("print('ok')\n", encoding="utf-8")
+
+    config = AiSbomConfig(include_extensions={".py"}, enable_llm=False)
+    files = list(AiSbomExtractor._iter_files(source_dir, config))
+
+    assert len(files) == 1050
+
+
+def test_iter_files_skips_file_larger_than_10mb(tmp_path) -> None:
+    source_dir = tmp_path / "sample-app"
+    source_dir.mkdir()
+    (source_dir / "small.py").write_text("print('ok')\n", encoding="utf-8")
+    big_file = source_dir / "big.py"
+    big_file.write_bytes(b"x" * (10 * 1024 * 1024 + 1))
+
+    config = AiSbomConfig(include_extensions={".py"}, enable_llm=False)
+    files = list(AiSbomExtractor._iter_files(source_dir, config))
+    names = {path.name for path, _size in files}
+
+    assert "small.py" in names
+    assert "big.py" not in names
+
+
+def test_iter_files_includes_file_exactly_at_10mb(tmp_path) -> None:
+    source_dir = tmp_path / "sample-app"
+    source_dir.mkdir()
+    exact_file = source_dir / "exact.py"
+    exact_file.write_bytes(b"x" * (10 * 1024 * 1024))
+
+    config = AiSbomConfig(include_extensions={".py"}, enable_llm=False)
+    files = list(AiSbomExtractor._iter_files(source_dir, config))
+    names = {path.name for path, _size in files}
+
+    assert "exact.py" in names
 
 
 @pytest.mark.asyncio
@@ -443,3 +493,98 @@ def test_summary_api_endpoints_all_have_matching_nodes(tmp_path) -> None:
     assert doc.summary is not None
     for path in doc.summary.api_endpoints:
         assert path in node_paths, f"{path} in summary.api_endpoints has no matching node"
+
+
+def _node(
+    name: str,
+    component_type: ComponentType,
+    *,
+    evidence_paths: list[str] | None = None,
+    extras: dict | None = None,
+) -> Node:
+    evidence = [
+        Evidence(kind="regex", confidence=0.6, detail=name, location=SourceLocation(path=p, line=1))
+        for p in (evidence_paths or [])
+    ]
+    return Node(
+        name=name,
+        component_type=component_type,
+        confidence=0.6,
+        metadata=NodeMetadata(extras=extras or {}),
+        evidence=evidence,
+    )
+
+
+def test_deployment_container_image_edges_gated_by_file_relatedness() -> None:
+    """Regression for the "N*M cross join" bug: a scan with several
+    keyword-derived DEPLOYMENT nodes (Compose, Ci, Docker — all cited from
+    unrelated root-level files) and multiple CONTAINER_IMAGE nodes must not
+    connect every DEPLOYMENT to every CONTAINER_IMAGE. Only pairs sharing an
+    evidence file (or non-root directory) should get a DEPLOYS edge."""
+    compose = _node("Compose", ComponentType.DEPLOYMENT, evidence_paths=["docker-compose.yml"])
+    ci = _node("Ci", ComponentType.DEPLOYMENT, evidence_paths=["ci.yml"])
+    docker = _node("Docker", ComponentType.DEPLOYMENT, evidence_paths=["Dockerfile"])
+    backend_image = _node("backend-image", ComponentType.CONTAINER_IMAGE, evidence_paths=["Dockerfile"])
+    frontend_image = _node(
+        "frontend-image", ComponentType.CONTAINER_IMAGE, evidence_paths=["frontend/Dockerfile"]
+    )
+
+    doc = AiSbomDocument(
+        target=".",
+        nodes=[compose, ci, docker, backend_image, frontend_image],
+        summary=ScanSummary(),
+    )
+    AiSbomExtractor()._resolve_edges(doc, {})
+
+    deploys_edges = [e for e in doc.edges if e.relationship_type == RelationshipType.DEPLOYS]
+    # Only "Docker" (evidenced at Dockerfile) shares a file with backend_image
+    # (also evidenced at Dockerfile) — no pair should relate to frontend_image
+    # (a different, unrelated Dockerfile), and "Compose"/"Ci" (root-level,
+    # no shared file/dir/name token with either image) should get none.
+    assert len(deploys_edges) < 3 * 2
+    assert {(e.source, e.target) for e in deploys_edges} == {(docker.id, backend_image.id)}
+
+
+def test_auth_protects_endpoint_prefers_matching_auth_type() -> None:
+    """AUTH -> API_ENDPOINT PROTECTS edges should prefer the precise
+    metadata.extras["auth_type"] signal (populated by fastapi_adapter on
+    both the AUTH node and the endpoints it guards) over the old broad
+    "every AUTH node protects the first 10 endpoints alphabetically"
+    fallback, which wired unrelated auth schemes to unrelated endpoints."""
+    oauth = _node("OAuth2", ComponentType.AUTH, extras={"auth_type": "oauth2"})
+    bearer = _node("Bearer", ComponentType.AUTH, extras={"auth_type": "http_bearer"})
+    oauth_endpoint = _node(
+        "GET /profile", ComponentType.API_ENDPOINT, extras={"auth_type": "oauth2"}
+    )
+    bearer_endpoint = _node(
+        "GET /admin", ComponentType.API_ENDPOINT, extras={"auth_type": "http_bearer"}
+    )
+
+    doc = AiSbomDocument(
+        target=".",
+        nodes=[oauth, bearer, oauth_endpoint, bearer_endpoint],
+        summary=ScanSummary(),
+    )
+    AiSbomExtractor()._resolve_edges(doc, {})
+
+    protects = {
+        (e.source, e.target) for e in doc.edges if e.relationship_type == RelationshipType.PROTECTS
+    }
+    assert protects == {
+        (oauth.id, oauth_endpoint.id),
+        (bearer.id, bearer_endpoint.id),
+    }
+
+
+def test_auth_protects_endpoint_falls_back_when_no_auth_type_signal() -> None:
+    """When endpoints carry no auth_type metadata at all (e.g. a framework
+    without fastapi_adapter's per-endpoint auth-scheme detection), fall back
+    to the broad top-10 behavior rather than producing zero edges."""
+    auth = _node("JWT Auth", ComponentType.AUTH, extras={})
+    endpoints = [_node(f"GET /r{i}", ComponentType.API_ENDPOINT) for i in range(3)]
+
+    doc = AiSbomDocument(target=".", nodes=[auth, *endpoints], summary=ScanSummary())
+    AiSbomExtractor()._resolve_edges(doc, {})
+
+    protects = [e for e in doc.edges if e.relationship_type == RelationshipType.PROTECTS]
+    assert len(protects) == 3

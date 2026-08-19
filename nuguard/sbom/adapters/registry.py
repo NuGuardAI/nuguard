@@ -398,16 +398,28 @@ def default_registry() -> tuple[DetectionAdapter, ...]:
                         re.IGNORECASE,
                     ),
                     re.compile(
-                        # PaaS / serverless / edge deployment platforms
-                        r"\b(flyctl|fly\.io|heroku|vercel|netlify|railway|render"
+                        # PaaS / serverless / edge deployment platforms.
+                        # "render" is negative-lookahead-guarded against
+                        # call-syntax ("render(", "render (") so it doesn't
+                        # collide with the extremely common React/Vue
+                        # render() method — confirmed false positive
+                        # (SolutionPage.tsx's render() matching the
+                        # Render.com PaaS keyword).
+                        r"\b(flyctl|fly\.io|heroku|vercel|netlify|railway"
+                        r"|render(?!\s*\()"
                         r"|serverless[_-]framework|sam[_-]cli|amplify[_-]cli"
                         r"|wrangler|cloudflare[_-]pages|deno[_-]deploy)\b",
                         re.IGNORECASE,
                     ),
                     re.compile(
                         # Container / orchestration runtimes (last — generic keywords
-                        # like "deployment" are common in comments and strings)
-                        r"\b(docker|kubernetes|helm|terraform|compose|deployment"
+                        # like "deployment" are common in comments and strings).
+                        # "compose" is restricted to "docker compose"/"docker-compose"/
+                        # "compose.yml" contexts rather than the bare word, to avoid
+                        # colliding with Jetpack Compose (@Composable, ComposeView)
+                        # and Vue's Composition API.
+                        r"\b(docker|kubernetes|helm|terraform|deployment"
+                        r"|docker[_-]?\s?compose|compose\.ya?ml"
                         r"|nginx|certbot|letsencrypt|gunicorn|uvicorn|caddy|traefik"
                         r"|reverse[._]proxy|ssl[._]certificate|systemd[._]service)\b",
                         re.IGNORECASE,

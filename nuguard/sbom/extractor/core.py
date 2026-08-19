@@ -31,7 +31,7 @@ import subprocess
 import tempfile
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Callable
 
 from nuguard.common.logging import get_logger
@@ -2046,6 +2046,38 @@ class AiSbomExtractor:
             existing_cf.update(classified_fields)
             acc.metadata["classified_fields"] = existing_cf
 
+    @staticmethod
+    def _structural_edge_related(a: Node, b: Node) -> bool:
+        """Return True if two nodes have a real file-level relationship.
+
+        Used to gate structural fallback edges (DEPLOYMENT<->CONTAINER_IMAGE,
+        IAM<->DEPLOYMENT) so they don't degenerate into an all-to-all N*M
+        cross join when a scan has several unrelated deployment/image nodes
+        (e.g. one DEPLOYMENT node per keyword hit across start.sh, ci.yml,
+        multiple Dockerfiles). Falls back to True when either node has no
+        evidence locations at all, since there's nothing to disambiguate on.
+        """
+        paths_a = {ev.location.path for ev in a.evidence if ev.location and ev.location.path}
+        paths_b = {ev.location.path for ev in b.evidence if ev.location and ev.location.path}
+        if not paths_a or not paths_b:
+            return True
+        if paths_a & paths_b:
+            return True
+        # Same containing directory counts as related, but only for
+        # non-root directories — most repos keep many unrelated files
+        # (Dockerfile, docker-compose.yml, ci.yml, start.sh) at the repo
+        # root, so matching on "." would reintroduce the cross join.
+        dirs_a = {d for p in paths_a if (d := str(PurePosixPath(p).parent)) != "."}
+        dirs_b = {d for p in paths_b if (d := str(PurePosixPath(p).parent)) != "."}
+        if dirs_a & dirs_b:
+            return True
+        # Last resort: shared name token (e.g. a "postgres" DEPLOYMENT node
+        # and a "postgres:14" CONTAINER_IMAGE node referenced by the same
+        # compose service, even when their evidence cites different files).
+        tokens_a = {t for t in re.split(r"[^a-z0-9]+", a.name.lower()) if len(t) > 2}
+        tokens_b = {t for t in re.split(r"[^a-z0-9]+", b.name.lower()) if len(t) > 2}
+        return bool(tokens_a & tokens_b)
+
     def _resolve_edges(
         self,
         doc: AiSbomDocument,
@@ -2201,9 +2233,14 @@ class AiSbomExtractor:
                 for ds_id in tool_to_datastores.get(e.target, []):
                     _add_edge(e.source, ds_id, "ACCESSES")
 
-        # Structural edges: DEPLOYMENT → CONTAINER_IMAGE (DEPLOYS)
+        # Structural edges: DEPLOYMENT → CONTAINER_IMAGE (DEPLOYS).
+        # Gated by _structural_edge_related to avoid an all-to-all N*M join
+        # when several unrelated DEPLOYMENT keyword nodes and CONTAINER_IMAGE
+        # nodes coexist in the same scan.
         for dep in by_type.get(ComponentType.DEPLOYMENT, []):
             for img in by_type.get(ComponentType.CONTAINER_IMAGE, []):
+                if not self._structural_edge_related(dep, img):
+                    continue
                 key = (dep.id, img.id, "DEPLOYS")
                 if key not in seen_edges:
                     seen_edges.add(key)
@@ -2215,9 +2252,12 @@ class AiSbomExtractor:
                         )
                     )
 
-        # Structural edges: IAM → DEPLOYMENT (USES) — identity binds to infra
+        # Structural edges: IAM → DEPLOYMENT (USES) — identity binds to infra.
+        # Same relatedness gate as above.
         for iam_node in by_type.get(ComponentType.IAM, []):
             for dep in by_type.get(ComponentType.DEPLOYMENT, []):
+                if not self._structural_edge_related(iam_node, dep):
+                    continue
                 key = (iam_node.id, dep.id, "USES")
                 if key not in seen_edges:
                     seen_edges.add(key)
@@ -2229,11 +2269,26 @@ class AiSbomExtractor:
                         )
                     )
 
-        # Structural edges: AUTH → API_ENDPOINT (PROTECTS)
+        # Structural edges: AUTH → API_ENDPOINT (PROTECTS).
+        # Prefer the precise signal already carried by both node types
+        # (metadata.extras["auth_type"], populated by fastapi_adapter's
+        # _AUTH_CLASSES detection on both the AUTH node and the endpoints
+        # it guards) over the previous broad "every AUTH node protects the
+        # first 10 endpoints alphabetically" fallback. Only fall back to the
+        # broad behavior for endpoints that carry no auth_type signal at
+        # all, since that's the only case with no better information
+        # available (e.g. non-FastAPI frameworks).
+        def _auth_type(n: Node) -> str | None:
+            v = n.metadata.extras.get("auth_type")
+            return str(v) if v else None
+
+        endpoints = by_type.get(ComponentType.API_ENDPOINT, [])
+        endpoints_with_auth_type = [ep for ep in endpoints if _auth_type(ep)]
+        endpoints_without_auth_type = [ep for ep in endpoints if not _auth_type(ep)]
         for auth in by_type.get(ComponentType.AUTH, []):
-            for ep in sorted(by_type.get(ComponentType.API_ENDPOINT, []), key=lambda n: n.name)[
-                :10
-            ]:
+            matched = [ep for ep in endpoints_with_auth_type if _auth_type(ep) == _auth_type(auth)]
+            targets = matched if matched else sorted(endpoints_without_auth_type, key=lambda n: n.name)[:10]
+            for ep in targets:
                 key = (auth.id, ep.id, "PROTECTS")
                 if key not in seen_edges:
                     seen_edges.add(key)

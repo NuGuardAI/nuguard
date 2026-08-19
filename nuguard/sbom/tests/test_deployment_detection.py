@@ -158,6 +158,34 @@ def test_heroku_detected(tmp_path):
     assert _has_deployment(doc), "Expected heroku DEPLOYMENT node"
 
 
+def test_render_com_still_detected(tmp_path):
+    """A genuine Render.com deploy reference must still produce a node."""
+    (tmp_path / "deploy.sh").write_text(
+        "curl -X POST https://api.render.com/deploy\n",
+        encoding="utf-8",
+    )
+    doc = AiSbomExtractor().extract_from_path(tmp_path, _SH)
+    assert _has_deployment(doc), "Expected render.com DEPLOYMENT node"
+
+
+def test_react_render_method_not_detected_as_deployment(tmp_path):
+    """Regression: a React component's render() method must not match the
+    Render.com PaaS keyword — confirmed false positive on Studyield's
+    SolutionPage.tsx:156 (`render()` matched deployment_generic's bare
+    "render" keyword)."""
+    tsx_config = AiSbomConfig(include_extensions={".tsx"}, enable_llm=False)
+    (tmp_path / "SolutionPage.tsx").write_text(
+        "class SolutionPage extends React.Component {\n"
+        "  render() {\n"
+        "    return <div>solution</div>;\n"
+        "  }\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    doc = AiSbomExtractor().extract_from_path(tmp_path, tsx_config)
+    assert not _has_deployment(doc), "render() must not be flagged as Render.com PaaS usage"
+
+
 # ── Existing patterns unaffected ─────────────────────────────────────────────
 
 
@@ -169,6 +197,33 @@ def test_docker_in_py_still_detected(tmp_path):
     )
     doc = AiSbomExtractor().extract_from_path(tmp_path, _PY)
     assert _has_deployment(doc), "Expected docker DEPLOYMENT node in .py file"
+
+
+def test_docker_compose_yaml_detected_not_bare_compose(tmp_path):
+    """docker-compose.yml must still produce a DEPLOYMENT node, and the
+    matched keyword must be the "docker compose"/"compose.yml" context, not
+    a bare "compose" — which would otherwise collide with Jetpack Compose
+    (@Composable, ComposeView) or Vue's Composition API in the same repo."""
+    (tmp_path / "docker-compose.yml").write_text(
+        "# docker compose configuration\nservices:\n  api:\n    build: .\n",
+        encoding="utf-8",
+    )
+    yaml_config = AiSbomConfig(include_extensions={".yml"}, enable_llm=False)
+    doc = AiSbomExtractor().extract_from_path(tmp_path, yaml_config)
+    assert _has_deployment(doc), "Expected DEPLOYMENT node from docker-compose.yml filename/content"
+
+
+def test_jetpack_compose_not_detected_as_deployment(tmp_path):
+    """A bare "compose" reference (Jetpack Compose usage) must not match
+    the deployment_generic adapter's container-orchestration pattern."""
+    kt_config = AiSbomConfig(include_extensions={".kt"}, enable_llm=False)
+    (tmp_path / "MainScreen.kt").write_text(
+        "import androidx.compose.runtime.Composable\n\n"
+        "@Composable\nfun MainScreen() { }\n",
+        encoding="utf-8",
+    )
+    doc = AiSbomExtractor().extract_from_path(tmp_path, kt_config)
+    assert not _has_deployment(doc), "Jetpack Compose usage must not be flagged as container orchestration"
 
 
 # ── Markdown deployment details section ──────────────────────────────────────
