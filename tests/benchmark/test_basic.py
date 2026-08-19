@@ -25,3 +25,11 @@ def test_fixture_inventory_present() -> None:
 
     assert "openai-swarm" in list_available_benchmarks()
     assert "Healthcare-voice-agent" in list_risk_benchmarks()
+    # phlox-app/chapterapps/studyield-app were previously hand-curated
+    # *.ground-truth.sbom.json files under tests/apps/ that no test ever
+    # loaded or diffed (see chapterapp-sbom-fix.md / studyield-sbom-fix.md).
+    # Wired into this harness so future adapter changes are measured, not
+    # spot-checked. See tests/benchmark/test_wired_ground_truth_fixtures.py
+    # for their (currently low, undertuned-ground-truth) baseline scores.
+    for repo_name in ("phlox-app", "chapterapps", "studyield-app"):
+        assert repo_name in list_available_benchmarks()
