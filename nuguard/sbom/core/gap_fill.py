@@ -17,7 +17,12 @@ Algorithm
 5. Discovered nodes are capped at ``confidence=0.75`` (no AST backing) and
    tagged ``evidence_kind="llm_discovery"`` / ``source_tier="llm"``.
 6. Category processing order: MODEL → DATASTORE → TOOL → PROMPT →
-   AUTH → DEPLOYMENT.
+   AUTH → DEPLOYMENT → FRAMEWORK → PRIVILEGE → API_ENDPOINT → AGENT.
+   API_ENDPOINT and AGENT are strictly narrower fallbacks: API_ENDPOINT only
+   fires when zero endpoints were found deterministically (fallback for web
+   frameworks with no AST adapter yet, e.g. NestJS), and AGENT only fires
+   when the doc has neither an AGENT node nor a recognized AI-framework node
+   (fallback for hand-rolled, non-framework multi-agent orchestration).
 
 Integration
 -----------
@@ -59,6 +64,8 @@ _CATEGORY_ORDER: list[ComponentType] = [
     ComponentType.DEPLOYMENT,
     ComponentType.FRAMEWORK,
     ComponentType.PRIVILEGE,
+    ComponentType.API_ENDPOINT,
+    ComponentType.AGENT,
 ]
 
 # Per-category keyword sets used to rank files for inclusion in the prompt
@@ -198,6 +205,50 @@ _CATEGORY_KEYWORDS: dict[ComponentType, list[str]] = {
         "openai",
         "anthropic",
         "haystack",
+    ],
+    ComponentType.API_ENDPOINT: [
+        # NestJS / Express / Fastify / Koa route decorators and calls —
+        # deliberately framework-name-agnostic since this category exists
+        # specifically to cover web frameworks with no dedicated AST adapter
+        # yet (e.g. NestJS; see studyield-sbom-fix.md item #1).
+        "route",
+        "controller",
+        "@get(",
+        "@post(",
+        "@put(",
+        "@delete(",
+        "@patch(",
+        "app.get(",
+        "app.post(",
+        "app.put(",
+        "app.delete(",
+        "router.get(",
+        "router.post(",
+        "router.put(",
+        "router.delete(",
+        "endpoint",
+        "webhook",
+        "@controller",
+        "useguards",
+        "middleware",
+    ],
+    ComponentType.AGENT: [
+        # Hand-rolled (non-framework) multi-agent orchestration — a base/
+        # abstract class whose subclasses are invoked in sequence by an
+        # orchestrating service. Only ever gap-filled when zero AGENT nodes
+        # AND zero AI-framework nodes exist (see _identify_absent_categories),
+        # so this never runs for LangGraph/CrewAI/AutoGen-style apps where
+        # deterministic detection already has ~97% recall.
+        "agent",
+        "orchestrator",
+        "pipeline",
+        "abstract class",
+        "basemodel",
+        "base_agent",
+        "baseagent",
+        "sequential",
+        "workflow",
+        "step",
     ],
     ComponentType.PRIVILEGE: [
         # RBAC / access control
@@ -353,12 +404,16 @@ def _is_gap_fill_source_file(path: str) -> bool:
 # Per-type gap-fill gating (P2)
 # ---------------------------------------------------------------------------
 # Categories that are NEVER gap-filled:
-#   AGENT     — 97% recall without LLM; gap-fill adds 0 TPs, 0 FPs historically
 #   GUARDRAIL — 100% recall without LLM; gap-fill has no benefit
 #   PRIVILEGE — 16% precision without LLM already; gap-fill adds ~10 FPs per run
+# AGENT is deliberately NOT in this set (see _AGENT_FRAMEWORK_HINTS below) —
+# framework-based agents still skip gap-fill via a dedicated rule in
+# _identify_absent_categories, but hand-rolled/non-framework multi-agent
+# orchestration (zero AGENT nodes AND zero recognized AI-framework nodes)
+# is a real, confirmed gap (studyield-sbom-fix.md item #2) that this
+# blanket exclusion used to make permanently invisible.
 _GAP_FILL_NEVER: frozenset[ComponentType] = frozenset(
     {
-        ComponentType.AGENT,
         ComponentType.GUARDRAIL,
         ComponentType.PRIVILEGE,
     }
@@ -368,11 +423,46 @@ _GAP_FILL_NEVER: frozenset[ComponentType] = frozenset(
 # If the regex/AST pass already found ≥1 node, skip gap-fill — these types
 # have ≥94% recall from deterministic extraction alone and gap-fill only
 # introduces false positives from description files.
+#
+# API_ENDPOINT: acts strictly as a fallback net for web frameworks with no
+# dedicated AST adapter yet (e.g. NestJS — studyield-sbom-fix.md item #1).
+# Once a real adapter exists for a given framework, deterministic detection
+# finds >=1 node and this never fires for it.
 _GAP_FILL_ONLY_IF_ABSENT: frozenset[ComponentType] = frozenset(
     {
         ComponentType.AUTH,  # 100% recall without LLM
         ComponentType.TOOL,  # 94% recall without LLM; LLM was adding +20 FPs
         ComponentType.PROMPT,  # 96% recall without LLM; LLM was adding +5 FPs
+        ComponentType.API_ENDPOINT,
+    }
+)
+
+# AI orchestration framework markers used to gate AGENT gap-fill: only run
+# it when the document has neither an AGENT node nor a FRAMEWORK node whose
+# name/canonical_name suggests a recognized agent framework — i.e. genuinely
+# hand-rolled orchestration with nothing else that could have caught it
+# deterministically. Framework-based agents keep their ~97% recall without
+# ever invoking this (expensive, narrower) heuristic.
+_AGENT_FRAMEWORK_MARKERS: frozenset[str] = frozenset(
+    {
+        "langgraph",
+        "langchain",
+        "crewai",
+        "autogen",
+        "llamaindex",
+        "semantic_kernel",
+        "semantic-kernel",
+        "agno",
+        "google_adk",
+        "google-adk",
+        "openai_agents",
+        "openai-agents",
+        "bedrock_agents",
+        "bedrock-agents",
+        "azure_ai_agents",
+        "azure-ai-agents",
+        "claude_agent_sdk",
+        "claude-agent-sdk",
     }
 )
 
@@ -439,6 +529,21 @@ _CATEGORY_DESCRIPTIONS: dict[ComponentType, str] = {
         "AI orchestration frameworks or MCP server instances — FastMCP / mcp.server.fastmcp "
         "instantiations, LangChain, LangGraph, CrewAI, AutoGen, LlamaIndex, Semantic Kernel, "
         "or any other AI framework that orchestrates models, tools, or agents."
+    ),
+    ComponentType.API_ENDPOINT: (
+        "HTTP or WebSocket API routes/endpoints exposed by the application — e.g. NestJS "
+        "@Controller/@Get/@Post decorators, Express app.get()/router.post() calls, Fastify/Koa "
+        "route registrations. Only report ROUTES ACTUALLY DEFINED in this code (a decorated "
+        "handler or a route-registration call with a path), not routes merely mentioned in "
+        "documentation or comments. Set \"name\" to \"METHOD /path\" (e.g. \"POST /api/users\")."
+    ),
+    ComponentType.AGENT: (
+        "A hand-rolled (non-framework) multi-agent or multi-step orchestrator — application "
+        "code where one class/service sequentially invokes several other classes that each "
+        "build a prompt and call an LLM client, WITHOUT using LangGraph/CrewAI/AutoGen/"
+        "LlamaIndex or another recognized AI framework. Report the ORCHESTRATING class/service "
+        "as the AGENT (not each individual step class). Do not report this if the orchestration "
+        "is built on a recognized AI framework — that is handled by deterministic detection."
     ),
     ComponentType.PRIVILEGE: (
         "Privileged capabilities exercised by the AI agent or application — one or more of: "
@@ -581,16 +686,42 @@ def apply_discovery_results(
 # ---------------------------------------------------------------------------
 
 
+def _has_agent_framework_node(doc: AiSbomDocument) -> bool:
+    """Return True if any FRAMEWORK node looks like a recognized AI framework.
+
+    Used to gate AGENT gap-fill: framework-based agents already have ~97%
+    deterministic recall and must never re-trigger the (narrower, more
+    speculative) hand-rolled-orchestrator heuristic just because that
+    framework's AGENT node happened to land below the 0.65 confidence bar.
+    """
+    for node in doc.nodes:
+        if node.component_type != ComponentType.FRAMEWORK:
+            continue
+        candidates = {
+            str(node.metadata.framework or "").lower(),
+            str(node.metadata.extras.get("adapter", "")).lower(),
+            str(node.metadata.extras.get("canonical_name", "")).lower(),
+            node.name.lower(),
+        }
+        if any(marker in candidate for candidate in candidates for marker in _AGENT_FRAMEWORK_MARKERS):
+            return True
+    return False
+
+
 def _identify_absent_categories(doc: AiSbomDocument) -> list[ComponentType]:
     """Return priority categories where gap-fill should run.
 
-    Applies three gating rules (see P2 in accuracy improvement plan):
+    Applies four gating rules (see P2 in accuracy improvement plan):
 
-    1. *Never* gap-fill AGENT, GUARDRAIL, PRIVILEGE — these have either
-       ≥97% deterministic recall or pre-existing precision problems.
-    2. *Skip* AUTH, TOOL, PROMPT if the deterministic pass found ≥1 node —
-       those types have ≥94% recall; gap-fill only adds FPs.
-    3. For all other categories: gap-fill when no node exceeds 0.65 confidence
+    1. *Never* gap-fill GUARDRAIL, PRIVILEGE — pre-existing precision/recall
+       problems that make gap-fill counterproductive for these two.
+    2. *Skip* AUTH, TOOL, PROMPT, API_ENDPOINT if the deterministic pass
+       found >=1 node — those types have >=94% recall; gap-fill only adds FPs.
+    3. AGENT is only gap-filled when the doc has zero AGENT nodes AND zero
+       recognized AI-framework nodes — i.e. genuinely hand-rolled
+       orchestration with nothing else that could have caught it
+       deterministically (see _has_agent_framework_node).
+    4. For all other categories: gap-fill when no node exceeds 0.65 confidence
        (original behaviour).
     """
     present_types: dict[ComponentType, float] = {}
@@ -609,7 +740,13 @@ def _identify_absent_categories(doc: AiSbomDocument) -> list[ComponentType]:
         # Rule 2: skip high-recall types if already found
         if category in _GAP_FILL_ONLY_IF_ABSENT and type_counts.get(category, 0) > 0:
             continue
-        # Rule 3: original threshold
+        # Rule 3: AGENT only when hand-rolled (no framework could have caught it)
+        if category == ComponentType.AGENT:
+            if type_counts.get(ComponentType.AGENT, 0) > 0 or _has_agent_framework_node(doc):
+                continue
+            absent.append(category)
+            continue
+        # Rule 4: original threshold
         max_conf = present_types.get(category, 0.0)
         if max_conf < 0.65:
             absent.append(category)
