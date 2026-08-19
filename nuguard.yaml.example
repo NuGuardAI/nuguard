@@ -118,6 +118,11 @@ behavior:
   # Canary seed file — same file used by redteam canary scanning.
   # canary: ./canary.json
 
+  # Extra HTTP headers added to every request (overrides the shared
+  # target.headers block for behavior only).
+  # headers:
+  #   X-Tenant-Id: "tenant-1"
+
   # Per-request HTTP timeout in seconds (default: 60)
   # Increase for slow LLM-backed pipelines.
   request_timeout: 60
@@ -182,7 +187,8 @@ behavior:
 
 # ─── Red-team mode ────────────────────────────────────────────────────────────
 # nuguard redteam exercises adversarial scenarios to find break points.
-# target.url, target.auth, target.endpoint are inherited from the target: block above.
+# target.url, target.auth, target.endpoint, target.headers are inherited from
+# the target: block above.
 # Override any of them here when redteam needs different credentials than behavior.
 redteam:
 

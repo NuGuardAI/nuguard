@@ -109,6 +109,7 @@ def test_validate_json_includes_verbose_flag_and_diagnostics_when_verbose(
     tmp_path: Path,
 ) -> None:
     import json as _json
+
     import nuguard.cli.commands.validate as validate_cmd
 
     monkeypatch.setattr(validate_cmd, "_run_validate", _fake_run_validate)
@@ -140,6 +141,7 @@ def test_validate_json_omits_diagnostics_when_not_verbose(
     tmp_path: Path,
 ) -> None:
     import json as _json
+
     import nuguard.cli.commands.validate as validate_cmd
 
     monkeypatch.setattr(validate_cmd, "_run_validate", _fake_run_validate)
@@ -170,6 +172,7 @@ def test_validate_json_uses_resolved_endpoint_metadata(
     tmp_path: Path,
 ) -> None:
     import json as _json
+
     import nuguard.cli.commands.validate as validate_cmd
 
     monkeypatch.setattr(validate_cmd, "_run_validate", _fake_run_validate)
@@ -193,3 +196,37 @@ def test_validate_json_uses_resolved_endpoint_metadata(
     payload = _json.loads(out_base.read_text(encoding="utf-8"))
     assert payload["_meta"]["effective_endpoint"] == "/api/agent/chat"
     assert payload["_meta"]["target_endpoint_source"] == "probe"
+
+
+def test_validate_creates_missing_parent_dir_for_output(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """``nuguard validate --output <nested>/out.json`` must auto-create parents.
+
+    Regression: validate wrote the output file with a bare ``write_text``, so
+    a missing parent directory raised an uncaught FileNotFoundError traceback,
+    unlike analyze / behavior / redteam / scan / sbom which all auto-create
+    the parent (issue #233 unified behaviour).
+    """
+    import nuguard.cli.commands.validate as validate_cmd
+
+    monkeypatch.setattr(validate_cmd, "_run_validate", _fake_run_validate)
+    cfg = _write_validate_config(tmp_path)
+    out_path = tmp_path / "a" / "b" / "c" / "results.json"
+    assert not out_path.parent.exists()
+
+    result = runner.invoke(
+        app,
+        [
+            "validate",
+            "--config", str(cfg),
+            "--format", "json",
+            "--output", str(out_path),
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+    assert out_path.exists(), (
+        f"Expected validate report at {out_path}; stdout:\n{result.output}"
+    )

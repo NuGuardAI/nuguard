@@ -207,6 +207,9 @@ def _do_validate(
                 all_formats=formats,
                 extension_map=extension_map,
             )
+            # Auto-create the parent directory, consistent with analyze /
+            # behavior / redteam (issue #233) and scan / sbom generate.
+            out_path.parent.mkdir(parents=True, exist_ok=True)
             out_path.write_text(_render(fmt), encoding="utf-8")
             _console.print(f"[green]Results written to[/green] {out_path}")
     else:
