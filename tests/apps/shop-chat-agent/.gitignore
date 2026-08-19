@@ -1,0 +1,23 @@
+# Secrets & credentials - NEVER commit these
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# Cloned shop-chat-agent source (no published image exists — we build from source)
+repo/
+
+# NuGuard-generated artifacts
+*.sbom.json
+!shop-chat-agent.ground-truth.sbom.json
+cognitive-policy.md
+cognitive-policy.json
+reports/*.md
+reports/*.json
+reports/*.log
+!reports/.gitkeep
+
+# Runtime data (sqlite db, prisma files)
+data/
+logs/

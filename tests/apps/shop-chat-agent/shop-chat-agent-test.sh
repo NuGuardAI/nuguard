@@ -1,0 +1,83 @@
+#!/usr/bin/env bash
+# Full NuGuard pipeline against a running shop-chat-agent instance.
+#
+# Usage:
+#   ./shop-chat-agent-test.sh                 # local docker target (nuguard.yaml)
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CONFIG="${1:-nuguard.yaml}"
+CONFIG_PATH="$SCRIPT_DIR/$CONFIG"
+
+if [[ -f "$SCRIPT_DIR/.env" ]]; then
+  set -o allexport
+  # shellcheck disable=SC1091
+  source "$SCRIPT_DIR/.env"
+  set +o allexport
+else
+  echo "WARNING: .env not found — copy .env.example to .env first." >&2
+fi
+
+mkdir -p "$SCRIPT_DIR/reports"
+LOG_FILE="$SCRIPT_DIR/reports/shop-chat-agent-test-$(date +%Y%m%dT%H%M%S).log"
+exec > >(tee -a "$LOG_FILE") 2>&1
+
+echo "Preparing shop-chat-agent (Shopify/shop-chat-agent) for NuGuard testing..."
+echo "Config: $CONFIG_PATH"
+echo "Log:    $LOG_FILE"
+echo "Started: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+echo "---"
+
+echo "Generating AI-SBOM from source: https://github.com/Shopify/shop-chat-agent ..."
+uv run nuguard sbom generate \
+  --config "$CONFIG_PATH" \
+  --format json \
+  -o "$SCRIPT_DIR/shop-chat-agent.sbom.json"
+
+echo "Done."
+echo "---"
+
+echo "Drafting Cognitive Policy (LLM, grounded in the SBOM) — created at runtime, not checked in..."
+uv run nuguard init \
+  --path "$SCRIPT_DIR" \
+  --target "$(grep -m1 '^\s*url:' "$CONFIG_PATH" | awk '{print $2}')" \
+  --source "https://github.com/Shopify/shop-chat-agent" \
+  --llm
+
+echo "Compiling Cognitive Policy controls..."
+uv run nuguard policy compile --config "$CONFIG_PATH"
+
+echo "Cognitive Policy check..."
+# exits 2 when gaps are found — expected in testing; treat as non-fatal
+uv run nuguard policy check \
+  --config "$CONFIG_PATH" \
+  --format markdown \
+  -o "$SCRIPT_DIR/reports/shop-chat-agent-policy-check.md" || true
+
+echo "---"
+echo "Static security analysis..."
+# exits 2 when findings are present — expected in testing; treat as non-fatal
+uv run nuguard analyze \
+  --config "$CONFIG_PATH" \
+  --format markdown \
+  -o "$SCRIPT_DIR/reports/shop-chat-agent-sec-analysis.md" || true
+
+echo "---"
+echo "Running behavior analysis (static + dynamic)..."
+uv run nuguard behavior \
+  --config "$CONFIG_PATH" \
+  --mode static+dynamic \
+  --format markdown \
+  -o "$SCRIPT_DIR/reports/shop-chat-agent-behavior.md" || true
+
+echo "---"
+echo "Running redteam tests..."
+uv run nuguard redteam \
+  --config "$CONFIG_PATH" \
+  --format markdown \
+  --output "$SCRIPT_DIR/reports/shop-chat-agent-redteam.md" || true
+
+echo "---"
+echo "Done: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+echo "Log saved to: $LOG_FILE"
+echo "Reports:      $SCRIPT_DIR/reports/"

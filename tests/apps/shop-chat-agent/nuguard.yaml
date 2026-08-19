@@ -1,0 +1,95 @@
+# nuguard.yaml — shop-chat-agent (local Docker target)
+# shop-chat-agent: https://github.com/Shopify/shop-chat-agent — Shopify's
+# reference embedded app: a storefront AI shopping assistant (React Router
+# backend, Claude/Anthropic SDK, Model Context Protocol client against
+# Shopify's storefront + customer-account MCP servers, Prisma/SQLite session
+# storage, Shopify theme-extension chat widget UI).
+#
+# Priority order (highest wins): CLI flags > env vars > .env file > nuguard.yaml > defaults
+# Run from this directory: uv run nuguard <command> --config nuguard.yaml
+
+# ─── Source for SBOM generation ───────────────────────────────────────────────
+# GitHub URL — nuguard clones it internally for static scanning; nothing is
+# vendored into this repo (the ./repo checkout used by start-local.sh to
+# actually *run* the app is separate and gitignored).
+source: https://github.com/Shopify/shop-chat-agent
+sbom: ./shop-chat-agent.sbom.json
+
+# ─── Cognitive policy ──────────────────────────────────────────────────────────
+# Not checked in — drafted at runtime from the SBOM by `nuguard init --llm`
+# (see shop-chat-agent-test.sh), then compiled to cognitive-policy.json.
+policy:
+  path: ./cognitive-policy.md
+  llm: true
+
+# ─── LLM settings (NuGuard's own scenario generation / judging) ───────────────
+llm:
+  # model: openai/gpt-4o-mini            # LiteLLM resolves the key from OPENAI_API_KEY
+  # api_key: ${OPENAI_API_KEY}
+  model: azure/${AZURE_DEEPSEEK_MODEL_NAME}
+  api_key: ${AZURE_DEEPSEEK_KEY}     # never put keys here; use env var interpolation
+  api_base: ${AZURE_DEEPSEEK_ENDPOINT}
+
+# ─── SBOM generation ───────────────────────────────────────────────────────────
+sbom_generation:
+  llm: true                            # enrich SBOM nodes with LLM descriptions
+
+# ─── Target application ────────────────────────────────────────────────────────
+# IMPORTANT: this is a Shopify-embedded app template. Without a real Partner
+# app + dev store connected (`shopify app dev`, see README), the storefront
+# and customer MCP tool connections in app/mcp-client.js cannot succeed, and
+# app/routes/chat.jsx falls back to "continuing without tools" — Claude still
+# replies via CLAUDE_API_KEY, but dynamic scans here exercise the base chat
+# loop only, not the MCP product-search/cart/order tool surface.
+target:
+  url: http://localhost:3000
+
+  # SSE chat endpoint (GET with Accept: text/event-stream, or POST) — see
+  # app/routes/chat.jsx. Accepts JSON body: {"message": "...", "conversation_id": "...".
+  endpoint: /chat
+
+  auth:
+    # No auth required to reach /chat itself in this standalone run (the
+    # Shopify OAuth/App Bridge flow only guards the embedded /app/* admin UI).
+    type: none
+
+# ─── Behavior testing ──────────────────────────────────────────────────────────
+behavior:
+  llm: true
+  canary: ./canary.json
+  request_timeout: 60
+  scenario_concurrency: 3
+  isolate_scenarios: true
+  judge_concurrency: 5
+  capability_discovery: true
+
+# ─── Red-team ───────────────────────────────────────────────────────────────────
+redteam:
+  target: http://localhost:3000
+  canary: ./canary.json
+  profile: full
+  min_impact_score: 0.0
+
+  # Relevant to a storefront shopping agent with MCP tool-calling (cart/order
+  # actions) and OAuth-based customer account access.
+  scenarios:
+    - prompt-injection
+    - tool-abuse
+    - privilege-escalation
+    - data-exfiltration
+    - policy-violation
+    - mcp-toxic-flow
+
+  request_timeout: 120
+  verbose: true
+  strict_outcome: false
+
+# ─── Static analysis ────────────────────────────────────────────────────────────
+analyze:
+  min_severity: low
+
+# ─── Output ──────────────────────────────────────────────────────────────────────
+output:
+  format: markdown
+  fail_on: low
+  sarif_file: ./reports/shop-chat-agent-nuguard-results.sarif
