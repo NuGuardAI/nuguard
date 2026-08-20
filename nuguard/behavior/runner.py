@@ -1950,75 +1950,24 @@ class BehaviorRunner:
         _has_explicit_endpoint = bool(_configured_endpoint)
         self._target_endpoint_source = "config" if _has_explicit_endpoint else "default"
         try:
-            from nuguard.common.endpoint_probe import (  # noqa: PLC0415
-                discover_chat_candidates_from_sbom as _dcandidates,
+            from nuguard.common.endpoint_preflight import (  # noqa: PLC0415
+                validate_and_rotate_chat_endpoint,
             )
-            from nuguard.common.endpoint_probe import (
-                probe_chat_endpoints as _probe,
-            )
-            from nuguard.redteam.target.session import AttackSession as _PF_AS  # noqa: PLC0415
-            _pf_session = _PF_AS(
-                session_id="preflight",
+            _bootstrap_hdrs: dict[str, str] = getattr(self._auth_session, "headers", lambda: {})() if self._auth_session else {}
+            _pf = await validate_and_rotate_chat_endpoint(
+                client,
+                self._sbom,
+                has_explicit_endpoint=_has_explicit_endpoint,
                 target_url=target_url or "",
-                chain_id="behavior-preflight",
+                auth_headers=_bootstrap_hdrs or None,
             )
-            _pf_resp, _ = await client.send("Hello", _pf_session)
-            if _pf_resp.startswith("[HTTP 405]") or _pf_resp.startswith("[HTTP 404]"):
-                _log.warning(
-                    "Pre-flight: chat endpoint returned %s — attempting rotation",
-                    _pf_resp[:15],
-                )
-                if _has_explicit_endpoint:
-                    _console.print(
-                        "[bold red]⚠ Configured chat endpoint is unreachable (405/404): "
-                        f"{_configured_endpoint}.\n"
-                        "Explicit endpoint precedence is enforced; no SBOM/probe rotation was attempted.\n"
-                        "Fix 'target_endpoint' in nuguard.yaml or remove it to allow fallback discovery.[/bold red]"
-                    )
-                    _log.error(
-                        "BehaviorRunner.run: explicit target_endpoint %r unreachable (405/404); "
-                        "skipping SBOM/probe rotation",
-                        _configured_endpoint,
-                    )
-                    _preflight_ok = False
-                else:
-                    _remaining = list(_dcandidates(self._sbom)[1:]) if self._sbom else []
-                    _rotated = False
-                    for _ep in _remaining:
-                        client.set_chat_endpoint(_ep[0], _ep[1], _ep[2], _ep[3])
-                        _pf_r2, _ = await client.send("Hello", _pf_session)
-                        if not _pf_r2.startswith("[HTTP 405]") and not _pf_r2.startswith("[HTTP 404]"):
-                            _log.info("Pre-flight: rotated to working endpoint %s", _ep[0])
-                            _console.print(f"  [cyan]Endpoint rotated → {_ep[0]}[/cyan]")
-                            self._rotated_chat_endpoint = _ep
-                            self._target_endpoint_source = "sbom"
-                            _rotated = True
-                            break
-                    if not _rotated and self._sbom is not None:
-                        # Live probe as last resort
-                        _bootstrap_hdrs: dict[str, str] = getattr(self._auth_session, "headers", lambda: {})() if self._auth_session else {}
-                        try:
-                            _probed = await _probe(target_url, self._sbom, auth_headers=_bootstrap_hdrs)
-                            if _probed:
-                                client.set_chat_endpoint(_probed[0], _probed[1], _probed[2])
-                                _log.info("Pre-flight: live probe found working endpoint %s", _probed[0])
-                                _console.print(f"  [cyan]Live probe → {_probed[0]}[/cyan]")
-                                self._rotated_chat_endpoint = (_probed[0], _probed[1], _probed[2], None)
-                                self._target_endpoint_source = "probe"
-                                _rotated = True
-                        except Exception as _pe:
-                            _log.warning("Pre-flight live probe failed: %s", _pe)
-                    if not _rotated:
-                        _console.print(
-                            "[bold red]⚠ Chat endpoint unreachable — all SBOM candidates and live "
-                            "probe returned 405/404.\n"
-                            "Check 'target_endpoint' in nuguard.yaml or re-run "
-                            "'nuguard sbom generate'.[/bold red]"
-                        )
-                        _log.error(
-                            "BehaviorRunner.run: aborting — no working chat endpoint found"
-                        )
-                        _preflight_ok = False
+            for _pf_note in _pf.notes:
+                _console.print(f"[bold red]⚠ {_pf_note}[/bold red]" if not _pf.ok else f"  [cyan]{_pf_note}[/cyan]")
+            if _pf.rotated_endpoint is not None:
+                self._rotated_chat_endpoint = _pf.rotated_endpoint
+                self._target_endpoint_source = _pf.endpoint_source or self._target_endpoint_source
+            if not _pf.ok:
+                _preflight_ok = False
         except Exception as _pf_exc:
             _log.debug("Pre-flight check failed (non-fatal): %s", _pf_exc)
 

@@ -283,6 +283,11 @@ def _compute_scan_outcome(
         indicating the target was unreachable or structurally broken. A guided
         conversation aborting for a legitimate reason (``"aborted:max_turns"``,
         ``"aborted:hard_refusal"``) does NOT count toward this.
+    ``aborted_endpoint_unreachable``
+        Set directly by :meth:`RedteamOrchestrator.run` (not by this function)
+        when pre-flight validation finds the resolved chat endpoint returning
+        404/405 and neither SBOM candidate rotation nor a live probe found a
+        working alternative. The run exits before any scenario executes.
     """
     _HEALTH_ABORT_STATUSES = (
         "aborted",
@@ -1205,6 +1210,34 @@ class RedteamOrchestrator:
             PoisonPayloadServer(app_name=app_name or "application") as poison_server,
             client,
         ):
+            # Pre-flight endpoint validation: verify the resolved chat endpoint is
+            # actually reachable before running any scenario.  SBOM-based scoring in
+            # _discover_chat_config can pick the wrong candidate (e.g. /api/chat when
+            # only /api/chat/respond-visual is live); on 404/405 the target's normal
+            # 4xx-doesn't-count-toward-the-circuit-breaker behaviour would otherwise
+            # let an entire scan burn through every scenario with no findings.  Rotate
+            # through ranked SBOM candidates, then a live probe, before giving up.
+            from nuguard.common.endpoint_preflight import (  # noqa: PLC0415
+                validate_and_rotate_chat_endpoint,
+            )
+            _pf = await validate_and_rotate_chat_endpoint(
+                client,
+                self._sbom,
+                has_explicit_endpoint=self._chat_path_source == "config",
+                target_url=self._target_url,
+                auth_headers=effective_headers or None,
+            )
+            self.config_notes.extend(_pf.notes)
+            if _pf.rotated_endpoint is not None:
+                self._chat_path, self._chat_payload_key, self._chat_payload_list, _pf_resp_key = _pf.rotated_endpoint
+                if _pf_resp_key:
+                    self._chat_response_key = _pf_resp_key
+                self._chat_path_source = _pf.endpoint_source or self._chat_path_source
+            if not _pf.ok:
+                self.scan_outcome = "aborted_endpoint_unreachable"
+                _log.error("Redteam: aborting — no working chat endpoint found (%s)", _pf.notes)
+                return []
+
             # Substitute poison server URL into all scenario step payloads that
             # contain the placeholder host.  This makes indirect injection and RAG
             # poisoning scenarios point at our live server instead of a dead host.
