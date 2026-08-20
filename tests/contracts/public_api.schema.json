@@ -1,0 +1,5219 @@
+{
+  "analysis.AnalysisRunRequest": {
+    "$defs": {
+      "Severity": {
+        "enum": [
+          "critical",
+          "high",
+          "medium",
+          "low",
+          "info"
+        ],
+        "title": "Severity",
+        "type": "string"
+      }
+    },
+    "description": "JSON-safe input for :func:`run_analysis`.\n\nMirrors ``StaticAnalyzer.__init__``'s parameters with identical defaults.\n``source_path`` is a plain string here (``Path`` is not JSON-safe) and is\nconverted back to a ``Path`` inside :func:`run_analysis`.",
+    "properties": {
+      "enable_atlas": {
+        "default": true,
+        "title": "Enable Atlas",
+        "type": "boolean"
+      },
+      "enable_osv": {
+        "default": true,
+        "title": "Enable Osv",
+        "type": "boolean"
+      },
+      "enable_grype": {
+        "default": true,
+        "title": "Enable Grype",
+        "type": "boolean"
+      },
+      "enable_checkov": {
+        "default": true,
+        "title": "Enable Checkov",
+        "type": "boolean"
+      },
+      "enable_trivy": {
+        "default": true,
+        "title": "Enable Trivy",
+        "type": "boolean"
+      },
+      "enable_semgrep": {
+        "default": true,
+        "title": "Enable Semgrep",
+        "type": "boolean"
+      },
+      "enable_supply_chain": {
+        "default": true,
+        "title": "Enable Supply Chain",
+        "type": "boolean"
+      },
+      "source_path": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Source Path"
+      },
+      "atlas_config": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Atlas Config"
+      },
+      "min_severity": {
+        "$ref": "#/$defs/Severity",
+        "default": "low"
+      },
+      "verbose": {
+        "default": false,
+        "title": "Verbose",
+        "type": "boolean"
+      },
+      "grype_timeout": {
+        "default": 180.0,
+        "title": "Grype Timeout",
+        "type": "number"
+      },
+      "grype_retries": {
+        "default": 3,
+        "title": "Grype Retries",
+        "type": "integer"
+      },
+      "supply_chain_profile": {
+        "default": "standard",
+        "title": "Supply Chain Profile",
+        "type": "string"
+      },
+      "supply_chain_verify_artifacts": {
+        "default": "off",
+        "title": "Supply Chain Verify Artifacts",
+        "type": "string"
+      },
+      "supply_chain_threat_intel_feeds": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Supply Chain Threat Intel Feeds"
+      }
+    },
+    "title": "AnalysisRunRequest",
+    "type": "object"
+  },
+  "analysis.AnalysisRunResult": {
+    "$defs": {
+      "Finding": {
+        "properties": {
+          "finding_id": {
+            "title": "Finding Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "severity": {
+            "$ref": "#/$defs/Severity"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "affected_component": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Affected Component"
+          },
+          "remediation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Remediation"
+          },
+          "references": {
+            "items": {
+              "type": "string"
+            },
+            "title": "References",
+            "type": "array"
+          },
+          "goal_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Goal Type"
+          },
+          "scenario_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Scenario Type"
+          },
+          "sbom_path": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sbom Path",
+            "type": "array"
+          },
+          "sbom_path_descriptions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sbom Path Descriptions",
+            "type": "array"
+          },
+          "policy_clauses_violated": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Policy Clauses Violated",
+            "type": "array"
+          },
+          "chain_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Chain Id"
+          },
+          "owasp_asi_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Owasp Asi Ref"
+          },
+          "owasp_llm_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Owasp Llm Ref"
+          },
+          "mitre_atlas_technique": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Mitre Atlas Technique"
+          },
+          "evidence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Evidence"
+          },
+          "log_correlation_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Log Correlation Status"
+          },
+          "reasoning": {
+            "default": "",
+            "title": "Reasoning",
+            "type": "string"
+          },
+          "evidence_quote": {
+            "default": "",
+            "title": "Evidence Quote",
+            "type": "string"
+          },
+          "success_indicator": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Success Indicator"
+          },
+          "scores": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Scores",
+            "type": "object"
+          },
+          "attack_steps": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Attack Steps",
+            "type": "array"
+          },
+          "golden_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Golden Ids",
+            "type": "array"
+          },
+          "golden_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Golden Name"
+          },
+          "golden_data_excerpt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Golden Data Excerpt"
+          },
+          "verified": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Verified"
+          }
+        },
+        "required": [
+          "finding_id",
+          "title",
+          "severity",
+          "description"
+        ],
+        "title": "Finding",
+        "type": "object"
+      },
+      "RemediationArtefact": {
+        "description": "A concrete, SBOM-node-specific remediation action.\n\nProduced by RemediationSynthesizer as the final pass after all findings\nare collected. Each artefact targets a specific SBOM node and provides\nactionable instructions (patch text, guardrail spec, or architectural change).",
+        "properties": {
+          "finding_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Finding Ids",
+            "type": "array"
+          },
+          "component": {
+            "title": "Component",
+            "type": "string"
+          },
+          "component_type": {
+            "title": "Component Type",
+            "type": "string"
+          },
+          "artefact_type": {
+            "$ref": "#/$defs/RemediationArtefactType"
+          },
+          "priority": {
+            "title": "Priority",
+            "type": "string"
+          },
+          "patch_location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Patch Location"
+          },
+          "patch_section": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Patch Section"
+          },
+          "patch_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Patch Text"
+          },
+          "guardrail_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Guardrail Name"
+          },
+          "guardrail_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Guardrail Type"
+          },
+          "guardrail_trigger": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Guardrail Trigger"
+          },
+          "guardrail_action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Guardrail Action"
+          },
+          "guardrail_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Guardrail Message"
+          },
+          "privilege_scope": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Privilege Scope"
+          },
+          "privilege_node": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Privilege Node"
+          },
+          "requires_auth": {
+            "default": false,
+            "title": "Requires Auth",
+            "type": "boolean"
+          },
+          "requires_hitl": {
+            "default": false,
+            "title": "Requires Hitl",
+            "type": "boolean"
+          },
+          "edge_to_remove": {
+            "anyOf": [
+              {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "string"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Edge To Remove"
+          },
+          "change_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Change Description"
+          },
+          "change_detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Change Detail"
+          },
+          "rationale": {
+            "title": "Rationale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "component",
+          "component_type",
+          "artefact_type",
+          "priority",
+          "rationale"
+        ],
+        "title": "RemediationArtefact",
+        "type": "object"
+      },
+      "RemediationArtefactType": {
+        "description": "The type of concrete remediation artefact produced by RemediationSynthesizer.",
+        "enum": [
+          "system_prompt_patch",
+          "input_guardrail",
+          "output_guardrail",
+          "architectural_change"
+        ],
+        "title": "RemediationArtefactType",
+        "type": "string"
+      },
+      "Severity": {
+        "enum": [
+          "critical",
+          "high",
+          "medium",
+          "low",
+          "info"
+        ],
+        "title": "Severity",
+        "type": "string"
+      },
+      "TokenUsage": {
+        "description": "LLM token consumption for a single check run.\n\nEmbedded in AnalysisResult, BehaviorAnalysisResult, PolicyCheckResult,\nand RedteamOrchestrator so every module surfaces the same fields.",
+        "properties": {
+          "input_tokens": {
+            "default": 0,
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "output_tokens": {
+            "default": 0,
+            "title": "Output Tokens",
+            "type": "integer"
+          },
+          "llm_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Llm Model"
+          }
+        },
+        "title": "TokenUsage",
+        "type": "object"
+      }
+    },
+    "description": "JSON-safe result of :func:`run_analysis`.\n\nBundles ``StaticAnalyzer.analyze()``'s return value together with the\nside-effect instance attributes the CLI reads separately today\n(``tool_status``, ``nga_audit``, ``sc_audit``, ``token_usage``), so\nexternal callers get one self-contained object instead of having to know\nwhich attributes to read off the analyzer instance.",
+    "properties": {
+      "findings": {
+        "items": {
+          "$ref": "#/$defs/Finding"
+        },
+        "title": "Findings",
+        "type": "array"
+      },
+      "tool_status": {
+        "additionalProperties": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "title": "Tool Status",
+        "type": "object"
+      },
+      "nga_audit": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "title": "Nga Audit",
+        "type": "array"
+      },
+      "sc_audit": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "title": "Sc Audit",
+        "type": "array"
+      },
+      "token_usage": {
+        "$ref": "#/$defs/TokenUsage"
+      },
+      "remediation_plan": {
+        "items": {
+          "$ref": "#/$defs/RemediationArtefact"
+        },
+        "title": "Remediation Plan",
+        "type": "array"
+      }
+    },
+    "required": [
+      "findings"
+    ],
+    "title": "AnalysisRunResult",
+    "type": "object"
+  },
+  "behavior.BehaviorAnalysisRequest": {
+    "$defs": {
+      "AppAuthConfig": {
+        "description": "Structured auth config for behavior and redteam target requests.",
+        "properties": {
+          "type": {
+            "default": "none",
+            "enum": [
+              "bearer",
+              "api_key",
+              "basic",
+              "none",
+              "login_flow",
+              "cookie_file"
+            ],
+            "title": "Type",
+            "type": "string"
+          },
+          "header": {
+            "default": "",
+            "title": "Header",
+            "type": "string"
+          },
+          "username": {
+            "default": "",
+            "title": "Username",
+            "type": "string"
+          },
+          "password": {
+            "default": "",
+            "title": "Password",
+            "type": "string"
+          },
+          "login_flow": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/LoginFlowConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "cookie_file": {
+            "default": "",
+            "title": "Cookie File",
+            "type": "string"
+          }
+        },
+        "title": "AppAuthConfig",
+        "type": "object"
+      },
+      "BehaviorBoundaryAssertion": {
+        "description": "Single boundary assertion declared in nuguard.yaml behavior.boundary_assertions.",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "expect": {
+            "const": "refused",
+            "default": "refused",
+            "title": "Expect",
+            "type": "string"
+          },
+          "forbid_pattern": {
+            "default": "",
+            "title": "Forbid Pattern",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "message"
+        ],
+        "title": "BehaviorBoundaryAssertion",
+        "type": "object"
+      },
+      "BehaviorConfig": {
+        "description": "Configuration for nuguard behavior mode.",
+        "properties": {
+          "target": {
+            "default": "",
+            "title": "Target",
+            "type": "string"
+          },
+          "target_endpoint": {
+            "default": "",
+            "title": "Target Endpoint",
+            "type": "string"
+          },
+          "auth": {
+            "$ref": "#/$defs/AppAuthConfig"
+          },
+          "headers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Extra HTTP headers added to every behavior request (yaml: behavior.headers, or the shared target.headers block).",
+            "title": "Headers",
+            "type": "object"
+          },
+          "canary": {
+            "default": "",
+            "title": "Canary",
+            "type": "string"
+          },
+          "workflows": {
+            "description": "Workflow categories to execute: topic_coverage, agent_tool_coverage, guardrail_coverage, data_discovery_probe. Empty = run all.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Workflows",
+            "type": "array"
+          },
+          "boundary_assertions": {
+            "items": {
+              "$ref": "#/$defs/BehaviorBoundaryAssertion"
+            },
+            "title": "Boundary Assertions",
+            "type": "array"
+          },
+          "golden_data": {
+            "additionalProperties": true,
+            "description": "Pre-seeded user profile data for behavior testing \u2014 same schema as redteam.golden_data.  Used as a fallback when live pre-scan discovery returns an empty profile so test payloads reference real account IDs and names rather than synthetic placeholders.",
+            "title": "Golden Data",
+            "type": "object"
+          },
+          "request_timeout": {
+            "default": 60.0,
+            "title": "Request Timeout",
+            "type": "number"
+          },
+          "verbose": {
+            "default": false,
+            "title": "Verbose",
+            "type": "boolean"
+          },
+          "use_llm": {
+            "default": false,
+            "title": "Use Llm",
+            "type": "boolean"
+          },
+          "turn_delay_seconds": {
+            "default": 0.0,
+            "description": "Inter-turn pause in seconds to avoid 429 rate-limit errors.",
+            "title": "Turn Delay Seconds",
+            "type": "number"
+          },
+          "scenario_delay_seconds": {
+            "default": 0.0,
+            "description": "Pause between scenarios in seconds to avoid 429 rate-limit errors.",
+            "title": "Scenario Delay Seconds",
+            "type": "number"
+          },
+          "chat_payload_key": {
+            "default": "message",
+            "title": "Chat Payload Key",
+            "type": "string"
+          },
+          "chat_payload_list": {
+            "default": false,
+            "title": "Chat Payload List",
+            "type": "boolean"
+          },
+          "chat_payload_format": {
+            "default": "json",
+            "enum": [
+              "json",
+              "form"
+            ],
+            "title": "Chat Payload Format",
+            "type": "string"
+          },
+          "chat_response_key": {
+            "default": "",
+            "title": "Chat Response Key",
+            "type": "string"
+          },
+          "chat_payload_extras": {
+            "additionalProperties": true,
+            "description": "Extra static JSON fields merged into every chat POST body (e.g. vehicleState, language). The message key always takes precedence.",
+            "title": "Chat Payload Extras",
+            "type": "object"
+          },
+          "adk": {
+            "$ref": "#/$defs/GoogleADKConfig",
+            "description": "Google ADK-specific connection settings."
+          },
+          "credentials": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "App-level test credentials supplied automatically when the agent asks for them. Keys: username, password, api_key, token, otp, pin.",
+            "title": "Credentials",
+            "type": "object"
+          },
+          "otel_endpoint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Otel Endpoint"
+          },
+          "otel_service_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Otel Service Name"
+          },
+          "endpoint_aliases": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Manual overrides mapping a runtime endpoint route to its canonical SBOM API_ENDPOINT component name, e.g. {'/api/agent/chat': '/chat API'}.",
+            "title": "Endpoint Aliases",
+            "type": "object"
+          },
+          "component_aliases": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Manual overrides mapping a free-text agent/tool mention seen in live agent responses to its canonical SBOM component name, e.g. {'Nova': 'Fintech App Assistant'}. Use this for persona/brand names with no textual overlap with the SBOM's structural component name \u2014 fuzzy and descriptive-name matching cannot infer these on their own.",
+            "title": "Component Aliases",
+            "type": "object"
+          },
+          "sole_agent_alias_fallback": {
+            "default": true,
+            "description": "When the SBOM declares exactly one AGENT node, attribute any otherwise-unmatched agent mention to it (handles a live app's self-chosen persona name that differs entirely from the SBOM name). Disable if the single agent legitimately delegates to unlisted sub-agents outside the SBOM.",
+            "title": "Sole Agent Alias Fallback",
+            "type": "boolean"
+          },
+          "scenario_concurrency": {
+            "default": 3,
+            "description": "Max simultaneous scenario HTTP sessions.",
+            "maximum": 20,
+            "minimum": 1,
+            "title": "Scenario Concurrency",
+            "type": "integer"
+          },
+          "isolate_scenarios": {
+            "default": true,
+            "description": "Re-authenticate before each scenario to prevent cross-scenario session-state contamination on stateful endpoints.",
+            "title": "Isolate Scenarios",
+            "type": "boolean"
+          },
+          "judge_concurrency": {
+            "default": 5,
+            "description": "Max simultaneous judge LLM calls across all active scenarios.",
+            "maximum": 20,
+            "minimum": 1,
+            "title": "Judge Concurrency",
+            "type": "integer"
+          },
+          "prompt_cache_dir": {
+            "default": "",
+            "description": "Directory for the cross-run scenario prompt cache. Empty string disables caching.",
+            "title": "Prompt Cache Dir",
+            "type": "string"
+          },
+          "judge_cache_dir": {
+            "default": "",
+            "description": "Directory for the cross-run judge verdict cache. Empty string disables caching.",
+            "title": "Judge Cache Dir",
+            "type": "string"
+          },
+          "max_scenarios": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Hard cap on the total number of scenarios executed. Applied after deduplication, preserving priority order: L1, L2, L3, L4, L5. None (default) means no cap.",
+            "title": "Max Scenarios"
+          }
+        },
+        "title": "BehaviorConfig",
+        "type": "object"
+      },
+      "GoogleADKConfig": {
+        "description": "Configuration for Google Agent Development Kit (ADK) framework integration.\n\nWhen an AI-SBOM reports ``google-adk`` in its ``summary.frameworks`` list,\nnuguard switches to the ADK-native protocol (``RunAgentRequest`` / ``POST /run``).\nThese settings fine-tune that behaviour.\n\nDeclare under ``behavior.adk:`` in ``nuguard.yaml``.\n\nExample::\n\n    behavior:\n      adk:\n        app_name: marketing_campaign_agent\n        user_id: nuguard-ci\n        session_per_scenario: true\n        run_path: /run",
+        "properties": {
+          "enabled": {
+            "default": true,
+            "description": "Set false to disable the ADK adapter entirely and use generic HTTP POST. Use when the target wraps ADK internally but exposes a custom REST API (not the standard /apps/{name}/users/{uid}/sessions ADK endpoints).",
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "app_name": {
+            "default": "",
+            "description": "ADK application name used in RunAgentRequest.appName. When empty, nuguard attempts auto-discovery via GET /list-apps.",
+            "title": "App Name",
+            "type": "string"
+          },
+          "user_id": {
+            "default": "nuguard",
+            "description": "ADK user identifier injected into every RunAgentRequest.",
+            "title": "User Id",
+            "type": "string"
+          },
+          "session_per_scenario": {
+            "default": true,
+            "description": "Create a fresh ADK session for each scenario so that conversation history does not bleed across test cases.",
+            "title": "Session Per Scenario",
+            "type": "boolean"
+          },
+          "run_path": {
+            "default": "/run",
+            "description": "HTTP path for the ADK RunAgentRequest endpoint.",
+            "title": "Run Path",
+            "type": "string"
+          }
+        },
+        "title": "GoogleADKConfig",
+        "type": "object"
+      },
+      "LoginFlowConfig": {
+        "description": "Configuration for apps that require a login request to obtain a JWT.\n\nExample nuguard.yaml block::\n\n    auth:\n      type: login_flow\n      login_flow:\n        endpoint: /login\n        payload:\n          username: ${APP_USERNAME}\n          password: ${APP_PASSWORD}\n        token_response_key: access_token\n        token_header: \"Authorization: Bearer\"\n        refresh_on_401: true",
+        "properties": {
+          "endpoint": {
+            "default": "/login",
+            "title": "Endpoint",
+            "type": "string"
+          },
+          "method": {
+            "default": "POST",
+            "enum": [
+              "POST",
+              "GET"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "base_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Base Url"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "token_response_key": {
+            "default": "access_token",
+            "title": "Token Response Key",
+            "type": "string"
+          },
+          "token_header": {
+            "default": "Authorization: Bearer",
+            "title": "Token Header",
+            "type": "string"
+          },
+          "refresh_on_401": {
+            "default": true,
+            "title": "Refresh On 401",
+            "type": "boolean"
+          }
+        },
+        "title": "LoginFlowConfig",
+        "type": "object"
+      }
+    },
+    "description": "JSON-safe input for :func:`analyze_behavior`.",
+    "properties": {
+      "config": {
+        "$ref": "#/$defs/BehaviorConfig"
+      },
+      "mode": {
+        "default": "static+dynamic",
+        "enum": [
+          "static",
+          "dynamic",
+          "static+dynamic"
+        ],
+        "title": "Mode",
+        "type": "string"
+      }
+    },
+    "required": [
+      "config"
+    ],
+    "title": "BehaviorAnalysisRequest",
+    "type": "object"
+  },
+  "behavior.BehaviorRunRequest": {
+    "$defs": {
+      "AppAuthConfig": {
+        "description": "Structured auth config for behavior and redteam target requests.",
+        "properties": {
+          "type": {
+            "default": "none",
+            "enum": [
+              "bearer",
+              "api_key",
+              "basic",
+              "none",
+              "login_flow",
+              "cookie_file"
+            ],
+            "title": "Type",
+            "type": "string"
+          },
+          "header": {
+            "default": "",
+            "title": "Header",
+            "type": "string"
+          },
+          "username": {
+            "default": "",
+            "title": "Username",
+            "type": "string"
+          },
+          "password": {
+            "default": "",
+            "title": "Password",
+            "type": "string"
+          },
+          "login_flow": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/LoginFlowConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "cookie_file": {
+            "default": "",
+            "title": "Cookie File",
+            "type": "string"
+          }
+        },
+        "title": "AppAuthConfig",
+        "type": "object"
+      },
+      "BehaviorBoundaryAssertion": {
+        "description": "Single boundary assertion declared in nuguard.yaml behavior.boundary_assertions.",
+        "properties": {
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "expect": {
+            "const": "refused",
+            "default": "refused",
+            "title": "Expect",
+            "type": "string"
+          },
+          "forbid_pattern": {
+            "default": "",
+            "title": "Forbid Pattern",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "message"
+        ],
+        "title": "BehaviorBoundaryAssertion",
+        "type": "object"
+      },
+      "BehaviorConfig": {
+        "description": "Configuration for nuguard behavior mode.",
+        "properties": {
+          "target": {
+            "default": "",
+            "title": "Target",
+            "type": "string"
+          },
+          "target_endpoint": {
+            "default": "",
+            "title": "Target Endpoint",
+            "type": "string"
+          },
+          "auth": {
+            "$ref": "#/$defs/AppAuthConfig"
+          },
+          "headers": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Extra HTTP headers added to every behavior request (yaml: behavior.headers, or the shared target.headers block).",
+            "title": "Headers",
+            "type": "object"
+          },
+          "canary": {
+            "default": "",
+            "title": "Canary",
+            "type": "string"
+          },
+          "workflows": {
+            "description": "Workflow categories to execute: topic_coverage, agent_tool_coverage, guardrail_coverage, data_discovery_probe. Empty = run all.",
+            "items": {
+              "type": "string"
+            },
+            "title": "Workflows",
+            "type": "array"
+          },
+          "boundary_assertions": {
+            "items": {
+              "$ref": "#/$defs/BehaviorBoundaryAssertion"
+            },
+            "title": "Boundary Assertions",
+            "type": "array"
+          },
+          "golden_data": {
+            "additionalProperties": true,
+            "description": "Pre-seeded user profile data for behavior testing \u2014 same schema as redteam.golden_data.  Used as a fallback when live pre-scan discovery returns an empty profile so test payloads reference real account IDs and names rather than synthetic placeholders.",
+            "title": "Golden Data",
+            "type": "object"
+          },
+          "request_timeout": {
+            "default": 60.0,
+            "title": "Request Timeout",
+            "type": "number"
+          },
+          "verbose": {
+            "default": false,
+            "title": "Verbose",
+            "type": "boolean"
+          },
+          "use_llm": {
+            "default": false,
+            "title": "Use Llm",
+            "type": "boolean"
+          },
+          "turn_delay_seconds": {
+            "default": 0.0,
+            "description": "Inter-turn pause in seconds to avoid 429 rate-limit errors.",
+            "title": "Turn Delay Seconds",
+            "type": "number"
+          },
+          "scenario_delay_seconds": {
+            "default": 0.0,
+            "description": "Pause between scenarios in seconds to avoid 429 rate-limit errors.",
+            "title": "Scenario Delay Seconds",
+            "type": "number"
+          },
+          "chat_payload_key": {
+            "default": "message",
+            "title": "Chat Payload Key",
+            "type": "string"
+          },
+          "chat_payload_list": {
+            "default": false,
+            "title": "Chat Payload List",
+            "type": "boolean"
+          },
+          "chat_payload_format": {
+            "default": "json",
+            "enum": [
+              "json",
+              "form"
+            ],
+            "title": "Chat Payload Format",
+            "type": "string"
+          },
+          "chat_response_key": {
+            "default": "",
+            "title": "Chat Response Key",
+            "type": "string"
+          },
+          "chat_payload_extras": {
+            "additionalProperties": true,
+            "description": "Extra static JSON fields merged into every chat POST body (e.g. vehicleState, language). The message key always takes precedence.",
+            "title": "Chat Payload Extras",
+            "type": "object"
+          },
+          "adk": {
+            "$ref": "#/$defs/GoogleADKConfig",
+            "description": "Google ADK-specific connection settings."
+          },
+          "credentials": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "App-level test credentials supplied automatically when the agent asks for them. Keys: username, password, api_key, token, otp, pin.",
+            "title": "Credentials",
+            "type": "object"
+          },
+          "otel_endpoint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Otel Endpoint"
+          },
+          "otel_service_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Otel Service Name"
+          },
+          "endpoint_aliases": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Manual overrides mapping a runtime endpoint route to its canonical SBOM API_ENDPOINT component name, e.g. {'/api/agent/chat': '/chat API'}.",
+            "title": "Endpoint Aliases",
+            "type": "object"
+          },
+          "component_aliases": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "Manual overrides mapping a free-text agent/tool mention seen in live agent responses to its canonical SBOM component name, e.g. {'Nova': 'Fintech App Assistant'}. Use this for persona/brand names with no textual overlap with the SBOM's structural component name \u2014 fuzzy and descriptive-name matching cannot infer these on their own.",
+            "title": "Component Aliases",
+            "type": "object"
+          },
+          "sole_agent_alias_fallback": {
+            "default": true,
+            "description": "When the SBOM declares exactly one AGENT node, attribute any otherwise-unmatched agent mention to it (handles a live app's self-chosen persona name that differs entirely from the SBOM name). Disable if the single agent legitimately delegates to unlisted sub-agents outside the SBOM.",
+            "title": "Sole Agent Alias Fallback",
+            "type": "boolean"
+          },
+          "scenario_concurrency": {
+            "default": 3,
+            "description": "Max simultaneous scenario HTTP sessions.",
+            "maximum": 20,
+            "minimum": 1,
+            "title": "Scenario Concurrency",
+            "type": "integer"
+          },
+          "isolate_scenarios": {
+            "default": true,
+            "description": "Re-authenticate before each scenario to prevent cross-scenario session-state contamination on stateful endpoints.",
+            "title": "Isolate Scenarios",
+            "type": "boolean"
+          },
+          "judge_concurrency": {
+            "default": 5,
+            "description": "Max simultaneous judge LLM calls across all active scenarios.",
+            "maximum": 20,
+            "minimum": 1,
+            "title": "Judge Concurrency",
+            "type": "integer"
+          },
+          "prompt_cache_dir": {
+            "default": "",
+            "description": "Directory for the cross-run scenario prompt cache. Empty string disables caching.",
+            "title": "Prompt Cache Dir",
+            "type": "string"
+          },
+          "judge_cache_dir": {
+            "default": "",
+            "description": "Directory for the cross-run judge verdict cache. Empty string disables caching.",
+            "title": "Judge Cache Dir",
+            "type": "string"
+          },
+          "max_scenarios": {
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Hard cap on the total number of scenarios executed. Applied after deduplication, preserving priority order: L1, L2, L3, L4, L5. None (default) means no cap.",
+            "title": "Max Scenarios"
+          }
+        },
+        "title": "BehaviorConfig",
+        "type": "object"
+      },
+      "BehaviorScenario": {
+        "description": "A single runnable behavior test scenario.",
+        "properties": {
+          "scenario_id": {
+            "title": "Scenario Id",
+            "type": "string"
+          },
+          "scenario_type": {
+            "$ref": "#/$defs/BehaviorScenarioType"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "messages": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Messages",
+            "type": "array"
+          },
+          "expect_refused": {
+            "default": false,
+            "title": "Expect Refused",
+            "type": "boolean"
+          },
+          "forbid_pattern": {
+            "default": "",
+            "title": "Forbid Pattern",
+            "type": "string"
+          },
+          "policy_clauses": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Policy Clauses",
+            "type": "array"
+          },
+          "target_component": {
+            "default": "",
+            "title": "Target Component",
+            "type": "string"
+          },
+          "target_component_type": {
+            "default": "",
+            "title": "Target Component Type",
+            "type": "string"
+          },
+          "target_endpoint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Target Endpoint"
+          },
+          "goal": {
+            "default": "",
+            "title": "Goal",
+            "type": "string"
+          },
+          "component_description": {
+            "default": "",
+            "title": "Component Description",
+            "type": "string"
+          },
+          "scoped_tools": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scoped Tools",
+            "type": "array"
+          },
+          "scoped_agents": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Scoped Agents",
+            "type": "array"
+          },
+          "matched_topic": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Matched Topic"
+          },
+          "chain_source": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Chain Source",
+            "type": "array"
+          },
+          "tool_action_tiers": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tool Action Tiers",
+            "type": "array"
+          },
+          "primary_agent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Primary Agent"
+          },
+          "scoped_guardrail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Scoped Guardrail"
+          },
+          "warmup_turns": {
+            "default": 0,
+            "title": "Warmup Turns",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "scenario_type",
+          "name"
+        ],
+        "title": "BehaviorScenario",
+        "type": "object"
+      },
+      "BehaviorScenarioType": {
+        "description": "Scenario types for the behavior test generation pipeline.",
+        "enum": [
+          "intent_happy_path",
+          "agent_coverage",
+          "component_coverage",
+          "guardrail_probe",
+          "data_discovery_probe",
+          "endpoint_coverage"
+        ],
+        "title": "BehaviorScenarioType",
+        "type": "string"
+      },
+      "DiscoveredProfile": {
+        "description": "Real user data extracted from the live agent during pre-scan discovery.\n\nA plain Pydantic model \u2014 JSON-serializable via ``.model_dump()`` /\n``.model_dump_json()`` and constructible from a plain dict via\n``DiscoveredProfile.model_validate(data)`` \u2014 so code outside the CLI (and\noutside the behavior/redteam packages) can consume or construct golden-data\nprofiles without importing any live connection objects.",
+        "properties": {
+          "customer_name": {
+            "default": "",
+            "title": "Customer Name",
+            "type": "string"
+          },
+          "ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Ids",
+            "type": "array"
+          },
+          "entity_map": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Entity Map",
+            "type": "object"
+          },
+          "raw_response": {
+            "default": "",
+            "title": "Raw Response",
+            "type": "string"
+          },
+          "turns_sent": {
+            "default": 0,
+            "title": "Turns Sent",
+            "type": "integer"
+          },
+          "capability_hint": {
+            "default": "",
+            "title": "Capability Hint",
+            "type": "string"
+          },
+          "source": {
+            "default": "none",
+            "enum": [
+              "live",
+              "config",
+              "none"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "title": "DiscoveredProfile",
+        "type": "object"
+      },
+      "GoogleADKConfig": {
+        "description": "Configuration for Google Agent Development Kit (ADK) framework integration.\n\nWhen an AI-SBOM reports ``google-adk`` in its ``summary.frameworks`` list,\nnuguard switches to the ADK-native protocol (``RunAgentRequest`` / ``POST /run``).\nThese settings fine-tune that behaviour.\n\nDeclare under ``behavior.adk:`` in ``nuguard.yaml``.\n\nExample::\n\n    behavior:\n      adk:\n        app_name: marketing_campaign_agent\n        user_id: nuguard-ci\n        session_per_scenario: true\n        run_path: /run",
+        "properties": {
+          "enabled": {
+            "default": true,
+            "description": "Set false to disable the ADK adapter entirely and use generic HTTP POST. Use when the target wraps ADK internally but exposes a custom REST API (not the standard /apps/{name}/users/{uid}/sessions ADK endpoints).",
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "app_name": {
+            "default": "",
+            "description": "ADK application name used in RunAgentRequest.appName. When empty, nuguard attempts auto-discovery via GET /list-apps.",
+            "title": "App Name",
+            "type": "string"
+          },
+          "user_id": {
+            "default": "nuguard",
+            "description": "ADK user identifier injected into every RunAgentRequest.",
+            "title": "User Id",
+            "type": "string"
+          },
+          "session_per_scenario": {
+            "default": true,
+            "description": "Create a fresh ADK session for each scenario so that conversation history does not bleed across test cases.",
+            "title": "Session Per Scenario",
+            "type": "boolean"
+          },
+          "run_path": {
+            "default": "/run",
+            "description": "HTTP path for the ADK RunAgentRequest endpoint.",
+            "title": "Run Path",
+            "type": "string"
+          }
+        },
+        "title": "GoogleADKConfig",
+        "type": "object"
+      },
+      "LoginFlowConfig": {
+        "description": "Configuration for apps that require a login request to obtain a JWT.\n\nExample nuguard.yaml block::\n\n    auth:\n      type: login_flow\n      login_flow:\n        endpoint: /login\n        payload:\n          username: ${APP_USERNAME}\n          password: ${APP_PASSWORD}\n        token_response_key: access_token\n        token_header: \"Authorization: Bearer\"\n        refresh_on_401: true",
+        "properties": {
+          "endpoint": {
+            "default": "/login",
+            "title": "Endpoint",
+            "type": "string"
+          },
+          "method": {
+            "default": "POST",
+            "enum": [
+              "POST",
+              "GET"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "base_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Base Url"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "token_response_key": {
+            "default": "access_token",
+            "title": "Token Response Key",
+            "type": "string"
+          },
+          "token_header": {
+            "default": "Authorization: Bearer",
+            "title": "Token Header",
+            "type": "string"
+          },
+          "refresh_on_401": {
+            "default": true,
+            "title": "Refresh On 401",
+            "type": "boolean"
+          }
+        },
+        "title": "LoginFlowConfig",
+        "type": "object"
+      }
+    },
+    "description": "JSON-safe input for :func:`run_behavior_scenarios`.",
+    "properties": {
+      "config": {
+        "$ref": "#/$defs/BehaviorConfig"
+      },
+      "scenarios": {
+        "items": {
+          "$ref": "#/$defs/BehaviorScenario"
+        },
+        "title": "Scenarios",
+        "type": "array"
+      },
+      "pre_scan_profile": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/DiscoveredProfile"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "required": [
+      "config",
+      "scenarios"
+    ],
+    "title": "BehaviorRunRequest",
+    "type": "object"
+  },
+  "common.discovery.TargetDiscoveryResult": {
+    "$defs": {
+      "DiscoveredProfile": {
+        "description": "Real user data extracted from the live agent during pre-scan discovery.\n\nA plain Pydantic model \u2014 JSON-serializable via ``.model_dump()`` /\n``.model_dump_json()`` and constructible from a plain dict via\n``DiscoveredProfile.model_validate(data)`` \u2014 so code outside the CLI (and\noutside the behavior/redteam packages) can consume or construct golden-data\nprofiles without importing any live connection objects.",
+        "properties": {
+          "customer_name": {
+            "default": "",
+            "title": "Customer Name",
+            "type": "string"
+          },
+          "ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Ids",
+            "type": "array"
+          },
+          "entity_map": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Entity Map",
+            "type": "object"
+          },
+          "raw_response": {
+            "default": "",
+            "title": "Raw Response",
+            "type": "string"
+          },
+          "turns_sent": {
+            "default": 0,
+            "title": "Turns Sent",
+            "type": "integer"
+          },
+          "capability_hint": {
+            "default": "",
+            "title": "Capability Hint",
+            "type": "string"
+          },
+          "source": {
+            "default": "none",
+            "enum": [
+              "live",
+              "config",
+              "none"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "title": "DiscoveredProfile",
+        "type": "object"
+      }
+    },
+    "description": "Public target/session discovery snapshot for platform-facing APIs.",
+    "properties": {
+      "effective_target_url": {
+        "title": "Effective Target Url",
+        "type": "string"
+      },
+      "effective_endpoint": {
+        "title": "Effective Endpoint",
+        "type": "string"
+      },
+      "discovered_profile": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/DiscoveredProfile"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "endpoint_source": {
+        "default": "default",
+        "enum": [
+          "config",
+          "sbom",
+          "probe",
+          "default"
+        ],
+        "title": "Endpoint Source",
+        "type": "string"
+      },
+      "discovery_notes": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Discovery Notes",
+        "type": "array"
+      }
+    },
+    "required": [
+      "effective_target_url",
+      "effective_endpoint"
+    ],
+    "title": "TargetDiscoveryResult",
+    "type": "object"
+  },
+  "common.streaming.BehaviorProgressState": {
+    "description": "Deterministic, reduced progress state for behavior streams.",
+    "properties": {
+      "run_id": {
+        "title": "Run Id",
+        "type": "string"
+      },
+      "schema_version": {
+        "default": "1.0",
+        "title": "Schema Version",
+        "type": "string"
+      },
+      "scenarios_total": {
+        "default": 0,
+        "title": "Scenarios Total",
+        "type": "integer"
+      },
+      "scenarios_completed": {
+        "default": 0,
+        "title": "Scenarios Completed",
+        "type": "integer"
+      },
+      "findings_count": {
+        "default": 0,
+        "title": "Findings Count",
+        "type": "integer"
+      },
+      "turn_report_count": {
+        "default": 0,
+        "title": "Turn Report Count",
+        "type": "integer"
+      },
+      "progress_pct": {
+        "default": 0.0,
+        "title": "Progress Pct",
+        "type": "number"
+      },
+      "terminal_status": {
+        "default": "running",
+        "enum": [
+          "running",
+          "completed",
+          "failed"
+        ],
+        "title": "Terminal Status",
+        "type": "string"
+      }
+    },
+    "required": [
+      "run_id"
+    ],
+    "title": "BehaviorProgressState",
+    "type": "object"
+  },
+  "common.streaming.RedteamProgressState": {
+    "description": "Deterministic, reduced progress state for redteam streams.",
+    "properties": {
+      "run_id": {
+        "title": "Run Id",
+        "type": "string"
+      },
+      "schema_version": {
+        "default": "1.0",
+        "title": "Schema Version",
+        "type": "string"
+      },
+      "scenarios_total": {
+        "default": 0,
+        "title": "Scenarios Total",
+        "type": "integer"
+      },
+      "scenarios_completed": {
+        "default": 0,
+        "title": "Scenarios Completed",
+        "type": "integer"
+      },
+      "findings_count": {
+        "default": 0,
+        "title": "Findings Count",
+        "type": "integer"
+      },
+      "scenario_record_count": {
+        "default": 0,
+        "title": "Scenario Record Count",
+        "type": "integer"
+      },
+      "progress_pct": {
+        "default": 0.0,
+        "title": "Progress Pct",
+        "type": "number"
+      },
+      "terminal_status": {
+        "default": "running",
+        "enum": [
+          "running",
+          "completed",
+          "failed"
+        ],
+        "title": "Terminal Status",
+        "type": "string"
+      }
+    },
+    "required": [
+      "run_id"
+    ],
+    "title": "RedteamProgressState",
+    "type": "object"
+  },
+  "common.streaming.StreamDeltaPayload": {
+    "description": "Incremental payload for findings and records.",
+    "properties": {
+      "findings_added": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "title": "Findings Added",
+        "type": "array"
+      },
+      "turn_report_added": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "title": "Turn Report Added",
+        "type": "array"
+      },
+      "scenario_record_added": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "title": "Scenario Record Added",
+        "type": "array"
+      }
+    },
+    "title": "StreamDeltaPayload",
+    "type": "object"
+  },
+  "common.streaming.StreamEvent": {
+    "description": "Common stream event envelope.",
+    "properties": {
+      "event_type": {
+        "enum": [
+          "run_started",
+          "scenario_plan_ready",
+          "scenario_progress",
+          "findings_delta",
+          "heartbeat",
+          "completed",
+          "failed"
+        ],
+        "title": "Event Type",
+        "type": "string"
+      },
+      "run_id": {
+        "title": "Run Id",
+        "type": "string"
+      },
+      "sequence": {
+        "title": "Sequence",
+        "type": "integer"
+      },
+      "emitted_at": {
+        "format": "date-time",
+        "title": "Emitted At",
+        "type": "string"
+      },
+      "phase": {
+        "default": "runtime",
+        "title": "Phase",
+        "type": "string"
+      },
+      "payload": {
+        "additionalProperties": true,
+        "title": "Payload",
+        "type": "object"
+      },
+      "schema_version": {
+        "default": "1.0",
+        "title": "Schema Version",
+        "type": "string"
+      },
+      "correlation_id": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Correlation Id"
+      }
+    },
+    "required": [
+      "event_type",
+      "run_id",
+      "sequence"
+    ],
+    "title": "StreamEvent",
+    "type": "object"
+  },
+  "common.streaming.StreamProgressPayload": {
+    "description": "Progress snapshot emitted during long-running scans.",
+    "properties": {
+      "scenarios_total": {
+        "default": 0,
+        "title": "Scenarios Total",
+        "type": "integer"
+      },
+      "scenarios_completed": {
+        "default": 0,
+        "title": "Scenarios Completed",
+        "type": "integer"
+      },
+      "progress_pct": {
+        "default": 0.0,
+        "title": "Progress Pct",
+        "type": "number"
+      },
+      "eta_seconds": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Eta Seconds"
+      },
+      "current_goal_type": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Current Goal Type"
+      },
+      "current_scenario_type": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Current Scenario Type"
+      },
+      "updated_at": {
+        "format": "date-time",
+        "title": "Updated At",
+        "type": "string"
+      }
+    },
+    "title": "StreamProgressPayload",
+    "type": "object"
+  },
+  "common.streaming.StreamTerminalPayload": {
+    "description": "Terminal event payload for completed/failed outcomes.",
+    "properties": {
+      "status": {
+        "enum": [
+          "completed",
+          "failed"
+        ],
+        "title": "Status",
+        "type": "string"
+      },
+      "summary": {
+        "additionalProperties": true,
+        "title": "Summary",
+        "type": "object"
+      },
+      "is_retryable": {
+        "default": false,
+        "title": "Is Retryable",
+        "type": "boolean"
+      },
+      "failure_stage": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Failure Stage"
+      },
+      "error_type": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Error Type"
+      },
+      "error_message": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Error Message"
+      }
+    },
+    "required": [
+      "status"
+    ],
+    "title": "StreamTerminalPayload",
+    "type": "object"
+  },
+  "common.target_verify.TargetSessionResolveRequest": {
+    "properties": {
+      "target_url": {
+        "title": "Target Url",
+        "type": "string"
+      },
+      "chat_path": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Chat Path"
+      },
+      "auth_type": {
+        "default": "none",
+        "title": "Auth Type",
+        "type": "string"
+      },
+      "auth_value": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Auth Value"
+      },
+      "auth_username": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Auth Username"
+      },
+      "auth_password": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Auth Password"
+      },
+      "chat_payload_key": {
+        "default": "message",
+        "title": "Chat Payload Key",
+        "type": "string"
+      },
+      "chat_payload_list": {
+        "default": false,
+        "title": "Chat Payload List",
+        "type": "boolean"
+      },
+      "chat_response_key": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Chat Response Key"
+      },
+      "chat_payload_extras": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Chat Payload Extras"
+      },
+      "request_timeout": {
+        "default": 30.0,
+        "title": "Request Timeout",
+        "type": "number"
+      }
+    },
+    "required": [
+      "target_url"
+    ],
+    "title": "TargetSessionResolveRequest",
+    "type": "object"
+  },
+  "common.target_verify.TargetSessionResolveResult": {
+    "properties": {
+      "effective_target_url": {
+        "title": "Effective Target Url",
+        "type": "string"
+      },
+      "effective_endpoint": {
+        "title": "Effective Endpoint",
+        "type": "string"
+      },
+      "endpoint_source": {
+        "enum": [
+          "config",
+          "sbom",
+          "probe",
+          "default"
+        ],
+        "title": "Endpoint Source",
+        "type": "string"
+      },
+      "chat_payload_key": {
+        "title": "Chat Payload Key",
+        "type": "string"
+      },
+      "chat_payload_list": {
+        "title": "Chat Payload List",
+        "type": "boolean"
+      },
+      "chat_response_key": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Chat Response Key"
+      },
+      "chat_payload_extras": {
+        "additionalProperties": true,
+        "title": "Chat Payload Extras",
+        "type": "object"
+      },
+      "discovery_notes": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Discovery Notes",
+        "type": "array"
+      },
+      "health_report": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Health Report"
+      }
+    },
+    "required": [
+      "effective_target_url",
+      "effective_endpoint",
+      "endpoint_source",
+      "chat_payload_key",
+      "chat_payload_list"
+    ],
+    "title": "TargetSessionResolveResult",
+    "type": "object"
+  },
+  "common.target_verify.TargetVerifyCheck": {
+    "properties": {
+      "identity": {
+        "title": "Identity",
+        "type": "string"
+      },
+      "status": {
+        "enum": [
+          "ok",
+          "auth_failed",
+          "target_unavailable",
+          "skipped"
+        ],
+        "title": "Status",
+        "type": "string"
+      },
+      "http_status_code": {
+        "anyOf": [
+          {
+            "type": "integer"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Http Status Code"
+      },
+      "response_time_ms": {
+        "anyOf": [
+          {
+            "type": "number"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Response Time Ms"
+      },
+      "endpoint": {
+        "title": "Endpoint",
+        "type": "string"
+      },
+      "error_detail": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Error Detail"
+      }
+    },
+    "required": [
+      "identity",
+      "status",
+      "endpoint"
+    ],
+    "title": "TargetVerifyCheck",
+    "type": "object"
+  },
+  "common.target_verify.TargetVerifyRequest": {
+    "properties": {
+      "target_url": {
+        "title": "Target Url",
+        "type": "string"
+      },
+      "chat_path": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Chat Path"
+      },
+      "auth_type": {
+        "default": "none",
+        "title": "Auth Type",
+        "type": "string"
+      },
+      "auth_value": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Auth Value"
+      },
+      "auth_username": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Auth Username"
+      },
+      "auth_password": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Auth Password"
+      },
+      "chat_payload_key": {
+        "default": "message",
+        "title": "Chat Payload Key",
+        "type": "string"
+      },
+      "chat_payload_list": {
+        "default": false,
+        "title": "Chat Payload List",
+        "type": "boolean"
+      },
+      "chat_response_key": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Chat Response Key"
+      },
+      "chat_payload_extras": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Chat Payload Extras"
+      },
+      "request_timeout": {
+        "default": 30.0,
+        "title": "Request Timeout",
+        "type": "number"
+      },
+      "discovery_max_turns": {
+        "default": 3,
+        "title": "Discovery Max Turns",
+        "type": "integer"
+      }
+    },
+    "required": [
+      "target_url"
+    ],
+    "title": "TargetVerifyRequest",
+    "type": "object"
+  },
+  "common.target_verify.TargetVerifyResult": {
+    "$defs": {
+      "DiscoveredProfile": {
+        "description": "Real user data extracted from the live agent during pre-scan discovery.\n\nA plain Pydantic model \u2014 JSON-serializable via ``.model_dump()`` /\n``.model_dump_json()`` and constructible from a plain dict via\n``DiscoveredProfile.model_validate(data)`` \u2014 so code outside the CLI (and\noutside the behavior/redteam packages) can consume or construct golden-data\nprofiles without importing any live connection objects.",
+        "properties": {
+          "customer_name": {
+            "default": "",
+            "title": "Customer Name",
+            "type": "string"
+          },
+          "ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Ids",
+            "type": "array"
+          },
+          "entity_map": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Entity Map",
+            "type": "object"
+          },
+          "raw_response": {
+            "default": "",
+            "title": "Raw Response",
+            "type": "string"
+          },
+          "turns_sent": {
+            "default": 0,
+            "title": "Turns Sent",
+            "type": "integer"
+          },
+          "capability_hint": {
+            "default": "",
+            "title": "Capability Hint",
+            "type": "string"
+          },
+          "source": {
+            "default": "none",
+            "enum": [
+              "live",
+              "config",
+              "none"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "title": "DiscoveredProfile",
+        "type": "object"
+      },
+      "TargetVerifyCheck": {
+        "properties": {
+          "identity": {
+            "title": "Identity",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "auth_failed",
+              "target_unavailable",
+              "skipped"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "http_status_code": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Http Status Code"
+          },
+          "response_time_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Response Time Ms"
+          },
+          "endpoint": {
+            "title": "Endpoint",
+            "type": "string"
+          },
+          "error_detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Error Detail"
+          }
+        },
+        "required": [
+          "identity",
+          "status",
+          "endpoint"
+        ],
+        "title": "TargetVerifyCheck",
+        "type": "object"
+      }
+    },
+    "properties": {
+      "all_ok": {
+        "title": "All Ok",
+        "type": "boolean"
+      },
+      "endpoint": {
+        "title": "Endpoint",
+        "type": "string"
+      },
+      "discovered_endpoint": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Discovered Endpoint"
+      },
+      "endpoint_source": {
+        "enum": [
+          "config",
+          "sbom",
+          "probe",
+          "default"
+        ],
+        "title": "Endpoint Source",
+        "type": "string"
+      },
+      "checks": {
+        "items": {
+          "$ref": "#/$defs/TargetVerifyCheck"
+        },
+        "title": "Checks",
+        "type": "array"
+      },
+      "discovered_profile": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/DiscoveredProfile"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "discovery_hint": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Discovery Hint"
+      },
+      "discovery_notes": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Discovery Notes",
+        "type": "array"
+      }
+    },
+    "required": [
+      "all_ok",
+      "endpoint",
+      "endpoint_source"
+    ],
+    "title": "TargetVerifyResult",
+    "type": "object"
+  },
+  "output.BehaviorReportRenderRequest": {
+    "$defs": {
+      "ValidationReportMetaModel": {
+        "properties": {
+          "llm_models": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Llm Models",
+            "type": "array"
+          },
+          "target_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Target Url"
+          },
+          "target_endpoint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Target Endpoint"
+          }
+        },
+        "title": "ValidationReportMetaModel",
+        "type": "object"
+      }
+    },
+    "properties": {
+      "run_id": {
+        "title": "Run Id",
+        "type": "string"
+      },
+      "include_markdown": {
+        "default": true,
+        "title": "Include Markdown",
+        "type": "boolean"
+      },
+      "include_json_summary": {
+        "default": true,
+        "title": "Include Json Summary",
+        "type": "boolean"
+      },
+      "include_turn_report": {
+        "default": true,
+        "title": "Include Turn Report",
+        "type": "boolean"
+      },
+      "turn_report_alias": {
+        "default": true,
+        "title": "Turn Report Alias",
+        "type": "boolean"
+      },
+      "meta": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/ValidationReportMetaModel"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "required": [
+      "run_id"
+    ],
+    "title": "BehaviorReportRenderRequest",
+    "type": "object"
+  },
+  "output.BehaviorReportRenderResult": {
+    "properties": {
+      "run_id": {
+        "title": "Run Id",
+        "type": "string"
+      },
+      "markdown": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Markdown"
+      },
+      "json_summary": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Json Summary"
+      },
+      "turn_report": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "title": "Turn Report",
+        "type": "array"
+      },
+      "turn_records": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "title": "Turn Records",
+        "type": "array"
+      }
+    },
+    "required": [
+      "run_id"
+    ],
+    "title": "BehaviorReportRenderResult",
+    "type": "object"
+  },
+  "output.RedteamReportRenderRequest": {
+    "$defs": {
+      "ValidationReportMetaModel": {
+        "properties": {
+          "llm_models": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Llm Models",
+            "type": "array"
+          },
+          "target_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Target Url"
+          },
+          "target_endpoint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Target Endpoint"
+          }
+        },
+        "title": "ValidationReportMetaModel",
+        "type": "object"
+      }
+    },
+    "properties": {
+      "run_id": {
+        "title": "Run Id",
+        "type": "string"
+      },
+      "include_markdown": {
+        "default": true,
+        "title": "Include Markdown",
+        "type": "boolean"
+      },
+      "include_json_summary": {
+        "default": true,
+        "title": "Include Json Summary",
+        "type": "boolean"
+      },
+      "include_scenario_details": {
+        "default": true,
+        "title": "Include Scenario Details",
+        "type": "boolean"
+      },
+      "turn_report_alias": {
+        "default": true,
+        "title": "Turn Report Alias",
+        "type": "boolean"
+      },
+      "meta": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/ValidationReportMetaModel"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "required": [
+      "run_id"
+    ],
+    "title": "RedteamReportRenderRequest",
+    "type": "object"
+  },
+  "output.RedteamReportRenderResult": {
+    "properties": {
+      "run_id": {
+        "title": "Run Id",
+        "type": "string"
+      },
+      "markdown": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Markdown"
+      },
+      "json_summary": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Json Summary"
+      },
+      "scenario_details": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "title": "Scenario Details",
+        "type": "array"
+      }
+    },
+    "required": [
+      "run_id"
+    ],
+    "title": "RedteamReportRenderResult",
+    "type": "object"
+  },
+  "output.ValidationReportExportRequest": {
+    "$defs": {
+      "ValidationReportMetaModel": {
+        "properties": {
+          "llm_models": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Llm Models",
+            "type": "array"
+          },
+          "target_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Target Url"
+          },
+          "target_endpoint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Target Endpoint"
+          }
+        },
+        "title": "ValidationReportMetaModel",
+        "type": "object"
+      }
+    },
+    "properties": {
+      "run_id": {
+        "title": "Run Id",
+        "type": "string"
+      },
+      "run_type": {
+        "enum": [
+          "redteam",
+          "behavior"
+        ],
+        "title": "Run Type",
+        "type": "string"
+      },
+      "export_format": {
+        "enum": [
+          "markdown",
+          "json"
+        ],
+        "title": "Export Format",
+        "type": "string"
+      },
+      "meta": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/ValidationReportMetaModel"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      }
+    },
+    "required": [
+      "run_id",
+      "run_type",
+      "export_format"
+    ],
+    "title": "ValidationReportExportRequest",
+    "type": "object"
+  },
+  "output.ValidationReportExportResult": {
+    "properties": {
+      "run_id": {
+        "title": "Run Id",
+        "type": "string"
+      },
+      "run_type": {
+        "enum": [
+          "redteam",
+          "behavior"
+        ],
+        "title": "Run Type",
+        "type": "string"
+      },
+      "export_format": {
+        "enum": [
+          "markdown",
+          "json"
+        ],
+        "title": "Export Format",
+        "type": "string"
+      },
+      "content": {
+        "title": "Content",
+        "type": "string"
+      },
+      "media_type": {
+        "title": "Media Type",
+        "type": "string"
+      },
+      "filename": {
+        "title": "Filename",
+        "type": "string"
+      }
+    },
+    "required": [
+      "run_id",
+      "run_type",
+      "export_format",
+      "content",
+      "media_type",
+      "filename"
+    ],
+    "title": "ValidationReportExportResult",
+    "type": "object"
+  },
+  "output.ValidationReportMetaModel": {
+    "properties": {
+      "llm_models": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Llm Models",
+        "type": "array"
+      },
+      "target_url": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Target Url"
+      },
+      "target_endpoint": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Target Endpoint"
+      }
+    },
+    "title": "ValidationReportMetaModel",
+    "type": "object"
+  },
+  "redteam.RedteamExecutionResult": {
+    "$defs": {
+      "CredentialCheckResult": {
+        "description": "Result of one credential verification attempt against the target.",
+        "properties": {
+          "identity": {
+            "title": "Identity",
+            "type": "string"
+          },
+          "auth_type": {
+            "title": "Auth Type",
+            "type": "string"
+          },
+          "endpoint": {
+            "title": "Endpoint",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "auth_failed",
+              "target_unavailable",
+              "skipped"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "http_status_code": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Http Status Code"
+          },
+          "response_time_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Response Time Ms"
+          },
+          "error_detail": {
+            "default": "",
+            "title": "Error Detail",
+            "type": "string"
+          },
+          "response_text": {
+            "default": "",
+            "title": "Response Text",
+            "type": "string"
+          },
+          "checked_at": {
+            "format": "date-time",
+            "title": "Checked At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "identity",
+          "auth_type",
+          "endpoint",
+          "status"
+        ],
+        "title": "CredentialCheckResult",
+        "type": "object"
+      },
+      "Finding": {
+        "properties": {
+          "finding_id": {
+            "title": "Finding Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "severity": {
+            "$ref": "#/$defs/Severity"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "affected_component": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Affected Component"
+          },
+          "remediation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Remediation"
+          },
+          "references": {
+            "items": {
+              "type": "string"
+            },
+            "title": "References",
+            "type": "array"
+          },
+          "goal_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Goal Type"
+          },
+          "scenario_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Scenario Type"
+          },
+          "sbom_path": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sbom Path",
+            "type": "array"
+          },
+          "sbom_path_descriptions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sbom Path Descriptions",
+            "type": "array"
+          },
+          "policy_clauses_violated": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Policy Clauses Violated",
+            "type": "array"
+          },
+          "chain_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Chain Id"
+          },
+          "owasp_asi_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Owasp Asi Ref"
+          },
+          "owasp_llm_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Owasp Llm Ref"
+          },
+          "mitre_atlas_technique": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Mitre Atlas Technique"
+          },
+          "evidence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Evidence"
+          },
+          "log_correlation_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Log Correlation Status"
+          },
+          "reasoning": {
+            "default": "",
+            "title": "Reasoning",
+            "type": "string"
+          },
+          "evidence_quote": {
+            "default": "",
+            "title": "Evidence Quote",
+            "type": "string"
+          },
+          "success_indicator": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Success Indicator"
+          },
+          "scores": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Scores",
+            "type": "object"
+          },
+          "attack_steps": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Attack Steps",
+            "type": "array"
+          },
+          "golden_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Golden Ids",
+            "type": "array"
+          },
+          "golden_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Golden Name"
+          },
+          "golden_data_excerpt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Golden Data Excerpt"
+          },
+          "verified": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Verified"
+          }
+        },
+        "required": [
+          "finding_id",
+          "title",
+          "severity",
+          "description"
+        ],
+        "title": "Finding",
+        "type": "object"
+      },
+      "RemediationArtefact": {
+        "description": "A concrete, SBOM-node-specific remediation action.\n\nProduced by RemediationSynthesizer as the final pass after all findings\nare collected. Each artefact targets a specific SBOM node and provides\nactionable instructions (patch text, guardrail spec, or architectural change).",
+        "properties": {
+          "finding_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Finding Ids",
+            "type": "array"
+          },
+          "component": {
+            "title": "Component",
+            "type": "string"
+          },
+          "component_type": {
+            "title": "Component Type",
+            "type": "string"
+          },
+          "artefact_type": {
+            "$ref": "#/$defs/RemediationArtefactType"
+          },
+          "priority": {
+            "title": "Priority",
+            "type": "string"
+          },
+          "patch_location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Patch Location"
+          },
+          "patch_section": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Patch Section"
+          },
+          "patch_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Patch Text"
+          },
+          "guardrail_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Guardrail Name"
+          },
+          "guardrail_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Guardrail Type"
+          },
+          "guardrail_trigger": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Guardrail Trigger"
+          },
+          "guardrail_action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Guardrail Action"
+          },
+          "guardrail_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Guardrail Message"
+          },
+          "privilege_scope": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Privilege Scope"
+          },
+          "privilege_node": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Privilege Node"
+          },
+          "requires_auth": {
+            "default": false,
+            "title": "Requires Auth",
+            "type": "boolean"
+          },
+          "requires_hitl": {
+            "default": false,
+            "title": "Requires Hitl",
+            "type": "boolean"
+          },
+          "edge_to_remove": {
+            "anyOf": [
+              {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "string"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Edge To Remove"
+          },
+          "change_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Change Description"
+          },
+          "change_detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Change Detail"
+          },
+          "rationale": {
+            "title": "Rationale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "component",
+          "component_type",
+          "artefact_type",
+          "priority",
+          "rationale"
+        ],
+        "title": "RemediationArtefact",
+        "type": "object"
+      },
+      "RemediationArtefactType": {
+        "description": "The type of concrete remediation artefact produced by RemediationSynthesizer.",
+        "enum": [
+          "system_prompt_patch",
+          "input_guardrail",
+          "output_guardrail",
+          "architectural_change"
+        ],
+        "title": "RemediationArtefactType",
+        "type": "string"
+      },
+      "Severity": {
+        "enum": [
+          "critical",
+          "high",
+          "medium",
+          "low",
+          "info"
+        ],
+        "title": "Severity",
+        "type": "string"
+      },
+      "TargetHealthReport": {
+        "description": "Aggregated result of auth bootstrap for all credentials in a run.",
+        "properties": {
+          "target_url": {
+            "title": "Target Url",
+            "type": "string"
+          },
+          "endpoint": {
+            "title": "Endpoint",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/$defs/CredentialCheckResult"
+            },
+            "title": "Checks",
+            "type": "array"
+          },
+          "checked_at": {
+            "format": "date-time",
+            "title": "Checked At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_url",
+          "endpoint",
+          "run_id"
+        ],
+        "title": "TargetHealthReport",
+        "type": "object"
+      },
+      "TokenUsage": {
+        "description": "LLM token consumption for a single check run.\n\nEmbedded in AnalysisResult, BehaviorAnalysisResult, PolicyCheckResult,\nand RedteamOrchestrator so every module surfaces the same fields.",
+        "properties": {
+          "input_tokens": {
+            "default": 0,
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "output_tokens": {
+            "default": 0,
+            "title": "Output Tokens",
+            "type": "integer"
+          },
+          "llm_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Llm Model"
+          }
+        },
+        "title": "TokenUsage",
+        "type": "object"
+      }
+    },
+    "description": "Final result model returned by the streaming redteam API.",
+    "properties": {
+      "findings": {
+        "items": {
+          "$ref": "#/$defs/Finding"
+        },
+        "title": "Findings",
+        "type": "array"
+      },
+      "scenario_records": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "title": "Scenario Records",
+        "type": "array"
+      },
+      "scan_outcome": {
+        "enum": [
+          "critical_findings",
+          "high_findings",
+          "findings",
+          "aborted_target_unavailable",
+          "inconclusive_target_errors",
+          "no_findings"
+        ],
+        "title": "Scan Outcome",
+        "type": "string"
+      },
+      "config_notes": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Config Notes",
+        "type": "array"
+      },
+      "llm_executive_summary": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Llm Executive Summary"
+      },
+      "llm_coding_brief": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Llm Coding Brief"
+      },
+      "scenarios_run": {
+        "default": 0,
+        "title": "Scenarios Run",
+        "type": "integer"
+      },
+      "input_tokens_used": {
+        "default": 0,
+        "title": "Input Tokens Used",
+        "type": "integer"
+      },
+      "output_tokens_used": {
+        "default": 0,
+        "title": "Output Tokens Used",
+        "type": "integer"
+      },
+      "token_usage": {
+        "$ref": "#/$defs/TokenUsage"
+      },
+      "health_report": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/TargetHealthReport"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "resolved_chat_path": {
+        "title": "Resolved Chat Path",
+        "type": "string"
+      },
+      "resolved_chat_path_source": {
+        "title": "Resolved Chat Path Source",
+        "type": "string"
+      },
+      "catalog_coverage": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Catalog Coverage"
+      },
+      "coverage_tracker": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Coverage Tracker"
+      },
+      "remediation_plan": {
+        "items": {
+          "$ref": "#/$defs/RemediationArtefact"
+        },
+        "title": "Remediation Plan",
+        "type": "array"
+      }
+    },
+    "required": [
+      "findings",
+      "scenario_records",
+      "scan_outcome",
+      "token_usage",
+      "resolved_chat_path",
+      "resolved_chat_path_source"
+    ],
+    "title": "RedteamExecutionResult",
+    "type": "object"
+  },
+  "redteam.RedteamRunRequest": {
+    "$defs": {
+      "AuthConfig": {
+        "description": "Structured auth configuration parsed from nuguard.yaml auth block.",
+        "properties": {
+          "type": {
+            "default": "none",
+            "enum": [
+              "bearer",
+              "api_key",
+              "basic",
+              "none",
+              "login_flow",
+              "cookie_file"
+            ],
+            "title": "Type",
+            "type": "string"
+          },
+          "header": {
+            "default": "",
+            "title": "Header",
+            "type": "string"
+          },
+          "username": {
+            "default": "",
+            "title": "Username",
+            "type": "string"
+          },
+          "password": {
+            "default": "",
+            "title": "Password",
+            "type": "string"
+          },
+          "login_flow": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/LoginFlowConfig"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null
+          },
+          "cookie_file": {
+            "default": "",
+            "title": "Cookie File",
+            "type": "string"
+          }
+        },
+        "title": "AuthConfig",
+        "type": "object"
+      },
+      "CanaryConfig": {
+        "properties": {
+          "global_watch_values": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Global Watch Values",
+            "type": "array"
+          },
+          "tenants": {
+            "items": {
+              "$ref": "#/$defs/CanaryTenant"
+            },
+            "title": "Tenants",
+            "type": "array"
+          }
+        },
+        "title": "CanaryConfig",
+        "type": "object"
+      },
+      "CanaryRecord": {
+        "properties": {
+          "resource": {
+            "title": "Resource",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "fields": {
+            "additionalProperties": true,
+            "title": "Fields",
+            "type": "object"
+          },
+          "watch_values": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Watch Values",
+            "type": "array"
+          }
+        },
+        "required": [
+          "resource",
+          "id"
+        ],
+        "title": "CanaryRecord",
+        "type": "object"
+      },
+      "CanaryTenant": {
+        "properties": {
+          "tenant_id": {
+            "title": "Tenant Id",
+            "type": "string"
+          },
+          "session_token": {
+            "default": "",
+            "title": "Session Token",
+            "type": "string"
+          },
+          "records": {
+            "items": {
+              "$ref": "#/$defs/CanaryRecord"
+            },
+            "title": "Records",
+            "type": "array"
+          }
+        },
+        "required": [
+          "tenant_id"
+        ],
+        "title": "CanaryTenant",
+        "type": "object"
+      },
+      "LoginFlowConfig": {
+        "description": "Configuration for apps that require a login request to obtain a JWT.\n\nExample nuguard.yaml block::\n\n    auth:\n      type: login_flow\n      login_flow:\n        endpoint: /login\n        payload:\n          username: ${APP_USERNAME}\n          password: ${APP_PASSWORD}\n        token_response_key: access_token\n        token_header: \"Authorization: Bearer\"\n        refresh_on_401: true",
+        "properties": {
+          "endpoint": {
+            "default": "/login",
+            "title": "Endpoint",
+            "type": "string"
+          },
+          "method": {
+            "default": "POST",
+            "enum": [
+              "POST",
+              "GET"
+            ],
+            "title": "Method",
+            "type": "string"
+          },
+          "base_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Base Url"
+          },
+          "payload": {
+            "additionalProperties": true,
+            "title": "Payload",
+            "type": "object"
+          },
+          "token_response_key": {
+            "default": "access_token",
+            "title": "Token Response Key",
+            "type": "string"
+          },
+          "token_header": {
+            "default": "Authorization: Bearer",
+            "title": "Token Header",
+            "type": "string"
+          },
+          "refresh_on_401": {
+            "default": true,
+            "title": "Refresh On 401",
+            "type": "boolean"
+          }
+        },
+        "title": "LoginFlowConfig",
+        "type": "object"
+      },
+      "RedteamFindingTriggers": {
+        "description": "Configurable controls for when redteam findings are emitted.",
+        "properties": {
+          "canary_hits": {
+            "default": true,
+            "title": "Canary Hits",
+            "type": "boolean"
+          },
+          "policy_violations": {
+            "default": true,
+            "title": "Policy Violations",
+            "type": "boolean"
+          },
+          "critical_success_hits": {
+            "default": true,
+            "title": "Critical Success Hits",
+            "type": "boolean"
+          },
+          "any_inject_success": {
+            "default": false,
+            "title": "Any Inject Success",
+            "type": "boolean"
+          },
+          "tool_trace_hits": {
+            "default": true,
+            "title": "Tool Trace Hits",
+            "type": "boolean"
+          }
+        },
+        "title": "RedteamFindingTriggers",
+        "type": "object"
+      }
+    },
+    "description": "JSON-safe input for :func:`run_redteam`.\n\nMirrors ``RedteamOrchestrator.__init__``'s scalar and config-object\nparameters with identical defaults. Large domain objects (``sbom``,\n``policy``), live/stateful collaborators (``redteam_llm``, ``eval_llm``,\n``app_log_reader``), and objects that may hold compiled callables\n(``policy_controls``, ``catalog``) are intentionally kept OUT of this\nmodel and passed as separate keyword arguments to :func:`run_redteam`\ninstead \u2014 the same separation :mod:`nuguard.common.discovery` uses for\n``client``/``session``.",
+    "properties": {
+      "target_url": {
+        "title": "Target Url",
+        "type": "string"
+      },
+      "profile": {
+        "default": "ci",
+        "title": "Profile",
+        "type": "string"
+      },
+      "min_impact_score": {
+        "default": 0.0,
+        "title": "Min Impact Score",
+        "type": "number"
+      },
+      "chat_path": {
+        "default": "/chat",
+        "title": "Chat Path",
+        "type": "string"
+      },
+      "chat_payload_key": {
+        "default": "message",
+        "title": "Chat Payload Key",
+        "type": "string"
+      },
+      "chat_payload_list": {
+        "default": false,
+        "title": "Chat Payload List",
+        "type": "boolean"
+      },
+      "chat_response_key": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Chat Response Key"
+      },
+      "concurrency": {
+        "default": 5,
+        "title": "Concurrency",
+        "type": "integer"
+      },
+      "request_timeout": {
+        "default": 120.0,
+        "title": "Request Timeout",
+        "type": "number"
+      },
+      "guided_conversations": {
+        "default": true,
+        "title": "Guided Conversations",
+        "type": "boolean"
+      },
+      "guided_max_turns": {
+        "default": 12,
+        "title": "Guided Max Turns",
+        "type": "integer"
+      },
+      "guided_concurrency": {
+        "default": 3,
+        "title": "Guided Concurrency",
+        "type": "integer"
+      },
+      "guided_mutation_mode": {
+        "default": "hard",
+        "title": "Guided Mutation Mode",
+        "type": "string"
+      },
+      "tree_breadth": {
+        "default": 0,
+        "title": "Tree Breadth",
+        "type": "integer"
+      },
+      "tree_max_depth": {
+        "default": 0,
+        "title": "Tree Max Depth",
+        "type": "integer"
+      },
+      "extra_headers": {
+        "anyOf": [
+          {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Extra Headers"
+      },
+      "strict_outcome": {
+        "default": false,
+        "title": "Strict Outcome",
+        "type": "boolean"
+      },
+      "scenario_filter": {
+        "anyOf": [
+          {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Scenario Filter"
+      },
+      "canary_config": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/CanaryConfig"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "auth_config": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/AuthConfig"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "finding_triggers": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/RedteamFindingTriggers"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "verbose": {
+        "default": false,
+        "title": "Verbose",
+        "type": "boolean"
+      },
+      "credentials": {
+        "anyOf": [
+          {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Credentials"
+      },
+      "scenario_timeout": {
+        "default": 180.0,
+        "title": "Scenario Timeout",
+        "type": "number"
+      },
+      "turn_delay_seconds": {
+        "default": 5.0,
+        "title": "Turn Delay Seconds",
+        "type": "number"
+      },
+      "scenario_delay_seconds": {
+        "default": 0.0,
+        "title": "Scenario Delay Seconds",
+        "type": "number"
+      },
+      "similar_miss_threshold": {
+        "default": 4,
+        "title": "Similar Miss Threshold",
+        "type": "integer"
+      },
+      "hard_refusal_abort_turns": {
+        "default": 5,
+        "title": "Hard Refusal Abort Turns",
+        "type": "integer"
+      },
+      "stall_abort_threshold": {
+        "default": 8,
+        "title": "Stall Abort Threshold",
+        "type": "integer"
+      },
+      "skip_discovery": {
+        "default": false,
+        "title": "Skip Discovery",
+        "type": "boolean"
+      },
+      "discovery_max_turns": {
+        "default": 3,
+        "title": "Discovery Max Turns",
+        "type": "integer"
+      },
+      "chat_payload_extras": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Chat Payload Extras"
+      },
+      "pre_run_warmup": {
+        "default": 0,
+        "title": "Pre Run Warmup",
+        "type": "integer"
+      },
+      "verify_findings": {
+        "default": false,
+        "title": "Verify Findings",
+        "type": "boolean"
+      },
+      "golden_data": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Golden Data"
+      },
+      "suppress_spa_html_auth_bypass": {
+        "default": true,
+        "title": "Suppress Spa Html Auth Bypass",
+        "type": "boolean"
+      },
+      "codegen_escalation_enabled": {
+        "default": true,
+        "title": "Codegen Escalation Enabled",
+        "type": "boolean"
+      }
+    },
+    "required": [
+      "target_url"
+    ],
+    "title": "RedteamRunRequest",
+    "type": "object"
+  },
+  "redteam.RedteamRunResult": {
+    "$defs": {
+      "CredentialCheckResult": {
+        "description": "Result of one credential verification attempt against the target.",
+        "properties": {
+          "identity": {
+            "title": "Identity",
+            "type": "string"
+          },
+          "auth_type": {
+            "title": "Auth Type",
+            "type": "string"
+          },
+          "endpoint": {
+            "title": "Endpoint",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "ok",
+              "auth_failed",
+              "target_unavailable",
+              "skipped"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "http_status_code": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Http Status Code"
+          },
+          "response_time_ms": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Response Time Ms"
+          },
+          "error_detail": {
+            "default": "",
+            "title": "Error Detail",
+            "type": "string"
+          },
+          "response_text": {
+            "default": "",
+            "title": "Response Text",
+            "type": "string"
+          },
+          "checked_at": {
+            "format": "date-time",
+            "title": "Checked At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "identity",
+          "auth_type",
+          "endpoint",
+          "status"
+        ],
+        "title": "CredentialCheckResult",
+        "type": "object"
+      },
+      "Finding": {
+        "properties": {
+          "finding_id": {
+            "title": "Finding Id",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "severity": {
+            "$ref": "#/$defs/Severity"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "affected_component": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Affected Component"
+          },
+          "remediation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Remediation"
+          },
+          "references": {
+            "items": {
+              "type": "string"
+            },
+            "title": "References",
+            "type": "array"
+          },
+          "goal_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Goal Type"
+          },
+          "scenario_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Scenario Type"
+          },
+          "sbom_path": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sbom Path",
+            "type": "array"
+          },
+          "sbom_path_descriptions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sbom Path Descriptions",
+            "type": "array"
+          },
+          "policy_clauses_violated": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Policy Clauses Violated",
+            "type": "array"
+          },
+          "chain_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Chain Id"
+          },
+          "owasp_asi_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Owasp Asi Ref"
+          },
+          "owasp_llm_ref": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Owasp Llm Ref"
+          },
+          "mitre_atlas_technique": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Mitre Atlas Technique"
+          },
+          "evidence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Evidence"
+          },
+          "log_correlation_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Log Correlation Status"
+          },
+          "reasoning": {
+            "default": "",
+            "title": "Reasoning",
+            "type": "string"
+          },
+          "evidence_quote": {
+            "default": "",
+            "title": "Evidence Quote",
+            "type": "string"
+          },
+          "success_indicator": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Success Indicator"
+          },
+          "scores": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Scores",
+            "type": "object"
+          },
+          "attack_steps": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Attack Steps",
+            "type": "array"
+          },
+          "golden_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Golden Ids",
+            "type": "array"
+          },
+          "golden_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Golden Name"
+          },
+          "golden_data_excerpt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Golden Data Excerpt"
+          },
+          "verified": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Verified"
+          }
+        },
+        "required": [
+          "finding_id",
+          "title",
+          "severity",
+          "description"
+        ],
+        "title": "Finding",
+        "type": "object"
+      },
+      "RemediationArtefact": {
+        "description": "A concrete, SBOM-node-specific remediation action.\n\nProduced by RemediationSynthesizer as the final pass after all findings\nare collected. Each artefact targets a specific SBOM node and provides\nactionable instructions (patch text, guardrail spec, or architectural change).",
+        "properties": {
+          "finding_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Finding Ids",
+            "type": "array"
+          },
+          "component": {
+            "title": "Component",
+            "type": "string"
+          },
+          "component_type": {
+            "title": "Component Type",
+            "type": "string"
+          },
+          "artefact_type": {
+            "$ref": "#/$defs/RemediationArtefactType"
+          },
+          "priority": {
+            "title": "Priority",
+            "type": "string"
+          },
+          "patch_location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Patch Location"
+          },
+          "patch_section": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Patch Section"
+          },
+          "patch_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Patch Text"
+          },
+          "guardrail_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Guardrail Name"
+          },
+          "guardrail_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Guardrail Type"
+          },
+          "guardrail_trigger": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Guardrail Trigger"
+          },
+          "guardrail_action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Guardrail Action"
+          },
+          "guardrail_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Guardrail Message"
+          },
+          "privilege_scope": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Privilege Scope"
+          },
+          "privilege_node": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Privilege Node"
+          },
+          "requires_auth": {
+            "default": false,
+            "title": "Requires Auth",
+            "type": "boolean"
+          },
+          "requires_hitl": {
+            "default": false,
+            "title": "Requires Hitl",
+            "type": "boolean"
+          },
+          "edge_to_remove": {
+            "anyOf": [
+              {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "string"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Edge To Remove"
+          },
+          "change_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Change Description"
+          },
+          "change_detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Change Detail"
+          },
+          "rationale": {
+            "title": "Rationale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "component",
+          "component_type",
+          "artefact_type",
+          "priority",
+          "rationale"
+        ],
+        "title": "RemediationArtefact",
+        "type": "object"
+      },
+      "RemediationArtefactType": {
+        "description": "The type of concrete remediation artefact produced by RemediationSynthesizer.",
+        "enum": [
+          "system_prompt_patch",
+          "input_guardrail",
+          "output_guardrail",
+          "architectural_change"
+        ],
+        "title": "RemediationArtefactType",
+        "type": "string"
+      },
+      "Severity": {
+        "enum": [
+          "critical",
+          "high",
+          "medium",
+          "low",
+          "info"
+        ],
+        "title": "Severity",
+        "type": "string"
+      },
+      "TargetHealthReport": {
+        "description": "Aggregated result of auth bootstrap for all credentials in a run.",
+        "properties": {
+          "target_url": {
+            "title": "Target Url",
+            "type": "string"
+          },
+          "endpoint": {
+            "title": "Endpoint",
+            "type": "string"
+          },
+          "run_id": {
+            "title": "Run Id",
+            "type": "string"
+          },
+          "checks": {
+            "items": {
+              "$ref": "#/$defs/CredentialCheckResult"
+            },
+            "title": "Checks",
+            "type": "array"
+          },
+          "checked_at": {
+            "format": "date-time",
+            "title": "Checked At",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target_url",
+          "endpoint",
+          "run_id"
+        ],
+        "title": "TargetHealthReport",
+        "type": "object"
+      },
+      "TokenUsage": {
+        "description": "LLM token consumption for a single check run.\n\nEmbedded in AnalysisResult, BehaviorAnalysisResult, PolicyCheckResult,\nand RedteamOrchestrator so every module surfaces the same fields.",
+        "properties": {
+          "input_tokens": {
+            "default": 0,
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "output_tokens": {
+            "default": 0,
+            "title": "Output Tokens",
+            "type": "integer"
+          },
+          "llm_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Llm Model"
+          }
+        },
+        "title": "TokenUsage",
+        "type": "object"
+      }
+    },
+    "description": "JSON-safe result of :func:`run_redteam`.\n\nBundles ``RedteamOrchestrator.run()``'s return value together with the\nside-effect instance attributes the CLI reads separately today (via its\n12-tuple return from ``_run_orchestrator``), so external callers get one\nself-contained object instead of having to know which attributes to read.",
+    "properties": {
+      "findings": {
+        "items": {
+          "$ref": "#/$defs/Finding"
+        },
+        "title": "Findings",
+        "type": "array"
+      },
+      "scenario_records": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "title": "Scenario Records",
+        "type": "array"
+      },
+      "scan_outcome": {
+        "enum": [
+          "critical_findings",
+          "high_findings",
+          "findings",
+          "aborted_target_unavailable",
+          "inconclusive_target_errors",
+          "no_findings"
+        ],
+        "title": "Scan Outcome",
+        "type": "string"
+      },
+      "config_notes": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Config Notes",
+        "type": "array"
+      },
+      "llm_executive_summary": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Llm Executive Summary"
+      },
+      "llm_coding_brief": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Llm Coding Brief"
+      },
+      "scenarios_run": {
+        "default": 0,
+        "title": "Scenarios Run",
+        "type": "integer"
+      },
+      "input_tokens_used": {
+        "default": 0,
+        "title": "Input Tokens Used",
+        "type": "integer"
+      },
+      "output_tokens_used": {
+        "default": 0,
+        "title": "Output Tokens Used",
+        "type": "integer"
+      },
+      "token_usage": {
+        "$ref": "#/$defs/TokenUsage"
+      },
+      "health_report": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/TargetHealthReport"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null
+      },
+      "resolved_chat_path": {
+        "title": "Resolved Chat Path",
+        "type": "string"
+      },
+      "resolved_chat_path_source": {
+        "title": "Resolved Chat Path Source",
+        "type": "string"
+      },
+      "catalog_coverage": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Catalog Coverage"
+      },
+      "coverage_tracker": {
+        "anyOf": [
+          {
+            "additionalProperties": true,
+            "type": "object"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Coverage Tracker"
+      },
+      "remediation_plan": {
+        "items": {
+          "$ref": "#/$defs/RemediationArtefact"
+        },
+        "title": "Remediation Plan",
+        "type": "array"
+      }
+    },
+    "required": [
+      "findings",
+      "scenario_records",
+      "scan_outcome",
+      "token_usage",
+      "resolved_chat_path",
+      "resolved_chat_path_source"
+    ],
+    "title": "RedteamRunResult",
+    "type": "object"
+  }
+}
