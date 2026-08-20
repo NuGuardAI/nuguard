@@ -188,6 +188,33 @@ func main() {
     assert tool.metadata["registered"] is False
 
 
+def test_add_tool_without_known_mcp_server_is_not_registered() -> None:
+    source = """package main
+
+import "github.com/mark3labs/mcp-go/mcp"
+
+func main() {
+    standalone := mcp.NewTool("standalone")
+    registry.AddTool(standalone, handler)
+
+    registry.AddTool(
+        mcp.NewTool("inline"),
+        handler,
+    )
+}
+"""
+
+    detections = _extract(source)
+    framework = _by_type(detections, ComponentType.FRAMEWORK)[0]
+    tools = _by_type(detections, ComponentType.TOOL)
+
+    assert framework.relationships == []
+    assert {tool.display_name for tool in tools} == {"standalone", "inline"}
+    assert all(tool.metadata["registered"] is False for tool in tools)
+    assert all("registration_method" not in tool.metadata for tool in tools)
+    assert all("server_variable" not in tool.metadata for tool in tools)
+
+
 def test_extract_parses_content_when_parse_result_is_not_go_result() -> None:
     source = """package main
 import "github.com/mark3labs/mcp-go/mcp"

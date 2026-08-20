@@ -126,7 +126,9 @@ class MCPGoServerAdapter(GoFrameworkAdapter):
         for call in result.function_calls:
             if call.function_name != _ADD_TOOL or not call.receiver:
                 continue
-            if server_variables and not self._is_server_receiver(
+            # ``AddTool`` is not unique to mcp-go. Require positive evidence
+            # that the receiver came from ``server.NewMCPServer(...)``.
+            if not self._is_server_receiver(
                 call.receiver,
                 server_variables,
             ):
