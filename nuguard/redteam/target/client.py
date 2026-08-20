@@ -651,7 +651,25 @@ class TargetAppClient:
                 else:
                     resp = await self._client.post(chat_path, json=body)
                 resp.raise_for_status()
-                data = resp.json()
+                _content_type = resp.headers.get("content-type", "")
+                if "text/event-stream" in _content_type and self._framework_adapter is None:
+                    # Non-streaming send() against an SSE-only chat endpoint (e.g.
+                    # a FastAPI StreamingResponse) — resp.json() would raise
+                    # JSONDecodeError on the buffered "data: {...}\n\n" body,
+                    # which _record_chat_error would then wrongly count toward
+                    # the circuit breaker as if the target were unreachable.
+                    # Parse the buffered SSE events and join their text chunks;
+                    # the isinstance(data, str) fallback below picks this up.
+                    from nuguard.redteam.target.sse import parse_sse_events  # noqa: PLC0415
+
+                    _sse_events = parse_sse_events(resp.text)
+                    _sse_text = "".join(
+                        str(_ev.get("text") or _ev.get("content") or _ev.get("message") or "")
+                        for _ev in _sse_events
+                    )
+                    data = _sse_text or json.dumps(_sse_events)
+                else:
+                    data = resp.json()
                 break
             except httpx.HTTPStatusError as exc:
                 status = exc.response.status_code

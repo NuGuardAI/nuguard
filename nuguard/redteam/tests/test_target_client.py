@@ -369,3 +369,47 @@ async def test_no_default_headers_backward_compatible():
         text, _ = await client.send("hi", _session())
     assert text == "hello"
     assert client._consecutive_errors == 0
+
+
+# ── SSE-only chat endpoints (send()/_send_impl, non-streaming path) ──────────
+# A FastAPI StreamingResponse(media_type="text/event-stream") 200-OKs with a
+# body of "data: {...}\n\n" lines rather than a bare JSON object. Before the
+# fix, resp.json() raised JSONDecodeError on this body, which _send_impl
+# treated as a generic request failure — counting toward and eventually
+# tripping the circuit breaker even though the target was alive and replying.
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_send_sse_response_extracts_text_without_error():
+    """An SSE (text/event-stream) 200 response is parsed, not treated as a failure."""
+    sse_body = 'data: {"content": "Hello"}\n\ndata: {"content": " world"}\n\n'
+    respx.post(f"{BASE}{CHAT}").mock(
+        return_value=httpx.Response(
+            200, content=sse_body, headers={"content-type": "text/event-stream"}
+        )
+    )
+    client = await _client()
+    async with client:
+        text, tool_calls = await client.send("hi", _session())
+    assert text == "Hello world"
+    assert tool_calls == []
+    assert client._consecutive_errors == 0
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_send_sse_response_does_not_trip_circuit_breaker():
+    """Repeated SSE responses never advance the circuit breaker (they are successes)."""
+    sse_body = 'data: {"content": "ok"}\n\n'
+    respx.post(f"{BASE}{CHAT}").mock(
+        return_value=httpx.Response(
+            200, content=sse_body, headers={"content-type": "text/event-stream"}
+        )
+    )
+    client = await _client()
+    async with client:
+        for _ in range(MAX_CONSECUTIVE_ERRORS + 2):
+            text, _ = await client.send("hi", _session())
+            assert not text.startswith("[REQUEST_ERROR:")
+    assert client._consecutive_errors == 0

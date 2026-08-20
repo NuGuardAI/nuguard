@@ -363,6 +363,103 @@ async def test_run_does_not_rotate_when_target_endpoint_is_explicit() -> None:
     assert "/api/agent/chat" not in dummy.called_paths
 
 
+@pytest.mark.asyncio
+async def test_run_rotates_when_endpoint_was_sbom_discovered_not_user_set() -> None:
+    """BehaviorAnalyzer folds an SBOM-discovered endpoint into config.target_endpoint
+    (indistinguishable from a user-set value by truthiness alone) and tells the
+    runner via endpoint_explicitly_set=False. Rotation must still happen on
+    404/405 — the SBOM's initial candidate can be wrong (e.g. a vision-only
+    route outscoring the real text-chat endpoint) even though *some* endpoint
+    was auto-filled into config.target_endpoint.
+    """
+
+    class _DummyClient:
+        def __init__(self) -> None:
+            self.base_url = "http://localhost:8080"
+            # Analyzer's SBOM discovery picked /api/agent/chat as the top-ranked
+            # candidate — the wrong one for this app, mirroring the phlox-app
+            # bug where a vision-only route outranked the real text-chat route.
+            self.chat_path = "/api/agent/chat"
+            self.resolution_notes: list[str] = []
+            self.called_paths: list[str] = []
+
+        async def send(self, message: str, session: object) -> tuple[str, list[dict]]:
+            self.called_paths.append(self.chat_path)
+            if self.chat_path == "/api/agent/chat":
+                return "[HTTP 404] not found", []
+            return "OK", []
+
+        def set_chat_endpoint(
+            self,
+            chat_path: str,
+            chat_payload_key: str,
+            chat_payload_list: bool,
+            chat_response_key: str | None = None,
+        ) -> None:
+            self.chat_path = chat_path
+
+        async def aclose(self) -> None:
+            pass
+
+    cfg = _make_config()
+    # Mirrors BehaviorAnalyzer's model_copy(update={"target_endpoint": disc_path})
+    # after SBOM auto-discovery — truthy, but never written by the user.
+    cfg.target_endpoint = "/api/agent/chat"
+
+    sbom = AiSbomDocument(
+        target="./app",
+        nodes=[
+            Node(
+                id=uuid.uuid5(_NS, "API_ENDPOINT//chat"),
+                name="/chat",
+                component_type=ComponentType.API_ENDPOINT,
+                confidence=0.99,
+                metadata=NodeMetadata(
+                    endpoint="/chat",
+                    method="POST",
+                    chat_payload_key="message",
+                    chat_payload_list=False,
+                ),
+            ),
+            Node(
+                id=uuid.uuid5(_NS, "API_ENDPOINT//api/agent/chat"),
+                name="/api/agent/chat",
+                component_type=ComponentType.API_ENDPOINT,
+                confidence=0.99,
+                metadata=NodeMetadata(
+                    endpoint="/api/agent/chat",
+                    method="POST",
+                    chat_payload_key="message",
+                    chat_payload_list=False,
+                ),
+            ),
+        ],
+        edges=[],
+    )
+
+    runner = BehaviorRunner(
+        config=cfg,
+        sbom=sbom,
+        policy=_make_mock_policy(),
+        intent=_make_intent(),
+        llm_client=None,
+        endpoint_explicitly_set=False,
+    )
+    dummy = _DummyClient()
+
+    with (
+        patch.object(runner, "_build_client", new=AsyncMock(return_value=dummy)),
+        patch.object(runner, "_build_policy_evaluator", return_value=None),
+    ):
+        result = await runner.run(
+            scenarios=[_make_scenario("sbom_discovered_endpoint")],
+            pre_scan_profile=DiscoveredProfile(customer_name="Alice", ids=["ACCT-001"]),
+        )
+
+    assert result.scan_outcome != "aborted_endpoint_unreachable"
+    assert "/chat" in dummy.called_paths
+
+
 def test_build_coverage_map_endpoint_direct_match_confidence() -> None:
     sbom = AiSbomDocument(target="./app", nodes=[_endpoint_node("/api/agent/chat")], edges=[])
     runner = BehaviorRunner(config=_make_config(), sbom=sbom, policy=None, intent=_make_intent(), llm_client=None)

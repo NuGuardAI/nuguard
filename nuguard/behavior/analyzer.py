@@ -114,6 +114,15 @@ class BehaviorAnalyzer:
                 # HTTP probe.  This mirrors the RedteamOrchestrator logic so
                 # that both analysis modes share the same discovery path.
                 cfg_endpoint = getattr(self._config, "target_endpoint", "") or ""
+                # Captured before any auto-discovery mutation below: BehaviorRunner's
+                # preflight rotation must know whether the endpoint came from the
+                # user's nuguard.yaml (rotation disabled — explicit precedence) or
+                # was inferred here from the SBOM (rotation must stay enabled, since
+                # SBOM candidate scoring can pick the wrong endpoint, e.g. a
+                # vision-only route over the real text-chat one). Once this block
+                # calls self._config.model_copy(update=...) below, target_endpoint
+                # becomes indistinguishable from a user-set value.
+                _user_had_explicit_endpoint = bool(cfg_endpoint)
                 if not cfg_endpoint and self._sbom is not None:
                     from nuguard.common.endpoint_probe import (  # noqa: PLC0415
                         discover_chat_config_from_sbom,
@@ -213,6 +222,7 @@ class BehaviorAnalyzer:
                     intent=intent,
                     llm_client=self._llm,
                     judge_cache=judge_cache,
+                    endpoint_explicitly_set=_user_had_explicit_endpoint,
                 )
                 pre_scan_profile = await runner.discover()
 

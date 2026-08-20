@@ -696,6 +696,7 @@ class BehaviorRunner:
         intent: "IntentProfile | None" = None,
         llm_client: "LLMClient | None" = None,
         judge_cache: Any = None,
+        endpoint_explicitly_set: bool | None = None,
     ) -> None:
         self._config = config
         self._sbom = sbom
@@ -703,6 +704,13 @@ class BehaviorRunner:
         self._policy = policy
         self._intent = intent
         self._llm = llm_client
+        # Set by BehaviorAnalyzer when it auto-discovers target_endpoint from the
+        # SBOM and folds it into `config` via model_copy — at that point
+        # config.target_endpoint is no longer distinguishable from a value the
+        # user actually wrote in nuguard.yaml. None means "no analyzer involved
+        # (e.g. direct BehaviorRunner use)" — fall back to config truthiness.
+        self._endpoint_explicitly_set = endpoint_explicitly_set
+
         self._judge = BehaviorJudge(llm_client=llm_client, intent=intent, judge_cache=judge_cache)
         self._judge_cache = judge_cache
         self._auth_session: Any = None
@@ -877,6 +885,20 @@ class BehaviorRunner:
         # Keep resolved URL in sync with what the client resolved (e.g. framework adapter).
         self._resolved_target_url = client.base_url
         return client
+
+    def _endpoint_is_explicit(self) -> bool:
+        """Whether the chat endpoint was explicitly set by the user (nuguard.yaml).
+
+        Prefers ``self._endpoint_explicitly_set`` (captured by BehaviorAnalyzer
+        *before* it folds an SBOM-discovered endpoint into ``config`` via
+        ``model_copy``) so an auto-discovered endpoint isn't mistaken for a
+        user-set one and doesn't disable preflight rotation. Falls back to
+        raw config truthiness when the runner is used directly, without an
+        analyzer (``endpoint_explicitly_set`` left as ``None``).
+        """
+        if self._endpoint_explicitly_set is not None:
+            return self._endpoint_explicitly_set
+        return bool(getattr(self._config, "target_endpoint", ""))
 
     def _coverage_director(self) -> "CoverageDirector":
         """Lazily build (and cache) the CoverageDirector for guided coverage scenarios."""
@@ -1750,7 +1772,7 @@ class BehaviorRunner:
             from nuguard.common.endpoint_probe import (  # noqa: PLC0415
                 discover_chat_candidates_from_sbom as _disc_candidates,
             )
-            _explicit_endpoint = bool(getattr(self._config, "target_endpoint", ""))
+            _explicit_endpoint = self._endpoint_is_explicit()
             _disc_fallbacks = (
                 []
                 if _explicit_endpoint
@@ -1896,7 +1918,7 @@ class BehaviorRunner:
                 chain_id="behavior-pre-scan",
             )
             _use_case = getattr(self._intent, "app_purpose", "") if self._intent else ""
-            _explicit_endpoint = bool(getattr(self._config, "target_endpoint", ""))
+            _explicit_endpoint = self._endpoint_is_explicit()
             _sbom_fallbacks = (
                 []
                 if _explicit_endpoint
@@ -1947,7 +1969,7 @@ class BehaviorRunner:
         # probing.  Abort the run cleanly if no working endpoint is found.
         _preflight_ok = True
         _configured_endpoint = getattr(self._config, "target_endpoint", "") or ""
-        _has_explicit_endpoint = bool(_configured_endpoint)
+        _has_explicit_endpoint = self._endpoint_is_explicit()
         self._target_endpoint_source = "config" if _has_explicit_endpoint else "default"
         try:
             from nuguard.common.endpoint_preflight import (  # noqa: PLC0415
