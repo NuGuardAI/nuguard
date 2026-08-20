@@ -20,6 +20,7 @@ from .datastores import DatastoreTSAdapter
 from .google_adk import GoogleADKAdapter
 from .langgraph import LangGraphTSAdapter
 from .llm_clients import LLMClientTSAdapter
+from .nestjs_adapter import NestJSAdapter
 from .openai_agents import OpenAIAgentsTSAdapter
 from .prompts import PromptTSAdapter
 
@@ -32,6 +33,7 @@ __all__ = [
     "GoogleADKAdapter",
     "LangGraphTSAdapter",
     "LLMClientTSAdapter",
+    "NestJSAdapter",
     "OpenAIAgentsTSAdapter",
     "PromptTSAdapter",
 ]

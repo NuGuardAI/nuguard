@@ -29,6 +29,18 @@ _adk_fallback_warned: set[str] = set()
 
 DEFAULT_TIMEOUT = 30.0
 
+# Well-known OpenAI/Anthropic/LangChain-style chat-history field names.  When
+# chat_payload_key matches one of these (and chat_payload_list is True), the
+# outgoing value is shaped as a replayed [{role, content}, ...] message list
+# instead of a bare [prompt] list — see TargetAppClient._build_chat_payload_value.
+_MESSAGE_HISTORY_KEYS: frozenset[str] = frozenset(
+    {"messages", "history", "conversation", "chat_history"}
+)
+
+
+def _is_message_history_key(key: str) -> bool:
+    return key.strip().lower() in _MESSAGE_HISTORY_KEYS
+
 
 def _extract_nested_key(data: dict[str, Any], key_path: str) -> Any:
     """Extract a value from a nested dict/list using a flexible path notation.
@@ -476,6 +488,35 @@ class TargetAppClient:
                 )
                 raise
 
+    def _build_chat_payload_value(self, payload: str, session: AttackSession) -> Any:
+        """Shape the outgoing value for ``chat_payload_key`` in the generic (non-adapter) path.
+
+        Three shapes, chosen by ``chat_payload_list``/``chat_payload_key``:
+
+        - Flat string (``chat_payload_list=False``): the raw prompt text.
+        - Bare list (``chat_payload_list=True``, key not a known message-history
+          name): ``[prompt]`` — existing behaviour, e.g. LangGraph's
+          ``phrases=[...]``.
+        - OpenAI-style message history (``chat_payload_list=True`` and key is
+          one of ``messages``/``history``/``conversation``/``chat_history``):
+          replay prior turns from *session* as alternating ``{role, content}``
+          dicts, then append the current turn. This is the standard shape used
+          by OpenAI/Anthropic/LangChain-style chat APIs; endpoints whose only
+          accepted body shape is ``messages=[...]`` reject a bare string or a
+          bare-string list outright (400/422), aborting every scenario.
+        """
+        if not self._chat_payload_list:
+            return payload
+        if not _is_message_history_key(self._chat_payload_key):
+            return [payload]
+        history: list[dict[str, str]] = []
+        for turn in session.turns:
+            history.append({"role": "user", "content": turn.prompt})
+            if turn.response:
+                history.append({"role": "assistant", "content": turn.response})
+        history.append({"role": "user", "content": payload})
+        return history
+
     async def _send_impl(self, payload: str, session: AttackSession) -> tuple[str, list[dict]]:
         """Inner send implementation (called with or without the request semaphore)."""
         data: dict | list | str = {}
@@ -533,7 +574,7 @@ class TargetAppClient:
                     chat_path = self._framework_adapter.run_path
                 else:
                     # Generic path: flat key/value body
-                    value: Any = [payload] if self._chat_payload_list else payload
+                    value: Any = self._build_chat_payload_value(payload, session)
                     body = {self._chat_payload_key: value}
                     # Merge any previously extracted session/conversation context so the
                     # server can correlate subsequent turns within the same conversation.
@@ -791,7 +832,7 @@ class TargetAppClient:
                 body = self._framework_adapter.build_body(payload, session_id)
                 chat_path = self._framework_adapter.run_path
             else:
-                value: Any = [payload] if self._chat_payload_list else payload
+                value: Any = self._build_chat_payload_value(payload, session)
                 body = {self._chat_payload_key: value}
                 if self._session_context:
                     body.update(self._session_context)

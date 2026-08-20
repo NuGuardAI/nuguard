@@ -95,6 +95,15 @@ _PROMPT_FIELD_NAMES = {
     "transcript", "question", "content", "msg",
 }
 
+# OpenAI/Anthropic/LangChain-style chat-history fields: a list of {role, content}
+# message dicts rather than a single string. When one of these is detected with a
+# non-str-list type (e.g. "list[dict]", "list[ChatMessage]"), chat_payload_list is
+# set True so nuguard.redteam.target.client.TargetAppClient replays conversation
+# history in the request body instead of sending a bare string — without this,
+# apps whose only chat route accepts messages=[...] were invisible to auto-discovery
+# entirely, since _infer_chat_payload_key previously only matched singular fields.
+_MESSAGE_HISTORY_FIELD_NAMES = {"messages", "history", "conversation", "chat_history"}
+
 _RESPONSE_FIELD_NAMES = {"response", "content", "answer", "text", "reply", "message", "output"}
 
 # Domain-specific request body keys that are clearly NOT conversational message fields.
@@ -274,6 +283,13 @@ def _infer_chat_payload_key(fields: dict[str, str]) -> tuple[str | None, bool]:
             type_str = fields[name]
             is_list = "list" in type_str.lower() or "List" in type_str
             return name, is_list
+    for name in _MESSAGE_HISTORY_FIELD_NAMES:
+        if name in fields:
+            type_str = fields[name].lower()
+            # Only match list-of-non-str types (e.g. "list[dict]", "list[chatmessage]") —
+            # a plain "list[str]" field named "messages" isn't role/content-shaped.
+            if "list" in type_str and "list[str]" not in type_str.replace(" ", ""):
+                return name, True
     for name, type_str in fields.items():
         if type_str.strip() == "str":
             return name, False

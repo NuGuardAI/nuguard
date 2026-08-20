@@ -837,6 +837,28 @@ class AiSbomExtractor:
             _resolve_import_to_relpath = None  # type: ignore[assignment]
             _router_imports = {}
 
+        # Cross-file TS DTO field-type index — shares the same
+        # `_global_model_schemas` dict (and `set_global_model_schemas` hook) as
+        # the Python Pydantic-model pre-pass above, so NestJSAdapter can resolve
+        # a `@Body() dto: SendMessageDto` parameter even when the DTO
+        # `interface`/`class` is declared in a different file (e.g. a
+        # `*.service.ts` sibling of the controller that references it).
+        try:
+            from nuguard.sbom.adapters.typescript.nestjs_adapter import (  # noqa: PLC0415
+                collect_dto_schemas as _collect_ts_dtos,
+            )
+
+            for _ts_path, _ in self._iter_files(root, config):
+                if _ts_path.suffix not in (".ts", ".tsx"):
+                    continue
+                try:
+                    _ts_src = _ts_path.read_text(encoding="utf-8", errors="ignore")
+                except Exception:
+                    continue
+                _global_model_schemas.update(_collect_ts_dtos(_ts_src))
+        except Exception as _ts_pre_exc:
+            _log.debug("cross-file TS DTO pre-pass failed (non-fatal): %s", _ts_pre_exc)
+
         # Inject the global indices into adapters that support them.
         for _adapter in self.framework_adapters:
             if hasattr(_adapter, "set_global_model_schemas"):
@@ -1302,6 +1324,10 @@ class AiSbomExtractor:
         # file — e.g. regex matches "gemini-2.0" while AST extracts the full
         # "gemini-2.0-flash" from an adjacent line of the same call.
         _dedup_by_name_prefix(node_map)
+        # Merge MODEL nodes that are repo-id/filename spellings of the same
+        # underlying preconfigured model entry (e.g. ``unsloth/Qwen3.5-9B-GGUF``
+        # + ``Qwen3.5-9B-Q4_K_M.gguf`` from the same config dict).
+        _dedup_model_variants(node_map)
         # Suppress generic tech-name DATASTORE nodes emitted by regex adapters
         # when the same file already has specific AST-detected ones for the same
         # technology (e.g. "faiss" regex when "docs_index" / "tickets_index" AST
@@ -2915,12 +2941,22 @@ def _dedup_by_name_prefix(
     names that start with the same technology (e.g. "Docker Release"), even
     though they are not the same entity — merging would silently reattribute
     the generic bucket's unrelated evidence to one specific workflow node.
+
+    API_ENDPOINT is also excluded: its display name is derived from the
+    handler function name, and REST/RPC handlers routinely share a
+    word-boundary prefix while being genuinely distinct routes in the same
+    controller file — e.g. NestJS's ``sendMessage``/``sendMessageStream``/
+    ``sendMessageWithFiles`` (see studyield-app chat.controller.ts) or
+    ``getUser``/``getUserById``. API_ENDPOINT nodes already dedup correctly
+    on their own (method + path) canonical name, so this pass has no
+    truncation case to fix here and only causes real, distinct routes to be
+    silently dropped.
     """
     keys_to_remove: set[tuple[ComponentType, str]] = set()
     files_by_key: dict[tuple[ComponentType, str], set[str]] = {
         key: {ev.location.path for ev in acc.evidence if ev.location}
         for key, acc in node_map.items()
-        if key[0] != ComponentType.DEPLOYMENT
+        if key[0] not in (ComponentType.DEPLOYMENT, ComponentType.API_ENDPOINT)
     }
 
     # Compare only key pairs that actually share at least one source file.
@@ -2967,6 +3003,70 @@ def _dedup_by_name_prefix(
                 _log.debug(
                     "dedup_by_name_prefix: dropped %s → kept %s", key_a, winner_key
                 )
+
+    for k in keys_to_remove:
+        del node_map[k]
+
+
+_MODEL_FORMAT_SUFFIX_RE = re.compile(
+    r"(?:-(?:gguf|q\d[\w]*|bf16|f16|fp16|fp32|awq|gptq))+$",
+    re.IGNORECASE,
+)
+
+
+def _normalize_model_variant_name(name: str) -> str:
+    """Normalize a MODEL name to its base model identity, stripping
+    HuggingFace org prefixes, file extensions, and quantization/format
+    suffixes — e.g. ``Qwen/Qwen3.5-9B-GGUF`` and ``Qwen3.5-9B-Q4_K_M.gguf``
+    both normalize to ``qwen3.5-9b``.
+    """
+    normalized = name.strip().lower()
+    if "/" in normalized:
+        normalized = normalized.rsplit("/", 1)[-1]
+    if normalized.endswith(".gguf"):
+        normalized = normalized[: -len(".gguf")]
+    while True:
+        stripped = _MODEL_FORMAT_SUFFIX_RE.sub("", normalized)
+        if stripped == normalized:
+            break
+        normalized = stripped
+    return normalized
+
+
+def _dedup_model_variants(
+    node_map: dict[tuple[ComponentType, str], _NodeAccumulator],
+) -> None:
+    """Merge MODEL nodes that are different repo-id/filename spellings of the
+    same preconfigured model config entry — e.g. a Python dict with separate
+    ``repo_id`` (``unsloth/Qwen3.5-9B-GGUF``) and ``filename``
+    (``Qwen3.5-9B-Q4_K_M.gguf``) fields on adjacent lines of the same file.
+    ``_dedup_by_location`` only catches same-line duplicates, so this pass
+    groups MODEL nodes by (source file, normalized base name) instead. The
+    longest original name wins and absorbs the others' evidence.
+    """
+    groups: dict[tuple[str, str], set[tuple[ComponentType, str]]] = {}
+    for key, acc in node_map.items():
+        if key[0] != ComponentType.MODEL:
+            continue
+        normalized = _normalize_model_variant_name(acc.display_name)
+        if not normalized:
+            continue
+        for ev in acc.evidence:
+            if ev.location:
+                groups.setdefault((ev.location.path, normalized), set()).add(key)
+
+    keys_to_remove: set[tuple[ComponentType, str]] = set()
+    for keys in groups.values():
+        remaining = sorted(keys - keys_to_remove, key=lambda k: -len(node_map[k].display_name))
+        if len(remaining) < 2:
+            continue
+        winner, *losers = remaining
+        for loser in losers:
+            if loser in keys_to_remove:
+                continue
+            node_map[winner].evidence.extend(node_map[loser].evidence)
+            keys_to_remove.add(loser)
+            _log.debug("dedup_model_variants: dropped %s → kept %s", loser, winner)
 
     for k in keys_to_remove:
         del node_map[k]

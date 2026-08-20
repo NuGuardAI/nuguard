@@ -26,6 +26,15 @@ if TYPE_CHECKING:
 
 _log = get_logger(__name__)
 
+# Unresolved path-parameter placeholders — FastAPI/Express style `{id}`,
+# NestJS/Express colon style `:id`, or `<id>` — sent to the target literally,
+# they 404 every time (no real resource ID exists to substitute). A route
+# behind one of these can still be the only chat surface an app exposes
+# (e.g. NestJS's `POST /chat/conversations/:id/messages`, which requires a
+# conversation to be created first), so this is a scoring penalty, not an
+# exclusion — see discover_chat_candidates_from_sbom.
+_HAS_PATH_PARAM_RE = re.compile(r"(:\w+|\{\w+\}|<\w+>)")
+
 # Endpoint path fragments that are definitively NOT chat endpoints.
 # Keep this list tight — false exclusions are worse than false inclusions
 # because the probe will verify via HTTP anyway.
@@ -46,9 +55,20 @@ _PROBE_PAYLOADS: list[tuple[str, bool]] = [
     ("text", False),
     ("content", False),
     ("msg", False),
+    ("messages", True),
 ]
 
 _TEST_MESSAGE = "Hello, this is a connectivity test."
+
+# Well-known OpenAI/Anthropic/LangChain-style chat-history field names.
+# Mirrors nuguard.redteam.target.client._MESSAGE_HISTORY_KEYS — kept as a
+# separate constant here to avoid a cross-package import for a 4-item set.
+# When the probe tries one of these keys, the value must be a
+# [{"role": "user", "content": ...}] message list, not a bare string/list —
+# a message-history endpoint will 422 on a flat body and register as a miss.
+_MESSAGE_HISTORY_KEYS: frozenset[str] = frozenset(
+    {"messages", "history", "conversation", "chat_history"}
+)
 
 # Payload keys that are definitively NOT conversational chat keys.
 # These appear in domain-specific endpoints (banking transfers, healthcare orders, etc.)
@@ -76,8 +96,9 @@ def _sbom_post_paths(sbom: "AiSbomDocument") -> list[str]:
         path: str = (meta.endpoint or "").strip()
         if not path or not path.startswith("/"):
             continue
-        # Skip parameterised paths like /user/{id}
-        if "{" in path:
+        # Skip parameterised paths like /user/{id} or /user/:id — sending the
+        # placeholder literally always 404s with no real ID to substitute.
+        if _HAS_PATH_PARAM_RE.search(path):
             continue
         # Skip non-POST
         if meta.method and meta.method.upper() not in ("POST", ""):
@@ -264,7 +285,12 @@ async def probe_chat_endpoints(
         for path in paths:
             _log.info("endpoint_probe: trying %s%s", base, path)
             for pay_key, pay_list in payload_shapes:
-                value: object = [_TEST_MESSAGE] if pay_list else _TEST_MESSAGE
+                if pay_list and pay_key.strip().lower() in _MESSAGE_HISTORY_KEYS:
+                    value: object = [{"role": "user", "content": _TEST_MESSAGE}]
+                elif pay_list:
+                    value = [_TEST_MESSAGE]
+                else:
+                    value = _TEST_MESSAGE
                 body: dict[str, object] = {}
                 if probe_payload_extras:
                     body.update(probe_payload_extras)
@@ -432,6 +458,13 @@ def discover_chat_candidates_from_sbom(
         # Penalise nodes that had no explicit payload key (inferred).
         if not meta.chat_payload_key:
             score -= 1
+
+        # Penalise (don't exclude) unresolved path-parameter routes — see
+        # _HAS_PATH_PARAM_RE. A parameter-free alternative should win when one
+        # exists; otherwise this remains the best (only) candidate and callers
+        # still get it, just ranked honestly against cleaner routes.
+        if _HAS_PATH_PARAM_RE.search(discovered_path):
+            score -= 4
 
         # Penalise nodes confirmed dead by the live probe — GET 404 means the
         # route doesn't exist at all on the deployed target; POST 405 strongly

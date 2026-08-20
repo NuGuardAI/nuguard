@@ -2,15 +2,16 @@
 
 Both capabilities resolve a chat endpoint from the SBOM (or config) before
 running any scenario, but static SBOM scoring can pick the wrong candidate
-(e.g. ``/api/chat`` instead of the app's actual ``/api/chat/respond-visual``).
-Left unchecked, that produces a run that silently 404/405s on every request
-without ever tripping the transport circuit breaker (which only counts 5xx /
-network failures — a 4xx means "target reachable, rejected our payload").
+(e.g. an image-upload endpoint like ``/api/chat/respond-visual`` outscoring
+the app's actual text-chat endpoint ``/api/chat``). Left unchecked, that
+produces a run that silently 400/404/405s on every request without ever
+tripping the transport circuit breaker (which only counts 5xx / network
+failures — a 4xx means "target reachable, rejected our payload").
 
 :func:`validate_and_rotate_chat_endpoint` sends one lightweight test request
-against the currently configured endpoint and, on 404/405, rotates through
-the SBOM's ranked chat-endpoint candidates (mutating *client* in place via
-:meth:`~nuguard.redteam.target.client.TargetAppClient.set_chat_endpoint`),
+against the currently configured endpoint and, on 400/404/405, rotates
+through the SBOM's ranked chat-endpoint candidates (mutating *client* in
+place via :meth:`~nuguard.redteam.target.client.TargetAppClient.set_chat_endpoint`),
 falling back to a live :func:`~nuguard.common.endpoint_probe.probe_chat_endpoints`
 scan if none of the SBOM candidates work either.
 """
@@ -29,14 +30,19 @@ if TYPE_CHECKING:
 _log = get_logger(__name__)
 
 _TEST_MESSAGE = "Hello"
-_NOT_FOUND_PREFIXES = ("[HTTP 405]", "[HTTP 404]")
+# 404/405 mean the path itself is wrong. 400 is included too — a benign
+# "Hello" test message rejected with a validation error strongly suggests the
+# endpoint expects a different payload shape entirely (e.g. an image-upload
+# route auto-selected over the real text-chat endpoint because it scored
+# higher), not that this specific request happened to be malformed.
+_ROTATION_TRIGGER_PREFIXES = ("[HTTP 405]", "[HTTP 404]", "[HTTP 400]")
 
 
 class PreflightOutcome(BaseModel):
     """Result of :func:`validate_and_rotate_chat_endpoint`.
 
     ``ok`` is ``True`` when *client* is left pointed at a chat endpoint that
-    did not 404/405 on the test request (whether that was the original
+    did not 400/404/405 on the test request (whether that was the original
     endpoint or a rotated one). ``rotated_endpoint`` is populated whenever
     the endpoint changed, so callers can update their own tracked
     ``chat_path``/``chat_payload_key``/... state to match.
@@ -56,14 +62,14 @@ async def validate_and_rotate_chat_endpoint(
     target_url: str = "",
     auth_headers: dict[str, str] | None = None,
 ) -> PreflightOutcome:
-    """Send a test request to *client*'s current endpoint; rotate on 404/405.
+    """Send a test request to *client*'s current endpoint; rotate on 400/404/405.
 
     Args:
         client: Ready-to-use client (auth headers already set) whose chat
             endpoint is mutated in place on rotation.
         sbom: Parsed SBOM used to rank fallback candidates via
             :func:`~nuguard.common.endpoint_probe.discover_chat_candidates_from_sbom`.
-        has_explicit_endpoint: When ``True``, a 404/405 is reported without
+        has_explicit_endpoint: When ``True``, a 400/404/405 is reported without
             attempting rotation — an explicitly configured endpoint takes
             precedence and silently substituting another one would be
             surprising.
@@ -85,19 +91,19 @@ async def validate_and_rotate_chat_endpoint(
         _log.debug("Pre-flight: test request failed (non-fatal): %s", exc)
         return PreflightOutcome(ok=True)
 
-    if not response.startswith(_NOT_FOUND_PREFIXES):
+    if not response.startswith(_ROTATION_TRIGGER_PREFIXES):
         return PreflightOutcome(ok=True)
 
     _log.warning("Pre-flight: chat endpoint returned %s — attempting rotation", response[:15])
 
     if has_explicit_endpoint:
         note = (
-            "Configured chat endpoint is unreachable (405/404). Explicit endpoint "
-            "precedence is enforced; no SBOM/probe rotation was attempted. "
+            "Configured chat endpoint rejected the test request (400/404/405). Explicit "
+            "endpoint precedence is enforced; no SBOM/probe rotation was attempted. "
             "Fix 'target_endpoint' in nuguard.yaml or remove it to allow fallback discovery."
         )
         notes.append(note)
-        _log.error("Pre-flight: explicit endpoint unreachable (405/404); skipping rotation")
+        _log.error("Pre-flight: explicit endpoint rejected test request (400/404/405); skipping rotation")
         return PreflightOutcome(ok=False, notes=notes)
 
     if sbom is not None:
@@ -108,9 +114,9 @@ async def validate_and_rotate_chat_endpoint(
         for candidate in _dcandidates(sbom)[1:]:
             client.set_chat_endpoint(candidate[0], candidate[1], candidate[2], candidate[3])
             resp2, _ = await client.send(_TEST_MESSAGE, session)
-            if not resp2.startswith(_NOT_FOUND_PREFIXES):
+            if not resp2.startswith(_ROTATION_TRIGGER_PREFIXES):
                 _log.info("Pre-flight: rotated to working endpoint %s", candidate[0])
-                notes.append(f"Chat endpoint rotated to {candidate[0]!r} after 404/405 on the discovered path.")
+                notes.append(f"Chat endpoint rotated to {candidate[0]!r} after 400/404/405 on the discovered path.")
                 return PreflightOutcome(ok=True, rotated_endpoint=candidate, endpoint_source="sbom", notes=notes)
 
         # Live probe as last resort.
@@ -134,8 +140,8 @@ async def validate_and_rotate_chat_endpoint(
             )
 
     note = (
-        "Chat endpoint unreachable — all SBOM candidates and live probe returned 405/404. "
-        "Check 'target_endpoint' in nuguard.yaml or re-run 'nuguard sbom generate'."
+        "Chat endpoint unreachable — all SBOM candidates and live probe returned "
+        "400/404/405. Check 'target_endpoint' in nuguard.yaml or re-run 'nuguard sbom generate'."
     )
     notes.append(note)
     _log.error("Pre-flight: aborting — no working chat endpoint found")

@@ -16,16 +16,20 @@ _NS = uuid.NAMESPACE_URL
 class _DummyClient:
     """Minimal TargetAppClient stand-in — mirrors the fake used in behavior tests."""
 
-    def __init__(self, working_path: str | None, initial_path: str = "/chat") -> None:
+    def __init__(
+        self, working_path: str | None, initial_path: str = "/chat",
+        failure_response: str = "[HTTP 404] not found",
+    ) -> None:
         self.chat_path = initial_path
         self.working_path = working_path
         self.called_paths: list[str] = []
+        self.failure_response = failure_response
 
     async def send(self, message: str, session: object) -> tuple[str, list[dict]]:
         self.called_paths.append(self.chat_path)
         if self.chat_path == self.working_path:
             return "OK", []
-        return "[HTTP 404] not found", []
+        return self.failure_response, []
 
     def set_chat_endpoint(
         self,
@@ -139,3 +143,42 @@ async def test_reports_failure_when_nothing_works() -> None:
     assert outcome.ok is False
     assert outcome.rotated_endpoint is None
     assert any("unreachable" in n for n in outcome.notes)
+
+
+@pytest.mark.asyncio
+async def test_400_also_triggers_rotation() -> None:
+    """A validation-error 400 (not just 404/405) is also a wrong-endpoint
+    signal — e.g. an image-upload route auto-selected over the real chat
+    endpoint rejects a benign 'Hello' test with 400, not 404/405."""
+    client = _DummyClient(
+        working_path="/chat",
+        initial_path="/api/agent/chat",
+        failure_response="[HTTP 400] bad request",
+    )
+    sbom = _sbom_with_candidates("/chat", "/api/agent/chat")
+
+    outcome = await validate_and_rotate_chat_endpoint(
+        client, sbom, has_explicit_endpoint=False,
+    )
+
+    assert outcome.ok is True
+    assert outcome.rotated_endpoint is not None
+    assert outcome.rotated_endpoint[0] == "/chat"
+
+
+@pytest.mark.asyncio
+async def test_400_on_explicit_endpoint_reports_failure_without_rotating() -> None:
+    client = _DummyClient(
+        working_path="/api/agent/chat",
+        initial_path="/chat",
+        failure_response="[HTTP 400] bad request",
+    )
+    sbom = _sbom_with_candidates("/chat", "/api/agent/chat")
+
+    outcome = await validate_and_rotate_chat_endpoint(
+        client, sbom, has_explicit_endpoint=True,
+    )
+
+    assert outcome.ok is False
+    assert outcome.rotated_endpoint is None
+    assert client.called_paths == ["/chat"]

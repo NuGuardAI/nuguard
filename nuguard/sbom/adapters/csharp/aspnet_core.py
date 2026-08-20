@@ -45,6 +45,8 @@ _PROMPT_FIELDS = {
     "userinput",
     "user_input",
 }
+# OpenAI-style chat-history field names — see fastapi_adapter._MESSAGE_HISTORY_FIELD_NAMES.
+_MESSAGE_HISTORY_FIELDS = {"messages", "history", "conversation", "chat_history"}
 _RESPONSE_FIELDS = {
     "answer",
     "content",
@@ -480,7 +482,10 @@ def _endpoint_node(
 
     if chat_key:
         metadata["chat_payload_key"] = chat_key
-        metadata["chat_payload_list"] = False
+        # No type introspection available from the regex-based C# extraction —
+        # a name match against the OpenAI-style history field set is treated as
+        # sufficient signal, same heuristic as the Flask adapter.
+        metadata["chat_payload_list"] = chat_key.lower() in _MESSAGE_HISTORY_FIELDS
 
     if response_key:
         metadata["response_text_key"] = response_key
