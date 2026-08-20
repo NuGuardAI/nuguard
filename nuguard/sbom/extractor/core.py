@@ -45,6 +45,7 @@ from ..adapters.base import (
 )
 from ..adapters.data_classification import DataClassificationSQLAdapter
 from ..adapters.dockerfile import DockerfileAdapter
+from ..adapters.go._go_base import GoFrameworkAdapter
 from ..adapters.iac import (
     BicepAdapter,
     CloudFormationAdapter,
@@ -72,6 +73,8 @@ from ..adapters.yaml_adapters import (
 )
 from ..config import AiSbomConfig
 from ..core.application_summary import build_scan_summary
+from ..core.go_parser import GoParseResult
+from ..core.go_parser import parse_go as _parse_go_impl
 from ..core.ts_parser import TSParseResult
 from ..core.ts_parser import parse_typescript as _parse_ts_impl
 from ..deps import DependencyScanner
@@ -100,6 +103,8 @@ _SQL_EXTENSIONS = {".sql"}
 _NOTEBOOK_EXTENSIONS = {".ipynb"}
 # TypeScript/JavaScript: tree-sitter (or regex fallback) via core/ts_parser
 _TYPESCRIPT_EXTENSIONS = {".ts", ".tsx", ".js", ".jsx"}
+# Go: tree-sitter (or regex fallback) via core/go_parser
+_GO_EXTENSIONS = {".go"}
 # Dockerfile: extensionless file named "Dockerfile" or suffixed ".dockerfile"
 _DOCKERFILE_EXTENSIONS = {".dockerfile"}
 _DOCKERFILE_NAMES = {"dockerfile"}  # lower-cased stem match
@@ -740,6 +745,7 @@ class AiSbomExtractor:
             is_python = suffix in _PYTHON_EXTENSIONS
             is_notebook = suffix in _NOTEBOOK_EXTENSIONS
             is_typescript = suffix in _TYPESCRIPT_EXTENSIONS
+            is_go = suffix in _GO_EXTENSIONS
             is_sql = suffix in _SQL_EXTENSIONS
             is_dockerfile = (
                 suffix in _DOCKERFILE_EXTENSIONS or file_path.name.lower() in _DOCKERFILE_NAMES
@@ -781,8 +787,8 @@ class AiSbomExtractor:
                             if imp.module
                         }
                         for adapter in self.framework_adapters:
-                            # Skip TypeScript adapters for Python/notebook files
-                            if isinstance(adapter, TSFrameworkAdapter):
+                            # Skip TypeScript and Go adapters for Python/notebook files
+                            if isinstance(adapter, (TSFrameworkAdapter, GoFrameworkAdapter)):
                                 continue
                             if not adapter.can_handle(imported_modules):
                                 continue
@@ -852,6 +858,28 @@ class AiSbomExtractor:
                     except Exception as exc:
                         _log.warning(
                             "TS adapter %r failed on %s: %s",
+                            adapter.name,
+                            rel_path,
+                            exc,
+                        )
+                        continue
+                    for det in detections:
+                        self._merge_detection(node_map, det)
+
+            # Phase 1c-go: Go AST-aware framework adapters
+            elif is_go:
+                go_hints = self._parse_go(content, rel_path)
+                for adapter in self.framework_adapters:
+                    if not isinstance(adapter, GoFrameworkAdapter):
+                        continue
+                    if not adapter.can_handle(go_hints):
+                        continue
+                    _log.debug("running Go adapter %r on %s", adapter.name, rel_path)
+                    try:
+                        detections = adapter.extract(content, rel_path, go_hints)
+                    except Exception as exc:
+                        _log.warning(
+                            "Go adapter %r failed on %s: %s",
                             adapter.name,
                             rel_path,
                             exc,
@@ -1678,6 +1706,11 @@ class AiSbomExtractor:
     def _parse_typescript(content: str, file_path: str = "") -> TSParseResult:
         """Parse TypeScript/JavaScript via tree-sitter (or regex fallback)."""
         return _parse_ts_impl(content, file_path or None)
+
+    @staticmethod
+    def _parse_go(content: str, file_path: str = "") -> GoParseResult:
+        """Parse Go via tree-sitter (or regex fallback)."""
+        return _parse_go_impl(content, file_path)
 
     @staticmethod
     def _extract_notebook_python(content: str) -> str:
