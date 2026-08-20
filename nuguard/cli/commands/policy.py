@@ -381,12 +381,24 @@ def check(
         fw_name = framework or "custom"
         _console.print(f"\n[bold]Running compliance assessment:[/bold] {fw_name} …")
 
+        llm_client = None
+        if enable_llm:
+            from nuguard.common.llm_client import LLMClient
+
+            _model = cfg.litellm_model or ""
+            llm_client = LLMClient(
+                model=cfg.litellm_model,
+                api_key=cfg.litellm_api_key,
+                api_base=cfg.litellm_api_base if _model.startswith("azure") else None,
+            )
+
         try:
             assessment = asyncio.run(
                 run_compliance_assessment(
                     doc,
                     framework=fw_name,
                     enable_llm=enable_llm,
+                    llm=llm_client,
                 )
             )
         except Exception as exc:
