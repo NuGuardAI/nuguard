@@ -24,13 +24,15 @@ from __future__ import annotations
 
 import pytest
 
-from tests.benchmark.evaluate import evaluate_repo
+from tests.benchmark.evaluate import FIXTURES_DIR, evaluate_repo
 
 _REPOS = ("phlox-app", "chapterapps", "studyield-app")
 
 
 @pytest.mark.parametrize("repo_name", _REPOS)
 async def test_ground_truth_fixture_evaluates_without_error(repo_name: str) -> None:
+    if not (FIXTURES_DIR / repo_name).exists():
+        pytest.skip(f"{repo_name}: fixture not present locally (real-data fixture, gitignored)")
     result = await evaluate_repo(repo_name, mode="python", use_llm=False)
 
     assert result.discovered_assets, f"{repo_name}: expected at least one discovered asset"
