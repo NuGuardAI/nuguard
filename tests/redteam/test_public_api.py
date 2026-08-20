@@ -25,7 +25,7 @@ from nuguard.models.finding import Finding, Severity
 from nuguard.models.health_report import TargetHealthReport
 from nuguard.models.token_usage import TokenUsage
 from nuguard.redteam.coverage.tracker import CoverageTracker
-from nuguard.redteam.public_api import RedteamRunRequest, RedteamRunResult, run_redteam
+from nuguard.redteam.public_api import RedteamRunRequest, RedteamRunResult, run_redteam, run_redteam_stream
 from nuguard.redteam.target.canary import CanaryConfig
 
 
@@ -258,6 +258,35 @@ async def test_run_redteam_no_scenario_filter_keeps_all_findings():
         result = await run_redteam(request, sbom=MagicMock())
 
     assert len(result.findings) == 2
+
+
+@pytest.mark.asyncio
+async def test_run_redteam_stream_emits_terminal_and_final_result(monkeypatch):
+    expected = RedteamRunResult(
+        findings=[_finding()],
+        scenario_records=[{"title": "s1"}],
+        scan_outcome="high_findings",
+        config_notes=[],
+        token_usage=TokenUsage(input_tokens=1, output_tokens=2),
+        resolved_chat_path="/chat",
+        resolved_chat_path_source="config",
+        scenarios_run=1,
+    )
+
+    async def _fake_run(*args, **kwargs):
+        return expected
+
+    monkeypatch.setattr("nuguard.redteam.public_api.run_redteam", _fake_run)
+
+    handle = await run_redteam_stream(RedteamRunRequest(target_url="http://target"), sbom=MagicMock())
+    events = [event async for event in handle.events]
+    final = await handle.final_result()
+
+    assert events[0].event_type == "run_started"
+    assert events[-1].event_type == "completed"
+    assert [e.sequence for e in events] == list(range(1, len(events) + 1))
+    assert final.scenarios_run == 1
+    assert len(final.findings) == 1
 
 
 @pytest.mark.asyncio
