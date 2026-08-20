@@ -527,12 +527,24 @@ def _enrich_static(sbom: AiSbomDocument) -> AiSbomDocument:
         primary_agent = agent_nodes[0]
         if model_nodes and not _has_edge(enriched, primary_agent, model_nodes[0], RelationshipType.USES):
             enriched.edges.append(
-                Edge(source=primary_agent.id, target=model_nodes[0].id, relationship_type=RelationshipType.USES)
+                Edge(
+                    source=primary_agent.id,
+                    target=model_nodes[0].id,
+                    relationship_type=RelationshipType.USES,
+                    derivation="fallback_heuristic",
+                    confidence=0.5,
+                )
             )
         for tool in tool_nodes:
             if not _has_edge(enriched, primary_agent, tool, RelationshipType.CALLS):
                 enriched.edges.append(
-                    Edge(source=primary_agent.id, target=tool.id, relationship_type=RelationshipType.CALLS)
+                    Edge(
+                        source=primary_agent.id,
+                        target=tool.id,
+                        relationship_type=RelationshipType.CALLS,
+                        derivation="fallback_heuristic",
+                        confidence=0.5,
+                    )
                 )
 
     # Add TOOL -> DATASTORE relation in the simplest single-datastore case if none exist.
@@ -557,6 +569,8 @@ def _enrich_static(sbom: AiSbomDocument) -> AiSbomDocument:
                     target=datastore_nodes[0].id,
                     relationship_type=RelationshipType.ACCESSES,
                     access_type=AccessType.READWRITE,
+                    derivation="fallback_heuristic",
+                    confidence=0.5,
                 )
             )
 

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -759,6 +759,22 @@ class Edge(BaseModel):
     relationship_type: RelationshipType
     access_type: AccessType | None = Field(
         default=None, description="Access direction on ACCESSES edges: read | write | readwrite"
+    )
+    derivation: Literal["hint", "fallback_heuristic"] = Field(
+        default="hint",
+        description=(
+            "'hint': backed by an adapter-emitted RelationshipHint (explicit "
+            "code evidence). 'fallback_heuristic': synthesized by structural "
+            "fallback rules with no direct evidence."
+        ),
+    )
+    confidence: float | None = Field(
+        default=None,
+        description=(
+            "Set only for fallback_heuristic edges — a rough strength score "
+            "for the guess. None for hint edges (evidence-backed, no "
+            "separate score needed)."
+        ),
     )
 
 

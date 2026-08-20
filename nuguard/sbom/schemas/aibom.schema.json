@@ -235,6 +235,29 @@
           ],
           "default": null,
           "description": "Access direction on ACCESSES edges: read | write | readwrite"
+        },
+        "derivation": {
+          "default": "hint",
+          "description": "'hint': backed by an adapter-emitted RelationshipHint (explicit code evidence). 'fallback_heuristic': synthesized by structural fallback rules with no direct evidence.",
+          "enum": [
+            "hint",
+            "fallback_heuristic"
+          ],
+          "title": "Derivation",
+          "type": "string"
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Set only for fallback_heuristic edges \u2014 a rough strength score for the guess. None for hint edges (evidence-backed, no separate score needed).",
+          "title": "Confidence"
         }
       },
       "required": [

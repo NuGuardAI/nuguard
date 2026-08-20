@@ -2155,6 +2155,7 @@ class AiSbomExtractor:
                         target=tgt_id,
                         relationship_type=rel,
                         access_type=getattr(hint, "access_type", None),
+                        derivation="hint",
                     )
                 )
 
@@ -2163,7 +2164,7 @@ class AiSbomExtractor:
         for node in doc.nodes:
             by_type.setdefault(node.component_type, []).append(node)
 
-        def _add_edge(src_id: Any, tgt_id: Any, rel: str) -> None:
+        def _add_edge(src_id: Any, tgt_id: Any, rel: str, confidence: float = 0.5) -> None:
             key = (src_id, tgt_id, rel)
             if key in seen_edges:
                 return
@@ -2173,6 +2174,8 @@ class AiSbomExtractor:
                     source=src_id,
                     target=tgt_id,
                     relationship_type=rel_type_map.get(rel, RelationshipType.USES),
+                    derivation="fallback_heuristic",
+                    confidence=confidence,
                 )
             )
 
@@ -2275,6 +2278,8 @@ class AiSbomExtractor:
                             source=dep.id,
                             target=img.id,
                             relationship_type=RelationshipType.DEPLOYS,
+                            derivation="fallback_heuristic",
+                            confidence=0.6,
                         )
                     )
 
@@ -2292,6 +2297,8 @@ class AiSbomExtractor:
                             source=iam_node.id,
                             target=dep.id,
                             relationship_type=RelationshipType.USES,
+                            derivation="fallback_heuristic",
+                            confidence=0.6,
                         )
                     )
 
@@ -2313,6 +2320,7 @@ class AiSbomExtractor:
         endpoints_without_auth_type = [ep for ep in endpoints if not _auth_type(ep)]
         for auth in by_type.get(ComponentType.AUTH, []):
             matched = [ep for ep in endpoints_with_auth_type if _auth_type(ep) == _auth_type(auth)]
+            is_matched = bool(matched)
             targets = matched if matched else sorted(endpoints_without_auth_type, key=lambda n: n.name)[:10]
             for ep in targets:
                 key = (auth.id, ep.id, "PROTECTS")
@@ -2323,6 +2331,8 @@ class AiSbomExtractor:
                             source=auth.id,
                             target=ep.id,
                             relationship_type=RelationshipType.PROTECTS,
+                            derivation="hint" if is_matched else "fallback_heuristic",
+                            confidence=None if is_matched else 0.4,
                         )
                     )
 
