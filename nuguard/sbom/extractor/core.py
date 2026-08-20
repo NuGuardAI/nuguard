@@ -2347,7 +2347,11 @@ class AiSbomExtractor:
             maybe_refine_use_case_summary_with_llm,  # noqa: PLC0415
         )
         from ..core.confidence import aggregate_node_confidence  # noqa: PLC0415
-        from ..core.gap_fill import apply_discovery_results, discover_missing_nodes  # noqa: PLC0415
+        from ..core.gap_fill import (  # noqa: PLC0415
+            GapFillBudget,
+            apply_discovery_results,
+            discover_missing_nodes,
+        )
         from ..core.verification import (  # noqa: PLC0415
             apply_verification_results,
             verify_uncertain_nodes,
@@ -2362,14 +2366,31 @@ class AiSbomExtractor:
         )
         evidence_map = {n.id: n.evidence for n in doc.nodes}
 
-        # Step 0: Gap-fill discovery — find component types absent from deterministic results
-        gap_budget = min(config.llm_budget_tokens // 3, 150_000)
+        # Step 0: Gap-fill discovery — find component types absent (or, for
+        # PROBE-eligible categories, plausibly under-represented) from
+        # deterministic results.
+        gap_fill_budget = GapFillBudget(
+            max_calls=config.gap_fill_max_calls,
+            max_cost_usd=config.gap_fill_max_cost_usd,
+        )
+        self_critique_categories = set()
+        for raw_category in config.gap_fill_self_critique_categories:
+            try:
+                self_critique_categories.add(ComponentType(raw_category.strip().upper()))
+            except ValueError:
+                _log.warning("gap-fill: unknown self_critique_categories entry %r", raw_category)
         try:
-            new_nodes = await discover_missing_nodes(
-                doc, file_contents, client, budget_tokens=gap_budget
+            new_nodes, gap_fill_budget = await discover_missing_nodes(
+                doc,
+                file_contents,
+                client,
+                budget=gap_fill_budget,
+                enable_privilege=config.gap_fill_enable_privilege,
+                enable_guardrail=config.gap_fill_enable_guardrail,
+                self_critique_categories=self_critique_categories,
             )
             doc = apply_discovery_results(doc, new_nodes)
-            _log.info("gap-fill: %d new node(s) discovered", len(new_nodes))
+            _log.info("gap-fill: %s", gap_fill_budget.to_dict())
         except Exception as exc:
             _log.warning("gap-fill: unexpected error — continuing without: %s", exc)
 
@@ -2380,7 +2401,12 @@ class AiSbomExtractor:
             return text, sum(client.token_counts) - _before
 
         results, v_stats = await verify_uncertain_nodes(
-            doc.nodes, evidence_map, _llm_call, file_contents=file_contents
+            doc.nodes,
+            evidence_map,
+            _llm_call,
+            file_contents=file_contents,
+            cost_budget=config.verification_cost_budget,
+            max_candidates=config.verification_max_verifications,
         )
         doc.nodes = apply_verification_results(doc.nodes, results)
         _log.info("llm verification: %s", v_stats.to_dict())

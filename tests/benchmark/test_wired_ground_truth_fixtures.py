@@ -26,7 +26,14 @@ import pytest
 
 from tests.benchmark.evaluate import FIXTURES_DIR, evaluate_repo
 
-_REPOS = ("phlox-app", "chapterapps", "studyield-app")
+# shop-chat-agent has a ground-truth file at
+# tests/apps/shop-chat-agent/shop-chat-agent.ground-truth.sbom.json but no
+# materialized tests/benchmark/fixtures/shop-chat-agent/{ground_truth.json,
+# cached_files.json} yet — this entry is a no-op (skipped, like the other
+# three when their fixture isn't present locally) until that migration is
+# done as a follow-up; listing it here means it activates automatically
+# once materialized.
+_REPOS = ("phlox-app", "chapterapps", "studyield-app", "shop-chat-agent")
 
 
 @pytest.mark.parametrize("repo_name", _REPOS)

@@ -37,6 +37,22 @@ sbom_generation:
   llm: true                        # set true to enrich SBOM nodes with LLM descriptions
                                     # requires LITELLM_API_KEY to be set
 
+  # Gap-fill discovery pass — multi-round LLM discovery of component types
+  # that regex/AST extraction can't see structurally (dynamically-registered
+  # routes, non-literal prompts, hand-rolled multi-agent orchestration, etc.)
+  # gap_fill:
+  #   max_calls: 40             # hard cap on LLM calls for this pass, per scan
+  #   max_cost_usd: 5.0         # estimated USD spend cap (rough per-call estimate)
+  #   enable_privilege: false   # opt-in: also gap-fill PRIVILEGE nodes (off by default)
+  #   enable_guardrail: false   # opt-in: also gap-fill GUARDRAIL nodes (off by default)
+  #   self_critique_categories: []  # extra categories to run Round-3 self-critique on
+  #                                  # (privilege/guardrail always get this regardless)
+
+  # Second-pass LLM verification of uncertain (0.60-0.85 confidence) node detections
+  # verification:
+  #   max_verifications: 20     # max nodes verified per scan
+  #   cost_budget: 20.0         # estimated USD spend cap
+
 # ─── Target application — shared by behavior and redteam ──────────────────────
 # Set once here; both commands pick it up automatically.
 # Override in the behavior: or redteam: sections below for per-command differences.

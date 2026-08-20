@@ -188,6 +188,26 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
     if "llm" in sbom_gen:
         flat["sbom_llm_enabled"] = bool(sbom_gen["llm"])
 
+    gap_fill = sbom_gen.get("gap_fill", {}) or {}
+    if "max_calls" in gap_fill:
+        flat["sbom_gap_fill_max_calls"] = int(gap_fill["max_calls"])
+    if "max_cost_usd" in gap_fill:
+        flat["sbom_gap_fill_max_cost_usd"] = float(gap_fill["max_cost_usd"])
+    if "enable_privilege" in gap_fill:
+        flat["sbom_gap_fill_enable_privilege"] = bool(gap_fill["enable_privilege"])
+    if "enable_guardrail" in gap_fill:
+        flat["sbom_gap_fill_enable_guardrail"] = bool(gap_fill["enable_guardrail"])
+    if "self_critique_categories" in gap_fill:
+        flat["sbom_gap_fill_self_critique_categories"] = list(
+            gap_fill["self_critique_categories"] or []
+        )
+
+    sbom_verification = sbom_gen.get("verification", {}) or {}
+    if "max_verifications" in sbom_verification:
+        flat["sbom_verification_max_verifications"] = int(sbom_verification["max_verifications"])
+    if "cost_budget" in sbom_verification:
+        flat["sbom_verification_cost_budget"] = float(sbom_verification["cost_budget"])
+
     # ── Shared target block ────────────────────────────────────────────────────
     # target: at the top level acts as a shared default for both behavior and
     # redteam.  Section-level keys (redteam.target, behavior.target) take
@@ -938,6 +958,58 @@ class NuGuardConfig(BaseSettings):
     sbom_llm_enabled: bool = Field(
         default=False,
         description="Enable LLM enrichment during SBOM generation (yaml: sbom_generation.llm).",
+    )
+    sbom_gap_fill_max_calls: int | None = Field(
+        default=None,
+        description=(
+            "Max LLM calls for the gap-fill discovery pass "
+            "(yaml: sbom_generation.gap_fill.max_calls, default 40)."
+        ),
+    )
+    sbom_gap_fill_max_cost_usd: float | None = Field(
+        default=None,
+        description=(
+            "Max estimated USD spend for the gap-fill discovery pass "
+            "(yaml: sbom_generation.gap_fill.max_cost_usd, default 5.0)."
+        ),
+    )
+    sbom_gap_fill_enable_privilege: bool = Field(
+        default=False,
+        description=(
+            "Opt into LLM gap-fill for PRIVILEGE nodes, off by default "
+            "(yaml: sbom_generation.gap_fill.enable_privilege)."
+        ),
+    )
+    sbom_gap_fill_enable_guardrail: bool = Field(
+        default=False,
+        description=(
+            "Opt into LLM gap-fill for GUARDRAIL nodes, off by default "
+            "(yaml: sbom_generation.gap_fill.enable_guardrail)."
+        ),
+    )
+    sbom_gap_fill_self_critique_categories: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Extra component categories that get a Round-3 self-critique pass "
+            "beyond the always-forced privilege/guardrail "
+            "(yaml: sbom_generation.gap_fill.self_critique_categories)."
+        ),
+    )
+    sbom_verification_max_verifications: int | None = Field(
+        default=None,
+        description=(
+            "Max node-verification LLM calls per scan "
+            "(yaml: sbom_generation.verification.max_verifications; "
+            "env: AISBOM_MAX_VERIFICATIONS, default 20)."
+        ),
+    )
+    sbom_verification_cost_budget: float | None = Field(
+        default=None,
+        description=(
+            "Max estimated USD spend for node verification "
+            "(yaml: sbom_generation.verification.cost_budget; "
+            "env: AISBOM_VERIFICATION_COST_BUDGET, default 20.0)."
+        ),
     )
 
     # ------------------------------------------------------- Redteam

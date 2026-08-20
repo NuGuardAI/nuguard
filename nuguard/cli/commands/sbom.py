@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 from urllib.parse import urlparse, urlunparse
 
 import typer
@@ -266,12 +266,24 @@ def _do_generate(
     effective_llm = llm or cfg.sbom_llm_enabled
     _sbom_model = cfg.litellm_model or ""
     _sbom_api_base = cfg.litellm_api_base if _sbom_model.startswith("azure") else None
-    config = AiSbomConfig(
-        enable_llm=effective_llm,
-        llm_model=_sbom_model,
-        llm_api_key=cfg.litellm_api_key or None,
-        llm_api_base=_sbom_api_base,
-    )
+    config_kwargs: dict[str, Any] = {
+        "enable_llm": effective_llm,
+        "llm_model": _sbom_model,
+        "llm_api_key": cfg.litellm_api_key or None,
+        "llm_api_base": _sbom_api_base,
+        "gap_fill_enable_privilege": cfg.sbom_gap_fill_enable_privilege,
+        "gap_fill_enable_guardrail": cfg.sbom_gap_fill_enable_guardrail,
+        "gap_fill_self_critique_categories": cfg.sbom_gap_fill_self_critique_categories,
+    }
+    if cfg.sbom_gap_fill_max_calls is not None:
+        config_kwargs["gap_fill_max_calls"] = cfg.sbom_gap_fill_max_calls
+    if cfg.sbom_gap_fill_max_cost_usd is not None:
+        config_kwargs["gap_fill_max_cost_usd"] = cfg.sbom_gap_fill_max_cost_usd
+    if cfg.sbom_verification_cost_budget is not None:
+        config_kwargs["verification_cost_budget"] = cfg.sbom_verification_cost_budget
+    if cfg.sbom_verification_max_verifications is not None:
+        config_kwargs["verification_max_verifications"] = cfg.sbom_verification_max_verifications
+    config = AiSbomConfig(**config_kwargs)
     gen = SbomGenerator(config=config)
 
     try:

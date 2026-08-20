@@ -9,7 +9,14 @@ integration coverage and is not re-tested here.
 
 from __future__ import annotations
 
-from nuguard.sbom.core.gap_fill import _identify_absent_categories
+from nuguard.sbom.core.gap_fill import GapFillBudget, GateReason, _identify_absent_categories
+from nuguard.sbom.core.gap_fill.dedup import DedupContext
+from nuguard.sbom.core.gap_fill.gating import (
+    has_endpoint_registration_loop,
+    identify_gated_categories,
+    prompt_excluded_file_probe,
+    tool_framework_diversity_probe,
+)
 from nuguard.sbom.models import AiSbomDocument, Node, NodeMetadata
 from nuguard.sbom.types import ComponentType
 
@@ -94,3 +101,211 @@ def test_guardrail_and_privilege_never_gap_filled() -> None:
     absent = _identify_absent_categories(doc)
     assert ComponentType.GUARDRAIL not in absent
     assert ComponentType.PRIVILEGE not in absent
+
+
+# ---------------------------------------------------------------------------
+# PRIVILEGE / GUARDRAIL opt-in gating
+# ---------------------------------------------------------------------------
+
+
+def test_privilege_skipped_by_default_even_when_absent() -> None:
+    doc = AiSbomDocument(target=".", nodes=[])
+    decisions = identify_gated_categories(doc, {})
+    assert decisions[ComponentType.PRIVILEGE] == GateReason.SKIPPED
+    assert decisions[ComponentType.GUARDRAIL] == GateReason.SKIPPED
+
+
+def test_privilege_absent_when_enabled_and_zero_nodes() -> None:
+    doc = AiSbomDocument(target=".", nodes=[])
+    decisions = identify_gated_categories(doc, {}, enable_privilege=True)
+    assert decisions[ComponentType.PRIVILEGE] == GateReason.ABSENT
+    # GUARDRAIL stays opted out independently
+    assert decisions[ComponentType.GUARDRAIL] == GateReason.SKIPPED
+
+
+def test_guardrail_absent_when_enabled_and_zero_nodes() -> None:
+    doc = AiSbomDocument(target=".", nodes=[])
+    decisions = identify_gated_categories(doc, {}, enable_guardrail=True)
+    assert decisions[ComponentType.GUARDRAIL] == GateReason.ABSENT
+
+
+def test_privilege_skipped_when_enabled_but_nodes_already_present() -> None:
+    """Opted-in PRIVILEGE is ABSENT-only — never probed like TOOL/PROMPT/API_ENDPOINT."""
+    doc = AiSbomDocument(target=".", nodes=[_node(ComponentType.PRIVILEGE, name="privilege:admin")])
+    decisions = identify_gated_categories(doc, {}, enable_privilege=True)
+    assert decisions[ComponentType.PRIVILEGE] == GateReason.SKIPPED
+
+
+# ---------------------------------------------------------------------------
+# Probe-signal functions
+# ---------------------------------------------------------------------------
+
+
+def test_endpoint_registration_loop_detected() -> None:
+    content = (
+        "const routeTable = [{method: 'get', path: '/a', handler: a}];\n"
+        "for (const r of routeTable) {\n"
+        "  app.get(r.path, r.handler);\n"
+        "}\n"
+    )
+    assert has_endpoint_registration_loop({"app.ts": content}) is True
+
+
+def test_endpoint_registration_loop_not_detected_for_plain_routes() -> None:
+    content = "app.get('/a', handlerA);\napp.post('/b', handlerB);\n"
+    assert has_endpoint_registration_loop({"app.ts": content}) is False
+
+
+def test_api_endpoint_probed_when_registration_loop_present() -> None:
+    doc = AiSbomDocument(
+        target=".",
+        nodes=[_node(ComponentType.API_ENDPOINT, name="GET /health", confidence=0.9)],
+    )
+    file_contents = {
+        "app.ts": (
+            "for (const r of routeTable) {\n"
+            "  router.post(r.path, r.handler);\n"
+            "}\n"
+        )
+    }
+    decisions = identify_gated_categories(doc, file_contents)
+    assert decisions[ComponentType.API_ENDPOINT] == GateReason.PROBE
+
+
+def test_api_endpoint_skipped_when_present_and_no_loop_signal() -> None:
+    doc = AiSbomDocument(
+        target=".",
+        nodes=[_node(ComponentType.API_ENDPOINT, name="GET /health", confidence=0.9)],
+    )
+    file_contents = {"app.ts": "app.get('/health', h);\n"}
+    decisions = identify_gated_categories(doc, file_contents)
+    assert decisions[ComponentType.API_ENDPOINT] == GateReason.SKIPPED
+
+
+def test_tool_framework_diversity_probe_fires_with_many_frameworks_few_tools() -> None:
+    doc = AiSbomDocument(
+        target=".",
+        nodes=[
+            _node(ComponentType.FRAMEWORK, name="LangGraph"),
+            _node(ComponentType.MODEL, name="gpt-4o"),
+            _node(ComponentType.TOOL, name="search"),
+        ],
+    )
+    assert tool_framework_diversity_probe(doc) is True
+
+
+def test_tool_framework_diversity_probe_does_not_fire_with_balanced_tools() -> None:
+    doc = AiSbomDocument(
+        target=".",
+        nodes=[
+            _node(ComponentType.FRAMEWORK, name="LangGraph"),
+            _node(ComponentType.MODEL, name="gpt-4o"),
+            _node(ComponentType.TOOL, name="search"),
+            _node(ComponentType.TOOL, name="calculator"),
+        ],
+    )
+    assert tool_framework_diversity_probe(doc) is False
+
+
+def test_prompt_excluded_file_probe_finds_excluded_prompt_files() -> None:
+    doc = AiSbomDocument(target=".", nodes=[])
+    file_contents = {
+        "src/prompts.py": "SYSTEM = build_prompt()",
+        "src/handler.py": "def handle(): pass",
+    }
+    candidates = prompt_excluded_file_probe(doc, file_contents)
+    assert "src/prompts.py" in candidates
+    assert "src/handler.py" not in candidates
+
+
+def test_prompt_probe_gates_probe_reason_when_files_present() -> None:
+    doc = AiSbomDocument(target=".", nodes=[])
+    file_contents = {"src/prompt_templates.py": "TEMPLATE = build()"}
+    decisions = identify_gated_categories(doc, file_contents)
+    assert decisions[ComponentType.PROMPT] == GateReason.ABSENT  # zero nodes => ABSENT, not PROBE
+
+
+# ---------------------------------------------------------------------------
+# Dedup
+# ---------------------------------------------------------------------------
+
+
+def test_dedup_exact_match_blocks_duplicate() -> None:
+    doc = AiSbomDocument(target=".", nodes=[_node(ComponentType.TOOL, name="Redis", canonical_name="redis")])
+    ctx = DedupContext(doc)
+    assert ctx.check_and_register("redis", ComponentType.TOOL, fuzzy=False) is False
+
+
+def test_dedup_fuzzy_endpoint_normalizes_path_params() -> None:
+    doc = AiSbomDocument(
+        target=".",
+        nodes=[_node(ComponentType.API_ENDPOINT, name="GET /users/:id", canonical_name="get /users/:id")],
+    )
+    ctx = DedupContext(doc)
+    is_new = ctx.check_and_register(
+        "GET /users/{id}", ComponentType.API_ENDPOINT, fuzzy=True
+    )
+    assert is_new is False
+
+
+def test_dedup_fuzzy_evidence_file_overlap_blocks_duplicate() -> None:
+    doc = AiSbomDocument(
+        target=".",
+        nodes=[
+            Node(
+                name="System Prompt",
+                component_type=ComponentType.PROMPT,
+                confidence=0.85,
+                metadata=NodeMetadata(
+                    extras={"canonical_name": "system prompt", "evidence_files": ["src/prompts.py"]}
+                ),
+            )
+        ],
+    )
+    ctx = DedupContext(doc)
+    is_new = ctx.check_and_register(
+        "Assistant Prompt",
+        ComponentType.PROMPT,
+        fuzzy=True,
+        evidence_files=["src/prompts.py"],
+    )
+    assert is_new is False
+
+
+def test_dedup_absent_path_has_no_fuzzy_collisions() -> None:
+    """On the ABSENT path (fuzzy=False), a differently-named node is never
+    treated as a duplicate — only exact canonical_name matches are checked."""
+    doc = AiSbomDocument(
+        target=".",
+        nodes=[_node(ComponentType.TOOL, name="Redis Cache", canonical_name="redis cache")],
+    )
+    ctx = DedupContext(doc)
+    assert ctx.check_and_register("redis-cache", ComponentType.TOOL, fuzzy=False) is True
+
+
+# ---------------------------------------------------------------------------
+# Budget
+# ---------------------------------------------------------------------------
+
+
+def test_budget_can_afford_within_call_cap() -> None:
+    budget = GapFillBudget(max_calls=2, max_cost_usd=None)
+    assert budget.can_afford(1) is True
+    budget.record(1)
+    assert budget.can_afford(1) is True
+    budget.record(1)
+    assert budget.can_afford(1) is False
+
+
+def test_budget_exhausted_by_cost_cap() -> None:
+    budget = GapFillBudget(max_calls=1000, max_cost_usd=0.001)
+    assert budget.can_afford(1) is False
+    assert budget.exhausted() is True
+
+
+def test_budget_mark_exhausted_is_sticky() -> None:
+    budget = GapFillBudget(max_calls=100, max_cost_usd=100.0)
+    assert budget.exhausted() is False
+    budget.mark_exhausted("test")
+    assert budget.exhausted() is True
+    assert budget.to_dict()["exhausted_at"] == "test"

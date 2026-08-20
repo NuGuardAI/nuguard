@@ -25,6 +25,7 @@ from uuid import UUID
 from nuguard.common.logging import get_logger
 
 from ..models import Evidence, Node
+from .gap_fill.snippets import detect_language, extract_context
 
 _log = get_logger(__name__)
 
@@ -155,30 +156,8 @@ Respond ONLY with valid JSON (no markdown, no explanation):
 LLMCallFn = Callable[[str, str], Awaitable[tuple[str, int]]]
 
 
-def _detect_language(file_path: str) -> str:
-    if not file_path:
-        return "python"
-    lower = file_path.lower()
-    if lower.endswith((".ts", ".tsx")):
-        return "typescript"
-    if lower.endswith((".js", ".jsx", ".mjs")):
-        return "javascript"
-    if lower.endswith((".yaml", ".yml")):
-        return "yaml"
-    if lower.endswith(".tf"):
-        return "hcl"
-    if lower.endswith(".json"):
-        return "json"
-    return "python"
-
-
-def _extract_context(file_content: str, line_number: int, context_lines: int = 20) -> str:
-    if not file_content or line_number <= 0:
-        return "(context not available)"
-    lines = file_content.splitlines()
-    start = max(0, line_number - context_lines // 2 - 1)
-    end = min(len(lines), line_number + context_lines // 2)
-    return "\n".join(lines[start:end])
+_detect_language = detect_language
+_extract_context = extract_context
 
 
 @lru_cache(maxsize=1000)
@@ -358,6 +337,7 @@ async def verify_uncertain_nodes(
     llm_call_fn: LLMCallFn,
     file_contents: dict[str, str] | None = None,
     cost_budget: float = VERIFICATION_COST_BUDGET,
+    max_candidates: int = MAX_VERIFICATIONS_PER_SCAN,
     enabled: bool = ENABLE_VERIFICATION,
 ) -> tuple[list[VerificationResult], VerificationStats]:
     """Verify AIBOM nodes in the uncertain confidence zone.
@@ -375,6 +355,8 @@ async def verify_uncertain_nodes(
         Optional mapping of relative file path → file content for richer context.
     cost_budget:
         Maximum cost (USD) to spend; stops early if exceeded.
+    max_candidates:
+        Maximum number of nodes to verify in one scan.
     enabled:
         Master switch — returns empty results immediately when False.
     """
@@ -383,7 +365,7 @@ async def verify_uncertain_nodes(
         stats.skipped_count = len(nodes)
         return [], stats
 
-    candidates, skipped = filter_verification_candidates(nodes)
+    candidates, skipped = filter_verification_candidates(nodes, max_candidates=max_candidates)
     stats.total_candidates = len(candidates)
     stats.skipped_count = skipped
 
