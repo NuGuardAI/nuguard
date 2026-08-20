@@ -202,6 +202,7 @@ func main() {
     assert "anthropic" in _frameworks(detections)
     assert "claude-3-5-sonnet" in models
     assert models["claude-3-5-sonnet"].metadata["provider"] == "anthropic"
+    assert models["claude-3-5-sonnet"].metadata["framework"] == "anthropic"
 
 
 def test_anthropic_message_request_string_model() -> None:
@@ -234,6 +235,7 @@ func main() {
     assert "google" in _frameworks(detections)
     assert "gemini-1.5-flash" in models
     assert models["gemini-1.5-flash"].metadata["provider"] == "google"
+    assert models["gemini-1.5-flash"].metadata["framework"] == "google"
     assert models["gemini-1.5-flash"].evidence_kind == "ast_call"
     assert models["gemini-1.5-flash"].metadata["client_class"] == "GenerativeModel"
 
@@ -270,7 +272,9 @@ func main() {
 
     assert "ollama" in _frameworks(detections)
     assert models["llama3.2"].metadata["provider"] == "ollama"
+    assert models["llama3.2"].metadata["framework"] == "ollama"
     assert models["nomic-embed-text"].metadata["provider"] == "ollama"
+    assert models["nomic-embed-text"].metadata["framework"] == "ollama"
 
 
 def test_client_config_base_url_emits_proxy_framework() -> None:
@@ -313,6 +317,8 @@ func main() {
 
     assert "groq" in _frameworks(detections)
     assert "llama-3.3-70b-versatile" in models
+    assert models["llama-3.3-70b-versatile"].metadata["framework"] == "openai"
+    assert models["llama-3.3-70b-versatile"].metadata["provider"] == "meta"
     assert models["llama-3.3-70b-versatile"].metadata["provider"] != "groq"
     assert "api.groq.com" not in (models["llama-3.3-70b-versatile"].metadata.get("api_endpoint") or "")
 
@@ -392,6 +398,146 @@ func main() {
 
     assert detections == []
     assert _ADAPTER.can_handle(parse_go(source, "main.go")) is False
+
+
+def test_local_unqualified_chat_request_is_not_ollama_model() -> None:
+    source = """package main
+
+import "github.com/ollama/ollama/api"
+
+type ChatRequest struct {
+    Model string
+}
+
+func main() {
+    _ = ChatRequest{Model: "local-model"}
+}
+"""
+    detections = _extract(source)
+
+    assert "ollama" in _frameworks(detections)
+    assert _by_type(detections, ComponentType.MODEL) == []
+
+
+def test_local_unqualified_chat_completion_request_is_not_openai_model() -> None:
+    source = """package main
+
+import "github.com/sashabaranov/go-openai"
+
+type ChatCompletionRequest struct {
+    Model string
+}
+
+func main() {
+    _ = ChatCompletionRequest{Model: "gpt-4o"}
+}
+"""
+    detections = _extract(source)
+
+    assert "openai" in _frameworks(detections)
+    assert _by_type(detections, ComponentType.MODEL) == []
+
+
+def test_aliased_openai_request_is_detected() -> None:
+    source = """package main
+
+import oai "github.com/sashabaranov/go-openai"
+
+func main() {
+    _ = oai.ChatCompletionRequest{Model: "gpt-4o"}
+}
+"""
+    detections = _extract(source)
+    models = _models(detections)
+
+    assert "gpt-4o" in models
+    assert models["gpt-4o"].metadata["framework"] == "openai"
+    assert models["gpt-4o"].metadata["provider"] == "openai"
+
+
+def test_dot_imported_openai_request_is_detected() -> None:
+    source = """package main
+
+import . "github.com/sashabaranov/go-openai"
+
+func main() {
+    _ = ChatCompletionRequest{Model: "gpt-4o"}
+}
+"""
+    detections = _extract(source)
+    models = _models(detections)
+
+    assert "gpt-4o" in models
+    assert models["gpt-4o"].metadata["framework"] == "openai"
+    assert models["gpt-4o"].metadata["provider"] == "openai"
+
+
+def test_wrong_qualifier_is_not_attributed_to_imported_sdk() -> None:
+    source = """package main
+
+import "github.com/ollama/ollama/api"
+
+func main() {
+    _ = local.ChatRequest{Model: "local-model"}
+}
+"""
+    detections = _extract(source)
+
+    assert "ollama" in _frameworks(detections)
+    assert _by_type(detections, ComponentType.MODEL) == []
+
+
+def test_blank_import_does_not_match_unqualified_request() -> None:
+    source = """package main
+
+import _ "github.com/ollama/ollama/api"
+
+func main() {
+    _ = ChatRequest{Model: "local-model"}
+}
+"""
+    detections = _extract(source)
+
+    assert "ollama" in _frameworks(detections)
+    assert _by_type(detections, ComponentType.MODEL) == []
+
+
+def test_openai_sdk_llama_model_keeps_openai_framework() -> None:
+    source = """package main
+
+import "github.com/sashabaranov/go-openai"
+
+func main() {
+    _ = openai.ChatCompletionRequest{Model: "llama3.2"}
+}
+"""
+    detections = _extract(source)
+    models = _models(detections)
+
+    assert "llama3.2" in models
+    assert models["llama3.2"].metadata["framework"] == "openai"
+    assert models["llama3.2"].metadata["provider"] == "meta"
+    assert len(_by_type(detections, ComponentType.MODEL)) == 1
+
+
+def test_local_unqualified_client_config_is_not_proxy_framework() -> None:
+    source = """package main
+
+import "github.com/sashabaranov/go-openai"
+
+type ClientConfig struct {
+    BaseURL string
+}
+
+func main() {
+    _ = ClientConfig{BaseURL: "https://api.groq.com/openai/v1"}
+}
+"""
+    detections = _extract(source)
+    frameworks = _frameworks(detections)
+
+    assert "openai" in frameworks
+    assert "groq" not in frameworks
 
 
 def test_extractor_go_file_emits_framework_and_model(tmp_path: Path) -> None:

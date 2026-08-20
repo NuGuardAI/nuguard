@@ -7,13 +7,16 @@ Detects FRAMEWORK and MODEL components from:
 - ``github.com/google/generative-ai-go``
 - ``github.com/ollama/ollama/api``
 
-Matching is suffix-based after an SDK import is confirmed so explicit aliases
-and the go-openai import-path / package-name mismatch still work. Unresolved
-parser values (``$runtimeModel``, ``$openai.GPT4o``) are not turned into MODEL
-nodes. ``ClientConfig.BaseURL`` values emit a proxy FRAMEWORK node using the
-same OpenAI-compatible table as the Python adapter. The current parser has no
+Matching is qualifier-aware: request and config structs must use the matched
+import's alias, a dot import, or the SDK's known package identifier
+(``openai``, not the ``go-openai`` module path). Unresolved parser values
+(``$runtimeModel``, ``$openai.GPT4o``) are not turned into MODEL nodes.
+``ClientConfig.BaseURL`` values emit a proxy FRAMEWORK node using the same
+OpenAI-compatible table as the Python adapter. The current parser has no
 client→config→request dataflow, so those URLs do not remap unrelated MODEL
-nodes. Field assignment after ``DefaultConfig`` is out of scope.
+nodes. Field assignment after ``DefaultConfig`` is out of scope. Google
+``GenerativeModel`` / ``EmbeddingModel`` calls are matched by method name
+only; the parser cannot prove receiver provenance.
 """
 
 from __future__ import annotations
@@ -67,6 +70,7 @@ def _resolve_provider_from_base_url(base_url: str) -> str | None:
 @dataclass(frozen=True)
 class _ProviderSpec:
     modules: tuple[str, ...]
+    package_ident: str
     request_types: tuple[str, ...]
     config_types: tuple[str, ...] = ()
     model_methods: tuple[str, ...] = ()
@@ -76,23 +80,27 @@ class _ProviderSpec:
 _PROVIDERS: dict[str, _ProviderSpec] = {
     "openai": _ProviderSpec(
         modules=("github.com/sashabaranov/go-openai",),
+        package_ident="openai",
         request_types=("ChatCompletionRequest", "CompletionRequest", "EmbeddingRequest"),
         config_types=("ClientConfig",),
         display_name="OpenAI",
     ),
     "anthropic": _ProviderSpec(
         modules=("github.com/anthropics/anthropic-sdk-go",),
+        package_ident="anthropic",
         request_types=("MessageNewParams", "MessageRequest"),
         display_name="Anthropic",
     ),
     "google": _ProviderSpec(
         modules=("github.com/google/generative-ai-go",),
+        package_ident="genai",
         request_types=(),
         model_methods=("GenerativeModel", "EmbeddingModel"),
         display_name="Google",
     ),
     "ollama": _ProviderSpec(
         modules=("github.com/ollama/ollama/api",),
+        package_ident="api",
         request_types=("ChatRequest", "GenerateRequest", "EmbedRequest"),
         display_name="Ollama",
     ),
@@ -115,10 +123,42 @@ _MODEL_METHOD_TO_PROVIDER: dict[str, str] = {
 }
 
 
-def _type_suffix(name: str) -> str:
-    """Return the identifier after the last package qualifier."""
+def _split_qualified_name(name: str) -> tuple[str, str]:
+    """Return ``(qualifier, type_suffix)`` for a Go type or constructor name."""
     cleaned = name.replace("*", "").replace("&", "").strip()
-    return cleaned.rsplit(".", 1)[-1] if cleaned else ""
+    if not cleaned:
+        return "", ""
+    if "." not in cleaned:
+        return "", cleaned
+    qualifier, suffix = cleaned.rsplit(".", 1)
+    return qualifier, suffix
+
+
+def _qualifier_matches(qualifier: str, matched_import: GoImport, package_ident: str) -> bool:
+    """Return whether *qualifier* is in scope for *matched_import*."""
+    alias = matched_import.alias
+    if alias == "_":
+        return False
+    if alias == ".":
+        return qualifier == ""
+    expected = alias if alias else package_ident
+    return qualifier == expected
+
+
+def _qualified_struct_provider(
+    class_name: str,
+    imported: dict[str, GoImport],
+    type_map: dict[str, str],
+) -> str | None:
+    """Return the SDK provider if *class_name* is a qualified known struct."""
+    qualifier, type_name = _split_qualified_name(class_name)
+    sdk_provider = type_map.get(type_name)
+    if sdk_provider is None or sdk_provider not in imported:
+        return None
+    spec = _PROVIDERS[sdk_provider]
+    if not _qualifier_matches(qualifier, imported[sdk_provider], spec.package_ident):
+        return None
+    return sdk_provider
 
 
 class GoLLMClientsAdapter(GoFrameworkAdapter):
@@ -161,16 +201,21 @@ class GoLLMClientsAdapter(GoFrameworkAdapter):
                     proxy_provider,
                     base_url,
                     result,
+                    imported,
                 )
             )
 
         for inst in result.instantiations:
             if inst.kind != "struct_literal":
                 continue
-            type_name = _type_suffix(inst.class_name)
-            sdk_provider = _REQUEST_TYPE_TO_PROVIDER.get(type_name)
-            if sdk_provider is None or sdk_provider not in imported:
+            sdk_provider = _qualified_struct_provider(
+                inst.class_name,
+                imported,
+                _REQUEST_TYPE_TO_PROVIDER,
+            )
+            if sdk_provider is None:
                 continue
+            type_name = _split_qualified_name(inst.class_name)[1]
             model_name = self._resolve(inst, "Model")
             if not model_name:
                 continue
@@ -236,7 +281,11 @@ class GoLLMClientsAdapter(GoFrameworkAdapter):
         for inst in parse_result.instantiations:
             if inst.kind != "struct_literal":
                 continue
-            if _CONFIG_TYPE_TO_PROVIDER.get(_type_suffix(inst.class_name)) != "openai":
+            if _qualified_struct_provider(
+                inst.class_name,
+                imported,
+                _CONFIG_TYPE_TO_PROVIDER,
+            ) != "openai":
                 continue
             url = self._resolve(inst, "BaseURL")
             proxy = _resolve_provider_from_base_url(url)
@@ -275,6 +324,7 @@ class GoLLMClientsAdapter(GoFrameworkAdapter):
         provider: str,
         base_url: str,
         parse_result: GoParseResult,
+        imported: dict[str, GoImport],
     ) -> ComponentDetection:
         """Emit a FRAMEWORK node for an OpenAI-compatible proxy BaseURL."""
         evidence = next(
@@ -282,7 +332,12 @@ class GoLLMClientsAdapter(GoFrameworkAdapter):
                 inst
                 for inst in parse_result.instantiations
                 if inst.kind == "struct_literal"
-                and _CONFIG_TYPE_TO_PROVIDER.get(_type_suffix(inst.class_name)) == "openai"
+                and _qualified_struct_provider(
+                    inst.class_name,
+                    imported,
+                    _CONFIG_TYPE_TO_PROVIDER,
+                )
+                == "openai"
                 and self._resolve(inst, "BaseURL") == base_url
             ),
             None,
@@ -333,7 +388,7 @@ class GoLLMClientsAdapter(GoFrameworkAdapter):
             priority=self.priority,
             confidence=0.90 if evidence_kind == "ast_instantiation" else 0.95,
             metadata={
-                "framework": provider,
+                "framework": sdk_provider,
                 "provider": provider,
                 "client_class": client_class,
                 "language": "golang",
