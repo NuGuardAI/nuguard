@@ -95,7 +95,7 @@ behavior:
   #   data_discovery_probe  — per-user data disclosure + cross-user IDOR
 
   workflows:
-    - topic_coverage
+  #  - topic_coverage
   #  - agent_tool_coverage
 
   # Produce a CapabilityMap report listing which tools/sub-agents were exercised
@@ -205,14 +205,14 @@ redteam:
   verify_findings: false
 
   # Guided adversarial conversations using ConversationDirector
-  concurrency: 3                     # parallel scenarios (raised from default 3 for throughput)
+  concurrency: 2                     # parallel scenarios (raised from default 3 for throughput)
   turn_delay_seconds: 1             # no inter-step sleep (models tolerate rapid requests)
   guided_conversations: true        # enable adaptive multi-turn attacks
   guided_max_turns: 8               # upper-bound cap on turns per guided scenario.
                                     # Scenario builders pick 8–12 by default; this
                                     # clamps any higher cap down. Raise/lower to
                                     # trade cost for depth.
-  guided_concurrency: 3             # parallel guided conversations (default: 3)
+  guided_concurrency: 2             # parallel guided conversations (default: 3)
   scenario_timeout: 900             # cancel any single scenario after 15 minutes (increased from 300 to accommodate in-semaphore cold-start retries)
 
   # TAP tree exploration (RT-016) — branching multi-tactic search.

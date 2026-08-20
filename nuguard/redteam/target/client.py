@@ -42,6 +42,38 @@ def _is_message_history_key(key: str) -> bool:
     return key.strip().lower() in _MESSAGE_HISTORY_KEYS
 
 
+# Path-parameter placeholder styles seen across frameworks: FastAPI/ASP.NET
+# Core use `{id}`, NestJS/Express use `:id`. Substituted against
+# TargetAppClient._path_param_values before every request — see
+# set_path_param() and tests/apps/studyield-app/2-step-chat.md (the "two-step
+# chat" plan this implements: bootstrap a resource, e.g. POST
+# /chat/conversations, then substitute its id into the chat path template).
+_COLON_PATH_PARAM_RE = re.compile(r":(\w+)")
+_BRACE_PATH_PARAM_RE = re.compile(r"\{(\w+)\}")
+
+
+def _substitute_path_params(path: str, values: dict[str, str]) -> tuple[str, list[str]]:
+    """Substitute ``:name``/``{name}`` placeholders in *path* from *values*.
+
+    Returns ``(resolved_path, missing_names)`` — *missing_names* lists any
+    placeholder with no bound value (left untouched in the returned path so
+    the caller can surface a clear config error instead of sending the
+    literal placeholder to the target).
+    """
+    missing: list[str] = []
+
+    def _repl(m: re.Match[str]) -> str:
+        name = m.group(1)
+        if name in values:
+            return values[name]
+        missing.append(name)
+        return m.group(0)
+
+    resolved = _COLON_PATH_PARAM_RE.sub(_repl, path)
+    resolved = _BRACE_PATH_PARAM_RE.sub(_repl, resolved)
+    return resolved, missing
+
+
 def _extract_nested_key(data: dict[str, Any], key_path: str) -> Any:
     """Extract a value from a nested dict/list using a flexible path notation.
 
@@ -166,6 +198,11 @@ class TargetAppClient:
         # include it in subsequent request bodies so multi-turn conversations
         # are correlated on the server side.
         self._session_context: dict[str, Any] = {}
+        # Two-step chat bootstrap: values bound via set_path_param() to
+        # substitute :name/{name} placeholders in _chat_path before each
+        # request (e.g. a conversation id created by a prerequisite POST) —
+        # see tests/apps/studyield-app/2-step-chat.md.
+        self._path_param_values: dict[str, str] = {}
         # Global HTTP semaphore: limits concurrent in-flight requests across ALL
         # callers sharing this client instance.  Useful when the target app has a
         # low Azure OpenAI / LLM concurrency quota and returns transient errors
@@ -346,7 +383,22 @@ class TargetAppClient:
             self._chat_response_key = response_key
         # Clear auto-detected response key so it is re-detected for the new endpoint
         self._detected_response_key = None
+        # A path-param binding from the previous endpoint (e.g. {"id": "..."})
+        # is not guaranteed to apply to the new one even if the param name
+        # matches — force a fresh bootstrap for whatever this endpoint needs.
+        self._path_param_values = {}
         self.reset_circuit_breaker()
+
+    def set_path_param(self, name: str, value: str) -> None:
+        """Bind *value* for a ``:name``/``{name}`` placeholder in the chat path.
+
+        Used by the two-step (resource-bootstrap) chat flow: a prerequisite
+        request (e.g. ``POST /chat/conversations``) creates a resource whose
+        id must be substituted into the chat endpoint's path template (e.g.
+        ``POST /chat/conversations/:id/messages``) before any turn can be
+        sent. See tests/apps/studyield-app/2-step-chat.md.
+        """
+        self._path_param_values[name] = value
 
     def update_default_headers(self, headers: dict[str, str] | None) -> None:
         """Merge headers into the default client headers for subsequent requests."""
@@ -584,7 +636,15 @@ class TargetAppClient:
                     # chat_payload_extras — the message key always takes precedence.
                     if self._chat_payload_extras:
                         body = {**self._chat_payload_extras, **body}
-                    chat_path = self._chat_path
+                    chat_path, _missing_params = _substitute_path_params(
+                        self._chat_path, self._path_param_values
+                    )
+                    if _missing_params:
+                        _log.warning(
+                            "_send_impl: unresolved path param(s) %s in chat path template %r",
+                            _missing_params, self._chat_path,
+                        )
+                        return f"[CONFIG_ERROR: unresolved path param {_missing_params[0]!r}]", []
 
                 if self._chat_payload_format == "form":
                     resp = await self._client.post(chat_path, data=body)
@@ -838,7 +898,16 @@ class TargetAppClient:
                     body.update(self._session_context)
                 if self._chat_payload_extras:
                     body = {**self._chat_payload_extras, **body}
-                chat_path = self._chat_path
+                chat_path, _missing_params = _substitute_path_params(
+                    self._chat_path, self._path_param_values
+                )
+                if _missing_params:
+                    _log.warning(
+                        "send_stream: unresolved path param(s) %s in chat path template %r",
+                        _missing_params, self._chat_path,
+                    )
+                    yield f"[CONFIG_ERROR: unresolved path param {_missing_params[0]!r}]", []
+                    return
 
             t_start = time.monotonic()
             _stream_kwargs: dict[str, Any] = (

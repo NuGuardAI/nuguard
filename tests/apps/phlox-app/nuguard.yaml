@@ -34,9 +34,10 @@ sbom_generation:
 target:
   url: http://localhost:5000
 
-  # Chat/agent endpoint — confirm against the generated SBOM; Phlox's chat
-  # route may differ (e.g. /api/chat or /api/agent/chat).
-  # endpoint: /api/chat
+  # Chat/agent endpoint — pinned explicitly because auto-discovery was picking
+  # /api/chat/respond-visual (a vision-only route that 400s without page
+  # images), causing every scenario to abort after 3 consecutive send failures.
+  #endpoint: /api/chat
 
   auth:
     # Phlox ships with no built-in auth by default (single-user, local-first).

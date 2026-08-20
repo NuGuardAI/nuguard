@@ -71,6 +71,15 @@ with open(path, "w") as f:
     f.write(content)
 PYEOF
 
+# Vite only bakes VITE_API_URL into the build at build time, but the frontend's
+# own Dockerfile has no ARG for it — docker-compose.yml's frontend
+# `environment: VITE_API_URL=...` never reaches the build, so every request
+# falls back to the hardcoded default below, which is also missing the
+# `/api/v1` prefix the backend actually serves under (breaks register/login/etc
+# with 404s). Patch the source default before building.
+sed -i "s#baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3010'#baseURL: import.meta.env.VITE_API_URL || 'http://localhost:${BACKEND_PORT:-3010}/api/v1'#" \
+  repo/frontend/src/config/api.ts
+
 cd repo
 mkdir -p data logs
 docker compose --env-file .env.docker up -d --build

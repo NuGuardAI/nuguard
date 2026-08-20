@@ -12,7 +12,10 @@
 
 services:
   phlox:
-    image: ghcr.io/bloodworks-io/phlox:latest
+    # Pinned to 2.2.4 — the :latest/2.3.0 build has a fatal frontend crash
+    # ("Cannot access 'v' before initialization", React never mounts, page
+    # stays blank). See README for details/upstream tracking.
+    image: ghcr.io/bloodworks-io/phlox:2.2.4
     container_name: phlox-nuguard-test
     # Bound to localhost only — Phlox has no auth by default (see README/security notes).
     ports:
@@ -23,7 +26,8 @@ services:
       - ./data:/usr/src/app/data
       - ./logs:/usr/src/app/logs
     healthcheck:
-      test: ["CMD", "curl", "-sf", "http://localhost:5000/"]
+      # python:3.12-slim has no curl/wget — use Python's stdlib instead.
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:5000/', timeout=3)"]
       interval: 10s
       timeout: 5s
       retries: 5

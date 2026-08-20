@@ -44,7 +44,19 @@ from .types import ComponentType, RelationshipType
 # Path-parameter detection
 # ---------------------------------------------------------------------------
 
-_PATH_PARAM_RE = re.compile(r"\{([^}]+)\}")
+# FastAPI/ASP.NET Core style: /user/{id}. Checked first since brace-style
+# paths never also use colon params in the same endpoint.
+_BRACE_PATH_PARAM_RE = re.compile(r"\{([^}]+)\}")
+# NestJS/Express style: /user/:id. Falls back to this when no {param} was
+# found — see tests/apps/studyield-app/2-step-chat.md.
+_COLON_PATH_PARAM_RE = re.compile(r":(\w+)")
+
+
+def _extract_path_params(endpoint: str) -> list[str]:
+    params = _BRACE_PATH_PARAM_RE.findall(endpoint)
+    if params:
+        return params
+    return _COLON_PATH_PARAM_RE.findall(endpoint)
 
 # Parameter names that indicate user/tenant-scoped IDOR surface
 _IDOR_PARAM_PATTERNS = re.compile(
@@ -169,7 +181,7 @@ def _enrich_api_endpoints(
 
         # Extract path params from the endpoint string
         if not meta.path_params and endpoint_str:
-            params = _PATH_PARAM_RE.findall(endpoint_str)
+            params = _extract_path_params(endpoint_str)
             if params:
                 meta.path_params = params
 
