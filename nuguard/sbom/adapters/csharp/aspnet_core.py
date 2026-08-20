@@ -788,26 +788,60 @@ def _minimal_response_type(
 def _lambda_parameters(
     handler: str,
 ) -> list[str]:
-    match = re.search(
-        r"(?:async\s*)?"
-        r"\((?P<params>[^()]*)\)"
-        r"\s*=>",
-        handler,
-        re.DOTALL,
-    )
+    """Return an outer C# lambda's parameters using balanced delimiters."""
+    masked = mask_non_code(handler)
+    arrow = masked.find("=>")
 
-    if match:
-        _, positional = parse_arguments(match.group("params"))
-        return positional
+    if arrow >= 0:
+        cursor = arrow
+
+        while cursor > 0 and masked[cursor - 1].isspace():
+            cursor -= 1
+
+        if cursor > 0 and masked[cursor - 1] == ")":
+            close_paren = cursor - 1
+            open_paren = _matching_lambda_open_paren(
+                masked,
+                close_paren,
+            )
+
+            if open_paren is not None:
+                _, positional = parse_arguments(handler[open_paren + 1 : close_paren])
+                return positional
 
     single = re.search(
         r"(?:async\s+)?"
         r"(?P<param>[A-Za-z_]\w*)"
         r"\s*=>",
-        handler,
+        masked,
     )
 
-    return [single.group("param")] if single else []
+    return [handler[single.start("param") : single.end("param")]] if single else []
+
+
+def _matching_lambda_open_paren(
+    source: str,
+    close_paren: int,
+) -> int | None:
+    """Return the opening parenthesis paired with *close_paren*."""
+    depth = 0
+
+    for index in range(
+        close_paren,
+        -1,
+        -1,
+    ):
+        char = source[index]
+
+        if char == ")":
+            depth += 1
+        elif char == "(":
+            depth -= 1
+
+            if depth == 0:
+                return index
+
+    return None
 
 
 def _parse_parameter(
@@ -858,7 +892,17 @@ def _binding_source(
         r"\[([^\]]+)\]",
         value,
     ):
-        for attribute in split_top_level(section):
+        normalized = re.sub(
+            r"^\s*(?:assembly|event|field|method|module|"
+            r"param|property|return|type|typevar)"
+            r"\s*:\s*",
+            "",
+            section,
+            count=1,
+            flags=re.IGNORECASE,
+        )
+
+        for attribute in split_top_level(normalized):
             name = attribute.split("(", 1)[0].strip().split(".")[-1].removesuffix("Attribute")
             binding = _BINDING_SOURCES.get(name)
 

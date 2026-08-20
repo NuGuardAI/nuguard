@@ -1054,3 +1054,64 @@ app.MapPost(
 
     assert endpoint.metadata["request_body_schema"] == {"prompt": "string"}
     assert endpoint.metadata["chat_payload_key"] == "prompt"
+
+
+def test_minimal_api_keyed_service_attribute_preserves_body_dto() -> None:
+    source = """using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
+
+public record ChatRequest(string Prompt);
+
+var app = WebApplication.CreateBuilder(args).Build();
+
+app.MapPost(
+    "/chat",
+    (
+        [FromKeyedServices("chat")]
+        ChatClient client,
+        [FromBody]
+        ChatRequest request) =>
+        client.CompleteChat(request.Prompt));
+"""
+
+    endpoint = _by_type(
+        _extract(
+            CSharpAspNetCoreAdapter(),
+            source,
+        ),
+        ComponentType.API_ENDPOINT,
+    )[0]
+
+    assert endpoint.metadata["request_body_schema"] == {"Prompt": "string"}
+    assert endpoint.metadata["chat_payload_key"] == "Prompt"
+    assert endpoint.metadata["chat_payload_list"] is False
+
+
+def test_parameter_attribute_target_specifier_preserves_query_binding() -> None:
+    source = """using Microsoft.AspNetCore.Mvc;
+
+public record ChatRequest(string Prompt);
+
+[ApiController]
+[Route("api/chat")]
+public class ChatController : ControllerBase
+{
+    [HttpPost]
+    public string Complete(
+        [param: FromQuery]
+        ChatRequest request) =>
+        client.CompleteChat(request.Prompt);
+}
+"""
+
+    endpoint = _by_type(
+        _extract(
+            CSharpAspNetCoreAdapter(),
+            source,
+        ),
+        ComponentType.API_ENDPOINT,
+    )[0]
+
+    assert "request_body_schema" not in endpoint.metadata
+    assert "chat_payload_key" not in endpoint.metadata
