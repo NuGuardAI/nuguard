@@ -286,9 +286,13 @@ def redteam(
             chat_path=cfg.target_endpoint or "",
             auth_config=cfg.resolved_auth_config(),
             chat_payload_extras=cfg.redteam_chat_payload_extras or None,
-            redteam_llm_model=cfg.redteam_llm_model,
-            redteam_llm_api_key=cfg.redteam_llm_api_key,
-            redteam_llm_api_base=cfg.redteam_llm_api_base,
+            # Falls back to the top-level llm.model/api_key/api_base when
+            # redteam.llm is not set, mirroring eval_llm's existing fallback below —
+            # otherwise guided conversations silently disable (no warning) for any
+            # config that only sets a top-level `llm:` block for SBOM/analyze use.
+            redteam_llm_model=cfg.redteam_llm_model or cfg.litellm_model or None,
+            redteam_llm_api_key=cfg.redteam_llm_api_key or cfg.litellm_api_key or None,
+            redteam_llm_api_base=cfg.redteam_llm_api_base or cfg.litellm_api_base or None,
             eval_llm_model=cfg.redteam_eval_llm_model or cfg.litellm_model or None,
             eval_llm_api_key=cfg.redteam_eval_llm_api_key or cfg.litellm_api_key or None,
             eval_llm_api_base=cfg.redteam_eval_llm_api_base,
@@ -321,9 +325,13 @@ def redteam(
             tree_max_depth=cfg.redteam_tree_max_depth,
             strict_outcome=cfg.redteam_strict_outcome,
             credentials=cfg.redteam_credentials or None,
-            redteam_llm_model=cfg.redteam_llm_model,
-            redteam_llm_api_key=cfg.redteam_llm_api_key,
-            redteam_llm_api_base=cfg.redteam_llm_api_base,
+            # Falls back to the top-level llm.model/api_key/api_base when
+            # redteam.llm is not set, mirroring eval_llm's existing fallback below —
+            # otherwise guided conversations silently disable (no warning) for any
+            # config that only sets a top-level `llm:` block for SBOM/analyze use.
+            redteam_llm_model=cfg.redteam_llm_model or cfg.litellm_model or None,
+            redteam_llm_api_key=cfg.redteam_llm_api_key or cfg.litellm_api_key or None,
+            redteam_llm_api_base=cfg.redteam_llm_api_base or cfg.litellm_api_base or None,
             eval_llm_model=cfg.redteam_eval_llm_model or cfg.litellm_model or None,
             eval_llm_api_key=cfg.redteam_eval_llm_api_key or cfg.litellm_api_key or None,
             eval_llm_api_base=cfg.redteam_eval_llm_api_base,

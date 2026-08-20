@@ -7,7 +7,7 @@ import uuid
 from nuguard.common.logging import get_logger
 from nuguard.models.exploit_chain import ExploitChain, ExploitStep, GoalType, ScenarioType
 from nuguard.models.policy import CognitivePolicy
-from nuguard.sbom.models import AiSbomDocument
+from nuguard.sbom.models import AiSbomDocument, Node
 from nuguard.sbom.types import ComponentType, RelationshipType
 
 # ── 2024–2025 advanced attack families ────────────────────────────────────────
@@ -949,9 +949,25 @@ class ScenarioGenerator:
         # Agents are resolved via ACCESSES edges → data-tool heuristic → all agents.
         _last_ds_name: str = ""
         _last_all_pii: list[str] = []
-        for node in self._sbom.nodes:
-            if node.component_type != ComponentType.DATASTORE:
+        # SBOM extraction commonly detects the same physical datastore multiple
+        # times under different driver/ORM aliases (e.g. "Sqlite"/"Sqlite3"/
+        # "Sqlalchemy" all pointing at one relational DB, or "Postgres"/
+        # "Postgresql" from different import statements). Generating one probe
+        # + one SQL-injection scenario per alias burns most of the scenario
+        # budget on near-identical turns against the same underlying attack
+        # surface. Dedupe to the single highest-confidence node per
+        # datastore_type category (relational/vector/kv/graph/...) so each
+        # genuinely distinct datastore is still probed exactly once.
+        _datastore_nodes_by_category: dict[str, Node] = {}
+        for _ds_node in self._sbom.nodes:
+            if _ds_node.component_type != ComponentType.DATASTORE:
                 continue
+            _category = (_ds_node.metadata.datastore_type or "database").strip().lower()
+            _existing = _datastore_nodes_by_category.get(_category)
+            if _existing is None or _ds_node.confidence > _existing.confidence:
+                _datastore_nodes_by_category[_category] = _ds_node
+
+        for node in _datastore_nodes_by_category.values():
             meta = node.metadata
             ds_name = node.name
             # Fall back to node name so "sqlite", "postgres" etc. in the name

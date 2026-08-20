@@ -61,6 +61,52 @@ def _normalize_scenario_token(value: str) -> str:
     return value.strip().lower().replace("-", "_")
 
 
+# Canonical config/CLI filter tokens whose intended scope doesn't reduce to a
+# fragile substring match against GoalType/ScenarioType enum values.
+#
+# "prompt-injection" is the motivating case: the real prompt-injection/jailbreak
+# family (context flooding, structural injection, indirect injection, system-prompt
+# extraction, guardrail bypass, Many-Shot Jailbreak, Crescendo, Skeleton Key,
+# Payload Splitting, fictional-framing bypass, false-policy-premise) all share
+# GoalType.PROMPT_DRIVEN_THREAT, but none of their ScenarioType values contain the
+# literal substring "prompt_injection" — only ScenarioType.REPO_PROMPT_INJECTION
+# (a coding-agent-specific type) does. Without this alias, a config listing
+# "prompt-injection" under redteam.scenarios silently drops the entire family and
+# a user has no way to discover it short of reading generator source.
+_PROMPT_INJECTION_MATCH_SET: set[str] = {
+    _normalize_scenario_token(GoalType.PROMPT_DRIVEN_THREAT.value),
+    # Coding-agent-specific type — not tagged PROMPT_DRIVEN_THREAT, but the name
+    # makes it an obvious match for anyone filtering on "prompt-injection".
+    _normalize_scenario_token(ScenarioType.REPO_PROMPT_INJECTION.value),
+}
+_FILTER_ALIASES: dict[str, set[str]] = {
+    "prompt_injection": _PROMPT_INJECTION_MATCH_SET,
+    "prompt_injections": _PROMPT_INJECTION_MATCH_SET,
+    "jailbreak": _PROMPT_INJECTION_MATCH_SET,
+    "jailbreaks": _PROMPT_INJECTION_MATCH_SET,
+    "jailbreaking": _PROMPT_INJECTION_MATCH_SET,
+}
+
+
+def _token_matches(token: str, goal: str, scenario_type: str, title: str) -> bool:
+    """Match one normalized filter token against a scenario's identity fields.
+
+    Checks the :data:`_FILTER_ALIASES` canonical mapping first (exact
+    goal-type match — precise, not fooled by accidental substring overlaps),
+    then falls back to the historical both-directions substring rule so
+    already-working tokens (``tool-abuse``, ``data-exfiltration``, etc., whose
+    GoalType values literally contain the token) keep matching unchanged.
+    """
+    alias = _FILTER_ALIASES.get(token)
+    if alias is not None:
+        return goal in alias or scenario_type in alias
+    return (
+        token in goal or goal in token
+        or token in scenario_type or scenario_type in token
+        or token in title
+    )
+
+
 def _dedup_findings(findings: list[Finding]) -> list[Finding]:
     """Collapse near-duplicate findings, keeping the highest-severity instance.
 
@@ -101,14 +147,7 @@ def _scenario_matches_filter(scenario: AttackScenario, filters: set[str]) -> boo
     goal = _normalize_scenario_token(scenario.goal_type.value)
     scenario_type = _normalize_scenario_token(scenario.scenario_type.value)
     title = _normalize_scenario_token(scenario.title)
-    # Check both directions so plural/singular mismatches (e.g. "api-attacks" vs
-    # "API_ATTACK") and prefix tokens (e.g. "data" vs "data_exfiltration") match.
-    return any(
-        token in goal or goal in token
-        or token in scenario_type or scenario_type in token
-        or token in title
-        for token in filters
-    )
+    return any(_token_matches(token, goal, scenario_type, title) for token in filters)
 
 
 def finding_matches_scenario_filter(finding: Finding, filters: set[str]) -> bool:
@@ -133,12 +172,7 @@ def finding_matches_scenario_filter(finding: Finding, filters: set[str]) -> bool
     goal = _normalize_scenario_token(finding.goal_type)
     scenario_type = _normalize_scenario_token(finding.scenario_type) if finding.scenario_type else ""
     title = _normalize_scenario_token(finding.title or "")
-    return any(
-        token in goal or goal in token
-        or (scenario_type and (token in scenario_type or scenario_type in token))
-        or (title and token in title)
-        for token in filters
-    )
+    return any(_token_matches(token, goal, scenario_type, title) for token in filters)
 
 
 def _known_scenario_filter_tokens() -> set[str]:
@@ -149,9 +183,11 @@ def _known_scenario_filter_tokens() -> set[str]:
     _scenario_matches_filter (e.g. a mistyped goal name that happens to be a
     substring of some scenario's title).
     """
-    return {_normalize_scenario_token(g.value) for g in GoalType} | {
-        _normalize_scenario_token(s.value) for s in ScenarioType
-    }
+    return (
+        {_normalize_scenario_token(g.value) for g in GoalType}
+        | {_normalize_scenario_token(s.value) for s in ScenarioType}
+        | set(_FILTER_ALIASES)
+    )
 
 
 def validate_scenario_filter(filters: list[str]) -> list[str]:
@@ -1044,6 +1080,15 @@ class RedteamOrchestrator:
 
         # Guided conversations require an LLM — only generate when one is configured.
         _with_guided = self._guided_conversations and bool(self._redteam_llm)
+        if self._guided_conversations and not _with_guided:
+            _guided_note = (
+                "Guided conversations disabled — no redteam LLM configured. Skipping "
+                "adaptive system-prompt extraction, persona/role-override escalation, "
+                "and Many-Shot Jailbreak generation. Set 'redteam.llm.model' (or a "
+                "top-level 'llm.model') in nuguard.yaml to enable."
+            )
+            _log.warning(_guided_note)
+            self.config_notes.append(_guided_note)
         generator = ScenarioGenerator(self._sbom, effective_policy)
         all_scenarios = generator.generate(with_guided=_with_guided)
         self._coverage_tracker = cast("CoverageTracker | None", getattr(generator, "coverage_tracker", None))
@@ -1102,9 +1147,21 @@ class RedteamOrchestrator:
             ]
 
         if self._scenario_filter:
+            _pre_filter_goals = {s.goal_type.value for s in scenarios}
             scenarios = [
                 s for s in scenarios if _scenario_matches_filter(s, self._scenario_filter)
             ]
+            _post_filter_goals = {s.goal_type.value for s in scenarios}
+            _dropped_goals = _pre_filter_goals - _post_filter_goals
+            if _dropped_goals:
+                _filter_note = (
+                    f"scenario_filter {sorted(self._scenario_filter)!r} dropped every "
+                    f"scenario for goal type(s) {sorted(_dropped_goals)!r} — check "
+                    "'redteam.scenarios' tokens against the GoalType/ScenarioType "
+                    "taxonomy in nuguard/models/exploit_chain.py if this wasn't intended."
+                )
+                _log.warning(_filter_note)
+                self.config_notes.append(_filter_note)
 
         # 3. LLM payload enrichment (opt-in — only enrich scenarios that will run)
         _llm_payloads: dict = {}
