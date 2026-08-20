@@ -486,6 +486,7 @@ class TestQuality:
             "crewai",
             "llamaindex",
             "llm_clients",
+            "llm_clients_go",
         } <= adapter_names
         assert {
             "langgraph_ts",
