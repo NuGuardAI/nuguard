@@ -2363,7 +2363,7 @@ class AiSbomExtractor:
         evidence_map = {n.id: n.evidence for n in doc.nodes}
 
         # Step 0: Gap-fill discovery — find component types absent from deterministic results
-        gap_budget = min(config.llm_budget_tokens // 3, 15_000)
+        gap_budget = min(config.llm_budget_tokens // 3, 150_000)
         try:
             new_nodes = await discover_missing_nodes(
                 doc, file_contents, client, budget_tokens=gap_budget

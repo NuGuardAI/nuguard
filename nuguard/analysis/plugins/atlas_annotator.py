@@ -32,7 +32,7 @@ Pass 3 — LLM enrichment (optional, ``config["llm"] = True``)
     ``llm_model``       – litellm model string (default ``gpt-4o-mini``)
     ``llm_api_key``     – API key for the LLM provider
     ``llm_api_base``    – base URL override
-    ``llm_budget_tokens`` – max tokens across all LLM calls (default 50000)
+    ``llm_budget_tokens`` – max tokens across all LLM calls (default 500000)
 
 Output ``details`` schema::
 
@@ -335,7 +335,7 @@ class AtlasAnnotatorPlugin(AnalysisPlugin):
             model=model,
             api_key=api_key,
             api_base=config.get("llm_api_base") or None,
-            budget_tokens=int(config.get("llm_budget_tokens") or 50_000),
+            budget_tokens=int(config.get("llm_budget_tokens") or 500_000),
             google_api_key=google_api_key,
         )
 

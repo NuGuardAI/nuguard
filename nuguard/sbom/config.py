@@ -6,7 +6,7 @@ NUGUARD_LLM                  Set to "1" / "true" to enable LLM enrichment
 NUGUARD_LLM_MODEL            LLM model string passed to litellm (default: gpt-4o-mini)
 NUGUARD_LLM_API_KEY          API key for the LLM provider
 NUGUARD_LLM_API_BASE         Base URL for the LLM provider
-NUGUARD_LLM_BUDGET_TOKENS    Max tokens to spend on LLM enrichment (default: 50000)
+NUGUARD_LLM_BUDGET_TOKENS    Max tokens to spend on LLM enrichment (default: 500000)
 
 Legacy aliases (still accepted for backwards compatibility)
 -----------------------------------------------------------
@@ -82,7 +82,7 @@ def _default_budget_tokens() -> int:
             return int(raw)
         except ValueError:
             pass
-    return 50_000
+    return 500_000
 
 
 class AiSbomConfig(BaseModel):

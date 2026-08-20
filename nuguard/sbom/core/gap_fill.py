@@ -32,7 +32,7 @@ so that newly discovered nodes enter the standard verification queue.
 Example usage::
 
     gap_client = LLMClient(model=config.llm_model, api_key=config.llm_api_key,
-                           budget_tokens=min(config.llm_budget_tokens // 3, 15_000))
+                           budget_tokens=min(config.llm_budget_tokens // 3, 150_000))
     new_nodes = await discover_missing_nodes(doc, file_contents, gap_client)
     doc = apply_discovery_results(doc, new_nodes)
 """
@@ -582,7 +582,7 @@ async def discover_missing_nodes(
         Instantiated ``LLMClient``.
     budget_tokens:
         If provided, the client's budget is virtually bounded to this value.
-        Pass ``min(config.llm_budget_tokens // 3, 15_000)`` from the caller.
+        Pass ``min(config.llm_budget_tokens // 3, 150_000)`` from the caller.
 
     Returns
     -------
