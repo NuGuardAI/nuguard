@@ -167,6 +167,28 @@ async def test_400_also_triggers_rotation() -> None:
 
 
 @pytest.mark.asyncio
+async def test_422_also_triggers_rotation() -> None:
+    """A Pydantic validation-error 422 is also a wrong-endpoint signal — e.g.
+    a domain-specific endpoint (letter generator, etc.) that made it into the
+    SBOM candidate list rejects a benign 'Hello' test with 422 listing
+    unrelated required fields, not 400/404/405."""
+    client = _DummyClient(
+        working_path="/chat",
+        initial_path="/api/agent/chat",
+        failure_response="[HTTP 422] unprocessable entity",
+    )
+    sbom = _sbom_with_candidates("/chat", "/api/agent/chat")
+
+    outcome = await validate_and_rotate_chat_endpoint(
+        client, sbom, has_explicit_endpoint=False,
+    )
+
+    assert outcome.ok is True
+    assert outcome.rotated_endpoint is not None
+    assert outcome.rotated_endpoint[0] == "/chat"
+
+
+@pytest.mark.asyncio
 async def test_400_on_explicit_endpoint_reports_failure_without_rotating() -> None:
     client = _DummyClient(
         working_path="/api/agent/chat",

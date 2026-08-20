@@ -72,14 +72,29 @@ _MESSAGE_HISTORY_KEYS: frozenset[str] = frozenset(
 
 # Payload keys that are definitively NOT conversational chat keys.
 # These appear in domain-specific endpoints (banking transfers, healthcare orders, etc.)
-# and must not be treated as the primary chat message field.
+# and must not be treated as the primary chat message field. Entries are
+# snake_case; matching against `meta.chat_payload_key` normalizes camelCase
+# (e.g. "patientName") to snake_case first — see _normalize_payload_key —
+# so a single entry here covers both spellings.
 _RUNTIME_NON_CHAT_KEYS: frozenset[str] = frozenset({
     "from_account_id", "to_account_id", "amount", "card_id", "account_id",
-    "patient_id", "order_id", "booking_reference", "flight_number",
+    "patient_id", "patient_name", "order_id", "booking_reference", "flight_number",
     "transaction_id", "payment_id", "notification_id",
     "recipient_account", "source_account", "debit_account", "credit_account",
     "transfer_amount", "beneficiary_id", "invoice_id", "claim_id",
+    "customer_name", "template_data",
 })
+
+_CAMEL_CASE_RE = re.compile(r"(?<!^)(?=[A-Z])")
+
+
+def _normalize_payload_key(key: str) -> str:
+    """Normalize a payload key for comparison against _RUNTIME_NON_CHAT_KEYS.
+
+    Converts camelCase (e.g. "patientName") to snake_case ("patient_name")
+    and lowercases, so both spellings match a single blocklist entry.
+    """
+    return _CAMEL_CASE_RE.sub("_", key).lower()
 
 
 def _sbom_post_paths(sbom: "AiSbomDocument") -> list[str]:
@@ -406,7 +421,7 @@ def discover_chat_candidates_from_sbom(
         # ── Resolve payload key ────────────────────────────────────────────
         inferred_response_key: str | None = meta.response_text_key or None
         if meta.chat_payload_key:
-            if meta.chat_payload_key in _RUNTIME_NON_CHAT_KEYS:
+            if _normalize_payload_key(meta.chat_payload_key) in _RUNTIME_NON_CHAT_KEYS:
                 # Domain-specific key (financial, medical, etc.) — not a chat endpoint.
                 # Skip so that summary.api_endpoints fallback can find the real one.
                 continue
@@ -439,11 +454,11 @@ def discover_chat_candidates_from_sbom(
         elif node.confidence >= 0.75:
             score += 1
 
-        if "/chat/message" in endpoint_l:
+        if "/chat/message" in endpoint_l or "/api/chat" in endpoint_l or "/v1/chat" in endpoint_l:
+            score += 2
+        elif endpoint_l.endswith("/chat"):
             score += 2
         elif any(token in endpoint_l for token in ("/chat/queue", "/messages", "/message", "/generate", "/completions", "/respond", "/query")):
-            score += 3
-        elif endpoint_l.endswith("/chat"):
             score += 1
 
         # LangGraph run endpoint is always the primary agent interface.

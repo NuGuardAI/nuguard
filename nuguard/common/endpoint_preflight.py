@@ -30,12 +30,16 @@ if TYPE_CHECKING:
 _log = get_logger(__name__)
 
 _TEST_MESSAGE = "Hello"
-# 404/405 mean the path itself is wrong. 400 is included too — a benign
-# "Hello" test message rejected with a validation error strongly suggests the
-# endpoint expects a different payload shape entirely (e.g. an image-upload
-# route auto-selected over the real text-chat endpoint because it scored
-# higher), not that this specific request happened to be malformed.
-_ROTATION_TRIGGER_PREFIXES = ("[HTTP 405]", "[HTTP 404]", "[HTTP 400]")
+# 404/405 mean the path itself is wrong. 400 and 422 are included too — a
+# benign "Hello" test message rejected with a validation error strongly
+# suggests the endpoint expects a different payload shape entirely (e.g. an
+# image-upload route auto-selected over the real text-chat endpoint because
+# it scored higher, or an unrelated domain endpoint like a letter-generator
+# requiring fields we don't send), not that this specific request happened
+# to be malformed. 422 is FastAPI/Pydantic's dedicated validation-error
+# status (as opposed to 400, which apps also use for their own hand-rolled
+# validation) and is just as strong a "wrong endpoint" signal.
+_ROTATION_TRIGGER_PREFIXES = ("[HTTP 405]", "[HTTP 404]", "[HTTP 400]", "[HTTP 422]")
 
 
 class PreflightOutcome(BaseModel):
