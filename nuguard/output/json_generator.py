@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -36,12 +37,13 @@ def write_remediation_plan(
     target_url:
         The scanned target URL (for report metadata).
     scan_id:
-        Optional scan identifier for correlation.
+        Scan identifier for cross-artifact correlation. When omitted, a fresh
+        UUID is generated so the field is always non-empty.
     """
     plan: dict = {
         "schema_version": "1.0",
         "generated_at": datetime.now(tz=timezone.utc).isoformat(),
-        "scan_id": scan_id or "",
+        "scan_id": scan_id or str(uuid.uuid4()),
         "target": target_url or "",
         "total_findings": len(findings),
         "findings": [_finding_to_dict(f) for f in findings],

@@ -82,3 +82,34 @@ def test_report_meta_dict_includes_endpoint_provenance() -> None:
     assert payload["effective_endpoint"] == "/api/agent"
     assert payload["target_endpoint_source"] == "sbom"
     assert payload["endpoint_discovery_notes"] == ["SBOM endpoint selected"]
+
+
+def test_report_meta_run_id_nonempty_and_unique() -> None:
+    """Every report gets a canonical, non-empty correlation ID."""
+    a = ReportMeta(timestamp="2026-03-31T00:00:00+00:00")
+    b = ReportMeta(timestamp="2026-03-31T00:00:00+00:00")
+    assert a.run_id
+    assert b.run_id
+    assert a.run_id != b.run_id
+    assert (
+        ReportMeta(timestamp="2026-03-31T00:00:00+00:00", run_id="fixed").to_dict()["run_id"]
+        == "fixed"
+    )
+
+
+def test_report_meta_hides_run_id_from_default_user_facing_output() -> None:
+    """run_id must not leak into default Markdown/text reports (#327)."""
+    meta = ReportMeta(timestamp="2026-03-31T00:00:00+00:00", verbose=False)
+    markdown = "\n".join(meta.to_markdown_lines())
+    text = meta.to_text_line()
+    assert meta.run_id not in markdown
+    assert meta.run_id not in text
+
+
+def test_report_meta_shows_run_id_when_verbose() -> None:
+    """The debug/verbose flag opts back into correlation-ID visibility."""
+    meta = ReportMeta(timestamp="2026-03-31T00:00:00+00:00", verbose=True)
+    markdown = "\n".join(meta.to_markdown_lines())
+    text = meta.to_text_line()
+    assert f"**Run ID:** `{meta.run_id}`" in markdown
+    assert f"Run ID: {meta.run_id}" in text

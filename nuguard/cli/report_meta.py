@@ -1,17 +1,26 @@
-"""Shared report metadata — timestamp, LLM info, verbose flag."""
+"""Shared report metadata — timestamp, run ID, LLM info, verbose flag."""
 from __future__ import annotations
 
+import uuid
 from dataclasses import dataclass, field
 from datetime import datetime
 
 
 @dataclass
 class ReportMeta:
-    """Metadata attached to every NuGuard output report."""
+    """Metadata attached to every NuGuard output report.
+
+    ``run_id`` is the canonical correlation identifier for one CLI invocation:
+    it is embedded in every machine-readable artifact (redteam/behavior JSON
+    ``_meta``, remediation-plan JSON ``scan_id``) so outputs can be linked
+    reliably. It is hidden from default Markdown/text reports and only shown
+    when *verbose* is set.
+    """
 
     timestamp: str = field(
         default_factory=lambda: datetime.now().astimezone().isoformat(timespec="seconds")
     )
+    run_id: str = field(default_factory=lambda: str(uuid.uuid4()))
     llm_models: list[str] = field(default_factory=list)
     verbose: bool = False
     target_url: str = ""
@@ -35,6 +44,7 @@ class ReportMeta:
     def to_dict(self) -> dict:
         d: dict = {
             "generated_at": self.timestamp,
+            "run_id": self.run_id,
             "llm": self.llm_models if self.llm_models else None,
             "verbose": self.verbose,
         }
@@ -63,7 +73,9 @@ class ReportMeta:
                 )
         for note in self.endpoint_discovery_notes:
             lines.append(f"**Endpoint Note:** {note}  ")
+        # Internal correlation IDs stay out of default user-facing reports.
         if self.verbose:
+            lines.append(f"**Run ID:** `{self.run_id}`  ")
             lines.append("**Mode:** verbose  ")
         lines.append("")
         return lines
@@ -77,6 +89,7 @@ class ReportMeta:
             if endpoint:
                 parts.append(f"Endpoint: {endpoint} ({self.target_endpoint_source})")
         if self.verbose:
+            parts.append(f"Run ID: {self.run_id}")
             parts.append("Mode: verbose")
         if self.finding_triggers:
             trigger_parts = [f"{k}={'on' if v else 'off'}" for k, v in self.finding_triggers.items()]
