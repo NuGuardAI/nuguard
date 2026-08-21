@@ -513,13 +513,12 @@ class AttackExecutor:
                     result = await self._execute_step(step, session, chain)
                 except TargetUnavailableError:
                     _log.warning(
-                        "Chain %s: target unavailable at step %s — resetting circuit breaker and aborting chain",
+                        "Chain %s: target unavailable at step %s — aborting chain and propagating "
+                        "so the orchestrator can trip its circuit breaker",
                         chain.chain_id, step.step_id,
                     )
-                    self._client.reset_circuit_breaker()
                     chain.status = "aborted"
-                    _step_aborted = True
-                    break
+                    raise
                 _resp_lower_step = result.response.lower()
                 _is_step_transient = (
                     any(pat in _resp_lower_step for pat in APP_TRANSIENT_ERROR_PATTERNS)
@@ -651,12 +650,12 @@ class AttackExecutor:
                         )
                     except TargetUnavailableError:
                         _log.warning(
-                            "Chain %s: target unavailable during mutation attempt %d — resetting circuit breaker and aborting chain",
+                            "Chain %s: target unavailable during mutation attempt %d — aborting chain and propagating "
+                            "so the orchestrator can trip its circuit breaker",
                             chain.chain_id, attempt,
                         )
-                        self._client.reset_circuit_breaker()
                         chain.status = "aborted"
-                        break
+                        raise
                     last_response = result.response
                     if result.success_signal_found:
                         session.add_evidence(step.step_id, result.response)
@@ -680,8 +679,10 @@ class AttackExecutor:
         so verbose reports show the warmup in the attack-step timeline.  The
         warmup's ``success_signal`` is empty (no success/failure semantics) and
         ``on_failure`` is ``skip`` so transport errors do not abort the chain.
-        Returns ``None`` if the target is unreachable (the chain will then
-        raise naturally on the first real step, preserving existing behaviour).
+        Returns ``None`` when the opener cannot be generated or a non-circuit
+        send failure occurs.  When the client's circuit breaker trips (the
+        target is unreachable), ``TargetUnavailableError`` propagates so the
+        orchestrator can abort the remaining scenarios.
         """
         try:
             # Derive a stable variation index from the chain ID so concurrent
@@ -729,12 +730,15 @@ class AttackExecutor:
         try:
             response, tool_calls = await self._client.send(message, session)
         except TargetUnavailableError:
+            # The warmup itself cannot abort the chain, but the client's
+            # consecutive-error counter must survive so the orchestrator can
+            # trip its circuit breaker — propagate instead of swallowing.
             _log.warning(
-                "happy_path warmup: target unavailable for chain=%s — resetting circuit breaker",
+                "happy_path warmup: target unavailable for chain=%s — propagating "
+                "so the orchestrator can trip its circuit breaker",
                 chain.chain_id,
             )
-            self._client.reset_circuit_breaker()
-            return None
+            raise
         except Exception as exc:
             _log.warning(
                 "happy_path warmup send failed chain=%s: %s",
