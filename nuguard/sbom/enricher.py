@@ -58,6 +58,31 @@ def _extract_path_params(endpoint: str) -> list[str]:
         return params
     return _COLON_PATH_PARAM_RE.findall(endpoint)
 
+
+def _path_param_candidate_paths(endpoint: str, params: list[str]) -> dict[str, str]:
+    """Return ``{param_name: candidate_collection_path}`` for each param in *params*.
+
+    The candidate is everything in *endpoint* before that param's token,
+    e.g. ``/orgs/:orgId/projects/:projectId/chat`` -> ``orgId``: ``/orgs``,
+    ``projectId``: ``/orgs/:orgId/projects``. Matching is by path *template*
+    text (earlier params left as literal tokens), since this is a static
+    SBOM-time match, not a runtime one. Params with an empty prefix (no
+    plausible collection path) are omitted.
+    """
+    token_matches = list(_BRACE_PATH_PARAM_RE.finditer(endpoint))
+    if not token_matches:
+        token_matches = list(_COLON_PATH_PARAM_RE.finditer(endpoint))
+
+    candidates: dict[str, str] = {}
+    for m in token_matches:
+        name = m.group(1)
+        if name not in params:
+            continue
+        prefix = endpoint[: m.start()].rstrip("/")
+        if prefix:
+            candidates[name] = prefix
+    return candidates
+
 # Parameter names that indicate user/tenant-scoped IDOR surface
 _IDOR_PARAM_PATTERNS = re.compile(
     r"\b(?:user_?id|account_?id|tenant_?id|customer_?id|org(?:aniz(?:ation)?)?_?id|"
@@ -155,7 +180,19 @@ def enrich(doc: AiSbomDocument) -> None:
         n.id for n in doc.nodes if n.component_type == ComponentType.PRIVILEGE
     }
 
-    _enrich_api_endpoints(doc, targets, sources_of_type)
+    # Map: POST API_ENDPOINT path -> node, for resolving path_param_sources.
+    post_endpoints_by_path: dict[str, Node] = {}
+    for n in doc.nodes:
+        if n.component_type != ComponentType.API_ENDPOINT:
+            continue
+        m = n.metadata
+        if not m or (m.method or "").upper() != "POST":
+            continue
+        ep = m.endpoint or m.extras.get("api_endpoint", "") or ""
+        if ep:
+            post_endpoints_by_path.setdefault(ep, n)
+
+    _enrich_api_endpoints(doc, targets, sources_of_type, post_endpoints_by_path)
     _enrich_tools(doc, tool_frameworks, framework_auth, privilege_node_ids, targets)
     _enrich_agents(doc, targets, node_by_id)
     _backfill_descriptions(doc)
@@ -172,6 +209,7 @@ def _enrich_api_endpoints(
     doc: AiSbomDocument,
     targets: Callable[[UUID, str], set[UUID]],
     sources_of_type: Callable[[UUID, str, str], list[Node]],
+    post_endpoints_by_path: dict[str, Node],
 ) -> None:
     for node in doc.nodes:
         if node.component_type != ComponentType.API_ENDPOINT:
@@ -184,6 +222,19 @@ def _enrich_api_endpoints(
             params = _extract_path_params(endpoint_str)
             if params:
                 meta.path_params = params
+
+        # Identify which POST endpoint creates the resource each path param
+        # identifies (e.g. 'id' on '/chat/conversations/:id/messages' ->
+        # '/chat/conversations'), for redteam/behavior's bootstrap step.
+        if meta.path_param_sources is None and meta.path_params and endpoint_str:
+            candidates = _path_param_candidate_paths(endpoint_str, meta.path_params)
+            sources = {
+                param: candidate_path
+                for param, candidate_path in candidates.items()
+                if candidate_path in post_endpoints_by_path
+            }
+            if sources:
+                meta.path_param_sources = sources
 
         # Determine idor_surface from path parameters
         if meta.idor_surface is None and meta.path_params:

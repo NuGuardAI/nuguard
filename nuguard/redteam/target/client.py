@@ -16,6 +16,7 @@ import httpx
 
 from nuguard.common.errors import TargetUnavailableError  # noqa: F401 — re-exported for callers
 from nuguard.common.logging import get_logger
+from nuguard.common.response_extraction import SESSION_ID_KEYS as _SESSION_ID_KEYS
 
 from .session import AttackSession
 
@@ -359,6 +360,11 @@ class TargetAppClient:
                 self._consecutive_errors,
             )
         self._consecutive_errors = 0
+
+    @property
+    def chat_path(self) -> str:
+        """The currently configured chat endpoint path."""
+        return self._chat_path
 
     def set_chat_endpoint(
         self,
@@ -793,9 +799,8 @@ class TargetAppClient:
             tool_calls = raw_calls
 
         # Extract and store session/conversation IDs for multi-turn forwarding.
-        # Heuristic: check the top-level response JSON for common session key names.
         if isinstance(data, dict):
-            for key in ("session_id", "conversation_id", "thread_id", "chat_id"):
+            for key in _SESSION_ID_KEYS:
                 if key in data and data[key] is not None:
                     self._session_context[key] = data[key]
 

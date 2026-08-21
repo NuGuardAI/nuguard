@@ -155,3 +155,86 @@ class TestApiEndpointPathParams:
 
         enriched = next(n for n in doc.nodes if n.id == endpoint.id)
         assert enriched.metadata.path_params == ["id"]
+
+
+class TestApiEndpointPathParamSources:
+    """path_param_sources maps each path param to the POST endpoint that
+    creates the identified resource, feeding the redteam/behavior bootstrap
+    step described in docs/redteam-test-fix.md."""
+
+    def test_single_param_resolved_to_collection_post_endpoint(self) -> None:
+        member = _endpoint(
+            "member", endpoint="/chat/conversations/:id/messages", method="POST",
+        )
+        collection = _endpoint(
+            "collection", endpoint="/chat/conversations", method="POST",
+        )
+        doc = AiSbomDocument(target="t", nodes=[member, collection], edges=[])
+
+        enrich(doc)
+
+        enriched = next(n for n in doc.nodes if n.id == member.id)
+        assert enriched.metadata.path_param_sources == {"id": "/chat/conversations"}
+
+    def test_multi_param_nested_resolution(self) -> None:
+        member = _endpoint(
+            "member",
+            endpoint="/orgs/:orgId/projects/:projectId/chat",
+            method="POST",
+        )
+        orgs = _endpoint("orgs", endpoint="/orgs", method="POST")
+        projects = _endpoint(
+            "projects", endpoint="/orgs/:orgId/projects", method="POST",
+        )
+        doc = AiSbomDocument(target="t", nodes=[member, orgs, projects], edges=[])
+
+        enrich(doc)
+
+        enriched = next(n for n in doc.nodes if n.id == member.id)
+        assert enriched.metadata.path_param_sources == {
+            "orgId": "/orgs",
+            "projectId": "/orgs/:orgId/projects",
+        }
+
+    def test_no_match_leaves_param_absent(self) -> None:
+        member = _endpoint(
+            "member", endpoint="/chat/conversations/:id/messages", method="POST",
+        )
+        doc = AiSbomDocument(target="t", nodes=[member], edges=[])
+
+        enrich(doc)
+
+        enriched = next(n for n in doc.nodes if n.id == member.id)
+        assert not enriched.metadata.path_param_sources
+
+    def test_get_method_collection_endpoint_not_matched(self) -> None:
+        """Only a POST (resource-creation) endpoint counts as a source."""
+        member = _endpoint(
+            "member", endpoint="/chat/conversations/:id/messages", method="POST",
+        )
+        collection = _endpoint(
+            "collection", endpoint="/chat/conversations", method="GET",
+        )
+        doc = AiSbomDocument(target="t", nodes=[member, collection], edges=[])
+
+        enrich(doc)
+
+        enriched = next(n for n in doc.nodes if n.id == member.id)
+        assert not enriched.metadata.path_param_sources
+
+    def test_adapter_provided_path_param_sources_left_untouched(self) -> None:
+        member = _endpoint(
+            "member",
+            endpoint="/chat/conversations/:id/messages",
+            method="POST",
+            path_param_sources={"id": "/custom/override"},
+        )
+        collection = _endpoint(
+            "collection", endpoint="/chat/conversations", method="POST",
+        )
+        doc = AiSbomDocument(target="t", nodes=[member, collection], edges=[])
+
+        enrich(doc)
+
+        enriched = next(n for n in doc.nodes if n.id == member.id)
+        assert enriched.metadata.path_param_sources == {"id": "/custom/override"}

@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 import uuid
 
+from nuguard.common.response_extraction import build_minimal_payload as _build_realistic_body
 from nuguard.models.exploit_chain import (
     HTTP_2XX_SENTINEL,
     ExploitChain,
@@ -30,62 +31,6 @@ _MASS_ASSIGN_BODY: dict = {
     "is_superuser": True,
     "permissions": ["admin", "write", "delete"],
 }
-
-# Field-name substring → plausible value (checked in order, longest/most-specific first)
-_FIELD_VALUE_HINTS: list[tuple[str, object]] = [
-    ("message",    "Hello, can you help me with my account?"),
-    ("content",    "Hello, can you help me?"),
-    ("prompt",     "What is my account balance?"),
-    ("text",       "test message"),
-    ("username",   "testuser@example.com"),
-    ("email",      "testuser@example.com"),
-    ("password",   "TestPass123!"),
-    ("session_id", "sess-test-12345"),
-    ("session",    "sess-test-12345"),
-    ("user_id",    "user-test-001"),
-    ("user",       "user-test-001"),
-    ("account",    "acct-test-001"),
-    ("tenant",     "tenant-test-001"),
-    ("name",       "Test User"),
-    ("amount",     100),
-    ("price",      100),
-    ("query",      "show me my account details"),
-]
-
-# Type-string substring → fallback value when no field-name hint matches
-_TYPE_VALUE_FALLBACKS: list[tuple[str, object]] = [
-    ("int",   1),
-    ("float", 1.0),
-    ("bool",  True),
-    ("list",  []),
-    ("dict",  {}),
-]
-
-
-def _build_realistic_body(schema: dict[str, str]) -> dict:
-    """Return a plausible request body dict from a ``{field_name: type_string}`` schema.
-
-    Field-name heuristics take priority; type-string fallback applies otherwise.
-    Empty schema returns empty dict.
-    """
-    body: dict = {}
-    for field, type_str in schema.items():
-        field_lower = field.lower()
-        value: object = None
-        for hint_key, hint_val in _FIELD_VALUE_HINTS:
-            if hint_key in field_lower:
-                value = hint_val
-                break
-        if value is None:
-            type_lower = (type_str or "str").lower()
-            for type_key, type_val in _TYPE_VALUE_FALLBACKS:
-                if type_key in type_lower:
-                    value = type_val
-                    break
-            else:
-                value = "test-value"
-        body[field] = value
-    return body
 
 _ID_PARAM_PATTERN = re.compile(
     r"\{(?P<param>[^}]+)\}|:(?P<bare>[A-Za-z_][A-Za-z0-9_]*)"

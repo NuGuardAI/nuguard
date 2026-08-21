@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Literal
 from pydantic import BaseModel, Field
 
 from nuguard.common.logging import get_logger
+from nuguard.common.response_extraction import build_minimal_payload, extract_response_id
 
 if TYPE_CHECKING:
     from nuguard.redteam.target.client import TargetAppClient
@@ -56,6 +57,87 @@ class PreflightOutcome(BaseModel):
     rotated_endpoint: "tuple[str, str, bool, str | None] | None" = None
     endpoint_source: 'Literal["sbom", "probe"] | None' = None
     notes: list[str] = Field(default_factory=list)
+
+
+async def _bootstrap_path_params(
+    client: "TargetAppClient",
+    sbom: "AiSbomDocument",
+    chat_path: str,
+    notes: list[str],
+) -> None:
+    """Resolve and bind any path params the resolved chat endpoint declares.
+
+    Reads ``path_param_sources`` (populated by ``nuguard/sbom/enricher.py``)
+    off the SBOM node matching *chat_path*. For each param with a known
+    source, POSTs to that source endpoint to create the prerequisite
+    resource, extracts its id from the response, and binds it via
+    :meth:`~nuguard.redteam.target.client.TargetAppClient.set_path_param`.
+    Best-effort: any failure just leaves that param unbound (falls through
+    to the existing ``[CONFIG_ERROR]`` per-request guard) rather than
+    raising or forcing ``ok=False`` — this must run *after* rotation has
+    fully settled, since :meth:`TargetAppClient.set_chat_endpoint` clears
+    previously-bound path params on every rotation.
+    """
+    from nuguard.sbom.types import ComponentType as _CT  # noqa: PLC0415
+
+    chat_node = None
+    for n in sbom.nodes:
+        m = n.metadata
+        if m and (m.endpoint or "") == chat_path:
+            chat_node = n
+            break
+    if chat_node is None:
+        return
+    sources = chat_node.metadata.path_param_sources
+    if not sources:
+        return
+
+    endpoints_by_path = {
+        n.metadata.endpoint: n
+        for n in sbom.nodes
+        if n.component_type == _CT.API_ENDPOINT and n.metadata and n.metadata.endpoint
+    }
+
+    # Process in path-param order so an outer resource id is available
+    # before an inner one that might depend on it.
+    ordered_params = [p for p in (chat_node.metadata.path_params or []) if p in sources]
+    for param in ordered_params:
+        source_path = sources[param]
+        try:
+            status, _text, data = await client.invoke_endpoint(source_path, method="POST", body={})
+            if status >= 400:
+                source_node = endpoints_by_path.get(source_path)
+                schema = (source_node.metadata.request_body_schema if source_node else None) or {}
+                if schema:
+                    body = build_minimal_payload(schema)
+                    status, _text, data = await client.invoke_endpoint(
+                        source_path, method="POST", body=body
+                    )
+        except Exception as exc:
+            _log.info(
+                "Pre-flight: path-param bootstrap POST %s raised (non-fatal): %s — leaving %r unbound",
+                source_path, exc, param,
+            )
+            continue
+
+        if status >= 400:
+            _log.info(
+                "Pre-flight: path-param bootstrap POST %s failed (HTTP %d) — leaving %r unbound",
+                source_path, status, param,
+            )
+            continue
+
+        resolved_id = extract_response_id(data, extra_keys=("id",))
+        if not resolved_id:
+            _log.info(
+                "Pre-flight: path-param bootstrap POST %s succeeded but no id found in "
+                "response — leaving %r unbound",
+                source_path, param,
+            )
+            continue
+
+        client.set_path_param(param, resolved_id)
+        notes.append(f"Bootstrapped path param {param!r}={resolved_id!r} via POST {source_path!r}.")
 
 
 async def validate_and_rotate_chat_endpoint(
@@ -96,7 +178,22 @@ async def validate_and_rotate_chat_endpoint(
         return PreflightOutcome(ok=True)
 
     if not response.startswith(_ROTATION_TRIGGER_PREFIXES):
-        return PreflightOutcome(ok=True)
+        if sbom is not None:
+            _pre_count = len(notes)
+            await _bootstrap_path_params(client, sbom, client.chat_path, notes)
+            if len(notes) > _pre_count:
+                # A param was bound — re-run the test request against the
+                # now-substituted path, same as the rotation success paths.
+                resp_after, _ = await client.send(_TEST_MESSAGE, session)
+                if resp_after.startswith(_ROTATION_TRIGGER_PREFIXES) or resp_after.startswith(
+                    "[CONFIG_ERROR"
+                ):
+                    _log.info(
+                        "Pre-flight: chat endpoint still not fully functional after "
+                        "path-param bootstrap: %s",
+                        resp_after[:60],
+                    )
+        return PreflightOutcome(ok=True, notes=notes)
 
     _log.warning("Pre-flight: chat endpoint returned %s — attempting rotation", response[:15])
 
@@ -121,6 +218,7 @@ async def validate_and_rotate_chat_endpoint(
             if not resp2.startswith(_ROTATION_TRIGGER_PREFIXES):
                 _log.info("Pre-flight: rotated to working endpoint %s", candidate[0])
                 notes.append(f"Chat endpoint rotated to {candidate[0]!r} after 400/404/405 on the discovered path.")
+                await _bootstrap_path_params(client, sbom, candidate[0], notes)
                 return PreflightOutcome(ok=True, rotated_endpoint=candidate, endpoint_source="sbom", notes=notes)
 
         # Live probe as last resort.
@@ -136,6 +234,7 @@ async def validate_and_rotate_chat_endpoint(
             client.set_chat_endpoint(path, pay_key, pay_list)
             _log.info("Pre-flight: live probe found working endpoint %s", path)
             notes.append(f"Chat endpoint rotated to {path!r} via live probe after SBOM candidates failed.")
+            await _bootstrap_path_params(client, sbom, path, notes)
             return PreflightOutcome(
                 ok=True,
                 rotated_endpoint=(path, pay_key, pay_list, None),

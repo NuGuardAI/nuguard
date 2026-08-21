@@ -1271,6 +1271,22 @@
           "description": "Path parameter names extracted from the endpoint URL template, e.g. ['user_id', 'tenant_id']",
           "title": "Path Params"
         },
+        "path_param_sources": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Maps each entry in path_params to the API_ENDPOINT path that creates the identified resource, e.g. {'id': '/chat/conversations'} for a chat endpoint at '/chat/conversations/:id/messages'",
+          "title": "Path Param Sources"
+        },
         "request_body_schema": {
           "additionalProperties": {
             "type": "string"

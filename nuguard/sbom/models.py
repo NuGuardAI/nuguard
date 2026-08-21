@@ -499,6 +499,15 @@ class NodeMetadata(BaseModel):
             "e.g. ['user_id', 'tenant_id']"
         ),
     )
+    path_param_sources: dict[str, str] | None = Field(
+        default=None,
+        description=(
+            "Maps each entry in path_params to the API_ENDPOINT path that "
+            "creates the identified resource, e.g. "
+            "{'id': '/chat/conversations'} for a chat endpoint at "
+            "'/chat/conversations/:id/messages'"
+        ),
+    )
     # Discovered request/response schema (populated by framework adapters)
     request_body_schema: dict[str, str] = Field(
         default_factory=dict,
