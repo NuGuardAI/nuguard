@@ -3,10 +3,10 @@
 Comparison of `tests/apps/studyield-app/studyield.sbom.enriched.json` (generated)
 against `tests/apps/studyield-app/studyield.ground-truth.sbom.json` (hand-curated).
 
-**Status (2026-08-21): items 2–5 and 7 fixed; item 1 was already fixed by an
-earlier commit before this doc was written; item 3 (TOOL) and part of item 7
-(deployment keyword consolidation, Ci/GITHUB_WORKFLOW dedup) are deferred —
-see notes in each section below.**
+**Status (2026-08-21): items 1–5 and 7 fixed or resolved (item 3/TOOL and
+part of item 7 only partially — see notes); part of item 7 (deployment
+keyword consolidation, Ci/GITHUB_WORKFLOW dedup) remains deferred as a
+design-tradeoff decision — see notes in each section below.**
 
 ## Summary
 
@@ -14,7 +14,7 @@ see notes in each section below.**
 |---|---|---|---|
 | API_ENDPOINT | 5 | ~~0~~ 207 | Already fixed by commit `dc583b41` prior to this doc |
 | AUTH | 3 | 1 → 3 | **Fixed**: split by mechanism (jwt/oauth2/apikey) |
-| TOOL | 3 | 1 (false positive) | **Deferred** — needs a new hand-rolled-service heuristic |
+| TOOL | 3 | 1 (false positive) → 2 real + 1 false positive | **Partially fixed**: usage-based heuristic catches 2/3 (see §3) |
 | PROMPT | 0 (not modeled) | 20 → 14 | **Fixed** confirmed false positives; some remain (real prompts) |
 | DATASTORE | 5 | 7 | **Fixed**: SES/S3 misclassification + numeric-suffix naming noise |
 | CONTAINER_IMAGE | 2 | 2 | **Fixed**: nginx:alpine display name |
@@ -46,21 +46,54 @@ Root cause: the generic auth regex adapter uses a single canonical name
 auth types dedupe into one node instead of being split by mechanism (jwt vs
 oauth vs apiKey).
 
-## 3. TOOL — real tools undetected, only a false positive survives
+## 3. TOOL — real tools undetected, only a false positive survives — PARTIALLY FIXED
 
 GT expects `code-sandbox-execution-tool`, `web-search-tool`,
 `knowledge-base-rag-retrieval-tool` (all hand-rolled NestJS services, not
 built on a recognized agent-framework Tool class). None were detected. The
 one `TOOL` node present ("Generic") comes from a stray regex match on the
-token `rq` inside `exam-clone.service.ts` — unrelated noise.
+token `rq` inside `exam-clone.service.ts` — unrelated noise (still present,
+separate pre-existing issue, not in scope here).
 
-Cause: TS tool-detection adapters likely only recognize framework-specific
-Tool constructs (e.g., LangChain/OpenAI function-calling schemas) and have no
-heuristic for hand-rolled service classes that act as agent tools.
+Cause: none of these 3 real tools have any *declaration-shape* signal —
+each is a plain `@Injectable()` NestJS service, named with a `*Service`
+suffix (not `*Tool`), no base class, no framework decorator, no central
+tools registry — every existing TOOL adapter matches a declaration shape
+(a framework `Tool` base class, an `@tool` decorator, an OpenAI-style
+function-schema dict), so none of them fire here.
 
-**Deferred**: this needs a new detection heuristic (not a bug fix to
-existing logic), which carries meaningfully higher false-positive risk than
-the other items here. Scoped as follow-up work, not fixed in this pass.
+**Fix applied**: new adapter `nuguard/sbom/adapters/typescript/nestjs_tool_di.py`
+uses a usage-based heuristic instead of a declaration-shape match, since
+that's the only real signal available for this pattern: a service is
+constructor-injected into an "orchestrator" that *also*
+constructor-injects something that looks like an LLM client. It stacks two
+independent, cheap, single-file structural signals — (1) co-injection
+alongside an LLM-client-shaped type (a known SDK class, or a narrow
+`AiService`/`LlmClient`-style naming pattern), and (2) a curated
+action-verb/RAG-domain-noun match on a *different* injected type's name
+(search, execute, retrieve, sandbox, knowledge, rag, ...), with a curated
+infra-suffix denylist (Config, Logger, Cache, ...) — rather than attempting
+real data-flow tracing (not reliably doable with the existing regex/AST
+tooling). Both signals must hold before a TOOL node is emitted.
+
+Confirmed via unit tests and a no-LLM re-extraction: `web-search-tool` and
+`knowledge-base-rag-retrieval-tool` are now detected (`Web Search`,
+`Knowledge Base`). `code-sandbox-execution-tool` is **not** — its actual
+wiring is architecturally different from the other two (it's invoked
+directly via a WebSocket gateway triggered by client action, not
+constructor-injected alongside `AiService` in the same class), so it has
+no co-injection signal to match at all. This is the accepted tradeoff of
+choosing precision over recall: the heuristic deliberately doesn't try to
+trace usage beyond one constructor's parameter list, so tools wired
+through a different pattern remain undetected.
+
+One bug surfaced and fixed during implementation: the adapter initially
+attributed every constructor parameter's evidence to the constructor's
+*opening* line, which caused `core.py`'s cross-adapter `_dedup_by_location`
+pass (same `(component_type, file, line)` = "same source token") to
+nondeterministically drop one of two genuinely distinct tools detected in
+the same constructor, tie-broken by an unstable set-iteration order across
+process runs. Fixed by tracking each parameter's own source line.
 
 ## 4. PROMPT — 20 nodes, mostly false positives — FIXED (partially)
 
@@ -185,9 +218,14 @@ flagged rather than changed without confirmation):
 
 ## Follow-up items (need a decision, not yet scoped)
 
-1. **TOOL detection** — add a heuristic for hand-rolled service-class "tools"
-   (NestJS services invoked by agent code) since framework-specific
-   Tool-class detection misses this app's architecture entirely.
+1. **TOOL detection: code-sandbox-execution-tool still undetected** — the
+   new `nestjs_tool_di.py` heuristic (§3) requires constructor co-injection
+   with an LLM-client-shaped type in the same class; `CodeSandboxService` is
+   invoked from a WebSocket gateway with no such co-injection, so it has no
+   matching signal at all. Catching it would need either a broader signal
+   (e.g. tracing usage across a gateway → REST/WS handler → eventual LLM
+   call, real data-flow analysis) or a different heuristic entirely for
+   gateway-invoked tools — bigger scope, not attempted here.
 2. **Deployment keyword consolidation vs. tech visibility** — decide whether
    `deployment_generic`'s one-node-per-keyword design should change for
    apps like this, or whether ground truth should model multiple deployment

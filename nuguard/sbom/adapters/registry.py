@@ -73,6 +73,7 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         LangGraphTSAdapter,
         LLMClientTSAdapter,
         NestJSAdapter,
+        NestJSToolDIAdapter,
         OpenAIAgentsTSAdapter,
         PromptTSAdapter,
     )
@@ -111,6 +112,7 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         DatastoreTSAdapter(),
         PromptTSAdapter(),
         NestJSAdapter(),
+        NestJSToolDIAdapter(),
         AgnoTSAdapter(),
         AzureAIAgentsTSAdapter(),
     ]
