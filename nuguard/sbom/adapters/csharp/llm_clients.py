@@ -300,7 +300,13 @@ def _provider_for_call(
 ) -> str | None:
     receiver_text = receiver or ""
 
-    if name == "OpenAIClient" and (imported == {"azure"} or "Azure.AI.OpenAI" in receiver_text):
+    # An unqualified legacy OpenAIClient belongs to Azure.AI.OpenAI when that
+    # namespace is imported and the newer OpenAI namespace is not — unrelated
+    # providers (e.g. Anthropic) do not change the classification (#260).
+    if name == "OpenAIClient" and (
+        "Azure.AI.OpenAI" in receiver_text
+        or ("azure" in imported and "openai" not in imported)
+    ):
         return "azure"
 
     if name in _CLIENT_CLASSES:

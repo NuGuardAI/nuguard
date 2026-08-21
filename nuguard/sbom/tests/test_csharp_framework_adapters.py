@@ -176,6 +176,49 @@ var direct = new ChatClient(
     assert models["gpt-4o"].relationships[0].relationship_type == "USES"
 
 
+def test_legacy_openaiclient_is_azure_when_azure_namespace_imported() -> None:
+    """Unqualified OpenAIClient classifies as Azure even with other providers (#260)."""
+    source = """using Azure.AI.OpenAI;
+using System.ClientModel;
+var client = new OpenAIClient(new Uri(endpoint), credential);
+var chat = client.GetChatClient("gpt-35-turbo");
+"""
+
+    models = _by_type(
+        _extract(
+            CSharpLLMClientsAdapter(),
+            source,
+        ),
+        ComponentType.MODEL,
+    )
+
+    assert any(
+        model.display_name == "gpt-35-turbo"
+        and model.metadata["framework"] == "azure_openai"
+        for model in models
+    )
+
+
+def test_legacy_openaiclient_stays_openai_when_openai_namespace_imported() -> None:
+    """Importing the newer OpenAI namespace keeps the openai classification."""
+    source = """using Azure.AI.OpenAI;
+using OpenAI.Chat;
+var client = new OpenAIClient(new Uri(endpoint), credential);
+var chat = client.GetChatClient("gpt-35-turbo");
+"""
+
+    models = _by_type(
+        _extract(
+            CSharpLLMClientsAdapter(),
+            source,
+        ),
+        ComponentType.MODEL,
+    )
+    target = next(model for model in models if model.display_name == "gpt-35-turbo")
+
+    assert target.metadata["framework"] == "openai"
+
+
 def test_llm_clients_detect_anthropic_model_constants() -> None:
     source = """using Anthropic;
 var client = new AnthropicClient(apiKey);
