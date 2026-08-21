@@ -1234,6 +1234,11 @@ class AiSbomExtractor:
                         _ep_meta["endpoint"] = _ep_path
                         if _ep_method:
                             _ep_meta["method"] = _ep_method
+                        # Marks this as a raw, unresolved-prefix regex guess so
+                        # _dedup_generic_endpoints() can find and fold it into a
+                        # framework-adapter node with the same (prefix-resolved)
+                        # route, instead of leaving both as separate nodes.
+                        _ep_meta["_generic_endpoint_fallback"] = True
                         _comp_det = ComponentDetection(
                             component_type=detection.component_type,
                             canonical_name=f"endpoint:{_ep_method or 'ANY'}:{_ep_path}",
@@ -1334,6 +1339,12 @@ class AiSbomExtractor:
         # nodes already exist in that file with provider="faiss").
         _suppress_generic_tech_regex_datastore(node_map)
 
+        # Fold generic-regex API_ENDPOINT nodes (raw, unprefixed path guesses)
+        # into the framework-adapter node for the same route once its real,
+        # prefix-resolved path is known — see _dedup_generic_endpoints for why
+        # this can't be resolved earlier, at detection time.
+        _dedup_generic_endpoints(node_map)
+
         # For MODEL and DATASTORE, suppress nodes whose only evidence comes from
         # docs-tier files (lock files, README mentions, shell scripts).  Lock
         # files like pnpm-lock.yaml and semantic changelogs are classified as
@@ -1384,6 +1395,7 @@ class AiSbomExtractor:
                         "data_classification",
                         "classified_tables",
                         "classified_fields",
+                        "_generic_endpoint_fallback",
                     )
                 }
             )
@@ -3316,6 +3328,71 @@ def _suppress_generic_tech_regex_datastore(
                     tech_name,
                 )
                 break
+
+    for k in keys_to_remove:
+        del node_map[k]
+
+
+def _dedup_generic_endpoints(
+    node_map: dict[tuple[ComponentType, str], _NodeAccumulator],
+) -> None:
+    """Fold generic-regex API_ENDPOINT nodes into the matching framework node.
+
+    The generic-regex adapter path (see the API_ENDPOINT grouping block in
+    ``AiSbomExtractor.extract``) builds its ``canonical_name`` from the raw
+    regex-captured path with no router-prefix resolution, so a route
+    declared under a mounted router (e.g. ``/api/rag/re-embed``) never
+    canonical-matches the generic node's unprefixed guess (``/re-embed``) in
+    ``_merge_detection`` — leaving both as separate nodes. Rather than
+    resolving prefixes for the regex path (fragile: it has no AST access to
+    know which router variable a match belongs to, and this wouldn't cover
+    frameworks like Flask that don't expose a prefix index at all), merge
+    after the fact by matching on a path-segment-aligned suffix.
+
+    Only folds a generic node when exactly one non-generic API_ENDPOINT node
+    with the same HTTP method matches by suffix — an ambiguous match (e.g.
+    ``/list`` matching both ``/api/x/list`` and ``/api/y/list``) is left
+    alone rather than risk merging evidence into the wrong endpoint.
+    """
+    endpoint_keys = [key for key in node_map if key[0] == ComponentType.API_ENDPOINT]
+    generic_keys = [key for key in endpoint_keys if node_map[key].metadata.get("_generic_endpoint_fallback")]
+    real_keys = [key for key in endpoint_keys if key not in generic_keys]
+    if not generic_keys or not real_keys:
+        return
+
+    keys_to_remove: set[tuple[ComponentType, str]] = set()
+    for gkey in generic_keys:
+        gacc = node_map[gkey]
+        g_method = str(gacc.metadata.get("method") or "").upper()
+        g_path = str(gacc.metadata.get("endpoint") or "")
+        if not g_path:
+            continue
+        g_suffix = "/" + g_path.lstrip("/")
+
+        matches = []
+        for rkey in real_keys:
+            racc = node_map[rkey]
+            r_method = str(racc.metadata.get("method") or "").upper()
+            if g_method and r_method and g_method != r_method:
+                continue
+            r_path = str(racc.metadata.get("endpoint") or "")
+            if not r_path:
+                continue
+            r_full = "/" + r_path.lstrip("/")
+            if r_full == g_suffix or r_full.endswith(g_suffix):
+                matches.append(rkey)
+
+        if len(matches) != 1:
+            continue  # no match, or ambiguous — leave the generic node alone
+        winner = matches[0]
+        node_map[winner].evidence.extend(gacc.evidence)
+        keys_to_remove.add(gkey)
+        _log.debug(
+            "dedup_generic_endpoints: folded generic %r (%s) into %r",
+            g_path,
+            g_method or "ANY",
+            node_map[winner].display_name,
+        )
 
     for k in keys_to_remove:
         del node_map[k]

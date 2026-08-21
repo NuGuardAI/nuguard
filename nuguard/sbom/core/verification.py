@@ -24,7 +24,7 @@ from uuid import UUID
 
 from nuguard.common.logging import get_logger
 
-from ..models import Evidence, Node
+from ..models import ComponentType, Evidence, Node
 from .gap_fill.snippets import detect_language, extract_context
 
 _log = get_logger(__name__)
@@ -377,6 +377,19 @@ async def verify_uncertain_nodes(
     cost_per_call = 0.001  # estimated cost per call
 
     for node in candidates:
+        if node.component_type == ComponentType.PROMPT and node.metadata.extras.get("content"):
+            # The deterministic detector already captured the full prompt
+            # text (and role) in metadata.extras — build_verification_prompt
+            # only samples evidence_list[0]'s file for context, which for a
+            # PROMPT node with evidence spread across files is often just an
+            # import reference rather than the definition. Asking the LLM to
+            # judge from that alone risks a false-negative soft-rejection of
+            # an already-correct node, with no additional information
+            # gained. Skip verification entirely and keep the node's
+            # existing confidence/evidence untouched.
+            stats.skipped_count += 1
+            continue
+
         if cost_used + cost_per_call > cost_budget:
             stats.budget_exceeded = True
             stats.skipped_count += len(candidates) - len(results)
