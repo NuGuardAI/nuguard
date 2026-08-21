@@ -48,8 +48,13 @@ class TestCanHandle:
     def test_activates_on_known_imports(self, imports: set[str]) -> None:
         assert _ADAPTER.can_handle(imports) is True
 
-    def test_does_not_activate_on_unrelated_imports(self) -> None:
-        assert _ADAPTER.can_handle({"flask", "requests"}) is False
+    def test_activates_regardless_of_imports(self) -> None:
+        # Schema-definition files commonly have no openai/litellm import at
+        # all (the LLM SDK import lives in the caller) — can_handle() is
+        # intentionally unconditional; the dict-literal shape match in
+        # extract() is what stays selective.
+        assert _ADAPTER.can_handle({"flask", "requests"}) is True
+        assert _ADAPTER.can_handle(set()) is True
 
 
 class TestToolDetection:
@@ -188,3 +193,32 @@ class TestNegatives:
             "headers = {'type': 'header', 'value': 'x-request-id'}\n"
         )
         assert _tool_nodes(_extract(code)) == []
+
+
+class TestSchemaOnlyFileNoLlmImport:
+    """Regression: a file that only defines OpenAI-style tool schema dicts,
+    with no openai/litellm import at all (the LLM SDK import lives in the
+    caller instead) — common in real apps that separate schema definitions
+    from the code that calls chat.completions.create(tools=...)."""
+
+    def test_detects_tools_with_no_llm_sdk_import(self) -> None:
+        code = (
+            "import logging\n\n"
+            "def _get_built_in_tools():\n"
+            "    return [\n"
+            "        {\n"
+            "            'type': 'function',\n"
+            "            'function': {\n"
+            "                'name': 'search_patient',\n"
+            "                'description': 'Search for patients by name.',\n"
+            "                'parameters': {'type': 'object', 'properties': {}},\n"
+            "            },\n"
+            "        },\n"
+            "    ]\n"
+        )
+        tools = _tool_nodes(_extract(code, file_path="registry.py"))
+        assert [t.display_name for t in tools] == ["search_patient"]
+
+    def test_prefilter_skips_files_without_type_function_substrings(self) -> None:
+        code = "import logging\n\ndef helper():\n    return {'a': 1}\n"
+        assert _extract(code) == []

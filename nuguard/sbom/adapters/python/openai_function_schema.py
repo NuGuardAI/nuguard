@@ -98,7 +98,17 @@ class OpenAIFunctionSchemaAdapter(FrameworkAdapter):
 
     name = "openai_function_schema"
     priority = 55
-    handles_imports = ["openai", "litellm"]
+    # Not gated by handles_imports/can_handle(): the LLM SDK import commonly
+    # lives in the *caller* (wherever chat.completions.create(tools=...) is
+    # invoked), not in the module that defines the tool schema dicts — e.g.
+    # a plain "tools.py" with zero openai/litellm imports. The dict-literal
+    # shape matched below (a "type": "function" dict with a nested
+    # "function" dict carrying "name"/"parameters") is specific enough on
+    # its own to avoid false positives without an import signal.
+    handles_imports: list[str] = []
+
+    def can_handle(self, imports_present: set[str]) -> bool:
+        return True
 
     def extract(
         self,
@@ -107,6 +117,12 @@ class OpenAIFunctionSchemaAdapter(FrameworkAdapter):
         parse_result: Any,
     ) -> list[ComponentDetection]:
         if not content or not content.strip():
+            return []
+        # Cheap prefilter so files with no chance of matching skip the
+        # ast.parse() cost below (this adapter runs on every Python file).
+        if '"type"' not in content and "'type'" not in content:
+            return []
+        if '"function"' not in content and "'function'" not in content:
             return []
         try:
             tree = ast.parse(content)

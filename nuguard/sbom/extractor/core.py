@@ -84,6 +84,7 @@ from ..models import (
     EncryptionDetail,
     Evidence,
     Node,
+    NodeMetadata,
     RateLimitDetail,
     ScanSummary,
     SourceLocation,
@@ -1548,15 +1549,14 @@ class AiSbomExtractor:
                     node.metadata.classified_tables = acc.metadata["classified_tables"]
                 if acc.metadata.get("classified_fields"):
                     node.metadata.classified_fields = acc.metadata["classified_fields"]
-                    # Derive typed PII/PHI field lists for red-team pre-scoring
-                    cf = acc.metadata["classified_fields"]
-                    if isinstance(cf, dict):
-                        pii = [k for k, lbls in cf.items() if "PII" in lbls]
-                        phi = [k for k, lbls in cf.items() if "PHI" in lbls]
-                        if pii:
-                            node.metadata.pii_fields = pii
-                        if phi:
-                            node.metadata.phi_fields = phi
+                # Typed PII/PHI field lists for red-team pre-scoring — computed
+                # by _enrich_datastores from per-field labels (classified_fields
+                # above is table -> field names, not field -> labels, so it
+                # can't be re-derived from here).
+                if acc.metadata.get("pii_fields"):
+                    node.metadata.pii_fields = acc.metadata["pii_fields"]
+                if acc.metadata.get("phi_fields"):
+                    node.metadata.phi_fields = acc.metadata["phi_fields"]
             # PRIVILEGE node typed fields
             if acc.component_type == ComponentType.PRIVILEGE:
                 if acc.metadata.get("privilege_scope"):
@@ -1703,6 +1703,37 @@ class AiSbomExtractor:
                 doc.nodes.extend(ces_nodes)
         except Exception as exc:  # noqa: BLE001
             _log.warning("CES scanner failed: %s", exc)
+
+        # Synthesize a fallback AGENT node representing the app itself when no
+        # agentic-framework adapter (LangGraph/CrewAI/AutoGen/etc.) fired but
+        # the app clearly calls an LLM directly (MODEL node) and/or exposes
+        # tools (TOOL/MCP_SERVER) — e.g. a plain FastAPI backend that builds
+        # raw OpenAI tool schemas by hand, with no agent framework in sight.
+        # Without this, such apps get zero AGENT nodes and every AGENT-gated
+        # redteam scenario family (PROMPT_DRIVEN_THREAT, DATA_EXFILTRATION)
+        # is silently starved. Mirrors the same fallback already used by the
+        # behavior/redteam runtime path (nuguard.common.auto_sbom_enricher.
+        # _enrich_static) but runs here so `nuguard sbom generate` itself
+        # reports the node, and before _enrich_sbom() below so the enricher's
+        # generic injection_risk_score computation covers it too.
+        if not any(n.component_type == ComponentType.AGENT for n in doc.nodes) and any(
+            n.component_type in (ComponentType.MODEL, ComponentType.TOOL, ComponentType.MCP_SERVER)
+            for n in doc.nodes
+        ):
+            _app_stem = PurePosixPath(doc.target.rstrip("/")).name or "Application"
+            _app_name = f"{_app_stem.replace('-', ' ').replace('_', ' ').strip().title() or 'Application'} Assistant"
+            doc.nodes.append(
+                Node(
+                    name=_app_name,
+                    component_type=ComponentType.AGENT,
+                    confidence=0.55,
+                    metadata=NodeMetadata(
+                        description=(doc.summary.use_case if doc.summary else "") or "",
+                        extras={"source": "auto_enrichment"},
+                    ),
+                    evidence=[],
+                )
+            )
 
         # Post-extraction enrichment: derive risk attributes from graph topology
         from ..enricher import enrich as _enrich_sbom
@@ -2064,6 +2095,11 @@ class AiSbomExtractor:
         all_labels: set[str] = set()
         classified_tables: list[str] = []
         classified_fields: dict[str, list[str]] = {}
+        # field_name -> labels, e.g. {"dob": ["PII"], "address": ["PII","PHI"]} —
+        # kept separate from `classified_fields` above (which is table -> field
+        # names, per NodeMetadata.classified_fields' documented shape) because
+        # pii_fields/phi_fields need per-field labels, not per-table field lists.
+        field_labels: dict[str, set[str]] = {}
         for meta in dc_metadata:
             all_labels.update(meta.get("data_classification") or [])
             table = meta.get("table_name") or meta.get("model_name")
@@ -2072,6 +2108,11 @@ class AiSbomExtractor:
                 cf = meta.get("classified_fields")
                 if cf:
                     classified_fields[table] = sorted(cf.keys())
+                    for field_name, labels in cf.items():
+                        field_labels.setdefault(field_name, set()).update(labels or [])
+
+        pii_fields = sorted(f for f, lbls in field_labels.items() if "PII" in lbls)
+        phi_fields = sorted(f for f, lbls in field_labels.items() if "PHI" in lbls)
 
         # Merge into every DATASTORE accumulator (project-wide enrichment)
         for key in datastore_keys:
@@ -2083,6 +2124,12 @@ class AiSbomExtractor:
             existing_cf = dict(acc.metadata.get("classified_fields") or {})
             existing_cf.update(classified_fields)
             acc.metadata["classified_fields"] = existing_cf
+            if pii_fields:
+                existing_pii = set(acc.metadata.get("pii_fields") or [])
+                acc.metadata["pii_fields"] = sorted(existing_pii | set(pii_fields))
+            if phi_fields:
+                existing_phi = set(acc.metadata.get("phi_fields") or [])
+                acc.metadata["phi_fields"] = sorted(existing_phi | set(phi_fields))
 
     @staticmethod
     def _structural_edge_related(a: Node, b: Node) -> bool:
