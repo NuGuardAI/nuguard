@@ -83,6 +83,57 @@ var actual = client.GetChatClient("gpt-4o");
     assert calls[0].name == "GetChatClient"
 
 
+def test_fluent_chain_preserves_receiver_and_assignment() -> None:
+    """A chained call inherits the preceding expression and chain target (#260)."""
+    source = (
+        'var pipeline = mlContext.Transforms.Text("x").Fit(data);\n'
+        "var model = new MyTrainer().Fit(data);\n"
+    )
+
+    fits = find_calls(source, {"Fit"})
+
+    assert len(fits) == 2
+
+    chained = next(call for call in fits if ".Transforms" in (call.receiver or ""))
+    assert chained.receiver == 'mlContext.Transforms.Text("x")'
+    assert chained.assigned_to == "pipeline"
+
+    constructed = next(call for call in fits if (call.receiver or "").startswith("new "))
+    assert constructed.receiver == "new MyTrainer()"
+    assert constructed.assigned_to == "model"
+
+
+def test_fluent_chain_links_across_name_filter() -> None:
+    """Chain linking works when intermediate calls are filtered out (#260)."""
+    source = 'var estimator = ml.Transforms.Text("x").Fit(data);\n'
+
+    fit = find_calls(source, {"Fit"})[0]
+
+    assert fit.receiver == 'ml.Transforms.Text("x")'
+    assert fit.assigned_to == "estimator"
+
+
+def test_mlnet_fits_trained_pipeline_model_from_fluent_chain() -> None:
+    """ML.NET emits a trained MODEL node for ``pipeline.Fit(...)`` chains."""
+    source = """using Microsoft.ML;
+var mlContext = new MLContext();
+var pipeline = mlContext.Transforms.Text("Features", "Text").Fit(data);
+"""
+
+    detections = _extract(
+        CSharpMLNetAdapter(),
+        source,
+    )
+    models = [
+        detection
+        for detection in detections
+        if detection.component_type == ComponentType.MODEL and detection.metadata.get("trained_model")
+    ]
+
+    assert len(models) == 1
+    assert models[0].display_name == "pipeline"
+
+
 def test_llm_clients_detect_azure_and_openai_models() -> None:
     source = """using Azure.AI.OpenAI;
 using OpenAI.Chat;

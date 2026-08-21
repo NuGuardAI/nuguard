@@ -126,7 +126,10 @@ class CSharpMLNetAdapter(CSharpFrameworkAdapter):
                 )
                 continue
 
-            if ".Trainers" in receiver:
+            # Fluent chaining gives ``Fit`` a receiver containing the full
+            # preceding expression (e.g. "...Transforms.Text(x)"); ``Fit``
+            # must reach its own handler below, not be treated as a stage.
+            if ".Trainers" in receiver and call.name != "Fit":
                 if call.assigned_to:
                     estimator_variables.add(call.assigned_to)
 
@@ -165,7 +168,7 @@ class CSharpMLNetAdapter(CSharpFrameworkAdapter):
                 )
                 continue
 
-            if ".Transforms" in receiver:
+            if ".Transforms" in receiver and call.name != "Fit":
                 pipeline_id = call.assigned_to or f"line:{call.line}"
 
                 if call.assigned_to:

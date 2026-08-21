@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from bisect import bisect_right
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Iterable
 
 from ...core.csharp_parser import CSharpMethodDeclaration, CSharpParseResult
@@ -84,7 +84,13 @@ def find_calls(
     source: str,
     names: set[str] | None = None,
 ) -> list[CSharpCall]:
-    """Return call expressions whose simple name is in *names*, if supplied."""
+    """Return call expressions whose simple name is in *names*, if supplied.
+
+    Fluent chains (``a.B(x).C(y)``) are resolved before the *names* filter is
+    applied: ``C`` inherits the full preceding invocation expression as its
+    receiver and, when it has no assignment target of its own, the chain's
+    assignment target.
+    """
     masked = mask_non_code(source)
     calls: list[CSharpCall] = []
 
@@ -103,9 +109,6 @@ def find_calls(
         name = name.removeprefix("@")
 
         if name in _CONTROL_NAMES:
-            continue
-
-        if names is not None and name not in names:
             continue
 
         open_paren = match.end() - 1
@@ -152,7 +155,72 @@ def find_calls(
             )
         )
 
-    return calls
+    linked = _link_fluent_chains(masked, calls)
+
+    if names is None:
+        return linked
+
+    return [call for call in linked if call.name in names]
+
+
+def _link_fluent_chains(
+    masked: str,
+    calls: list[CSharpCall],
+) -> list[CSharpCall]:
+    """Link invocations joined by ``.`` / ``?.`` to their preceding call.
+
+    A chained call inherits the full preceding invocation expression as its
+    receiver (so ``mlContext.Transforms.Text(x).Fit(d)`` gives ``Fit`` a
+    receiver containing ``.Transforms``) and, absent its own assignment, the
+    chain's final target.
+    """
+    linked: list[CSharpCall] = []
+    prev_call: CSharpCall | None = None
+    prev_expression = ""
+
+    for call in calls:
+        receiver = call.receiver
+        assigned_to = call.assigned_to
+
+        joined = (
+            prev_call is not None
+            and re.fullmatch(r"\s*(?:\?\.|\.)\s*", masked[prev_call.end : call.start])
+            is not None
+        )
+
+        if joined and prev_call is not None:
+            receiver = prev_expression
+            if not assigned_to:
+                assigned_to = prev_call.assigned_to
+            expression = f"{prev_expression}.{_callee_head(call)}"
+        else:
+            expression = _base_expression(call)
+
+        expression = expression[:240]
+        linked.append(
+            replace(
+                call,
+                receiver=receiver,
+                assigned_to=assigned_to,
+            )
+        )
+        prev_call = linked[-1]
+        prev_expression = expression
+
+    return linked
+
+
+def _callee_head(call: CSharpCall) -> str:
+    """Reconstruct ``Name<Generic>(args)`` without any receiver prefix."""
+    generics = "".join(f"<{arg}>" for arg in call.generic_arguments)
+    return f"{call.callee.rsplit('.', 1)[-1]}{generics}({call.arguments_text})"
+
+
+def _base_expression(call: CSharpCall) -> str:
+    """Reconstruct one un-chained call expression from parsed parts."""
+    new_prefix = "new " if call.is_constructor else ""
+    receiver = f"{call.receiver}." if call.receiver else ""
+    return f"{new_prefix}{receiver}{_callee_head(call)}"
 
 
 def parse_arguments(
