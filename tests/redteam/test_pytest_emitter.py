@@ -12,8 +12,13 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from nuguard.models.finding import Finding
-from nuguard.output.pytest_emitter import _render_test, emit_regression_tests
+from nuguard.models.finding import Finding, Severity
+from nuguard.output.pytest_emitter import (
+    _finding_sev_float,
+    _qualifies,
+    _render_test,
+    emit_regression_tests,
+)
 
 
 def _finding(payload: str, goal: str = "DATA_EXFILTRATION") -> Finding:
@@ -76,3 +81,36 @@ def test_render_test_escapes_quotes_and_braces() -> None:
         src = _render_test(_finding(payload), set())
         assert src is not None
         ast.parse(src)  # must be valid Python
+
+
+def test_severity_signal_maps_to_documented_scale() -> None:
+    """1–5 severity_signal values map onto the 0.0–1.0 scale per severity level.
+
+    Pre-fix the raw value was divided by 5.0, so HIGH rendered as ``sev_080``
+    instead of the docstring's canonical ``sev_092``.
+    """
+    expected = {5: 1.0, 4: 0.92, 3: 0.75, 2: 0.58, 1: 0.42}
+    for signal, want in expected.items():
+        f = _finding("payload long enough")
+        f.scores["severity_signal"] = signal
+        assert _finding_sev_float(f) == want
+
+
+def test_low_severity_signal_findings_qualify(tmp_path: Path) -> None:
+    """LOW findings (signal 2) clear the 0.5 gate and emit a regression test.
+
+    Pre-fix LOW mapped to 0.4 and was silently dropped from the suite.
+    """
+    finding = _finding("payload long enough", goal="API_ATTACK")
+    finding.severity = Severity.LOW
+    finding.scores["severity_signal"] = 2
+    assert _qualifies(finding)
+    out = emit_regression_tests([finding], "http://localhost:8000", tmp_path)
+    assert out, "expected a LOW-signal finding to emit a file"
+
+
+def test_high_severity_test_name_carries_mapped_value() -> None:
+    """A HIGH finding with signal 4 renders as ``sev_092`` per the docstring."""
+    src = _render_test(_finding("payload long enough"), set())
+    assert src is not None
+    assert "def test_sev_092_" in src
