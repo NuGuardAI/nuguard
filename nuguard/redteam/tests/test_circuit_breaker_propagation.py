@@ -284,7 +284,7 @@ async def test_codegen_escalation_propagates_target_unavailable() -> None:
     so the circuit breaker never tripped and the remaining escalation chains
     hammered the dead endpoint.
     """
-    from unittest.mock import AsyncMock, patch
+    from unittest.mock import patch
 
     from nuguard.redteam.scenarios import codegen_escalation as _codegen_mod
 
