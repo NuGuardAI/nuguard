@@ -584,6 +584,9 @@ class RedteamOrchestrator:
         self._golden_data: dict[str, Any] = golden_data or {}
         self._suppress_spa_html = suppress_spa_html_auth_bypass
         self._codegen_escalation_enabled = codegen_escalation_enabled
+        # Circuit-open flag latched when the 3-strike abort trips; consulted by
+        # the escalation pass so it skips rather than re-hitting a dead target.
+        self._circuit_open = False
         # Auto-discover from SBOM; fall back to provided values
         self._chat_path, self._chat_payload_key, self._chat_payload_list, _discovered_response_key = (
             _discover_chat_config(sbom, chat_path, chat_payload_key, chat_payload_list)
@@ -805,7 +808,13 @@ class RedteamOrchestrator:
                 detail=default_check.error_detail,
             )
         bootstrap_headers = bootstrapper.session.headers()
-        effective_headers = dict(self._extra_headers)
+        # Normalize the static extra headers so a literal "None"/"" string
+        # value (unset ${VAR} → None → stringified anywhere upstream) can't
+        # reach the target. Login-flow/bootstrapped headers override the
+        # normalized static defaults below.
+        from nuguard.common.auth_runtime import _normalize_headers  # noqa: PLC0415
+
+        effective_headers = _normalize_headers(self._extra_headers)
         # Login-flow/bootstrapped session headers must override static defaults.
         if bootstrap_headers:
             effective_headers.update(bootstrap_headers)
@@ -1189,7 +1198,13 @@ class RedteamOrchestrator:
 
             # 5. Escalation pass: if no findings, run lower-scored scenarios that
             #    were filtered out in the CI pass (minimum impact lowered to 3.0)
-            if not findings and self._profile == "ci":
+            #    Skip entirely if the circuit breaker is already open — the
+            #    target is dead and escalation would only hammer it again.
+            if (
+                not findings
+                and self._profile == "ci"
+                and not self._circuit_open
+            ):
                 run_ids = {s.scenario_id for s in scenarios}
                 escalation_scenarios = [
                     s for s in all_scenarios
@@ -1301,6 +1316,33 @@ class RedteamOrchestrator:
         # Circuit breaker: trip only after this many consecutive unavailability errors.
         _ABORT_THRESHOLD = 3
         consecutive_unavailable = 0
+        # If a prior pass already tripped the circuit (the escalation pass runs
+        # after the main pass), skip every scenario — the target is dead and
+        # there is no point hammering it again with a fresh abort event.
+        if self._circuit_open:
+            _log.warning(
+                "Circuit breaker already open from a prior pass — skipping %d scenarios",
+                len(scenarios),
+            )
+            return (
+                [],
+                [(s.title, s.goal_type.value, False) for s in scenarios],
+                [
+                    ScenarioRecord(
+                        title=s.title,
+                        goal_type=s.goal_type.value,
+                        scenario_type=s.scenario_type.value,
+                        description=s.description,
+                        impact_score=s.impact_score,
+                        affected=", ".join(
+                            self._node_label.get(nid, nid) for nid in s.target_node_ids[:2]
+                        ),
+                        chain_status="skipped",
+                        had_finding=False,
+                    )
+                    for s in scenarios
+                ],
+            )
         # Similarity miss tracker: skip scenarios whose payloads closely resemble
         # already-failed attacks once the miss count exceeds the threshold.
         miss_tracker = SimilarityMissTracker(miss_threshold=self._similar_miss_threshold)
@@ -1456,6 +1498,18 @@ class RedteamOrchestrator:
                                             if sd.get("step_type") != "WARMUP"
                                         )
                                         record.turns_budget += len(_esc_scenario.chain.steps)
+                                    except TargetUnavailableError:
+                                        # The target may have died after the
+                                        # primary code-gen hit; propagating lets
+                                        # the circuit breaker in _run_scenarios
+                                        # trip and skip remaining scenarios
+                                        # instead of hammering the dead endpoint.
+                                        _log.warning(
+                                            "[codegen-esc] target unavailable during escalation chain %s — propagating "
+                                            "so the orchestrator can trip its circuit breaker",
+                                            _esc_scenario.chain.scenario_type.value if _esc_scenario.chain else "unknown",
+                                        )
+                                        raise
                                     except Exception as _esc_exc:
                                         _log.warning(
                                             "[codegen-esc] escalation chain %s failed: %s",
@@ -1496,6 +1550,11 @@ class RedteamOrchestrator:
                             exc,
                         )
                         abort_event.set()
+                        # Preserve the circuit-open state across passes (the
+                        # subsequent escalation pass calls _run_scenarios again
+                        # with a fresh abort event; without this flag it would
+                        # re-hit the dead endpoint).
+                        self._circuit_open = True
                     else:
                         _log.warning(
                             "Target temporarily unavailable (%d/%d) — continuing. %s",

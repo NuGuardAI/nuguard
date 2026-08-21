@@ -585,7 +585,6 @@ nuguard redteam --sbom app.sbom.json --target $APP_URL \
 | `--canary` | — | from `nuguard.yaml` | Canary JSON file path |
 | `--catalog` | — | built-in catalog | Path to a custom scenario catalog YAML. Replaces the built-in catalog. Generate with `nuguard redteam catalog-export` |
 | `--profile` | — | `ci` | `ci` (high-signal only) or `full` (all scenarios) |
-| `--engine` | — | `v1` | `v1` (default, stable) or `v2` (knowledge-base-driven, phased, layered evaluation) ![in development](https://img.shields.io/badge/v2-in_development-fb8500?style=flat-square) |
 | `--scenarios` | — | all | Comma-separated filter: `prompt-driven-threat`, `policy-violation`, `data-exfiltration`, `privilege-escalation`, `tool-abuse`, `mcp-toxic-flow`, `api-attack`, `agentic-trust-abuse`, `recon-inference`. Stable catalog IDs (e.g. `D01,C03`) also work |
 | `--min-impact-score` | — | `0.0` | Exclude scenarios below this pre-score [0–10] |
 | `--guided` / `--no-guided` | — | on when a redteam LLM is configured | Adaptive multi-turn guided conversations (TAP + PAIR) |

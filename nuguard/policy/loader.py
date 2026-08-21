@@ -22,6 +22,9 @@ def save_controls(controls: list[PolicyControl], path: Path) -> None:
         controls: Compiled policy controls.
         path:     Destination file path (typically ``cognitive_policy.json``).
     """
+    # Auto-create the parent directory, consistent with analyze / behavior /
+    # redteam (issue #233) and scan / sbom generate.
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         json.dumps(
             [c.model_dump() for c in controls],

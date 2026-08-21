@@ -237,3 +237,109 @@ async def test_orchestrator_aborts_run_after_three_unavailable_scenarios() -> No
     # ``executed`` — the behavioural signal is the chain_status, asserted above.
     assert len(executed) == 7
     assert not findings
+
+
+# ── Escalation-pass circuit preservation + codegen-escalation TUE ────────────
+
+
+@pytest.mark.asyncio
+async def test_escalation_pass_skips_when_circuit_open() -> None:
+    """A second _run_scenarios pass (the escalation pass) must not re-hit a dead target.
+
+    Regression: _run_scenarios creates a fresh abort event per call, so after
+    the 3-strike abort tripped in the main pass, the escalation pass would
+    re-run every scenario against the dead endpoint.  The _circuit_open flag
+    latched on the abort must carry across passes and skip all scenarios
+    without sending a single request.
+    """
+    orch = _tiny_orchestrator()
+    client = _DeadClient()
+    executor = AttackExecutor(client=cast(Any, client))
+    scenarios = [_scenario(_chat_chain(f"c{i}")) for i in range(1, 8)]
+
+    # First pass: trip the circuit (3 aborts) and skip the remaining 2.
+    _f1, _e1, records1 = await orch._run_scenarios(scenarios, executor, None)
+    assert records1[-1].chain_status == "skipped"
+    assert orch._circuit_open is True
+
+    # Second pass (escalation): fresh abort event — the latched flag must
+    # short-circuit everything without a single request to the target.
+    client.reset_count = 0
+    requests_before = client._consecutive_errors
+    _f2, _e2, records2 = await orch._run_scenarios(scenarios, executor, None)
+
+    assert all(r.chain_status == "skipped" for r in records2)
+    assert not _f2
+    # No new requests hit the target — the error counter is unchanged.
+    assert client._consecutive_errors == requests_before
+    assert client.reset_count == 0
+
+
+@pytest.mark.asyncio
+async def test_codegen_escalation_propagates_target_unavailable() -> None:
+    """TUE raised inside the codegen escalation loop must propagate, not be swallowed.
+
+    Regression: the escalation loop caught every ``Exception`` and logged — a
+    dead target mid-escalation never reached ``_run_scenarios``'s TUE handler,
+    so the circuit breaker never tripped and the remaining escalation chains
+    hammered the dead endpoint.
+    """
+    from unittest.mock import AsyncMock, patch
+
+    from nuguard.redteam.scenarios import codegen_escalation as _codegen_mod
+
+    # Need an AGENT node in the SBOM so the codegen-escalation branch finds an
+    # entry agent and builds the 5 follow-on chains.
+    from nuguard.sbom.models import Node  # noqa: PLC0415
+    from nuguard.sbom.types import ComponentType  # noqa: PLC0415
+
+    sbom = AiSbomDocument(
+        target="unit-test",
+        nodes=[Node(name="agent-1", component_type=ComponentType.AGENT, confidence=1.0)],
+        edges=[],
+    )
+    orch = RedteamOrchestrator(
+        sbom=sbom,
+        target_url="http://dead",
+        concurrency=1,
+        similar_miss_threshold=10_000,
+    )
+    # Two-phase client: the FIRST send (primary chain) succeeds so the
+    # codegen branch triggers; the SECOND send (first escalation chain) raises
+    # TUE to simulate the target dying mid-escalation.
+    class _TwoPhaseClient(_DeadClient):
+        async def send(self, payload: str, session: AttackSession) -> tuple[str, list[dict]]:
+            self._consecutive_errors += 1
+            if self._consecutive_errors >= self.threshold:
+                raise TargetUnavailableError(
+                    f"Chat endpoint returned {self._consecutive_errors} consecutive errors "
+                    f"(last: {payload[:20]}) — aborting scan to avoid hammering a broken endpoint."
+                )
+            return "looks fine, no code here", []
+
+    # threshold=2: primary chain send bumps the counter to 1 (ok); the first
+    # escalation chain send bumps it to 2 → TUE raises mid-escalation.
+    client = _TwoPhaseClient(threshold=2)
+    executor = AttackExecutor(client=cast(Any, client))
+    scenario = _scenario(_chat_chain("esc"))
+
+    # Force the codegen-escalation branch: primary chain detects code, then
+    # the escalation chain runs against the dying target.
+    def _fake_detect(results) -> tuple[bool, str]:
+        return True, "forced codegen signal"
+
+    with patch.object(_codegen_mod, "detect_codegen_success", _fake_detect):
+        # The escalation chain's TUE must propagate out of the escalation loop
+        # and reach the orchestrator's TUE handler (NOT be swallowed by the
+        # broad `except Exception`), which marks the scenario aborted.
+        _findings, _executed, records = await orch._run_scenarios([scenario], executor, None)
+
+    # The TUE escaped the escalation loop and the orchestrator handled it:
+    # the scenario is "aborted" (not "completed"), and the client counter was
+    # never reset — the orchestrator's abort signal is intact.
+    assert records[0].chain_status == "aborted"
+    assert not _findings
+    assert client.reset_count == 0
+    # Exactly 2 sends: 1 primary + 1 first-escalation (the remaining 4
+    # escalation chains were never sent — the exception escaped the loop).
+    assert client._consecutive_errors == 2

@@ -363,12 +363,24 @@ def check(
         fw_name = framework or "custom"
         _console.print(f"\n[bold]Running compliance assessment:[/bold] {fw_name} …")
 
+        llm_client = None
+        if enable_llm:
+            from nuguard.common.llm_client import LLMClient
+
+            _model = cfg.litellm_model or ""
+            llm_client = LLMClient(
+                model=cfg.litellm_model,
+                api_key=cfg.litellm_api_key,
+                api_base=cfg.litellm_api_base if _model.startswith("azure") else None,
+            )
+
         try:
             assessment = asyncio.run(
                 run_compliance_assessment(
                     doc,
                     framework=fw_name,
                     enable_llm=enable_llm,
+                    llm=llm_client,
                 )
             )
         except Exception as exc:
@@ -429,6 +441,9 @@ def check(
                 all_formats=formats,
                 extension_map=extension_map,
             )
+            # Auto-create the parent directory, consistent with analyze /
+            # behavior / redteam (issue #233) and scan / sbom generate.
+            out_path.parent.mkdir(parents=True, exist_ok=True)
             out_path.write_text(_render(fmt), encoding="utf-8")
             _console.print(f"Output written to {out_path}")
     else:

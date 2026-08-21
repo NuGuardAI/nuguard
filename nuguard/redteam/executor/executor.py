@@ -335,28 +335,6 @@ def _pnr_neighbor(pnr: str) -> str:
     return pnr[:-1] + next_char
 
 
-def _step_result_for_unavailable(exc: Exception) -> StepResult:
-    """Return a synthetic StepResult for a propagated TargetUnavailableError.
-
-    Lets the v2 runner summarise a dead-target chain through the normal
-    deterministic path (``_summarize_static``) so the scheduler's phase-abort
-    fires — the canonical ``[REQUEST_ERROR: ...]`` response classifies as a
-    transport error exactly like any real connect failure.
-    """
-    return StepResult(
-        step=ExploitStep(
-            step_id="__unreachable__",
-            step_type="INJECT",
-            description="target unreachable — step never executed",
-            payload="",
-            success_signal="",
-            on_failure="skip",
-        ),
-        response=f"[REQUEST_ERROR: {exc}]",
-        tool_calls=[],
-    )
-
-
 class AttackExecutor:
     """Executes an ExploitChain step-by-step, collecting evidence."""
 
