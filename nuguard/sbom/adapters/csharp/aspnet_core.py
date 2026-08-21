@@ -266,6 +266,13 @@ class CSharpAspNetCoreAdapter(CSharpFrameworkAdapter):
                 controller_attributes,
                 constants,
             )
+            if not action_route:
+                # A separate method-level [Route(...)] supplies the action
+                # template when the HTTP attribute carries none.
+                action_route = _route_attribute(
+                    method_attributes,
+                    constants,
+                )
             route = _combine_routes(
                 base_route,
                 action_route,
@@ -319,6 +326,9 @@ class CSharpAspNetCoreAdapter(CSharpFrameworkAdapter):
                 result,
                 request_type,
             )
+            if not request_schema and request_name and request_type in _PRIMITIVE_TYPES:
+                # Synthesize a schema for body-bound primitive prompts.
+                request_schema = {request_name: request_type}
             chat_key = _chat_key(
                 request_schema,
                 body,
@@ -347,6 +357,7 @@ class CSharpAspNetCoreAdapter(CSharpFrameworkAdapter):
                     request_schema=(request_schema),
                     response_schema=(response_schema),
                     chat_key=chat_key,
+                    chat_payload_list=_chat_payload_is_list(request_schema, chat_key),
                     response_key=response_key,
                 )
             )
@@ -403,6 +414,9 @@ class CSharpAspNetCoreAdapter(CSharpFrameworkAdapter):
                 result,
                 request_type,
             )
+            if not request_schema and request_name and request_type in _PRIMITIVE_TYPES:
+                # Synthesize a schema for body-bound primitive prompts.
+                request_schema = {request_name: request_type}
             chat_key = _chat_key(
                 request_schema,
                 handler,
@@ -440,11 +454,32 @@ class CSharpAspNetCoreAdapter(CSharpFrameworkAdapter):
                     request_schema=(request_schema),
                     response_schema=(response_schema),
                     chat_key=chat_key,
+                    chat_payload_list=_chat_payload_is_list(request_schema, chat_key),
                     response_key=response_key,
                 )
             )
 
         return detections
+
+
+def _chat_payload_is_list(
+    schema: dict[str, str],
+    chat_key: str | None,
+) -> bool:
+    """Return True when the conversational payload field is collection-typed."""
+    if not chat_key:
+        return False
+
+    field_type = schema.get(chat_key, "")
+    return bool(
+        field_type.endswith("[]")
+        or re.search(
+            r"\b(?:List|IList|ICollection|IEnumerable|IReadOnlyCollection"
+            r"|IReadOnlyList|ReadOnlyCollection|ImmutableArray|ImmutableList"
+            r"|HashSet|ISet)<",
+            field_type,
+        )
+    )
 
 
 def _endpoint_node(
@@ -462,6 +497,7 @@ def _endpoint_node(
     response_schema: dict[str, str],
     chat_key: str | None,
     response_key: str | None,
+    chat_payload_list: bool = False,
 ) -> ComponentDetection:
     canonical = canonicalize_text(f"aspnet:endpoint:{http_method}:{route}")
     metadata: dict[str, Any] = {
@@ -480,7 +516,7 @@ def _endpoint_node(
 
     if chat_key:
         metadata["chat_payload_key"] = chat_key
-        metadata["chat_payload_list"] = False
+        metadata["chat_payload_list"] = chat_payload_list
 
     if response_key:
         metadata["response_text_key"] = response_key
@@ -664,7 +700,14 @@ def _combine_routes(
     action_name: str,
 ) -> str:
     controller = controller_name.removesuffix("Controller")
-    combined = "/".join(part.strip("/") for part in (base, action) if part.strip("/"))
+    # An absolute action template ("/x" or "~/x") overrides the
+    # controller-level route instead of concatenating with it.
+    if action.startswith("~"):
+        combined = action.lstrip("~")
+    elif action.startswith("/"):
+        combined = action
+    else:
+        combined = "/".join(part.strip("/") for part in (base, action) if part.strip("/"))
     combined = re.sub(
         r"\[controller\]",
         controller,
@@ -826,6 +869,22 @@ def _request_parameter(
         key=lambda item: not item[2],
     )
 
+    # An explicitly body-bound parameter defines the request shape even when
+    # primitive (e.g. [FromBody] string prompt).
+    for type_name, name, from_body in ordered:
+        if not from_body:
+            break
+
+        base = _base_type(type_name)
+
+        if base in _INFRASTRUCTURE_TYPES:
+            continue
+
+        if base.startswith("I") and len(base) > 1 and base[1].isupper():
+            continue
+
+        return base, name
+
     for type_name, name, _ in ordered:
         base = _base_type(type_name)
 
@@ -855,7 +914,6 @@ def _schema_for_type(
 
     if declaration is None:
         return {}
-
     schema: dict[str, str] = {}
     record_match = re.search(
         r"\((?P<params>[^()]*)\)",

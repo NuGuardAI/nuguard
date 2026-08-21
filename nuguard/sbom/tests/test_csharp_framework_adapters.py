@@ -680,3 +680,129 @@ app.MapPost(
     assert endpoint.metadata["auth_required"] is False
     assert endpoint.metadata["response_body_schema"] == {"Answer": "string"}
     assert endpoint.metadata["response_text_key"] == "Answer"
+
+
+def test_method_level_route_combined_with_http_attribute() -> None:
+    """A separate method-level [Route(...)] supplies the action template (#260)."""
+    source = """using Microsoft.AspNetCore.Mvc;
+[ApiController]
+[Route("api/[controller]")]
+public class ChatController : ControllerBase
+{
+    [Route("complete")]
+    [HttpPost]
+    public IActionResult Complete([FromBody] ChatRequest request)
+    {
+        return Ok(request);
+    }
+}
+"""
+
+    endpoints = _by_type(
+        _extract(
+            CSharpAspNetCoreAdapter(),
+            source,
+            "ChatController.cs",
+        ),
+        ComponentType.API_ENDPOINT,
+    )
+
+    assert len(endpoints) == 1
+    assert endpoints[0].metadata["method"] == "POST"
+    assert endpoints[0].metadata["endpoint"] == "/api/Chat/complete"
+
+
+def test_absolute_action_route_overrides_controller_route() -> None:
+    """Action templates beginning with '/' or '~/' replace the base route (#260)."""
+    source = """using Microsoft.AspNetCore.Mvc;
+[ApiController]
+[Route("api/[controller]")]
+public class ChatController : ControllerBase
+{
+    [HttpGet("/complete")]
+    public IActionResult Complete()
+    {
+        return Ok("ok");
+    }
+
+    [HttpGet("~/prompt-status")]
+    public IActionResult PromptStatus()
+    {
+        return Ok("ok");
+    }
+}
+"""
+
+    endpoints = _by_type(
+        _extract(
+            CSharpAspNetCoreAdapter(),
+            source,
+            "ChatController.cs",
+        ),
+        ComponentType.API_ENDPOINT,
+    )
+    routes = {endpoint.metadata["method"] + " " + endpoint.metadata["endpoint"] for endpoint in endpoints}
+
+    assert routes == {"GET /complete", "GET /prompt-status"}
+
+
+def test_chat_payload_list_reflects_collection_field() -> None:
+    """Collection-valued conversational fields emit chat_payload_list=true (#260)."""
+    source = """using Microsoft.AspNetCore.Mvc;
+public record Turn(string Role, string Content);
+public record ChatRequest(List<Message> Messages);
+public class Message {}
+[ApiController]
+[Route("api/chat")]
+public class ChatController : ControllerBase
+{
+    [HttpPost]
+    public IActionResult Chat(ChatRequest request)
+    {
+        return Ok(request);
+    }
+}
+"""
+
+    endpoints = _by_type(
+        _extract(
+            CSharpAspNetCoreAdapter(),
+            source,
+            "ChatController.cs",
+        ),
+        ComponentType.API_ENDPOINT,
+    )
+
+    assert len(endpoints) == 1
+    assert endpoints[0].metadata["chat_payload_key"] == "Messages"
+    assert endpoints[0].metadata["chat_payload_list"] is True
+
+
+def test_from_body_primitive_prompt_is_preserved() -> None:
+    """[FromBody] string prompt defines the request shape and chat key (#260)."""
+    source = """using Microsoft.AspNetCore.Mvc;
+[ApiController]
+[Route("api/chat")]
+public class ChatController : ControllerBase
+{
+    [HttpPost("ask")]
+    public IActionResult Ask([FromBody] string prompt)
+    {
+        return Ok(prompt);
+    }
+}
+"""
+
+    endpoints = _by_type(
+        _extract(
+            CSharpAspNetCoreAdapter(),
+            source,
+            "ChatController.cs",
+        ),
+        ComponentType.API_ENDPOINT,
+    )
+
+    assert len(endpoints) == 1
+    assert endpoints[0].metadata["request_body_schema"] == {"prompt": "string"}
+    assert endpoints[0].metadata["chat_payload_key"] == "prompt"
+    assert endpoints[0].metadata["chat_payload_list"] is False
