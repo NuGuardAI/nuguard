@@ -87,3 +87,33 @@ class TestCloudSecretsManagerDetection:
         adapter = _adapter("auth_aws_secrets_manager")
         code = "client = boto3.client('s3')\n"
         assert adapter.detect(code) is None
+
+
+class TestAuthMechanismSplit:
+    """jwt / oauth2 / apikey must stay distinct nodes, not collapse into one
+    auth:generic node — see registry.py's Tier 2 comment."""
+
+    def test_jwt_detected_by_dedicated_adapter(self) -> None:
+        adapter = _adapter("auth_jwt")
+        detection = adapter.detect("const token = jwt.sign(payload, secret)\n")
+        assert detection is not None
+        assert detection.canonical_name == "auth:jwt"
+
+    def test_oauth_detected_by_dedicated_adapter(self) -> None:
+        adapter = _adapter("auth_oauth")
+        detection = adapter.detect("app.use('/auth/google', passport.authenticate('oauth2'))\n")
+        assert detection is not None
+        assert detection.canonical_name == "auth:oauth2"
+
+    def test_apikey_detected_by_dedicated_adapter(self) -> None:
+        adapter = _adapter("auth_apikey")
+        detection = adapter.detect("const key = req.headers['apikey']\n")
+        assert detection is not None
+        assert detection.canonical_name == "auth:apikey"
+
+    def test_jwt_oauth_apikey_produce_distinct_canonical_names(self) -> None:
+        jwt_det = _adapter("auth_jwt").detect("jwt.verify(token, secret)\n")
+        oauth_det = _adapter("auth_oauth").detect("passport.authenticate('oauth2')\n")
+        apikey_det = _adapter("auth_apikey").detect("bearer token check\n")
+        names = {d.canonical_name for d in (jwt_det, oauth_det, apikey_det) if d is not None}
+        assert names == {"auth:jwt", "auth:oauth2", "auth:apikey"}

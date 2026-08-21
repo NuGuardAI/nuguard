@@ -345,17 +345,52 @@ def default_registry() -> tuple[DetectionAdapter, ...]:
             # Tier 2 (priority 140): broader auth keyword patterns.
             #   Excluded from non-runtime paths (YAML configs, data-generator dirs)
             #   to reduce false positives.
+            # Tier 2 (priority 140): broader auth keyword patterns, split by
+            # mechanism (jwt / oauth2 / apikey) rather than one shared
+            # "auth:generic" canonical name — otherwise distinct mechanisms
+            # (e.g. jwt-primary-auth, google-oauth, apple-sign-in-jwks) dedupe
+            # into a single node and lose their identity. Mirrors the
+            # per-provider split already used by the secrets-manager tier
+            # above (auth_aws_secrets_manager / auth_azure_key_vault / ...).
+            RegexAdapter(
+                name="auth_jwt",
+                component_type=ComponentType.AUTH,
+                priority=140,
+                patterns=(re.compile(r"\bjwt\b", re.IGNORECASE),),
+                canonical_name="auth:jwt",
+                metadata={"auth_type": "jwt"},
+                skip_path_parts=frozenset({"data-generators", "data_generators", "generators"}),
+            ),
+            RegexAdapter(
+                name="auth_oauth",
+                component_type=ComponentType.AUTH,
+                priority=140,
+                patterns=(re.compile(r"\boauth2?\b", re.IGNORECASE),),
+                canonical_name="auth:oauth2",
+                metadata={"auth_type": "oauth2"},
+                skip_path_parts=frozenset({"data-generators", "data_generators", "generators"}),
+            ),
+            RegexAdapter(
+                name="auth_apikey",
+                component_type=ComponentType.AUTH,
+                priority=140,
+                patterns=(
+                    re.compile(r"\b(apikey|api_key|bearer)\b", re.IGNORECASE),
+                    re.compile(r"\b(?:access|refresh|api|id)_token\b", re.IGNORECASE),
+                ),
+                canonical_name="auth:apikey",
+                metadata={"auth_type": "apikey"},
+                skip_path_parts=frozenset({"data-generators", "data_generators", "generators"}),
+            ),
             RegexAdapter(
                 name="auth_generic",
                 component_type=ComponentType.AUTH,
                 priority=140,
                 patterns=(
-                    # Auth scheme identifiers — short, unambiguous
-                    re.compile(r"\b(jwt|oauth2?|apikey|api_key|bearer)\b", re.IGNORECASE),
                     # Full authentication/authorization words — avoids gcloud auth, auth@v2, etc.
                     re.compile(r"\bauth(?:entication|orization|enticate|orize)\b", re.IGNORECASE),
                     # Compound token forms — avoids bare CI token vars like token=$TOKEN
-                    re.compile(r"\b(?:access|refresh|api|auth|id)_token\b", re.IGNORECASE),
+                    re.compile(r"\bauth_token\b", re.IGNORECASE),
                     # Password hashing and session-based auth patterns
                     re.compile(
                         r"\b(bcrypt|passlib|argon2|pbkdf2|scrypt"
@@ -401,14 +436,15 @@ def default_registry() -> tuple[DetectionAdapter, ...]:
                     ),
                     re.compile(
                         # PaaS / serverless / edge deployment platforms.
-                        # "render" is negative-lookahead-guarded against
-                        # call-syntax ("render(", "render (") so it doesn't
-                        # collide with the extremely common React/Vue
-                        # render() method — confirmed false positive
-                        # (SolutionPage.tsx's render() matching the
-                        # Render.com PaaS keyword).
+                        # Bare "render" is excluded entirely — it collides
+                        # with the extremely common React/Vue render() method
+                        # and even prose mentions of the English word (e.g. a
+                        # "// ... and render it" comment, confirmed false
+                        # positive in SolutionPage.tsx that a call-syntax-only
+                        # negative lookahead didn't catch). Require an actual
+                        # Render.com-specific signal instead.
                         r"\b(flyctl|fly\.io|heroku|vercel|netlify|railway"
-                        r"|render(?!\s*\()"
+                        r"|render\.com|render[_-]deploy|render\.yaml"
                         r"|serverless[_-]framework|sam[_-]cli|amplify[_-]cli"
                         r"|wrangler|cloudflare[_-]pages|deno[_-]deploy)\b",
                         re.IGNORECASE,

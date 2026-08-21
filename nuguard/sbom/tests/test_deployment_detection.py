@@ -189,6 +189,23 @@ def test_react_render_method_not_detected_as_deployment(tmp_path):
 # ── Existing patterns unaffected ─────────────────────────────────────────────
 
 
+def test_render_prose_comment_not_detected_as_deployment(tmp_path):
+    """Regression: a prose comment mentioning "render" must not match the
+    Render.com PaaS keyword — confirmed false positive on Studyield's
+    SolutionPage.tsx:156 (`// ... and render it`), which a call-syntax-only
+    negative lookahead didn't catch since it's not a function call."""
+    tsx_config = AiSbomConfig(include_extensions={".tsx"}, enable_llm=False)
+    (tmp_path / "SolutionPage.tsx").write_text(
+        "function SolutionPage() {\n"
+        "  // fetch the solution data and render it\n"
+        "  return null;\n"
+        "}\n",
+        encoding="utf-8",
+    )
+    doc = AiSbomExtractor().extract_from_path(tmp_path, tsx_config)
+    assert not _has_deployment(doc), "prose mention of 'render' must not be flagged as Render.com PaaS usage"
+
+
 def test_docker_in_py_still_detected(tmp_path):
     """Existing docker pattern in Python files still works."""
     (tmp_path / "app.py").write_text(
