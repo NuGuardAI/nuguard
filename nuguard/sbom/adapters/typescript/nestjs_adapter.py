@@ -24,7 +24,7 @@ import re
 from typing import Any
 
 from ...types import ComponentType
-from ..base import ComponentDetection, RelationshipHint
+from ..base import ComponentDetection
 from ._ts_regex import TSFrameworkAdapter
 
 # ---------------------------------------------------------------------------
@@ -185,11 +185,79 @@ def _find_class_body_span(lines: list[str], class_line_idx: int) -> tuple[int, i
     return brace_line, min(j, n - 1)
 
 
-def _compose_path(prefix: str, route: str) -> str:
+def _compose_path(prefix: str, route: str, global_prefix: str = "") -> str:
     prefix = (prefix or "").strip("/")
     route = (route or "").strip("/")
-    parts = [p for p in (prefix, route) if p]
+    global_prefix = (global_prefix or "").strip("/")
+    parts = [p for p in (global_prefix, prefix, route) if p]
     return "/" + "/".join(parts) if parts else ""
+
+
+# Matches `app.setGlobalPrefix('api/v1')` / `app.setGlobalPrefix("api/v1", {...})`
+# as well as the equally common `app.setGlobalPrefix(apiPrefix)` variable form
+# (see `_resolve_prefix_variable`) in main.ts (or wherever NestFactory.create's
+# entrypoint lives) — Nest applies this prefix to every route in the app,
+# outside each controller's own `@Controller('prefix')`.
+_GLOBAL_PREFIX_CALL_RE = re.compile(
+    r"\.setGlobalPrefix\(\s*(?:['\"]([^'\"]+)['\"]|(\w+))\s*[,)]"
+)
+_QUOTED_STRING_RE = re.compile(r"['\"]([^'\"]+)['\"]")
+
+
+def _resolve_prefix_variable(content: str, var_name: str) -> str | None:
+    """Resolve ``setGlobalPrefix(apiPrefix)``'s value from its assignment.
+
+    Handles both a plain literal (``const apiPrefix = 'api/v1';``) and the
+    common ``ConfigService.get(KEY, DEFAULT)`` pattern (``const apiPrefix =
+    configService.get<string>('API_PREFIX', 'api/v1');``) by taking the
+    *last* quoted string literal on the assignment's right-hand side (the
+    default value, when there's a preceding config-key string too).
+    """
+    m = re.search(rf"\b{re.escape(var_name)}\s*=\s*([^;\n]+)", content)
+    if not m:
+        return None
+    quoted = _QUOTED_STRING_RE.findall(m.group(1))
+    return quoted[-1] if quoted else None
+
+
+def _extract_global_prefix(content: str) -> tuple[str, list[str]] | None:
+    """Return ``(prefix, exclude_patterns)`` from an ``app.setGlobalPrefix(...)``
+    call in *content*, or ``None`` if absent.
+
+    ``exclude_patterns`` is a best-effort list of any quoted string literals
+    found inside a trailing ``{ exclude: [...] }`` options object (route
+    strings or ``{ path: '...', method: ... }`` object literals) — path-shape
+    matching only, not full glob semantics.
+    """
+    m = _GLOBAL_PREFIX_CALL_RE.search(content)
+    if not m:
+        return None
+    literal, var_name = m.group(1), m.group(2)
+    if literal is not None:
+        prefix = literal
+    else:
+        resolved = _resolve_prefix_variable(content, var_name)
+        if resolved is None:
+            return None
+        prefix = resolved
+    prefix = prefix.strip("/")
+    exclude: list[str] = []
+    tail = content[m.end() : m.end() + 500]
+    ex_m = re.search(r"exclude\s*:\s*\[", tail)
+    if ex_m:
+        start = ex_m.end()
+        depth = 1
+        end = len(tail)
+        for i, ch in enumerate(tail[start:], start=start):
+            if ch == "[":
+                depth += 1
+            elif ch == "]":
+                depth -= 1
+                if depth == 0:
+                    end = i
+                    break
+        exclude = _QUOTED_STRING_RE.findall(tail[start:end])
+    return prefix, exclude
 
 
 class NestJSAdapter(TSFrameworkAdapter):
@@ -201,11 +269,20 @@ class NestJSAdapter(TSFrameworkAdapter):
 
     def __init__(self) -> None:
         self._global_dto_schemas: dict[str, dict[str, str]] = {}
+        self._global_route_prefix: str = ""
+        self._global_route_prefix_exclude: list[str] = []
 
     def set_global_model_schemas(self, schemas: dict[str, dict[str, str]]) -> None:
         """Provide cross-file DTO field-type definitions (shared hook name
         with FastAPI/Flask's Pydantic-model index — see extractor/core.py)."""
         self._global_dto_schemas = schemas
+
+    def set_global_route_prefix(self, prefix: str, exclude: list[str] | None = None) -> None:
+        """Provide the app-wide route prefix from ``app.setGlobalPrefix(...)``
+        in ``main.ts``, applied outside every controller's own
+        ``@Controller('prefix')`` — see extractor/core.py's main.ts pre-pass."""
+        self._global_route_prefix = (prefix or "").strip("/")
+        self._global_route_prefix_exclude = exclude or []
 
     def extract(
         self,
@@ -242,7 +319,6 @@ class NestJSAdapter(TSFrameworkAdapter):
             if class_idx is None:
                 continue
 
-            controller_name = _CLASS_RE.search(lines[class_idx]).group(1)  # type: ignore[union-attr]
             body_start, body_end = _find_class_body_span(lines, class_idx)
 
             k = body_start
@@ -304,6 +380,16 @@ class NestJSAdapter(TSFrameworkAdapter):
                     break
 
                 composed_path = _compose_path(prefix, route_path)
+                if self._global_route_prefix:
+                    bare_path = (composed_path or "").strip("/")
+                    excluded = any(
+                        pat.strip("/") and pat.strip("/") in bare_path
+                        for pat in self._global_route_prefix_exclude
+                    )
+                    if not excluded:
+                        composed_path = _compose_path(
+                            prefix, route_path, self._global_route_prefix
+                        )
                 canon = (
                     f"endpoint:{http_method.upper()}:{composed_path}"
                     if composed_path
@@ -358,28 +444,6 @@ class NestJSAdapter(TSFrameworkAdapter):
                 )
                 detections.append(ep_detection)
 
-                fw_canon = f"nestjs:framework:{file_path}:{controller_name}"
-                ep_detection.relationships.append(RelationshipHint(
-                    source_canonical=fw_canon,
-                    source_type=ComponentType.FRAMEWORK,
-                    target_canonical=canon,
-                    target_type=ComponentType.API_ENDPOINT,
-                    relationship_type="CALLS",
-                ))
-
                 k += 1
-
-            detections.append(ComponentDetection(
-                component_type=ComponentType.FRAMEWORK,
-                canonical_name=f"nestjs:framework:{file_path}:{controller_name}",
-                display_name=controller_name,
-                adapter_name=self.name,
-                priority=self.priority,
-                confidence=_CONFIDENCE,
-                metadata={"framework": "nestjs", "class": "Controller"},
-                file_path=file_path,
-                line=class_idx + 1,
-                evidence_kind="regex",
-            ))
 
         return detections

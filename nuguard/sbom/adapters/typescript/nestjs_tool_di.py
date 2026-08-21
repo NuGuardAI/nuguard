@@ -33,7 +33,7 @@ import re
 from typing import Any
 
 from ...normalization import canonicalize_text
-from ...types import ComponentType
+from ...types import ComponentType, PrivilegeScope
 from ..base import ComponentDetection
 from ._ts_regex import TSFrameworkAdapter
 from .llm_clients import _PROVIDERS
@@ -71,6 +71,26 @@ _INFRA_SUFFIX_DENYLIST = (
 )
 
 _CONFIDENCE = 0.58
+
+# --- Second, independent firing path: outbound-call evidence -------------
+# Catches services one hop removed from AiService (e.g. CodeSandboxService,
+# injected into a dedicated controller/service pair rather than directly
+# into an LLM-facing class — docs/sbom-fix2.md #3) without requiring the
+# `has_llm_sibling` DI-adjacency signal at all: a tool-like-named
+# `@Injectable()` service whose own body issues a real outbound HTTP call.
+# Higher confidence than the DI-sibling path's default so, when both fire
+# for the same component (e.g. Web Search: DI-sibling in the injecting
+# file, this path in web-search.service.ts's own file, where the real
+# `fetch()` call lives), the real-call-site evidence sorts first.
+_CONFIDENCE_CALL_SITE = 0.62
+
+_OUTBOUND_CALL_RE = re.compile(r"\b(?:fetch|axios(?:\.\w+)?|http\.request)\s*\(")
+_CONFIG_OR_ENV_URL_RE = re.compile(
+    r"\$\{[^}]*[Uu]rl[^}]*\}"  # `${sandboxUrl}/execute`
+    r"|configService\.get\("
+    r"|process\.env\.\w+"
+)
+_CODE_EXEC_BODY_HINT_RE = re.compile(r"\b(code|command|script)\b", re.IGNORECASE)
 
 
 def _is_llm_client_type(type_name: str) -> bool:
@@ -217,5 +237,63 @@ class NestJSToolDIAdapter(TSFrameworkAdapter):
                         evidence_kind="regex",
                     )
                 )
+
+        # --- Second, independent pass: outbound-call evidence -------------
+        # No `has_llm_sibling` requirement — catches a tool-like-named
+        # `@Injectable()` service whose own body issues a real outbound HTTP
+        # call, regardless of what (if anything) it injects. See module-level
+        # comment on `_CONFIDENCE_CALL_SITE` above.
+        for idx, line in enumerate(lines):
+            if not _INJECTABLE_RE.search(line):
+                continue
+
+            class_idx = None
+            for k in range(idx, min(idx + 5, len(lines))):
+                cls_m = _CLASS_RE.search(lines[k])
+                if cls_m:
+                    class_idx = k
+                    break
+            if class_idx is None:
+                continue
+
+            class_name = _CLASS_RE.search(lines[class_idx]).group(1)  # type: ignore[union-attr]
+            if not _is_tool_like_type(class_name):
+                continue
+
+            body_start, body_end = _find_class_body_span(lines, class_idx)
+            call_line: int | None = None
+            for j in range(body_start, body_end + 1):
+                if _OUTBOUND_CALL_RE.search(lines[j]):
+                    call_line = j
+                    break
+            if call_line is None:
+                continue
+
+            canonical = canonicalize_text(f"tool:{class_name}")
+            window = "\n".join(lines[call_line : min(call_line + 3, body_end + 1)])
+            is_code_exec = bool(_CONFIG_OR_ENV_URL_RE.search(window)) and bool(
+                _CODE_EXEC_BODY_HINT_RE.search(window)
+            )
+
+            meta: dict[str, Any] = {"detection_basis": "outbound_call_heuristic"}
+            if is_code_exec:
+                meta["privilege_scope"] = PrivilegeScope.CODE_EXECUTION.value
+                meta["high_privilege"] = True
+
+            detected.append(
+                ComponentDetection(
+                    component_type=ComponentType.TOOL,
+                    canonical_name=canonical,
+                    display_name=_display_name(class_name),
+                    adapter_name=self.name,
+                    priority=self.priority,
+                    confidence=_CONFIDENCE_CALL_SITE,
+                    metadata=meta,
+                    file_path=file_path,
+                    line=call_line + 1,
+                    snippet=lines[call_line].strip()[:120],
+                    evidence_kind="regex",
+                )
+            )
 
         return detected

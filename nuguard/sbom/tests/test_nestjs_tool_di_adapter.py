@@ -186,3 +186,83 @@ class TestNoFalseSubstringMatch:
             "}\n"
         )
         assert _tool_names(_extract(code)) == set()
+
+
+class TestOutboundCallSecondFiringPath:
+    """docs/sbom-fix2.md #5 — code-sandbox is one hop removed from AiService
+    (injected into a dedicated controller/service pair, not directly into an
+    LLM-facing class), so the DI-sibling signal alone can't catch it. This
+    independent path fires on outbound-call evidence instead, with no
+    has_llm_sibling requirement at all."""
+
+    def test_code_sandbox_detected_without_llm_sibling(self) -> None:
+        code = (
+            "@Injectable()\n"
+            "export class CodeSandboxService {\n"
+            "  constructor(private readonly configService: ConfigService) {}\n"
+            "\n"
+            "  async execute(code: string) {\n"
+            "    const sandboxUrl = this.configService.get('SANDBOX_URL');\n"
+            "    return fetch(`${sandboxUrl}/execute`, {\n"
+            "      method: 'POST',\n"
+            "      body: JSON.stringify({ code }),\n"
+            "    });\n"
+            "  }\n"
+            "}\n"
+        )
+        dets = [d for d in _extract(code, "code-sandbox.service.ts") if d.component_type == ComponentType.TOOL]
+        assert len(dets) == 1
+        assert dets[0].metadata["detection_basis"] == "outbound_call_heuristic"
+        assert dets[0].metadata["privilege_scope"] == "code_execution"
+        assert dets[0].metadata["high_privilege"] is True
+
+    def test_no_outbound_call_no_detection(self) -> None:
+        code = (
+            "@Injectable()\n"
+            "export class CodeSandboxService {\n"
+            "  constructor(private readonly configService: ConfigService) {}\n"
+            "\n"
+            "  async execute(code: string) {\n"
+            "    return this.localRunner.run(code);\n"
+            "  }\n"
+            "}\n"
+        )
+        assert _tool_names(_extract(code, "code-sandbox.service.ts")) == set()
+
+    def test_real_call_site_evidence_outranks_di_sibling_constructor_line(self) -> None:
+        """Web Search fix: the class actually issuing the fetch() call must
+        win as the primary evidence over the DI-adjacent injecting class's
+        constructor-parameter line, regardless of which file is scanned first."""
+        research_service = (
+            "@Injectable()\n"
+            "export class ResearchService {\n"
+            "  constructor(\n"
+            "    private readonly aiService: AiService,\n"
+            "    private readonly webSearchService: WebSearchService,\n"
+            "  ) {}\n"
+            "}\n"
+        )
+        web_search_service = (
+            "@Injectable()\n"
+            "export class WebSearchService {\n"
+            "  constructor(private readonly configService: ConfigService) {}\n"
+            "\n"
+            "  async search(query: string) {\n"
+            "    return fetch('https://api.tavily.com/search', { method: 'POST' });\n"
+            "  }\n"
+            "}\n"
+        )
+        di_sibling_det = next(
+            d
+            for d in _extract(research_service, "research.service.ts")
+            if d.component_type == ComponentType.TOOL
+        )
+        call_site_det = next(
+            d
+            for d in _extract(web_search_service, "web-search.service.ts")
+            if d.component_type == ComponentType.TOOL
+        )
+        assert di_sibling_det.canonical_name == call_site_det.canonical_name
+        assert call_site_det.confidence > di_sibling_det.confidence
+        assert "fetch(" in call_site_det.snippet
+        assert call_site_det.file_path == "web-search.service.ts"

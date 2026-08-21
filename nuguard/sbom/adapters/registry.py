@@ -64,6 +64,7 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         SemanticKernelAdapter,
     )
     from .typescript import (
+        AgentOrchestratorTSAdapter,
         AgnoTSAdapter,
         AzureAIAgentsTSAdapter,
         BedrockAgentsTSAdapter,
@@ -73,6 +74,7 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         LangGraphTSAdapter,
         LLMClientTSAdapter,
         NestJSAdapter,
+        NestJSAuthTSAdapter,
         NestJSToolDIAdapter,
         OpenAIAgentsTSAdapter,
         PromptTSAdapter,
@@ -112,9 +114,11 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         DatastoreTSAdapter(),
         PromptTSAdapter(),
         NestJSAdapter(),
+        NestJSAuthTSAdapter(),
         NestJSToolDIAdapter(),
         AgnoTSAdapter(),
         AzureAIAgentsTSAdapter(),
+        AgentOrchestratorTSAdapter(),
     ]
     return tuple(sorted(adapters, key=lambda a: (a.priority, canonicalize_text(a.name))))
 
@@ -686,13 +690,28 @@ def default_registry() -> tuple[DetectionAdapter, ...]:
                         r"|PagerDutyTool|pagerduty[_-]tool|SentryTool|sentry[_-]tool)\b",
                         re.IGNORECASE,
                     ),
+                ),
+                canonical_name="tool:generic",
+            ),
+            RegexAdapter(
+                name="tool_job_scheduling",
+                component_type=ComponentType.TOOL,
+                priority=175,
+                patterns=(
                     re.compile(
-                        # Job scheduling and task queues
+                        # Job scheduling and task queues — Python-ecosystem package
+                        # names only (celery, rq, dramatiq, arq). Bare 2-3 letter
+                        # tokens like "rq"/"arq" are too collision-prone to scan
+                        # in TS/JS source (e.g. "rq" as a local var abbreviating
+                        # "request") — see docs/sbom-fix2.md #3's "Generic" false
+                        # positive at exam-clone.service.ts:898 (a stray "rq"
+                        # match, unrelated to any task queue).
                         r"\b(APScheduler|BackgroundScheduler|AsyncIOScheduler|BlockingScheduler"
                         r"|celery|rq|dramatiq|arq)\b",
                     ),
                 ),
                 canonical_name="tool:generic",
+                skip_extensions=frozenset({".ts", ".tsx", ".js", ".jsx"}),
             ),
             RegexAdapter(
                 name="prompt_generic",

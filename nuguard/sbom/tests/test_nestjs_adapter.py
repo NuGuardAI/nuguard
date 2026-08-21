@@ -175,3 +175,89 @@ class TestCollectDtoSchemas:
 
     def test_no_dto_returns_empty(self) -> None:
         assert collect_dto_schemas("const x = 1;\n") == {}
+
+
+class TestNoPerControllerFrameworkNode:
+    """docs/sbom-fix2.md #5 — one FRAMEWORK node per @Controller class was a
+    regression (28 spurious nodes vs. 0 in ground truth); endpoints must
+    still be extracted without any FRAMEWORK node accompanying them."""
+
+    def test_multiple_controllers_emit_no_framework_nodes(self) -> None:
+        adapter = NestJSAdapter()
+        combined = _CONTROLLER + "\n" + _PUBLIC_ROUTE_CONTROLLER
+        dets = adapter.extract(combined, "controllers.ts", None)
+
+        framework_nodes = [d for d in dets if d.component_type == ComponentType.FRAMEWORK]
+        assert framework_nodes == [], framework_nodes
+        assert len(_endpoints(dets)) >= 3
+
+
+class TestGlobalRoutePrefix:
+    """docs/sbom-fix2.md #1 — app.setGlobalPrefix('api/v1') in main.ts must
+    apply to every extracted endpoint path, outside @Controller('prefix')."""
+
+    def test_prefix_applied_to_composed_endpoint_path(self) -> None:
+        from nuguard.sbom.adapters.typescript.nestjs_adapter import (
+            _extract_global_prefix,
+        )
+
+        main_ts = "app.setGlobalPrefix('api/v1');\n"
+        found = _extract_global_prefix(main_ts)
+        assert found == ("api/v1", [])
+
+        adapter = NestJSAdapter()
+        adapter.set_global_route_prefix(*found)
+        dets = _endpoints(adapter.extract(_CONTROLLER, "chat.controller.ts", None))
+        ep = next(d for d in dets if d.metadata["endpoint"].endswith("conversations"))
+        assert ep.metadata["endpoint"] == "/api/v1/chat/conversations"
+
+    def test_variable_prefix_resolved_via_config_service_default(self) -> None:
+        """Real-world pattern (Studyield's main.ts): the prefix is passed as a
+        variable, assigned from `configService.get(KEY, DEFAULT)` rather than
+        a literal argument to setGlobalPrefix() itself."""
+        from nuguard.sbom.adapters.typescript.nestjs_adapter import (
+            _extract_global_prefix,
+        )
+
+        main_ts = (
+            "const apiPrefix = configService.get<string>('API_PREFIX', 'api/v1');\n"
+            "app.setGlobalPrefix(apiPrefix);\n"
+        )
+        found = _extract_global_prefix(main_ts)
+        assert found == ("api/v1", [])
+
+    def test_variable_prefix_resolved_via_plain_literal_assignment(self) -> None:
+        from nuguard.sbom.adapters.typescript.nestjs_adapter import (
+            _extract_global_prefix,
+        )
+
+        main_ts = "const apiPrefix = 'api/v2';\napp.setGlobalPrefix(apiPrefix);\n"
+        found = _extract_global_prefix(main_ts)
+        assert found == ("api/v2", [])
+
+    def test_no_global_prefix_leaves_path_unchanged(self) -> None:
+        adapter = NestJSAdapter()
+        dets = _endpoints(adapter.extract(_CONTROLLER, "chat.controller.ts", None))
+        ep = next(d for d in dets if d.metadata["endpoint"].endswith("conversations"))
+        assert ep.metadata["endpoint"] == "/chat/conversations"
+
+    def test_exclude_pattern_skips_prefix_for_matched_route(self) -> None:
+        from nuguard.sbom.adapters.typescript.nestjs_adapter import (
+            _extract_global_prefix,
+        )
+
+        main_ts = (
+            "app.setGlobalPrefix('api/v1', { "
+            "exclude: [{ path: 'chat/conversations', method: RequestMethod.GET }] });\n"
+        )
+        found = _extract_global_prefix(main_ts)
+        assert found is not None
+        prefix, exclude = found
+        assert prefix == "api/v1"
+        assert "chat/conversations" in exclude
+
+        adapter = NestJSAdapter()
+        adapter.set_global_route_prefix(prefix, exclude)
+        dets = _endpoints(adapter.extract(_CONTROLLER, "chat.controller.ts", None))
+        excluded_ep = next(d for d in dets if d.metadata["endpoint"].endswith("/chat/conversations") and "api/v1" not in d.metadata["endpoint"])
+        assert excluded_ep.metadata["endpoint"] == "/chat/conversations"

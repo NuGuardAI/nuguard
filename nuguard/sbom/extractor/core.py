@@ -860,12 +860,72 @@ class AiSbomExtractor:
         except Exception as _ts_pre_exc:
             _log.debug("cross-file TS DTO pre-pass failed (non-fatal): %s", _ts_pre_exc)
 
+        # NestJS app-wide route prefix (`app.setGlobalPrefix('api/v1')` in
+        # main.ts) — applies outside every controller's own
+        # `@Controller('prefix')`; see nestjs_adapter.py's `_compose_path`.
+        _global_route_prefix = ""
+        _global_route_prefix_exclude: list[str] = []
+        try:
+            from nuguard.sbom.adapters.typescript.nestjs_adapter import (  # noqa: PLC0415
+                _extract_global_prefix as _extract_ts_global_prefix,
+            )
+
+            for _ts_path, _ in self._iter_files(root, config):
+                if _ts_path.suffix not in (".ts", ".tsx"):
+                    continue
+                if _ts_path.name not in ("main.ts", "main.tsx"):
+                    continue
+                try:
+                    _ts_src = _ts_path.read_text(encoding="utf-8", errors="ignore")
+                except Exception:
+                    continue
+                _found = _extract_ts_global_prefix(_ts_src)
+                if _found:
+                    _global_route_prefix, _global_route_prefix_exclude = _found
+                    break
+        except Exception as _prefix_exc:
+            _log.debug("NestJS global-prefix pre-pass failed (non-fatal): %s", _prefix_exc)
+
+        # Cross-file TS class hierarchy (class X / class X extends Y) — feeds
+        # the hand-rolled multi-agent orchestration heuristic, which needs to
+        # cite a base class's real definition site even when it's declared in
+        # a different file than the orchestrator that sequences its
+        # subclasses (docs/sbom-fix2.md #6).
+        _global_ts_class_bases: dict[str, str] = {}
+        _global_ts_class_locations: dict[str, tuple[str, int]] = {}
+        try:
+            from nuguard.sbom.adapters.typescript.agent_orchestrator import (  # noqa: PLC0415
+                collect_class_hierarchy as _collect_ts_class_hierarchy,
+            )
+
+            for _ts_path, _ in self._iter_files(root, config):
+                if _ts_path.suffix not in (".ts", ".tsx"):
+                    continue
+                try:
+                    _ts_src = _ts_path.read_text(encoding="utf-8", errors="ignore")
+                except Exception:
+                    continue
+                _ts_rel = str(_ts_path.relative_to(root))
+                _bases, _locs = _collect_ts_class_hierarchy(_ts_src, _ts_rel)
+                _global_ts_class_bases.update(_bases)
+                _global_ts_class_locations.update(_locs)
+        except Exception as _hier_exc:
+            _log.debug("TS class-hierarchy pre-pass failed (non-fatal): %s", _hier_exc)
+
         # Inject the global indices into adapters that support them.
         for _adapter in self.framework_adapters:
             if hasattr(_adapter, "set_global_model_schemas"):
                 _adapter.set_global_model_schemas(_global_model_schemas)
             if hasattr(_adapter, "set_global_router_prefixes"):
                 _adapter.set_global_router_prefixes(_global_router_prefixes)
+            if hasattr(_adapter, "set_global_route_prefix"):
+                _adapter.set_global_route_prefix(
+                    _global_route_prefix, _global_route_prefix_exclude
+                )
+            if hasattr(_adapter, "set_global_class_hierarchy"):
+                _adapter.set_global_class_hierarchy(
+                    _global_ts_class_bases, _global_ts_class_locations
+                )
 
         for file_path, file_size in self._iter_files(root, config):
             try:
