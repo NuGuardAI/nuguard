@@ -64,6 +64,10 @@ _OPT_FORMAT = typer.Option(
 _OPT_CONFIG = typer.Option(
     None, "--config", help="Path to nuguard.yaml (default: ./nuguard.yaml).", exists=False,
 )
+_OPT_LLM_CONCURRENCY = typer.Option(
+    None, "--llm-concurrency",
+    help="Max in-flight LLM calls during SBOM enrichment (overrides nuguard.yaml sbom_generation.llm_concurrency).",
+)
 
 
 _VALID_FORMATS = {"json", "cyclonedx", "cyclonedx-ext", "markdown"}
@@ -230,6 +234,7 @@ def _do_generate(
     llm: bool,
     format: str,
     config_file: Optional[Path],
+    llm_concurrency: Optional[int] = None,
 ) -> None:
     """Core generate logic shared by the callback and the explicit subcommand."""
     # Run all pre-flight checks before touching the filesystem or network
@@ -262,11 +267,25 @@ def _do_generate(
     effective_llm = llm or cfg.sbom_llm_enabled
     _sbom_model = cfg.litellm_model or ""
     _sbom_api_base = cfg.litellm_api_base if _sbom_model.startswith("azure") else None
+    # Issue #197: only pass llm_concurrency when explicitly set (CLI flag takes
+    # precedence, then nuguard.yaml, then the AiSbomConfig default which itself
+    # reads NUGUARD_LLM_CONCURRENCY / AISBOM_LLM_CONCURRENCY).
+    from nuguard.sbom.config import _default_llm_concurrency  # noqa: PLC0415
+
     config = AiSbomConfig(
         enable_llm=effective_llm,
         llm_model=_sbom_model,
         llm_api_key=cfg.litellm_api_key or None,
         llm_api_base=_sbom_api_base,
+        llm_concurrency=(
+            llm_concurrency
+            if llm_concurrency is not None
+            else (
+                cfg.sbom_llm_concurrency
+                if cfg.sbom_llm_concurrency is not None
+                else _default_llm_concurrency()
+            )
+        ),
     )
     gen = SbomGenerator(config=config)
 
@@ -340,6 +359,7 @@ def sbom_default(
     llm: bool = _OPT_LLM,
     format: str = _OPT_FORMAT,
     config_file: Optional[Path] = _OPT_CONFIG,
+    llm_concurrency: Optional[int] = _OPT_LLM_CONCURRENCY,
 ) -> None:
     """Generate an AI-SBOM (default) or run a sub-command.
 
@@ -347,7 +367,7 @@ def sbom_default(
     """
     if ctx.invoked_subcommand is not None:
         return
-    _do_generate(source, from_repo, ref, token, output, llm, format, config_file)
+    _do_generate(source, from_repo, ref, token, output, llm, format, config_file, llm_concurrency)
 
 
 @sbom_app.command("generate")
@@ -360,9 +380,10 @@ def generate(
     llm: bool = _OPT_LLM,
     format: str = _OPT_FORMAT,
     config_file: Optional[Path] = _OPT_CONFIG,
+    llm_concurrency: Optional[int] = _OPT_LLM_CONCURRENCY,
 ) -> None:
     """Generate an AI-SBOM by scanning SOURCE or cloning --from-repo."""
-    _do_generate(source, from_repo, ref, token, output, llm, format, config_file)
+    _do_generate(source, from_repo, ref, token, output, llm, format, config_file, llm_concurrency)
 
 
 @sbom_app.command("validate")
