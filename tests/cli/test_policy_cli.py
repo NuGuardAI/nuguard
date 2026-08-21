@@ -340,6 +340,60 @@ def test_check_compliance_framework(sbom_file: Path) -> None:
     assert result.exit_code in (0, 1, 2), result.output
 
 
+def test_check_llm_builds_client_from_config(
+    sbom_file: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``--llm`` must honour nuguard.yaml llm.model instead of the Gemini default (#325)."""
+    import nuguard.common.llm_client as llm_client_mod
+    import nuguard.policy.assessment as assessment_mod
+
+    captured: dict[str, object] = {}
+
+    class _RecordingClient:
+        def __init__(
+            self,
+            model: str | None = None,
+            api_key: str | None = None,
+            api_base: str | None = None,
+        ) -> None:
+            captured["model"] = model
+            captured["api_key"] = api_key
+
+    class _FakeAssessment:
+        evaluations: list = []
+
+    async def _fake_assessment(doc, framework="custom", enable_llm=False, llm=None):
+        captured["llm"] = llm
+        return _FakeAssessment()
+
+    monkeypatch.setattr(llm_client_mod, "LLMClient", _RecordingClient)
+    monkeypatch.setattr(assessment_mod, "run_compliance_assessment", _fake_assessment)
+
+    cfg_file = tmp_path / "nuguard.yaml"
+    cfg_file.write_text(
+        "llm:\n  model: openai/gpt-4o-mini\n  api_key: sk-test\n", encoding="utf-8"
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "policy",
+            "check",
+            "--sbom",
+            str(sbom_file),
+            "--framework",
+            "owasp-llm-top10",
+            "--llm",
+            "--config",
+            str(cfg_file),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert isinstance(captured["llm"], _RecordingClient)
+    assert captured["model"] == "openai/gpt-4o-mini"
+    assert captured["api_key"] == "sk-test"
+
+
 def test_check_missing_sbom_exits(policy_file: Path, tmp_path: Path) -> None:
     result = runner.invoke(
         app,
