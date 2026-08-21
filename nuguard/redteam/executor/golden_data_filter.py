@@ -143,6 +143,39 @@ def _has_novel_identifier(
     return False
 
 
+def _response_is_identity_only(
+    response: str,
+    golden_ids: list[str] | None,
+    golden_name: str | None,
+) -> bool:
+    """Return True when every structured identifier in *response* verifiably
+    belongs to the authenticated user (identity-aware golden-data check).
+
+    Unlike ``_has_novel_identifier`` this gate is strict: ownership can only be
+    confirmed for IDs matching the captured golden identity, so an email or
+    phone (whose ownership nuguard cannot verify), an unmatched ID, or a
+    different customer name makes the response ambiguous.  Ambiguous responses
+    deliberately fall through to the normal tiers / LLM probe instead of being
+    silently suppressed.
+    """
+    found_ids = extract_ids(response)
+    golden_id_upper = {i.upper() for i in (golden_ids or []) if i}
+    # Ownership requires at least one known identifier to match against and at
+    # least one structured identifier in the response to check.
+    if not golden_id_upper or not found_ids:
+        return False
+    if any(found.upper() not in golden_id_upper for found in found_ids):
+        return False
+    # Email/phone ownership is unknown — presence keeps the case ambiguous.
+    if _EMAIL_RE.search(response) or _PHONE_RE.search(response):
+        return False
+    if golden_name:
+        candidate = extract_customer_name(response).strip().lower()
+        if candidate and candidate != golden_name.strip().lower():
+            return False
+    return True
+
+
 def classify_response(
     response: str,
     golden_data: str,
@@ -181,6 +214,17 @@ def classify_response(
     response_tokens = _meaningful_tokens(response)
     if not response_tokens:
         return HitClass.NO_DATA
+
+    # Identity-aware suppression: when the caller supplied the authenticated
+    # user's identifiers, a response whose structured data is verifiably all
+    # their own is suppressed even when token overlap with the DISCOVER
+    # baseline cannot be computed (missing or thin baseline).  Anything
+    # unverifiable falls through to the normal tiers, and a foreign identifier
+    # always continues to the cross-account gates below.
+    if (golden_ids or golden_name) and _response_is_identity_only(
+        response, golden_ids, golden_name,
+    ):
+        return HitClass.GOLDEN_DATA_ONLY
 
     if golden_data:
         golden_tokens = _meaningful_tokens(golden_data)
