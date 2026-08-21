@@ -224,10 +224,14 @@ class GuidedAttackExecutor:
             try:
                 raw_response, _tool_calls = await self._client.send(message, session)
             except TargetUnavailableError as exc:
+                # Record the abort reason on the conversation for the report,
+                # then propagate so the orchestrator's circuit breaker can trip
+                # and skip the remaining scenarios instead of hammering the
+                # dead endpoint turn after turn.
                 _log.error("[guided] target unavailable after turn %d: %s", turn_number, exc)
                 conv.abort_reason = "target_unavailable"
                 conv.final_progress = conv.last_progress
-                return conv
+                raise
 
             # Strip attribution footer; then handle credential/confirmation interrupts
             response, _raw_footer = strip_meta_footer(raw_response)
