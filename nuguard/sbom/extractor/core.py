@@ -2096,12 +2096,23 @@ class AiSbomExtractor:
 
         # Step 1: Verify uncertain detections
         async def _llm_call(system: str, user: str) -> tuple[str, int]:
-            _before = sum(client.token_counts)
+            # Fixed in #246. ``client.token_counts`` is a cumulative counter
+            # shared by every in-flight verification call, so a before/after
+            # delta of it can attribute tokens consumed by OTHER overlapping
+            # calls to this call (inflated cost stats, and the "verification
+            # cost" line in the report). Use the per-call counter that
+            # ``LLMClient.complete`` accumulates under this coroutine's own
+            # context instead — concurrent calls each read their own counter
+            # and no cross-call attribution is possible.
             text = await client.complete(prompt=user, system=system)
-            return text, sum(client.token_counts) - _before
+            return text, sum(client.call_token_counts)
 
         results, v_stats = await verify_uncertain_nodes(
-            doc.nodes, evidence_map, _llm_call, file_contents=file_contents
+            doc.nodes,
+            evidence_map,
+            _llm_call,
+            file_contents=file_contents,
+            concurrency=config.llm_concurrency,
         )
         doc.nodes = apply_verification_results(doc.nodes, results)
         _log.info("llm verification: %s", v_stats.to_dict())
@@ -2140,7 +2151,7 @@ class AiSbomExtractor:
         # Step 5: Enrich descriptions for AGENT/TOOL nodes missing them
         try:
             from ..llm_client import enrich_node_descriptions
-            await enrich_node_descriptions(doc.nodes, client)
+            await enrich_node_descriptions(doc.nodes, client, concurrency=config.llm_concurrency)
             _log.info("description-enrichment: completed for agent/tool nodes")
         except Exception as exc:
             _log.warning("description-enrichment: unexpected error — continuing without: %s", exc)

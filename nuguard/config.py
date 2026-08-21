@@ -187,6 +187,8 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
     sbom_gen = data.get("sbom_generation", {}) or {}
     if "llm" in sbom_gen:
         flat["sbom_llm_enabled"] = bool(sbom_gen["llm"])
+    if "llm_concurrency" in sbom_gen:
+        flat["sbom_llm_concurrency"] = int(sbom_gen["llm_concurrency"])
 
     # ── Shared target block ────────────────────────────────────────────────────
     # target: at the top level acts as a shared default for both behavior and
@@ -813,6 +815,16 @@ class NuGuardConfig(BaseSettings):
     sbom_llm_enabled: bool = Field(
         default=False,
         description="Enable LLM enrichment during SBOM generation (yaml: sbom_generation.llm).",
+    )
+    sbom_llm_concurrency: int | None = Field(
+        default=None,
+        ge=1,
+        le=64,
+        description=(
+            "Max in-flight LLM calls during SBOM enrichment (yaml: "
+            "sbom_generation.llm_concurrency, issue #197). When None, the "
+            "AiSbomConfig default (5) is used."
+        ),
     )
 
     # ------------------------------------------------------- Redteam
