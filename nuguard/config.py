@@ -211,7 +211,9 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
             flat["redteam_chat_payload_extras"] = shared_target["chat_payload_extras"]
         if "headers" in shared_target and isinstance(shared_target["headers"], dict):
             flat["redteam_headers"] = {
-                str(k): str(v) for k, v in shared_target["headers"].items()
+                str(k): str(v)
+                for k, v in shared_target["headers"].items()
+                if v is not None
             }
         # Structured auth from the shared block — same format as behavior/redteam auth
         _shared_auth = shared_target.get("auth", {}) or {}
@@ -253,7 +255,9 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_auth_header"] = redteam["auth_header"]
     if "headers" in redteam and isinstance(redteam["headers"], dict):
         flat["redteam_headers"] = {
-            str(k): str(v) for k, v in redteam["headers"].items()
+            str(k): str(v)
+            for k, v in redteam["headers"].items()
+            if v is not None
         }
     if "canary" in redteam:
         flat["canary_path"] = redteam["canary"]
@@ -290,9 +294,11 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_prompt_cache_dir"] = str(redteam["prompt_cache_dir"])
     if "app_env" in redteam and isinstance(redteam["app_env"], dict):
         flat["redteam_app_env"] = {
-            str(k): str(v) for k, v in redteam["app_env"].items()
+            str(k): str(v)
+            for k, v in redteam["app_env"].items()
+            if v is not None
         }
-    if "customer_profile" in redteam:
+    if "customer_profile" in redteam and redteam["customer_profile"] is not None:
         app_env = dict(flat.get("redteam_app_env", {}))
         app_env["BLISSFUL_CUSTOMER_PROFILE"] = str(redteam["customer_profile"])
         flat["redteam_app_env"] = app_env
@@ -403,7 +409,11 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
                 if "headers" in shared_target and isinstance(shared_target["headers"], dict):
                     _shared_for_behavior.setdefault(
                         "headers",
-                        {str(k): str(v) for k, v in shared_target["headers"].items()},
+                        {
+                            str(k): str(v)
+                            for k, v in shared_target["headers"].items()
+                            if v is not None
+                        },
                     )
                 if "auth" in shared_target and isinstance(shared_target["auth"], dict):
                     _shared_for_behavior.setdefault("auth", shared_target["auth"])
@@ -418,6 +428,12 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
                 if "endpoint" in b:
                     b["target_endpoint"] = b["endpoint"]
                 b = {**_shared_for_behavior, **b}
+            if isinstance(b, dict) and isinstance(b.get("headers"), dict):
+                b["headers"] = {
+                    str(k): str(v)
+                    for k, v in b["headers"].items()
+                    if v is not None
+                }
             flat["behavior_config"] = b
 
     # Validate section
@@ -552,6 +568,13 @@ class BehaviorConfig(BaseModel):
     target: str = ""
     target_endpoint: str = ""
     auth: AppAuthConfig = Field(default_factory=AppAuthConfig)
+    headers: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Extra HTTP headers added to every behavior request "
+            "(yaml: behavior.headers, or the shared target.headers block)."
+        ),
+    )
     canary: str = ""
     workflows: list[str] = Field(
         default_factory=list,
