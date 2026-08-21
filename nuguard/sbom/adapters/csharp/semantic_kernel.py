@@ -24,6 +24,16 @@ _SERVICE_CALLS: dict[str, str] = {
     "AddOllamaChatCompletion": "ollama",
     "AddMistralChatCompletion": "mistral",
 }
+# Positional index of the plugin-name argument per registration method.
+# Type registrations take the name first; object and prompt-directory
+# registrations place it after the instance/path argument.
+_PLUGIN_NAME_POSITION: dict[str, int] = {
+    "AddFromObject": 1,
+    "ImportPluginFromObject": 1,
+    "AddFromPromptDirectory": 1,
+    "ImportPluginFromPromptDirectory": 1,
+}
+
 _PLUGIN_CALLS = {
     "AddFromType",
     "ImportPluginFromType",
@@ -193,7 +203,10 @@ class CSharpSemanticKernelAdapter(CSharpFrameworkAdapter):
                 )
 
                 if not model_name:
-                    model_name = call.name.removeprefix("Add").removesuffix("ChatCompletion")
+                    # An unresolved model/deployment expression is not a model
+                    # identifier — deriving one from the registration method
+                    # would fabricate names like "AzureOpenAI" (#260).
+                    continue
 
                 canonical = canonicalize_text(model_name.lower())
                 details = get_model_details(
@@ -242,7 +255,9 @@ class CSharpSemanticKernelAdapter(CSharpFrameworkAdapter):
                         "name",
                     ),
                     constants,
-                    0,
+                    # Object and prompt-directory registrations place the
+                    # plugin name in positional argument one.
+                    _PLUGIN_NAME_POSITION.get(call.name, 0),
                 )
                 display = plugin_name or plugin_type or call.assigned_to or f"plugin_{call.line}"
                 canonical = canonicalize_text(f"semantic_kernel:plugin:{display}")

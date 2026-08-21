@@ -294,6 +294,63 @@ public class SearchPlugin
     )
 
 
+def test_semantic_kernel_skips_unresolved_model_registration() -> None:
+    """An unresolved model expression must not fabricate a model node (#260)."""
+    source = """using Microsoft.SemanticKernel;
+public class Svc
+{
+    public void Register(KernelBuilder builder)
+    {
+        builder.AddOpenAIChatCompletion(modelId, apiKey);
+    }
+}
+"""
+
+    detections = _extract(
+        CSharpSemanticKernelAdapter(),
+        source,
+    )
+    models = _by_type(
+        detections,
+        ComponentType.MODEL,
+    )
+
+    assert models == []
+    assert not any(
+        detection.display_name in {"OpenAI", "AzureOpenAI"}
+        for detection in detections
+    )
+
+
+def test_semantic_kernel_resolves_plugin_name_by_registration_overload() -> None:
+    """Object and prompt-directory registrations take the name from arg one (#260)."""
+    source = """using Microsoft.SemanticKernel;
+public class Svc
+{
+    public void Register(KernelBuilder builder, MyPlugin plugin)
+    {
+        builder.Plugins.AddFromType<MyPlugin>();
+        builder.Plugins.AddFromObject(plugin, "custom-name");
+        builder.Plugins.AddFromPromptDirectory("/prompts", "prompt-plugin");
+    }
+}
+class MyPlugin {}
+"""
+
+    tools = {
+        detection.display_name
+        for detection in _extract(
+            CSharpSemanticKernelAdapter(),
+            source,
+        )
+        if detection.component_type == ComponentType.TOOL
+    }
+
+    assert "MyPlugin" in tools
+    assert "custom-name" in tools
+    assert "prompt-plugin" in tools
+
+
 def test_semantic_kernel_ignores_unrelated_build_calls() -> None:
     source = """using Microsoft.SemanticKernel;
 var result = unrelated.Build();
