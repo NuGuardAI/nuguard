@@ -54,6 +54,10 @@ class TargetSessionConfig:
     chat_response_key: str | None
     auth_session: "AuthSession"
     resolution_notes: list[str] = field(default_factory=list)
+    # Literal JSON body template with placeholder tokens.  When set it supersedes
+    # chat_payload_key/chat_payload_list, and chat_payload_extras reaches the body
+    # only through the "{{extras}}" marker.
+    chat_payload_template: dict[str, Any] | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -266,6 +270,7 @@ async def resolve_target_session(
     canary_config: Any = None,
     probe_payload_extras: dict[str, Any] | None = None,
     run_id: str | None = None,
+    chat_payload_template: dict[str, Any] | None = None,
 ) -> tuple[TargetSessionConfig, "TargetHealthReport"]:
     """Resolve all target-connection config and return a :class:`TargetSessionConfig`.
 
@@ -463,6 +468,7 @@ async def resolve_target_session(
             chat_response_key=chat_response_key,
             auth_session=bootstrapper.session,
             resolution_notes=resolution_notes,
+            chat_payload_template=chat_payload_template or None,
         ),
         health_report,
     )

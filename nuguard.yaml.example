@@ -53,6 +53,31 @@ target:
   # chat_payload_extras:
   #  user_id: alice
 
+  # Nested / array request bodies — use chat_payload_template when your target
+  # needs more than one flat top-level key (e.g. OpenAI-style `messages`, or a
+  # `{"message": {"role": ..., "content": ...}}` envelope).  Write the exact body
+  # shape and mark the moving parts with placeholder tokens:
+  #   {{message}}          the current turn's text            (REQUIRED)
+  #   {{history}}          prior turns as [{role, content}];  as a LIST ELEMENT it
+  #                        splices in flat instead of nesting
+  #   {{session_id}}       server-issued handle from a prior turn; the containing
+  #   {{conversation_id}}  key is omitted until the server has issued one
+  #   {{extras}}           as a dict KEY, splices chat_payload_extras in at that
+  #                        spot (its value is ignored — write `{}`)
+  # When set, this supersedes chat_payload_key / chat_payload_list, and
+  # chat_payload_extras reaches the body ONLY through {{extras}} — include the
+  # marker or auto-resolved identity fields (from a login flow) will not be sent.
+  # chat_payload_template:
+  #   model: gpt-4o
+  #   "{{extras}}": {}
+  #   messages:
+  #     - role: system
+  #       content: You are a helpful assistant.
+  #     - "{{history}}"
+  #     - role: user
+  #       content: "{{message}}"
+  # chat_response_key: choices[0].message.content   # dotted/bracket paths work
+
   # Authentication — uncomment ONE option:
   auth:
     # Option A: Login flow (preferred when the app exposes a /login endpoint)
@@ -201,6 +226,16 @@ redteam:
   # chat_payload_extras:           # extra static fields merged into every POST body
   #   user_id: alice
   #   language: en
+
+  # Nested / array request bodies — see the target: block above for the full token
+  # reference.  Supersedes chat_payload_key/chat_payload_list; chat_payload_extras
+  # reaches the body only via the {{extras}} marker.
+  # chat_payload_template:
+  #   message:
+  #     role: user
+  #     content: "{{message}}"
+  #   conversation_id: "{{conversation_id}}"   # omitted on turn 1
+  #   "{{extras}}": {}
 
   # Google ADK apps: nuguard reads adk_app_name from the SBOM when it is set
   # during 'nuguard sbom generate' (extracted from Runner(app_name=...) in source).

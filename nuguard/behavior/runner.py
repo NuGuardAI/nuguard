@@ -858,6 +858,7 @@ class BehaviorRunner:
             adk_cfg=getattr(self._config, "adk", None),
             explicitly_set=getattr(self._config, "model_fields_set", set()),
             payload_extras=_merged_extras or None,
+            payload_template=getattr(self._config, "chat_payload_template", None) or None,
         )
         # Prepend pre-bootstrap URL notes (already resolved above) so they appear
         # first; build_target_app_client won't re-add them since the URL matches.
@@ -1213,6 +1214,13 @@ class BehaviorRunner:
                     consecutive_failures = 0  # reset only on a real reply
                     _rate_limit_retries = 0   # reset on successful reply
                     _transient_retry_idx = 0  # reset on a genuine response
+                    # Record the completed turn so session-derived state works in
+                    # behavior runs too: session.last_response (used for coverage
+                    # turn generation below) and the "{{history}}" placeholder in
+                    # chat_payload_template.  Only genuine replies are recorded —
+                    # error strings and retried turns are not part of the
+                    # conversation the target actually saw.
+                    session.add_turn(message, response)
             except Exception as exc:
                 send_error = str(exc)
                 _log.warning("_run_scenario turn %d: send failed: %s", turn_idx + 1, exc)

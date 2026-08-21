@@ -10,13 +10,14 @@ mutating the returned ``NuGuardConfig`` instance.
 
 from __future__ import annotations
 
+import json
 import os
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 import yaml  # type: ignore[import-untyped]
-from pydantic import AliasChoices, BaseModel, Field, field_validator
+from pydantic import AliasChoices, BaseModel, Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from nuguard.common.auth import LoginFlowConfig
@@ -29,6 +30,107 @@ if TYPE_CHECKING:
 _log = get_logger(__name__)
 
 _ENV_VAR_RE = re.compile(r"\$\{([^}]+)\}")
+
+# ── chat_payload_template validation ──────────────────────────────────────────
+# The template is data, not an expression language: caps keep it from becoming a
+# vector for pathological configs while leaving ample room for real API shapes.
+_TEMPLATE_MAX_CHARS = 20_000
+_TEMPLATE_MAX_DEPTH = 8
+_TEMPLATE_MESSAGE_TOKEN = "{{message}}"
+_TEMPLATE_EXTRAS_TOKEN = "{{extras}}"
+
+
+def _template_depth(node: Any, _depth: int = 1) -> int:
+    """Return the maximum nesting depth of a dict/list structure."""
+    if isinstance(node, dict):
+        values = list(node.values())
+    elif isinstance(node, list):
+        values = list(node)
+    else:
+        return _depth
+    if not values:
+        return _depth
+    return max(_template_depth(v, _depth + 1) for v in values)
+
+
+def _template_contains_token(node: Any, token: str) -> bool:
+    """True when *token* appears as an exact string value or dict key anywhere."""
+    if isinstance(node, str):
+        return node == token
+    if isinstance(node, dict):
+        return any(
+            k == token or _template_contains_token(v, token) for k, v in node.items()
+        )
+    if isinstance(node, list):
+        return any(_template_contains_token(item, token) for item in node)
+    return False
+
+
+def _validate_chat_payload_template(value: Any) -> Any:
+    """Validate a ``chat_payload_template`` value, returning it unchanged.
+
+    Rejects a template that is not a dict, exceeds the size/depth caps, or omits
+    ``{{message}}`` — without that token every turn would silently send identical
+    text.  ``None`` and an empty dict both mean "not configured" and pass through.
+
+    Raises:
+        ValueError: on any of the above, with a message naming the fix.
+    """
+    if value is None or value == {}:
+        return value
+    if not isinstance(value, dict):
+        raise ValueError(
+            "chat_payload_template must be a JSON object (mapping), got "
+            f"{type(value).__name__}. Write the request body shape your target "
+            'expects, e.g. {"messages": [{"role": "user", "content": "{{message}}"}]}.'
+        )
+    rendered = json.dumps(value)
+    if len(rendered) > _TEMPLATE_MAX_CHARS:
+        raise ValueError(
+            f"chat_payload_template is too large ({len(rendered)} chars, limit "
+            f"{_TEMPLATE_MAX_CHARS}). It is meant to describe a request body shape, "
+            "not carry payload data."
+        )
+    depth = _template_depth(value)
+    if depth > _TEMPLATE_MAX_DEPTH:
+        raise ValueError(
+            f"chat_payload_template nests {depth} levels deep (limit "
+            f"{_TEMPLATE_MAX_DEPTH}). Flatten the shape or file an issue if a real "
+            "target needs deeper nesting."
+        )
+    if not _template_contains_token(value, _TEMPLATE_MESSAGE_TOKEN):
+        raise ValueError(
+            'chat_payload_template must contain the "{{message}}" placeholder '
+            "somewhere, otherwise every turn sends the same text and no attack "
+            'payload reaches the target. Example: {"message": {"role": "user", '
+            '"content": "{{message}}"}}.'
+        )
+    return value
+
+
+def _warn_extras_not_spliced(
+    template: Any, extras: Any, *, field_hint: str
+) -> None:
+    """Warn when *extras* is non-empty but the template has no ``{{extras}}`` marker.
+
+    Not an error — some targets legitimately need no extra fields — but silence
+    here would drop identity fields that the auth/discovery machinery injects into
+    ``chat_payload_extras`` at runtime, producing an anonymous scan rather than a
+    visible failure.
+    """
+    if not template or not isinstance(extras, dict) or not extras:
+        return
+    if _template_contains_token(template, _TEMPLATE_EXTRAS_TOKEN):
+        return
+    _log.warning(
+        "%s is set but the template contains no \"{{extras}}\" marker, so these "
+        "chat_payload_extras keys will NOT be sent: %s. Add \"{{extras}}\": {} "
+        "wherever those fields belong in the body. Note that auth/discovery also "
+        "inject resolved identity fields into chat_payload_extras at runtime, so "
+        "omitting the marker can make the scan run without an identity.",
+        field_hint,
+        sorted(extras),
+    )
 
 
 def _find_repo_root(start_dir: Path) -> Path | None:
@@ -209,6 +311,8 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
             flat["redteam_chat_response_key"] = shared_target["chat_response_key"]
         if "chat_payload_extras" in shared_target and isinstance(shared_target["chat_payload_extras"], dict):
             flat["redteam_chat_payload_extras"] = shared_target["chat_payload_extras"]
+        if "chat_payload_template" in shared_target:
+            flat["redteam_chat_payload_template"] = shared_target["chat_payload_template"]
         if "headers" in shared_target and isinstance(shared_target["headers"], dict):
             flat["redteam_headers"] = {
                 str(k): str(v)
@@ -251,6 +355,8 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_chat_response_key"] = redteam["chat_response_key"]
     if "chat_payload_extras" in redteam and isinstance(redteam["chat_payload_extras"], dict):
         flat["redteam_chat_payload_extras"] = redteam["chat_payload_extras"]
+    if "chat_payload_template" in redteam:
+        flat["redteam_chat_payload_template"] = redteam["chat_payload_template"]
     if "auth_header" in redteam:
         flat["redteam_auth_header"] = redteam["auth_header"]
     if "headers" in redteam and isinstance(redteam["headers"], dict):
@@ -427,6 +533,10 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
                     _shared_for_behavior["chat_response_key"] = shared_target["chat_response_key"]
                 if "chat_payload_extras" in shared_target and isinstance(shared_target["chat_payload_extras"], dict):
                     _shared_for_behavior.setdefault("chat_payload_extras", shared_target["chat_payload_extras"])
+                if "chat_payload_template" in shared_target:
+                    _shared_for_behavior.setdefault(
+                        "chat_payload_template", shared_target["chat_payload_template"]
+                    )
                 if "headers" in shared_target and isinstance(shared_target["headers"], dict):
                     _shared_for_behavior.setdefault(
                         "headers",
@@ -639,6 +749,46 @@ class BehaviorConfig(BaseModel):
             "(e.g. vehicleState, language). The message key always takes precedence."
         ),
     )
+    chat_payload_template: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Literal JSON request-body template with placeholder tokens, for targets "
+            "whose body is nested or an array of objects rather than a single flat key. "
+            "Tokens: {{message}}, {{history}}, {{session_id}}, {{conversation_id}}, "
+            "{{extras}}. Supersedes chat_payload_key/chat_payload_list; "
+            "chat_payload_extras is reachable only via the {{extras}} marker."
+        ),
+    )
+
+    # mode="before" so a non-dict value gets the actionable message from
+    # _validate_chat_payload_template rather than Pydantic's generic type error.
+    @field_validator("chat_payload_template", mode="before")
+    @classmethod
+    def _check_chat_payload_template(cls, v: Any) -> Any:
+        return _validate_chat_payload_template(v)
+
+    @model_validator(mode="after")
+    def _check_template_encoding(self) -> "BehaviorConfig":
+        """Reject a nested template with form encoding; warn on unspliced extras.
+
+        Nested JSON has no canonical form encoding — ``httpx`` is handed the dict as
+        ``data=`` and would either error or mangle it at request time.  Failing at
+        config load is the loud alternative.
+        """
+        if self.chat_payload_template and self.chat_payload_format == "form":
+            raise ValueError(
+                "chat_payload_template cannot be combined with "
+                'chat_payload_format: "form" — a nested JSON body has no form '
+                'encoding. Use chat_payload_format: "json" (the default), or drop '
+                "the template and use chat_payload_key for a flat form body."
+            )
+        _warn_extras_not_spliced(
+            self.chat_payload_template,
+            self.chat_payload_extras,
+            field_hint="behavior.chat_payload_extras",
+        )
+        return self
+
     adk: GoogleADKConfig = Field(
         default_factory=GoogleADKConfig,
         description="Google ADK-specific connection settings.",
@@ -956,6 +1106,39 @@ class NuGuardConfig(BaseSettings):
             "or language alongside the message. The message key always takes precedence."
         ),
     )
+    redteam_chat_payload_template: dict[str, Any] | None = Field(
+        default=None,
+        description=(
+            "Literal JSON request-body template with placeholder tokens, for targets "
+            "whose body is nested or an array of objects rather than a single flat key "
+            "(yaml: redteam.chat_payload_template or target.chat_payload_template). "
+            "Tokens: {{message}}, {{history}}, {{session_id}}, {{conversation_id}}, "
+            "{{extras}}. Supersedes redteam_chat_payload_key/redteam_chat_payload_list; "
+            "redteam_chat_payload_extras is reachable only via the {{extras}} marker."
+        ),
+    )
+
+    # mode="before" so a non-dict value gets the actionable message from
+    # _validate_chat_payload_template rather than Pydantic's generic type error.
+    @field_validator("redteam_chat_payload_template", mode="before")
+    @classmethod
+    def _check_redteam_chat_payload_template(cls, v: Any) -> Any:
+        return _validate_chat_payload_template(v)
+
+    @model_validator(mode="after")
+    def _warn_redteam_template_extras(self) -> "NuGuardConfig":
+        """Warn when redteam extras cannot reach the body for want of ``{{extras}}``.
+
+        No form-encoding check here: both ``build_target_app_client()`` call sites in
+        the redteam orchestrator hardcode ``payload_format="json"``, so the
+        template/form conflict is unreachable from redteam config.
+        """
+        _warn_extras_not_spliced(
+            self.redteam_chat_payload_template,
+            self.redteam_chat_payload_extras,
+            field_hint="redteam.chat_payload_extras",
+        )
+        return self
     redteam_auth_header: str | None = Field(
         default=None,
         description=(

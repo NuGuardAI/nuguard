@@ -271,6 +271,15 @@ def redteam(
 
     if effective_engine == "v2":
         typer.echo("  Engine: v2 (scaffold — see redteam-v2 implementation plan)")
+        if cfg.redteam_chat_payload_template:
+            typer.echo(
+                "  Warning: chat_payload_template is set but the v2 engine does not "
+                "support it — request bodies will be built with the flat "
+                "chat_payload_key path and a target requiring a nested body will "
+                "reject every request. Use the v1 engine (omit 'redteam.engine: v2') "
+                "for templated targets.",
+                err=True,
+            )
         runner = _run_redteam_v2(
             sbom_doc=sbom_doc,
             sbom_path=sbom_path,
@@ -309,6 +318,7 @@ def redteam(
             chat_payload_list=cfg.redteam_chat_payload_list,
             chat_response_key=cfg.redteam_chat_response_key or None,
             chat_payload_extras=cfg.redteam_chat_payload_extras or None,
+            chat_payload_template=cfg.redteam_chat_payload_template or None,
             guided_conversations=effective_guided,
             guided_max_turns=effective_guided_max_turns,
             guided_concurrency=effective_guided_concurrency,
@@ -654,6 +664,7 @@ async def _run_redteam(
     skip_discovery: bool = False,
     discovery_max_turns: int = 3,
     chat_payload_extras: dict[str, Any] | None = None,
+    chat_payload_template: dict[str, Any] | None = None,
     catalog: "tuple | None" = None,
     pre_run_warmup: int = 0,
     verify_findings: bool = False,
@@ -763,6 +774,7 @@ async def _run_redteam(
                 chat_payload_list=chat_payload_list,
                 chat_response_key=chat_response_key,
                 chat_payload_extras=chat_payload_extras,
+                chat_payload_template=chat_payload_template,
                 guided_conversations=guided_conversations,
                 guided_max_turns=guided_max_turns,
                 guided_concurrency=guided_concurrency,
@@ -816,6 +828,7 @@ async def _run_redteam(
         chat_payload_list=chat_payload_list,
         chat_response_key=chat_response_key,
         chat_payload_extras=chat_payload_extras,
+        chat_payload_template=chat_payload_template,
         guided_conversations=guided_conversations,
         guided_max_turns=guided_max_turns,
         guided_concurrency=guided_concurrency,
@@ -868,6 +881,7 @@ async def _run_orchestrator(  # noqa: C901
     chat_payload_list: bool = False,
     chat_response_key: str | None = None,
     chat_payload_extras: dict[str, Any] | None = None,
+    chat_payload_template: dict[str, Any] | None = None,
     guided_conversations: bool = True,
     guided_max_turns: int = 12,
     guided_concurrency: int = 3,
@@ -957,6 +971,7 @@ async def _run_orchestrator(  # noqa: C901
         skip_discovery=skip_discovery,
         discovery_max_turns=discovery_max_turns,
         chat_payload_extras=chat_payload_extras or None,
+        chat_payload_template=chat_payload_template or None,
         pre_run_warmup=pre_run_warmup,
         verify_findings=verify_findings,
         golden_data=golden_data,

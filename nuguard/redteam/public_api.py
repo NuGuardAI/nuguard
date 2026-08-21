@@ -94,6 +94,7 @@ class RedteamRunRequest(BaseModel):
     skip_discovery: bool = False
     discovery_max_turns: int = 3
     chat_payload_extras: dict[str, Any] | None = None
+    chat_payload_template: dict[str, Any] | None = None
     pre_run_warmup: int = 0
     verify_findings: bool = False
     golden_data: dict[str, Any] | None = None
@@ -264,6 +265,7 @@ async def run_redteam(
         skip_discovery=request.skip_discovery,
         discovery_max_turns=request.discovery_max_turns,
         chat_payload_extras=request.chat_payload_extras,
+        chat_payload_template=request.chat_payload_template,
         catalog=catalog,
         pre_run_warmup=request.pre_run_warmup,
         verify_findings=request.verify_findings,

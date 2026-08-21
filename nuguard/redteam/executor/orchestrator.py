@@ -512,6 +512,7 @@ class RedteamOrchestrator:
         skip_discovery: bool = False,
         discovery_max_turns: int = 3,
         chat_payload_extras: dict[str, Any] | None = None,
+        chat_payload_template: dict[str, Any] | None = None,
         catalog: "tuple | None" = None,
         pre_run_warmup: int = 0,
         verify_findings: bool = False,
@@ -579,6 +580,9 @@ class RedteamOrchestrator:
         self._skip_discovery = skip_discovery
         self._discovery_max_turns = max(1, discovery_max_turns)
         self._chat_payload_extras: dict[str, Any] = chat_payload_extras or {}
+        # When set, supersedes chat_payload_key/chat_payload_list for body shaping;
+        # chat_payload_extras reaches the body only via the "{{extras}}" marker.
+        self._chat_payload_template: dict[str, Any] | None = chat_payload_template or None
         self._pre_run_warmup = max(0, pre_run_warmup)
         self._verify_findings = verify_findings
         self._golden_data: dict[str, Any] = golden_data or {}
@@ -869,6 +873,7 @@ class RedteamOrchestrator:
                 auth_headers=effective_headers or None,
                 sbom=self._sbom,
                 payload_extras=self._chat_payload_extras or None,
+                payload_template=self._chat_payload_template,
             )
             _disc_session = _AS(
                 session_id="pre-scan-discovery",
@@ -1071,8 +1076,14 @@ class RedteamOrchestrator:
             adk_cfg=None,
             # chat_path was already resolved by _discover_chat_config in __init__,
             # so treat endpoint/payload as explicitly set to skip re-discovery.
-            explicitly_set=frozenset({"target_endpoint", "chat_payload_key", "chat_response_key"}),
+            explicitly_set=frozenset({
+                "target_endpoint",
+                "chat_payload_key",
+                "chat_response_key",
+                "chat_payload_template",
+            }),
             payload_extras=self._chat_payload_extras or None,
+            payload_template=self._chat_payload_template,
         )
         for _note in (getattr(client, "resolution_notes", None) or []):
             if isinstance(_note, str) and _note:

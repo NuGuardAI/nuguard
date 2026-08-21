@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 import asyncio
+import copy
 import json
+import os
 import random
 import re
 import time
@@ -93,6 +95,247 @@ DEFAULT_MAX_429_RETRIES = 2
 DEFAULT_429_BACKOFF_BASE_SECONDS = 0.5
 DEFAULT_429_BACKOFF_CAP_SECONDS = 5.0
 
+# ---------------------------------------------------------------------------
+# Opt-in HTTP body tracing
+# ---------------------------------------------------------------------------
+
+HTTP_BODY_LOG_ENV = "NUGUARD_LOG_HTTP_BODIES"
+_MAX_BODY_LOG_CHARS = 4000
+
+
+def http_body_logging_enabled() -> bool:
+    """True when ``NUGUARD_LOG_HTTP_BODIES`` requests verbatim body tracing.
+
+    Off by default and deliberately opt-in: nuguard's loggers run at DEBUG
+    unconditionally (see :func:`nuguard.common.logging.get_logger`), so an
+    always-on version would flood every scan — and request bodies can carry
+    credentials merged in from ``chat_payload_extras`` or a login response.
+    Enable only when debugging a target's request/response shape.
+
+    Read per call rather than cached at import so tests and long-lived
+    processes can toggle it.
+    """
+    return os.environ.get(HTTP_BODY_LOG_ENV, "").strip().lower() in {
+        "1", "true", "yes", "on",
+    }
+
+
+def _format_for_log(value: Any) -> str:
+    """Render *value* as compact JSON for a log line, truncating huge payloads."""
+    try:
+        text = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
+    except Exception:
+        text = repr(value)
+    if len(text) > _MAX_BODY_LOG_CHARS:
+        return f"{text[:_MAX_BODY_LOG_CHARS]}… [truncated, {len(text)} chars total]"
+    return text
+
+
+# ---------------------------------------------------------------------------
+# Generic request-body construction
+# ---------------------------------------------------------------------------
+
+PLACEHOLDER_MESSAGE = "{{message}}"
+PLACEHOLDER_HISTORY = "{{history}}"
+PLACEHOLDER_SESSION_ID = "{{session_id}}"
+PLACEHOLDER_CONVERSATION_ID = "{{conversation_id}}"
+PLACEHOLDER_EXTRAS = "{{extras}}"
+
+# Sentinel marking a node whose session placeholder had no value yet (turn 1).
+# The containing key is dropped rather than sending null — matching the flat
+# path's ``if self._session_context:`` guard, which omits these keys entirely.
+_UNRESOLVED: Any = object()
+
+# Dedup set: emit each extras/template key-collision warning at most once.
+_extras_collision_warned: set[str] = set()
+
+
+def history_from_session(session: "AttackSession | None") -> list[dict[str, str]]:
+    """Render an :class:`AttackSession`'s turns as ``role``/``content`` dicts.
+
+    Produces the de facto standard chat-history shape, oldest first::
+
+        [{"role": "user", "content": "..."}, {"role": "assistant", "content": "..."}]
+
+    Empty prompts/responses are skipped — some APIs reject a message with empty
+    ``content``.  Returns ``[]`` when the session has no recorded turns.
+    """
+    history: list[dict[str, str]] = []
+    for turn in (getattr(session, "turns", None) or []):
+        prompt = str(getattr(turn, "prompt", "") or "")
+        response = str(getattr(turn, "response", "") or "")
+        if prompt:
+            history.append({"role": "user", "content": prompt})
+        if response:
+            history.append({"role": "assistant", "content": response})
+    return history
+
+
+def _is_emptied_container(substituted: Any, original: Any) -> bool:
+    """True when substitution emptied a container that was non-empty in the template.
+
+    Used to prune ``{"conversation": {"id": "{{conversation_id}}"}}`` all the way
+    to nothing on turn 1, rather than sending ``{"conversation": {}}``.  A literal
+    empty ``{}``/``[]`` in the template is intentional and preserved.
+    """
+    return (
+        isinstance(substituted, (dict, list))
+        and not substituted
+        and isinstance(original, (dict, list))
+        and bool(original)
+    )
+
+
+def _substitute_placeholders(
+    node: Any,
+    *,
+    message: str,
+    history: list[dict[str, str]],
+    session_id: str | None,
+    conversation_id: str | None,
+    extras: dict[str, Any],
+) -> Any:
+    """Recursively substitute placeholder tokens in a payload template.
+
+    Tokens are matched as *exact* whole strings, never as substrings:
+
+    - ``"{{message}}"`` → *message*
+    - ``"{{history}}"`` → *history*; as a **list element** it splices into the
+      surrounding list, as a dict value it nests as a list
+    - ``"{{session_id}}"`` / ``"{{conversation_id}}"`` → the corresponding value,
+      or the containing key is dropped when unresolved (see :data:`_UNRESOLVED`)
+    - ``"{{extras}}"`` as a **dict key** splices *extras* into that object; its
+      value is ignored.  On a collision with a literal template key the literal
+      wins and a warning names the key.
+
+    Returns a new structure; *node* is never mutated.
+    """
+    if isinstance(node, str):
+        if node == PLACEHOLDER_MESSAGE:
+            return message
+        if node == PLACEHOLDER_HISTORY:
+            return copy.deepcopy(history)
+        if node == PLACEHOLDER_SESSION_ID:
+            return session_id if session_id is not None else _UNRESOLVED
+        if node == PLACEHOLDER_CONVERSATION_ID:
+            return conversation_id if conversation_id is not None else _UNRESOLVED
+        return node
+
+    if isinstance(node, list):
+        out_list: list[Any] = []
+        for item in node:
+            # List-element {{history}} splices flat instead of nesting.
+            if isinstance(item, str) and item == PLACEHOLDER_HISTORY:
+                out_list.extend(copy.deepcopy(history))
+                continue
+            sub = _substitute_placeholders(
+                item,
+                message=message,
+                history=history,
+                session_id=session_id,
+                conversation_id=conversation_id,
+                extras=extras,
+            )
+            if sub is _UNRESOLVED or _is_emptied_container(sub, item):
+                continue
+            out_list.append(sub)
+        return out_list
+
+    if isinstance(node, dict):
+        # Literal keys are known up front so an extras splice can never displace
+        # one, regardless of whether the marker precedes or follows it.
+        literal_keys = {k for k in node if k != PLACEHOLDER_EXTRAS}
+        out_dict: dict[str, Any] = {}
+        for key, value in node.items():
+            if key == PLACEHOLDER_EXTRAS:
+                for ex_key, ex_value in extras.items():
+                    if ex_key in literal_keys:
+                        if ex_key not in _extras_collision_warned:
+                            _extras_collision_warned.add(ex_key)
+                            _log.warning(
+                                "chat_payload_template: key %r is set literally in the "
+                                "template and also present in chat_payload_extras — the "
+                                "template value wins and the extras value is dropped. "
+                                "Rename one of them if the extras value was intended "
+                                "(it may have been auto-injected from a login response).",
+                                ex_key,
+                            )
+                        continue
+                    out_dict[ex_key] = copy.deepcopy(ex_value)
+                continue
+            sub = _substitute_placeholders(
+                value,
+                message=message,
+                history=history,
+                session_id=session_id,
+                conversation_id=conversation_id,
+                extras=extras,
+            )
+            if sub is _UNRESOLVED or _is_emptied_container(sub, value):
+                continue
+            out_dict[key] = sub
+        return out_dict
+
+    return node
+
+
+def _build_generic_body(
+    payload: str,
+    session: "AttackSession | None",
+    *,
+    payload_key: str,
+    payload_list: bool,
+    payload_extras: dict[str, Any] | None,
+    payload_template: dict[str, Any] | None,
+    session_context: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Build the outbound chat request body.
+
+    Transport-agnostic and free of any ``TargetAppClient`` dependency so both the
+    buffered and streaming paths — and any future non-HTTP transport — shape
+    bodies identically.
+
+    Two modes:
+
+    - **Template mode** (*payload_template* set): the template is rendered with
+      placeholders substituted.  *payload_key* and *payload_list* are ignored, and
+      *payload_extras* is reachable only via ``"{{extras}}"``.
+    - **Flat mode** (default): today's single top-level key, with *session_context*
+      merged flat and *payload_extras* merged underneath.
+
+    Note: *payload_extras* and *session_context* must be passed per call, not
+    captured at construction time — discovery mutates the live extras dict after
+    the client is built.
+    """
+    if payload_template:
+        ctx = session_context or {}
+        # {{session_id}} accepts the interchangeable session-handle aliases the
+        # client already captures; {{conversation_id}} resolves strictly, so a
+        # session handle is never sent where a conversation handle was asked for.
+        session_id = ctx.get("session_id") or ctx.get("thread_id") or ctx.get("chat_id")
+        conversation_id = ctx.get("conversation_id")
+        rendered = _substitute_placeholders(
+            copy.deepcopy(payload_template),
+            message=payload,
+            history=history_from_session(session),
+            session_id=session_id,
+            conversation_id=conversation_id,
+            extras=dict(payload_extras or {}),
+        )
+        return rendered if isinstance(rendered, dict) else {}
+
+    value: Any = [payload] if payload_list else payload
+    body: dict[str, Any] = {payload_key: value}
+    # Merge any previously extracted session/conversation context so the server
+    # can correlate subsequent turns within the same conversation.
+    if session_context:
+        body.update(session_context)
+    # Merge static extra fields (e.g. vehicleState, language) declared in
+    # chat_payload_extras — the message key always takes precedence.
+    if payload_extras:
+        body = {**payload_extras, **body}
+    return body
+
 
 class TargetAppClient:
     """Thin httpx wrapper for sending chat/completion requests to the target."""
@@ -115,6 +358,7 @@ class TargetAppClient:
         chat_payload_extras: dict[str, Any] | None = None,
         max_concurrent_requests: int = 0,
         max_transient_hold_seconds: float = 300.0,
+        chat_payload_template: dict[str, Any] | None = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self._chat_path = chat_path
@@ -124,6 +368,10 @@ class TargetAppClient:
             chat_payload_format if chat_payload_format in ("json", "form") else "json"
         )
         self._chat_payload_extras: dict[str, Any] = chat_payload_extras or {}
+        # Literal JSON body template with placeholder tokens.  When set it
+        # supersedes chat_payload_key/chat_payload_list, and chat_payload_extras
+        # is reachable only through the "{{extras}}" marker.
+        self._chat_payload_template: dict[str, Any] | None = chat_payload_template or None
         self._chat_response_key = chat_response_key  # explicit key overrides auto-detection
         # Lazily-detected response key: set on the first successful dict response when
         # no explicit key is configured.  Avoids returning raw JSON to judges.
@@ -532,18 +780,26 @@ class TargetAppClient:
                     body = self._framework_adapter.build_body(payload, session_id)
                     chat_path = self._framework_adapter.run_path
                 else:
-                    # Generic path: flat key/value body
-                    value: Any = [payload] if self._chat_payload_list else payload
-                    body = {self._chat_payload_key: value}
-                    # Merge any previously extracted session/conversation context so the
-                    # server can correlate subsequent turns within the same conversation.
-                    if self._session_context:
-                        body.update(self._session_context)
-                    # Merge static extra fields (e.g. vehicleState, language) declared in
-                    # chat_payload_extras — the message key always takes precedence.
-                    if self._chat_payload_extras:
-                        body = {**self._chat_payload_extras, **body}
+                    # Generic path: flat key/value body, or a rendered template.
+                    body = _build_generic_body(
+                        payload,
+                        session,
+                        payload_key=self._chat_payload_key,
+                        payload_list=self._chat_payload_list,
+                        payload_extras=self._chat_payload_extras,
+                        payload_template=self._chat_payload_template,
+                        session_context=self._session_context,
+                    )
                     chat_path = self._chat_path
+
+                if http_body_logging_enabled():
+                    _log.info(
+                        "HTTP → POST %s%s  (%s)  body=%s",
+                        self.base_url,
+                        chat_path,
+                        self._chat_payload_format,
+                        _format_for_log(body),
+                    )
 
                 if self._chat_payload_format == "form":
                     resp = await self._client.post(chat_path, data=body)
@@ -551,6 +807,13 @@ class TargetAppClient:
                     resp = await self._client.post(chat_path, json=body)
                 resp.raise_for_status()
                 data = resp.json()
+                if http_body_logging_enabled():
+                    _log.info(
+                        "HTTP ← %d %s  body=%s",
+                        resp.status_code,
+                        chat_path,
+                        _format_for_log(data),
+                    )
                 break
             except httpx.HTTPStatusError as exc:
                 status = exc.response.status_code
@@ -652,7 +915,7 @@ class TargetAppClient:
         # subsequent turns extract a clean text field instead of raw JSON.
         if not text and isinstance(data, dict) and data:
             if self._chat_response_key is None and self._detected_response_key is None:
-                detected = self._detect_response_key(data, value if isinstance(value, str) else "")
+                detected = self._detect_response_key(data, payload)
                 if detected:
                     self._detected_response_key = detected
                     extracted = _extract_nested_key(data, detected)
@@ -679,6 +942,13 @@ class TargetAppClient:
             for key in ("session_id", "conversation_id", "thread_id", "chat_id"):
                 if key in data and data[key] is not None:
                     self._session_context[key] = data[key]
+
+        if http_body_logging_enabled():
+            _log.info(
+                "HTTP ⇒ extracted text (response_key=%s): %s",
+                self._chat_response_key or self._detected_response_key or "<auto/fallback>",
+                _format_for_log(text),
+            )
 
         self._record_chat_success()
         return str(text), tool_calls
@@ -791,13 +1061,24 @@ class TargetAppClient:
                 body = self._framework_adapter.build_body(payload, session_id)
                 chat_path = self._framework_adapter.run_path
             else:
-                value: Any = [payload] if self._chat_payload_list else payload
-                body = {self._chat_payload_key: value}
-                if self._session_context:
-                    body.update(self._session_context)
-                if self._chat_payload_extras:
-                    body = {**self._chat_payload_extras, **body}
+                body = _build_generic_body(
+                    payload,
+                    session,
+                    payload_key=self._chat_payload_key,
+                    payload_list=self._chat_payload_list,
+                    payload_extras=self._chat_payload_extras,
+                    payload_template=self._chat_payload_template,
+                    session_context=self._session_context,
+                )
                 chat_path = self._chat_path
+
+            if http_body_logging_enabled():
+                _log.info(
+                    "HTTP → POST (stream) %s%s  body=%s",
+                    self.base_url,
+                    chat_path,
+                    _format_for_log(body),
+                )
 
             t_start = time.monotonic()
             _stream_kwargs: dict[str, Any] = (
@@ -814,6 +1095,8 @@ class TargetAppClient:
                     accumulated_text_parts: list[str] = []
                     tool_calls: list[dict] = []
                     async for event in iter_sse_events(resp):
+                        if http_body_logging_enabled():
+                            _log.info("HTTP ← SSE event: %s", _format_for_log(event))
                         if self._framework_adapter is not None:
                             # Wrap event in list so extract_text/tool_calls can
                             # handle it (ADK adapters expect a list of events)
@@ -822,13 +1105,31 @@ class TargetAppClient:
                             if chunk_tools:
                                 tool_calls.extend(chunk_tools)
                         else:
-                            # Generic: look for content/text in the event dict
-                            chunk_text = (
-                                event.get("text")
-                                or event.get("content")
-                                or event.get("message", "")
-                                or ""
-                            )
+                            # Generic: honour the configured response key first so
+                            # nested per-event shapes work here exactly as they do
+                            # on the buffered path, then fall back to flat lookups.
+                            chunk_text = ""
+                            _sse_key = self._chat_response_key or self._detected_response_key
+                            if _sse_key:
+                                _extracted = _extract_nested_key(event, _sse_key)
+                                if isinstance(_extracted, list):
+                                    chunk_text = " ".join(
+                                        str(i) for i in _extracted if i is not None
+                                    )
+                                elif _extracted is not None:
+                                    chunk_text = str(_extracted)
+                            if not chunk_text:
+                                # isinstance guard: a nested {"message": {...}} event
+                                # would otherwise yield a dict from a generator
+                                # annotated as yielding str.
+                                for _cand in (
+                                    event.get("text"),
+                                    event.get("content"),
+                                    event.get("message"),
+                                ):
+                                    if isinstance(_cand, str) and _cand:
+                                        chunk_text = _cand
+                                        break
                             tool_calls = []
                         if chunk_text:
                             accumulated_text_parts.append(chunk_text)

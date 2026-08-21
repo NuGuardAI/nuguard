@@ -310,6 +310,7 @@ def build_target_app_client(
     adk_cfg: Any = None,
     explicitly_set: frozenset[str] | set[str] = frozenset(),
     payload_extras: dict[str, Any] | None = None,
+    payload_template: dict[str, Any] | None = None,
 ) -> "TargetAppClient":
     """Build a :class:`TargetAppClient` with SBOM-assisted config resolution.
 
@@ -330,6 +331,14 @@ def build_target_app_client(
         explicitly_set: Set of config field names that were *explicitly* provided
             by the user (e.g. Pydantic ``model_fields_set``).  Discovery only
             overrides values that are *not* in this set.
+        payload_extras: Extra static JSON fields merged into every chat POST body.
+            Also the channel the auth/discovery machinery injects resolved identity
+            fields into at runtime.
+        payload_template: Literal JSON body template with placeholder tokens
+            (``{{message}}``, ``{{history}}``, ``{{session_id}}``,
+            ``{{conversation_id}}``, ``{{extras}}``).  When set it supersedes
+            *payload_key* / *payload_list*, and *payload_extras* is reachable only
+            through the ``{{extras}}`` marker.  ``None`` keeps the flat-key path.
 
     Returns:
         A fully configured :class:`TargetAppClient` instance.  Check
@@ -417,6 +426,7 @@ def build_target_app_client(
         chat_response_key=response_key,
         framework_adapter=framework_adapter,
         chat_payload_extras=payload_extras or None,
+        chat_payload_template=payload_template or None,
     )
     client.resolution_notes = resolution_notes
     return client

@@ -207,6 +207,7 @@ async def _verify_async(
         chat_payload_list = getattr(cfg, "redteam_chat_payload_list", False)
         chat_response_key = getattr(cfg, "redteam_chat_response_key", "") or None
         chat_payload_extras = getattr(cfg, "redteam_chat_payload_extras", None) or {}
+        chat_payload_template = getattr(cfg, "redteam_chat_payload_template", None) or None
 
         discovered_path, discovered_key, discovered_list, discovered_resp_key = (
             discover_chat_config_from_sbom(
@@ -241,6 +242,7 @@ async def _verify_async(
                 chat_payload_key=discovered_key,
                 chat_payload_list=discovered_list,
                 chat_payload_extras=chat_payload_extras,
+                chat_payload_template=chat_payload_template,
                 chat_response_key=chat_response_key,
                 canary_config=canary_config,
             )
@@ -399,6 +401,7 @@ async def _run_pre_scan_discovery(
             auth_headers=session_cfg.auth_session.headers() or None,
             sbom=sbom_doc,
             payload_extras=session_cfg.chat_payload_extras or None,
+            payload_template=session_cfg.chat_payload_template,
         )
         session = AttackSession(
             session_id="target-verify-discovery",

@@ -277,3 +277,37 @@ class TestSbomDiscovery:
             build_target_app_client("http://app.test", sbom=minimal_sbom_doc)
         _, kwargs = MockClient.call_args
         assert kwargs["chat_payload_list"] is True
+
+
+class TestPayloadTemplateThreading:
+    """payload_template reaches TargetAppClient as chat_payload_template."""
+
+    def test_defaults_to_none(self) -> None:
+        with _patch_client() as MockClient:
+            build_target_app_client("http://app.test")
+        _, kwargs = MockClient.call_args
+        assert kwargs["chat_payload_template"] is None
+
+    def test_template_threaded_through(self) -> None:
+        template = {"message": {"role": "user", "content": "{{message}}"}}
+        with _patch_client() as MockClient:
+            build_target_app_client("http://app.test", payload_template=template)
+        _, kwargs = MockClient.call_args
+        assert kwargs["chat_payload_template"] == template
+
+    def test_empty_template_normalised_to_none(self) -> None:
+        with _patch_client() as MockClient:
+            build_target_app_client("http://app.test", payload_template={})
+        _, kwargs = MockClient.call_args
+        assert kwargs["chat_payload_template"] is None
+
+    def test_template_coexists_with_payload_extras(self) -> None:
+        with _patch_client() as MockClient:
+            build_target_app_client(
+                "http://app.test",
+                payload_template={"m": "{{message}}"},
+                payload_extras={"user_id": "alice"},
+            )
+        _, kwargs = MockClient.call_args
+        assert kwargs["chat_payload_template"] == {"m": "{{message}}"}
+        assert kwargs["chat_payload_extras"] == {"user_id": "alice"}
