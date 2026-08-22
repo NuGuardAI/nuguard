@@ -29,6 +29,7 @@ internally for the duration of the scan.
 | `deploy-azure-aci.sh` | Deploy Phlox to a single Azure Container Instance |
 | `deploy-gcp-cloudrun.sh` | Deploy Phlox to Google Cloud Run |
 | `canary.json` | Synthetic patient/clinician records for behavior/redteam canary scanning |
+| `seed-data.sh` | Load `canary.json`'s patients into a running Phlox instance via its API |
 | `phlox.ground-truth.sbom.json` | Hand-curated ground-truth AI-SBOM (schema per `documentation/docs/sample-sbom.json`) — benchmark `nuguard sbom generate` output against this to check extractor accuracy on the real Phlox codebase |
 | `phlox-test.sh` | Full pipeline: sbom → policy draft/compile/check → analyze → behavior → redteam |
 | `run-behavior.sh` / `run-redteam.sh` | Run one stage in isolation |
@@ -81,8 +82,16 @@ model config from its own UI-driven Settings, not environment variables:
 2. Go to **Settings → Model Settings** and point Phlox at an OpenAI-compatible
    LLM endpoint (the same key/model you put in `.env` works if you're using
    OpenAI directly).
-3. Seed the synthetic patients in [canary.json](canary.json) via the **Patients**
-   tab so NuGuard's canary scan has real records to try to exfiltrate.
+3. Seed the synthetic patients in [canary.json](canary.json) so NuGuard's
+   canary scan has real records to try to exfiltrate:
+   ```bash
+   ./seed-data.sh                              # local target (http://localhost:5000)
+   ./seed-data.sh http://<aci-fqdn-or-ip>:80    # Azure/GCP target
+   ```
+   This POSTs each `canary.json` patient (name, DOB, MRN, email, phone,
+   diagnosis/medication, plus any paired clinical note) to Phlox's
+   `/api/note/save` API — no manual entry via the **Patients** tab needed.
+   Safe to re-run.
 
 ## 4. Run NuGuard
 
