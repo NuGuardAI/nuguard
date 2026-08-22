@@ -1394,27 +1394,26 @@ class ScenarioGenerator:
             )
         return result
 
-    def _find_owning_agent_name(self, tool_node: object) -> str:
-        """Return the name of the first AGENT node that CALLS this tool, or empty string."""
+    def _find_owning_agent(self, tool_node: object) -> Node | None:
+        """Return the first AGENT node that CALLS this tool, or None."""
         tool_id = str(getattr(tool_node, "id", ""))
         for node in self._sbom.nodes:
             if node.component_type != ComponentType.AGENT:
                 continue
             called_ids = self._outgoing.get(str(node.id), {}).get(RelationshipType.CALLS, [])
             if tool_id in called_ids:
-                return node.name
-        return ""
+                return node
+        return None
+
+    def _find_owning_agent_name(self, tool_node: object) -> str:
+        """Return the name of the first AGENT node that CALLS this tool, or empty string."""
+        agent = self._find_owning_agent(tool_node)
+        return agent.name if agent is not None else ""
 
     def _find_owning_agent_id(self, tool_node: object) -> str:
         """Return the str(id) of the first AGENT node that CALLS this tool, or empty string."""
-        tool_id = str(getattr(tool_node, "id", ""))
-        for node in self._sbom.nodes:
-            if node.component_type != ComponentType.AGENT:
-                continue
-            called_ids = self._outgoing.get(str(node.id), {}).get(RelationshipType.CALLS, [])
-            if tool_id in called_ids:
-                return str(node.id)
-        return ""
+        agent = self._find_owning_agent(tool_node)
+        return str(agent.id) if agent is not None else ""
 
     # ------------------------------------------------------------------ #
     # Goal 6: MCP Toxic Flow

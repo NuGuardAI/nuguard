@@ -344,6 +344,21 @@ def _build_redteam_diagnostics(scenario_records: list) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 
 
+# Shared by both the Summary breakdown table (_attack_coverage_summary) and
+# the Scenario Coverage table (_scenario_coverage_table).
+_GOAL_LABEL = {
+    "DATA_EXFILTRATION": "Data Exfil",
+    "PRIVILEGE_ESCALATION": "Priv Esc",
+    "PROMPT_DRIVEN_THREAT": "Prompt Threat",
+    "POLICY_VIOLATION": "Policy Viol",
+    "TOOL_ABUSE": "Tool Abuse",
+    "API_ATTACK": "API Attack",
+    "MCP_TOXIC_FLOW": "MCP Toxic",
+    "AGENTIC_TRUST_ABUSE": "Agentic Trust Abuse",
+    "RECON_INFERENCE": "Recon Inference",
+}
+
+
 def _attack_coverage_summary(scenario_records: list) -> list[str]:
     """Return Markdown lines for the Attack Coverage bullets + breakdown table in Summary.
 
@@ -355,17 +370,6 @@ def _attack_coverage_summary(scenario_records: list) -> list[str]:
     Goal types are derived from actual scenario records (no hardcoded universe).
     Not Tested = chain_status in {skipped, similar_miss, failed, aborted}.
     """
-    _GOAL_LABEL = {
-        "DATA_EXFILTRATION": "Data Exfil",
-        "PRIVILEGE_ESCALATION": "Priv Esc",
-        "PROMPT_DRIVEN_THREAT": "Prompt Threat",
-        "POLICY_VIOLATION": "Policy Viol",
-        "TOOL_ABUSE": "Tool Abuse",
-        "API_ATTACK": "API Attack",
-        "MCP_TOXIC_FLOW": "MCP Toxic",
-        "AGENTIC_TRUST_ABUSE": "Agentic Trust Abuse",
-        "RECON_INFERENCE": "Recon Inference",
-    }
     _NOT_TESTED = {"skipped", "similar_miss", "failed", "aborted"}
 
     # Accumulate per-goal-type counts
@@ -469,18 +473,6 @@ def _scenario_coverage_table(scenario_records: list) -> list[str]:
         key=lambda r: (-_r(r, "impact_score", 0.0), 0 if _r(r, "had_finding", False) else 1),
     )
 
-    _GOAL_ABBREV = {
-        "DATA_EXFILTRATION": "Data Exfil",
-        "PRIVILEGE_ESCALATION": "Priv Esc",
-        "PROMPT_DRIVEN_THREAT": "Prompt Threat",
-        "POLICY_VIOLATION": "Policy Viol",
-        "TOOL_ABUSE": "Tool Abuse",
-        "API_ATTACK": "API Attack",
-        "MCP_TOXIC_FLOW": "MCP Toxic",
-        "AGENTIC_TRUST_ABUSE": "Agentic Trust Abuse",
-        "RECON_INFERENCE": "Recon Inference",
-    }
-
     def _fmt_duration(s: float) -> str:
         if s <= 0:
             return "—"
@@ -503,7 +495,7 @@ def _scenario_coverage_table(scenario_records: list) -> list[str]:
         title_str = _r(r, "title", "") or ""
         title = title_str[:60] + ("…" if len(title_str) > 60 else "")
         goal_type_str = _r(r, "goal_type", "") or ""
-        goal = _GOAL_ABBREV.get(goal_type_str, goal_type_str.replace("_", " ").title())
+        goal = _GOAL_LABEL.get(goal_type_str, goal_type_str.replace("_", " ").title())
         had_finding = bool(_r(r, "had_finding", False))
         finding_cell = "**YES**" if had_finding else "no"
         turns_used = _r(r, "turns_used", None)

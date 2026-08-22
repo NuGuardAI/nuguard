@@ -11,10 +11,13 @@ triggering real destructive execution in a properly sandboxed test environment.
 """
 from __future__ import annotations
 
+from nuguard.common.logging import get_logger
 from nuguard.models.exploit_chain import ExploitStep, GoalType, ScenarioType
 
 from ._chain_factory import make_scenario
 from .scenario_types import AttackScenario
+
+_log = get_logger(__name__)
 
 # Canary token embedded in repo/file payloads so the evaluator can detect leaks.
 _CANARY = "NUGUARD_CANARY_K_SERIES"
@@ -48,8 +51,8 @@ def _resolve_probe_user(sbom: "object | None") -> str:
             for field in schema:
                 if "user" in field.lower() or "login" in field.lower() or "email" in field.lower():
                     return field  # e.g. "username", "email", "userId"
-    except Exception:
-        pass
+    except Exception as exc:
+        _log.debug("Failed to resolve probe user from SBOM: %s", exc)
     return "test-001"
 
 

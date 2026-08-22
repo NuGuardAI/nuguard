@@ -141,13 +141,18 @@ def _dedup_findings(findings: list[Finding]) -> list[Finding]:
     return result
 
 
+def _matches_scenario_tokens(goal: str, scenario_type: str, title: str, filters: set[str]) -> bool:
+    """Shared substring-match rule for both the pre-run and post-run filter checks."""
+    return any(_token_matches(token, goal, scenario_type, title) for token in filters)
+
+
 def _scenario_matches_filter(scenario: AttackScenario, filters: set[str]) -> bool:
     if not filters:
         return True
     goal = _normalize_scenario_token(scenario.goal_type.value)
     scenario_type = _normalize_scenario_token(scenario.scenario_type.value)
     title = _normalize_scenario_token(scenario.title)
-    return any(_token_matches(token, goal, scenario_type, title) for token in filters)
+    return _matches_scenario_tokens(goal, scenario_type, title, filters)
 
 
 def finding_matches_scenario_filter(finding: Finding, filters: set[str]) -> bool:
@@ -172,7 +177,7 @@ def finding_matches_scenario_filter(finding: Finding, filters: set[str]) -> bool
     goal = _normalize_scenario_token(finding.goal_type)
     scenario_type = _normalize_scenario_token(finding.scenario_type) if finding.scenario_type else ""
     title = _normalize_scenario_token(finding.title or "")
-    return any(_token_matches(token, goal, scenario_type, title) for token in filters)
+    return _matches_scenario_tokens(goal, scenario_type, title, filters)
 
 
 def _known_scenario_filter_tokens() -> set[str]:
@@ -1787,11 +1792,28 @@ class RedteamOrchestrator:
                         miss_tracker.record_miss(scenario)
                     return result
                 except asyncio.TimeoutError:
-                    _log.warning(
-                        "Scenario %s timed out after %.0f s — skipping.",
-                        scenario.scenario_id,
-                        self._scenario_timeout,
-                    )
+                    consecutive_unavailable += 1
+                    if consecutive_unavailable >= _ABORT_THRESHOLD:
+                        _log.error(
+                            "Scenario %s timed out after %.0f s — %d consecutive "
+                            "timeouts, aborting remaining scenarios.",
+                            scenario.scenario_id,
+                            self._scenario_timeout,
+                            consecutive_unavailable,
+                        )
+                        abort_event.set()
+                        # See the TargetUnavailableError branch below: preserve the
+                        # circuit-open state across the escalation pass's fresh
+                        # _run_scenarios call so it doesn't re-hit a hung target.
+                        self._circuit_open = True
+                    else:
+                        _log.warning(
+                            "Scenario %s timed out after %.0f s (%d/%d) — skipping.",
+                            scenario.scenario_id,
+                            self._scenario_timeout,
+                            consecutive_unavailable,
+                            _ABORT_THRESHOLD,
+                        )
                     return [], (scenario.title, scenario.goal_type.value, False), _skipped_record("timeout")
                 except TargetUnavailableError as exc:
                     consecutive_unavailable += 1

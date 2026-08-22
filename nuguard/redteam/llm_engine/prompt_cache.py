@@ -33,7 +33,8 @@ def _stable_sbom_str(sbom: AiSbomDocument) -> str:
     try:
         raw = json.loads(sbom.model_dump_json())
         return json.dumps(raw, sort_keys=True, separators=(",", ":"))
-    except Exception:
+    except Exception as exc:
+        _log.warning("Failed to serialize SBOM for prompt cache key: %s", exc)
         return ""
 
 def _stable_policy_str(policy: object | None) -> str:
@@ -45,7 +46,8 @@ def _stable_policy_str(policy: object | None) -> str:
             raw = json.loads(policy.model_dump_json())
             return json.dumps(raw, sort_keys=True, separators=(",", ":"))
         return str(policy)
-    except Exception:
+    except Exception as exc:
+        _log.warning("Failed to serialize policy for prompt cache key: %s", exc)
         return str(policy)
 
 

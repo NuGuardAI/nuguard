@@ -133,6 +133,39 @@ def _extract_nested_key(data: dict[str, Any], key_path: str) -> Any:
                 return None
 
     return current
+
+
+def _extract_common_response_text(data: Any) -> str:
+    """Try the common generic response shapes shared by chat/streaming clients.
+
+    Order: ``response``/``content``/``text``/``message.content`` keys, then
+    Google ADK/CES ``outputs: [{"text": ...}]``, then a trailing
+    ``messages: [...]`` entry, then a raw string. Returns ``""`` if none match
+    — callers apply their own last-resort fallback (raw JSON dump, key
+    auto-detection, etc.).
+    """
+    text = ""
+    if isinstance(data, dict):
+        text = (
+            data.get("response")
+            or data.get("content")
+            or data.get("text")
+            or data.get("message", {}).get("content", "")
+            or ""
+        )
+    # Google ADK / CES format: {"outputs": [{"text": "..."}]}
+    if not text and isinstance(data, dict) and isinstance(data.get("outputs"), list):
+        outputs = data["outputs"]
+        texts = [item.get("text", "") for item in outputs if isinstance(item, dict)]
+        text = " ".join(t for t in texts if t)
+    # Handle list-of-messages response (e.g. openai-cs-agents-demo)
+    if not text and isinstance(data, dict) and isinstance(data.get("messages"), list):
+        msgs = data["messages"]
+        if msgs and isinstance(msgs[-1], dict):
+            text = msgs[-1].get("content") or msgs[-1].get("text") or ""
+    if not text and isinstance(data, str):
+        text = data
+    return text
 MAX_CONSECUTIVE_ERRORS = 3
 DEFAULT_MAX_429_RETRIES = 2
 DEFAULT_429_BACKOFF_BASE_SECONDS = 0.5
@@ -752,26 +785,8 @@ class TargetAppClient:
                 text = " ".join(str(item) for item in extracted if item is not None)
             elif extracted is not None:
                 text = str(extracted)
-        if not text and isinstance(data, dict):
-            text = (
-                data.get("response")
-                or data.get("content")
-                or data.get("text")
-                or data.get("message", {}).get("content", "")
-                or ""
-            )
-        # Google ADK / CES format: {"outputs": [{"text": "..."}]}
-        if not text and isinstance(data, dict) and isinstance(data.get("outputs"), list):
-            outputs = data["outputs"]
-            texts = [item.get("text", "") for item in outputs if isinstance(item, dict)]
-            text = " ".join(t for t in texts if t)
-        # Handle list-of-messages response (e.g. openai-cs-agents-demo)
-        if not text and isinstance(data, dict) and isinstance(data.get("messages"), list):
-            msgs = data["messages"]
-            if msgs and isinstance(msgs[-1], dict):
-                text = msgs[-1].get("content") or msgs[-1].get("text") or ""
-        if not text and isinstance(data, str):
-            text = data
+        if not text:
+            text = _extract_common_response_text(data)
         # Last resort: return full JSON so evaluators have something to work with.
         # Before doing so, attempt one-time auto-detection of the response key so
         # subsequent turns extract a clean text field instead of raw JSON.
@@ -987,25 +1002,7 @@ class TargetAppClient:
                         if not text and isinstance(data, (dict, list)) and data:
                             text = json.dumps(data)
                     else:
-                        text = ""
-                        if isinstance(data, dict):
-                            text = (
-                                data.get("response")
-                                or data.get("content")
-                                or data.get("text")
-                                or data.get("message", {}).get("content", "")
-                                or ""
-                            )
-                        if not text and isinstance(data, dict) and isinstance(data.get("outputs"), list):
-                            outputs = data["outputs"]
-                            texts = [item.get("text", "") for item in outputs if isinstance(item, dict)]
-                            text = " ".join(t for t in texts if t)
-                        if not text and isinstance(data, dict) and isinstance(data.get("messages"), list):
-                            msgs = data["messages"]
-                            if msgs and isinstance(msgs[-1], dict):
-                                text = msgs[-1].get("content") or msgs[-1].get("text") or ""
-                        if not text and isinstance(data, str):
-                            text = data
+                        text = _extract_common_response_text(data)
                         if not text and isinstance(data, dict) and data:
                             text = json.dumps(data)
                         raw_calls = (
