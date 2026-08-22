@@ -82,7 +82,7 @@ properties:
     dnsNameLabel: $DNS_LABEL
     ports:
       - protocol: tcp
-        port: $FRONTEND_PORT
+        port: 80
       - protocol: tcp
         port: $BACKEND_PORT
   containers:
@@ -100,7 +100,7 @@ properties:
         image: redis:7-alpine
         command: ["redis-server", "--appendonly", "yes"]
         resources:
-          requests: {cpu: 0.25, memoryInGb: 0.25}
+          requests: {cpu: 0.25, memoryInGb: 0.3}
     - name: qdrant
       properties:
         image: qdrant/qdrant:latest
@@ -143,7 +143,7 @@ properties:
       properties:
         image: $ACR_LOGIN_SERVER/studyield-frontend:latest
         ports:
-          - port: $FRONTEND_PORT
+          - port: 80
         environmentVariables:
           - {name: VITE_API_URL, value: 'http://localhost:$BACKEND_PORT'}
         resources:
@@ -160,7 +160,7 @@ FQDN=$(az container show --resource-group "$RESOURCE_GROUP" --name "$CONTAINER_G
 
 echo "---"
 echo "Studyield deployed:"
-echo "  Frontend: http://${FQDN}:${FRONTEND_PORT}"
+echo "  Frontend: http://${FQDN}"
 echo "  Backend API: http://${FQDN}:${BACKEND_PORT}"
 echo "Update tests/apps/studyield-app/nuguard-azure.yaml target.url / redteam.target with"
 echo "the backend URL above."
