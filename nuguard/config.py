@@ -288,6 +288,12 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
     # nuguard.yaml files.
     if "profile" in redteam:
         flat["redteam_profile"] = redteam["profile"]
+    if "mode" in redteam:
+        flat["redteam_mode"] = str(redteam["mode"])
+    if "progressive" in redteam and isinstance(redteam["progressive"], dict):
+        _prog = redteam["progressive"]
+        if "halt_on_severity" in _prog:
+            flat["redteam_progressive_halt_on_severity"] = str(_prog["halt_on_severity"])
     if "catalog_path" in redteam:
         flat["redteam_catalog_path"] = str(redteam["catalog_path"])
     if "min_impact_score" in redteam:
@@ -1037,6 +1043,23 @@ class NuGuardConfig(BaseSettings):
         description=(
             "Scan profile: 'ci' (fast, ≥5 impact), 'standard' (≥3 impact, ~30 scenarios), "
             "or 'full' (all scenarios, ≥50 on rich SBOMs) (yaml: redteam.profile)."
+        ),
+    )
+    redteam_mode: str = Field(
+        default="concurrent",
+        description=(
+            "'concurrent' (default, existing behavior — phase-gated with intra-phase "
+            "parallelism) or 'progressive' (strictly sequential named 0-12 phase "
+            "engagement, see docs/claude-redteam-3.md) (yaml: redteam.mode)."
+        ),
+    )
+    redteam_progressive_halt_on_severity: str = Field(
+        default="none",
+        description=(
+            "Progressive-mode phase gate: 'none' (default — run every phase regardless "
+            "of findings), 'high', or 'critical' (stop dispatching further phases once a "
+            "finding at or above this severity is confirmed in the just-completed phase) "
+            "(yaml: redteam.progressive.halt_on_severity)."
         ),
     )
     redteam_catalog_path: str | None = Field(

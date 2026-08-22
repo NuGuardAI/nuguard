@@ -613,6 +613,8 @@ class RedteamOrchestrator:
         golden_data: "dict[str, Any] | None" = None,
         suppress_spa_html_auth_bypass: bool = True,
         codegen_escalation_enabled: bool = True,
+        mode: str = "concurrent",
+        progressive_halt_on_severity: str = "none",
     ) -> None:
         self._sbom = sbom
         self._sbom_path = sbom_path
@@ -623,6 +625,14 @@ class RedteamOrchestrator:
         self._profile = profile
         self._catalog = catalog
         self._min_impact = min_impact_score
+        # Progressive engagement mode (docs/claude-redteam-3.md) — 'concurrent'
+        # (default) leaves all existing phase-gated/intra-phase-parallel
+        # behavior untouched; 'progressive' forces strictly sequential
+        # execution across named 0-12 phases with a configurable finding-
+        # severity gate between phases.
+        self._mode = mode if mode in ("concurrent", "progressive") else "concurrent"
+        self._progressive_halt_on_severity = progressive_halt_on_severity
+        self.security_invariants: list = []
         self._log_path = log_path
         self._request_timeout = request_timeout
         self._concurrency = max(1, concurrency)
@@ -1118,8 +1128,14 @@ class RedteamOrchestrator:
             )
             _log.warning(_guided_note)
             self.config_notes.append(_guided_note)
-        generator = ScenarioGenerator(self._sbom, effective_policy)
-        all_scenarios = generator.generate(with_guided=_with_guided)
+        # Phase 0 (progressive mode only, but cheap to always compute so it's
+        # available in the report regardless of mode) — see docs/claude-redteam-3.md §3.
+        from nuguard.redteam.invariants import derive_security_invariants
+        self.security_invariants = derive_security_invariants(effective_policy)
+
+        _progressive = self._mode == "progressive"
+        generator = ScenarioGenerator(self._sbom, effective_policy, canary_config=self._canary_config)
+        all_scenarios = generator.generate(with_guided=_with_guided, progressive=_progressive)
         self._coverage_tracker = cast("CoverageTracker | None", getattr(generator, "coverage_tracker", None))
 
         # 1b. Catalog scenarios — merged into the SBOM-driven set above.
@@ -1157,6 +1173,18 @@ class RedteamOrchestrator:
         # set (recon before boundary-mapping before destructive) while
         # preserving each source's own impact-score ordering within a phase.
         all_scenarios.sort(key=lambda s: s.attack_phase)
+
+        if _progressive:
+            # Remap every scenario's attack_phase from the named 0-12 progressive
+            # taxonomy instead of the default concurrent-mode 1-9 table, then
+            # re-sort so _run_scenarios' phase-batching dispatches in progressive
+            # order. Reuses the same attack_phase field/mechanism — see
+            # docs/claude-redteam-3.md §4.
+            from nuguard.redteam.scenarios.phases import progressive_phase_for
+
+            for s in all_scenarios:
+                s.attack_phase = progressive_phase_for(s.scenario_type.value)
+            all_scenarios.sort(key=lambda s: s.attack_phase)
 
         # 2. Filter by profile and impact score (before enrichment — avoids wasting LLM calls)
         if self._profile == "ci":
@@ -1893,6 +1921,9 @@ class RedteamOrchestrator:
         # while intra-phase concurrency (via the shared `sem`) is unchanged.
         indexed_active = list(enumerate(active))
         results: list[tuple[list[Finding], tuple[str, str, bool], ScenarioRecord]] = []
+        _progressive = self._mode == "progressive"
+        _halt_order = {"critical": 0, "high": 1}
+        _halt_threshold = _halt_order.get(self._progressive_halt_on_severity, None)
         batch_start = 0
         while batch_start < len(indexed_active):
             phase = indexed_active[batch_start][1].attack_phase
@@ -1904,9 +1935,47 @@ class RedteamOrchestrator:
                 batch_end += 1
             batch = indexed_active[batch_start:batch_end]
             _log.info("Phase %d: dispatching %d scenario(s)", phase, len(batch))
-            batch_results = await asyncio.gather(*(_run_one(s, idx) for idx, s in batch))
+            if _progressive:
+                # Strictly sequential — no two scenarios run at once, so the
+                # target application is never asked two adversarial things
+                # "at once" within a phase either (docs/claude-redteam-3.md §4).
+                batch_results = [await _run_one(s, idx) for idx, s in batch]
+            else:
+                batch_results = await asyncio.gather(*(_run_one(s, idx) for idx, s in batch))
             results.extend(batch_results)
             batch_start = batch_end
+
+            if _progressive and _halt_threshold is not None:
+                from nuguard.redteam.risk_engine.risk_scorer import highest_severity
+
+                batch_findings = [f for new_findings, _, _ in batch_results for f in new_findings]
+                worst = highest_severity(batch_findings)
+                worst_rank = _halt_order.get(worst.value if worst else "", 99)
+                if worst_rank <= _halt_threshold:
+                    _log.warning(
+                        "Progressive mode: halting after phase %d — %s finding confirmed "
+                        "(redteam.progressive.halt_on_severity=%s)",
+                        phase, worst.value if worst else "", self._progressive_halt_on_severity,
+                    )
+                    for _, s in indexed_active[batch_start:]:
+                        results.append(
+                            (
+                                [],
+                                (s.title, s.goal_type.value, False),
+                                ScenarioRecord(
+                                    title=s.title,
+                                    goal_type=s.goal_type.value,
+                                    scenario_type=s.scenario_type.value,
+                                    description=s.description,
+                                    impact_score=s.impact_score,
+                                    affected="",
+                                    chain_status="skipped:halted_on_severity",
+                                    had_finding=False,
+                                    steps=[],
+                                ),
+                            )
+                        )
+                    break
 
         findings: list[Finding] = []
         executed: list[tuple[str, str, bool]] = []
@@ -2465,6 +2534,13 @@ class RedteamOrchestrator:
         mitre_atlas_technique = chain.mitre_atlas_technique or compliance_mapper.mitre_atlas_ref(
             scenario.goal_type
         )
+        # Guardrail control observed along the way to this finding, if any step
+        # was refused before the eventual success (closed refusal taxonomy from
+        # LLMResponseEvaluator — see docs/claude-redteam-3.md §6).
+        _guardrail_control = next(
+            (sr.llm_eval_refusal_reason for sr in step_results if sr.llm_eval_refusal_reason),
+            "",
+        )
 
         # Fields shared by every Finding produced from this scenario/chain.
         _base: dict = dict(
@@ -2478,6 +2554,11 @@ class RedteamOrchestrator:
             owasp_llm_ref=owasp_llm,
             mitre_atlas_technique=mitre_atlas_technique,
             attack_steps=step_details,
+            # A Finding only exists because the attack got through — authorization
+            # was not enforced. "deny" is not produced here by construction; blocked
+            # attempts never raise a Finding to begin with.
+            authorization_decision="allow",
+            guardrail_control=_guardrail_control,
         )
         # Attach the golden-data baseline (authenticated test account's own data)
         # when the chain captured one via a DISCOVER step, so reports can show

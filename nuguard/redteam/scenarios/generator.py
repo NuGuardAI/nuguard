@@ -3,12 +3,16 @@ from __future__ import annotations
 
 import re
 import uuid
+from typing import TYPE_CHECKING
 
 from nuguard.common.logging import get_logger
 from nuguard.models.exploit_chain import ExploitChain, ExploitStep, GoalType, ScenarioType
 from nuguard.models.policy import CognitivePolicy
 from nuguard.sbom.models import AiSbomDocument, Node
 from nuguard.sbom.types import ComponentType, RelationshipType
+
+if TYPE_CHECKING:
+    from nuguard.redteam.target.canary import CanaryConfig
 
 # ── 2024–2025 advanced attack families ────────────────────────────────────────
 from .advanced_jailbreaks import (
@@ -41,6 +45,7 @@ from .data_exfiltration import (
     build_base64_exfiltration,
     build_cross_account_tool_abuse,
     build_cross_tenant_exfiltration,
+    build_cross_tenant_fictional_framing,
     build_datastore_schema_probe,
     build_datastore_sql_injection,
     build_document_embedded_exfiltration,
@@ -306,9 +311,16 @@ class ScenarioGenerator:
         self,
         sbom: AiSbomDocument,
         policy: CognitivePolicy | None = None,
+        canary_config: "CanaryConfig | None" = None,
     ) -> None:
         self._sbom = sbom
         self._policy = policy or CognitivePolicy()
+        # Real second tenant id (docs/claude-redteam-3.md §5 cross-tenant fix) —
+        # used by build_cross_tenant_exfiltration in place of a random probe id
+        # when the canary config seeds a genuine second synthetic tenant.
+        self._real_tenant_id = ""
+        if canary_config is not None and len(getattr(canary_config, "tenants", []) or []) >= 2:
+            self._real_tenant_id = canary_config.tenants[1].tenant_id
         self._node_by_id = {str(n.id): n for n in sbom.nodes}
         # Build edge indexes: source_id -> {relationship_type -> [target_id]}
         self._outgoing: dict[str, dict[str, list[str]]] = {}
@@ -323,7 +335,7 @@ class ScenarioGenerator:
         from nuguard.redteam.catalog.coverage import CoverageReport as _CR
         self.last_coverage: _CR | None = None
 
-    def generate(self, with_guided: bool = False) -> list[AttackScenario]:
+    def generate(self, with_guided: bool = False, progressive: bool = False) -> list[AttackScenario]:
         """Generate all attack scenarios sorted by impact score descending.
 
         Parameters
@@ -333,6 +345,12 @@ class ScenarioGenerator:
             SBOM-driven chains (Goal 5).  Guided conversations adapt turn-by-turn
             using an LLM and provide broader coverage — the orchestrator sets this
             flag automatically when a ``redteam_llm`` is configured.
+        progressive:
+            When True, also generate the progressive-methodology-only scenarios
+            (off-topic resistance, scripted identity/role escalation, document
+            memory poisoning, recovery verification) — see
+            docs/claude-redteam-3.md §5. Set by the orchestrator when
+            ``redteam.mode: progressive``.
         """
         scenarios: list[AttackScenario] = []
 
@@ -400,6 +418,13 @@ class ScenarioGenerator:
         # scenario alongside its static counterpart (same ScenarioType = same phase).
         if with_guided:
             scenarios.extend(self._guided_conversation_scenarios())
+
+        # ── Progressive methodology additions ──────────────────────────────────
+        # Off-topic resistance, scripted identity/role escalation, document
+        # memory poisoning, recovery verification — only generated for
+        # redteam.mode: progressive (docs/claude-redteam-3.md §5).
+        if progressive:
+            scenarios.extend(self._progressive_only_scenarios())
 
         # Dedup near-duplicate scenarios that target sub-agents when an entry agent exists.
         # This avoids sending many structurally identical payloads that differ only in which
@@ -939,6 +964,13 @@ class ScenarioGenerator:
         for agent_node in cross_tenant_nodes[:_MAX_AGENTS_PER_GOAL]:
             out.append(
                 build_cross_tenant_exfiltration(
+                    agent_id=str(agent_node.id),
+                    agent_name=agent_node.name,
+                    real_tenant_id=self._real_tenant_id,
+                )
+            )
+            out.append(
+                build_cross_tenant_fictional_framing(
                     agent_id=str(agent_node.id),
                     agent_name=agent_node.name,
                 )
@@ -2545,6 +2577,49 @@ class ScenarioGenerator:
     # ------------------------------------------------------------------ #
     # Goal 14: Oracle and deception attacks (REFUSAL_ORACLE, PREMISE_INJECTION)
     # ------------------------------------------------------------------ #
+
+    def _progressive_only_scenarios(self) -> list[AttackScenario]:
+        """Progressive-methodology-only scenarios (docs/claude-redteam-3.md §5).
+
+        Off-topic resistance, scripted identity/role escalation, document
+        memory poisoning, and recovery verification — generated only when
+        ``generate(progressive=True)`` (i.e. ``redteam.mode: progressive``).
+        Targets the first entry agent only: these are fixed-script, one-shot
+        engagement checks, not per-agent SBOM-driven coverage scenarios.
+        """
+        from .agent_identity import build_scripted_identity_confusion, build_scripted_role_confusion
+        from .memory_persistence import build_document_memory_poisoning
+        from .off_topic import build_off_topic_probes
+        from .recovery import build_recovery_verification
+
+        out: list[AttackScenario] = []
+        agent_nodes = [n for n in self._sbom.nodes if n.component_type == ComponentType.AGENT]
+        if not agent_nodes:
+            return out
+        entry_agents = self._compute_entry_agents()
+        node = next((n for n in agent_nodes if str(n.id) in entry_agents), agent_nodes[0])
+        agent_id, agent_name = str(node.id), node.name
+
+        app_domain = ""
+        baseline_prompt = "What can you help me with?"
+        if self._sbom.summary:
+            app_name = (getattr(self._sbom.summary, "application_name", "") or "").strip()
+            use_case = (getattr(self._sbom.summary, "use_case", "") or "").strip()
+            app_domain = f"{app_name} — {use_case[:120]}" if app_name and use_case else (app_name or use_case[:120])
+
+        restricted_action = (self._policy.restricted_actions or ["access privileged administrative functions"])[0]
+
+        out.extend(
+            build_off_topic_probes(
+                agent_id, agent_name, app_domain=app_domain,
+                restricted_topics=self._policy.restricted_topics,
+            )
+        )
+        out.append(build_scripted_identity_confusion(agent_id, agent_name, app_domain=app_domain or "this application"))
+        out.append(build_scripted_role_confusion(agent_id, agent_name, app_domain=app_domain or "this application"))
+        out.append(build_document_memory_poisoning(agent_id, agent_name, restricted_action=restricted_action))
+        out.append(build_recovery_verification(agent_id, agent_name, baseline_prompt=baseline_prompt))
+        return out
 
     def _oracle_scenarios(self) -> list[AttackScenario]:
         """Generate refusal oracle and false-premise anchoring scenarios.

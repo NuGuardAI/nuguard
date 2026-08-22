@@ -81,6 +81,8 @@ def render_finding_block(
         goal_type = finding.get("goal_type") or ""
         ngrs_score = finding.get("ngrs_score")
         ngrs_vector = finding.get("ngrs_vector") or ""
+        authorization_decision = finding.get("authorization_decision") or ""
+        guardrail_control = finding.get("guardrail_control") or ""
     else:
         title = finding.title or ""
         finding_id = getattr(finding, "finding_id", "") or ""
@@ -102,6 +104,8 @@ def render_finding_block(
         goal_type = str(finding.goal_type) if getattr(finding, "goal_type", None) else ""
         ngrs_score = getattr(finding, "ngrs_score", None)
         ngrs_vector = getattr(finding, "ngrs_vector", "") or ""
+        authorization_decision = getattr(finding, "authorization_decision", "") or ""
+        guardrail_control = getattr(finding, "guardrail_control", "") or ""
 
     heading = f"{heading_level} [{sev}] {title}"
     if finding_id:
@@ -123,6 +127,12 @@ def render_finding_block(
     if ngrs_score is not None:
         vector_suffix = f" — `{ngrs_vector}`" if ngrs_vector else ""
         lines.append(f"**NGRS:** {ngrs_score}/100{vector_suffix}")
+        lines.append("")
+    if authorization_decision:
+        lines.append(f"**Authorization Decision:** {authorization_decision.upper()}")
+        lines.append("")
+    if guardrail_control:
+        lines.append(f"**Guardrail Control:** {guardrail_control}")
         lines.append("")
     if reasoning:
         lines.append(f"**Finding:** {reasoning}")

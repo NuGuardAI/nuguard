@@ -100,6 +100,8 @@ class RedteamRunRequest(BaseModel):
     golden_data: dict[str, Any] | None = None
     suppress_spa_html_auth_bypass: bool = True
     codegen_escalation_enabled: bool = True
+    mode: str = "concurrent"
+    progressive_halt_on_severity: str = "none"
 
 
 class RedteamRunResult(BaseModel):
@@ -142,6 +144,12 @@ class RedteamRunResult(BaseModel):
     :func:`run_redteam` directly. Populated with contextual LLM patch text when
     ``remediation_llm_client`` (falling back to ``eval_llm``) is supplied to
     :func:`run_redteam`. Empty when synthesis fails or no SBOM is available.
+    """
+    security_invariants: list[dict[str, Any]] = Field(default_factory=list)
+    """Phase-0 pass/fail criteria derived from the Cognitive Policy (see
+    nuguard.redteam.invariants.derive_security_invariants and
+    docs/claude-redteam-3.md §3). Always populated regardless of ``mode`` —
+    cheap to compute, and the report only renders the section when non-empty.
     """
 
 
@@ -274,6 +282,8 @@ async def run_redteam(
         golden_data=request.golden_data,
         suppress_spa_html_auth_bypass=request.suppress_spa_html_auth_bypass,
         codegen_escalation_enabled=request.codegen_escalation_enabled,
+        mode=request.mode,
+        progressive_halt_on_severity=request.progressive_halt_on_severity,
     )
 
     try:
@@ -334,4 +344,5 @@ async def run_redteam(
         catalog_coverage=_catalog_coverage_to_dict(getattr(orchestrator, "catalog_coverage", None)),
         coverage_tracker=coverage_tracker.to_dict() if coverage_tracker is not None else None,
         remediation_plan=remediation_plan,
+        security_invariants=[i.model_dump() for i in getattr(orchestrator, "security_invariants", [])],
     )

@@ -49,6 +49,7 @@ def to_json(
     output_tokens_used: int = 0,
     token_usage: "TokenUsage | None" = None,
     scenario_records: list | None = None,
+    security_invariants: list | None = None,
 ) -> str:
     """Generate a JSON report string from red-team findings.
 
@@ -82,6 +83,12 @@ def to_json(
     }
     if meta.verbose and scenario_records:
         payload["diagnostics"] = _build_redteam_diagnostics(scenario_records)
+    if security_invariants:
+        payload["security_invariants"] = [
+            i.model_dump() if hasattr(i, "model_dump") else i for i in security_invariants
+        ]
+    if scenario_records:
+        payload["phases"] = _phase_summary_rows(findings, scenario_records)
     return json.dumps(payload, indent=2, default=str)
 
 
@@ -92,6 +99,7 @@ def to_markdown(
     scenario_records: list | None = None,
     catalog_coverage: "object | None" = None,
     coverage_tracker: "object | None" = None,
+    security_invariants: list | None = None,
 ) -> str:
     """Render red-team findings as a Markdown report string.
 
@@ -170,7 +178,11 @@ def to_markdown(
         )
     # ---------------------------------------------------------------------------
 
+    if security_invariants:
+        lines += _security_invariants_section(security_invariants)
+
     if scenario_records:
+        lines += _phase_summary_section(findings, scenario_records)
         lines += _scenario_coverage_table(scenario_records)
 
     # Catalog coverage report (Phase 2 — capability-aware catalog). Accepts
@@ -337,6 +349,67 @@ def _build_redteam_diagnostics(scenario_records: list) -> dict[str, Any]:
         },
         "scenario_traces": scenario_traces,
     }
+
+
+def _security_invariants_section(security_invariants: list) -> list[str]:
+    """Render the Phase 0 security-invariant list (docs/claude-redteam-3.md §3)."""
+    lines = ["## Security Invariants", "", "Pass/fail criteria this engagement tested against:", ""]
+    lines.append("| ID | Statement | Source |")
+    lines.append("|---|---|---|")
+    for inv in security_invariants:
+        _id = getattr(inv, "id", None) or (inv.get("id") if isinstance(inv, dict) else "")
+        statement = getattr(inv, "statement", None) or (inv.get("statement") if isinstance(inv, dict) else "")
+        source = getattr(inv, "source", None) or (inv.get("source") if isinstance(inv, dict) else "")
+        lines.append(f"| {_id} | {statement} | {source} |")
+    lines.append("")
+    return lines
+
+
+def _phase_summary_rows(findings: list, scenario_records: list) -> list[dict]:
+    """Group findings/scenarios by progressive phase (docs/claude-redteam-3.md §7)."""
+    from nuguard.redteam.scenarios.phases import PROGRESSIVE_PHASES, progressive_phase_for
+
+    scenario_counts: dict[int, int] = {}
+    for rec in scenario_records:
+        st = getattr(rec, "scenario_type", None) or (rec.get("scenario_type") if isinstance(rec, dict) else "")
+        phase_id = progressive_phase_for(st)
+        scenario_counts[phase_id] = scenario_counts.get(phase_id, 0) + 1
+
+    finding_counts: dict[int, dict[str, int]] = {}
+    for f in findings:
+        st = getattr(f, "scenario_type", None) or ""
+        st = st.value if hasattr(st, "value") else str(st)
+        phase_id = progressive_phase_for(st)
+        sev = f.severity.value.upper() if hasattr(f.severity, "value") else str(f.severity).upper()
+        bucket = finding_counts.setdefault(phase_id, {})
+        bucket[sev] = bucket.get(sev, 0) + 1
+
+    rows: list[dict] = []
+    for phase in PROGRESSIVE_PHASES:
+        if phase.id not in scenario_counts and phase.id not in finding_counts:
+            continue
+        rows.append(
+            {
+                "phase_id": phase.id,
+                "name": phase.name,
+                "scenarios_run": scenario_counts.get(phase.id, 0),
+                "findings_by_severity": finding_counts.get(phase.id, {}),
+            }
+        )
+    return rows
+
+
+def _phase_summary_section(findings: list, scenario_records: list) -> list[str]:
+    """Render the ``## Phase-by-Phase Summary`` Markdown table (progressive mode)."""
+    rows = _phase_summary_rows(findings, scenario_records)
+    if not rows:
+        return []
+    lines = ["## Phase-by-Phase Summary", "", "| Phase | Scenarios | Findings (by severity) |", "|---|---|---|"]
+    for row in rows:
+        sev_str = ", ".join(f"{k}: {v}" for k, v in row["findings_by_severity"].items()) or "none"
+        lines.append(f"| {row['phase_id']} — {row['name']} | {row['scenarios_run']} | {sev_str} |")
+    lines.append("")
+    return lines
 
 
 # ---------------------------------------------------------------------------

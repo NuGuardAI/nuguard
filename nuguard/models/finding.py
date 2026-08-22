@@ -56,3 +56,9 @@ class Finding(BaseModel):
     # so "why is this CRITICAL" is auditable from the finding alone.
     ngrs_score: int | None = None
     ngrs_vector: str | None = None
+    # Progressive-methodology evidence fields (docs/claude-redteam-3.md) — "allow"
+    # when the attack got through (a Finding was raised), "deny" when blocked;
+    # guardrail_control mirrors LLMResponseEvaluator's closed-taxonomy refusal_reason
+    # (content_filter, hitl_check, topic_guardrail, ...), i.e. "which control triggered".
+    authorization_decision: str = ""
+    guardrail_control: str = ""

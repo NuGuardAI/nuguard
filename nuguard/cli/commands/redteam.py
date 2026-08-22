@@ -315,6 +315,8 @@ def redteam(
         golden_data=cfg.redteam_golden_data or None,
         suppress_spa_html_auth_bypass=cfg.redteam_suppress_spa_html_auth_bypass,
         codegen_escalation_enabled=cfg.redteam_codegen_escalation_enabled,
+        mode=cfg.redteam_mode,
+        progressive_halt_on_severity=cfg.redteam_progressive_halt_on_severity,
     )
 
     try:
@@ -548,6 +550,8 @@ async def _run_redteam(
     golden_data: "dict | None" = None,
     suppress_spa_html_auth_bypass: bool = True,
     codegen_escalation_enabled: bool = True,
+    mode: str = "concurrent",
+    progressive_halt_on_severity: str = "none",
 ) -> "tuple[list, list, str, list[str], Any, int, int, Any, Any, str, str, list]":
     from nuguard.models.policy import CognitivePolicy
     from nuguard.redteam.target.canary import CanaryConfig
@@ -688,6 +692,8 @@ async def _run_redteam(
                 golden_data=golden_data,
                 suppress_spa_html_auth_bypass=suppress_spa_html_auth_bypass,
                 codegen_escalation_enabled=codegen_escalation_enabled,
+                mode=mode,
+                progressive_halt_on_severity=progressive_halt_on_severity,
             )
 
     # App already running — just scan
@@ -743,6 +749,8 @@ async def _run_redteam(
         golden_data=golden_data,
         suppress_spa_html_auth_bypass=suppress_spa_html_auth_bypass,
         codegen_escalation_enabled=codegen_escalation_enabled,
+        mode=mode,
+        progressive_halt_on_severity=progressive_halt_on_severity,
     )
 
 
@@ -797,6 +805,8 @@ async def _run_orchestrator(  # noqa: C901
     golden_data: "dict | None" = None,
     suppress_spa_html_auth_bypass: bool = True,
     codegen_escalation_enabled: bool = True,
+    mode: str = "concurrent",
+    progressive_halt_on_severity: str = "none",
 ) -> "tuple[list, list, str, list[str], Any, int, int, Any, Any, str, str, list]":
     from nuguard.common.llm_client import LLMClient
     from nuguard.redteam.persona import EVAL_EXPERT_SYSTEM_PROMPT, REDTEAM_EXPERT_SYSTEM_PROMPT
@@ -857,6 +867,8 @@ async def _run_orchestrator(  # noqa: C901
         golden_data=golden_data,
         suppress_spa_html_auth_bypass=suppress_spa_html_auth_bypass,
         codegen_escalation_enabled=codegen_escalation_enabled,
+        mode=mode,
+        progressive_halt_on_severity=progressive_halt_on_severity,
     )
 
     result = await run_redteam(

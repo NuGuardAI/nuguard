@@ -249,6 +249,9 @@ class StepResult:
         # by the evaluator and discarded here; now carried through so
         # _build_findings can wire it into Finding.remediation.
         self.llm_eval_remediation_hint: str = ""
+        # Closed-taxonomy reason the judge gave for a refusal (content_filter,
+        # hitl_check, topic_guardrail, ...) — surfaced on Finding.guardrail_control.
+        self.llm_eval_refusal_reason: str = ""
         # Which judge produced llm_eval_evidence/llm_eval_confidence above:
         # "llm_eval" (LLMResponseEvaluator's actual model call) or
         # "golden_filter" (deterministic golden-data classifier — see
@@ -1085,6 +1088,7 @@ class AttackExecutor:
                 result.llm_eval_evidence = llm_eval.get("evidence", "")
                 result.llm_eval_confidence = llm_eval.get("confidence", "")
                 result.llm_eval_remediation_hint = llm_eval.get("remediation_hint", "") or ""
+                result.llm_eval_refusal_reason = llm_eval.get("refusal_reason", "") or ""
                 result.evidence_source = "llm_eval"
                 _log.info(
                     "LLM eval | step=%s succeeded=%s confidence=%s evidence=%r",
