@@ -137,6 +137,13 @@ properties:
           - {name: JWT_REFRESH_SECRET, secureValue: '$JWT_REFRESH_SECRET'}
           - {name: OPENROUTER_API_KEY, secureValue: '${OPENROUTER_API_KEY:-}'}
           - {name: OPENAI_API_KEY, secureValue: '${OPENAI_API_KEY:-}'}
+          - {name: AZURE_OPENAI_ENDPOINT, value: '${AZURE_OPENAI_ENDPOINT:-}'}
+          - {name: AZURE_OPENAI_KEY, secureValue: '${AZURE_OPENAI_KEY:-}'}
+          - {name: AZURE_OPENAI_DEPLOYMENT_NAME, value: '${AZURE_OPENAI_DEPLOYMENT_NAME:-}'}
+          - {name: AZURE_OPENAI_API_VERSION, value: '${AZURE_OPENAI_API_VERSION:-2025-01-01-preview}'}
+          - {name: AZURE_EMBEDDING_ENDPOINT, value: '${AZURE_EMBEDDING_ENDPOINT:-}'}
+          - {name: AZURE_EMBEDDING_KEY, secureValue: '${AZURE_EMBEDDING_KEY:-}'}
+          - {name: AZURE_EMBEDDING_DEPLOYMENT_NAME, value: '${AZURE_EMBEDDING_DEPLOYMENT_NAME:-}'}
         resources:
           requests: {cpu: 1, memoryInGb: 1}
     - name: frontend
