@@ -86,7 +86,8 @@ def find_calls(
 ) -> list[CSharpCall]:
     """Return call expressions whose simple name is in *names*, if supplied."""
     masked = mask_non_code(source)
-    calls: list[CSharpCall] = []
+    all_calls: list[CSharpCall] = []
+    selected_calls: list[CSharpCall] = []
 
     for match in _CALL_RE.finditer(masked):
         callee = re.sub(
@@ -105,9 +106,6 @@ def find_calls(
         if name in _CONTROL_NAMES:
             continue
 
-        if names is not None and name not in names:
-            continue
-
         open_paren = match.end() - 1
         close_paren = _matching(
             masked,
@@ -122,37 +120,79 @@ def find_calls(
         args_text = source[open_paren + 1 : close_paren]
         named, positional = parse_arguments(args_text)
         receiver = ".".join(simple_parts[:-1]) or None
+        chain_parent = _chained_parent(
+            all_calls,
+            masked,
+            match.start(),
+        )
+        snippet_start = match.start()
+
+        if chain_parent is not None:
+            parent_expression = re.sub(
+                r"\s*(\?\.|\.)\s*",
+                r"\1",
+                " ".join(source[chain_parent.start : chain_parent.end].strip().split()),
+            )
+            receiver = f"{parent_expression}.{receiver}" if receiver else parent_expression
+            snippet_start = chain_parent.start
+
         prefix = masked[max(0, match.start() - 12) : match.start()]
         is_constructor = bool(re.search(r"\bnew\s*$", prefix))
         assigned_to = _assignment_target(
             masked,
             match.start(),
         )
+
+        if assigned_to is None and chain_parent is not None:
+            assigned_to = chain_parent.assigned_to
+
         end = close_paren + 1
-        snippet = " ".join(source[match.start() : end].strip().split())[:240]
-
-        calls.append(
-            CSharpCall(
-                callee=callee,
-                name=name,
-                receiver=receiver,
-                generic_arguments=generic_arguments,
-                arguments_text=args_text,
-                named_arguments=named,
-                positional_arguments=tuple(positional),
-                assigned_to=assigned_to,
-                is_constructor=is_constructor,
-                line=line_number(
-                    source,
-                    match.start(),
-                ),
-                start=match.start(),
-                end=end,
-                snippet=snippet,
-            )
+        snippet = " ".join(source[snippet_start:end].strip().split())[:240]
+        call = CSharpCall(
+            callee=callee,
+            name=name,
+            receiver=receiver,
+            generic_arguments=generic_arguments,
+            arguments_text=args_text,
+            named_arguments=named,
+            positional_arguments=tuple(positional),
+            assigned_to=assigned_to,
+            is_constructor=is_constructor,
+            line=line_number(
+                source,
+                match.start(),
+            ),
+            start=snippet_start,
+            end=end,
+            snippet=snippet,
         )
+        all_calls.append(call)
 
-    return calls
+        if names is None or name in names:
+            selected_calls.append(call)
+
+    return selected_calls
+
+
+def _chained_parent(
+    calls: list[CSharpCall],
+    masked: str,
+    position: int,
+) -> CSharpCall | None:
+    """Return the immediately preceding call in a fluent chain."""
+    for call in reversed(calls):
+        if call.end > position:
+            continue
+
+        separator = masked[call.end : position]
+
+        if re.fullmatch(
+            r"\s*(?:\?\.|\.)\s*",
+            separator,
+        ):
+            return call
+
+    return None
 
 
 def parse_arguments(
