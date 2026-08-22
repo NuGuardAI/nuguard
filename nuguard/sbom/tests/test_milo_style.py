@@ -133,14 +133,18 @@ class TestDockerfile:
         )
 
     def test_expose_port_detected(self, doc: AiSbomDocument) -> None:
-        # Dockerfile EXPOSE ports are classified as DEPLOYMENT, not API_ENDPOINT
-        deployments = nodes(doc, ComponentType.DEPLOYMENT)
-        port_nodes = [
-            n for n in deployments if "8420" in n.name or n.metadata.extras.get("port") == 8420
+        # EXPOSE ports are metadata on the CONTAINER_IMAGE node (not a
+        # standalone DEPLOYMENT node — that used to fragment the deployment
+        # graph into "Port 8420"-style noise, one node per exposed port).
+        images = nodes(doc, ComponentType.CONTAINER_IMAGE)
+        exposed = [
+            p
+            for n in images
+            for p in (n.metadata.extras.get("exposed_ports") or [])
         ]
-        assert port_nodes, (
-            f"Expected DEPLOYMENT node for port 8420 from EXPOSE. "
-            f"deployments={[n.name for n in deployments]}"
+        assert any(p.get("port") == 8420 for p in exposed), (
+            f"Expected exposed_ports metadata with port 8420 on a CONTAINER_IMAGE node. "
+            f"images={[(n.name, n.metadata.extras.get('exposed_ports')) for n in images]}"
         )
 
     def test_playwright_tool_from_dockerfile(self, doc: AiSbomDocument) -> None:

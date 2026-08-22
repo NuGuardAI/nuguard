@@ -7,7 +7,7 @@ import uuid
 from nuguard.common.logging import get_logger
 from nuguard.models.exploit_chain import ExploitChain, ExploitStep, GoalType, ScenarioType
 from nuguard.models.policy import CognitivePolicy
-from nuguard.sbom.models import AiSbomDocument
+from nuguard.sbom.models import AiSbomDocument, Node
 from nuguard.sbom.types import ComponentType, RelationshipType
 
 # ── 2024–2025 advanced attack families ────────────────────────────────────────
@@ -270,6 +270,18 @@ _ATTACK_PHASE: dict[str, int] = {
 }
 
 
+def attack_phase_for(scenario_type_value: str) -> int:
+    """Return the escalation phase (1-9) for a ``ScenarioType.value``.
+
+    Shared by both :meth:`ScenarioGenerator.generate` (legacy/SBOM-driven
+    path) and :meth:`ScenarioGenerator.generate_from_catalog` (capability-
+    aware catalog path) so scenarios from either source carry a comparable
+    ``attack_phase`` and can be merged into one phase-ordered dispatch list
+    instead of the catalog scenarios bypassing escalation ordering entirely.
+    """
+    return _ATTACK_PHASE.get(scenario_type_value, 5)
+
+
 def _tool_risk_group(tool_name: str, description: str) -> tuple[str, bool]:
     """Return ``(group_label, is_high_risk)`` for a tool.
 
@@ -414,7 +426,8 @@ class ScenarioGenerator:
         # This ensures scenarios execute in the correct escalation order without
         # running destructive tests before the attack surface has been mapped.
         def _phase_blended_key(s: AttackScenario) -> tuple[int, float]:
-            phase = _ATTACK_PHASE.get(s.scenario_type.value, 5)
+            phase = attack_phase_for(s.scenario_type.value)
+            s.attack_phase = phase
             base = s.impact_score
             node = self._node_by_id.get(s.target_node_ids[0] if s.target_node_ids else "")
             if node and node.metadata:
@@ -464,7 +477,11 @@ class ScenarioGenerator:
         Uses capability-aware selection: only specs whose
         ``required_capabilities`` are satisfied by the target's
         :class:`AppCapabilityProfile` are instantiated.  Returns scenarios
-        sorted by ``impact_score`` descending, capped to the profile target.
+        sorted by escalation phase ascending (see ``attack_phase_for``),
+        then ``impact_score`` descending within each phase, capped to the
+        profile target — the same phase-then-impact ordering as
+        :meth:`generate`, so catalog-sourced scenarios carry real escalation
+        discipline instead of being merged in by impact score alone.
 
         Also populates ``self.last_coverage`` with a :class:`CoverageReport`.
 
@@ -485,6 +502,9 @@ class ScenarioGenerator:
             catalog=catalog,
         )
         self.last_coverage = coverage
+        for sc in scenarios:
+            sc.attack_phase = attack_phase_for(sc.scenario_type.value)
+        scenarios.sort(key=lambda s: (s.attack_phase, -s.impact_score))
         # Backfill target_tool_names (same post-processing as generate())
         for sc in scenarios:
             if sc.target_tool_names:
@@ -929,9 +949,25 @@ class ScenarioGenerator:
         # Agents are resolved via ACCESSES edges → data-tool heuristic → all agents.
         _last_ds_name: str = ""
         _last_all_pii: list[str] = []
-        for node in self._sbom.nodes:
-            if node.component_type != ComponentType.DATASTORE:
+        # SBOM extraction commonly detects the same physical datastore multiple
+        # times under different driver/ORM aliases (e.g. "Sqlite"/"Sqlite3"/
+        # "Sqlalchemy" all pointing at one relational DB, or "Postgres"/
+        # "Postgresql" from different import statements). Generating one probe
+        # + one SQL-injection scenario per alias burns most of the scenario
+        # budget on near-identical turns against the same underlying attack
+        # surface. Dedupe to the single highest-confidence node per
+        # datastore_type category (relational/vector/kv/graph/...) so each
+        # genuinely distinct datastore is still probed exactly once.
+        _datastore_nodes_by_category: dict[str, Node] = {}
+        for _ds_node in self._sbom.nodes:
+            if _ds_node.component_type != ComponentType.DATASTORE:
                 continue
+            _category = (_ds_node.metadata.datastore_type or "database").strip().lower()
+            _existing = _datastore_nodes_by_category.get(_category)
+            if _existing is None or _ds_node.confidence > _existing.confidence:
+                _datastore_nodes_by_category[_category] = _ds_node
+
+        for node in _datastore_nodes_by_category.values():
             meta = node.metadata
             ds_name = node.name
             # Fall back to node name so "sqlite", "postgres" etc. in the name
@@ -1358,27 +1394,26 @@ class ScenarioGenerator:
             )
         return result
 
-    def _find_owning_agent_name(self, tool_node: object) -> str:
-        """Return the name of the first AGENT node that CALLS this tool, or empty string."""
+    def _find_owning_agent(self, tool_node: object) -> Node | None:
+        """Return the first AGENT node that CALLS this tool, or None."""
         tool_id = str(getattr(tool_node, "id", ""))
         for node in self._sbom.nodes:
             if node.component_type != ComponentType.AGENT:
                 continue
             called_ids = self._outgoing.get(str(node.id), {}).get(RelationshipType.CALLS, [])
             if tool_id in called_ids:
-                return node.name
-        return ""
+                return node
+        return None
+
+    def _find_owning_agent_name(self, tool_node: object) -> str:
+        """Return the name of the first AGENT node that CALLS this tool, or empty string."""
+        agent = self._find_owning_agent(tool_node)
+        return agent.name if agent is not None else ""
 
     def _find_owning_agent_id(self, tool_node: object) -> str:
         """Return the str(id) of the first AGENT node that CALLS this tool, or empty string."""
-        tool_id = str(getattr(tool_node, "id", ""))
-        for node in self._sbom.nodes:
-            if node.component_type != ComponentType.AGENT:
-                continue
-            called_ids = self._outgoing.get(str(node.id), {}).get(RelationshipType.CALLS, [])
-            if tool_id in called_ids:
-                return str(node.id)
-        return ""
+        agent = self._find_owning_agent(tool_node)
+        return str(agent.id) if agent is not None else ""
 
     # ------------------------------------------------------------------ #
     # Goal 6: MCP Toxic Flow

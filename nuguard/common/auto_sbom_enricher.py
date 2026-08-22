@@ -527,12 +527,24 @@ def _enrich_static(sbom: AiSbomDocument) -> AiSbomDocument:
         primary_agent = agent_nodes[0]
         if model_nodes and not _has_edge(enriched, primary_agent, model_nodes[0], RelationshipType.USES):
             enriched.edges.append(
-                Edge(source=primary_agent.id, target=model_nodes[0].id, relationship_type=RelationshipType.USES)
+                Edge(
+                    source=primary_agent.id,
+                    target=model_nodes[0].id,
+                    relationship_type=RelationshipType.USES,
+                    derivation="fallback_heuristic",
+                    confidence=0.5,
+                )
             )
         for tool in tool_nodes:
             if not _has_edge(enriched, primary_agent, tool, RelationshipType.CALLS):
                 enriched.edges.append(
-                    Edge(source=primary_agent.id, target=tool.id, relationship_type=RelationshipType.CALLS)
+                    Edge(
+                        source=primary_agent.id,
+                        target=tool.id,
+                        relationship_type=RelationshipType.CALLS,
+                        derivation="fallback_heuristic",
+                        confidence=0.5,
+                    )
                 )
 
     # Add TOOL -> DATASTORE relation in the simplest single-datastore case if none exist.
@@ -557,6 +569,8 @@ def _enrich_static(sbom: AiSbomDocument) -> AiSbomDocument:
                     target=datastore_nodes[0].id,
                     relationship_type=RelationshipType.ACCESSES,
                     access_type=AccessType.READWRITE,
+                    derivation="fallback_heuristic",
+                    confidence=0.5,
                 )
             )
 
@@ -772,6 +786,30 @@ def _enriched_output_path(sbom_path: Path) -> Path:
     if sbom_path.suffix:
         return sbom_path.with_name(f"{sbom_path.stem}.enriched{sbom_path.suffix}")
     return sbom_path.with_name(f"{sbom_path.name}.enriched.json")
+
+
+def enriched_sbom_artifact_path(sbom_path: Path) -> Path:
+    """Public alias of :func:`_enriched_output_path` for callers outside this module."""
+    return _enriched_output_path(sbom_path)
+
+
+def persist_capability_discovery_sbom(sbom: AiSbomDocument, sbom_path: Path) -> Path:
+    """Write *sbom* to the same ``<name>.sbom.enriched.json`` artifact used by
+    :func:`maybe_auto_enrich_sbom`, so gap-driven capability discovery (live
+    tool/sub-agent/system-prompt probing — see
+    :mod:`nuguard.common.discovery`) combines with the existing enrichment
+    artifact instead of writing a second file.
+
+    Unlike :func:`_write_enriched`, no ``_enrichment_cache_key`` is embedded:
+    capability discovery depends on the live target's runtime responses, which
+    can change between runs, so the next :func:`maybe_auto_enrich_sbom` call
+    must not treat this artifact as a valid cache hit — it will always
+    recompute (and may overwrite this file again) rather than silently
+    reusing stale runtime-derived nodes.
+    """
+    out_path = _enriched_output_path(sbom_path)
+    _write_enriched(sbom, out_path, cache_key=None)
+    return out_path
 
 
 def _enrichment_cache_key(

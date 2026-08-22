@@ -29,6 +29,7 @@ class BehaviorScenarioType(str, Enum):
     GUARDRAIL_PROBE = "guardrail_probe"            # Layer 3: HITL + data classification
     DATA_DISCOVERY_PROBE = "data_discovery_probe"  # Layer 4: discover + react to user data
     ENDPOINT_COVERAGE = "endpoint_coverage"        # Layer 5: first-class API_ENDPOINT coverage
+    GUIDED_COVERAGE = "guided_coverage"            # Layer 2c: live LLM-steered tool/agent coverage
 
 
 class BehaviorFindingType(str, Enum):
@@ -331,9 +332,10 @@ class BehaviorAnalysisResult(BaseModel):
 
     dynamic_scan_outcome: str | None = None
     """Outcome from the dynamic runner phase alone (before static findings override it).
-    Set to ``aborted_target_unavailable`` or ``inconclusive_target_errors`` when the
-    dynamic phase encountered target errors, even if static findings changed the final
-    ``scan_outcome``.
+    Set to ``aborted_target_unavailable``, ``inconclusive_target_errors``, or
+    ``aborted_endpoint_unreachable`` (pre-flight check failed before any scenario ran)
+    when the dynamic phase encountered target errors, even if static findings changed
+    the final ``scan_outcome``.
     """
 
     @computed_field  # type: ignore[misc]

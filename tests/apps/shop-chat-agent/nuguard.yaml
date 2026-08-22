@@ -1,0 +1,122 @@
+# nuguard.yaml — shop-chat-agent (local Docker target)
+# shop-chat-agent: https://github.com/Shopify/shop-chat-agent — Shopify's
+# reference embedded app: a storefront AI shopping assistant (React Router
+# backend, Model Context Protocol client against Shopify's storefront +
+# customer-account MCP servers, Prisma/SQLite session storage, Shopify
+# theme-extension chat widget UI). This local test target's chat model has
+# been patched from Anthropic Claude to Azure OpenAI — see
+# repo/app/services/claude.server.js and .env.
+#
+# Priority order (highest wins): CLI flags > env vars > .env file > nuguard.yaml > defaults
+# Run from this directory: uv run nuguard <command> --config nuguard.yaml
+
+# ─── Source for SBOM generation ───────────────────────────────────────────────
+# GitHub URL — nuguard clones it internally for static scanning; nothing is
+# vendored into this repo (the ./repo checkout used by start-local.sh to
+# actually *run* the app is separate and gitignored).
+source: https://github.com/Shopify/shop-chat-agent
+sbom: ./shop-chat-agent.sbom.json
+
+# ─── Cognitive policy ──────────────────────────────────────────────────────────
+# Not checked in — drafted at runtime from the SBOM by `nuguard init --llm`
+# (see shop-chat-agent-test.sh), then compiled to cognitive-policy.json.
+policy:
+  path: ./cognitive-policy.md
+  llm: true
+
+# ─── LLM settings (NuGuard's own scenario generation / judging) ───────────────
+llm:
+  # model: openai/gpt-4o-mini            # LiteLLM resolves the key from OPENAI_API_KEY
+  # api_key: ${OPENAI_API_KEY}
+  model: azure/DeepSeek-V4-Pro
+  api_key: ${AZURE_DEEPSEEK_KEY}     # never put keys here; use env var interpolation
+  api_base: ${AZURE_DEEPSEEK_ENDPOINT}
+
+# ─── SBOM generation ───────────────────────────────────────────────────────────
+sbom_generation:
+  llm: true                            # enrich SBOM nodes with LLM descriptions
+
+# ─── Target application ────────────────────────────────────────────────────────
+# IMPORTANT: this is a Shopify-embedded app template. Without a real Partner
+# app + dev store connected (`shopify app dev`, see README), the storefront
+# and customer MCP tool connections in app/mcp-client.js cannot succeed, and
+# app/routes/chat.jsx falls back to "continuing without tools" — the model still
+# replies via Azure OpenAI (see .env), but dynamic scans here exercise the base chat
+# loop only, not the MCP product-search/cart/order tool surface.
+target:
+  url: http://localhost:5501
+
+  # SSE chat endpoint (GET with Accept: text/event-stream, or POST) — see
+  # app/routes/chat.jsx. Accepts JSON body: {"message": "...", "conversation_id": "...".
+  endpoint: /chat
+
+  # To make storefront MCP tools operational (search_shop_catalog, cart,
+  # policies), connect a real dev store (see README "Connecting a real dev
+  # store") and uncomment below with your store's domain — mcp-client.js
+  # derives the storefront MCP URL from this Origin header on every request.
+  # headers:
+  #   Origin: https://your-store.myshopify.com
+
+  auth:
+    # No auth required to reach /chat itself in this standalone run (the
+    # Shopify OAuth/App Bridge flow only guards the embedded /app/* admin UI).
+    type: none
+
+# ─── Behavior testing ──────────────────────────────────────────────────────────
+behavior:
+  llm: true
+  canary: ./canary.json
+  request_timeout: 60
+  scenario_concurrency: 3
+  isolate_scenarios: true
+  judge_concurrency: 5
+  capability_discovery: true
+
+# ─── Red-team ───────────────────────────────────────────────────────────────────
+redteam:
+  # target: http://localhost:5501
+  canary: ./canary.json
+  profile: full
+  min_impact_score: 0.0
+
+  # Relevant to a storefront shopping agent with MCP tool-calling (cart/order
+  # actions) and OAuth-based customer account access.
+  scenarios:
+    - prompt-driven-threat     # jailbreaks, guardrail bypass, system-prompt extraction
+    - policy-violation         # restricted topics/actions, HITL bypass, topic boundary
+    - data-exfiltration        # PII/PHI extraction, covert encoding, cross-tenant
+    - privilege-escalation     # role/permission escalation, false-premise attacks
+    - tool-abuse               # SQL injection, SSRF, shell injection, resource exhaustion
+    - mcp-toxic-flow           # poisoned MCP tool descriptions/output, credential overreach
+    - api-attack               # auth bypass, IDOR, mass assignment, BFLA
+    - agentic-trust-abuse      # confused deputy, memory poisoning, multi-agent trust
+    - recon-inference          # refusal-oracle / boundary self-probe information gathering
+
+  # LLM for attack-payload generation (must tolerate adversarial content).
+  # Must use a DIFFERENT deployment than the target app to avoid TPM contention.
+  llm:
+    model: azure/DeepSeek-V4-Pro    # any LiteLLM model string (openai/gpt-4o, etc.)
+    api_key: ${AZURE_DEEPSEEK_KEY}
+    api_base: ${AZURE_DEEPSEEK_ENDPOINT}     # optional override for Azure OpenAI endpoint URL
+
+  # LLM for response evaluation and finding summarisation.
+  # Must use a DIFFERENT deployment than the target app to avoid TPM contention.
+  eval_llm:
+    model: azure/${AZURE_DEEPSEEK_MODEL_NAME}    # any LiteLLM model string (openai/gpt-4o, etc.)
+    api_key: ${AZURE_DEEPSEEK_KEY}     # never put keys here; use env var interpolation
+    api_base: ${AZURE_DEEPSEEK_ENDPOINT}     # optional override for Azure OpenAI endpoint URL
+
+
+  request_timeout: 120
+  verbose: true
+  strict_outcome: false
+
+# ─── Static analysis ────────────────────────────────────────────────────────────
+analyze:
+  min_severity: low
+
+# ─── Output ──────────────────────────────────────────────────────────────────────
+output:
+  format: markdown
+  fail_on: low
+  sarif_file: ./reports/shop-chat-agent-nuguard-results.sarif

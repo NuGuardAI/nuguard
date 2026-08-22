@@ -55,6 +55,22 @@ _AUTH_CLASS_PROTOCOLS: dict[str, list[str]] = {
 # Classes with strict enforcement by default
 _AUTH_STRICT_CLASSES = {"OAuth2PasswordBearer", "HTTPBearer", "APIKeyHeader"}
 
+# The constructor keyword argument that identifies a given auth class's
+# *scheme* (as opposed to just its call site) — e.g. two files each doing
+# OAuth2PasswordBearer(tokenUrl="token") are the same scheme, real code
+# duplication, not two independent auth mechanisms. Classes with no entry
+# here (HTTPBearer/HTTPBasic/HTTPDigest) take no meaningfully-distinguishing
+# constructor argument, so any two instantiations of the same class are
+# treated as the same scheme.
+_AUTH_SCHEME_KEY_ARG: dict[str, str] = {
+    "OAuth2PasswordBearer": "tokenUrl",
+    "OAuth2PasswordRequestForm": "tokenUrl",
+    "OAuth2": "tokenUrl",
+    "APIKeyHeader": "name",
+    "APIKeyCookie": "name",
+    "APIKeyQuery": "name",
+}
+
 # Rate limit decorator function names
 _RATE_LIMIT_UNIT_SECONDS = {
     "second": 1, "seconds": 1,
@@ -67,11 +83,26 @@ _RATE_LIMIT_RE = re.compile(r"(\d+)\s*/\s*(second|minute|hour|day)s?", re.IGNORE
 
 _HTTP_METHODS = {"get", "post", "put", "patch", "delete", "head", "options", "trace"}
 
+# WebSocket routes (@router.websocket(...) / @app.websocket(...)) are a distinct
+# transport, kept in a separate set rather than merged into _HTTP_METHODS so that
+# HTTP-only logic (request/response body schema detection, response_model=) can be
+# explicitly skipped for them instead of silently producing nonsense.
+_WS_METHODS = {"websocket"}
+
 _PROMPT_FIELD_NAMES = {
     "message", "query", "prompt", "input", "text",
     "user_query", "user_input", "user_message",
     "transcript", "question", "content", "msg",
 }
+
+# OpenAI/Anthropic/LangChain-style chat-history fields: a list of {role, content}
+# message dicts rather than a single string. When one of these is detected with a
+# non-str-list type (e.g. "list[dict]", "list[ChatMessage]"), chat_payload_list is
+# set True so nuguard.redteam.target.client.TargetAppClient replays conversation
+# history in the request body instead of sending a bare string — without this,
+# apps whose only chat route accepts messages=[...] were invisible to auto-discovery
+# entirely, since _infer_chat_payload_key previously only matched singular fields.
+_MESSAGE_HISTORY_FIELD_NAMES = {"messages", "history", "conversation", "chat_history"}
 
 _RESPONSE_FIELD_NAMES = {"response", "content", "answer", "text", "reply", "message", "output"}
 
@@ -128,6 +159,31 @@ def _get_call_name(call: ast.Call) -> str | None:
     return None
 
 
+def _auth_scheme_key(class_name: str, call: ast.Call) -> str | None:
+    """Return a value identifying this auth instantiation's *scheme* for
+    cross-file dedup, or ``None`` when it can't be resolved statically.
+
+    For classes with no natural scheme-identifying argument (see
+    ``_AUTH_SCHEME_KEY_ARG``), any instantiation of the class counts as the
+    same scheme. Otherwise, only a resolvable string-literal value for that
+    argument counts — a dynamically-built value (an f-string, a variable, a
+    settings lookup) can't be compared across files without evaluating it,
+    so callers must fall back to the existing per-file/var canonical name
+    rather than risk merging two actually-different schemes.
+    """
+    key_arg = _AUTH_SCHEME_KEY_ARG.get(class_name)
+    if key_arg is None:
+        return f"<{class_name}>"
+    for kw in call.keywords:
+        if kw.arg == key_arg and isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
+            return kw.value.value
+    if call.args:
+        first = call.args[0]
+        if isinstance(first, ast.Constant) and isinstance(first.value, str):
+            return first.value
+    return None
+
+
 def _collect_model_schemas(tree: ast.AST) -> dict[str, dict[str, str]]:
     """Return ``{class_name: {field_name: type_string}}`` for BaseModel subclasses."""
     schemas: dict[str, dict[str, str]] = {}
@@ -150,12 +206,90 @@ def _collect_model_schemas(tree: ast.AST) -> dict[str, dict[str, str]]:
     return schemas
 
 
+def _collect_router_declarations(tree: ast.AST) -> dict[str, str]:
+    """Return ``{var_name: own_prefix}`` for ``x = APIRouter(prefix="...")``."""
+    declared: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+            continue
+        target = node.targets[0]
+        if not isinstance(target, ast.Name) or not isinstance(node.value, ast.Call):
+            continue
+        if _get_call_name(node.value) != "APIRouter":
+            continue
+        prefix = ""
+        for kw in node.value.keywords:
+            if kw.arg == "prefix" and isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
+                prefix = kw.value.value
+        declared[target.id] = prefix
+    return declared
+
+
+def _collect_include_router_calls(tree: ast.AST) -> list[tuple[str, str | None, str]]:
+    """Return ``(receiver_var, included_ref, mount_prefix)`` for each
+    ``<receiver>.include_router(<included>, prefix="...")`` call.
+
+    ``included_ref`` is the bare variable name for ``include_router(router, ...)``,
+    or ``"<module_alias>.<attr>"`` for the module-attribute style
+    ``include_router(chat.router, ...)`` — e.g. ``from server.api import chat``
+    followed by ``app.include_router(chat.router, prefix=...)``, a common pattern
+    when a router is imported via its owning submodule rather than
+    ``from server.api.chat import router`` directly.
+    """
+    calls: list[tuple[str, str | None, str]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        func = node.func
+        if not isinstance(func, ast.Attribute) or func.attr != "include_router":
+            continue
+        if not isinstance(func.value, ast.Name):
+            continue
+        included_ref: str | None = None
+        if node.args:
+            arg0 = node.args[0]
+            if isinstance(arg0, ast.Name):
+                included_ref = arg0.id
+            elif isinstance(arg0, ast.Attribute) and isinstance(arg0.value, ast.Name):
+                included_ref = f"{arg0.value.id}.{arg0.attr}"
+        mount_prefix = ""
+        for kw in node.keywords:
+            if kw.arg == "prefix" and isinstance(kw.value, ast.Constant) and isinstance(kw.value.value, str):
+                mount_prefix = kw.value.value
+        calls.append((func.value.id, included_ref, mount_prefix))
+    return calls
+
+
+def _collect_router_imports(tree: ast.AST) -> dict[str, tuple[int, str, str]]:
+    """Return ``{local_name: (relative_level, dotted_module, original_name)}``
+    for ``from [.]module import name [as local_name]`` statements.
+
+    ``relative_level`` is 0 for absolute imports, N>=1 for ``from .`` / ``from ..``.
+    """
+    imports: dict[str, tuple[int, str, str]] = {}
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.ImportFrom):
+            continue
+        module = node.module or ""
+        level = node.level or 0
+        for alias in node.names:
+            imports[alias.asname or alias.name] = (level, module, alias.name)
+    return imports
+
+
 def _infer_chat_payload_key(fields: dict[str, str]) -> tuple[str | None, bool]:
     for name in _PROMPT_FIELD_NAMES:
         if name in fields:
             type_str = fields[name]
             is_list = "list" in type_str.lower() or "List" in type_str
             return name, is_list
+    for name in _MESSAGE_HISTORY_FIELD_NAMES:
+        if name in fields:
+            type_str = fields[name].lower()
+            # Only match list-of-non-str types (e.g. "list[dict]", "list[chatmessage]") —
+            # a plain "list[str]" field named "messages" isn't role/content-shaped.
+            if "list" in type_str and "list[str]" not in type_str.replace(" ", ""):
+                return name, True
     for name, type_str in fields.items():
         if type_str.strip() == "str":
             return name, False
@@ -291,6 +425,11 @@ class FastAPIAdapter(FrameworkAdapter):
 
     def __init__(self) -> None:
         self._global_model_schemas: dict[str, dict[str, str]] = {}
+        self._global_router_prefixes: dict[str, str] = {}
+
+    def set_global_router_prefixes(self, prefixes: dict[str, str]) -> None:
+        """Provide cross-file composed router prefixes, keyed by ``f"{file_path}::{var_name}"``."""
+        self._global_router_prefixes = prefixes
 
     def set_global_model_schemas(self, schemas: dict[str, dict[str, str]]) -> None:
         """Provide cross-file Pydantic model definitions for imported model resolution."""
@@ -368,7 +507,19 @@ class FastAPIAdapter(FrameworkAdapter):
 
             elif class_name in _AUTH_CLASSES:
                 auth_type = _AUTH_CLASSES[class_name]
-                canon = f"fastapi:auth:{file_path}:{var_name}"
+                # Cross-file dedup: two instantiations of the same class with
+                # the same resolvable scheme key (e.g. tokenUrl="token") are
+                # the same auth scheme, not two independent mechanisms — see
+                # _auth_scheme_key. Falls back to the previous per-file/var
+                # canonical name when the scheme key can't be resolved
+                # statically, so two genuinely-different (or unresolvable)
+                # schemes are never merged.
+                _scheme_key = _auth_scheme_key(class_name, call)
+                canon = (
+                    f"auth:{class_name}:{_scheme_key}"
+                    if _scheme_key is not None
+                    else f"fastapi:auth:{file_path}:{var_name}"
+                )
                 auth_detail: dict[str, Any] = {
                     "protocols": _AUTH_CLASS_PROTOCOLS.get(class_name, [auth_type]),
                 }
@@ -405,40 +556,71 @@ class FastAPIAdapter(FrameworkAdapter):
 
                 receiver, method, path_str = ep_info
                 func_name = node.name
+
+                # Compose the router mount prefix (resolved cross-file by
+                # core.py's pre-pass, e.g. app.include_router(x, prefix="/api/x"))
+                # onto the raw decorator path, so nested routers report their
+                # real reachable path instead of just the local route suffix.
+                _prefix = (
+                    self._global_router_prefixes.get(f"{file_path}::{receiver}", "")
+                    if receiver
+                    else ""
+                )
+                composed_path = f"{_prefix}{path_str}" if path_str is not None else path_str
+
                 # Key on HTTP method + route path only (no framework prefix) so
                 # the same endpoint defined across multiple service files (e.g.
                 # GET /health in autogen, crewai, and agent_backend) — or found
                 # by both this adapter and the generic api_endpoint_generic
                 # regex fallback — dedupes into one node with evidence from all
                 # sources, rather than one node per file/adapter.
-                canon = f"endpoint:{method.upper()}:{path_str}"
+                #
+                # An empty composed path (no prefix resolved and path_str == "")
+                # is a common FastAPI idiom for a router's root endpoint
+                # (@router.post("", ...)) and is unrelated to a missing path —
+                # the file path must disambiguate it, otherwise every empty-path
+                # route in the codebase collapses into one node.
+                canon = (
+                    f"endpoint:{method.upper()}:{composed_path}"
+                    if composed_path
+                    else f"endpoint:{method.upper()}::{file_path}"
+                )
+
+                is_websocket = method in _WS_METHODS
 
                 ep_auth: str | None = _extract_depends_auth_type(node, auth_vars)
                 if ep_auth is None:
                     ep_auth = _extract_security_auth_type(decorator, auth_vars)
 
-                schema, chat_key, chat_list, resp_key, ctx_fields, resp_schema = _extract_endpoint_schema(
-                    node, model_schemas, _effective_external
-                )
+                # Pydantic request/response body schema detection is an HTTP-only
+                # concept (WebSocket handlers take a WebSocket object, not a JSON
+                # body) — skip it rather than run AST logic that assumes HTTP
+                # semantics and could produce misleading schema metadata.
+                if is_websocket:
+                    schema = chat_key = chat_list = resp_key = ctx_fields = resp_schema = None
+                else:
+                    schema, chat_key, chat_list, resp_key, ctx_fields, resp_schema = _extract_endpoint_schema(
+                        node, model_schemas, _effective_external
+                    )
 
-                # Also extract response_model= kwarg from the route decorator itself
-                # (FastAPI convention: @app.post("/path", response_model=MyModel))
-                if not resp_schema and isinstance(decorator, ast.Call):
-                    for _kw in decorator.keywords:
-                        if _kw.arg == "response_model" and isinstance(_kw.value, ast.Name):
-                            _resp_model_name = _kw.value.id
-                            if _resp_model_name in model_schemas:
-                                resp_schema = model_schemas[_resp_model_name]
-                                if not resp_key:
-                                    resp_key = _infer_response_text_key(resp_schema)
-                            break
+                    # Also extract response_model= kwarg from the route decorator itself
+                    # (FastAPI convention: @app.post("/path", response_model=MyModel))
+                    if not resp_schema and isinstance(decorator, ast.Call):
+                        for _kw in decorator.keywords:
+                            if _kw.arg == "response_model" and isinstance(_kw.value, ast.Name):
+                                _resp_model_name = _kw.value.id
+                                if _resp_model_name in model_schemas:
+                                    resp_schema = model_schemas[_resp_model_name]
+                                    if not resp_key:
+                                        resp_key = _infer_response_text_key(resp_schema)
+                                break
 
                 metadata: dict[str, Any] = {
                     "framework": "fastapi",
                     "method": method.upper(),
                 }
-                if path_str:
-                    metadata["endpoint"] = path_str
+                if composed_path is not None:
+                    metadata["endpoint"] = composed_path
                 if ep_auth:
                     metadata["auth_type"] = ep_auth
                 if schema:
@@ -549,14 +731,14 @@ class FastAPIAdapter(FrameworkAdapter):
 def _parse_route_decorator(
     decorator: ast.expr,
 ) -> tuple[str, str, str] | None:
-    """Parse @app.get('/path') → (receiver, method, path_str) or None."""
+    """Parse @app.get('/path') or @app.websocket('/ws') → (receiver, method, path_str) or None."""
     if not isinstance(decorator, ast.Call):
         return None
     func = decorator.func
     if not isinstance(func, ast.Attribute):
         return None
     method = func.attr.lower()
-    if method not in _HTTP_METHODS:
+    if method not in _HTTP_METHODS and method not in _WS_METHODS:
         return None
 
     receiver = ""

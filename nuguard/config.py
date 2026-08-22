@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Literal
 
 import yaml  # type: ignore[import-untyped]
-from pydantic import AliasChoices, BaseModel, Field, field_validator
+from pydantic import AliasChoices, BaseModel, Field, ValidationError, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from nuguard.common.auth import LoginFlowConfig
@@ -187,6 +187,28 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
     sbom_gen = data.get("sbom_generation", {}) or {}
     if "llm" in sbom_gen:
         flat["sbom_llm_enabled"] = bool(sbom_gen["llm"])
+    if "llm_concurrency" in sbom_gen:
+        flat["sbom_llm_concurrency"] = int(sbom_gen["llm_concurrency"])
+
+    gap_fill = sbom_gen.get("gap_fill", {}) or {}
+    if "max_calls" in gap_fill:
+        flat["sbom_gap_fill_max_calls"] = int(gap_fill["max_calls"])
+    if "max_cost_usd" in gap_fill:
+        flat["sbom_gap_fill_max_cost_usd"] = float(gap_fill["max_cost_usd"])
+    if "enable_privilege" in gap_fill:
+        flat["sbom_gap_fill_enable_privilege"] = bool(gap_fill["enable_privilege"])
+    if "enable_guardrail" in gap_fill:
+        flat["sbom_gap_fill_enable_guardrail"] = bool(gap_fill["enable_guardrail"])
+    if "self_critique_categories" in gap_fill:
+        flat["sbom_gap_fill_self_critique_categories"] = list(
+            gap_fill["self_critique_categories"] or []
+        )
+
+    sbom_verification = sbom_gen.get("verification", {}) or {}
+    if "max_verifications" in sbom_verification:
+        flat["sbom_verification_max_verifications"] = int(sbom_verification["max_verifications"])
+    if "cost_budget" in sbom_verification:
+        flat["sbom_verification_cost_budget"] = float(sbom_verification["cost_budget"])
 
     # ── Shared target block ────────────────────────────────────────────────────
     # target: at the top level acts as a shared default for both behavior and
@@ -211,7 +233,9 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
             flat["redteam_chat_payload_extras"] = shared_target["chat_payload_extras"]
         if "headers" in shared_target and isinstance(shared_target["headers"], dict):
             flat["redteam_headers"] = {
-                str(k): str(v) for k, v in shared_target["headers"].items()
+                str(k): str(v)
+                for k, v in shared_target["headers"].items()
+                if v is not None
             }
         # Structured auth from the shared block — same format as behavior/redteam auth
         _shared_auth = shared_target.get("auth", {}) or {}
@@ -253,7 +277,9 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_auth_header"] = redteam["auth_header"]
     if "headers" in redteam and isinstance(redteam["headers"], dict):
         flat["redteam_headers"] = {
-            str(k): str(v) for k, v in redteam["headers"].items()
+            str(k): str(v)
+            for k, v in redteam["headers"].items()
+            if v is not None
         }
     if "canary" in redteam:
         flat["canary_path"] = redteam["canary"]
@@ -286,13 +312,17 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
         flat["redteam_skip_discovery"] = bool(redteam["skip_discovery"])
     if "discovery_max_turns" in redteam:
         flat["redteam_discovery_max_turns"] = int(redteam["discovery_max_turns"])
+    if "capability_discovery" in redteam:
+        flat["redteam_capability_discovery"] = bool(redteam["capability_discovery"])
     if "prompt_cache_dir" in redteam:
         flat["redteam_prompt_cache_dir"] = str(redteam["prompt_cache_dir"])
     if "app_env" in redteam and isinstance(redteam["app_env"], dict):
         flat["redteam_app_env"] = {
-            str(k): str(v) for k, v in redteam["app_env"].items()
+            str(k): str(v)
+            for k, v in redteam["app_env"].items()
+            if v is not None
         }
-    if "customer_profile" in redteam:
+    if "customer_profile" in redteam and redteam["customer_profile"] is not None:
         app_env = dict(flat.get("redteam_app_env", {}))
         app_env["BLISSFUL_CUSTOMER_PROFILE"] = str(redteam["customer_profile"])
         flat["redteam_app_env"] = app_env
@@ -379,6 +409,12 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
     if "behavior" in data:
         b = data.get("behavior") or {}
         if isinstance(b, dict):
+            # A YAML key written with no value (e.g. "workflows:") parses to None,
+            # not an empty list/string — that almost always means "leave this at
+            # its default", not "explicitly set to null". Drop such keys so
+            # BehaviorConfig's own defaults (e.g. workflows: [] = run all) apply
+            # instead of failing type validation.
+            b = {k: val for k, val in b.items() if val is not None}
             # Inject shared target fields as defaults into the behavior dict so that
             # BehaviorConfig picks them up without requiring duplication in nuguard.yaml.
             # Keys already present in the behavior block take precedence.
@@ -403,7 +439,11 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
                 if "headers" in shared_target and isinstance(shared_target["headers"], dict):
                     _shared_for_behavior.setdefault(
                         "headers",
-                        {str(k): str(v) for k, v in shared_target["headers"].items()},
+                        {
+                            str(k): str(v)
+                            for k, v in shared_target["headers"].items()
+                            if v is not None
+                        },
                     )
                 if "auth" in shared_target and isinstance(shared_target["auth"], dict):
                     _shared_for_behavior.setdefault("auth", shared_target["auth"])
@@ -418,12 +458,20 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
                 if "endpoint" in b:
                     b["target_endpoint"] = b["endpoint"]
                 b = {**_shared_for_behavior, **b}
+            if isinstance(b, dict) and isinstance(b.get("headers"), dict):
+                b["headers"] = {
+                    str(k): str(v)
+                    for k, v in b["headers"].items()
+                    if v is not None
+                }
             flat["behavior_config"] = b
 
     # Validate section
     if "validate" in data:
         v = data.get("validate") or {}
         if isinstance(v, dict):
+            # Same empty-key footgun as the behavior section above.
+            v = {k: val for k, val in v.items() if val is not None}
             flat["validate_config"] = v
 
     # Redteam structured auth block
@@ -552,6 +600,13 @@ class BehaviorConfig(BaseModel):
     target: str = ""
     target_endpoint: str = ""
     auth: AppAuthConfig = Field(default_factory=AppAuthConfig)
+    headers: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Extra HTTP headers added to every behavior request "
+            "(yaml: behavior.headers, or the shared target.headers block)."
+        ),
+    )
     canary: str = ""
     workflows: list[str] = Field(
         default_factory=list,
@@ -576,6 +631,14 @@ class BehaviorConfig(BaseModel):
         default=False,
         validation_alias=AliasChoices("use_llm", "llm"),
     )
+    capability_discovery: bool = Field(
+        default=True,
+        description=(
+            "Probe the live agent for tools, sub-agents, and its system prompt when the "
+            "AI-SBOM is missing them, and merge the findings back into the in-memory SBOM "
+            "before scenario generation. Only fires for AGENT nodes with an actual gap."
+        ),
+    )
     turn_delay_seconds: float = Field(
         default=0.0,
         description="Inter-turn pause in seconds to avoid 429 rate-limit errors.",
@@ -583,6 +646,37 @@ class BehaviorConfig(BaseModel):
     scenario_delay_seconds: float = Field(
         default=0.0,
         description="Pause between scenarios in seconds to avoid 429 rate-limit errors.",
+    )
+    coverage_turns_per_scenario: int = Field(
+        default=5,
+        ge=1,
+        description=(
+            "Max adaptive coverage-turns appended to a scenario to probe SBOM "
+            "components not yet exercised by its scripted messages."
+        ),
+    )
+    max_session_turns: int = Field(
+        default=10,
+        ge=1,
+        description="Hard cap on total turns (scripted + coverage) in a single scenario session.",
+    )
+    tool_chain_size: int = Field(
+        default=4,
+        ge=1,
+        description=(
+            "Max tools grouped into a single tool_coverage/component_coverage scenario "
+            "chain. Larger values produce fewer, longer multi-turn scenarios for the "
+            "same tool coverage."
+        ),
+    )
+    guided_coverage: bool = Field(
+        default=False,
+        description=(
+            "Use a live, LLM-steered conversation (CoverageDirector) to exercise "
+            "uncovered agents/tools turn-by-turn instead of pre-generated tool-chain "
+            "scripts. Produces more natural conversations at the cost of extra "
+            "adaptive LLM calls per turn."
+        ),
     )
     chat_payload_key: str = "message"
     chat_payload_list: bool = False
@@ -814,6 +908,68 @@ class NuGuardConfig(BaseSettings):
         default=False,
         description="Enable LLM enrichment during SBOM generation (yaml: sbom_generation.llm).",
     )
+    sbom_llm_concurrency: int | None = Field(
+        default=None,
+        ge=1,
+        le=64,
+        description=(
+            "Max in-flight LLM calls during SBOM enrichment (yaml: "
+            "sbom_generation.llm_concurrency, issue #197). When None, the "
+            "AiSbomConfig default (5) is used."
+        ),
+    )
+    sbom_gap_fill_max_calls: int | None = Field(
+        default=None,
+        description=(
+            "Max LLM calls for the gap-fill discovery pass "
+            "(yaml: sbom_generation.gap_fill.max_calls, default 40)."
+        ),
+    )
+    sbom_gap_fill_max_cost_usd: float | None = Field(
+        default=None,
+        description=(
+            "Max estimated USD spend for the gap-fill discovery pass "
+            "(yaml: sbom_generation.gap_fill.max_cost_usd, default 5.0)."
+        ),
+    )
+    sbom_gap_fill_enable_privilege: bool = Field(
+        default=False,
+        description=(
+            "Opt into LLM gap-fill for PRIVILEGE nodes, off by default "
+            "(yaml: sbom_generation.gap_fill.enable_privilege)."
+        ),
+    )
+    sbom_gap_fill_enable_guardrail: bool = Field(
+        default=False,
+        description=(
+            "Opt into LLM gap-fill for GUARDRAIL nodes, off by default "
+            "(yaml: sbom_generation.gap_fill.enable_guardrail)."
+        ),
+    )
+    sbom_gap_fill_self_critique_categories: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Extra component categories that get a Round-3 self-critique pass "
+            "beyond the always-forced privilege/guardrail "
+            "(yaml: sbom_generation.gap_fill.self_critique_categories)."
+        ),
+    )
+    sbom_verification_max_verifications: int | None = Field(
+        default=None,
+        description=(
+            "Max node-verification LLM calls per scan "
+            "(yaml: sbom_generation.verification.max_verifications; "
+            "env: AISBOM_MAX_VERIFICATIONS, default 20)."
+        ),
+    )
+    sbom_verification_cost_budget: float | None = Field(
+        default=None,
+        description=(
+            "Max estimated USD spend for node verification "
+            "(yaml: sbom_generation.verification.cost_budget; "
+            "env: AISBOM_VERIFICATION_COST_BUDGET, default 20.0)."
+        ),
+    )
 
     # ------------------------------------------------------- Redteam
     target_url: str | None = Field(
@@ -969,6 +1125,17 @@ class NuGuardConfig(BaseSettings):
         description=(
             "Maximum turns to send during pre-scan discovery (yaml: redteam.discovery_max_turns). "
             "Discovery stops early when a name or ID is extracted."
+        ),
+    )
+    redteam_capability_discovery: bool = Field(
+        default=True,
+        description=(
+            "Probe the live agent for tools, sub-agents, and its system prompt when the "
+            "AI-SBOM is missing them, and merge the findings back into the in-memory SBOM "
+            "before scenario generation (yaml: redteam.capability_discovery). Only fires "
+            "for AGENT nodes with an actual gap, so a well-populated SBOM sends no extra "
+            "turns. Findings are tagged with confidence 0.5 and evidence kind "
+            "'dynamic_probe' to distinguish them from static-analysis results."
         ),
     )
     redteam_prompt_cache_dir: str = Field(
@@ -1172,12 +1339,14 @@ class NuGuardConfig(BaseSettings):
         ),
     )
     redteam_verify_findings: bool = Field(
-        default=False,
+        default=True,
         description=(
             "Re-probe the target with the exact successful payload after a finding is "
             "emitted to confirm it reproduces (yaml: redteam.verify_findings). "
-            "Off by default to keep runs fast; enable for high-stakes audits. "
-            "Adds a verified/unconfirmed badge to each finding in the report."
+            "On by default — one extra request per confirmed finding, not per scenario. "
+            "The probe reuses the judge that produced the original finding and feeds the "
+            "result into the finding's NGRS likelihood score, in addition to the "
+            "verified/unconfirmed badge in the report. Set to false to skip it."
         ),
     )
     redteam_suppress_spa_html_auth_bypass: bool = Field(
@@ -1429,4 +1598,20 @@ def load_config(config_file: Path | None = None) -> NuGuardConfig:
         yaml_overrides = _rebase_relative_paths(yaml_overrides, candidate.parent)
         break
 
-    return NuGuardConfig(**yaml_overrides)
+    # A YAML key written with no value (e.g. "workflows:") parses to None, not
+    # an empty list/string — that means "leave this at its default", not
+    # "explicitly set to null". Drop such top-level keys so field defaults
+    # apply instead of failing type validation (e.g. list[str] fields).
+    yaml_overrides = {k: v for k, v in yaml_overrides.items() if v is not None}
+
+    try:
+        return NuGuardConfig(**yaml_overrides)
+    except ValidationError as exc:
+        field_issues = "; ".join(
+            f"{'.'.join(str(p) for p in err['loc'])}: {err['msg']}" for err in exc.errors()
+        )
+        raise ConfigError(
+            f"Invalid nuguard.yaml configuration — {field_issues}. "
+            "Check the field(s) above against nuguard.yaml.example, or remove "
+            "them to use their default value."
+        ) from exc

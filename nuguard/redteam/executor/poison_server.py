@@ -177,8 +177,8 @@ class PoisonPayloadServer:
             parts = first_line.split(" ")
             if len(parts) >= 2:
                 return parts[1].split("?")[0]
-        except Exception:
-            pass
+        except Exception as exc:
+            _log.debug("PoisonPayloadServer: malformed request line, using default path: %s", exc)
         return "/poison"
 
     def _get_payload(self, path: str) -> str:

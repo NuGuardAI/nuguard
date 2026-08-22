@@ -21,6 +21,7 @@ from ...normalization import canonicalize_text
 from ...types import ComponentType
 from ..base import ComponentDetection, RelationshipHint
 from ._ts_regex import TSFrameworkAdapter
+from ._ts_regex import normalize_model_default as _normalize_model
 
 _GOOGLE_ADK_PACKAGES = [
     "@google/adk",
@@ -46,19 +47,6 @@ _MODEL_CLASSES = {"GenerativeModel", "ChatModel", "VertexAI"}
 
 # Matches factory functions like createNavigationTools, createWeatherTools, etc.
 _CREATE_TOOLS_RE = re.compile(r"^create([A-Z][a-zA-Z]+)Tools$")
-
-# Normalizes model names like `process.env.X || 'gemini-2.0-flash'` → 'gemini-2.0-flash'
-# The closing quote is optional because _clean() may have already stripped it.
-_ENV_DEFAULT_RE = re.compile(r"process\.env\.\w+\s*\|\|\s*['\"`]([^'\"`\s,]+)")
-
-
-def _normalize_model(raw: str) -> str:
-    """Extract the actual model name from env-var-with-default expressions."""
-    m = _ENV_DEFAULT_RE.search(raw)
-    if m:
-        return m.group(1)
-    return raw.strip("'\"` ")
-
 
 def _agent_subtype(class_name: str) -> str:
     if "Llm" in class_name:

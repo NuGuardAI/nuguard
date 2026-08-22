@@ -1,4 +1,4 @@
-.PHONY: dev test lint fmt precommit-install precommit-run precommit-advisory
+.PHONY: dev test lint fmt clean precommit-install precommit-run precommit-advisory
 
 dev:
 	uv sync --dev
@@ -12,6 +12,9 @@ lint:
 
 fmt:
 	uv run ruff format nuguard/ tests/
+
+clean:
+	./scripts/cleanup-codespace.sh
 
 precommit-install:
 	uv run pre-commit install

@@ -51,16 +51,20 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         FastAPIAdapter,
         FlaskAdapter,
         GoogleADKPythonAdapter,
+        GuardrailHeuristicAdapter,
         GuardrailsAIAdapter,
         LangGraphAdapter,
         LlamaIndexAdapter,
         LLMClientsAdapter,
+        MCPClientAdapter,
         MCPServerAdapter,
         OpenAIAgentsAdapter,
+        OpenAIFunctionSchemaAdapter,
         PythonDatastoreAdapter,
         SemanticKernelAdapter,
     )
     from .typescript import (
+        AgentOrchestratorTSAdapter,
         AgnoTSAdapter,
         AzureAIAgentsTSAdapter,
         BedrockAgentsTSAdapter,
@@ -69,6 +73,9 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         GoogleADKAdapter,
         LangGraphTSAdapter,
         LLMClientTSAdapter,
+        NestJSAdapter,
+        NestJSAuthTSAdapter,
+        NestJSToolDIAdapter,
         OpenAIAgentsTSAdapter,
         PromptTSAdapter,
     )
@@ -81,6 +88,7 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         OpenAIAgentsAdapter(),
         AutoGenAdapter(),
         GuardrailsAIAdapter(),
+        GuardrailHeuristicAdapter(),
         SemanticKernelAdapter(),
         CrewAIAdapter(),
         LlamaIndexAdapter(),
@@ -90,6 +98,8 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         BedrockAgentCoreAdapter(),
         GoogleADKPythonAdapter(),
         MCPServerAdapter(),
+        MCPClientAdapter(),
+        OpenAIFunctionSchemaAdapter(),
         ClaudeAgentSDKAdapter(),
         PythonDatastoreAdapter(),
         FastAPIAdapter(),
@@ -103,8 +113,12 @@ def default_framework_adapters() -> tuple[FrameworkAdapter, ...]:
         BedrockAgentsTSAdapter(),
         DatastoreTSAdapter(),
         PromptTSAdapter(),
+        NestJSAdapter(),
+        NestJSAuthTSAdapter(),
+        NestJSToolDIAdapter(),
         AgnoTSAdapter(),
         AzureAIAgentsTSAdapter(),
+        AgentOrchestratorTSAdapter(),
     ]
     return tuple(sorted(adapters, key=lambda a: (a.priority, canonicalize_text(a.name))))
 
@@ -264,20 +278,108 @@ def default_registry() -> tuple[DetectionAdapter, ...]:
                 # credential env-var names in config/template prose, not runtime access.
                 skip_path_parts=frozenset({"data-generators", "data_generators", "generators"}),
             ),
+            # Tier 1b (priority 134): the insecure-default variant of the pattern
+            # directly above — os.getenv("SECRET_KEY", "hardcoded-fallback") — kept
+            # as a separate, higher-severity finding rather than folded into
+            # auth_runtime's canonical_name, since a hardcoded fallback secret used
+            # whenever the env var is unset is a materially worse finding than
+            # ordinary env-based configuration and callers shouldn't have to
+            # re-parse the snippet to tell the two apart. A second positional
+            # argument only counts here when it's a plain string literal — None,
+            # another os.getenv(...)/secrets-manager call, or a variable reference
+            # for the default all fall through to the tier-1 (no-default) pattern
+            # instead, since none of those are a hardcoded secret.
+            RegexAdapter(
+                name="auth_runtime_insecure_default",
+                component_type=ComponentType.AUTH,
+                priority=134,
+                patterns=(
+                    re.compile(
+                        r"""os\.(?:getenv|environ\.get)\s*\(\s*['"][^'"]*"""
+                        r"""(?:API_KEY|SECRET|TOKEN|PASSWORD|CREDENTIAL)[^'"]*['"]"""
+                        r"""\s*,\s*['"][^'"]*['"]\s*\)""",
+                        re.IGNORECASE,
+                    ),
+                ),
+                canonical_name="auth:generic:insecure_default",
+                metadata={
+                    "insecure_default": True,
+                    "severity_note": "Hardcoded fallback secret used if the environment variable is unset.",
+                },
+                skip_path_parts=frozenset({"data-generators", "data_generators", "generators"}),
+            ),
+            # Tier 1c (priority 133): cloud secrets-manager reads. A managed
+            # secrets store is at least as common a credential source as an env
+            # var in a cloud-deployed app, and was previously invisible to AUTH
+            # detection entirely. One adapter per provider (rather than bundled
+            # into auth_runtime) so each gets its own canonical_name/provider tag
+            # instead of collapsing three distinct cloud services into one node.
+            *(
+                RegexAdapter(
+                    name=_name,
+                    component_type=ComponentType.AUTH,
+                    priority=133,
+                    patterns=(_pattern,),
+                    canonical_name=f"auth:cloud_secrets_manager:{_provider}",
+                    metadata={"auth_type": "cloud_secrets_manager", "provider": _provider},
+                    skip_path_parts=frozenset({"data-generators", "data_generators", "generators"}),
+                )
+                for _name, _provider, _pattern in (
+                    ("auth_aws_secrets_manager", "aws", re.compile(r"""boto3\.client\(\s*['"]secretsmanager['"]""", re.IGNORECASE)),
+                    # azure-keyvault-secrets: SecretClient(vault_url=..., credential=...)
+                    ("auth_azure_key_vault", "azure", re.compile(r"""SecretClient\s*\(\s*vault_url\s*=""")),
+                    ("auth_gcp_secret_manager", "gcp", re.compile(r"""secretmanager\.SecretManagerServiceClient\s*\(""")),
+                )
+            ),
             # Tier 2 (priority 140): broader auth keyword patterns.
             #   Excluded from non-runtime paths (YAML configs, data-generator dirs)
             #   to reduce false positives.
+            # Tier 2 (priority 140): broader auth keyword patterns, split by
+            # mechanism (jwt / oauth2 / apikey) rather than one shared
+            # "auth:generic" canonical name — otherwise distinct mechanisms
+            # (e.g. jwt-primary-auth, google-oauth, apple-sign-in-jwks) dedupe
+            # into a single node and lose their identity. Mirrors the
+            # per-provider split already used by the secrets-manager tier
+            # above (auth_aws_secrets_manager / auth_azure_key_vault / ...).
+            RegexAdapter(
+                name="auth_jwt",
+                component_type=ComponentType.AUTH,
+                priority=140,
+                patterns=(re.compile(r"\bjwt\b", re.IGNORECASE),),
+                canonical_name="auth:jwt",
+                metadata={"auth_type": "jwt"},
+                skip_path_parts=frozenset({"data-generators", "data_generators", "generators"}),
+            ),
+            RegexAdapter(
+                name="auth_oauth",
+                component_type=ComponentType.AUTH,
+                priority=140,
+                patterns=(re.compile(r"\boauth2?\b", re.IGNORECASE),),
+                canonical_name="auth:oauth2",
+                metadata={"auth_type": "oauth2"},
+                skip_path_parts=frozenset({"data-generators", "data_generators", "generators"}),
+            ),
+            RegexAdapter(
+                name="auth_apikey",
+                component_type=ComponentType.AUTH,
+                priority=140,
+                patterns=(
+                    re.compile(r"\b(apikey|api_key|bearer)\b", re.IGNORECASE),
+                    re.compile(r"\b(?:access|refresh|api|id)_token\b", re.IGNORECASE),
+                ),
+                canonical_name="auth:apikey",
+                metadata={"auth_type": "apikey"},
+                skip_path_parts=frozenset({"data-generators", "data_generators", "generators"}),
+            ),
             RegexAdapter(
                 name="auth_generic",
                 component_type=ComponentType.AUTH,
                 priority=140,
                 patterns=(
-                    # Auth scheme identifiers — short, unambiguous
-                    re.compile(r"\b(jwt|oauth2?|apikey|api_key|bearer)\b", re.IGNORECASE),
                     # Full authentication/authorization words — avoids gcloud auth, auth@v2, etc.
                     re.compile(r"\bauth(?:entication|orization|enticate|orize)\b", re.IGNORECASE),
                     # Compound token forms — avoids bare CI token vars like token=$TOKEN
-                    re.compile(r"\b(?:access|refresh|api|auth|id)_token\b", re.IGNORECASE),
+                    re.compile(r"\bauth_token\b", re.IGNORECASE),
                     # Password hashing and session-based auth patterns
                     re.compile(
                         r"\b(bcrypt|passlib|argon2|pbkdf2|scrypt"
@@ -322,16 +424,29 @@ def default_registry() -> tuple[DetectionAdapter, ...]:
                         re.IGNORECASE,
                     ),
                     re.compile(
-                        # PaaS / serverless / edge deployment platforms
-                        r"\b(flyctl|fly\.io|heroku|vercel|netlify|railway|render"
+                        # PaaS / serverless / edge deployment platforms.
+                        # Bare "render" is excluded entirely — it collides
+                        # with the extremely common React/Vue render() method
+                        # and even prose mentions of the English word (e.g. a
+                        # "// ... and render it" comment, confirmed false
+                        # positive in SolutionPage.tsx that a call-syntax-only
+                        # negative lookahead didn't catch). Require an actual
+                        # Render.com-specific signal instead.
+                        r"\b(flyctl|fly\.io|heroku|vercel|netlify|railway"
+                        r"|render\.com|render[_-]deploy|render\.yaml"
                         r"|serverless[_-]framework|sam[_-]cli|amplify[_-]cli"
                         r"|wrangler|cloudflare[_-]pages|deno[_-]deploy)\b",
                         re.IGNORECASE,
                     ),
                     re.compile(
                         # Container / orchestration runtimes (last — generic keywords
-                        # like "deployment" are common in comments and strings)
-                        r"\b(docker|kubernetes|helm|terraform|compose|deployment"
+                        # like "deployment" are common in comments and strings).
+                        # "compose" is restricted to "docker compose"/"docker-compose"/
+                        # "compose.yml" contexts rather than the bare word, to avoid
+                        # colliding with Jetpack Compose (@Composable, ComposeView)
+                        # and Vue's Composition API.
+                        r"\b(docker|kubernetes|helm|terraform|deployment"
+                        r"|docker[_-]?\s?compose|compose\.ya?ml"
                         r"|nginx|certbot|letsencrypt|gunicorn|uvicorn|caddy|traefik"
                         r"|reverse[._]proxy|ssl[._]certificate|systemd[._]service)\b",
                         re.IGNORECASE,
@@ -558,13 +673,28 @@ def default_registry() -> tuple[DetectionAdapter, ...]:
                         r"|PagerDutyTool|pagerduty[_-]tool|SentryTool|sentry[_-]tool)\b",
                         re.IGNORECASE,
                     ),
+                ),
+                canonical_name="tool:generic",
+            ),
+            RegexAdapter(
+                name="tool_job_scheduling",
+                component_type=ComponentType.TOOL,
+                priority=175,
+                patterns=(
                     re.compile(
-                        # Job scheduling and task queues
+                        # Job scheduling and task queues — Python-ecosystem package
+                        # names only (celery, rq, dramatiq, arq). Bare 2-3 letter
+                        # tokens like "rq"/"arq" are too collision-prone to scan
+                        # in TS/JS source (e.g. "rq" as a local var abbreviating
+                        # "request") — see docs/sbom-fix2.md #3's "Generic" false
+                        # positive at exam-clone.service.ts:898 (a stray "rq"
+                        # match, unrelated to any task queue).
                         r"\b(APScheduler|BackgroundScheduler|AsyncIOScheduler|BlockingScheduler"
                         r"|celery|rq|dramatiq|arq)\b",
                     ),
                 ),
                 canonical_name="tool:generic",
+                skip_extensions=frozenset({".ts", ".tsx", ".js", ".jsx"}),
             ),
             RegexAdapter(
                 name="prompt_generic",

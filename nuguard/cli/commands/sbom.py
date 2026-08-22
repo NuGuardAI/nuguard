@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 from urllib.parse import urlparse, urlunparse
 
 import typer
@@ -63,6 +63,10 @@ _OPT_FORMAT = typer.Option(
 )
 _OPT_CONFIG = typer.Option(
     None, "--config", help="Path to nuguard.yaml (default: ./nuguard.yaml).", exists=False,
+)
+_OPT_LLM_CONCURRENCY = typer.Option(
+    None, "--llm-concurrency",
+    help="Max in-flight LLM calls during SBOM enrichment (overrides nuguard.yaml sbom_generation.llm_concurrency).",
 )
 
 
@@ -230,6 +234,7 @@ def _do_generate(
     llm: bool,
     format: str,
     config_file: Optional[Path],
+    llm_concurrency: Optional[int] = None,
 ) -> None:
     """Core generate logic shared by the callback and the explicit subcommand."""
     # Run all pre-flight checks before touching the filesystem or network
@@ -238,7 +243,11 @@ def _do_generate(
     # Always load nuguard.yaml so sbom_generation.llm, llm.model, and llm.api_key
     # are honoured even when --source is supplied on the CLI.
     from nuguard.config import load_config  # noqa: PLC0415
-    cfg = load_config(config_file)
+    try:
+        cfg = load_config(config_file)
+    except Exception as exc:
+        _err_console.print(f"Error: failed to load config: {exc}")
+        raise typer.Exit(code=1) from exc
 
     # Fall back to nuguard.yaml's source field when --source is not provided.
     # If source: is a URL (https://github.com/…) treat it as --from-repo so it
@@ -262,12 +271,38 @@ def _do_generate(
     effective_llm = llm or cfg.sbom_llm_enabled
     _sbom_model = cfg.litellm_model or ""
     _sbom_api_base = cfg.litellm_api_base if _sbom_model.startswith("azure") else None
-    config = AiSbomConfig(
-        enable_llm=effective_llm,
-        llm_model=_sbom_model,
-        llm_api_key=cfg.litellm_api_key or None,
-        llm_api_base=_sbom_api_base,
-    )
+    # Issue #197: only pass llm_concurrency when explicitly set (CLI flag takes
+    # precedence, then nuguard.yaml, then the AiSbomConfig default which itself
+    # reads NUGUARD_LLM_CONCURRENCY / AISBOM_LLM_CONCURRENCY).
+    from nuguard.sbom.config import _default_llm_concurrency  # noqa: PLC0415
+
+    config_kwargs: dict[str, Any] = {
+        "enable_llm": effective_llm,
+        "llm_model": _sbom_model,
+        "llm_api_key": cfg.litellm_api_key or None,
+        "llm_api_base": _sbom_api_base,
+        "llm_concurrency": (
+            llm_concurrency
+            if llm_concurrency is not None
+            else (
+                cfg.sbom_llm_concurrency
+                if cfg.sbom_llm_concurrency is not None
+                else _default_llm_concurrency()
+            )
+        ),
+        "gap_fill_enable_privilege": cfg.sbom_gap_fill_enable_privilege,
+        "gap_fill_enable_guardrail": cfg.sbom_gap_fill_enable_guardrail,
+        "gap_fill_self_critique_categories": cfg.sbom_gap_fill_self_critique_categories,
+    }
+    if cfg.sbom_gap_fill_max_calls is not None:
+        config_kwargs["gap_fill_max_calls"] = cfg.sbom_gap_fill_max_calls
+    if cfg.sbom_gap_fill_max_cost_usd is not None:
+        config_kwargs["gap_fill_max_cost_usd"] = cfg.sbom_gap_fill_max_cost_usd
+    if cfg.sbom_verification_cost_budget is not None:
+        config_kwargs["verification_cost_budget"] = cfg.sbom_verification_cost_budget
+    if cfg.sbom_verification_max_verifications is not None:
+        config_kwargs["verification_max_verifications"] = cfg.sbom_verification_max_verifications
+    config = AiSbomConfig(**config_kwargs)
     gen = SbomGenerator(config=config)
 
     try:
@@ -340,6 +375,7 @@ def sbom_default(
     llm: bool = _OPT_LLM,
     format: str = _OPT_FORMAT,
     config_file: Optional[Path] = _OPT_CONFIG,
+    llm_concurrency: Optional[int] = _OPT_LLM_CONCURRENCY,
 ) -> None:
     """Generate an AI-SBOM (default) or run a sub-command.
 
@@ -347,7 +383,7 @@ def sbom_default(
     """
     if ctx.invoked_subcommand is not None:
         return
-    _do_generate(source, from_repo, ref, token, output, llm, format, config_file)
+    _do_generate(source, from_repo, ref, token, output, llm, format, config_file, llm_concurrency)
 
 
 @sbom_app.command("generate")
@@ -360,9 +396,10 @@ def generate(
     llm: bool = _OPT_LLM,
     format: str = _OPT_FORMAT,
     config_file: Optional[Path] = _OPT_CONFIG,
+    llm_concurrency: Optional[int] = _OPT_LLM_CONCURRENCY,
 ) -> None:
     """Generate an AI-SBOM by scanning SOURCE or cloning --from-repo."""
-    _do_generate(source, from_repo, ref, token, output, llm, format, config_file)
+    _do_generate(source, from_repo, ref, token, output, llm, format, config_file, llm_concurrency)
 
 
 @sbom_app.command("validate")

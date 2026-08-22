@@ -1,0 +1,117 @@
+# nuguard.yaml — Studyield (local Docker Compose target)
+# Studyield: https://github.com/studyield/studyield — open-source AI learning platform
+# (NestJS backend, React frontend, PostgreSQL, Redis, Qdrant, ClickHouse, RAG chat,
+# multi-agent problem solver, code sandbox, deep research w/ web search).
+#
+# Priority order (highest wins): CLI flags > env vars > .env file > nuguard.yaml > defaults
+# Run from this directory: uv run nuguard <command> --config nuguard.yaml
+
+# ─── Source for SBOM generation ───────────────────────────────────────────────
+# GitHub URL — nuguard clones it internally for static scanning; nothing is
+# vendored into this repo (the ./repo checkout used by start-local.sh to actually
+# *run* Studyield is separate and gitignored).
+source: https://github.com/studyield/studyield
+sbom: ./studyield.sbom.json
+
+# ─── Cognitive policy ──────────────────────────────────────────────────────────
+# Not checked in — drafted at runtime from the SBOM by `nuguard init --llm`
+# (see studyield-test.sh), then compiled to cognitive-policy.json.
+policy:
+  path: ./cognitive-policy.md
+  llm: true
+
+# ─── LLM settings (NuGuard's own scenario generation / judging) ───────────────
+llm:
+  # model: openai/gpt-4o-mini            # LiteLLM resolves the key from OPENAI_API_KEY
+  # api_key: ${OPENAI_API_KEY}
+  model: azure/DeepSeek-V4-Pro
+  api_key: ${AZURE_DEEPSEEK_KEY}     # never put keys here; use env var interpolation
+  api_base: ${AZURE_DEEPSEEK_ENDPOINT}
+
+# ─── SBOM generation ───────────────────────────────────────────────────────────
+sbom_generation:
+  llm: true                            # enrich SBOM nodes with LLM descriptions
+
+# ─── Target application ────────────────────────────────────────────────────────
+target:
+  # Backend API — API_PREFIX=api/v1 (see backend/.env.example), e.g. /api/v1/chat.
+  # url: http://localhost:3010
+  url: http://57.162.113.55
+
+  # Chat/RAG endpoint — confirm against the generated SBOM; likely /api/v1/chat
+  # or /api/v1/ai/chat.
+  # endpoint: /api/v1/chat
+
+  auth:
+    # Studyield requires a registered account (JWT access/refresh tokens).
+    # Register a test user first (http://localhost:5189/register), set
+    # APP_USERNAME/APP_PASSWORD in .env, then confirm the login endpoint/response
+    # shape against the SBOM/source (backend/src/modules/auth) and adjust below.
+    type: login_flow
+    login_flow:
+      endpoint: /api/v1/auth/login
+      payload:
+        email: ${APP_USERNAME}
+        password: ${APP_PASSWORD}
+      token_response_key: tokens.accessToken
+      token_header: "Authorization: Bearer"
+      refresh_on_401: true
+
+# ─── Behavior testing ──────────────────────────────────────────────────────────
+behavior:
+  llm: true
+  canary: ./canary.json
+  request_timeout: 60
+  scenario_concurrency: 3
+  isolate_scenarios: true
+  judge_concurrency: 5
+  capability_discovery: true
+
+# ─── Red-team ───────────────────────────────────────────────────────────────────
+redteam:
+  # target: http://localhost:3010
+  canary: ./canary.json
+  profile: full
+  min_impact_score: 0.0
+
+  # Relevant to a multi-tenant EdTech platform with RAG chat, a Python code
+  # sandbox, and a multi-agent problem solver.
+  scenarios:
+    - prompt-driven-threat     # jailbreaks, guardrail bypass, system-prompt extraction
+    - policy-violation         # restricted topics/actions, HITL bypass, topic boundary
+    - data-exfiltration        # PII/PHI extraction, covert encoding, cross-tenant
+    - privilege-escalation     # role/permission escalation, false-premise attacks
+    - tool-abuse               # SQL injection, SSRF, shell injection, resource exhaustion
+    - mcp-toxic-flow           # poisoned MCP tool descriptions/output, credential overreach
+    - api-attack               # auth bypass, IDOR, mass assignment, BFLA
+    - agentic-trust-abuse      # confused deputy, memory poisoning, multi-agent trust
+    - recon-inference          # refusal-oracle / boundary self-probe information gathering
+
+  # LLM for attack-payload generation (must tolerate adversarial content).
+  # Must use a DIFFERENT deployment than the target app to avoid TPM contention.
+  llm:
+    model: azure/DeepSeek-V4-Pro    # any LiteLLM model string (openai/gpt-4o, etc.)
+    api_key: ${AZURE_DEEPSEEK_KEY}
+    api_base: ${AZURE_DEEPSEEK_ENDPOINT}     # optional override for Azure OpenAI endpoint URL
+
+  # LLM for response evaluation and finding summarisation.
+  # Must use a DIFFERENT deployment than the target app to avoid TPM contention.
+  eval_llm:
+    model: azure/${AZURE_DEEPSEEK_MODEL_NAME}    # any LiteLLM model string (openai/gpt-4o, etc.)
+    api_key: ${AZURE_DEEPSEEK_KEY}     # never put keys here; use env var interpolation
+    api_base: ${AZURE_DEEPSEEK_ENDPOINT}     # optional override for Azure OpenAI endpoint URL
+
+
+  request_timeout: 120
+  verbose: true
+  strict_outcome: false
+
+# ─── Static analysis ────────────────────────────────────────────────────────────
+analyze:
+  min_severity: low
+
+# ─── Output ──────────────────────────────────────────────────────────────────────
+output:
+  format: markdown
+  fail_on: low
+  sarif_file: ./reports/studyield-nuguard-results.sarif

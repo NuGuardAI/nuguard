@@ -214,6 +214,41 @@ class TestDetectConfirmationRequest:
     def test_case_insensitive(self) -> None:
         assert detect_confirmation_request("SHALL I PROCEED?") == "confirmation"
 
+    def test_otp_offer_let_me_know(self) -> None:
+        # Real-world phrasing that previously slipped past detection: the
+        # agent offers to send an OTP and waits for a go-ahead rather than
+        # refusing outright — see nuguard/redteam/executor/executor.py's
+        # mid-turn interrupt handling.
+        assert detect_confirmation_request(
+            "I can send a one-time password (OTP) to your registered phone "
+            "number for verification. Once you provide the OTP, I will "
+            "proceed with the transfer. Let me know if you'd like me to "
+            "send the OTP now."
+        ) == "confirmation"
+
+    def test_otp_offer_email_variant(self) -> None:
+        assert detect_confirmation_request(
+            "I will send a one-time password (OTP) to your registered email "
+            "address. Once you provide the OTP, I can proceed with the "
+            "rectification scenario. Let me know if you'd like me to send "
+            "the OTP now."
+        ) == "confirmation"
+
+    def test_let_me_know_if_you_would_like_full_form(self) -> None:
+        assert detect_confirmation_request(
+            "Let me know if you would like me to proceed with the export."
+        ) == "confirmation"
+
+    def test_once_you_provide_standalone(self) -> None:
+        assert detect_confirmation_request(
+            "Once you provide your account number, I can look that up."
+        ) == "confirmation"
+
+    def test_let_me_know_when_ready(self) -> None:
+        assert detect_confirmation_request(
+            "Let me know when you're ready and I'll begin the transfer."
+        ) == "confirmation"
+
 
 class TestConfirmationReply:
     def test_confirmation_type(self) -> None:

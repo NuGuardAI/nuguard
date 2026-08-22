@@ -16,6 +16,7 @@ import httpx
 
 from nuguard.common.errors import TargetUnavailableError  # noqa: F401 — re-exported for callers
 from nuguard.common.logging import get_logger
+from nuguard.common.response_extraction import SESSION_ID_KEYS as _SESSION_ID_KEYS
 
 from .session import AttackSession
 
@@ -28,6 +29,50 @@ _log = get_logger(__name__)
 _adk_fallback_warned: set[str] = set()
 
 DEFAULT_TIMEOUT = 30.0
+
+# Well-known OpenAI/Anthropic/LangChain-style chat-history field names.  When
+# chat_payload_key matches one of these (and chat_payload_list is True), the
+# outgoing value is shaped as a replayed [{role, content}, ...] message list
+# instead of a bare [prompt] list — see TargetAppClient._build_chat_payload_value.
+_MESSAGE_HISTORY_KEYS: frozenset[str] = frozenset(
+    {"messages", "history", "conversation", "chat_history"}
+)
+
+
+def _is_message_history_key(key: str) -> bool:
+    return key.strip().lower() in _MESSAGE_HISTORY_KEYS
+
+
+# Path-parameter placeholder styles seen across frameworks: FastAPI/ASP.NET
+# Core use `{id}`, NestJS/Express use `:id`. Substituted against
+# TargetAppClient._path_param_values before every request — see
+# set_path_param() and tests/apps/studyield-app/2-step-chat.md (the "two-step
+# chat" plan this implements: bootstrap a resource, e.g. POST
+# /chat/conversations, then substitute its id into the chat path template).
+_COLON_PATH_PARAM_RE = re.compile(r":(\w+)")
+_BRACE_PATH_PARAM_RE = re.compile(r"\{(\w+)\}")
+
+
+def _substitute_path_params(path: str, values: dict[str, str]) -> tuple[str, list[str]]:
+    """Substitute ``:name``/``{name}`` placeholders in *path* from *values*.
+
+    Returns ``(resolved_path, missing_names)`` — *missing_names* lists any
+    placeholder with no bound value (left untouched in the returned path so
+    the caller can surface a clear config error instead of sending the
+    literal placeholder to the target).
+    """
+    missing: list[str] = []
+
+    def _repl(m: re.Match[str]) -> str:
+        name = m.group(1)
+        if name in values:
+            return values[name]
+        missing.append(name)
+        return m.group(0)
+
+    resolved = _COLON_PATH_PARAM_RE.sub(_repl, path)
+    resolved = _BRACE_PATH_PARAM_RE.sub(_repl, resolved)
+    return resolved, missing
 
 
 def _extract_nested_key(data: dict[str, Any], key_path: str) -> Any:
@@ -88,6 +133,39 @@ def _extract_nested_key(data: dict[str, Any], key_path: str) -> Any:
                 return None
 
     return current
+
+
+def _extract_common_response_text(data: Any) -> str:
+    """Try the common generic response shapes shared by chat/streaming clients.
+
+    Order: ``response``/``content``/``text``/``message.content`` keys, then
+    Google ADK/CES ``outputs: [{"text": ...}]``, then a trailing
+    ``messages: [...]`` entry, then a raw string. Returns ``""`` if none match
+    — callers apply their own last-resort fallback (raw JSON dump, key
+    auto-detection, etc.).
+    """
+    text = ""
+    if isinstance(data, dict):
+        text = (
+            data.get("response")
+            or data.get("content")
+            or data.get("text")
+            or data.get("message", {}).get("content", "")
+            or ""
+        )
+    # Google ADK / CES format: {"outputs": [{"text": "..."}]}
+    if not text and isinstance(data, dict) and isinstance(data.get("outputs"), list):
+        outputs = data["outputs"]
+        texts = [item.get("text", "") for item in outputs if isinstance(item, dict)]
+        text = " ".join(t for t in texts if t)
+    # Handle list-of-messages response (e.g. openai-cs-agents-demo)
+    if not text and isinstance(data, dict) and isinstance(data.get("messages"), list):
+        msgs = data["messages"]
+        if msgs and isinstance(msgs[-1], dict):
+            text = msgs[-1].get("content") or msgs[-1].get("text") or ""
+    if not text and isinstance(data, str):
+        text = data
+    return text
 MAX_CONSECUTIVE_ERRORS = 3
 DEFAULT_MAX_429_RETRIES = 2
 DEFAULT_429_BACKOFF_BASE_SECONDS = 0.5
@@ -154,6 +232,11 @@ class TargetAppClient:
         # include it in subsequent request bodies so multi-turn conversations
         # are correlated on the server side.
         self._session_context: dict[str, Any] = {}
+        # Two-step chat bootstrap: values bound via set_path_param() to
+        # substitute :name/{name} placeholders in _chat_path before each
+        # request (e.g. a conversation id created by a prerequisite POST) —
+        # see tests/apps/studyield-app/2-step-chat.md.
+        self._path_param_values: dict[str, str] = {}
         # Global HTTP semaphore: limits concurrent in-flight requests across ALL
         # callers sharing this client instance.  Useful when the target app has a
         # low Azure OpenAI / LLM concurrency quota and returns transient errors
@@ -311,6 +394,11 @@ class TargetAppClient:
             )
         self._consecutive_errors = 0
 
+    @property
+    def chat_path(self) -> str:
+        """The currently configured chat endpoint path."""
+        return self._chat_path
+
     def set_chat_endpoint(
         self,
         path: str,
@@ -334,7 +422,22 @@ class TargetAppClient:
             self._chat_response_key = response_key
         # Clear auto-detected response key so it is re-detected for the new endpoint
         self._detected_response_key = None
+        # A path-param binding from the previous endpoint (e.g. {"id": "..."})
+        # is not guaranteed to apply to the new one even if the param name
+        # matches — force a fresh bootstrap for whatever this endpoint needs.
+        self._path_param_values = {}
         self.reset_circuit_breaker()
+
+    def set_path_param(self, name: str, value: str) -> None:
+        """Bind *value* for a ``:name``/``{name}`` placeholder in the chat path.
+
+        Used by the two-step (resource-bootstrap) chat flow: a prerequisite
+        request (e.g. ``POST /chat/conversations``) creates a resource whose
+        id must be substituted into the chat endpoint's path template (e.g.
+        ``POST /chat/conversations/:id/messages``) before any turn can be
+        sent. See tests/apps/studyield-app/2-step-chat.md.
+        """
+        self._path_param_values[name] = value
 
     def update_default_headers(self, headers: dict[str, str] | None) -> None:
         """Merge headers into the default client headers for subsequent requests."""
@@ -476,6 +579,35 @@ class TargetAppClient:
                 )
                 raise
 
+    def _build_chat_payload_value(self, payload: str, session: AttackSession) -> Any:
+        """Shape the outgoing value for ``chat_payload_key`` in the generic (non-adapter) path.
+
+        Three shapes, chosen by ``chat_payload_list``/``chat_payload_key``:
+
+        - Flat string (``chat_payload_list=False``): the raw prompt text.
+        - Bare list (``chat_payload_list=True``, key not a known message-history
+          name): ``[prompt]`` — existing behaviour, e.g. LangGraph's
+          ``phrases=[...]``.
+        - OpenAI-style message history (``chat_payload_list=True`` and key is
+          one of ``messages``/``history``/``conversation``/``chat_history``):
+          replay prior turns from *session* as alternating ``{role, content}``
+          dicts, then append the current turn. This is the standard shape used
+          by OpenAI/Anthropic/LangChain-style chat APIs; endpoints whose only
+          accepted body shape is ``messages=[...]`` reject a bare string or a
+          bare-string list outright (400/422), aborting every scenario.
+        """
+        if not self._chat_payload_list:
+            return payload
+        if not _is_message_history_key(self._chat_payload_key):
+            return [payload]
+        history: list[dict[str, str]] = []
+        for turn in session.turns:
+            history.append({"role": "user", "content": turn.prompt})
+            if turn.response:
+                history.append({"role": "assistant", "content": turn.response})
+        history.append({"role": "user", "content": payload})
+        return history
+
     async def _send_impl(self, payload: str, session: AttackSession) -> tuple[str, list[dict]]:
         """Inner send implementation (called with or without the request semaphore)."""
         data: dict | list | str = {}
@@ -533,7 +665,7 @@ class TargetAppClient:
                     chat_path = self._framework_adapter.run_path
                 else:
                     # Generic path: flat key/value body
-                    value: Any = [payload] if self._chat_payload_list else payload
+                    value: Any = self._build_chat_payload_value(payload, session)
                     body = {self._chat_payload_key: value}
                     # Merge any previously extracted session/conversation context so the
                     # server can correlate subsequent turns within the same conversation.
@@ -543,14 +675,40 @@ class TargetAppClient:
                     # chat_payload_extras — the message key always takes precedence.
                     if self._chat_payload_extras:
                         body = {**self._chat_payload_extras, **body}
-                    chat_path = self._chat_path
+                    chat_path, _missing_params = _substitute_path_params(
+                        self._chat_path, self._path_param_values
+                    )
+                    if _missing_params:
+                        _log.warning(
+                            "_send_impl: unresolved path param(s) %s in chat path template %r",
+                            _missing_params, self._chat_path,
+                        )
+                        return f"[CONFIG_ERROR: unresolved path param {_missing_params[0]!r}]", []
 
                 if self._chat_payload_format == "form":
                     resp = await self._client.post(chat_path, data=body)
                 else:
                     resp = await self._client.post(chat_path, json=body)
                 resp.raise_for_status()
-                data = resp.json()
+                _content_type = resp.headers.get("content-type", "")
+                if "text/event-stream" in _content_type and self._framework_adapter is None:
+                    # Non-streaming send() against an SSE-only chat endpoint (e.g.
+                    # a FastAPI StreamingResponse) — resp.json() would raise
+                    # JSONDecodeError on the buffered "data: {...}\n\n" body,
+                    # which _record_chat_error would then wrongly count toward
+                    # the circuit breaker as if the target were unreachable.
+                    # Parse the buffered SSE events and join their text chunks;
+                    # the isinstance(data, str) fallback below picks this up.
+                    from nuguard.redteam.target.sse import parse_sse_events  # noqa: PLC0415
+
+                    _sse_events = parse_sse_events(resp.text)
+                    _sse_text = "".join(
+                        str(_ev.get("text") or _ev.get("content") or _ev.get("message") or "")
+                        for _ev in _sse_events
+                    )
+                    data = _sse_text or json.dumps(_sse_events)
+                else:
+                    data = resp.json()
                 break
             except httpx.HTTPStatusError as exc:
                 status = exc.response.status_code
@@ -627,26 +785,8 @@ class TargetAppClient:
                 text = " ".join(str(item) for item in extracted if item is not None)
             elif extracted is not None:
                 text = str(extracted)
-        if not text and isinstance(data, dict):
-            text = (
-                data.get("response")
-                or data.get("content")
-                or data.get("text")
-                or data.get("message", {}).get("content", "")
-                or ""
-            )
-        # Google ADK / CES format: {"outputs": [{"text": "..."}]}
-        if not text and isinstance(data, dict) and isinstance(data.get("outputs"), list):
-            outputs = data["outputs"]
-            texts = [item.get("text", "") for item in outputs if isinstance(item, dict)]
-            text = " ".join(t for t in texts if t)
-        # Handle list-of-messages response (e.g. openai-cs-agents-demo)
-        if not text and isinstance(data, dict) and isinstance(data.get("messages"), list):
-            msgs = data["messages"]
-            if msgs and isinstance(msgs[-1], dict):
-                text = msgs[-1].get("content") or msgs[-1].get("text") or ""
-        if not text and isinstance(data, str):
-            text = data
+        if not text:
+            text = _extract_common_response_text(data)
         # Last resort: return full JSON so evaluators have something to work with.
         # Before doing so, attempt one-time auto-detection of the response key so
         # subsequent turns extract a clean text field instead of raw JSON.
@@ -674,9 +814,8 @@ class TargetAppClient:
             tool_calls = raw_calls
 
         # Extract and store session/conversation IDs for multi-turn forwarding.
-        # Heuristic: check the top-level response JSON for common session key names.
         if isinstance(data, dict):
-            for key in ("session_id", "conversation_id", "thread_id", "chat_id"):
+            for key in _SESSION_ID_KEYS:
                 if key in data and data[key] is not None:
                     self._session_context[key] = data[key]
 
@@ -791,13 +930,22 @@ class TargetAppClient:
                 body = self._framework_adapter.build_body(payload, session_id)
                 chat_path = self._framework_adapter.run_path
             else:
-                value: Any = [payload] if self._chat_payload_list else payload
+                value: Any = self._build_chat_payload_value(payload, session)
                 body = {self._chat_payload_key: value}
                 if self._session_context:
                     body.update(self._session_context)
                 if self._chat_payload_extras:
                     body = {**self._chat_payload_extras, **body}
-                chat_path = self._chat_path
+                chat_path, _missing_params = _substitute_path_params(
+                    self._chat_path, self._path_param_values
+                )
+                if _missing_params:
+                    _log.warning(
+                        "send_stream: unresolved path param(s) %s in chat path template %r",
+                        _missing_params, self._chat_path,
+                    )
+                    yield f"[CONFIG_ERROR: unresolved path param {_missing_params[0]!r}]", []
+                    return
 
             t_start = time.monotonic()
             _stream_kwargs: dict[str, Any] = (
@@ -854,25 +1002,7 @@ class TargetAppClient:
                         if not text and isinstance(data, (dict, list)) and data:
                             text = json.dumps(data)
                     else:
-                        text = ""
-                        if isinstance(data, dict):
-                            text = (
-                                data.get("response")
-                                or data.get("content")
-                                or data.get("text")
-                                or data.get("message", {}).get("content", "")
-                                or ""
-                            )
-                        if not text and isinstance(data, dict) and isinstance(data.get("outputs"), list):
-                            outputs = data["outputs"]
-                            texts = [item.get("text", "") for item in outputs if isinstance(item, dict)]
-                            text = " ".join(t for t in texts if t)
-                        if not text and isinstance(data, dict) and isinstance(data.get("messages"), list):
-                            msgs = data["messages"]
-                            if msgs and isinstance(msgs[-1], dict):
-                                text = msgs[-1].get("content") or msgs[-1].get("text") or ""
-                        if not text and isinstance(data, str):
-                            text = data
+                        text = _extract_common_response_text(data)
                         if not text and isinstance(data, dict) and data:
                             text = json.dumps(data)
                         raw_calls = (
