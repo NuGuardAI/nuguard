@@ -53,7 +53,10 @@ properties:
   containers:
   - name: phlox
     properties:
-      image: ghcr.io/bloodworks-io/phlox:latest
+      # Pinned to 2.2.4 — the :latest/2.3.0 build has a fatal frontend crash
+      # ("Cannot access 'v' before initialization", React never mounts, page
+      # stays blank). See docker-compose.yml / README for details/upstream tracking.
+      image: ghcr.io/bloodworks-io/phlox:2.2.4
       ports:
       - port: ${INTERNAL_PORT}
       environmentVariables:
