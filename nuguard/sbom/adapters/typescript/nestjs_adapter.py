@@ -25,6 +25,7 @@ from typing import Any
 
 from ...types import ComponentType
 from ..base import ComponentDetection
+from ._class_scan import _CLASS_RE, _find_class_body_span
 from ._ts_regex import TSFrameworkAdapter
 
 # ---------------------------------------------------------------------------
@@ -67,7 +68,6 @@ _CONFIDENCE = 0.85
 _NESTJS_PACKAGES = ["@nestjs/common", "@nestjs/core"]
 
 _CONTROLLER_RE = re.compile(r"@Controller\(\s*(?:['\"]([^'\"]*)['\"])?\s*\)")
-_CLASS_RE = re.compile(r"\bclass\s+(\w+)")
 _ROUTE_DECORATOR_RE = re.compile(
     r"@(Get|Post|Put|Patch|Delete)\(\s*(?:['\"]([^'\"]*)['\"])?\s*\)"
 )
@@ -164,25 +164,6 @@ def collect_dto_schemas(content: str) -> dict[str, dict[str, str]]:
             schemas[type_name] = fields
         i = j if j > i else i + 1
     return schemas
-
-
-def _find_class_body_span(lines: list[str], class_line_idx: int) -> tuple[int, int]:
-    """Return ``(body_start, body_end)`` line indices (inclusive) for the class
-    whose ``class X`` declaration is on ``class_line_idx``, via brace counting."""
-    n = len(lines)
-    brace_line = class_line_idx
-    while brace_line < n and "{" not in lines[brace_line]:
-        brace_line += 1
-        if brace_line - class_line_idx > 5:
-            return class_line_idx, class_line_idx
-    if brace_line >= n:
-        return class_line_idx, class_line_idx
-    depth = lines[brace_line].count("{") - lines[brace_line].count("}")
-    j = brace_line + 1
-    while j < n and depth > 0:
-        depth += lines[j].count("{") - lines[j].count("}")
-        j += 1
-    return brace_line, min(j, n - 1)
 
 
 def _compose_path(prefix: str, route: str, global_prefix: str = "") -> str:

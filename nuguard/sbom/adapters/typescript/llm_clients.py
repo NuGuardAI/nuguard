@@ -26,6 +26,7 @@ from ...normalization import canonicalize_text
 from ...types import ComponentType
 from ..base import ComponentDetection
 from ._ts_regex import TSFrameworkAdapter
+from ._ts_regex import normalize_model_default as _normalize_model
 
 _log = get_logger(__name__)
 
@@ -182,17 +183,6 @@ _MODEL_CALL_RE = re.compile(
     r"\b(chat\.completions\.create|completions\.create|messages\.create"
     r"|generateContent|getGenerativeModel|getTextEmbeddingModel)\b"
 )
-
-_ENV_DEFAULT_RE = re.compile(r"process\.env\.\w+\s*\|\|\s*['\"`]([^'\"`\s,]+)")
-
-
-def _normalize_model(raw: str) -> str:
-    """Extract the actual model name from env-var-with-default expressions."""
-    m = _ENV_DEFAULT_RE.search(raw)
-    if m:
-        return m.group(1)
-    return raw.strip("'\"` ")
-
 
 _MODEL_LITERAL_SHAPE_RE = re.compile(r"[/\-]|\d")
 

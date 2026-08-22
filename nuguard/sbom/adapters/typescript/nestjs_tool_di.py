@@ -35,23 +35,13 @@ from typing import Any
 from ...normalization import canonicalize_text
 from ...types import ComponentType, PrivilegeScope
 from ..base import ComponentDetection
+from ._class_scan import _CLASS_RE, _PARAM_RE, _find_class_body_span, _parse_constructor_params
 from ._ts_regex import TSFrameworkAdapter
 from .llm_clients import _PROVIDERS
-from .nestjs_adapter import _CLASS_RE, _find_class_body_span
 
 _NESTJS_PACKAGES = ["@nestjs/common", "@nestjs/core"]
 
 _INJECTABLE_RE = re.compile(r"@Injectable\(\)")
-_CONSTRUCTOR_START_RE = re.compile(r"\bconstructor\s*\(")
-
-# Parses one constructor parameter, e.g. "private readonly aiService: AiService"
-# or "@Inject(TOKEN) private readonly foo: FooService". Type may carry generics
-# / union members after it; we only need the leading type identifier.
-_PARAM_RE = re.compile(
-    r"(?:@\w+\([^)]*\)\s*)?"  # optional parameter decorator, e.g. @Inject(...)
-    r"(?:public|private|protected)?\s*(?:readonly\s+)?"
-    r"\w+\s*:\s*([A-Za-z_]\w*)"
-)
 
 _LLM_CLIENT_CLASSES = {cls for cfg in _PROVIDERS.values() for cls in cfg["classes"]}
 _LLM_WRAPPER_NAME_RE = re.compile(r"\b(Ai|AI|Llm|LLM|Gpt|GPT)(Service|Client)\b")
@@ -114,49 +104,6 @@ def _display_name(type_name: str) -> str:
     stripped = re.sub(r"(Service|Client)$", "", type_name) or type_name
     words = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", stripped)
     return words.strip() or type_name
-
-
-def _parse_constructor_params(
-    lines: list[str], body_start: int, body_end: int
-) -> list[tuple[int, str]] | None:
-    """Return ``(line_idx, param_text)`` pairs for the constructor's parameter
-    list, or None if not found.
-
-    Parameters keep their own source line (real-world NestJS constructors are
-    conventionally formatted one parameter per line — see studyield-app's
-    ``research.service.ts``/``chat.service.ts``) rather than all being
-    attributed to the constructor's opening line. Collapsing them onto one
-    shared line previously made ``core.py``'s ``_dedup_by_location`` pass
-    treat two genuinely distinct injected services as duplicate detections
-    of "the same source token" and silently drop one at random (tie-broken
-    by an unstable set-iteration order across process runs).
-    """
-    for i in range(body_start, body_end + 1):
-        m = _CONSTRUCTOR_START_RE.search(lines[i])
-        if not m:
-            continue
-        depth = lines[i].count("(") - lines[i].count(")")
-        collected = [(i, lines[i][m.end():])]
-        j = i
-        while depth > 0 and j < body_end:
-            j += 1
-            depth += lines[j].count("(") - lines[j].count(")")
-            collected.append((j, lines[j]))
-        # Trim the trailing ")" (and anything after, e.g. "{ ... }") on the
-        # last collected line, which closed the parameter list.
-        last_idx, last_text = collected[-1]
-        close_idx = last_text.rfind(")")
-        if close_idx != -1:
-            collected[-1] = (last_idx, last_text[:close_idx])
-
-        params: list[tuple[int, str]] = []
-        for line_idx, text in collected:
-            for chunk in text.split(","):
-                chunk = chunk.strip()
-                if chunk:
-                    params.append((line_idx, chunk))
-        return params
-    return None
 
 
 class NestJSToolDIAdapter(TSFrameworkAdapter):

@@ -37,9 +37,14 @@ from typing import Any
 
 from ...types import ComponentType
 from ..base import ComponentDetection
+from ._class_scan import (
+    _CLASS_RE,
+    _PARAM_RE,
+    _find_class_body_span,
+    _line_index_at,
+    _parse_constructor_params,
+)
 from ._ts_regex import TSFrameworkAdapter
-from .nestjs_adapter import _CLASS_RE, _find_class_body_span
-from .nestjs_tool_di import _PARAM_RE, _parse_constructor_params
 
 _CONFIDENCE = 0.55
 
@@ -50,11 +55,6 @@ _INJECTABLE_RE = re.compile(r"@Injectable\(\)")
 _NEW_SUBCLASS_RE = re.compile(r"\bnew\s+(\w+)\s*\(")
 _METHOD_CALL_NEARBY_RE = re.compile(r"\.\w+\s*\(")
 _AGENT_NAME_RE = re.compile(r"agent", re.IGNORECASE)
-
-
-def _line_at(content: str, offset: int) -> int:
-    """0-indexed line number for a character offset into *content*."""
-    return content.count("\n", 0, offset)
 
 
 def collect_class_hierarchy(
@@ -200,7 +200,7 @@ def _new_instantiation_hits(
         base_name = subclass_bases.get(subclass_name)
         if base_name is None or not _AGENT_NAME_RE.search(base_name):
             continue
-        line_idx = _line_at(content, m.start())
+        line_idx = _line_index_at(content, m.start())
         window = "\n".join(lines[line_idx : min(line_idx + 3, len(lines))])
         call_site_offset = m.end() - sum(len(ln) + 1 for ln in lines[:line_idx])
         if not _METHOD_CALL_NEARBY_RE.search(window[call_site_offset:]):

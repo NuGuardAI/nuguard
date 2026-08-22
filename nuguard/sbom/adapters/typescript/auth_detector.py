@@ -36,8 +36,8 @@ from typing import Any
 
 from ...types import ComponentType
 from ..base import ComponentDetection
+from ._class_scan import _find_class_body_span, _line_index_at
 from ._ts_regex import TSFrameworkAdapter
-from .nestjs_adapter import _find_class_body_span
 
 _AUTH_PACKAGES = ["google-auth-library", "jwks-rsa", "jsonwebtoken", "@nestjs/jwt"]
 
@@ -58,7 +58,7 @@ _SIGN_CALL_RE = re.compile(r"\.sign(?:Async)?\s*\(")
 
 def _line_at(content: str, offset: int) -> int:
     """1-indexed line number for a character offset into *content*."""
-    return content.count("\n", 0, offset) + 1
+    return _line_index_at(content, offset) + 1
 
 
 class NestJSAuthTSAdapter(TSFrameworkAdapter):

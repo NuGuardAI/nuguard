@@ -314,39 +314,22 @@ def default_registry() -> tuple[DetectionAdapter, ...]:
             # detection entirely. One adapter per provider (rather than bundled
             # into auth_runtime) so each gets its own canonical_name/provider tag
             # instead of collapsing three distinct cloud services into one node.
-            RegexAdapter(
-                name="auth_aws_secrets_manager",
-                component_type=ComponentType.AUTH,
-                priority=133,
-                patterns=(
-                    re.compile(r"""boto3\.client\(\s*['"]secretsmanager['"]""", re.IGNORECASE),
-                ),
-                canonical_name="auth:cloud_secrets_manager:aws",
-                metadata={"auth_type": "cloud_secrets_manager", "provider": "aws"},
-                skip_path_parts=frozenset({"data-generators", "data_generators", "generators"}),
-            ),
-            RegexAdapter(
-                name="auth_azure_key_vault",
-                component_type=ComponentType.AUTH,
-                priority=133,
-                patterns=(
+            *(
+                RegexAdapter(
+                    name=_name,
+                    component_type=ComponentType.AUTH,
+                    priority=133,
+                    patterns=(_pattern,),
+                    canonical_name=f"auth:cloud_secrets_manager:{_provider}",
+                    metadata={"auth_type": "cloud_secrets_manager", "provider": _provider},
+                    skip_path_parts=frozenset({"data-generators", "data_generators", "generators"}),
+                )
+                for _name, _provider, _pattern in (
+                    ("auth_aws_secrets_manager", "aws", re.compile(r"""boto3\.client\(\s*['"]secretsmanager['"]""", re.IGNORECASE)),
                     # azure-keyvault-secrets: SecretClient(vault_url=..., credential=...)
-                    re.compile(r"""SecretClient\s*\(\s*vault_url\s*="""),
-                ),
-                canonical_name="auth:cloud_secrets_manager:azure",
-                metadata={"auth_type": "cloud_secrets_manager", "provider": "azure"},
-                skip_path_parts=frozenset({"data-generators", "data_generators", "generators"}),
-            ),
-            RegexAdapter(
-                name="auth_gcp_secret_manager",
-                component_type=ComponentType.AUTH,
-                priority=133,
-                patterns=(
-                    re.compile(r"""secretmanager\.SecretManagerServiceClient\s*\("""),
-                ),
-                canonical_name="auth:cloud_secrets_manager:gcp",
-                metadata={"auth_type": "cloud_secrets_manager", "provider": "gcp"},
-                skip_path_parts=frozenset({"data-generators", "data_generators", "generators"}),
+                    ("auth_azure_key_vault", "azure", re.compile(r"""SecretClient\s*\(\s*vault_url\s*=""")),
+                    ("auth_gcp_secret_manager", "gcp", re.compile(r"""secretmanager\.SecretManagerServiceClient\s*\(""")),
+                )
             ),
             # Tier 2 (priority 140): broader auth keyword patterns.
             #   Excluded from non-runtime paths (YAML configs, data-generator dirs)
