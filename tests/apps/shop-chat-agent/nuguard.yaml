@@ -28,7 +28,7 @@ policy:
 llm:
   # model: openai/gpt-4o-mini            # LiteLLM resolves the key from OPENAI_API_KEY
   # api_key: ${OPENAI_API_KEY}
-  model: azure/${AZURE_DEEPSEEK_MODEL_NAME}
+  model: azure/DeepSeek-V4-Pro
   api_key: ${AZURE_DEEPSEEK_KEY}     # never put keys here; use env var interpolation
   api_base: ${AZURE_DEEPSEEK_ENDPOINT}
 
@@ -74,7 +74,7 @@ behavior:
 
 # ─── Red-team ───────────────────────────────────────────────────────────────────
 redteam:
-  target: http://localhost:5501
+  # target: http://localhost:5501
   canary: ./canary.json
   profile: full
   min_impact_score: 0.0
@@ -82,12 +82,30 @@ redteam:
   # Relevant to a storefront shopping agent with MCP tool-calling (cart/order
   # actions) and OAuth-based customer account access.
   scenarios:
-    - prompt-injection
-    - tool-abuse
-    - privilege-escalation
-    - data-exfiltration
-    - policy-violation
-    - mcp-toxic-flow
+    - prompt-driven-threat     # jailbreaks, guardrail bypass, system-prompt extraction
+    - policy-violation         # restricted topics/actions, HITL bypass, topic boundary
+    - data-exfiltration        # PII/PHI extraction, covert encoding, cross-tenant
+    - privilege-escalation     # role/permission escalation, false-premise attacks
+    - tool-abuse               # SQL injection, SSRF, shell injection, resource exhaustion
+    - mcp-toxic-flow           # poisoned MCP tool descriptions/output, credential overreach
+    - api-attack               # auth bypass, IDOR, mass assignment, BFLA
+    - agentic-trust-abuse      # confused deputy, memory poisoning, multi-agent trust
+    - recon-inference          # refusal-oracle / boundary self-probe information gathering
+
+  # LLM for attack-payload generation (must tolerate adversarial content).
+  # Must use a DIFFERENT deployment than the target app to avoid TPM contention.
+  llm:
+    model: azure/DeepSeek-V4-Pro    # any LiteLLM model string (openai/gpt-4o, etc.)
+    api_key: ${AZURE_DEEPSEEK_KEY}
+    api_base: ${AZURE_DEEPSEEK_ENDPOINT}     # optional override for Azure OpenAI endpoint URL
+
+  # LLM for response evaluation and finding summarisation.
+  # Must use a DIFFERENT deployment than the target app to avoid TPM contention.
+  eval_llm:
+    model: azure/${AZURE_DEEPSEEK_MODEL_NAME}    # any LiteLLM model string (openai/gpt-4o, etc.)
+    api_key: ${AZURE_DEEPSEEK_KEY}     # never put keys here; use env var interpolation
+    api_base: ${AZURE_DEEPSEEK_ENDPOINT}     # optional override for Azure OpenAI endpoint URL
+
 
   request_timeout: 120
   verbose: true

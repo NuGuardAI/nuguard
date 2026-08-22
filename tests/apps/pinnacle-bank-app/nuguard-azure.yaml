@@ -233,8 +233,8 @@ redteam:
   # Must use a DIFFERENT deployment than the target app to avoid TPM contention.
   llm:
     model: azure/DeepSeek-V4-Pro    # any LiteLLM model string (openai/gpt-4o, etc.)
-    api_key: ${AZURE_OPENAI_KEY}
-    api_base: ${AZURE_API_BASE}     # optional override for Azure OpenAI endpoint URL
+    api_key: ${AZURE_DEEPSEEK_KEY}
+    api_base: ${AZURE_DEEPSEEK_ENDPOINT}     # optional override for Azure OpenAI endpoint URL
 
   # LLM for response evaluation and finding summarisation.
   # Must use a DIFFERENT deployment than the target app to avoid TPM contention.
