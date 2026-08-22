@@ -599,3 +599,97 @@ def _looks_like_chat_response(data: object, response_key: str | None = None) -> 
         if key in data:
             return True
     return False
+
+
+# ---------------------------------------------------------------------------
+# Frontend-bundle API-origin discovery
+# ---------------------------------------------------------------------------
+
+# Detects a served page that's a bundled SPA (Vite/CRA/webpack), not a JSON API.
+_SCRIPT_SRC_RE = re.compile(r'<script[^>]+src=["\']([^"\']+\.js[^"\']*)["\']', re.IGNORECASE)
+
+# Matches the common "baseURL: '<absolute-url>'" shape client bundles bake in
+# (axios `baseURL`, or hand-rolled `apiUrl`/`API_URL`/`apiBaseUrl` constants).
+# Deliberately scoped to key names that mean "API origin" — this keeps false
+# positives low against unrelated absolute URLs bundled for other SDKs
+# (analytics, error-tracking, payment widgets, ...) which use different names.
+_API_BASE_URL_RE = re.compile(
+    r'(?:baseURL|baseUrl|apiBaseUrl|apiBase|apiUrl|API_URL|API_BASE_URL)\s*[:=]\s*'
+    r'[`"\'](https?://[^`"\'\s,)]+)',
+)
+
+_MAX_SCRIPTS_TO_SCAN = 6
+_SCRIPT_FETCH_TIMEOUT = 15.0
+
+
+async def discover_api_origin_from_frontend_bundle(
+    target_url: str,
+) -> tuple[str | None, list[str]]:
+    """Best-effort: find a separate-origin API base URL baked into a served SPA bundle.
+
+    Some single-page apps call a backend on a different host/port directly
+    from client-side JS (``baseURL: "http://api-host:3010"``) instead of
+    proxying ``/api`` through the frontend's own server — SBOM candidate
+    rotation and live endpoint probing both fail against *target_url* in that
+    case because every path under it is served by the SPA's catch-all route,
+    not the API. This mirrors what a real browser does: fetch the page,
+    follow its ``<script src>`` tags, and read the API origin out of the
+    bundle the same way the app's own JS would at runtime.
+
+    Returns ``(origin, notes)``. *origin* is ``scheme://host[:port]`` (no
+    path — callers append their own SBOM/config-derived endpoint paths, which
+    already include any API prefix like ``/api/v1``) when a *different*
+    origin than *target_url* was found baked into a script; otherwise
+    ``None``. Never raises — network/parse failures just return ``(None, [])``.
+    """
+    from urllib.parse import urljoin, urlparse
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as http_client:
+            resp = await http_client.get(target_url)
+    except Exception as exc:
+        _log.debug("discover_api_origin_from_frontend_bundle: GET %s failed: %s", target_url, exc)
+        return None, []
+
+    html = resp.text or ""
+    script_srcs = _SCRIPT_SRC_RE.findall(html)[:_MAX_SCRIPTS_TO_SCAN]
+    if not script_srcs:
+        return None, []
+
+    target_host_port = (urlparse(target_url).hostname, urlparse(target_url).port)
+
+    for src in script_srcs:
+        script_url = urljoin(target_url.rstrip("/") + "/", src)
+        try:
+            async with httpx.AsyncClient(
+                timeout=_SCRIPT_FETCH_TIMEOUT, follow_redirects=True
+            ) as http_client:
+                script_resp = await http_client.get(script_url)
+        except Exception as exc:
+            _log.debug(
+                "discover_api_origin_from_frontend_bundle: GET script %s failed: %s",
+                script_url, exc,
+            )
+            continue
+
+        match = _API_BASE_URL_RE.search(script_resp.text or "")
+        if not match:
+            continue
+
+        parsed = urlparse(match.group(1))
+        if (parsed.hostname, parsed.port) == target_host_port:
+            # Bundle just references the same origin we already have — no override needed.
+            continue
+
+        origin = f"{parsed.scheme}://{parsed.netloc}"
+        note = (
+            f"Target URL {target_url!r} serves a frontend bundle with no proxied API "
+            f"surface; discovered API origin {origin!r} baked into {script_url!r} "
+            f"(matched {match.group(0)[:80]!r}). Using it for auth/chat/redteam requests. "
+            f"Set target.url in nuguard.yaml to this origin directly to skip this scan."
+        )
+        _log.warning("discover_api_origin_from_frontend_bundle: %s", note)
+        return origin, [note]
+
+    return None, []
+    return False

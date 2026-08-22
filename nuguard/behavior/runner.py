@@ -808,6 +808,19 @@ class BehaviorRunner:
         target_url, _url_notes = resolve_target_url(_config_url, self._sbom)
         if not target_url:
             target_url = _config_url
+
+        # Some SPAs call a separate-origin backend directly from client-side JS
+        # instead of proxying /api through their own server — SBOM/live-probe
+        # discovery can't find that origin because every path under target_url
+        # is served by the frontend's catch-all route. Best-effort: scan the
+        # served bundle for a baked-in API base URL before auth bootstrap runs.
+        from nuguard.common.endpoint_probe import discover_api_origin_from_frontend_bundle
+
+        _bundle_origin, _bundle_notes = await discover_api_origin_from_frontend_bundle(target_url)
+        if _bundle_origin:
+            target_url = _bundle_origin
+            _url_notes = _url_notes + _bundle_notes
+
         # Store resolved URL so _run_scenario can display it correctly.
         self._resolved_target_url: str = target_url
 

@@ -890,6 +890,21 @@ class RedteamOrchestrator:
             for _note in _url_notes:
                 self.config_notes.append(_note)
 
+        # Some SPAs call a separate-origin backend directly from client-side JS
+        # instead of proxying /api through their own server — SBOM/live-probe
+        # discovery can't find that origin because every path under target_url
+        # is served by the frontend's catch-all route. Best-effort: scan the
+        # served bundle for a baked-in API base URL before auth bootstrap runs.
+        from nuguard.common.endpoint_probe import discover_api_origin_from_frontend_bundle
+
+        _bundle_origin, _bundle_notes = await discover_api_origin_from_frontend_bundle(
+            self._target_url
+        )
+        if _bundle_origin:
+            self._target_url = _bundle_origin
+            for _note in _bundle_notes:
+                self.config_notes.append(_note)
+
         # Upgrade basic auth → login_flow when the SBOM has a login endpoint and the
         # caller has not already provided a login_flow block.
         _effective_auth = self._auth_config
