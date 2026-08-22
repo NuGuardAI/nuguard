@@ -15,9 +15,7 @@ sbom_generation:
   llm: true
 
 target:
-  # Replace with the FQDN printed by deploy-azure-aci.sh, e.g.:
-  # http://phlox-nuguard-<suffix>.<region>.azurecontainer.io:80
-  url: http://REPLACE_WITH_ACI_FQDN:80
+  url: http://phlox-nuguard-039182d3.eastus2.azurecontainer.io:80
   auth:
     type: none
 
@@ -31,7 +29,7 @@ behavior:
   capability_discovery: true
 
 redteam:
-  target: http://REPLACE_WITH_ACI_FQDN:80
+  target: http://phlox-nuguard-039182d3.eastus2.azurecontainer.io:80
   canary: ./canary.json
   profile: ci
   min_impact_score: 0.0
