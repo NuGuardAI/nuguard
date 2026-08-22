@@ -9,6 +9,7 @@ Covers:
 from __future__ import annotations
 
 import uuid
+from typing import Literal
 
 import pytest
 
@@ -46,7 +47,7 @@ def _node(
         name=name,
         component_type=ctype,
         confidence=confidence,
-        metadata=NodeMetadata(**risk_attrs),
+        metadata=NodeMetadata(**risk_attrs),  # type: ignore[arg-type]
     )
 
 
@@ -55,7 +56,7 @@ def _edge(
     tgt: Node,
     rel: RelationshipType,
     *,
-    derivation: str = "hint",
+    derivation: Literal["hint", "fallback_heuristic"] = "hint",
     confidence: float | None = None,
     access_type: AccessType | None = None,
 ) -> Edge:

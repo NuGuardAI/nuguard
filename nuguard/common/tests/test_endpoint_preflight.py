@@ -2,15 +2,24 @@
 from __future__ import annotations
 
 import uuid
+from typing import TYPE_CHECKING, Any, cast
 from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from nuguard.common.endpoint_preflight import validate_and_rotate_chat_endpoint
+from nuguard.common.endpoint_preflight import PreflightOutcome, validate_and_rotate_chat_endpoint
 from nuguard.sbom.models import AiSbomDocument, Node, NodeMetadata
 from nuguard.sbom.types import ComponentType
 
+if TYPE_CHECKING:
+    from nuguard.redteam.target.client import TargetAppClient
+
 _NS = uuid.NAMESPACE_URL
+
+
+async def _validate(client: Any, sbom: AiSbomDocument, **kwargs: Any) -> PreflightOutcome:
+    """Test-only shim: these fakes are structurally, not nominally, TargetAppClient."""
+    return await validate_and_rotate_chat_endpoint(cast("TargetAppClient", client), sbom, **kwargs)
 
 
 class _DummyClient:
@@ -65,7 +74,7 @@ async def test_ok_when_first_response_is_not_404_405() -> None:
     client = _DummyClient(working_path="/chat")
     sbom = _sbom_with_candidates("/chat")
 
-    outcome = await validate_and_rotate_chat_endpoint(
+    outcome = await _validate(
         client, sbom, has_explicit_endpoint=False,
     )
 
@@ -82,7 +91,7 @@ async def test_rotates_to_working_sbom_candidate_on_404() -> None:
     client = _DummyClient(working_path="/chat", initial_path="/api/agent/chat")
     sbom = _sbom_with_candidates("/chat", "/api/agent/chat")
 
-    outcome = await validate_and_rotate_chat_endpoint(
+    outcome = await _validate(
         client, sbom, has_explicit_endpoint=False,
     )
 
@@ -98,7 +107,7 @@ async def test_explicit_endpoint_does_not_rotate() -> None:
     client = _DummyClient(working_path="/api/agent/chat")
     sbom = _sbom_with_candidates("/chat", "/api/agent/chat")
 
-    outcome = await validate_and_rotate_chat_endpoint(
+    outcome = await _validate(
         client, sbom, has_explicit_endpoint=True,
     )
 
@@ -117,7 +126,7 @@ async def test_falls_back_to_live_probe_when_no_sbom_candidate_works() -> None:
         "nuguard.common.endpoint_probe.probe_chat_endpoints",
         new=AsyncMock(return_value=("/v2/chat", "message", False)),
     ):
-        outcome = await validate_and_rotate_chat_endpoint(
+        outcome = await _validate(
             client, sbom, has_explicit_endpoint=False,
         )
 
@@ -136,7 +145,7 @@ async def test_reports_failure_when_nothing_works() -> None:
         "nuguard.common.endpoint_probe.probe_chat_endpoints",
         new=AsyncMock(return_value=None),
     ):
-        outcome = await validate_and_rotate_chat_endpoint(
+        outcome = await _validate(
             client, sbom, has_explicit_endpoint=False,
         )
 
@@ -157,7 +166,7 @@ async def test_400_also_triggers_rotation() -> None:
     )
     sbom = _sbom_with_candidates("/chat", "/api/agent/chat")
 
-    outcome = await validate_and_rotate_chat_endpoint(
+    outcome = await _validate(
         client, sbom, has_explicit_endpoint=False,
     )
 
@@ -179,7 +188,7 @@ async def test_422_also_triggers_rotation() -> None:
     )
     sbom = _sbom_with_candidates("/chat", "/api/agent/chat")
 
-    outcome = await validate_and_rotate_chat_endpoint(
+    outcome = await _validate(
         client, sbom, has_explicit_endpoint=False,
     )
 
@@ -197,7 +206,7 @@ async def test_400_on_explicit_endpoint_reports_failure_without_rotating() -> No
     )
     sbom = _sbom_with_candidates("/chat", "/api/agent/chat")
 
-    outcome = await validate_and_rotate_chat_endpoint(
+    outcome = await _validate(
         client, sbom, has_explicit_endpoint=True,
     )
 
@@ -293,7 +302,7 @@ async def test_bootstrap_binds_path_param_on_successful_endpoint() -> None:
         invoke_responses={"/chat/conversations": (201, {"id": "c_abc123"})},
     )
 
-    outcome = await validate_and_rotate_chat_endpoint(
+    outcome = await _validate(
         client, sbom, has_explicit_endpoint=False,
     )
 
@@ -325,7 +334,7 @@ async def test_bootstrap_falls_back_to_schema_payload_on_4xx() -> None:
 
     client.invoke_endpoint = _invoke  # type: ignore[method-assign]
 
-    outcome = await validate_and_rotate_chat_endpoint(
+    outcome = await _validate(
         client, sbom, has_explicit_endpoint=False,
     )
 
@@ -347,7 +356,7 @@ async def test_bootstrap_leaves_param_unbound_when_source_post_fails() -> None:
         chat_response_after_bootstrap="[CONFIG_ERROR: unresolved path param 'id']",
     )
 
-    outcome = await validate_and_rotate_chat_endpoint(
+    outcome = await _validate(
         client, sbom, has_explicit_endpoint=False,
     )
 
@@ -364,7 +373,7 @@ async def test_no_path_param_sources_is_a_no_op() -> None:
     client = _DummyClient(working_path="/chat")
     sbom = _sbom_with_candidates("/chat")
 
-    outcome = await validate_and_rotate_chat_endpoint(
+    outcome = await _validate(
         client, sbom, has_explicit_endpoint=False,
     )
 
@@ -394,7 +403,7 @@ async def test_bootstrap_runs_after_probe_rotation_settles() -> None:
         "nuguard.common.endpoint_probe.probe_chat_endpoints",
         new=AsyncMock(return_value=(chat_path, "content", False)),
     ):
-        outcome = await validate_and_rotate_chat_endpoint(
+        outcome = await _validate(
             client, sbom, has_explicit_endpoint=False,
         )
 
