@@ -1952,7 +1952,7 @@ class RedteamOrchestrator:
                 worst = highest_severity(batch_findings)
                 worst_rank = _halt_order.get(worst.value if worst else "", 99)
                 if worst_rank <= _halt_threshold:
-                    _log.warning(
+                    _log.info(
                         "Progressive mode: halting after phase %d — %s finding confirmed "
                         "(redteam.progressive.halt_on_severity=%s)",
                         phase, worst.value if worst else "", self._progressive_halt_on_severity,
