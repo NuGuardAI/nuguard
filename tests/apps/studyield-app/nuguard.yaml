@@ -35,7 +35,8 @@ sbom_generation:
 # ─── Target application ────────────────────────────────────────────────────────
 target:
   # Backend API — API_PREFIX=api/v1 (see backend/.env.example), e.g. /api/v1/chat.
-  url: http://localhost:3010
+  # url: http://localhost:3010
+  url: http://57.162.113.55
 
   # Chat/RAG endpoint — confirm against the generated SBOM; likely /api/v1/chat
   # or /api/v1/ai/chat.
@@ -68,7 +69,7 @@ behavior:
 
 # ─── Red-team ───────────────────────────────────────────────────────────────────
 redteam:
-  target: http://localhost:3010
+  # target: http://localhost:3010
   canary: ./canary.json
   profile: full
   min_impact_score: 0.0
