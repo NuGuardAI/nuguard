@@ -125,7 +125,25 @@ def _default_verification_max_verifications() -> int:
     return _env_int("AISBOM_MAX_VERIFICATIONS", 20)
 
 
+def _default_llm_concurrency() -> int:
+    """Max in-flight LLM calls during enrichment (issue #197).
+
+    Defaults to 5 — matches the description-enrichment semaphore already in
+    use. Override via ``NUGUARD_LLM_CONCURRENCY`` or ``AISBOM_LLM_CONCURRENCY``.
+    """
+    raw = _get("NUGUARD_LLM_CONCURRENCY", "AISBOM_LLM_CONCURRENCY")
+    if raw:
+        try:
+            value = int(raw)
+            if value >= 1:
+                return value
+        except ValueError:
+            pass
+    return 5
+
+
 class AiSbomConfig(BaseModel):
+    model_config = {"validate_assignment": True}
     # None = no limit on the number of files scanned/walked, for both local-folder
     # and GitHub repo discovery (they share the same _iter_files walker).
     max_files: int | None = Field(default=None, ge=1)
@@ -175,6 +193,16 @@ class AiSbomConfig(BaseModel):
     llm_api_key: str | None = Field(default_factory=_default_llm_api_key)
     llm_api_base: str | None = Field(default_factory=_default_llm_api_base)
     llm_budget_tokens: int = Field(default_factory=_default_budget_tokens)
+    llm_concurrency: int = Field(
+        default_factory=_default_llm_concurrency,
+        ge=1,
+        le=64,
+        description=(
+            "Max in-flight LLM calls during enrichment (issue #197). "
+            "Used to bound the per-node verification pass and any other "
+            "independent LLM calls that can safely run in parallel."
+        ),
+    )
 
     # Gap-fill discovery pass (nuguard.yaml: sbom_generation.gap_fill.*)
     gap_fill_max_calls: int = Field(default_factory=_default_gap_fill_max_calls)

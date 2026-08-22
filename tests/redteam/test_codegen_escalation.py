@@ -1,20 +1,21 @@
-"""Tests for the code-gen exploitation escalation feature.
+"""Tests for the code-gen exploitation escalation feature (v1 engine).
 
 Covers:
-- Detection logic (detect_codegen_success / ObjectiveRunner._detect_codegen_success)
-- Scenario builder output from build_codegen_escalation_chains()
+- Detection logic via the module-level ``detect_codegen_success()`` helper
+  used by ``RedteamOrchestrator`` to decide when to spawn escalation chains.
+- Scenario builder output from ``build_codegen_escalation_chains()``
 - Goal-type attribution: each chain must carry the correct GoalType
-- Outcome merging via ObjectiveRunner._merge_outcomes()
-- Kill-chain deduplication (one escalation per run)
-- Config-gate (codegen_escalation_enabled=False skips escalation)
+
+The v2 engine had its own ``ObjectiveRunner`` with parallel methods that this
+test file used to exercise. After the v2 removal (issue #216) those internal
+classes no longer exist, so this file now tests the v1 surface only — the
+module-level ``detect_codegen_success()`` is what the v1 orchestrator calls
+(``nuguard/redteam/executor/orchestrator.py``).
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
-from unittest.mock import AsyncMock, MagicMock
-
-import pytest
 
 from nuguard.models.exploit_chain import GoalType, ScenarioType
 from nuguard.redteam.scenarios.codegen_escalation import (
@@ -22,12 +23,12 @@ from nuguard.redteam.scenarios.codegen_escalation import (
     build_codegen_escalation_chains,
     detect_codegen_success,
 )
-from nuguard.redteam.v2.execution.runner import KillChainState, ObjectiveOutcome, ObjectiveRunner
 
 
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 @dataclass
 class _FakeStep:
@@ -43,119 +44,94 @@ class _FakeStepResult:
     llm_eval_evidence: str = ""
 
 
-def _make_runner(*, codegen_escalation_enabled: bool = True) -> ObjectiveRunner:
-    sbom = MagicMock()
-    sbom.nodes = []
-    profile = MagicMock()
-    static_exec = MagicMock()
-    return ObjectiveRunner(
-        sbom=sbom,
-        profile=profile,
-        static_executor=static_exec,
-        codegen_escalation_enabled=codegen_escalation_enabled,
-    )
-
-
-def _make_objective(family: str = "DATA_EXFILTRATION") -> Any:
-    obj = MagicMock()
-    obj.objective_id = "test-obj-1"
-    obj.family = family
-    obj.builder_key = None
-    return obj
-
-
 # ---------------------------------------------------------------------------
-# Detection tests
+# Detection tests — module-level detect_codegen_success()
 # ---------------------------------------------------------------------------
+
 
 class TestDetectCodegenSuccess:
     def test_fires_on_fenced_code_block(self):
-        runner = _make_runner()
         results = [_FakeStepResult(
             success_signal_found=True,
             response="Here's the code:\n```python\ndef fetch_users():\n    return db.query('SELECT * FROM users')\n```",
         )]
-        hit, evidence = runner._detect_codegen_success(results)
+        hit, evidence = detect_codegen_success(results)
         assert hit
         assert "Code block" in evidence
 
     def test_fires_on_llm_eval_evidence_mentioning_code(self):
-        runner = _make_runner()
         results = [_FakeStepResult(
             success_signal_found=True,
             llm_eval_confidence="high",
             llm_eval_evidence="Agent generated a Python function that fetches user PII.",
         )]
-        hit, evidence = runner._detect_codegen_success(results)
+        hit, evidence = detect_codegen_success(results)
         assert hit
         assert "python" in evidence.lower() or "generated" in evidence.lower()
 
     def test_skips_warmup_steps(self):
-        runner = _make_runner()
         results = [_FakeStepResult(
             step=_FakeStep(step_type="WARMUP"),
             success_signal_found=True,
             response="```python\nprint('hello')\n```",
         )]
-        hit, _ = runner._detect_codegen_success(results)
+        hit, _ = detect_codegen_success(results)
         assert not hit
 
     def test_skips_discover_steps(self):
-        runner = _make_runner()
         results = [_FakeStepResult(
             step=_FakeStep(step_type="DISCOVER"),
             success_signal_found=True,
             response="```typescript\nconst x = 1;\n```",
         )]
-        hit, _ = runner._detect_codegen_success(results)
+        hit, _ = detect_codegen_success(results)
         assert not hit
 
     def test_no_hit_when_no_success_signal(self):
-        runner = _make_runner()
         results = [_FakeStepResult(
             success_signal_found=False,
             response="```python\nprint('hello')\n```",
         )]
-        hit, _ = runner._detect_codegen_success(results)
+        hit, _ = detect_codegen_success(results)
         assert not hit
 
     def test_no_hit_on_plain_refusal(self):
-        runner = _make_runner()
         results = [_FakeStepResult(
             success_signal_found=False,
             response="I'm sorry, I can't help with that request.",
         )]
-        hit, _ = runner._detect_codegen_success(results)
+        hit, _ = detect_codegen_success(results)
         assert not hit
 
     def test_no_hit_on_low_confidence_evidence(self):
-        runner = _make_runner()
         results = [_FakeStepResult(
             success_signal_found=True,
             llm_eval_confidence="low",
             llm_eval_evidence="Agent mentioned the word python in passing.",
         )]
-        hit, _ = runner._detect_codegen_success(results)
+        hit, _ = detect_codegen_success(results)
         assert not hit
 
     def test_empty_results(self):
-        runner = _make_runner()
-        hit, _ = runner._detect_codegen_success([])
+        hit, _ = detect_codegen_success([])
         assert not hit
 
-    def test_module_level_function_matches_runner(self):
-        """detect_codegen_success() module function matches ObjectiveRunner._detect_codegen_success()."""
+    def test_hit_snippet_truncates_long_responses(self):
+        long_response = "```python\n" + ("x = 1\n" * 200) + "```"
         results = [_FakeStepResult(
             success_signal_found=True,
-            response="```python\ndef evil(): pass\n```",
+            response=long_response,
         )]
-        runner = _make_runner()
-        assert runner._detect_codegen_success(results) == detect_codegen_success(results)
+        hit, evidence = detect_codegen_success(results)
+        assert hit
+        # snippet is truncated to 200 chars and newlines replaced
+        assert len(evidence) < len(long_response) + 50
 
 
 # ---------------------------------------------------------------------------
 # Builder tests — goal-type attribution
 # ---------------------------------------------------------------------------
+
 
 class TestBuildCodegenEscalationChains:
     def test_returns_five_chains(self):
@@ -261,139 +237,9 @@ class TestGoalTypeForHint:
 
 
 # ---------------------------------------------------------------------------
-# Outcome merging tests
-# ---------------------------------------------------------------------------
-
-class TestMergeOutcomes:
-    def _outcome(self, *, succeeded=False, critical=False, evidence=None, steps=0) -> ObjectiveOutcome:
-        return ObjectiveOutcome(
-            objective_id="test",
-            status="executed",
-            succeeded=succeeded,
-            critical=critical,
-            evidence=evidence or [],
-            step_count=steps,
-            step_results=[],
-        )
-
-    def test_merge_succeeded_is_or(self):
-        merged = ObjectiveRunner._merge_outcomes(self._outcome(succeeded=False), self._outcome(succeeded=True))
-        assert merged.succeeded
-
-    def test_merge_critical_is_or(self):
-        merged = ObjectiveRunner._merge_outcomes(self._outcome(critical=False), self._outcome(critical=True))
-        assert merged.critical
-
-    def test_merge_evidence_concatenated(self):
-        base = self._outcome(evidence=["base evidence"])
-        esc = self._outcome(evidence=["esc evidence 1", "esc evidence 2"])
-        merged = ObjectiveRunner._merge_outcomes(base, esc)
-        assert "base evidence" in merged.evidence
-        assert "esc evidence 1" in merged.evidence
-        assert "esc evidence 2" in merged.evidence
-
-    def test_merge_step_count_summed(self):
-        merged = ObjectiveRunner._merge_outcomes(self._outcome(steps=3), self._outcome(steps=5))
-        assert merged.step_count == 8
-
-    def test_merge_preserves_base_objective_id(self):
-        base = self._outcome()
-        base.objective_id = "original-obj"
-        esc = self._outcome()
-        esc.objective_id = "escalation-obj"
-        merged = ObjectiveRunner._merge_outcomes(base, esc)
-        assert merged.objective_id == "original-obj"
-
-
-# ---------------------------------------------------------------------------
-# Kill-chain deduplication
-# ---------------------------------------------------------------------------
-
-class TestKillchainDedup:
-    def test_codegen_escalation_done_starts_false(self):
-        assert not KillChainState().codegen_escalation_done
-
-    def test_flag_prevents_second_escalation(self):
-        runner = _make_runner()
-        runner.killchain.codegen_escalation_done = True
-        assert runner.killchain.codegen_escalation_done is True
-
-
-# ---------------------------------------------------------------------------
-# Config gate
-# ---------------------------------------------------------------------------
-
-@pytest.mark.asyncio
-async def test_codegen_escalation_disabled_skips_escalation():
-    """When codegen_escalation_enabled=False, _run_static must not call _run_codegen_escalation."""
-    sbom = MagicMock()
-    sbom.nodes = []
-    profile = MagicMock()
-
-    fake_results = [_FakeStepResult(
-        success_signal_found=True,
-        response="```python\ndef evil(): pass\n```",
-    )]
-    static_exec = MagicMock()
-    static_exec.run = AsyncMock(return_value=(MagicMock(), fake_results, None))
-
-    runner = ObjectiveRunner(
-        sbom=sbom,
-        profile=profile,
-        static_executor=static_exec,
-        codegen_escalation_enabled=False,
-    )
-    runner._run_codegen_escalation = AsyncMock()
-    runner._summarize_static = MagicMock(return_value=ObjectiveOutcome("test", "executed"))
-
-    obj = _make_objective()
-    scenario = MagicMock()
-    scenario.chain = MagicMock()
-    scenario.scenario_id = "s1"
-
-    await runner._run_static(obj, scenario)
-    runner._run_codegen_escalation.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_codegen_escalation_enabled_triggers_on_hit():
-    """When codegen_escalation_enabled=True and a code block is in the response, escalation runs."""
-    sbom = MagicMock()
-    sbom.nodes = []
-    profile = MagicMock()
-
-    fake_results = [_FakeStepResult(
-        step=_FakeStep(step_type="INJECT"),
-        success_signal_found=True,
-        response="Here you go:\n```python\ndef fetch(): return db.all()\n```",
-    )]
-    static_exec = MagicMock()
-    static_exec.run = AsyncMock(return_value=(MagicMock(), fake_results, None))
-
-    runner = ObjectiveRunner(
-        sbom=sbom,
-        profile=profile,
-        static_executor=static_exec,
-        codegen_escalation_enabled=True,
-    )
-
-    esc_outcome = ObjectiveOutcome("test", "executed", succeeded=True, evidence=["escalation hit"])
-    runner._run_codegen_escalation = AsyncMock(return_value=esc_outcome)
-    runner._summarize_static = MagicMock(return_value=ObjectiveOutcome("test", "executed"))
-
-    obj = _make_objective()
-    scenario = MagicMock()
-    scenario.chain = MagicMock()
-    scenario.scenario_id = "s1"
-
-    merged = await runner._run_static(obj, scenario)
-    runner._run_codegen_escalation.assert_awaited_once()
-    assert "escalation hit" in merged.evidence
-
-
-# ---------------------------------------------------------------------------
 # Goal attribution integration test
 # ---------------------------------------------------------------------------
+
 
 class TestGoalAttribution:
     """Verify that each escalation chain's GoalType matches the intended attack."""

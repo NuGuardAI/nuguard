@@ -282,3 +282,74 @@ async def test_discover_behavior_profile_returns_none_when_runner_finds_nothing(
         mock_cls.return_value.discover = AsyncMock(return_value=None)
         result = await discover_behavior_profile(config)
     assert result is None
+
+
+# ---------------------------------------------------------------------------
+# behavior.headers plumbing into the target client
+# ---------------------------------------------------------------------------
+
+
+def test_behavior_runner_merges_config_headers_into_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """behavior.headers (from shared target.headers or behavior.headers) must
+    be attached to every outbound request, not silently dropped."""
+    import asyncio
+
+    from nuguard.behavior.runner import BehaviorRunner
+
+    captured: dict[str, object] = {}
+
+    def _fake_build_target_app_client(**kwargs: object):
+        captured["auth_headers"] = kwargs.get("auth_headers")
+        # Return a minimal stand-in with the attrs the runner reads after build.
+        class _FakeClient:
+            resolution_notes: list[str] = []
+            base_url = "http://localhost:9999"
+            _chat_path = "/chat"
+        return _FakeClient()
+
+    async def _fake_bootstrap_auth_runtime(**kwargs: object):
+        from nuguard.models.health_report import TargetHealthReport
+
+        class _FakeSession:
+            def headers(self):
+                return {"Authorization": "Bearer boot-token"}
+
+            def login_response_extras(self):
+                return {}
+
+        class _FakeBootstrapper:
+            session = _FakeSession()
+
+        return (
+            _FakeBootstrapper(),
+            TargetHealthReport(
+                target_url="http://localhost:9999",
+                endpoint="/chat",
+                run_id="test",
+                checks=[],
+            ),
+        )
+
+    monkeypatch.setattr(
+        "nuguard.common.target_client_builder.build_target_app_client",
+        _fake_build_target_app_client,
+    )
+    monkeypatch.setattr(
+        "nuguard.common.auth_runtime.bootstrap_auth_runtime",
+        _fake_bootstrap_auth_runtime,
+    )
+    runner = BehaviorRunner(
+        config=BehaviorConfig(
+            target="http://localhost:9999",
+            headers={"X-Tenant-Id": "tenant-1"},
+        ),
+    )
+    asyncio.run(runner._build_client())
+
+    headers = captured["auth_headers"]
+    assert headers is not None
+    assert headers["X-Tenant-Id"] == "tenant-1"
+    # Bootstrapped auth headers still present underneath the static headers.
+    assert headers["Authorization"] == "Bearer boot-token"

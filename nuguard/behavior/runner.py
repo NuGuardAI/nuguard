@@ -839,6 +839,18 @@ class BehaviorRunner:
             _log.debug("_build_client: bootstrap skipped: %s", exc)
             bootstrap_headers = getattr(runtime, "initial_headers", {}) or {}
 
+        # Merge explicit behavior.headers (shared target.headers or behavior.headers)
+        # underneath bootstrapped/auth headers so auth always wins on conflicts.
+        # Normalize first so a literal "None"/"" string header value (unset
+        # ${VAR} = None -> stringified anywhere upstream) can't reach the target.
+        from nuguard.common.auth_runtime import _normalize_headers  # noqa: PLC0415
+
+        _cfg_headers: dict[str, str] = _normalize_headers(
+            getattr(self._config, "headers", None)
+        )
+        if _cfg_headers:
+            bootstrap_headers = {**_cfg_headers, **(bootstrap_headers or {})}
+
         # Merge login-response identity/session fields and SBOM context hints
         # into chat_payload_extras so the correct user identity is sent in every
         # request (covers apps like Pinnacle Bank where user_id is a body field).

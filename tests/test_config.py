@@ -455,6 +455,44 @@ class TestSharedTargetBlock:
         assert flat["redteam_headers"]["X-Tenant-Id"] == "tenant-1"
         assert flat["redteam_headers"]["X-Custom"] == "value"
 
+    def test_shared_headers_injected_into_behavior_config(self) -> None:
+        flat = _flatten("""
+            target:
+              url: http://shared.test
+              headers:
+                X-Tenant-Id: tenant-1
+            behavior:
+              llm: true
+        """)
+        # The shared headers block is documented as applying to behavior as
+        # well as redteam ("Extra HTTP headers added to every request
+        # (behavior + redteam)" in nuguard.yaml.example), so it must be
+        # injected into behavior_config.
+        assert flat["behavior_config"]["headers"]["X-Tenant-Id"] == "tenant-1"
+
+    def test_behavior_headers_override_shared_headers_in_behavior_config(self) -> None:
+        flat = _flatten("""
+            target:
+              url: http://shared.test
+              headers:
+                X-Tenant-Id: tenant-shared
+            behavior:
+              headers:
+                X-Tenant-Id: tenant-behavior
+        """)
+        assert flat["behavior_config"]["headers"]["X-Tenant-Id"] == "tenant-behavior"
+
+    def test_shared_headers_reach_resolved_behavior_config(self) -> None:
+        """End-to-end: shared target.headers must survive into the resolved
+        BehaviorConfig model so the behavior runner can attach them."""
+        cfg = NuGuardConfig(
+            behavior_config={
+                "target": "http://shared.test",
+                "headers": {"X-Tenant-Id": "tenant-1"},
+            }
+        )
+        assert cfg.behavior_config.headers == {"X-Tenant-Id": "tenant-1"}
+
     def test_shared_bearer_auth_propagates(self) -> None:
         flat = _flatten("""
             target:
@@ -650,3 +688,94 @@ class TestConfigValidationErrorIsUserFriendly:
         with pytest.raises(ConfigError) as exc_info:
             load_config(config_file)
         assert "workflows" in str(exc_info.value)
+
+
+class TestUnsetEnvVarNoneFiltering:
+    """Unset ${VAR} references must never leak the literal string "None".
+
+    ``_expand_env_vars`` turns an unset placeholder into ``None``.  The
+    flattening step must then drop those ``None`` values (as it already does
+    for ``redteam.credentials`` and the LLM blocks) instead of stringifying
+    them, so a header like ``X-Tenant-Id: ${MY_TENANT}`` cannot reach the
+    HTTP client as ``X-Tenant-Id: None``.
+    """
+
+    @staticmethod
+    def _expand_flatten(yaml_text: str) -> dict:
+        """Full pipeline: env expansion (mirroring load_config) then flatten."""
+        from nuguard.config import _expand_env_vars
+
+        data = yaml.safe_load(textwrap.dedent(yaml_text))
+        return _flatten_yaml(_expand_env_vars(data))
+
+    def test_shared_headers_drop_unset_env_vars(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("MY_TENANT", raising=False)
+        flat = self._expand_flatten("""
+            target:
+              url: http://shared.test
+              headers:
+                X-Tenant-Id: ${MY_TENANT}
+                X-API-Key: static-key
+        """)
+        assert flat["redteam_headers"] == {"X-API-Key": "static-key"}
+        assert "None" not in str(flat["redteam_headers"])
+
+    def test_redteam_headers_drop_unset_env_vars(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("MY_TENANT", raising=False)
+        flat = self._expand_flatten("""
+            redteam:
+              target: http://app.test
+              headers:
+                X-Tenant-Id: ${MY_TENANT}
+                X-API-Key: static-key
+        """)
+        assert flat["redteam_headers"] == {"X-API-Key": "static-key"}
+
+    def test_shared_headers_behavior_injection_drops_unset_env_vars(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("MY_TENANT", raising=False)
+        flat = self._expand_flatten("""
+            target:
+              url: http://shared.test
+              headers:
+                X-Tenant-Id: ${MY_TENANT}
+                X-API-Key: static-key
+            behavior:
+              llm: true
+        """)
+        assert flat["behavior_config"]["headers"] == {"X-API-Key": "static-key"}
+
+    def test_redteam_app_env_drops_unset_env_vars(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("MY_SECRET", raising=False)
+        flat = self._expand_flatten("""
+            redteam:
+              target: http://app.test
+              app_env:
+                MY_SECRET: ${MY_SECRET}
+                KEEP_ME: value
+        """)
+        assert flat["redteam_app_env"] == {"KEEP_ME": "value"}
+
+    def test_redteam_customer_profile_drops_unset_env_var(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("CUSTOMER_PROFILE", raising=False)
+        flat = self._expand_flatten("""
+            redteam:
+              target: http://app.test
+              app_env:
+                KEEP_ME: value
+              customer_profile: ${CUSTOMER_PROFILE}
+        """)
+        assert flat["redteam_app_env"] == {"KEEP_ME": "value"}
+
+    def test_env_default_fallback_still_keeps_value(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("MY_TENANT", raising=False)
+        flat = self._expand_flatten("""
+            redteam:
+              target: http://app.test
+              headers:
+                X-Tenant-Id: ${MY_TENANT:-fallback-tenant}
+        """)
+        assert flat["redteam_headers"] == {"X-Tenant-Id": "fallback-tenant"}

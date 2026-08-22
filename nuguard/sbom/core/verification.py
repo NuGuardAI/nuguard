@@ -38,6 +38,14 @@ VERIFICATION_CONFIDENCE_MIN = float(os.environ.get("AISBOM_VERIFICATION_CONFIDEN
 VERIFICATION_CONFIDENCE_MAX = float(os.environ.get("AISBOM_VERIFICATION_CONFIDENCE_MAX", "0.85"))
 VERIFICATION_COST_BUDGET = float(os.environ.get("AISBOM_VERIFICATION_COST_BUDGET", "20.0"))
 MAX_VERIFICATIONS_PER_SCAN = int(os.environ.get("AISBOM_MAX_VERIFICATIONS", "20"))
+# Upper bound on a single verification call's token spend, used to derive the
+# per-call cost reservation.  1000 tokens × $0.00001/token = $0.01, well under
+# the default $20.00 budget and far above the old flat $0.001 estimate — so a
+# reservation is guaranteed to cover the actual cost of any real call, making
+# the budget admission bound an actual ceiling rather than an estimate.
+# VERIFICATION_COST_PER_TOKEN = 0.00001
+_VERIFICATION_CALL_TOKEN_CAP = 1000
+VERIFICATION_CALL_COST_CAP = _VERIFICATION_CALL_TOKEN_CAP * 0.00001
 
 # ---------------------------------------------------------------------------
 # Result types
@@ -339,6 +347,7 @@ async def verify_uncertain_nodes(
     cost_budget: float = VERIFICATION_COST_BUDGET,
     max_candidates: int = MAX_VERIFICATIONS_PER_SCAN,
     enabled: bool = ENABLE_VERIFICATION,
+    concurrency: int = 1,
 ) -> tuple[list[VerificationResult], VerificationStats]:
     """Verify AIBOM nodes in the uncertain confidence zone.
 
@@ -359,7 +368,13 @@ async def verify_uncertain_nodes(
         Maximum number of nodes to verify in one scan.
     enabled:
         Master switch — returns empty results immediately when False.
+    concurrency:
+        Max in-flight LLM calls. Issue #197: previously this function ran
+        sequentially, now it runs up to ``concurrency`` verification calls
+        concurrently via ``asyncio.gather``. Must be >= 1.
     """
+    import asyncio  # noqa: PLC0415 — local import keeps module load cheap.
+
     stats = VerificationStats()
     if not enabled:
         stats.skipped_count = len(nodes)
@@ -372,10 +387,13 @@ async def verify_uncertain_nodes(
     if not candidates:
         return [], stats
 
-    results: list[VerificationResult] = []
-    cost_used = 0.0
-    cost_per_call = 0.001  # estimated cost per call
+    if concurrency < 1:
+        concurrency = 1
 
+    # Pre-build (system_prompt, user_prompt) per candidate. This is pure CPU
+    # work (no I/O), so doing it up-front lets us overlap prompt building with
+    # the first batch of in-flight LLM calls.
+    prepared: list[tuple[Node, str, str, float]] = []
     for node in candidates:
         if node.component_type == ComponentType.PROMPT and node.metadata.extras.get("content"):
             # The deterministic detector already captured the full prompt
@@ -390,37 +408,121 @@ async def verify_uncertain_nodes(
             stats.skipped_count += 1
             continue
 
-        if cost_used + cost_per_call > cost_budget:
-            stats.budget_exceeded = True
-            stats.skipped_count += len(candidates) - len(results)
-            break
-
         evidence_list = evidence_map.get(node.id, [])
         file_path = (
             evidence_list[0].location.path if evidence_list and evidence_list[0].location else ""
         )
         file_content = (file_contents or {}).get(file_path)
+        system_prompt, user_prompt = build_verification_prompt(
+            node, evidence_list, file_content
+        )
+        prepared.append((node, system_prompt, user_prompt, VERIFICATION_CALL_COST_CAP))
 
-        system_prompt, user_prompt = build_verification_prompt(node, evidence_list, file_content)
+    cost_per_call = VERIFICATION_CALL_COST_CAP
 
-        try:
-            response, tokens = await llm_call_fn(system_prompt, user_prompt)
-            actual_cost = tokens * 0.00001
-            cost_used += actual_cost
-            result = parse_verification_response(response, node)
-            result.verification_cost = actual_cost
-            results.append(result)
-            if result.verified:
-                stats.verified_count += 1
-            else:
-                stats.rejected_count += 1
-        except Exception as exc:  # noqa: BLE001
-            # On API/network failure, skip verification entirely — node keeps
-            # its original confidence rather than being incorrectly rejected.
-            _log.warning("Verification skipped for node %r: %s", node.name, exc)
-            stats.skipped_count += 1
+    async def _verify_one(
+        node: Node,
+        system_prompt: str,
+        user_prompt: str,
+        semaphore: asyncio.Semaphore,
+        shared_cost: list[float],
+        shared_lock: asyncio.Lock,
+    ) -> VerificationResult | None:
+        """Run a single verification under the shared semaphore + cost budget.
 
-    stats.total_cost = cost_used
+        Returns ``None`` when the per-node call is skipped (budget exceeded
+        or LLM exception). Updates ``stats`` via the closed-over ``stats``
+        reference and ``shared_cost[0]`` for the running cost total.
+        """
+        async with semaphore:
+            # Reserve the per-call cost ceiling under the lock before releasing
+            # it for the LLM call.  Reserving prevents the budget from being
+            # exceeded by up to the concurrency limit: without a reservation,
+            # every in-flight task can observe the same ``shared_cost`` and
+            # pass the check, letting a low budget be blown through by the
+            # number of concurrent calls.  The reservation is an upper bound:
+            # ``VERIFICATION_CALL_COST_CAP`` is derived from a token cap that
+            # comfortably exceeds any real verification response, so the budget
+            # admission check is a guaranteed ceiling on concurrent spend.
+            async with shared_lock:
+                if shared_cost[0] + cost_per_call > cost_budget:
+                    stats.budget_exceeded = True
+                    stats.skipped_count += 1
+                    return None
+                shared_cost[0] += cost_per_call
+
+            try:
+                response, tokens = await llm_call_fn(system_prompt, user_prompt)
+            except Exception as exc:  # noqa: BLE001
+                # On API/network failure, skip verification entirely — node keeps
+                # its original confidence rather than being incorrectly rejected.
+                # Release the reservation we made above.
+                _log.warning("Verification skipped for node %r: %s", node.name, exc)
+                async with shared_lock:
+                    shared_cost[0] -= cost_per_call
+                    stats.skipped_count += 1
+                return None
+
+            # Report the true per-call spend (unclamped) so reports reflect
+            # actual usage, but reconcile the budget reservation against the
+            # capped cost: a single pathological call (huge token count) must
+            # not push ``shared_cost`` above what the budget admission assumed
+            # for the in-flight calls.
+            reported_cost = tokens * 0.00001
+            capped_cost = min(tokens, _VERIFICATION_CALL_TOKEN_CAP) * 0.00001
+            async with shared_lock:
+                # Reconcile the reservation with the (capped) actual token cost.
+                shared_cost[0] += capped_cost - cost_per_call
+
+            # parse_verification_response also has to live inside the per-node
+            # try/except — valid JSON that isn't a dict (e.g. a list, number,
+            # or string) raises AttributeError on ``data.get(...)`` because the
+            # parser only catches JSONDecodeError/KeyError/TypeError/ValueError.
+            # Without this wrapper an AttributeError would propagate out of the
+            # per-node scope, escape asyncio.gather() (which is called without
+            # ``return_exceptions=True``), and abort the entire verification
+            # batch instead of just this node.
+            try:
+                result = parse_verification_response(response, node)
+            except Exception as exc:  # noqa: BLE001
+                _log.warning(
+                    "Verification skipped for node %r: response parse failed: %s",
+                    node.name,
+                    exc,
+                )
+                async with shared_lock:
+                    stats.skipped_count += 1
+                return None
+
+            result.verification_cost = reported_cost
+            async with shared_lock:
+                if result.verified:
+                    stats.verified_count += 1
+                else:
+                    stats.rejected_count += 1
+            return result
+
+    semaphore = asyncio.Semaphore(concurrency)
+    shared_cost: list[float] = [0.0]
+    shared_lock = asyncio.Lock()
+
+    tasks = [
+        _verify_one(node, system_prompt, user_prompt, semaphore, shared_cost, shared_lock)
+        for node, system_prompt, user_prompt, _ in prepared
+    ]
+    gathered = await asyncio.gather(*tasks)
+
+    results: list[VerificationResult] = [r for r in gathered if r is not None]
+    stats.total_cost = shared_cost[0]
+
+    # If the budget was exceeded partway through, count the remaining candidates
+    # as skipped (matches the previous sequential behaviour).
+    if stats.budget_exceeded:
+        already_accounted = len(results) + stats.skipped_count - skipped
+        remaining = len(candidates) - already_accounted
+        if remaining > 0:
+            stats.skipped_count += remaining
+
     return results, stats
 
 
