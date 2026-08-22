@@ -102,7 +102,7 @@ def _token_matches(token: str, goal: str, scenario_type: str, title: str) -> boo
         return goal in alias or scenario_type in alias
     return (
         token in goal or goal in token
-        or token in scenario_type or scenario_type in token
+        or (bool(scenario_type) and (token in scenario_type or scenario_type in token))
         or token in title
     )
 

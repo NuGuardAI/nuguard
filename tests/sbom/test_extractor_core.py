@@ -85,8 +85,8 @@ def test_default_config_has_no_file_count_limit() -> None:
     assert AiSbomConfig().max_files is None
 
 
-def test_default_config_max_file_size_is_10mb() -> None:
-    assert AiSbomConfig().max_file_size_bytes == 10 * 1024 * 1024
+def test_default_config_max_file_size_is_100mb() -> None:
+    assert AiSbomConfig().max_file_size_bytes == 100 * 1024 * 1024
 
 
 def test_iter_files_scans_more_than_1000_files_by_default(tmp_path) -> None:
@@ -101,12 +101,12 @@ def test_iter_files_scans_more_than_1000_files_by_default(tmp_path) -> None:
     assert len(files) == 1050
 
 
-def test_iter_files_skips_file_larger_than_10mb(tmp_path) -> None:
+def test_iter_files_skips_file_larger_than_100mb(tmp_path) -> None:
     source_dir = tmp_path / "sample-app"
     source_dir.mkdir()
     (source_dir / "small.py").write_text("print('ok')\n", encoding="utf-8")
     big_file = source_dir / "big.py"
-    big_file.write_bytes(b"x" * (10 * 1024 * 1024 + 1))
+    big_file.write_bytes(b"x" * (100 * 1024 * 1024 + 1))
 
     config = AiSbomConfig(include_extensions={".py"}, enable_llm=False)
     files = list(AiSbomExtractor._iter_files(source_dir, config))
