@@ -24,28 +24,66 @@ RESOURCE_GROUP="${AZURE_RESOURCE_GROUP:-rg-nuguard-phlox-test}"
 LOCATION="${AZURE_LOCATION:-eastus}"
 CONTAINER_NAME="${ACI_CONTAINER_NAME:-phlox-nuguard-test}"
 DNS_LABEL="${ACI_DNS_LABEL:-phlox-nuguard-$(openssl rand -hex 4)}"
-PORT="${PORT:-5000}"
+# 80 is the externally exposed ACI port; the local docker-compose target
+# stays on 5000 (docker-compose.yml is unaffected by this default). Phlox
+# itself always listens on 5000 internally — its process runs as a non-root
+# user and cannot bind port 80 directly (fails with exit code 3) — so a
+# socat sidecar in the same container group forwards 80 -> localhost:5000.
+PORT=80
+INTERNAL_PORT=5000
 
 echo "Creating resource group $RESOURCE_GROUP in $LOCATION (idempotent)..."
 az group create --name "$RESOURCE_GROUP" --location "$LOCATION" --output none
 
+MANIFEST=$(mktemp)
+trap 'rm -f "$MANIFEST"' EXIT
+cat > "$MANIFEST" <<EOF
+apiVersion: '2021-10-01'
+location: ${LOCATION}
+name: ${CONTAINER_NAME}
+properties:
+  osType: Linux
+  restartPolicy: OnFailure
+  ipAddress:
+    type: Public
+    dnsNameLabel: ${DNS_LABEL}
+    ports:
+    - protocol: tcp
+      port: ${PORT}
+  containers:
+  - name: phlox
+    properties:
+      image: ghcr.io/bloodworks-io/phlox:latest
+      ports:
+      - port: ${INTERNAL_PORT}
+      environmentVariables:
+      - name: ALLOWED_ORIGINS
+        value: "${ALLOWED_ORIGINS:-*}"
+      - name: PORT
+        value: "${INTERNAL_PORT}"
+      - name: SERVER_HOST
+        value: "0.0.0.0"
+      - name: DB_ENCRYPTION_KEY
+        secureValue: "${DB_ENCRYPTION_KEY}"
+      resources:
+        requests:
+          cpu: 1
+          memoryInGb: 2
+  - name: proxy
+    properties:
+      image: alpine/socat
+      command: ["socat", "TCP-LISTEN:${PORT},fork,reuseaddr", "TCP:127.0.0.1:${INTERNAL_PORT}"]
+      ports:
+      - port: ${PORT}
+      resources:
+        requests:
+          cpu: 0.5
+          memoryInGb: 0.5
+type: Microsoft.ContainerInstance/containerGroups
+EOF
+
 echo "Deploying container instance $CONTAINER_NAME..."
-az container create \
-  --resource-group "$RESOURCE_GROUP" \
-  --name "$CONTAINER_NAME" \
-  --image ghcr.io/bloodworks-io/phlox:latest \
-  --cpu 1 \
-  --memory 2 \
-  --os-type Linux \
-  --ports "$PORT" \
-  --dns-name-label "$DNS_LABEL" \
-  --environment-variables \
-    ALLOWED_ORIGINS="${ALLOWED_ORIGINS:-*}" \
-    PORT="$PORT" \
-    SERVER_HOST=0.0.0.0 \
-  --secure-environment-variables \
-    DB_ENCRYPTION_KEY="$DB_ENCRYPTION_KEY" \
-  --restart-policy OnFailure
+az container create --resource-group "$RESOURCE_GROUP" --file "$MANIFEST" --output none
 
 FQDN=$(az container show \
   --resource-group "$RESOURCE_GROUP" \
