@@ -35,11 +35,37 @@ jobs:
           uv run ruff check nuguard/
           uv run mypy nuguard/
 
+  public-api-contract:
+    name: Public API contract
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    needs: lint
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      - name: Verify public API schema contract
+        run: uv run pytest tests/contracts/test_public_api_schema_contract.py -q
+
   test:
     name: Run full pytest suite
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    needs: lint
+    needs:
+      - lint
+      - public-api-contract
 
     steps:
       - name: Checkout
