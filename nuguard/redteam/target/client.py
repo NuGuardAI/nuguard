@@ -21,6 +21,8 @@ from nuguard.common.response_extraction import SESSION_ID_KEYS as _SESSION_ID_KE
 from .session import AttackSession
 
 if TYPE_CHECKING:
+    from nuguard.common.llm_client import LLMClient
+
     from .framework_adapters import FrameworkAdapter
 
 _log = get_logger(__name__)
@@ -29,6 +31,54 @@ _log = get_logger(__name__)
 _adk_fallback_warned: set[str] = set()
 
 DEFAULT_TIMEOUT = 30.0
+
+# Cap on how many times a single TargetAppClient will ask the LLM to repair
+# a 422 body shape. Bounded low: this is meant to fix a one-off config gap
+# (a required field the auto-discovered chat payload doesn't know about),
+# not to iteratively hill-climb an arbitrary schema at LLM-call expense on
+# every scenario.
+MAX_422_HEAL_ATTEMPTS = 2
+
+_HEAL_SYSTEM_PROMPT = (
+    "You are helping repair an HTTP API request that failed schema validation. "
+    "Given the JSON body that was sent and the validation error the server "
+    "returned, respond with a JSON object containing ONLY the additional "
+    "top-level fields needed to satisfy the validation error, with plausible "
+    "placeholder values matching the expected type (e.g. a small integer for "
+    "an id-like field, a short string for a text field, a UUID-shaped string "
+    "for a token/session field). Do not repeat fields already present in the "
+    "sent body. Do not include commentary — respond with JSON only, e.g. "
+    '{"bot_id": 1}. If the error does not describe a missing/invalid field '
+    "(e.g. it is an auth or rate-limit error), respond with {}."
+)
+
+
+def _looks_like_schema_error(body_text: str) -> bool:
+    """Return True when *body_text* looks like a field-validation error body.
+
+    Recognises the common shapes: FastAPI/Pydantic
+    ``{"detail": [{"loc": [...], "msg": ..., "type": "missing"}]}``, and the
+    simpler ``{"detail": [{"field": ..., "message": ...}]}`` variant. This
+    gate exists so a 422 that's actually an auth/business-logic rejection
+    (no field-shape information) doesn't burn an LLM call for nothing.
+    """
+    if not body_text:
+        return False
+    try:
+        data = json.loads(body_text)
+    except Exception:
+        return False
+    detail = data.get("detail") if isinstance(data, dict) else None
+    if isinstance(detail, str):
+        return False
+    if isinstance(detail, list) and detail:
+        return all(
+            isinstance(item, dict) and ({"loc", "msg"} <= item.keys() or "field" in item)
+            for item in detail
+        )
+    if isinstance(data, dict) and isinstance(data.get("errors"), (list, dict)):
+        return True
+    return False
 
 # Well-known OpenAI/Anthropic/LangChain-style chat-history field names.  When
 # chat_payload_key matches one of these (and chat_payload_list is True), the
@@ -193,6 +243,7 @@ class TargetAppClient:
         chat_payload_extras: dict[str, Any] | None = None,
         max_concurrent_requests: int = 0,
         max_transient_hold_seconds: float = 300.0,
+        heal_llm: "LLMClient | None" = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self._chat_path = chat_path
@@ -258,6 +309,12 @@ class TargetAppClient:
         # Populated by build_target_app_client() with human-readable notes about
         # automatic config resolution (URL fallback, auth upgrade, etc.).
         self.resolution_notes: list[str] = []
+        # Optional LLM used to self-heal a 422 schema-validation error by
+        # inferring the missing request field(s) from the error body — see
+        # _attempt_422_heal(). None disables self-healing (falls straight
+        # through to the existing "[HTTP 422]" behaviour).
+        self._heal_llm: "LLMClient | None" = heal_llm
+        self._heal_attempts_used = 0
 
     def _parse_retry_after_seconds(self, value: str | None) -> float | None:
         if not value:
@@ -379,6 +436,62 @@ class TargetAppClient:
         if self._consecutive_errors:
             _log.debug("Chat endpoint recovered — resetting error counter")
         self._consecutive_errors = 0
+
+    async def _attempt_422_heal(self, sent_body: dict, error_body_text: str) -> bool:
+        """Ask the LLM to infer missing/invalid field(s) from a 422 error body.
+
+        On success, merges the inferred fields into ``self._chat_payload_extras``
+        (so every subsequent request on this client carries them, not just a
+        retry of this one) and returns True. Returns False when self-healing
+        is disabled, the budget is exhausted, the error body doesn't look like
+        a field-validation error, or the LLM call didn't yield anything new.
+        """
+        if self._heal_llm is None or self._heal_attempts_used >= MAX_422_HEAL_ATTEMPTS:
+            return False
+        if not _looks_like_schema_error(error_body_text):
+            return False
+
+        self._heal_attempts_used += 1
+        prompt = (
+            f"Request body sent:\n{json.dumps(sent_body)}\n\n"
+            f"Server validation error (HTTP 422):\n{error_body_text[:1000]}"
+        )
+        try:
+            from nuguard.common.json_utils import extract_json_object  # noqa: PLC0415
+
+            raw = await self._heal_llm.complete(
+                prompt,
+                system=_HEAL_SYSTEM_PROMPT,
+                label=f"422-heal | path={self._chat_path}",
+                temperature=0.0,
+            )
+            extra_fields = extract_json_object(raw)
+        except Exception as exc:
+            _log.debug("_attempt_422_heal: LLM call failed: %s", exc)
+            return False
+
+        if not isinstance(extra_fields, dict) or not extra_fields:
+            return False
+        new_fields = {
+            k: v for k, v in extra_fields.items()
+            if k not in sent_body and k not in self._chat_payload_extras
+        }
+        if not new_fields:
+            return False
+
+        self._chat_payload_extras.update(new_fields)
+        _log.info(
+            "422 self-heal: inferred missing field(s) %s for %s (attempt %d/%d) — "
+            "retrying and reusing for subsequent requests",
+            list(new_fields), self._chat_path, self._heal_attempts_used, MAX_422_HEAL_ATTEMPTS,
+        )
+        self.resolution_notes.append(
+            f"HTTP 422 on {self._chat_path} was auto-repaired by inferring field(s) "
+            f"{list(new_fields)} from the validation error body via LLM. Consider "
+            f"adding these under target.chat_payload_extras in nuguard.yaml to skip "
+            f"this at startup."
+        )
+        return True
 
     def reset_circuit_breaker(self) -> None:
         """Reset the consecutive-error counter.
@@ -611,7 +724,10 @@ class TargetAppClient:
     async def _send_impl(self, payload: str, session: AttackSession) -> tuple[str, list[dict]]:
         """Inner send implementation (called with or without the request semaphore)."""
         data: dict | list | str = {}
-        for attempt in range(self._max_429_retries + 1):
+        body: dict | None = None
+        # Bounded to max_429_retries + MAX_422_HEAL_ATTEMPTS so a 422 self-heal
+        # retry doesn't eat into the 429 backoff budget (and vice versa).
+        for attempt in range(self._max_429_retries + MAX_422_HEAL_ATTEMPTS + 1):
             try:
                 session_id: str = ""
                 if self._framework_adapter is not None:
@@ -727,6 +843,13 @@ class TargetAppClient:
                         self._max_429_retries,
                     )
                     await asyncio.sleep(delay)
+                    continue
+                if (
+                    status == 422
+                    and self._framework_adapter is None
+                    and body is not None
+                    and await self._attempt_422_heal(body, exc.response.text or "")
+                ):
                     continue
                 # 4xx responses mean the target IS reachable — it actively rejected our
                 # payload (validation error, auth failure, rate limit, etc.).  Do NOT

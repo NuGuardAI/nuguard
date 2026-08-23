@@ -640,6 +640,78 @@ async def test_send_retries_429_then_succeeds() -> None:
 
 
 @pytest.mark.asyncio
+async def test_send_self_heals_422_with_llm_inferred_field() -> None:
+    """A 422 validation error naming a missing field is repaired via LLM and retried."""
+    import httpx
+    from nuguard.redteam.target.client import TargetAppClient
+    from nuguard.redteam.target.session import AttackSession
+
+    heal_llm = MagicMock()
+    heal_llm.complete = AsyncMock(return_value='{"bot_id": 1}')
+
+    client = TargetAppClient(
+        base_url="http://localhost:9999",
+        chat_payload_key="text",
+        heal_llm=heal_llm,
+    )
+    session = AttackSession(session_id="s1", target_url="http://localhost:9999", chain_id="c1")
+
+    req = httpx.Request("POST", "http://localhost:9999/chat")
+    err_body = json.dumps({"detail": [{"field": "bot_id", "message": "Field required"}]})
+    resp_422 = MagicMock()
+    resp_422.raise_for_status = MagicMock(
+        side_effect=httpx.HTTPStatusError(
+            "422", request=req, response=httpx.Response(422, request=req, text=err_body)
+        )
+    )
+
+    resp_ok = MagicMock()
+    resp_ok.raise_for_status = MagicMock()
+    resp_ok.json = MagicMock(return_value={"response": "ok"})
+
+    with patch.object(
+        client._client, "post", new_callable=AsyncMock, side_effect=[resp_422, resp_ok]
+    ) as post_mock:
+        text, _ = await client.send("hello", session)
+
+    assert text == "ok"
+    assert post_mock.await_count == 2
+    heal_llm.complete.assert_awaited_once()
+    # The healed field is merged into chat_payload_extras for subsequent requests.
+    assert client._chat_payload_extras == {"bot_id": 1}
+    second_call_body = post_mock.await_args_list[1].kwargs["json"]
+    assert second_call_body["bot_id"] == 1
+    await client.aclose()
+
+
+@pytest.mark.asyncio
+async def test_send_422_heal_skipped_without_llm() -> None:
+    """Without a heal_llm configured, a 422 falls straight through as before."""
+    import httpx
+    from nuguard.redteam.target.client import TargetAppClient
+    from nuguard.redteam.target.session import AttackSession
+
+    client = TargetAppClient(base_url="http://localhost:9999", chat_payload_key="text")
+    session = AttackSession(session_id="s1", target_url="http://localhost:9999", chain_id="c1")
+
+    req = httpx.Request("POST", "http://localhost:9999/chat")
+    err_body = json.dumps({"detail": [{"field": "bot_id", "message": "Field required"}]})
+    resp_422 = MagicMock()
+    resp_422.raise_for_status = MagicMock(
+        side_effect=httpx.HTTPStatusError(
+            "422", request=req, response=httpx.Response(422, request=req, text=err_body)
+        )
+    )
+
+    with patch.object(client._client, "post", new_callable=AsyncMock, return_value=resp_422) as post_mock:
+        text, _ = await client.send("hello", session)
+
+    assert text == "[HTTP 422]"
+    assert post_mock.await_count == 1
+    await client.aclose()
+
+
+@pytest.mark.asyncio
 async def test_invoke_endpoint_retries_429_then_succeeds() -> None:
     """invoke_endpoint() retries HTTP 429 responses before returning."""
     from nuguard.redteam.target.client import TargetAppClient

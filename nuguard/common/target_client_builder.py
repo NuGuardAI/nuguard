@@ -24,6 +24,7 @@ from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
     from nuguard.common.auth import AuthConfig
+    from nuguard.common.llm_client import LLMClient
     from nuguard.redteam.target.client import TargetAppClient
     from nuguard.sbom.models import AiSbomDocument
 
@@ -310,6 +311,7 @@ def build_target_app_client(
     adk_cfg: Any = None,
     explicitly_set: frozenset[str] | set[str] = frozenset(),
     payload_extras: dict[str, Any] | None = None,
+    heal_llm: "LLMClient | None" = None,
 ) -> "TargetAppClient":
     """Build a :class:`TargetAppClient` with SBOM-assisted config resolution.
 
@@ -330,6 +332,10 @@ def build_target_app_client(
         explicitly_set: Set of config field names that were *explicitly* provided
             by the user (e.g. Pydantic ``model_fields_set``).  Discovery only
             overrides values that are *not* in this set.
+        heal_llm: Optional LLM client used to self-heal a 422 schema-validation
+            error by inferring the missing request field(s) from the error
+            body (see ``TargetAppClient._attempt_422_heal``). None disables
+            self-healing.
 
     Returns:
         A fully configured :class:`TargetAppClient` instance.  Check
@@ -417,6 +423,7 @@ def build_target_app_client(
         chat_response_key=response_key,
         framework_adapter=framework_adapter,
         chat_payload_extras=payload_extras or None,
+        heal_llm=heal_llm,
     )
     client.resolution_notes = resolution_notes
     return client

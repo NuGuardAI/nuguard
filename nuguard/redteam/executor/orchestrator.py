@@ -1312,6 +1312,7 @@ class RedteamOrchestrator:
             # so treat endpoint/payload as explicitly set to skip re-discovery.
             explicitly_set=frozenset({"target_endpoint", "chat_payload_key", "chat_response_key"}),
             payload_extras=self._chat_payload_extras or None,
+            heal_llm=self._eval_llm or self._redteam_llm,
         )
         for _note in (getattr(client, "resolution_notes", None) or []):
             if isinstance(_note, str) and _note:
