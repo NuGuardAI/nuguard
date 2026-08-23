@@ -517,6 +517,11 @@ class TargetAppClient:
         """The currently configured chat endpoint path."""
         return self._chat_path
 
+    @property
+    def path_param_values(self) -> dict[str, str]:
+        """Currently bound ``:name``/``{name}`` path-param values (copy)."""
+        return dict(self._path_param_values)
+
     def set_chat_endpoint(
         self,
         path: str,

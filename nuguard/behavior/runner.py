@@ -1916,6 +1916,7 @@ class BehaviorRunner:
 
         # Reset endpoint rotation state for this run.
         self._rotated_chat_endpoint: "tuple[str, str, bool, str | None] | None" = None
+        self._bootstrapped_path_params: dict[str, str] = {}
 
         # Pre-scan discovery: connect to the live agent and extract the
         # authenticated user's real name + IDs before generating test payloads.
@@ -2016,6 +2017,13 @@ class BehaviorRunner:
                 self._target_endpoint_source = _pf.endpoint_source or self._target_endpoint_source
             if not _pf.ok:
                 _preflight_ok = False
+            # Path params (e.g. a bootstrapped conversation ":id") are bound on
+            # the shared preflight client only — isolated scenario clients get a
+            # fresh TargetAppClient each with no such binding, so capture them
+            # here to replay on every scenario client below.
+            _client_path_params = getattr(client, "path_param_values", None)
+            if isinstance(_client_path_params, dict):
+                self._bootstrapped_path_params = _client_path_params
         except Exception as _pf_exc:
             _log.debug("Pre-flight check failed (non-fatal): %s", _pf_exc)
 
@@ -2106,6 +2114,13 @@ class BehaviorRunner:
                 # isolated scenario client uses the correct (non-broken) endpoint.
                 if _isolate and self._rotated_chat_endpoint:
                     _scenario_client.set_chat_endpoint(*self._rotated_chat_endpoint)
+                # Replay path params bootstrapped during pre-flight (e.g. a
+                # two-step chat's conversation ":id") — a fresh isolated client
+                # otherwise starts with none bound, causing every turn to fail
+                # with an unresolved-path-param config error.
+                if _isolate and self._bootstrapped_path_params and hasattr(_scenario_client, "set_path_param"):
+                    for _pp_name, _pp_value in self._bootstrapped_path_params.items():
+                        _scenario_client.set_path_param(_pp_name, _pp_value)
                 try:
                     result = await self._run_scenario(scenario, _scenario_client, policy_evaluator)  # type: ignore[arg-type]
                     # Check if the first verdict was a first-turn 405 failure.

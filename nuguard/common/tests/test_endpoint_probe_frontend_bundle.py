@@ -93,3 +93,42 @@ async def test_unreachable_target_returns_none_without_raising():
 
     assert origin is None
     assert notes == []
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_loopback_origin_reuses_target_host_with_discovered_port():
+    """A bundle baking in 'localhost:<port>' (e.g. a container-group build
+    where frontend/backend share networking) must never be dereferenced
+    as-is from an external process — it resolves to whatever happens to be
+    listening on that port on *this* machine, not the app's real backend.
+    The port is still a useful hint, so it's recombined with target.url's
+    own hostname instead of being trusted or fully discarded."""
+    respx.get(f"{BASE}/").mock(return_value=httpx.Response(200, text=_SPA_HTML))
+    bundle = 'const cfg={baseURL:"http://localhost:3010/api/v1"};'
+    respx.get(f"{BASE}/assets/index-abc123.js").mock(
+        return_value=httpx.Response(200, text=bundle)
+    )
+
+    origin, notes = await discover_api_origin_from_frontend_bundle(BASE)
+
+    assert origin == "http://frontend-only.test:3010"
+    assert len(notes) == 1
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_loopback_origin_same_port_as_target_is_ignored():
+    """No usable port hint (same port as target, which we already have) —
+    nothing to recombine, so the loopback origin is dropped entirely."""
+    respx.get(f"{BASE}/").mock(return_value=httpx.Response(200, text=_SPA_HTML))
+    bundle = 'const cfg={baseURL:"http://localhost/api/v1"};'
+    respx.get(f"{BASE}/assets/index-abc123.js").mock(
+        return_value=httpx.Response(200, text=bundle)
+    )
+
+    origin, notes = await discover_api_origin_from_frontend_bundle(BASE)
+
+    assert origin is None
+    assert notes == []
+
