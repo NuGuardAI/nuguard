@@ -43,13 +43,13 @@ DNS_LABEL="${ACI_DNS_LABEL:-studyield-nuguard-$(openssl rand -hex 4)}"
 POSTGRES_DB="${POSTGRES_DB:-studyield_dev}"
 POSTGRES_USER="${POSTGRES_USER:-postgres}"
 POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-postgres}"
-# Backend now owns port 80 (the actual NuGuard behavior/redteam target);
-# frontend moves to 8080 to free it up (its own nginx.conf hardcodes
-# "listen 80", patched at container-start via a command override below —
-# see tests/apps/phlox-app/deploy-azure-aci.sh for the same pattern applied
-# to a single-process app).
-BACKEND_PORT="${BACKEND_PORT:-80}"
-FRONTEND_PORT="${FRONTEND_PORT:-8080}"
+# Frontend owns port 80 — the browsable demo URL for this app. Backend stays
+# on its own dedicated port (still publicly reachable, just not the default
+# HTTP port) since NuGuard's behavior/redteam tooling runs externally and
+# needs a reachable API endpoint; nginx's own "listen 80" needs no override
+# here since frontend keeps port 80.
+BACKEND_PORT="${BACKEND_PORT:-3010}"
+FRONTEND_PORT="${FRONTEND_PORT:-80}"
 
 echo "Creating resource group $RESOURCE_GROUP in $LOCATION (idempotent)..."
 az group create --name "$RESOURCE_GROUP" --location "$LOCATION" --output none
@@ -77,6 +77,18 @@ rm -f repo/backend/scripts/seed-users.js
 TEMPLATE_FILE=$(mktemp /tmp/studyield-aci-XXXXXX.yaml)
 trap 'rm -f "$TEMPLATE_FILE"' EXIT
 
+# Optional Docker Hub credentials (set DOCKERHUB_USERNAME/DOCKERHUB_PASSWORD in
+# .env) — postgres/redis/qdrant/clickhouse are pulled straight from Docker Hub
+# on every deploy, and anonymous pulls get rate-limited (429) surprisingly
+# easily. Authenticated pulls avoid that.
+DOCKERHUB_CREDS=""
+if [[ -n "${DOCKERHUB_USERNAME:-}" && -n "${DOCKERHUB_PASSWORD:-}" ]]; then
+  DOCKERHUB_CREDS="    - server: index.docker.io
+      username: $DOCKERHUB_USERNAME
+      password: '$DOCKERHUB_PASSWORD'
+"
+fi
+
 cat > "$TEMPLATE_FILE" <<EOF
 apiVersion: '2021-09-01'
 location: $LOCATION
@@ -85,7 +97,7 @@ properties:
   osType: Linux
   restartPolicy: OnFailure
   imageRegistryCredentials:
-    - server: $ACR_LOGIN_SERVER
+${DOCKERHUB_CREDS}    - server: $ACR_LOGIN_SERVER
       username: $ACR_USERNAME
       password: $ACR_PASSWORD
   ipAddress:
@@ -162,7 +174,6 @@ properties:
         image: $ACR_LOGIN_SERVER/studyield-frontend:latest
         ports:
           - port: $FRONTEND_PORT
-        command: ["sh", "-c", "sed -i 's/listen 80;/listen $FRONTEND_PORT;/' /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'"]
         environmentVariables:
           - {name: VITE_API_URL, value: 'http://localhost:$BACKEND_PORT'}
         resources:
