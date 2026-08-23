@@ -36,7 +36,7 @@ sbom_generation:
 target:
   # Backend API — API_PREFIX=api/v1 (see backend/.env.example), e.g. /api/v1/chat.
   # url: http://localhost:3010
-  url: http://57.162.113.55
+  url: http://studyield-nuguard-7b904de1.eastus2.azurecontainer.io
 
   # Chat/RAG endpoint — confirm against the generated SBOM; likely /api/v1/chat
   # or /api/v1/ai/chat.
