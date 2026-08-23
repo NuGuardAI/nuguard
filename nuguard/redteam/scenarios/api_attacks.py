@@ -62,6 +62,7 @@ def build_auth_bypass(
     path: str,
     method: str = "GET",
     request_body_schema: dict[str, str] | None = None,
+    sensitive_fields: list[str] | None = None,
 ) -> AttackScenario:
     """Build an authentication bypass scenario for a protected endpoint.
 
@@ -71,6 +72,11 @@ def build_auth_bypass(
     For POST/PUT/PATCH endpoints a realistic body is generated from
     *request_body_schema* so that the request passes schema validation and
     reaches the authentication check rather than being rejected with 422.
+
+    *sensitive_fields* (from SBOM ``pii_fields``/``phi_fields``/``pfi_fields``
+    metadata on the endpoint or its backing datastore) is used at execution
+    time to check whether the bypassed response actually contains sensitive
+    data, and here to boost the pre-execution impact score.
     """
     # Build a realistic body for write-method endpoints so the request
     # passes schema validation — auth bypass must be tested on a valid request.
@@ -99,10 +105,14 @@ def build_auth_bypass(
                 success_signal=HTTP_2XX_SENTINEL,
                 on_failure="abort",
                 use_llm_eval=True,
+                strip_auth=True,
+                sensitive_fields=sensitive_fields or [],
             )
         ],
     )
-    chain.pre_score = pre_score(chain, has_unauth_entry=True)
+    chain.pre_score = pre_score(
+        chain, has_unauth_entry=True, pii_in_path=bool(sensitive_fields)
+    )
     return AttackScenario(
         scenario_id=str(uuid.uuid4()),
         goal_type=GoalType.API_ATTACK,
@@ -158,12 +168,23 @@ def build_mass_assignment(
                 http_method=method,
                 http_body=body,
                 target_node_id=endpoint_id,
-                success_signal="superuser",
+                # OR-matched keywords: the literal escalation value ("superuser")
+                # or a JSON-shaped echo of role/is_admin/is_superuser being
+                # accepted — catches servers that echo the field name+value back
+                # without necessarily using the word "superuser" itself.
+                success_signal=(
+                    "superuser"
+                    '|"role": "admin"|"role":"admin"'
+                    '|"is_admin": true|"is_admin":true'
+                    '|"is_superuser": true|"is_superuser":true'
+                ),
                 # Require 2xx so that frameworks (e.g. FastAPI) echoing the request
                 # body verbatim inside a 422 validation error do not produce a false
-                # positive — "superuser" appearing in a rejection is not a success.
+                # positive — the escalation keywords appearing in a rejection is
+                # not a success.
                 success_requires_2xx=True,
                 on_failure="abort",
+                use_llm_eval=True,
             )
         ],
     )
@@ -175,7 +196,9 @@ def build_mass_assignment(
         title=f"Mass Assignment — {endpoint_name}",
         description=(
             f"POST privilege-escalating fields (role, is_admin, is_superuser) to "
-            f"{method} {path}.  Response echoing 'superuser' confirms mass assignment."
+            f"{method} {path}.  A 2xx response echoing back an accepted "
+            f"escalation field (role=admin, is_admin, is_superuser, or "
+            f"privilege_level=superuser) confirms mass assignment."
         ),
         target_node_ids=[endpoint_id],
         impact_score=chain.pre_score,
@@ -293,6 +316,7 @@ def build_idor(
     endpoint_name: str,
     path: str,
     path_params: list[str],
+    sensitive_fields: list[str] | None = None,
 ) -> AttackScenario | None:
     """Build an IDOR (Insecure Direct Object Reference) scenario.
 
@@ -324,10 +348,11 @@ def build_idor(
                 success_signal=HTTP_2XX_SENTINEL,
                 on_failure="abort",
                 use_llm_eval=True,
+                sensitive_fields=sensitive_fields or [],
             )
         ],
     )
-    chain.pre_score = pre_score(chain)
+    chain.pre_score = pre_score(chain, pii_in_path=bool(sensitive_fields))
     return AttackScenario(
         scenario_id=str(uuid.uuid4()),
         goal_type=GoalType.API_ATTACK,
@@ -335,7 +360,66 @@ def build_idor(
         title=f"IDOR — {endpoint_name}",
         description=(
             f"Access GET {probe_path} using a different object ID.  "
-            f"A 2xx response without explicit authorisation check indicates IDOR."
+            f"A 2xx response containing another record's data (not just any "
+            f"2xx) indicates IDOR."
+        ),
+        target_node_ids=[endpoint_id],
+        impact_score=chain.pre_score,
+        chain=chain,
+    )
+
+
+def build_open_data_exposure(
+    endpoint_id: str,
+    endpoint_name: str,
+    path: str,
+    method: str = "GET",
+    sensitive_fields: list[str] | None = None,
+) -> AttackScenario:
+    """Probe an already-open (no-auth-required) endpoint for data exposure.
+
+    Unlike :func:`build_auth_bypass`, this endpoint requires no
+    authentication by design — there is no auth check to bypass.  The
+    question is simply whether it returns sensitive data (PII/PHI/PFI
+    declared on its backing datastore) to anyone who calls it.  Success
+    requires HTTP 2xx *and* evidence the body actually contains that data —
+    see ``response_data_check.check_response_for_data_exposure``.
+    """
+    chain_id = str(uuid.uuid4())
+    chain = ExploitChain(
+        chain_id=chain_id,
+        goal_type=GoalType.API_ATTACK,
+        scenario_type=ScenarioType.DIRECT_PII_EXTRACTION,
+        sbom_path=[endpoint_id],
+        owasp_asi_ref="ASI03 – Identity and Privilege Abuse",
+        owasp_llm_ref="LLM06 – Sensitive Information Disclosure",
+        steps=[
+            ExploitStep(
+                step_id=f"{chain_id}_s1",
+                step_type="INVOKE",
+                description=f"Probe open endpoint {endpoint_name} for sensitive data exposure",
+                payload="",
+                target_path=path,
+                http_method=method,
+                target_node_id=endpoint_id,
+                success_signal=HTTP_2XX_SENTINEL,
+                on_failure="abort",
+                use_llm_eval=True,
+                sensitive_fields=sensitive_fields or [],
+            )
+        ],
+    )
+    chain.pre_score = pre_score(chain, has_unauth_entry=True, pii_in_path=True)
+    return AttackScenario(
+        scenario_id=str(uuid.uuid4()),
+        goal_type=GoalType.API_ATTACK,
+        scenario_type=ScenarioType.DIRECT_PII_EXTRACTION,
+        title=f"Open Endpoint Data Exposure — {endpoint_name}",
+        description=(
+            f"Call {method} {path}, an endpoint that requires no authentication "
+            f"by design and is declared to return sensitive data.  A response "
+            f"containing PII/PHI/PFI values or field names confirms "
+            f"unrestricted data exposure."
         ),
         target_node_ids=[endpoint_id],
         impact_score=chain.pre_score,

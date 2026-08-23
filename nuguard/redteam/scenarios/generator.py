@@ -37,6 +37,7 @@ from .api_attacks import (
     build_auth_scope_bypass,
     build_idor,
     build_mass_assignment,
+    build_open_data_exposure,
     build_rate_limit_probe,
 )
 from .data_exfiltration import (
@@ -1617,7 +1618,24 @@ class ScenarioGenerator:
         - MASS_ASSIGNMENT — for write methods (POST/PUT/PATCH)
         - IDOR          — for endpoints with ID-like path parameters (explicit
                           metadata OR path template patterns detected via regex)
+        - Open Endpoint Data Exposure — for endpoints that require no auth by
+                          design AND are declared to return sensitive data;
+                          there's no auth check to bypass, so the question is
+                          simply whether the data comes back to anyone who asks.
         """
+        # SBOM-declared sensitive field names, pooled across every DATASTORE
+        # node (mirrors the pii_datastores/pfi_datastores scan in
+        # _guided_conversation_scenarios) — used to boost pre-scores and to
+        # let executed steps check their response bodies against real field
+        # names rather than only generic PII-shaped-value regexes.
+        sensitive_field_pool: list[str] = []
+        for n in self._sbom.nodes:
+            if n.component_type == ComponentType.DATASTORE:
+                sensitive_field_pool.extend(n.metadata.pii_fields or [])
+                sensitive_field_pool.extend(n.metadata.phi_fields or [])
+                sensitive_field_pool.extend(n.metadata.pfi_fields or [])
+        sensitive_field_pool = list(dict.fromkeys(sensitive_field_pool))
+
         out: list[AttackScenario] = []
         for node in self._sbom.nodes:
             if node.component_type != ComponentType.API_ENDPOINT:
@@ -1640,6 +1658,19 @@ class ScenarioGenerator:
             # Extract request body schema from SBOM metadata (populated by FastAPI adapter)
             request_body_schema: dict[str, str] | None = meta.request_body_schema or None
 
+            # This endpoint's own sensitive fields (if the extractor tagged it
+            # directly) plus the SBOM-wide datastore pool — used to prioritise
+            # and to validate that a successful probe actually returned data.
+            endpoint_sensitive_fields = list(dict.fromkeys(
+                (meta.pii_fields or [])
+                + (meta.phi_fields or [])
+                + (meta.pfi_fields or [])
+                + sensitive_field_pool
+            ))
+            is_sensitive = bool(meta.returns_sensitive_data) or bool(
+                meta.pii_fields or meta.phi_fields or meta.pfi_fields
+            )
+
             # Auth bypass: explicit auth_required=True, or unknown (None) and not public
             if meta.auth_required or (meta.auth_required is None and not is_public):
                 out.append(
@@ -1649,8 +1680,25 @@ class ScenarioGenerator:
                         path=path,
                         method=method,
                         request_body_schema=request_body_schema,
+                        sensitive_fields=endpoint_sensitive_fields,
                     )
                 )
+
+            # Open Endpoint Data Exposure: no auth is required by design (either
+            # explicitly or by public-path match), but the endpoint is declared
+            # to return sensitive data — there's no auth bypass to test, just
+            # whether the data is exposed to anyone who calls it.
+            if meta.auth_required is False or is_public:
+                if is_sensitive:
+                    out.append(
+                        build_open_data_exposure(
+                            endpoint_id=endpoint_id,
+                            endpoint_name=node.name,
+                            path=path,
+                            method=method,
+                            sensitive_fields=endpoint_sensitive_fields,
+                        )
+                    )
 
             if method in ("POST", "PUT", "PATCH"):
                 out.append(
@@ -1687,6 +1735,7 @@ class ScenarioGenerator:
                     endpoint_name=node.name,
                     path=path,
                     path_params=inferred_params,
+                    sensitive_fields=endpoint_sensitive_fields,
                 )
                 if scenario is not None:
                     out.append(scenario)

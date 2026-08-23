@@ -969,3 +969,216 @@ class TestFictionalDataDetection:
         response = "Sorry, I can only answer questions related to airline travel."
         signals = _detect_fictional_data(response)
         assert not signals
+
+
+# ---------------------------------------------------------------------------
+# API_ATTACK data-exposure validation improvements
+# ---------------------------------------------------------------------------
+
+import httpx  # noqa: E402
+import respx  # noqa: E402
+
+from nuguard.common.response_data_check import check_response_for_data_exposure  # noqa: E402
+from nuguard.models.exploit_chain import ExploitStep  # noqa: E402
+from nuguard.redteam.executor.executor import AttackExecutor  # noqa: E402
+from nuguard.redteam.llm_engine.signals import (  # noqa: E402
+    detect_api_data_exposure as _detect_api_data_exposure,
+)
+from nuguard.redteam.scenarios.api_attacks import (  # noqa: E402
+    build_idor,
+    build_open_data_exposure,
+)
+from nuguard.redteam.target.client import TargetAppClient  # noqa: E402
+from nuguard.redteam.target.session import AttackSession  # noqa: E402
+
+
+class TestResponseDataCheck:
+    def test_empty_body_not_exposed(self):
+        result = check_response_for_data_exposure("")
+        assert not result.exposed
+
+    def test_generic_ack_not_exposed(self):
+        result = check_response_for_data_exposure('{"status": "ok"}')
+        assert not result.exposed
+
+    def test_pii_value_marks_exposed(self):
+        result = check_response_for_data_exposure(
+            '{"customer": "jane.doe@example.com is the account holder"}'
+        )
+        assert result.exposed
+        assert result.pii_values
+
+    def test_bulk_record_list_marks_exposed(self):
+        body = json.dumps([{"id": i, "status": "active"} for i in range(5)])
+        result = check_response_for_data_exposure(body)
+        assert result.exposed
+        assert result.record_count == 5
+
+    def test_single_record_without_pii_not_exposed(self):
+        result = check_response_for_data_exposure('{"id": 42, "status": "active"}')
+        assert not result.exposed
+
+    def test_matched_sensitive_field_name_marks_exposed(self):
+        result = check_response_for_data_exposure(
+            '{"ssn": "123-45-6789"}', sensitive_fields=["ssn", "diagnosis"]
+        )
+        assert result.exposed
+        assert "ssn" in result.matched_sensitive_fields
+
+
+class TestApiDataExposureSignal:
+    def test_no_signal_when_not_exposed(self):
+        assert _detect_api_data_exposure('{"status": "ok"}') == []
+
+    def test_signal_when_exposed(self):
+        signals = _detect_api_data_exposure(
+            '{"email": "user@example.com is on file"}'
+        )
+        assert signals
+        assert signals[0].name == "api_data_exposure"
+        assert signals[0].polarity == "success"
+
+
+class TestIdorRequiresSensitiveFields:
+    def test_idor_step_carries_sensitive_fields(self):
+        scenario = build_idor(
+            "ep-1", "orders", "/api/orders/{id}", ["id"],
+            sensitive_fields=["email", "ssn"],
+        )
+        assert scenario is not None
+        assert scenario.chain.steps[0].sensitive_fields == ["email", "ssn"]
+
+    def test_idor_no_id_param_returns_none(self):
+        assert build_idor("ep-1", "chat", "/api/chat", []) is None
+
+
+class TestOpenDataExposureScenario:
+    def test_builds_scenario_with_correct_shape(self):
+        scenario = build_open_data_exposure(
+            "ep-1", "public-users", "/api/public/users", method="GET",
+            sensitive_fields=["email", "phone"],
+        )
+        step = scenario.chain.steps[0]
+        assert step.target_path == "/api/public/users"
+        assert step.strip_auth is False  # no auth to strip — endpoint is open by design
+        assert step.sensitive_fields == ["email", "phone"]
+        assert step.success_signal == "HTTP_2XX"
+        assert step.use_llm_eval is True
+
+    def test_pre_score_reflects_pii_exposure(self):
+        scenario = build_open_data_exposure(
+            "ep-1", "public-users", "/api/public/users", sensitive_fields=["email"],
+        )
+        assert scenario.impact_score > 8.0  # base API_ATTACK score + pii/unauth modifiers
+
+
+class TestAuthBypassStripsAuthHeader:
+    @pytest.mark.asyncio
+    async def test_invoke_endpoint_strip_auth_omits_configured_header(self):
+        client = TargetAppClient(
+            base_url="http://localhost:9999",
+            default_headers={"Authorization": "Bearer secret-token"},
+        )
+        captured: dict = {}
+
+        with respx.mock(base_url="http://localhost:9999") as rx:
+            def _capture(request: httpx.Request) -> httpx.Response:
+                captured["authorization"] = request.headers.get("authorization")
+                return httpx.Response(200, json={"ok": True})
+
+            rx.get("/api/admin").mock(side_effect=_capture)
+            status, _, _ = await client.invoke_endpoint(
+                path="/api/admin", method="GET", strip_auth=True
+            )
+
+        assert status == 200
+        assert captured["authorization"] is None
+        await client.aclose()
+
+    @pytest.mark.asyncio
+    async def test_invoke_endpoint_without_strip_auth_sends_header(self):
+        client = TargetAppClient(
+            base_url="http://localhost:9999",
+            default_headers={"Authorization": "Bearer secret-token"},
+        )
+        captured: dict = {}
+
+        with respx.mock(base_url="http://localhost:9999") as rx:
+            def _capture(request: httpx.Request) -> httpx.Response:
+                captured["authorization"] = request.headers.get("authorization")
+                return httpx.Response(200, json={"ok": True})
+
+            rx.get("/api/admin").mock(side_effect=_capture)
+            status, _, _ = await client.invoke_endpoint(path="/api/admin", method="GET")
+
+        assert status == 200
+        assert captured["authorization"] == "Bearer secret-token"
+        await client.aclose()
+
+    def test_build_auth_bypass_step_sets_strip_auth(self):
+        scenario = build_auth_bypass("ep-1", "users", "/api/users", method="GET")
+        assert scenario.chain.steps[0].strip_auth is True
+
+
+class TestExecutorDeterministicExposureGate:
+    @pytest.mark.asyncio
+    async def test_2xx_without_exposure_and_no_evaluator_is_not_a_finding(self):
+        """When no LLM evaluator is configured, a bare 2xx with no evidence of
+        actual data exposure must not count as a finding — only the status
+        code was checked, and an empty/generic body proves nothing."""
+        client = MagicMock()
+        client.invoke_endpoint = AsyncMock(return_value=(200, '{"status": "ok"}', {}))
+        executor = AttackExecutor(client=client, canary=None, policy=None)
+
+        step = ExploitStep(
+            step_id="s1",
+            step_type="INVOKE",
+            description="probe",
+            payload="",
+            target_path="/api/admin",
+            http_method="GET",
+            target_node_id="ep-1",
+            success_signal="HTTP_2XX",
+            on_failure="abort",
+            use_llm_eval=True,  # requested, but no evaluator configured below
+        )
+        chain = MagicMock()
+        chain.chain_id = "c1"
+        chain.goal_type = GoalType.API_ATTACK
+        session = AttackSession(session_id="s1", target_url="http://localhost", chain_id="c1")
+
+        result = await executor._execute_step_with_payload(step, "", session, chain)
+
+        assert result.data_exposure is not None
+        assert not result.data_exposure.exposed
+        assert result.success_signal_found is False
+
+    @pytest.mark.asyncio
+    async def test_2xx_with_pii_and_no_evaluator_is_a_finding(self):
+        client = MagicMock()
+        client.invoke_endpoint = AsyncMock(
+            return_value=(200, '{"email": "user@example.com"}', {})
+        )
+        executor = AttackExecutor(client=client, canary=None, policy=None)
+
+        step = ExploitStep(
+            step_id="s1",
+            step_type="INVOKE",
+            description="probe",
+            payload="",
+            target_path="/api/admin",
+            http_method="GET",
+            target_node_id="ep-1",
+            success_signal="HTTP_2XX",
+            on_failure="abort",
+        )
+        chain = MagicMock()
+        chain.chain_id = "c1"
+        chain.goal_type = GoalType.API_ATTACK
+        session = AttackSession(session_id="s1", target_url="http://localhost", chain_id="c1")
+
+        result = await executor._execute_step_with_payload(step, "", session, chain)
+
+        assert result.data_exposure is not None
+        assert result.data_exposure.exposed
+        assert result.success_signal_found is True

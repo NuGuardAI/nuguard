@@ -268,6 +268,11 @@ class TargetAppClient:
             headers=merged_headers,
             follow_redirects=True,
         )
+        # Names of headers that carry auth material (Authorization, Cookie, a
+        # custom API-key header, ...), tracked separately from the base
+        # User-Agent default so invoke_endpoint(strip_auth=True) knows which
+        # keys to remove for a genuinely unauthenticated probe.
+        self._auth_header_names: set[str] = set(default_headers or {})
         self._max_consecutive_errors = max_consecutive_errors
         self._max_429_retries = max(0, max_429_retries)
         self._retry_429_backoff_base = max(0.01, retry_429_backoff_base_seconds)
@@ -557,6 +562,7 @@ class TargetAppClient:
         if not headers:
             return
         self._client.headers.update(headers)
+        self._auth_header_names.update(headers)
 
     async def send(self, payload: str, session: AttackSession) -> tuple[str, list[dict]]:
         """Send a prompt payload to the target and return (response_text, tool_calls).
@@ -952,21 +958,42 @@ class TargetAppClient:
         body: dict | None = None,
         params: dict[str, str] | None = None,
         extra_headers: dict[str, str] | None = None,
+        strip_auth: bool = False,
     ) -> tuple[int, str, dict]:
         """Send a direct HTTP request to a specific path.
 
         Returns (status_code, response_text, response_json).  Does NOT raise on
         4xx/5xx — callers inspect the status code to determine attack success.
+
+        When *strip_auth* is True, every header this client tracks as auth
+        material (``self._auth_header_names`` — Authorization, Cookie, a
+        custom API-key header, ...) is removed from the request before it is
+        sent.  httpx merges rather than replaces per-request headers, so this
+        cannot be done by passing ``headers={...}`` alone — the request must
+        be built first and the auth headers deleted from it directly.
         """
         for attempt in range(self._max_429_retries + 1):
             try:
-                resp = await self._client.request(
-                    method=method.upper(),
-                    url=path,
-                    json=body,
-                    params=params,
-                    headers=extra_headers or {},
-                )
+                if strip_auth and self._auth_header_names:
+                    request = self._client.build_request(
+                        method=method.upper(),
+                        url=path,
+                        json=body,
+                        params=params,
+                        headers=extra_headers or {},
+                    )
+                    for name in self._auth_header_names:
+                        if name in request.headers:
+                            del request.headers[name]
+                    resp = await self._client.send(request)
+                else:
+                    resp = await self._client.request(
+                        method=method.upper(),
+                        url=path,
+                        json=body,
+                        params=params,
+                        headers=extra_headers or {},
+                    )
                 if resp.status_code == 429 and attempt < self._max_429_retries:
                     delay = self._retry_delay_seconds(resp.headers, resp.text or "", attempt)
                     _log.warning(
