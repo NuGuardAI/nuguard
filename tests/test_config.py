@@ -21,6 +21,14 @@ def _flatten(yaml_text: str) -> dict:
     return _flatten_yaml(data)
 
 
+def _expand_flatten(yaml_text: str) -> dict:
+    """Full pipeline: env expansion (mirroring load_config) then flatten."""
+    from nuguard.config import _expand_env_vars
+
+    data = yaml.safe_load(textwrap.dedent(yaml_text))
+    return _flatten_yaml(_expand_env_vars(data))
+
+
 class TestFlattenYamlValidateSection:
     def test_validate_target_goes_to_validate_config(self) -> None:
         flat = _flatten("""
@@ -702,11 +710,7 @@ class TestUnsetEnvVarNoneFiltering:
 
     @staticmethod
     def _expand_flatten(yaml_text: str) -> dict:
-        """Full pipeline: env expansion (mirroring load_config) then flatten."""
-        from nuguard.config import _expand_env_vars
-
-        data = yaml.safe_load(textwrap.dedent(yaml_text))
-        return _flatten_yaml(_expand_env_vars(data))
+        return _expand_flatten(yaml_text)
 
     def test_shared_headers_drop_unset_env_vars(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("MY_TENANT", raising=False)
@@ -779,3 +783,77 @@ class TestUnsetEnvVarNoneFiltering:
                 X-Tenant-Id: ${MY_TENANT:-fallback-tenant}
         """)
         assert flat["redteam_headers"] == {"X-Tenant-Id": "fallback-tenant"}
+
+
+class TestUnsetEnvVarScalarFields:
+    """Unset ${VAR} in scalar redteam fields must fall back to model defaults.
+
+    ``_flatten_yaml`` used to stringify the expanded ``None`` into the literal
+    'None', which Literal-typed fields rejected with a raw ValidationError and
+    path-valued fields carried into runtime as a directory literally named
+    ``None``.
+    """
+
+    def test_unset_guided_mutation_mode_keeps_model_default(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("GMM", raising=False)
+        flat = _expand_flatten("""
+            redteam:
+              guided_mutation_mode: ${GMM}
+        """)
+        assert "redteam_guided_mutation_mode" not in flat
+        assert NuGuardConfig().redteam_guided_mutation_mode == "hard"
+
+    def test_set_env_var_still_applies(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("GMM", "soft")
+        flat = _expand_flatten("""
+            redteam:
+              guided_mutation_mode: ${GMM}
+        """)
+        assert flat["redteam_guided_mutation_mode"] == "soft"
+
+    def test_unset_scenario_entry_is_dropped(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("MY_SCENARIO", raising=False)
+        flat = _expand_flatten("""
+            redteam:
+              scenarios:
+                - ${MY_SCENARIO}
+                - policy-violation
+        """)
+        assert flat["redteam_scenarios"] == ["policy-violation"]
+
+    def test_all_unset_scenario_entries_leave_empty_list(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("MY_SCENARIO", raising=False)
+        flat = _expand_flatten("""
+            redteam:
+              scenarios:
+                - ${MY_SCENARIO}
+        """)
+        assert flat["redteam_scenarios"] == []
+
+    def test_unset_catalog_path_not_stringified(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("CATALOG_PATH", raising=False)
+        flat = _expand_flatten("""
+            redteam:
+              catalog_path: ${CATALOG_PATH}
+        """)
+        assert "redteam_catalog_path" not in flat
+
+    def test_unset_prompt_cache_dir_not_stringified(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("PCD", raising=False)
+        flat = _expand_flatten("""
+            redteam:
+              prompt_cache_dir: ${PCD}
+        """)
+        assert "redteam_prompt_cache_dir" not in flat
+
+    def test_unset_emit_pytest_dir_not_stringified(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.delenv("EPD", raising=False)
+        flat = _expand_flatten("""
+            redteam:
+              emit_pytest_dir: ${EPD}
+        """)
+        assert "emit_pytest_dir" not in flat
