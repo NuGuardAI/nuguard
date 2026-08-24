@@ -222,7 +222,7 @@ redteam:
   guided_conversations: false
   guided_max_turns: 3
   guided_concurrency: 1
-  scenario_timeout: 60
+  scenario_timeout: 180             # prepublish gate timeout; 60s was too tight for live LLM-backed target and tripped the 3-consecutive-timeout circuit breaker
 
   finding_triggers:
     canary_hits: true
