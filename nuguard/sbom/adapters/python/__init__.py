@@ -10,12 +10,15 @@ from .datastores import PythonDatastoreAdapter
 from .fastapi_adapter import FastAPIAdapter
 from .flask_adapter import FlaskAdapter
 from .google_adk import GoogleADKPythonAdapter
+from .guardrail_heuristic import GuardrailHeuristicAdapter
 from .guardrails_ai import GuardrailsAIAdapter
 from .langgraph import LangGraphAdapter
 from .llamaindex import LlamaIndexAdapter
 from .llm_clients import LLMClientsAdapter
+from .mcp_client import MCPClientAdapter
 from .mcp_server import MCPServerAdapter
 from .openai_agents import OpenAIAgentsAdapter
+from .openai_function_schema import OpenAIFunctionSchemaAdapter
 from .semantic_kernel import SemanticKernelAdapter
 
 __all__ = [
@@ -29,11 +32,14 @@ __all__ = [
     "FastAPIAdapter",
     "FlaskAdapter",
     "GoogleADKPythonAdapter",
+    "GuardrailHeuristicAdapter",
     "GuardrailsAIAdapter",
     "LangGraphAdapter",
     "LlamaIndexAdapter",
     "LLMClientsAdapter",
+    "MCPClientAdapter",
     "MCPServerAdapter",
     "OpenAIAgentsAdapter",
+    "OpenAIFunctionSchemaAdapter",
     "SemanticKernelAdapter",
 ]

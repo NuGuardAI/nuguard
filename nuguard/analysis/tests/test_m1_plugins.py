@@ -390,6 +390,26 @@ class TestSemgrepPlugin:
         first = result.findings[0]
         assert "app.py" in first["affected"][0] or "chat.py" in first["affected"][0]
 
+    def test_owasp_metadata_routed_to_owasp_llm_ref_not_remediation(self) -> None:
+        """The YAML `owasp:` metadata must not be folded into `remediation`; only
+        an OWASP LLM Top 10 label ("LLM0x: ...") is routed to `owasp_llm_ref`."""
+        plugin = self._import()
+        stdout = json.dumps(_SEMGREP_JSON).encode()
+        with (
+            patch("shutil.which", return_value="/usr/bin/semgrep"),
+            patch("pathlib.Path.exists", return_value=True),
+            patch("subprocess.run", return_value=_completed_process(stdout, returncode=1)),
+        ):
+            result = plugin.run(_SBOM_WITH_SRC, {})
+
+        by_id = {f["rule_id"]: f for f in result.findings}
+        # Generic web-appsec label ("A02: ...") is not an LLM Top 10 citation.
+        assert by_id["nuguard-hardcoded-api-key"]["remediation"] == ""
+        assert by_id["nuguard-hardcoded-api-key"]["owasp_llm_ref"] == ""
+        # LLM Top 10 label is preserved as a structured reference, not remediation text.
+        assert by_id["nuguard-llm-prompt-injection-fstring"]["remediation"] == ""
+        assert by_id["nuguard-llm-prompt-injection-fstring"]["owasp_llm_ref"] == "LLM01: Prompt Injection"
+
     def test_ok_when_no_findings(self) -> None:
         plugin = self._import()
         stdout = json.dumps({"results": [], "errors": []}).encode()

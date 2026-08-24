@@ -43,6 +43,12 @@ _HARD_REFUSAL_ABORT_TURNS_DEFAULT = 5
 _HARD_WALL_THRESHOLD = 2
 _DEAD_CLASS_FALLBACK = "narrative"
 
+# Target-health abort: this many consecutive HTTP-error-flavored responses
+# ("[HTTP 405]", "[REQUEST_ERROR: ...]") mean the target is structurally broken,
+# not just refusing the conversation — stop burning the rest of max_turns against
+# it. Mirrors AttackExecutor.MAX_CONSECUTIVE_FAILURES (executor.py).
+_MAX_CONSECUTIVE_REQUEST_FAILURES = 3
+
 # Tactics that are immune to retirement (we can't retire our only fallback).
 _NON_RETIRABLE_CLASSES: frozenset[str] = frozenset({"warmup", "narrative", "fallback"})
 
@@ -163,6 +169,7 @@ class GuidedAttackExecutor:
 
         milestone_idx = 0
         consecutive_hard_refusals = 0
+        consecutive_request_failures = 0
         # PAIR feedback carried forward from last failed turn (§3.1)
         _pair_refusal_reason: str = ""
         _pair_refusal_evidence: str = ""
@@ -232,6 +239,24 @@ class GuidedAttackExecutor:
                 conv.abort_reason = "target_unavailable"
                 conv.final_progress = conv.last_progress
                 raise
+
+            # Track consecutive HTTP-error-flavored responses (mirrors
+            # AttackExecutor's per-chain circuit breaker). A 405/404/etc. response
+            # doesn't raise TargetUnavailableError, but repeated ones across turns
+            # mean the target is structurally broken, not just refusing — abort
+            # rather than burning the rest of max_turns against it.
+            if raw_response.startswith("[HTTP ") or raw_response.startswith("[REQUEST_ERROR:"):
+                consecutive_request_failures += 1
+                if consecutive_request_failures >= _MAX_CONSECUTIVE_REQUEST_FAILURES:
+                    _log.warning(
+                        "[guided] aborting: %d consecutive request failures conv=%s",
+                        consecutive_request_failures, conv.conversation_id[:8],
+                    )
+                    conv.abort_reason = "consecutive_request_failures"
+                    conv.final_progress = conv.last_progress
+                    return conv
+            else:
+                consecutive_request_failures = 0
 
             # Strip attribution footer; then handle credential/confirmation interrupts
             response, _raw_footer = strip_meta_footer(raw_response)

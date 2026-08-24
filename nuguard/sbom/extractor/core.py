@@ -22,7 +22,6 @@ merged by confidence/priority, and assembled into an ``AiSbomDocument``.
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import json
 import os
 import re
@@ -31,7 +30,7 @@ import subprocess
 import tempfile
 from collections.abc import Iterator
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Callable
 
 from nuguard.common.logging import get_logger
@@ -62,6 +61,7 @@ from ..adapters.json_adapters import (
     PromptJSONAdapter,
 )
 from ..adapters.nginx import NginxAdapter, is_nginx_file
+from ..adapters.prompt_sql import PromptSQLAdapter
 from ..adapters.registry import default_framework_adapters, default_registry
 from ..adapters.typescript._ts_regex import TSFrameworkAdapter
 from ..adapters.yaml_adapters import (
@@ -83,12 +83,23 @@ from ..models import (
     EncryptionDetail,
     Evidence,
     Node,
+    NodeMetadata,
     RateLimitDetail,
-    ScanSummary,
     SourceLocation,
 )
 from ..normalization import canonicalize_text
 from ..types import ComponentType, RelationshipType
+from .postprocess import (
+    _dedup_by_location,
+    _dedup_by_name_prefix,
+    _dedup_deployment_nodes,
+    _dedup_generic_endpoints,
+    _dedup_model_variants,
+    _improve_generic_node_names,
+    _make_scan_summary,
+    _suppress_generic_tech_regex_datastore,
+    _suppress_non_code_model_datastore,
+)
 
 _log = get_logger(__name__)
 
@@ -128,7 +139,8 @@ def _strip_notebook_outputs(content: str) -> str:
             cell["outputs"] = []
             cell.pop("execution_count", None)
         return json.dumps(nb)
-    except Exception:
+    except Exception as exc:
+        _log.debug("strip_notebook_outputs: failed to parse notebook JSON: %s", exc)
         return content
 
 
@@ -251,7 +263,8 @@ def _run_prompt_detector(
     path = Path(rel_path)
     try:
         nodes = PromptDetector().detect(path, source)
-    except Exception:
+    except Exception as exc:
+        _log.debug("prompt_detector: failed on %s: %s", rel_path, exc)
         return []
 
     detections: list[ComponentDetection] = []
@@ -306,7 +319,8 @@ def _extract_python_prompt_dicts(
 
     try:
         tree = _ast.parse(source)
-    except SyntaxError:
+    except SyntaxError as exc:
+        _log.debug("prompt_dicts: failed to parse %s: %s", rel_path, exc)
         return []
 
     # First pass: collect module-level list/tuple string constants so that
@@ -573,7 +587,7 @@ class AiSbomExtractor:
         self,
         framework_adapters: tuple[FrameworkAdapter, ...] | None = None,
         regex_adapters: tuple[DetectionAdapter, ...] | None = None,
-        sql_adapters: tuple[DataClassificationSQLAdapter, ...] | None = None,
+        sql_adapters: tuple[Any, ...] | None = None,
         dockerfile_adapter: DockerfileAdapter | None = None,
         yaml_adapters: tuple[Any, ...] | None = None,
         json_adapters: tuple[Any, ...] | None = None,
@@ -597,7 +611,9 @@ class AiSbomExtractor:
             self.framework_adapters = base_adapters
         self.regex_adapters = regex_adapters if regex_adapters is not None else default_registry()
         self.sql_adapters = (
-            sql_adapters if sql_adapters is not None else (DataClassificationSQLAdapter(),)
+            sql_adapters
+            if sql_adapters is not None
+            else (DataClassificationSQLAdapter(), PromptSQLAdapter())
         )
         self.dockerfile_adapter = (
             dockerfile_adapter if dockerfile_adapter is not None else DockerfileAdapter()
@@ -680,30 +696,250 @@ class AiSbomExtractor:
             return f"{num_bytes / (1024 * 1024 * 1024):.2f} GiB"
 
         # Pre-pass: build a cross-file Pydantic model schema index so FastAPI (and Flask)
-        # adapters can resolve request-body models that are imported from other modules.
-        # This is a fast AST-only pass — no detection, no merging.
+        # adapters can resolve request-body models that are imported from other modules,
+        # and a cross-file FastAPI router-prefix index so nested
+        # app.include_router(router, prefix=...) mounts compose correctly across files
+        # (e.g. a router declared in config/__init__.py and mounted with a prefix in
+        # server.py). This is a fast AST-only pass — no detection, no merging.
         _global_model_schemas: dict[str, dict[str, str]] = {}
+        _global_router_prefixes: dict[str, str] = {}
+        # rel_path -> [tool_function_name, ...] for files with @tool-decorated
+        # functions — used below (after the main per-file loop) to resolve
+        # cross-file TOOL -[ACCESSES]-> DATASTORE hints. Populated outside the
+        # try so a partial pre-pass still contributes what it found.
+        _tool_defining_files: dict[str, list[str]] = {}
+        # (rel_path, module_level_var_name) -> datastore canonical_name, populated
+        # by the main per-file loop below as PythonDatastoreAdapter's real,
+        # fully-disambiguated detections come in — see the DATASTORE branch
+        # inside the Python-file adapter loop.
+        _ds_symbol_index: dict[tuple[str, str], str] = {}
         try:
             import ast as _ast  # noqa: PLC0415  # isort:skip
-            from nuguard.sbom.adapters.python.fastapi_adapter import (  # noqa: PLC0415
+            from nuguard.sbom.adapters.python.datastores import (  # noqa: PLC0415, I001
+                _collect_tool_decorated_function_names as _collect_py_tool_names,
+            )
+            from nuguard.sbom.adapters.python.fastapi_adapter import (  # noqa: PLC0415, I001
+                _collect_include_router_calls as _collect_py_includes,
                 _collect_model_schemas as _collect_py_models,
-            )  # isort:skip
+                _collect_router_declarations as _collect_py_router_decls,
+                _collect_router_imports as _collect_py_router_imports,
+            )
+
+            # rel_path -> {var_name: own_prefix}
+            _router_decls: dict[str, dict[str, str]] = {}
+            # rel_path -> [(receiver_var, included_var, mount_prefix)]
+            _router_includes: dict[str, list[tuple[str, str | None, str]]] = {}
+            # rel_path -> {local_name: (relative_level, dotted_module, original_name)}
+            _router_imports: dict[str, dict[str, tuple[int, str, str]]] = {}
+            _all_py_rel_paths: set[str] = set()
+
             for _py_path, _ in self._iter_files(root, config):
                 if _py_path.suffix != ".py":
                     continue
+                _router_rel = str(_py_path.relative_to(root))
+                _all_py_rel_paths.add(_router_rel)
                 try:
                     _py_src = _py_path.read_text(encoding="utf-8", errors="ignore")
                     _py_tree = _ast.parse(_py_src)
-                    _global_model_schemas.update(_collect_py_models(_py_tree))
                 except Exception:
-                    pass
-        except Exception as _pre_exc:
-            _log.debug("cross-file model pre-pass failed (non-fatal): %s", _pre_exc)
+                    continue
+                _global_model_schemas.update(_collect_py_models(_py_tree))
+                _router_decls[_router_rel] = _collect_py_router_decls(_py_tree)
+                _router_includes[_router_rel] = _collect_py_includes(_py_tree)
+                _router_imports[_router_rel] = _collect_py_router_imports(_py_tree)
+                _tool_names = _collect_py_tool_names(_py_tree)
+                if _tool_names:
+                    _tool_defining_files[_router_rel] = _tool_names
 
-        # Inject the global model index into adapters that support it.
+            def _resolve_import_to_relpath(rel_path: str, level: int, module: str) -> str | None:
+                """Best-effort resolve a (possibly relative) import to a scanned .py rel path."""
+                if level > 0:
+                    parts = rel_path.replace("\\", "/").split("/")[:-1]
+                    up = level - 1
+                    if up > 0:
+                        parts = parts[:-up] if up <= len(parts) else []
+                    base_parts = parts + ([p for p in module.split(".") if p] if module else [])
+                else:
+                    if not module:
+                        return None
+                    base_parts = [p for p in module.split(".") if p]
+                if not base_parts:
+                    return None
+                candidate_module = "/".join(base_parts) + ".py"
+                candidate_pkg = "/".join([*base_parts, "__init__"]) + ".py"
+                for known in _all_py_rel_paths:
+                    _known_norm = known.replace("\\", "/")
+                    if _known_norm == candidate_module or _known_norm == candidate_pkg:
+                        return known
+                # Absolute imports may be rooted at a package name outside the scan
+                # root's own path prefix — fall back to a suffix match.
+                suffix_module = "/".join(base_parts) + ".py"
+                suffix_pkg = "/".join([*base_parts, "__init__"]) + ".py"
+                for known in _all_py_rel_paths:
+                    _known_norm = known.replace("\\", "/")
+                    if _known_norm.endswith("/" + suffix_module) or _known_norm.endswith("/" + suffix_pkg):
+                        return known
+                return None
+
+            _prefix_cache: dict[tuple[str, str], str] = {}
+
+            def _resolve_router_prefix(
+                rel_path: str, var_name: str, _seen: frozenset[tuple[str, str]] = frozenset()
+            ) -> str:
+                key = (rel_path, var_name)
+                if key in _prefix_cache:
+                    return _prefix_cache[key]
+                if key in _seen:
+                    return ""  # cycle guard
+                own_prefix = _router_decls.get(rel_path, {}).get(var_name, "")
+
+                mount_prefix = ""
+                parent_composed = ""
+                for _mrel, _calls in _router_includes.items():
+                    _found = False
+                    for receiver, included, m_prefix in _calls:
+                        if included is None:
+                            continue
+                        target_rel: str | None = None
+                        target_var: str | None = None
+                        if "." in included:
+                            # Module-attribute style: include_router(chat.router, ...)
+                            # where "chat" was imported via `from server.api import chat`.
+                            # Resolve "chat" to its own dotted module path, then combine
+                            # with the original import's module to get the submodule's
+                            # dotted path (e.g. "server.api" + "chat" -> "server.api.chat").
+                            _mod_alias, _attr = included.split(".", 1)
+                            _imp = _router_imports.get(_mrel, {}).get(_mod_alias)
+                            if _imp is not None:
+                                _lvl, _mod, _orig = _imp
+                                _combined_mod = f"{_mod}.{_orig}" if _mod else _orig
+                                _resolved = _resolve_import_to_relpath(_mrel, _lvl, _combined_mod)
+                                if _resolved is not None:
+                                    target_rel, target_var = _resolved, _attr
+                        elif included in _router_decls.get(_mrel, {}):
+                            target_rel, target_var = _mrel, included
+                        else:
+                            _imp = _router_imports.get(_mrel, {}).get(included)
+                            if _imp is not None:
+                                _lvl, _mod, _orig = _imp
+                                _resolved = _resolve_import_to_relpath(_mrel, _lvl, _mod)
+                                if _resolved is not None:
+                                    target_rel, target_var = _resolved, _orig
+                        if target_rel == rel_path and target_var == var_name:
+                            mount_prefix = m_prefix
+                            if receiver != "app":
+                                parent_composed = _resolve_router_prefix(
+                                    _mrel, receiver, _seen | {key}
+                                )
+                            _found = True
+                            break
+                    if _found:
+                        break
+
+                composed = f"{parent_composed}{mount_prefix}{own_prefix}"
+                _prefix_cache[key] = composed
+                return composed
+
+            for _router_rel, _vars in _router_decls.items():
+                for _var in _vars:
+                    _global_router_prefixes[f"{_router_rel}::{_var}"] = _resolve_router_prefix(
+                        _router_rel, _var
+                    )
+        except Exception as _pre_exc:
+            _log.debug("cross-file model/router pre-pass failed (non-fatal): %s", _pre_exc)
+            _resolve_import_to_relpath = None  # type: ignore[assignment]
+            _router_imports = {}
+
+        def _iter_ts_sources(
+            names: tuple[str, ...] | None = None,
+        ) -> Iterator[tuple[str, str]]:
+            """Yield (rel_path, source) for every scanned .ts/.tsx file, optionally
+            restricted to specific file names (e.g. "main.ts"). Shared by the
+            single-file TS pre-passes below — each has its own try/except so one
+            collector's failure doesn't prevent the others from running.
+            """
+            for _ts_path, _ in self._iter_files(root, config):
+                if _ts_path.suffix not in (".ts", ".tsx"):
+                    continue
+                if names is not None and _ts_path.name not in names:
+                    continue
+                try:
+                    _ts_src = _ts_path.read_text(encoding="utf-8", errors="ignore")
+                except Exception:
+                    continue
+                yield str(_ts_path.relative_to(root)), _ts_src
+
+        # Cross-file TS DTO field-type index — shares the same
+        # `_global_model_schemas` dict (and `set_global_model_schemas` hook) as
+        # the Python Pydantic-model pre-pass above, so NestJSAdapter can resolve
+        # a `@Body() dto: SendMessageDto` parameter even when the DTO
+        # `interface`/`class` is declared in a different file (e.g. a
+        # `*.service.ts` sibling of the controller that references it).
+        try:
+            from nuguard.sbom.adapters.typescript.nestjs_adapter import (  # noqa: PLC0415
+                collect_dto_schemas as _collect_ts_dtos,
+            )
+
+            for _, _ts_src in _iter_ts_sources():
+                _global_model_schemas.update(_collect_ts_dtos(_ts_src))
+        except Exception as _ts_pre_exc:
+            _log.debug("cross-file TS DTO pre-pass failed (non-fatal): %s", _ts_pre_exc)
+
+        # NestJS app-wide route prefix (`app.setGlobalPrefix('api/v1')` in
+        # main.ts) — applies outside every controller's own
+        # `@Controller('prefix')`; see nestjs_adapter.py's `_compose_path`.
+        _global_route_prefix = ""
+        _global_route_prefix_exclude: list[str] = []
+        try:
+            from nuguard.sbom.adapters.typescript.nestjs_adapter import (  # noqa: PLC0415
+                _extract_global_prefix as _extract_ts_global_prefix,
+            )
+
+            for _, _ts_src in _iter_ts_sources(names=("main.ts", "main.tsx")):
+                _found = _extract_ts_global_prefix(_ts_src)
+                if _found:
+                    _global_route_prefix, _global_route_prefix_exclude = _found
+                    break
+        except Exception as _prefix_exc:
+            _log.debug("NestJS global-prefix pre-pass failed (non-fatal): %s", _prefix_exc)
+
+        # Cross-file TS class hierarchy (class X / class X extends Y) — feeds
+        # the hand-rolled multi-agent orchestration heuristic, which needs to
+        # cite a base class's real definition site even when it's declared in
+        # a different file than the orchestrator that sequences its
+        # subclasses (docs/sbom-fix2.md #6).
+        _global_ts_class_bases: dict[str, str] = {}
+        _global_ts_class_locations: dict[str, tuple[str, int]] = {}
+        try:
+            from nuguard.sbom.adapters.typescript.agent_orchestrator import (  # noqa: PLC0415
+                collect_class_hierarchy as _collect_ts_class_hierarchy,
+            )
+
+            for _ts_rel, _ts_src in _iter_ts_sources():
+                _bases, _locs = _collect_ts_class_hierarchy(_ts_src, _ts_rel)
+                _global_ts_class_bases.update(_bases)
+                _global_ts_class_locations.update(_locs)
+        except Exception as _hier_exc:
+            _log.debug("TS class-hierarchy pre-pass failed (non-fatal): %s", _hier_exc)
+
+        # Inject the global indices into adapters that support them.
+        _global_index_setters = {
+            "set_global_model_schemas": (_global_model_schemas,),
+            "set_global_router_prefixes": (_global_router_prefixes,),
+            "set_global_route_prefix": (
+                _global_route_prefix,
+                _global_route_prefix_exclude,
+            ),
+            "set_global_class_hierarchy": (
+                _global_ts_class_bases,
+                _global_ts_class_locations,
+            ),
+        }
         for _adapter in self.framework_adapters:
-            if hasattr(_adapter, "set_global_model_schemas"):
-                _adapter.set_global_model_schemas(_global_model_schemas)
+            for _setter_name, _args in _global_index_setters.items():
+                _setter = getattr(_adapter, _setter_name, None)
+                if _setter is not None:
+                    _setter(*_args)
 
         for file_path, file_size in self._iter_files(root, config):
             try:
@@ -805,6 +1041,15 @@ class AiSbomExtractor:
                                     _dc_metadata.append(det.metadata)
                                 else:
                                     self._merge_detection(node_map, det)
+                                    _ds_symbol = det.metadata.get("module_level_symbol")
+                                    if det.component_type == ComponentType.DATASTORE and _ds_symbol:
+                                        # Record which (file, local variable name)
+                                        # resolved to this datastore, using this
+                                        # adapter's own fully-disambiguated
+                                        # provider resolution — consumed below
+                                        # (after this file loop) to resolve
+                                        # cross-file TOOL -> DATASTORE hints.
+                                        _ds_symbol_index[(rel_path, _ds_symbol)] = det.canonical_name
 
                         # Phase 1a-prime: module-level Python prompt constants.
                         # Runs on ALL .py files regardless of framework imports so that
@@ -822,9 +1067,9 @@ class AiSbomExtractor:
                         for det in _extract_python_prompt_dicts(content, rel_path):
                             self._merge_detection(node_map, det)
 
-            # Phase 1b: SQL schema — data classification
+            # Phase 1b: SQL schema — data classification + prompt/template extraction
             elif is_sql:
-                _log.debug("running SQL data classification on %s", rel_path)
+                _log.debug("running SQL adapters on %s", rel_path)
                 for sql_adapter in self.sql_adapters:
                     try:
                         detections = sql_adapter.scan(content, rel_path)
@@ -834,7 +1079,18 @@ class AiSbomExtractor:
                         )
                         continue
                     for det in detections:
-                        _dc_metadata.append(det.metadata)
+                        # Data-classification DATASTORE detections feed the PII/PHI
+                        # enrichment pass (_enrich_datastores) rather than becoming
+                        # nodes directly; everything else (e.g. PROMPT detections
+                        # from PromptSQLAdapter) goes through the normal merge path,
+                        # mirroring the Python-file branch's discrimination above.
+                        if (
+                            det.component_type == ComponentType.DATASTORE
+                            and det.metadata.get("source") in ("sql_schema", "python_model")
+                        ):
+                            _dc_metadata.append(det.metadata)
+                        else:
+                            self._merge_detection(node_map, det)
 
             # Phase 1c: TypeScript/JavaScript AST-aware framework adapters
             # Also detect minified single-line JS (>5 KB line) for SC-019
@@ -1053,6 +1309,11 @@ class AiSbomExtractor:
                         _ep_meta["endpoint"] = _ep_path
                         if _ep_method:
                             _ep_meta["method"] = _ep_method
+                        # Marks this as a raw, unresolved-prefix regex guess so
+                        # _dedup_generic_endpoints() can find and fold it into a
+                        # framework-adapter node with the same (prefix-resolved)
+                        # route, instead of leaving both as separate nodes.
+                        _ep_meta["_generic_endpoint_fallback"] = True
                         _comp_det = ComponentDetection(
                             component_type=detection.component_type,
                             canonical_name=f"endpoint:{_ep_method or 'ANY'}:{_ep_path}",
@@ -1097,6 +1358,45 @@ class AiSbomExtractor:
         # Enrich DATASTORE nodes with PII/PHI classification metadata
         self._enrich_datastores(node_map, _dc_metadata)
 
+        # Cross-file TOOL -[ACCESSES]-> DATASTORE hints: a file that defines
+        # @tool-decorated functions but only *imports* its datastore client
+        # (rather than instantiating one directly) gets no same-file hint from
+        # PythonDatastoreAdapter, since that adapter never emits a relationship
+        # for datastores detected in another file. Resolve the import (reusing
+        # the same _resolve_import_to_relpath used for router prefixes in the
+        # pre-pass above) against _ds_symbol_index, which was populated from
+        # this adapter's own fully-disambiguated provider resolution as
+        # DATASTORE detections came in above — not re-derived independently,
+        # so the canonical name always matches the real node.
+        try:
+            if _resolve_import_to_relpath is None:
+                raise RuntimeError("pre-pass import resolver unavailable")  # noqa: TRY301
+            for _tool_rel, _tool_fn_names in _tool_defining_files.items():
+                for _local_name, (_lvl, _mod, _orig) in _router_imports.get(_tool_rel, {}).items():
+                    _target_rel = _resolve_import_to_relpath(_tool_rel, _lvl, _mod)
+                    if not _target_rel:
+                        continue
+                    _ds_canon = _ds_symbol_index.get((_target_rel, _orig))
+                    if not _ds_canon:
+                        continue
+                    for _fn_name in _tool_fn_names:
+                        _tool_key = (ComponentType.TOOL, canonicalize_text(f"langchain:tool:{_fn_name}"))
+                        _ds_key = (ComponentType.DATASTORE, canonicalize_text(_ds_canon))
+                        _acc = node_map.get(_tool_key)
+                        if _acc is None or _ds_key not in node_map:
+                            continue
+                        _acc.relationships.append(
+                            RelationshipHint(
+                                source_canonical=canonicalize_text(f"langchain:tool:{_fn_name}"),
+                                source_type=ComponentType.TOOL,
+                                target_canonical=_ds_canon,
+                                target_type=ComponentType.DATASTORE,
+                                relationship_type="ACCESSES",
+                            )
+                        )
+        except Exception as _cross_ds_exc:
+            _log.debug("cross-file datastore ACCESSES resolution failed (non-fatal): %s", _cross_ds_exc)
+
         # Deduplicate nodes that share (component_type, file, line) — e.g. a
         # regex adapter and an AST adapter both firing on the same token.
         _dedup_by_location(node_map)
@@ -1104,11 +1404,21 @@ class AiSbomExtractor:
         # file — e.g. regex matches "gemini-2.0" while AST extracts the full
         # "gemini-2.0-flash" from an adjacent line of the same call.
         _dedup_by_name_prefix(node_map)
+        # Merge MODEL nodes that are repo-id/filename spellings of the same
+        # underlying preconfigured model entry (e.g. ``unsloth/Qwen3.5-9B-GGUF``
+        # + ``Qwen3.5-9B-Q4_K_M.gguf`` from the same config dict).
+        _dedup_model_variants(node_map)
         # Suppress generic tech-name DATASTORE nodes emitted by regex adapters
         # when the same file already has specific AST-detected ones for the same
         # technology (e.g. "faiss" regex when "docs_index" / "tickets_index" AST
         # nodes already exist in that file with provider="faiss").
         _suppress_generic_tech_regex_datastore(node_map)
+
+        # Fold generic-regex API_ENDPOINT nodes (raw, unprefixed path guesses)
+        # into the framework-adapter node for the same route once its real,
+        # prefix-resolved path is known — see _dedup_generic_endpoints for why
+        # this can't be resolved earlier, at detection time.
+        _dedup_generic_endpoints(node_map)
 
         # For MODEL and DATASTORE, suppress nodes whose only evidence comes from
         # docs-tier files (lock files, README mentions, shell scripts).  Lock
@@ -1116,7 +1426,7 @@ class AiSbomExtractor:
         # DOCS tier and produce noisy nodes when package names happen to look
         # like model or datastore names.  IaC-tier detections (YAML/JSON config,
         # Dockerfiles) are kept because they legitimately describe components.
-        _suppress_non_code_model_datastore(node_map)
+        _suppress_non_code_model_datastore(node_map, _TIER_RANK[_TIER_DOCS])
 
         # Improve 'generic' display names for AUTH/DEPLOYMENT nodes to reflect
         # the dominant technology keyword found in the evidence.
@@ -1160,6 +1470,7 @@ class AiSbomExtractor:
                         "data_classification",
                         "classified_tables",
                         "classified_fields",
+                        "_generic_endpoint_fallback",
                     )
                 }
             )
@@ -1312,15 +1623,14 @@ class AiSbomExtractor:
                     node.metadata.classified_tables = acc.metadata["classified_tables"]
                 if acc.metadata.get("classified_fields"):
                     node.metadata.classified_fields = acc.metadata["classified_fields"]
-                    # Derive typed PII/PHI field lists for red-team pre-scoring
-                    cf = acc.metadata["classified_fields"]
-                    if isinstance(cf, dict):
-                        pii = [k for k, lbls in cf.items() if "PII" in lbls]
-                        phi = [k for k, lbls in cf.items() if "PHI" in lbls]
-                        if pii:
-                            node.metadata.pii_fields = pii
-                        if phi:
-                            node.metadata.phi_fields = phi
+                # Typed PII/PHI field lists for red-team pre-scoring — computed
+                # by _enrich_datastores from per-field labels (classified_fields
+                # above is table -> field names, not field -> labels, so it
+                # can't be re-derived from here).
+                if acc.metadata.get("pii_fields"):
+                    node.metadata.pii_fields = acc.metadata["pii_fields"]
+                if acc.metadata.get("phi_fields"):
+                    node.metadata.phi_fields = acc.metadata["phi_fields"]
             # PRIVILEGE node typed fields
             if acc.component_type == ComponentType.PRIVILEGE:
                 if acc.metadata.get("privilege_scope"):
@@ -1467,6 +1777,37 @@ class AiSbomExtractor:
                 doc.nodes.extend(ces_nodes)
         except Exception as exc:  # noqa: BLE001
             _log.warning("CES scanner failed: %s", exc)
+
+        # Synthesize a fallback AGENT node representing the app itself when no
+        # agentic-framework adapter (LangGraph/CrewAI/AutoGen/etc.) fired but
+        # the app clearly calls an LLM directly (MODEL node) and/or exposes
+        # tools (TOOL/MCP_SERVER) — e.g. a plain FastAPI backend that builds
+        # raw OpenAI tool schemas by hand, with no agent framework in sight.
+        # Without this, such apps get zero AGENT nodes and every AGENT-gated
+        # redteam scenario family (PROMPT_DRIVEN_THREAT, DATA_EXFILTRATION)
+        # is silently starved. Mirrors the same fallback already used by the
+        # behavior/redteam runtime path (nuguard.common.auto_sbom_enricher.
+        # _enrich_static) but runs here so `nuguard sbom generate` itself
+        # reports the node, and before _enrich_sbom() below so the enricher's
+        # generic injection_risk_score computation covers it too.
+        if not any(n.component_type == ComponentType.AGENT for n in doc.nodes) and any(
+            n.component_type in (ComponentType.MODEL, ComponentType.TOOL, ComponentType.MCP_SERVER)
+            for n in doc.nodes
+        ):
+            _app_stem = PurePosixPath(doc.target.rstrip("/")).name or "Application"
+            _app_name = f"{_app_stem.replace('-', ' ').replace('_', ' ').strip().title() or 'Application'} Assistant"
+            doc.nodes.append(
+                Node(
+                    name=_app_name,
+                    component_type=ComponentType.AGENT,
+                    confidence=0.55,
+                    metadata=NodeMetadata(
+                        description=(doc.summary.use_case if doc.summary else "") or "",
+                        extras={"source": "auto_enrichment"},
+                    ),
+                    evidence=[],
+                )
+            )
 
         # Post-extraction enrichment: derive risk attributes from graph topology
         from ..enricher import enrich as _enrich_sbom
@@ -1828,6 +2169,11 @@ class AiSbomExtractor:
         all_labels: set[str] = set()
         classified_tables: list[str] = []
         classified_fields: dict[str, list[str]] = {}
+        # field_name -> labels, e.g. {"dob": ["PII"], "address": ["PII","PHI"]} —
+        # kept separate from `classified_fields` above (which is table -> field
+        # names, per NodeMetadata.classified_fields' documented shape) because
+        # pii_fields/phi_fields need per-field labels, not per-table field lists.
+        field_labels: dict[str, set[str]] = {}
         for meta in dc_metadata:
             all_labels.update(meta.get("data_classification") or [])
             table = meta.get("table_name") or meta.get("model_name")
@@ -1836,6 +2182,11 @@ class AiSbomExtractor:
                 cf = meta.get("classified_fields")
                 if cf:
                     classified_fields[table] = sorted(cf.keys())
+                    for field_name, labels in cf.items():
+                        field_labels.setdefault(field_name, set()).update(labels or [])
+
+        pii_fields = sorted(f for f, lbls in field_labels.items() if "PII" in lbls)
+        phi_fields = sorted(f for f, lbls in field_labels.items() if "PHI" in lbls)
 
         # Merge into every DATASTORE accumulator (project-wide enrichment)
         for key in datastore_keys:
@@ -1847,6 +2198,44 @@ class AiSbomExtractor:
             existing_cf = dict(acc.metadata.get("classified_fields") or {})
             existing_cf.update(classified_fields)
             acc.metadata["classified_fields"] = existing_cf
+            if pii_fields:
+                existing_pii = set(acc.metadata.get("pii_fields") or [])
+                acc.metadata["pii_fields"] = sorted(existing_pii | set(pii_fields))
+            if phi_fields:
+                existing_phi = set(acc.metadata.get("phi_fields") or [])
+                acc.metadata["phi_fields"] = sorted(existing_phi | set(phi_fields))
+
+    @staticmethod
+    def _structural_edge_related(a: Node, b: Node) -> bool:
+        """Return True if two nodes have a real file-level relationship.
+
+        Used to gate structural fallback edges (DEPLOYMENT<->CONTAINER_IMAGE,
+        IAM<->DEPLOYMENT) so they don't degenerate into an all-to-all N*M
+        cross join when a scan has several unrelated deployment/image nodes
+        (e.g. one DEPLOYMENT node per keyword hit across start.sh, ci.yml,
+        multiple Dockerfiles). Falls back to True when either node has no
+        evidence locations at all, since there's nothing to disambiguate on.
+        """
+        paths_a = {ev.location.path for ev in a.evidence if ev.location and ev.location.path}
+        paths_b = {ev.location.path for ev in b.evidence if ev.location and ev.location.path}
+        if not paths_a or not paths_b:
+            return True
+        if paths_a & paths_b:
+            return True
+        # Same containing directory counts as related, but only for
+        # non-root directories — most repos keep many unrelated files
+        # (Dockerfile, docker-compose.yml, ci.yml, start.sh) at the repo
+        # root, so matching on "." would reintroduce the cross join.
+        dirs_a = {d for p in paths_a if (d := str(PurePosixPath(p).parent)) != "."}
+        dirs_b = {d for p in paths_b if (d := str(PurePosixPath(p).parent)) != "."}
+        if dirs_a & dirs_b:
+            return True
+        # Last resort: shared name token (e.g. a "postgres" DEPLOYMENT node
+        # and a "postgres:14" CONTAINER_IMAGE node referenced by the same
+        # compose service, even when their evidence cites different files).
+        tokens_a = {t for t in re.split(r"[^a-z0-9]+", a.name.lower()) if len(t) > 2}
+        tokens_b = {t for t in re.split(r"[^a-z0-9]+", b.name.lower()) if len(t) > 2}
+        return bool(tokens_a & tokens_b)
 
     def _resolve_edges(
         self,
@@ -1899,6 +2288,7 @@ class AiSbomExtractor:
                         target=tgt_id,
                         relationship_type=rel,
                         access_type=getattr(hint, "access_type", None),
+                        derivation="hint",
                     )
                 )
 
@@ -1907,7 +2297,7 @@ class AiSbomExtractor:
         for node in doc.nodes:
             by_type.setdefault(node.component_type, []).append(node)
 
-        def _add_edge(src_id: Any, tgt_id: Any, rel: str) -> None:
+        def _add_edge(src_id: Any, tgt_id: Any, rel: str, confidence: float = 0.5) -> None:
             key = (src_id, tgt_id, rel)
             if key in seen_edges:
                 return
@@ -1917,6 +2307,8 @@ class AiSbomExtractor:
                     source=src_id,
                     target=tgt_id,
                     relationship_type=rel_type_map.get(rel, RelationshipType.USES),
+                    derivation="fallback_heuristic",
+                    confidence=confidence,
                 )
             )
 
@@ -2003,9 +2395,14 @@ class AiSbomExtractor:
                 for ds_id in tool_to_datastores.get(e.target, []):
                     _add_edge(e.source, ds_id, "ACCESSES")
 
-        # Structural edges: DEPLOYMENT → CONTAINER_IMAGE (DEPLOYS)
+        # Structural edges: DEPLOYMENT → CONTAINER_IMAGE (DEPLOYS).
+        # Gated by _structural_edge_related to avoid an all-to-all N*M join
+        # when several unrelated DEPLOYMENT keyword nodes and CONTAINER_IMAGE
+        # nodes coexist in the same scan.
         for dep in by_type.get(ComponentType.DEPLOYMENT, []):
             for img in by_type.get(ComponentType.CONTAINER_IMAGE, []):
+                if not self._structural_edge_related(dep, img):
+                    continue
                 key = (dep.id, img.id, "DEPLOYS")
                 if key not in seen_edges:
                     seen_edges.add(key)
@@ -2014,12 +2411,17 @@ class AiSbomExtractor:
                             source=dep.id,
                             target=img.id,
                             relationship_type=RelationshipType.DEPLOYS,
+                            derivation="fallback_heuristic",
+                            confidence=0.6,
                         )
                     )
 
-        # Structural edges: IAM → DEPLOYMENT (USES) — identity binds to infra
+        # Structural edges: IAM → DEPLOYMENT (USES) — identity binds to infra.
+        # Same relatedness gate as above.
         for iam_node in by_type.get(ComponentType.IAM, []):
             for dep in by_type.get(ComponentType.DEPLOYMENT, []):
+                if not self._structural_edge_related(iam_node, dep):
+                    continue
                 key = (iam_node.id, dep.id, "USES")
                 if key not in seen_edges:
                     seen_edges.add(key)
@@ -2028,14 +2430,32 @@ class AiSbomExtractor:
                             source=iam_node.id,
                             target=dep.id,
                             relationship_type=RelationshipType.USES,
+                            derivation="fallback_heuristic",
+                            confidence=0.6,
                         )
                     )
 
-        # Structural edges: AUTH → API_ENDPOINT (PROTECTS)
+        # Structural edges: AUTH → API_ENDPOINT (PROTECTS).
+        # Prefer the precise signal already carried by both node types
+        # (metadata.extras["auth_type"], populated by fastapi_adapter's
+        # _AUTH_CLASSES detection on both the AUTH node and the endpoints
+        # it guards) over the previous broad "every AUTH node protects the
+        # first 10 endpoints alphabetically" fallback. Only fall back to the
+        # broad behavior for endpoints that carry no auth_type signal at
+        # all, since that's the only case with no better information
+        # available (e.g. non-FastAPI frameworks).
+        def _auth_type(n: Node) -> str | None:
+            v = n.metadata.extras.get("auth_type")
+            return str(v) if v else None
+
+        endpoints = by_type.get(ComponentType.API_ENDPOINT, [])
+        endpoints_with_auth_type = [ep for ep in endpoints if _auth_type(ep)]
+        endpoints_without_auth_type = [ep for ep in endpoints if not _auth_type(ep)]
         for auth in by_type.get(ComponentType.AUTH, []):
-            for ep in sorted(by_type.get(ComponentType.API_ENDPOINT, []), key=lambda n: n.name)[
-                :10
-            ]:
+            matched = [ep for ep in endpoints_with_auth_type if _auth_type(ep) == _auth_type(auth)]
+            is_matched = bool(matched)
+            targets = matched if matched else sorted(endpoints_without_auth_type, key=lambda n: n.name)[:10]
+            for ep in targets:
                 key = (auth.id, ep.id, "PROTECTS")
                 if key not in seen_edges:
                     seen_edges.add(key)
@@ -2044,6 +2464,8 @@ class AiSbomExtractor:
                             source=auth.id,
                             target=ep.id,
                             relationship_type=RelationshipType.PROTECTS,
+                            derivation="hint" if is_matched else "fallback_heuristic",
+                            confidence=None if is_matched else 0.4,
                         )
                     )
 
@@ -2068,7 +2490,11 @@ class AiSbomExtractor:
             maybe_refine_use_case_summary_with_llm,  # noqa: PLC0415
         )
         from ..core.confidence import aggregate_node_confidence  # noqa: PLC0415
-        from ..core.gap_fill import apply_discovery_results, discover_missing_nodes  # noqa: PLC0415
+        from ..core.gap_fill import (  # noqa: PLC0415
+            GapFillBudget,
+            apply_discovery_results,
+            discover_missing_nodes,
+        )
         from ..core.verification import (  # noqa: PLC0415
             apply_verification_results,
             verify_uncertain_nodes,
@@ -2083,14 +2509,31 @@ class AiSbomExtractor:
         )
         evidence_map = {n.id: n.evidence for n in doc.nodes}
 
-        # Step 0: Gap-fill discovery — find component types absent from deterministic results
-        gap_budget = min(config.llm_budget_tokens // 3, 15_000)
+        # Step 0: Gap-fill discovery — find component types absent (or, for
+        # PROBE-eligible categories, plausibly under-represented) from
+        # deterministic results.
+        gap_fill_budget = GapFillBudget(
+            max_calls=config.gap_fill_max_calls,
+            max_cost_usd=config.gap_fill_max_cost_usd,
+        )
+        self_critique_categories = set()
+        for raw_category in config.gap_fill_self_critique_categories:
+            try:
+                self_critique_categories.add(ComponentType(raw_category.strip().upper()))
+            except ValueError:
+                _log.warning("gap-fill: unknown self_critique_categories entry %r", raw_category)
         try:
-            new_nodes = await discover_missing_nodes(
-                doc, file_contents, client, budget_tokens=gap_budget
+            new_nodes, gap_fill_budget = await discover_missing_nodes(
+                doc,
+                file_contents,
+                client,
+                budget=gap_fill_budget,
+                enable_privilege=config.gap_fill_enable_privilege,
+                enable_guardrail=config.gap_fill_enable_guardrail,
+                self_critique_categories=self_critique_categories,
             )
             doc = apply_discovery_results(doc, new_nodes)
-            _log.info("gap-fill: %d new node(s) discovered", len(new_nodes))
+            _log.info("gap-fill: %s", gap_fill_budget.to_dict())
         except Exception as exc:
             _log.warning("gap-fill: unexpected error — continuing without: %s", exc)
 
@@ -2112,6 +2555,8 @@ class AiSbomExtractor:
             evidence_map,
             _llm_call,
             file_contents=file_contents,
+            cost_budget=config.verification_cost_budget,
+            max_candidates=config.verification_max_verifications,
             concurrency=config.llm_concurrency,
         )
         doc.nodes = apply_verification_results(doc.nodes, results)
@@ -2606,463 +3051,6 @@ class AiSbomExtractor:
                     continue
                 yield path, size
                 count += 1
-                if count >= config.max_files:
+                if config.max_files is not None and count >= config.max_files:
                     return
 
-
-def _make_scan_summary(d: dict[str, Any]) -> ScanSummary:
-    """Convert the dict from ``build_scan_summary`` into a typed ``ScanSummary``."""
-    return ScanSummary(
-        use_case=d.get("use_case_summary") or "",
-        frameworks=d.get("frameworks") or [],
-        modalities=d.get("modalities") or [],
-        modality_support=d.get("modality_support") or {},
-        api_endpoints=d.get("api_endpoints") or [],
-        deployment_platforms=d.get("deployment_platforms") or [],
-        regions=d.get("regions") or [],
-        environments=d.get("environments") or [],
-        deployment_urls=d.get("deployment_urls") or [],
-        iac_accounts=d.get("subscription_account_project") or [],
-        node_counts=d.get("node_type_counts") or {},
-        data_classification=d.get("data_classification") or [],
-        classified_tables=d.get("classified_tables") or [],
-        # IaC security / resilience aggregate fields
-        secret_stores=d.get("secret_stores") or [],
-        availability_zones=d.get("availability_zones") or [],
-        encryption_at_rest_coverage=bool(d.get("encryption_at_rest_coverage")),
-        security_findings=d.get("security_findings") or [],
-        iam_principals=d.get("iam_principals") or [],
-        service_accounts=d.get("service_accounts") or [],
-        # App-launch discovery
-        startup_commands=d.get("startup_commands") or [],
-        env_files=d.get("env_files") or [],
-        env_var_keys=d.get("env_var_keys") or [],
-        local_url=d.get("local_url"),
-        staging_urls=d.get("staging_urls") or [],
-        production_urls=d.get("production_urls") or [],
-        log_paths=d.get("log_paths") or [],
-        # Streaming output detection
-        uses_streaming=bool(d.get("uses_streaming", False)),
-        streaming_endpoints=d.get("streaming_endpoints") or [],
-        # 1.5.0 additions
-        instrumentation=d.get("instrumentation"),
-        testing=d.get("testing"),
-    )
-
-
-def _dedup_by_name_prefix(
-    node_map: dict[tuple[ComponentType, str], _NodeAccumulator],
-) -> None:
-    """Remove accumulator entries whose name is a strict prefix of another
-    entry of the same component type that shares at least one source file.
-
-    Handles cases where a regex adapter extracts a truncated model name
-    (e.g. ``gemini-2.0``) while an AST adapter extracts the full string
-    (``gemini-2.0-flash``) from an adjacent line of the same call.
-    The shorter entry is dropped and its evidence absorbed by the longer one.
-
-    A prefix match only counts as a truncation if it ends on a delimiter
-    boundary in the longer name (e.g. the ``-`` in ``gemini-2.0-flash``).
-    Without this, auto-generated numeric-ID names collide by coincidence —
-    e.g. ``Prompt 407`` is a raw string-prefix of ``Prompt 4078`` even though
-    they are unrelated string literals at different line numbers.
-
-    DEPLOYMENT is excluded entirely: its generic keyword nodes (e.g.
-    "docker", accumulated from every file mentioning that word across the
-    repo) are always a word-boundary-respecting prefix of specific IaC node
-    names that start with the same technology (e.g. "Docker Release"), even
-    though they are not the same entity — merging would silently reattribute
-    the generic bucket's unrelated evidence to one specific workflow node.
-    """
-    keys_to_remove: set[tuple[ComponentType, str]] = set()
-    files_by_key: dict[tuple[ComponentType, str], set[str]] = {
-        key: {ev.location.path for ev in acc.evidence if ev.location}
-        for key, acc in node_map.items()
-        if key[0] != ComponentType.DEPLOYMENT
-    }
-
-    # Compare only key pairs that actually share at least one source file.
-    # This avoids global O(n^2) comparisons across unrelated components.
-    file_to_keys: dict[tuple[ComponentType, str], list[tuple[ComponentType, str]]] = {}
-    for key, files in files_by_key.items():
-        ctype = key[0]
-        for file_path in files:
-            file_to_keys.setdefault((ctype, file_path), []).append(key)
-
-    for keys in file_to_keys.values():
-        if len(keys) < 2:
-            continue
-        sorted_keys = sorted(keys, key=lambda key: node_map[key].display_name.lower())
-        for index, key_a in enumerate(sorted_keys[:-1]):
-            if key_a in keys_to_remove:
-                continue
-            name_a = node_map[key_a].display_name.lower()
-            if not name_a:
-                continue
-
-            winner_key: tuple[ComponentType, str] | None = None
-            winner_name = ""
-            for key_b in sorted_keys[index + 1 :]:
-                if key_b in keys_to_remove:
-                    continue
-                name_b = node_map[key_b].display_name.lower()
-                if name_b == name_a:
-                    continue
-                if not name_b.startswith(name_a):
-                    break
-                # Require a delimiter boundary right after the prefix so we
-                # don't treat coincidental numeric-ID overlaps (prompt_407 /
-                # prompt_4078) as a truncated/full name pair.
-                if name_b[len(name_a)].isalnum():
-                    continue
-                if len(name_b) > len(winner_name):
-                    winner_key = key_b
-                    winner_name = name_b
-
-            if winner_key is not None:
-                node_map[winner_key].evidence.extend(node_map[key_a].evidence)
-                keys_to_remove.add(key_a)
-                _log.debug(
-                    "dedup_by_name_prefix: dropped %s → kept %s", key_a, winner_key
-                )
-
-    for k in keys_to_remove:
-        del node_map[k]
-
-
-def _dedup_by_location(
-    node_map: dict[tuple[ComponentType, str], _NodeAccumulator],
-) -> None:
-    """Remove accumulator entries that share (component_type, file, line) with a
-    higher-priority entry, merging their evidence into the winner.
-
-    Applies when two adapters fire on the exact same source token — e.g. an AST
-    adapter producing ``gemini-2.0-flash`` and a regex adapter producing
-    ``gemini-2.0`` from the same line.  The lower-priority-number (higher
-    precedence) adapter wins; ties broken by confidence descending.
-    """
-    # loc → {key, ...} for all keys that have at least one evidence item at that location
-    loc_to_keys: dict[tuple[ComponentType, str, int | None], set[tuple[ComponentType, str]]] = {}
-    has_regex_evidence: dict[tuple[ComponentType, str], bool] = {}
-    for key, acc in node_map.items():
-        has_regex_evidence[key] = any(ev.kind == "regex" for ev in acc.evidence)
-        for ev in acc.evidence:
-            if ev.location:
-                loc = (key[0], ev.location.path, ev.location.line)
-                loc_to_keys.setdefault(loc, set()).add(key)
-
-    keys_to_remove: set[tuple[ComponentType, str]] = set()
-    for loc, key_set in loc_to_keys.items():
-        keys = list(key_set)
-        if len(keys) <= 1:
-            continue
-        # Sort: lower priority number = higher precedence; break ties by confidence desc
-        keys_sorted = sorted(
-            keys,
-            key=lambda k: (node_map[k].priority, -node_map[k].confidence),
-        )
-        winner = keys_sorted[0]
-        for loser in keys_sorted[1:]:
-            if loser in keys_to_remove:
-                continue
-            # Only deduplicate when at least one node has regex evidence.
-            # Two AST-only nodes at the same line are distinct components (e.g.
-            # multiple imports on one line → multiple FAISS stores) and must
-            # both be kept.
-            if not (has_regex_evidence.get(winner, False) or has_regex_evidence.get(loser, False)):
-                continue
-            # FRAMEWORK/DEPLOYMENT nodes with different canonical names are
-            # distinct entities even when detected on the same source line.
-            # For FRAMEWORK: a comment mentioning both "autogen" and "crewai"
-            # triggers both regex adapters at the same line. For DEPLOYMENT: a
-            # generic keyword node (e.g. "docker") accumulates evidence from
-            # every file mentioning that word across the whole repo, so a
-            # single coincidental same-line hit against a specific IaC node
-            # (e.g. "deployment_github_actions_docker_release", whose slug
-            # trivially contains the keyword as a substring) must not absorb
-            # that node's unrelated evidence from every other file. Keep both
-            # kinds separate so each gets its own node in the SBOM.
-            if winner[0] in (ComponentType.FRAMEWORK, ComponentType.DEPLOYMENT) and winner[1] != loser[1]:
-                continue
-            # MODEL nodes: two canonical names at the same location are
-            # usually the same model detected twice with different boundaries
-            # (e.g. regex hit "gpt-5.4" and "openai/gpt-5.4" on one token —
-            # one name contains the other as a substring). But a
-            # fallback/comparison list like `[claude-sonnet-4-6,
-            # claude-haiku-4-5]` puts two genuinely different models on the
-            # same line, and neither name is a substring of the other — keep
-            # those separate instead of one silently absorbing the other's
-            # evidence.
-            if winner[0] == ComponentType.MODEL and winner[1] != loser[1]:
-                if winner[1] not in loser[1] and loser[1] not in winner[1]:
-                    continue
-            # Absorb evidence so the winner node reflects all source locations
-            node_map[winner].evidence.extend(node_map[loser].evidence)
-            keys_to_remove.add(loser)
-            _log.debug(
-                "dedup_by_location: dropped %s (priority=%d conf=%.2f) → kept %s",
-                loser,
-                node_map[loser].priority,
-                node_map[loser].confidence,
-                winner,
-            )
-
-    for k in keys_to_remove:
-        del node_map[k]
-
-
-# ---------------------------------------------------------------------------
-# Auth / deployment name improvement
-# ---------------------------------------------------------------------------
-
-# Ordered rules: first matching rule wins.  Checked against evidence snippets
-# so that the most prominent tech keyword in the evidence determines the name.
-_AUTH_NAME_RULES: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(r"\bjwt\b", re.IGNORECASE), "jwt_auth"),
-    (re.compile(r"\bbearer\b", re.IGNORECASE), "bearer_auth"),
-    (re.compile(r"\boauth2?\b", re.IGNORECASE), "oauth_auth"),
-    (re.compile(r"\b(api[_-]?key|apikey)\b", re.IGNORECASE), "api_key_auth"),
-    (re.compile(r"\b(bcrypt|passlib|argon2|pbkdf2|scrypt)\b", re.IGNORECASE), "password_auth"),
-    (re.compile(r"\b(session[_.]cookie|cookie[_.]jar|csrf[_.]token)\b", re.IGNORECASE), "session_auth"),
-]
-
-_DEPLOY_NAME_RULES: list[tuple[re.Pattern[str], str]] = [
-    (re.compile(r"\bgcloud\b", re.IGNORECASE), "gcloud_deployment"),
-    (re.compile(r"\bgsutil\b", re.IGNORECASE), "gcloud_deployment"),
-    (re.compile(r"\b(kubectl|kubernetes|kustomize|skaffold|argocd|fluxcd)\b", re.IGNORECASE), "kubernetes_deployment"),
-    (re.compile(r"\b(az\s+(?:login|group|webapp|container|acr|aks|functionapp)|azure[_-]cli|azd)\b", re.IGNORECASE), "azure_deployment"),
-    (re.compile(r"\baws\s+(?:ec2|s3|lambda|ecs|eks|rds|cloudformation|deploy|ecr)\b", re.IGNORECASE), "aws_deployment"),
-    (re.compile(r"\b(terraform|pulumi|cdktf)\b", re.IGNORECASE), "terraform_deployment"),
-    (re.compile(r"\bansible\b", re.IGNORECASE), "ansible_deployment"),
-    (re.compile(r"\bhelm\b", re.IGNORECASE), "helm_deployment"),
-    (re.compile(r"\bheroku\b", re.IGNORECASE), "heroku_deployment"),
-    (re.compile(r"\bvercel\b", re.IGNORECASE), "vercel_deployment"),
-    (re.compile(r"\bnetlify\b", re.IGNORECASE), "netlify_deployment"),
-    (re.compile(r"\b(docker|compose)\b", re.IGNORECASE), "docker_deployment"),
-    (re.compile(r"\b(nginx|gunicorn|uvicorn|caddy|traefik)\b", re.IGNORECASE), "server_deployment"),
-]
-
-
-def _improve_generic_node_names(
-    node_map: dict[tuple[ComponentType, str], _NodeAccumulator],
-) -> None:
-    """Rename AUTH/DEPLOYMENT nodes named 'generic' to a more descriptive label.
-
-    Scans each node's evidence detail strings (e.g. "auth_generic: Bearer",
-    "deployment_generic: gcloud") and applies ordered rules to derive a human-
-    readable name such as 'bearer_auth' or 'gcloud_deployment'.
-    """
-    for (ct, _canon), acc in node_map.items():
-        if acc.display_name != "generic":
-            continue
-        if ct == ComponentType.AUTH:
-            rules = _AUTH_NAME_RULES
-        elif ct == ComponentType.DEPLOYMENT:
-            rules = _DEPLOY_NAME_RULES
-        else:
-            continue
-        # Collect all evidence snippets (the part after the adapter prefix).
-        snippets = [
-            ev.detail.split(":", 1)[-1].strip() if ":" in ev.detail else ev.detail
-            for ev in acc.evidence
-        ]
-        for pattern, new_name in rules:
-            if any(pattern.search(s) for s in snippets):
-                _log.debug(
-                    "generic_name_improve: %s %r → %r",
-                    ct.value,
-                    acc.canonical_name,
-                    new_name,
-                )
-                acc.display_name = new_name
-                break
-
-
-def _suppress_generic_tech_regex_datastore(
-    node_map: dict[tuple[ComponentType, str], _NodeAccumulator],
-) -> None:
-    """Suppress generic tech-name DATASTORE nodes emitted by regex adapters when
-    the same file already has specific AST-detected DATASTORE nodes for the same
-    underlying technology.
-
-    Example: a regex adapter emitting ``faiss`` from an import line in a file
-    where the AST adapter has already extracted specific named stores
-    (``docs_index``, ``tickets_index``, etc. with ``provider="faiss"``).  The
-    generic node is redundant and introduces false positives.
-
-    Only purely regex-evidence nodes whose ``display_name`` matches a known
-    vector-store / database technology shortname are candidates for suppression.
-    Suppression only fires when at least one specific (non-regex) DATASTORE node
-    shares the same source file AND has the same technology in its provider
-    metadata (or its display name starts with the tech name as a prefix).
-    """
-    keys_to_remove: set[tuple[ComponentType, str]] = set()
-    datastore_keys = [key for key in node_map if key[0] == ComponentType.DATASTORE]
-    is_regex_only: dict[tuple[ComponentType, str], bool] = {}
-    evidence_paths: dict[tuple[ComponentType, str], set[str]] = {}
-
-    for key in datastore_keys:
-        acc = node_map[key]
-        is_regex_only[key] = all(ev.kind == "regex" for ev in acc.evidence)
-        evidence_paths[key] = {
-            ev.location.path for ev in acc.evidence if ev.location and ev.location.path
-        }
-
-    # Collect: file → set of tech names from specific (non-regex) DATASTORE nodes
-    file_to_specific_techs: dict[str, set[str]] = {}
-    for key in datastore_keys:
-        acc = node_map[key]
-        if is_regex_only[key]:
-            continue  # Skip — this is itself a regex-only node
-        provider = str(acc.metadata.get("provider", "")).lower().strip()
-        tech = provider or acc.display_name.lower()
-        for file_path in evidence_paths[key]:
-            file_to_specific_techs.setdefault(file_path, set()).add(tech)
-
-    # Identify generic regex-only DATASTORE nodes that are covered by specific ones
-    for key in datastore_keys:
-        acc = node_map[key]
-        if not is_regex_only[key]:
-            continue  # Only suppress regex-only nodes
-        tech_name = acc.display_name.lower()
-        # Check whether any source file for this node already has a specific node
-        for file_path in evidence_paths[key]:
-            specific_techs = file_to_specific_techs.get(file_path, set())
-            if tech_name in specific_techs:
-                keys_to_remove.add(key)
-                _log.debug(
-                    "suppress_generic_tech_regex: dropped generic %r"
-                    " (file %s already has specific %r nodes)",
-                    tech_name,
-                    file_path,
-                    tech_name,
-                )
-                break
-
-    for k in keys_to_remove:
-        del node_map[k]
-
-
-def _suppress_non_code_model_datastore(
-    node_map: dict[tuple[ComponentType, str], _NodeAccumulator],
-) -> None:
-    """Drop MODEL and DATASTORE nodes whose only evidence is from DOCS tier.
-
-    Detections from lock files (``pnpm-lock.yaml``, ``package-lock.json``),
-    README mentions, shell scripts, and plain-text files frequently produce
-    spurious MODEL/DATASTORE nodes.  These files are classified as DOCS tier;
-    IaC-tier detections (YAML configs, JSON configs, Dockerfiles) are kept
-    because they legitimately describe datastores and models in environment
-    definitions.
-
-    Only DOCS-tier-only nodes are dropped.  This does not affect AGENT, TOOL,
-    PROMPT, etc. which are typically harder to detect and worth surfacing from
-    any tier.
-    """
-    _suppressed_types = {ComponentType.MODEL, ComponentType.DATASTORE}
-    keys_to_drop = [
-        key
-        for key, acc in node_map.items()
-        if key[0] in _suppressed_types and acc.best_tier_rank >= _TIER_RANK[_TIER_DOCS]
-    ]
-    for key in keys_to_drop:
-        _log.debug(
-            "suppress_docs_only: dropped %s (best_tier_rank=%d)",
-            key,
-            node_map[key].best_tier_rank,
-        )
-        del node_map[key]
-
-
-def stable_id(value: str) -> str:
-    return hashlib.sha256(value.encode("utf-8")).hexdigest()
-
-
-def _dedup_deployment_nodes(doc: "AiSbomDocument") -> None:  # noqa: F821
-    """Merge GitHub Actions workflow DEPLOYMENT nodes into the cloud-provider
-    service nodes they deploy to, avoiding duplicate Azure/GHA entries.
-
-    When the same deployment is described by both a GitHub Actions workflow
-    node (deployment_target=github-actions) and one or more cloud-provider
-    nodes (deployment_target=azure, aws, gcp), the GHA node is merged into
-    the cloud node: CI/CD metadata (triggers, runners) is copied across, then
-    the GHA node is removed.
-    """
-    from ..types import ComponentType as _CT  # local import
-
-    deployment_nodes = [n for n in doc.nodes if n.component_type == _CT.DEPLOYMENT]
-
-    # Build index: deployment_target → list of nodes
-    by_target: dict[str, list] = {}
-    for node in deployment_nodes:
-        target = node.metadata.extras.get("deployment_target", "unknown")
-        by_target.setdefault(target, []).append(node)
-
-    gha_nodes = by_target.get("github-actions", [])
-    # Only true generic-keyword-bucket nodes (deployment_generic adapter) are
-    # removal candidates below. Using by_target["unknown"] here too would also
-    # sweep in unrelated, structured DEPLOYMENT nodes that simply don't set a
-    # deployment_target extra (e.g. a Dockerfile EXPOSE-port node or an nginx
-    # proxy_pass node) — those would then satisfy the substring check against
-    # their own canonical name and get wrongly removed.
-    generic_nodes = [
-        n for n in deployment_nodes
-        if n.metadata.extras.get("adapter") == "deployment_generic"
-    ]
-    nodes_to_remove = []
-
-    # A generic keyword node (e.g. "docker", "vercel", "kustomize" — one per
-    # matched technology, see the deployment_generic adapter) is only
-    # redundant when a more specific, non-generic DEPLOYMENT node already
-    # names that same technology (e.g. "deployment_github_actions_docker_
-    # release" already covers "docker"). Checking "any GHA/IaC node exists
-    # at all" is not enough: having CI/CD workflows or a cloud deployment
-    # target says nothing about whether e.g. Vercel or Kustomize usage is
-    # covered elsewhere, and would otherwise wipe out every generic node
-    # whenever the repo has so much as one GitHub Actions workflow.
-    specific_canonical_names = [
-        (n.metadata.extras.get("canonical_name") or "").lower()
-        for n in deployment_nodes
-        if n.metadata.extras.get("adapter") != "deployment_generic"
-    ]
-
-    for generic_node in generic_nodes:
-        generic_canon = (generic_node.metadata.extras.get("canonical_name") or "").lower()
-        if generic_canon and any(generic_canon in specific for specific in specific_canonical_names):
-            if generic_node not in nodes_to_remove:
-                nodes_to_remove.append(generic_node)
-
-    # Merge GitHub Actions workflow nodes into the cloud-provider nodes they deploy to
-    for gha_node in gha_nodes:
-        if gha_node in nodes_to_remove:
-            continue
-        cloud_providers: list[str] = gha_node.metadata.extras.get("cloud_providers") or []
-        for provider in cloud_providers:
-            cloud_nodes = [
-                n for n in by_target.get(provider, [])
-                if n not in nodes_to_remove
-                and n.metadata.extras.get("adapter") != "deployment_generic"
-            ]
-            if len(cloud_nodes) == 1:
-                # Merge CI/CD metadata from the GHA workflow node into the cloud node
-                target_node = cloud_nodes[0]
-                gha_extras = gha_node.metadata.extras
-                target_extras = target_node.metadata.extras
-                for key in ("workflow_triggers", "runners", "uses_oidc", "secret_store"):
-                    if key not in target_extras and gha_extras.get(key) is not None:
-                        target_extras[key] = gha_extras[key]
-                # Merge evidence (deduplicated)
-                existing_locs = {
-                    (e.location.path if e.location else None) for e in target_node.evidence
-                }
-                for ev in gha_node.evidence:
-                    ev_path = ev.location.path if ev.location else None
-                    if ev_path not in existing_locs:
-                        target_node.evidence.append(ev)
-                        existing_locs.add(ev_path)
-                nodes_to_remove.append(gha_node)
-                break  # only merge into one cloud node per GHA node
-
-    for node in nodes_to_remove:
-        if node in doc.nodes:
-            doc.nodes.remove(node)

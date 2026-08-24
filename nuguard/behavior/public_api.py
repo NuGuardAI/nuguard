@@ -38,6 +38,8 @@ from nuguard.remediation.backfill import backfill_finding_remediation
 from nuguard.remediation.models import RemediationArtefact
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from nuguard.behavior.judge_cache import JudgeCache
     from nuguard.behavior.models import IntentProfile
     from nuguard.common.llm_client import LLMClient
@@ -58,6 +60,7 @@ async def analyze_behavior(
     request: BehaviorAnalysisRequest,
     *,
     sbom: "AiSbomDocument | None" = None,
+    sbom_path: "Path | None" = None,
     policy: "CognitivePolicy | None" = None,
     controls: "list[PolicyControl] | None" = None,
     llm_client: "LLMClient | None" = None,
@@ -74,6 +77,7 @@ async def analyze_behavior(
     analyzer = BehaviorAnalyzer(
         config=request.config,
         sbom=sbom,
+        sbom_path=sbom_path,
         policy=policy,
         controls=controls,
         llm_client=llm_client,
@@ -121,6 +125,7 @@ async def run_behavior_scenarios(
     request: BehaviorRunRequest,
     *,
     sbom: "AiSbomDocument | None" = None,
+    sbom_path: "Path | None" = None,
     policy: "CognitivePolicy | None" = None,
     intent: "IntentProfile | None" = None,
     llm_client: "LLMClient | None" = None,
@@ -141,6 +146,7 @@ async def run_behavior_scenarios(
     runner = BehaviorRunner(
         config=request.config,
         sbom=sbom,
+        sbom_path=sbom_path,
         policy=policy,
         intent=intent,
         llm_client=llm_client,
@@ -158,6 +164,7 @@ async def discover_behavior_profile(
     config: BehaviorConfig,
     *,
     sbom: "AiSbomDocument | None" = None,
+    sbom_path: "Path | None" = None,
     policy: "CognitivePolicy | None" = None,
     intent: "IntentProfile | None" = None,
     llm_client: "LLMClient | None" = None,
@@ -166,7 +173,9 @@ async def discover_behavior_profile(
 
     Thin wrapper around ``BehaviorRunner(...).discover()``.
     """
-    runner = BehaviorRunner(config=config, sbom=sbom, policy=policy, intent=intent, llm_client=llm_client)
+    runner = BehaviorRunner(
+        config=config, sbom=sbom, sbom_path=sbom_path, policy=policy, intent=intent, llm_client=llm_client,
+    )
     return await runner.discover()
 
 

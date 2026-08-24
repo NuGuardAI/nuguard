@@ -54,9 +54,24 @@ class TargetUnavailableError(NuGuardError):
     Attributes:
         url: The URL that failed.
         cause: Underlying exception or HTTP status that triggered the error.
+        source: Which failure path tripped the breaker — ``"chat"`` (the
+            conversational ``send()``/``send_stream()`` endpoint) or
+            ``"endpoint_probe"`` (a direct-HTTP ``invoke_endpoint()`` call
+            against an SBOM-derived REST path). Callers that need to isolate
+            direct-HTTP probe outages from genuine chat-endpoint outages
+            (e.g. the redteam orchestrator's circuit breaker) inspect this
+            instead of the message text. Defaults to ``"chat"`` for backward
+            compatibility with existing call sites.
     """
 
-    def __init__(self, message: str, url: str = "", cause: str = "") -> None:
+    def __init__(
+        self,
+        message: str,
+        url: str = "",
+        cause: str = "",
+        source: str = "chat",
+    ) -> None:
         super().__init__(message)
         self.url = url
         self.cause = cause
+        self.source = source

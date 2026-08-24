@@ -6,7 +6,11 @@ NUGUARD_LLM                  Set to "1" / "true" to enable LLM enrichment
 NUGUARD_LLM_MODEL            LLM model string passed to litellm (default: gpt-4o-mini)
 NUGUARD_LLM_API_KEY          API key for the LLM provider
 NUGUARD_LLM_API_BASE         Base URL for the LLM provider
-NUGUARD_LLM_BUDGET_TOKENS    Max tokens to spend on LLM enrichment (default: 50000)
+NUGUARD_LLM_BUDGET_TOKENS    Max tokens to spend on LLM enrichment (default: 500000)
+NUGUARD_GAP_FILL_MAX_CALLS   Max LLM calls for the gap-fill discovery pass (default: 40)
+NUGUARD_GAP_FILL_MAX_COST_USD  Max estimated USD spend for gap-fill (default: 5.0)
+NUGUARD_GAP_FILL_ENABLE_PRIVILEGE  Opt into PRIVILEGE gap-fill (default: false)
+NUGUARD_GAP_FILL_ENABLE_GUARDRAIL  Opt into GUARDRAIL gap-fill (default: false)
 
 Legacy aliases (still accepted for backwards compatibility)
 -----------------------------------------------------------
@@ -82,7 +86,43 @@ def _default_budget_tokens() -> int:
             return int(raw)
         except ValueError:
             pass
-    return 50_000
+    return 500_000
+
+
+def _default_gap_fill_max_calls() -> int:
+    return _env_int("NUGUARD_GAP_FILL_MAX_CALLS", 40)
+
+
+def _default_gap_fill_max_cost_usd() -> float:
+    raw = os.getenv("NUGUARD_GAP_FILL_MAX_COST_USD")
+    if raw:
+        try:
+            return float(raw)
+        except ValueError:
+            pass
+    return 5.0
+
+
+def _default_gap_fill_enable_privilege() -> bool:
+    return _env_bool("NUGUARD_GAP_FILL_ENABLE_PRIVILEGE", False)
+
+
+def _default_gap_fill_enable_guardrail() -> bool:
+    return _env_bool("NUGUARD_GAP_FILL_ENABLE_GUARDRAIL", False)
+
+
+def _default_verification_cost_budget() -> float:
+    raw = os.getenv("AISBOM_VERIFICATION_COST_BUDGET")
+    if raw:
+        try:
+            return float(raw)
+        except ValueError:
+            pass
+    return 20.0
+
+
+def _default_verification_max_verifications() -> int:
+    return _env_int("AISBOM_MAX_VERIFICATIONS", 20)
 
 
 def _default_llm_concurrency() -> int:
@@ -104,8 +144,10 @@ def _default_llm_concurrency() -> int:
 
 class AiSbomConfig(BaseModel):
     model_config = {"validate_assignment": True}
-    max_files: int = Field(default=1000, ge=1, le=10000)
-    max_file_size_bytes: int = Field(default=1024 * 1024, ge=1024)
+    # None = no limit on the number of files scanned/walked, for both local-folder
+    # and GitHub repo discovery (they share the same _iter_files walker).
+    max_files: int | None = Field(default=None, ge=1)
+    max_file_size_bytes: int = Field(default=100 * 1024 * 1024, ge=1024)
     include_extensions: set[str] = Field(
         default_factory=lambda: {
             ".py",
@@ -127,6 +169,12 @@ class AiSbomConfig(BaseModel):
             ".sh",
             ".bash",
             ".md",
+            ".rs",
+            ".rb",
+            ".java",
+            ".cs",
+            ".toml",
+            ".cfg",
         }
     )
     exclude_patterns: list[str] = Field(
@@ -154,6 +202,19 @@ class AiSbomConfig(BaseModel):
             "Used to bound the per-node verification pass and any other "
             "independent LLM calls that can safely run in parallel."
         ),
+    )
+
+    # Gap-fill discovery pass (nuguard.yaml: sbom_generation.gap_fill.*)
+    gap_fill_max_calls: int = Field(default_factory=_default_gap_fill_max_calls)
+    gap_fill_max_cost_usd: float = Field(default_factory=_default_gap_fill_max_cost_usd)
+    gap_fill_enable_privilege: bool = Field(default_factory=_default_gap_fill_enable_privilege)
+    gap_fill_enable_guardrail: bool = Field(default_factory=_default_gap_fill_enable_guardrail)
+    gap_fill_self_critique_categories: list[str] = Field(default_factory=list)
+
+    # Node verification pass (nuguard.yaml: sbom_generation.verification.*)
+    verification_cost_budget: float = Field(default_factory=_default_verification_cost_budget)
+    verification_max_verifications: int = Field(
+        default_factory=_default_verification_max_verifications
     )
 
     # Vertex AI / Google direct path (bypasses litellm when google_api_key is set)

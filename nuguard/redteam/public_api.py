@@ -100,12 +100,15 @@ class RedteamRunRequest(BaseModel):
     stall_abort_threshold: int = 8
     skip_discovery: bool = False
     discovery_max_turns: int = 3
+    capability_discovery: bool = True
     chat_payload_extras: dict[str, Any] | None = None
     pre_run_warmup: int = 0
-    verify_findings: bool = False
+    verify_findings: bool = True
     golden_data: dict[str, Any] | None = None
     suppress_spa_html_auth_bypass: bool = True
     codegen_escalation_enabled: bool = True
+    mode: str = "concurrent"
+    progressive_halt_on_severity: str = "none"
 
 
 class RedteamRunResult(BaseModel):
@@ -148,6 +151,12 @@ class RedteamRunResult(BaseModel):
     :func:`run_redteam` directly. Populated with contextual LLM patch text when
     ``remediation_llm_client`` (falling back to ``eval_llm``) is supplied to
     :func:`run_redteam`. Empty when synthesis fails or no SBOM is available.
+    """
+    security_invariants: list[dict[str, Any]] = Field(default_factory=list)
+    """Phase-0 pass/fail criteria derived from the Cognitive Policy (see
+    nuguard.redteam.invariants.derive_security_invariants and
+    docs/claude-redteam-3.md §3). Always populated regardless of ``mode`` —
+    cheap to compute, and the report only renders the section when non-empty.
     """
 
 
@@ -215,6 +224,7 @@ async def run_redteam(
     request: RedteamRunRequest,
     *,
     sbom: "AiSbomDocument",
+    sbom_path: "Path | None" = None,
     policy: "CognitivePolicy | None" = None,
     policy_controls: "list | None" = None,
     redteam_llm: "LLMClient | None" = None,
@@ -237,6 +247,7 @@ async def run_redteam(
     orchestrator = RedteamOrchestrator(
         sbom=sbom,
         target_url=request.target_url,
+        sbom_path=sbom_path,
         policy=policy,
         policy_controls=policy_controls,
         canary_config=request.canary_config,
@@ -274,6 +285,7 @@ async def run_redteam(
         stall_abort_threshold=request.stall_abort_threshold,
         skip_discovery=request.skip_discovery,
         discovery_max_turns=request.discovery_max_turns,
+        capability_discovery=request.capability_discovery,
         chat_payload_extras=request.chat_payload_extras,
         catalog=catalog,
         pre_run_warmup=request.pre_run_warmup,
@@ -281,6 +293,8 @@ async def run_redteam(
         golden_data=request.golden_data,
         suppress_spa_html_auth_bypass=request.suppress_spa_html_auth_bypass,
         codegen_escalation_enabled=request.codegen_escalation_enabled,
+        mode=request.mode,
+        progressive_halt_on_severity=request.progressive_halt_on_severity,
     )
 
     try:
@@ -341,6 +355,7 @@ async def run_redteam(
         catalog_coverage=_catalog_coverage_to_dict(getattr(orchestrator, "catalog_coverage", None)),
         coverage_tracker=coverage_tracker.to_dict() if coverage_tracker is not None else None,
         remediation_plan=remediation_plan,
+        security_invariants=[i.model_dump() for i in getattr(orchestrator, "security_invariants", [])],
     )
 
 

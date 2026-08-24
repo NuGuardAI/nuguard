@@ -283,6 +283,7 @@ async def _run_behavior(
         result = await analyze_behavior(
             request,
             sbom=sbom,
+            sbom_path=sbom_path_obj,
             policy=policy_obj,
             controls=controls,
             llm_client=llm_client,

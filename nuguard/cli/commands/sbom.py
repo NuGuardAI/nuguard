@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 from urllib.parse import urlparse, urlunparse
 
 import typer
@@ -177,14 +177,17 @@ def _validate_inputs(
             )
 
     # ── GitHub token ─────────────────────────────────────────────────────────
-    resolved_token = token or os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
-    if resolved_token is not None:
-        if len(resolved_token) < 20:  # noqa: PLR2004
+    # Only an explicit --token is validated strictly: a public repo needs no
+    # token at all, so an ambient GH_TOKEN/GITHUB_TOKEN env var that happens to
+    # be short-lived or malformed (e.g. Codespaces/CI defaults) must not block
+    # the whole scan — it is simply ignored later (see _resolve_token).
+    if token is not None:
+        if len(token) < 20:  # noqa: PLR2004
             _err(
                 "GitHub token appears too short to be valid.",
                 "Provide a valid personal access token (ghp_…, gho_…, github_pat_…).",
             )
-        if not any(resolved_token.startswith(p) for p in _GH_TOKEN_PREFIXES):
+        if not any(token.startswith(p) for p in _GH_TOKEN_PREFIXES):
             # Warn but don't block — could be a custom server token
             _err_console.print(
                 "[yellow]Warning:[/yellow] Token does not match a known GitHub "
@@ -221,8 +224,29 @@ def _inject_token(url: str, token: str) -> str:
 
 
 def _resolve_token(token: str | None) -> str | None:
-    """Return the first non-empty token from flag → GH_TOKEN → GITHUB_TOKEN."""
-    return token or os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN") or None
+    """Return the first usable token from flag → GH_TOKEN → GITHUB_TOKEN.
+
+    An explicit --token is trusted as-is (already validated in
+    _validate_inputs). A token picked up from the environment is silently
+    ignored if it is too short or malformed, since it was never a required
+    input — it's most likely an unrelated ambient token that would otherwise
+    break cloning of a public repo.
+    """
+    if token:
+        return token
+    env_token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    if not env_token:
+        return None
+    if len(env_token) < 20 or not any(  # noqa: PLR2004
+        env_token.startswith(p) for p in _GH_TOKEN_PREFIXES
+    ):
+        _err_console.print(
+            "[yellow]Warning:[/yellow] Ignoring GH_TOKEN/GITHUB_TOKEN from the "
+            "environment — it does not look like a valid GitHub token. "
+            "Proceeding without authentication."
+        )
+        return None
+    return env_token
 
 
 def _do_generate(
@@ -243,7 +267,11 @@ def _do_generate(
     # Always load nuguard.yaml so sbom_generation.llm, llm.model, and llm.api_key
     # are honoured even when --source is supplied on the CLI.
     from nuguard.config import load_config  # noqa: PLC0415
-    cfg = load_config(config_file)
+    try:
+        cfg = load_config(config_file)
+    except Exception as exc:
+        _err_console.print(f"Error: failed to load config: {exc}")
+        raise typer.Exit(code=1) from exc
 
     # Fall back to nuguard.yaml's source field when --source is not provided.
     # If source: is a URL (https://github.com/…) treat it as --from-repo so it
@@ -272,12 +300,12 @@ def _do_generate(
     # reads NUGUARD_LLM_CONCURRENCY / AISBOM_LLM_CONCURRENCY).
     from nuguard.sbom.config import _default_llm_concurrency  # noqa: PLC0415
 
-    config = AiSbomConfig(
-        enable_llm=effective_llm,
-        llm_model=_sbom_model,
-        llm_api_key=cfg.litellm_api_key or None,
-        llm_api_base=_sbom_api_base,
-        llm_concurrency=(
+    config_kwargs: dict[str, Any] = {
+        "enable_llm": effective_llm,
+        "llm_model": _sbom_model,
+        "llm_api_key": cfg.litellm_api_key or None,
+        "llm_api_base": _sbom_api_base,
+        "llm_concurrency": (
             llm_concurrency
             if llm_concurrency is not None
             else (
@@ -286,7 +314,19 @@ def _do_generate(
                 else _default_llm_concurrency()
             )
         ),
-    )
+        "gap_fill_enable_privilege": cfg.sbom_gap_fill_enable_privilege,
+        "gap_fill_enable_guardrail": cfg.sbom_gap_fill_enable_guardrail,
+        "gap_fill_self_critique_categories": cfg.sbom_gap_fill_self_critique_categories,
+    }
+    if cfg.sbom_gap_fill_max_calls is not None:
+        config_kwargs["gap_fill_max_calls"] = cfg.sbom_gap_fill_max_calls
+    if cfg.sbom_gap_fill_max_cost_usd is not None:
+        config_kwargs["gap_fill_max_cost_usd"] = cfg.sbom_gap_fill_max_cost_usd
+    if cfg.sbom_verification_cost_budget is not None:
+        config_kwargs["verification_cost_budget"] = cfg.sbom_verification_cost_budget
+    if cfg.sbom_verification_max_verifications is not None:
+        config_kwargs["verification_max_verifications"] = cfg.sbom_verification_max_verifications
+    config = AiSbomConfig(**config_kwargs)
     gen = SbomGenerator(config=config)
 
     try:

@@ -7,12 +7,14 @@ and deduplication constraints so generated prompts are more targeted.
 
 from __future__ import annotations
 
-import os
 import re
 from dataclasses import dataclass
 from difflib import SequenceMatcher
 from typing import TYPE_CHECKING
 
+from nuguard.common.env_utils import env_bool as _env_bool
+from nuguard.common.env_utils import env_float as _env_float
+from nuguard.common.env_utils import env_int as _env_int
 from nuguard.common.logging import get_logger
 
 if TYPE_CHECKING:
@@ -25,35 +27,6 @@ _STOPWORDS = {
     "if", "in", "is", "it", "of", "on", "or", "that", "the", "to", "we", "with",
     "you", "your", "this", "those", "these", "our", "their", "they", "them",
 }
-
-
-def _env_float(name: str, default: float) -> float:
-    raw = os.getenv(name)
-    if raw is None or not raw.strip():
-        return default
-    try:
-        return float(raw)
-    except ValueError:
-        _log.warning("Invalid %s=%r; using default %.3f", name, raw, default)
-        return default
-
-
-def _env_int(name: str, default: int) -> int:
-    raw = os.getenv(name)
-    if raw is None or not raw.strip():
-        return default
-    try:
-        return int(raw)
-    except ValueError:
-        _log.warning("Invalid %s=%r; using default %d", name, raw, default)
-        return default
-
-
-def _env_bool(name: str, default: bool) -> bool:
-    raw = os.getenv(name)
-    if raw is None or not raw.strip():
-        return default
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _tokenize(text: str) -> list[str]:

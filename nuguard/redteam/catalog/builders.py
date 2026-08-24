@@ -18,6 +18,7 @@ re-reading the graph.
 """
 from __future__ import annotations
 
+import importlib
 from typing import Callable, NamedTuple
 
 from nuguard.sbom.models import AiSbomDocument, Node
@@ -68,6 +69,30 @@ def _stamp(scenarios: list, ctx: BuilderContext) -> list:
     return stamped
 
 
+def _simple(module_path: str, func_name: str) -> BuilderFn:
+    """Factory for the common case: call one scenarios-package builder with the
+    target agent's id/name and stamp the result.
+
+    Covers every builder that reduces to::
+
+        from <module_path> import <func_name>
+        agent = ctx.target_agent
+        results = <func_name>(str(agent.id), agent.name or "assistant")
+        return _stamp([results], ctx)
+
+    Builders needing extra kwargs, multiple calls, or non-agent context stay
+    as hand-written functions below instead of using this factory.
+    """
+    def _builder(ctx: BuilderContext) -> list:
+        module = importlib.import_module(module_path)
+        build_fn = getattr(module, func_name)
+        agent = ctx.target_agent
+        results = build_fn(str(agent.id), agent.name or "assistant")
+        return _stamp([results], ctx)
+    _builder.__name__ = f"_simple_{func_name}"
+    return _builder
+
+
 def _stub(key: str) -> BuilderFn:
     """Return a factory that raises NotImplementedError for unimplemented specs."""
     def _not_implemented(ctx: BuilderContext) -> list:
@@ -88,41 +113,6 @@ def _build_direct_pii(ctx: BuilderContext) -> list:
         str(agent.id), agent.name or "assistant",
         target_field="user profile" if not ctx.profile.pii_fields else ctx.profile.pii_fields[0],
     )
-    return _stamp([results], ctx)
-
-
-def _build_cross_tenant(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.data_exfiltration import build_cross_tenant_exfiltration
-    agent = ctx.target_agent
-    results = build_cross_tenant_exfiltration(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
-def _build_account_id_probe(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.data_exfiltration import build_account_id_probe
-    agent = ctx.target_agent
-    results = build_account_id_probe(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
-def _build_base64_exfil(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.data_exfiltration import build_base64_exfiltration
-    agent = ctx.target_agent
-    results = build_base64_exfiltration(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
-def _build_structured_smuggling(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.data_exfiltration import build_json_xml_exfiltration
-    agent = ctx.target_agent
-    results = build_json_xml_exfiltration(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
-def _build_metadata_smuggling(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.data_exfiltration import build_document_embedded_exfiltration
-    agent = ctx.target_agent
-    results = build_document_embedded_exfiltration(str(agent.id), agent.name or "assistant")
     return _stamp([results], ctx)
 
 
@@ -204,27 +194,6 @@ def _build_mcp_toxic_flow(ctx: BuilderContext) -> list:
     return _stamp([results], ctx)
 
 
-def _build_memory_poisoning(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.agentic_attacks import build_memory_poisoning
-    agent = ctx.target_agent
-    results = build_memory_poisoning(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
-def _build_profile_poisoning(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.memory_persistence import build_profile_field_poisoning
-    agent = ctx.target_agent
-    results = build_profile_field_poisoning(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
-def _build_memory_auth_drift(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.memory_persistence import build_memory_auth_drift
-    agent = ctx.target_agent
-    results = build_memory_auth_drift(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
 # ── Authorization builders ─────────────────────────────────────────────────
 
 def _build_bola_read(ctx: BuilderContext) -> list:
@@ -252,85 +221,10 @@ def _build_bfla(ctx: BuilderContext) -> list:
     return _stamp([results], ctx)
 
 
-def _build_rbac_override(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.authorization import build_rbac_override
-    agent = ctx.target_agent
-    results = build_rbac_override(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
-def _build_false_verification(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.authorization import build_false_verification
-    agent = ctx.target_agent
-    results = build_false_verification(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
-def _build_debug_admin(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.authorization import build_debug_admin_exposure
-    agent = ctx.target_agent
-    results = build_debug_admin_exposure(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
 # ── Covert exfiltration builders ────────────────────────────────────────────
-
-def _build_markdown_image(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.covert_exfiltration import build_markdown_image_exfil
-    agent = ctx.target_agent
-    results = build_markdown_image_exfil(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
-def _build_markdown_link(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.covert_exfiltration import build_markdown_link_exfil
-    agent = ctx.target_agent
-    results = build_markdown_link_exfil(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
-def _build_url_encoding(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.covert_exfiltration import build_url_encoding_exfil
-    agent = ctx.target_agent
-    results = build_url_encoding_exfil(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
-def _build_invisible_unicode(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.covert_exfiltration import build_invisible_unicode_exfil
-    agent = ctx.target_agent
-    results = build_invisible_unicode_exfil(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
-def _build_telemetry_pretext(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.covert_exfiltration import build_telemetry_pretext_exfil
-    agent = ctx.target_agent
-    results = build_telemetry_pretext_exfil(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
 
 
 # ── Multi-agent trust builders ───────────────────────────────────────────────
-
-def _build_agent_impersonation(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.multi_agent import build_agent_impersonation
-    agent = ctx.target_agent
-    results = build_agent_impersonation(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
-def _build_approval_spoof(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.multi_agent import build_approval_spoof
-    agent = ctx.target_agent
-    results = build_approval_spoof(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
-def _build_subagent_injection(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.multi_agent import build_subagent_output_injection
-    agent = ctx.target_agent
-    results = build_subagent_output_injection(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
 
 
 # ── Business logic builders ──────────────────────────────────────────────────
@@ -363,55 +257,7 @@ def _build_out_of_domain_advice(ctx: BuilderContext) -> list:
     return _stamp([results], ctx)
 
 
-def _build_hallucinated_authority(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.business_logic import build_hallucinated_authority
-    agent = ctx.target_agent
-    results = build_hallucinated_authority(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
-def _build_resource_exhaustion(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.business_logic import build_resource_exhaustion
-    agent = ctx.target_agent
-    results = build_resource_exhaustion(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
 # ── Data exfiltration gap-fills (D04–D08) ────────────────────────────────────
-
-def _build_cross_session_leak(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.data_exfiltration import build_cross_session_leak
-    agent = ctx.target_agent
-    results = build_cross_session_leak(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
-def _build_private_doc(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.data_exfiltration import build_private_doc_extraction
-    agent = ctx.target_agent
-    results = build_private_doc_extraction(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
-def _build_rag_citation(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.data_exfiltration import build_rag_citation_overreach
-    agent = ctx.target_agent
-    results = build_rag_citation_overreach(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
-def _build_aggregated_pii(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.data_exfiltration import build_aggregated_pii
-    agent = ctx.target_agent
-    results = build_aggregated_pii(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
-def _build_history_disclosure(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.data_exfiltration import build_history_disclosure
-    agent = ctx.target_agent
-    results = build_history_disclosure(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
 
 
 # ── Destructive actions (T01–T08) ─────────────────────────────────────────────
@@ -436,48 +282,6 @@ def _build_destructive_mutate(ctx: BuilderContext) -> list:
     return _stamp([results], ctx)
 
 
-def _build_unsafe_navigation(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.destructive_actions import build_unsafe_navigation
-    agent = ctx.target_agent
-    results = build_unsafe_navigation(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
-def _build_unsafe_device(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.destructive_actions import build_unsafe_device_command
-    agent = ctx.target_agent
-    results = build_unsafe_device_command(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
-def _build_unsafe_transaction(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.destructive_actions import build_unsafe_transaction
-    agent = ctx.target_agent
-    results = build_unsafe_transaction(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
-def _build_mass_notification(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.destructive_actions import build_mass_notification
-    agent = ctx.target_agent
-    results = build_mass_notification(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
-def _build_disable_safety(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.destructive_actions import build_disable_safety
-    agent = ctx.target_agent
-    results = build_disable_safety(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
-def _build_persistent_task(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.destructive_actions import build_persistent_task
-    agent = ctx.target_agent
-    results = build_persistent_task(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
 # ── MCP gap-fills (M02, M05–M08) ─────────────────────────────────────────────
 
 def _build_mcp_shadow_tool(ctx: BuilderContext) -> list:
@@ -489,140 +293,19 @@ def _build_mcp_shadow_tool(ctx: BuilderContext) -> list:
     return _stamp([results], ctx)
 
 
-def _build_credential_overreach(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.mcp_attacks import build_credential_overreach
-    agent = ctx.target_agent
-    results = build_credential_overreach(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
-def _build_ssrf(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.mcp_attacks import build_ssrf_via_agent
-    agent = ctx.target_agent
-    results = build_ssrf_via_agent(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
-def _build_tool_discovery_leak(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.mcp_attacks import build_tool_discovery_leak
-    agent = ctx.target_agent
-    results = build_tool_discovery_leak(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
-def _build_mcp_cross_server(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.mcp_attacks import build_mcp_cross_server_exfil
-    agent = ctx.target_agent
-    results = build_mcp_cross_server_exfil(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
 # ── Memory / persistence gap-fills (P03–P05) ─────────────────────────────────
-
-def _build_cross_session_backdoor(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.memory_persistence import build_cross_session_backdoor
-    agent = ctx.target_agent
-    results = build_cross_session_backdoor(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
-def _build_false_identity(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.memory_persistence import build_false_identity_memory
-    agent = ctx.target_agent
-    results = build_false_identity_memory(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
-def _build_summary_poisoning(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.memory_persistence import build_summary_poisoning
-    agent = ctx.target_agent
-    results = build_summary_poisoning(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
 
 
 # ── Multi-agent gap-fills (G03, G05) ─────────────────────────────────────────
 
-def _build_handoff_priv_esc(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.multi_agent import build_handoff_privilege_escalation
-    agent = ctx.target_agent
-    results = build_handoff_privilege_escalation(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
-def _build_planner_executor(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.multi_agent import build_planner_executor_mismatch
-    agent = ctx.target_agent
-    results = build_planner_executor_mismatch(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
 
 # ── Jailbreak gap-fills (J04, J06) ───────────────────────────────────────────
-
-def _build_fictional_framing(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.advanced_jailbreaks import build_fictional_framing_bypass
-    agent = ctx.target_agent
-    results = build_fictional_framing_bypass(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
-def _build_false_policy_premise(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.advanced_jailbreaks import build_false_policy_premise
-    agent = ctx.target_agent
-    results = build_false_policy_premise(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
 
 
 # ── Business logic gap-fill (B03) ────────────────────────────────────────────
 
-def _build_fraud_workflow(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.business_logic import build_fraud_workflow
-    agent = ctx.target_agent
-    results = build_fraud_workflow(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
 
 # ── Coding agents (K01–K06) ──────────────────────────────────────────────────
-
-def _build_repo_injection(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.coding_agents import build_repo_injection
-    agent = ctx.target_agent
-    results = build_repo_injection(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
-def _build_shell_injection(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.coding_agents import build_shell_injection
-    agent = ctx.target_agent
-    results = build_shell_injection(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
-def _build_secret_file_read(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.coding_agents import build_secret_file_read
-    agent = ctx.target_agent
-    results = build_secret_file_read(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
-def _build_sandbox_escape(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.coding_agents import build_sandbox_escape
-    agent = ctx.target_agent
-    results = build_sandbox_escape(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
-def _build_delayed_ci_exfil(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.coding_agents import build_delayed_ci_exfil
-    agent = ctx.target_agent
-    results = build_delayed_ci_exfil(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
-def _build_verifier_sabotage(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.coding_agents import build_verifier_sabotage
-    agent = ctx.target_agent
-    results = build_verifier_sabotage(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
 
 
 def _build_confused_deputy(ctx: BuilderContext) -> list:
@@ -630,55 +313,6 @@ def _build_confused_deputy(ctx: BuilderContext) -> list:
     agent = ctx.target_agent
     tool_name = ctx.profile.tool_names[0] if ctx.profile.tool_names else "privileged_tool"
     results = build_confused_deputy(str(agent.id), agent.name or "assistant", tool_name)
-    return _stamp([results], ctx)
-
-
-def _build_crescendo(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.advanced_jailbreaks import build_crescendo_attack
-    agent = ctx.target_agent
-    results = build_crescendo_attack(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
-def _build_many_shot(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.advanced_jailbreaks import build_many_shot_jailbreak
-    agent = ctx.target_agent
-    results = build_many_shot_jailbreak(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
-def _build_skeleton_key(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.advanced_jailbreaks import build_skeleton_key
-    agent = ctx.target_agent
-    results = build_skeleton_key(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
-def _build_payload_splitting(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.advanced_jailbreaks import build_payload_splitting
-    agent = ctx.target_agent
-    results = build_payload_splitting(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
-def _build_multi_language(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.evasion import build_multi_language_bypass
-    agent = ctx.target_agent
-    results = build_multi_language_bypass(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
-def _build_encoding_evasion(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.evasion import build_encoding_evasion
-    agent = ctx.target_agent
-    results = build_encoding_evasion(str(agent.id), agent.name or "assistant")
-    return _stamp([results], ctx)
-
-
-def _build_context_flood(ctx: BuilderContext) -> list:
-    from nuguard.redteam.scenarios.jailbreak import build_context_flood
-    agent = ctx.target_agent
-    results = build_context_flood(str(agent.id), agent.name or "assistant")
     return _stamp([results], ctx)
 
 
@@ -1057,40 +691,40 @@ def _build_cross_env_credential_reuse(ctx: BuilderContext) -> list:
 BUILDER_FACTORIES: dict[str, BuilderFn] = {
     # ── Data exfiltration ──────────────────────────────────────────────────
     "direct_pii":           _build_direct_pii,
-    "cross_tenant":         _build_cross_tenant,
-    "account_id_probe":     _build_account_id_probe,
-    "cross_session_leak":   _build_cross_session_leak,
-    "private_doc":          _build_private_doc,
-    "rag_citation":         _build_rag_citation,
-    "aggregated_pii":       _build_aggregated_pii,
-    "history_disclosure":   _build_history_disclosure,
+    "cross_tenant":         _simple("nuguard.redteam.scenarios.data_exfiltration", "build_cross_tenant_exfiltration"),
+    "account_id_probe":     _simple("nuguard.redteam.scenarios.data_exfiltration", "build_account_id_probe"),
+    "cross_session_leak":   _simple("nuguard.redteam.scenarios.data_exfiltration", "build_cross_session_leak"),
+    "private_doc":          _simple("nuguard.redteam.scenarios.data_exfiltration", "build_private_doc_extraction"),
+    "rag_citation":         _simple("nuguard.redteam.scenarios.data_exfiltration", "build_rag_citation_overreach"),
+    "aggregated_pii":       _simple("nuguard.redteam.scenarios.data_exfiltration", "build_aggregated_pii"),
+    "history_disclosure":   _simple("nuguard.redteam.scenarios.data_exfiltration", "build_history_disclosure"),
     # ── Covert exfiltration ───────────────────────────────────────────────
-    "markdown_image":       _build_markdown_image,
-    "markdown_link":        _build_markdown_link,
-    "url_encoding":         _build_url_encoding,
-    "base64_exfil":         _build_base64_exfil,
-    "structured_smuggling": _build_structured_smuggling,
-    "metadata_smuggling":   _build_metadata_smuggling,
-    "invisible_unicode":    _build_invisible_unicode,
-    "telemetry_pretext":    _build_telemetry_pretext,
+    "markdown_image":       _simple("nuguard.redteam.scenarios.covert_exfiltration", "build_markdown_image_exfil"),
+    "markdown_link":        _simple("nuguard.redteam.scenarios.covert_exfiltration", "build_markdown_link_exfil"),
+    "url_encoding":         _simple("nuguard.redteam.scenarios.covert_exfiltration", "build_url_encoding_exfil"),
+    "base64_exfil":         _simple("nuguard.redteam.scenarios.data_exfiltration", "build_base64_exfiltration"),
+    "structured_smuggling": _simple("nuguard.redteam.scenarios.data_exfiltration", "build_json_xml_exfiltration"),
+    "metadata_smuggling":   _simple("nuguard.redteam.scenarios.data_exfiltration", "build_document_embedded_exfiltration"),
+    "invisible_unicode":    _simple("nuguard.redteam.scenarios.covert_exfiltration", "build_invisible_unicode_exfil"),
+    "telemetry_pretext":    _simple("nuguard.redteam.scenarios.covert_exfiltration", "build_telemetry_pretext_exfil"),
     # ── Destructive actions ───────────────────────────────────────────────
     "destructive_send":     _build_destructive_send,
     "destructive_mutate":   _build_destructive_mutate,
-    "unsafe_navigation":    _build_unsafe_navigation,
-    "unsafe_device":        _build_unsafe_device,
-    "unsafe_transaction":   _build_unsafe_transaction,
-    "mass_notification":    _build_mass_notification,
-    "disable_safety":       _build_disable_safety,
-    "persistent_task":      _build_persistent_task,
+    "unsafe_navigation":    _simple("nuguard.redteam.scenarios.destructive_actions", "build_unsafe_navigation"),
+    "unsafe_device":        _simple("nuguard.redteam.scenarios.destructive_actions", "build_unsafe_device_command"),
+    "unsafe_transaction":   _simple("nuguard.redteam.scenarios.destructive_actions", "build_unsafe_transaction"),
+    "mass_notification":    _simple("nuguard.redteam.scenarios.destructive_actions", "build_mass_notification"),
+    "disable_safety":       _simple("nuguard.redteam.scenarios.destructive_actions", "build_disable_safety"),
+    "persistent_task":      _simple("nuguard.redteam.scenarios.destructive_actions", "build_persistent_task"),
     # ── Authorization ─────────────────────────────────────────────────────
     "bola_read":            _build_bola_read,
     "bola_write":           _build_bola_write,
     "bfla":                 _build_bfla,
-    "rbac_override":        _build_rbac_override,
-    "false_verification":   _build_false_verification,
+    "rbac_override":        _simple("nuguard.redteam.scenarios.authorization", "build_rbac_override"),
+    "false_verification":   _simple("nuguard.redteam.scenarios.authorization", "build_false_verification"),
     "hitl_bypass":          _build_hitl_bypass,
     "mass_assignment":      _build_mass_assignment,
-    "debug_admin":          _build_debug_admin,
+    "debug_admin":          _simple("nuguard.redteam.scenarios.authorization", "build_debug_admin_exposure"),
     # ── Indirect injection ────────────────────────────────────────────────
     "indirect_injection":   _build_indirect_injection,
     # ── MCP / tool poisoning ──────────────────────────────────────────────
@@ -1098,35 +732,35 @@ BUILDER_FACTORIES: dict[str, BuilderFn] = {
     "mcp_shadow_tool":      _build_mcp_shadow_tool,
     "mcp_output_poisoning": _build_mcp_output_poisoning,
     "mcp_toxic_flow":       _build_mcp_toxic_flow,
-    "credential_overreach": _build_credential_overreach,
-    "ssrf":                 _build_ssrf,
-    "tool_discovery_leak":  _build_tool_discovery_leak,
-    "mcp_cross_server":     _build_mcp_cross_server,
+    "credential_overreach": _simple("nuguard.redteam.scenarios.mcp_attacks", "build_credential_overreach"),
+    "ssrf":                 _simple("nuguard.redteam.scenarios.mcp_attacks", "build_ssrf_via_agent"),
+    "tool_discovery_leak":  _simple("nuguard.redteam.scenarios.mcp_attacks", "build_tool_discovery_leak"),
+    "mcp_cross_server":     _simple("nuguard.redteam.scenarios.mcp_attacks", "build_mcp_cross_server_exfil"),
     # ── Memory / persistence ──────────────────────────────────────────────
-    "memory_poisoning":     _build_memory_poisoning,
-    "profile_poisoning":    _build_profile_poisoning,
-    "cross_session_backdoor": _build_cross_session_backdoor,
-    "false_identity":       _build_false_identity,
-    "summary_poisoning":    _build_summary_poisoning,
-    "memory_auth_drift":    _build_memory_auth_drift,
+    "memory_poisoning":     _simple("nuguard.redteam.scenarios.agentic_attacks", "build_memory_poisoning"),
+    "profile_poisoning":    _simple("nuguard.redteam.scenarios.memory_persistence", "build_profile_field_poisoning"),
+    "cross_session_backdoor": _simple("nuguard.redteam.scenarios.memory_persistence", "build_cross_session_backdoor"),
+    "false_identity":       _simple("nuguard.redteam.scenarios.memory_persistence", "build_false_identity_memory"),
+    "summary_poisoning":    _simple("nuguard.redteam.scenarios.memory_persistence", "build_summary_poisoning"),
+    "memory_auth_drift":    _simple("nuguard.redteam.scenarios.memory_persistence", "build_memory_auth_drift"),
     # ── Multi-agent trust ─────────────────────────────────────────────────
     "confused_deputy":      _build_confused_deputy,
-    "subagent_injection":   _build_subagent_injection,
-    "handoff_priv_esc":     _build_handoff_priv_esc,
-    "agent_impersonation":  _build_agent_impersonation,
-    "planner_executor":     _build_planner_executor,
-    "approval_spoof":       _build_approval_spoof,
+    "subagent_injection":   _simple("nuguard.redteam.scenarios.multi_agent", "build_subagent_output_injection"),
+    "handoff_priv_esc":     _simple("nuguard.redteam.scenarios.multi_agent", "build_handoff_privilege_escalation"),
+    "agent_impersonation":  _simple("nuguard.redteam.scenarios.multi_agent", "build_agent_impersonation"),
+    "planner_executor":     _simple("nuguard.redteam.scenarios.multi_agent", "build_planner_executor_mismatch"),
+    "approval_spoof":       _simple("nuguard.redteam.scenarios.multi_agent", "build_approval_spoof"),
     # ── Jailbreak ─────────────────────────────────────────────────────────
-    "crescendo":            _build_crescendo,
-    "many_shot":            _build_many_shot,
-    "skeleton_key":         _build_skeleton_key,
-    "fictional_framing":    _build_fictional_framing,
-    "payload_splitting":    _build_payload_splitting,
-    "false_policy_premise": _build_false_policy_premise,
+    "crescendo":            _simple("nuguard.redteam.scenarios.advanced_jailbreaks", "build_crescendo_attack"),
+    "many_shot":            _simple("nuguard.redteam.scenarios.advanced_jailbreaks", "build_many_shot_jailbreak"),
+    "skeleton_key":         _simple("nuguard.redteam.scenarios.advanced_jailbreaks", "build_skeleton_key"),
+    "fictional_framing":    _simple("nuguard.redteam.scenarios.advanced_jailbreaks", "build_fictional_framing_bypass"),
+    "payload_splitting":    _simple("nuguard.redteam.scenarios.advanced_jailbreaks", "build_payload_splitting"),
+    "false_policy_premise": _simple("nuguard.redteam.scenarios.advanced_jailbreaks", "build_false_policy_premise"),
     # ── Evasion ───────────────────────────────────────────────────────────
-    "multi_language":       _build_multi_language,
-    "encoding_evasion":     _build_encoding_evasion,
-    "context_flood":        _build_context_flood,
+    "multi_language":       _simple("nuguard.redteam.scenarios.evasion", "build_multi_language_bypass"),
+    "encoding_evasion":     _simple("nuguard.redteam.scenarios.evasion", "build_encoding_evasion"),
+    "context_flood":        _simple("nuguard.redteam.scenarios.jailbreak", "build_context_flood"),
     "structural_injection": _build_structural_injection,
     "refusal_oracle":       _build_refusal_oracle,
     "system_prompt_extraction": _build_system_prompt_extraction,
@@ -1134,16 +768,16 @@ BUILDER_FACTORIES: dict[str, BuilderFn] = {
     # ── Business logic ────────────────────────────────────────────────────
     "false_action_claim":   _build_false_action_claim,
     "out_of_domain_advice": _build_out_of_domain_advice,
-    "fraud_workflow":       _build_fraud_workflow,
-    "resource_exhaustion":  _build_resource_exhaustion,
-    "hallucinated_authority": _build_hallucinated_authority,
+    "fraud_workflow":       _simple("nuguard.redteam.scenarios.business_logic", "build_fraud_workflow"),
+    "resource_exhaustion":  _simple("nuguard.redteam.scenarios.business_logic", "build_resource_exhaustion"),
+    "hallucinated_authority": _simple("nuguard.redteam.scenarios.business_logic", "build_hallucinated_authority"),
     # ── Coding agents ─────────────────────────────────────────────────────
-    "repo_injection":       _build_repo_injection,
-    "shell_injection":      _build_shell_injection,
-    "secret_file_read":     _build_secret_file_read,
-    "sandbox_escape":       _build_sandbox_escape,
-    "delayed_ci_exfil":     _build_delayed_ci_exfil,
-    "verifier_sabotage":    _build_verifier_sabotage,
+    "repo_injection":       _simple("nuguard.redteam.scenarios.coding_agents", "build_repo_injection"),
+    "shell_injection":      _simple("nuguard.redteam.scenarios.coding_agents", "build_shell_injection"),
+    "secret_file_read":     _simple("nuguard.redteam.scenarios.coding_agents", "build_secret_file_read"),
+    "sandbox_escape":       _simple("nuguard.redteam.scenarios.coding_agents", "build_sandbox_escape"),
+    "delayed_ci_exfil":     _simple("nuguard.redteam.scenarios.coding_agents", "build_delayed_ci_exfil"),
+    "verifier_sabotage":    _simple("nuguard.redteam.scenarios.coding_agents", "build_verifier_sabotage"),
     # ── RAG and vector store (R-series) ───────────────────────────────────────
     "rag_doc_poisoning":        _build_rag_doc_poisoning,
     "vector_acl_bypass":        _build_vector_acl_bypass,

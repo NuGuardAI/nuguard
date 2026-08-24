@@ -16,10 +16,14 @@ import httpx
 
 from nuguard.common.errors import TargetUnavailableError  # noqa: F401 — re-exported for callers
 from nuguard.common.logging import get_logger
+from nuguard.common.response_extraction import SESSION_ID_KEYS as _SESSION_ID_KEYS
+from nuguard.common.transport import strip_known_boilerplate
 
 from .session import AttackSession
 
 if TYPE_CHECKING:
+    from nuguard.common.llm_client import LLMClient
+
     from .framework_adapters import FrameworkAdapter
 
 _log = get_logger(__name__)
@@ -28,6 +32,98 @@ _log = get_logger(__name__)
 _adk_fallback_warned: set[str] = set()
 
 DEFAULT_TIMEOUT = 30.0
+
+# Cap on how many times a single TargetAppClient will ask the LLM to repair
+# a 422 body shape. Bounded low: this is meant to fix a one-off config gap
+# (a required field the auto-discovered chat payload doesn't know about),
+# not to iteratively hill-climb an arbitrary schema at LLM-call expense on
+# every scenario.
+MAX_422_HEAL_ATTEMPTS = 2
+
+_HEAL_SYSTEM_PROMPT = (
+    "You are helping repair an HTTP API request that failed schema validation. "
+    "Given the JSON body that was sent and the validation error the server "
+    "returned, respond with a JSON object containing ONLY the additional "
+    "top-level fields needed to satisfy the validation error, with plausible "
+    "placeholder values matching the expected type (e.g. a small integer for "
+    "an id-like field, a short string for a text field, a UUID-shaped string "
+    "for a token/session field). Do not repeat fields already present in the "
+    "sent body. Do not include commentary — respond with JSON only, e.g. "
+    '{"bot_id": 1}. If the error does not describe a missing/invalid field '
+    "(e.g. it is an auth or rate-limit error), respond with {}."
+)
+
+
+def _looks_like_schema_error(body_text: str) -> bool:
+    """Return True when *body_text* looks like a field-validation error body.
+
+    Recognises the common shapes: FastAPI/Pydantic
+    ``{"detail": [{"loc": [...], "msg": ..., "type": "missing"}]}``, and the
+    simpler ``{"detail": [{"field": ..., "message": ...}]}`` variant. This
+    gate exists so a 422 that's actually an auth/business-logic rejection
+    (no field-shape information) doesn't burn an LLM call for nothing.
+    """
+    if not body_text:
+        return False
+    try:
+        data = json.loads(body_text)
+    except Exception:
+        return False
+    detail = data.get("detail") if isinstance(data, dict) else None
+    if isinstance(detail, str):
+        return False
+    if isinstance(detail, list) and detail:
+        return all(
+            isinstance(item, dict) and ({"loc", "msg"} <= item.keys() or "field" in item)
+            for item in detail
+        )
+    if isinstance(data, dict) and isinstance(data.get("errors"), (list, dict)):
+        return True
+    return False
+
+# Well-known OpenAI/Anthropic/LangChain-style chat-history field names.  When
+# chat_payload_key matches one of these (and chat_payload_list is True), the
+# outgoing value is shaped as a replayed [{role, content}, ...] message list
+# instead of a bare [prompt] list — see TargetAppClient._build_chat_payload_value.
+_MESSAGE_HISTORY_KEYS: frozenset[str] = frozenset(
+    {"messages", "history", "conversation", "chat_history"}
+)
+
+
+def _is_message_history_key(key: str) -> bool:
+    return key.strip().lower() in _MESSAGE_HISTORY_KEYS
+
+
+# Path-parameter placeholder styles seen across frameworks: FastAPI/ASP.NET
+# Core use `{id}`, NestJS/Express use `:id`. Substituted against
+# TargetAppClient._path_param_values before every request — see
+# set_path_param() and tests/apps/studyield-app/2-step-chat.md (the "two-step
+# chat" plan this implements: bootstrap a resource, e.g. POST
+# /chat/conversations, then substitute its id into the chat path template).
+_COLON_PATH_PARAM_RE = re.compile(r":(\w+)")
+_BRACE_PATH_PARAM_RE = re.compile(r"\{(\w+)\}")
+
+
+def _substitute_path_params(path: str, values: dict[str, str]) -> tuple[str, list[str]]:
+    """Substitute ``:name``/``{name}`` placeholders in *path* from *values*.
+
+    Returns ``(resolved_path, missing_names)`` — *missing_names* lists any
+    placeholder with no bound value (left untouched in the returned path so
+    the caller can surface a clear config error instead of sending the
+    literal placeholder to the target).
+    """
+    missing: list[str] = []
+
+    def _repl(m: re.Match[str]) -> str:
+        name = m.group(1)
+        if name in values:
+            return values[name]
+        missing.append(name)
+        return m.group(0)
+
+    resolved = _COLON_PATH_PARAM_RE.sub(_repl, path)
+    resolved = _BRACE_PATH_PARAM_RE.sub(_repl, resolved)
+    return resolved, missing
 
 
 def _extract_nested_key(data: dict[str, Any], key_path: str) -> Any:
@@ -88,6 +184,39 @@ def _extract_nested_key(data: dict[str, Any], key_path: str) -> Any:
                 return None
 
     return current
+
+
+def _extract_common_response_text(data: Any) -> str:
+    """Try the common generic response shapes shared by chat/streaming clients.
+
+    Order: ``response``/``content``/``text``/``message.content`` keys, then
+    Google ADK/CES ``outputs: [{"text": ...}]``, then a trailing
+    ``messages: [...]`` entry, then a raw string. Returns ``""`` if none match
+    — callers apply their own last-resort fallback (raw JSON dump, key
+    auto-detection, etc.).
+    """
+    text = ""
+    if isinstance(data, dict):
+        text = (
+            data.get("response")
+            or data.get("content")
+            or data.get("text")
+            or data.get("message", {}).get("content", "")
+            or ""
+        )
+    # Google ADK / CES format: {"outputs": [{"text": "..."}]}
+    if not text and isinstance(data, dict) and isinstance(data.get("outputs"), list):
+        outputs = data["outputs"]
+        texts = [item.get("text", "") for item in outputs if isinstance(item, dict)]
+        text = " ".join(t for t in texts if t)
+    # Handle list-of-messages response (e.g. openai-cs-agents-demo)
+    if not text and isinstance(data, dict) and isinstance(data.get("messages"), list):
+        msgs = data["messages"]
+        if msgs and isinstance(msgs[-1], dict):
+            text = msgs[-1].get("content") or msgs[-1].get("text") or ""
+    if not text and isinstance(data, str):
+        text = data
+    return text
 MAX_CONSECUTIVE_ERRORS = 3
 DEFAULT_MAX_429_RETRIES = 2
 DEFAULT_429_BACKOFF_BASE_SECONDS = 0.5
@@ -115,6 +244,7 @@ class TargetAppClient:
         chat_payload_extras: dict[str, Any] | None = None,
         max_concurrent_requests: int = 0,
         max_transient_hold_seconds: float = 300.0,
+        heal_llm: "LLMClient | None" = None,
     ) -> None:
         self.base_url = base_url.rstrip("/")
         self._chat_path = chat_path
@@ -139,6 +269,11 @@ class TargetAppClient:
             headers=merged_headers,
             follow_redirects=True,
         )
+        # Names of headers that carry auth material (Authorization, Cookie, a
+        # custom API-key header, ...), tracked separately from the base
+        # User-Agent default so invoke_endpoint(strip_auth=True) knows which
+        # keys to remove for a genuinely unauthenticated probe.
+        self._auth_header_names: set[str] = set(default_headers or {})
         self._max_consecutive_errors = max_consecutive_errors
         self._max_429_retries = max(0, max_429_retries)
         self._retry_429_backoff_base = max(0.01, retry_429_backoff_base_seconds)
@@ -149,11 +284,26 @@ class TargetAppClient:
         # Circuit breaker: count consecutive errors on the chat endpoint.
         # Reset to 0 on any successful response.
         self._consecutive_errors: int = 0
+        # Separate circuit breaker: count consecutive connection-level failures
+        # on direct-HTTP endpoint probes (invoke_endpoint()), e.g. auth-bypass/
+        # IDOR/mass-assignment/BFLA chains hitting SBOM-derived REST paths.
+        # Kept independent of _consecutive_errors so an unreachable direct-HTTP
+        # path (e.g. a REST path that was never actually deployed) does not
+        # trip the shared circuit breaker and abort unrelated, still-healthy
+        # chat-routed scenarios. Reset to 0 on any completed request (any
+        # status code, since a response — even a 4xx/5xx — means the target
+        # is reachable).
+        self._consecutive_endpoint_errors: int = 0
         # Session/conversation ID forwarding: if the app returns a session
         # or conversation identifier in its response, store it here and
         # include it in subsequent request bodies so multi-turn conversations
         # are correlated on the server side.
         self._session_context: dict[str, Any] = {}
+        # Two-step chat bootstrap: values bound via set_path_param() to
+        # substitute :name/{name} placeholders in _chat_path before each
+        # request (e.g. a conversation id created by a prerequisite POST) —
+        # see tests/apps/studyield-app/2-step-chat.md.
+        self._path_param_values: dict[str, str] = {}
         # Global HTTP semaphore: limits concurrent in-flight requests across ALL
         # callers sharing this client instance.  Useful when the target app has a
         # low Azure OpenAI / LLM concurrency quota and returns transient errors
@@ -175,6 +325,12 @@ class TargetAppClient:
         # Populated by build_target_app_client() with human-readable notes about
         # automatic config resolution (URL fallback, auth upgrade, etc.).
         self.resolution_notes: list[str] = []
+        # Optional LLM used to self-heal a 422 schema-validation error by
+        # inferring the missing request field(s) from the error body — see
+        # _attempt_422_heal(). None disables self-healing (falls straight
+        # through to the existing "[HTTP 422]" behaviour).
+        self._heal_llm: "LLMClient | None" = heal_llm
+        self._heal_attempts_used = 0
 
     def _parse_retry_after_seconds(self, value: str | None) -> float | None:
         if not value:
@@ -297,8 +453,97 @@ class TargetAppClient:
             _log.debug("Chat endpoint recovered — resetting error counter")
         self._consecutive_errors = 0
 
+    def _record_endpoint_error(self, label: str) -> None:
+        """Increment the direct-HTTP-probe consecutive-error counter.
+
+        Mirrors :meth:`_record_chat_error` but tracks connection-level
+        failures on :meth:`invoke_endpoint` (direct-HTTP auth-bypass/IDOR/
+        mass-assignment/BFLA probes) separately from chat ``send()``
+        failures, so an unreachable SBOM-derived REST path cannot trip the
+        shared chat circuit breaker. Raises :class:`TargetUnavailableError`
+        with ``source="endpoint_probe"`` once the threshold is hit, so
+        callers (the redteam orchestrator) can distinguish this from a
+        genuine chat-endpoint outage.
+        """
+        self._consecutive_endpoint_errors += 1
+        _log.warning(
+            "Direct-HTTP endpoint probe error (%s) — consecutive=%d/%d",
+            label,
+            self._consecutive_endpoint_errors,
+            self._max_consecutive_errors,
+        )
+        if self._consecutive_endpoint_errors >= self._max_consecutive_errors:
+            raise TargetUnavailableError(
+                f"Direct-HTTP endpoint probes returned {self._consecutive_endpoint_errors} "
+                f"consecutive connection-level failures (last: {label}) — aborting "
+                f"direct-HTTP probing to avoid hammering unreachable paths.",
+                source="endpoint_probe",
+            )
+
+    def _record_endpoint_success(self) -> None:
+        """Reset the direct-HTTP-probe consecutive-error counter after any completed request."""
+        if self._consecutive_endpoint_errors:
+            _log.debug("Direct-HTTP endpoint probe recovered — resetting error counter")
+        self._consecutive_endpoint_errors = 0
+
+    async def _attempt_422_heal(self, sent_body: dict, error_body_text: str) -> bool:
+        """Ask the LLM to infer missing/invalid field(s) from a 422 error body.
+
+        On success, merges the inferred fields into ``self._chat_payload_extras``
+        (so every subsequent request on this client carries them, not just a
+        retry of this one) and returns True. Returns False when self-healing
+        is disabled, the budget is exhausted, the error body doesn't look like
+        a field-validation error, or the LLM call didn't yield anything new.
+        """
+        if self._heal_llm is None or self._heal_attempts_used >= MAX_422_HEAL_ATTEMPTS:
+            return False
+        if not _looks_like_schema_error(error_body_text):
+            return False
+
+        self._heal_attempts_used += 1
+        prompt = (
+            f"Request body sent:\n{json.dumps(sent_body)}\n\n"
+            f"Server validation error (HTTP 422):\n{error_body_text[:1000]}"
+        )
+        try:
+            from nuguard.common.json_utils import extract_json_object  # noqa: PLC0415
+
+            raw = await self._heal_llm.complete(
+                prompt,
+                system=_HEAL_SYSTEM_PROMPT,
+                label=f"422-heal | path={self._chat_path}",
+                temperature=0.0,
+            )
+            extra_fields = extract_json_object(raw)
+        except Exception as exc:
+            _log.debug("_attempt_422_heal: LLM call failed: %s", exc)
+            return False
+
+        if not isinstance(extra_fields, dict) or not extra_fields:
+            return False
+        new_fields = {
+            k: v for k, v in extra_fields.items()
+            if k not in sent_body and k not in self._chat_payload_extras
+        }
+        if not new_fields:
+            return False
+
+        self._chat_payload_extras.update(new_fields)
+        _log.info(
+            "422 self-heal: inferred missing field(s) %s for %s (attempt %d/%d) — "
+            "retrying and reusing for subsequent requests",
+            list(new_fields), self._chat_path, self._heal_attempts_used, MAX_422_HEAL_ATTEMPTS,
+        )
+        self.resolution_notes.append(
+            f"HTTP 422 on {self._chat_path} was auto-repaired by inferring field(s) "
+            f"{list(new_fields)} from the validation error body via LLM. Consider "
+            f"adding these under target.chat_payload_extras in nuguard.yaml to skip "
+            f"this at startup."
+        )
+        return True
+
     def reset_circuit_breaker(self) -> None:
-        """Reset the consecutive-error counter.
+        """Reset both consecutive-error counters (chat and direct-HTTP probe).
 
         Call this between scenarios in sequential-scan mode so that a
         burst of errors in one scenario does not permanently open the circuit
@@ -306,10 +551,26 @@ class TargetAppClient:
         """
         if self._consecutive_errors:
             _log.debug(
-                "reset_circuit_breaker: clearing %d consecutive errors",
+                "reset_circuit_breaker: clearing %d consecutive chat errors",
                 self._consecutive_errors,
             )
         self._consecutive_errors = 0
+        if self._consecutive_endpoint_errors:
+            _log.debug(
+                "reset_circuit_breaker: clearing %d consecutive endpoint-probe errors",
+                self._consecutive_endpoint_errors,
+            )
+        self._consecutive_endpoint_errors = 0
+
+    @property
+    def chat_path(self) -> str:
+        """The currently configured chat endpoint path."""
+        return self._chat_path
+
+    @property
+    def path_param_values(self) -> dict[str, str]:
+        """Currently bound ``:name``/``{name}`` path-param values (copy)."""
+        return dict(self._path_param_values)
 
     def set_chat_endpoint(
         self,
@@ -334,13 +595,29 @@ class TargetAppClient:
             self._chat_response_key = response_key
         # Clear auto-detected response key so it is re-detected for the new endpoint
         self._detected_response_key = None
+        # A path-param binding from the previous endpoint (e.g. {"id": "..."})
+        # is not guaranteed to apply to the new one even if the param name
+        # matches — force a fresh bootstrap for whatever this endpoint needs.
+        self._path_param_values = {}
         self.reset_circuit_breaker()
+
+    def set_path_param(self, name: str, value: str) -> None:
+        """Bind *value* for a ``:name``/``{name}`` placeholder in the chat path.
+
+        Used by the two-step (resource-bootstrap) chat flow: a prerequisite
+        request (e.g. ``POST /chat/conversations``) creates a resource whose
+        id must be substituted into the chat endpoint's path template (e.g.
+        ``POST /chat/conversations/:id/messages``) before any turn can be
+        sent. See tests/apps/studyield-app/2-step-chat.md.
+        """
+        self._path_param_values[name] = value
 
     def update_default_headers(self, headers: dict[str, str] | None) -> None:
         """Merge headers into the default client headers for subsequent requests."""
         if not headers:
             return
         self._client.headers.update(headers)
+        self._auth_header_names.update(headers)
 
     async def send(self, payload: str, session: AttackSession) -> tuple[str, list[dict]]:
         """Send a prompt payload to the target and return (response_text, tool_calls).
@@ -359,8 +636,14 @@ class TargetAppClient:
         """
         if self._request_sem is not None:
             async with self._request_sem:
-                return await self._send_with_transient_retry(payload, session)
-        return await self._send_impl(payload, session)
+                text, calls = await self._send_with_transient_retry(payload, session)
+        else:
+            text, calls = await self._send_impl(payload, session)
+        # Single choke point: strip known app-generated response-wrapper
+        # boilerplate (see nuguard.common.transport.strip_known_boilerplate)
+        # once, here, so every downstream consumer (LLM judge, topic-refusal
+        # detection, policy detectors, report rendering) sees clean text.
+        return strip_known_boilerplate(text), calls
 
     async def _send_with_transient_retry(
         self, payload: str, session: AttackSession
@@ -476,10 +759,42 @@ class TargetAppClient:
                 )
                 raise
 
+    def _build_chat_payload_value(self, payload: str, session: AttackSession) -> Any:
+        """Shape the outgoing value for ``chat_payload_key`` in the generic (non-adapter) path.
+
+        Three shapes, chosen by ``chat_payload_list``/``chat_payload_key``:
+
+        - Flat string (``chat_payload_list=False``): the raw prompt text.
+        - Bare list (``chat_payload_list=True``, key not a known message-history
+          name): ``[prompt]`` — existing behaviour, e.g. LangGraph's
+          ``phrases=[...]``.
+        - OpenAI-style message history (``chat_payload_list=True`` and key is
+          one of ``messages``/``history``/``conversation``/``chat_history``):
+          replay prior turns from *session* as alternating ``{role, content}``
+          dicts, then append the current turn. This is the standard shape used
+          by OpenAI/Anthropic/LangChain-style chat APIs; endpoints whose only
+          accepted body shape is ``messages=[...]`` reject a bare string or a
+          bare-string list outright (400/422), aborting every scenario.
+        """
+        if not self._chat_payload_list:
+            return payload
+        if not _is_message_history_key(self._chat_payload_key):
+            return [payload]
+        history: list[dict[str, str]] = []
+        for turn in session.turns:
+            history.append({"role": "user", "content": turn.prompt})
+            if turn.response:
+                history.append({"role": "assistant", "content": turn.response})
+        history.append({"role": "user", "content": payload})
+        return history
+
     async def _send_impl(self, payload: str, session: AttackSession) -> tuple[str, list[dict]]:
         """Inner send implementation (called with or without the request semaphore)."""
         data: dict | list | str = {}
-        for attempt in range(self._max_429_retries + 1):
+        body: dict | None = None
+        # Bounded to max_429_retries + MAX_422_HEAL_ATTEMPTS so a 422 self-heal
+        # retry doesn't eat into the 429 backoff budget (and vice versa).
+        for attempt in range(self._max_429_retries + MAX_422_HEAL_ATTEMPTS + 1):
             try:
                 session_id: str = ""
                 if self._framework_adapter is not None:
@@ -533,7 +848,7 @@ class TargetAppClient:
                     chat_path = self._framework_adapter.run_path
                 else:
                     # Generic path: flat key/value body
-                    value: Any = [payload] if self._chat_payload_list else payload
+                    value: Any = self._build_chat_payload_value(payload, session)
                     body = {self._chat_payload_key: value}
                     # Merge any previously extracted session/conversation context so the
                     # server can correlate subsequent turns within the same conversation.
@@ -543,14 +858,40 @@ class TargetAppClient:
                     # chat_payload_extras — the message key always takes precedence.
                     if self._chat_payload_extras:
                         body = {**self._chat_payload_extras, **body}
-                    chat_path = self._chat_path
+                    chat_path, _missing_params = _substitute_path_params(
+                        self._chat_path, self._path_param_values
+                    )
+                    if _missing_params:
+                        _log.warning(
+                            "_send_impl: unresolved path param(s) %s in chat path template %r",
+                            _missing_params, self._chat_path,
+                        )
+                        return f"[CONFIG_ERROR: unresolved path param {_missing_params[0]!r}]", []
 
                 if self._chat_payload_format == "form":
                     resp = await self._client.post(chat_path, data=body)
                 else:
                     resp = await self._client.post(chat_path, json=body)
                 resp.raise_for_status()
-                data = resp.json()
+                _content_type = resp.headers.get("content-type", "")
+                if "text/event-stream" in _content_type and self._framework_adapter is None:
+                    # Non-streaming send() against an SSE-only chat endpoint (e.g.
+                    # a FastAPI StreamingResponse) — resp.json() would raise
+                    # JSONDecodeError on the buffered "data: {...}\n\n" body,
+                    # which _record_chat_error would then wrongly count toward
+                    # the circuit breaker as if the target were unreachable.
+                    # Parse the buffered SSE events and join their text chunks;
+                    # the isinstance(data, str) fallback below picks this up.
+                    from nuguard.redteam.target.sse import parse_sse_events  # noqa: PLC0415
+
+                    _sse_events = parse_sse_events(resp.text)
+                    _sse_text = "".join(
+                        str(_ev.get("text") or _ev.get("content") or _ev.get("message") or "")
+                        for _ev in _sse_events
+                    )
+                    data = _sse_text or json.dumps(_sse_events)
+                else:
+                    data = resp.json()
                 break
             except httpx.HTTPStatusError as exc:
                 status = exc.response.status_code
@@ -569,6 +910,13 @@ class TargetAppClient:
                         self._max_429_retries,
                     )
                     await asyncio.sleep(delay)
+                    continue
+                if (
+                    status == 422
+                    and self._framework_adapter is None
+                    and body is not None
+                    and await self._attempt_422_heal(body, exc.response.text or "")
+                ):
                     continue
                 # 4xx responses mean the target IS reachable — it actively rejected our
                 # payload (validation error, auth failure, rate limit, etc.).  Do NOT
@@ -627,26 +975,8 @@ class TargetAppClient:
                 text = " ".join(str(item) for item in extracted if item is not None)
             elif extracted is not None:
                 text = str(extracted)
-        if not text and isinstance(data, dict):
-            text = (
-                data.get("response")
-                or data.get("content")
-                or data.get("text")
-                or data.get("message", {}).get("content", "")
-                or ""
-            )
-        # Google ADK / CES format: {"outputs": [{"text": "..."}]}
-        if not text and isinstance(data, dict) and isinstance(data.get("outputs"), list):
-            outputs = data["outputs"]
-            texts = [item.get("text", "") for item in outputs if isinstance(item, dict)]
-            text = " ".join(t for t in texts if t)
-        # Handle list-of-messages response (e.g. openai-cs-agents-demo)
-        if not text and isinstance(data, dict) and isinstance(data.get("messages"), list):
-            msgs = data["messages"]
-            if msgs and isinstance(msgs[-1], dict):
-                text = msgs[-1].get("content") or msgs[-1].get("text") or ""
-        if not text and isinstance(data, str):
-            text = data
+        if not text:
+            text = _extract_common_response_text(data)
         # Last resort: return full JSON so evaluators have something to work with.
         # Before doing so, attempt one-time auto-detection of the response key so
         # subsequent turns extract a clean text field instead of raw JSON.
@@ -674,9 +1004,8 @@ class TargetAppClient:
             tool_calls = raw_calls
 
         # Extract and store session/conversation IDs for multi-turn forwarding.
-        # Heuristic: check the top-level response JSON for common session key names.
         if isinstance(data, dict):
-            for key in ("session_id", "conversation_id", "thread_id", "chat_id"):
+            for key in _SESSION_ID_KEYS:
                 if key in data and data[key] is not None:
                     self._session_context[key] = data[key]
 
@@ -690,21 +1019,42 @@ class TargetAppClient:
         body: dict | None = None,
         params: dict[str, str] | None = None,
         extra_headers: dict[str, str] | None = None,
+        strip_auth: bool = False,
     ) -> tuple[int, str, dict]:
         """Send a direct HTTP request to a specific path.
 
         Returns (status_code, response_text, response_json).  Does NOT raise on
         4xx/5xx — callers inspect the status code to determine attack success.
+
+        When *strip_auth* is True, every header this client tracks as auth
+        material (``self._auth_header_names`` — Authorization, Cookie, a
+        custom API-key header, ...) is removed from the request before it is
+        sent.  httpx merges rather than replaces per-request headers, so this
+        cannot be done by passing ``headers={...}`` alone — the request must
+        be built first and the auth headers deleted from it directly.
         """
         for attempt in range(self._max_429_retries + 1):
             try:
-                resp = await self._client.request(
-                    method=method.upper(),
-                    url=path,
-                    json=body,
-                    params=params,
-                    headers=extra_headers or {},
-                )
+                if strip_auth and self._auth_header_names:
+                    request = self._client.build_request(
+                        method=method.upper(),
+                        url=path,
+                        json=body,
+                        params=params,
+                        headers=extra_headers or {},
+                    )
+                    for name in self._auth_header_names:
+                        if name in request.headers:
+                            del request.headers[name]
+                    resp = await self._client.send(request)
+                else:
+                    resp = await self._client.request(
+                        method=method.upper(),
+                        url=path,
+                        json=body,
+                        params=params,
+                        headers=extra_headers or {},
+                    )
                 if resp.status_code == 429 and attempt < self._max_429_retries:
                     delay = self._retry_delay_seconds(resp.headers, resp.text or "", attempt)
                     _log.warning(
@@ -722,14 +1072,18 @@ class TargetAppClient:
                     json_body: dict = resp.json()
                 except Exception:
                     json_body = {}
-                return resp.status_code, resp.text, json_body
+                # Any completed response — even a 4xx/5xx — means the direct-HTTP
+                # path is reachable; reset the endpoint-probe circuit breaker.
+                self._record_endpoint_success()
+                return resp.status_code, strip_known_boilerplate(resp.text), json_body
             except Exception as exc:
                 label = f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
                 _log.warning("Direct request %s %s failed: %s", method, path, label)
                 # Network-level failures (connection refused, DNS error, timeout) on
-                # direct endpoint probes also count toward the circuit breaker because
-                # they indicate the target is unreachable, not just rejecting our probe.
-                self._record_chat_error(label[:120])
+                # direct endpoint probes count toward a circuit breaker that is
+                # separate from the chat-path breaker, so an unreachable
+                # SBOM-derived REST path cannot abort unrelated chat scenarios.
+                self._record_endpoint_error(label[:120])
                 return 0, f"[REQUEST_ERROR: {label}]", {}
 
         return 429, "[HTTP 429]", {}
@@ -791,13 +1145,22 @@ class TargetAppClient:
                 body = self._framework_adapter.build_body(payload, session_id)
                 chat_path = self._framework_adapter.run_path
             else:
-                value: Any = [payload] if self._chat_payload_list else payload
+                value: Any = self._build_chat_payload_value(payload, session)
                 body = {self._chat_payload_key: value}
                 if self._session_context:
                     body.update(self._session_context)
                 if self._chat_payload_extras:
                     body = {**self._chat_payload_extras, **body}
-                chat_path = self._chat_path
+                chat_path, _missing_params = _substitute_path_params(
+                    self._chat_path, self._path_param_values
+                )
+                if _missing_params:
+                    _log.warning(
+                        "send_stream: unresolved path param(s) %s in chat path template %r",
+                        _missing_params, self._chat_path,
+                    )
+                    yield f"[CONFIG_ERROR: unresolved path param {_missing_params[0]!r}]", []
+                    return
 
             t_start = time.monotonic()
             _stream_kwargs: dict[str, Any] = (
@@ -854,25 +1217,7 @@ class TargetAppClient:
                         if not text and isinstance(data, (dict, list)) and data:
                             text = json.dumps(data)
                     else:
-                        text = ""
-                        if isinstance(data, dict):
-                            text = (
-                                data.get("response")
-                                or data.get("content")
-                                or data.get("text")
-                                or data.get("message", {}).get("content", "")
-                                or ""
-                            )
-                        if not text and isinstance(data, dict) and isinstance(data.get("outputs"), list):
-                            outputs = data["outputs"]
-                            texts = [item.get("text", "") for item in outputs if isinstance(item, dict)]
-                            text = " ".join(t for t in texts if t)
-                        if not text and isinstance(data, dict) and isinstance(data.get("messages"), list):
-                            msgs = data["messages"]
-                            if msgs and isinstance(msgs[-1], dict):
-                                text = msgs[-1].get("content") or msgs[-1].get("text") or ""
-                        if not text and isinstance(data, str):
-                            text = data
+                        text = _extract_common_response_text(data)
                         if not text and isinstance(data, dict) and data:
                             text = json.dumps(data)
                         raw_calls = (

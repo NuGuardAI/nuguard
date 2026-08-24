@@ -1,0 +1,23 @@
+# Secrets & credentials - NEVER commit these
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+
+# Phlox runtime data (SQLCipher DB, vectors, logs)
+data/
+logs/
+
+# NuGuard-generated artifacts
+*.sbom.json
+!phlox.ground-truth.sbom.json
+cognitive-policy.md
+cognitive-policy.json
+reports/*.md
+reports/*.json
+reports/*.log
+!reports/.gitkeep
+
+# Azure Developer CLI / cloud CLI state
+.azure/

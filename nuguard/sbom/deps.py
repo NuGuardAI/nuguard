@@ -937,28 +937,27 @@ class DependencyScanner:
     # ------------------------------------------------------------------
 
     def parse_lifecycle_scripts(self, root: Path) -> list[LifecycleScript]:
-        """Return lifecycle scripts from package.json and pyproject.toml build hooks.
+        """Return npm scripts and pyproject.toml/setup.py build hooks.
 
-        npm phases scanned: preinstall, install, postinstall, prepare,
-        prepack, postpack, prepublish, prepublishOnly, publish.
+        All npm ``scripts`` entries are captured (not just install/publish
+        hooks) — malicious patterns (pipe-to-shell, Bun download, credential
+        access, eval/obfuscation — NGA-SC-012/013/014/016) are just as
+        dangerous in a "build" or "postbuild" script as in "postinstall",
+        and this keeps SBOM-time capture consistent with
+        SupplyChainScanner._scan_lifecycle_from_files's raw-file fallback,
+        which already scans every script regardless of phase. Only
+        NGA-SC-011 (install hook makes a network request) is phase-gated,
+        via the "install-hook" classification below.
+
         Python phases scanned: [build-system] build-backend,
         [tool.hatch.build.hooks.*], setup.py (presence only).
         """
         scripts: list[LifecycleScript] = []
         candidates = _collect_manifest_candidates(root)
 
-        # ── npm lifecycle scripts ─────────────────────────────────────
-        _NPM_LIFECYCLE = {
-            "preinstall",
-            "install",
-            "postinstall",
-            "prepare",
-            "prepack",
-            "postpack",
-            "prepublish",
-            "prepublishOnly",
-            "publish",
-        }
+        # ── npm scripts ──────────────────────────────────────────────
+        _install_phases = {"preinstall", "install", "postinstall", "prepare"}
+        _publish_phases = {"prepack", "postpack", "prepublish", "prepublishOnly", "publish"}
         for path in candidates["package_json"]:
             src = str(path.relative_to(root))
             try:
@@ -972,16 +971,12 @@ class DependencyScanner:
                 if not isinstance(phase, str) or not isinstance(body, str):
                     continue
                 phase_lower = phase.lower()
-                if phase_lower not in _NPM_LIFECYCLE:
-                    continue
-                _install_phases = {"preinstall", "install", "postinstall"}
-                _publish_phases = {"prepublish", "prepublishOnly", "publish"}
                 if phase_lower in _install_phases:
                     hook_phase = "install-hook"
                 elif phase_lower in _publish_phases:
                     hook_phase = "publish-hook"
                 else:
-                    hook_phase = "build-hook"
+                    hook_phase = "build-hook" if phase_lower == "build" else "other-script"
                 scripts.append(
                     LifecycleScript(
                         name=phase,

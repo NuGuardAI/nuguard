@@ -7,6 +7,8 @@ Adapters
 ``K8sAdapter``
     Kubernetes manifests — workload DEPLOYMENT nodes (security context, probes,
     resource limits, HA) and RBAC IAM nodes (ServiceAccount, Role, RoleBinding).
+    Also recognizes Helm charts (``Chart.yaml`` + ``templates/*.yaml``), which
+    don't match the raw-manifest shape.
 
 ``TerraformAdapter``
     HashiCorp Terraform (``.tf`` / ``.tfvars``) — DEPLOYMENT + IAM nodes for
@@ -160,6 +162,35 @@ _K8S_API_VERSION_RE = re.compile(r"^\s*apiVersion\s*:", re.MULTILINE)
 _K8S_KIND_RE = re.compile(r"^\s*kind\s*:\s*(\S+)", re.MULTILINE)
 
 
+_HELM_TEMPLATE_EXPR_RE = re.compile(r"\{\{.*?\}\}", re.DOTALL)
+_HELM_TEMPLATE_PLACEHOLDER = "__HELM_TEMPLATE_VALUE__"
+
+
+def _is_helm_chart_yaml(file_path: str) -> bool:
+    """True for a Helm ``Chart.yaml`` (chart metadata, not a K8s manifest)."""
+    norm = file_path.replace("\\", "/")
+    return norm == "Chart.yaml" or norm.endswith("/Chart.yaml")
+
+
+def _helm_chart_dir(file_path: str) -> str | None:
+    """Return the chart root directory for a ``Chart.yaml`` or
+    ``templates/*.yaml`` path, or ``None`` if the path isn't part of a chart.
+
+    Both a chart's ``Chart.yaml`` and its ``templates/*.yaml`` files resolve
+    to the *same* directory-derived canonical name, so their DEPLOYMENT
+    detections merge into one node regardless of which is scanned first —
+    no cross-file lookup needed.
+    """
+    norm = file_path.replace("\\", "/")
+    if _is_helm_chart_yaml(norm):
+        return norm.rsplit("/", 1)[0] if "/" in norm else "."
+    parts = norm.split("/")
+    if "templates" in parts:
+        idx = parts.index("templates")
+        return "/".join(parts[:idx]) or "."
+    return None
+
+
 def _is_k8s_manifest(data: Any, content: str) -> bool:
     """True when the YAML looks like a Kubernetes manifest."""
     if not isinstance(data, dict):
@@ -199,16 +230,24 @@ class K8sAdapter:
     """Kubernetes manifest adapter.
 
     Triggered on YAML files that contain both ``apiVersion`` and ``kind`` keys
-    and whose ``kind`` is a known workload or RBAC type.
+    and whose ``kind`` is a known workload or RBAC type. Also recognizes Helm
+    charts (``Chart.yaml`` + ``templates/*.yaml``), which don't satisfy that
+    shape — see ``_helm_chart`` / ``_helm_template``.
 
     Emits:
-    - ``DEPLOYMENT`` nodes for workload kinds
+    - ``DEPLOYMENT`` nodes for workload kinds (and for Helm charts)
     - ``IAM`` nodes for RBAC kinds
     """
 
     name = "k8s"
 
     def scan(self, content: str, file_path: str) -> list[ComponentDetection]:
+        if _is_helm_chart_yaml(file_path):
+            return self._helm_chart(content, file_path)
+        if _helm_chart_dir(file_path) is not None:
+            # Under a templates/ directory but not Chart.yaml itself.
+            return self._helm_template(content, file_path)
+
         if "apiVersion" not in content or "kind" not in content:
             return []
 
@@ -433,6 +472,95 @@ class K8sAdapter:
                 file_path=file_path,
                 line=1,
                 snippet=f"{kind}: {name}",
+            )
+        ]
+
+    # ------------------------------------------------------------------
+    # Helm charts → DEPLOYMENT
+    # ------------------------------------------------------------------
+
+    def _helm_chart(self, content: str, file_path: str) -> list[ComponentDetection]:
+        """``Chart.yaml`` — chart metadata (``apiVersion: v2``, ``name:``,
+        ``version:``), not a K8s manifest, so it never satisfies
+        ``_is_k8s_manifest``. Treated as a DEPLOYMENT node directly."""
+        data = _try_load_yaml(content)
+        if not isinstance(data, dict) or not data.get("name"):
+            return []
+
+        name = str(data.get("name"))
+        chart_dir = _helm_chart_dir(file_path) or "."
+        canonical = f"deployment:helm:{chart_dir}".lower()
+        meta: dict[str, Any] = {
+            "iac_format": "helm",
+            "deployment_target": "kubernetes",
+            "chart_name": name,
+            "chart_version": data.get("version"),
+            "app_version": data.get("appVersion"),
+        }
+        _log.debug("k8s_adapter: Helm chart DEPLOYMENT %s in %s", name, file_path)
+        return [
+            # Built directly (not via _make_det) with a lower priority number
+            # than the default IaC priority (8) so Chart.yaml's real chart
+            # name/version always wins node attribution over a
+            # templates/*.yaml fallback name, regardless of file scan order —
+            # see _merge_detection's same-tier "lower priority wins" rule.
+            ComponentDetection(
+                component_type=ComponentType.DEPLOYMENT,
+                canonical_name=canonical,
+                display_name=name,
+                adapter_name=self.name,
+                priority=7,
+                confidence=0.92,
+                metadata=meta,
+                file_path=file_path,
+                line=1,
+                snippet=f"Helm Chart: {name} v{data.get('version', '?')}"[:120],
+                evidence_kind="iac",
+            )
+        ]
+
+    def _helm_template(self, content: str, file_path: str) -> list[ComponentDetection]:
+        """A ``templates/*.yaml`` Helm template. Go-template directives
+        (``{{ .Values.x }}``) are stripped before YAML parsing so
+        non-templated ``kind:``/``apiVersion:`` lines still extract; when
+        ``kind`` itself is a template expression (or unresolved), skip
+        without erroring — there's nothing resolvable to attribute back to
+        the parent chart. Enriches the same DEPLOYMENT node as the chart's
+        own Chart.yaml (matching canonical name derived from the shared
+        chart directory) rather than synthesizing a separate node per
+        template file.
+        """
+        chart_dir = _helm_chart_dir(file_path)
+        if chart_dir is None:
+            return []
+        stripped = _HELM_TEMPLATE_EXPR_RE.sub(_HELM_TEMPLATE_PLACEHOLDER, content)
+        data = _try_load_yaml(stripped)
+        if not isinstance(data, dict):
+            return []
+        kind = str(data.get("kind", ""))
+        if not kind or kind == _HELM_TEMPLATE_PLACEHOLDER or kind not in _K8S_ALL_KINDS:
+            return []
+
+        resource_name = _k8s_name(data) if isinstance(data.get("metadata"), dict) else "unknown"
+        chart_name = chart_dir.rsplit("/", 1)[-1] if chart_dir != "." else "helm-chart"
+        canonical = f"deployment:helm:{chart_dir}".lower()
+        meta: dict[str, Any] = {
+            "iac_format": "helm",
+            "deployment_target": "kubernetes",
+            "k8s_kind": kind,
+            "helm_template_resource": resource_name,
+        }
+        return [
+            _make_det(
+                component_type=ComponentType.DEPLOYMENT,
+                canonical_name=canonical,
+                display_name=chart_name,
+                adapter_name=self.name,
+                confidence=0.75,
+                metadata=meta,
+                file_path=file_path,
+                line=1,
+                snippet=f"{kind}: {resource_name} (helm template)",
             )
         ]
 

@@ -162,7 +162,7 @@ redteam:
   guided_conversations: false
   guided_max_turns: 3               # safety cap if guided re-enabled
   guided_concurrency: 1
-  scenario_timeout: 150             # tuned for prepublish gate stability
+  scenario_timeout: 180             # prepublish gate timeout; 60s was too tight for live LLM-backed target and tripped the 3-consecutive-timeout circuit breaker (see run 32593291344)
   concurrency: 3
   pre_run_warmup: 2
 

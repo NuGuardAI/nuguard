@@ -10,6 +10,7 @@ from nuguard.sbom.adapters.data_classification import (
 )
 from nuguard.sbom.config import AiSbomConfig
 from nuguard.sbom.extractor import AiSbomExtractor
+from nuguard.sbom.extractor.core import _NodeAccumulator
 from nuguard.sbom.models import AiSbomDocument
 from nuguard.sbom.tests.conftest import APPS
 from nuguard.sbom.types import ComponentType
@@ -281,3 +282,62 @@ class TestPatientPortalExtraction:
         """Verify .sql is in the default AiSbomConfig extensions."""
         cfg = AiSbomConfig()
         assert ".sql" in cfg.include_extensions
+
+
+# ---------------------------------------------------------------------------
+# _enrich_datastores() — pii_fields/phi_fields derivation (regression)
+# ---------------------------------------------------------------------------
+
+
+def _datastore_acc(name: str) -> _NodeAccumulator:
+    return _NodeAccumulator(
+        component_type=ComponentType.DATASTORE,
+        canonical_name=f"datastore:{name}",
+        display_name=name,
+        adapter_name="python_datastore",
+        priority=40,
+        confidence=0.9,
+    )
+
+
+class TestEnrichDatastoresPiiPhiFields:
+    """Regression: pii_fields/phi_fields must list actual field names, derived
+    from per-field labels — not be structurally empty because of a shape
+    mismatch with classified_fields (table -> field names, not field -> labels)."""
+
+    def test_pii_and_phi_fields_populated(self) -> None:
+        node_map = {(ComponentType.DATASTORE, "sqlite"): _datastore_acc("Sqlite")}
+        dc_metadata = [
+            {
+                "table_name": "patients",
+                "data_classification": ["PII", "PHI"],
+                "classified_fields": {
+                    "name": ["PII"],
+                    "dob": ["PII"],
+                    "medical_record_number": ["PII", "PHI"],
+                    "diagnosis": ["PHI"],
+                },
+            }
+        ]
+        AiSbomExtractor()._enrich_datastores(node_map, dc_metadata)
+        acc = node_map[(ComponentType.DATASTORE, "sqlite")]
+        assert acc.metadata["pii_fields"] == ["dob", "medical_record_number", "name"]
+        assert acc.metadata["phi_fields"] == ["diagnosis", "medical_record_number"]
+        # classified_fields (table -> field names) stays unchanged/correct.
+        assert acc.metadata["classified_fields"]["patients"] == [
+            "diagnosis", "dob", "medical_record_number", "name",
+        ]
+
+    def test_no_pii_phi_when_no_matching_labels(self) -> None:
+        node_map = {(ComponentType.DATASTORE, "sqlite"): _datastore_acc("Sqlite")}
+        dc_metadata = [
+            {
+                "table_name": "audit_log",
+                "data_classification": [],
+                "classified_fields": {},
+            }
+        ]
+        AiSbomExtractor()._enrich_datastores(node_map, dc_metadata)
+        acc = node_map[(ComponentType.DATASTORE, "sqlite")]
+        assert "pii_fields" not in acc.metadata
+        assert "phi_fields" not in acc.metadata

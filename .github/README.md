@@ -1,11 +1,7 @@
-<p align="center">
-  <img src="../documentation/docs/nuguard-logo.png" alt="NuGuard" width="72">
-</p>
-
-<h1 align="center">NuGuard</h1>
+<h1 align="center">nuguard</h1>
 
 <p align="center">
-  <strong>AI-SBOM generation, static analysis, and automated red-teaming / adversarial-attack-generation for AI agents and LLM applications.</strong>
+  <strong>AI-SBOM generation, static analysis, and automated red-teaming / adversarial-attack-generation for AI agents and applications.</strong>
 </p>
 
 <p align="center">
@@ -18,6 +14,7 @@
 
 <p align="center">
   <a href="#what-it-does">What it does</a> ·
+  <a href="#see-it-in-action">See it in action</a> ·
   <a href="#framework-coverage">Framework coverage</a> ·
   <a href="#comparison">Comparison</a> ·
   <a href="#getting-started">Getting started</a> ·
@@ -26,49 +23,28 @@
 
 ---
 
-NuGuard is an open source AI application security toolkit. It generates an AI Bill of Materials (AI-SBOM) for your agentic application, statically analyzes it for structural risk, then red-teams a running instance with a catalog of 125 adversarial scenarios — prompt injection, tool abuse, data exfiltration, and more — so you find the finding before an attacker does.
+NuGuard is an open source AI application security toolkit. It generates an AI Bill of Materials (AI-SBOM) for your agentic application, statically analyzes it for structural risk, then red-teams a running instance with a catalog of 100+ adversarial scenarios — prompt injection, tool abuse, data exfiltration, and more — so you find the finding before an attacker does.
 
 ## What It Does
 
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="../documentation/docs/assets/what-it-does-dark.svg">
-    <img src="../documentation/docs/assets/what-it-does-light.svg" alt="SBOM: from local code or a remote repo. Analyze: static risk scan, no running app needed. Policy: propose, lint, and compliance-check. Behavior: runtime test vs declared intent. Red-team: 125 adversarial scenarios, live or sandboxed. Canaries: seeded values for high-confidence exfil findings. Remediate: fix suggestions with code snippets. Export: text, JSON, Markdown, SARIF." width="920">
+    <img src="../documentation/docs/assets/what-it-does-light.svg" alt="AI SBOM: Agents, Tools, API End Points, Models. Analyze: static risk scan, OWASP/MITRE mapping. Policy: Application's Intended Behavior. Behavior: Functional tests, allowed topics. Red-team: 100+ adversarial scenarios, sandboxed. Data exfil findings. Remediate: fixes for specific application components. Export: text, JSON, Markdown, SARIF." width="920">
   </picture>
 </p>
 
-## Example
+## See It In Action
+
+A real scan of a live fintech agent — Pinnacle Bank Assistant — walking through all five NuGuard stages: AI-SBOM, Cognitive Policy, Static Analysis, Behavior, and Red-Team. No mocks, no slides — real findings, including a live transcript of the agent leaking another customer's flagged fraud transactions on a routine question.
 
 <p align="center">
-  <img src="../documentation/docs/assets/demo.svg" alt="NuGuard SBOM generation and red-team run against a live vulnerable fintech app: 122-node SBOM generated, then 9 findings (7 HIGH, 2 LOW) including SQL injection and IDOR, risk score 67.8/100." width="700">
+  <a href="../documentation/docs/pinnacle-bank-demo.html">
+    <img src="../documentation/docs/assets/pinnacle-bank-demo.gif" alt="Animated walkthrough of the NuGuard pipeline against Pinnacle Bank Assistant: SBOM discovery (159 nodes), Cognitive Policy (19 controls, 4 enforcement gaps), Static Analysis (621 findings), Behavior testing (risk score 59.8/100), and Red-Team (risk score 40.3/100, 37 findings, including a cross-account data leak)." width="1000">
+  </a>
 </p>
 
-[**→ View the full report**](../documentation/docs/assets/demo-redteam-report.md) — every scenario, turn-by-turn transcripts, and the generated remediation plan.
-
-## Framework Coverage
-
-<table>
-<tr>
-<td width="35%" valign="middle">
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="../documentation/docs/assets/owasp-coverage-dark.svg">
-  <img src="../documentation/docs/assets/owasp-coverage-light.svg" alt="Donut chart: 10 out of 10 OWASP LLM Top 10 categories covered." width="260">
-</picture>
-
-</td>
-<td width="65%" valign="middle">
-
-The attack catalog (`catalog.yaml`) tags every scenario against the OWASP Top 10 for LLM Applications (2025) — all 10 categories are covered.
-
-- **125** red-team scenarios
-- **18** attack categories, spanning prompt injection, tool abuse, data exfiltration, supply chain, and more
-- Scenarios can map to more than one OWASP category, so per-category counts sum to more than 125
-- MITRE ATLAS and NIST AI RMF mapping — planned for a future catalog release
-
-</td>
-</tr>
-</table>
+[**→ Open the interactive demo**](../documentation/docs/pinnacle-bank-demo.html) — scroll through the full walkthrough yourself.
 
 ## Comparison
 
@@ -98,13 +74,8 @@ Installation, the full CLI surface, and the configuration reference — all in o
 
 [![Read the Quick Start guide](https://img.shields.io/badge/→_Read_the_Quick_Start_Guide-111111?style=for-the-badge)](../documentation/docs/quick-start.md)
 
-### ⚙️ Need advanced red-team config?
 
-Canaries, guided conversations, and finding triggers — covered in the Red-Team Design doc.
-
-[![Read the Red-Team Design doc](https://img.shields.io/badge/→_Read_the_Red--Team_Design_Doc-111111?style=for-the-badge)](../documentation/docs/redteam-design.md#canaries-quick-setup)
-
-### 🤖 Using coding agents?
+### 🤖 Using Claude Code?
 
 Install the NuGuard plugin and run SBOM, analysis, behavior, and red-team scans directly from Claude Code or Claude Desktop.
 
@@ -116,9 +87,14 @@ Install the NuGuard plugin and run SBOM, analysis, behavior, and red-team scans 
 <tr>
 <td align="center" width="600">
 
-### 🌐 [NuGuard.ai](http://nuguard.ai)
+### <img src="../documentation/docs/assets/logo-sm.png" alt="NuGuard.ai" width="24"> [NuGuard.ai](http://nuguard.ai)
 
 A managed SaaS version of NuGuard, with additional features and support on top of everything in this repo.
+Free trial available.
+
+Supports RBAC, executive dashboards, audit-ready reports, policy checks, and integrations (ServiceNow AI Control Tower).
+
+[![Visit NuGuard.ai](https://img.shields.io/badge/→_Visit_NuGuard.ai-111111?style=for-the-badge)](http://nuguard.ai)
 
 </td>
 </tr>
@@ -134,19 +110,23 @@ Dev setup, running tests and lint, and the pull request process are covered in t
 
 ## Repo Notes
 
-- The repository currently contains example outputs and benchmark fixtures under `tests/output/`
-- Some red-team and benchmark tests are opt-in and gated by environment variables
+- The repository currently contains example applications under `tests/apps/`
 - LLM-assisted features depend on provider credentials being available via environment variables
 
 ## FAQ
 
+**I have some questions, how do I reach out to folks behind this repo?**
+You can contact us at [oss@nuguard.ai](mailto:oss@nuguard.ai)
+For bug reporting, use the [issues](https://github.com/nuguard-ai/nuguard/issues) page on GitHub.
+
 **Do I need a live app to get findings?**
-No. `nuguard sbom` + `nuguard analyze` find structural and supply-chain risk statically. `nuguard behavior` and `nuguard redteam` need a running target.
+No. `nuguard sbom` + `nuguard analyze` find structural and supply-chain risk statically. 
+`nuguard behavior` and `nuguard redteam` need a running target typically in a sandbox.
 
 **Which LLM providers are supported for LLM-assisted features?**
-Configured via the `llm` section of `nuguard.yaml`; provider credentials are read from environment variables. Azure-backed setups are exercised directly in this repo's own test suite.
+Configured via the `llm` section of `nuguard.yaml`; provider credentials are read from environment variables. Lite LLM is used to abstract any llm provider.
 
-**What if I don't want to run all 125 scenarios?**
+**What if I don't want to run all redteam scenarios?**
 Filter by category or profile, or set `enabled: false` per scenario in a catalog exported with `nuguard redteam catalog-export`.
 
 ## License
@@ -162,9 +142,8 @@ Filter by category or profile, or set `enabled: false` per scenario in a catalog
 <a href="../documentation/docs/cli-reference.md">CLI reference</a> ·
 <a href="../documentation/docs/policy-engine-guide.md">Policy engine</a> ·
 <a href="../documentation/docs/static-analysis-guide.md">Static analysis</a> ·
-<a href="../documentation/docs/redteam-design.md">Red-team design</a> ·
+<a href="../documentation/docs/red-teaming-guide.md">Red-team Guide</a> ·
 <a href="../documentation/docs/plugin-guide.md">Claude plugin</a> ·
-<a href="../documentation/docs/publishing.md">Publishing</a> ·
 <a href="../documentation/docs/troubleshooting.md">Troubleshooting</a> ·
 <a href="SECURITY.md">Security</a> ·
 <a href="CONTRIBUTING.md">Contributing</a>

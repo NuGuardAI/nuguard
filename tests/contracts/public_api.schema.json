@@ -376,6 +376,40 @@
             ],
             "default": null,
             "title": "Verified"
+          },
+          "ngrs_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ngrs Score"
+          },
+          "ngrs_vector": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ngrs Vector"
+          },
+          "authorization_decision": {
+            "default": "",
+            "title": "Authorization Decision",
+            "type": "string"
+          },
+          "guardrail_control": {
+            "default": "",
+            "title": "Guardrail Control",
+            "type": "string"
           }
         },
         "required": [
@@ -855,6 +889,12 @@
             "title": "Use Llm",
             "type": "boolean"
           },
+          "capability_discovery": {
+            "default": true,
+            "description": "Probe the live agent for tools, sub-agents, and its system prompt when the AI-SBOM is missing them, and merge the findings back into the in-memory SBOM before scenario generation. Only fires for AGENT nodes with an actual gap.",
+            "title": "Capability Discovery",
+            "type": "boolean"
+          },
           "turn_delay_seconds": {
             "default": 0.0,
             "description": "Inter-turn pause in seconds to avoid 429 rate-limit errors.",
@@ -866,6 +906,33 @@
             "description": "Pause between scenarios in seconds to avoid 429 rate-limit errors.",
             "title": "Scenario Delay Seconds",
             "type": "number"
+          },
+          "coverage_turns_per_scenario": {
+            "default": 5,
+            "description": "Max adaptive coverage-turns appended to a scenario to probe SBOM components not yet exercised by its scripted messages.",
+            "minimum": 1,
+            "title": "Coverage Turns Per Scenario",
+            "type": "integer"
+          },
+          "max_session_turns": {
+            "default": 10,
+            "description": "Hard cap on total turns (scripted + coverage) in a single scenario session.",
+            "minimum": 1,
+            "title": "Max Session Turns",
+            "type": "integer"
+          },
+          "tool_chain_size": {
+            "default": 4,
+            "description": "Max tools grouped into a single tool_coverage/component_coverage scenario chain. Larger values produce fewer, longer multi-turn scenarios for the same tool coverage.",
+            "minimum": 1,
+            "title": "Tool Chain Size",
+            "type": "integer"
+          },
+          "guided_coverage": {
+            "default": false,
+            "description": "Use a live, LLM-steered conversation (CoverageDirector) to exercise uncovered agents/tools turn-by-turn instead of pre-generated tool-chain scripts. Produces more natural conversations at the cost of extra adaptive LLM calls per turn.",
+            "title": "Guided Coverage",
+            "type": "boolean"
           },
           "chat_payload_key": {
             "default": "message",
@@ -999,9 +1066,36 @@
                 "type": "null"
               }
             ],
-            "default": null,
-            "description": "Hard cap on the total number of scenarios executed. Applied after deduplication, preserving priority order: L1, L2, L3, L4, L5. None (default) means no cap.",
+            "default": 100,
+            "description": "Hard cap on the total number of scenarios executed. Applied after deduplication, preserving priority order: L1, L2, L3, L4, L5 (and, when prioritize_by_probe is enabled, demoting probed-blocked tool families within that order \u2014 see prioritize_by_probe). Set to null/None for no cap.",
             "title": "Max Scenarios"
+          },
+          "escalate_on_refusal": {
+            "default": false,
+            "description": "When a tool-coverage probe's response looks like a canned refusal (see nuguard.behavior.refusal.classify_refusal), retry with an escalating ladder of phrasings \u2014 explicit SBOM name/description, then (for missing-precondition refusals) a setup turn establishing context \u2014 before giving up on that tool. Default off so existing scenario/report snapshots are unaffected.",
+            "title": "Escalate On Refusal",
+            "type": "boolean"
+          },
+          "escalation_max_attempts": {
+            "default": 3,
+            "description": "Max attempts (including the first, natural-phrasing attempt) per tool before giving up when escalate_on_refusal is enabled.",
+            "maximum": 5,
+            "minimum": 1,
+            "title": "Escalation Max Attempts",
+            "type": "integer"
+          },
+          "escalation_circuit_breaker_threshold": {
+            "default": 3,
+            "description": "Consecutive escalation attempts across a tool family (same owning agent, or the __standalone__ group) that return the SAME refusal classification before the whole family is tagged systemic_deflection and skipped for the rest of the run. Only applies when escalate_on_refusal is enabled.",
+            "minimum": 1,
+            "title": "Escalation Circuit Breaker Threshold",
+            "type": "integer"
+          },
+          "prioritize_by_probe": {
+            "default": false,
+            "description": "Run one lightweight reachability probe per agent/tool-family before building the full tool-coverage scenario set, then schedule scenarios for probed-reachable (or not-yet-probed) families ahead of probed-blocked families within max_scenarios, and record blocked-and-cut families distinctly as deprioritized rather than silently dropped. Most useful together with escalate_on_refusal (which additionally retries blocked tools within a scenario), but toggles independently.",
+            "title": "Prioritize By Probe",
+            "type": "boolean"
           }
         },
         "title": "BehaviorConfig",
@@ -1199,6 +1293,18 @@
             ],
             "default": null,
             "title": "Mapped From Endpoint"
+          },
+          "refusal_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Refusal Reason"
           }
         },
         "required": [
@@ -1932,6 +2038,13 @@
         "title": "Scenarios Skipped",
         "type": "array"
       },
+      "scenarios_deprioritized": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Scenarios Deprioritized",
+        "type": "array"
+      },
       "allowed_topics_tested": {
         "items": {
           "type": "string"
@@ -2106,6 +2219,12 @@
             "title": "Use Llm",
             "type": "boolean"
           },
+          "capability_discovery": {
+            "default": true,
+            "description": "Probe the live agent for tools, sub-agents, and its system prompt when the AI-SBOM is missing them, and merge the findings back into the in-memory SBOM before scenario generation. Only fires for AGENT nodes with an actual gap.",
+            "title": "Capability Discovery",
+            "type": "boolean"
+          },
           "turn_delay_seconds": {
             "default": 0.0,
             "description": "Inter-turn pause in seconds to avoid 429 rate-limit errors.",
@@ -2117,6 +2236,33 @@
             "description": "Pause between scenarios in seconds to avoid 429 rate-limit errors.",
             "title": "Scenario Delay Seconds",
             "type": "number"
+          },
+          "coverage_turns_per_scenario": {
+            "default": 5,
+            "description": "Max adaptive coverage-turns appended to a scenario to probe SBOM components not yet exercised by its scripted messages.",
+            "minimum": 1,
+            "title": "Coverage Turns Per Scenario",
+            "type": "integer"
+          },
+          "max_session_turns": {
+            "default": 10,
+            "description": "Hard cap on total turns (scripted + coverage) in a single scenario session.",
+            "minimum": 1,
+            "title": "Max Session Turns",
+            "type": "integer"
+          },
+          "tool_chain_size": {
+            "default": 4,
+            "description": "Max tools grouped into a single tool_coverage/component_coverage scenario chain. Larger values produce fewer, longer multi-turn scenarios for the same tool coverage.",
+            "minimum": 1,
+            "title": "Tool Chain Size",
+            "type": "integer"
+          },
+          "guided_coverage": {
+            "default": false,
+            "description": "Use a live, LLM-steered conversation (CoverageDirector) to exercise uncovered agents/tools turn-by-turn instead of pre-generated tool-chain scripts. Produces more natural conversations at the cost of extra adaptive LLM calls per turn.",
+            "title": "Guided Coverage",
+            "type": "boolean"
           },
           "chat_payload_key": {
             "default": "message",
@@ -2250,9 +2396,36 @@
                 "type": "null"
               }
             ],
-            "default": null,
-            "description": "Hard cap on the total number of scenarios executed. Applied after deduplication, preserving priority order: L1, L2, L3, L4, L5. None (default) means no cap.",
+            "default": 100,
+            "description": "Hard cap on the total number of scenarios executed. Applied after deduplication, preserving priority order: L1, L2, L3, L4, L5 (and, when prioritize_by_probe is enabled, demoting probed-blocked tool families within that order \u2014 see prioritize_by_probe). Set to null/None for no cap.",
             "title": "Max Scenarios"
+          },
+          "escalate_on_refusal": {
+            "default": false,
+            "description": "When a tool-coverage probe's response looks like a canned refusal (see nuguard.behavior.refusal.classify_refusal), retry with an escalating ladder of phrasings \u2014 explicit SBOM name/description, then (for missing-precondition refusals) a setup turn establishing context \u2014 before giving up on that tool. Default off so existing scenario/report snapshots are unaffected.",
+            "title": "Escalate On Refusal",
+            "type": "boolean"
+          },
+          "escalation_max_attempts": {
+            "default": 3,
+            "description": "Max attempts (including the first, natural-phrasing attempt) per tool before giving up when escalate_on_refusal is enabled.",
+            "maximum": 5,
+            "minimum": 1,
+            "title": "Escalation Max Attempts",
+            "type": "integer"
+          },
+          "escalation_circuit_breaker_threshold": {
+            "default": 3,
+            "description": "Consecutive escalation attempts across a tool family (same owning agent, or the __standalone__ group) that return the SAME refusal classification before the whole family is tagged systemic_deflection and skipped for the rest of the run. Only applies when escalate_on_refusal is enabled.",
+            "minimum": 1,
+            "title": "Escalation Circuit Breaker Threshold",
+            "type": "integer"
+          },
+          "prioritize_by_probe": {
+            "default": false,
+            "description": "Run one lightweight reachability probe per agent/tool-family before building the full tool-coverage scenario set, then schedule scenarios for probed-reachable (or not-yet-probed) families ahead of probed-blocked families within max_scenarios, and record blocked-and-cut families distinctly as deprioritized rather than silently dropped. Most useful together with escalate_on_refusal (which additionally retries blocked tools within a scenario), but toggles independently.",
+            "title": "Prioritize By Probe",
+            "type": "boolean"
           }
         },
         "title": "BehaviorConfig",
@@ -2413,7 +2586,8 @@
           "component_coverage",
           "guardrail_probe",
           "data_discovery_probe",
-          "endpoint_coverage"
+          "endpoint_coverage",
+          "guided_coverage"
         ],
         "title": "BehaviorScenarioType",
         "type": "string"
@@ -2670,6 +2844,18 @@
             ],
             "default": null,
             "title": "Mapped From Endpoint"
+          },
+          "refusal_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Refusal Reason"
           }
         },
         "required": [
@@ -5013,6 +5199,40 @@
             ],
             "default": null,
             "title": "Verified"
+          },
+          "ngrs_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ngrs Score"
+          },
+          "ngrs_vector": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ngrs Vector"
+          },
+          "authorization_decision": {
+            "default": "",
+            "title": "Authorization Decision",
+            "type": "string"
+          },
+          "guardrail_control": {
+            "default": "",
+            "title": "Guardrail Control",
+            "type": "string"
           }
         },
         "required": [
@@ -5457,6 +5677,14 @@
         },
         "title": "Remediation Plan",
         "type": "array"
+      },
+      "security_invariants": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "title": "Security Invariants",
+        "type": "array"
       }
     },
     "required": [
@@ -5895,6 +6123,11 @@
         "title": "Discovery Max Turns",
         "type": "integer"
       },
+      "capability_discovery": {
+        "default": true,
+        "title": "Capability Discovery",
+        "type": "boolean"
+      },
       "chat_payload_extras": {
         "anyOf": [
           {
@@ -5914,7 +6147,7 @@
         "type": "integer"
       },
       "verify_findings": {
-        "default": false,
+        "default": true,
         "title": "Verify Findings",
         "type": "boolean"
       },
@@ -5940,6 +6173,16 @@
         "default": true,
         "title": "Codegen Escalation Enabled",
         "type": "boolean"
+      },
+      "mode": {
+        "default": "concurrent",
+        "title": "Mode",
+        "type": "string"
+      },
+      "progressive_halt_on_severity": {
+        "default": "none",
+        "title": "Progressive Halt On Severity",
+        "type": "string"
       }
     },
     "required": [
@@ -6275,6 +6518,40 @@
             ],
             "default": null,
             "title": "Verified"
+          },
+          "ngrs_score": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ngrs Score"
+          },
+          "ngrs_vector": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Ngrs Vector"
+          },
+          "authorization_decision": {
+            "default": "",
+            "title": "Authorization Decision",
+            "type": "string"
+          },
+          "guardrail_control": {
+            "default": "",
+            "title": "Guardrail Control",
+            "type": "string"
           }
         },
         "required": [
@@ -6719,6 +6996,14 @@
         },
         "title": "Remediation Plan",
         "type": "array"
+      },
+      "security_invariants": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "title": "Security Invariants",
+        "type": "array"
       }
     },
     "required": [
@@ -6802,14 +7087,20 @@
       "AiSbomConfig": {
         "properties": {
           "max_files": {
-            "default": 1000,
-            "maximum": 10000,
-            "minimum": 1,
-            "title": "Max Files",
-            "type": "integer"
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Max Files"
           },
           "max_file_size_bytes": {
-            "default": 1048576,
+            "default": 104857600,
             "minimum": 1024,
             "title": "Max File Size Bytes",
             "type": "integer"
@@ -6875,6 +7166,37 @@
             "maximum": 64,
             "minimum": 1,
             "title": "Llm Concurrency",
+            "type": "integer"
+          },
+          "gap_fill_max_calls": {
+            "title": "Gap Fill Max Calls",
+            "type": "integer"
+          },
+          "gap_fill_max_cost_usd": {
+            "title": "Gap Fill Max Cost Usd",
+            "type": "number"
+          },
+          "gap_fill_enable_privilege": {
+            "title": "Gap Fill Enable Privilege",
+            "type": "boolean"
+          },
+          "gap_fill_enable_guardrail": {
+            "title": "Gap Fill Enable Guardrail",
+            "type": "boolean"
+          },
+          "gap_fill_self_critique_categories": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Gap Fill Self Critique Categories",
+            "type": "array"
+          },
+          "verification_cost_budget": {
+            "title": "Verification Cost Budget",
+            "type": "number"
+          },
+          "verification_max_verifications": {
+            "title": "Verification Max Verifications",
             "type": "integer"
           },
           "google_api_key": {
@@ -7269,6 +7591,29 @@
             ],
             "default": null,
             "description": "Access direction on ACCESSES edges: read | write | readwrite"
+          },
+          "derivation": {
+            "default": "hint",
+            "description": "'hint': backed by an adapter-emitted RelationshipHint (explicit code evidence). 'fallback_heuristic': synthesized by structural fallback rules with no direct evidence.",
+            "enum": [
+              "hint",
+              "fallback_heuristic"
+            ],
+            "title": "Derivation",
+            "type": "string"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Set only for fallback_heuristic edges \u2014 a rough strength score for the guess. None for hint edges (evidence-backed, no separate score needed).",
+            "title": "Confidence"
           }
         },
         "required": [
@@ -8281,6 +8626,22 @@
             "default": null,
             "description": "Path parameter names extracted from the endpoint URL template, e.g. ['user_id', 'tenant_id']",
             "title": "Path Params"
+          },
+          "path_param_sources": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Maps each entry in path_params to the API_ENDPOINT path that creates the identified resource, e.g. {'id': '/chat/conversations'} for a chat endpoint at '/chat/conversations/:id/messages'",
+            "title": "Path Param Sources"
           },
           "request_body_schema": {
             "additionalProperties": {
@@ -9944,6 +10305,29 @@
             ],
             "default": null,
             "description": "Access direction on ACCESSES edges: read | write | readwrite"
+          },
+          "derivation": {
+            "default": "hint",
+            "description": "'hint': backed by an adapter-emitted RelationshipHint (explicit code evidence). 'fallback_heuristic': synthesized by structural fallback rules with no direct evidence.",
+            "enum": [
+              "hint",
+              "fallback_heuristic"
+            ],
+            "title": "Derivation",
+            "type": "string"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Set only for fallback_heuristic edges \u2014 a rough strength score for the guess. None for hint edges (evidence-backed, no separate score needed).",
+            "title": "Confidence"
           }
         },
         "required": [
@@ -10956,6 +11340,22 @@
             "default": null,
             "description": "Path parameter names extracted from the endpoint URL template, e.g. ['user_id', 'tenant_id']",
             "title": "Path Params"
+          },
+          "path_param_sources": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Maps each entry in path_params to the API_ENDPOINT path that creates the identified resource, e.g. {'id': '/chat/conversations'} for a chat endpoint at '/chat/conversations/:id/messages'",
+            "title": "Path Param Sources"
           },
           "request_body_schema": {
             "additionalProperties": {

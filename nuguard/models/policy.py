@@ -7,6 +7,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from nuguard.sbom.models import SourceLocation
+
 # ---------------------------------------------------------------------------
 # Enums
 # ---------------------------------------------------------------------------
@@ -28,6 +30,13 @@ class ControlType(str, Enum):
     AUTOMATED = "automated"
     ATTESTATION_REQUIRED = "attestation_required"
     NOT_APPLICABLE = "not_applicable"
+
+
+class PolicyOrigin(str, Enum):
+    """Where a compiled PolicyControl's statement came from."""
+
+    POLICY_DOCUMENT = "policy_document"
+    NUGUARD_BEST_PRACTICE = "nuguard_best_practice"
 
 
 # ---------------------------------------------------------------------------
@@ -233,4 +242,23 @@ class PolicyControl(BaseModel):
     boundary_prompts: list[str] = Field(
         default_factory=list,
         description="User messages that attempt to violate this control (should be refused/escalated)",
+    )
+    origin: str = Field(
+        default=PolicyOrigin.POLICY_DOCUMENT.value,
+        description=(
+            "policy_document (derived from the user's Cognitive Policy Markdown) "
+            "or nuguard_best_practice (NuGuard built-in default, injected because "
+            "the document left this section uncovered)"
+        ),
+    )
+    evidence: list[SourceLocation] = Field(
+        default_factory=list,
+        description=(
+            "Best-effort source-code/system-prompt evidence grounding this "
+            "control in the actual application (SBOM component locations). "
+            "Does NOT include a pointer to the input Cognitive Policy "
+            "document itself — see 'origin' for whether the control's text "
+            "came from that document or a NuGuard default. Empty when no "
+            "SBOM match was found."
+        ),
     )

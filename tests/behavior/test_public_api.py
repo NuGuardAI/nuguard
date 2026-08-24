@@ -112,6 +112,7 @@ async def test_analyze_behavior_constructs_analyzer_and_forwards_mode():
     mock_cls.assert_called_once_with(
         config=config,
         sbom=sbom,
+        sbom_path=None,
         policy=policy,
         controls=controls,
         llm_client=llm_client,
@@ -167,7 +168,13 @@ async def test_run_behavior_scenarios_constructs_runner_and_forwards_args():
         )
 
     mock_cls.assert_called_once_with(
-        config=config, sbom=sbom, policy=policy, intent=intent, llm_client=llm_client, judge_cache=judge_cache
+        config=config,
+        sbom=sbom,
+        sbom_path=None,
+        policy=policy,
+        intent=intent,
+        llm_client=llm_client,
+        judge_cache=judge_cache,
     )
     called_args, called_kwargs = mock_instance.run.await_args
     assert [s.name for s in called_args[0]] == ["a"]
@@ -264,7 +271,9 @@ async def test_discover_behavior_profile_wraps_runner_discover():
 
         result = await discover_behavior_profile(config)
 
-    mock_cls.assert_called_once_with(config=config, sbom=None, policy=None, intent=None, llm_client=None)
+    mock_cls.assert_called_once_with(
+        config=config, sbom=None, sbom_path=None, policy=None, intent=None, llm_client=None,
+    )
     mock_instance.discover.assert_awaited_once_with()
     assert result is sentinel_profile
 
