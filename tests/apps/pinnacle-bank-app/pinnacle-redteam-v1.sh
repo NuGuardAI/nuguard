@@ -72,7 +72,7 @@ echo "Running redteam tests ..."
 # Exit 1 is a hard error (target unreachable, auth failure, config error) — propagate it.
 uv run nuguard redteam \
   --config "$SCRIPT_DIR/nuguard-azure.yaml" \
-  --engine v1 --format markdown \
+   --format markdown \
   --output "$SCRIPT_DIR/reports/pinnacle-bank-redteam-v1.md" || {
     _exit=$?
     [[ $_exit -eq 2 ]] || { echo "ERROR: redteam failed (exit $_exit)" >&2; exit $_exit; }
