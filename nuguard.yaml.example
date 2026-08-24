@@ -128,8 +128,28 @@ behavior:
 
   # Hard cap on total scenarios executed (after deduplication).
   # Preserves category priority order: topic_coverage → agent_tool_coverage →
-  # guardrail_coverage → data_discovery_probe. Omit for no cap.
-  # max_scenarios: 20
+  # guardrail_coverage → data_discovery_probe (default: 100). Set to null for no cap.
+  # max_scenarios: 100
+
+  # Retry a tool-coverage probe with an escalating ladder of phrasings (explicit
+  # SBOM name/description, then a precondition setup turn) when the response looks
+  # like a canned refusal, instead of accepting one refusal as final (default: false).
+  # escalate_on_refusal: true
+
+  # Max attempts per tool (including the first natural-phrasing attempt) when
+  # escalate_on_refusal is enabled (default: 3).
+  # escalation_max_attempts: 3
+
+  # Consecutive identical-refusal-classification attempts across a tool family
+  # (same owning agent, or standalone tools) before the family is tagged
+  # systemic_deflection and skipped for the rest of the run (default: 3).
+  # escalation_circuit_breaker_threshold: 3
+
+  # Run one lightweight reachability probe per agent/tool-family before building
+  # the full scenario set, then schedule probed-reachable families ahead of
+  # probed-blocked families within max_scenarios (most useful together with
+  # escalate_on_refusal; default: false).
+  # prioritize_by_probe: true
 
   # Canary seed file — same file used by redteam canary scanning.
   # canary: ./canary.json

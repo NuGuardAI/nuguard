@@ -134,6 +134,73 @@ def test_to_markdown_not_exercised_in_summary():
     assert "`tool_x`" in md
 
 
+def test_to_markdown_not_exercised_annotates_refusal_reason():
+    """When escalation classified a refusal reason, the flat list is replaced
+    by name + reason pairs (nuguard.behavior.escalate_on_refusal)."""
+    cov = [
+        BehaviorCoverage(component_name="agent1", node_type="AGENT", exercised=True),
+        BehaviorCoverage(
+            component_name="Fill Pdf Form", node_type="TOOL", exercised=False,
+            refusal_reason="nl_routing_miss",
+        ),
+        BehaviorCoverage(
+            component_name="Complete Job", node_type="TOOL", exercised=False,
+            refusal_reason="missing_precondition",
+        ),
+        BehaviorCoverage(
+            component_name="Search Patients By Condition", node_type="TOOL", exercised=False,
+            refusal_reason="systemic_deflection",
+        ),
+    ]
+    result = _make_result(coverage=cov)
+    md = to_markdown(result)
+    assert "Not Exercised" in md
+    assert "`Fill Pdf Form` — nl_routing_miss" in md
+    assert "`Complete Job` — missing_precondition" in md
+    assert "`Search Patients By Condition` — systemic_deflection" in md
+
+
+def test_to_markdown_not_exercised_falls_back_to_flat_when_no_classification():
+    """No component has a refusal_reason (escalate_on_refusal off, the
+    default) — the flat, undifferentiated list is preserved exactly as
+    before so existing report snapshots are unaffected."""
+    cov = [
+        BehaviorCoverage(component_name="tool_x", node_type="TOOL", exercised=False),
+        BehaviorCoverage(component_name="tool_y", node_type="TOOL", exercised=False),
+    ]
+    result = _make_result(coverage=cov)
+    md = to_markdown(result)
+    assert "`tool_x`, `tool_y`" in md or "`tool_y`, `tool_x`" in md
+    assert "—" not in md.split("Not Exercised")[1].split("\n")[0]
+
+
+# ---------------------------------------------------------------------------
+# to_markdown — scenarios_skipped / scenarios_deprioritized
+# ---------------------------------------------------------------------------
+
+
+def test_to_markdown_scenarios_deprioritized_shown_separately():
+    result = _make_result(
+        scenarios_skipped=["scenario_a", "scenario_b"],
+        scenarios_deprioritized=["scenario_b"],
+    )
+    md = to_markdown(result)
+    assert "Scenarios Not Run" in md
+    assert "`scenario_a`" in md
+    assert "Scenarios Deprioritized" in md
+    assert "`scenario_b`" in md
+    # scenario_b is deprioritized, not a plain cap-skip, so it shouldn't
+    # also appear in the plain "Scenarios Not Run" line.
+    not_run_line = next(line for line in md.splitlines() if "Scenarios Not Run" in line)
+    assert "scenario_b" not in not_run_line
+
+
+def test_to_markdown_no_deprioritized_section_when_empty():
+    result = _make_result(scenarios_skipped=["scenario_a"], scenarios_deprioritized=[])
+    md = to_markdown(result)
+    assert "Scenarios Deprioritized" not in md
+
+
 # ---------------------------------------------------------------------------
 # to_markdown — scenarios_skipped
 # ---------------------------------------------------------------------------

@@ -9,10 +9,14 @@ restricted topic from the policy is added as an additional probe.
 from __future__ import annotations
 
 import uuid
+from typing import TYPE_CHECKING
 
 from nuguard.models.exploit_chain import ExploitStep, GoalType, ScenarioType
 
 from ._chain_factory import make_scenario
+
+if TYPE_CHECKING:
+    from .scenario_types import AttackScenario
 
 # Universally off-topic requests, independent of application domain — matches
 # docs/redteam-improve-2.md's Phase 2 examples directly.
@@ -28,7 +32,7 @@ def build_off_topic_probes(
     agent_name: str,
     app_domain: str = "",
     restricted_topics: list[str] | None = None,
-) -> list["AttackScenario"]:  # noqa: F821 - forward ref, see _chain_factory
+) -> list["AttackScenario"]:
     """One single-turn scenario per off-topic prompt.
 
     Expected: refuse or redirect back to the application's declared scope.

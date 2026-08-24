@@ -71,13 +71,39 @@ class CoverageDirector:
             domain_context: One-line description of the application under test.
             profile: Discovered user profile for ``{golden_id}``/``{golden_name}`` tokens.
         """
+        picked = await self.next_message_with_target(
+            uncovered=uncovered,
+            last_response=last_response,
+            component_descriptions=component_descriptions,
+            allowed_topics=allowed_topics,
+            domain_context=domain_context,
+            profile=profile,
+        )
+        return picked[1] if picked is not None else None
+
+    async def next_message_with_target(
+        self,
+        *,
+        uncovered: set[str],
+        last_response: str,
+        component_descriptions: dict[str, str],
+        allowed_topics: list[str] | None = None,
+        domain_context: str = "",
+        profile: "DiscoveredProfile | None" = None,
+    ) -> tuple[str, str] | None:
+        """Like :meth:`next_message`, but also returns the targeted component name.
+
+        The escalation ladder (:mod:`nuguard.behavior.escalation`) needs to know
+        *which* component a coverage turn targeted so a refusal in the response
+        can be attributed to that specific tool rather than guessed at.
+        """
         if not uncovered:
             return None
 
         target = sorted(uncovered)[0]
 
         if self._llm is None or getattr(self._llm, "api_key", None) is None:
-            return _template_message(
+            return target, _template_message(
                 target, component_descriptions.get(target, ""), domain_context, self._intent, profile
             )
 
@@ -127,7 +153,7 @@ class CoverageDirector:
             raw = await self._llm.complete(prompt, system=_SYSTEM_PROMPT, label="behavior:coverage_director")
         except Exception as exc:
             _log.warning("CoverageDirector.next_message: LLM call failed (%s), using template", exc)
-            return _template_message(
+            return target, _template_message(
                 target, component_descriptions.get(target, ""), domain_context, self._intent, profile
             )
 
@@ -135,7 +161,14 @@ class CoverageDirector:
         message = str((parsed or {}).get("message") or "").strip()
         if not message:
             _log.warning("CoverageDirector.next_message: could not parse LLM response, using template")
-            return _template_message(
+            return target, _template_message(
                 target, component_descriptions.get(target, ""), domain_context, self._intent, profile
             )
-        return message
+        # Prefer the LLM's own choice of target when it named one of the
+        # candidates — it may have picked a different (still-uncovered)
+        # component than the alphabetical default based on what the agent's
+        # last response alluded to.
+        llm_target = str((parsed or {}).get("target") or "").strip()
+        if llm_target and llm_target in uncovered:
+            target = llm_target
+        return target, message

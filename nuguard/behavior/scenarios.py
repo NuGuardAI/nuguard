@@ -888,6 +888,28 @@ def _is_standalone_group(agent_name: str) -> bool:
     return agent_name == "__standalone__" or agent_name.startswith("__standalone__")
 
 
+def _scenario_family(scenario: "BehaviorScenario") -> str:
+    """Return the tool-family key for *scenario* (used by prioritize_by_probe).
+
+    Mirrors the family convention used by
+    :meth:`nuguard.behavior.runner.BehaviorRunner.probe_tool_families` and
+    :func:`nuguard.behavior.escalation.tool_family`: the owning agent's name,
+    or ``"__standalone__"`` for tools with no owning agent.
+
+    ``scoped_agents`` is the reliable signal — tool-coverage scenarios set it
+    to ``[agent_name]`` for a real owning agent, or ``[]`` for a
+    standalone-tool group. ``primary_agent`` is *not* reliable for standalone
+    groups: it holds a display label ("assistant") used for message phrasing,
+    not a stable family key. Falls back to ``primary_agent`` for scenario
+    types that don't set ``scoped_agents`` at all (e.g. ``AGENT_COVERAGE``).
+    """
+    if scenario.scoped_agents:
+        return scenario.scoped_agents[0]
+    if scenario.scoped_tools:
+        return "__standalone__"
+    return scenario.primary_agent or "__standalone__"
+
+
 async def _tool_coverage_scenarios(
     sbom: "AiSbomDocument",
     intent: "IntentProfile",
@@ -2033,6 +2055,8 @@ async def build_scenarios(
     llm_client: "LLMClient | None" = None,
     skipped_out: "list[str] | None" = None,
     pre_scan_profile: "DiscoveredProfile | None" = None,
+    family_probe_results: "dict[str, str] | None" = None,
+    deprioritized_out: "list[str] | None" = None,
 ) -> list[BehaviorScenario]:
     """Build all scenarios for the configured workflows (v8).
 
@@ -2054,6 +2078,18 @@ async def build_scenarios(
         skipped_out: Optional list to append names of scenarios skipped due to the
             max_scenarios cap.  Callers that need to surface this in a report can
             pass an empty list and inspect it after the call.
+        family_probe_results: Optional mapping of tool-family name (a scenario's
+            ``primary_agent``, or ``"__standalone__"``) to ``"reachable"`` /
+            ``"blocked"`` / ``"unknown"`` from
+            :meth:`nuguard.behavior.runner.BehaviorRunner.probe_tool_families`.
+            When supplied (behavior.prioritize_by_probe), scenarios belonging to
+            a ``"blocked"`` family are demoted to the end of the list as a
+            stable tiebreaker *within* the existing L1-L5 category ordering,
+            before the max_scenarios cap is applied.
+        deprioritized_out: Optional list to append names of scenarios cut by the
+            max_scenarios cap specifically because their family probed blocked
+            (a subset of skipped_out) — lets callers report a systemic-refusal
+            cut distinctly from an arbitrary cap cut.
 
     Returns:
         Deduplicated list of BehaviorScenario objects.
@@ -2150,6 +2186,23 @@ async def build_scenarios(
     # Pass 3: cross-type dedup (happy-path covers component)
     deduped = _dedup_cross_type(deduped)
 
+    # Demote scenarios whose tool family probed as blocked (prioritize_by_probe).
+    # Stable partition — a tiebreaker/demotion *within* the existing category
+    # ordering above, never a replacement for it: scenarios keep their relative
+    # order inside each of the two partitions.
+    blocked_families: set[str] = {
+        fam for fam, status in (family_probe_results or {}).items() if status == "blocked"
+    }
+    if blocked_families:
+        not_blocked = [s for s in deduped if _scenario_family(s) not in blocked_families]
+        blocked = [s for s in deduped if _scenario_family(s) in blocked_families]
+        if blocked:
+            _log.info(
+                "build_scenarios: demoting %d scenarios from probed-blocked families: %s",
+                len(blocked), sorted(blocked_families),
+            )
+        deduped = not_blocked + blocked
+
     # Apply max_scenarios cap
     max_scenarios = getattr(config, "max_scenarios", None)
     if isinstance(max_scenarios, int) and len(deduped) > max_scenarios:
@@ -2157,8 +2210,13 @@ async def build_scenarios(
             "build_scenarios: capping at max_scenarios=%d (was %d)",
             max_scenarios, len(deduped),
         )
+        cut = deduped[max_scenarios:]
         if skipped_out is not None:
-            skipped_out.extend(s.name for s in deduped[max_scenarios:])
+            skipped_out.extend(s.name for s in cut)
+        if deprioritized_out is not None and blocked_families:
+            deprioritized_out.extend(
+                s.name for s in cut if _scenario_family(s) in blocked_families
+            )
         deduped = deduped[:max_scenarios]
 
     _log.info("build_scenarios: %d total scenarios (%d after dedup)", len(all_scenarios), len(deduped))

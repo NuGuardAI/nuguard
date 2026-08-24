@@ -65,6 +65,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from nuguard.behavior.coverage_director import CoverageDirector
+    from nuguard.behavior.escalation import EscalationLadder, FamilyCircuitBreaker
     from nuguard.behavior.models import IntentProfile
     from nuguard.common.discovery import DiscoveredProfile
     from nuguard.common.llm_client import LLMClient
@@ -715,6 +716,13 @@ class BehaviorRunner:
         self._judge_cache = judge_cache
         self._auth_session: Any = None
         self._coverage_mapping_diagnostics: dict[str, Any] = {}
+        # Escalation-ladder state (behavior.escalate_on_refusal): component name
+        # -> classified RefusalReason value (or "systemic_deflection"), populated
+        # only for components that were probed and ultimately not exercised.
+        # Shared across scenarios within one run() call so _build_coverage_map()
+        # can annotate the final "not exercised" list.
+        self._refusal_classifications: dict[str, str] = {}
+        self._escalation_attempts: dict[str, int] = {}
 
         # Build component description map for coverage-turn generation.
         # Only AGENT and TOOL nodes participate in adaptive coverage turns (they are the
@@ -935,6 +943,57 @@ class BehaviorRunner:
             self._coverage_director_instance = director
         return director
 
+    @property
+    def _tool_families(self) -> dict[str, str]:
+        """Lazily build (and cache) the tool name -> family map for the escalation ladder.
+
+        Family is the owning agent's name (from SBOM CALLS edges), or
+        ``escalation.STANDALONE_FAMILY`` for tools with no owning agent —
+        mirrors the grouping ``nuguard.behavior.scenarios._build_tool_groups``
+        uses to build tool-coverage scenarios in the first place.
+        """
+        cached = getattr(self, "_tool_families_cache", None)
+        if cached is not None:
+            return cached
+        from nuguard.behavior.escalation import STANDALONE_FAMILY
+        families: dict[str, str] = {}
+        if self._sbom is not None:
+            try:
+                from nuguard.behavior.scenarios import _build_tool_groups
+                for agent_name, tools in _build_tool_groups(self._sbom).items():
+                    for tool_name, _desc, _tier in tools:
+                        families[tool_name] = agent_name
+            except Exception as exc:
+                _log.debug("_tool_families: failed to build tool groups (%s)", exc)
+        for tool_name in self._tool_names:
+            families.setdefault(tool_name, STANDALONE_FAMILY)
+        self._tool_families_cache = families
+        return families
+
+    def _escalation_ladder(self) -> "EscalationLadder":
+        """Lazily build (and cache) the EscalationLadder for refusal-driven retries."""
+        ladder = getattr(self, "_escalation_ladder_instance", None)
+        if ladder is None:
+            from nuguard.behavior.escalation import EscalationLadder
+            ladder = EscalationLadder()
+            self._escalation_ladder_instance = ladder
+        return ladder
+
+    def _family_circuit_breaker(self) -> "FamilyCircuitBreaker":
+        """Lazily build (and cache) the per-run FamilyCircuitBreaker.
+
+        Shared across all scenarios in a single ``run()`` call so a family
+        found to be systemically blocked in one scenario stays suppressed
+        for the rest of the run, not just within that one scenario.
+        """
+        breaker = getattr(self, "_family_circuit_breaker_instance", None)
+        if breaker is None:
+            from nuguard.behavior.escalation import FamilyCircuitBreaker
+            threshold = int(getattr(self._config, "escalation_circuit_breaker_threshold", 3) or 3)
+            breaker = FamilyCircuitBreaker(threshold=threshold)
+            self._family_circuit_breaker_instance = breaker
+        return breaker
+
     def _build_policy_evaluator(self) -> Any:
         """Build the PolicyEvaluator if a policy is available."""
         if self._policy is None:
@@ -1047,6 +1106,13 @@ class BehaviorRunner:
         coverage_turns_used = 0
         turn_idx = 0
         pending_invocation: tuple[str, str] | None = None  # (message, component_name)
+        # Escalation-ladder state (behavior.escalate_on_refusal only): which
+        # component the *current outgoing* message targets (set fresh each
+        # turn, below) so the refusal classifier knows which tool to
+        # attribute the response to, and how many attempts have already been
+        # spent on it.
+        _escalate_on_refusal = bool(getattr(self._config, "escalate_on_refusal", False))
+        _escalation_max_attempts = int(getattr(self._config, "escalation_max_attempts", 3) or 3)
         credentials = dict(getattr(self._config, "credentials", None) or {})
         consecutive_failures = 0
         _MAX_CONSECUTIVE_FAILURES = 3
@@ -1125,6 +1191,11 @@ class BehaviorRunner:
         while turn_idx < max_turns:
             # Determine next message
             message: str | None = None
+            # Reset each turn — only set (below) when this turn's message is an
+            # escalation-ladder-eligible probe (a GUIDED_COVERAGE pick, or a
+            # queued escalation retry), never for rate-limit/confirmation/
+            # scripted turns, which the ladder does not apply to.
+            _escalation_target = None
 
             # 0a. Rate-limited turn retry — replay the same message after backoff.
             if _rate_limit_retry_message is not None:
@@ -1143,9 +1214,12 @@ class BehaviorRunner:
                 message = pending_confirmation
                 pending_confirmation = None
 
-            # 1. Queued invocation after a "not used" probe
+            # 1. Queued invocation after a "not used" probe (or an escalation
+            #    ladder retry — see the refusal-classification block below).
             elif pending_invocation is not None:
-                message, _ = pending_invocation
+                message, _pending_component = pending_invocation
+                if _escalate_on_refusal:
+                    _escalation_target = _pending_component
                 pending_invocation = None
 
             # 2. Next scripted message — adapt using prior turn context (v7.5: probe
@@ -1196,14 +1270,43 @@ class BehaviorRunner:
                     scoped_uncovered = (
                         uncovered & scoped_component_set if scoped_component_set is not None else uncovered
                     )
-                    message = await self._coverage_director().next_message(
-                        uncovered=scoped_uncovered,
-                        last_response=last_response,
-                        component_descriptions=self._component_descriptions,
-                        allowed_topics=list(getattr(self._policy, "allowed_topics", None) or []) if self._policy else None,
-                        domain_context=getattr(self._intent, "app_purpose", "") if self._intent else "",
-                        profile=self._pre_scan_profile,
-                    )
+                    if _escalate_on_refusal:
+                        # Skip tools whose family has already tripped the
+                        # circuit breaker (systemic_deflection) — no point
+                        # burning further turns on them; tag them directly so
+                        # they show up correctly in the coverage report even
+                        # though no further probe is attempted.
+                        _breaker = self._family_circuit_breaker()
+                        _still_probeable = set()
+                        for _comp in scoped_uncovered:
+                            _fam = self._tool_families.get(_comp)
+                            if _fam is not None and _breaker.is_tripped(_fam):
+                                self._refusal_classifications[_comp] = "systemic_deflection"
+                            else:
+                                _still_probeable.add(_comp)
+                        scoped_uncovered = _still_probeable
+                        if not scoped_uncovered:
+                            break
+                        picked = await self._coverage_director().next_message_with_target(
+                            uncovered=scoped_uncovered,
+                            last_response=last_response,
+                            component_descriptions=self._component_descriptions,
+                            allowed_topics=list(getattr(self._policy, "allowed_topics", None) or []) if self._policy else None,
+                            domain_context=getattr(self._intent, "app_purpose", "") if self._intent else "",
+                            profile=self._pre_scan_profile,
+                        )
+                        if picked is None:
+                            break
+                        _escalation_target, message = picked
+                    else:
+                        message = await self._coverage_director().next_message(
+                            uncovered=scoped_uncovered,
+                            last_response=last_response,
+                            component_descriptions=self._component_descriptions,
+                            allowed_topics=list(getattr(self._policy, "allowed_topics", None) or []) if self._policy else None,
+                            domain_context=getattr(self._intent, "app_purpose", "") if self._intent else "",
+                            profile=self._pre_scan_profile,
+                        )
                     if not message:
                         break
                     coverage_turns_used += 1
@@ -1615,6 +1718,58 @@ class BehaviorRunner:
                 pending_invocation = (follow_msg, target_comp)
                 coverage_turns_used += 1
 
+            # Escalation ladder (behavior.escalate_on_refusal): classify the
+            # response for the component this turn targeted. A refusal queues
+            # an escalated retry (explicit phrasing, then — for a
+            # missing-precondition refusal — a setup turn) up to
+            # escalation_max_attempts, and a per-tool-family circuit breaker
+            # stops escalating a family after N consecutive identical
+            # classifications (tagged systemic_deflection instead).
+            if _escalate_on_refusal and _escalation_target and response:
+                from nuguard.behavior.refusal import classify_refusal as _classify_refusal
+                _reason = await _classify_refusal(response, llm_client=self._llm)
+                if _reason is None:
+                    # Genuine engagement — clear any stale classification/attempt
+                    # count so the component reads as exercised, not refused.
+                    self._refusal_classifications.pop(_escalation_target, None)
+                    self._escalation_attempts.pop(_escalation_target, None)
+                else:
+                    _family = self._tool_families.get(_escalation_target, "__standalone__")
+                    _tripped = self._family_circuit_breaker().record(_family, _reason)
+                    _attempts_used = self._escalation_attempts.get(_escalation_target, 1)
+                    if _tripped:
+                        self._refusal_classifications[_escalation_target] = "systemic_deflection"
+                        _log.info(
+                            "_run_scenario: family=%s circuit-broken (systemic_deflection) — "
+                            "no further escalation for %s",
+                            _family, _escalation_target,
+                        )
+                    elif (
+                        _attempts_used < _escalation_max_attempts
+                        and pending_invocation is None
+                        and coverage_turns_used < _adaptive_coverage_cap(self._config)
+                    ):
+                        _next_attempt = _attempts_used + 1
+                        self._escalation_attempts[_escalation_target] = _next_attempt
+                        _ladder_step = self._escalation_ladder().build(
+                            attempt=_next_attempt,
+                            tool_name=_escalation_target,
+                            tool_description=self._component_descriptions.get(_escalation_target, ""),
+                            refusal_reason=_reason,
+                            original_message=message,
+                        )
+                        pending_invocation = (_ladder_step.message, _escalation_target)
+                        coverage_turns_used += 1
+                        _log.info(
+                            "_run_scenario: escalating %s (attempt %d/%d, strategy=%s) after %s refusal",
+                            _escalation_target, _next_attempt, _escalation_max_attempts,
+                            _ladder_step.strategy, _reason.value,
+                        )
+                    else:
+                        # Attempts exhausted without success — keep the last
+                        # classification so the coverage report can explain why.
+                        self._refusal_classifications.setdefault(_escalation_target, _reason.value)
+
             # Update coverage state
             coverage_state.update(verdict)
 
@@ -1843,6 +1998,92 @@ class BehaviorRunner:
             _log.warning("BehaviorRunner.discover failed (non-fatal): %s", exc)
             _console.print(f"  [yellow]Pre-scan discovery failed (non-fatal): {exc}[/yellow]")
             return None
+
+    async def probe_tool_families(self) -> dict[str, str]:
+        """Run one lightweight reachability probe per agent/tool-family.
+
+        Sends a single natural-phrasing message per family — reusing the SBOM
+        tool grouping from :func:`nuguard.behavior.scenarios._build_tool_groups`
+        (agent name -> its tools via CALLS edges; tools with no owning agent
+        are grouped under :data:`nuguard.behavior.escalation.STANDALONE_FAMILY`)
+        — and classifies the response with
+        :func:`nuguard.behavior.refusal.classify_refusal`. Intended to run
+        once, before scenario generation, so ``build_scenarios`` can schedule
+        probed-reachable families ahead of probed-blocked ones within the
+        ``max_scenarios`` cap (``behavior.prioritize_by_probe``).
+
+        Non-fatal: any per-family send failure records that family as
+        ``"unknown"`` (treated as reachable for scheduling purposes) rather
+        than aborting the whole probe pass.
+
+        Returns:
+            Mapping of family name to ``"reachable"``, ``"blocked"``, or
+            ``"unknown"``.
+        """
+        from nuguard.behavior.escalation import STANDALONE_FAMILY
+        from nuguard.behavior.refusal import classify_refusal
+        from nuguard.behavior.scenarios import _build_tool_groups
+        from nuguard.redteam.target.session import AttackSession as _AS
+
+        if self._sbom is None:
+            return {}
+
+        try:
+            tool_groups = _build_tool_groups(self._sbom)
+        except Exception as exc:
+            _log.warning("probe_tool_families: failed to build tool groups (%s)", exc)
+            return {}
+
+        grouped_tools = {t[0] for tools in tool_groups.values() for t in tools}
+        standalone: list[tuple[str, str, str]] = []
+        for node in getattr(self._sbom, "nodes", []):
+            ct = getattr(node, "component_type", None) or getattr(node, "type", None)
+            nt = getattr(ct, "value", str(ct) if ct else "").upper()
+            if nt != "TOOL":
+                continue
+            name = str(getattr(node, "name", "") or getattr(node, "id", ""))
+            if name in grouped_tools:
+                continue
+            desc = self._component_descriptions.get(name, "")
+            standalone.append((name, desc, ""))
+        if standalone:
+            tool_groups[STANDALONE_FAMILY] = standalone
+
+        if not tool_groups:
+            return {}
+
+        try:
+            client = await self._build_client()
+        except Exception as exc:
+            _log.warning("probe_tool_families: failed to build client (%s)", exc)
+            return {}
+
+        target_url = getattr(self, "_resolved_target_url", None) or getattr(self._config, "target", "") or ""
+        _console.rule("[bold cyan]Tool-family Reachability Probe[/bold cyan]", style="dim cyan")
+
+        results: dict[str, str] = {}
+        for family, tools in tool_groups.items():
+            if not tools or results.get(family) == "reachable":
+                continue
+            tool_name, tool_desc, _tier = tools[0]
+            action = (tool_desc or "").strip()[:80] or "complete its primary function"
+            probe_message = f"Can you use {tool_name} to {action}?"
+            session = _AS(session_id=f"probe-{family}", target_url=target_url, chain_id="behavior-family-probe")
+            try:
+                response, _ = await client.send(probe_message, session=session)
+            except Exception as exc:
+                _log.debug("probe_tool_families: send failed for family=%s (%s)", family, exc)
+                results.setdefault(family, "unknown")
+                continue
+            if response.startswith("[HTTP ") or response.startswith("[REQUEST_ERROR:"):
+                results.setdefault(family, "unknown")
+                continue
+            reason = await classify_refusal(response, llm_client=self._llm)
+            status = "blocked" if reason is not None else "reachable"
+            results[family] = status
+            _console.print(f"  [dim]probe {family}:[/dim] {status}")
+
+        return results
 
     async def run(
         self,
@@ -2702,6 +2943,14 @@ class BehaviorRunner:
             unmatched_sorted = sorted(unmatched_mentions)
             for cov in component_map.values():
                 cov.unmatched_mentions = unmatched_sorted
+
+        # Escalation ladder (behavior.escalate_on_refusal): annotate any
+        # not-exercised component with its classified refusal reason so the
+        # report can show *why* it wasn't exercised instead of a flat list.
+        for _comp_name, _reason_value in self._refusal_classifications.items():
+            _cov = component_map.get(_comp_name)
+            if _cov is not None and not _cov.exercised:
+                _cov.refusal_reason = _reason_value
 
         self._coverage_mapping_diagnostics = {
             "mentioned_entities_unmapped": sorted(unmatched_mentions),

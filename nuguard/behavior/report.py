@@ -159,18 +159,36 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
     exercised = sum(1 for c in result.coverage if c.exercised)
     lines.append(f"- **Coverage**: {result.coverage_percentage * 100:.0f}% ({exercised}/{total_comp} components exercised)")
 
-    # Unexercised components
+    # Unexercised components — annotate with the classified refusal reason
+    # where escalation classified one (behavior.escalate_on_refusal); falls
+    # back to the flat, undifferentiated list when no classification was
+    # attempted, so existing report snapshots are unaffected by default.
     not_exercised = [c for c in result.coverage if not c.exercised]
     if not_exercised:
-        ne_names = ", ".join(f"`{c.component_name}`" for c in not_exercised)
+        if any(getattr(c, "refusal_reason", None) for c in not_exercised):
+            ne_names = ", ".join(
+                f"`{c.component_name}` — {c.refusal_reason}" if c.refusal_reason else f"`{c.component_name}`"
+                for c in not_exercised
+            )
+        else:
+            ne_names = ", ".join(f"`{c.component_name}`" for c in not_exercised)
         lines.append(f"- **Not Exercised** ({len(not_exercised)} components): {ne_names}")
 
     # Scenarios skipped due to max_scenarios cap
     if result.scenarios_skipped:
-        skipped_names = ", ".join(f"`{n}`" for n in result.scenarios_skipped)
-        lines.append(
-            f"- **Scenarios Not Run** ({len(result.scenarios_skipped)} skipped by `max_scenarios` cap): {skipped_names}"
-        )
+        deprioritized = set(getattr(result, "scenarios_deprioritized", None) or [])
+        plain_skipped = [n for n in result.scenarios_skipped if n not in deprioritized]
+        if plain_skipped:
+            skipped_names = ", ".join(f"`{n}`" for n in plain_skipped)
+            lines.append(
+                f"- **Scenarios Not Run** ({len(plain_skipped)} skipped by `max_scenarios` cap): {skipped_names}"
+            )
+        if deprioritized:
+            deprio_names = ", ".join(f"`{n}`" for n in sorted(deprioritized))
+            lines.append(
+                f"- **Scenarios Deprioritized** ({len(deprioritized)} cut by `max_scenarios` cap "
+                f"after their tool family probed as blocked): {deprio_names}"
+            )
 
     lines.append(f"- **Intent Alignment Score**: {result.intent_alignment_score:.2f} / 5.0")
     counts = result.counts

@@ -60,6 +60,15 @@ def _make_config() -> BehaviorConfig:
     cfg.canary = None
     cfg.session_header = None
     cfg.scenario_delay_seconds = 0.0
+    # MagicMock() auto-creates any attribute as a (truthy) child Mock, so
+    # getattr(..., default) never falls back to the default for a bare
+    # MagicMock — explicitly set these to BehaviorConfig's real defaults
+    # (all off) so tests don't inadvertently exercise the escalation-ladder
+    # path unless they opt in.
+    cfg.escalate_on_refusal = False
+    cfg.escalation_max_attempts = 3
+    cfg.escalation_circuit_breaker_threshold = 3
+    cfg.prioritize_by_probe = False
     return cfg  # type: ignore[return-value]  # MagicMock duck-types as BehaviorConfig for these tests
 
 
@@ -917,3 +926,221 @@ async def test_guided_coverage_scenario_uses_coverage_director_not_batch_gen():
     assert mock_client.send.await_count == 2
     fake_director.next_message.assert_awaited()
     batch_gen.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# escalate_on_refusal: escalation ladder for GUIDED_COVERAGE probes
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_escalate_on_refusal_retries_and_stops_on_success():
+    """A refusal on the first probe queues an escalated retry; a non-refusal
+    response ends the escalation loop without exhausting all attempts."""
+    runner = BehaviorRunner(
+        config=BehaviorConfig(
+            target="http://localhost:8080", target_endpoint="/chat",
+            escalate_on_refusal=True, escalation_max_attempts=3,
+        ),
+        sbom=_make_sbom_with_tool("transfer_funds"),
+        policy=_make_mock_policy(),
+        intent=_make_intent(),
+        llm_client=None,
+    )
+    runner._pre_scan_profile = None
+
+    mock_client = AsyncMock()
+    mock_client.base_url = "http://localhost:8080"
+    mock_client.send = AsyncMock(side_effect=[
+        ("Opening reply.", []),
+        ("I'm sorry, I don't have the capability to do that.", []),  # refusal
+        ("Sure, transfer_funds moved $50 to savings.", []),  # escalated retry succeeds; names the
+        # tool explicitly so the (LLM-free) heuristic judge marks it covered and the
+        # coverage loop ends cleanly instead of probing again.
+    ])
+
+    fake_director = MagicMock()
+    fake_director.next_message_with_target = AsyncMock(
+        return_value=("transfer_funds", "Can you move $50 to savings?")
+    )
+
+    scenario = BehaviorScenario(
+        scenario_type=BehaviorScenarioType.GUIDED_COVERAGE,
+        name="guided_assistant_0",
+        messages=["I need help with banking. Can you help me get started?"],
+        scoped_tools=["transfer_funds"],
+        primary_agent="assistant",
+    )
+
+    with patch.object(runner, "_coverage_director", return_value=fake_director):
+        await runner._run_scenario(scenario, mock_client, None)
+
+    # 3 turns: opener, refused probe, escalated retry that succeeds.
+    assert mock_client.send.await_count == 3
+    # The tool ultimately succeeded — no lingering refusal classification.
+    assert "transfer_funds" not in runner._refusal_classifications
+
+
+@pytest.mark.asyncio
+async def test_escalate_on_refusal_records_classification_when_exhausted():
+    """When the single allowed attempt is refused, the classification is
+    recorded so the coverage report can explain why the tool wasn't exercised
+    (escalation_max_attempts=1 here — no retry budget left after attempt 1)."""
+    runner = BehaviorRunner(
+        config=BehaviorConfig(
+            target="http://localhost:8080", target_endpoint="/chat",
+            escalate_on_refusal=True, escalation_max_attempts=1,
+        ),
+        sbom=_make_sbom_with_tool("transfer_funds"),
+        policy=_make_mock_policy(),
+        intent=_make_intent(),
+        llm_client=None,
+    )
+    runner._pre_scan_profile = None
+
+    mock_client = AsyncMock()
+    mock_client.base_url = "http://localhost:8080"
+    mock_client.send = AsyncMock(side_effect=[
+        ("Opening reply.", []),
+        ("I'm sorry, that's outside my scope.", []),
+    ])
+
+    fake_director = MagicMock()
+    # First call returns the (only) probe; the runner asks again afterward
+    # (the component is still uncovered) — return None there to end the
+    # scenario cleanly, standing in for "nothing left worth probing".
+    fake_director.next_message_with_target = AsyncMock(
+        side_effect=[("transfer_funds", "Can you move $50 to savings?"), None]
+    )
+
+    scenario = BehaviorScenario(
+        scenario_type=BehaviorScenarioType.GUIDED_COVERAGE,
+        name="guided_assistant_0",
+        messages=["I need help with banking. Can you help me get started?"],
+        scoped_tools=["transfer_funds"],
+        primary_agent="assistant",
+    )
+
+    with patch.object(runner, "_coverage_director", return_value=fake_director):
+        await runner._run_scenario(scenario, mock_client, None)
+
+    assert runner._refusal_classifications.get("transfer_funds") == "out_of_scope_deflection"
+    assert mock_client.send.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_escalate_on_refusal_skips_tools_in_tripped_family():
+    """When a tool's family circuit breaker has already tripped (e.g. from an
+    earlier scenario in the same run), it's tagged systemic_deflection and the
+    coverage director is never even asked to probe it — no turns burned."""
+    runner = BehaviorRunner(
+        config=BehaviorConfig(
+            target="http://localhost:8080", target_endpoint="/chat",
+            escalate_on_refusal=True,
+        ),
+        sbom=_make_sbom_with_tool("transfer_funds"),
+        policy=_make_mock_policy(),
+        intent=_make_intent(),
+        llm_client=None,
+    )
+    runner._pre_scan_profile = None
+    # Pre-trip the circuit breaker for this tool's family, as if an earlier
+    # scenario in the same run already exhausted it.
+    runner._family_circuit_breaker()._tripped.add(
+        runner._tool_families.get("transfer_funds", "__standalone__")
+    )
+
+    mock_client = AsyncMock()
+    mock_client.base_url = "http://localhost:8080"
+    mock_client.send = AsyncMock(return_value=("Opening reply.", []))
+
+    fake_director = MagicMock()
+    fake_director.next_message_with_target = AsyncMock()
+
+    scenario = BehaviorScenario(
+        scenario_type=BehaviorScenarioType.GUIDED_COVERAGE,
+        name="guided_assistant_0",
+        messages=["I need help with banking. Can you help me get started?"],
+        scoped_tools=["transfer_funds"],
+        primary_agent="assistant",
+    )
+
+    with patch.object(runner, "_coverage_director", return_value=fake_director):
+        await runner._run_scenario(scenario, mock_client, None)
+
+    assert runner._refusal_classifications.get("transfer_funds") == "systemic_deflection"
+    fake_director.next_message_with_target.assert_not_awaited()
+    # Only the opening scripted turn is sent — no coverage probe.
+    assert mock_client.send.await_count == 1
+
+
+# ---------------------------------------------------------------------------
+# prioritize_by_probe: BehaviorRunner.probe_tool_families()
+# ---------------------------------------------------------------------------
+
+
+def _make_sbom_two_agents() -> AiSbomDocument:
+    ns = uuid.NAMESPACE_URL
+    reachable_id = uuid.uuid5(ns, "agent/ReachableAgent")
+    blocked_id = uuid.uuid5(ns, "agent/BlockedAgent")
+    get_thing_id = uuid.uuid5(ns, "tool/get_thing")
+    do_thing_id = uuid.uuid5(ns, "tool/do_thing")
+    from nuguard.sbom.models import Edge, EdgeRelationshipType
+
+    return AiSbomDocument(
+        target="test",
+        nodes=[
+            Node(id=reachable_id, name="ReachableAgent", component_type=ComponentType.AGENT,
+                 confidence=1.0, metadata=NodeMetadata(description="handles reachable stuff")),
+            Node(id=blocked_id, name="BlockedAgent", component_type=ComponentType.AGENT,
+                 confidence=1.0, metadata=NodeMetadata(description="handles blocked stuff")),
+            Node(id=get_thing_id, name="get_thing", component_type=ComponentType.TOOL,
+                 confidence=1.0, metadata=NodeMetadata(description="get a thing")),
+            Node(id=do_thing_id, name="do_thing", component_type=ComponentType.TOOL,
+                 confidence=1.0, metadata=NodeMetadata(description="do a thing")),
+        ],
+        edges=[
+            Edge(source=reachable_id, target=get_thing_id, relationship_type=EdgeRelationshipType.CALLS),
+            Edge(source=blocked_id, target=do_thing_id, relationship_type=EdgeRelationshipType.CALLS),
+        ],
+    )
+
+
+@pytest.mark.asyncio
+async def test_probe_tool_families_classifies_reachable_and_blocked():
+    runner = BehaviorRunner(
+        config=BehaviorConfig(target="http://localhost:8080", target_endpoint="/chat"),
+        sbom=_make_sbom_two_agents(),
+        policy=_make_mock_policy(),
+        intent=_make_intent(),
+        llm_client=None,
+    )
+
+    mock_client = AsyncMock()
+    mock_client.base_url = "http://localhost:8080"
+
+    async def _fake_send(message, session=None):
+        if "get_thing" in message:
+            return "Sure, here's the thing you asked for.", []
+        return "I'm sorry, I don't have the capability to do that.", []
+
+    mock_client.send = AsyncMock(side_effect=_fake_send)
+
+    with patch.object(runner, "_build_client", new=AsyncMock(return_value=mock_client)):
+        results = await runner.probe_tool_families()
+
+    assert results.get("ReachableAgent") == "reachable"
+    assert results.get("BlockedAgent") == "blocked"
+
+
+@pytest.mark.asyncio
+async def test_probe_tool_families_empty_sbom_returns_empty():
+    runner = BehaviorRunner(
+        config=BehaviorConfig(target="http://localhost:8080", target_endpoint="/chat"),
+        sbom=None,
+        policy=_make_mock_policy(),
+        intent=_make_intent(),
+        llm_client=None,
+    )
+    results = await runner.probe_tool_families()
+    assert results == {}

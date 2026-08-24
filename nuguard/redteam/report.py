@@ -372,7 +372,7 @@ def _phase_summary_rows(findings: list, scenario_records: list) -> list[dict]:
     scenario_counts: dict[int, int] = {}
     for rec in scenario_records:
         st = getattr(rec, "scenario_type", None) or (rec.get("scenario_type") if isinstance(rec, dict) else "")
-        phase_id = progressive_phase_for(st)
+        phase_id = progressive_phase_for(str(st or ""))
         scenario_counts[phase_id] = scenario_counts.get(phase_id, 0) + 1
 
     finding_counts: dict[int, dict[str, int]] = {}
