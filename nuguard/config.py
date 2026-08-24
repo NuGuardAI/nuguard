@@ -251,6 +251,10 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
                 flat["redteam_auth_login_flow"] = _shared_auth["login_flow"]
 
     # Redteam section — overrides shared target block when keys are present.
+    # Drop keys whose env-var interpolation resolved to None (unset ${VAR}
+    # without a ``:-default``) so scalar fields keep their model defaults
+    # instead of crashing validation as the literal string 'None' — matching
+    # the established credentials/LLM-block handling below.
     # Both `endpoint:` and `target_endpoint:` are accepted as aliases, mirroring
     # the shared ``target:`` block (which accepts both names). The shared block
     # already does this on lines 199-203; the override must accept the same
@@ -258,7 +262,7 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
     # in nuguard.yaml.example line 47) see their override take effect.
     # Precedence matches the shared block: ``endpoint`` wins over
     # ``target_endpoint`` when both are set in the same block.
-    redteam = data.get("redteam", {}) or {}
+    redteam = {k: v for k, v in (data.get("redteam", {}) or {}).items() if v is not None}
     if "target" in redteam:
         flat["target_url"] = redteam["target"]
     if "endpoint" in redteam:
@@ -293,7 +297,12 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
     if "min_impact_score" in redteam:
         flat["min_impact_score"] = float(redteam["min_impact_score"])
     if "scenarios" in redteam:
-        flat["redteam_scenarios"] = redteam["scenarios"]
+        scenarios = redteam["scenarios"]
+        if isinstance(scenarios, list):
+            # Unset ${VAR} entries resolve to None — drop them so the
+            # remaining explicit goals still run instead of failing validation.
+            scenarios = [s for s in scenarios if s is not None]
+        flat["redteam_scenarios"] = scenarios
     if "mcp_trusted_servers" in redteam:
         flat["mcp_trusted_servers"] = redteam["mcp_trusted_servers"]
     if "verbose" in redteam:
