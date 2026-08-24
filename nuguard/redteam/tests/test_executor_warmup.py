@@ -125,6 +125,7 @@ async def test_warmup_skipped_for_http_only_chain() -> None:
         body: Any = None,
         params: Any = None,
         extra_headers: Any = None,
+        strip_auth: bool = False,
     ) -> tuple[int, str, dict]:
         return 200, "ok", {}
 
