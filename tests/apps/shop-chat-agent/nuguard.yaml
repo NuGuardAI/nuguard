@@ -44,11 +44,12 @@ sbom_generation:
 # replies via Azure OpenAI (see .env), but dynamic scans here exercise the base chat
 # loop only, not the MCP product-search/cart/order tool surface.
 target:
-  url: http://localhost:5501
+  # url: http://localhost:5501
+  url: http://shop-chat-agent-nuguard-98345c17.eastus2.azurecontainer.io
 
   # SSE chat endpoint (GET with Accept: text/event-stream, or POST) — see
   # app/routes/chat.jsx. Accepts JSON body: {"message": "...", "conversation_id": "...".
-  endpoint: /chat
+  #endpoint: /chat
 
   # To make storefront MCP tools operational (search_shop_catalog, cart,
   # policies), connect a real dev store (see README "Connecting a real dev
@@ -105,7 +106,6 @@ redteam:
     model: azure/${AZURE_DEEPSEEK_MODEL_NAME}    # any LiteLLM model string (openai/gpt-4o, etc.)
     api_key: ${AZURE_DEEPSEEK_KEY}     # never put keys here; use env var interpolation
     api_base: ${AZURE_DEEPSEEK_ENDPOINT}     # optional override for Azure OpenAI endpoint URL
-
 
   request_timeout: 120
   verbose: true
