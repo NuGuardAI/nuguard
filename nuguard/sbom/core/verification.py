@@ -24,7 +24,8 @@ from uuid import UUID
 
 from nuguard.common.logging import get_logger
 
-from ..models import Evidence, Node
+from ..models import ComponentType, Evidence, Node
+from .gap_fill.snippets import detect_language, extract_context
 
 _log = get_logger(__name__)
 
@@ -163,30 +164,8 @@ Respond ONLY with valid JSON (no markdown, no explanation):
 LLMCallFn = Callable[[str, str], Awaitable[tuple[str, int]]]
 
 
-def _detect_language(file_path: str) -> str:
-    if not file_path:
-        return "python"
-    lower = file_path.lower()
-    if lower.endswith((".ts", ".tsx")):
-        return "typescript"
-    if lower.endswith((".js", ".jsx", ".mjs")):
-        return "javascript"
-    if lower.endswith((".yaml", ".yml")):
-        return "yaml"
-    if lower.endswith(".tf"):
-        return "hcl"
-    if lower.endswith(".json"):
-        return "json"
-    return "python"
-
-
-def _extract_context(file_content: str, line_number: int, context_lines: int = 20) -> str:
-    if not file_content or line_number <= 0:
-        return "(context not available)"
-    lines = file_content.splitlines()
-    start = max(0, line_number - context_lines // 2 - 1)
-    end = min(len(lines), line_number + context_lines // 2)
-    return "\n".join(lines[start:end])
+_detect_language = detect_language
+_extract_context = extract_context
 
 
 @lru_cache(maxsize=1000)
@@ -366,6 +345,7 @@ async def verify_uncertain_nodes(
     llm_call_fn: LLMCallFn,
     file_contents: dict[str, str] | None = None,
     cost_budget: float = VERIFICATION_COST_BUDGET,
+    max_candidates: int = MAX_VERIFICATIONS_PER_SCAN,
     enabled: bool = ENABLE_VERIFICATION,
     concurrency: int = 1,
 ) -> tuple[list[VerificationResult], VerificationStats]:
@@ -384,6 +364,8 @@ async def verify_uncertain_nodes(
         Optional mapping of relative file path → file content for richer context.
     cost_budget:
         Maximum cost (USD) to spend; stops early if exceeded.
+    max_candidates:
+        Maximum number of nodes to verify in one scan.
     enabled:
         Master switch — returns empty results immediately when False.
     concurrency:
@@ -398,7 +380,7 @@ async def verify_uncertain_nodes(
         stats.skipped_count = len(nodes)
         return [], stats
 
-    candidates, skipped = filter_verification_candidates(nodes)
+    candidates, skipped = filter_verification_candidates(nodes, max_candidates=max_candidates)
     stats.total_candidates = len(candidates)
     stats.skipped_count = skipped
 
@@ -413,6 +395,19 @@ async def verify_uncertain_nodes(
     # the first batch of in-flight LLM calls.
     prepared: list[tuple[Node, str, str, float]] = []
     for node in candidates:
+        if node.component_type == ComponentType.PROMPT and node.metadata.extras.get("content"):
+            # The deterministic detector already captured the full prompt
+            # text (and role) in metadata.extras — build_verification_prompt
+            # only samples evidence_list[0]'s file for context, which for a
+            # PROMPT node with evidence spread across files is often just an
+            # import reference rather than the definition. Asking the LLM to
+            # judge from that alone risks a false-negative soft-rejection of
+            # an already-correct node, with no additional information
+            # gained. Skip verification entirely and keep the node's
+            # existing confidence/evidence untouched.
+            stats.skipped_count += 1
+            continue
+
         evidence_list = evidence_map.get(node.id, [])
         file_path = (
             evidence_list[0].location.path if evidence_list and evidence_list[0].location else ""

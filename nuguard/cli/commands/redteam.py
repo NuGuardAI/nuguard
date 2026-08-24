@@ -136,7 +136,11 @@ def redteam(
     # Resolve from nuguard.yaml if not provided on CLI
     from nuguard.config import load_config
 
-    cfg = load_config(config_path)
+    try:
+        cfg = load_config(config_path)
+    except Exception as exc:
+        typer.echo(f"Error: failed to load config: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
     from nuguard.remediation.llm import resolve_remediation_llm_client
 
     remediation_llm_client = resolve_remediation_llm_client(cfg)
@@ -280,9 +284,13 @@ def redteam(
         tree_max_depth=cfg.redteam_tree_max_depth,
         strict_outcome=cfg.redteam_strict_outcome,
         credentials=cfg.redteam_credentials or None,
-        redteam_llm_model=cfg.redteam_llm_model,
-        redteam_llm_api_key=cfg.redteam_llm_api_key,
-        redteam_llm_api_base=cfg.redteam_llm_api_base,
+        # Falls back to the top-level llm.model/api_key/api_base when
+        # redteam.llm is not set, mirroring eval_llm's existing fallback below —
+        # otherwise guided conversations silently disable (no warning) for any
+        # config that only sets a top-level `llm:` block for SBOM/analyze use.
+        redteam_llm_model=cfg.redteam_llm_model or cfg.litellm_model or None,
+        redteam_llm_api_key=cfg.redteam_llm_api_key or cfg.litellm_api_key or None,
+        redteam_llm_api_base=cfg.redteam_llm_api_base or cfg.litellm_api_base or None,
         eval_llm_model=cfg.redteam_eval_llm_model or cfg.litellm_model or None,
         eval_llm_api_key=cfg.redteam_eval_llm_api_key or cfg.litellm_api_key or None,
         eval_llm_api_base=cfg.redteam_eval_llm_api_base,
@@ -300,6 +308,7 @@ def redteam(
         stall_abort_threshold=cfg.redteam_stall_abort_threshold,
         skip_discovery=cfg.redteam_skip_discovery,
         discovery_max_turns=cfg.redteam_discovery_max_turns,
+        capability_discovery=cfg.redteam_capability_discovery,
         catalog=custom_catalog,
         pre_run_warmup=cfg.redteam_pre_run_warmup,
         verify_findings=cfg.redteam_verify_findings,
@@ -531,6 +540,7 @@ async def _run_redteam(
     stall_abort_threshold: int = 8,
     skip_discovery: bool = False,
     discovery_max_turns: int = 3,
+    capability_discovery: bool = True,
     chat_payload_extras: dict[str, Any] | None = None,
     catalog: "tuple | None" = None,
     pre_run_warmup: int = 0,
@@ -636,6 +646,7 @@ async def _run_redteam(
                 profile=profile,
                 min_impact_score=min_impact_score,
                 scenario_filter=scenario_filter,
+                sbom_path=sbom_path,
                 chat_path=chat_path,
                 chat_payload_key=chat_payload_key,
                 chat_payload_list=chat_payload_list,
@@ -670,6 +681,7 @@ async def _run_redteam(
                 stall_abort_threshold=stall_abort_threshold,
                 skip_discovery=skip_discovery,
                 discovery_max_turns=discovery_max_turns,
+                capability_discovery=capability_discovery,
                 catalog=catalog,
                 pre_run_warmup=pre_run_warmup,
                 verify_findings=verify_findings,
@@ -689,6 +701,7 @@ async def _run_redteam(
         profile=profile,
         min_impact_score=min_impact_score,
         scenario_filter=scenario_filter,
+        sbom_path=sbom_path,
         chat_path=chat_path,
         chat_payload_key=chat_payload_key,
         chat_payload_list=chat_payload_list,
@@ -723,6 +736,7 @@ async def _run_redteam(
         stall_abort_threshold=stall_abort_threshold,
         skip_discovery=skip_discovery,
         discovery_max_turns=discovery_max_turns,
+        capability_discovery=capability_discovery,
         catalog=catalog,
         pre_run_warmup=pre_run_warmup,
         verify_findings=verify_findings,
@@ -740,6 +754,7 @@ async def _run_orchestrator(  # noqa: C901
     profile: str,
     min_impact_score: float,
     scenario_filter: list[str] | None,
+    sbom_path: Path | None = None,
     policy_controls: list | None = None,
     chat_path: str = "/chat",
     chat_payload_key: str = "message",
@@ -775,6 +790,7 @@ async def _run_orchestrator(  # noqa: C901
     stall_abort_threshold: int = 8,
     skip_discovery: bool = False,
     discovery_max_turns: int = 3,
+    capability_discovery: bool = True,
     catalog: "tuple | None" = None,
     pre_run_warmup: int = 0,
     verify_findings: bool = False,
@@ -834,6 +850,7 @@ async def _run_orchestrator(  # noqa: C901
         stall_abort_threshold=stall_abort_threshold,
         skip_discovery=skip_discovery,
         discovery_max_turns=discovery_max_turns,
+        capability_discovery=capability_discovery,
         chat_payload_extras=chat_payload_extras or None,
         pre_run_warmup=pre_run_warmup,
         verify_findings=verify_findings,
@@ -845,6 +862,7 @@ async def _run_orchestrator(  # noqa: C901
     result = await run_redteam(
         request,
         sbom=sbom_doc,  # type: ignore[arg-type]
+        sbom_path=sbom_path,
         policy=cognitive_policy,  # type: ignore[arg-type]
         policy_controls=policy_controls,
         redteam_llm=redteam_llm,

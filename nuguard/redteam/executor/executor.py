@@ -6,6 +6,7 @@ import os
 import re as _re
 from typing import TYPE_CHECKING
 
+from nuguard.common.credentials import detect_confirmation_request, generate_contextual_reply
 from nuguard.common.llm_client import LLMClient
 from nuguard.common.logging import get_logger
 from nuguard.common.rate_limit import (
@@ -14,10 +15,12 @@ from nuguard.common.rate_limit import (
     is_rate_limited,
     scenario_rate_limit_backoff,
 )
+from nuguard.common.turn_helpers import handle_mid_turn_interrupts
 
 if TYPE_CHECKING:
     from nuguard.common.auth import AuthSession
     from nuguard.common.discovery import DiscoveredProfile
+    from nuguard.redteam.llm_engine.judge_cache import JudgeCache
     from nuguard.redteam.target.log_reader import BufferLogReader, FileLogReader
     from nuguard.sbom.models import AiSbomDocument
 
@@ -242,6 +245,10 @@ class StepResult:
         # Populated when use_llm_eval=True and LLMResponseEvaluator is available
         self.llm_eval_evidence: str = ""
         self.llm_eval_confidence: str = ""
+        # Judge-suggested fix for a confirmed violation — previously computed
+        # by the evaluator and discarded here; now carried through so
+        # _build_findings can wire it into Finding.remediation.
+        self.llm_eval_remediation_hint: str = ""
         # Which judge produced llm_eval_evidence/llm_eval_confidence above:
         # "llm_eval" (LLMResponseEvaluator's actual model call) or
         # "golden_filter" (deterministic golden-data classifier — see
@@ -357,12 +364,16 @@ class AttackExecutor:
         sbom: "AiSbomDocument | None" = None,
         pre_scan_profile: "DiscoveredProfile | None" = None,
         suppress_spa_html_auth_bypass: bool = True,
+        judge_cache: "JudgeCache | None" = None,
+        credentials: dict[str, str] | None = None,
     ) -> None:
         self._client = client
         self._evaluator = PolicyEvaluator(policy) if policy else None
         self._canary = canary
         self._logger = logger or ActionLogger()
-        self._response_evaluator = LLMResponseEvaluator(eval_llm) if eval_llm else None
+        self._response_evaluator = (
+            LLMResponseEvaluator(eval_llm, cache=judge_cache) if eval_llm else None
+        )
         # Adaptive mutation: uses a separate LLM (typically the redteam LLM) to
         # generate targeted follow-up payloads based on the failure type observed.
         # Falls back to static _mutation_variants when not configured.
@@ -409,6 +420,7 @@ class AttackExecutor:
                 self._golden_data_cache[_proxy_id] = _profile_data
         self._turn_delay_seconds = max(0.0, turn_delay_seconds)
         self._suppress_spa_html = suppress_spa_html_auth_bypass
+        self._credentials: dict[str, str] = credentials or {}
 
     async def run(
         self, chain: ExploitChain
@@ -513,13 +525,12 @@ class AttackExecutor:
                     result = await self._execute_step(step, session, chain)
                 except TargetUnavailableError:
                     _log.warning(
-                        "Chain %s: target unavailable at step %s — resetting circuit breaker and aborting chain",
+                        "Chain %s: target unavailable at step %s — aborting chain and propagating "
+                        "so the orchestrator can trip its circuit breaker",
                         chain.chain_id, step.step_id,
                     )
-                    self._client.reset_circuit_breaker()
                     chain.status = "aborted"
-                    _step_aborted = True
-                    break
+                    raise
                 _resp_lower_step = result.response.lower()
                 _is_step_transient = (
                     any(pat in _resp_lower_step for pat in APP_TRANSIENT_ERROR_PATTERNS)
@@ -573,6 +584,7 @@ class AttackExecutor:
                         chain.chain_id, _consecutive_failures,
                     )
                     chain.status = "aborted"
+                    chain.abort_reason = "consecutive_request_failures"
                     break
             else:
                 _consecutive_failures = 0
@@ -612,7 +624,20 @@ class AttackExecutor:
                 # fall back to static variants.
                 last_response = result.response
                 for attempt in range(self.MAX_MUTATIONS):
-                    if self._adaptive_mutator:
+                    if detect_confirmation_request(last_response):
+                        # The target offered to proceed pending an answer
+                        # (e.g. "I can send an OTP — let me know if you'd
+                        # like me to send it now") rather than refusing.
+                        # Answer in-context so the chain actually finds out
+                        # whether the destructive/sensitive action completes,
+                        # instead of abandoning the thread for an unrelated
+                        # jailbreak-rotation strategy on the next attempt.
+                        mutation = await generate_contextual_reply(
+                            agent_response=last_response,
+                            original_message=step.payload,
+                            llm_client=getattr(self._adaptive_mutator, "_llm", None),
+                        )
+                    elif self._adaptive_mutator:
                         # Pass recent conversation history and warmup disclosures so
                         # the mutator can reference what the agent actually said rather
                         # than generating generic follow-ups.
@@ -651,12 +676,12 @@ class AttackExecutor:
                         )
                     except TargetUnavailableError:
                         _log.warning(
-                            "Chain %s: target unavailable during mutation attempt %d — resetting circuit breaker and aborting chain",
+                            "Chain %s: target unavailable during mutation attempt %d — aborting chain and propagating "
+                            "so the orchestrator can trip its circuit breaker",
                             chain.chain_id, attempt,
                         )
-                        self._client.reset_circuit_breaker()
                         chain.status = "aborted"
-                        break
+                        raise
                     last_response = result.response
                     if result.success_signal_found:
                         session.add_evidence(step.step_id, result.response)
@@ -680,8 +705,10 @@ class AttackExecutor:
         so verbose reports show the warmup in the attack-step timeline.  The
         warmup's ``success_signal`` is empty (no success/failure semantics) and
         ``on_failure`` is ``skip`` so transport errors do not abort the chain.
-        Returns ``None`` if the target is unreachable (the chain will then
-        raise naturally on the first real step, preserving existing behaviour).
+        Returns ``None`` when the opener cannot be generated or a non-circuit
+        send failure occurs.  When the client's circuit breaker trips (the
+        target is unreachable), ``TargetUnavailableError`` propagates so the
+        orchestrator can abort the remaining scenarios.
         """
         try:
             # Derive a stable variation index from the chain ID so concurrent
@@ -729,12 +756,15 @@ class AttackExecutor:
         try:
             response, tool_calls = await self._client.send(message, session)
         except TargetUnavailableError:
+            # The warmup itself cannot abort the chain, but the client's
+            # consecutive-error counter must survive so the orchestrator can
+            # trip its circuit breaker — propagate instead of swallowing.
             _log.warning(
-                "happy_path warmup: target unavailable for chain=%s — resetting circuit breaker",
+                "happy_path warmup: target unavailable for chain=%s — propagating "
+                "so the orchestrator can trip its circuit breaker",
                 chain.chain_id,
             )
-            self._client.reset_circuit_breaker()
-            return None
+            raise
         except Exception as exc:
             _log.warning(
                 "happy_path warmup send failed chain=%s: %s",
@@ -863,6 +893,23 @@ class AttackExecutor:
                     context=f"chain={chain.chain_id} step={step.step_id}",
                 )
                 response, tool_calls = await self._client.send(payload, session)
+            # Mid-turn interrupts: the target may ask for a credential or ask
+            # a confirmation/clarification question (e.g. "I can send an OTP —
+            # let me know if you'd like me to send it now") instead of
+            # refusing or complying outright. Answering in-context here lets
+            # the chain actually find out whether the destructive/sensitive
+            # action completes, rather than scoring a miss and mutating to an
+            # unrelated payload (guided_executor.py already does this for
+            # adaptive conversations; fixed ExploitChain scenarios had none).
+            response, tool_calls = await handle_mid_turn_interrupts(
+                client=self._client,
+                session=session,
+                response=response,
+                original_message=payload,
+                tool_calls=list(tool_calls or []),
+                credentials=self._credentials,
+                llm_client=getattr(self._adaptive_mutator, "_llm", None),
+            )
             session.add_turn(payload, response, tool_calls)
             result = StepResult(step=step, response=response, tool_calls=tool_calls)
             result.resolved_payload = _resolved_payload
@@ -1037,6 +1084,7 @@ class AttackExecutor:
                 result.success_signal_found = bool(llm_eval.get("succeeded", False))
                 result.llm_eval_evidence = llm_eval.get("evidence", "")
                 result.llm_eval_confidence = llm_eval.get("confidence", "")
+                result.llm_eval_remediation_hint = llm_eval.get("remediation_hint", "") or ""
                 result.evidence_source = "llm_eval"
                 _log.info(
                     "LLM eval | step=%s succeeded=%s confidence=%s evidence=%r",

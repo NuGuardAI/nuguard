@@ -132,11 +132,22 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
     lines.append(f"- **Scan Outcome**: `{result.scan_outcome}`")
     lines.append(f"- **Run ID**: `{result.run_id}`")
     _dyn_outcome = getattr(result, "dynamic_scan_outcome", None)
-    if result.static_findings and _dyn_outcome in ("aborted_target_unavailable", "inconclusive_target_errors"):
+    if result.static_findings and _dyn_outcome in (
+        "aborted_target_unavailable",
+        "inconclusive_target_errors",
+        "aborted_endpoint_unreachable",
+    ):
         if _dyn_outcome == "aborted_target_unavailable":
             lines.append(
                 "> **Note:** Dynamic scenario testing was aborted — the target was unreachable. "
                 "All scenario probes returned HTTP errors. Findings below are from static analysis only."
+            )
+        elif _dyn_outcome == "aborted_endpoint_unreachable":
+            lines.append(
+                "> **Note:** Dynamic scenario testing was aborted before any scenario ran — "
+                "the configured chat endpoint returned HTTP 404/405. Fix `target_endpoint` in "
+                "nuguard.yaml or remove it to allow fallback discovery. Findings below are from "
+                "static analysis only."
             )
         else:
             lines.append(
@@ -276,8 +287,9 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
             sev = _norm_sev(findings_group[0].get("severity", ""))
             fid = findings_group[0].get("finding_id", "")
             tool_names = [f.get("affected_component", "?") for f in findings_group]
-            owasp_llm = "LLM08 – Excessive Agency"
-            owasp_asi = "ASI02 – Tool Misuse and Exploitation"
+            owasp_llm = findings_group[0].get("owasp_llm_ref") or ""
+            owasp_asi = findings_group[0].get("owasp_asi_ref") or ""
+            mitre_atlas = findings_group[0].get("mitre_atlas_technique") or ""
             heading = f"### [{sev}] Restricted Action Reachable — '{rule_key}'"
             if fid:
                 heading += f" — {fid}"
@@ -291,10 +303,15 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
                 rem = rem_finding.get("remediation", "")
                 lines.append(f"- `{tn}` — {rem}")
             lines.append("")
-            lines.append(f"**OWASP LLM:** {owasp_llm}")
-            lines.append("")
-            lines.append(f"**OWASP ASI:** {owasp_asi}")
-            lines.append("")
+            if owasp_llm:
+                lines.append(f"**OWASP LLM:** {owasp_llm}")
+                lines.append("")
+            if owasp_asi:
+                lines.append(f"**OWASP ASI:** {owasp_asi}")
+                lines.append("")
+            if mitre_atlas:
+                lines.append(f"**MITRE ATLAS:** {mitre_atlas}")
+                lines.append("")
 
         # Render ungrouped findings individually (BA-001, BA-004, BA-005, etc.)
         for finding in ungrouped_static:
@@ -306,6 +323,7 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
             remediation = finding.get("remediation", "")
             owasp_asi_ref = finding.get("owasp_asi_ref") or ""
             owasp_llm_ref = finding.get("owasp_llm_ref") or ""
+            mitre_atlas_ref = finding.get("mitre_atlas_technique") or ""
             heading = f"### [{sev}] {title}"
             if fid:
                 heading += f" — {fid}"
@@ -323,6 +341,9 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
                 lines.append("")
             if owasp_asi_ref:
                 lines.append(f"**OWASP ASI:** {owasp_asi_ref}")
+                lines.append("")
+            if mitre_atlas_ref:
+                lines.append(f"**MITRE ATLAS:** {mitre_atlas_ref}")
                 lines.append("")
 
     # Dynamic Analysis Results
@@ -430,19 +451,25 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
                 lines.append(f"**Covered components**: {', '.join(tagged)}")
                 lines.append("")
 
-    # Coverage Map
+    # Coverage Map — only components actually exercised during the scan, to
+    # keep the report focused (the full SBOM catalog is available separately).
     if result.coverage:
+        matched_coverage = [cov for cov in result.coverage if cov.exercised]
         lines.append("## Coverage Map")
         lines.append("")
-        lines.append("| Component | Type | Exercised | Within Policy | Deviations | Aliases Seen |")
-        lines.append("|-----------|------|-----------|---------------|------------|--------------|")
-        for cov in result.coverage:
-            ex = "Yes" if cov.exercised else "No"
-            wp = "Yes" if cov.exercised_within_policy else ("No" if cov.exercised else "-")
-            dev_count = len(cov.deviations)
-            aliases = ", ".join(cov.aliases_seen[:3]) if cov.aliases_seen else "-"
-            lines.append(f"| {cov.component_name} | {cov.node_type} | {ex} | {wp} | {dev_count} | {aliases} |")
-        lines.append("")
+        if matched_coverage:
+            lines.append("| Component | Type | Exercised | Within Policy | Deviations | Aliases Seen |")
+            lines.append("|-----------|------|-----------|---------------|------------|--------------|")
+            for cov in matched_coverage:
+                ex = "Yes" if cov.exercised else "No"
+                wp = "Yes" if cov.exercised_within_policy else ("No" if cov.exercised else "-")
+                dev_count = len(cov.deviations)
+                aliases = ", ".join(cov.aliases_seen[:3]) if cov.aliases_seen else "-"
+                lines.append(f"| {cov.component_name} | {cov.node_type} | {ex} | {wp} | {dev_count} | {aliases} |")
+            lines.append("")
+        else:
+            lines.append("_No components were exercised during this scan._")
+            lines.append("")
         unmatched_mentions = sorted({m for cov in result.coverage for m in (cov.unmatched_mentions or [])})
         if unmatched_mentions:
             lines.append("**Unmatched Mentions:**")
@@ -451,7 +478,7 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
                 lines.append(f"- {mention}")
             lines.append("")
         if result.scenario_results:
-            render_behavior_coverage_evidence(lines, result.coverage, result.scenario_results)
+            render_behavior_coverage_evidence(lines, matched_coverage, result.scenario_results)
 
         # Coverage mapping diagnostics — surfaces hallucinated/unmapped entity mentions
         _cov_diag = result.coverage_mapping_diagnostics or {}
@@ -650,38 +677,21 @@ def to_markdown(result: "BehaviorAnalysisResult", meta: "ReportMeta | None" = No
             render_finding_block(lines, finding, heading_level="###")
             _render_behavior_attack_steps(lines, finding)
 
-    # Recommendations & Remediation Plan — merged into a single section
-    if result.recommendations or result.remediation_plan:
-        lines.append("## Recommendations & Remediation Plan")
+    # Recommendations — behavior-specific, no redteam equivalent
+    if result.recommendations:
+        lines.append("## Recommendations")
         lines.append("")
-        if result.recommendations:
-            for rec in result.recommendations:
-                lines.append(f"### [{rec.priority.upper()}] {rec.recommendation_type}: {rec.description}")
-                if rec.component and rec.component != "unknown":
-                    lines.append(f"*Component*: {rec.component}")
-                lines.append("")
-                lines.append(f"*Rationale*: {rec.rationale}")
-                lines.append("")
-        if result.remediation_plan:
-            if result.recommendations:
-                lines.append("### Remediation Artefacts")
-                lines.append("")
-                lines.append(
-                    "Concrete, SBOM-node-specific remediations generated from the findings "
-                    "above. Apply in priority order."
-                )
-                lines.append("")
-                from nuguard.output.report_shared import _render_artefact
-                by_component: dict[str, list] = {}
-                for art in result.remediation_plan:
-                    by_component.setdefault(art.component, []).append(art)
-                for comp, arts in by_component.items():
-                    lines.append(f"#### {comp}")
-                    lines.append("")
-                    for art in arts:
-                        _render_artefact(lines, art)
-            else:
-                render_remediation_plan_section(lines, result.remediation_plan)
+        for rec in result.recommendations:
+            lines.append(f"### [{rec.priority.upper()}] {rec.recommendation_type}: {rec.description}")
+            if rec.component and rec.component != "unknown":
+                lines.append(f"*Component*: {rec.component}")
+            lines.append("")
+            lines.append(f"*Rationale*: {rec.rationale}")
+            lines.append("")
+
+    # Remediation Plan — same shared renderer redteam uses, for a consistent format
+    if result.remediation_plan:
+        render_remediation_plan_section(lines, result.remediation_plan)
 
     if getattr(meta, "verbose", False) and _scenario_details:
         lines.append("## Diagnostics")

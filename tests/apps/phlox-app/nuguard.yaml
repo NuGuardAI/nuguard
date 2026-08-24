@@ -1,0 +1,103 @@
+# nuguard.yaml — Phlox (local Docker target)
+# Phlox: https://github.com/bloodworks-io/phlox — local-first AI medical scribe
+# (FastAPI backend, React frontend, SQLCipher DB, MCP tool support).
+#
+# Priority order (highest wins): CLI flags > env vars > .env file > nuguard.yaml > defaults
+# Run from this directory: uv run nuguard <command> --config nuguard.yaml
+
+# ─── Source for SBOM generation ───────────────────────────────────────────────
+# GitHub URL — nuguard clones it internally for static scanning; nothing is
+# vendored into this repo.
+source: https://github.com/bloodworks-io/phlox
+sbom: ./phlox.sbom.json
+
+# ─── Cognitive policy ──────────────────────────────────────────────────────────
+# Not checked in — drafted at runtime from the SBOM by `nuguard init --llm`
+# (see phlox-test.sh), then compiled to cognitive-policy.json.
+policy:
+  path: ./cognitive-policy.md
+  llm: true
+
+# ─── LLM settings (NuGuard's own scenario generation / judging) ───────────────
+llm:
+  # model: openai/gpt-4o-mini            # LiteLLM resolves the key from OPENAI_API_KEY
+  # api_key: ${OPENAI_API_KEY}         # optional — litellm reads OPENAI_API_KEY automatically
+  model: azure/DeepSeek-V4-Pro    
+  api_key: ${AZURE_DEEPSEEK_KEY}     # never put keys here; use env var interpolation
+  api_base: ${AZURE_DEEPSEEK_ENDPOINT}     # optional override for Azure OpenAI endpoint URL
+
+# ─── SBOM generation ───────────────────────────────────────────────────────────
+sbom_generation:
+  llm: true                            # enrich SBOM nodes with LLM descriptions
+
+# ─── Target application ────────────────────────────────────────────────────────
+target:
+  url: http://localhost:5000
+
+  # Chat/agent endpoint — pinned explicitly because auto-discovery was picking
+  # /api/chat/respond-visual (a vision-only route that 400s without page
+  # images), causing every scenario to abort after 3 consecutive send failures.
+  #endpoint: /api/chat
+
+  auth:
+    # Phlox ships with no built-in auth by default (single-user, local-first).
+    # Switch to proxy_auth headers here if you enabled PROXY_AUTH_ENABLED.
+    type: none
+
+# ─── Behavior testing ──────────────────────────────────────────────────────────
+behavior:
+  llm: true
+  canary: ./canary.json
+  request_timeout: 60
+  scenario_concurrency: 3
+  isolate_scenarios: true
+  judge_concurrency: 5
+  capability_discovery: true
+
+# ─── Red-team ───────────────────────────────────────────────────────────────────
+redteam:
+  #target: http://localhost:5000
+  canary: ./canary.json
+  profile: full
+  min_impact_score: 0.0
+
+  # Relevant to a clinical-data agent with MCP tool support.
+  scenarios:
+    - prompt-driven-threat     # jailbreaks, guardrail bypass, system-prompt extraction
+    - policy-violation         # restricted topics/actions, HITL bypass, topic boundary
+    - data-exfiltration        # PII/PHI extraction, covert encoding, cross-tenant
+    - privilege-escalation     # role/permission escalation, false-premise attacks
+    - tool-abuse               # SQL injection, SSRF, shell injection, resource exhaustion
+    - mcp-toxic-flow           # poisoned MCP tool descriptions/output, credential overreach
+    - api-attack               # auth bypass, IDOR, mass assignment, BFLA
+    - agentic-trust-abuse      # confused deputy, memory poisoning, multi-agent trust
+    - recon-inference          # refusal-oracle / boundary self-probe information gathering
+
+  # LLM for attack-payload generation (must tolerate adversarial content).
+  # Must use a DIFFERENT deployment than the target app to avoid TPM contention.
+  llm:
+    model: azure/DeepSeek-V4-Pro    # any LiteLLM model string (openai/gpt-4o, etc.)
+    api_key: ${AZURE_DEEPSEEK_KEY}
+    api_base: ${AZURE_DEEPSEEK_ENDPOINT}    # optional override for Azure OpenAI endpoint URL
+
+  # LLM for response evaluation and finding summarisation.
+  # Must use a DIFFERENT deployment than the target app to avoid TPM contention.
+  eval_llm:
+    model: azure/${AZURE_DEEPSEEK_MODEL_NAME}    # any LiteLLM model string (openai/gpt-4o, etc.)
+    api_key: ${AZURE_DEEPSEEK_KEY}     # never put keys here; use env var interpolation
+    api_base: ${AZURE_DEEPSEEK_ENDPOINT}     # optional override for Azure OpenAI endpoint URL
+
+
+  request_timeout: 120
+  verbose: true
+  strict_outcome: false
+
+# ─── Static analysis ────────────────────────────────────────────────────────────
+analyze:
+  min_severity: low
+
+# ─── Output ──────────────────────────────────────────────────────────────────────
+output:
+  format: markdown
+  fail_on: low
+  sarif_file: ./reports/phlox-nuguard-results.sarif

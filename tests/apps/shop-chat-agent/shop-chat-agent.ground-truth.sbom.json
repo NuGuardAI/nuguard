@@ -1,0 +1,340 @@
+{
+  "_comment": [
+    "shop-chat-agent.ground-truth.sbom.json — hand-curated ground-truth AI-SBOM",
+    "for https://github.com/Shopify/shop-chat-agent, in the schema documented at",
+    "documentation/docs/sample-sbom.json (see nuguard/sbom/schemas/aibom.schema.json",
+    "for the full ComponentType/RelationshipType enums).",
+    "",
+    "Purpose: a manually-verified reference to benchmark `nuguard sbom generate",
+    "--config nuguard.yaml` output against for this app — did the extractor find",
+    "the real agent/model/tool/datastore/auth surface documented here. This is",
+    "NOT nuguard-generated output; every node's evidence.location was verified",
+    "against the source cloned locally from the `main` branch (./repo, gitignored).",
+    "",
+    "shop-chat-agent is a Shopify-embedded reference app (React Router backend +",
+    "a Shopify theme-extension chat widget) that turns a storefront into a",
+    "Claude-powered shopping assistant speaking the Model Context Protocol (MCP)",
+    "against Shopify's own storefront and customer-account MCP servers."
+  ],
+
+  "schema_version": "1.5.0",
+  "generated_at": "2026-08-19T00:00:00Z",
+  "generator": "manual-ground-truth",
+  "target": "https://github.com/Shopify/shop-chat-agent",
+
+  "nodes": [
+    {
+      "id": "c4000001-0000-4000-8000-000000000001",
+      "name": "shop-chat-agent-conversation-loop",
+      "component_type": "AGENT",
+      "confidence": 0.9,
+      "metadata": {
+        "descriptive_name": "Storefront Shopping Assistant (Claude tool-use loop)",
+        "description": "handleChatSession() drives a multi-turn Claude tool-use loop (streamConversation, looping until stop_reason === 'end_turn'), dispatching MCP tool calls (mcpClient.callTool) between turns and persisting history via Prisma. Not built on LangGraph/CrewAI/AutoGen — the orchestration loop is plain application code directly calling the Anthropic SDK and an MCP JSON-RPC client.",
+        "dependency_names": ["@anthropic-ai/sdk"],
+        "loc": 190,
+        "extras": { "canonical_name": "handleChatSession", "system_prompts": ["standardAssistant", "enthusiasticAssistant"] }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.9,
+          "detail": "while (finalMessage.stop_reason !== \"end_turn\") { finalMessage = await claudeService.streamConversation({ messages, promptType, tools: mcpClient.tools }, { onToolUse: async (content) => { ... mcpClient.callTool(toolName, toolArgs) ... } }) }",
+          "location": { "path": "app/routes/chat.jsx", "line": 121 }
+        },
+        {
+          "kind": "ast",
+          "confidence": 0.85,
+          "detail": "System prompt selection: getSystemPrompt(promptType) reads app/prompts/prompts.json",
+          "location": { "path": "app/services/claude.server.js", "line": 30 }
+        }
+      ]
+    },
+    {
+      "id": "c4000001-0000-4000-8000-000000000002",
+      "name": "shop-chat-agent-claude-model",
+      "component_type": "MODEL",
+      "confidence": 0.95,
+      "metadata": {
+        "descriptive_name": "Anthropic Claude (direct SDK)",
+        "description": "createClaudeService() wraps @anthropic-ai/sdk directly (new Anthropic({apiKey})), calling anthropic.messages.stream() with a hardcoded model string and max_tokens. No LiteLLM/gateway abstraction — Anthropic is the sole, hardcoded provider.",
+        "dependency_names": ["@anthropic-ai/sdk"],
+        "loc": 55,
+        "extras": { "model_name": "claude-sonnet-4-20250514", "max_tokens": 2000 }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.95,
+          "detail": "const anthropic = new Anthropic({ apiKey }); const stream = await anthropic.messages.stream({ model: AppConfig.api.defaultModel, max_tokens: AppConfig.api.maxTokens, ... })",
+          "location": { "path": "app/services/claude.server.js", "line": 16 }
+        },
+        {
+          "kind": "ast",
+          "confidence": 0.9,
+          "detail": "defaultModel: 'claude-sonnet-4-20250514', maxTokens: 2000",
+          "location": { "path": "app/services/config.server.js", "line": 9 }
+        }
+      ]
+    },
+    {
+      "id": "c4000001-0000-4000-8000-000000000003",
+      "name": "shopify-storefront-mcp-tool-proxy",
+      "component_type": "TOOL",
+      "confidence": 0.9,
+      "metadata": {
+        "description": "MCPClient.connectToStorefrontServer()/callStorefrontTool() proxy Claude tool calls as JSON-RPC (tools/list, tools/call) to Shopify's storefront MCP endpoint (${hostUrl}/api/mcp). No auth required — storefront MCP tools (search_shop_catalog, update_cart, get_cart, search_shop_policies_and_faqs) are reachable by any visitor of the storefront domain.",
+        "descriptive_name": "Storefront MCP Tool Proxy (product search, cart, policies)",
+        "no_auth_required": true,
+        "high_privilege": false,
+        "mcp_server_url": "${hostUrl}/api/mcp",
+        "loc": 60,
+        "extras": { "example_tools": ["search_shop_catalog", "update_cart", "get_cart", "search_shop_policies_and_faqs"] }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.9,
+          "detail": "this.storefrontMcpEndpoint = `${hostUrl}/api/mcp`; async callStorefrontTool(toolName, toolArgs) { ... this._makeJsonRpcRequest(this.storefrontMcpEndpoint, \"tools/call\", { name: toolName, arguments: toolArgs }, headers) }",
+          "location": { "path": "app/mcp-client.js", "line": 23 }
+        },
+        {
+          "kind": "ast",
+          "confidence": 0.85,
+          "detail": "async connectToStorefrontServer() { ... this._makeJsonRpcRequest(this.storefrontMcpEndpoint, \"tools/list\", {}, headers) }",
+          "location": { "path": "app/mcp-client.js", "line": 85 }
+        }
+      ]
+    },
+    {
+      "id": "c4000001-0000-4000-8000-000000000004",
+      "name": "shopify-customer-mcp-tool-proxy",
+      "component_type": "TOOL",
+      "confidence": 0.9,
+      "metadata": {
+        "description": "MCPClient.connectToCustomerServer()/callCustomerTool() proxy Claude tool calls to Shopify's customer-account MCP endpoint (${accountHostUrl}/customer/api/mcp), which requires a customer OAuth access token (get_most_recent_order_status, get_order_status). No token means the tool call responds with an auth_required error that triggers the PKCE auth flow (auth.server.js) rather than failing outright — effectively invocable without prior authentication.",
+        "descriptive_name": "Customer Account MCP Tool Proxy (orders, returns)",
+        "no_auth_required": true,
+        "high_privilege": true,
+        "mcp_server_url": "${accountHostUrl}/customer/api/mcp",
+        "loc": 60,
+        "extras": { "example_tools": ["get_most_recent_order_status", "get_order_status"] }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.9,
+          "detail": "const accountHostUrl = hostUrl.replace(/(\\.myshopify\\.com)$/, '.account$1'); this.customerMcpEndpoint = customerMcpEndpoint || `${accountHostUrl}/customer/api/mcp`;",
+          "location": { "path": "app/mcp-client.js", "line": 16 }
+        },
+        {
+          "kind": "ast",
+          "confidence": 0.85,
+          "detail": "async callCustomerTool(toolName, toolArgs) { let accessToken = this.customerAccessToken; if (!accessToken) { const dbToken = await getCustomerToken(this.conversationId); ... } }",
+          "location": { "path": "app/mcp-client.js", "line": 174 }
+        }
+      ]
+    },
+    {
+      "id": "c4000001-0000-4000-8000-000000000005",
+      "name": "shop-chat-agent-sqlite-store",
+      "component_type": "DATASTORE",
+      "confidence": 0.9,
+      "metadata": {
+        "descriptive_name": "Prisma/SQLite Session & Conversation Store",
+        "description": "Prisma ORM against a local SQLite file (file:dev.sqlite). Tables: Session (Shopify OAuth session incl. accessToken), CustomerToken (customer OAuth access/refresh tokens per conversation), CodeVerifier (PKCE state), Conversation/Message (full chat history), CustomerAccountUrls (per-conversation MCP/auth URLs). Stores live OAuth access tokens in plaintext columns.",
+        "datastore_type": "sqlite",
+        "dependency_names": ["@prisma/client", "prisma"],
+        "loc": 35,
+        "pii_fields": ["email", "firstName", "lastName"],
+        "extras": { "tables": ["Session", "CustomerToken", "CodeVerifier", "Conversation", "Message", "CustomerAccountUrls"] }
+      },
+      "evidence": [
+        {
+          "kind": "config",
+          "confidence": 0.95,
+          "detail": "datasource db { provider = \"sqlite\" url = \"file:dev.sqlite\" } — models Session, CustomerToken, CodeVerifier, Conversation, Message, CustomerAccountUrls",
+          "location": { "path": "prisma/schema.prisma", "line": 10 }
+        },
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.9,
+          "detail": "const prisma = global.prismaGlobal ?? new PrismaClient();",
+          "location": { "path": "app/db.server.js", "line": 8 }
+        }
+      ]
+    },
+    {
+      "id": "c4000001-0000-4000-8000-000000000006",
+      "name": "shopify-admin-oauth",
+      "component_type": "AUTH",
+      "confidence": 0.9,
+      "metadata": {
+        "descriptive_name": "Shopify Admin App OAuth",
+        "description": "shopifyApp() (from @shopify/shopify-app-react-router) configures standard Shopify Admin OAuth for the embedded /app/* admin UI and webhook authentication, backed by PrismaSessionStorage. authPathPrefix '/auth'.",
+        "auth_type": "oauth2",
+        "auth_class": "shopifyApp",
+        "dependency_names": ["@shopify/shopify-app-react-router", "@shopify/shopify-app-session-storage-prisma"],
+        "loc": 27
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.9,
+          "detail": "const shopify = shopifyApp({ apiKey: process.env.SHOPIFY_API_KEY, apiSecretKey: process.env.SHOPIFY_API_SECRET, scopes: process.env.SCOPES?.split(\",\"), authPathPrefix: \"/auth\", sessionStorage: new PrismaSessionStorage(prisma), distribution: AppDistribution.AppStore })",
+          "location": { "path": "app/shopify.server.js", "line": 10 }
+        },
+        {
+          "kind": "ast",
+          "confidence": 0.8,
+          "detail": "export const loader = async ({ request }) => { await authenticate.admin(request); return null; }",
+          "location": { "path": "app/routes/auth.$.jsx", "line": 4 }
+        }
+      ]
+    },
+    {
+      "id": "c4000001-0000-4000-8000-000000000007",
+      "name": "shopify-customer-account-pkce-oauth",
+      "component_type": "AUTH",
+      "confidence": 0.9,
+      "metadata": {
+        "descriptive_name": "Customer Account PKCE OAuth (customer-account-mcp-api:full)",
+        "description": "auth.server.js implements OAuth2 Authorization Code + PKCE against Shopify's Customer Account API to obtain a customer access token scoped to customer-account-mcp-api:full — grants the assistant order-history/returns access on the shopper's behalf.",
+        "auth_type": "oauth2_pkce",
+        "auth_class": "generateAuthUrl",
+        "loc": 90,
+        "extras": { "scope": "customer-account-mcp-api:full" }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.9,
+          "detail": "export async function generateAuthUrl(conversationId, shopId) { const scope = \"customer-account-mcp-api:full\"; const verifier = generateCodeVerifier(); const challenge = await generateCodeChallenge(verifier); await storeCodeVerifier(state, verifier); ... }",
+          "location": { "path": "app/auth.server.js", "line": 10 }
+        }
+      ]
+    },
+    {
+      "id": "c4000001-0000-4000-8000-000000000008",
+      "name": "chat-sse-endpoint",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.95,
+      "metadata": {
+        "descriptive_name": "Chat (SSE, GET/POST)",
+        "description": "Primary agent entry point. GET with ?history=true returns JSON conversation history; GET with Accept: text/event-stream or POST starts a Claude tool-use turn streamed as server-sent events. No authentication required — shopId/shopDomain are read from client-supplied X-Shopify-Shop-Id/Origin headers, not verified server-side.",
+        "http_method": "GET,POST",
+        "path": "/chat",
+        "auth_required": false,
+        "auth_scope": "none",
+        "loc": 61
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.95,
+          "detail": "export async function loader({ request }) { ... if (request.headers.get(\"Accept\") === \"text/event-stream\") return handleChatRequest(request); } export async function action({ request }) { return handleChatRequest(request); }",
+          "location": { "path": "app/routes/chat.jsx", "line": 12 }
+        }
+      ]
+    },
+    {
+      "id": "c4000001-0000-4000-8000-000000000009",
+      "name": "webhooks-endpoint",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.85,
+      "metadata": {
+        "descriptive_name": "Shopify Webhooks (APP_UNINSTALLED)",
+        "description": "Verified Shopify webhook receiver (authenticate.webhook) — on APP_UNINSTALLED, deletes all Session rows for the shop.",
+        "http_method": "POST",
+        "path": "/api/webhooks",
+        "auth_required": true,
+        "auth_scope": "none",
+        "loc": 15
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.85,
+          "detail": "export const action = async ({ request }) => { const { shop, session, topic } = await authenticate.webhook(request); switch (topic) { case 'APP_UNINSTALLED': ... db.session.deleteMany({where: {shop}}) } }",
+          "location": { "path": "app/routes/api.webhooks.jsx", "line": 4 }
+        }
+      ]
+    },
+    {
+      "id": "c4000001-0000-4000-8000-000000000010",
+      "name": "app-admin-endpoint",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.8,
+      "metadata": {
+        "descriptive_name": "Embedded Admin UI (Polaris)",
+        "description": "Shopify-embedded admin route rendered inside the Shopify Admin iframe via App Bridge; guarded by authenticate.admin() through Shopify's OAuth session.",
+        "http_method": "GET",
+        "path": "/app",
+        "auth_required": true,
+        "auth_scope": "admin",
+        "loc": 30
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.8,
+          "detail": "app.jsx loader calls authenticate.admin(request); app._index.jsx renders the Polaris <s-page> admin UI",
+          "location": { "path": "app/routes/app._index.jsx", "line": 1 }
+        }
+      ]
+    },
+    {
+      "id": "c4000001-0000-4000-8000-000000000011",
+      "name": "shop-chat-agent-container-image",
+      "component_type": "CONTAINER_IMAGE",
+      "confidence": 0.9,
+      "metadata": {
+        "descriptive_name": "node:18-alpine (production build)",
+        "description": "Dockerfile builds the React Router app for production (npm ci --omit=dev, npm run build) and runs `npm run docker-start` (prisma generate && prisma migrate deploy && react-router-serve).",
+        "base_image": "node:18-alpine",
+        "loc": 21
+      },
+      "evidence": [
+        {
+          "kind": "config",
+          "confidence": 0.9,
+          "detail": "FROM node:18-alpine ... EXPOSE 3000 ... RUN npm ci --omit=dev ... RUN npm run build ... CMD [\"npm\", \"run\", \"docker-start\"]",
+          "location": { "path": "Dockerfile", "line": 1 }
+        }
+      ]
+    },
+    {
+      "id": "c4000001-0000-4000-8000-000000000012",
+      "name": "shopify-app-store-deployment",
+      "component_type": "DEPLOYMENT",
+      "confidence": 0.85,
+      "metadata": {
+        "descriptive_name": "Shopify Embedded App (App Store distribution)",
+        "description": "shopify.app.toml declares an embedded, App Store-distributed app with unauthenticated_read_product_listings access scope and OAuth/customer-account redirect URLs; deployed via `shopify app deploy` (Shopify CLI), not a generic cloud IaC target.",
+        "deployment_target": "shopify-app-store",
+        "loc": 20
+      },
+      "evidence": [
+        {
+          "kind": "config",
+          "confidence": 0.85,
+          "detail": "name = \"shop-chat-agent\"; embedded = true; [access_scopes] scopes = \"unauthenticated_read_product_listings\"; [auth] redirect_urls = [\"https://shop-chat-agent.com/api/auth\"]",
+          "location": { "path": "shopify.app.toml", "line": 1 }
+        }
+      ]
+    }
+  ],
+
+  "edges": [
+    { "source": "c4000001-0000-4000-8000-000000000001", "target": "c4000001-0000-4000-8000-000000000002", "relationship_type": "USES", "detail": "Conversation loop calls Claude for every turn" },
+    { "source": "c4000001-0000-4000-8000-000000000001", "target": "c4000001-0000-4000-8000-000000000003", "relationship_type": "CALLS", "detail": "onToolUse dispatches storefront tool calls via MCPClient" },
+    { "source": "c4000001-0000-4000-8000-000000000001", "target": "c4000001-0000-4000-8000-000000000004", "relationship_type": "CALLS", "detail": "onToolUse dispatches customer tool calls via MCPClient" },
+    { "source": "c4000001-0000-4000-8000-000000000001", "target": "c4000001-0000-4000-8000-000000000005", "relationship_type": "ACCESSES", "access_type": "readwrite", "detail": "saveMessage/getConversationHistory persist chat turns" },
+    { "source": "c4000001-0000-4000-8000-000000000004", "target": "c4000001-0000-4000-8000-000000000007", "relationship_type": "REQUIRES", "detail": "Customer MCP tool calls require a PKCE-issued customer access token" },
+    { "source": "c4000001-0000-4000-8000-000000000004", "target": "c4000001-0000-4000-8000-000000000005", "relationship_type": "ACCESSES", "access_type": "read", "detail": "getCustomerToken reads CustomerToken table" },
+    { "source": "c4000001-0000-4000-8000-000000000008", "target": "c4000001-0000-4000-8000-000000000001", "relationship_type": "CALLS", "detail": "/chat route invokes handleChatSession" },
+    { "source": "c4000001-0000-4000-8000-000000000009", "target": "c4000001-0000-4000-8000-000000000005", "relationship_type": "ACCESSES", "access_type": "write", "detail": "APP_UNINSTALLED webhook deletes Session rows" },
+    { "source": "c4000001-0000-4000-8000-000000000010", "target": "c4000001-0000-4000-8000-000000000006", "relationship_type": "REQUIRES", "detail": "Admin UI guarded by Shopify Admin OAuth session" },
+    { "source": "c4000001-0000-4000-8000-000000000012", "target": "c4000001-0000-4000-8000-000000000011", "relationship_type": "DEPLOYS", "detail": "Shopify App Store deployment runs the built container image" }
+  ]
+}

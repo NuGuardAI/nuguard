@@ -480,3 +480,52 @@ def test_to_json_includes_diagnostics_only_in_verbose_mode():
     assert "diagnostics" in verbose_json
     assert "scenario_traces" in verbose_json["diagnostics"]
     assert "diagnostics" not in non_verbose_json
+
+
+def test_to_markdown_remediation_plan_is_separate_section_matching_redteam_format():
+    """Remediation Plan must render via the shared renderer as its own '## Remediation
+    Plan' -> '### {component}' section, structurally identical to redteam's report,
+    rather than folded/nested under a merged Recommendations heading.
+    """
+    from nuguard.remediation.models import RemediationArtefact, RemediationArtefactType
+
+    rec = Recommendation(
+        component="AgentX",
+        recommendation_type="system_prompt",
+        description="Remove restricted topic",
+        rationale="BA-001 finding",
+        priority="high",
+    )
+    artefact = RemediationArtefact(
+        finding_ids=["BA-001-abc123"],
+        component="AgentX",
+        component_type="AGENT",
+        artefact_type=RemediationArtefactType.SYSTEM_PROMPT_PATCH,
+        priority="high",
+        patch_text="Do not discuss gambling.",
+        rationale="Prevents restricted-topic engagement.",
+    )
+    result = _make_result(recommendations=[rec], remediation_plan=[artefact])
+    md = to_markdown(result)
+
+    assert "## Recommendations" in md
+    assert "## Recommendations & Remediation Plan" not in md
+    assert "## Remediation Plan" in md
+    assert "### AgentX" in md
+    assert "#### AgentX" not in md
+    assert "### Remediation Artefacts" not in md
+    # Remediation Plan must come after Recommendations, as two sibling H2 sections.
+    assert md.index("## Recommendations") < md.index("## Remediation Plan")
+
+
+def test_to_markdown_aborted_endpoint_unreachable_shows_note():
+    """The pre-flight-abort outcome must render its own explanatory banner
+    (previously silently unrecognized, indistinguishable from a normal
+    'no findings' report)."""
+    result = _make_result(
+        static_findings=[{"finding_id": "F-1", "severity": "high", "title": "s1", "description": "d"}],
+        dynamic_scan_outcome="aborted_endpoint_unreachable",
+    )
+    md = to_markdown(result)
+    assert "aborted before any scenario ran" in md
+    assert "target_endpoint" in md

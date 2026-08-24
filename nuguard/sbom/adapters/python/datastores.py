@@ -21,11 +21,18 @@ Detects relational, key-value, and vector datastore connections from Python sour
   - pymilvus.MilvusClient / connections.connect
 
 Relationship edges emitted:
-  TOOL -[ACCESSES]-> DATASTORE  (when tool function and datastore are in same file)
+  TOOL -[ACCESSES]-> DATASTORE  (same-file hint, emitted by this adapter directly)
+  TOOL -[ACCESSES]-> DATASTORE  (cross-file hint — a tool in another file imports
+                                 this datastore's client variable rather than
+                                 instantiating one itself — resolved by
+                                 extractor/core.py using this adapter's own
+                                 ``module_level_symbol`` metadata plus
+                                 ``_collect_tool_decorated_function_names`` below)
 """
 
 from __future__ import annotations
 
+import ast
 from typing import Any
 from urllib.parse import urlparse
 
@@ -180,6 +187,25 @@ def _provider_from_modules(imported_modules: set[str]) -> str | None:
     return None
 
 
+def _collect_tool_decorated_function_names(tree: ast.AST) -> list[str]:
+    """Return the names of every bare ``@tool``-decorated function in ``tree``.
+
+    Mirrors the same-file ``tool_canonicals`` heuristic in
+    ``PythonDatastoreAdapter.extract()`` (langchain-tool canonical name =
+    ``langchain:tool:{function_name}``) so the cross-file pre-pass in
+    ``extractor/core.py`` links to exactly the same TOOL nodes.
+    """
+    names: list[str] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            continue
+        for decorator in node.decorator_list:
+            if isinstance(decorator, ast.Name) and decorator.id == "tool":
+                names.append(node.name)
+                break
+    return names
+
+
 class PythonDatastoreAdapter(FrameworkAdapter):
     """Detect datastore connections in Python source files."""
 
@@ -222,6 +248,7 @@ class PythonDatastoreAdapter(FrameworkAdapter):
             snippet: str,
             evidence_kind: str = "ast_instantiation",
             url_meta: dict[str, Any] | None = None,
+            assigned_to: str | None = None,
         ) -> None:
             if provider in seen_providers:
                 return
@@ -250,6 +277,16 @@ class PythonDatastoreAdapter(FrameworkAdapter):
             }
             if url_meta:
                 meta.update(url_meta)
+            if assigned_to:
+                # The local variable this client was assigned to — only useful
+                # when it's a module-level name (the only kind importable from
+                # another file), but harmless to record unconditionally since a
+                # function-local name simply won't match any cross-file import.
+                # Consumed by extractor/core.py to resolve cross-file
+                # TOOL -[ACCESSES]-> DATASTORE hints using this adapter's own
+                # (fully disambiguated) provider resolution, rather than
+                # duplicating that logic in a separate lightweight AST pass.
+                meta["module_level_symbol"] = assigned_to
 
             detected.append(
                 ComponentDetection(
@@ -298,6 +335,7 @@ class PythonDatastoreAdapter(FrameworkAdapter):
                 line=inst.line,
                 snippet=f"{inst.class_name}(...)",
                 evidence_kind="ast_instantiation",
+                assigned_to=inst.assigned_to,
             )
 
         # ------------------------------------------------------------------
@@ -352,6 +390,7 @@ class PythonDatastoreAdapter(FrameworkAdapter):
                 snippet=f"{call.function_name}(...)",
                 evidence_kind="ast_call",
                 url_meta=url_meta or None,
+                assigned_to=call.assigned_to,
             )
 
         # ------------------------------------------------------------------

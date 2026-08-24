@@ -35,6 +35,24 @@ _GRAPH_TYPES = {
     "API_ENDPOINT",
 }
 
+# Risk-attribute fields on NodeMetadata, and their hyphenated display tags
+# (matches the project's risk-tag naming convention, e.g. "SQL-injectable",
+# "no-auth-required").
+_RISK_ATTRS: list[tuple[str, str]] = [
+    ("no_auth_required", "no-auth-required"),
+    ("high_privilege", "high-privilege"),
+    ("sql_injectable", "SQL-injectable"),
+    ("ssrf_possible", "SSRF-possible"),
+    ("accepts_external_url", "accepts-external-url"),
+    ("reads_external_content", "reads-external-content"),
+]
+
+# Cap on the number of context lines sent to the LLM narrative call. Beyond
+# this, lines are prioritized (risk-flagged nodes, then evidence-backed
+# "hint" edges, then by node confidence) and the rest are summarized rather
+# than truncated silently — see _graph_context.
+_MAX_CONTEXT_LINES = 150
+
 # Mermaid node shape per component type
 _SHAPE: dict[str, tuple[str, str]] = {
     # (open_bracket, close_bracket)
@@ -190,31 +208,59 @@ _SYSTEM = (
     "Focus on the data flow: which agents orchestrate which tools, what data "
     "stores are reachable, what guardrails are in place, and any notable risk "
     "patterns (e.g. unguarded tools, external data access). "
+    "Edges marked 'heuristic' are structural guesses with no direct code "
+    "evidence backing them — hedge your language on those (e.g. 'likely "
+    "calls', 'probably uses') rather than stating them as confirmed fact; "
+    "edges without that marker are backed by real code evidence and can be "
+    "described directly. "
+    "Nodes annotated with risk tags in brackets (e.g. [no-auth-required, "
+    "SQL-injectable]) carry a real, already-detected risk attribute — call "
+    "these out explicitly as concrete security observations rather than "
+    "inferring risk from names/types alone. "
     "Be factual — only describe what the graph shows. "
     "Use Markdown with bullet points. Keep it under 200 words."
 )
 
 
+def _component_type_str(node: Any) -> str:
+    ct = node.component_type
+    return str(ct.value if hasattr(ct, "value") else ct)
+
+
+def _risk_tags(node: Any) -> list[str]:
+    """Return hyphenated risk-attribute tags set True on this node's metadata."""
+    meta = getattr(node, "metadata", None)
+    if meta is None:
+        return []
+    return [tag for attr, tag in _RISK_ATTRS if getattr(meta, attr, None) is True]
+
+
+def _node_label(node: Any, ct: str) -> str:
+    tags = _risk_tags(node)
+    suffix = f" [{', '.join(tags)}]" if tags else ""
+    return f"{node.name} ({ct}){suffix}"
+
+
 def _graph_context(doc: "AiSbomDocument") -> str:
-    """Build a compact text representation of the graph for the LLM prompt."""
-    lines: list[str] = []
+    """Build a compact text representation of the graph for the LLM prompt.
+
+    Lines are prioritized (risk-flagged nodes first, then evidence-backed
+    "hint" edges, then by node confidence) and capped at
+    _MAX_CONTEXT_LINES so large graphs get a focused narrative instead of a
+    truncated/unfocused one — anything past the cap is summarized in a
+    trailing count line rather than silently dropped.
+    """
     node_by_id: dict[str, Any] = {str(n.id): n for n in doc.nodes}
+    # (priority tuple, line) — sorted ascending, so lower tuples surface first.
+    scored_lines: list[tuple[tuple[int, int, float], str]] = []
 
     for edge in doc.edges:
         src = node_by_id.get(str(edge.source))
         tgt = node_by_id.get(str(edge.target))
         if src is None or tgt is None:
             continue
-        src_ct = str(
-            src.component_type.value
-            if hasattr(src.component_type, "value")
-            else src.component_type
-        )
-        tgt_ct = str(
-            tgt.component_type.value
-            if hasattr(tgt.component_type, "value")
-            else tgt.component_type
-        )
+        src_ct = _component_type_str(src)
+        tgt_ct = _component_type_str(tgt)
         if src_ct not in _GRAPH_TYPES and tgt_ct not in _GRAPH_TYPES:
             continue
         rel = str(
@@ -222,7 +268,23 @@ def _graph_context(doc: "AiSbomDocument") -> str:
             if hasattr(edge.relationship_type, "value")
             else edge.relationship_type
         )
-        lines.append(f"{src.name} ({src_ct}) --[{rel}]--> {tgt.name} ({tgt_ct})")
+
+        rel_suffix = rel
+        access_type = getattr(edge, "access_type", None)
+        if access_type:
+            rel_suffix += f":{access_type.value if hasattr(access_type, 'value') else access_type}"
+        is_hint = getattr(edge, "derivation", "hint") == "hint"
+        if not is_hint:
+            confidence = getattr(edge, "confidence", None)
+            conf_str = f", confidence={confidence:.2f}" if confidence is not None else ""
+            rel_suffix += f"; heuristic{conf_str}"
+
+        has_risk = bool(_risk_tags(src)) or bool(_risk_tags(tgt))
+        min_confidence = min(getattr(src, "confidence", 1.0), getattr(tgt, "confidence", 1.0))
+        priority = (0 if has_risk else 1, 0 if is_hint else 1, -min_confidence)
+
+        line = f"{_node_label(src, src_ct)} --[{rel_suffix}]--> {_node_label(tgt, tgt_ct)}"
+        scored_lines.append((priority, line))
 
     # Include isolated nodes (no edges)
     nodes_in_edges: set[str] = set()
@@ -232,15 +294,24 @@ def _graph_context(doc: "AiSbomDocument") -> str:
     for node in doc.nodes:
         nid = str(node.id)
         if nid not in nodes_in_edges:
-            ct = str(
-                node.component_type.value
-                if hasattr(node.component_type, "value")
-                else node.component_type
-            )
+            ct = _component_type_str(node)
             if ct in _GRAPH_TYPES:
-                lines.append(f"{node.name} ({ct}) [no connections]")
+                has_risk = bool(_risk_tags(node))
+                priority = (0 if has_risk else 1, 1, -getattr(node, "confidence", 1.0))
+                scored_lines.append((priority, f"{_node_label(node, ct)} [no connections]"))
 
-    return "\n".join(lines) if lines else "No relationships detected."
+    if not scored_lines:
+        return "No relationships detected."
+
+    scored_lines.sort(key=lambda item: item[0])
+    lines = [line for _, line in scored_lines]
+
+    if len(lines) > _MAX_CONTEXT_LINES:
+        omitted = len(lines) - _MAX_CONTEXT_LINES
+        lines = lines[:_MAX_CONTEXT_LINES]
+        lines.append(f"... and {omitted} more lower-priority relationships omitted")
+
+    return "\n".join(lines)
 
 
 async def build_relationship_graph_with_llm(
@@ -267,7 +338,11 @@ async def build_relationship_graph_with_llm(
         f"Here are the AI system component relationships:\n\n{context}\n\n"
         "Write a concise plain-English explanation of this system's architecture, "
         "data flows, and any notable security observations (e.g. unguarded tools, "
-        "sensitive datastore access, missing guardrail coverage). "
+        "sensitive datastore access, missing guardrail coverage). Edges marked "
+        "'heuristic' are unconfirmed structural guesses — describe those with "
+        "hedged language, not as fact. Explicitly call out any node with a "
+        "bracketed risk tag (e.g. [no-auth-required], [SQL-injectable]) as a "
+        "concrete security observation. "
         "Format as Markdown bullet points."
     )
 

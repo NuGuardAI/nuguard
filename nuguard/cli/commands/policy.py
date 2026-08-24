@@ -64,8 +64,13 @@ def compile_policy(
     from nuguard.config import load_config
     from nuguard.policy.compiler import compile_controls
     from nuguard.policy.loader import compiled_path_for, save_controls
+    from nuguard.policy.sbom_provenance import build_component_evidence
 
-    cfg = load_config(config_file)
+    try:
+        cfg = load_config(config_file)
+    except Exception as exc:
+        _err_console.print(f"Error: failed to load config: {exc}")
+        raise typer.Exit(code=_EXIT_ERROR) from exc
 
     resolved_policy: Optional[Path] = policy_file
     if resolved_policy is None and cfg.policy_path:
@@ -92,6 +97,10 @@ def compile_policy(
             api_base=cfg.litellm_api_base if _model.startswith("azure") else None,
         )
 
+    component_evidence = []
+    if cfg.sbom_path:
+        component_evidence = build_component_evidence(Path(cfg.sbom_path))
+
     text = resolved_policy.read_text(encoding="utf-8")
     _console.print(
         f"Compiling [bold]{resolved_policy.name}[/bold] "
@@ -100,7 +109,12 @@ def compile_policy(
 
     try:
         controls = asyncio.run(
-            compile_controls(text, use_llm=effective_llm, llm_client=llm_client)
+            compile_controls(
+                text,
+                use_llm=effective_llm,
+                llm_client=llm_client,
+                component_evidence=component_evidence,
+            )
         )
     except Exception as exc:
         _err_console.print(f"Error during compilation: {exc}")
@@ -264,7 +278,11 @@ def check(
     from nuguard.config import load_config
     from nuguard.sbom.extractor.serializer import AiSbomSerializer
 
-    cfg = load_config(config_file)
+    try:
+        cfg = load_config(config_file)
+    except Exception as exc:
+        _err_console.print(f"Error: failed to load config: {exc}")
+        raise typer.Exit(code=_EXIT_ERROR) from exc
 
     try:
         formats = parse_output_formats(
@@ -363,12 +381,24 @@ def check(
         fw_name = framework or "custom"
         _console.print(f"\n[bold]Running compliance assessment:[/bold] {fw_name} …")
 
+        llm_client = None
+        if enable_llm:
+            from nuguard.common.llm_client import LLMClient
+
+            _model = cfg.litellm_model or ""
+            llm_client = LLMClient(
+                model=cfg.litellm_model,
+                api_key=cfg.litellm_api_key,
+                api_base=cfg.litellm_api_base if _model.startswith("azure") else None,
+            )
+
         try:
             assessment = asyncio.run(
                 run_compliance_assessment(
                     doc,
                     framework=fw_name,
                     enable_llm=enable_llm,
+                    llm=llm_client,
                 )
             )
         except Exception as exc:
@@ -429,6 +459,9 @@ def check(
                 all_formats=formats,
                 extension_map=extension_map,
             )
+            # Auto-create the parent directory, consistent with analyze /
+            # behavior / redteam (issue #233) and scan / sbom generate.
+            out_path.parent.mkdir(parents=True, exist_ok=True)
             out_path.write_text(_render(fmt), encoding="utf-8")
             _console.print(f"Output written to {out_path}")
     else:

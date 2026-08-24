@@ -76,8 +76,11 @@ def render_finding_block(
         remediation = finding.get("remediation") or ""
         owasp_llm = finding.get("owasp_llm_ref") or ""
         owasp_asi = finding.get("owasp_asi_ref") or ""
+        mitre_atlas = finding.get("mitre_atlas_technique") or ""
         policy_clause = finding.get("policy_clause") or ""
         goal_type = finding.get("goal_type") or ""
+        ngrs_score = finding.get("ngrs_score")
+        ngrs_vector = finding.get("ngrs_vector") or ""
     else:
         title = finding.title or ""
         finding_id = getattr(finding, "finding_id", "") or ""
@@ -92,9 +95,13 @@ def render_finding_block(
         evidence_quote = getattr(finding, "evidence_quote", "") or ""
         remediation = getattr(finding, "remediation", "") or ""
         owasp_llm = getattr(finding, "owasp_llm_ref", "") or ""
-        owasp_asi = ""
-        policy_clause = ""
+        owasp_asi = getattr(finding, "owasp_asi_ref", "") or ""
+        mitre_atlas = getattr(finding, "mitre_atlas_technique", "") or ""
+        policy_clauses = getattr(finding, "policy_clauses_violated", None) or []
+        policy_clause = "; ".join(policy_clauses)
         goal_type = str(finding.goal_type) if getattr(finding, "goal_type", None) else ""
+        ngrs_score = getattr(finding, "ngrs_score", None)
+        ngrs_vector = getattr(finding, "ngrs_vector", "") or ""
 
     heading = f"{heading_level} [{sev}] {title}"
     if finding_id:
@@ -113,6 +120,10 @@ def render_finding_block(
     if policy_clause:
         lines.append(f"**Policy Clause:** {policy_clause}")
         lines.append("")
+    if ngrs_score is not None:
+        vector_suffix = f" — `{ngrs_vector}`" if ngrs_vector else ""
+        lines.append(f"**NGRS:** {ngrs_score}/100{vector_suffix}")
+        lines.append("")
     if reasoning:
         lines.append(f"**Finding:** {reasoning}")
         lines.append("")
@@ -129,6 +140,9 @@ def render_finding_block(
         lines.append("")
     if owasp_asi:
         lines.append(f"**OWASP ASI:** {owasp_asi}")
+        lines.append("")
+    if mitre_atlas:
+        lines.append(f"**MITRE ATLAS:** {mitre_atlas}")
         lines.append("")
 
 
@@ -218,8 +232,20 @@ def _render_artefact(lines: list[str], art: Any) -> None:
         lines.append("")
 
 
+_PRIORITY_ORDER: dict[str, int] = {"critical": 0, "high": 1, "medium": 2, "low": 3}
+
+
+def _priority_rank(art: Any) -> int:
+    """Sort key for a RemediationArtefact's priority — lower sorts first (more urgent)."""
+    return _PRIORITY_ORDER.get(str(getattr(art, "priority", "")).lower(), len(_PRIORITY_ORDER))
+
+
 def render_remediation_plan_section(lines: list[str], remediation_plan: list) -> None:
-    """Append a ``## Remediation Plan`` section to *lines*, grouped by SBOM node."""
+    """Append a ``## Remediation Plan`` section to *lines*, grouped by SBOM node.
+
+    Component groups and the artefacts within each group are ordered by priority
+    (critical → high → medium → low) so "Apply in priority order" is actually true.
+    """
     lines.append("## Remediation Plan")
     lines.append("")
     lines.append(
@@ -232,8 +258,12 @@ def render_remediation_plan_section(lines: list[str], remediation_plan: list) ->
     for art in remediation_plan:
         by_component.setdefault(art.component, []).append(art)
 
-    for comp, arts in by_component.items():
+    ordered_components = sorted(
+        by_component.items(), key=lambda kv: min(_priority_rank(a) for a in kv[1])
+    )
+
+    for comp, arts in ordered_components:
         lines.append(f"### {comp}")
         lines.append("")
-        for art in arts:
+        for art in sorted(arts, key=_priority_rank):
             _render_artefact(lines, art)

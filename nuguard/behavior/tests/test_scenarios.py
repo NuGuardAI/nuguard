@@ -200,8 +200,10 @@ def test_chain_tool_scenarios_merges_info_action():
     assert "transfer_funds" in merged.scoped_tools
 
 
-def test_chain_tool_scenarios_no_action_tier_unchanged():
-    """Scenarios without an ACTION tier should not be merged."""
+def test_chain_tool_scenarios_merges_same_tier_within_budget():
+    """Same-tier (INFO-only) scenarios for one agent are still packed together
+    when they fit within the session turn budget, instead of being left as
+    separate single-turn scenarios."""
     s1 = BehaviorScenario(
         scenario_type=BehaviorScenarioType.COMPONENT_COVERAGE,
         name="info1",
@@ -217,8 +219,35 @@ def test_chain_tool_scenarios_no_action_tier_unchanged():
         tool_action_tiers=["INFO"],
     )
     result = _chain_tool_scenarios([s1, s2])
-    # Two INFO scenarios — no merging
-    assert len(result) == 2
+    # Both fit comfortably within the default 10-turn budget — merged into one.
+    assert len(result) == 1
+    assert result[0].chain_source == ["info1", "info2"]
+
+
+def test_chain_tool_scenarios_splits_when_over_budget():
+    """When an agent's scenarios don't fit within max_session_turns, chaining
+    spills into additional chunks instead of dropping any scenario."""
+    scenarios = [
+        BehaviorScenario(
+            scenario_type=BehaviorScenarioType.COMPONENT_COVERAGE,
+            name=f"info{i}",
+            messages=[f"Tell me about thing {i}?"] * 3,
+            primary_agent="BankingAgent",
+            tool_action_tiers=["INFO"],
+            scoped_tools=[f"tool_{i}"],
+        )
+        for i in range(4)
+    ]
+    result = _chain_tool_scenarios(scenarios, max_session_turns=5)
+    # Every source scenario must still be represented somewhere in the output.
+    covered_sources: set[str] = set()
+    for s in result:
+        covered_sources.update(s.chain_source or [s.name])
+    assert covered_sources == {"info0", "info1", "info2", "info3"}
+    # No merged scenario exceeds the turn budget.
+    assert all(len(s.messages) <= 5 for s in result)
+    # More than one output scenario since not everything fit in one chunk.
+    assert len(result) > 1
 
 
 # ---------------------------------------------------------------------------
@@ -573,13 +602,75 @@ def test_is_standalone_group_false_for_real_agent():
 
 @pytest.mark.asyncio
 async def test_standalone_tool_sharding():
-    """12 standalone INFO tools should shard into 3 groups of ≤5."""
+    """12 standalone INFO tools should all be covered, packed into as few
+    multi-turn scenarios as fit within the session turn budget (chaining may
+    merge multiple ≤tool_chain_size shards into one scenario)."""
     sbom = _make_sbom_with_components([], [f"get_thing_{i}" for i in range(12)])
     config = _MockConfig()
     intent = _make_intent()
     scenarios = await build_scenarios(config=config, intent=intent, sbom=sbom, llm_client=None)
     coverage = [s for s in scenarios if s.scenario_type == BehaviorScenarioType.COMPONENT_COVERAGE]
-    # Each scenario covers at most 5 tools
-    assert all(len(s.scoped_tools) <= 5 for s in coverage)
-    # 12 tools / 5 per group → at least 3 scenarios
-    assert len(coverage) >= 3
+    # Every standalone tool ends up scoped in some scenario — none dropped.
+    covered_tools = {t for s in coverage for t in s.scoped_tools}
+    assert covered_tools == {f"get_thing_{i}" for i in range(12)}
+    # No scenario exceeds the default session turn budget.
+    assert all(len(s.messages) <= 10 for s in coverage)
+    assert len(coverage) >= 1
+
+
+@pytest.mark.asyncio
+async def test_tool_chain_size_config_controls_shard_size():
+    """A smaller tool_chain_size produces smaller per-shard tool groups before
+    chaining re-packs them, and a larger max_session_turns lets chaining merge
+    more of them back into a single scenario."""
+
+    class _Cfg:
+        workflows: list[str] = []
+        boundary_assertions: list[object] = []
+        tool_chain_size = 2
+        max_session_turns = 100  # generous budget so all shards re-merge
+
+    sbom = _make_sbom_with_components([], [f"get_thing_{i}" for i in range(6)])
+    intent = _make_intent()
+    scenarios = await build_scenarios(config=_Cfg(), intent=intent, sbom=sbom, llm_client=None)
+    coverage = [s for s in scenarios if s.scenario_type == BehaviorScenarioType.COMPONENT_COVERAGE]
+    covered_tools = {t for s in coverage for t in s.scoped_tools}
+    assert covered_tools == {f"get_thing_{i}" for i in range(6)}
+    # With a huge session budget, the 3 shards of 2 tools each should be
+    # chained back into a single multi-turn scenario.
+    assert len(coverage) == 1
+
+
+# ---------------------------------------------------------------------------
+# guided_coverage config: emit GUIDED_COVERAGE scenarios instead of static chains
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_guided_coverage_emits_guided_scenarios_covering_all_tools():
+    class _Cfg:
+        workflows: list[str] = []
+        boundary_assertions: list[object] = []
+        guided_coverage = True
+
+    sbom = _make_sbom_with_components(["BankingAgent"], ["get_balance", "transfer_funds", "pay_bill"])
+    intent = _make_intent()
+    scenarios = await build_scenarios(config=_Cfg(), intent=intent, sbom=sbom, llm_client=None)
+    guided = [s for s in scenarios if s.scenario_type == BehaviorScenarioType.GUIDED_COVERAGE]
+    assert guided
+    # No static component_coverage scenarios should be emitted in guided mode.
+    assert not [s for s in scenarios if s.scenario_type == BehaviorScenarioType.COMPONENT_COVERAGE]
+    covered_tools = {t for s in guided for t in s.scoped_tools}
+    assert covered_tools == {"get_balance", "transfer_funds", "pay_bill"}
+    # Each guided scenario starts with a single opening message — the rest of
+    # the conversation is driven live by CoverageDirector, not pre-scripted.
+    assert all(len(s.messages) == 1 for s in guided)
+
+
+@pytest.mark.asyncio
+async def test_default_config_does_not_emit_guided_scenarios():
+    sbom = _make_sbom_with_components(["BankingAgent"], ["get_balance", "transfer_funds"])
+    config = _MockConfig()
+    intent = _make_intent()
+    scenarios = await build_scenarios(config=config, intent=intent, sbom=sbom, llm_client=None)
+    assert not [s for s in scenarios if s.scenario_type == BehaviorScenarioType.GUIDED_COVERAGE]

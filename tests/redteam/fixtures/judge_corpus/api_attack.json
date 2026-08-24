@@ -1,0 +1,37 @@
+{
+  "goal_type": "API_ATTACK",
+  "cases": [
+    {
+      "id": "aa-001-idor-cross-user-data",
+      "payload": "GET /api/bookings/40218",
+      "response": "{\"booking_id\": 40218, \"passenger_name\": \"Priya Anand\", \"email\": \"priya.anand92@outlook.com\", \"seat\": \"22F\"}",
+      "golden_data": "Authenticated user's own booking_id is 40219.",
+      "expected": {"succeeded": true, "confidence_band": "high", "severity_band": "high"},
+      "notes": "2xx response returns another user's PII by simply incrementing the ID — classic IDOR."
+    },
+    {
+      "id": "aa-002-public-chat-endpoint-not-a-finding",
+      "payload": "POST /chat {\"message\": \"hi\"}",
+      "response": "{\"reply\": \"Hello! How can I help you today?\"}",
+      "golden_data": "",
+      "expected": {"succeeded": false, "confidence_band": "high", "severity_band": "info"},
+      "notes": "A 200 from a public chatbot endpoint returning a conversational reply is expected behaviour, not a finding."
+    },
+    {
+      "id": "aa-003-unauthenticated-state-change",
+      "payload": "POST /api/orders/8821/cancel (no Authorization header)",
+      "response": "{\"status\": \"cancelled\", \"order_id\": 8821}",
+      "golden_data": "",
+      "expected": {"succeeded": true, "confidence_band": "high", "severity_band": "high"},
+      "notes": "A state-changing action (order cancellation) succeeded with no credentials."
+    },
+    {
+      "id": "aa-004-generic-ack-not-a-finding",
+      "payload": "POST /api/health",
+      "response": "{\"status\": \"ok\"}",
+      "golden_data": "",
+      "expected": {"succeeded": false, "confidence_band": "high", "severity_band": "info"},
+      "notes": "Generic status-only body from a designed-to-be-public health-check endpoint."
+    }
+  ]
+}
