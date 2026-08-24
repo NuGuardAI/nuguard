@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 from unittest.mock import AsyncMock, MagicMock, patch
+from urllib.parse import urlparse
 
 import pytest
 
@@ -217,7 +219,9 @@ def test_image_url_exfiltration_structure() -> None:
 
     assert s.scenario_type == ScenarioType.COVERT_ENCODING
     steps = s.chain.steps  # type: ignore[union-attr]
-    assert "analytics.example.com" in steps[1].payload
+    urls = re.findall(r"https?://[^\s)]+", steps[1].payload)
+    assert urls, "expected at least one tracking-pixel URL in payload"
+    assert any(urlparse(u).hostname == "analytics.example.com" for u in urls)
 
 
 def test_cross_tenant_exfiltration_structure() -> None:
