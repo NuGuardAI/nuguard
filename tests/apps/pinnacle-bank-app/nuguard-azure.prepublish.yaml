@@ -200,7 +200,7 @@ redteam:
   guided_conversations: false
   guided_max_turns: 3               # safety cap if guided re-enabled
   guided_concurrency: 1
-  scenario_timeout: 60              # fast timeout for prepublish gate
+  scenario_timeout: 180             # prepublish gate timeout; 60s was too tight for live LLM-backed target and tripped the 3-consecutive-timeout circuit breaker
 
   # TAP tree exploration (RT-016) — branching multi-tactic search.
   # 0 = auto-select from profile (ci → 2, full → 3).
