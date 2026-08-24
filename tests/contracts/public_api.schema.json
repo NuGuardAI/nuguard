@@ -1293,6 +1293,18 @@
             ],
             "default": null,
             "title": "Mapped From Endpoint"
+          },
+          "refusal_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Refusal Reason"
           }
         },
         "required": [
@@ -2024,6 +2036,13 @@
           "type": "string"
         },
         "title": "Scenarios Skipped",
+        "type": "array"
+      },
+      "scenarios_deprioritized": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Scenarios Deprioritized",
         "type": "array"
       },
       "allowed_topics_tested": {
@@ -2825,6 +2844,18 @@
             ],
             "default": null,
             "title": "Mapped From Endpoint"
+          },
+          "refusal_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Refusal Reason"
           }
         },
         "required": [
@@ -7056,14 +7087,20 @@
       "AiSbomConfig": {
         "properties": {
           "max_files": {
-            "default": 1000,
-            "maximum": 10000,
-            "minimum": 1,
-            "title": "Max Files",
-            "type": "integer"
+            "anyOf": [
+              {
+                "minimum": 1,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Max Files"
           },
           "max_file_size_bytes": {
-            "default": 1048576,
+            "default": 104857600,
             "minimum": 1024,
             "title": "Max File Size Bytes",
             "type": "integer"
@@ -7129,6 +7166,37 @@
             "maximum": 64,
             "minimum": 1,
             "title": "Llm Concurrency",
+            "type": "integer"
+          },
+          "gap_fill_max_calls": {
+            "title": "Gap Fill Max Calls",
+            "type": "integer"
+          },
+          "gap_fill_max_cost_usd": {
+            "title": "Gap Fill Max Cost Usd",
+            "type": "number"
+          },
+          "gap_fill_enable_privilege": {
+            "title": "Gap Fill Enable Privilege",
+            "type": "boolean"
+          },
+          "gap_fill_enable_guardrail": {
+            "title": "Gap Fill Enable Guardrail",
+            "type": "boolean"
+          },
+          "gap_fill_self_critique_categories": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Gap Fill Self Critique Categories",
+            "type": "array"
+          },
+          "verification_cost_budget": {
+            "title": "Verification Cost Budget",
+            "type": "number"
+          },
+          "verification_max_verifications": {
+            "title": "Verification Max Verifications",
             "type": "integer"
           },
           "google_api_key": {
@@ -7523,6 +7591,29 @@
             ],
             "default": null,
             "description": "Access direction on ACCESSES edges: read | write | readwrite"
+          },
+          "derivation": {
+            "default": "hint",
+            "description": "'hint': backed by an adapter-emitted RelationshipHint (explicit code evidence). 'fallback_heuristic': synthesized by structural fallback rules with no direct evidence.",
+            "enum": [
+              "hint",
+              "fallback_heuristic"
+            ],
+            "title": "Derivation",
+            "type": "string"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Set only for fallback_heuristic edges \u2014 a rough strength score for the guess. None for hint edges (evidence-backed, no separate score needed).",
+            "title": "Confidence"
           }
         },
         "required": [
@@ -8535,6 +8626,22 @@
             "default": null,
             "description": "Path parameter names extracted from the endpoint URL template, e.g. ['user_id', 'tenant_id']",
             "title": "Path Params"
+          },
+          "path_param_sources": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Maps each entry in path_params to the API_ENDPOINT path that creates the identified resource, e.g. {'id': '/chat/conversations'} for a chat endpoint at '/chat/conversations/:id/messages'",
+            "title": "Path Param Sources"
           },
           "request_body_schema": {
             "additionalProperties": {
@@ -10198,6 +10305,29 @@
             ],
             "default": null,
             "description": "Access direction on ACCESSES edges: read | write | readwrite"
+          },
+          "derivation": {
+            "default": "hint",
+            "description": "'hint': backed by an adapter-emitted RelationshipHint (explicit code evidence). 'fallback_heuristic': synthesized by structural fallback rules with no direct evidence.",
+            "enum": [
+              "hint",
+              "fallback_heuristic"
+            ],
+            "title": "Derivation",
+            "type": "string"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Set only for fallback_heuristic edges \u2014 a rough strength score for the guess. None for hint edges (evidence-backed, no separate score needed).",
+            "title": "Confidence"
           }
         },
         "required": [
@@ -11210,6 +11340,22 @@
             "default": null,
             "description": "Path parameter names extracted from the endpoint URL template, e.g. ['user_id', 'tenant_id']",
             "title": "Path Params"
+          },
+          "path_param_sources": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "description": "Maps each entry in path_params to the API_ENDPOINT path that creates the identified resource, e.g. {'id': '/chat/conversations'} for a chat endpoint at '/chat/conversations/:id/messages'",
+            "title": "Path Param Sources"
           },
           "request_body_schema": {
             "additionalProperties": {
