@@ -12,7 +12,6 @@ from nuguard.sbom.generator import SbomGenerator
 from nuguard.sbom.models import AiSbomDocument
 from nuguard.sbom.serializer import AiSbomSerializer
 
-
 SbomRenderFormat = Literal["json", "cyclonedx", "cyclonedx-ext", "markdown"]
 
 
