@@ -1120,6 +1120,844 @@
     "title": "BehaviorAnalysisRequest",
     "type": "object"
   },
+  "behavior.BehaviorAnalysisResult": {
+    "$defs": {
+      "BehaviorCoverage": {
+        "description": "Per-component behavioral coverage.",
+        "properties": {
+          "component_name": {
+            "title": "Component Name",
+            "type": "string"
+          },
+          "node_type": {
+            "title": "Node Type",
+            "type": "string"
+          },
+          "exercised": {
+            "default": false,
+            "title": "Exercised",
+            "type": "boolean"
+          },
+          "exercised_within_policy": {
+            "default": false,
+            "title": "Exercised Within Policy",
+            "type": "boolean"
+          },
+          "exercised_against_policy": {
+            "default": false,
+            "title": "Exercised Against Policy",
+            "type": "boolean"
+          },
+          "deviations": {
+            "items": {
+              "$ref": "#/$defs/BehaviorDeviation"
+            },
+            "title": "Deviations",
+            "type": "array"
+          },
+          "evidence_mentions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Mentions",
+            "type": "array"
+          },
+          "aliases_seen": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Aliases Seen",
+            "type": "array"
+          },
+          "unmatched_mentions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unmatched Mentions",
+            "type": "array"
+          },
+          "mapping_confidence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Mapping Confidence"
+          },
+          "mapped_from_endpoint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Mapped From Endpoint"
+          }
+        },
+        "required": [
+          "component_name",
+          "node_type"
+        ],
+        "title": "BehaviorCoverage",
+        "type": "object"
+      },
+      "BehaviorCoverageObjective": {
+        "description": "A single SBOM surface (node or edge) mapped to a coverage objective.\n\nEvery node and edge in the SBOM appears as a BehaviorCoverageObjective\nso reports can show which surfaces were dynamically exercised, statically\nchecked, metadata-only, or explicitly not behavior-exercisable.",
+        "properties": {
+          "objective_id": {
+            "title": "Objective Id",
+            "type": "string"
+          },
+          "surface_type": {
+            "title": "Surface Type",
+            "type": "string"
+          },
+          "node_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Node Id"
+          },
+          "node_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Node Name"
+          },
+          "node_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Node Type"
+          },
+          "edge_source": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Edge Source"
+          },
+          "edge_target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Edge Target"
+          },
+          "relationship_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Relationship Type"
+          },
+          "behavior_mode": {
+            "default": "dynamic",
+            "title": "Behavior Mode",
+            "type": "string"
+          },
+          "scenario_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Scenario Type"
+          },
+          "status": {
+            "default": "generated",
+            "title": "Status",
+            "type": "string"
+          },
+          "reason": {
+            "default": "",
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "objective_id",
+          "surface_type"
+        ],
+        "title": "BehaviorCoverageObjective",
+        "type": "object"
+      },
+      "BehaviorDeviation": {
+        "description": "A single observed deviation from intended behavior.",
+        "properties": {
+          "deviation_type": {
+            "title": "Deviation Type",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "expected_behavior": {
+            "title": "Expected Behavior",
+            "type": "string"
+          },
+          "actual_behavior": {
+            "title": "Actual Behavior",
+            "type": "string"
+          },
+          "turn_number": {
+            "title": "Turn Number",
+            "type": "integer"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          },
+          "evidence": {
+            "title": "Evidence",
+            "type": "string"
+          }
+        },
+        "required": [
+          "deviation_type",
+          "description",
+          "expected_behavior",
+          "actual_behavior",
+          "turn_number",
+          "severity",
+          "evidence"
+        ],
+        "title": "BehaviorDeviation",
+        "type": "object"
+      },
+      "IntentProfile": {
+        "description": "Semantic interpretation of the Cognitive Policy.\n\nCaptures the designer's intent for the AI application \u2014 what it should do,\nwhat it must not do, how data must be handled, and when to escalate.",
+        "properties": {
+          "app_purpose": {
+            "default": "",
+            "title": "App Purpose",
+            "type": "string"
+          },
+          "core_capabilities": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Core Capabilities",
+            "type": "array"
+          },
+          "behavioral_bounds": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Behavioral Bounds",
+            "type": "array"
+          },
+          "data_handling_rules": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Data Handling Rules",
+            "type": "array"
+          },
+          "escalation_rules": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Escalation Rules",
+            "type": "array"
+          }
+        },
+        "title": "IntentProfile",
+        "type": "object"
+      },
+      "Recommendation": {
+        "description": "Actionable remediation recommendation.",
+        "properties": {
+          "component": {
+            "title": "Component",
+            "type": "string"
+          },
+          "recommendation_type": {
+            "title": "Recommendation Type",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "rationale": {
+            "title": "Rationale",
+            "type": "string"
+          },
+          "priority": {
+            "title": "Priority",
+            "type": "string"
+          },
+          "related_findings": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Related Findings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "component",
+          "recommendation_type",
+          "description",
+          "rationale",
+          "priority"
+        ],
+        "title": "Recommendation",
+        "type": "object"
+      },
+      "RemediationArtefact": {
+        "description": "A concrete, SBOM-node-specific remediation action.\n\nProduced by RemediationSynthesizer as the final pass after all findings\nare collected. Each artefact targets a specific SBOM node and provides\nactionable instructions (patch text, guardrail spec, or architectural change).",
+        "properties": {
+          "finding_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Finding Ids",
+            "type": "array"
+          },
+          "component": {
+            "title": "Component",
+            "type": "string"
+          },
+          "component_type": {
+            "title": "Component Type",
+            "type": "string"
+          },
+          "artefact_type": {
+            "$ref": "#/$defs/RemediationArtefactType"
+          },
+          "priority": {
+            "title": "Priority",
+            "type": "string"
+          },
+          "patch_location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Patch Location"
+          },
+          "patch_section": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Patch Section"
+          },
+          "patch_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Patch Text"
+          },
+          "guardrail_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Guardrail Name"
+          },
+          "guardrail_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Guardrail Type"
+          },
+          "guardrail_trigger": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Guardrail Trigger"
+          },
+          "guardrail_action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Guardrail Action"
+          },
+          "guardrail_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Guardrail Message"
+          },
+          "privilege_scope": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Privilege Scope"
+          },
+          "privilege_node": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Privilege Node"
+          },
+          "requires_auth": {
+            "default": false,
+            "title": "Requires Auth",
+            "type": "boolean"
+          },
+          "requires_hitl": {
+            "default": false,
+            "title": "Requires Hitl",
+            "type": "boolean"
+          },
+          "edge_to_remove": {
+            "anyOf": [
+              {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "string"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Edge To Remove"
+          },
+          "change_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Change Description"
+          },
+          "change_detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Change Detail"
+          },
+          "rationale": {
+            "title": "Rationale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "component",
+          "component_type",
+          "artefact_type",
+          "priority",
+          "rationale"
+        ],
+        "title": "RemediationArtefact",
+        "type": "object"
+      },
+      "RemediationArtefactType": {
+        "description": "The type of concrete remediation artefact produced by RemediationSynthesizer.",
+        "enum": [
+          "system_prompt_patch",
+          "input_guardrail",
+          "output_guardrail",
+          "architectural_change"
+        ],
+        "title": "RemediationArtefactType",
+        "type": "string"
+      },
+      "ScenarioResult": {
+        "description": "Per-scenario aggregate result.",
+        "properties": {
+          "scenario_id": {
+            "title": "Scenario Id",
+            "type": "string"
+          },
+          "scenario_name": {
+            "title": "Scenario Name",
+            "type": "string"
+          },
+          "scenario_type": {
+            "title": "Scenario Type",
+            "type": "string"
+          },
+          "verdicts": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Verdicts",
+            "type": "array"
+          },
+          "overall_score": {
+            "default": 0.0,
+            "title": "Overall Score",
+            "type": "number"
+          },
+          "confidence": {
+            "default": 1.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "coverage_pct": {
+            "default": 0.0,
+            "title": "Coverage Pct",
+            "type": "number"
+          },
+          "uncovered_agents": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Uncovered Agents",
+            "type": "array"
+          },
+          "uncovered_tools": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Uncovered Tools",
+            "type": "array"
+          },
+          "total_turns": {
+            "default": 0,
+            "title": "Total Turns",
+            "type": "integer"
+          },
+          "coverage_turns": {
+            "default": 0,
+            "title": "Coverage Turns",
+            "type": "integer"
+          },
+          "deviations": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Deviations",
+            "type": "array"
+          },
+          "matched_topic": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Matched Topic"
+          }
+        },
+        "required": [
+          "scenario_id",
+          "scenario_name",
+          "scenario_type"
+        ],
+        "title": "ScenarioResult",
+        "type": "object"
+      },
+      "TokenUsage": {
+        "description": "LLM token consumption for a single check run.\n\nEmbedded in AnalysisResult, BehaviorAnalysisResult, PolicyCheckResult,\nand RedteamOrchestrator so every module surfaces the same fields.",
+        "properties": {
+          "input_tokens": {
+            "default": 0,
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "output_tokens": {
+            "default": 0,
+            "title": "Output Tokens",
+            "type": "integer"
+          },
+          "llm_model": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Llm Model"
+          }
+        },
+        "title": "TokenUsage",
+        "type": "object"
+      }
+    },
+    "description": "Complete output of the full behavior analysis pipeline (static + dynamic).",
+    "properties": {
+      "run_id": {
+        "title": "Run Id",
+        "type": "string"
+      },
+      "created_at": {
+        "format": "date-time",
+        "title": "Created At",
+        "type": "string"
+      },
+      "intent": {
+        "$ref": "#/$defs/IntentProfile"
+      },
+      "static_findings": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "title": "Static Findings",
+        "type": "array"
+      },
+      "dynamic_findings": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "title": "Dynamic Findings",
+        "type": "array"
+      },
+      "coverage": {
+        "items": {
+          "$ref": "#/$defs/BehaviorCoverage"
+        },
+        "title": "Coverage",
+        "type": "array"
+      },
+      "coverage_objectives": {
+        "items": {
+          "$ref": "#/$defs/BehaviorCoverageObjective"
+        },
+        "title": "Coverage Objectives",
+        "type": "array"
+      },
+      "scenario_results": {
+        "items": {
+          "$ref": "#/$defs/ScenarioResult"
+        },
+        "title": "Scenario Results",
+        "type": "array"
+      },
+      "recommendations": {
+        "items": {
+          "$ref": "#/$defs/Recommendation"
+        },
+        "title": "Recommendations",
+        "type": "array"
+      },
+      "remediation_plan": {
+        "items": {
+          "$ref": "#/$defs/RemediationArtefact"
+        },
+        "title": "Remediation Plan",
+        "type": "array"
+      },
+      "scan_outcome": {
+        "default": "no_findings",
+        "title": "Scan Outcome",
+        "type": "string"
+      },
+      "llm_executive_summary": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Llm Executive Summary"
+      },
+      "token_usage": {
+        "$ref": "#/$defs/TokenUsage"
+      },
+      "config_notes": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Config Notes",
+        "type": "array"
+      },
+      "gap_aggregation_stats": {
+        "additionalProperties": {
+          "type": "integer"
+        },
+        "title": "Gap Aggregation Stats",
+        "type": "object"
+      },
+      "coverage_mapping_diagnostics": {
+        "additionalProperties": true,
+        "title": "Coverage Mapping Diagnostics",
+        "type": "object"
+      },
+      "effective_endpoint": {
+        "default": "",
+        "title": "Effective Endpoint",
+        "type": "string"
+      },
+      "target_endpoint_source": {
+        "default": "config",
+        "title": "Target Endpoint Source",
+        "type": "string"
+      },
+      "run_profile": {
+        "additionalProperties": true,
+        "title": "Run Profile",
+        "type": "object"
+      },
+      "broken_chains": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Broken Chains",
+        "type": "array"
+      },
+      "scenarios_skipped": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Scenarios Skipped",
+        "type": "array"
+      },
+      "allowed_topics_tested": {
+        "items": {
+          "type": "string"
+        },
+        "title": "Allowed Topics Tested",
+        "type": "array"
+      },
+      "dynamic_scan_outcome": {
+        "anyOf": [
+          {
+            "type": "string"
+          },
+          {
+            "type": "null"
+          }
+        ],
+        "default": null,
+        "title": "Dynamic Scan Outcome"
+      }
+    },
+    "required": [
+      "intent"
+    ],
+    "title": "BehaviorAnalysisResult",
+    "type": "object"
+  },
   "behavior.BehaviorRunRequest": {
     "$defs": {
       "AppAuthConfig": {
@@ -1751,6 +2589,684 @@
       "scenarios"
     ],
     "title": "BehaviorRunRequest",
+    "type": "object"
+  },
+  "behavior.BehaviorRunResult": {
+    "$defs": {
+      "BehaviorCoverage": {
+        "description": "Per-component behavioral coverage.",
+        "properties": {
+          "component_name": {
+            "title": "Component Name",
+            "type": "string"
+          },
+          "node_type": {
+            "title": "Node Type",
+            "type": "string"
+          },
+          "exercised": {
+            "default": false,
+            "title": "Exercised",
+            "type": "boolean"
+          },
+          "exercised_within_policy": {
+            "default": false,
+            "title": "Exercised Within Policy",
+            "type": "boolean"
+          },
+          "exercised_against_policy": {
+            "default": false,
+            "title": "Exercised Against Policy",
+            "type": "boolean"
+          },
+          "deviations": {
+            "items": {
+              "$ref": "#/$defs/BehaviorDeviation"
+            },
+            "title": "Deviations",
+            "type": "array"
+          },
+          "evidence_mentions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Mentions",
+            "type": "array"
+          },
+          "aliases_seen": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Aliases Seen",
+            "type": "array"
+          },
+          "unmatched_mentions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Unmatched Mentions",
+            "type": "array"
+          },
+          "mapping_confidence": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Mapping Confidence"
+          },
+          "mapped_from_endpoint": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Mapped From Endpoint"
+          }
+        },
+        "required": [
+          "component_name",
+          "node_type"
+        ],
+        "title": "BehaviorCoverage",
+        "type": "object"
+      },
+      "BehaviorDeviation": {
+        "description": "A single observed deviation from intended behavior.",
+        "properties": {
+          "deviation_type": {
+            "title": "Deviation Type",
+            "type": "string"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "expected_behavior": {
+            "title": "Expected Behavior",
+            "type": "string"
+          },
+          "actual_behavior": {
+            "title": "Actual Behavior",
+            "type": "string"
+          },
+          "turn_number": {
+            "title": "Turn Number",
+            "type": "integer"
+          },
+          "severity": {
+            "title": "Severity",
+            "type": "string"
+          },
+          "evidence": {
+            "title": "Evidence",
+            "type": "string"
+          }
+        },
+        "required": [
+          "deviation_type",
+          "description",
+          "expected_behavior",
+          "actual_behavior",
+          "turn_number",
+          "severity",
+          "evidence"
+        ],
+        "title": "BehaviorDeviation",
+        "type": "object"
+      },
+      "RemediationArtefact": {
+        "description": "A concrete, SBOM-node-specific remediation action.\n\nProduced by RemediationSynthesizer as the final pass after all findings\nare collected. Each artefact targets a specific SBOM node and provides\nactionable instructions (patch text, guardrail spec, or architectural change).",
+        "properties": {
+          "finding_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Finding Ids",
+            "type": "array"
+          },
+          "component": {
+            "title": "Component",
+            "type": "string"
+          },
+          "component_type": {
+            "title": "Component Type",
+            "type": "string"
+          },
+          "artefact_type": {
+            "$ref": "#/$defs/RemediationArtefactType"
+          },
+          "priority": {
+            "title": "Priority",
+            "type": "string"
+          },
+          "patch_location": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Patch Location"
+          },
+          "patch_section": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Patch Section"
+          },
+          "patch_text": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Patch Text"
+          },
+          "guardrail_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Guardrail Name"
+          },
+          "guardrail_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Guardrail Type"
+          },
+          "guardrail_trigger": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Guardrail Trigger"
+          },
+          "guardrail_action": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Guardrail Action"
+          },
+          "guardrail_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Guardrail Message"
+          },
+          "privilege_scope": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Privilege Scope"
+          },
+          "privilege_node": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Privilege Node"
+          },
+          "requires_auth": {
+            "default": false,
+            "title": "Requires Auth",
+            "type": "boolean"
+          },
+          "requires_hitl": {
+            "default": false,
+            "title": "Requires Hitl",
+            "type": "boolean"
+          },
+          "edge_to_remove": {
+            "anyOf": [
+              {
+                "maxItems": 2,
+                "minItems": 2,
+                "prefixItems": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "string"
+                  }
+                ],
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Edge To Remove"
+          },
+          "change_description": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Change Description"
+          },
+          "change_detail": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Change Detail"
+          },
+          "rationale": {
+            "title": "Rationale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "component",
+          "component_type",
+          "artefact_type",
+          "priority",
+          "rationale"
+        ],
+        "title": "RemediationArtefact",
+        "type": "object"
+      },
+      "RemediationArtefactType": {
+        "description": "The type of concrete remediation artefact produced by RemediationSynthesizer.",
+        "enum": [
+          "system_prompt_patch",
+          "input_guardrail",
+          "output_guardrail",
+          "architectural_change"
+        ],
+        "title": "RemediationArtefactType",
+        "type": "string"
+      },
+      "ScenarioResult": {
+        "description": "Per-scenario aggregate result.",
+        "properties": {
+          "scenario_id": {
+            "title": "Scenario Id",
+            "type": "string"
+          },
+          "scenario_name": {
+            "title": "Scenario Name",
+            "type": "string"
+          },
+          "scenario_type": {
+            "title": "Scenario Type",
+            "type": "string"
+          },
+          "verdicts": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Verdicts",
+            "type": "array"
+          },
+          "overall_score": {
+            "default": 0.0,
+            "title": "Overall Score",
+            "type": "number"
+          },
+          "confidence": {
+            "default": 1.0,
+            "title": "Confidence",
+            "type": "number"
+          },
+          "coverage_pct": {
+            "default": 0.0,
+            "title": "Coverage Pct",
+            "type": "number"
+          },
+          "uncovered_agents": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Uncovered Agents",
+            "type": "array"
+          },
+          "uncovered_tools": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Uncovered Tools",
+            "type": "array"
+          },
+          "total_turns": {
+            "default": 0,
+            "title": "Total Turns",
+            "type": "integer"
+          },
+          "coverage_turns": {
+            "default": 0,
+            "title": "Coverage Turns",
+            "type": "integer"
+          },
+          "deviations": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Deviations",
+            "type": "array"
+          },
+          "matched_topic": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "default": null,
+            "title": "Matched Topic"
+          }
+        },
+        "required": [
+          "scenario_id",
+          "scenario_name",
+          "scenario_type"
+        ],
+        "title": "ScenarioResult",
+        "type": "object"
+      },
+      "TurnRecord": {
+        "description": "Per-turn record capturing prompt, response, and judgment.",
+        "properties": {
+          "turn": {
+            "title": "Turn",
+            "type": "integer"
+          },
+          "prompt": {
+            "title": "Prompt",
+            "type": "string"
+          },
+          "response": {
+            "title": "Response",
+            "type": "string"
+          },
+          "tool_calls": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Tool Calls",
+            "type": "array"
+          },
+          "violations": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Violations",
+            "type": "array"
+          },
+          "canary_hits": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Canary Hits",
+            "type": "array"
+          },
+          "passed": {
+            "default": true,
+            "title": "Passed",
+            "type": "boolean"
+          },
+          "scenario_name": {
+            "default": "",
+            "title": "Scenario Name",
+            "type": "string"
+          },
+          "scenario_type": {
+            "default": "",
+            "title": "Scenario Type",
+            "type": "string"
+          },
+          "verdict": {
+            "default": "",
+            "title": "Verdict",
+            "type": "string"
+          },
+          "scores": {
+            "additionalProperties": {
+              "type": "number"
+            },
+            "title": "Scores",
+            "type": "object"
+          },
+          "overall_score": {
+            "default": 0.0,
+            "title": "Overall Score",
+            "type": "number"
+          },
+          "gaps": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Gaps",
+            "type": "array"
+          },
+          "agents_mentioned": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Agents Mentioned",
+            "type": "array"
+          },
+          "tools_mentioned": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tools Mentioned",
+            "type": "array"
+          },
+          "is_coverage_turn": {
+            "default": false,
+            "title": "Is Coverage Turn",
+            "type": "boolean"
+          },
+          "latency_ms": {
+            "default": 0,
+            "title": "Latency Ms",
+            "type": "integer"
+          },
+          "deviations": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Deviations",
+            "type": "array"
+          },
+          "effective_endpoint": {
+            "default": "",
+            "title": "Effective Endpoint",
+            "type": "string"
+          },
+          "request_url": {
+            "default": "",
+            "title": "Request Url",
+            "type": "string"
+          }
+        },
+        "required": [
+          "turn",
+          "prompt",
+          "response"
+        ],
+        "title": "TurnRecord",
+        "type": "object"
+      }
+    },
+    "description": "Complete result of the dynamic behavior analysis.",
+    "properties": {
+      "run_id": {
+        "title": "Run Id",
+        "type": "string"
+      },
+      "findings": {
+        "items": {
+          "additionalProperties": true,
+          "type": "object"
+        },
+        "title": "Findings",
+        "type": "array"
+      },
+      "turn_records": {
+        "items": {
+          "$ref": "#/$defs/TurnRecord"
+        },
+        "title": "Turn Records",
+        "type": "array"
+      },
+      "scenario_results": {
+        "items": {
+          "$ref": "#/$defs/ScenarioResult"
+        },
+        "title": "Scenario Results",
+        "type": "array"
+      },
+      "scenarios_executed": {
+        "default": 0,
+        "title": "Scenarios Executed",
+        "type": "integer"
+      },
+      "scan_outcome": {
+        "default": "no_findings",
+        "title": "Scan Outcome",
+        "type": "string"
+      },
+      "coverage": {
+        "items": {
+          "$ref": "#/$defs/BehaviorCoverage"
+        },
+        "title": "Coverage",
+        "type": "array"
+      },
+      "input_tokens_used": {
+        "default": 0,
+        "title": "Input Tokens Used",
+        "type": "integer"
+      },
+      "output_tokens_used": {
+        "default": 0,
+        "title": "Output Tokens Used",
+        "type": "integer"
+      },
+      "config_notes": {
+        "description": "Run-level configuration notices surfaced to the report, e.g. automatic URL resolution when the configured target was a static hosting site.",
+        "items": {
+          "type": "string"
+        },
+        "title": "Config Notes",
+        "type": "array"
+      },
+      "gap_aggregation_stats": {
+        "additionalProperties": {
+          "type": "integer"
+        },
+        "title": "Gap Aggregation Stats",
+        "type": "object"
+      },
+      "coverage_mapping_diagnostics": {
+        "additionalProperties": true,
+        "title": "Coverage Mapping Diagnostics",
+        "type": "object"
+      },
+      "effective_endpoint": {
+        "default": "",
+        "title": "Effective Endpoint",
+        "type": "string"
+      },
+      "target_endpoint_source": {
+        "default": "config",
+        "title": "Target Endpoint Source",
+        "type": "string"
+      },
+      "remediation_plan": {
+        "items": {
+          "$ref": "#/$defs/RemediationArtefact"
+        },
+        "title": "Remediation Plan",
+        "type": "array"
+      }
+    },
+    "required": [
+      "run_id"
+    ],
+    "title": "BehaviorRunResult",
     "type": "object"
   },
   "common.discovery.TargetDiscoveryResult": {

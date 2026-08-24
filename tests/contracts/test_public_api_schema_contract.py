@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 from nuguard.analysis.public_api import AnalysisRunRequest, AnalysisRunResult
 from nuguard.behavior.public_api import BehaviorAnalysisRequest, BehaviorRunRequest
+from nuguard.behavior.models import BehaviorAnalysisResult, BehaviorRunResult
 from nuguard.common.discovery import TargetDiscoveryResult
 from nuguard.common.streaming_models import (
     BehaviorProgressState,
@@ -51,7 +52,9 @@ _MODEL_REGISTRY: dict[str, type[BaseModel]] = {
     "analysis.AnalysisRunRequest": AnalysisRunRequest,
     "analysis.AnalysisRunResult": AnalysisRunResult,
     "behavior.BehaviorAnalysisRequest": BehaviorAnalysisRequest,
+    "behavior.BehaviorAnalysisResult": BehaviorAnalysisResult,
     "behavior.BehaviorRunRequest": BehaviorRunRequest,
+    "behavior.BehaviorRunResult": BehaviorRunResult,
     "common.discovery.TargetDiscoveryResult": TargetDiscoveryResult,
     "common.streaming.BehaviorProgressState": BehaviorProgressState,
     "common.streaming.RedteamProgressState": RedteamProgressState,
