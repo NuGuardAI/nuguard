@@ -2,6 +2,8 @@
 
 NuGuard exposes its platform-facing interfaces as async Python functions with JSON-safe Pydantic request/response models. This includes:
 
+- SBOM generation/serialization APIs
+- SBOM toolbox APIs
 - Static analysis APIs
 - Behavior APIs
 - Redteam APIs
@@ -60,6 +62,64 @@ llm_client = LLMClient(model="azure/gpt-5.4-mini", api_key="...")
 ```
 
 If no API key is provided, the client may return placeholder output. Validate client configuration before relying on LLM-dependent results.
+
+## SBOM generation and serialization APIs
+
+Module: `nuguard.sbom.public_api`
+
+- `SbomGenerateRequest`
+- `SbomGenerateResult`
+- `SbomParseRequest`
+- `SbomParseResult`
+- `SbomRenderRequest`
+- `SbomRenderResult`
+- `SbomExportRequest`
+- `SbomExportResult`
+- `generate_sbom(request)`
+- `parse_sbom_json(request)`
+- `render_sbom(request, *, sbom)`
+- `export_sbom(request, *, sbom)`
+
+`SbomRenderRequest.format` supports:
+
+- `json`
+- `cyclonedx`
+- `cyclonedx-ext`
+- `markdown`
+
+Example:
+
+```python
+from nuguard.sbom.public_api import SbomGenerateRequest, SbomRenderRequest, generate_sbom, render_sbom
+
+generated = await generate_sbom(SbomGenerateRequest(source_path="./my_app"))
+rendered = await render_sbom(SbomRenderRequest(format="json"), sbom=generated.sbom)
+```
+
+## SBOM toolbox APIs
+
+Module: `nuguard.sbom.toolbox.public_api`
+
+- `ToolboxListPluginsRequest`
+- `ToolboxListPluginsResult`
+- `ToolboxRunPluginRequest`
+- `ToolboxRunPluginResult`
+- `ToolboxRunAllRequest`
+- `ToolboxRunAllResult`
+- `list_toolbox_plugins(request)`
+- `run_toolbox_plugin(request, *, sbom)`
+- `run_toolbox_all(request, *, sbom)`
+
+Example:
+
+```python
+from nuguard.sbom.toolbox.public_api import ToolboxRunPluginRequest, run_toolbox_plugin
+
+result = await run_toolbox_plugin(
+    ToolboxRunPluginRequest(plugin_name="dependency_analyze"),
+    sbom=generated.sbom,
+)
+```
 
 ## Static analysis API
 
