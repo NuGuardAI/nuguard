@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 from nuguard.analysis.public_api import AnalysisRunRequest, AnalysisRunResult
 from nuguard.behavior.public_api import BehaviorAnalysisRequest, BehaviorRunRequest
+from nuguard.behavior.models import BehaviorAnalysisResult, BehaviorRunResult
 from nuguard.common.discovery import TargetDiscoveryResult
 from nuguard.common.streaming_models import (
     BehaviorProgressState,
@@ -44,6 +45,24 @@ from nuguard.redteam.public_api import (
     RedteamRunRequest,
     RedteamRunResult,
 )
+from nuguard.sbom.public_api import (
+    SbomExportRequest,
+    SbomExportResult,
+    SbomGenerateRequest,
+    SbomGenerateResult,
+    SbomParseRequest,
+    SbomParseResult,
+    SbomRenderRequest,
+    SbomRenderResult,
+)
+from nuguard.sbom.toolbox.public_api import (
+    ToolboxListPluginsRequest,
+    ToolboxListPluginsResult,
+    ToolboxRunAllRequest,
+    ToolboxRunAllResult,
+    ToolboxRunPluginRequest,
+    ToolboxRunPluginResult,
+)
 
 _SCHEMA_FILE = Path(__file__).parent / "public_api.schema.json"
 
@@ -51,7 +70,9 @@ _MODEL_REGISTRY: dict[str, type[BaseModel]] = {
     "analysis.AnalysisRunRequest": AnalysisRunRequest,
     "analysis.AnalysisRunResult": AnalysisRunResult,
     "behavior.BehaviorAnalysisRequest": BehaviorAnalysisRequest,
+    "behavior.BehaviorAnalysisResult": BehaviorAnalysisResult,
     "behavior.BehaviorRunRequest": BehaviorRunRequest,
+    "behavior.BehaviorRunResult": BehaviorRunResult,
     "common.discovery.TargetDiscoveryResult": TargetDiscoveryResult,
     "common.streaming.BehaviorProgressState": BehaviorProgressState,
     "common.streaming.RedteamProgressState": RedteamProgressState,
@@ -74,6 +95,20 @@ _MODEL_REGISTRY: dict[str, type[BaseModel]] = {
     "redteam.RedteamExecutionResult": RedteamExecutionResult,
     "redteam.RedteamRunRequest": RedteamRunRequest,
     "redteam.RedteamRunResult": RedteamRunResult,
+    "sbom.SbomExportRequest": SbomExportRequest,
+    "sbom.SbomExportResult": SbomExportResult,
+    "sbom.SbomGenerateRequest": SbomGenerateRequest,
+    "sbom.SbomGenerateResult": SbomGenerateResult,
+    "sbom.SbomParseRequest": SbomParseRequest,
+    "sbom.SbomParseResult": SbomParseResult,
+    "sbom.SbomRenderRequest": SbomRenderRequest,
+    "sbom.SbomRenderResult": SbomRenderResult,
+    "sbom.toolbox.ToolboxListPluginsRequest": ToolboxListPluginsRequest,
+    "sbom.toolbox.ToolboxListPluginsResult": ToolboxListPluginsResult,
+    "sbom.toolbox.ToolboxRunAllRequest": ToolboxRunAllRequest,
+    "sbom.toolbox.ToolboxRunAllResult": ToolboxRunAllResult,
+    "sbom.toolbox.ToolboxRunPluginRequest": ToolboxRunPluginRequest,
+    "sbom.toolbox.ToolboxRunPluginResult": ToolboxRunPluginResult,
 }
 
 

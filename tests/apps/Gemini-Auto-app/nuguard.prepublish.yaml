@@ -218,6 +218,7 @@ redteam:
   verbose: true
   strict_outcome: true
   similar_miss_threshold: 4   # set to 0 to disable
+  concurrency: 3
   # Guided adversarial conversations — disabled for prepublish sanity gate.
   guided_conversations: false
   guided_max_turns: 3
