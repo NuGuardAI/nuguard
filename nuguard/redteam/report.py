@@ -443,7 +443,7 @@ def _attack_coverage_summary(scenario_records: list) -> list[str]:
     Goal types are derived from actual scenario records (no hardcoded universe).
     Not Tested = chain_status in {skipped, similar_miss, failed, aborted}.
     """
-    _NOT_TESTED = {"skipped", "similar_miss", "failed", "aborted"}
+    _NOT_TESTED = {"skipped", "similar_miss", "failed", "aborted", "target_unreachable"}
 
     # Accumulate per-goal-type counts
     goal_data: dict[str, dict[str, int]] = {}
@@ -497,7 +497,7 @@ def _universal_safety_summary(scenario_records: list) -> list[str]:
     the full Scenario Coverage table.  Returns ``[]`` when no universal-safety
     scenarios are present (e.g. the app's own policy already covers all of them).
     """
-    _NOT_TESTED = {"skipped", "similar_miss", "failed", "aborted"}
+    _NOT_TESTED = {"skipped", "similar_miss", "failed", "aborted", "target_unreachable"}
     by_category: dict[str, dict[str, int]] = {}
     for r in scenario_records:
         m = _UNIVERSAL_SAFETY_TITLE_RE.match(_r(r, "title", "") or "")
@@ -527,6 +527,66 @@ def _r(r: Any, key: str, default: Any = None) -> Any:
     if isinstance(r, dict):
         return r.get(key, default)
     return getattr(r, key, default)
+
+
+# Human-readable reasons rendered in the Turns column when a scenario never
+# actually ran (turns_used == turns_budget == 0). Keys match chain_status
+# values set by RedteamOrchestrator._run_scenarios (see _skipped_record()
+# there); an "aborted:<reason>" status falls back to the generic "aborted"
+# entry after stripping the suffix.
+_ZERO_TURN_REASONS: dict[str, str] = {
+    "skipped": "circuit breaker open",
+    "aborted": "target unavailable",
+    "target_unreachable": "direct-HTTP endpoint unreachable",
+    "similar_miss": "similar attack already missed",
+    "failed": "scenario failed to build",
+    "timeout": "scenario timed out",
+}
+
+
+def _turns_cell_with_reason(turns_cell: str, chain_status: str) -> str:
+    """Annotate a bare ``"0/0"`` Turns cell with why the scenario never ran.
+
+    ``turns_used``/``turns_budget`` default to 0 for scenarios that were
+    skipped/aborted before executing any step (see ``ScenarioRecord`` in
+    ``nuguard.redteam.executor.orchestrator``), which otherwise renders as an
+    unexplained bare ``"0/0"`` in the report. Normally-executed scenarios
+    (non-zero turns, or ``chain_status == "completed"``) are returned
+    unchanged.
+    """
+    if turns_cell != "0/0" or not chain_status or chain_status == "completed":
+        return turns_cell
+    reason_key = chain_status.split(":", 1)[0]
+    reason = _ZERO_TURN_REASONS.get(reason_key, reason_key.replace("_", " "))
+    return f"{turns_cell} — {reason}"
+
+
+def _truncate_title_for_table(title: str, max_len: int = 60) -> str:
+    """Truncate *title* to fit the coverage table, preserving a trailing variant suffix.
+
+    Many scenario titles end with a distinguishing ``" — <variant>"`` suffix
+    (e.g. ``"Restricted Topic Probe — explicit"`` vs. ``"... — implicit
+    (curious)"``). A plain ``title[:max_len]`` truncation strips that suffix on
+    long titles, making genuinely distinct scenarios look identical in the
+    report. Instead, split off the last ``" — "``-delimited segment first,
+    truncate only the leading portion to fit the budget, then re-append the
+    suffix — so distinct variants stay visually distinct even when the title
+    as a whole runs over *max_len*.
+    """
+    if len(title) <= max_len:
+        return title
+    if " — " in title:
+        head, suffix = title.rsplit(" — ", 1)
+        suffix = f" — {suffix}"
+    else:
+        head, suffix = title, ""
+    head_budget = max_len - len(suffix)
+    if head_budget <= 0:
+        # Suffix alone doesn't fit either — fall back to a flat truncation.
+        return title[:max_len] + "…"
+    if len(head) > head_budget:
+        head = head[: max(0, head_budget - 1)].rstrip() + "…"
+    return head + suffix
 
 
 def _scenario_coverage_table(scenario_records: list) -> list[str]:
@@ -566,7 +626,7 @@ def _scenario_coverage_table(scenario_records: list) -> list[str]:
 
     for idx, r in enumerate(records, start=1):
         title_str = _r(r, "title", "") or ""
-        title = title_str[:60] + ("…" if len(title_str) > 60 else "")
+        title = _truncate_title_for_table(title_str)
         goal_type_str = _r(r, "goal_type", "") or ""
         goal = _GOAL_LABEL.get(goal_type_str, goal_type_str.replace("_", " ").title())
         had_finding = bool(_r(r, "had_finding", False))
@@ -575,7 +635,9 @@ def _scenario_coverage_table(scenario_records: list) -> list[str]:
         if turns_used is None:
             turns_used = len(_r(r, "steps", []) or [])
         turns_budget = _r(r, "turns_budget", 0) or turns_used
-        turns_cell = f"{turns_used}/{turns_budget}"
+        turns_cell = _turns_cell_with_reason(
+            f"{turns_used}/{turns_budget}", _r(r, "chain_status", "") or ""
+        )
         duration = _r(r, "duration_s", 0.0) or 0.0
         dur_cell = _fmt_duration(duration)
         avg_cell = _fmt_avg(duration, turns_used)

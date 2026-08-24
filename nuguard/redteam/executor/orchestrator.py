@@ -279,6 +279,28 @@ def _classify_step_transport(response: str, http_status_code: int | None) -> str
     return "http_2xx"
 
 
+def _is_direct_http_only_scenario(scenario: AttackScenario) -> bool:
+    """Return True when *scenario* only ever exercises direct-HTTP steps.
+
+    Mirrors the chat/direct-HTTP distinction ``AttackExecutor.run()`` itself
+    uses (``any(not s.target_path for s in steps)`` — see executor.py's
+    ``has_chat_steps``): a step with ``target_path`` set goes through
+    ``TargetAppClient.invoke_endpoint()``; a step without it goes through the
+    chat ``send()``/``send_stream()`` path. A scenario with no chat-routed
+    steps at all (e.g. a static API_ATTACK auth-bypass/IDOR/mass-assignment/
+    BFLA chain against SBOM-derived REST paths) is "direct-HTTP-only" and
+    should not be caught by the chat-endpoint circuit breaker — see
+    ``TargetAppClient._consecutive_endpoint_errors`` and
+    ``RedteamOrchestrator._endpoint_circuit_open``.
+
+    Guided conversations always route through chat, so they are never
+    direct-HTTP-only.
+    """
+    if scenario.chain is None or not scenario.chain.steps:
+        return False
+    return all(step.target_path for step in scenario.chain.steps)
+
+
 def _tally_transport(record: ScenarioRecord, step_results: list) -> None:
     """Accumulate transport health counters into *record* from *step_results*."""
     for sr in step_results:
@@ -694,6 +716,16 @@ class RedteamOrchestrator:
         # Circuit-open flag latched when the 3-strike abort trips; consulted by
         # the escalation pass so it skips rather than re-hitting a dead target.
         self._circuit_open = False
+        # Separate circuit-open flag for direct-HTTP endpoint-probe outages
+        # (TargetUnavailableError raised with source="endpoint_probe" — see
+        # TargetAppClient._record_endpoint_error). Kept independent of
+        # self._circuit_open so an unreachable SBOM-derived REST path (e.g.
+        # API_ATTACK auth-bypass/IDOR/mass-assignment/BFLA chains) cannot
+        # abort unrelated, still-healthy chat-routed scenarios — only the
+        # remaining not-yet-dispatched direct-HTTP-only scenarios are skipped
+        # (chain_status="target_unreachable"). Latched across passes the same
+        # way self._circuit_open is.
+        self._endpoint_circuit_open = False
         # Auto-discover from SBOM; fall back to provided values
         self._chat_path, self._chat_payload_key, self._chat_payload_list, _discovered_response_key = (
             _discover_chat_config(sbom, chat_path, chat_payload_key, chat_payload_list)
@@ -1582,9 +1614,25 @@ class RedteamOrchestrator:
         """
         sem = asyncio.Semaphore(self._concurrency)
         abort_event = asyncio.Event()
+        # Separate abort event for direct-HTTP endpoint-probe outages — only
+        # consulted by direct-HTTP-only scenarios (see
+        # _is_direct_http_only_scenario). Setting this does NOT block
+        # chat-routed scenarios, unlike `abort_event` above.
+        endpoint_abort_event = asyncio.Event()
+        if self._endpoint_circuit_open:
+            # A prior pass already tripped the direct-HTTP-probe breaker —
+            # latch the local event so every direct-HTTP-only scenario in
+            # this pass is skipped immediately; chat-routed scenarios are
+            # unaffected and run normally.
+            endpoint_abort_event.set()
         # Circuit breaker: trip only after this many consecutive unavailability errors.
         _ABORT_THRESHOLD = 3
         consecutive_unavailable = 0
+        # Separate consecutive-failure counter for direct-HTTP endpoint-probe
+        # outages (TargetUnavailableError raised with source="endpoint_probe").
+        # Kept independent of consecutive_unavailable so an unreachable
+        # SBOM-derived REST path cannot trip the general chat breaker.
+        consecutive_endpoint_unavailable = 0
         # If a prior pass already tripped the circuit (the escalation pass runs
         # after the main pass), skip every scenario — the target is dead and
         # there is no point hammering it again with a fresh abort event.
@@ -1622,7 +1670,7 @@ class RedteamOrchestrator:
             scenario: AttackScenario,
             scenario_idx: int = 0,
         ) -> tuple[list[Finding], tuple[str, str, bool], ScenarioRecord]:
-            nonlocal consecutive_unavailable
+            nonlocal consecutive_unavailable, consecutive_endpoint_unavailable
             affected = ", ".join(
                 self._node_name.get(nid, nid) for nid in scenario.target_node_ids[:2]
             )
@@ -1642,12 +1690,21 @@ class RedteamOrchestrator:
             # Skip immediately if the circuit is already open
             if abort_event.is_set():
                 return [], (scenario.title, scenario.goal_type.value, False), _skipped_record("skipped")
+            # Direct-HTTP-only scenarios (all steps have target_path set — no
+            # chat-routed step) are skipped independently once the direct-HTTP
+            # endpoint-probe breaker trips, WITHOUT touching abort_event —
+            # chat-routed scenarios keep running.
+            _is_direct_http = _is_direct_http_only_scenario(scenario)
+            if _is_direct_http and endpoint_abort_event.is_set():
+                return [], (scenario.title, scenario.goal_type.value, False), _skipped_record("target_unreachable")
 
             async with sem:
                 # Re-check after acquiring the semaphore — another coroutine may
                 # have tripped the circuit while we were waiting.
                 if abort_event.is_set():
                     return [], (scenario.title, scenario.goal_type.value, False), _skipped_record("skipped")
+                if _is_direct_http and endpoint_abort_event.is_set():
+                    return [], (scenario.title, scenario.goal_type.value, False), _skipped_record("target_unreachable")
 
                 # Skip scenarios whose payloads are too similar to already-failed
                 # attacks.  Checked here (post-semaphore) so that misses from
@@ -1860,6 +1917,40 @@ class RedteamOrchestrator:
                         )
                     return [], (scenario.title, scenario.goal_type.value, False), _skipped_record("timeout")
                 except TargetUnavailableError as exc:
+                    # Direct-HTTP endpoint-probe outages (invoke_endpoint()
+                    # connection-level failures — see TargetAppClient.
+                    # _record_endpoint_error) are tracked with their own
+                    # consecutive-failure counter and abort event, isolated
+                    # from the general chat-endpoint breaker below. Tripping
+                    # it only skips the remaining direct-HTTP-only scenarios;
+                    # unrelated chat-routed scenarios keep running.
+                    if exc.source == "endpoint_probe":
+                        consecutive_endpoint_unavailable += 1
+                        if consecutive_endpoint_unavailable >= _ABORT_THRESHOLD:
+                            _log.error(
+                                "Direct-HTTP endpoint probes unavailable %d consecutive "
+                                "times — skipping remaining direct-HTTP-only scenarios "
+                                "(chat-routed scenarios continue). %s",
+                                consecutive_endpoint_unavailable,
+                                exc,
+                            )
+                            endpoint_abort_event.set()
+                            # Preserve across passes, mirroring self._circuit_open.
+                            self._endpoint_circuit_open = True
+                        else:
+                            _log.warning(
+                                "Direct-HTTP endpoint probe temporarily unavailable "
+                                "(%d/%d) — continuing. %s",
+                                consecutive_endpoint_unavailable,
+                                _ABORT_THRESHOLD,
+                                exc,
+                            )
+                        return (
+                            [],
+                            (scenario.title, scenario.goal_type.value, False),
+                            _skipped_record("target_unreachable"),
+                        )
+
                     consecutive_unavailable += 1
                     if consecutive_unavailable >= _ABORT_THRESHOLD:
                         _log.error(

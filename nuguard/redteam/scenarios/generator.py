@@ -1388,14 +1388,23 @@ class ScenarioGenerator:
     ) -> list[AttackScenario]:
         """Remove near-duplicate scenarios, preferring those targeting entry agents.
 
-        Groups by ``(goal_type, scenario_type, title_prefix)``. Within each group:
+        Groups by ``(goal_type, scenario_type, title)`` — the FULL title, not
+        just the portion before the first ``" — "``. Using only the prefix
+        would collapse every topic/framing variant of a scenario family (e.g.
+        every "Restricted Topic Probe — <topic>" variant shares the same
+        prefix) into a single dedup group, silently discarding distinct
+        topic/framing coverage whenever entry-agent edges exist. The full
+        title still lets genuinely identical scenarios (same title, differing
+        only in which agent node — entry vs. sub-agent — they target) collapse
+        together, which is this pass's actual intended purpose.
+
+        Within each group:
 
         - If any scenario targets an entry agent, keep only entry-agent scenarios (cap 2).
         - Otherwise keep all (up to 3) sorted by impact score descending.
         """
         def _template_key(s: AttackScenario) -> str:
-            prefix = s.title.split(" — ")[0] if " — " in s.title else s.title[:40]
-            return f"{s.goal_type.value}|{s.scenario_type.value}|{prefix}"
+            return f"{s.goal_type.value}|{s.scenario_type.value}|{s.title}"
 
         groups: dict[str, list[AttackScenario]] = {}
         for s in scenarios:

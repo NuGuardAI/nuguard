@@ -17,6 +17,7 @@ import httpx
 from nuguard.common.errors import TargetUnavailableError  # noqa: F401 — re-exported for callers
 from nuguard.common.logging import get_logger
 from nuguard.common.response_extraction import SESSION_ID_KEYS as _SESSION_ID_KEYS
+from nuguard.common.transport import strip_known_boilerplate
 
 from .session import AttackSession
 
@@ -283,6 +284,16 @@ class TargetAppClient:
         # Circuit breaker: count consecutive errors on the chat endpoint.
         # Reset to 0 on any successful response.
         self._consecutive_errors: int = 0
+        # Separate circuit breaker: count consecutive connection-level failures
+        # on direct-HTTP endpoint probes (invoke_endpoint()), e.g. auth-bypass/
+        # IDOR/mass-assignment/BFLA chains hitting SBOM-derived REST paths.
+        # Kept independent of _consecutive_errors so an unreachable direct-HTTP
+        # path (e.g. a REST path that was never actually deployed) does not
+        # trip the shared circuit breaker and abort unrelated, still-healthy
+        # chat-routed scenarios. Reset to 0 on any completed request (any
+        # status code, since a response — even a 4xx/5xx — means the target
+        # is reachable).
+        self._consecutive_endpoint_errors: int = 0
         # Session/conversation ID forwarding: if the app returns a session
         # or conversation identifier in its response, store it here and
         # include it in subsequent request bodies so multi-turn conversations
@@ -442,6 +453,39 @@ class TargetAppClient:
             _log.debug("Chat endpoint recovered — resetting error counter")
         self._consecutive_errors = 0
 
+    def _record_endpoint_error(self, label: str) -> None:
+        """Increment the direct-HTTP-probe consecutive-error counter.
+
+        Mirrors :meth:`_record_chat_error` but tracks connection-level
+        failures on :meth:`invoke_endpoint` (direct-HTTP auth-bypass/IDOR/
+        mass-assignment/BFLA probes) separately from chat ``send()``
+        failures, so an unreachable SBOM-derived REST path cannot trip the
+        shared chat circuit breaker. Raises :class:`TargetUnavailableError`
+        with ``source="endpoint_probe"`` once the threshold is hit, so
+        callers (the redteam orchestrator) can distinguish this from a
+        genuine chat-endpoint outage.
+        """
+        self._consecutive_endpoint_errors += 1
+        _log.warning(
+            "Direct-HTTP endpoint probe error (%s) — consecutive=%d/%d",
+            label,
+            self._consecutive_endpoint_errors,
+            self._max_consecutive_errors,
+        )
+        if self._consecutive_endpoint_errors >= self._max_consecutive_errors:
+            raise TargetUnavailableError(
+                f"Direct-HTTP endpoint probes returned {self._consecutive_endpoint_errors} "
+                f"consecutive connection-level failures (last: {label}) — aborting "
+                f"direct-HTTP probing to avoid hammering unreachable paths.",
+                source="endpoint_probe",
+            )
+
+    def _record_endpoint_success(self) -> None:
+        """Reset the direct-HTTP-probe consecutive-error counter after any completed request."""
+        if self._consecutive_endpoint_errors:
+            _log.debug("Direct-HTTP endpoint probe recovered — resetting error counter")
+        self._consecutive_endpoint_errors = 0
+
     async def _attempt_422_heal(self, sent_body: dict, error_body_text: str) -> bool:
         """Ask the LLM to infer missing/invalid field(s) from a 422 error body.
 
@@ -499,7 +543,7 @@ class TargetAppClient:
         return True
 
     def reset_circuit_breaker(self) -> None:
-        """Reset the consecutive-error counter.
+        """Reset both consecutive-error counters (chat and direct-HTTP probe).
 
         Call this between scenarios in sequential-scan mode so that a
         burst of errors in one scenario does not permanently open the circuit
@@ -507,10 +551,16 @@ class TargetAppClient:
         """
         if self._consecutive_errors:
             _log.debug(
-                "reset_circuit_breaker: clearing %d consecutive errors",
+                "reset_circuit_breaker: clearing %d consecutive chat errors",
                 self._consecutive_errors,
             )
         self._consecutive_errors = 0
+        if self._consecutive_endpoint_errors:
+            _log.debug(
+                "reset_circuit_breaker: clearing %d consecutive endpoint-probe errors",
+                self._consecutive_endpoint_errors,
+            )
+        self._consecutive_endpoint_errors = 0
 
     @property
     def chat_path(self) -> str:
@@ -586,8 +636,14 @@ class TargetAppClient:
         """
         if self._request_sem is not None:
             async with self._request_sem:
-                return await self._send_with_transient_retry(payload, session)
-        return await self._send_impl(payload, session)
+                text, calls = await self._send_with_transient_retry(payload, session)
+        else:
+            text, calls = await self._send_impl(payload, session)
+        # Single choke point: strip known app-generated response-wrapper
+        # boilerplate (see nuguard.common.transport.strip_known_boilerplate)
+        # once, here, so every downstream consumer (LLM judge, topic-refusal
+        # detection, policy detectors, report rendering) sees clean text.
+        return strip_known_boilerplate(text), calls
 
     async def _send_with_transient_retry(
         self, payload: str, session: AttackSession
@@ -1016,14 +1072,18 @@ class TargetAppClient:
                     json_body: dict = resp.json()
                 except Exception:
                     json_body = {}
-                return resp.status_code, resp.text, json_body
+                # Any completed response — even a 4xx/5xx — means the direct-HTTP
+                # path is reachable; reset the endpoint-probe circuit breaker.
+                self._record_endpoint_success()
+                return resp.status_code, strip_known_boilerplate(resp.text), json_body
             except Exception as exc:
                 label = f"{type(exc).__name__}: {exc}" if str(exc) else type(exc).__name__
                 _log.warning("Direct request %s %s failed: %s", method, path, label)
                 # Network-level failures (connection refused, DNS error, timeout) on
-                # direct endpoint probes also count toward the circuit breaker because
-                # they indicate the target is unreachable, not just rejecting our probe.
-                self._record_chat_error(label[:120])
+                # direct endpoint probes count toward a circuit breaker that is
+                # separate from the chat-path breaker, so an unreachable
+                # SBOM-derived REST path cannot abort unrelated chat scenarios.
+                self._record_endpoint_error(label[:120])
                 return 0, f"[REQUEST_ERROR: {label}]", {}
 
         return 429, "[HTTP 429]", {}
