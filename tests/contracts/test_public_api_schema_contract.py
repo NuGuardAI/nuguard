@@ -45,6 +45,24 @@ from nuguard.redteam.public_api import (
     RedteamRunRequest,
     RedteamRunResult,
 )
+from nuguard.sbom.public_api import (
+    SbomExportRequest,
+    SbomExportResult,
+    SbomGenerateRequest,
+    SbomGenerateResult,
+    SbomParseRequest,
+    SbomParseResult,
+    SbomRenderRequest,
+    SbomRenderResult,
+)
+from nuguard.sbom.toolbox.public_api import (
+    ToolboxListPluginsRequest,
+    ToolboxListPluginsResult,
+    ToolboxRunAllRequest,
+    ToolboxRunAllResult,
+    ToolboxRunPluginRequest,
+    ToolboxRunPluginResult,
+)
 
 _SCHEMA_FILE = Path(__file__).parent / "public_api.schema.json"
 
@@ -77,6 +95,20 @@ _MODEL_REGISTRY: dict[str, type[BaseModel]] = {
     "redteam.RedteamExecutionResult": RedteamExecutionResult,
     "redteam.RedteamRunRequest": RedteamRunRequest,
     "redteam.RedteamRunResult": RedteamRunResult,
+    "sbom.SbomExportRequest": SbomExportRequest,
+    "sbom.SbomExportResult": SbomExportResult,
+    "sbom.SbomGenerateRequest": SbomGenerateRequest,
+    "sbom.SbomGenerateResult": SbomGenerateResult,
+    "sbom.SbomParseRequest": SbomParseRequest,
+    "sbom.SbomParseResult": SbomParseResult,
+    "sbom.SbomRenderRequest": SbomRenderRequest,
+    "sbom.SbomRenderResult": SbomRenderResult,
+    "sbom.toolbox.ToolboxListPluginsRequest": ToolboxListPluginsRequest,
+    "sbom.toolbox.ToolboxListPluginsResult": ToolboxListPluginsResult,
+    "sbom.toolbox.ToolboxRunAllRequest": ToolboxRunAllRequest,
+    "sbom.toolbox.ToolboxRunAllResult": ToolboxRunAllResult,
+    "sbom.toolbox.ToolboxRunPluginRequest": ToolboxRunPluginRequest,
+    "sbom.toolbox.ToolboxRunPluginResult": ToolboxRunPluginResult,
 }
 
 
