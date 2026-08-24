@@ -48,6 +48,14 @@ _NON_CHAT_PAYLOAD_KEYS = frozenset({
     "patient_id", "order_id", "booking_reference", "flight_number",
     "user_id", "transaction_id", "payment_id", "notification_id",
     "recipient_account", "source_account", "debit_account", "credit_account",
+    # Resource-naming fields on plain CRUD/create endpoints (e.g. NestJS
+    # "POST conversations" with `{ title: string }`) — these are the only
+    # string field on the DTO so the generic single-string fallback in
+    # _infer_chat_payload_key() would otherwise mistake resource creation
+    # for a chat message endpoint, out-scoring the real
+    # "POST conversations/:id/messages" route in endpoint discovery/ranking
+    # (see tests/apps/studyield-app/2-step-chat.md).
+    "title", "name", "subject", "label", "description",
 })
 
 _IDENTITY_FIELD_NAMES = frozenset({

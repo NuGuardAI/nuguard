@@ -165,6 +165,11 @@ class BehaviorCoverage(BaseModel):
     unmatched_mentions: list[str] = Field(default_factory=list)
     mapping_confidence: str | None = None
     mapped_from_endpoint: str | None = None
+    refusal_reason: str | None = None
+    """Classified reason this component was refused (nuguard.behavior.refusal.RefusalReason
+    value), or "systemic_deflection" when its tool family's circuit breaker tripped.
+    Only populated when behavior.escalate_on_refusal is enabled; None otherwise
+    (including when the component genuinely wasn't a coverage target)."""
 
 
 class BehaviorCounts(BaseModel):
@@ -326,6 +331,12 @@ class BehaviorAnalysisResult(BaseModel):
 
     scenarios_skipped: list[str] = Field(default_factory=list)
     """Names of scenarios not executed because max_scenarios cap was reached."""
+
+    scenarios_deprioritized: list[str] = Field(default_factory=list)
+    """Names of scenarios cut by the max_scenarios cap specifically because their
+    tool family probed as blocked (prioritize_by_probe) — a subset reason for
+    entries that also appear in scenarios_skipped, surfaced separately so a
+    systemic-refusal cut isn't indistinguishable from an arbitrary cap cut."""
 
     allowed_topics_tested: list[str] = Field(default_factory=list)
     """Allowed topics from cognitive policy that were exercised."""

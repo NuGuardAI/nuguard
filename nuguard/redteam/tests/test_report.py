@@ -7,7 +7,13 @@ from types import SimpleNamespace
 
 from nuguard.cli.report_meta import ReportMeta
 from nuguard.models.finding import Finding, Severity
-from nuguard.redteam.report import to_json, to_markdown
+from nuguard.redteam.report import (
+    _scenario_coverage_table,
+    _truncate_title_for_table,
+    _turns_cell_with_reason,
+    to_json,
+    to_markdown,
+)
 
 
 def _sample_findings() -> list[Finding]:
@@ -146,3 +152,74 @@ def test_to_markdown_remediation_plan_renders_even_with_no_findings() -> None:
 def test_to_markdown_no_remediation_section_when_plan_absent() -> None:
     md = to_markdown([])
     assert "## Remediation Plan" not in md
+
+
+# ── Fix 2: Turns column communicates why a scenario shows a bare "0/0" ───────
+
+
+def test_turns_cell_with_reason_annotates_bare_zero_zero() -> None:
+    assert _turns_cell_with_reason("0/0", "target_unreachable") == (
+        "0/0 — direct-HTTP endpoint unreachable"
+    )
+    assert _turns_cell_with_reason("0/0", "aborted") == "0/0 — target unavailable"
+    assert _turns_cell_with_reason("0/0", "skipped") == "0/0 — circuit breaker open"
+
+
+def test_turns_cell_with_reason_handles_prefixed_abort_reason() -> None:
+    """chain_status values like 'aborted:consecutive_request_failures' fall back
+    to the generic 'aborted' reason after stripping the ':<reason>' suffix."""
+    assert _turns_cell_with_reason("0/0", "aborted:consecutive_request_failures") == (
+        "0/0 — target unavailable"
+    )
+
+
+def test_turns_cell_with_reason_leaves_normal_rows_unchanged() -> None:
+    assert _turns_cell_with_reason("3/5", "completed") == "3/5"
+    assert _turns_cell_with_reason("0/0", "completed") == "0/0"
+    assert _turns_cell_with_reason("0/0", "") == "0/0"
+
+
+def test_scenario_coverage_table_renders_target_unreachable_reason() -> None:
+    records = [
+        SimpleNamespace(
+            title="API Attack — auth bypass on /admin",
+            goal_type="API_ATTACK",
+            impact_score=8.0,
+            had_finding=False,
+            turns_used=0,
+            turns_budget=0,
+            duration_s=0.0,
+            chain_status="target_unreachable",
+            steps=[],
+        )
+    ]
+    lines = _scenario_coverage_table(records)
+    table_body = "\n".join(lines)
+    assert "0/0 — direct-HTTP endpoint unreachable" in table_body
+
+
+# ── Fix 4 (part 2): title truncation preserves the trailing variant suffix ───
+
+
+def test_truncate_title_preserves_trailing_variant_suffix() -> None:
+    long_title = (
+        "Restricted Topic Probe — self-harm and dangerous activities and "
+        "methods — implicit (curious framing)"
+    )
+    truncated = _truncate_title_for_table(long_title, max_len=60)
+    assert truncated.endswith("— implicit (curious framing)")
+    assert len(truncated) <= 70
+
+
+def test_truncate_title_short_title_unchanged() -> None:
+    title = "Short scenario title"
+    assert _truncate_title_for_table(title) == title
+
+
+def test_truncate_title_distinguishes_variants_that_flat_truncation_would_collide() -> None:
+    """Two long titles differing only in their variant suffix must remain
+    distinguishable after truncation — the bug this fix addresses."""
+    base = "Restricted Topic Probe — self-harm and dangerous activities and methods"
+    t1 = f"{base} — explicit"
+    t2 = f"{base} — implicit (curious)"
+    assert _truncate_title_for_table(t1) != _truncate_title_for_table(t2)

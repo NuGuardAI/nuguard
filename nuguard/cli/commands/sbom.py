@@ -177,14 +177,17 @@ def _validate_inputs(
             )
 
     # ── GitHub token ─────────────────────────────────────────────────────────
-    resolved_token = token or os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
-    if resolved_token is not None:
-        if len(resolved_token) < 20:  # noqa: PLR2004
+    # Only an explicit --token is validated strictly: a public repo needs no
+    # token at all, so an ambient GH_TOKEN/GITHUB_TOKEN env var that happens to
+    # be short-lived or malformed (e.g. Codespaces/CI defaults) must not block
+    # the whole scan — it is simply ignored later (see _resolve_token).
+    if token is not None:
+        if len(token) < 20:  # noqa: PLR2004
             _err(
                 "GitHub token appears too short to be valid.",
                 "Provide a valid personal access token (ghp_…, gho_…, github_pat_…).",
             )
-        if not any(resolved_token.startswith(p) for p in _GH_TOKEN_PREFIXES):
+        if not any(token.startswith(p) for p in _GH_TOKEN_PREFIXES):
             # Warn but don't block — could be a custom server token
             _err_console.print(
                 "[yellow]Warning:[/yellow] Token does not match a known GitHub "
@@ -221,8 +224,29 @@ def _inject_token(url: str, token: str) -> str:
 
 
 def _resolve_token(token: str | None) -> str | None:
-    """Return the first non-empty token from flag → GH_TOKEN → GITHUB_TOKEN."""
-    return token or os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN") or None
+    """Return the first usable token from flag → GH_TOKEN → GITHUB_TOKEN.
+
+    An explicit --token is trusted as-is (already validated in
+    _validate_inputs). A token picked up from the environment is silently
+    ignored if it is too short or malformed, since it was never a required
+    input — it's most likely an unrelated ambient token that would otherwise
+    break cloning of a public repo.
+    """
+    if token:
+        return token
+    env_token = os.environ.get("GH_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    if not env_token:
+        return None
+    if len(env_token) < 20 or not any(  # noqa: PLR2004
+        env_token.startswith(p) for p in _GH_TOKEN_PREFIXES
+    ):
+        _err_console.print(
+            "[yellow]Warning:[/yellow] Ignoring GH_TOKEN/GITHUB_TOKEN from the "
+            "environment — it does not look like a valid GitHub token. "
+            "Proceeding without authentication."
+        )
+        return None
+    return env_token
 
 
 def _do_generate(

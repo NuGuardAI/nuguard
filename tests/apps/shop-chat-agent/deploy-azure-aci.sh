@@ -32,7 +32,10 @@ LOCATION="${AZURE_LOCATION:-eastus}"
 ACR_NAME="${ACR_NAME:-nuguardshopchatacr$(openssl rand -hex 3)}"
 CONTAINER_NAME="${ACI_CONTAINER_NAME:-shop-chat-agent-nuguard-test}"
 DNS_LABEL="${ACI_DNS_LABEL:-shop-chat-agent-nuguard-$(openssl rand -hex 4)}"
-PORT="${PORT:-5501}"
+# 80 here is both the internal listen port and the public ACI port — the
+# app's Dockerfile has no USER directive (runs as root), so it can bind 80
+# directly, unlike phlox (see tests/apps/phlox-app/deploy-azure-aci.sh).
+PORT=80
 PUBLIC_URL="http://${DNS_LABEL}.${LOCATION}.azurecontainer.io:${PORT}"
 
 echo "Creating resource group $RESOURCE_GROUP in $LOCATION (idempotent)..."
@@ -47,7 +50,20 @@ ACR_USERNAME=$(az acr credential show --name "$ACR_NAME" --query username -o tsv
 ACR_PASSWORD=$(az acr credential show --name "$ACR_NAME" --query 'passwords[0].value' -o tsv)
 
 echo "Building shop-chat-agent image via ACR build (cloud build, no local Docker needed)..."
+cp seed-sessions.sql repo/seed-sessions.sql
 az acr build --registry "$ACR_NAME" --image "shop-chat-agent:latest" repo
+rm -f repo/seed-sessions.sql
+
+# Re-apply the (idempotent) seed on every boot so a restart/redeploy always
+# converges back to the same known canary state. dev.sqlite intentionally
+# stays on the container's local ephemeral disk, NOT an Azure Files volume —
+# SQLite needs real byte-range file locking, which Azure Files (SMB) does not
+# reliably provide; mounting the DB there causes exit-code-1 crash loops
+# within seconds of "prisma migrate deploy" / server startup touching the
+# file. Losing in-run chat/conversation history on restart is an acceptable
+# trade-off for a test target; the canary Session profiles are what matter
+# and those are always freshly reseeded.
+STARTUP_CMD='sh -c '\''npm run setup && ( cat seed-sessions.sql | npx prisma db execute --schema=./prisma/schema.prisma --stdin || true ) && npm run start'\'''
 
 echo "Deploying container instance $CONTAINER_NAME..."
 az container create \
@@ -62,6 +78,7 @@ az container create \
   --os-type Linux \
   --ports "$PORT" \
   --dns-name-label "$DNS_LABEL" \
+  --command-line "$STARTUP_CMD" \
   --environment-variables \
     AZURE_OPENAI_ENDPOINT="${AZURE_OPENAI_ENDPOINT:-}" \
     AZURE_OPENAI_MODEL_NAME="${AZURE_OPENAI_MODEL_NAME:-}" \

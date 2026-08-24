@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from nuguard.redteam.target.log_reader import BufferLogReader, FileLogReader
     from nuguard.sbom.models import AiSbomDocument
 
+from nuguard.common.response_data_check import DataExposureResult, check_response_for_data_exposure
 from nuguard.models.exploit_chain import HTTP_2XX_SENTINEL, ExploitChain, ExploitStep, GoalType
 from nuguard.models.policy import CognitivePolicy
 from nuguard.redteam.llm_engine.adaptive_mutation import AdaptiveMutationStrategy
@@ -249,6 +250,9 @@ class StepResult:
         # by the evaluator and discarded here; now carried through so
         # _build_findings can wire it into Finding.remediation.
         self.llm_eval_remediation_hint: str = ""
+        # Closed-taxonomy reason the judge gave for a refusal (content_filter,
+        # hitl_check, topic_guardrail, ...) — surfaced on Finding.guardrail_control.
+        self.llm_eval_refusal_reason: str = ""
         # Which judge produced llm_eval_evidence/llm_eval_confidence above:
         # "llm_eval" (LLMResponseEvaluator's actual model call) or
         # "golden_filter" (deterministic golden-data classifier — see
@@ -267,6 +271,12 @@ class StepResult:
         self.artifact_hit: bool = False
         # Egress-trap hits (set by orchestrator after scenario completes)
         self.egress_trap_hits: list[str] = []
+        # Set for direct-HTTP (target_path) steps: whether the response body
+        # actually shows evidence of exposed data (PII-shaped values, a bulk
+        # record list, or SBOM-declared sensitive field names) — see
+        # response_data_check.check_response_for_data_exposure. None for
+        # chat-routed steps.
+        self.data_exposure: DataExposureResult | None = None
 
 
 def _make_discover_step(chain_id: str, target_node_id: str) -> ExploitStep:
@@ -827,8 +837,13 @@ class AttackExecutor:
                 method=step.http_method,
                 body=step.http_body,
                 params=step.http_params or None,
+                strip_auth=step.strip_auth,
             )
-            if status_code == 401 and await _refresh_auth_headers():
+            # A 401 retry-with-refreshed-auth makes no sense for a step whose
+            # entire point is to probe *without* auth — refreshing and retrying
+            # would defeat strip_auth and could turn a correct 401 rejection
+            # into a false-positive 2xx "bypass".
+            if status_code == 401 and not step.strip_auth and await _refresh_auth_headers():
                 _log.info(
                     "Chain %s step %s: 401 received on %s %s, retrying after auth refresh",
                     chain.chain_id,
@@ -841,6 +856,7 @@ class AttackExecutor:
                     method=step.http_method,
                     body=step.http_body,
                     params=step.http_params or None,
+                    strip_auth=step.strip_auth,
                 )
             tool_calls: list[dict] = []
             # Log the request path as the prompt for session continuity / audit
@@ -870,6 +886,17 @@ class AttackExecutor:
                     step.target_path,
                 )
                 result.success_signal_found = False
+
+            # Data-exposure check: a 2xx status code alone is not proof the
+            # endpoint leaked anything — parse the body for PII-shaped
+            # values, a bulk record list, or SBOM-declared sensitive field
+            # names. Computed here (before LLM eval) so it can feed the LLM
+            # evidence bundle; the deterministic gate that uses it lives
+            # after the LLM-eval block below, since it only applies when no
+            # LLM judge actually adjudicated this step.
+            result.data_exposure = check_response_for_data_exposure(
+                response, step.sensitive_fields
+            )
             result.resolved_payload = _resolved_payload
         else:
             if self._app_log_reader:
@@ -1079,12 +1106,14 @@ class AttackExecutor:
                 response=response,
                 golden_data=session.golden_data,
                 app_log_context=app_log_context,
+                sensitive_fields=step.sensitive_fields if step.target_path else None,
             )
             if llm_eval.get("confidence") in ("high", "medium"):
                 result.success_signal_found = bool(llm_eval.get("succeeded", False))
                 result.llm_eval_evidence = llm_eval.get("evidence", "")
                 result.llm_eval_confidence = llm_eval.get("confidence", "")
                 result.llm_eval_remediation_hint = llm_eval.get("remediation_hint", "") or ""
+                result.llm_eval_refusal_reason = llm_eval.get("refusal_reason", "") or ""
                 result.evidence_source = "llm_eval"
                 _log.info(
                     "LLM eval | step=%s succeeded=%s confidence=%s evidence=%r",
@@ -1093,6 +1122,26 @@ class AttackExecutor:
                     result.llm_eval_confidence,
                     result.llm_eval_evidence,
                 )
+
+        # Deterministic fallback gate for direct-HTTP HTTP_2XX_SENTINEL steps
+        # (AUTH_BYPASS/BFLA/RATE_LIMIT_PROBE/IDOR) when no LLM judge actually
+        # adjudicated this step (evaluator not configured, or skipped for a
+        # client/transient error): a bare 2xx is not evidence of exposure on
+        # its own, so require the response body to actually show it.
+        if (
+            step.target_path
+            and step.success_signal == HTTP_2XX_SENTINEL
+            and result.success_signal_found
+            and result.evidence_source != "llm_eval"
+            and result.data_exposure is not None
+            and not result.data_exposure.exposed
+        ):
+            _log.debug(
+                "Step %s: 2xx received but no LLM judge available and response "
+                "shows no evidence of data exposure — not counting as a finding",
+                step.step_id,
+            )
+            result.success_signal_found = False
 
         # Policy evaluation — only for chat/agent interactions, not direct HTTP
         # attacks.  REST API endpoints can return error responses (4xx/5xx) that

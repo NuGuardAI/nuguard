@@ -49,6 +49,7 @@ def to_json(
     output_tokens_used: int = 0,
     token_usage: "TokenUsage | None" = None,
     scenario_records: list | None = None,
+    security_invariants: list | None = None,
 ) -> str:
     """Generate a JSON report string from red-team findings.
 
@@ -82,6 +83,12 @@ def to_json(
     }
     if meta.verbose and scenario_records:
         payload["diagnostics"] = _build_redteam_diagnostics(scenario_records)
+    if security_invariants:
+        payload["security_invariants"] = [
+            i.model_dump() if hasattr(i, "model_dump") else i for i in security_invariants
+        ]
+    if scenario_records:
+        payload["phases"] = _phase_summary_rows(findings, scenario_records)
     return json.dumps(payload, indent=2, default=str)
 
 
@@ -92,6 +99,7 @@ def to_markdown(
     scenario_records: list | None = None,
     catalog_coverage: "object | None" = None,
     coverage_tracker: "object | None" = None,
+    security_invariants: list | None = None,
 ) -> str:
     """Render red-team findings as a Markdown report string.
 
@@ -170,7 +178,11 @@ def to_markdown(
         )
     # ---------------------------------------------------------------------------
 
+    if security_invariants:
+        lines += _security_invariants_section(security_invariants)
+
     if scenario_records:
+        lines += _phase_summary_section(findings, scenario_records)
         lines += _scenario_coverage_table(scenario_records)
 
     # Catalog coverage report (Phase 2 — capability-aware catalog). Accepts
@@ -339,6 +351,67 @@ def _build_redteam_diagnostics(scenario_records: list) -> dict[str, Any]:
     }
 
 
+def _security_invariants_section(security_invariants: list) -> list[str]:
+    """Render the Phase 0 security-invariant list (docs/claude-redteam-3.md §3)."""
+    lines = ["## Security Invariants", "", "Pass/fail criteria this engagement tested against:", ""]
+    lines.append("| ID | Statement | Source |")
+    lines.append("|---|---|---|")
+    for inv in security_invariants:
+        _id = getattr(inv, "id", None) or (inv.get("id") if isinstance(inv, dict) else "")
+        statement = getattr(inv, "statement", None) or (inv.get("statement") if isinstance(inv, dict) else "")
+        source = getattr(inv, "source", None) or (inv.get("source") if isinstance(inv, dict) else "")
+        lines.append(f"| {_id} | {statement} | {source} |")
+    lines.append("")
+    return lines
+
+
+def _phase_summary_rows(findings: list, scenario_records: list) -> list[dict]:
+    """Group findings/scenarios by progressive phase (docs/claude-redteam-3.md §7)."""
+    from nuguard.redteam.scenarios.phases import PROGRESSIVE_PHASES, progressive_phase_for
+
+    scenario_counts: dict[int, int] = {}
+    for rec in scenario_records:
+        st = getattr(rec, "scenario_type", None) or (rec.get("scenario_type") if isinstance(rec, dict) else "")
+        phase_id = progressive_phase_for(str(st or ""))
+        scenario_counts[phase_id] = scenario_counts.get(phase_id, 0) + 1
+
+    finding_counts: dict[int, dict[str, int]] = {}
+    for f in findings:
+        st = getattr(f, "scenario_type", None) or ""
+        st = st.value if hasattr(st, "value") else str(st)
+        phase_id = progressive_phase_for(st)
+        sev = f.severity.value.upper() if hasattr(f.severity, "value") else str(f.severity).upper()
+        bucket = finding_counts.setdefault(phase_id, {})
+        bucket[sev] = bucket.get(sev, 0) + 1
+
+    rows: list[dict] = []
+    for phase in PROGRESSIVE_PHASES:
+        if phase.id not in scenario_counts and phase.id not in finding_counts:
+            continue
+        rows.append(
+            {
+                "phase_id": phase.id,
+                "name": phase.name,
+                "scenarios_run": scenario_counts.get(phase.id, 0),
+                "findings_by_severity": finding_counts.get(phase.id, {}),
+            }
+        )
+    return rows
+
+
+def _phase_summary_section(findings: list, scenario_records: list) -> list[str]:
+    """Render the ``## Phase-by-Phase Summary`` Markdown table (progressive mode)."""
+    rows = _phase_summary_rows(findings, scenario_records)
+    if not rows:
+        return []
+    lines = ["## Phase-by-Phase Summary", "", "| Phase | Scenarios | Findings (by severity) |", "|---|---|---|"]
+    for row in rows:
+        sev_str = ", ".join(f"{k}: {v}" for k, v in row["findings_by_severity"].items()) or "none"
+        lines.append(f"| {row['phase_id']} — {row['name']} | {row['scenarios_run']} | {sev_str} |")
+    lines.append("")
+    return lines
+
+
 # ---------------------------------------------------------------------------
 # Internal helpers (not part of the public API)
 # ---------------------------------------------------------------------------
@@ -370,7 +443,7 @@ def _attack_coverage_summary(scenario_records: list) -> list[str]:
     Goal types are derived from actual scenario records (no hardcoded universe).
     Not Tested = chain_status in {skipped, similar_miss, failed, aborted}.
     """
-    _NOT_TESTED = {"skipped", "similar_miss", "failed", "aborted"}
+    _NOT_TESTED = {"skipped", "similar_miss", "failed", "aborted", "target_unreachable"}
 
     # Accumulate per-goal-type counts
     goal_data: dict[str, dict[str, int]] = {}
@@ -424,7 +497,7 @@ def _universal_safety_summary(scenario_records: list) -> list[str]:
     the full Scenario Coverage table.  Returns ``[]`` when no universal-safety
     scenarios are present (e.g. the app's own policy already covers all of them).
     """
-    _NOT_TESTED = {"skipped", "similar_miss", "failed", "aborted"}
+    _NOT_TESTED = {"skipped", "similar_miss", "failed", "aborted", "target_unreachable"}
     by_category: dict[str, dict[str, int]] = {}
     for r in scenario_records:
         m = _UNIVERSAL_SAFETY_TITLE_RE.match(_r(r, "title", "") or "")
@@ -454,6 +527,66 @@ def _r(r: Any, key: str, default: Any = None) -> Any:
     if isinstance(r, dict):
         return r.get(key, default)
     return getattr(r, key, default)
+
+
+# Human-readable reasons rendered in the Turns column when a scenario never
+# actually ran (turns_used == turns_budget == 0). Keys match chain_status
+# values set by RedteamOrchestrator._run_scenarios (see _skipped_record()
+# there); an "aborted:<reason>" status falls back to the generic "aborted"
+# entry after stripping the suffix.
+_ZERO_TURN_REASONS: dict[str, str] = {
+    "skipped": "circuit breaker open",
+    "aborted": "target unavailable",
+    "target_unreachable": "direct-HTTP endpoint unreachable",
+    "similar_miss": "similar attack already missed",
+    "failed": "scenario failed to build",
+    "timeout": "scenario timed out",
+}
+
+
+def _turns_cell_with_reason(turns_cell: str, chain_status: str) -> str:
+    """Annotate a bare ``"0/0"`` Turns cell with why the scenario never ran.
+
+    ``turns_used``/``turns_budget`` default to 0 for scenarios that were
+    skipped/aborted before executing any step (see ``ScenarioRecord`` in
+    ``nuguard.redteam.executor.orchestrator``), which otherwise renders as an
+    unexplained bare ``"0/0"`` in the report. Normally-executed scenarios
+    (non-zero turns, or ``chain_status == "completed"``) are returned
+    unchanged.
+    """
+    if turns_cell != "0/0" or not chain_status or chain_status == "completed":
+        return turns_cell
+    reason_key = chain_status.split(":", 1)[0]
+    reason = _ZERO_TURN_REASONS.get(reason_key, reason_key.replace("_", " "))
+    return f"{turns_cell} — {reason}"
+
+
+def _truncate_title_for_table(title: str, max_len: int = 60) -> str:
+    """Truncate *title* to fit the coverage table, preserving a trailing variant suffix.
+
+    Many scenario titles end with a distinguishing ``" — <variant>"`` suffix
+    (e.g. ``"Restricted Topic Probe — explicit"`` vs. ``"... — implicit
+    (curious)"``). A plain ``title[:max_len]`` truncation strips that suffix on
+    long titles, making genuinely distinct scenarios look identical in the
+    report. Instead, split off the last ``" — "``-delimited segment first,
+    truncate only the leading portion to fit the budget, then re-append the
+    suffix — so distinct variants stay visually distinct even when the title
+    as a whole runs over *max_len*.
+    """
+    if len(title) <= max_len:
+        return title
+    if " — " in title:
+        head, suffix = title.rsplit(" — ", 1)
+        suffix = f" — {suffix}"
+    else:
+        head, suffix = title, ""
+    head_budget = max_len - len(suffix)
+    if head_budget <= 0:
+        # Suffix alone doesn't fit either — fall back to a flat truncation.
+        return title[:max_len] + "…"
+    if len(head) > head_budget:
+        head = head[: max(0, head_budget - 1)].rstrip() + "…"
+    return head + suffix
 
 
 def _scenario_coverage_table(scenario_records: list) -> list[str]:
@@ -493,7 +626,7 @@ def _scenario_coverage_table(scenario_records: list) -> list[str]:
 
     for idx, r in enumerate(records, start=1):
         title_str = _r(r, "title", "") or ""
-        title = title_str[:60] + ("…" if len(title_str) > 60 else "")
+        title = _truncate_title_for_table(title_str)
         goal_type_str = _r(r, "goal_type", "") or ""
         goal = _GOAL_LABEL.get(goal_type_str, goal_type_str.replace("_", " ").title())
         had_finding = bool(_r(r, "had_finding", False))
@@ -502,7 +635,9 @@ def _scenario_coverage_table(scenario_records: list) -> list[str]:
         if turns_used is None:
             turns_used = len(_r(r, "steps", []) or [])
         turns_budget = _r(r, "turns_budget", 0) or turns_used
-        turns_cell = f"{turns_used}/{turns_budget}"
+        turns_cell = _turns_cell_with_reason(
+            f"{turns_used}/{turns_budget}", _r(r, "chain_status", "") or ""
+        )
         duration = _r(r, "duration_s", 0.0) or 0.0
         dur_cell = _fmt_duration(duration)
         avg_cell = _fmt_avg(duration, turns_used)

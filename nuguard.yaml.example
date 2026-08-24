@@ -128,8 +128,28 @@ behavior:
 
   # Hard cap on total scenarios executed (after deduplication).
   # Preserves category priority order: topic_coverage → agent_tool_coverage →
-  # guardrail_coverage → data_discovery_probe. Omit for no cap.
-  # max_scenarios: 20
+  # guardrail_coverage → data_discovery_probe (default: 100). Set to null for no cap.
+  # max_scenarios: 100
+
+  # Retry a tool-coverage probe with an escalating ladder of phrasings (explicit
+  # SBOM name/description, then a precondition setup turn) when the response looks
+  # like a canned refusal, instead of accepting one refusal as final (default: false).
+  # escalate_on_refusal: true
+
+  # Max attempts per tool (including the first natural-phrasing attempt) when
+  # escalate_on_refusal is enabled (default: 3).
+  # escalation_max_attempts: 3
+
+  # Consecutive identical-refusal-classification attempts across a tool family
+  # (same owning agent, or standalone tools) before the family is tagged
+  # systemic_deflection and skipped for the rest of the run (default: 3).
+  # escalation_circuit_breaker_threshold: 3
+
+  # Run one lightweight reachability probe per agent/tool-family before building
+  # the full scenario set, then schedule probed-reachable families ahead of
+  # probed-blocked families within max_scenarios (most useful together with
+  # escalate_on_refusal; default: false).
+  # prioritize_by_probe: true
 
   # Canary seed file — same file used by redteam canary scanning.
   # canary: ./canary.json
@@ -255,6 +275,23 @@ redteam:
   #   standard — balanced; score ≥ 3, capped at ~40 scenarios
   #   full     — all capability-gated scenarios; ≥ 50 on feature-rich targets
   profile: full
+
+  # Execution mode (see docs/claude-redteam-3.md):
+  #   concurrent  — (default) phase-gated with intra-phase parallelism, existing behavior
+  #   progressive — strictly sequential named 0-12 pentest-style engagement (Security
+  #                 Invariants -> Boundary Discovery -> ... -> Recovery Testing), one
+  #                 scenario at a time so the target app is never asked two adversarial
+  #                 things "at once". Adds off-topic resistance, scripted identity/role
+  #                 escalation, document memory poisoning, and recovery-verification
+  #                 scenarios on top of the existing catalog.
+  # mode: progressive
+  progressive:
+    # Phase gate: 'none' (default) always runs every phase regardless of earlier
+    # findings, for a complete report. 'high' or 'critical' stop dispatching further
+    # phases once a finding at or above that severity is confirmed in the
+    # just-completed phase (remaining phases are recorded as skipped, not silently
+    # omitted). Only applies when mode: progressive.
+    halt_on_severity: none
 
   # Custom scenario catalog — export the built-in catalog as a starting point,
   # edit it, then point here to use your customised version:

@@ -292,6 +292,12 @@ def _flatten_yaml(data: dict[str, Any]) -> dict[str, Any]:
     # nuguard.yaml files.
     if "profile" in redteam:
         flat["redteam_profile"] = redteam["profile"]
+    if "mode" in redteam:
+        flat["redteam_mode"] = str(redteam["mode"])
+    if "progressive" in redteam and isinstance(redteam["progressive"], dict):
+        _prog = redteam["progressive"]
+        if "halt_on_severity" in _prog:
+            flat["redteam_progressive_halt_on_severity"] = str(_prog["halt_on_severity"])
     if "catalog_path" in redteam:
         flat["redteam_catalog_path"] = str(redteam["catalog_path"])
     if "min_impact_score" in redteam:
@@ -778,12 +784,56 @@ class BehaviorConfig(BaseModel):
         ),
     )
     max_scenarios: int | None = Field(
-        default=None,
+        default=100,
         ge=1,
         description=(
             "Hard cap on the total number of scenarios executed. "
-            "Applied after deduplication, preserving priority order: L1, L2, L3, L4, L5. "
-            "None (default) means no cap."
+            "Applied after deduplication, preserving priority order: L1, L2, L3, L4, L5 "
+            "(and, when prioritize_by_probe is enabled, demoting probed-blocked tool "
+            "families within that order — see prioritize_by_probe). "
+            "Set to null/None for no cap."
+        ),
+    )
+    escalate_on_refusal: bool = Field(
+        default=False,
+        description=(
+            "When a tool-coverage probe's response looks like a canned refusal "
+            "(see nuguard.behavior.refusal.classify_refusal), retry with an "
+            "escalating ladder of phrasings — explicit SBOM name/description, then "
+            "(for missing-precondition refusals) a setup turn establishing context — "
+            "before giving up on that tool. Default off so existing scenario/report "
+            "snapshots are unaffected."
+        ),
+    )
+    escalation_max_attempts: int = Field(
+        default=3,
+        ge=1,
+        le=5,
+        description=(
+            "Max attempts (including the first, natural-phrasing attempt) per tool "
+            "before giving up when escalate_on_refusal is enabled."
+        ),
+    )
+    escalation_circuit_breaker_threshold: int = Field(
+        default=3,
+        ge=1,
+        description=(
+            "Consecutive escalation attempts across a tool family (same owning agent, "
+            "or the __standalone__ group) that return the SAME refusal classification "
+            "before the whole family is tagged systemic_deflection and skipped for the "
+            "rest of the run. Only applies when escalate_on_refusal is enabled."
+        ),
+    )
+    prioritize_by_probe: bool = Field(
+        default=False,
+        description=(
+            "Run one lightweight reachability probe per agent/tool-family before "
+            "building the full tool-coverage scenario set, then schedule scenarios for "
+            "probed-reachable (or not-yet-probed) families ahead of probed-blocked "
+            "families within max_scenarios, and record blocked-and-cut families "
+            "distinctly as deprioritized rather than silently dropped. Most useful "
+            "together with escalate_on_refusal (which additionally retries blocked "
+            "tools within a scenario), but toggles independently."
         ),
     )
 
@@ -1046,6 +1096,23 @@ class NuGuardConfig(BaseSettings):
         description=(
             "Scan profile: 'ci' (fast, ≥5 impact), 'standard' (≥3 impact, ~30 scenarios), "
             "or 'full' (all scenarios, ≥50 on rich SBOMs) (yaml: redteam.profile)."
+        ),
+    )
+    redteam_mode: str = Field(
+        default="concurrent",
+        description=(
+            "'concurrent' (default, existing behavior — phase-gated with intra-phase "
+            "parallelism) or 'progressive' (strictly sequential named 0-12 phase "
+            "engagement, see docs/claude-redteam-3.md) (yaml: redteam.mode)."
+        ),
+    )
+    redteam_progressive_halt_on_severity: str = Field(
+        default="none",
+        description=(
+            "Progressive-mode phase gate: 'none' (default — run every phase regardless "
+            "of findings), 'high', or 'critical' (stop dispatching further phases once a "
+            "finding at or above this severity is confirmed in the just-completed phase) "
+            "(yaml: redteam.progressive.halt_on_severity)."
         ),
     )
     redteam_catalog_path: str | None = Field(

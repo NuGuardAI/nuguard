@@ -674,3 +674,144 @@ async def test_default_config_does_not_emit_guided_scenarios():
     intent = _make_intent()
     scenarios = await build_scenarios(config=config, intent=intent, sbom=sbom, llm_client=None)
     assert not [s for s in scenarios if s.scenario_type == BehaviorScenarioType.GUIDED_COVERAGE]
+
+
+# ---------------------------------------------------------------------------
+# prioritize_by_probe: demote/deprioritize scenarios from probed-blocked
+# tool families within the max_scenarios cap
+# ---------------------------------------------------------------------------
+
+
+def _make_sbom_with_calls(agent_tools: dict[str, list[str]]):
+    """Build an SBOM with explicit AGENT -> TOOL CALLS edges per agent."""
+    import uuid as _uuid
+
+    from nuguard.sbom.models import (
+        AiSbomDocument,
+        Edge,
+        EdgeRelationshipType,
+        Node,
+        NodeMetadata,
+        NodeType,
+    )
+
+    ns = _uuid.NAMESPACE_URL
+    nodes: list[Node] = []
+    edges: list[Edge] = []
+    for agent_name, tool_names in agent_tools.items():
+        agent_id = _uuid.uuid5(ns, f"agent/{agent_name}")
+        nodes.append(Node(
+            id=agent_id,
+            name=agent_name,
+            component_type=NodeType.AGENT,
+            confidence=0.9,
+            metadata=NodeMetadata(description=f"{agent_name} handles requests"),
+        ))
+        for tool_name in tool_names:
+            tool_id = _uuid.uuid5(ns, f"tool/{agent_name}/{tool_name}")
+            nodes.append(Node(
+                id=tool_id,
+                name=tool_name,
+                component_type=NodeType.TOOL,
+                confidence=0.9,
+                metadata=NodeMetadata(description=f"{tool_name} tool"),
+            ))
+            edges.append(Edge(
+                source=agent_id,
+                target=tool_id,
+                relationship_type=EdgeRelationshipType.CALLS,
+            ))
+    return AiSbomDocument(target="./test-app", nodes=nodes, edges=edges)
+
+
+@pytest.mark.asyncio
+async def test_prioritize_by_probe_demotes_blocked_family_scenarios():
+    """Scenarios from a probed-blocked family sink to the end of the list,
+    as a stable demotion within (not a replacement for) the existing L1-L5
+    category ordering — the reachable family's scenarios keep their spot."""
+
+    class _Cfg:
+        workflows: list[str] = ["agent_tool_coverage"]
+        boundary_assertions: list[object] = []
+        tool_chain_size = 10  # keep each agent's tools in a single scenario
+
+    sbom = _make_sbom_with_calls({
+        "ReachableAgent": ["get_thing"],
+        "BlockedAgent": ["do_thing"],
+    })
+    intent = _make_intent()
+    family_probe_results = {"ReachableAgent": "reachable", "BlockedAgent": "blocked"}
+
+    scenarios = await build_scenarios(
+        config=_Cfg(), intent=intent, sbom=sbom, llm_client=None,
+        family_probe_results=family_probe_results,
+    )
+    tool_coverage = [s for s in scenarios if s.scenario_type == BehaviorScenarioType.COMPONENT_COVERAGE]
+    assert len(tool_coverage) == 2
+    # The blocked family's scenario must come after the reachable one.
+    families = [s.scoped_agents[0] if s.scoped_agents else None for s in tool_coverage]
+    assert families.index("BlockedAgent") > families.index("ReachableAgent")
+
+
+@pytest.mark.asyncio
+async def test_prioritize_by_probe_records_deprioritized_cut_scenarios():
+    """Scenarios cut by max_scenarios specifically because their family probed
+    blocked are recorded in deprioritized_out (a subset of skipped_out), not
+    silently dropped or lumped in with an arbitrary cap cut."""
+
+    class _Cfg:
+        workflows: list[str] = ["agent_tool_coverage"]
+        boundary_assertions: list[object] = []
+        tool_chain_size = 10
+        # Room for ReachableAgent's 2 scenarios (agent + tool coverage) but not
+        # BlockedAgent's — demotion must put ReachableAgent's ahead so they
+        # survive the cap and BlockedAgent's are what gets cut.
+        max_scenarios = 2
+
+    sbom = _make_sbom_with_calls({
+        "ReachableAgent": ["get_thing"],
+        "BlockedAgent": ["do_thing"],
+    })
+    intent = _make_intent()
+    family_probe_results = {"ReachableAgent": "reachable", "BlockedAgent": "blocked"}
+    skipped: list[str] = []
+    deprioritized: list[str] = []
+
+    scenarios = await build_scenarios(
+        config=_Cfg(), intent=intent, sbom=sbom, llm_client=None,
+        family_probe_results=family_probe_results,
+        skipped_out=skipped, deprioritized_out=deprioritized,
+    )
+    tool_coverage_names = {
+        s.name for s in scenarios if s.scenario_type == BehaviorScenarioType.COMPONENT_COVERAGE
+    }
+    # ReachableAgent's tool-coverage scenario survives the cap; BlockedAgent's
+    # is cut and recorded as deprioritized (a subset of skipped_out).
+    assert len(tool_coverage_names) == 1
+    assert not any("blockedagent" in n.lower() for n in tool_coverage_names)
+    assert deprioritized, "expected at least one scenario recorded as deprioritized"
+    assert set(deprioritized).issubset(set(skipped))
+
+
+@pytest.mark.asyncio
+async def test_no_family_probe_results_leaves_ordering_unchanged():
+    """Without family_probe_results (prioritize_by_probe off, the default),
+    scenario ordering and skipped/deprioritized bookkeeping are unaffected."""
+
+    class _Cfg:
+        workflows: list[str] = ["agent_tool_coverage"]
+        boundary_assertions: list[object] = []
+        tool_chain_size = 10
+
+    sbom = _make_sbom_with_calls({
+        "ReachableAgent": ["get_thing"],
+        "BlockedAgent": ["do_thing"],
+    })
+    intent = _make_intent()
+    deprioritized: list[str] = []
+    scenarios = await build_scenarios(
+        config=_Cfg(), intent=intent, sbom=sbom, llm_client=None,
+        deprioritized_out=deprioritized,
+    )
+    assert deprioritized == []
+    assert len(scenarios) > 0

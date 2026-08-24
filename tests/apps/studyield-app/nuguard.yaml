@@ -36,11 +36,19 @@ sbom_generation:
 target:
   # Backend API — API_PREFIX=api/v1 (see backend/.env.example), e.g. /api/v1/chat.
   # url: http://localhost:3010
-  url: http://57.162.113.55
+  #url: http://57.162.113.55
+  url: http://studyield-nuguard-7b904de1.eastus2.azurecontainer.io
+  
 
-  # Chat/RAG endpoint — confirm against the generated SBOM; likely /api/v1/chat
-  # or /api/v1/ai/chat.
-  # endpoint: /api/v1/chat
+  # Chat/RAG endpoint. Explicit so auto-discovery doesn't pick a different
+  # POST route (e.g. an /ai/generate-* one-shot endpoint, or the sibling
+  # "Create Conversation" resource endpoint) instead of the real chat route.
+  # This is a two-step (":id" path-param) endpoint — the SBOM's
+  # path_param_sources metadata makes NuGuard bootstrap a conversation via
+  # POST /api/v1/chat/conversations first, then substitute its id here (see
+  # tests/apps/studyield-app/2-step-chat.md).
+  endpoint: /api/v1/chat/conversations/:id/messages
+  chat_payload_key: content
 
   auth:
     # Studyield requires a registered account (JWT access/refresh tokens).

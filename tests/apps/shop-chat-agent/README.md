@@ -61,6 +61,7 @@ longer crashes destructuring `mcpApiUrl` from a `null` result, and
 | `clone-shop-chat-agent.sh` | Shallow-clone the source into `./repo/` (gitignored) |
 | `start-local.sh` | Build/run shop-chat-agent locally via its own `Dockerfile` |
 | `canary.example.json` | Synthetic conversation canary for behavior/redteam scanning |
+| `seed-sessions.sql` | Synthetic Session-table "user profiles" (Prisma/SQLite) — re-applied idempotently on every Azure container boot, see `deploy-azure-aci.sh` |
 | `shop-chat-agent-test.sh` | Full pipeline: sbom → policy draft/compile/check → analyze → behavior → redteam |
 | `shop-chat-agent.ground-truth.sbom.json` | Hand-curated reference SBOM to benchmark `nuguard sbom generate` output against |
 

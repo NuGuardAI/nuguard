@@ -32,7 +32,8 @@ sbom_generation:
 
 # ─── Target application ────────────────────────────────────────────────────────
 target:
-  url: http://localhost:5000
+#  url: http://localhost:5000
+  url: http://phlox-nuguard-039182d3.eastus2.azurecontainer.io:80
 
   # Chat/agent endpoint — pinned explicitly because auto-discovery was picking
   # /api/chat/respond-visual (a vision-only route that 400s without page
@@ -53,6 +54,8 @@ behavior:
   isolate_scenarios: true
   judge_concurrency: 5
   capability_discovery: true
+  escalate_on_refusal: true
+  prioritize_by_probe: true
 
 # ─── Red-team ───────────────────────────────────────────────────────────────────
 redteam:

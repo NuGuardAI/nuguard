@@ -413,3 +413,72 @@ async def test_send_sse_response_does_not_trip_circuit_breaker():
             text, _ = await client.send("hi", _session())
             assert not text.startswith("[REQUEST_ERROR:")
     assert client._consecutive_errors == 0
+
+
+# ── Direct-HTTP endpoint-probe errors use an isolated counter ────────────────
+# Fix 1: invoke_endpoint() connection-level failures (auth-bypass/IDOR/
+# mass-assignment/BFLA probes against SBOM-derived REST paths) must NOT share
+# the chat-path circuit breaker (_consecutive_errors) — an unreachable direct-
+# HTTP path would otherwise abort unrelated, still-healthy chat scenarios.
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_invoke_endpoint_network_error_uses_separate_counter():
+    """A connection failure on invoke_endpoint() advances _consecutive_endpoint_errors,
+    not the chat-path _consecutive_errors counter."""
+    respx.post(f"{BASE}/api/resource").mock(side_effect=httpx.ConnectError("refused"))
+    client = await _client()
+    async with client:
+        status, text, _json = await client.invoke_endpoint("/api/resource", method="POST")
+    assert status == 0
+    assert text.startswith("[REQUEST_ERROR:")
+    assert client._consecutive_endpoint_errors == 1
+    assert client._consecutive_errors == 0
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_invoke_endpoint_network_error_trips_its_own_breaker():
+    """MAX_CONSECUTIVE_ERRORS consecutive invoke_endpoint() connection failures raise
+    TargetUnavailableError(source="endpoint_probe") without touching the chat counter."""
+    respx.post(f"{BASE}/api/resource").mock(side_effect=httpx.ConnectError("refused"))
+    client = await _client()
+    async with client:
+        with pytest.raises(TargetUnavailableError) as excinfo:
+            for _ in range(MAX_CONSECUTIVE_ERRORS + 1):
+                await client.invoke_endpoint("/api/resource", method="POST")
+    assert excinfo.value.source == "endpoint_probe"
+    assert client._consecutive_errors == 0
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_chat_errors_do_not_advance_endpoint_probe_counter():
+    """Chat send() network failures advance _consecutive_errors only, leaving the
+    direct-HTTP endpoint-probe counter untouched."""
+    respx.post(f"{BASE}{CHAT}").mock(side_effect=httpx.ConnectError("refused"))
+    client = await _client()
+    async with client:
+        await client.send("probe", _session())
+    assert client._consecutive_errors == 1
+    assert client._consecutive_endpoint_errors == 0
+
+
+@pytest.mark.asyncio
+@respx.mock
+async def test_invoke_endpoint_success_resets_endpoint_probe_counter():
+    """Any completed direct-HTTP response (even a 4xx/5xx) resets the endpoint-probe
+    counter — the path is reachable, it just rejected this particular probe."""
+    route = respx.post(f"{BASE}/api/resource")
+    route.side_effect = [
+        httpx.ConnectError("refused"),
+        httpx.Response(404, json={}),
+    ]
+    client = await _client()
+    async with client:
+        await client.invoke_endpoint("/api/resource", method="POST")
+        assert client._consecutive_endpoint_errors == 1
+        status, _text, _json = await client.invoke_endpoint("/api/resource", method="POST")
+    assert status == 404
+    assert client._consecutive_endpoint_errors == 0

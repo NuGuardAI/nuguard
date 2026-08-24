@@ -1,1 +1,0 @@
-NuGuard AI takes minutes to deploy, and supports the most secure deployments (air-gapped).

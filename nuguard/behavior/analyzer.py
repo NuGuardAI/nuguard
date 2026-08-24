@@ -93,6 +93,7 @@ class BehaviorAnalyzer:
         coverage = []
         scenario_results = []
         skipped_scenario_names: list[str] = []
+        deprioritized_scenario_names: list[str] = []
         _dynamic_run_result = None  # captured for abort/inconclusive propagation
         _dynamic_scan_outcome = None
 
@@ -226,6 +227,20 @@ class BehaviorAnalyzer:
                 )
                 pre_scan_profile = await runner.discover()
 
+                # ── Optional tool-family reachability probe ──────────────
+                # When enabled, run one lightweight probe per agent/tool-family
+                # up front so build_scenarios can schedule probed-reachable
+                # families ahead of probed-blocked ones within max_scenarios,
+                # instead of spending the scenario budget hammering tools that
+                # are refused/blocked before any real scenario runs.
+                family_probe_results: dict[str, str] | None = None
+                if bool(getattr(self._config, "prioritize_by_probe", False)):
+                    family_probe_results = await runner.probe_tool_families()
+                    _log.info(
+                        "BehaviorAnalyzer.analyze: tool-family probe results: %s",
+                        family_probe_results,
+                    )
+
                 # ── Golden-data fallback ─────────────────────────────────
                 # When live discovery returns nothing, build a DiscoveredProfile
                 # from config-supplied golden_data so test payloads use real
@@ -269,6 +284,8 @@ class BehaviorAnalyzer:
                         llm_client=self._llm,
                         skipped_out=skipped_scenario_names,
                         pre_scan_profile=pre_scan_profile,
+                        family_probe_results=family_probe_results,
+                        deprioritized_out=deprioritized_scenario_names,
                     )
                     # Only cache when there is no personalised profile so
                     # the cached scenarios are reusable across sessions.
@@ -313,6 +330,7 @@ class BehaviorAnalyzer:
             coverage=coverage,
             scenario_results=scenario_results,
             scenarios_skipped=skipped_scenario_names,
+            scenarios_deprioritized=deprioritized_scenario_names,
         )
         if _dynamic_scan_outcome is not None:
             result.dynamic_scan_outcome = _dynamic_scan_outcome

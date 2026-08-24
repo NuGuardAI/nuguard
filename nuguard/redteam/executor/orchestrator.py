@@ -279,6 +279,28 @@ def _classify_step_transport(response: str, http_status_code: int | None) -> str
     return "http_2xx"
 
 
+def _is_direct_http_only_scenario(scenario: AttackScenario) -> bool:
+    """Return True when *scenario* only ever exercises direct-HTTP steps.
+
+    Mirrors the chat/direct-HTTP distinction ``AttackExecutor.run()`` itself
+    uses (``any(not s.target_path for s in steps)`` — see executor.py's
+    ``has_chat_steps``): a step with ``target_path`` set goes through
+    ``TargetAppClient.invoke_endpoint()``; a step without it goes through the
+    chat ``send()``/``send_stream()`` path. A scenario with no chat-routed
+    steps at all (e.g. a static API_ATTACK auth-bypass/IDOR/mass-assignment/
+    BFLA chain against SBOM-derived REST paths) is "direct-HTTP-only" and
+    should not be caught by the chat-endpoint circuit breaker — see
+    ``TargetAppClient._consecutive_endpoint_errors`` and
+    ``RedteamOrchestrator._endpoint_circuit_open``.
+
+    Guided conversations always route through chat, so they are never
+    direct-HTTP-only.
+    """
+    if scenario.chain is None or not scenario.chain.steps:
+        return False
+    return all(step.target_path for step in scenario.chain.steps)
+
+
 def _tally_transport(record: ScenarioRecord, step_results: list) -> None:
     """Accumulate transport health counters into *record* from *step_results*."""
     for sr in step_results:
@@ -613,6 +635,8 @@ class RedteamOrchestrator:
         golden_data: "dict[str, Any] | None" = None,
         suppress_spa_html_auth_bypass: bool = True,
         codegen_escalation_enabled: bool = True,
+        mode: str = "concurrent",
+        progressive_halt_on_severity: str = "none",
     ) -> None:
         self._sbom = sbom
         self._sbom_path = sbom_path
@@ -623,6 +647,14 @@ class RedteamOrchestrator:
         self._profile = profile
         self._catalog = catalog
         self._min_impact = min_impact_score
+        # Progressive engagement mode (docs/claude-redteam-3.md) — 'concurrent'
+        # (default) leaves all existing phase-gated/intra-phase-parallel
+        # behavior untouched; 'progressive' forces strictly sequential
+        # execution across named 0-12 phases with a configurable finding-
+        # severity gate between phases.
+        self._mode = mode if mode in ("concurrent", "progressive") else "concurrent"
+        self._progressive_halt_on_severity = progressive_halt_on_severity
+        self.security_invariants: list = []
         self._log_path = log_path
         self._request_timeout = request_timeout
         self._concurrency = max(1, concurrency)
@@ -684,6 +716,16 @@ class RedteamOrchestrator:
         # Circuit-open flag latched when the 3-strike abort trips; consulted by
         # the escalation pass so it skips rather than re-hitting a dead target.
         self._circuit_open = False
+        # Separate circuit-open flag for direct-HTTP endpoint-probe outages
+        # (TargetUnavailableError raised with source="endpoint_probe" — see
+        # TargetAppClient._record_endpoint_error). Kept independent of
+        # self._circuit_open so an unreachable SBOM-derived REST path (e.g.
+        # API_ATTACK auth-bypass/IDOR/mass-assignment/BFLA chains) cannot
+        # abort unrelated, still-healthy chat-routed scenarios — only the
+        # remaining not-yet-dispatched direct-HTTP-only scenarios are skipped
+        # (chain_status="target_unreachable"). Latched across passes the same
+        # way self._circuit_open is.
+        self._endpoint_circuit_open = False
         # Auto-discover from SBOM; fall back to provided values
         self._chat_path, self._chat_payload_key, self._chat_payload_list, _discovered_response_key = (
             _discover_chat_config(sbom, chat_path, chat_payload_key, chat_payload_list)
@@ -1118,8 +1160,14 @@ class RedteamOrchestrator:
             )
             _log.warning(_guided_note)
             self.config_notes.append(_guided_note)
-        generator = ScenarioGenerator(self._sbom, effective_policy)
-        all_scenarios = generator.generate(with_guided=_with_guided)
+        # Phase 0 (progressive mode only, but cheap to always compute so it's
+        # available in the report regardless of mode) — see docs/claude-redteam-3.md §3.
+        from nuguard.redteam.invariants import derive_security_invariants
+        self.security_invariants = derive_security_invariants(effective_policy)
+
+        _progressive = self._mode == "progressive"
+        generator = ScenarioGenerator(self._sbom, effective_policy, canary_config=self._canary_config)
+        all_scenarios = generator.generate(with_guided=_with_guided, progressive=_progressive)
         self._coverage_tracker = cast("CoverageTracker | None", getattr(generator, "coverage_tracker", None))
 
         # 1b. Catalog scenarios — merged into the SBOM-driven set above.
@@ -1157,6 +1205,18 @@ class RedteamOrchestrator:
         # set (recon before boundary-mapping before destructive) while
         # preserving each source's own impact-score ordering within a phase.
         all_scenarios.sort(key=lambda s: s.attack_phase)
+
+        if _progressive:
+            # Remap every scenario's attack_phase from the named 0-12 progressive
+            # taxonomy instead of the default concurrent-mode 1-9 table, then
+            # re-sort so _run_scenarios' phase-batching dispatches in progressive
+            # order. Reuses the same attack_phase field/mechanism — see
+            # docs/claude-redteam-3.md §4.
+            from nuguard.redteam.scenarios.phases import progressive_phase_for
+
+            for s in all_scenarios:
+                s.attack_phase = progressive_phase_for(s.scenario_type.value)
+            all_scenarios.sort(key=lambda s: s.attack_phase)
 
         # 2. Filter by profile and impact score (before enrichment — avoids wasting LLM calls)
         if self._profile == "ci":
@@ -1284,6 +1344,7 @@ class RedteamOrchestrator:
             # so treat endpoint/payload as explicitly set to skip re-discovery.
             explicitly_set=frozenset({"target_endpoint", "chat_payload_key", "chat_response_key"}),
             payload_extras=self._chat_payload_extras or None,
+            heal_llm=self._eval_llm or self._redteam_llm,
         )
         for _note in (getattr(client, "resolution_notes", None) or []):
             if isinstance(_note, str) and _note:
@@ -1553,9 +1614,25 @@ class RedteamOrchestrator:
         """
         sem = asyncio.Semaphore(self._concurrency)
         abort_event = asyncio.Event()
+        # Separate abort event for direct-HTTP endpoint-probe outages — only
+        # consulted by direct-HTTP-only scenarios (see
+        # _is_direct_http_only_scenario). Setting this does NOT block
+        # chat-routed scenarios, unlike `abort_event` above.
+        endpoint_abort_event = asyncio.Event()
+        if self._endpoint_circuit_open:
+            # A prior pass already tripped the direct-HTTP-probe breaker —
+            # latch the local event so every direct-HTTP-only scenario in
+            # this pass is skipped immediately; chat-routed scenarios are
+            # unaffected and run normally.
+            endpoint_abort_event.set()
         # Circuit breaker: trip only after this many consecutive unavailability errors.
         _ABORT_THRESHOLD = 3
         consecutive_unavailable = 0
+        # Separate consecutive-failure counter for direct-HTTP endpoint-probe
+        # outages (TargetUnavailableError raised with source="endpoint_probe").
+        # Kept independent of consecutive_unavailable so an unreachable
+        # SBOM-derived REST path cannot trip the general chat breaker.
+        consecutive_endpoint_unavailable = 0
         # If a prior pass already tripped the circuit (the escalation pass runs
         # after the main pass), skip every scenario — the target is dead and
         # there is no point hammering it again with a fresh abort event.
@@ -1593,7 +1670,7 @@ class RedteamOrchestrator:
             scenario: AttackScenario,
             scenario_idx: int = 0,
         ) -> tuple[list[Finding], tuple[str, str, bool], ScenarioRecord]:
-            nonlocal consecutive_unavailable
+            nonlocal consecutive_unavailable, consecutive_endpoint_unavailable
             affected = ", ".join(
                 self._node_name.get(nid, nid) for nid in scenario.target_node_ids[:2]
             )
@@ -1613,12 +1690,21 @@ class RedteamOrchestrator:
             # Skip immediately if the circuit is already open
             if abort_event.is_set():
                 return [], (scenario.title, scenario.goal_type.value, False), _skipped_record("skipped")
+            # Direct-HTTP-only scenarios (all steps have target_path set — no
+            # chat-routed step) are skipped independently once the direct-HTTP
+            # endpoint-probe breaker trips, WITHOUT touching abort_event —
+            # chat-routed scenarios keep running.
+            _is_direct_http = _is_direct_http_only_scenario(scenario)
+            if _is_direct_http and endpoint_abort_event.is_set():
+                return [], (scenario.title, scenario.goal_type.value, False), _skipped_record("target_unreachable")
 
             async with sem:
                 # Re-check after acquiring the semaphore — another coroutine may
                 # have tripped the circuit while we were waiting.
                 if abort_event.is_set():
                     return [], (scenario.title, scenario.goal_type.value, False), _skipped_record("skipped")
+                if _is_direct_http and endpoint_abort_event.is_set():
+                    return [], (scenario.title, scenario.goal_type.value, False), _skipped_record("target_unreachable")
 
                 # Skip scenarios whose payloads are too similar to already-failed
                 # attacks.  Checked here (post-semaphore) so that misses from
@@ -1831,6 +1917,40 @@ class RedteamOrchestrator:
                         )
                     return [], (scenario.title, scenario.goal_type.value, False), _skipped_record("timeout")
                 except TargetUnavailableError as exc:
+                    # Direct-HTTP endpoint-probe outages (invoke_endpoint()
+                    # connection-level failures — see TargetAppClient.
+                    # _record_endpoint_error) are tracked with their own
+                    # consecutive-failure counter and abort event, isolated
+                    # from the general chat-endpoint breaker below. Tripping
+                    # it only skips the remaining direct-HTTP-only scenarios;
+                    # unrelated chat-routed scenarios keep running.
+                    if exc.source == "endpoint_probe":
+                        consecutive_endpoint_unavailable += 1
+                        if consecutive_endpoint_unavailable >= _ABORT_THRESHOLD:
+                            _log.error(
+                                "Direct-HTTP endpoint probes unavailable %d consecutive "
+                                "times — skipping remaining direct-HTTP-only scenarios "
+                                "(chat-routed scenarios continue). %s",
+                                consecutive_endpoint_unavailable,
+                                exc,
+                            )
+                            endpoint_abort_event.set()
+                            # Preserve across passes, mirroring self._circuit_open.
+                            self._endpoint_circuit_open = True
+                        else:
+                            _log.warning(
+                                "Direct-HTTP endpoint probe temporarily unavailable "
+                                "(%d/%d) — continuing. %s",
+                                consecutive_endpoint_unavailable,
+                                _ABORT_THRESHOLD,
+                                exc,
+                            )
+                        return (
+                            [],
+                            (scenario.title, scenario.goal_type.value, False),
+                            _skipped_record("target_unreachable"),
+                        )
+
                     consecutive_unavailable += 1
                     if consecutive_unavailable >= _ABORT_THRESHOLD:
                         _log.error(
@@ -1893,6 +2013,9 @@ class RedteamOrchestrator:
         # while intra-phase concurrency (via the shared `sem`) is unchanged.
         indexed_active = list(enumerate(active))
         results: list[tuple[list[Finding], tuple[str, str, bool], ScenarioRecord]] = []
+        _progressive = self._mode == "progressive"
+        _halt_order = {"critical": 0, "high": 1}
+        _halt_threshold = _halt_order.get(self._progressive_halt_on_severity, None)
         batch_start = 0
         while batch_start < len(indexed_active):
             phase = indexed_active[batch_start][1].attack_phase
@@ -1904,9 +2027,47 @@ class RedteamOrchestrator:
                 batch_end += 1
             batch = indexed_active[batch_start:batch_end]
             _log.info("Phase %d: dispatching %d scenario(s)", phase, len(batch))
-            batch_results = await asyncio.gather(*(_run_one(s, idx) for idx, s in batch))
+            if _progressive:
+                # Strictly sequential — no two scenarios run at once, so the
+                # target application is never asked two adversarial things
+                # "at once" within a phase either (docs/claude-redteam-3.md §4).
+                batch_results = [await _run_one(s, idx) for idx, s in batch]
+            else:
+                batch_results = await asyncio.gather(*(_run_one(s, idx) for idx, s in batch))
             results.extend(batch_results)
             batch_start = batch_end
+
+            if _progressive and _halt_threshold is not None:
+                from nuguard.redteam.risk_engine.risk_scorer import highest_severity
+
+                batch_findings = [f for new_findings, _, _ in batch_results for f in new_findings]
+                worst = highest_severity(batch_findings)
+                worst_rank = _halt_order.get(worst.value if worst else "", 99)
+                if worst_rank <= _halt_threshold:
+                    _log.info(
+                        "Progressive mode: halting after phase %d — %s finding confirmed "
+                        "(redteam.progressive.halt_on_severity=%s)",
+                        phase, worst.value if worst else "", self._progressive_halt_on_severity,
+                    )
+                    for _, s in indexed_active[batch_start:]:
+                        results.append(
+                            (
+                                [],
+                                (s.title, s.goal_type.value, False),
+                                ScenarioRecord(
+                                    title=s.title,
+                                    goal_type=s.goal_type.value,
+                                    scenario_type=s.scenario_type.value,
+                                    description=s.description,
+                                    impact_score=s.impact_score,
+                                    affected="",
+                                    chain_status="skipped:halted_on_severity",
+                                    had_finding=False,
+                                    steps=[],
+                                ),
+                            )
+                        )
+                    break
 
         findings: list[Finding] = []
         executed: list[tuple[str, str, bool]] = []
@@ -2465,6 +2626,13 @@ class RedteamOrchestrator:
         mitre_atlas_technique = chain.mitre_atlas_technique or compliance_mapper.mitre_atlas_ref(
             scenario.goal_type
         )
+        # Guardrail control observed along the way to this finding, if any step
+        # was refused before the eventual success (closed refusal taxonomy from
+        # LLMResponseEvaluator — see docs/claude-redteam-3.md §6).
+        _guardrail_control = next(
+            (sr.llm_eval_refusal_reason for sr in step_results if sr.llm_eval_refusal_reason),
+            "",
+        )
 
         # Fields shared by every Finding produced from this scenario/chain.
         _base: dict = dict(
@@ -2478,6 +2646,11 @@ class RedteamOrchestrator:
             owasp_llm_ref=owasp_llm,
             mitre_atlas_technique=mitre_atlas_technique,
             attack_steps=step_details,
+            # A Finding only exists because the attack got through — authorization
+            # was not enforced. "deny" is not produced here by construction; blocked
+            # attempts never raise a Finding to begin with.
+            authorization_decision="allow",
+            guardrail_control=_guardrail_control,
         )
         # Attach the golden-data baseline (authenticated test account's own data)
         # when the chain captured one via a DISCOVER step, so reports can show

@@ -621,6 +621,17 @@ _API_BASE_URL_RE = re.compile(
 _MAX_SCRIPTS_TO_SCAN = 6
 _SCRIPT_FETCH_TIMEOUT = 15.0
 
+# Hostnames that only resolve relative to whatever machine is currently
+# running NuGuard — never the app's actual backend from this process's point
+# of view. A bundle built for same-host container-group networking (e.g. an
+# ACI/docker-compose deployment where frontend and backend share "localhost")
+# bakes these in as a real value, but blindly trusting them here means
+# requests silently go to whatever unrelated service happens to be listening
+# on that port on *this* machine instead of erroring out — a misdirection bug
+# discovered against tests/apps/studyield-app, where a coincidentally
+# identical local port made every auth/chat request target the wrong app.
+_LOOPBACK_HOSTNAMES = frozenset({"localhost", "127.0.0.1", "0.0.0.0", "::1"})
+
 
 async def discover_api_origin_from_frontend_bundle(
     target_url: str,
@@ -680,6 +691,34 @@ async def discover_api_origin_from_frontend_bundle(
         if (parsed.hostname, parsed.port) == target_host_port:
             # Bundle just references the same origin we already have — no override needed.
             continue
+
+        if (parsed.hostname or "").lower() in _LOOPBACK_HOSTNAMES:
+            # The hostname is never usable from here (see _LOOPBACK_HOSTNAMES),
+            # but the *port* is still meaningful: a same-host, different-port
+            # deployment (frontend on :80, backend on :3010 sharing one
+            # container-group's localhost networking) bakes in "localhost"
+            # for exactly that reason. Keep the real target's own hostname and
+            # just take the port instead of discarding the hint outright.
+            target_hostname = urlparse(target_url).hostname
+            if not target_hostname or parsed.port is None or parsed.port == target_host_port[1]:
+                _log.warning(
+                    "discover_api_origin_from_frontend_bundle: ignoring loopback origin "
+                    "%r baked into %r — not reachable from this process; check "
+                    "%r's frontend build config (e.g. VITE_API_URL) or set "
+                    "target.url in nuguard.yaml directly.",
+                    match.group(1), script_url, target_url,
+                )
+                continue
+            scheme = urlparse(target_url).scheme or parsed.scheme
+            origin = f"{scheme}://{target_hostname}:{parsed.port}"
+            note = (
+                f"Target URL {target_url!r} serves a frontend bundle whose baked-in API "
+                f"origin {match.group(1)!r} uses a loopback host meaningless outside its "
+                f"own container/host — reusing target.url's hostname with the discovered "
+                f"port {parsed.port} instead ({origin!r})."
+            )
+            _log.warning("discover_api_origin_from_frontend_bundle: %s", note)
+            return origin, [note]
 
         origin = f"{parsed.scheme}://{parsed.netloc}"
         note = (

@@ -17,7 +17,7 @@ sbom_generation:
 target:
   # Replace with the FQDN printed by deploy-azure-aci.sh, e.g.:
   # http://studyield-nuguard-<suffix>.<region>.azurecontainer.io:3010
-  url: http://REPLACE_WITH_ACI_FQDN:3010
+  url: http://studyield-nuguard-7b904de1.eastus2.azurecontainer.io:3010
   auth:
     type: login_flow
     login_flow:
@@ -39,7 +39,7 @@ behavior:
   capability_discovery: true
 
 redteam:
-  target: http://REPLACE_WITH_ACI_FQDN:3010
+  target: http://studyield-nuguard-7b904de1.eastus2.azurecontainer.io:3010
   canary: ./canary.json
   profile: ci
   min_impact_score: 0.0

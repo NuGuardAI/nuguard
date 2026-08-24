@@ -53,10 +53,14 @@ class TestNpmLifecycleScripts:
             assert script.source_file, "source_file should not be empty"
             assert "package.json" in script.source_file
 
-    def test_no_scripts_returns_empty_list(self):
+    def test_clean_package_scripts_captured_but_benign(self):
+        """All npm scripts are captured (not just install-hooks), but none of
+        clean_package's scripts (jest/tsc/eslint) match a malicious pattern.
+        """
         scanner = _scanner()
         scripts = scanner.parse_lifecycle_scripts(FIXTURES / "clean_package")
-        assert scripts == [], f"Expected empty list for clean package, got: {scripts}"
+        assert {s.name for s in scripts} == {"test", "build", "lint"}
+        assert all(s.phase == "other-script" or s.phase == "build-hook" for s in scripts)
 
     def test_lifecycle_script_model_is_frozen(self):
         script = LifecycleScript(

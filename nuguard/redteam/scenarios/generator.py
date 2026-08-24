@@ -3,12 +3,16 @@ from __future__ import annotations
 
 import re
 import uuid
+from typing import TYPE_CHECKING
 
 from nuguard.common.logging import get_logger
 from nuguard.models.exploit_chain import ExploitChain, ExploitStep, GoalType, ScenarioType
 from nuguard.models.policy import CognitivePolicy
 from nuguard.sbom.models import AiSbomDocument, Node
 from nuguard.sbom.types import ComponentType, RelationshipType
+
+if TYPE_CHECKING:
+    from nuguard.redteam.target.canary import CanaryConfig
 
 # ── 2024–2025 advanced attack families ────────────────────────────────────────
 from .advanced_jailbreaks import (
@@ -33,6 +37,7 @@ from .api_attacks import (
     build_auth_scope_bypass,
     build_idor,
     build_mass_assignment,
+    build_open_data_exposure,
     build_rate_limit_probe,
 )
 from .data_exfiltration import (
@@ -41,6 +46,7 @@ from .data_exfiltration import (
     build_base64_exfiltration,
     build_cross_account_tool_abuse,
     build_cross_tenant_exfiltration,
+    build_cross_tenant_fictional_framing,
     build_datastore_schema_probe,
     build_datastore_sql_injection,
     build_document_embedded_exfiltration,
@@ -306,9 +312,16 @@ class ScenarioGenerator:
         self,
         sbom: AiSbomDocument,
         policy: CognitivePolicy | None = None,
+        canary_config: "CanaryConfig | None" = None,
     ) -> None:
         self._sbom = sbom
         self._policy = policy or CognitivePolicy()
+        # Real second tenant id (docs/claude-redteam-3.md §5 cross-tenant fix) —
+        # used by build_cross_tenant_exfiltration in place of a random probe id
+        # when the canary config seeds a genuine second synthetic tenant.
+        self._real_tenant_id = ""
+        if canary_config is not None and len(getattr(canary_config, "tenants", []) or []) >= 2:
+            self._real_tenant_id = canary_config.tenants[1].tenant_id
         self._node_by_id = {str(n.id): n for n in sbom.nodes}
         # Build edge indexes: source_id -> {relationship_type -> [target_id]}
         self._outgoing: dict[str, dict[str, list[str]]] = {}
@@ -323,7 +336,7 @@ class ScenarioGenerator:
         from nuguard.redteam.catalog.coverage import CoverageReport as _CR
         self.last_coverage: _CR | None = None
 
-    def generate(self, with_guided: bool = False) -> list[AttackScenario]:
+    def generate(self, with_guided: bool = False, progressive: bool = False) -> list[AttackScenario]:
         """Generate all attack scenarios sorted by impact score descending.
 
         Parameters
@@ -333,6 +346,12 @@ class ScenarioGenerator:
             SBOM-driven chains (Goal 5).  Guided conversations adapt turn-by-turn
             using an LLM and provide broader coverage — the orchestrator sets this
             flag automatically when a ``redteam_llm`` is configured.
+        progressive:
+            When True, also generate the progressive-methodology-only scenarios
+            (off-topic resistance, scripted identity/role escalation, document
+            memory poisoning, recovery verification) — see
+            docs/claude-redteam-3.md §5. Set by the orchestrator when
+            ``redteam.mode: progressive``.
         """
         scenarios: list[AttackScenario] = []
 
@@ -400,6 +419,13 @@ class ScenarioGenerator:
         # scenario alongside its static counterpart (same ScenarioType = same phase).
         if with_guided:
             scenarios.extend(self._guided_conversation_scenarios())
+
+        # ── Progressive methodology additions ──────────────────────────────────
+        # Off-topic resistance, scripted identity/role escalation, document
+        # memory poisoning, recovery verification — only generated for
+        # redteam.mode: progressive (docs/claude-redteam-3.md §5).
+        if progressive:
+            scenarios.extend(self._progressive_only_scenarios())
 
         # Dedup near-duplicate scenarios that target sub-agents when an entry agent exists.
         # This avoids sending many structurally identical payloads that differ only in which
@@ -941,6 +967,13 @@ class ScenarioGenerator:
                 build_cross_tenant_exfiltration(
                     agent_id=str(agent_node.id),
                     agent_name=agent_node.name,
+                    real_tenant_id=self._real_tenant_id,
+                )
+            )
+            out.append(
+                build_cross_tenant_fictional_framing(
+                    agent_id=str(agent_node.id),
+                    agent_name=agent_node.name,
                 )
             )
 
@@ -1355,14 +1388,23 @@ class ScenarioGenerator:
     ) -> list[AttackScenario]:
         """Remove near-duplicate scenarios, preferring those targeting entry agents.
 
-        Groups by ``(goal_type, scenario_type, title_prefix)``. Within each group:
+        Groups by ``(goal_type, scenario_type, title)`` — the FULL title, not
+        just the portion before the first ``" — "``. Using only the prefix
+        would collapse every topic/framing variant of a scenario family (e.g.
+        every "Restricted Topic Probe — <topic>" variant shares the same
+        prefix) into a single dedup group, silently discarding distinct
+        topic/framing coverage whenever entry-agent edges exist. The full
+        title still lets genuinely identical scenarios (same title, differing
+        only in which agent node — entry vs. sub-agent — they target) collapse
+        together, which is this pass's actual intended purpose.
+
+        Within each group:
 
         - If any scenario targets an entry agent, keep only entry-agent scenarios (cap 2).
         - Otherwise keep all (up to 3) sorted by impact score descending.
         """
         def _template_key(s: AttackScenario) -> str:
-            prefix = s.title.split(" — ")[0] if " — " in s.title else s.title[:40]
-            return f"{s.goal_type.value}|{s.scenario_type.value}|{prefix}"
+            return f"{s.goal_type.value}|{s.scenario_type.value}|{s.title}"
 
         groups: dict[str, list[AttackScenario]] = {}
         for s in scenarios:
@@ -1585,7 +1627,24 @@ class ScenarioGenerator:
         - MASS_ASSIGNMENT — for write methods (POST/PUT/PATCH)
         - IDOR          — for endpoints with ID-like path parameters (explicit
                           metadata OR path template patterns detected via regex)
+        - Open Endpoint Data Exposure — for endpoints that require no auth by
+                          design AND are declared to return sensitive data;
+                          there's no auth check to bypass, so the question is
+                          simply whether the data comes back to anyone who asks.
         """
+        # SBOM-declared sensitive field names, pooled across every DATASTORE
+        # node (mirrors the pii_datastores/pfi_datastores scan in
+        # _guided_conversation_scenarios) — used to boost pre-scores and to
+        # let executed steps check their response bodies against real field
+        # names rather than only generic PII-shaped-value regexes.
+        sensitive_field_pool: list[str] = []
+        for n in self._sbom.nodes:
+            if n.component_type == ComponentType.DATASTORE:
+                sensitive_field_pool.extend(n.metadata.pii_fields or [])
+                sensitive_field_pool.extend(n.metadata.phi_fields or [])
+                sensitive_field_pool.extend(n.metadata.pfi_fields or [])
+        sensitive_field_pool = list(dict.fromkeys(sensitive_field_pool))
+
         out: list[AttackScenario] = []
         for node in self._sbom.nodes:
             if node.component_type != ComponentType.API_ENDPOINT:
@@ -1608,6 +1667,19 @@ class ScenarioGenerator:
             # Extract request body schema from SBOM metadata (populated by FastAPI adapter)
             request_body_schema: dict[str, str] | None = meta.request_body_schema or None
 
+            # This endpoint's own sensitive fields (if the extractor tagged it
+            # directly) plus the SBOM-wide datastore pool — used to prioritise
+            # and to validate that a successful probe actually returned data.
+            endpoint_sensitive_fields = list(dict.fromkeys(
+                (meta.pii_fields or [])
+                + (meta.phi_fields or [])
+                + (meta.pfi_fields or [])
+                + sensitive_field_pool
+            ))
+            is_sensitive = bool(meta.returns_sensitive_data) or bool(
+                meta.pii_fields or meta.phi_fields or meta.pfi_fields
+            )
+
             # Auth bypass: explicit auth_required=True, or unknown (None) and not public
             if meta.auth_required or (meta.auth_required is None and not is_public):
                 out.append(
@@ -1617,8 +1689,25 @@ class ScenarioGenerator:
                         path=path,
                         method=method,
                         request_body_schema=request_body_schema,
+                        sensitive_fields=endpoint_sensitive_fields,
                     )
                 )
+
+            # Open Endpoint Data Exposure: no auth is required by design (either
+            # explicitly or by public-path match), but the endpoint is declared
+            # to return sensitive data — there's no auth bypass to test, just
+            # whether the data is exposed to anyone who calls it.
+            if meta.auth_required is False or is_public:
+                if is_sensitive:
+                    out.append(
+                        build_open_data_exposure(
+                            endpoint_id=endpoint_id,
+                            endpoint_name=node.name,
+                            path=path,
+                            method=method,
+                            sensitive_fields=endpoint_sensitive_fields,
+                        )
+                    )
 
             if method in ("POST", "PUT", "PATCH"):
                 out.append(
@@ -1655,6 +1744,7 @@ class ScenarioGenerator:
                     endpoint_name=node.name,
                     path=path,
                     path_params=inferred_params,
+                    sensitive_fields=endpoint_sensitive_fields,
                 )
                 if scenario is not None:
                     out.append(scenario)
@@ -2545,6 +2635,49 @@ class ScenarioGenerator:
     # ------------------------------------------------------------------ #
     # Goal 14: Oracle and deception attacks (REFUSAL_ORACLE, PREMISE_INJECTION)
     # ------------------------------------------------------------------ #
+
+    def _progressive_only_scenarios(self) -> list[AttackScenario]:
+        """Progressive-methodology-only scenarios (docs/claude-redteam-3.md §5).
+
+        Off-topic resistance, scripted identity/role escalation, document
+        memory poisoning, and recovery verification — generated only when
+        ``generate(progressive=True)`` (i.e. ``redteam.mode: progressive``).
+        Targets the first entry agent only: these are fixed-script, one-shot
+        engagement checks, not per-agent SBOM-driven coverage scenarios.
+        """
+        from .agent_identity import build_scripted_identity_confusion, build_scripted_role_confusion
+        from .memory_persistence import build_document_memory_poisoning
+        from .off_topic import build_off_topic_probes
+        from .recovery import build_recovery_verification
+
+        out: list[AttackScenario] = []
+        agent_nodes = [n for n in self._sbom.nodes if n.component_type == ComponentType.AGENT]
+        if not agent_nodes:
+            return out
+        entry_agents = self._compute_entry_agents()
+        node = next((n for n in agent_nodes if str(n.id) in entry_agents), agent_nodes[0])
+        agent_id, agent_name = str(node.id), node.name
+
+        app_domain = ""
+        baseline_prompt = "What can you help me with?"
+        if self._sbom.summary:
+            app_name = (getattr(self._sbom.summary, "application_name", "") or "").strip()
+            use_case = (getattr(self._sbom.summary, "use_case", "") or "").strip()
+            app_domain = f"{app_name} — {use_case[:120]}" if app_name and use_case else (app_name or use_case[:120])
+
+        restricted_action = (self._policy.restricted_actions or ["access privileged administrative functions"])[0]
+
+        out.extend(
+            build_off_topic_probes(
+                agent_id, agent_name, app_domain=app_domain,
+                restricted_topics=self._policy.restricted_topics,
+            )
+        )
+        out.append(build_scripted_identity_confusion(agent_id, agent_name, app_domain=app_domain or "this application"))
+        out.append(build_scripted_role_confusion(agent_id, agent_name, app_domain=app_domain or "this application"))
+        out.append(build_document_memory_poisoning(agent_id, agent_name, restricted_action=restricted_action))
+        out.append(build_recovery_verification(agent_id, agent_name, baseline_prompt=baseline_prompt))
+        return out
 
     def _oracle_scenarios(self) -> list[AttackScenario]:
         """Generate refusal oracle and false-premise anchoring scenarios.
