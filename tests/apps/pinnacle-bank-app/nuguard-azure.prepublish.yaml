@@ -200,7 +200,8 @@ redteam:
   guided_conversations: false
   guided_max_turns: 3               # safety cap if guided re-enabled
   guided_concurrency: 1
-  scenario_timeout: 60              # fast timeout for prepublish gate
+  concurrency: 3                    # reduce burst pressure for CI prepublish runs
+  scenario_timeout: 150             # allow multi-turn scenarios to complete under load
 
   # TAP tree exploration (RT-016) — branching multi-tactic search.
   # 0 = auto-select from profile (ci → 2, full → 3).
