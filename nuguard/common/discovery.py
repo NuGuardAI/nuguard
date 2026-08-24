@@ -449,6 +449,16 @@ class DiscoveryOutcome(BaseModel):
     notes: list[str] = Field(default_factory=list)
 
 
+class TargetDiscoveryResult(BaseModel):
+    """Public target/session discovery snapshot for platform-facing APIs."""
+
+    effective_target_url: str
+    effective_endpoint: str
+    discovered_profile: DiscoveredProfile | None = None
+    endpoint_source: Literal["config", "sbom", "probe", "default"] = "default"
+    discovery_notes: list[str] = Field(default_factory=list)
+
+
 async def run_discovery(
     client: "TargetAppClient",
     session: "AttackSession",

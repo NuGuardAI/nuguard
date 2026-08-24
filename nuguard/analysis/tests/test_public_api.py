@@ -130,7 +130,7 @@ async def test_run_analysis_constructs_analyzer_and_builds_result():
     mock_cls.assert_called_once()
     _, kwargs = mock_cls.call_args
     assert kwargs["min_severity"] == Severity.MEDIUM
-    assert str(kwargs["source_path"]) == "/tmp/app"
+    assert str(kwargs["source_path"]).replace("\\", "/") == "/tmp/app"
     assert kwargs["enable_atlas"] is True
 
     mock_instance.analyze.assert_called_once_with(sbom)
@@ -272,4 +272,18 @@ async def test_run_analysis_remediation_synthesis_failure_is_swallowed():
         result = await run_analysis(request, sbom=SimpleNamespace(nodes=[], edges=[]))
 
     assert result.remediation_plan == []
+
+
+@pytest.mark.asyncio
+async def test_parity_sa_002_run_analysis_contract():
+    mock_instance = _make_mock_analyzer([_finding("pkg@1.0.0")])
+
+    with patch("nuguard.analysis.public_api.StaticAnalyzer") as mock_cls:
+        mock_cls.return_value = mock_instance
+        result = await run_analysis(AnalysisRunRequest(), sbom=MagicMock())
+
+    assert isinstance(result, AnalysisRunResult)
+    assert len(result.findings) == 1
+    assert result.findings[0].affected_component == "pkg@1.0.0"
+    assert "osv" in result.tool_status
     assert len(result.findings) == 1

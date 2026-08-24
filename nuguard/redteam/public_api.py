@@ -19,12 +19,19 @@ async-client cleanup is guaranteed via ``finally``, mirroring the CLI exactly.
 from __future__ import annotations
 
 import dataclasses
+import uuid
 from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel, Field
 
 from nuguard.common.auth import AuthConfig
 from nuguard.common.logging import get_logger
+from nuguard.common.stream_runtime import StreamRunHandle, create_stream_handle
+from nuguard.common.streaming_models import (
+    StreamDeltaPayload,
+    StreamProgressPayload,
+    StreamTerminalPayload,
+)
 from nuguard.config import RedteamFindingTriggers
 from nuguard.models.finding import Finding
 from nuguard.models.health_report import TargetHealthReport
@@ -151,6 +158,10 @@ class RedteamRunResult(BaseModel):
     docs/claude-redteam-3.md §3). Always populated regardless of ``mode`` —
     cheap to compute, and the report only renders the section when non-empty.
     """
+
+
+class RedteamExecutionResult(RedteamRunResult):
+    """Final result model returned by the streaming redteam API."""
 
 
 async def _build_remediation_plan(
@@ -346,3 +357,108 @@ async def run_redteam(
         remediation_plan=remediation_plan,
         security_invariants=[i.model_dump() for i in getattr(orchestrator, "security_invariants", [])],
     )
+
+
+def _stream_finding_view(f: Finding) -> dict[str, Any]:
+    return {
+        "finding_id": f.finding_id,
+        "title": f.title,
+        "severity": f.severity.value if hasattr(f.severity, "value") else str(f.severity),
+        "goal_type": f.goal_type,
+        "scenario_type": f.scenario_type,
+    }
+
+
+async def run_redteam_stream(
+    request: RedteamRunRequest,
+    *,
+    sbom: "AiSbomDocument",
+    policy: "CognitivePolicy | None" = None,
+    policy_controls: "list | None" = None,
+    redteam_llm: "LLMClient | None" = None,
+    eval_llm: "LLMClient | None" = None,
+    remediation_llm_client: "LLMClient | None" = None,
+    app_log_reader: "FileLogReader | BufferLogReader | None" = None,
+    catalog: "tuple | None" = None,
+    log_path: "Path | None" = None,
+    prompt_cache_dir: "Path | None" = None,
+) -> StreamRunHandle[RedteamExecutionResult]:
+    """Run redteam with a typed event stream and final-result handle."""
+    run_id = str(uuid.uuid4())
+
+    async def _worker(controller):
+        controller.publish(
+            event_type="run_started",
+            phase="init",
+            payload={"target_url": request.target_url, "profile": request.profile},
+        )
+        try:
+            result = await run_redteam(
+                request,
+                sbom=sbom,
+                policy=policy,
+                policy_controls=policy_controls,
+                redteam_llm=redteam_llm,
+                eval_llm=eval_llm,
+                remediation_llm_client=remediation_llm_client,
+                app_log_reader=app_log_reader,
+                catalog=catalog,
+                log_path=log_path,
+                prompt_cache_dir=prompt_cache_dir,
+            )
+
+            controller.publish(
+                event_type="scenario_plan_ready",
+                phase="planning",
+                payload=StreamProgressPayload(
+                    scenarios_total=result.scenarios_run,
+                    scenarios_completed=0,
+                    progress_pct=0.0,
+                ).model_dump(mode="json"),
+            )
+            controller.publish(
+                event_type="findings_delta",
+                phase="execution",
+                payload=StreamDeltaPayload(
+                    findings_added=[_stream_finding_view(f) for f in result.findings],
+                    scenario_record_added=result.scenario_records,
+                ).model_dump(mode="json"),
+            )
+            controller.publish(
+                event_type="scenario_progress",
+                phase="execution",
+                payload=StreamProgressPayload(
+                    scenarios_total=result.scenarios_run,
+                    scenarios_completed=result.scenarios_run,
+                    progress_pct=1.0 if result.scenarios_run > 0 else 0.0,
+                ).model_dump(mode="json"),
+            )
+            controller.publish_terminal(
+                event_type="completed",
+                phase="finalize",
+                payload=StreamTerminalPayload(
+                    status="completed",
+                    summary={
+                        "scan_outcome": result.scan_outcome,
+                        "findings_count": len(result.findings),
+                        "scenarios_run": result.scenarios_run,
+                    },
+                ).model_dump(mode="json"),
+            )
+            controller.set_final_result(RedteamExecutionResult.model_validate(result.model_dump(mode="json")))
+        except Exception as exc:  # noqa: BLE001
+            controller.publish_terminal(
+                event_type="failed",
+                phase="finalize",
+                payload=StreamTerminalPayload(
+                    status="failed",
+                    summary={},
+                    is_retryable=False,
+                    failure_stage="run_redteam",
+                    error_type=type(exc).__name__,
+                    error_message=str(exc),
+                ).model_dump(mode="json"),
+            )
+            controller.set_final_exception(exc)
+
+    return create_stream_handle(run_id, _worker)
