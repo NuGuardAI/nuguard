@@ -459,7 +459,20 @@ _SCRIPT_EXTENSIONS = {".sh", ".bash", ".zsh", ".fish", ".ps1"}
 
 
 def _should_skip_path_parts(parts: tuple[str, ...]) -> bool:
-    skip_dirs = {".git", "__pycache__", "node_modules", ".tox", ".claude", "site-packages", ".mypy_cache", ".pytest_cache", ".ruff_cache", ".pytype", "logs", "log", "reports", "nuguard-test-results", "test-results"}
+    skip_dirs = {
+        ".git", "__pycache__", "node_modules", ".tox", ".claude", "site-packages",
+        ".mypy_cache", ".pytest_cache", ".ruff_cache", ".pytype", "logs", "log",
+        "reports", "nuguard-test-results", "test-results",
+        # Build/generated-output directories — large volumes of generated code
+        # (bundled JS, compiled artefacts) that match include_extensions but
+        # carry no AIBOM signal, and just burn the file/byte budget.
+        "dist", "build", ".next", ".nuxt", ".output", "target", "vendor",
+        ".terraform", "coverage", ".turbo", ".parcel-cache", ".serverless",
+        "bin", "obj", ".gradle", ".dvc",
+        # Generated/vendored code and test artefacts — no AIBOM signal.
+        "generated", "third_party", "external", "__snapshots__",
+        ".ipynb_checkpoints", ".idea",
+    }
     for part in parts:
         if part in skip_dirs:
             return True
@@ -467,7 +480,26 @@ def _should_skip_path_parts(parts: tuple[str, ...]) -> bool:
             return True
         if part.startswith(".venv") or re.fullmatch(r"venv[\w.-]*", part):
             return True
+        if part.endswith(".egg-info") or part.endswith(".dist-info"):
+            return True
     return False
+
+
+# Filenames/suffixes with no AIBOM signal: generated code stubs, snapshot
+# tests, Terraform state, and OS/editor cruft that can slip past the
+# directory-level skip list above.
+_SKIP_FILENAME_SUFFIXES = (
+    "_pb2.py", "_pb2_grpc.py", ".pb.go", "_grpc.py", ".pbtxt",
+    ".snap", ".tfstate", ".tfstate.backup", ".terraform.lock.hcl",
+    ".DS_Store",
+)
+_SKIP_FILENAMES = {"Thumbs.db"}
+
+
+def _should_skip_filename(name: str) -> bool:
+    if name in _SKIP_FILENAMES:
+        return True
+    return any(name.endswith(suffix) for suffix in _SKIP_FILENAME_SUFFIXES)
 _DOCS_STEMS = {
     "readme",
     "changelog",
@@ -3016,6 +3048,8 @@ class AiSbomExtractor:
                 # Skip NuGuard-specific config, policy, and output files
                 # Match any nuguard-prefixed config/output file, not just exact "nuguard.yaml"
                 if path.name.lower().startswith("nuguard") and suffix in {".yaml", ".yml", ".json"}:
+                    continue
+                if _should_skip_filename(path.name):
                     continue
                 name_lower = path.name.lower()
                 if name_lower in {"cognitive_policy.md", "cognitive_policy.json"}:
