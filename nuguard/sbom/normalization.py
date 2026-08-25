@@ -35,16 +35,22 @@ def normalize_display_name(name: str, component_type: object) -> str:
     if m:
         name = m.group(1)
 
-    # Strip colon-prefixed namespace like "framework:openai_agents" → "openai_agents"
-    # Only strip when both sides are pure lowercase words (no digits/dashes) — this avoids
-    # stripping Docker image tags like "python:3.12-slim" or path segments like "GET:/chat"
-    colon_m = _COLON_PREFIX_RE.match(name)
-    if colon_m:
-        name = colon_m.group(1)
-    else:
-        single_m = _SINGLE_COLON_WORD_RE.match(name)
-        if single_m:
-            name = single_m.group(1)
+    # Strip colon-prefixed namespace like "framework:openai_agents" → "openai_agents".
+    # Skipped for CONTAINER_IMAGE: its display name is a "repo:tag" Docker image
+    # ref (e.g. "nginx:alpine"), not a namespace prefix — when the tag happens to
+    # be a bare lowercase word, the single-colon-word pattern below would
+    # otherwise strip the repo name and leave just the tag ("nginx:alpine" →
+    # "alpine"). Only stripped when both sides are pure lowercase words (no
+    # digits/dashes) — this also avoids stripping Docker image tags like
+    # "python:3.12-slim" or path segments like "GET:/chat".
+    if component_type != ComponentType.CONTAINER_IMAGE:
+        colon_m = _COLON_PREFIX_RE.match(name)
+        if colon_m:
+            name = colon_m.group(1)
+        else:
+            single_m = _SINGLE_COLON_WORD_RE.match(name)
+            if single_m:
+                name = single_m.group(1)
 
     # Already human-readable (contains spaces)
     if " " in name:

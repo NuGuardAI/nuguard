@@ -9,7 +9,7 @@ from typing import TYPE_CHECKING, Any, Optional
 if TYPE_CHECKING:
     from nuguard.common.auth import AuthConfig
     from nuguard.common.llm_client import LLMClient
-    from nuguard.config import RedteamFindingTriggers, RedteamV2Settings
+    from nuguard.config import RedteamFindingTriggers
     from nuguard.models.token_usage import TokenUsage
 
 import typer
@@ -78,14 +78,6 @@ def redteam(
     profile: str = typer.Option(
         "ci", "--profile", help="Scan profile: ci (fast, safe) or full."
     ),
-    engine: Optional[str] = typer.Option(
-        None,
-        "--engine",
-        help=(
-            "Red-team engine: v1 (default, stable) or v2 (knowledge-base-driven, "
-            "phased, layered evaluation; in development)."
-        ),
-    ),
     scenarios: Optional[str] = typer.Option(
         None, "--scenarios", help="Comma-separated scenario types to run (default: all)."
     ),
@@ -144,7 +136,11 @@ def redteam(
     # Resolve from nuguard.yaml if not provided on CLI
     from nuguard.config import load_config
 
-    cfg = load_config(config_path)
+    try:
+        cfg = load_config(config_path)
+    except Exception as exc:
+        typer.echo(f"Error: failed to load config: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
     from nuguard.remediation.llm import resolve_remediation_llm_client
 
     remediation_llm_client = resolve_remediation_llm_client(cfg)
@@ -157,13 +153,6 @@ def redteam(
     )
     _source_path_val = getattr(cfg, "source_path", None)
     source_dir = source or (Path(str(_source_path_val)) if _source_path_val else None)
-    # CLI flag takes precedence; fall back to config default
-    effective_engine = (engine or cfg.redteam_engine or "v1").lower()
-    if effective_engine not in ("v1", "v2"):
-        typer.echo(
-            f"Error: invalid --engine {effective_engine!r}; expected 'v1' or 'v2'", err=True
-        )
-        raise typer.Exit(code=1)
     effective_profile = profile if profile != "ci" else cfg.redteam_profile
     effective_min_impact = (
         min_impact_score if min_impact_score != 0.0 else cfg.min_impact_score
@@ -269,81 +258,66 @@ def redteam(
         )
         raise typer.Exit(code=1)
 
-    if effective_engine == "v2":
-        typer.echo("  Engine: v2 (scaffold — see redteam-v2 implementation plan)")
-        runner = _run_redteam_v2(
-            sbom_doc=sbom_doc,
-            sbom_path=sbom_path,
-            policy_path=policy_path,
-            target_url=target_url,
-            canary_path=canary_path,
-            settings=cfg.resolved_redteam_v2_settings(),
-            profile=effective_profile,
-            chat_path=cfg.target_endpoint or "",
-            auth_config=cfg.resolved_auth_config(),
-            chat_payload_extras=cfg.redteam_chat_payload_extras or None,
-            redteam_llm_model=cfg.redteam_llm_model,
-            redteam_llm_api_key=cfg.redteam_llm_api_key,
-            redteam_llm_api_base=cfg.redteam_llm_api_base,
-            eval_llm_model=cfg.redteam_eval_llm_model or cfg.litellm_model or None,
-            eval_llm_api_key=cfg.redteam_eval_llm_api_key or cfg.litellm_api_key or None,
-            eval_llm_api_base=cfg.redteam_eval_llm_api_base,
-            verbose=effective_verbose,
-        )
-    else:
-        runner = _run_redteam(
-            sbom_doc=sbom_doc,
-            sbom_path=sbom_path,
-            policy_path=policy_path,
-            target_url=target_url,
-            canary_path=canary_path,
-            profile=effective_profile,
-            min_impact_score=effective_min_impact,
-            scenario_filter=effective_scenarios,
-            auth_config=cfg.resolved_auth_config(),
-            headers_override=cfg.redteam_headers,
-            source_dir=source_dir,
-            launch=launch,
-            chat_path=cfg.target_endpoint,
-            chat_payload_key=cfg.redteam_chat_payload_key,
-            chat_payload_list=cfg.redteam_chat_payload_list,
-            chat_response_key=cfg.redteam_chat_response_key or None,
-            chat_payload_extras=cfg.redteam_chat_payload_extras or None,
-            guided_conversations=effective_guided,
-            guided_max_turns=effective_guided_max_turns,
-            guided_concurrency=effective_guided_concurrency,
-            guided_mutation_mode=effective_guided_mutation_mode,
-            tree_breadth=cfg.redteam_tree_breadth,
-            tree_max_depth=cfg.redteam_tree_max_depth,
-            strict_outcome=cfg.redteam_strict_outcome,
-            credentials=cfg.redteam_credentials or None,
-            redteam_llm_model=cfg.redteam_llm_model,
-            redteam_llm_api_key=cfg.redteam_llm_api_key,
-            redteam_llm_api_base=cfg.redteam_llm_api_base,
-            eval_llm_model=cfg.redteam_eval_llm_model or cfg.litellm_model or None,
-            eval_llm_api_key=cfg.redteam_eval_llm_api_key or cfg.litellm_api_key or None,
-            eval_llm_api_base=cfg.redteam_eval_llm_api_base,
-            remediation_llm_client=remediation_llm_client,
-            prompt_cache_dir=cfg.redteam_prompt_cache_dir,
-            # ^ eval_llm falls back to top-level llm.model/api_key when redteam.eval_llm is not set
-            finding_triggers=finding_triggers,
-            verbose=effective_verbose,
-            scenario_timeout=cfg.redteam_scenario_timeout,
-            concurrency=cfg.redteam_concurrency,
-            turn_delay_seconds=cfg.redteam_turn_delay_seconds,
-            scenario_delay_seconds=cfg.redteam_scenario_delay_seconds,
-            similar_miss_threshold=cfg.redteam_similar_miss_threshold,
-            hard_refusal_abort_turns=cfg.redteam_hard_refusal_abort_turns,
-            stall_abort_threshold=cfg.redteam_stall_abort_threshold,
-            skip_discovery=cfg.redteam_skip_discovery,
-            discovery_max_turns=cfg.redteam_discovery_max_turns,
-            catalog=custom_catalog,
-            pre_run_warmup=cfg.redteam_pre_run_warmup,
-            verify_findings=cfg.redteam_verify_findings,
-            golden_data=cfg.redteam_golden_data or None,
-            suppress_spa_html_auth_bypass=cfg.redteam_suppress_spa_html_auth_bypass,
-            codegen_escalation_enabled=cfg.redteam_codegen_escalation_enabled,
-        )
+    runner = _run_redteam(
+        sbom_doc=sbom_doc,
+        sbom_path=sbom_path,
+        policy_path=policy_path,
+        target_url=target_url,
+        canary_path=canary_path,
+        profile=effective_profile,
+        min_impact_score=effective_min_impact,
+        scenario_filter=effective_scenarios,
+        auth_config=cfg.resolved_auth_config(),
+        headers_override=cfg.redteam_headers,
+        source_dir=source_dir,
+        launch=launch,
+        chat_path=cfg.target_endpoint,
+        chat_payload_key=cfg.redteam_chat_payload_key,
+        chat_payload_list=cfg.redteam_chat_payload_list,
+        chat_response_key=cfg.redteam_chat_response_key or None,
+        chat_payload_extras=cfg.redteam_chat_payload_extras or None,
+        guided_conversations=effective_guided,
+        guided_max_turns=effective_guided_max_turns,
+        guided_concurrency=effective_guided_concurrency,
+        guided_mutation_mode=effective_guided_mutation_mode,
+        tree_breadth=cfg.redteam_tree_breadth,
+        tree_max_depth=cfg.redteam_tree_max_depth,
+        strict_outcome=cfg.redteam_strict_outcome,
+        credentials=cfg.redteam_credentials or None,
+        # Falls back to the top-level llm.model/api_key/api_base when
+        # redteam.llm is not set, mirroring eval_llm's existing fallback below —
+        # otherwise guided conversations silently disable (no warning) for any
+        # config that only sets a top-level `llm:` block for SBOM/analyze use.
+        redteam_llm_model=cfg.redteam_llm_model or cfg.litellm_model or None,
+        redteam_llm_api_key=cfg.redteam_llm_api_key or cfg.litellm_api_key or None,
+        redteam_llm_api_base=cfg.redteam_llm_api_base or cfg.litellm_api_base or None,
+        eval_llm_model=cfg.redteam_eval_llm_model or cfg.litellm_model or None,
+        eval_llm_api_key=cfg.redteam_eval_llm_api_key or cfg.litellm_api_key or None,
+        eval_llm_api_base=cfg.redteam_eval_llm_api_base,
+        remediation_llm_client=remediation_llm_client,
+        prompt_cache_dir=cfg.redteam_prompt_cache_dir,
+        # ^ eval_llm falls back to top-level llm.model/api_key when redteam.eval_llm is not set
+        finding_triggers=finding_triggers,
+        verbose=effective_verbose,
+        scenario_timeout=cfg.redteam_scenario_timeout,
+        concurrency=cfg.redteam_concurrency,
+        turn_delay_seconds=cfg.redteam_turn_delay_seconds,
+        scenario_delay_seconds=cfg.redteam_scenario_delay_seconds,
+        similar_miss_threshold=cfg.redteam_similar_miss_threshold,
+        hard_refusal_abort_turns=cfg.redteam_hard_refusal_abort_turns,
+        stall_abort_threshold=cfg.redteam_stall_abort_threshold,
+        skip_discovery=cfg.redteam_skip_discovery,
+        discovery_max_turns=cfg.redteam_discovery_max_turns,
+        capability_discovery=cfg.redteam_capability_discovery,
+        catalog=custom_catalog,
+        pre_run_warmup=cfg.redteam_pre_run_warmup,
+        verify_findings=cfg.redteam_verify_findings,
+        golden_data=cfg.redteam_golden_data or None,
+        suppress_spa_html_auth_bypass=cfg.redteam_suppress_spa_html_auth_bypass,
+        codegen_escalation_enabled=cfg.redteam_codegen_escalation_enabled,
+        mode=cfg.redteam_mode,
+        progressive_halt_on_severity=cfg.redteam_progressive_halt_on_severity,
+    )
 
     try:
         (
@@ -524,91 +498,6 @@ def _resolve_target_url(sbom_doc: object, launch: bool = False) -> str | None:
         return None
 
 
-async def _run_redteam_v2(
-    *,
-    sbom_doc: object,
-    sbom_path: Path | None,
-    policy_path: Path | None,
-    target_url: str | None,
-    canary_path: Path | None,
-    settings: "RedteamV2Settings",
-    profile: str = "ci",
-    chat_path: str = "",
-    auth_config: "AuthConfig | None" = None,
-    chat_payload_extras: "dict[str, Any] | None" = None,
-    redteam_llm_model: str | None = None,
-    redteam_llm_api_key: str | None = None,
-    redteam_llm_api_base: str | None = None,
-    eval_llm_model: str | None = None,
-    eval_llm_api_key: str | None = None,
-    eval_llm_api_base: str | None = None,
-    verbose: bool = False,
-) -> "tuple[list, list, str, list[str], Any, int, int, Any, Any, str, str, list]":
-    """Run the v2 red-team engine and adapt its result to the CLI report tuple.
-
-    Phase 0: the v2 orchestrator is a scaffold that returns no findings.  This
-    wrapper keeps the same 13-tuple shape as :func:`_run_redteam` so the shared
-    output/reporting code path is reused unchanged.
-    """
-    from nuguard.common.llm_client import LLMClient
-    from nuguard.redteam.persona import EVAL_EXPERT_SYSTEM_PROMPT, REDTEAM_EXPERT_SYSTEM_PROMPT
-    from nuguard.redteam.v2 import RedteamV2Orchestrator
-
-    redteam_llm: LLMClient | None = None
-    if redteam_llm_model:
-        redteam_llm = LLMClient(
-            model=redteam_llm_model,
-            api_key=redteam_llm_api_key,
-            api_base=redteam_llm_api_base,
-            default_system_prompt=REDTEAM_EXPERT_SYSTEM_PROMPT,
-        )
-    eval_llm: LLMClient | None = None
-    if eval_llm_model and eval_llm_api_key:
-        eval_llm = LLMClient(
-            model=eval_llm_model,
-            api_key=eval_llm_api_key,
-            api_base=eval_llm_api_base,
-            default_system_prompt=EVAL_EXPERT_SYSTEM_PROMPT,
-        )
-
-    orchestrator = RedteamV2Orchestrator(
-        sbom=sbom_doc,
-        target_url=target_url or "",
-        settings=settings,
-        profile=profile,
-        chat_path=chat_path,
-        auth_config=auth_config,
-        chat_payload_extras=chat_payload_extras,
-        redteam_llm=redteam_llm,
-        eval_llm=eval_llm,
-        verbose=verbose,
-    )
-    try:
-        result = await orchestrator.run()
-    finally:
-        try:
-            from litellm.llms.custom_httpx.async_client_cleanup import (
-                close_litellm_async_clients,  # noqa: PLC0415
-            )
-            await close_litellm_async_clients()
-        except Exception:
-            pass
-    return (
-        result.findings,
-        result.scenario_records,
-        result.scan_outcome,
-        result.config_notes,
-        None,
-        result.token_usage.input_tokens,
-        result.token_usage.output_tokens,
-        None,
-        result.token_usage,
-        result.resolved_chat_path,
-        result.resolved_chat_path_source,
-        [],
-    )
-
-
 async def _run_redteam(
     sbom_doc: object,
     sbom_path: Path | None,
@@ -653,6 +542,7 @@ async def _run_redteam(
     stall_abort_threshold: int = 8,
     skip_discovery: bool = False,
     discovery_max_turns: int = 3,
+    capability_discovery: bool = True,
     chat_payload_extras: dict[str, Any] | None = None,
     catalog: "tuple | None" = None,
     pre_run_warmup: int = 0,
@@ -660,6 +550,8 @@ async def _run_redteam(
     golden_data: "dict | None" = None,
     suppress_spa_html_auth_bypass: bool = True,
     codegen_escalation_enabled: bool = True,
+    mode: str = "concurrent",
+    progressive_halt_on_severity: str = "none",
 ) -> "tuple[list, list, str, list[str], Any, int, int, Any, Any, str, str, list]":
     from nuguard.models.policy import CognitivePolicy
     from nuguard.redteam.target.canary import CanaryConfig
@@ -758,6 +650,7 @@ async def _run_redteam(
                 profile=profile,
                 min_impact_score=min_impact_score,
                 scenario_filter=scenario_filter,
+                sbom_path=sbom_path,
                 chat_path=chat_path,
                 chat_payload_key=chat_payload_key,
                 chat_payload_list=chat_payload_list,
@@ -792,12 +685,15 @@ async def _run_redteam(
                 stall_abort_threshold=stall_abort_threshold,
                 skip_discovery=skip_discovery,
                 discovery_max_turns=discovery_max_turns,
+                capability_discovery=capability_discovery,
                 catalog=catalog,
                 pre_run_warmup=pre_run_warmup,
                 verify_findings=verify_findings,
                 golden_data=golden_data,
                 suppress_spa_html_auth_bypass=suppress_spa_html_auth_bypass,
                 codegen_escalation_enabled=codegen_escalation_enabled,
+                mode=mode,
+                progressive_halt_on_severity=progressive_halt_on_severity,
             )
 
     # App already running — just scan
@@ -811,6 +707,7 @@ async def _run_redteam(
         profile=profile,
         min_impact_score=min_impact_score,
         scenario_filter=scenario_filter,
+        sbom_path=sbom_path,
         chat_path=chat_path,
         chat_payload_key=chat_payload_key,
         chat_payload_list=chat_payload_list,
@@ -845,12 +742,15 @@ async def _run_redteam(
         stall_abort_threshold=stall_abort_threshold,
         skip_discovery=skip_discovery,
         discovery_max_turns=discovery_max_turns,
+        capability_discovery=capability_discovery,
         catalog=catalog,
         pre_run_warmup=pre_run_warmup,
         verify_findings=verify_findings,
         golden_data=golden_data,
         suppress_spa_html_auth_bypass=suppress_spa_html_auth_bypass,
         codegen_escalation_enabled=codegen_escalation_enabled,
+        mode=mode,
+        progressive_halt_on_severity=progressive_halt_on_severity,
     )
 
 
@@ -862,6 +762,7 @@ async def _run_orchestrator(  # noqa: C901
     profile: str,
     min_impact_score: float,
     scenario_filter: list[str] | None,
+    sbom_path: Path | None = None,
     policy_controls: list | None = None,
     chat_path: str = "/chat",
     chat_payload_key: str = "message",
@@ -897,12 +798,15 @@ async def _run_orchestrator(  # noqa: C901
     stall_abort_threshold: int = 8,
     skip_discovery: bool = False,
     discovery_max_turns: int = 3,
+    capability_discovery: bool = True,
     catalog: "tuple | None" = None,
     pre_run_warmup: int = 0,
     verify_findings: bool = False,
     golden_data: "dict | None" = None,
     suppress_spa_html_auth_bypass: bool = True,
     codegen_escalation_enabled: bool = True,
+    mode: str = "concurrent",
+    progressive_halt_on_severity: str = "none",
 ) -> "tuple[list, list, str, list[str], Any, int, int, Any, Any, str, str, list]":
     from nuguard.common.llm_client import LLMClient
     from nuguard.redteam.persona import EVAL_EXPERT_SYSTEM_PROMPT, REDTEAM_EXPERT_SYSTEM_PROMPT
@@ -956,17 +860,21 @@ async def _run_orchestrator(  # noqa: C901
         stall_abort_threshold=stall_abort_threshold,
         skip_discovery=skip_discovery,
         discovery_max_turns=discovery_max_turns,
+        capability_discovery=capability_discovery,
         chat_payload_extras=chat_payload_extras or None,
         pre_run_warmup=pre_run_warmup,
         verify_findings=verify_findings,
         golden_data=golden_data,
         suppress_spa_html_auth_bypass=suppress_spa_html_auth_bypass,
         codegen_escalation_enabled=codegen_escalation_enabled,
+        mode=mode,
+        progressive_halt_on_severity=progressive_halt_on_severity,
     )
 
     result = await run_redteam(
         request,
         sbom=sbom_doc,  # type: ignore[arg-type]
+        sbom_path=sbom_path,
         policy=cognitive_policy,  # type: ignore[arg-type]
         policy_controls=policy_controls,
         redteam_llm=redteam_llm,

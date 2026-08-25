@@ -259,3 +259,76 @@ def test_redteam_creates_missing_parent_dir_for_output(fresh_tmp: Path) -> None:
     # The output file must be valid JSON — proves the dispatch loop ran
     # through the JSON-format branch, not the text-format branch.
     _json.loads(out_path.read_text(encoding="utf-8"))
+
+
+def test_policy_check_creates_missing_parent_dir_for_output(tmp_path: Path) -> None:
+    """``nuguard policy check --output <nested>/report.json`` must auto-create parents.
+
+    Regression: policy check wrote the output file with a bare ``write_text``,
+    so a missing parent directory raised an uncaught FileNotFoundError
+    traceback, unlike analyze / behavior / redteam / scan / sbom which all
+    auto-create the parent (issue #233 unified behaviour).
+    """
+    from nuguard.sbom.extractor import AiSbomExtractor
+    from nuguard.sbom.extractor.config import AiSbomConfig
+    from nuguard.sbom.extractor.serializer import AiSbomSerializer
+
+    app_dir = (
+        Path(__file__).parent.parent.parent
+        / "nuguard"
+        / "sbom"
+        / "tests"
+        / "fixtures"
+        / "apps"
+        / "customer_service_bot"
+    )
+    doc = AiSbomExtractor().extract_from_path(
+        app_dir, AiSbomConfig(include_extensions={".py"}, enable_llm=False)
+    )
+    sbom = tmp_path / "app.sbom.json"
+    sbom.write_text(AiSbomSerializer.to_json(doc), encoding="utf-8")
+    pol = tmp_path / "policy.md"
+    pol.write_text(
+        "## Restricted Topics\n- medical\n## Rate Limits\n- requests_per_minute: 60\n",
+        encoding="utf-8",
+    )
+
+    out_path = tmp_path / "a" / "b" / "c" / "report.json"
+    assert not out_path.parent.exists()
+    result = runner.invoke(
+        app,
+        [
+            "policy", "check",
+            "--policy", str(pol),
+            "--sbom", str(sbom),
+            "--output", str(out_path),
+            "--format", "json",
+        ],
+        catch_exceptions=False,
+    )
+    # exit 0 (no gaps) or 1 (gap findings) are both fine — the contract is
+    # that the parent dir is created and the file is written.
+    assert result.exit_code in (0, 1), result.output
+    assert out_path.exists(), (
+        f"Expected policy check report at {out_path}; stdout:\n{result.output}"
+    )
+
+
+def test_policy_compile_creates_missing_parent_dir_for_output(tmp_path: Path) -> None:
+    """``nuguard policy compile --output <nested>/controls.json`` must auto-create parents."""
+    pol = tmp_path / "policy.md"
+    pol.write_text(
+        "## Restricted Topics\n- medical\n## Rate Limits\n- requests_per_minute: 60\n",
+        encoding="utf-8",
+    )
+    out_path = tmp_path / "a" / "b" / "c" / "controls.json"
+    assert not out_path.parent.exists()
+    result = runner.invoke(
+        app,
+        ["policy", "compile", "--policy", str(pol), "--output", str(out_path)],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0, result.output
+    assert out_path.exists(), (
+        f"Expected compiled controls at {out_path}; stdout:\n{result.output}"
+    )

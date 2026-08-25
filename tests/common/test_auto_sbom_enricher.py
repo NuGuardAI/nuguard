@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+from pathlib import Path
 from unittest.mock import patch
 
 from nuguard.common.auto_sbom_enricher import (
@@ -203,3 +204,63 @@ def test_common_generates_description_with_llm_when_enabled() -> None:
     assert updated_tool.metadata.description == "Retrieves catalog and order details for assistant responses."
     assert updated_tool.metadata.extras is not None
     assert updated_tool.metadata.extras.get("description_source") == "llm_generated"
+
+def test_common_auto_enrich_serves_cached_artifact_on_second_call(tmp_path: Path) -> None:
+    """A second call with the same SBOM content must hit the on-disk cache.
+
+    The auto-enricher writes an ``*.enriched.json`` artifact (with an embedded
+    ``_enrichment_cache_key``) on the first run.  A subsequent call with the
+    identical SBOM object and the same ``target_url`` / ``probe_auth_header``
+    must return the cached artifact immediately (``reasons`` includes
+    ``"enrichment_cache_hit"``) instead of re-running the enrichment pipeline.
+
+    Regression protection: if the cache-key computation or the
+    cache-hit branch regresses (e.g. the artifact is no longer consulted, or
+    the stored key never matches), the second call would silently re-enrich
+    and this test would fail.
+    """
+    sbom = _build_low_confidence_sbom()
+    sbom_path = tmp_path / "app.sbom.json"
+    sbom_path.write_text("{}", encoding="utf-8")
+
+    first = asyncio.run(
+        maybe_auto_enrich_sbom(sbom=sbom, sbom_path=sbom_path, target_url=None)
+    )
+    assert first.artifact_path is not None
+    assert first.artifact_path.exists()
+
+    second = asyncio.run(
+        maybe_auto_enrich_sbom(sbom=sbom, sbom_path=sbom_path, target_url=None)
+    )
+    assert "enrichment_cache_hit" in second.reasons, (
+        f"expected cache hit on second call, got reasons={second.reasons!r}"
+    )
+    assert second.artifact_path == first.artifact_path
+
+
+def test_common_auto_enrich_cache_invalidated_by_target_url(tmp_path: Path) -> None:
+    """Changing target_url must invalidate the cached enrichment artifact.
+
+    The cache key is the sha256 of (SBOM content, target_url,
+    probe_auth_header), so a different target_url must produce a cache miss
+    and re-run enrichment.
+
+    Regression protection: if target_url is dropped from the cache-key
+    computation, a run against a different target would reuse a stale
+    enriched artifact (with the previous target's endpoint probe results) and
+    this test would fail.
+    """
+    sbom = _build_low_confidence_sbom()
+    sbom_path = tmp_path / "app.sbom.json"
+    sbom_path.write_text("{}", encoding="utf-8")
+
+    asyncio.run(
+        maybe_auto_enrich_sbom(sbom=sbom, sbom_path=sbom_path, target_url=None)
+    )
+
+    changed = asyncio.run(
+        maybe_auto_enrich_sbom(sbom=sbom, sbom_path=sbom_path, target_url="http://other-target")
+    )
+    assert "enrichment_cache_hit" not in changed.reasons, (
+        f"expected cache MISS after target_url change, got reasons={changed.reasons!r}"
+    )

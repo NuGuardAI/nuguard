@@ -126,7 +126,11 @@ def test_mass_assignment_scenario_structure():
     assert step.http_body is not None
     assert step.http_body.get("role") == "admin"
     assert step.http_body.get("is_superuser") is True
-    assert step.success_signal == "superuser"
+    # OR-matched: the literal escalation value plus JSON-shaped echoes of the
+    # smuggled fields (see build_mass_assignment docstring).
+    assert step.success_signal.startswith("superuser|")
+    assert '"role": "admin"' in step.success_signal
+    assert '"is_superuser": true' in step.success_signal
     # Must require 2xx to avoid false positives when frameworks echo the request
     # body in a 422 validation error response.
     assert step.success_requires_2xx is True

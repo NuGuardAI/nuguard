@@ -17,6 +17,7 @@ from pydantic import ValidationError
 
 from nuguard.behavior.models import (
     BehaviorAnalysisResult,
+    IntentProfile,
     BehaviorRunResult,
     BehaviorScenario,
     BehaviorScenarioType,
@@ -24,6 +25,8 @@ from nuguard.behavior.models import (
 from nuguard.behavior.public_api import (
     BehaviorAnalysisRequest,
     BehaviorRunRequest,
+    analyze_behavior_static,
+    analyze_behavior_stream,
     analyze_behavior,
     discover_behavior_profile,
     run_behavior_scenarios,
@@ -109,6 +112,7 @@ async def test_analyze_behavior_constructs_analyzer_and_forwards_mode():
     mock_cls.assert_called_once_with(
         config=config,
         sbom=sbom,
+        sbom_path=None,
         policy=policy,
         controls=controls,
         llm_client=llm_client,
@@ -164,7 +168,13 @@ async def test_run_behavior_scenarios_constructs_runner_and_forwards_args():
         )
 
     mock_cls.assert_called_once_with(
-        config=config, sbom=sbom, policy=policy, intent=intent, llm_client=llm_client, judge_cache=judge_cache
+        config=config,
+        sbom=sbom,
+        sbom_path=None,
+        policy=policy,
+        intent=intent,
+        llm_client=llm_client,
+        judge_cache=judge_cache,
     )
     called_args, called_kwargs = mock_instance.run.await_args
     assert [s.name for s in called_args[0]] == ["a"]
@@ -261,7 +271,9 @@ async def test_discover_behavior_profile_wraps_runner_discover():
 
         result = await discover_behavior_profile(config)
 
-    mock_cls.assert_called_once_with(config=config, sbom=None, policy=None, intent=None, llm_client=None)
+    mock_cls.assert_called_once_with(
+        config=config, sbom=None, sbom_path=None, policy=None, intent=None, llm_client=None,
+    )
     mock_instance.discover.assert_awaited_once_with()
     assert result is sentinel_profile
 
@@ -273,3 +285,105 @@ async def test_discover_behavior_profile_returns_none_when_runner_finds_nothing(
         mock_cls.return_value.discover = AsyncMock(return_value=None)
         result = await discover_behavior_profile(config)
     assert result is None
+
+
+# ---------------------------------------------------------------------------
+# behavior.headers plumbing into the target client
+# ---------------------------------------------------------------------------
+
+
+def test_behavior_runner_merges_config_headers_into_client(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """behavior.headers (from shared target.headers or behavior.headers) must
+    be attached to every outbound request, not silently dropped."""
+    import asyncio
+
+    from nuguard.behavior.runner import BehaviorRunner
+
+    captured: dict[str, object] = {}
+
+    def _fake_build_target_app_client(**kwargs: object):
+        captured["auth_headers"] = kwargs.get("auth_headers")
+        # Return a minimal stand-in with the attrs the runner reads after build.
+        class _FakeClient:
+            resolution_notes: list[str] = []
+            base_url = "http://localhost:9999"
+            _chat_path = "/chat"
+        return _FakeClient()
+
+    async def _fake_bootstrap_auth_runtime(**kwargs: object):
+        from nuguard.models.health_report import TargetHealthReport
+
+        class _FakeSession:
+            def headers(self):
+                return {"Authorization": "Bearer boot-token"}
+
+            def login_response_extras(self):
+                return {}
+
+        class _FakeBootstrapper:
+            session = _FakeSession()
+
+        return (
+            _FakeBootstrapper(),
+            TargetHealthReport(
+                target_url="http://localhost:9999",
+                endpoint="/chat",
+                run_id="test",
+                checks=[],
+            ),
+        )
+
+    monkeypatch.setattr(
+        "nuguard.common.target_client_builder.build_target_app_client",
+        _fake_build_target_app_client,
+    )
+    monkeypatch.setattr(
+        "nuguard.common.auth_runtime.bootstrap_auth_runtime",
+        _fake_bootstrap_auth_runtime,
+    )
+    runner = BehaviorRunner(
+        config=BehaviorConfig(
+            target="http://localhost:9999",
+            headers={"X-Tenant-Id": "tenant-1"},
+        ),
+    )
+    asyncio.run(runner._build_client())
+
+    headers = captured["auth_headers"]
+    assert headers is not None
+    assert headers["X-Tenant-Id"] == "tenant-1"
+    # Bootstrapped auth headers still present underneath the static headers.
+    assert headers["Authorization"] == "Bearer boot-token"
+
+
+def test_analyze_behavior_static_returns_same_result_instance():
+    result = BehaviorAnalysisResult(intent=IntentProfile())
+    projected = analyze_behavior_static(result)
+    assert projected is result
+
+
+@pytest.mark.asyncio
+async def test_analyze_behavior_stream_emits_terminal_and_final_result(monkeypatch):
+    expected = BehaviorRunResult(
+        run_id="run1",
+        findings=[{"finding_id": "b1", "title": "t", "severity": "low"}],
+        scenarios_executed=1,
+        scan_outcome="no_findings",
+    )
+
+    async def _fake_run(*args, **kwargs):
+        return expected
+
+    monkeypatch.setattr("nuguard.behavior.public_api.run_behavior_scenarios", _fake_run)
+
+    request = BehaviorRunRequest(config=BehaviorConfig(target="http://localhost:9999"), scenarios=[_scenario("x")])
+    handle = await analyze_behavior_stream(request)
+    events = [event async for event in handle.events]
+    final = await handle.final_result()
+
+    assert events[0].event_type == "run_started"
+    assert events[-1].event_type == "completed"
+    assert [e.sequence for e in events] == list(range(1, len(events) + 1))
+    assert final.run_id == "run1"

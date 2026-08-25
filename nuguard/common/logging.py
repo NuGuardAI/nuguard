@@ -10,6 +10,12 @@ def _is_ci() -> bool:
     return os.environ.get("CI", "").lower() in {"1", "true", "yes"}
 
 
+def _log_level() -> int:
+    """Resolve the effective log level from NUGUARD_LOG_LEVEL (default INFO)."""
+    name = os.environ.get("NUGUARD_LOG_LEVEL", "INFO").upper()
+    return logging.getLevelName(name) if name in logging._nameToLevel else logging.INFO
+
+
 class _JsonFormatter(logging.Formatter):
     """Emit log records as single-line JSON for machine consumption."""
 
@@ -59,14 +65,16 @@ def get_logger(name: str) -> logging.Logger:
 
     In CI environments (``CI=1``) records are emitted as JSON to stderr.
     Locally, records are formatted with rich when available, otherwise plain
-    text.
+    text. Level defaults to INFO; set ``NUGUARD_LOG_LEVEL=DEBUG`` for verbose
+    diagnostics.
     """
     logger = logging.getLogger(name)
 
     if name in _configured:
         return logger
 
-    logger.setLevel(logging.DEBUG)
+    level = _log_level()
+    logger.setLevel(level)
 
     if _is_ci():
         handler: logging.Handler = logging.StreamHandler(sys.stderr)
@@ -74,7 +82,7 @@ def get_logger(name: str) -> logging.Logger:
     else:
         handler = _RichHandler()
 
-    handler.setLevel(logging.DEBUG)
+    handler.setLevel(level)
     logger.addHandler(handler)
     logger.propagate = False
     _configured.add(name)
