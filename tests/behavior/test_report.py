@@ -198,7 +198,10 @@ def test_to_markdown_coverage_evidence_section():
     assert "flight booking" in md
 
 
-def test_to_markdown_recommendations_and_remediation_merged():
+def test_to_markdown_recommendations_and_remediation_are_separate_sections():
+    """Recommendations and the Remediation Plan render as two independent H2
+    sections (matching redteam's report format) rather than one merged heading.
+    """
     from nuguard.behavior.models import Recommendation
     rec = Recommendation(
         component="booking_agent",
@@ -209,6 +212,7 @@ def test_to_markdown_recommendations_and_remediation_merged():
     )
     result = _make_result(recommendations=[rec])
     md = to_markdown(result)
-    assert "## Recommendations & Remediation Plan" in md
-    assert "## Recommendations" not in md.split("## Recommendations & Remediation Plan")[1]
+    assert "## Recommendations & Remediation Plan" not in md
+    assert "## Recommendations" in md
+    # No remediation_plan was supplied, so no Remediation Plan section is emitted.
     assert "## Remediation Plan" not in md

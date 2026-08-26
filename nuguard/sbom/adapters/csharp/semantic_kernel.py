@@ -33,6 +33,15 @@ _PLUGIN_CALLS = {
     "ImportPluginFromPromptDirectory",
     "CreateFromType",
 }
+_PLUGIN_NAME_POSITIONS: dict[str, tuple[int, ...]] = {
+    "AddFromType": (0, 1),
+    "ImportPluginFromType": (0, 1),
+    "CreateFromType": (0, 1),
+    "AddFromObject": (1, 2),
+    "ImportPluginFromObject": (1, 2),
+    "AddFromPromptDirectory": (1, 2),
+    "ImportPluginFromPromptDirectory": (1, 2),
+}
 _PLANNER_CLASSES = {
     "ActionPlanner",
     "FunctionCallingStepwisePlanner",
@@ -129,7 +138,13 @@ class CSharpSemanticKernelAdapter(CSharpFrameworkAdapter):
                 is_kernel_builder = (
                     (call.name == "CreateBuilder" and receiver.split(".")[-1] == "Kernel")
                     or (call.name == "KernelBuilder" and call.is_constructor)
-                    or (call.name == "Build" and receiver.split(".")[0] in builder_variables)
+                    or (
+                        call.name == "Build"
+                        and (
+                            receiver.split(".")[0] in builder_variables
+                            or call.assigned_to in builder_variables
+                        )
+                    )
                 )
 
                 if not is_kernel_builder:
@@ -193,7 +208,7 @@ class CSharpSemanticKernelAdapter(CSharpFrameworkAdapter):
                 )
 
                 if not model_name:
-                    model_name = call.name.removeprefix("Add").removesuffix("ChatCompletion")
+                    continue
 
                 canonical = canonicalize_text(model_name.lower())
                 details = get_model_details(
@@ -235,14 +250,9 @@ class CSharpSemanticKernelAdapter(CSharpFrameworkAdapter):
 
             if call.name in _PLUGIN_CALLS:
                 plugin_type = call.generic_arguments[0] if call.generic_arguments else ""
-                plugin_name = first_argument(
+                plugin_name = _plugin_name(
                     call,
-                    (
-                        "pluginName",
-                        "name",
-                    ),
                     constants,
-                    0,
                 )
                 display = plugin_name or plugin_type or call.assigned_to or f"plugin_{call.line}"
                 canonical = canonicalize_text(f"semantic_kernel:plugin:{display}")
@@ -410,6 +420,41 @@ class CSharpSemanticKernelAdapter(CSharpFrameworkAdapter):
             )
 
         return _dedupe(detections)
+
+
+def _plugin_name(
+    call: Any,
+    constants: dict[str, str],
+) -> str:
+    """Resolve a plugin name according to the matched overload."""
+    named = first_argument(
+        call,
+        (
+            "pluginName",
+            "name",
+        ),
+        constants,
+        None,
+    )
+
+    if named:
+        return named
+
+    for position in _PLUGIN_NAME_POSITIONS.get(
+        call.name,
+        (),
+    ):
+        positional = first_argument(
+            call,
+            (),
+            constants,
+            position,
+        )
+
+        if positional:
+            return positional
+
+    return ""
 
 
 def _dedupe(

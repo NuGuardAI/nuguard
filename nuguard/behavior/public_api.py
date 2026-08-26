@@ -13,7 +13,8 @@ or auth failures propagate to the caller unchanged.
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal
+import uuid
+from typing import TYPE_CHECKING, Any, Literal
 
 from pydantic import BaseModel
 
@@ -26,11 +27,19 @@ from nuguard.behavior.models import (
 from nuguard.behavior.runner import BehaviorRunner
 from nuguard.common.discovery import DiscoveredProfile
 from nuguard.common.logging import get_logger
+from nuguard.common.stream_runtime import StreamRunHandle, create_stream_handle
+from nuguard.common.streaming_models import (
+    StreamDeltaPayload,
+    StreamProgressPayload,
+    StreamTerminalPayload,
+)
 from nuguard.config import BehaviorConfig
 from nuguard.remediation.backfill import backfill_finding_remediation
 from nuguard.remediation.models import RemediationArtefact
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from nuguard.behavior.judge_cache import JudgeCache
     from nuguard.behavior.models import IntentProfile
     from nuguard.common.llm_client import LLMClient
@@ -51,6 +60,7 @@ async def analyze_behavior(
     request: BehaviorAnalysisRequest,
     *,
     sbom: "AiSbomDocument | None" = None,
+    sbom_path: "Path | None" = None,
     policy: "CognitivePolicy | None" = None,
     controls: "list[PolicyControl] | None" = None,
     llm_client: "LLMClient | None" = None,
@@ -67,6 +77,7 @@ async def analyze_behavior(
     analyzer = BehaviorAnalyzer(
         config=request.config,
         sbom=sbom,
+        sbom_path=sbom_path,
         policy=policy,
         controls=controls,
         llm_client=llm_client,
@@ -114,6 +125,7 @@ async def run_behavior_scenarios(
     request: BehaviorRunRequest,
     *,
     sbom: "AiSbomDocument | None" = None,
+    sbom_path: "Path | None" = None,
     policy: "CognitivePolicy | None" = None,
     intent: "IntentProfile | None" = None,
     llm_client: "LLMClient | None" = None,
@@ -134,6 +146,7 @@ async def run_behavior_scenarios(
     runner = BehaviorRunner(
         config=request.config,
         sbom=sbom,
+        sbom_path=sbom_path,
         policy=policy,
         intent=intent,
         llm_client=llm_client,
@@ -151,6 +164,7 @@ async def discover_behavior_profile(
     config: BehaviorConfig,
     *,
     sbom: "AiSbomDocument | None" = None,
+    sbom_path: "Path | None" = None,
     policy: "CognitivePolicy | None" = None,
     intent: "IntentProfile | None" = None,
     llm_client: "LLMClient | None" = None,
@@ -159,5 +173,112 @@ async def discover_behavior_profile(
 
     Thin wrapper around ``BehaviorRunner(...).discover()``.
     """
-    runner = BehaviorRunner(config=config, sbom=sbom, policy=policy, intent=intent, llm_client=llm_client)
+    runner = BehaviorRunner(
+        config=config, sbom=sbom, sbom_path=sbom_path, policy=policy, intent=intent, llm_client=llm_client,
+    )
     return await runner.discover()
+
+
+def _stream_finding_view(f: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "finding_id": f.get("finding_id"),
+        "title": f.get("title"),
+        "severity": f.get("severity"),
+        "goal_type": f.get("goal_type"),
+        "scenario_type": f.get("scenario_type"),
+    }
+
+
+def analyze_behavior_static(result: BehaviorAnalysisResult) -> BehaviorAnalysisResult:
+    """Return a stable static projection for external callers.
+
+    This is currently identity-preserving to keep behavior stable while
+    providing a public, named contract surface.
+    """
+    return result
+
+
+async def analyze_behavior_stream(
+    request: BehaviorRunRequest,
+    *,
+    sbom: "AiSbomDocument | None" = None,
+    policy: "CognitivePolicy | None" = None,
+    intent: "IntentProfile | None" = None,
+    llm_client: "LLMClient | None" = None,
+    remediation_llm_client: "LLMClient | None" = None,
+    judge_cache: "JudgeCache | None" = None,
+) -> StreamRunHandle[BehaviorRunResult]:
+    """Run behavior scenarios with a typed stream and final-result handle."""
+    run_id = str(uuid.uuid4())
+
+    async def _worker(controller):
+        controller.publish(
+            event_type="run_started",
+            phase="init",
+            payload={"scenario_count": len(request.scenarios)},
+        )
+        try:
+            result = await run_behavior_scenarios(
+                request,
+                sbom=sbom,
+                policy=policy,
+                intent=intent,
+                llm_client=llm_client,
+                remediation_llm_client=remediation_llm_client,
+                judge_cache=judge_cache,
+            )
+
+            controller.publish(
+                event_type="scenario_plan_ready",
+                phase="planning",
+                payload=StreamProgressPayload(
+                    scenarios_total=result.scenarios_executed,
+                    scenarios_completed=0,
+                    progress_pct=0.0,
+                ).model_dump(mode="json"),
+            )
+            controller.publish(
+                event_type="findings_delta",
+                phase="execution",
+                payload=StreamDeltaPayload(
+                    findings_added=[_stream_finding_view(f) for f in result.findings],
+                ).model_dump(mode="json"),
+            )
+            controller.publish(
+                event_type="scenario_progress",
+                phase="execution",
+                payload=StreamProgressPayload(
+                    scenarios_total=result.scenarios_executed,
+                    scenarios_completed=result.scenarios_executed,
+                    progress_pct=1.0 if result.scenarios_executed > 0 else 0.0,
+                ).model_dump(mode="json"),
+            )
+            controller.publish_terminal(
+                event_type="completed",
+                phase="finalize",
+                payload=StreamTerminalPayload(
+                    status="completed",
+                    summary={
+                        "scan_outcome": result.scan_outcome,
+                        "findings_count": len(result.findings),
+                        "scenarios_executed": result.scenarios_executed,
+                    },
+                ).model_dump(mode="json"),
+            )
+            controller.set_final_result(result)
+        except Exception as exc:  # noqa: BLE001
+            controller.publish_terminal(
+                event_type="failed",
+                phase="finalize",
+                payload=StreamTerminalPayload(
+                    status="failed",
+                    summary={},
+                    is_retryable=False,
+                    failure_stage="run_behavior_scenarios",
+                    error_type=type(exc).__name__,
+                    error_message=str(exc),
+                ).model_dump(mode="json"),
+            )
+            controller.set_final_exception(exc)
+
+    return create_stream_handle(run_id, _worker)

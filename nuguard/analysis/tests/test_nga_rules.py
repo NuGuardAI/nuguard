@@ -37,6 +37,11 @@ from nuguard.analysis.plugins.nga_rules import (
     _rule_nga014_actions_runner_debug,
     _rule_nga015_no_resource_limits,
     _rule_nga021_idor_surface_no_protection,
+    _rule_nga022_untrusted_mcp_tool,
+    _rule_nga023_unprotected_vector_store,
+    _rule_nga024_unauthenticated_agent_delegation,
+    _rule_nga025_hidden_context_secret_leak,
+    _rule_nga026_endpoint_no_rate_limit,
 )
 
 # ---------------------------------------------------------------------------
@@ -605,8 +610,13 @@ class TestRulesRegistry:
         assert "_rule_nga019_unguarded_write_to_sensitive_datastore" in " ".join(names)
         assert "_rule_nga020_unguarded_agent_delegation" in " ".join(names)
         assert "_rule_nga021_idor_surface_no_protection" in " ".join(names)
-        # Rules run NGA-001 to NGA-021 with no gaps
-        assert len(_RULES) == 21
+        assert "_rule_nga022_untrusted_mcp_tool" in " ".join(names)
+        assert "_rule_nga023_unprotected_vector_store" in " ".join(names)
+        assert "_rule_nga024_unauthenticated_agent_delegation" in " ".join(names)
+        assert "_rule_nga025_hidden_context_secret_leak" in " ".join(names)
+        assert "_rule_nga026_endpoint_no_rate_limit" in " ".join(names)
+        # Rules run NGA-001 to NGA-026 with no gaps
+        assert len(_RULES) == 26
 
     def test_all_rules_return_list(self) -> None:
         for rule in _RULES:
@@ -1027,3 +1037,205 @@ class TestNga021:
             "metadata": {"idor_surface": True, "path_params": ["user_id"]},
         }
         assert _rule_nga021_idor_surface_no_protection(nodes=[node], graph=None) == []
+
+
+# ---------------------------------------------------------------------------
+# NGA-022 — Tool sourced from an untrusted MCP server
+# ---------------------------------------------------------------------------
+
+
+def _mcp_tool_node(
+    name: str = "search_web", trust_level: str = "untrusted", mcp_server_url: str = "https://evil.example/mcp",
+) -> dict[str, Any]:
+    return {
+        "id": name,
+        "name": name,
+        "component_type": "TOOL",
+        "metadata": {"mcp_server_url": mcp_server_url, "trust_level": trust_level},
+    }
+
+
+class TestNga022:
+    def _run(
+        self, nodes: list[dict[str, Any]], edges: list[dict[str, Any]] | None = None,
+    ) -> list[dict[str, Any]]:
+        graph = AnalysisGraph({"nodes": nodes, "edges": edges or []})
+        return _rule_nga022_untrusted_mcp_tool(nodes=nodes, graph=graph)
+
+    def test_fires_on_untrusted_mcp_tool_no_guardrail(self) -> None:
+        node = _mcp_tool_node()
+        findings = self._run([node])
+        assert len(findings) == 1
+        assert findings[0]["rule_id"] == "NGA-022"
+        assert findings[0]["severity"] == "HIGH"
+        assert "search_web" in findings[0]["affected"]
+
+    def test_no_finding_when_trusted(self) -> None:
+        node = _mcp_tool_node(trust_level="trusted")
+        findings = self._run([node])
+        assert findings == []
+
+    def test_no_finding_when_not_mcp_tool(self) -> None:
+        findings = self._run([_tool_node("get_weather")])
+        assert findings == []
+
+    def test_no_finding_when_protected_by_guardrail(self) -> None:
+        node = _mcp_tool_node()
+        guardrail = {"id": "guard", "name": "guard", "component_type": "GUARDRAIL", "metadata": {}}
+        edge = {"source": "guard", "target": "search_web", "relationship_type": "PROTECTS"}
+        findings = self._run([node, guardrail], edges=[edge])
+        assert findings == []
+
+    def test_works_without_graph(self) -> None:
+        node = _mcp_tool_node()
+        findings = _rule_nga022_untrusted_mcp_tool(nodes=[node], graph=None)
+        assert len(findings) == 1
+
+
+# ---------------------------------------------------------------------------
+# NGA-023 — Vector/embedding store without auth or encryption
+# ---------------------------------------------------------------------------
+
+
+class TestNga023:
+    def _run(self, nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return _rule_nga023_unprotected_vector_store(nodes=nodes)
+
+    def test_fires_on_unprotected_pinecone_store(self) -> None:
+        node = _datastore_node("embeddings-db", datastore_type="pinecone")
+        findings = self._run([node])
+        assert len(findings) == 1
+        assert findings[0]["rule_id"] == "NGA-023"
+        assert "embeddings-db" in findings[0]["affected"]
+
+    def test_no_finding_when_auth_and_encryption_present(self) -> None:
+        node = _datastore_node(
+            "embeddings-db", datastore_type="chroma",
+            auth_detail={"protocol": "api_key"}, encryption_detail={"at_rest": True},
+        )
+        findings = self._run([node])
+        assert findings == []
+
+    def test_no_finding_for_non_vector_datastore(self) -> None:
+        node = _datastore_node("orders-db", datastore_type="postgresql")
+        findings = self._run([node])
+        assert findings == []
+
+    def test_no_finding_no_datastores(self) -> None:
+        assert self._run([]) == []
+
+
+# ---------------------------------------------------------------------------
+# NGA-024 — Unauthenticated inter-agent delegation
+# ---------------------------------------------------------------------------
+
+
+class TestNga024:
+    def _run(
+        self, nodes: list[dict[str, Any]], edges: list[dict[str, Any]] | None = None,
+    ) -> list[dict[str, Any]]:
+        graph = AnalysisGraph({"nodes": nodes, "edges": edges or []})
+        return _rule_nga024_unauthenticated_agent_delegation(graph=graph)
+
+    def test_fires_on_delegation_with_no_auth(self) -> None:
+        src = _agent_node("orchestrator")
+        tgt = _agent_node("worker")
+        edge = {"source": "orchestrator", "target": "worker", "relationship_type": "DELEGATES_TO"}
+        findings = self._run([src, tgt], edges=[edge])
+        assert len(findings) == 1
+        assert findings[0]["rule_id"] == "NGA-024"
+        assert "orchestrator" in findings[0]["affected"]
+        assert "worker" in findings[0]["affected"]
+
+    def test_no_finding_when_target_has_auth_detail(self) -> None:
+        src = _agent_node("orchestrator")
+        tgt = {
+            "id": "worker", "name": "worker", "component_type": "AGENT",
+            "metadata": {"auth_detail": {"protocol": "mtls"}},
+        }
+        edge = {"source": "orchestrator", "target": "worker", "relationship_type": "DELEGATES_TO"}
+        findings = self._run([src, tgt], edges=[edge])
+        assert findings == []
+
+    def test_no_finding_without_delegation(self) -> None:
+        findings = self._run([_agent_node("solo")])
+        assert findings == []
+
+    def test_no_finding_without_graph(self) -> None:
+        assert _rule_nga024_unauthenticated_agent_delegation(graph=None) == []
+
+
+# ---------------------------------------------------------------------------
+# NGA-025 — Credential embedded in system prompt / hidden context
+# ---------------------------------------------------------------------------
+
+
+class TestNga025:
+    def _run(self, nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return _rule_nga025_hidden_context_secret_leak(nodes=nodes)
+
+    def test_fires_on_prompt_with_aws_key(self) -> None:
+        node = {
+            "id": "sys-prompt", "name": "system-prompt", "component_type": "PROMPT",
+            "metadata": {"extras": {"content": "Use key AKIAABCDEFGHIJKLMNOP to call the service."}},
+        }
+        findings = self._run([node])
+        assert len(findings) == 1
+        assert findings[0]["rule_id"] == "NGA-025"
+        assert "system-prompt" in findings[0]["affected"]
+
+    def test_fires_on_agent_system_prompt_excerpt(self) -> None:
+        node = {
+            "id": "agent1", "name": "billing-agent", "component_type": "AGENT",
+            "metadata": {"system_prompt_excerpt": "api_key: 'sk-abcdefghijklmnopqrstuvwx'"},
+        }
+        findings = self._run([node])
+        assert len(findings) == 1
+        assert "billing-agent" in findings[0]["affected"]
+
+    def test_no_finding_on_benign_prompt(self) -> None:
+        node = {
+            "id": "sys-prompt", "name": "system-prompt", "component_type": "PROMPT",
+            "metadata": {"extras": {"content": "You are a helpful assistant that answers questions."}},
+        }
+        findings = self._run([node])
+        assert findings == []
+
+    def test_no_finding_no_prompt_or_agent_nodes(self) -> None:
+        assert self._run([_tool_node("get_weather")]) == []
+
+
+# ---------------------------------------------------------------------------
+# NGA-026 — AI endpoint without application-level rate limiting
+# ---------------------------------------------------------------------------
+
+
+class TestNga026:
+    def _run(self, nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return _rule_nga026_endpoint_no_rate_limit(nodes=nodes)
+
+    def test_fires_on_endpoint_with_no_rate_limit(self) -> None:
+        node = _api_node("chat-completions")
+        findings = self._run([node])
+        assert len(findings) == 1
+        assert findings[0]["rule_id"] == "NGA-026"
+        assert "chat-completions" in findings[0]["affected"]
+
+    def test_no_finding_when_rate_limited(self) -> None:
+        node = {
+            "id": "api", "name": "chat-completions", "component_type": "API_ENDPOINT",
+            "metadata": {"rate_limited": True},
+        }
+        findings = self._run([node])
+        assert findings == []
+
+    def test_no_finding_when_rate_limit_detail_present(self) -> None:
+        node = {
+            "id": "api", "name": "chat-completions", "component_type": "API_ENDPOINT",
+            "metadata": {"rate_limit_detail": {"requests_per_minute": 60}},
+        }
+        findings = self._run([node])
+        assert findings == []
+
+    def test_no_finding_no_api_endpoints(self) -> None:
+        assert self._run([_model_node("gpt-4", "openai")]) == []

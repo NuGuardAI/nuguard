@@ -16,6 +16,8 @@ from nuguard.config import BehaviorConfig
 from nuguard.models.token_usage import TokenUsage
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from nuguard.common.llm_client import LLMClient
     from nuguard.models.policy import CognitivePolicy, PolicyControl
     from nuguard.sbom.models import AiSbomDocument
@@ -42,6 +44,7 @@ class BehaviorAnalyzer:
         self,
         config: BehaviorConfig,
         sbom: "AiSbomDocument | None" = None,
+        sbom_path: "Path | None" = None,
         policy: "CognitivePolicy | None" = None,
         controls: "list[PolicyControl] | None" = None,
         llm_client: "LLMClient | None" = None,
@@ -49,6 +52,7 @@ class BehaviorAnalyzer:
     ) -> None:
         self._config = config
         self._sbom = sbom
+        self._sbom_path = sbom_path
         self._policy = policy
         self._controls = controls
         self._llm = llm_client
@@ -89,6 +93,7 @@ class BehaviorAnalyzer:
         coverage = []
         scenario_results = []
         skipped_scenario_names: list[str] = []
+        deprioritized_scenario_names: list[str] = []
         _dynamic_run_result = None  # captured for abort/inconclusive propagation
         _dynamic_scan_outcome = None
 
@@ -110,6 +115,15 @@ class BehaviorAnalyzer:
                 # HTTP probe.  This mirrors the RedteamOrchestrator logic so
                 # that both analysis modes share the same discovery path.
                 cfg_endpoint = getattr(self._config, "target_endpoint", "") or ""
+                # Captured before any auto-discovery mutation below: BehaviorRunner's
+                # preflight rotation must know whether the endpoint came from the
+                # user's nuguard.yaml (rotation disabled — explicit precedence) or
+                # was inferred here from the SBOM (rotation must stay enabled, since
+                # SBOM candidate scoring can pick the wrong endpoint, e.g. a
+                # vision-only route over the real text-chat one). Once this block
+                # calls self._config.model_copy(update=...) below, target_endpoint
+                # becomes indistinguishable from a user-set value.
+                _user_had_explicit_endpoint = bool(cfg_endpoint)
                 if not cfg_endpoint and self._sbom is not None:
                     from nuguard.common.endpoint_probe import (  # noqa: PLC0415
                         discover_chat_config_from_sbom,
@@ -204,12 +218,28 @@ class BehaviorAnalyzer:
                 runner = BehaviorRunner(
                     config=self._config,
                     sbom=self._sbom,
+                    sbom_path=self._sbom_path,
                     policy=self._policy,
                     intent=intent,
                     llm_client=self._llm,
                     judge_cache=judge_cache,
+                    endpoint_explicitly_set=_user_had_explicit_endpoint,
                 )
                 pre_scan_profile = await runner.discover()
+
+                # ── Optional tool-family reachability probe ──────────────
+                # When enabled, run one lightweight probe per agent/tool-family
+                # up front so build_scenarios can schedule probed-reachable
+                # families ahead of probed-blocked ones within max_scenarios,
+                # instead of spending the scenario budget hammering tools that
+                # are refused/blocked before any real scenario runs.
+                family_probe_results: dict[str, str] | None = None
+                if bool(getattr(self._config, "prioritize_by_probe", False)):
+                    family_probe_results = await runner.probe_tool_families()
+                    _log.info(
+                        "BehaviorAnalyzer.analyze: tool-family probe results: %s",
+                        family_probe_results,
+                    )
 
                 # ── Golden-data fallback ─────────────────────────────────
                 # When live discovery returns nothing, build a DiscoveredProfile
@@ -254,6 +284,8 @@ class BehaviorAnalyzer:
                         llm_client=self._llm,
                         skipped_out=skipped_scenario_names,
                         pre_scan_profile=pre_scan_profile,
+                        family_probe_results=family_probe_results,
+                        deprioritized_out=deprioritized_scenario_names,
                     )
                     # Only cache when there is no personalised profile so
                     # the cached scenarios are reusable across sessions.
@@ -298,6 +330,7 @@ class BehaviorAnalyzer:
             coverage=coverage,
             scenario_results=scenario_results,
             scenarios_skipped=skipped_scenario_names,
+            scenarios_deprioritized=deprioritized_scenario_names,
         )
         if _dynamic_scan_outcome is not None:
             result.dynamic_scan_outcome = _dynamic_scan_outcome
@@ -385,6 +418,7 @@ class BehaviorAnalyzer:
         elif _dynamic_run_result is not None and _dynamic_run_result.scan_outcome in (
             "aborted_target_unavailable",
             "inconclusive_target_errors",
+            "aborted_endpoint_unreachable",
         ):
             # No findings from either phase; propagate target-health outcome from runner
             result.scan_outcome = _dynamic_run_result.scan_outcome

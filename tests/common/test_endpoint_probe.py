@@ -3,7 +3,10 @@ from __future__ import annotations
 
 import uuid
 
-from nuguard.common.endpoint_probe import discover_chat_config_from_sbom
+from nuguard.common.endpoint_probe import (
+    discover_chat_candidates_from_sbom,
+    discover_chat_config_from_sbom,
+)
 from nuguard.sbom.models import AiSbomDocument, Node, NodeMetadata
 from nuguard.sbom.types import ComponentType
 
@@ -73,3 +76,25 @@ def test_discover_chat_config_uses_sbom_when_endpoint_unset() -> None:
     else:
         assert key == "phrases"
         assert payload_list is True
+
+
+def test_discover_chat_candidates_excludes_camelcase_domain_key() -> None:
+    """A camelCase domain-specific payload key (e.g. "patientName" on a
+    letter-generation endpoint) must be excluded from chat candidates just
+    like its snake_case equivalent "patient_name" — regression test for the
+    phlox-app /api/letter/generate mis-discovery (endpoint_preflight rotation
+    landed on it because it wasn't filtered out of the candidate list)."""
+    sbom = AiSbomDocument(
+        target="./app",
+        nodes=[
+            _endpoint_node("/api/chat", key="messages", payload_list=True),
+            _endpoint_node("/api/letter/generate", key="patientName", payload_list=False),
+        ],
+        edges=[],
+    )
+
+    candidates = discover_chat_candidates_from_sbom(sbom)
+
+    paths = [c[0] for c in candidates]
+    assert "/api/letter/generate" not in paths
+    assert "/api/chat" in paths

@@ -2,7 +2,8 @@
 
 Covers:
 - K8sAdapter: multi-document YAML parsing, same-file NetworkPolicy coverage,
-  cross-namespace non-coverage, standalone NetworkPolicy marker emission.
+  cross-namespace non-coverage, standalone NetworkPolicy marker emission,
+  Helm chart (Chart.yaml + templates/*.yaml) recognition.
 - GitHubActionsAdapter: structured security findings for NGA-010/011/014,
   clean workflow produces no findings, workflow_content stored in node metadata.
 """
@@ -13,6 +14,7 @@ from typing import Any
 
 from nuguard.sbom.adapters.base import ComponentDetection
 from nuguard.sbom.adapters.iac import GitHubActionsAdapter, K8sAdapter
+from nuguard.sbom.types import ComponentType
 
 # ---------------------------------------------------------------------------
 # YAML fixtures
@@ -240,3 +242,98 @@ class TestGitHubActionsAdapterFindings:
         assert "workflow_content" in node.metadata
         assert isinstance(node.metadata["workflow_content"], str)
         assert len(node.metadata["workflow_content"]) > 0
+
+
+# ---------------------------------------------------------------------------
+# Helm chart detection
+# ---------------------------------------------------------------------------
+
+_CHART_YAML = """\
+apiVersion: v2
+name: chapteragent
+description: A Helm chart for ChapterAgent
+type: application
+version: 0.1.0
+appVersion: "1.16.0"
+"""
+
+_HELM_TEMPLATE_LITERAL_KIND = """\
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ .Release.Name }}-web
+spec:
+  replicas: {{ .Values.replicaCount }}
+  template:
+    spec:
+      containers:
+        - name: app
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+"""
+
+_HELM_TEMPLATE_TEMPLATED_KIND = """\
+apiVersion: apps/v1
+kind: {{ .Values.workloadKind | default "Deployment" }}
+metadata:
+  name: {{ .Release.Name }}-web
+"""
+
+
+class TestHelmChartDetection:
+    def setup_method(self) -> None:
+        self.adapter = K8sAdapter()
+
+    def test_chart_yaml_produces_deployment_node(self) -> None:
+        results = self.adapter.scan(
+            _CHART_YAML, "deployment/helm/chapteragent/Chart.yaml"
+        )
+        deployments = [r for r in results if r.component_type == ComponentType.DEPLOYMENT]
+        assert len(deployments) == 1
+        det = deployments[0]
+        assert det.display_name == "chapteragent"
+        assert det.metadata["iac_format"] == "helm"
+        assert det.metadata["chart_version"] == "0.1.0"
+        assert det.metadata["app_version"] == "1.16.0"
+
+    def test_chart_yaml_not_treated_as_raw_k8s_manifest(self) -> None:
+        """Chart.yaml's apiVersion: v2 must not be misread as a K8s
+        apiVersion/kind pair — regression guard against the old code path."""
+        results = self.adapter.scan(
+            _CHART_YAML, "deployment/helm/chapteragent/Chart.yaml"
+        )
+        assert all(r.metadata.get("k8s_kind") is None for r in results)
+
+    def test_template_with_literal_kind_merges_into_chart_node(self) -> None:
+        """A templates/*.yaml file with a non-templated `kind:` line resolves
+        to the SAME canonical DEPLOYMENT node as the chart's own Chart.yaml
+        (same chart directory), rather than a separate node per template."""
+        chart_dets = self.adapter.scan(
+            _CHART_YAML, "deployment/helm/chapteragent/Chart.yaml"
+        )
+        template_dets = self.adapter.scan(
+            _HELM_TEMPLATE_LITERAL_KIND,
+            "deployment/helm/chapteragent/templates/deployment.yaml",
+        )
+        assert len(template_dets) == 1
+        assert template_dets[0].metadata["k8s_kind"] == "Deployment"
+        assert chart_dets[0].canonical_name == template_dets[0].canonical_name
+
+    def test_template_with_templated_kind_produces_no_detection(self) -> None:
+        """When `kind:` itself is a Go-template expression, there's nothing
+        resolvable to attribute back to the chart — skip without erroring,
+        never emit a bogus DEPLOYMENT node."""
+        results = self.adapter.scan(
+            _HELM_TEMPLATE_TEMPLATED_KIND,
+            "deployment/helm/chapteragent/templates/deployment.yaml",
+        )
+        assert results == []
+
+    def test_unrelated_templates_dir_without_chart_yaml_still_resolves_by_path(self) -> None:
+        """The chart-dir derivation is purely path-based (Chart.yaml is not
+        required to be scanned first, or at all, for a template's directory
+        to resolve) — this is what makes the merge order-independent."""
+        results = self.adapter.scan(
+            _HELM_TEMPLATE_LITERAL_KIND, "charts/foo/templates/deployment.yaml"
+        )
+        assert len(results) == 1
+        assert results[0].canonical_name == "deployment:helm:charts/foo"

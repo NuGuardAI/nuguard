@@ -293,6 +293,7 @@ _SCENARIO_TYPE_DTYPE: dict[str, str] = {
     "OUT_OF_DOMAIN_ADVICE": "blocked_topics_missing",
     "AUTHORITY_BIAS_PHISHING": "blocked_topics_missing",
     "MULTIMODAL_INJECTION": "blocked_topics_missing",
+    "OFF_TOPIC_PROBE": "blocked_topics_missing",
     # -- hitl_gate_missing: approval / authorization-claim integrity
     "HITL_BYPASS": "hitl_gate_missing",
     "APPROVAL_SPOOF": "hitl_gate_missing",
@@ -315,6 +316,8 @@ _SCENARIO_TYPE_DTYPE: dict[str, str] = {
     "OAUTH_SCOPE_ESCALATION": "privilege_escalation",
     "TOKEN_REPLAY": "privilege_escalation",
     "SCHEMA_IDENTITY_OVERRIDE": "privilege_escalation",
+    "SCRIPTED_IDENTITY_ESCALATION": "privilege_escalation",
+    "SCRIPTED_ROLE_ESCALATION": "privilege_escalation",
     # -- data_leak: data/PII exfiltration, including covert channels
     "DIRECT_PII_EXTRACTION": "data_leak",
     "CROSS_TENANT_EXFILTRATION": "data_leak",
@@ -390,6 +393,7 @@ _SCENARIO_TYPE_DTYPE: dict[str, str] = {
     "RESPONSE_SCHEMA_PROBE": "policy_violation_generic",
     "SCHEMA_TYPE_CONFUSION": "policy_violation_generic",
     "BOUNDARY_SELF_PROBE": "policy_violation_generic",
+    "RECOVERY_VERIFICATION": "policy_violation_generic",
     # -- agentic_trust_boundary: trust boundaries BETWEEN agents/sub-agents
     "CONFUSED_DEPUTY": "agentic_trust_boundary",
     "MULTI_AGENT_TRUST": "agentic_trust_boundary",
@@ -411,6 +415,7 @@ _SCENARIO_TYPE_DTYPE: dict[str, str] = {
     "MEMORY_AUTH_DRIFT": "memory_session_integrity",
     "CREDENTIAL_PERSISTENCE": "memory_session_integrity",
     "SESSION_FIXATION": "memory_session_integrity",
+    "DOCUMENT_MEMORY_POISONING": "memory_session_integrity",
     # -- output_handling: model output used unsafely downstream (code/SQL/URL/config)
     "OUTPUT_XSS_INJECTION": "output_handling",
     "OUTPUT_TOOL_ARG_INJECTION": "output_handling",

@@ -49,6 +49,8 @@ from nuguard.behavior.models import (
 from nuguard.behavior.turn_context import TurnContext, extract_turn_context
 from nuguard.common.console import _console
 from nuguard.common.console import print_turn as _common_print_turn
+from nuguard.common.control_mappings.atlas import atlas_refs_for_finding_type, atlas_technique_label
+from nuguard.common.control_mappings.owasp import owasp_refs_for_finding_type
 from nuguard.common.logging import get_logger
 from nuguard.common.rate_limit import (
     SCENARIO_MAX_RATE_LIMIT_RETRIES,
@@ -60,6 +62,10 @@ from nuguard.config import BehaviorConfig
 from nuguard.redteam.llm_engine.refusal_patterns import APP_TRANSIENT_ERROR_PATTERNS
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
+    from nuguard.behavior.coverage_director import CoverageDirector
+    from nuguard.behavior.escalation import EscalationLadder, FamilyCircuitBreaker
     from nuguard.behavior.models import IntentProfile
     from nuguard.common.discovery import DiscoveredProfile
     from nuguard.common.llm_client import LLMClient
@@ -78,6 +84,17 @@ _DESTRUCTIVE_KEYWORDS = frozenset({
 _GAP_FINDING_MIN_OCCURRENCES = 2
 
 _GAP_FINDING_TYPES = frozenset({"CAPABILITY_GAP", "INTENT_MISALIGNMENT", "TOOL_CHAIN_BROKEN"})
+
+
+def _dynamic_finding_control_refs(finding_type: str) -> dict[str, str | None]:
+    """OWASP LLM/Agentic + MITRE ATLAS kwargs for a dynamic-finding *finding_type* dict."""
+    owasp = owasp_refs_for_finding_type(finding_type)
+    atlas = atlas_refs_for_finding_type(finding_type)
+    return {
+        "owasp_llm_ref": ", ".join(owasp.owasp_llm) or None,
+        "owasp_asi_ref": ", ".join(owasp.owasp_agentic) or None,
+        "mitre_atlas_technique": atlas_technique_label(atlas[0][0]) if atlas else None,
+    }
 
 
 def _classify_gap(gap_text: str) -> tuple[str, str]:
@@ -451,6 +468,7 @@ _GOAL_STOP_RE = re.compile(
 # Priority: higher index = kept when two scenarios share a goal.
 _TYPE_PRIORITY: dict[str, int] = {
     BehaviorScenarioType.COMPONENT_COVERAGE.value: 0,
+    BehaviorScenarioType.GUIDED_COVERAGE.value: 0,
     BehaviorScenarioType.AGENT_COVERAGE.value: 1,
     BehaviorScenarioType.INTENT_HAPPY_PATH.value: 2,
     BehaviorScenarioType.GUARDRAIL_PROBE.value: 3,
@@ -622,6 +640,7 @@ async def _adapt_message(
     if stype in (
         BehaviorScenarioType.AGENT_COVERAGE.value,
         BehaviorScenarioType.COMPONENT_COVERAGE.value,
+        BehaviorScenarioType.GUIDED_COVERAGE.value,
     ):
         return message, pii_probed, hook_probed, None
 
@@ -673,20 +692,37 @@ class BehaviorRunner:
         self,
         config: BehaviorConfig,
         sbom: "AiSbomDocument | None" = None,
+        sbom_path: "Path | None" = None,
         policy: "CognitivePolicy | None" = None,
         intent: "IntentProfile | None" = None,
         llm_client: "LLMClient | None" = None,
         judge_cache: Any = None,
+        endpoint_explicitly_set: bool | None = None,
     ) -> None:
         self._config = config
         self._sbom = sbom
+        self._sbom_path = sbom_path
         self._policy = policy
         self._intent = intent
         self._llm = llm_client
+        # Set by BehaviorAnalyzer when it auto-discovers target_endpoint from the
+        # SBOM and folds it into `config` via model_copy — at that point
+        # config.target_endpoint is no longer distinguishable from a value the
+        # user actually wrote in nuguard.yaml. None means "no analyzer involved
+        # (e.g. direct BehaviorRunner use)" — fall back to config truthiness.
+        self._endpoint_explicitly_set = endpoint_explicitly_set
+
         self._judge = BehaviorJudge(llm_client=llm_client, intent=intent, judge_cache=judge_cache)
         self._judge_cache = judge_cache
         self._auth_session: Any = None
         self._coverage_mapping_diagnostics: dict[str, Any] = {}
+        # Escalation-ladder state (behavior.escalate_on_refusal): component name
+        # -> classified RefusalReason value (or "systemic_deflection"), populated
+        # only for components that were probed and ultimately not exercised.
+        # Shared across scenarios within one run() call so _build_coverage_map()
+        # can annotate the final "not exercised" list.
+        self._refusal_classifications: dict[str, str] = {}
+        self._escalation_attempts: dict[str, int] = {}
 
         # Build component description map for coverage-turn generation.
         # Only AGENT and TOOL nodes participate in adaptive coverage turns (they are the
@@ -780,6 +816,19 @@ class BehaviorRunner:
         target_url, _url_notes = resolve_target_url(_config_url, self._sbom)
         if not target_url:
             target_url = _config_url
+
+        # Some SPAs call a separate-origin backend directly from client-side JS
+        # instead of proxying /api through their own server — SBOM/live-probe
+        # discovery can't find that origin because every path under target_url
+        # is served by the frontend's catch-all route. Best-effort: scan the
+        # served bundle for a baked-in API base URL before auth bootstrap runs.
+        from nuguard.common.endpoint_probe import discover_api_origin_from_frontend_bundle
+
+        _bundle_origin, _bundle_notes = await discover_api_origin_from_frontend_bundle(target_url)
+        if _bundle_origin:
+            target_url = _bundle_origin
+            _url_notes = _url_notes + _bundle_notes
+
         # Store resolved URL so _run_scenario can display it correctly.
         self._resolved_target_url: str = target_url
 
@@ -858,6 +907,7 @@ class BehaviorRunner:
             adk_cfg=getattr(self._config, "adk", None),
             explicitly_set=getattr(self._config, "model_fields_set", set()),
             payload_extras=_merged_extras or None,
+            heal_llm=self._llm,
         )
         # Prepend pre-bootstrap URL notes (already resolved above) so they appear
         # first; build_target_app_client won't re-add them since the URL matches.
@@ -869,6 +919,80 @@ class BehaviorRunner:
         # Keep resolved URL in sync with what the client resolved (e.g. framework adapter).
         self._resolved_target_url = client.base_url
         return client
+
+    def _endpoint_is_explicit(self) -> bool:
+        """Whether the chat endpoint was explicitly set by the user (nuguard.yaml).
+
+        Prefers ``self._endpoint_explicitly_set`` (captured by BehaviorAnalyzer
+        *before* it folds an SBOM-discovered endpoint into ``config`` via
+        ``model_copy``) so an auto-discovered endpoint isn't mistaken for a
+        user-set one and doesn't disable preflight rotation. Falls back to
+        raw config truthiness when the runner is used directly, without an
+        analyzer (``endpoint_explicitly_set`` left as ``None``).
+        """
+        if self._endpoint_explicitly_set is not None:
+            return self._endpoint_explicitly_set
+        return bool(getattr(self._config, "target_endpoint", ""))
+
+    def _coverage_director(self) -> "CoverageDirector":
+        """Lazily build (and cache) the CoverageDirector for guided coverage scenarios."""
+        director = getattr(self, "_coverage_director_instance", None)
+        if director is None:
+            from nuguard.behavior.coverage_director import CoverageDirector
+            director = CoverageDirector(llm_client=self._llm, intent=self._intent)
+            self._coverage_director_instance = director
+        return director
+
+    @property
+    def _tool_families(self) -> dict[str, str]:
+        """Lazily build (and cache) the tool name -> family map for the escalation ladder.
+
+        Family is the owning agent's name (from SBOM CALLS edges), or
+        ``escalation.STANDALONE_FAMILY`` for tools with no owning agent —
+        mirrors the grouping ``nuguard.behavior.scenarios._build_tool_groups``
+        uses to build tool-coverage scenarios in the first place.
+        """
+        cached = getattr(self, "_tool_families_cache", None)
+        if cached is not None:
+            return cached
+        from nuguard.behavior.escalation import STANDALONE_FAMILY
+        families: dict[str, str] = {}
+        if self._sbom is not None:
+            try:
+                from nuguard.behavior.scenarios import _build_tool_groups
+                for agent_name, tools in _build_tool_groups(self._sbom).items():
+                    for tool_name, _desc, _tier in tools:
+                        families[tool_name] = agent_name
+            except Exception as exc:
+                _log.debug("_tool_families: failed to build tool groups (%s)", exc)
+        for tool_name in self._tool_names:
+            families.setdefault(tool_name, STANDALONE_FAMILY)
+        self._tool_families_cache = families
+        return families
+
+    def _escalation_ladder(self) -> "EscalationLadder":
+        """Lazily build (and cache) the EscalationLadder for refusal-driven retries."""
+        ladder = getattr(self, "_escalation_ladder_instance", None)
+        if ladder is None:
+            from nuguard.behavior.escalation import EscalationLadder
+            ladder = EscalationLadder()
+            self._escalation_ladder_instance = ladder
+        return ladder
+
+    def _family_circuit_breaker(self) -> "FamilyCircuitBreaker":
+        """Lazily build (and cache) the per-run FamilyCircuitBreaker.
+
+        Shared across all scenarios in a single ``run()`` call so a family
+        found to be systemically blocked in one scenario stays suppressed
+        for the rest of the run, not just within that one scenario.
+        """
+        breaker = getattr(self, "_family_circuit_breaker_instance", None)
+        if breaker is None:
+            from nuguard.behavior.escalation import FamilyCircuitBreaker
+            threshold = int(getattr(self._config, "escalation_circuit_breaker_threshold", 3) or 3)
+            breaker = FamilyCircuitBreaker(threshold=threshold)
+            self._family_circuit_breaker_instance = breaker
+        return breaker
 
     def _build_policy_evaluator(self) -> Any:
         """Build the PolicyEvaluator if a policy is available."""
@@ -974,7 +1098,7 @@ class BehaviorRunner:
 
         max_turns = min(
             len(scenario.messages) + _adaptive_coverage_cap(self._config),
-            _ADAPTIVE_SESSION_CAP,
+            _session_turn_cap(self._config),
         )
 
         # State for adaptive loop
@@ -982,6 +1106,13 @@ class BehaviorRunner:
         coverage_turns_used = 0
         turn_idx = 0
         pending_invocation: tuple[str, str] | None = None  # (message, component_name)
+        # Escalation-ladder state (behavior.escalate_on_refusal only): which
+        # component the *current outgoing* message targets (set fresh each
+        # turn, below) so the refusal classifier knows which tool to
+        # attribute the response to, and how many attempts have already been
+        # spent on it.
+        _escalate_on_refusal = bool(getattr(self._config, "escalate_on_refusal", False))
+        _escalation_max_attempts = int(getattr(self._config, "escalation_max_attempts", 3) or 3)
         credentials = dict(getattr(self._config, "credentials", None) or {})
         consecutive_failures = 0
         _MAX_CONSECUTIVE_FAILURES = 3
@@ -1060,6 +1191,11 @@ class BehaviorRunner:
         while turn_idx < max_turns:
             # Determine next message
             message: str | None = None
+            # Reset each turn — only set (below) when this turn's message is an
+            # escalation-ladder-eligible probe (a GUIDED_COVERAGE pick, or a
+            # queued escalation retry), never for rate-limit/confirmation/
+            # scripted turns, which the ladder does not apply to.
+            _escalation_target = None
 
             # 0a. Rate-limited turn retry — replay the same message after backoff.
             if _rate_limit_retry_message is not None:
@@ -1078,9 +1214,12 @@ class BehaviorRunner:
                 message = pending_confirmation
                 pending_confirmation = None
 
-            # 1. Queued invocation after a "not used" probe
+            # 1. Queued invocation after a "not used" probe (or an escalation
+            #    ladder retry — see the refusal-classification block below).
             elif pending_invocation is not None:
-                message, _ = pending_invocation
+                message, _pending_component = pending_invocation
+                if _escalate_on_refusal:
+                    _escalation_target = _pending_component
                 pending_invocation = None
 
             # 2. Next scripted message — adapt using prior turn context (v7.5: probe
@@ -1124,21 +1263,69 @@ class BehaviorRunner:
                     _coverage_stall_count = 0
                 _uncovered_prev = _uncovered_frozen
                 last_response = session.last_response
-                coverage_messages = await generate_coverage_turns(
-                    uncovered=uncovered,
-                    session_context=last_response[:500],
-                    component_descriptions=self._component_descriptions,
-                    llm_client=self._llm,
-                    domain_context=getattr(self._intent, "app_purpose", "") if self._intent else "",
-                    intent=self._intent,
-                    scoped_components=scoped_component_set,
-                    profile=self._pre_scan_profile,
-                )
-                if not coverage_messages:
-                    break
-                pending_messages = coverage_messages
-                coverage_turns_used += len(coverage_messages)
-                message = pending_messages.pop(0)  # send coverage turns as-is
+                if scenario.scenario_type == BehaviorScenarioType.GUIDED_COVERAGE:
+                    # Turn-by-turn adaptive coverage: one LLM-picked message per
+                    # turn, reacting to the full last response, instead of a
+                    # pre-generated batch played back regardless of context.
+                    scoped_uncovered = (
+                        uncovered & scoped_component_set if scoped_component_set is not None else uncovered
+                    )
+                    if _escalate_on_refusal:
+                        # Skip tools whose family has already tripped the
+                        # circuit breaker (systemic_deflection) — no point
+                        # burning further turns on them; tag them directly so
+                        # they show up correctly in the coverage report even
+                        # though no further probe is attempted.
+                        _breaker = self._family_circuit_breaker()
+                        _still_probeable = set()
+                        for _comp in scoped_uncovered:
+                            _fam = self._tool_families.get(_comp)
+                            if _fam is not None and _breaker.is_tripped(_fam):
+                                self._refusal_classifications[_comp] = "systemic_deflection"
+                            else:
+                                _still_probeable.add(_comp)
+                        scoped_uncovered = _still_probeable
+                        if not scoped_uncovered:
+                            break
+                        picked = await self._coverage_director().next_message_with_target(
+                            uncovered=scoped_uncovered,
+                            last_response=last_response,
+                            component_descriptions=self._component_descriptions,
+                            allowed_topics=list(getattr(self._policy, "allowed_topics", None) or []) if self._policy else None,
+                            domain_context=getattr(self._intent, "app_purpose", "") if self._intent else "",
+                            profile=self._pre_scan_profile,
+                        )
+                        if picked is None:
+                            break
+                        _escalation_target, message = picked
+                    else:
+                        message = await self._coverage_director().next_message(
+                            uncovered=scoped_uncovered,
+                            last_response=last_response,
+                            component_descriptions=self._component_descriptions,
+                            allowed_topics=list(getattr(self._policy, "allowed_topics", None) or []) if self._policy else None,
+                            domain_context=getattr(self._intent, "app_purpose", "") if self._intent else "",
+                            profile=self._pre_scan_profile,
+                        )
+                    if not message:
+                        break
+                    coverage_turns_used += 1
+                else:
+                    coverage_messages = await generate_coverage_turns(
+                        uncovered=uncovered,
+                        session_context=last_response[:500],
+                        component_descriptions=self._component_descriptions,
+                        llm_client=self._llm,
+                        domain_context=getattr(self._intent, "app_purpose", "") if self._intent else "",
+                        intent=self._intent,
+                        scoped_components=scoped_component_set,
+                        profile=self._pre_scan_profile,
+                    )
+                    if not coverage_messages:
+                        break
+                    pending_messages = coverage_messages
+                    coverage_turns_used += len(coverage_messages)
+                    message = pending_messages.pop(0)  # send coverage turns as-is
                 _log.debug("_run_scenario: using coverage turn for uncovered: %s", list(uncovered)[:3])
             else:
                 break
@@ -1258,6 +1445,8 @@ class BehaviorRunner:
                         "severity": "high",
                     }],
                     latency_ms=latency_ms,
+                    confidence="high",
+                    evidence=send_error[:200],
                 )
                 if verbose:
                     _print_turn(
@@ -1529,6 +1718,58 @@ class BehaviorRunner:
                 pending_invocation = (follow_msg, target_comp)
                 coverage_turns_used += 1
 
+            # Escalation ladder (behavior.escalate_on_refusal): classify the
+            # response for the component this turn targeted. A refusal queues
+            # an escalated retry (explicit phrasing, then — for a
+            # missing-precondition refusal — a setup turn) up to
+            # escalation_max_attempts, and a per-tool-family circuit breaker
+            # stops escalating a family after N consecutive identical
+            # classifications (tagged systemic_deflection instead).
+            if _escalate_on_refusal and _escalation_target and response:
+                from nuguard.behavior.refusal import classify_refusal as _classify_refusal
+                _reason = await _classify_refusal(response, llm_client=self._llm)
+                if _reason is None:
+                    # Genuine engagement — clear any stale classification/attempt
+                    # count so the component reads as exercised, not refused.
+                    self._refusal_classifications.pop(_escalation_target, None)
+                    self._escalation_attempts.pop(_escalation_target, None)
+                else:
+                    _family = self._tool_families.get(_escalation_target, "__standalone__")
+                    _tripped = self._family_circuit_breaker().record(_family, _reason)
+                    _attempts_used = self._escalation_attempts.get(_escalation_target, 1)
+                    if _tripped:
+                        self._refusal_classifications[_escalation_target] = "systemic_deflection"
+                        _log.info(
+                            "_run_scenario: family=%s circuit-broken (systemic_deflection) — "
+                            "no further escalation for %s",
+                            _family, _escalation_target,
+                        )
+                    elif (
+                        _attempts_used < _escalation_max_attempts
+                        and pending_invocation is None
+                        and coverage_turns_used < _adaptive_coverage_cap(self._config)
+                    ):
+                        _next_attempt = _attempts_used + 1
+                        self._escalation_attempts[_escalation_target] = _next_attempt
+                        _ladder_step = self._escalation_ladder().build(
+                            attempt=_next_attempt,
+                            tool_name=_escalation_target,
+                            tool_description=self._component_descriptions.get(_escalation_target, ""),
+                            refusal_reason=_reason,
+                            original_message=message,
+                        )
+                        pending_invocation = (_ladder_step.message, _escalation_target)
+                        coverage_turns_used += 1
+                        _log.info(
+                            "_run_scenario: escalating %s (attempt %d/%d, strategy=%s) after %s refusal",
+                            _escalation_target, _next_attempt, _escalation_max_attempts,
+                            _ladder_step.strategy, _reason.value,
+                        )
+                    else:
+                        # Attempts exhausted without success — keep the last
+                        # classification so the coverage report can explain why.
+                        self._refusal_classifications.setdefault(_escalation_target, _reason.value)
+
             # Update coverage state
             coverage_state.update(verdict)
 
@@ -1582,6 +1823,7 @@ class BehaviorRunner:
                     "affected_component": _component,
                     "finding_type": "POLICY_VIOLATION",
                     "policy_clause": violation.get("policy_clause", ""),
+                    **_dynamic_finding_control_refs("POLICY_VIOLATION"),
                 })
                 # Mirror into scenario_deviations so run() aggregation can include
                 # these in BehaviorRunResult.findings and compute scan_outcome correctly.
@@ -1609,6 +1851,7 @@ class BehaviorRunner:
                     "description": f"Canary values found in response: {canary_hits}",
                     "affected_component": _component,
                     "finding_type": "SECRET_DISCLOSURE",
+                    **_dynamic_finding_control_refs("SECRET_DISCLOSURE"),
                 })
                 scenario_deviations.append({
                     "deviation_type": "data_leak",
@@ -1656,6 +1899,25 @@ class BehaviorRunner:
             matched_topic=getattr(scenario, "matched_topic", None),
         )
 
+    def _persist_capability_discovery_sbom(self, notes: list[str]) -> None:
+        """Write the in-memory SBOM (post capability discovery) to the same
+        ``<name>.sbom.enriched.json`` artifact used by auto-enrichment, so the
+        two persistence steps combine into one file instead of two.
+
+        No-op when nothing changed or no source SBOM path is known.
+        """
+        if not notes or self._sbom_path is None or self._sbom is None:
+            return
+        from nuguard.common.auto_sbom_enricher import (  # noqa: PLC0415
+            persist_capability_discovery_sbom,
+        )
+        try:
+            artifact = persist_capability_discovery_sbom(self._sbom, self._sbom_path)
+            _log.info("behavior capability discovery: persisted SBOM to %s", artifact)
+            _console.print(f"  [dim]Capability discovery merged into {artifact}[/dim]")
+        except Exception as exc:
+            _log.warning("behavior capability discovery: could not persist SBOM artifact: %s", exc)
+
     async def discover(self) -> "DiscoveredProfile | None":
         """Run pre-scan discovery against the live agent and return the profile.
 
@@ -1691,7 +1953,7 @@ class BehaviorRunner:
             from nuguard.common.endpoint_probe import (  # noqa: PLC0415
                 discover_chat_candidates_from_sbom as _disc_candidates,
             )
-            _explicit_endpoint = bool(getattr(self._config, "target_endpoint", ""))
+            _explicit_endpoint = self._endpoint_is_explicit()
             _disc_fallbacks = (
                 []
                 if _explicit_endpoint
@@ -1710,11 +1972,118 @@ class BehaviorRunner:
                 "behavior pre-scan discovery: name=%r ids=%s turns=%d source=%s",
                 profile.customer_name, profile.ids, profile.turns_sent, profile.source,
             )
+
+            if bool(getattr(self._config, "capability_discovery", True)):
+                from nuguard.common.discovery import (  # noqa: PLC0415
+                    apply_capability_discovery,
+                    run_capability_discovery,
+                    sbom_capability_gaps,
+                )
+                _cap_gaps = sbom_capability_gaps(self._sbom)
+                if _cap_gaps and self._sbom is not None:
+                    _cap_result = await run_capability_discovery(
+                        client, _disc_session, _cap_gaps,
+                    )
+                    _cap_notes = apply_capability_discovery(self._sbom, _cap_gaps, _cap_result)
+                    for _cap_note in _cap_notes:
+                        _console.print(f"  [dim]{_cap_note}[/dim]")
+                    _log.info(
+                        "behavior capability discovery: probes_sent=%d notes=%d",
+                        _cap_result.probes_sent, len(_cap_notes),
+                    )
+                    self._persist_capability_discovery_sbom(_cap_notes)
+
             return profile
         except Exception as exc:
             _log.warning("BehaviorRunner.discover failed (non-fatal): %s", exc)
             _console.print(f"  [yellow]Pre-scan discovery failed (non-fatal): {exc}[/yellow]")
             return None
+
+    async def probe_tool_families(self) -> dict[str, str]:
+        """Run one lightweight reachability probe per agent/tool-family.
+
+        Sends a single natural-phrasing message per family — reusing the SBOM
+        tool grouping from :func:`nuguard.behavior.scenarios._build_tool_groups`
+        (agent name -> its tools via CALLS edges; tools with no owning agent
+        are grouped under :data:`nuguard.behavior.escalation.STANDALONE_FAMILY`)
+        — and classifies the response with
+        :func:`nuguard.behavior.refusal.classify_refusal`. Intended to run
+        once, before scenario generation, so ``build_scenarios`` can schedule
+        probed-reachable families ahead of probed-blocked ones within the
+        ``max_scenarios`` cap (``behavior.prioritize_by_probe``).
+
+        Non-fatal: any per-family send failure records that family as
+        ``"unknown"`` (treated as reachable for scheduling purposes) rather
+        than aborting the whole probe pass.
+
+        Returns:
+            Mapping of family name to ``"reachable"``, ``"blocked"``, or
+            ``"unknown"``.
+        """
+        from nuguard.behavior.escalation import STANDALONE_FAMILY
+        from nuguard.behavior.refusal import classify_refusal
+        from nuguard.behavior.scenarios import _build_tool_groups
+        from nuguard.redteam.target.session import AttackSession as _AS
+
+        if self._sbom is None:
+            return {}
+
+        try:
+            tool_groups = _build_tool_groups(self._sbom)
+        except Exception as exc:
+            _log.warning("probe_tool_families: failed to build tool groups (%s)", exc)
+            return {}
+
+        grouped_tools = {t[0] for tools in tool_groups.values() for t in tools}
+        standalone: list[tuple[str, str, str]] = []
+        for node in getattr(self._sbom, "nodes", []):
+            ct = getattr(node, "component_type", None) or getattr(node, "type", None)
+            nt = getattr(ct, "value", str(ct) if ct else "").upper()
+            if nt != "TOOL":
+                continue
+            name = str(getattr(node, "name", "") or getattr(node, "id", ""))
+            if name in grouped_tools:
+                continue
+            desc = self._component_descriptions.get(name, "")
+            standalone.append((name, desc, ""))
+        if standalone:
+            tool_groups[STANDALONE_FAMILY] = standalone
+
+        if not tool_groups:
+            return {}
+
+        try:
+            client = await self._build_client()
+        except Exception as exc:
+            _log.warning("probe_tool_families: failed to build client (%s)", exc)
+            return {}
+
+        target_url = getattr(self, "_resolved_target_url", None) or getattr(self._config, "target", "") or ""
+        _console.rule("[bold cyan]Tool-family Reachability Probe[/bold cyan]", style="dim cyan")
+
+        results: dict[str, str] = {}
+        for family, tools in tool_groups.items():
+            if not tools or results.get(family) == "reachable":
+                continue
+            tool_name, tool_desc, _tier = tools[0]
+            action = (tool_desc or "").strip()[:80] or "complete its primary function"
+            probe_message = f"Can you use {tool_name} to {action}?"
+            session = _AS(session_id=f"probe-{family}", target_url=target_url, chain_id="behavior-family-probe")
+            try:
+                response, _ = await client.send(probe_message, session=session)
+            except Exception as exc:
+                _log.debug("probe_tool_families: send failed for family=%s (%s)", family, exc)
+                results.setdefault(family, "unknown")
+                continue
+            if response.startswith("[HTTP ") or response.startswith("[REQUEST_ERROR:"):
+                results.setdefault(family, "unknown")
+                continue
+            reason = await classify_refusal(response, llm_client=self._llm)
+            status = "blocked" if reason is not None else "reachable"
+            results[family] = status
+            _console.print(f"  [dim]probe {family}:[/dim] {status}")
+
+        return results
 
     async def run(
         self,
@@ -1788,6 +2157,7 @@ class BehaviorRunner:
 
         # Reset endpoint rotation state for this run.
         self._rotated_chat_endpoint: "tuple[str, str, bool, str | None] | None" = None
+        self._bootstrapped_path_params: dict[str, str] = {}
 
         # Pre-scan discovery: connect to the live agent and extract the
         # authenticated user's real name + IDs before generating test payloads.
@@ -1816,7 +2186,7 @@ class BehaviorRunner:
                 chain_id="behavior-pre-scan",
             )
             _use_case = getattr(self._intent, "app_purpose", "") if self._intent else ""
-            _explicit_endpoint = bool(getattr(self._config, "target_endpoint", ""))
+            _explicit_endpoint = self._endpoint_is_explicit()
             _sbom_fallbacks = (
                 []
                 if _explicit_endpoint
@@ -1837,84 +2207,64 @@ class BehaviorRunner:
                 self._pre_scan_profile.source,
             )
 
+            # Capability discovery: ask the live agent about its tools (always
+            # cross-checked against the SBOM) and, when actually missing from
+            # the SBOM, its system-prompt excerpt and sub-agents. Findings are
+            # merged into the in-memory SBOM before scenarios are built.
+            if bool(getattr(self._config, "capability_discovery", True)):
+                from nuguard.common.discovery import (  # noqa: PLC0415
+                    apply_capability_discovery,
+                    run_capability_discovery,
+                    sbom_capability_gaps,
+                )
+                _cap_gaps = sbom_capability_gaps(self._sbom)
+                if _cap_gaps and self._sbom is not None:
+                    _cap_result = await run_capability_discovery(
+                        client, _disc_session, _cap_gaps,
+                    )
+                    _cap_notes = apply_capability_discovery(self._sbom, _cap_gaps, _cap_result)
+                    for _cap_note in _cap_notes:
+                        _console.print(f"  [dim]{_cap_note}[/dim]")
+                    _log.info(
+                        "behavior capability discovery: probes_sent=%d notes=%d",
+                        _cap_result.probes_sent, len(_cap_notes),
+                    )
+                    self._persist_capability_discovery_sbom(_cap_notes)
+
         # Pre-flight endpoint validation: send a single test request to verify the
         # configured chat endpoint is reachable before launching all scenarios.
         # On 405/404, rotate through ranked SBOM candidates then fall back to live
         # probing.  Abort the run cleanly if no working endpoint is found.
         _preflight_ok = True
         _configured_endpoint = getattr(self._config, "target_endpoint", "") or ""
-        _has_explicit_endpoint = bool(_configured_endpoint)
+        _has_explicit_endpoint = self._endpoint_is_explicit()
         self._target_endpoint_source = "config" if _has_explicit_endpoint else "default"
         try:
-            from nuguard.common.endpoint_probe import (  # noqa: PLC0415
-                discover_chat_candidates_from_sbom as _dcandidates,
+            from nuguard.common.endpoint_preflight import (  # noqa: PLC0415
+                validate_and_rotate_chat_endpoint,
             )
-            from nuguard.common.endpoint_probe import (
-                probe_chat_endpoints as _probe,
-            )
-            from nuguard.redteam.target.session import AttackSession as _PF_AS  # noqa: PLC0415
-            _pf_session = _PF_AS(
-                session_id="preflight",
+            _bootstrap_hdrs: dict[str, str] = getattr(self._auth_session, "headers", lambda: {})() if self._auth_session else {}
+            _pf = await validate_and_rotate_chat_endpoint(
+                client,
+                self._sbom,
+                has_explicit_endpoint=_has_explicit_endpoint,
                 target_url=target_url or "",
-                chain_id="behavior-preflight",
+                auth_headers=_bootstrap_hdrs or None,
             )
-            _pf_resp, _ = await client.send("Hello", _pf_session)
-            if _pf_resp.startswith("[HTTP 405]") or _pf_resp.startswith("[HTTP 404]"):
-                _log.warning(
-                    "Pre-flight: chat endpoint returned %s — attempting rotation",
-                    _pf_resp[:15],
-                )
-                if _has_explicit_endpoint:
-                    _console.print(
-                        "[bold red]⚠ Configured chat endpoint is unreachable (405/404): "
-                        f"{_configured_endpoint}.\n"
-                        "Explicit endpoint precedence is enforced; no SBOM/probe rotation was attempted.\n"
-                        "Fix 'target_endpoint' in nuguard.yaml or remove it to allow fallback discovery.[/bold red]"
-                    )
-                    _log.error(
-                        "BehaviorRunner.run: explicit target_endpoint %r unreachable (405/404); "
-                        "skipping SBOM/probe rotation",
-                        _configured_endpoint,
-                    )
-                    _preflight_ok = False
-                else:
-                    _remaining = list(_dcandidates(self._sbom)[1:]) if self._sbom else []
-                    _rotated = False
-                    for _ep in _remaining:
-                        client.set_chat_endpoint(_ep[0], _ep[1], _ep[2], _ep[3])
-                        _pf_r2, _ = await client.send("Hello", _pf_session)
-                        if not _pf_r2.startswith("[HTTP 405]") and not _pf_r2.startswith("[HTTP 404]"):
-                            _log.info("Pre-flight: rotated to working endpoint %s", _ep[0])
-                            _console.print(f"  [cyan]Endpoint rotated → {_ep[0]}[/cyan]")
-                            self._rotated_chat_endpoint = _ep
-                            self._target_endpoint_source = "sbom"
-                            _rotated = True
-                            break
-                    if not _rotated and self._sbom is not None:
-                        # Live probe as last resort
-                        _bootstrap_hdrs: dict[str, str] = getattr(self._auth_session, "headers", lambda: {})() if self._auth_session else {}
-                        try:
-                            _probed = await _probe(target_url, self._sbom, auth_headers=_bootstrap_hdrs)
-                            if _probed:
-                                client.set_chat_endpoint(_probed[0], _probed[1], _probed[2])
-                                _log.info("Pre-flight: live probe found working endpoint %s", _probed[0])
-                                _console.print(f"  [cyan]Live probe → {_probed[0]}[/cyan]")
-                                self._rotated_chat_endpoint = (_probed[0], _probed[1], _probed[2], None)
-                                self._target_endpoint_source = "probe"
-                                _rotated = True
-                        except Exception as _pe:
-                            _log.warning("Pre-flight live probe failed: %s", _pe)
-                    if not _rotated:
-                        _console.print(
-                            "[bold red]⚠ Chat endpoint unreachable — all SBOM candidates and live "
-                            "probe returned 405/404.\n"
-                            "Check 'target_endpoint' in nuguard.yaml or re-run "
-                            "'nuguard sbom generate'.[/bold red]"
-                        )
-                        _log.error(
-                            "BehaviorRunner.run: aborting — no working chat endpoint found"
-                        )
-                        _preflight_ok = False
+            for _pf_note in _pf.notes:
+                _console.print(f"[bold red]⚠ {_pf_note}[/bold red]" if not _pf.ok else f"  [cyan]{_pf_note}[/cyan]")
+            if _pf.rotated_endpoint is not None:
+                self._rotated_chat_endpoint = _pf.rotated_endpoint
+                self._target_endpoint_source = _pf.endpoint_source or self._target_endpoint_source
+            if not _pf.ok:
+                _preflight_ok = False
+            # Path params (e.g. a bootstrapped conversation ":id") are bound on
+            # the shared preflight client only — isolated scenario clients get a
+            # fresh TargetAppClient each with no such binding, so capture them
+            # here to replay on every scenario client below.
+            _client_path_params = getattr(client, "path_param_values", None)
+            if isinstance(_client_path_params, dict):
+                self._bootstrapped_path_params = _client_path_params
         except Exception as _pf_exc:
             _log.debug("Pre-flight check failed (non-fatal): %s", _pf_exc)
 
@@ -2005,6 +2355,13 @@ class BehaviorRunner:
                 # isolated scenario client uses the correct (non-broken) endpoint.
                 if _isolate and self._rotated_chat_endpoint:
                     _scenario_client.set_chat_endpoint(*self._rotated_chat_endpoint)
+                # Replay path params bootstrapped during pre-flight (e.g. a
+                # two-step chat's conversation ":id") — a fresh isolated client
+                # otherwise starts with none bound, causing every turn to fail
+                # with an unresolved-path-param config error.
+                if _isolate and self._bootstrapped_path_params and hasattr(_scenario_client, "set_path_param"):
+                    for _pp_name, _pp_value in self._bootstrapped_path_params.items():
+                        _scenario_client.set_path_param(_pp_name, _pp_value)
                 try:
                     result = await self._run_scenario(scenario, _scenario_client, policy_evaluator)  # type: ignore[arg-type]
                     # Check if the first verdict was a first-turn 405 failure.
@@ -2070,9 +2427,10 @@ class BehaviorRunner:
                     seen_findings.add(dedup_key)
                     _attack_step = dev.get("attack_step")
                     _component = _resolve_affected_component(orig)
+                    _dev_finding_type = str(dev.get("deviation_type", "policy_violation")).upper()
                     all_findings.append({
                         "finding_id": _make_finding_id(
-                            finding_type=str(dev.get("deviation_type", "policy_violation")).upper(),
+                            finding_type=_dev_finding_type,
                             severity=str(dev.get("severity", "medium")).lower(),
                             component=_component,
                             summary=dev.get("description", ""),
@@ -2086,7 +2444,8 @@ class BehaviorRunner:
                         "description": dev.get("description", ""),
                         "affected_component": _component,
                         "attack_steps": [_attack_step] if _attack_step else [],
-                        "finding_type": str(dev.get("deviation_type", "policy_violation")).upper(),
+                        "finding_type": _dev_finding_type,
+                        **_dynamic_finding_control_refs(_dev_finding_type),
                     })
 
         # Aggregate gap strings from all scenario verdicts into bucketed findings.
@@ -2182,6 +2541,7 @@ class BehaviorRunner:
                 "evidence_turn_count": unique_evidence_turn_count,
                 "duplicate_turns_removed": duplicate_turns_removed,
                 "attack_steps": gap_attack_steps,
+                **_dynamic_finding_control_refs(ftype),
             })
 
         # Flush judge cache to disk once all scenarios are done (v3).
@@ -2584,6 +2944,14 @@ class BehaviorRunner:
             for cov in component_map.values():
                 cov.unmatched_mentions = unmatched_sorted
 
+        # Escalation ladder (behavior.escalate_on_refusal): annotate any
+        # not-exercised component with its classified refusal reason so the
+        # report can show *why* it wasn't exercised instead of a flat list.
+        for _comp_name, _reason_value in self._refusal_classifications.items():
+            _cov = component_map.get(_comp_name)
+            if _cov is not None and not _cov.exercised:
+                _cov.refusal_reason = _reason_value
+
         self._coverage_mapping_diagnostics = {
             "mentioned_entities_unmapped": sorted(unmatched_mentions),
             "mapped_component_mentions": sorted(mapped_component_mentions),
@@ -2601,7 +2969,12 @@ class BehaviorRunner:
 def _adaptive_coverage_cap(config: Any) -> int:
     """Return the max number of adaptive coverage turns allowed."""
     from nuguard.behavior.coverage import MAX_COVERAGE_TURNS
-    return MAX_COVERAGE_TURNS
+    return int(getattr(config, "coverage_turns_per_scenario", None) or MAX_COVERAGE_TURNS)
+
+
+def _session_turn_cap(config: Any) -> int:
+    """Return the max total turns (scripted + coverage) allowed in a scenario session."""
+    return int(getattr(config, "max_session_turns", None) or _ADAPTIVE_SESSION_CAP)
 
 
 def _generate_data_reactive_turns(

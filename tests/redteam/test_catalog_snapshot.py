@@ -277,8 +277,11 @@ def test_spec_fields_snapshot(spec_id: str) -> None:
 
 
 def test_owasp_llm_coverage() -> None:
-    """Key OWASP LLM 2025 categories must appear in at least one spec."""
-    required = {"LLM01", "LLM02", "LLM04", "LLM05", "LLM06", "LLM08", "LLM09", "LLM10"}
+    """Key OWASP LLM 2026 categories must appear in at least one spec."""
+    required = {
+        "LLM01:2026", "LLM02:2026", "LLM04:2026", "LLM05:2026",
+        "LLM06:2026", "LLM08:2026", "LLM09:2026", "LLM10:2026",
+    }
     covered: set[str] = set()
     for spec in SCENARIO_CATALOG:
         covered.update(spec.owasp_llm)

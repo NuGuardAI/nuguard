@@ -265,14 +265,15 @@ def test_render_behavior_coverage_evidence_exercised_component():
     assert "#### Evidence: booking_agent" in joined
 
 
-def test_render_behavior_coverage_evidence_not_exercised():
+def test_render_behavior_coverage_evidence_not_exercised_is_skipped():
+    # Non-exercised components are skipped: the report only shows matched
+    # components to keep it concise.
     sr = _ScenarioResult(scenario_id="1", scenario_name="s", scenario_type="agent_coverage")
     cov = _BehaviorCoverage(component_name="payment_tool", node_type="TOOL", exercised=False)
     lines: list[str] = []
     render_behavior_coverage_evidence(lines, [cov], [sr])
     joined = "\n".join(lines)
-    assert "Not exercised" in joined
-    assert "payment_tool" in joined
+    assert "payment_tool" not in joined
 
 
 # ---------------------------------------------------------------------------

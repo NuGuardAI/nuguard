@@ -26,6 +26,15 @@ if TYPE_CHECKING:
 
 _log = get_logger(__name__)
 
+# Unresolved path-parameter placeholders — FastAPI/Express style `{id}`,
+# NestJS/Express colon style `:id`, or `<id>` — sent to the target literally,
+# they 404 every time (no real resource ID exists to substitute). A route
+# behind one of these can still be the only chat surface an app exposes
+# (e.g. NestJS's `POST /chat/conversations/:id/messages`, which requires a
+# conversation to be created first), so this is a scoring penalty, not an
+# exclusion — see discover_chat_candidates_from_sbom.
+_HAS_PATH_PARAM_RE = re.compile(r"(:\w+|\{\w+\}|<\w+>)")
+
 # Endpoint path fragments that are definitively NOT chat endpoints.
 # Keep this list tight — false exclusions are worse than false inclusions
 # because the probe will verify via HTTP anyway.
@@ -46,20 +55,46 @@ _PROBE_PAYLOADS: list[tuple[str, bool]] = [
     ("text", False),
     ("content", False),
     ("msg", False),
+    ("messages", True),
 ]
 
 _TEST_MESSAGE = "Hello, this is a connectivity test."
 
+# Well-known OpenAI/Anthropic/LangChain-style chat-history field names.
+# Mirrors nuguard.redteam.target.client._MESSAGE_HISTORY_KEYS — kept as a
+# separate constant here to avoid a cross-package import for a 4-item set.
+# When the probe tries one of these keys, the value must be a
+# [{"role": "user", "content": ...}] message list, not a bare string/list —
+# a message-history endpoint will 422 on a flat body and register as a miss.
+_MESSAGE_HISTORY_KEYS: frozenset[str] = frozenset(
+    {"messages", "history", "conversation", "chat_history"}
+)
+
 # Payload keys that are definitively NOT conversational chat keys.
 # These appear in domain-specific endpoints (banking transfers, healthcare orders, etc.)
-# and must not be treated as the primary chat message field.
+# and must not be treated as the primary chat message field. Entries are
+# snake_case; matching against `meta.chat_payload_key` normalizes camelCase
+# (e.g. "patientName") to snake_case first — see _normalize_payload_key —
+# so a single entry here covers both spellings.
 _RUNTIME_NON_CHAT_KEYS: frozenset[str] = frozenset({
     "from_account_id", "to_account_id", "amount", "card_id", "account_id",
-    "patient_id", "order_id", "booking_reference", "flight_number",
+    "patient_id", "patient_name", "order_id", "booking_reference", "flight_number",
     "transaction_id", "payment_id", "notification_id",
     "recipient_account", "source_account", "debit_account", "credit_account",
     "transfer_amount", "beneficiary_id", "invoice_id", "claim_id",
+    "customer_name", "template_data",
 })
+
+_CAMEL_CASE_RE = re.compile(r"(?<!^)(?=[A-Z])")
+
+
+def _normalize_payload_key(key: str) -> str:
+    """Normalize a payload key for comparison against _RUNTIME_NON_CHAT_KEYS.
+
+    Converts camelCase (e.g. "patientName") to snake_case ("patient_name")
+    and lowercases, so both spellings match a single blocklist entry.
+    """
+    return _CAMEL_CASE_RE.sub("_", key).lower()
 
 
 def _sbom_post_paths(sbom: "AiSbomDocument") -> list[str]:
@@ -76,8 +111,9 @@ def _sbom_post_paths(sbom: "AiSbomDocument") -> list[str]:
         path: str = (meta.endpoint or "").strip()
         if not path or not path.startswith("/"):
             continue
-        # Skip parameterised paths like /user/{id}
-        if "{" in path:
+        # Skip parameterised paths like /user/{id} or /user/:id — sending the
+        # placeholder literally always 404s with no real ID to substitute.
+        if _HAS_PATH_PARAM_RE.search(path):
             continue
         # Skip non-POST
         if meta.method and meta.method.upper() not in ("POST", ""):
@@ -264,7 +300,12 @@ async def probe_chat_endpoints(
         for path in paths:
             _log.info("endpoint_probe: trying %s%s", base, path)
             for pay_key, pay_list in payload_shapes:
-                value: object = [_TEST_MESSAGE] if pay_list else _TEST_MESSAGE
+                if pay_list and pay_key.strip().lower() in _MESSAGE_HISTORY_KEYS:
+                    value: object = [{"role": "user", "content": _TEST_MESSAGE}]
+                elif pay_list:
+                    value = [_TEST_MESSAGE]
+                else:
+                    value = _TEST_MESSAGE
                 body: dict[str, object] = {}
                 if probe_payload_extras:
                     body.update(probe_payload_extras)
@@ -380,7 +421,7 @@ def discover_chat_candidates_from_sbom(
         # ── Resolve payload key ────────────────────────────────────────────
         inferred_response_key: str | None = meta.response_text_key or None
         if meta.chat_payload_key:
-            if meta.chat_payload_key in _RUNTIME_NON_CHAT_KEYS:
+            if _normalize_payload_key(meta.chat_payload_key) in _RUNTIME_NON_CHAT_KEYS:
                 # Domain-specific key (financial, medical, etc.) — not a chat endpoint.
                 # Skip so that summary.api_endpoints fallback can find the real one.
                 continue
@@ -413,11 +454,11 @@ def discover_chat_candidates_from_sbom(
         elif node.confidence >= 0.75:
             score += 1
 
-        if "/chat/message" in endpoint_l:
+        if "/chat/message" in endpoint_l or "/api/chat" in endpoint_l or "/v1/chat" in endpoint_l:
+            score += 2
+        elif endpoint_l.endswith("/chat"):
             score += 2
         elif any(token in endpoint_l for token in ("/chat/queue", "/messages", "/message", "/generate", "/completions", "/respond", "/query")):
-            score += 3
-        elif endpoint_l.endswith("/chat"):
             score += 1
 
         # LangGraph run endpoint is always the primary agent interface.
@@ -432,6 +473,13 @@ def discover_chat_candidates_from_sbom(
         # Penalise nodes that had no explicit payload key (inferred).
         if not meta.chat_payload_key:
             score -= 1
+
+        # Penalise (don't exclude) unresolved path-parameter routes — see
+        # _HAS_PATH_PARAM_RE. A parameter-free alternative should win when one
+        # exists; otherwise this remains the best (only) candidate and callers
+        # still get it, just ranked honestly against cleaner routes.
+        if _HAS_PATH_PARAM_RE.search(discovered_path):
+            score -= 4
 
         # Penalise nodes confirmed dead by the live probe — GET 404 means the
         # route doesn't exist at all on the deployed target; POST 405 strongly
@@ -550,4 +598,137 @@ def _looks_like_chat_response(data: object, response_key: str | None = None) -> 
                 "answer", "result", "reply", "choices", "messages"):
         if key in data:
             return True
+    return False
+
+
+# ---------------------------------------------------------------------------
+# Frontend-bundle API-origin discovery
+# ---------------------------------------------------------------------------
+
+# Detects a served page that's a bundled SPA (Vite/CRA/webpack), not a JSON API.
+_SCRIPT_SRC_RE = re.compile(r'<script[^>]+src=["\']([^"\']+\.js[^"\']*)["\']', re.IGNORECASE)
+
+# Matches the common "baseURL: '<absolute-url>'" shape client bundles bake in
+# (axios `baseURL`, or hand-rolled `apiUrl`/`API_URL`/`apiBaseUrl` constants).
+# Deliberately scoped to key names that mean "API origin" — this keeps false
+# positives low against unrelated absolute URLs bundled for other SDKs
+# (analytics, error-tracking, payment widgets, ...) which use different names.
+_API_BASE_URL_RE = re.compile(
+    r'(?:baseURL|baseUrl|apiBaseUrl|apiBase|apiUrl|API_URL|API_BASE_URL)\s*[:=]\s*'
+    r'[`"\'](https?://[^`"\'\s,)]+)',
+)
+
+_MAX_SCRIPTS_TO_SCAN = 6
+_SCRIPT_FETCH_TIMEOUT = 15.0
+
+# Hostnames that only resolve relative to whatever machine is currently
+# running NuGuard — never the app's actual backend from this process's point
+# of view. A bundle built for same-host container-group networking (e.g. an
+# ACI/docker-compose deployment where frontend and backend share "localhost")
+# bakes these in as a real value, but blindly trusting them here means
+# requests silently go to whatever unrelated service happens to be listening
+# on that port on *this* machine instead of erroring out — a misdirection bug
+# discovered against tests/apps/studyield-app, where a coincidentally
+# identical local port made every auth/chat request target the wrong app.
+_LOOPBACK_HOSTNAMES = frozenset({"localhost", "127.0.0.1", "0.0.0.0", "::1"})
+
+
+async def discover_api_origin_from_frontend_bundle(
+    target_url: str,
+) -> tuple[str | None, list[str]]:
+    """Best-effort: find a separate-origin API base URL baked into a served SPA bundle.
+
+    Some single-page apps call a backend on a different host/port directly
+    from client-side JS (``baseURL: "http://api-host:3010"``) instead of
+    proxying ``/api`` through the frontend's own server — SBOM candidate
+    rotation and live endpoint probing both fail against *target_url* in that
+    case because every path under it is served by the SPA's catch-all route,
+    not the API. This mirrors what a real browser does: fetch the page,
+    follow its ``<script src>`` tags, and read the API origin out of the
+    bundle the same way the app's own JS would at runtime.
+
+    Returns ``(origin, notes)``. *origin* is ``scheme://host[:port]`` (no
+    path — callers append their own SBOM/config-derived endpoint paths, which
+    already include any API prefix like ``/api/v1``) when a *different*
+    origin than *target_url* was found baked into a script; otherwise
+    ``None``. Never raises — network/parse failures just return ``(None, [])``.
+    """
+    from urllib.parse import urljoin, urlparse
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0, follow_redirects=True) as http_client:
+            resp = await http_client.get(target_url)
+    except Exception as exc:
+        _log.debug("discover_api_origin_from_frontend_bundle: GET %s failed: %s", target_url, exc)
+        return None, []
+
+    html = resp.text or ""
+    script_srcs = _SCRIPT_SRC_RE.findall(html)[:_MAX_SCRIPTS_TO_SCAN]
+    if not script_srcs:
+        return None, []
+
+    target_host_port = (urlparse(target_url).hostname, urlparse(target_url).port)
+
+    for src in script_srcs:
+        script_url = urljoin(target_url.rstrip("/") + "/", src)
+        try:
+            async with httpx.AsyncClient(
+                timeout=_SCRIPT_FETCH_TIMEOUT, follow_redirects=True
+            ) as http_client:
+                script_resp = await http_client.get(script_url)
+        except Exception as exc:
+            _log.debug(
+                "discover_api_origin_from_frontend_bundle: GET script %s failed: %s",
+                script_url, exc,
+            )
+            continue
+
+        match = _API_BASE_URL_RE.search(script_resp.text or "")
+        if not match:
+            continue
+
+        parsed = urlparse(match.group(1))
+        if (parsed.hostname, parsed.port) == target_host_port:
+            # Bundle just references the same origin we already have — no override needed.
+            continue
+
+        if (parsed.hostname or "").lower() in _LOOPBACK_HOSTNAMES:
+            # The hostname is never usable from here (see _LOOPBACK_HOSTNAMES),
+            # but the *port* is still meaningful: a same-host, different-port
+            # deployment (frontend on :80, backend on :3010 sharing one
+            # container-group's localhost networking) bakes in "localhost"
+            # for exactly that reason. Keep the real target's own hostname and
+            # just take the port instead of discarding the hint outright.
+            target_hostname = urlparse(target_url).hostname
+            if not target_hostname or parsed.port is None or parsed.port == target_host_port[1]:
+                _log.warning(
+                    "discover_api_origin_from_frontend_bundle: ignoring loopback origin "
+                    "%r baked into %r — not reachable from this process; check "
+                    "%r's frontend build config (e.g. VITE_API_URL) or set "
+                    "target.url in nuguard.yaml directly.",
+                    match.group(1), script_url, target_url,
+                )
+                continue
+            scheme = urlparse(target_url).scheme or parsed.scheme
+            origin = f"{scheme}://{target_hostname}:{parsed.port}"
+            note = (
+                f"Target URL {target_url!r} serves a frontend bundle whose baked-in API "
+                f"origin {match.group(1)!r} uses a loopback host meaningless outside its "
+                f"own container/host — reusing target.url's hostname with the discovered "
+                f"port {parsed.port} instead ({origin!r})."
+            )
+            _log.warning("discover_api_origin_from_frontend_bundle: %s", note)
+            return origin, [note]
+
+        origin = f"{parsed.scheme}://{parsed.netloc}"
+        note = (
+            f"Target URL {target_url!r} serves a frontend bundle with no proxied API "
+            f"surface; discovered API origin {origin!r} baked into {script_url!r} "
+            f"(matched {match.group(0)[:80]!r}). Using it for auth/chat/redteam requests. "
+            f"Set target.url in nuguard.yaml to this origin directly to skip this scan."
+        )
+        _log.warning("discover_api_origin_from_frontend_bundle: %s", note)
+        return origin, [note]
+
+    return None, []
     return False

@@ -54,6 +54,7 @@ class _FakeClient:
         body: dict | None = None,
         params: dict[str, str] | None = None,
         extra_headers: dict[str, str] | None = None,
+        strip_auth: bool = False,
     ) -> tuple[int, str, dict]:
         self.invoke_calls += 1
         if self.invoke_calls == 1:

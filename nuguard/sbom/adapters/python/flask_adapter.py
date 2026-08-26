@@ -35,6 +35,12 @@ _PROMPT_FIELD_NAMES = {
     "transcript", "question", "content", "msg",
 }
 
+# OpenAI-style chat-history field names — see fastapi_adapter._MESSAGE_HISTORY_FIELD_NAMES.
+# Flask routes are detected via AST .get("key") patterns with no type info, so
+# unlike FastAPI we can't confirm the value is list-shaped from a schema — a
+# name match alone is treated as sufficient signal to mark chat_payload_list.
+_MESSAGE_HISTORY_FIELD_NAMES = {"messages", "history", "conversation", "chat_history"}
+
 # Mirrors the same sets in fastapi_adapter — keep in sync.
 _IDENTITY_FIELD_NAMES = frozenset({
     "user_id", "userId", "tenant_id", "tenantId",
@@ -146,13 +152,21 @@ def _collect_body_keys(
 
 def _infer_chat_payload_key(
     func_def: ast.FunctionDef | ast.AsyncFunctionDef,
-) -> str | None:
-    """Scan function body for request payload .get("key") patterns."""
+) -> tuple[str | None, bool]:
+    """Scan function body for request payload .get("key") patterns.
+
+    Returns ``(key, is_message_history)`` — ``is_message_history`` is True when
+    the matched key is an OpenAI-style history field (``messages``, ``history``,
+    ...), signalling the caller should set ``chat_payload_list=True``.
+    """
     candidates = _collect_body_keys(func_def)
     for key in candidates:
         if key in _PROMPT_FIELD_NAMES:
-            return key
-    return candidates[0] if candidates else None
+            return key, False
+    for key in candidates:
+        if key in _MESSAGE_HISTORY_FIELD_NAMES:
+            return key, True
+    return (candidates[0], False) if candidates else (None, False)
 
 
 def _infer_context_payload_fields(
@@ -290,22 +304,34 @@ class FlaskAdapter(FrameworkAdapter):
                 # files — or found by both this adapter and the generic
                 # api_endpoint_generic regex fallback — dedupes into one node
                 # with evidence from all sources.
-                canon = f"endpoint:{method}:{path_str}"
+                #
+                # Empty path_str ("") is a valid Blueprint-root route
+                # (@bp.route("", ...)) and must be disambiguated by file path,
+                # otherwise every empty-path route in the codebase collapses
+                # into one node.
+                canon = (
+                    f"endpoint:{method}:{path_str}"
+                    if path_str
+                    else f"endpoint:{method}::{file_path}"
+                )
 
                 chat_key: str | None = None
+                chat_is_message_history = False
                 ctx_fields: dict[str, str] = {}
                 if "POST" in [m.upper() for m in methods]:
-                    chat_key = _infer_chat_payload_key(node)
+                    chat_key, chat_is_message_history = _infer_chat_payload_key(node)
                     ctx_fields = _infer_context_payload_fields(node, chat_key)
 
                 metadata: dict[str, Any] = {
                     "framework": "flask",
                     "method": method,
                 }
-                if path_str:
+                if path_str is not None:
                     metadata["endpoint"] = path_str
                 if chat_key:
                     metadata["chat_payload_key"] = chat_key
+                    if chat_is_message_history:
+                        metadata["chat_payload_list"] = True
                 if ctx_fields:
                     metadata["context_payload_fields"] = ctx_fields
 

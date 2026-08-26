@@ -235,6 +235,29 @@
           ],
           "default": null,
           "description": "Access direction on ACCESSES edges: read | write | readwrite"
+        },
+        "derivation": {
+          "default": "hint",
+          "description": "'hint': backed by an adapter-emitted RelationshipHint (explicit code evidence). 'fallback_heuristic': synthesized by structural fallback rules with no direct evidence.",
+          "enum": [
+            "hint",
+            "fallback_heuristic"
+          ],
+          "title": "Derivation",
+          "type": "string"
+        },
+        "confidence": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Set only for fallback_heuristic edges \u2014 a rough strength score for the guess. None for hint edges (evidence-backed, no separate score needed).",
+          "title": "Confidence"
         }
       },
       "required": [
@@ -1247,6 +1270,22 @@
           "default": null,
           "description": "Path parameter names extracted from the endpoint URL template, e.g. ['user_id', 'tenant_id']",
           "title": "Path Params"
+        },
+        "path_param_sources": {
+          "anyOf": [
+            {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "description": "Maps each entry in path_params to the API_ENDPOINT path that creates the identified resource, e.g. {'id': '/chat/conversations'} for a chat endpoint at '/chat/conversations/:id/messages'",
+          "title": "Path Param Sources"
         },
         "request_body_schema": {
           "additionalProperties": {
