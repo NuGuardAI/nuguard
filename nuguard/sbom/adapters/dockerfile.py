@@ -181,7 +181,7 @@ class DockerfileAdapter:
             "dockerfile adapter: %d unique image(s) found in %s",
             len(detections), file_path,
         )
-        detections.extend(self._detect_exposed_ports(content, file_path))
+        self._annotate_exposed_ports(detections, content, file_path)
         detections.extend(self._detect_run_tools(content, file_path))
         return detections
 
@@ -243,16 +243,22 @@ class DockerfileAdapter:
     # Internal helpers
     # ------------------------------------------------------------------
 
-    def _detect_exposed_ports(
-        self, content: str, file_path: str
-    ) -> list[ComponentDetection]:
-        """Emit DEPLOYMENT nodes for each EXPOSE instruction.
+    def _annotate_exposed_ports(
+        self, detections: list[ComponentDetection], content: str, file_path: str
+    ) -> None:
+        """Attach EXPOSE ports as metadata on the CONTAINER_IMAGE node(s) in this file.
 
-        Ports are deployment/infrastructure details, not API endpoint paths.
-        They describe which ports a container listens on, not the HTTP routes
-        exposed by the application.
+        Ports are deployment/infrastructure details of the image itself, not a
+        distinct deployment concept — they used to be emitted as standalone
+        DEPLOYMENT nodes (``Port 3010``, ``Port 80``), fragmenting the
+        deployment graph. They describe which ports a container listens on,
+        not the HTTP routes exposed by the application.
         """
-        results: list[ComponentDetection] = []
+        image_dets = [d for d in detections if d.component_type == ComponentType.CONTAINER_IMAGE]
+        if not image_dets:
+            return
+
+        exposed_ports: list[dict[str, Any]] = []
         seen_ports: set[str] = set()
         for match in _EXPOSE_RE.finditer(content):
             raw_ports = match.group("ports")
@@ -263,35 +269,23 @@ class DockerfileAdapter:
                     continue
                 # Normalise port spec: strip trailing /tcp|/udp
                 port_str = token.split("/")[0]
-                if not port_str.isdigit():
+                if not port_str.isdigit() or port_str in seen_ports:
                     continue
-                canonical = f"deployment:port:{port_str}"
-                if canonical in seen_ports:
-                    continue
-                seen_ports.add(canonical)
+                seen_ports.add(port_str)
                 _log.debug(
                     "%s:%d — detected EXPOSE port %s", file_path, line, port_str
                 )
-                results.append(
-                    ComponentDetection(
-                        component_type=ComponentType.DEPLOYMENT,
-                        canonical_name=canonical,
-                        display_name=f"Port {port_str}",
-                        adapter_name=self.name,
-                        priority=self.priority,
-                        confidence=0.90,
-                        metadata={
-                            "port": int(port_str),
-                            "protocol": token.split("/")[1] if "/" in token else "tcp",
-                            "source": "dockerfile_expose",
-                        },
-                        file_path=file_path,
-                        line=line,
-                        snippet=match.group(0).strip()[:120],
-                        evidence_kind="dockerfile",
-                    )
+                exposed_ports.append(
+                    {
+                        "port": int(port_str),
+                        "protocol": token.split("/")[1] if "/" in token else "tcp",
+                    }
                 )
-        return results
+
+        if not exposed_ports:
+            return
+        for det in image_dets:
+            det.metadata["exposed_ports"] = exposed_ports
 
     def _detect_run_tools(
         self, content: str, file_path: str

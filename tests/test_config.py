@@ -598,6 +598,106 @@ class TestSharedTargetBlock:
         assert "target_url" not in flat
 
 
+# ── Empty YAML keys (key: with no value) must not crash config loading ──────
+
+
+class TestEmptyYamlKeysDoNotCrash:
+    """A YAML key written with no value (e.g. ``workflows:``) parses to None,
+    not an empty list/string — this must fall back to the field default
+    instead of failing pydantic type validation."""
+
+    def test_empty_behavior_workflows_falls_back_to_default(
+        self, tmp_path: Path
+    ) -> None:
+        config_file = tmp_path / "nuguard.yaml"
+        config_file.write_text(
+            textwrap.dedent(
+                """
+                behavior:
+                  llm: true
+                  workflows:
+                """
+            ),
+            encoding="utf-8",
+        )
+        cfg = load_config(config_file)
+        assert cfg.behavior_config.workflows == []
+        assert cfg.behavior_config.use_llm is True
+
+    def test_empty_behavior_boundary_assertions_falls_back_to_default(
+        self, tmp_path: Path
+    ) -> None:
+        config_file = tmp_path / "nuguard.yaml"
+        config_file.write_text(
+            textwrap.dedent(
+                """
+                behavior:
+                  boundary_assertions:
+                """
+            ),
+            encoding="utf-8",
+        )
+        cfg = load_config(config_file)
+        assert cfg.behavior_config.boundary_assertions == []
+
+    def test_empty_validate_workflows_falls_back_to_default(
+        self, tmp_path: Path
+    ) -> None:
+        config_file = tmp_path / "nuguard.yaml"
+        config_file.write_text(
+            textwrap.dedent(
+                """
+                validate:
+                  workflows:
+                """
+            ),
+            encoding="utf-8",
+        )
+        cfg = load_config(config_file)
+        assert cfg.validate_config.workflows == []
+
+    def test_empty_redteam_scenarios_falls_back_to_default(
+        self, tmp_path: Path
+    ) -> None:
+        config_file = tmp_path / "nuguard.yaml"
+        config_file.write_text(
+            textwrap.dedent(
+                """
+                redteam:
+                  scenarios:
+                """
+            ),
+            encoding="utf-8",
+        )
+        cfg = load_config(config_file)
+        # Empty means "run all 9" downstream; the field itself defaults to [].
+        assert cfg.redteam_scenarios == []
+
+
+class TestConfigValidationErrorIsUserFriendly:
+    """Genuine type mismatches must raise a clean ConfigError, not a raw
+    pydantic traceback."""
+
+    def test_wrong_type_raises_config_error_with_field_path(
+        self, tmp_path: Path
+    ) -> None:
+        from nuguard.common.errors import ConfigError
+
+        config_file = tmp_path / "nuguard.yaml"
+        config_file.write_text(
+            textwrap.dedent(
+                """
+                behavior:
+                  workflows: "not-a-list"
+                """
+            ),
+            encoding="utf-8",
+        )
+        with pytest.raises(ConfigError) as exc_info:
+            load_config(config_file)
+        assert "workflows" in str(exc_info.value)
+
+
 class TestUnsetEnvVarNoneFiltering:
     """Unset ${VAR} references must never leak the literal string "None".
 

@@ -8,6 +8,8 @@ Extracts AI assets from LangGraph-based applications:
 - ``ChatOpenAI``, ``ChatAnthropic``, etc. → MODEL nodes (via models_kb)
 - ``create_react_agent`` / ``create_supervisor`` / factory functions → AGENT nodes
 - ``@tool`` decorated functions → TOOL nodes
+- ``StructuredTool(...)`` / ``StructuredTool.from_function(...)`` / ``Tool.from_function(...)``
+  (including inside factory functions that build and return a tool programmatically) → TOOL nodes
 - ``FAISS.load_local`` / ``FAISS.from_texts`` / ``FAISS.save_local`` → DATASTORE nodes
 - ``SystemMessage`` / chat prompt templates / large string literals → PROMPT nodes
 """
@@ -375,6 +377,12 @@ class LangGraphAdapter(FrameworkAdapter):
         for inst in parse_result.instantiations:
             if inst.class_name not in tool_classes_from_imports:
                 continue
+            if inst.class_name == "StructuredTool":
+                # Handled by section 4c below, which extracts the actual
+                # name= kwarg instead of falling back to the assigned
+                # variable name — skip here to avoid a duplicate TOOL node
+                # for the same instantiation.
+                continue
             tool_name = inst.assigned_to or inst.class_name
             canon = canonicalize_text(f"langchain:tool:{tool_name}")
             det = ComponentDetection(
@@ -393,6 +401,75 @@ class LangGraphAdapter(FrameworkAdapter):
                 line=inst.line,
                 snippet=f"{inst.class_name}(...)",
                 evidence_kind="ast_instantiation",
+            )
+            detected.append(det)
+            tool_canonicals.append(canon)
+
+        # 4c. Dynamically-constructed StructuredTool/Tool.from_function → TOOL
+        # e.g. a factory function that builds and returns a tool programmatically:
+        #   def create_live_api_tool(name, description, ...):
+        #       return StructuredTool.from_function(
+        #           func=..., name=name, description=description,
+        #       )
+        # Neither the bare `StructuredTool(...)` constructor nor the
+        # `.from_function(...)` factory method were previously matched by any
+        # tool-detection heuristic — only `@tool`-decorated functions and
+        # static tool-class instantiations (section 4b) were.
+        for inst in parse_result.instantiations:
+            if inst.class_name != "StructuredTool":
+                continue
+            tool_name, is_dynamic = _resolve_dynamic_tool_name(
+                inst.args.get("name"), inst.context, inst.assigned_to, inst.line
+            )
+            canon = canonicalize_text(f"langchain:tool:{tool_name}")
+            meta: dict[str, Any] = {"tool_type": "structured_tool", "framework": "langchain"}
+            if is_dynamic:
+                meta["dynamic_name"] = True
+            det = ComponentDetection(
+                component_type=ComponentType.TOOL,
+                canonical_name=canon,
+                display_name=tool_name,
+                adapter_name=self.name,
+                priority=self.priority,
+                confidence=0.75 if is_dynamic else 0.88,
+                metadata=meta,
+                file_path=file_path,
+                line=inst.line,
+                snippet="StructuredTool(...)",
+                evidence_kind="ast_instantiation",
+            )
+            detected.append(det)
+            tool_canonicals.append(canon)
+
+        for call in parse_result.function_calls:
+            if call.function_name != "from_function" or call.receiver not in (
+                "StructuredTool",
+                "Tool",
+            ):
+                continue
+            tool_name, is_dynamic = _resolve_dynamic_tool_name(
+                call.args.get("name"), call.context, call.assigned_to, call.line
+            )
+            canon = canonicalize_text(f"langchain:tool:{tool_name}")
+            meta = {
+                "tool_type": "structured_tool",
+                "framework": "langchain",
+                "tool_class": call.receiver,
+            }
+            if is_dynamic:
+                meta["dynamic_name"] = True
+            det = ComponentDetection(
+                component_type=ComponentType.TOOL,
+                canonical_name=canon,
+                display_name=tool_name,
+                adapter_name=self.name,
+                priority=self.priority,
+                confidence=0.75 if is_dynamic else 0.88,
+                metadata=meta,
+                file_path=file_path,
+                line=call.line,
+                snippet=f"{call.receiver}.from_function(...)",
+                evidence_kind="ast_call",
             )
             detected.append(det)
             tool_canonicals.append(canon)
@@ -842,6 +919,29 @@ def _extract_messages_content(call: Any) -> tuple[str, str, list[str]]:
     content = "\n".join(parts)
     tvars = _TEMPLATE_VAR_RE.findall(content)
     return content, _detect_role_from_content(content) or "system", tvars
+
+
+def _resolve_dynamic_tool_name(
+    raw_name: Any, context: str | None, assigned_to: str | None, line: int
+) -> tuple[str, bool]:
+    """Return ``(tool_name, dynamic_name)`` for a StructuredTool/Tool.from_function call.
+
+    Prefers a resolvable string-literal ``name=`` kwarg. When the name is only
+    known at runtime (built from a variable/expression — e.g. the ``name``
+    kwarg is itself a parameter of the enclosing factory function), falls back
+    to the enclosing factory function's name, then the assigned variable, then
+    a line-based placeholder — flagging ``dynamic_name=True`` so downstream
+    consumers know the identity is approximate rather than sourced directly
+    from the code, rather than silently skipping the tool entirely.
+    """
+    cleaned = _clean(raw_name)
+    if cleaned:
+        return cleaned, False
+    if context:
+        return context, True
+    if assigned_to:
+        return assigned_to, True
+    return f"structured_tool_{line}", True
 
 
 def _clean(value: Any) -> str:

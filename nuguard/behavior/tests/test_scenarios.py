@@ -200,8 +200,10 @@ def test_chain_tool_scenarios_merges_info_action():
     assert "transfer_funds" in merged.scoped_tools
 
 
-def test_chain_tool_scenarios_no_action_tier_unchanged():
-    """Scenarios without an ACTION tier should not be merged."""
+def test_chain_tool_scenarios_merges_same_tier_within_budget():
+    """Same-tier (INFO-only) scenarios for one agent are still packed together
+    when they fit within the session turn budget, instead of being left as
+    separate single-turn scenarios."""
     s1 = BehaviorScenario(
         scenario_type=BehaviorScenarioType.COMPONENT_COVERAGE,
         name="info1",
@@ -217,8 +219,35 @@ def test_chain_tool_scenarios_no_action_tier_unchanged():
         tool_action_tiers=["INFO"],
     )
     result = _chain_tool_scenarios([s1, s2])
-    # Two INFO scenarios — no merging
-    assert len(result) == 2
+    # Both fit comfortably within the default 10-turn budget — merged into one.
+    assert len(result) == 1
+    assert result[0].chain_source == ["info1", "info2"]
+
+
+def test_chain_tool_scenarios_splits_when_over_budget():
+    """When an agent's scenarios don't fit within max_session_turns, chaining
+    spills into additional chunks instead of dropping any scenario."""
+    scenarios = [
+        BehaviorScenario(
+            scenario_type=BehaviorScenarioType.COMPONENT_COVERAGE,
+            name=f"info{i}",
+            messages=[f"Tell me about thing {i}?"] * 3,
+            primary_agent="BankingAgent",
+            tool_action_tiers=["INFO"],
+            scoped_tools=[f"tool_{i}"],
+        )
+        for i in range(4)
+    ]
+    result = _chain_tool_scenarios(scenarios, max_session_turns=5)
+    # Every source scenario must still be represented somewhere in the output.
+    covered_sources: set[str] = set()
+    for s in result:
+        covered_sources.update(s.chain_source or [s.name])
+    assert covered_sources == {"info0", "info1", "info2", "info3"}
+    # No merged scenario exceeds the turn budget.
+    assert all(len(s.messages) <= 5 for s in result)
+    # More than one output scenario since not everything fit in one chunk.
+    assert len(result) > 1
 
 
 # ---------------------------------------------------------------------------
@@ -573,13 +602,216 @@ def test_is_standalone_group_false_for_real_agent():
 
 @pytest.mark.asyncio
 async def test_standalone_tool_sharding():
-    """12 standalone INFO tools should shard into 3 groups of ≤5."""
+    """12 standalone INFO tools should all be covered, packed into as few
+    multi-turn scenarios as fit within the session turn budget (chaining may
+    merge multiple ≤tool_chain_size shards into one scenario)."""
     sbom = _make_sbom_with_components([], [f"get_thing_{i}" for i in range(12)])
     config = _MockConfig()
     intent = _make_intent()
     scenarios = await build_scenarios(config=config, intent=intent, sbom=sbom, llm_client=None)
     coverage = [s for s in scenarios if s.scenario_type == BehaviorScenarioType.COMPONENT_COVERAGE]
-    # Each scenario covers at most 5 tools
-    assert all(len(s.scoped_tools) <= 5 for s in coverage)
-    # 12 tools / 5 per group → at least 3 scenarios
-    assert len(coverage) >= 3
+    # Every standalone tool ends up scoped in some scenario — none dropped.
+    covered_tools = {t for s in coverage for t in s.scoped_tools}
+    assert covered_tools == {f"get_thing_{i}" for i in range(12)}
+    # No scenario exceeds the default session turn budget.
+    assert all(len(s.messages) <= 10 for s in coverage)
+    assert len(coverage) >= 1
+
+
+@pytest.mark.asyncio
+async def test_tool_chain_size_config_controls_shard_size():
+    """A smaller tool_chain_size produces smaller per-shard tool groups before
+    chaining re-packs them, and a larger max_session_turns lets chaining merge
+    more of them back into a single scenario."""
+
+    class _Cfg:
+        workflows: list[str] = []
+        boundary_assertions: list[object] = []
+        tool_chain_size = 2
+        max_session_turns = 100  # generous budget so all shards re-merge
+
+    sbom = _make_sbom_with_components([], [f"get_thing_{i}" for i in range(6)])
+    intent = _make_intent()
+    scenarios = await build_scenarios(config=_Cfg(), intent=intent, sbom=sbom, llm_client=None)
+    coverage = [s for s in scenarios if s.scenario_type == BehaviorScenarioType.COMPONENT_COVERAGE]
+    covered_tools = {t for s in coverage for t in s.scoped_tools}
+    assert covered_tools == {f"get_thing_{i}" for i in range(6)}
+    # With a huge session budget, the 3 shards of 2 tools each should be
+    # chained back into a single multi-turn scenario.
+    assert len(coverage) == 1
+
+
+# ---------------------------------------------------------------------------
+# guided_coverage config: emit GUIDED_COVERAGE scenarios instead of static chains
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_guided_coverage_emits_guided_scenarios_covering_all_tools():
+    class _Cfg:
+        workflows: list[str] = []
+        boundary_assertions: list[object] = []
+        guided_coverage = True
+
+    sbom = _make_sbom_with_components(["BankingAgent"], ["get_balance", "transfer_funds", "pay_bill"])
+    intent = _make_intent()
+    scenarios = await build_scenarios(config=_Cfg(), intent=intent, sbom=sbom, llm_client=None)
+    guided = [s for s in scenarios if s.scenario_type == BehaviorScenarioType.GUIDED_COVERAGE]
+    assert guided
+    # No static component_coverage scenarios should be emitted in guided mode.
+    assert not [s for s in scenarios if s.scenario_type == BehaviorScenarioType.COMPONENT_COVERAGE]
+    covered_tools = {t for s in guided for t in s.scoped_tools}
+    assert covered_tools == {"get_balance", "transfer_funds", "pay_bill"}
+    # Each guided scenario starts with a single opening message — the rest of
+    # the conversation is driven live by CoverageDirector, not pre-scripted.
+    assert all(len(s.messages) == 1 for s in guided)
+
+
+@pytest.mark.asyncio
+async def test_default_config_does_not_emit_guided_scenarios():
+    sbom = _make_sbom_with_components(["BankingAgent"], ["get_balance", "transfer_funds"])
+    config = _MockConfig()
+    intent = _make_intent()
+    scenarios = await build_scenarios(config=config, intent=intent, sbom=sbom, llm_client=None)
+    assert not [s for s in scenarios if s.scenario_type == BehaviorScenarioType.GUIDED_COVERAGE]
+
+
+# ---------------------------------------------------------------------------
+# prioritize_by_probe: demote/deprioritize scenarios from probed-blocked
+# tool families within the max_scenarios cap
+# ---------------------------------------------------------------------------
+
+
+def _make_sbom_with_calls(agent_tools: dict[str, list[str]]):
+    """Build an SBOM with explicit AGENT -> TOOL CALLS edges per agent."""
+    import uuid as _uuid
+
+    from nuguard.sbom.models import (
+        AiSbomDocument,
+        Edge,
+        EdgeRelationshipType,
+        Node,
+        NodeMetadata,
+        NodeType,
+    )
+
+    ns = _uuid.NAMESPACE_URL
+    nodes: list[Node] = []
+    edges: list[Edge] = []
+    for agent_name, tool_names in agent_tools.items():
+        agent_id = _uuid.uuid5(ns, f"agent/{agent_name}")
+        nodes.append(Node(
+            id=agent_id,
+            name=agent_name,
+            component_type=NodeType.AGENT,
+            confidence=0.9,
+            metadata=NodeMetadata(description=f"{agent_name} handles requests"),
+        ))
+        for tool_name in tool_names:
+            tool_id = _uuid.uuid5(ns, f"tool/{agent_name}/{tool_name}")
+            nodes.append(Node(
+                id=tool_id,
+                name=tool_name,
+                component_type=NodeType.TOOL,
+                confidence=0.9,
+                metadata=NodeMetadata(description=f"{tool_name} tool"),
+            ))
+            edges.append(Edge(
+                source=agent_id,
+                target=tool_id,
+                relationship_type=EdgeRelationshipType.CALLS,
+            ))
+    return AiSbomDocument(target="./test-app", nodes=nodes, edges=edges)
+
+
+@pytest.mark.asyncio
+async def test_prioritize_by_probe_demotes_blocked_family_scenarios():
+    """Scenarios from a probed-blocked family sink to the end of the list,
+    as a stable demotion within (not a replacement for) the existing L1-L5
+    category ordering — the reachable family's scenarios keep their spot."""
+
+    class _Cfg:
+        workflows: list[str] = ["agent_tool_coverage"]
+        boundary_assertions: list[object] = []
+        tool_chain_size = 10  # keep each agent's tools in a single scenario
+
+    sbom = _make_sbom_with_calls({
+        "ReachableAgent": ["get_thing"],
+        "BlockedAgent": ["do_thing"],
+    })
+    intent = _make_intent()
+    family_probe_results = {"ReachableAgent": "reachable", "BlockedAgent": "blocked"}
+
+    scenarios = await build_scenarios(
+        config=_Cfg(), intent=intent, sbom=sbom, llm_client=None,
+        family_probe_results=family_probe_results,
+    )
+    tool_coverage = [s for s in scenarios if s.scenario_type == BehaviorScenarioType.COMPONENT_COVERAGE]
+    assert len(tool_coverage) == 2
+    # The blocked family's scenario must come after the reachable one.
+    families = [s.scoped_agents[0] if s.scoped_agents else None for s in tool_coverage]
+    assert families.index("BlockedAgent") > families.index("ReachableAgent")
+
+
+@pytest.mark.asyncio
+async def test_prioritize_by_probe_records_deprioritized_cut_scenarios():
+    """Scenarios cut by max_scenarios specifically because their family probed
+    blocked are recorded in deprioritized_out (a subset of skipped_out), not
+    silently dropped or lumped in with an arbitrary cap cut."""
+
+    class _Cfg:
+        workflows: list[str] = ["agent_tool_coverage"]
+        boundary_assertions: list[object] = []
+        tool_chain_size = 10
+        # Room for ReachableAgent's 2 scenarios (agent + tool coverage) but not
+        # BlockedAgent's — demotion must put ReachableAgent's ahead so they
+        # survive the cap and BlockedAgent's are what gets cut.
+        max_scenarios = 2
+
+    sbom = _make_sbom_with_calls({
+        "ReachableAgent": ["get_thing"],
+        "BlockedAgent": ["do_thing"],
+    })
+    intent = _make_intent()
+    family_probe_results = {"ReachableAgent": "reachable", "BlockedAgent": "blocked"}
+    skipped: list[str] = []
+    deprioritized: list[str] = []
+
+    scenarios = await build_scenarios(
+        config=_Cfg(), intent=intent, sbom=sbom, llm_client=None,
+        family_probe_results=family_probe_results,
+        skipped_out=skipped, deprioritized_out=deprioritized,
+    )
+    tool_coverage_names = {
+        s.name for s in scenarios if s.scenario_type == BehaviorScenarioType.COMPONENT_COVERAGE
+    }
+    # ReachableAgent's tool-coverage scenario survives the cap; BlockedAgent's
+    # is cut and recorded as deprioritized (a subset of skipped_out).
+    assert len(tool_coverage_names) == 1
+    assert not any("blockedagent" in n.lower() for n in tool_coverage_names)
+    assert deprioritized, "expected at least one scenario recorded as deprioritized"
+    assert set(deprioritized).issubset(set(skipped))
+
+
+@pytest.mark.asyncio
+async def test_no_family_probe_results_leaves_ordering_unchanged():
+    """Without family_probe_results (prioritize_by_probe off, the default),
+    scenario ordering and skipped/deprioritized bookkeeping are unaffected."""
+
+    class _Cfg:
+        workflows: list[str] = ["agent_tool_coverage"]
+        boundary_assertions: list[object] = []
+        tool_chain_size = 10
+
+    sbom = _make_sbom_with_calls({
+        "ReachableAgent": ["get_thing"],
+        "BlockedAgent": ["do_thing"],
+    })
+    intent = _make_intent()
+    deprioritized: list[str] = []
+    scenarios = await build_scenarios(
+        config=_Cfg(), intent=intent, sbom=sbom, llm_client=None,
+        deprioritized_out=deprioritized,
+    )
+    assert deprioritized == []
+    assert len(scenarios) > 0

@@ -30,6 +30,63 @@ APP_TRANSIENT_ERROR_PATTERNS: frozenset[str] = frozenset({
     "temporarily unable to respond",
 })
 
+# ---------------------------------------------------------------------------
+# Known response-wrapper boilerplate
+# ---------------------------------------------------------------------------
+# Some target apps prefix (nearly) every response — success or failure — with
+# a literal wrapper/error string emitted by their own orchestration layer,
+# e.g. a LangGraph/LangChain node that catches an internal exception and falls
+# back to a plain-text reply while still prepending its own log-style banner.
+# This boilerplate doesn't corrupt unanchored substring matching (success
+# signals, policy-violation detectors), but it DOES break `^`-anchored regexes
+# (e.g. topic-refusal detection in response_extractor.py) and eats into
+# LLM-judge prompt truncation budgets. Stripped once at the TargetAppClient
+# choke point (send()/invoke_endpoint()) — see strip_known_boilerplate().
+KNOWN_BOILERPLATE_PREFIXES: tuple[str, ...] = (
+    "Error processing request. Generating direct response...",
+)
+
+
+def strip_known_boilerplate(text: str) -> str:
+    """Strip leading known wrapper/error boilerplate from *text*, repeatably.
+
+    Some target apps prepend a fixed, app-generated banner (see
+    :data:`KNOWN_BOILERPLATE_PREFIXES`) to nearly every response — sometimes
+    repeated 2-3 times in a row. Stripping it once, at the single point where
+    :class:`~nuguard.redteam.target.client.TargetAppClient` returns response
+    text to callers, means every downstream consumer (LLM judge, topic-refusal
+    detection, policy detectors, report rendering) sees clean text without
+    each having to re-implement the strip.
+
+    Leading whitespace between repeated occurrences is tolerated. Returns
+    *text* unchanged if it doesn't start with any known prefix, or if
+    stripping would leave nothing behind (the whole response IS the
+    boilerplate — keep it so callers still have something to inspect).
+
+    Args:
+        text: Raw response text as returned by the target app.
+
+    Returns:
+        *text* with any leading known-boilerplate prefix(es) removed.
+    """
+    if not text:
+        return text
+    stripped = text
+    while True:
+        remaining = stripped.lstrip()
+        matched_prefix = next(
+            (p for p in KNOWN_BOILERPLATE_PREFIXES if remaining.startswith(p)), None
+        )
+        if matched_prefix is None:
+            return stripped
+        candidate = remaining[len(matched_prefix):]
+        if not candidate.strip():
+            # The entire response is boilerplate — keep as-is so callers
+            # still have non-empty text to work with.
+            return stripped
+        stripped = candidate.lstrip()
+
+
 # JSON body keys/values that indicate a structurally expressed transient error.
 # Checked when the response body is valid JSON (handles non-English backends).
 _JSON_TRANSIENT_KEYS: frozenset[str] = frozenset({

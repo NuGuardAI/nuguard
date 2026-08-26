@@ -680,3 +680,237 @@ app.MapPost(
     assert endpoint.metadata["auth_required"] is False
     assert endpoint.metadata["response_body_schema"] == {"Answer": "string"}
     assert endpoint.metadata["response_text_key"] == "Answer"
+
+
+@pytest.mark.parametrize(
+    (
+        "source",
+        "name",
+        "expected_receiver",
+        "expected_assignment",
+    ),
+    [
+        (
+            "var model = ml.BinaryClassification.Trainers.Sdca().Fit(data);",
+            "Fit",
+            ("ml.BinaryClassification.Trainers.Sdca()"),
+            "model",
+        ),
+        (
+            "var kernel = Kernel.CreateBuilder().Services.AddLogging().Build();",
+            "Build",
+            ("Kernel.CreateBuilder().Services.AddLogging()"),
+            "kernel",
+        ),
+    ],
+)
+def test_call_parser_preserves_chained_receiver(
+    source: str,
+    name: str,
+    expected_receiver: str,
+    expected_assignment: str,
+) -> None:
+    call = find_calls(
+        source,
+        {name},
+    )[0]
+
+    assert call.receiver == expected_receiver
+    assert call.assigned_to == expected_assignment
+
+
+def test_mlnet_detects_fit_on_inline_trainer_chain() -> None:
+    source = """using Microsoft.ML;
+var ml = new MLContext();
+var model = ml.BinaryClassification.Trainers
+    .SdcaLogisticRegression()
+    .Fit(data);
+"""
+
+    detections = _extract(
+        CSharpMLNetAdapter(),
+        source,
+    )
+
+    assert any(
+        detection.metadata.get("trained_model") is True and detection.display_name == "model"
+        for detection in detections
+    )
+
+
+def test_aspnet_uses_separate_method_route_attribute() -> None:
+    source = """using Microsoft.AspNetCore.Mvc;
+[ApiController]
+[Route("api/chat")]
+public class ChatController : ControllerBase
+{
+    [Route("complete")]
+    [HttpPost]
+    public string Complete(ChatRequest request) =>
+        client.CompleteChat(request.Message);
+}
+public record ChatRequest(string Message);
+"""
+
+    endpoint = _by_type(
+        _extract(
+            CSharpAspNetCoreAdapter(),
+            source,
+        ),
+        ComponentType.API_ENDPOINT,
+    )[0]
+
+    assert endpoint.metadata["endpoint"] == "/api/chat/complete"
+
+
+@pytest.mark.parametrize(
+    "action_route",
+    [
+        "/chat",
+        "~/chat",
+    ],
+)
+def test_aspnet_absolute_action_route_overrides_controller(
+    action_route: str,
+) -> None:
+    source = f"""using Microsoft.AspNetCore.Mvc;
+[ApiController]
+[Route("api/[controller]")]
+public class ChatController : ControllerBase
+{{
+    [HttpPost("{action_route}")]
+    public string Complete(ChatRequest request) =>
+        client.CompleteChat(request.Message);
+}}
+public record ChatRequest(string Message);
+"""
+
+    endpoint = _by_type(
+        _extract(
+            CSharpAspNetCoreAdapter(),
+            source,
+        ),
+        ComponentType.API_ENDPOINT,
+    )[0]
+
+    assert endpoint.metadata["endpoint"] == "/chat"
+
+
+def test_aspnet_marks_collection_chat_payloads_as_lists() -> None:
+    source = """using Microsoft.AspNetCore.Mvc;
+public record Message(string Content);
+public record ChatRequest(List<Message> Messages);
+[ApiController]
+[Route("api/chat")]
+public class ChatController : ControllerBase
+{
+    [HttpPost]
+    public string Complete(ChatRequest request) =>
+        client.CompleteChat(request.Messages);
+}
+"""
+
+    endpoint = _by_type(
+        _extract(
+            CSharpAspNetCoreAdapter(),
+            source,
+        ),
+        ComponentType.API_ENDPOINT,
+    )[0]
+
+    assert endpoint.metadata["chat_payload_key"] == "Messages"
+    assert endpoint.metadata["chat_payload_list"] is True
+
+
+def test_aspnet_preserves_from_body_primitive_prompt() -> None:
+    source = """using Microsoft.AspNetCore.Mvc;
+[ApiController]
+[Route("api/chat")]
+public class ChatController : ControllerBase
+{
+    [HttpPost("prompt")]
+    public string Complete([FromBody] string prompt) =>
+        client.CompleteChat(prompt);
+}
+"""
+
+    endpoint = _by_type(
+        _extract(
+            CSharpAspNetCoreAdapter(),
+            source,
+        ),
+        ComponentType.API_ENDPOINT,
+    )[0]
+
+    assert endpoint.metadata["request_body_schema"] == {"prompt": "string"}
+    assert endpoint.metadata["chat_payload_key"] == "prompt"
+    assert endpoint.metadata["chat_payload_list"] is False
+
+
+def test_legacy_azure_client_with_anthropic_import_stays_azure() -> None:
+    source = """using Azure.AI.OpenAI;
+using Anthropic;
+var client = new OpenAIClient(endpoint, credential);
+"""
+
+    detections = _extract(
+        CSharpLLMClientsAdapter(),
+        source,
+    )
+    providers = {
+        detection.metadata["provider"]
+        for detection in _by_type(
+            detections,
+            ComponentType.FRAMEWORK,
+        )
+    }
+
+    assert providers == {"azure", "anthropic"}
+
+
+def test_semantic_kernel_skips_unresolved_model_registration() -> None:
+    source = """using Microsoft.SemanticKernel;
+var builder = Kernel.CreateBuilder();
+builder.AddAzureOpenAIChatCompletion(
+    deploymentName: deploymentName,
+    endpoint: endpoint,
+    apiKey: key);
+"""
+
+    detections = _extract(
+        CSharpSemanticKernelAdapter(),
+        source,
+    )
+
+    assert (
+        _by_type(
+            detections,
+            ComponentType.MODEL,
+        )
+        == []
+    )
+
+
+def test_semantic_kernel_uses_registration_specific_plugin_positions() -> None:
+    source = """using Microsoft.SemanticKernel;
+var builder = Kernel.CreateBuilder();
+builder.Plugins.AddFromObject(plugin, "Weather");
+builder.Plugins.AddFromPromptDirectory(
+    "prompts", options, "Prompts");
+builder.Plugins.AddFromType<SearchPlugin>(
+    options, "Search");
+"""
+
+    detections = _extract(
+        CSharpSemanticKernelAdapter(),
+        source,
+    )
+    tools = {
+        detection.display_name
+        for detection in _by_type(
+            detections,
+            ComponentType.TOOL,
+        )
+    }
+
+    assert {"Weather", "Prompts", "Search"} <= tools

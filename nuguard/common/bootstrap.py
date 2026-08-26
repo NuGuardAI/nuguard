@@ -9,6 +9,7 @@ from __future__ import annotations
 import asyncio
 import time
 import uuid
+from typing import TYPE_CHECKING
 
 import httpx
 
@@ -16,7 +17,14 @@ from nuguard.common.auth import AuthConfig, AuthSession
 from nuguard.common.errors import TargetUnavailableError
 from nuguard.common.logging import get_logger
 from nuguard.models.health_report import CredentialCheckResult, TargetHealthReport
-from nuguard.redteam.target.canary import CanaryConfig
+
+if TYPE_CHECKING:
+    # Deferred: nuguard.redteam.target.canary imports nuguard.common.logging,
+    # which would re-enter nuguard.common.__init__ mid-import (it pulls in this
+    # module via auth_runtime) if imported eagerly here. Safe to defer since
+    # CanaryConfig is only ever used as a type annotation and this module has
+    # `from __future__ import annotations`.
+    from nuguard.redteam.target.canary import CanaryConfig
 
 logger = get_logger(__name__)
 

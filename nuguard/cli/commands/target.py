@@ -116,7 +116,11 @@ async def _verify_async(
     skip_discovery_override: bool = False,
 ) -> None:
     # Load config
-    cfg = load_config(config_path)
+    try:
+        cfg = load_config(config_path)
+    except Exception as exc:
+        console.print(f"[red]Error:[/red] failed to load config: {exc}")
+        raise typer.Exit(code=1) from exc
 
     # Resolve target URL and auth from redteam config
     target_url: str | None = target_override or cfg.target_url

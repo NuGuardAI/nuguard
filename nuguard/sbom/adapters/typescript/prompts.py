@@ -119,8 +119,12 @@ def _is_likely_prompt(lit: TSStringLiteral) -> bool:
         if not any(s in text_lower for s in strong):
             return False
 
-    # Context name is a strong prompt signal
-    prompt_ctx_words = {"prompt", "instruction", "system", "template", "message", "persona"}
+    # Context name is a strong prompt signal. "message" is deliberately
+    # excluded — it matches any variable/function whose name merely contains
+    # "message" (React MessageBubble, WebSocket handleConnection/
+    # handleDisconnect via "message" event handling, etc.), none of which are
+    # prompt templates; confirmed false positives in real-world apps.
+    prompt_ctx_words = {"prompt", "instruction", "system", "template", "persona"}
     if any(w in ctx_lower for w in prompt_ctx_words):
         if len(text) > 30:
             return True
@@ -134,8 +138,12 @@ def _is_likely_prompt(lit: TSStringLiteral) -> bool:
     if "your role" in text_lower or "your task" in text_lower:
         return True
 
+    # Role markers must anchor the start of a line, not appear anywhere as a
+    # substring — otherwise incidental colons in log lines/labels ("Origin:
+    # ...", a stray "ai:" inside a longer word) qualify as false positives.
+    lines = [line.strip() for line in text_lower.split("\n")]
     for markers in _ROLE_MARKERS.values():
-        if any(m.lower() in text_lower for m in markers):
+        if any(line.startswith(m.lower()) for m in markers for line in lines):
             return True
 
     has_vars = any(r.search(text) for r in _TEMPLATE_VAR_RES)

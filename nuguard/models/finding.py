@@ -50,3 +50,15 @@ class Finding(BaseModel):
     golden_data_excerpt: str | None = None
     # Post-finding verification probe result (None = not run, True = reproduced, False = unconfirmed)
     verified: bool | None = None
+    # NGRS (NuGuard Risk Score) — see nuguard.redteam.risk_engine.ngrs. 0-100
+    # Impact x Likelihood score that `severity` above is banded from; `ngrs_vector`
+    # is the human-readable factor breakdown (e.g. "DC:4/VOL:2/SC:1/ACT:3/EV:3/PRE:2/T:2/PM:+1")
+    # so "why is this CRITICAL" is auditable from the finding alone.
+    ngrs_score: int | None = None
+    ngrs_vector: str | None = None
+    # Progressive-methodology evidence fields (docs/claude-redteam-3.md) — "allow"
+    # when the attack got through (a Finding was raised), "deny" when blocked;
+    # guardrail_control mirrors LLMResponseEvaluator's closed-taxonomy refusal_reason
+    # (content_filter, hitl_check, topic_guardrail, ...), i.e. "which control triggered".
+    authorization_decision: str = ""
+    guardrail_control: str = ""

@@ -86,7 +86,7 @@ def _make_record() -> ScenarioRecord:
         scenario_type="prompt_injection",
         description="test scenario",
         impact_score=7.0,
-        affected="Agent (AGENT)",
+        affected="Agent",
         chain_status="completed",
         had_finding=False,
     )
@@ -211,6 +211,28 @@ def test_outcome_aborted_target_unavailable_all_skipped():
     ]
     outcome = _compute_scan_outcome(findings=[], records=records, strict=False)
     assert outcome == "aborted_target_unavailable"
+
+
+def test_outcome_aborted_target_unavailable_health_tagged_statuses():
+    """Health-tagged abort statuses (chain/conversation-level circuit breaker
+    fired due to repeated HTTP-error responses) also count as a full abort."""
+    records = [
+        _record_with_counters(chain_status="aborted:target_unavailable"),
+        _record_with_counters(chain_status="aborted:consecutive_request_failures"),
+    ]
+    outcome = _compute_scan_outcome(findings=[], records=records, strict=False)
+    assert outcome == "aborted_target_unavailable"
+
+
+def test_outcome_not_aborted_for_legitimate_guided_abort_reasons():
+    """A guided conversation aborting for a legitimate reason (max_turns,
+    hard_refusal) must NOT be treated as a target-health failure."""
+    records = [
+        _record_with_counters(chain_status="aborted:max_turns"),
+        _record_with_counters(chain_status="aborted:hard_refusal"),
+    ]
+    outcome = _compute_scan_outcome(findings=[], records=records, strict=False)
+    assert outcome != "aborted_target_unavailable"
 
 
 def test_outcome_inconclusive_strict_all_504():

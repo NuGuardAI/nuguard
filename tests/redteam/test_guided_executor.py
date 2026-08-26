@@ -1,15 +1,15 @@
 """Tests for GuidedAttackExecutor — conversation loop, abort conditions, and success."""
 from __future__ import annotations
 
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch
 
 from nuguard.models.exploit_chain import GoalType
 from nuguard.redteam.executor.guided_executor import GuidedAttackExecutor
 from nuguard.redteam.models.guided_conversation import GuidedConversation, TurnRecord
 from nuguard.redteam.target.client import TargetUnavailableError
 from nuguard.redteam.target.session import AttackSession
-
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -192,16 +192,36 @@ async def test_hard_refusal_abort():
 
 
 @pytest.mark.asyncio
-async def test_target_unavailable_abort():
+async def test_target_unavailable_propagates():
+    """A dead target records the abort reason on the conversation, then PROPAGATES
+    TargetUnavailableError so the orchestrator's circuit breaker can trip and
+    skip remaining scenarios instead of hammering the dead endpoint.
+    """
     conv = _make_conv(max_turns=10)
     client = MagicMock()
     client.send = AsyncMock(side_effect=TargetUnavailableError("Connection refused"))
     director = _make_director()
     executor = _make_executor(client=client, director=director)
 
+    with pytest.raises(TargetUnavailableError):
+        await executor.run(conv, _make_session())
+    assert conv.abort_reason == "target_unavailable"
+    assert conv.succeeded is False
+
+
+@pytest.mark.asyncio
+async def test_consecutive_http_error_responses_abort() -> None:
+    """3 consecutive [HTTP 405]-style responses (no exception raised) must abort
+    the conversation before max_turns, tagged as a target-health failure."""
+    conv = _make_conv(max_turns=20)
+    client = _make_client(response="[HTTP 405]")
+    director = _make_director()
+    executor = _make_executor(client=client, director=director)
+
     result = await executor.run(conv, _make_session())
-    assert result.abort_reason == "target_unavailable"
+    assert result.abort_reason == "consecutive_request_failures"
     assert result.succeeded is False
+    assert len(result.turns) < 20
 
 
 # ── Executor: canary hit overrides progress ───────────────────────────────────

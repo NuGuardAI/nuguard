@@ -107,6 +107,61 @@ def test_validate_missing_file_exits(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# nuguard policy compile
+# ---------------------------------------------------------------------------
+
+
+def test_compile_writes_origin_and_no_doc_self_reference(policy_file: Path, tmp_path: Path) -> None:
+    dest = tmp_path / "compiled.json"
+    result = runner.invoke(
+        app,
+        ["policy", "compile", "--policy", str(policy_file), "--output", str(dest)],
+    )
+    assert result.exit_code == 0, result.output
+    assert dest.exists()
+
+    controls = json.loads(dest.read_text())
+    assert controls
+    doc_controls = [c for c in controls if c["origin"] == "policy_document"]
+    assert doc_controls
+    for c in doc_controls:
+        # No control should cite the input policy document itself as evidence.
+        assert all(ev["path"] != policy_file.name for ev in c["evidence"])
+    # No SBOM was provided, so no component evidence is possible either.
+    assert all(c["evidence"] == [] for c in doc_controls)
+
+
+def test_compile_with_sbom_adds_component_evidence(
+    policy_file: Path, sbom_file: Path, tmp_path: Path
+) -> None:
+    cfg = tmp_path / "nuguard.yaml"
+    cfg.write_text(f"sbom: {sbom_file}\n", encoding="utf-8")
+    dest = tmp_path / "compiled.json"
+    result = runner.invoke(
+        app,
+        [
+            "policy",
+            "compile",
+            "--policy",
+            str(policy_file),
+            "--config",
+            str(cfg),
+            "--output",
+            str(dest),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    controls = json.loads(dest.read_text())
+    assert controls
+    # Not asserting a specific component match (fixture-dependent) — just that
+    # compilation with an SBOM present still succeeds and produces valid
+    # origin/evidence-shaped controls.
+    for c in controls:
+        assert c["origin"] in ("policy_document", "nuguard_best_practice")
+        assert isinstance(c["evidence"], list)
+
+
+# ---------------------------------------------------------------------------
 # nuguard policy check
 # ---------------------------------------------------------------------------
 
@@ -338,6 +393,60 @@ def test_check_compliance_framework(sbom_file: Path) -> None:
         ],
     )
     assert result.exit_code in (0, 1, 2), result.output
+
+
+def test_check_llm_builds_client_from_config(
+    sbom_file: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``--llm`` must honour nuguard.yaml llm.model instead of the Gemini default (#325)."""
+    import nuguard.common.llm_client as llm_client_mod
+    import nuguard.policy.assessment as assessment_mod
+
+    captured: dict[str, object] = {}
+
+    class _RecordingClient:
+        def __init__(
+            self,
+            model: str | None = None,
+            api_key: str | None = None,
+            api_base: str | None = None,
+        ) -> None:
+            captured["model"] = model
+            captured["api_key"] = api_key
+
+    class _FakeAssessment:
+        evaluations: list = []
+
+    async def _fake_assessment(doc, framework="custom", enable_llm=False, llm=None):
+        captured["llm"] = llm
+        return _FakeAssessment()
+
+    monkeypatch.setattr(llm_client_mod, "LLMClient", _RecordingClient)
+    monkeypatch.setattr(assessment_mod, "run_compliance_assessment", _fake_assessment)
+
+    cfg_file = tmp_path / "nuguard.yaml"
+    cfg_file.write_text(
+        "llm:\n  model: openai/gpt-4o-mini\n  api_key: sk-test\n", encoding="utf-8"
+    )
+
+    result = runner.invoke(
+        app,
+        [
+            "policy",
+            "check",
+            "--sbom",
+            str(sbom_file),
+            "--framework",
+            "owasp-llm-top10",
+            "--llm",
+            "--config",
+            str(cfg_file),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert isinstance(captured["llm"], _RecordingClient)
+    assert captured["model"] == "openai/gpt-4o-mini"
+    assert captured["api_key"] == "sk-test"
 
 
 def test_check_missing_sbom_exits(policy_file: Path, tmp_path: Path) -> None:

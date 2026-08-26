@@ -12,7 +12,9 @@ Supports detection of AI frameworks in TypeScript and JavaScript code:
 - Azure AI Agent Service (@azure/ai-agents, @azure/ai-projects)
 """
 
+from .agent_orchestrator import AgentOrchestratorTSAdapter
 from .agno import AgnoTSAdapter
+from .auth_detector import NestJSAuthTSAdapter
 from .azure_ai_agents import AzureAIAgentsTSAdapter
 from .bedrock_agents import BedrockAgentsTSAdapter
 from .claude_agent_sdk import ClaudeAgentSDKTSAdapter
@@ -20,10 +22,13 @@ from .datastores import DatastoreTSAdapter
 from .google_adk import GoogleADKAdapter
 from .langgraph import LangGraphTSAdapter
 from .llm_clients import LLMClientTSAdapter
+from .nestjs_adapter import NestJSAdapter
+from .nestjs_tool_di import NestJSToolDIAdapter
 from .openai_agents import OpenAIAgentsTSAdapter
 from .prompts import PromptTSAdapter
 
 __all__ = [
+    "AgentOrchestratorTSAdapter",
     "AgnoTSAdapter",
     "AzureAIAgentsTSAdapter",
     "ClaudeAgentSDKTSAdapter",
@@ -32,6 +37,9 @@ __all__ = [
     "GoogleADKAdapter",
     "LangGraphTSAdapter",
     "LLMClientTSAdapter",
+    "NestJSAdapter",
+    "NestJSAuthTSAdapter",
+    "NestJSToolDIAdapter",
     "OpenAIAgentsTSAdapter",
     "PromptTSAdapter",
 ]
