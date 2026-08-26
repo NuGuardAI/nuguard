@@ -451,6 +451,7 @@ def redteam(
                     findings=findings,
                     output_path=rp_path,
                     target_url=target_url or "",
+                    scan_id=meta.run_id,
                 )
                 typer.echo(f"Remediation plan written to {rp_path}")
             except Exception as exc:
