@@ -488,4 +488,6 @@ The behavior scan and the red-team scan answer different questions: behavior tel
 - [Static Analysis Guide](./static-analysis-guide.md)
 - [Policy Engine Guide](./policy-engine-guide.md)
 - [Behavior Guide](./behavior-guide.md)
+- [Behavior Scenario Catalog](./behavior-scenario-catalog.md)
 - [Red-Teaming Guide](./red-teaming-guide.md)
+- [Red-Team Scenario Catalog](./redteam-scenario-catalog.md)

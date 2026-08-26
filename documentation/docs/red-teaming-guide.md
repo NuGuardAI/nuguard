@@ -121,6 +121,8 @@ nuguard redteam -c nuguard.yaml \
 
 The full unfiltered run (all 9 families) is what the [example walkthrough](example-openai-cs-agents.md) uses in its `nuguard.yaml`, alongside `canary`, `similar_miss_threshold`, `scenario_timeout`, and `guided_conversations` settings — see [Set Up Project Config](example-openai-cs-agents.md#4-set-up-project-config) for the complete file.
 
+For the full list of attack vectors behind each family — 125 scenarios across 18 categories, with per-scenario impact scores and safe-execution modes — see the [Red-Team Scenario Catalog](redteam-scenario-catalog.md).
+
 ### 📖 Need every flag?
 
 [![Read the CLI Reference](https://img.shields.io/badge/→_Read_the_CLI_Reference-111111?style=for-the-badge)](cli-reference.md#nuguard-redteam)
