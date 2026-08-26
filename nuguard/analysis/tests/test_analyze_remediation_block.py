@@ -13,7 +13,7 @@ from pathlib import Path
 
 from nuguard.cli.commands.analyze import (
     _best_fix_version,
-    _component_remediation_lines,
+    _component_remediation_text,
     _fixed_version_for_finding,
     _manifest_line_number,
 )
@@ -77,10 +77,9 @@ def test_component_remediation_points_at_manifest_file_and_line(tmp_path: Path) 
             "(fix available: 0.1.0). See https://x for details.",
         )
     ]
-    lines = _component_remediation_lines(
-        "langchain@0.0.300", findings, {"langchain": dep}, tmp_path
+    text = _component_remediation_text(
+        ["langchain@0.0.300"], findings, {"langchain": dep}, tmp_path
     )
-    text = "\n".join(lines)
     assert "requirements.txt" in text
     assert "line 1" in text
     assert "0.0.300" in text
@@ -95,14 +94,27 @@ def test_component_remediation_falls_back_to_image_rebuild_for_os_packages() -> 
             "(fix available: 8.9.0). See https://x for details.",
         )
     ]
-    lines = _component_remediation_lines("curl@8.5.0-r0", findings, {}, None)
-    text = "\n".join(lines)
+    text = _component_remediation_text(["curl@8.5.0-r0"], findings, {}, None)
     assert "container" in text
     assert "8.9.0" in text
     assert "requirements.txt" not in text
 
 
+def test_component_remediation_mentions_all_merged_component_names() -> None:
+    findings = [
+        _finding(
+            "grype-CVE-2024-2398",
+            remediation="Upgrade curl to a version outside the affected range "
+            "(fix available: 8.9.0). See https://x for details.",
+        )
+    ]
+    text = _component_remediation_text(["curl@8.5.0-r0", "libcurl@8.5.0-r0"], findings, {}, None)
+    assert "curl" in text
+    assert "libcurl" in text
+    assert "8.9.0" in text
+
+
 def test_component_remediation_notes_when_no_fix_published() -> None:
     findings = [_finding("grype-CVE-9999-1", remediation="Upgrade to a patched version.")]
-    lines = _component_remediation_lines("foo@1.0.0", findings, {}, None)
-    assert "No fixed version" in "\n".join(lines)
+    text = _component_remediation_text(["foo@1.0.0"], findings, {}, None)
+    assert "No fixed version" in text

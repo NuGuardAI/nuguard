@@ -14,11 +14,12 @@ import asyncio
 import json
 import re
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, NamedTuple, Optional
 
 import typer
 
 from nuguard.cli.common import output_path_for_format, parse_output_formats
+from nuguard.common.control_mappings.owasp import owasp_refs_for_rule
 from nuguard.common.logging import get_logger
 from nuguard.models.finding import Finding, Severity
 
@@ -607,31 +608,29 @@ def _manifest_line_number(source_root: Path | None, source_file: str, dep_name: 
     return None
 
 
-def _component_remediation_lines(
-    comp: str,
+def _component_remediation_text(
+    components: list[str],
     findings: list[Finding],
     deps_by_name: dict[str, Any],
     source_root: Path | None,
-) -> list[str]:
-    """Build a one-block, actionable remediation for a component's finding group.
+) -> str:
+    """Build one actionable remediation sentence for a (possibly merged) group
+    of sibling components sharing the same finding set.
 
     Points at the exact manifest file (+ line, when it can be found on disk)
     and the version bump needed for language-ecosystem dependencies; falls
     back to image-rebuild guidance for OS packages that aren't declared in
     any project manifest (grype/trivy scan the container image directly).
     """
-    name, _, version = comp.rpartition("@")
-    if not name:
-        name = comp
+    names = [c.rpartition("@")[0] or c for c in components]
+    names_str = ", ".join(f"`{n}`" for n in names)
     fix_candidates = [v for v in (_fixed_version_for_finding(f) for f in findings) if v]
-    dep = deps_by_name.get(name.lower())
 
     if not fix_candidates:
-        return [
-            f"**Remediation:** No fixed version has been published yet for `{name}` — "
-            f"track the upstream advisory and re-scan once a patch ships.  ",
-            "",
-        ]
+        return (
+            f"No fixed version has been published yet for {names_str} — "
+            f"track the upstream advisory and re-scan once a patch ships."
+        )
 
     best, all_candidates = _best_fix_version(fix_candidates)
     candidates_note = (
@@ -639,24 +638,39 @@ def _component_remediation_lines(
         if len(all_candidates) > 1 else ""
     )
 
+    dep = next((deps_by_name.get(n.lower()) for n in names if deps_by_name.get(n.lower())), None)
     if dep is not None:
-        line_no = _manifest_line_number(source_root, dep.source_file, name)
+        line_no = _manifest_line_number(source_root, dep.source_file, dep.name)
         loc = f"`{dep.source_file}`" + (f" (line {line_no})" if line_no else "")
-        current = dep.version_spec or version or "?"
-        return [
-            f"**Remediation:** In {loc}, bump `{name}` from `{current}` to `>={best}`."
-            f"{candidates_note}  ",
-            "",
-        ]
+        current = dep.version_spec or "?"
+        return (
+            f"In {loc}, bump {names_str} from `{current}` to `>={best}`."
+            f"{candidates_note}"
+        )
 
-    return [
-        f"**Remediation:** `{name}` is an OS-level package baked into the container "
+    is_are, pkg_noun = ("is", "an OS-level package") if len(names) == 1 else ("are", "OS-level packages")
+    upgrade_cmd = " ".join(names)
+    return (
+        f"{names_str} {is_are} {pkg_noun} baked into the container "
         f"image (not declared in a project manifest) — rebuild the image after "
-        f"upgrading it to `{best}` or newer, e.g. `apk upgrade {name}` / "
-        f"`apt-get install --only-upgrade {name}` in the Dockerfile, or bump the "
-        f"base image tag once a patched image is published.{candidates_note}  ",
-        "",
-    ]
+        f"upgrading to `{best}` or newer, e.g. `apk upgrade {upgrade_cmd}` / "
+        f"`apt-get install --only-upgrade {upgrade_cmd}` in the Dockerfile, or bump "
+        f"the base image tag once a patched image is published.{candidates_note}"
+    )
+
+
+def _framework_mapping_text(
+    owasp_llm: str | None, owasp_asi: str | None, atlas: str | None
+) -> str:
+    """Combine OWASP LLM/Agentic Top 10 and MITRE ATLAS refs into one line."""
+    parts = []
+    if owasp_llm:
+        parts.append(f"OWASP LLM Top 10: {owasp_llm}")
+    if owasp_asi:
+        parts.append(f"OWASP Agentic Top 10: {owasp_asi}")
+    if atlas:
+        parts.append(f"MITRE ATLAS: {atlas}")
+    return " · ".join(parts)
 
 
 def _group_by_component(findings: list[Finding]) -> list[tuple[str, list[Finding]]]:
@@ -680,6 +694,71 @@ def _group_by_component(findings: list[Finding]) -> list[tuple[str, list[Finding
         grouped.items(),
         key=lambda kv: (_SEV_ORDER.get(kv[1][0].severity.value, 99), -len(kv[1]), kv[0]),
     )
+
+
+class _ComponentGroup(NamedTuple):
+    """A final report section — one or more sibling component labels (e.g.
+    ``curl@8.5.0-r0`` and ``libcurl@8.5.0-r0``, binaries from the same source
+    package) whose CVE sets fully/subset-overlap, merged into one group so the
+    same vulnerability isn't reported twice under different component names.
+    """
+    components: list[str]                          # merged labels, primary (first-seen) first
+    entries: list[tuple[Finding, list[str]]]        # (finding, sources) rows
+
+
+def _merge_overlapping_components(
+    grouped_deduped: list[tuple[str, list[tuple[Finding, list[str]]]]],
+) -> list[_ComponentGroup]:
+    """Final cross-component dedup pass.
+
+    ``grouped_deduped`` is already per-component, per-CVE deduped and sorted
+    high-severity-first. Sibling components (different binaries built from the
+    same upstream source, e.g. curl/libcurl or libssl3/libcrypto3) often carry
+    an identical or subset CVE set — fold those into the earlier (higher- or
+    equal-priority) group instead of listing them as separate sections. A
+    component is only ever folded into a group processed *before* it, so the
+    result needs no re-sort: it's already high-severity-group-first, and a
+    group whose findings are entirely absorbed elsewhere simply never appears.
+    """
+    groups: list[_ComponentGroup] = []
+    for comp, entries in grouped_deduped:
+        vuln_ids = {vid for f, _ in entries if (vid := _canonical_vuln_id(f)) is not None}
+
+        target: _ComponentGroup | None = None
+        if vuln_ids:
+            for g in groups:
+                g_vuln_ids = {vid for f, _ in g.entries if (vid := _canonical_vuln_id(f)) is not None}
+                if vuln_ids <= g_vuln_ids:
+                    target = g
+                    break
+
+        if target is None:
+            groups.append(_ComponentGroup(components=[comp], entries=list(entries)))
+            continue
+
+        target.components.append(comp)
+        by_vuln_id = {
+            vid: i for i, (f, _) in enumerate(target.entries)
+            if (vid := _canonical_vuln_id(f)) is not None
+        }
+        appended = False
+        for f, sources in entries:
+            vid = _canonical_vuln_id(f)
+            if vid is not None and vid in by_vuln_id:
+                # Same CVE already present in the target group — merge sources only.
+                i = by_vuln_id[vid]
+                ef, esources = target.entries[i]
+                target.entries[i] = (ef, sorted(set(esources) | set(sources)))
+            else:
+                # Structural finding tied to this specific component (or a CVE
+                # somehow missing from the target, shouldn't happen given the
+                # subset check above) — keep as its own row.
+                target.entries.append((f, sources))
+                appended = True
+        if appended:
+            target.entries.sort(key=lambda x: _SEV_ORDER.get(x[0].severity.value, 99))
+
+    return groups
 
 
 def _render_rule_audit_section(
@@ -760,16 +839,20 @@ def _render_markdown(
     sbom_deps: list[Any] | None = None,
     source_root: Path | None = None,
 ) -> str:
-    # Pre-compute deduplicated view used throughout the report.
-    # Dedup is per-component (same CVE from trivy+osv → one entry, OSV canonical).
+    # Pre-compute the deduplicated, component-grouped view used throughout the
+    # report: per-component CVE dedup, then a final cross-component pass that
+    # folds sibling components (curl/libcurl, libssl3/libcrypto3, ...) whose
+    # CVE sets subset/fully overlap into one group instead of listing the same
+    # vulnerability twice under different component names.
     deps_by_name: dict[str, Any] = {dep.name.lower(): dep for dep in (sbom_deps or [])}
     grouped_raw = _group_by_component(findings)
     grouped_deduped = [
         (comp, _dedup_component_findings(flist))
         for comp, flist in grouped_raw
     ]
-    # Flat list of canonical findings (one per unique finding per component)
-    deduped_all: list[Finding] = [f for _, entries in grouped_deduped for f, _ in entries]
+    component_groups = _merge_overlapping_components(grouped_deduped)
+    # Flat list of canonical findings (one per unique finding, post cross-component merge)
+    deduped_all: list[Finding] = [f for g in component_groups for f, _ in g.entries]
 
     lines: list[str] = [
         "# NuGuard Static Analysis Report",
@@ -777,7 +860,7 @@ def _render_markdown(
         f"**SBOM:** `{sbom_path}`  ",
         f"**Minimum severity:** {min_severity}  ",
         f"**Total findings:** {len(deduped_all)} unique",
-        f"*(from {len(findings)} raw tool findings — duplicates across scanners merged)*  ",
+        f"*(from {len(findings)} raw tool findings — duplicates across scanners and sibling components merged)*  ",
         "",
     ]
 
@@ -785,6 +868,12 @@ def _render_markdown(
     # Severity summary (based on deduplicated findings)
     # ------------------------------------------------------------------
     if deduped_all:
+        # Map each finding back to its group's primary component label, so the
+        # per-severity component count reflects post-merge groups, not raw labels.
+        primary_component_of: dict[str, str] = {
+            f.finding_id: g.components[0] for g in component_groups for f, _ in g.entries
+        }
+
         by_sev: dict[str, list[Finding]] = {}
         for f in deduped_all:
             by_sev.setdefault(f.severity.value, []).append(f)
@@ -794,21 +883,21 @@ def _render_markdown(
             grp = by_sev.get(sev, [])
             if grp:
                 emoji = _SEV_EMOJI.get(sev, "")
-                comps = len({_component_label(f) for f in grp})
+                comps = len({primary_component_of[f.finding_id] for f in grp})
                 summary_parts.append(
                     f"{emoji} **{sev.upper()}:** {len(grp)} finding(s) across {comps} component(s)"
                 )
         lines += ["## Summary", ""] + [f"- {p}" for p in summary_parts] + [""]
 
-        # Top components by unique finding count
-        top_n = grouped_deduped[:5]
+        # Top component groups by unique finding count
+        top_n = component_groups[:5]
         lines += ["### Components with Most Findings", ""]
         lines += ["| Component | Unique Findings | Highest Severity |",
                   "|-----------|-----------------|-----------------|"]
-        for comp, entries in top_n:
-            top_sev = entries[0][0].severity.value  # sorted by severity
+        for g in top_n:
+            top_sev = g.entries[0][0].severity.value  # sorted by severity
             emoji = _SEV_EMOJI.get(top_sev, "")
-            lines.append(f"| `{comp}` | {len(entries)} | {emoji} {top_sev.upper()} |")
+            lines.append(f"| `{g.components[0]}` | {len(g.entries)} | {emoji} {top_sev.upper()} |")
         lines.append("")
 
     # ------------------------------------------------------------------
@@ -834,27 +923,48 @@ def _render_markdown(
         lines += ["_No findings at or above the requested severity threshold._", ""]
     else:
         # ------------------------------------------------------------------
-        # Findings grouped by component — one entry per unique CVE/GHSA.
-        # Same vulnerability reported by multiple scanners is shown once;
-        # OSV's finding is canonical (osv.dev link + remediation).
+        # Findings grouped by component, highest-severity group first. Every
+        # finding — a CVE/GHSA library group or an individual structural
+        # finding — follows the same field order: Summary, Remediation,
+        # Affected Components, Source, Framework Mapping.
         # ------------------------------------------------------------------
         lines += ["## Findings", ""]
 
-        for comp, entries in grouped_deduped:
-            top_sev = entries[0][0].severity.value
+        for g in component_groups:
+            top_sev = g.entries[0][0].severity.value
             emoji = _SEV_EMOJI.get(top_sev, "")
-            lines += [f"### {emoji} `{comp}` ({len(entries)} finding(s))", ""]
+            lines += [f"### {emoji} `{g.components[0]}` ({len(g.entries)} finding(s))", ""]
 
-            dep_entries = [(f, s) for f, s in entries if _canonical_vuln_id(f) is not None]
-            struct_entries = [(f, s) for f, s in entries if _canonical_vuln_id(f) is None]
+            dep_entries = [(f, s) for f, s in g.entries if _canonical_vuln_id(f) is not None]
+            struct_entries = [(f, s) for f, s in g.entries if _canonical_vuln_id(f) is None]
 
-            # CVE/GHSA dependency findings → one remediation block (which file/line
-            # to change and the exact version bump), then a compact table listing
+            # CVE/GHSA dependency findings stay grouped per library: one common
+            # 5-field block for the whole group, then a compact table listing
             # every CVE it resolves.
             if dep_entries:
-                lines += _component_remediation_lines(
-                    comp, [f for f, _ in dep_entries], deps_by_name, source_root
+                n = len(dep_entries)
+                names = [c.rpartition("@")[0] or c for c in g.components]
+                summary = f"{n} known vulnerabilit{'y' if n == 1 else 'ies'} in {', '.join(names)}."
+                remediation = _component_remediation_text(
+                    g.components, [f for f, _ in dep_entries], deps_by_name, source_root
                 )
+                affected = ", ".join(f"`{c}`" for c in g.components)
+                all_sources = sorted({s for _, sources in dep_entries for s in sources})
+                sources_str = ", ".join(_display_tool_name(s) for s in all_sources)
+                supply_chain = owasp_refs_for_rule("NGA-008")
+                framework = _framework_mapping_text(
+                    ", ".join(supply_chain.owasp_llm),
+                    ", ".join(supply_chain.owasp_agentic),
+                    None,
+                )
+
+                lines += [f"**Summary:** {summary}  ", ""]
+                lines += [f"**Remediation:** {remediation}  ", ""]
+                lines += [f"**Affected Components:** {affected}  ", ""]
+                lines += [f"**Source:** {sources_str}  ", ""]
+                if framework:
+                    lines += [f"**Framework Mapping:** {framework}  ", ""]
+
                 lines += [
                     "| Severity | ID | Title | Sources |",
                     "|----------|----|-------|---------|",
@@ -864,29 +974,28 @@ def _render_markdown(
                     sev_label = f.severity.value.upper()
                     vuln_id = _canonical_vuln_id(f)  # not None by construction
                     safe_title = f.title.replace("|", "\\|")
-                    sources_str = ", ".join(_display_tool_name(s) for s in sources)
+                    row_sources = ", ".join(_display_tool_name(s) for s in sources)
                     lines.append(
-                        f"| {sev_emoji} {sev_label} | `{vuln_id}` | {safe_title} | {sources_str} |"
+                        f"| {sev_emoji} {sev_label} | `{vuln_id}` | {safe_title} | {row_sources} |"
                     )
                 lines.append("")
 
-            # Structural findings (NGA, ATLAS) → full detail blocks
+            # Structural findings (NGA, ATLAS) → one block per finding, same field order.
             for f, sources in struct_entries:
                 sev_emoji = _SEV_EMOJI.get(f.severity.value, "")
-                sources_str = ", ".join(f"`{_display_tool_name(s)}`" for s in sources)
+                sources_str = ", ".join(_display_tool_name(s) for s in sources)
                 lines += [f"#### {sev_emoji} {_display_rule_id(f)} — {f.title}", ""]
-                lines += [f"**Sources:** {sources_str}  ", ""]
-                lines += [f.description or "", ""]
-                if f.affected_component:
-                    lines += [f"**Affected:** `{_component_label(f)}`  ", ""]
+                lines += [f"**Summary:** {f.description or f.title}  ", ""]
                 if f.remediation:
                     lines += [f"**Remediation:** {f.remediation}  ", ""]
-                if f.owasp_llm_ref:
-                    lines += [f"**OWASP LLM Top 10:** {f.owasp_llm_ref}  ", ""]
-                if f.owasp_asi_ref:
-                    lines += [f"**OWASP Agentic Top 10:** {f.owasp_asi_ref}  ", ""]
-                if f.mitre_atlas_technique:
-                    lines += [f"**ATLAS Techniques:** {f.mitre_atlas_technique}  ", ""]
+                if f.affected_component:
+                    lines += [f"**Affected Components:** `{_component_label(f)}`  ", ""]
+                lines += [f"**Source:** {sources_str}  ", ""]
+                framework = _framework_mapping_text(
+                    f.owasp_llm_ref, f.owasp_asi_ref, f.mitre_atlas_technique
+                )
+                if framework:
+                    lines += [f"**Framework Mapping:** {framework}  ", ""]
                 if f.references:
                     lines += ["**References:**  ", ""]
                     for ref in f.references:
