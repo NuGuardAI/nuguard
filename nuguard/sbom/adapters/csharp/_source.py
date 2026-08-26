@@ -133,6 +133,11 @@ def find_calls(
                 r"\1",
                 " ".join(source[chain_parent.start : chain_parent.end].strip().split()),
             )
+            # A constructor receiver keeps its ``new `` prefix so the
+            # reconstructed expression reads as a fresh instance even when
+            # it becomes a chained receiver (e.g. ``new MyTrainer().Fit``).
+            if chain_parent.is_constructor and not parent_expression.startswith("new "):
+                parent_expression = f"new {parent_expression}"
             receiver = f"{parent_expression}.{receiver}" if receiver else parent_expression
             snippet_start = chain_parent.start
 

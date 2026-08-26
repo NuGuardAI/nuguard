@@ -914,3 +914,31 @@ builder.Plugins.AddFromType<SearchPlugin>(
     }
 
     assert {"Weather", "Prompts", "Search"} <= tools
+
+
+def test_call_parser_preserves_new_prefix_on_chained_constructor() -> None:
+    """A constructor receiver keeps its ``new `` prefix when chained.
+
+    ``new MyTrainer().Fit(data)`` is a fluent chain whose ``Fit`` call
+    inherits the full preceding constructor invocation as its receiver;
+    the reconstructed receiver must stay ``new MyTrainer()`` (not drop the
+    ``new`` keyword), so downstream consumers can tell the receiver is a
+    fresh instance rather than an existing variable.
+    """
+    source = (
+        'var pipeline = mlContext.Transforms.Text("x").Fit(data);\n'
+        "var model = new MyTrainer().Fit(data);\n"
+    )
+
+    fits = find_calls(
+        source,
+        {"Fit"},
+    )
+
+    assert len(fits) == 2
+
+    constructed = next(
+        call for call in fits if (call.receiver or "").startswith("new ")
+    )
+    assert constructed.receiver == "new MyTrainer()"
+    assert constructed.assigned_to == "model"
