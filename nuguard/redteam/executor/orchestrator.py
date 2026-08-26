@@ -290,8 +290,7 @@ def _is_direct_http_only_scenario(scenario: AttackScenario) -> bool:
     steps at all (e.g. a static API_ATTACK auth-bypass/IDOR/mass-assignment/
     BFLA chain against SBOM-derived REST paths) is "direct-HTTP-only" and
     should not be caught by the chat-endpoint circuit breaker — see
-    ``TargetAppClient._consecutive_endpoint_errors`` and
-    ``RedteamOrchestrator._endpoint_circuit_open``.
+    ``TargetAppClient._consecutive_endpoint_errors``.
 
     Guided conversations always route through chat, so they are never
     direct-HTTP-only.
@@ -718,16 +717,6 @@ class RedteamOrchestrator:
         # Circuit-open flag latched when the 3-strike abort trips; consulted by
         # the escalation pass so it skips rather than re-hitting a dead target.
         self._circuit_open = False
-        # Separate circuit-open flag for direct-HTTP endpoint-probe outages
-        # (TargetUnavailableError raised with source="endpoint_probe" — see
-        # TargetAppClient._record_endpoint_error). Kept independent of
-        # self._circuit_open so an unreachable SBOM-derived REST path (e.g.
-        # API_ATTACK auth-bypass/IDOR/mass-assignment/BFLA chains) cannot
-        # abort unrelated, still-healthy chat-routed scenarios — only the
-        # remaining not-yet-dispatched direct-HTTP-only scenarios are skipped
-        # (chain_status="target_unreachable"). Latched across passes the same
-        # way self._circuit_open is.
-        self._endpoint_circuit_open = False
         # Auto-discover from SBOM; fall back to provided values
         self._chat_path, self._chat_payload_key, self._chat_payload_list, _discovered_response_key = (
             _discover_chat_config(sbom, chat_path, chat_payload_key, chat_payload_list)
@@ -1661,13 +1650,17 @@ class RedteamOrchestrator:
         # consulted by direct-HTTP-only scenarios (see
         # _is_direct_http_only_scenario). Setting this does NOT block
         # chat-routed scenarios, unlike `abort_event` above.
+        #
+        # Scoped to THIS PASS only (fresh event per _run_scenarios call): the
+        # isolation latch must not persist across passes, mirroring the chat
+        # breaker's per-pass `consecutive_unavailable` counter, which resets on
+        # success. Without this, a ~3-connection blip (container cold start, LB
+        # re-point, transient DNS failure) would latch `_endpoint_circuit_open`
+        # permanently and silently drop every remaining API_ATTACK scenario for
+        # the whole run even after the endpoint recovered. A genuinely dead
+        # endpoint is still bounded: each pass re-probes at most
+        # `_ABORT_THRESHOLD` times before skipping the rest of that pass.
         endpoint_abort_event = asyncio.Event()
-        if self._endpoint_circuit_open:
-            # A prior pass already tripped the direct-HTTP-probe breaker —
-            # latch the local event so every direct-HTTP-only scenario in
-            # this pass is skipped immediately; chat-routed scenarios are
-            # unaffected and run normally.
-            endpoint_abort_event.set()
         # Circuit breaker: trip only after this many consecutive unavailability errors.
         _ABORT_THRESHOLD = 3
         consecutive_unavailable = 0
@@ -1988,8 +1981,6 @@ class RedteamOrchestrator:
                                 exc,
                             )
                             endpoint_abort_event.set()
-                            # Preserve across passes, mirroring self._circuit_open.
-                            self._endpoint_circuit_open = True
                         else:
                             _log.warning(
                                 "Direct-HTTP endpoint probe temporarily unavailable "
