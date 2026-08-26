@@ -25,9 +25,9 @@ def _finding(
     remediation: str | None = None,
     affected_component: str | None = None,
 ) -> Finding:
+    del rule_id  # kept for call-site readability; not a Finding field
     return Finding(
         finding_id=finding_id,
-        rule_id=rule_id,
         title=title,
         severity=severity,
         description=description,
