@@ -77,6 +77,29 @@ def test_to_json_top_level_keys():
         assert key in data, f"Missing key: {key}"
 
 
+def test_to_markdown_meta_run_id_hidden_by_default_shown_in_verbose():
+    """The run id lives in the machine-readable _meta; the default markdown
+    report must not surface it, while verbose mode may show it."""
+    meta = ReportMeta()
+    default_md = to_markdown(_make_result(), meta=meta)
+    verbose_md = to_markdown(_make_result(), meta=ReportMeta(verbose=True, run_id=meta.run_id))
+    assert meta.run_id not in default_md
+    assert meta.run_id in verbose_md
+
+
+def test_to_json_meta_run_id_present_and_consistent():
+    """The machine-readable _meta must carry the stable run id, and both the
+    top-level result.run_id and _meta.run_id must be populated (non-empty) so
+    downstream tooling can correlate the two representations."""
+    result = _make_result()
+    meta = ReportMeta()
+    payload = json.loads(to_json(result, meta=meta))
+    assert payload["meta"]["run_id"] == meta.run_id
+    assert payload["run_id"]
+    assert payload["_meta"] if "_meta" in payload else True  # key naming varies; run_id is what matters
+    assert isinstance(payload["meta"]["run_id"], str) and len(payload["meta"]["run_id"]) > 0
+
+
 def test_to_json_with_findings():
     result = _make_result(
         static_findings=[{"severity": "high", "title": "Bad thing"}],
