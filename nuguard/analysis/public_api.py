@@ -125,10 +125,9 @@ async def run_analysis(
 ) -> AnalysisRunResult:
     """Run a full static analysis pass from a JSON-safe request.
 
-    Thin wrapper around ``StaticAnalyzer(...).analyze(sbom)``. The underlying
-    call is itself synchronous — ``StaticAnalyzer`` runs no async I/O — this
-    wrapper is ``async`` only to mirror behavior's/redteam's public API shape
-    and to await remediation synthesis afterward.
+    Thin wrapper around ``StaticAnalyzer(...).analyze(sbom)`` — which itself
+    runs its independent, I/O-bound detector steps (OSV/Grype/Checkov/Trivy/
+    Semgrep) concurrently — followed by awaiting remediation synthesis.
     """
     _log.debug("run_analysis: min_severity=%s", request.min_severity)
     analyzer = StaticAnalyzer(
@@ -149,7 +148,7 @@ async def run_analysis(
         supply_chain_verify_artifacts=request.supply_chain_verify_artifacts,
         supply_chain_threat_intel_feeds=request.supply_chain_threat_intel_feeds,
     )
-    findings = analyzer.analyze(sbom)
+    findings = await analyzer.analyze(sbom)
 
     remediation_plan = await _build_remediation_plan(
         findings, sbom=sbom, policy=policy, llm_client=llm_client

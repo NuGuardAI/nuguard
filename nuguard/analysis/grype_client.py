@@ -29,12 +29,18 @@ import json
 import shutil
 import subprocess
 import tempfile
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import Any
 
 from nuguard.common.logging import get_logger
 
 _log = get_logger("analysis.grype")
+
+# Max concurrent `grype <image>` subprocesses when scanning multiple container
+# images — each is an independent, blocking subprocess call, so a small
+# thread pool turns an O(n) sequential scan into ~O(n / concurrency).
+_IMAGE_SCAN_CONCURRENCY = 4
 
 # Grype severity labels → normalised values (Grype uses title-case)
 _SEV_MAP: dict[str, str] = {
@@ -254,11 +260,19 @@ def query_grype_images(
         _log.debug("grype: no CONTAINER_IMAGE refs found in SBOM nodes")
         return []
 
+    sorted_refs = sorted(image_refs)
     all_findings: list[dict[str, Any]] = []
-    for ref in sorted(image_refs):
-        _log.info("grype: scanning container image %s", ref)
-        matches = _run_grype(ref, timeout=timeout, max_retries=max_retries)
-        all_findings.extend(_match_to_finding(m, ref) for m in matches)
+    # Each image scan is an independent, blocking `grype <ref>` subprocess —
+    # run them concurrently instead of one at a time.
+    with ThreadPoolExecutor(max_workers=min(_IMAGE_SCAN_CONCURRENCY, len(sorted_refs))) as pool:
+        future_to_ref = {}
+        for ref in sorted_refs:
+            _log.info("grype: scanning container image %s", ref)
+            future_to_ref[pool.submit(_run_grype, ref, timeout, max_retries)] = ref
+        for future in as_completed(future_to_ref):
+            ref = future_to_ref[future]
+            matches = future.result()
+            all_findings.extend(_match_to_finding(m, ref) for m in matches)
 
     _log.info("grype image scan(s): %d total finding(s) across %d image(s)",
               len(all_findings), len(image_refs))
