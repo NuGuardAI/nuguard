@@ -10,6 +10,7 @@ severity was used instead of the worst-case severity across sources.
 from __future__ import annotations
 
 from nuguard.cli.commands.analyze import (
+    _canonical_vuln_id,
     _component_label,
     _dedup_component_findings,
     _group_by_component,
@@ -96,3 +97,12 @@ def test_dedup_keeps_distinct_cves_separate() -> None:
     f2 = _finding("grype-CVE-2024-6197", affected_component="curl@8.5.0-r0")
     deduped = _dedup_component_findings([f1, f2])
     assert len(deduped) == 2
+
+
+def test_canonical_vuln_id_recognizes_pysec_when_no_cve_or_ghsa_alias() -> None:
+    # OSV findings with no registered CVE/GHSA alias (e.g. some PyPI advisories)
+    # use their own PYSEC-YYYY-NNNNN id — these were falling through to None
+    # and rendering as fake "structural" findings instead of joining the
+    # package's compact CVE table.
+    f = _finding("osv-PYSEC-2026-2475", affected_component="fastmcp")
+    assert _canonical_vuln_id(f) == "PYSEC-2026-2475"

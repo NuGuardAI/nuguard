@@ -491,14 +491,16 @@ def _display_rule_id(f: Finding) -> str:
 
 _CVE_RE = re.compile(r'\bCVE-\d{4}-\d+\b', re.IGNORECASE)
 _GHSA_RE = re.compile(r'\bGHSA-[a-z0-9]+-[a-z0-9]+-[a-z0-9]+\b', re.IGNORECASE)
+_PYSEC_RE = re.compile(r'\bPYSEC-\d{4}-\d+\b', re.IGNORECASE)
 
 
 def _canonical_vuln_id(f: Finding) -> str | None:
-    """Extract a canonical CVE or GHSA identifier for cross-tool deduplication.
+    """Extract a canonical CVE/GHSA/PYSEC identifier for cross-tool deduplication.
 
-    Returns the CVE-XXXX-XXXXX id when available (preferred), then GHSA-..., then
-    None for structural findings (NGA, ATLAS, semgrep, checkov) that are not
-    package vulnerabilities and should never be merged.
+    Returns the CVE-XXXX-XXXXX id when available (preferred), then GHSA-...,
+    then PYSEC-... (OSV's own advisory id for PyPI packages when no CVE/GHSA
+    alias exists), then None for structural findings (NGA, ATLAS, semgrep,
+    checkov) that are not package vulnerabilities and should never be merged.
     """
     if _source_tool(f) in ("nga", "atlas", "semgrep", "checkov"):
         return None
@@ -516,6 +518,10 @@ def _canonical_vuln_id(f: Finding) -> str | None:
         return m.group().upper()
     # GHSA in finding_id (OSV primary identifier)
     m = _GHSA_RE.search(f.finding_id)
+    if m:
+        return m.group().upper()
+    # PYSEC in finding_id (OSV's own id when no CVE/GHSA alias is registered)
+    m = _PYSEC_RE.search(f.finding_id)
     if m:
         return m.group().upper()
     return None
