@@ -2180,6 +2180,11 @@ def _extract_fixed_version(affected_versions: str) -> str | None:
 
 
 _SENTENCE_END_RE = re.compile(r"[.!?](?=\s|$)")
+# Matches when the text right before a candidate sentence-end is itself just
+# a short run of digits ("1", "12", ...) at the start of the string or after
+# whitespace — i.e. the "." belongs to a list marker ("1.", "2.") rather than
+# ending a real sentence.
+_LIST_MARKER_TAIL_RE = re.compile(r"(?:^|\s)\d{1,3}$")
 
 
 def _summarize_description(text: str, max_len: int = 140) -> str:
@@ -2188,12 +2193,15 @@ def _summarize_description(text: str, max_len: int = 140) -> str:
     text = _ADVISORY_HEADER_RE.sub("", _WS_RE.sub(" ", text or "").strip())
     if not text:
         return ""
-    # Prefer the first sentence, but skip degenerate "matches" like a leading
-    # list marker ("1.") whose period isn't actually a sentence boundary.
+    # Prefer the first real sentence, skipping numbered-list markers ("1.",
+    # "2.") whose periods aren't actual sentence boundaries — some advisory
+    # descriptions are formatted as unpunctuated numbered steps.
     candidate = text
     for m in _SENTENCE_END_RE.finditer(text):
+        if _LIST_MARKER_TAIL_RE.search(text[:m.start()]):
+            continue
         chunk = text[:m.end()].strip()
-        if len(chunk) >= 10 or m.end() >= max_len:
+        if chunk:
             candidate = chunk
             break
     if len(candidate) > max_len:

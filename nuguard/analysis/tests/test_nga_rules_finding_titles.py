@@ -73,6 +73,15 @@ def test_summarize_description_skips_leading_list_marker_as_sentence_end() -> No
     )
 
 
+def test_summarize_description_skips_unpunctuated_list_markers_too() -> None:
+    # Some advisories format numbered steps without a period after each item
+    # ("1. do X 2. do Y") — a naive scan would stop at "2." with no real
+    # sentence captured; the summary should keep scanning past it instead.
+    text = "1. A cookie is set for `target` 2. The value is read via a bug. 3. done."
+    summary = _summarize_description(text, max_len=200)
+    assert summary == "1. A cookie is set for `target` 2. The value is read via a bug."
+
+
 def test_summarize_description_strips_advisory_header_and_truncates() -> None:
     assert (
         _summarize_description("Issue summary: Buffer overflow in parser.")
