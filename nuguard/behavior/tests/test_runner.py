@@ -60,6 +60,15 @@ def _make_config() -> BehaviorConfig:
     cfg.canary = None
     cfg.session_header = None
     cfg.scenario_delay_seconds = 0.0
+    # MagicMock() auto-creates any attribute as a (truthy) child Mock, so
+    # getattr(..., default) never falls back to the default for a bare
+    # MagicMock — explicitly set these to BehaviorConfig's real defaults
+    # (all off) so tests don't inadvertently exercise the escalation-ladder
+    # path unless they opt in.
+    cfg.escalate_on_refusal = False
+    cfg.escalation_max_attempts = 3
+    cfg.escalation_circuit_breaker_threshold = 3
+    cfg.prioritize_by_probe = False
     return cfg  # type: ignore[return-value]  # MagicMock duck-types as BehaviorConfig for these tests
 
 
@@ -207,6 +216,8 @@ async def test_run_policy_violation_creates_finding():
     assert isinstance(result, BehaviorRunResult)
     assert len(result.findings) > 0
     assert any("policy_violation" in str(f) or "gambling" in str(f) for f in result.findings)
+    assert all(f.get("owasp_llm_ref") for f in result.findings)
+    assert all(f.get("mitre_atlas_technique") for f in result.findings)
 
 
 @pytest.mark.asyncio
@@ -359,6 +370,103 @@ async def test_run_does_not_rotate_when_target_endpoint_is_explicit() -> None:
     assert result.scan_outcome == "aborted_endpoint_unreachable"
     assert any("Explicit endpoint precedence is enforced" in note for note in result.config_notes)
     assert "/api/agent/chat" not in dummy.called_paths
+
+
+@pytest.mark.asyncio
+async def test_run_rotates_when_endpoint_was_sbom_discovered_not_user_set() -> None:
+    """BehaviorAnalyzer folds an SBOM-discovered endpoint into config.target_endpoint
+    (indistinguishable from a user-set value by truthiness alone) and tells the
+    runner via endpoint_explicitly_set=False. Rotation must still happen on
+    404/405 — the SBOM's initial candidate can be wrong (e.g. a vision-only
+    route outscoring the real text-chat endpoint) even though *some* endpoint
+    was auto-filled into config.target_endpoint.
+    """
+
+    class _DummyClient:
+        def __init__(self) -> None:
+            self.base_url = "http://localhost:8080"
+            # Analyzer's SBOM discovery picked /api/agent/chat as the top-ranked
+            # candidate — the wrong one for this app, mirroring the phlox-app
+            # bug where a vision-only route outranked the real text-chat route.
+            self.chat_path = "/api/agent/chat"
+            self.resolution_notes: list[str] = []
+            self.called_paths: list[str] = []
+
+        async def send(self, message: str, session: object) -> tuple[str, list[dict]]:
+            self.called_paths.append(self.chat_path)
+            if self.chat_path == "/api/agent/chat":
+                return "[HTTP 404] not found", []
+            return "OK", []
+
+        def set_chat_endpoint(
+            self,
+            chat_path: str,
+            chat_payload_key: str,
+            chat_payload_list: bool,
+            chat_response_key: str | None = None,
+        ) -> None:
+            self.chat_path = chat_path
+
+        async def aclose(self) -> None:
+            pass
+
+    cfg = _make_config()
+    # Mirrors BehaviorAnalyzer's model_copy(update={"target_endpoint": disc_path})
+    # after SBOM auto-discovery — truthy, but never written by the user.
+    cfg.target_endpoint = "/api/agent/chat"
+
+    sbom = AiSbomDocument(
+        target="./app",
+        nodes=[
+            Node(
+                id=uuid.uuid5(_NS, "API_ENDPOINT//chat"),
+                name="/chat",
+                component_type=ComponentType.API_ENDPOINT,
+                confidence=0.99,
+                metadata=NodeMetadata(
+                    endpoint="/chat",
+                    method="POST",
+                    chat_payload_key="message",
+                    chat_payload_list=False,
+                ),
+            ),
+            Node(
+                id=uuid.uuid5(_NS, "API_ENDPOINT//api/agent/chat"),
+                name="/api/agent/chat",
+                component_type=ComponentType.API_ENDPOINT,
+                confidence=0.99,
+                metadata=NodeMetadata(
+                    endpoint="/api/agent/chat",
+                    method="POST",
+                    chat_payload_key="message",
+                    chat_payload_list=False,
+                ),
+            ),
+        ],
+        edges=[],
+    )
+
+    runner = BehaviorRunner(
+        config=cfg,
+        sbom=sbom,
+        policy=_make_mock_policy(),
+        intent=_make_intent(),
+        llm_client=None,
+        endpoint_explicitly_set=False,
+    )
+    dummy = _DummyClient()
+
+    with (
+        patch.object(runner, "_build_client", new=AsyncMock(return_value=dummy)),
+        patch.object(runner, "_build_policy_evaluator", return_value=None),
+    ):
+        result = await runner.run(
+            scenarios=[_make_scenario("sbom_discovered_endpoint")],
+            pre_scan_profile=DiscoveredProfile(customer_name="Alice", ids=["ACCT-001"]),
+        )
+
+    assert result.scan_outcome != "aborted_endpoint_unreachable"
+    assert "/chat" in dummy.called_paths
 
 
 def test_build_coverage_map_endpoint_direct_match_confidence() -> None:
@@ -725,3 +833,314 @@ async def test_adapt_message_no_context_passthrough():
     msg, pii, hook, deferred = await _adapt_message("Hello", None, scenario)
     assert msg == "Hello"
     assert deferred is None
+
+
+# ---------------------------------------------------------------------------
+# Configurable coverage/session turn budgets
+# ---------------------------------------------------------------------------
+
+
+def test_adaptive_coverage_cap_uses_config_value():
+    from nuguard.behavior.runner import _adaptive_coverage_cap
+
+    config = BehaviorConfig(coverage_turns_per_scenario=8)
+    assert _adaptive_coverage_cap(config) == 8
+
+
+def test_adaptive_coverage_cap_falls_back_to_default():
+    from nuguard.behavior.coverage import MAX_COVERAGE_TURNS
+    from nuguard.behavior.runner import _adaptive_coverage_cap
+
+    assert _adaptive_coverage_cap(object()) == MAX_COVERAGE_TURNS
+
+
+def test_session_turn_cap_uses_config_value():
+    from nuguard.behavior.runner import _session_turn_cap
+
+    config = BehaviorConfig(max_session_turns=25)
+    assert _session_turn_cap(config) == 25
+
+
+def test_session_turn_cap_falls_back_to_default():
+    from nuguard.behavior.runner import _ADAPTIVE_SESSION_CAP, _session_turn_cap
+
+    assert _session_turn_cap(object()) == _ADAPTIVE_SESSION_CAP
+
+
+# ---------------------------------------------------------------------------
+# GUIDED_COVERAGE scenarios: driven turn-by-turn by CoverageDirector
+# ---------------------------------------------------------------------------
+
+
+def _make_sbom_with_tool(tool_name: str) -> AiSbomDocument:
+    return AiSbomDocument(
+        target="test",
+        nodes=[
+            Node(
+                name=tool_name,
+                component_type=ComponentType.TOOL,
+                confidence=1.0,
+                metadata=NodeMetadata(),
+            )
+        ],
+    )
+
+
+@pytest.mark.asyncio
+async def test_guided_coverage_scenario_uses_coverage_director_not_batch_gen():
+    """GUIDED_COVERAGE scenarios must be driven one message at a time via
+    CoverageDirector.next_message(), never via the batch generate_coverage_turns()."""
+    runner = BehaviorRunner(
+        config=BehaviorConfig(target="http://localhost:8080", target_endpoint="/chat"),
+        sbom=_make_sbom_with_tool("transfer_funds"),
+        policy=_make_mock_policy(),
+        intent=_make_intent(),
+        llm_client=None,
+    )
+    runner._pre_scan_profile = None
+
+    mock_client = AsyncMock()
+    mock_client.base_url = "http://localhost:8080"
+    mock_client.send = AsyncMock(return_value=("Sure, I can help with that.", []))
+
+    fake_director = MagicMock()
+    fake_director.next_message = AsyncMock(side_effect=["Can you move $50 to savings?", None])
+
+    scenario = BehaviorScenario(
+        scenario_type=BehaviorScenarioType.GUIDED_COVERAGE,
+        name="guided_assistant_0",
+        messages=["I need help with banking. Can you help me get started?"],
+        scoped_tools=["transfer_funds"],
+        primary_agent="assistant",
+    )
+
+    with (
+        patch.object(runner, "_coverage_director", return_value=fake_director),
+        patch("nuguard.behavior.runner.generate_coverage_turns", new=AsyncMock()) as batch_gen,
+    ):
+        result = await runner._run_scenario(scenario, mock_client, None)
+
+    assert result.scenario_name == "guided_assistant_0"
+    # Opening scripted message + one director-picked follow-up = 2 turns, then
+    # the director returning None ends the scenario.
+    assert mock_client.send.await_count == 2
+    fake_director.next_message.assert_awaited()
+    batch_gen.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# escalate_on_refusal: escalation ladder for GUIDED_COVERAGE probes
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_escalate_on_refusal_retries_and_stops_on_success():
+    """A refusal on the first probe queues an escalated retry; a non-refusal
+    response ends the escalation loop without exhausting all attempts."""
+    runner = BehaviorRunner(
+        config=BehaviorConfig(
+            target="http://localhost:8080", target_endpoint="/chat",
+            escalate_on_refusal=True, escalation_max_attempts=3,
+        ),
+        sbom=_make_sbom_with_tool("transfer_funds"),
+        policy=_make_mock_policy(),
+        intent=_make_intent(),
+        llm_client=None,
+    )
+    runner._pre_scan_profile = None
+
+    mock_client = AsyncMock()
+    mock_client.base_url = "http://localhost:8080"
+    mock_client.send = AsyncMock(side_effect=[
+        ("Opening reply.", []),
+        ("I'm sorry, I don't have the capability to do that.", []),  # refusal
+        ("Sure, transfer_funds moved $50 to savings.", []),  # escalated retry succeeds; names the
+        # tool explicitly so the (LLM-free) heuristic judge marks it covered and the
+        # coverage loop ends cleanly instead of probing again.
+    ])
+
+    fake_director = MagicMock()
+    fake_director.next_message_with_target = AsyncMock(
+        return_value=("transfer_funds", "Can you move $50 to savings?")
+    )
+
+    scenario = BehaviorScenario(
+        scenario_type=BehaviorScenarioType.GUIDED_COVERAGE,
+        name="guided_assistant_0",
+        messages=["I need help with banking. Can you help me get started?"],
+        scoped_tools=["transfer_funds"],
+        primary_agent="assistant",
+    )
+
+    with patch.object(runner, "_coverage_director", return_value=fake_director):
+        await runner._run_scenario(scenario, mock_client, None)
+
+    # 3 turns: opener, refused probe, escalated retry that succeeds.
+    assert mock_client.send.await_count == 3
+    # The tool ultimately succeeded — no lingering refusal classification.
+    assert "transfer_funds" not in runner._refusal_classifications
+
+
+@pytest.mark.asyncio
+async def test_escalate_on_refusal_records_classification_when_exhausted():
+    """When the single allowed attempt is refused, the classification is
+    recorded so the coverage report can explain why the tool wasn't exercised
+    (escalation_max_attempts=1 here — no retry budget left after attempt 1)."""
+    runner = BehaviorRunner(
+        config=BehaviorConfig(
+            target="http://localhost:8080", target_endpoint="/chat",
+            escalate_on_refusal=True, escalation_max_attempts=1,
+        ),
+        sbom=_make_sbom_with_tool("transfer_funds"),
+        policy=_make_mock_policy(),
+        intent=_make_intent(),
+        llm_client=None,
+    )
+    runner._pre_scan_profile = None
+
+    mock_client = AsyncMock()
+    mock_client.base_url = "http://localhost:8080"
+    mock_client.send = AsyncMock(side_effect=[
+        ("Opening reply.", []),
+        ("I'm sorry, that's outside my scope.", []),
+    ])
+
+    fake_director = MagicMock()
+    # First call returns the (only) probe; the runner asks again afterward
+    # (the component is still uncovered) — return None there to end the
+    # scenario cleanly, standing in for "nothing left worth probing".
+    fake_director.next_message_with_target = AsyncMock(
+        side_effect=[("transfer_funds", "Can you move $50 to savings?"), None]
+    )
+
+    scenario = BehaviorScenario(
+        scenario_type=BehaviorScenarioType.GUIDED_COVERAGE,
+        name="guided_assistant_0",
+        messages=["I need help with banking. Can you help me get started?"],
+        scoped_tools=["transfer_funds"],
+        primary_agent="assistant",
+    )
+
+    with patch.object(runner, "_coverage_director", return_value=fake_director):
+        await runner._run_scenario(scenario, mock_client, None)
+
+    assert runner._refusal_classifications.get("transfer_funds") == "out_of_scope_deflection"
+    assert mock_client.send.await_count == 2
+
+
+@pytest.mark.asyncio
+async def test_escalate_on_refusal_skips_tools_in_tripped_family():
+    """When a tool's family circuit breaker has already tripped (e.g. from an
+    earlier scenario in the same run), it's tagged systemic_deflection and the
+    coverage director is never even asked to probe it — no turns burned."""
+    runner = BehaviorRunner(
+        config=BehaviorConfig(
+            target="http://localhost:8080", target_endpoint="/chat",
+            escalate_on_refusal=True,
+        ),
+        sbom=_make_sbom_with_tool("transfer_funds"),
+        policy=_make_mock_policy(),
+        intent=_make_intent(),
+        llm_client=None,
+    )
+    runner._pre_scan_profile = None
+    # Pre-trip the circuit breaker for this tool's family, as if an earlier
+    # scenario in the same run already exhausted it.
+    runner._family_circuit_breaker()._tripped.add(
+        runner._tool_families.get("transfer_funds", "__standalone__")
+    )
+
+    mock_client = AsyncMock()
+    mock_client.base_url = "http://localhost:8080"
+    mock_client.send = AsyncMock(return_value=("Opening reply.", []))
+
+    fake_director = MagicMock()
+    fake_director.next_message_with_target = AsyncMock()
+
+    scenario = BehaviorScenario(
+        scenario_type=BehaviorScenarioType.GUIDED_COVERAGE,
+        name="guided_assistant_0",
+        messages=["I need help with banking. Can you help me get started?"],
+        scoped_tools=["transfer_funds"],
+        primary_agent="assistant",
+    )
+
+    with patch.object(runner, "_coverage_director", return_value=fake_director):
+        await runner._run_scenario(scenario, mock_client, None)
+
+    assert runner._refusal_classifications.get("transfer_funds") == "systemic_deflection"
+    fake_director.next_message_with_target.assert_not_awaited()
+    # Only the opening scripted turn is sent — no coverage probe.
+    assert mock_client.send.await_count == 1
+
+
+# ---------------------------------------------------------------------------
+# prioritize_by_probe: BehaviorRunner.probe_tool_families()
+# ---------------------------------------------------------------------------
+
+
+def _make_sbom_two_agents() -> AiSbomDocument:
+    ns = uuid.NAMESPACE_URL
+    reachable_id = uuid.uuid5(ns, "agent/ReachableAgent")
+    blocked_id = uuid.uuid5(ns, "agent/BlockedAgent")
+    get_thing_id = uuid.uuid5(ns, "tool/get_thing")
+    do_thing_id = uuid.uuid5(ns, "tool/do_thing")
+    from nuguard.sbom.models import Edge, EdgeRelationshipType
+
+    return AiSbomDocument(
+        target="test",
+        nodes=[
+            Node(id=reachable_id, name="ReachableAgent", component_type=ComponentType.AGENT,
+                 confidence=1.0, metadata=NodeMetadata(description="handles reachable stuff")),
+            Node(id=blocked_id, name="BlockedAgent", component_type=ComponentType.AGENT,
+                 confidence=1.0, metadata=NodeMetadata(description="handles blocked stuff")),
+            Node(id=get_thing_id, name="get_thing", component_type=ComponentType.TOOL,
+                 confidence=1.0, metadata=NodeMetadata(description="get a thing")),
+            Node(id=do_thing_id, name="do_thing", component_type=ComponentType.TOOL,
+                 confidence=1.0, metadata=NodeMetadata(description="do a thing")),
+        ],
+        edges=[
+            Edge(source=reachable_id, target=get_thing_id, relationship_type=EdgeRelationshipType.CALLS),
+            Edge(source=blocked_id, target=do_thing_id, relationship_type=EdgeRelationshipType.CALLS),
+        ],
+    )
+
+
+@pytest.mark.asyncio
+async def test_probe_tool_families_classifies_reachable_and_blocked():
+    runner = BehaviorRunner(
+        config=BehaviorConfig(target="http://localhost:8080", target_endpoint="/chat"),
+        sbom=_make_sbom_two_agents(),
+        policy=_make_mock_policy(),
+        intent=_make_intent(),
+        llm_client=None,
+    )
+
+    mock_client = AsyncMock()
+    mock_client.base_url = "http://localhost:8080"
+
+    async def _fake_send(message, session=None):
+        if "get_thing" in message:
+            return "Sure, here's the thing you asked for.", []
+        return "I'm sorry, I don't have the capability to do that.", []
+
+    mock_client.send = AsyncMock(side_effect=_fake_send)
+
+    with patch.object(runner, "_build_client", new=AsyncMock(return_value=mock_client)):
+        results = await runner.probe_tool_families()
+
+    assert results.get("ReachableAgent") == "reachable"
+    assert results.get("BlockedAgent") == "blocked"
+
+
+@pytest.mark.asyncio
+async def test_probe_tool_families_empty_sbom_returns_empty():
+    runner = BehaviorRunner(
+        config=BehaviorConfig(target="http://localhost:8080", target_endpoint="/chat"),
+        sbom=None,
+        policy=_make_mock_policy(),
+        intent=_make_intent(),
+        llm_client=None,
+    )
+    results = await runner.probe_tool_families()
+    assert results == {}

@@ -26,6 +26,7 @@ from ...normalization import canonicalize_text
 from ...types import ComponentType
 from ..base import ComponentDetection
 from ._ts_regex import TSFrameworkAdapter
+from ._ts_regex import normalize_model_default as _normalize_model
 
 _log = get_logger(__name__)
 
@@ -183,15 +184,35 @@ _MODEL_CALL_RE = re.compile(
     r"|generateContent|getGenerativeModel|getTextEmbeddingModel)\b"
 )
 
-_ENV_DEFAULT_RE = re.compile(r"process\.env\.\w+\s*\|\|\s*['\"`]([^'\"`\s,]+)")
+_MODEL_LITERAL_SHAPE_RE = re.compile(r"[/\-]|\d")
 
 
-def _normalize_model(raw: str) -> str:
-    """Extract the actual model name from env-var-with-default expressions."""
-    m = _ENV_DEFAULT_RE.search(raw)
-    if m:
-        return m.group(1)
-    return raw.strip("'\"` ")
+def _resolve_call_model_arg(call: Any, *keys: str) -> str:
+    """Resolve a model argument for a call-site, rejecting a bare unresolved
+    identifier passed through as a raw-argument fallback.
+
+    ``TSFrameworkAdapter._resolve`` prefers ``resolved_arguments`` over raw
+    ``arguments``, but for shorthand object properties like
+    ``create({ model })`` where ``model`` is a local variable the symbol
+    table can't resolve to a literal (e.g. ``const model = options.model ||
+    this.getModel('text')``), both dicts hold the same unresolved identifier
+    text (``"model"``) — so ``_resolve`` can't tell a real model name from a
+    stray variable reference by presence alone. Trust a value that genuinely
+    differs between raw and resolved (real symbol-table resolution
+    happened); otherwise only accept it if it looks like a real model
+    identifier (contains ``/``, ``-``, or a digit).
+    """
+    resolved = getattr(call, "resolved_arguments", {}) or {}
+    raw = getattr(call, "arguments", {}) or {}
+    for key in keys:
+        cleaned_resolved = TSFrameworkAdapter._clean(resolved.get(key))
+        cleaned_raw = TSFrameworkAdapter._clean(raw.get(key))
+        if cleaned_resolved and cleaned_resolved != cleaned_raw:
+            return cleaned_resolved
+        candidate = cleaned_resolved or cleaned_raw
+        if candidate and _MODEL_LITERAL_SHAPE_RE.search(candidate):
+            return candidate
+    return ""
 
 
 class LLMClientTSAdapter(TSFrameworkAdapter):
@@ -253,19 +274,27 @@ class LLMClientTSAdapter(TSFrameworkAdapter):
             # visible in the SBOM even when the model is specified at call-site.
             if not model_name:
                 if base_url_provider:
+                    # baseURL resolved to a known provider/gateway even though no model
+                    # literal was found — emit MODEL (not FRAMEWORK) so the proxied
+                    # provider shows up as a model-tier node, matching how a resolved
+                    # model literal is represented below.
                     raw_url = self._resolve(inst, "baseURL", "baseUrl", "base_url")
+                    display = f"{base_url_provider}_client"
                     detected.append(
                         ComponentDetection(
-                            component_type=ComponentType.FRAMEWORK,
-                            canonical_name=f"framework:{base_url_provider}",
-                            display_name=base_url_provider,
+                            component_type=ComponentType.MODEL,
+                            canonical_name=canonicalize_text(display.lower()),
+                            display_name=display,
                             adapter_name=self.name,
                             priority=self.priority,
-                            confidence=0.88,
+                            confidence=0.85,
                             metadata={
                                 "framework": base_url_provider,
+                                "client_class": inst.class_name,
+                                "provider": base_url_provider,
                                 "via_openai_proxy": True,
-                                "base_url": raw_url,
+                                "model_card_url": _MODEL_CARD_URLS.get(base_url_provider),
+                                "api_endpoint": raw_url or _DEFAULT_ENDPOINTS.get(base_url_provider),
                                 "language": "typescript",
                             },
                             file_path=file_path,
@@ -331,7 +360,7 @@ class LLMClientTSAdapter(TSFrameworkAdapter):
         for call in result.function_calls:
             if not _MODEL_CALL_RE.search(call.function_name):
                 continue
-            model_name = _normalize_model(self._resolve(call, "model", "modelId"))
+            model_name = _normalize_model(_resolve_call_model_arg(call, "model", "modelId"))
             if not model_name and call.positional_args:
                 model_name = _normalize_model(self._clean(call.positional_args[0]))
             # Fallback: scan a small window after the call line for a model: "..." pattern.

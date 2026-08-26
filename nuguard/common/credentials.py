@@ -211,7 +211,13 @@ _CONFIRMATION_RE = re.compile(
     r"|should\s+I\s+(?:go\s+ahead|proceed|continue)\b"
     r"|are\s+you\s+sure\b"
     r"|do\s+you\s+confirm\b"
-    r"|please\s+confirm\s+(?:this|the|your)\b",
+    r"|please\s+confirm\s+(?:this|the|your)\b"
+    # Offer-and-wait patterns: the agent has proposed a next step (e.g. sending
+    # an OTP) and is waiting on the caller's go-ahead before completing it —
+    # a genuine invitation to continue the action, not a hard refusal.
+    r"|let\s+me\s+know\s+if\s+you(?:'d|\s+would)\s+like"
+    r"|once\s+you\s+provide\b"
+    r"|let\s+me\s+know\s+(?:once|when)\s+you(?:'re|\s+are)\s+ready\b",
     re.IGNORECASE,
 )
 

@@ -48,6 +48,19 @@ class LLMSummaryGenerator:
     def __init__(self, llm: LLMClient) -> None:
         self._llm = llm
 
+    async def _complete_or_empty(
+        self, prompt: str, system: str, label: str, failure_context: str
+    ) -> str:
+        """Call the LLM and return stripped text, or "" on a canned response or error."""
+        try:
+            result = await self._llm.complete(prompt, system=system, label=label)
+            if result.startswith("[NUGUARD_CANNED_RESPONSE]"):
+                return ""
+            return result.strip()
+        except Exception as exc:
+            _log.warning("%s failed: %s", failure_context, exc)
+            return ""
+
     async def executive_summary(
         self,
         target_url: str,
@@ -87,17 +100,11 @@ class LLMSummaryGenerator:
             "summary-gen | executive-summary: %d findings, %d scenarios",
             len(findings), scenarios_run,
         )
-        try:
-            result = await self._llm.complete(
-                prompt, system=_EXEC_SUMMARY_SYSTEM,
-                label=f"summary-gen | executive-summary findings={len(findings)}",
-            )
-            if result.startswith("[NUGUARD_CANNED_RESPONSE]"):
-                return ""
-            return result.strip()
-        except Exception as exc:
-            _log.warning("Executive summary generation failed: %s", exc)
-            return ""
+        return await self._complete_or_empty(
+            prompt, _EXEC_SUMMARY_SYSTEM,
+            label=f"summary-gen | executive-summary findings={len(findings)}",
+            failure_context="Executive summary generation",
+        )
 
     async def behavior_executive_summary(
         self,
@@ -158,17 +165,11 @@ class LLMSummaryGenerator:
             "summary-gen | behavior-executive-summary: %d findings, %d scenarios",
             len(all_findings), scenarios_run,
         )
-        try:
-            result = await self._llm.complete(
-                prompt, system=_BEHAVIOR_EXEC_SUMMARY_SYSTEM,
-                label=f"summary-gen | behavior-executive-summary findings={len(all_findings)}",
-            )
-            if result.startswith("[NUGUARD_CANNED_RESPONSE]"):
-                return ""
-            return result.strip()
-        except Exception as exc:
-            _log.warning("Behavior executive summary generation failed: %s", exc)
-            return ""
+        return await self._complete_or_empty(
+            prompt, _BEHAVIOR_EXEC_SUMMARY_SYSTEM,
+            label=f"summary-gen | behavior-executive-summary findings={len(all_findings)}",
+            failure_context="Behavior executive summary generation",
+        )
 
     async def coding_agent_brief(
         self,
@@ -208,14 +209,8 @@ class LLMSummaryGenerator:
             "2. ..."
         )
         _log.debug("summary-gen | coding-agent-brief: %d findings", len(findings))
-        try:
-            result = await self._llm.complete(
-                prompt, system=_CODING_BRIEF_SYSTEM,
-                label=f"summary-gen | coding-agent-brief findings={len(findings)}",
-            )
-            if result.startswith("[NUGUARD_CANNED_RESPONSE]"):
-                return ""
-            return result.strip()
-        except Exception as exc:
-            _log.warning("Coding agent brief generation failed: %s", exc)
-            return ""
+        return await self._complete_or_empty(
+            prompt, _CODING_BRIEF_SYSTEM,
+            label=f"summary-gen | coding-agent-brief findings={len(findings)}",
+            failure_context="Coding agent brief generation",
+        )

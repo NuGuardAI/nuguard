@@ -37,6 +37,48 @@ _SEV_ORDER: dict[str, int] = {
     "info":     4,
 }
 
+def _clone_remote_source_for_analysis(url: str) -> str | None:
+    """Best-effort shallow clone of *url* into a fresh temp dir for local-file scans.
+
+    ``nuguard analyze`` run standalone (the common ``sbom generate`` then
+    ``analyze`` two-step pipeline) has no local checkout when ``source:`` in
+    nuguard.yaml is a remote GitHub URL — the temp clone ``sbom generate``
+    made is deleted before ``analyze`` starts. Without this, supply-chain's
+    raw-file fallback (and Checkov/Trivy/Semgrep) silently scan zero files
+    instead of the app's actual source. Reuses the same clone helper and
+    token resolution as ``nuguard sbom generate --from-repo``.
+
+    Returns the cloned directory path, or ``None`` on any failure (caller
+    proceeds with ``source_path=None``, same as before this existed).
+    """
+    import shutil
+    import tempfile
+
+    from nuguard.cli.commands.sbom import _inject_token, _resolve_token  # noqa: PLC0415
+    from nuguard.sbom.extractor import AiSbomExtractor  # noqa: PLC0415
+
+    clone_dir = tempfile.mkdtemp(prefix="nuguard_analyze_clone_")
+    try:
+        token = _resolve_token(None)
+        clone_url = _inject_token(url, token) if token else url
+        typer.echo(
+            f"Cloning {url} for local-file scans (supply-chain/Checkov/Trivy/Semgrep)…"
+        )
+        repo_dir = Path(clone_dir) / "repo"
+        repo_dir.mkdir(parents=True, exist_ok=True)
+        AiSbomExtractor._clone_repo(url=clone_url, ref="main", dest=repo_dir)
+        return str(repo_dir)
+    except Exception as exc:
+        _log.warning("_clone_remote_source_for_analysis: clone of %s failed: %s", url, exc)
+        typer.echo(
+            f"warning: could not clone '{url}' for local-file scans — "
+            f"supply-chain/Checkov/Trivy/Semgrep will run without local source ({exc})",
+            err=True,
+        )
+        shutil.rmtree(clone_dir, ignore_errors=True)
+        return None
+
+
 _SEV_EMOJI: dict[str, str] = {
     "critical": "🔴",
     "high":     "🟠",
@@ -139,7 +181,11 @@ def analyze(
     # Load config and resolve effective flag values
     # ------------------------------------------------------------------
     from nuguard.config import load_config  # noqa: PLC0415
-    cfg = load_config(config)
+    try:
+        cfg = load_config(config)
+    except Exception as exc:
+        typer.echo(f"error: failed to load config: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
 
     # --nga: CLI flag wins; fall back to config field
     nga = nga or cfg.analyze_nga_only
@@ -148,12 +194,17 @@ def analyze(
     min_severity = min_severity or cfg.analyze_min_severity
 
     # --source: CLI wins; fall back to top-level source: in nuguard.yaml.
-    # Only use the config value when it's a local path — the `source:` field can also
-    # hold a remote GitHub URL used solely for SBOM generation (git clone), and passing
-    # that URL to local-scan tools (supply-chain, Semgrep, Checkov) makes no sense.
+    # A remote GitHub URL in `source:` can't be passed to local-scan tools
+    # (supply-chain, Semgrep, Checkov) as-is — it's cloned to a temp dir below,
+    # just before running analysis, so those tools see real files instead of
+    # silently scanning nothing (see `_remote_source_url` handling further down).
     _cfg_source = cfg.source_path
-    if not source and _cfg_source and not _cfg_source.startswith(("http://", "https://", "git://", "git+")):
-        source = _cfg_source
+    _remote_source_url: str | None = None
+    if not source and _cfg_source:
+        if _cfg_source.startswith(("http://", "https://", "git://", "git+")):
+            _remote_source_url = _cfg_source
+        else:
+            source = _cfg_source
 
     # supply-chain: CLI wins; fall back to analyze: section in nuguard.yaml
     sc_profile = supply_chain_profile or cfg.analyze_supply_chain_profile
@@ -233,6 +284,16 @@ def analyze(
 
     llm_client = resolve_remediation_llm_client(cfg)
 
+    # Auto-clone a remote source: URL to a temp dir so supply-chain/Checkov/
+    # Trivy/Semgrep get real local files instead of silently scanning nothing
+    # (see _clone_remote_source_for_analysis docstring). Cleaned up in the
+    # `finally` below regardless of how the analysis attempt below finishes.
+    _clone_dir: str | None = None
+    if _remote_source_url:
+        _clone_dir = _clone_remote_source_for_analysis(_remote_source_url)
+        if _clone_dir:
+            source = _clone_dir
+
     try:
         from nuguard.analysis.public_api import AnalysisRunRequest, run_analysis  # noqa: PLC0415
         source_path = Path(source) if source else None
@@ -259,6 +320,12 @@ def analyze(
         typer.echo(f"error: analysis failed: {exc}", err=True)
         _log.exception("analysis failed")
         raise typer.Exit(code=2)
+    finally:
+        if _clone_dir:
+            import shutil  # noqa: PLC0415
+            # _clone_dir is "<mkdtemp_root>/repo" — remove the mkdtemp root,
+            # not just the repo subdirectory, so nothing is left behind.
+            shutil.rmtree(Path(_clone_dir).parent, ignore_errors=True)
 
     # ------------------------------------------------------------------
     # Filter to requested minimum severity
@@ -631,6 +698,10 @@ def _render_markdown(
                     lines += [f"**Affected:** `{_component_label(f)}`  ", ""]
                 if f.remediation:
                     lines += [f"**Remediation:** {f.remediation}  ", ""]
+                if f.owasp_llm_ref:
+                    lines += [f"**OWASP LLM Top 10:** {f.owasp_llm_ref}  ", ""]
+                if f.owasp_asi_ref:
+                    lines += [f"**OWASP Agentic Top 10:** {f.owasp_asi_ref}  ", ""]
                 if f.mitre_atlas_technique:
                     lines += [f"**ATLAS Techniques:** {f.mitre_atlas_technique}  ", ""]
                 if f.references:
@@ -646,7 +717,7 @@ def _render_markdown(
         lines += _render_rule_audit_section(
             nga_audit,
             "NGA Rule Audit",
-            "All 21 NGA structural rules — pass/fail status with evidence.",
+            "All 26 NGA structural rules — pass/fail status with evidence.",
         )
 
     # ------------------------------------------------------------------

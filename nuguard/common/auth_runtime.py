@@ -2,12 +2,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Mapping
+from typing import TYPE_CHECKING, Mapping
 
 from nuguard.common.auth import AuthConfig
 from nuguard.common.bootstrap import AuthBootstrapper
 from nuguard.models.health_report import TargetHealthReport
-from nuguard.redteam.target.canary import CanaryConfig
+
+if TYPE_CHECKING:
+    # Deferred to avoid re-entering nuguard.common.__init__ mid-import — see
+    # the matching comment in nuguard/common/bootstrap.py.
+    from nuguard.redteam.target.canary import CanaryConfig
 
 
 @dataclass(frozen=True)

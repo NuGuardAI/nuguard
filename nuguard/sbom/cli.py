@@ -113,6 +113,8 @@ def _build_extraction_config(args: argparse.Namespace) -> AiSbomConfig:
         config.llm_api_key = args.llm_api_key
     if getattr(args, "llm_api_base", None) is not None:
         config.llm_api_base = args.llm_api_base
+    if getattr(args, "llm_concurrency", None) is not None:
+        config.llm_concurrency = args.llm_concurrency
     return config
 
 
@@ -142,6 +144,15 @@ def _add_llm_args(p: argparse.ArgumentParser) -> None:
     )
     p.add_argument(
         "--llm-api-base", metavar="<url>", help="LLM base URL (overrides NUGUARD_LLM_API_BASE)."
+    )
+    p.add_argument(
+        "--llm-concurrency",
+        type=int,
+        metavar="<n>",
+        help=(
+            "Max in-flight LLM calls during enrichment (overrides "
+            "NUGUARD_LLM_CONCURRENCY). See issue #197."
+        ),
     )
 
 

@@ -1,0 +1,1013 @@
+{
+  "_comment": [
+    "studyield.ground-truth.sbom.json \u2014 hand-curated ground-truth AI-SBOM for",
+    "https://github.com/studyield/studyield, in the schema documented at",
+    "documentation/docs/sample-sbom.json (see nuguard/sbom/schemas/aibom.schema.json",
+    "for the full ComponentType/RelationshipType enums).",
+    "",
+    "Purpose: a manually-verified reference to benchmark `nuguard sbom generate",
+    "--config nuguard.yaml` output against for this app \u2014 did the extractor find",
+    "the real multi-agent/tool/datastore/auth surface documented here. This is",
+    "NOT nuguard-generated output; every node's evidence.location was verified",
+    "against the source cloned locally from the `main` branch (./repo, gitignored).",
+    "It intentionally covers representative components, not every one of",
+    "Studyield's 120+ API endpoints / 27 backend modules."
+  ],
+  "schema_version": "1.5.0",
+  "generated_at": "2026-08-18T00:00:00Z",
+  "generator": "manual-ground-truth",
+  "target": "https://github.com/studyield/studyield",
+  "nodes": [
+    {
+      "id": "c3000001-0000-4000-8000-000000000001",
+      "name": "studyield-multi-agent-problem-solver",
+      "component_type": "AGENT",
+      "confidence": 0.95,
+      "metadata": {
+        "descriptive_name": "Multi-Agent Problem Solver",
+        "description": "A hand-rolled (non-framework) multi-agent pipeline: ProblemSolverService sequentially invokes AnalysisAgent, SolverAgent, VerifierAgent, HintAgent, and AlternativeMethodAgent \u2014 each a subclass of BaseAgent that builds a chat prompt and calls AiService.completeJson()/streamComplete(). Not built on LangGraph/CrewAI/AutoGen; the orchestration loop is plain application code.",
+        "dependency_names": [
+          "openai",
+          "mathjs"
+        ],
+        "loc": 220,
+        "extras": {
+          "canonical_name": "BaseAgent",
+          "agent_classes": [
+            "AnalysisAgent",
+            "SolverAgent",
+            "VerifierAgent",
+            "HintAgent",
+            "AlternativeMethodAgent"
+          ]
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.9,
+          "detail": "abstract class BaseAgent { execute(context) { ... this.aiService.completeJson(...) } }",
+          "location": {
+            "path": "backend/src/modules/problem-solver/agents/base.agent.ts",
+            "line": 27
+          }
+        },
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.95,
+          "detail": "ProblemSolverService constructor injects and sequentially calls analysisAgent/solverAgent/verifierAgent/hintAgent/alternativeMethodAgent",
+          "location": {
+            "path": "backend/src/modules/problem-solver/problem-solver.service.ts",
+            "line": 40
+          }
+        }
+      ]
+    },
+    {
+      "id": "c3000001-0000-4000-8000-000000000002",
+      "name": "studyield-openrouter-model-gateway",
+      "component_type": "MODEL",
+      "confidence": 0.95,
+      "metadata": {
+        "descriptive_name": "OpenRouter Unified Model Gateway",
+        "description": "AiService wraps the OpenAI SDK pointed at OpenRouter's baseURL (https://openrouter.ai/api/v1) as the PRIMARY gateway for every model (OpenAI/Anthropic/Google/DeepSeek/etc.), with a direct OpenAI client as fallback. Model name is a per-call string default (openai/gpt-4o-mini), not hardcoded to one provider.",
+        "dependency_names": [
+          "openai"
+        ],
+        "loc": 60,
+        "extras": {
+          "default_model": "openai/gpt-4o-mini",
+          "default_vision_model": "openai/gpt-4o"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.95,
+          "detail": "this.openRouterClient = new OpenAI({ apiKey: OPENROUTER_API_KEY, baseURL: 'https://openrouter.ai/api/v1', ... })",
+          "location": {
+            "path": "backend/src/modules/ai/ai.service.ts",
+            "line": 80
+          }
+        },
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.8,
+          "detail": "this.openaiClient = new OpenAI({ apiKey: OPENAI_API_KEY }) \u2014 fallback only",
+          "location": {
+            "path": "backend/src/modules/ai/ai.service.ts",
+            "line": 95
+          }
+        }
+      ]
+    },
+    {
+      "id": "c3000001-0000-4000-8000-000000000003",
+      "name": "code-sandbox-execution-tool",
+      "component_type": "TOOL",
+      "confidence": 0.9,
+      "metadata": {
+        "description": "Executes arbitrary user-submitted code (default: Python) by proxying to an external HTTP sandbox service (CODE_SANDBOX_URL). No language allowlist enforced at this layer \u2014 language defaults to 'python' but is caller-controlled.",
+        "descriptive_name": "Code Sandbox Execution Tool",
+        "high_privilege": true,
+        "no_auth_required": false,
+        "parameters": [
+          {
+            "name": "code",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "language",
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "stdin",
+            "type": "string",
+            "required": false
+          },
+          {
+            "name": "timeout",
+            "type": "number",
+            "required": false
+          }
+        ],
+        "loc": 90,
+        "extras": {
+          "note": "Protected by JwtAuthGuard (real user auth required), but the sandbox itself is an external, separately-deployed service reached over plain HTTP with an optional API key \u2014 code_execution privilege lives entirely outside this repo's static analysis boundary."
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.9,
+          "detail": "fetch(`${sandboxUrl}/execute`, { method: 'POST', body: JSON.stringify({ language, code, stdin, timeout }) })",
+          "location": {
+            "path": "backend/src/modules/code-sandbox/code-sandbox.service.ts",
+            "line": 44
+          }
+        },
+        {
+          "kind": "ast_decorator",
+          "confidence": 0.9,
+          "detail": "@Controller('code-sandbox') @UseGuards(JwtAuthGuard); @Post('execute')",
+          "location": {
+            "path": "backend/src/modules/code-sandbox/code-sandbox.controller.ts",
+            "line": 15
+          }
+        }
+      ]
+    },
+    {
+      "id": "c3000001-0000-4000-8000-000000000004",
+      "name": "web-search-tool",
+      "component_type": "TOOL",
+      "confidence": 0.88,
+      "metadata": {
+        "description": "Deep Research feature's web search \u2014 calls Tavily's search API (primary) or Serper (fallback) directly via fetch, not through a LangChain tool wrapper.",
+        "descriptive_name": "Deep Research Web Search Tool",
+        "ssrf_possible": false,
+        "no_auth_required": false,
+        "parameters": [
+          {
+            "name": "query",
+            "type": "string",
+            "required": true
+          },
+          {
+            "name": "maxResults",
+            "type": "number",
+            "required": false
+          }
+        ],
+        "loc": 50,
+        "extras": {
+          "providers": [
+            "tavily",
+            "serper"
+          ]
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.88,
+          "detail": "fetch('https://api.tavily.com/search', { method: 'POST', body: JSON.stringify({ api_key, query, search_depth: 'advanced', ... }) })",
+          "location": {
+            "path": "backend/src/modules/research/web-search.service.ts",
+            "line": 33
+          }
+        }
+      ]
+    },
+    {
+      "id": "c3000001-0000-4000-8000-000000000005",
+      "name": "knowledge-base-rag-retrieval-tool",
+      "component_type": "TOOL",
+      "confidence": 0.9,
+      "metadata": {
+        "description": "RAG chat's document retrieval tool \u2014 embeds the query (EmbeddingService), searches a per-user Qdrant collection, and returns cited chunks used as chat context. Used by chat.service.ts for citation-backed answers.",
+        "descriptive_name": "Knowledge Base RAG Retrieval",
+        "no_auth_required": false,
+        "loc": 70,
+        "extras": {
+          "collection": "knowledge_base"
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.9,
+          "detail": "class KnowledgeBaseService { private readonly collectionName = 'knowledge_base'; ... search(id, userId, query, limit) via QdrantService }",
+          "location": {
+            "path": "backend/src/modules/knowledge-base/knowledge-base.service.ts",
+            "line": 40
+          }
+        },
+        {
+          "kind": "ast_decorator",
+          "confidence": 0.85,
+          "detail": "@Post(':id/search') / @Post('search') \u2014 knowledge base search endpoints",
+          "location": {
+            "path": "backend/src/modules/knowledge-base/knowledge-base.controller.ts",
+            "line": 78
+          }
+        }
+      ]
+    },
+    {
+      "id": "c3000001-0000-4000-8000-000000000006",
+      "name": "postgres",
+      "component_type": "DATASTORE",
+      "confidence": 0.95,
+      "metadata": {
+        "datastore_type": "postgresql",
+        "descriptive_name": "PostgreSQL \u2014 Primary Relational Store",
+        "loc": 30,
+        "extras": {
+          "note": "Raw SQL via node-postgres (pg.Pool), not an ORM \u2014 every module (users, subscriptions, exam clones, knowledge bases, etc.) issues its own parameterized queries through DatabaseService.",
+          "synonyms": [
+            "postgresql"
+          ]
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.95,
+          "detail": "this.pool = new Pool({ host: DATABASE_HOST, port: DATABASE_PORT, ... })",
+          "location": {
+            "path": "backend/src/modules/database/database.service.ts",
+            "line": 13
+          }
+        }
+      ]
+    },
+    {
+      "id": "c3000001-0000-4000-8000-000000000007",
+      "name": "redis",
+      "component_type": "DATASTORE",
+      "confidence": 0.93,
+      "metadata": {
+        "datastore_type": "redis",
+        "descriptive_name": "Redis \u2014 Cache, Session, and BullMQ Queue Backend",
+        "loc": 25,
+        "extras": {
+          "note": "Also backs BullMQ job queues (queue.service.ts) and email-verification token storage (auth.service.ts).",
+          "synonyms": [
+            "redis"
+          ]
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.93,
+          "detail": "this.client = new Redis({ host: REDIS_HOST, port: REDIS_PORT, password: REDIS_PASSWORD, db: REDIS_DB, ... })",
+          "location": {
+            "path": "backend/src/modules/redis/redis.service.ts",
+            "line": 13
+          }
+        }
+      ]
+    },
+    {
+      "id": "c3000001-0000-4000-8000-000000000008",
+      "name": "qdrant",
+      "component_type": "DATASTORE",
+      "confidence": 0.93,
+      "metadata": {
+        "datastore_type": "vector",
+        "descriptive_name": "Qdrant \u2014 Vector Store for Knowledge Base RAG",
+        "loc": 35,
+        "extras": {
+          "note": "Per-user/per-KB collections prefixed with QDRANT_COLLECTION_PREFIX (default 'studyield'); initialized lazily/async so app startup isn't blocked if Qdrant is unavailable.",
+          "synonyms": [
+            "vector"
+          ]
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.93,
+          "detail": "this.client = new QdrantClient(clientConfig)",
+          "location": {
+            "path": "backend/src/modules/qdrant/qdrant.service.ts",
+            "line": 77
+          }
+        }
+      ]
+    },
+    {
+      "id": "c3000001-0000-4000-8000-000000000009",
+      "name": "clickhouse",
+      "component_type": "DATASTORE",
+      "confidence": 0.9,
+      "metadata": {
+        "datastore_type": "clickhouse",
+        "descriptive_name": "ClickHouse \u2014 Analytics Event Store",
+        "loc": 30,
+        "extras": {
+          "note": "Best-effort \u2014 connection failure only disables analytics (logged as a warning), it does not fail app startup.",
+          "synonyms": [
+            "clickhouse"
+          ]
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.9,
+          "detail": "this.client = new ClickHouse({ url: `http://${host}`, port, basicAuth, format: 'json', config: { database } })",
+          "location": {
+            "path": "backend/src/modules/clickhouse/clickhouse.service.ts",
+            "line": 28
+          }
+        }
+      ]
+    },
+    {
+      "id": "c3000001-0000-4000-8000-00000000000a",
+      "name": "cloudflare-r2-object-storage",
+      "component_type": "DATASTORE",
+      "confidence": 0.85,
+      "metadata": {
+        "datastore_type": "s3_object_storage",
+        "descriptive_name": "Cloudflare R2 (S3-Compatible) File Storage",
+        "loc": 30,
+        "extras": {
+          "note": "Uploaded documents (knowledge base PDFs/DOCX, exam files, avatars) go through @aws-sdk/client-s3 pointed at R2's S3-compatible endpoint.",
+          "synonyms": [
+            "s3_object_storage"
+          ]
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.85,
+          "detail": "import { S3Client, PutObjectCommand, GetObjectCommand, ... } from '@aws-sdk/client-s3'",
+          "location": {
+            "path": "backend/src/modules/storage/storage.service.ts",
+            "line": 6
+          }
+        }
+      ]
+    },
+    {
+      "id": "c3000001-0000-4000-8000-00000000000b",
+      "name": "jwt-primary-auth",
+      "component_type": "AUTH",
+      "confidence": 0.95,
+      "metadata": {
+        "descriptive_name": "Primary JWT Access/Refresh Auth",
+        "auth_detail": {
+          "protocols": [
+            "bearer"
+          ],
+          "enforcement_strict": true
+        },
+        "loc": 60,
+        "extras": {
+          "note": "JwtAuthGuard (Passport JWT strategy) protects almost every controller except a small @Public()-decorated set (register/login/refresh/webhooks/some read-only public endpoints). Access/refresh secrets are separate env vars; refresh tokens are checked against a Redis blacklist on logout."
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast",
+          "confidence": 0.95,
+          "detail": "generateTokens()/refreshToken() sign JwtPayload {sub, email, role} with JWT_ACCESS_SECRET/JWT_REFRESH_SECRET",
+          "location": {
+            "path": "backend/src/modules/auth/auth.service.ts",
+            "line": 33
+          }
+        },
+        {
+          "kind": "ast_decorator",
+          "confidence": 0.9,
+          "detail": "@Public() @Post('login') async login(@Body() dto: LoginDto)",
+          "location": {
+            "path": "backend/src/modules/auth/auth.controller.ts",
+            "line": 33
+          }
+        }
+      ]
+    },
+    {
+      "id": "c3000001-0000-4000-8000-00000000000c",
+      "name": "google-oauth",
+      "component_type": "AUTH",
+      "confidence": 0.85,
+      "metadata": {
+        "descriptive_name": "Google Sign-In (OAuth2)",
+        "auth_detail": {
+          "protocols": [
+            "oauth2"
+          ],
+          "enforcement_strict": true
+        },
+        "loc": 15
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.85,
+          "detail": "this.googleClient = new OAuth2Client(GOOGLE_CLIENT_ID); ... this.googleClient.verifyIdToken({...})",
+          "location": {
+            "path": "backend/src/modules/auth/auth.service.ts",
+            "line": 46
+          }
+        }
+      ]
+    },
+    {
+      "id": "c3000001-0000-4000-8000-00000000000d",
+      "name": "apple-sign-in-jwks",
+      "component_type": "AUTH",
+      "confidence": 0.8,
+      "metadata": {
+        "descriptive_name": "Apple Sign-In (JWKS-validated JWT)",
+        "auth_detail": {
+          "protocols": [
+            "oidc"
+          ],
+          "enforcement_strict": true
+        },
+        "loc": 15
+      },
+      "evidence": [
+        {
+          "kind": "ast_instantiation",
+          "confidence": 0.8,
+          "detail": "this.appleJwksClient = jwksClient({ jwksUri: 'https://appleid.apple.com/auth/keys', cache: true, ... })",
+          "location": {
+            "path": "backend/src/modules/auth/auth.service.ts",
+            "line": 41
+          }
+        }
+      ]
+    },
+    {
+      "id": "c3000001-0000-4000-8000-00000000000e",
+      "name": "POST /api/v1/auth/login",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.95,
+      "metadata": {
+        "endpoint": "/api/v1/auth/login",
+        "method": "POST",
+        "auth_required": false,
+        "accepts_user_input": true,
+        "descriptive_name": "Email/Password Login"
+      },
+      "evidence": [
+        {
+          "kind": "ast_decorator",
+          "confidence": 0.95,
+          "detail": "@Controller('auth'); @Public() @Post('login')",
+          "location": {
+            "path": "backend/src/modules/auth/auth.controller.ts",
+            "line": 33
+          }
+        }
+      ]
+    },
+    {
+      "id": "c3000001-0000-4000-8000-00000000000f",
+      "name": "POST /api/v1/code-sandbox/execute",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.9,
+      "metadata": {
+        "endpoint": "/api/v1/code-sandbox/execute",
+        "method": "POST",
+        "auth_required": true,
+        "accepts_user_input": true,
+        "descriptive_name": "Code Sandbox Execution Endpoint",
+        "extras": {
+          "note": "Requires JwtAuthGuard, but is still the highest-privilege endpoint in the app \u2014 arbitrary code execution proxied to an external sandbox."
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_decorator",
+          "confidence": 0.9,
+          "detail": "@Controller('code-sandbox') @UseGuards(JwtAuthGuard); @Post('execute')",
+          "location": {
+            "path": "backend/src/modules/code-sandbox/code-sandbox.controller.ts",
+            "line": 15
+          }
+        }
+      ]
+    },
+    {
+      "id": "c3000001-0000-4000-8000-000000000010",
+      "name": "POST /api/v1/webhooks/stripe",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.88,
+      "metadata": {
+        "endpoint": "/api/v1/webhooks/stripe",
+        "method": "POST",
+        "auth_required": false,
+        "accepts_user_input": true,
+        "descriptive_name": "Stripe Billing Webhook (No-Auth by Design)",
+        "extras": {
+          "note": "Intentionally @Public() \u2014 protected instead by Stripe signature verification (stripe.webhooks.constructEvent with STRIPE_WEBHOOK_SECRET), not JWT. Legitimate no-auth pattern, distinct from an unprotected endpoint."
+        }
+      },
+      "evidence": [
+        {
+          "kind": "ast_decorator",
+          "confidence": 0.88,
+          "detail": "@Controller('webhooks'); @Public() @Post('stripe')",
+          "location": {
+            "path": "backend/src/modules/subscription/stripe-webhook.controller.ts",
+            "line": 32
+          }
+        },
+        {
+          "kind": "ast",
+          "confidence": 0.85,
+          "detail": "event = this.stripe.webhooks.constructEvent(req.rawBody, signature, this.webhookSecret)",
+          "location": {
+            "path": "backend/src/modules/subscription/stripe-webhook.controller.ts",
+            "line": 46
+          }
+        }
+      ]
+    },
+    {
+      "id": "c3000001-0000-4000-8000-000000000011",
+      "name": "POST /api/v1/problem-solver/:id/solve",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.85,
+      "metadata": {
+        "endpoint": "/api/v1/problem-solver/{id}/solve",
+        "method": "POST",
+        "auth_required": true,
+        "accepts_user_input": true,
+        "descriptive_name": "Multi-Agent Problem Solve Endpoint"
+      },
+      "evidence": [
+        {
+          "kind": "ast_decorator",
+          "confidence": 0.85,
+          "detail": "@Controller('problem-solver') @UseGuards(JwtAuthGuard); @Post(':id/solve')",
+          "location": {
+            "path": "backend/src/modules/problem-solver/problem-solver.controller.ts",
+            "line": 51
+          }
+        }
+      ]
+    },
+    {
+      "id": "c3000001-0000-4000-8000-000000000012",
+      "name": "POST /api/v1/chat/conversations",
+      "component_type": "API_ENDPOINT",
+      "confidence": 0.85,
+      "metadata": {
+        "endpoint": "/api/v1/chat/conversations",
+        "method": "POST",
+        "auth_required": true,
+        "accepts_user_input": true,
+        "descriptive_name": "RAG Chat \u2014 Create Conversation"
+      },
+      "evidence": [
+        {
+          "kind": "ast_decorator",
+          "confidence": 0.85,
+          "detail": "@Controller('chat'); @Post('conversations')",
+          "location": {
+            "path": "backend/src/modules/chat/chat.controller.ts",
+            "line": 39
+          }
+        }
+      ]
+    },
+    {
+      "id": "c3000001-0000-4000-8000-000000000013",
+      "name": "node:20-alpine",
+      "component_type": "CONTAINER_IMAGE",
+      "confidence": 0.9,
+      "metadata": {
+        "image_name": "node",
+        "image_tag": "20-alpine",
+        "registry": "docker.io",
+        "base_image": "node:20-alpine",
+        "descriptive_name": "Backend Build/Runtime Image",
+        "extras": {
+          "note": "Both backend/Dockerfile and frontend/Dockerfile share the same node:20-alpine builder stage; frontend's final runtime stage switches to nginx:alpine."
+        }
+      },
+      "evidence": [
+        {
+          "kind": "dockerfile",
+          "confidence": 0.9,
+          "detail": "FROM node:20-alpine AS builder",
+          "location": {
+            "path": "backend/Dockerfile",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "c3000001-0000-4000-8000-000000000014",
+      "name": "nginx:alpine",
+      "component_type": "CONTAINER_IMAGE",
+      "confidence": 0.85,
+      "metadata": {
+        "image_name": "nginx",
+        "image_tag": "alpine",
+        "registry": "docker.io",
+        "base_image": "nginx:alpine",
+        "descriptive_name": "Frontend Runtime Image"
+      },
+      "evidence": [
+        {
+          "kind": "dockerfile",
+          "confidence": 0.85,
+          "detail": "FROM nginx:alpine (frontend runtime stage, after node:20-alpine build stage)",
+          "location": {
+            "path": "frontend/Dockerfile",
+            "line": 12
+          }
+        }
+      ]
+    },
+    {
+      "id": "c3000001-0000-4000-8000-000000000015",
+      "name": ".github/workflows/ci.yml",
+      "component_type": "GITHUB_WORKFLOW",
+      "confidence": 0.85,
+      "metadata": {
+        "descriptive_name": "CI \u2014 Backend/Frontend Checks",
+        "extras": {
+          "note": "Runs on pull_request/push to main/develop; backend-checks job runs lint/build/test in the backend/ working directory."
+        }
+      },
+      "evidence": [
+        {
+          "kind": "yaml",
+          "confidence": 0.85,
+          "detail": "name: CI; jobs.backend-checks with working-directory: backend",
+          "location": {
+            "path": ".github/workflows/ci.yml",
+            "line": 1
+          }
+        }
+      ]
+    },
+    {
+      "id": "c3000001-0000-4000-8000-000000000016",
+      "name": "studyield-docker-compose-deployment",
+      "component_type": "DEPLOYMENT",
+      "confidence": 0.9,
+      "metadata": {
+        "deployment_target": "docker_compose",
+        "descriptive_name": "Docker Compose Full-Stack Deployment",
+        "extras": {
+          "note": "6 services: postgres, redis, qdrant, clickhouse, backend (built from ./backend), frontend (built from ./frontend, nginx-served). No published image \u2014 always built from source, unlike many self-hosted AI apps that ship a registry image."
+        }
+      },
+      "evidence": [
+        {
+          "kind": "iac",
+          "confidence": 0.9,
+          "detail": "docker-compose.yml \u2014 services: postgres, redis, qdrant, clickhouse, backend, frontend",
+          "location": {
+            "path": "docker-compose.yml",
+            "line": 1
+          }
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "source": "c3000001-0000-4000-8000-000000000001",
+      "target": "c3000001-0000-4000-8000-000000000002",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "c3000001-0000-4000-8000-000000000001",
+      "target": "c3000001-0000-4000-8000-000000000011",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "c3000001-0000-4000-8000-000000000012",
+      "target": "c3000001-0000-4000-8000-000000000005",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "c3000001-0000-4000-8000-000000000005",
+      "target": "c3000001-0000-4000-8000-000000000008",
+      "relationship_type": "ACCESSES",
+      "access_type": "read"
+    },
+    {
+      "source": "c3000001-0000-4000-8000-000000000005",
+      "target": "c3000001-0000-4000-8000-000000000002",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "c3000001-0000-4000-8000-000000000003",
+      "target": "c3000001-0000-4000-8000-00000000000f",
+      "relationship_type": "CALLS"
+    },
+    {
+      "source": "c3000001-0000-4000-8000-000000000004",
+      "target": "c3000001-0000-4000-8000-000000000002",
+      "relationship_type": "USES"
+    },
+    {
+      "source": "c3000001-0000-4000-8000-00000000000b",
+      "target": "c3000001-0000-4000-8000-00000000000f",
+      "relationship_type": "PROTECTS"
+    },
+    {
+      "source": "c3000001-0000-4000-8000-00000000000b",
+      "target": "c3000001-0000-4000-8000-000000000011",
+      "relationship_type": "PROTECTS"
+    },
+    {
+      "source": "c3000001-0000-4000-8000-00000000000b",
+      "target": "c3000001-0000-4000-8000-000000000012",
+      "relationship_type": "PROTECTS"
+    },
+    {
+      "source": "c3000001-0000-4000-8000-000000000001",
+      "target": "c3000001-0000-4000-8000-000000000006",
+      "relationship_type": "ACCESSES",
+      "access_type": "readwrite"
+    },
+    {
+      "source": "c3000001-0000-4000-8000-000000000005",
+      "target": "c3000001-0000-4000-8000-000000000006",
+      "relationship_type": "ACCESSES",
+      "access_type": "readwrite"
+    },
+    {
+      "source": "c3000001-0000-4000-8000-00000000000b",
+      "target": "c3000001-0000-4000-8000-000000000007",
+      "relationship_type": "ACCESSES",
+      "access_type": "readwrite"
+    },
+    {
+      "source": "c3000001-0000-4000-8000-000000000016",
+      "target": "c3000001-0000-4000-8000-000000000013",
+      "relationship_type": "DEPLOYS"
+    },
+    {
+      "source": "c3000001-0000-4000-8000-000000000016",
+      "target": "c3000001-0000-4000-8000-000000000014",
+      "relationship_type": "DEPLOYS"
+    }
+  ],
+  "deps": [
+    {
+      "name": "@nestjs/common",
+      "version_spec": "^10.3.0",
+      "purl": "pkg:npm/%40nestjs/common",
+      "group": "runtime",
+      "source_file": "backend/package.json"
+    },
+    {
+      "name": "@nestjs/core",
+      "version_spec": "^10.3.0",
+      "purl": "pkg:npm/%40nestjs/core",
+      "group": "runtime",
+      "source_file": "backend/package.json"
+    },
+    {
+      "name": "@nestjs/jwt",
+      "version_spec": "^10.2.0",
+      "purl": "pkg:npm/%40nestjs/jwt",
+      "group": "runtime",
+      "source_file": "backend/package.json"
+    },
+    {
+      "name": "@nestjs/websockets",
+      "version_spec": "^10.3.0",
+      "purl": "pkg:npm/%40nestjs/websockets",
+      "group": "runtime",
+      "source_file": "backend/package.json"
+    },
+    {
+      "name": "@qdrant/js-client-rest",
+      "version_spec": "^1.7.0",
+      "purl": "pkg:npm/%40qdrant/js-client-rest",
+      "group": "runtime",
+      "source_file": "backend/package.json"
+    },
+    {
+      "name": "@aws-sdk/client-s3",
+      "version_spec": "^3.490.0",
+      "purl": "pkg:npm/%40aws-sdk/client-s3",
+      "group": "runtime",
+      "source_file": "backend/package.json"
+    },
+    {
+      "name": "openai",
+      "version_spec": "^6.17.0",
+      "purl": "pkg:npm/openai",
+      "group": "runtime",
+      "source_file": "backend/package.json"
+    },
+    {
+      "name": "clickhouse",
+      "version_spec": "^2.6.0",
+      "purl": "pkg:npm/clickhouse",
+      "group": "runtime",
+      "source_file": "backend/package.json"
+    },
+    {
+      "name": "ioredis",
+      "version_spec": "^5.3.2",
+      "purl": "pkg:npm/ioredis",
+      "group": "runtime",
+      "source_file": "backend/package.json"
+    },
+    {
+      "name": "pg",
+      "version_spec": "^8.11.3",
+      "purl": "pkg:npm/pg",
+      "group": "runtime",
+      "source_file": "backend/package.json"
+    },
+    {
+      "name": "bullmq",
+      "version_spec": "^5.1.0",
+      "purl": "pkg:npm/bullmq",
+      "group": "runtime",
+      "source_file": "backend/package.json"
+    },
+    {
+      "name": "stripe",
+      "version_spec": "^14.11.0",
+      "purl": "pkg:npm/stripe",
+      "group": "runtime",
+      "source_file": "backend/package.json"
+    },
+    {
+      "name": "firebase-admin",
+      "version_spec": "^13.6.1",
+      "purl": "pkg:npm/firebase-admin",
+      "group": "runtime",
+      "source_file": "backend/package.json"
+    },
+    {
+      "name": "google-auth-library",
+      "version_spec": "^9.4.1",
+      "purl": "pkg:npm/google-auth-library",
+      "group": "runtime",
+      "source_file": "backend/package.json"
+    },
+    {
+      "name": "jsonwebtoken",
+      "version_spec": "^9.0.2",
+      "purl": "pkg:npm/jsonwebtoken",
+      "group": "runtime",
+      "source_file": "backend/package.json"
+    },
+    {
+      "name": "jwks-rsa",
+      "version_spec": "^3.1.0",
+      "purl": "pkg:npm/jwks-rsa",
+      "group": "runtime",
+      "source_file": "backend/package.json"
+    },
+    {
+      "name": "bcrypt",
+      "version_spec": "^5.1.1",
+      "purl": "pkg:npm/bcrypt",
+      "group": "runtime",
+      "source_file": "backend/package.json"
+    },
+    {
+      "name": "mathjs",
+      "version_spec": "^12.4.0",
+      "purl": "pkg:npm/mathjs",
+      "group": "runtime",
+      "source_file": "backend/package.json"
+    },
+    {
+      "name": "pdf-parse",
+      "version_spec": "^1.1.1",
+      "purl": "pkg:npm/pdf-parse",
+      "group": "runtime",
+      "source_file": "backend/package.json"
+    },
+    {
+      "name": "socket.io",
+      "version_spec": "^4.6.1",
+      "purl": "pkg:npm/socket.io",
+      "group": "runtime",
+      "source_file": "backend/package.json"
+    }
+  ],
+  "summary": {
+    "use_case": "Multi-feature AI-powered learning platform: RAG chat over uploaded documents (Qdrant), a hand-rolled multi-agent problem solver (Analysis/Solver/Verifier/Hint/AlternativeMethod agents), exam-clone generation from uploaded past exams, teach-back evaluation, deep research (web search + RAG), and a code execution sandbox \u2014 all backed by a single OpenRouter model gateway rather than per-feature model wiring.",
+    "frameworks": [
+      "nestjs",
+      "express"
+    ],
+    "modalities": [
+      "TEXT",
+      "IMAGE"
+    ],
+    "modality_support": {
+      "text": true,
+      "image": true,
+      "voice": false
+    },
+    "api_endpoints": [
+      "/api/v1/auth/login",
+      "/api/v1/auth/register",
+      "/api/v1/code-sandbox/execute",
+      "/api/v1/webhooks/stripe",
+      "/api/v1/problem-solver/{id}/solve",
+      "/api/v1/chat/conversations",
+      "/api/v1/knowledge-bases/{id}/search",
+      "/api/v1/exam-clones",
+      "/api/v1/teach-back"
+    ],
+    "deployment_platforms": [
+      "Docker Compose"
+    ],
+    "environments": [
+      "docker"
+    ],
+    "node_counts": {
+      "AGENT": 1,
+      "MODEL": 1,
+      "TOOL": 3,
+      "DATASTORE": 5,
+      "AUTH": 3,
+      "API_ENDPOINT": 5,
+      "CONTAINER_IMAGE": 2,
+      "GITHUB_WORKFLOW": 1,
+      "DEPLOYMENT": 1
+    },
+    "data_classification": [
+      "PII"
+    ],
+    "classified_tables": [
+      "users",
+      "subscriptions"
+    ],
+    "encryption_at_rest_coverage": false,
+    "env_files": [
+      "backend/.env.example",
+      ".env.docker"
+    ],
+    "env_var_keys": [
+      "JWT_ACCESS_SECRET",
+      "JWT_REFRESH_SECRET",
+      "DATABASE_*",
+      "REDIS_*",
+      "QDRANT_*",
+      "CLICKHOUSE_*",
+      "OPENROUTER_API_KEY",
+      "OPENAI_API_KEY",
+      "STRIPE_SECRET_KEY",
+      "STRIPE_WEBHOOK_SECRET",
+      "GOOGLE_CLIENT_ID",
+      "APPLE_CLIENT_ID",
+      "TAVILY_API_KEY",
+      "SERPER_API_KEY",
+      "CODE_SANDBOX_URL",
+      "CODE_SANDBOX_API_KEY",
+      "R2_*"
+    ],
+    "local_url": "http://localhost:3010/api/v1",
+    "uses_streaming": true,
+    "streaming_endpoints": [
+      "problem-solver (:id/solve/stream)",
+      "chat (socket.io gateway)",
+      "code-sandbox (execute/stream)"
+    ],
+    "total_loc": 900
+  },
+  "relationship_graph_md": "```mermaid\nflowchart LR\n  problem_solver --> agents[Analysis/Solver/Verifier/Hint/AlternativeMethod]\n  agents --> model_gateway[OpenRouter Gateway]\n  chat --> rag_tool[KB RAG Retrieval]\n  rag_tool --> qdrant\n  rag_tool --> model_gateway\n  research --> web_search_tool --> model_gateway\n  code_sandbox_endpoint --> code_sandbox_tool\n  jwt_auth -. protects .-> code_sandbox_endpoint\n  jwt_auth -. protects .-> problem_solver_endpoint\n  jwt_auth -. protects .-> chat_endpoint\n  problem_solver -. reads/writes .-> postgres\n  rag_tool -. reads/writes .-> postgres\n  jwt_auth -. session/cache .-> redis\n```\n\nUnlike the ChapterApps/Phlox targets, Studyield's AI orchestration is hand-rolled\napplication code (plain classes calling an OpenAI-SDK client), not a\nLangGraph/CrewAI/LangChain-framework graph \u2014 so framework-specific adapters\nwon't find its AGENT/TOOL surface; only generic AST heuristics (class\ninstantiation + call-site analysis) will. The single OpenRouter gateway also\nmeans one MODEL node legitimately backs many different underlying models\n(GPT, Claude, Gemini, DeepSeek) selected by a runtime string, not one node per\nprovider."
+}

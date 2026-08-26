@@ -140,7 +140,7 @@ class DatastoreTSAdapter(TSFrameworkAdapter):
                 (_KV_PACKAGES, "kv"),
             ]:
                 for pattern, provider in pkg_map.items():
-                    if pattern in mod or mod == pattern:
+                    if mod == pattern or mod.startswith(pattern + "/") or mod.startswith(pattern + "-"):
                         if provider not in seen_providers:
                             seen_providers.add(provider)
                             detected.append(
@@ -175,10 +175,14 @@ class DatastoreTSAdapter(TSFrameworkAdapter):
             )
             url_details = _parse_url(url_val) if url_val else {}
 
+            # Fall back to the bare provider name (not "{provider}_{line}") so
+            # repeated unnamed instances of the same provider+type in a file
+            # consolidate into one node via the shared (component_type,
+            # canonical_name) dedup key, instead of fragmenting by line number.
             name = (
                 url_details.get("database")
                 or self._assignment_name(source, inst.line_start)
-                or f"{provider}_{inst.line_start}"
+                or provider
             )
             extra_meta: dict[str, Any] = {
                 "datastore_type": ds_type,

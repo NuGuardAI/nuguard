@@ -7,9 +7,11 @@ from __future__ import annotations
 
 import re
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, TypedDict
 
 from nuguard.behavior.sbom_graph import SbomGraph
+from nuguard.common.control_mappings.atlas import atlas_refs_for_ba_rule, atlas_technique_label
+from nuguard.common.control_mappings.owasp import owasp_refs_for_ba_rule
 from nuguard.common.logging import get_logger
 from nuguard.models.finding import Finding, Severity
 
@@ -19,6 +21,23 @@ if TYPE_CHECKING:
     from nuguard.sbom.models import AiSbomDocument, Edge, Node
 
 _log = get_logger(__name__)
+
+
+class _ControlRefKwargs(TypedDict):
+    owasp_llm_ref: str | None
+    owasp_asi_ref: str | None
+    mitre_atlas_technique: str | None
+
+
+def _ba_control_refs(rule_id: str) -> _ControlRefKwargs:
+    """OWASP LLM/Agentic + MITRE ATLAS kwargs for a BA-*** rule, for ``Finding(**...)``."""
+    owasp = owasp_refs_for_ba_rule(rule_id)
+    atlas = atlas_refs_for_ba_rule(rule_id)
+    return _ControlRefKwargs(
+        owasp_llm_ref=", ".join(owasp.owasp_llm) or None,
+        owasp_asi_ref=", ".join(owasp.owasp_agentic) or None,
+        mitre_atlas_technique=atlas_technique_label(atlas[0][0]) if atlas else None,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -161,6 +180,7 @@ def _ba_001_system_prompt_restricted_topic(
             findings.append(
                 Finding(
                     finding_id=f"BA-001-{uuid.uuid4().hex[:8]}",
+                    **_ba_control_refs("BA-001"),
                     title=f"Agent system prompt references restricted topic: '{topic}'",
                     severity=Severity.HIGH,
                     description=(
@@ -204,6 +224,7 @@ def _ba_002_risky_tool_no_guardrail(
             findings.append(
                 Finding(
                     finding_id=f"BA-002-{uuid.uuid4().hex[:8]}",
+                    **_ba_control_refs("BA-002"),
                     title=f"Risky tool '{name}' has no guardrail",
                     severity=Severity.HIGH,
                     description=(
@@ -303,6 +324,7 @@ def _ba_003_restricted_action_tool_edge(
         findings.append(
             Finding(
                 finding_id=f"BA-003-{uuid.uuid4().hex[:8]}",
+                **_ba_control_refs("BA-003"),
                 title=f"Tool '{tool_name}' implements restricted action and is reachable from {len(agent_names)} agent(s)",
                 severity=Severity.HIGH,
                 description=description,
@@ -345,6 +367,7 @@ def _ba_004_pii_datastore_no_guardrail(
             findings.append(
                 Finding(
                     finding_id=f"BA-004-{uuid.uuid4().hex[:8]}",
+                    **_ba_control_refs("BA-004"),
                     title=f"Sensitive datastore '{name}' has no guardrail",
                     severity=Severity.CRITICAL,
                     description=(
@@ -389,6 +412,7 @@ def _ba_005_no_auth_high_privilege(
                     findings.append(
                         Finding(
                             finding_id=f"BA-005-{uuid.uuid4().hex[:8]}",
+                            **_ba_control_refs("BA-005"),
                             title=f"Unauthenticated agent '{agent_name}' can access high-privilege tool '{tool_name}'",
                             severity=Severity.CRITICAL,
                             description=(
@@ -448,6 +472,7 @@ def _ba_006_untrusted_mcp_write(
                     findings.append(
                         Finding(
                             finding_id=f"BA-006-{uuid.uuid4().hex[:8]}",
+                            **_ba_control_refs("BA-006"),
                             title=f"Untrusted MCP server '{server_name}' has write access via '{tool_name}'",
                             severity=Severity.HIGH,
                             description=(
@@ -523,6 +548,7 @@ def _ba_007_blocked_topics_gap(
             findings.append(
                 Finding(
                     finding_id=f"BA-007-{uuid.uuid4().hex[:8]}",
+                    **_ba_control_refs("BA-007"),
                     title=f"Agent '{agent_name}' blocked_topics misses {len(uncovered)} restricted topic(s)",
                     severity=max_severity,
                     description=(
@@ -576,6 +602,7 @@ def _ba_008_hitl_gate_missing(
             findings.append(
                 Finding(
                     finding_id=f"BA-008-{uuid.uuid4().hex[:8]}",
+                    **_ba_control_refs("BA-008"),
                     title=f"No HITL gate detected for trigger: '{trigger}'",
                     severity=Severity.HIGH,
                     description=(
@@ -623,6 +650,7 @@ def _ba_009_unprotected_sensitive_endpoints(
         findings.append(
             Finding(
                 finding_id=f"BA-009-{uuid.uuid4().hex[:8]}",
+                **_ba_control_refs("BA-009"),
                 title=f"Sensitive {ntype} '{name}' lacks AUTH protection",
                 severity=Severity.HIGH,
                 description=(
@@ -663,6 +691,7 @@ def _ba_010_unguarded_privilege(
         findings.append(
             Finding(
                 finding_id=f"BA-010-{uuid.uuid4().hex[:8]}",
+                **_ba_control_refs("BA-010"),
                 title=f"High-privilege component '{name}' has no AUTH/GUARDRAIL protection",
                 severity=Severity.CRITICAL,
                 description=(
@@ -716,6 +745,7 @@ def _ba_011_write_datastore_no_control(
         findings.append(
             Finding(
                 finding_id=f"BA-011-{uuid.uuid4().hex[:8]}",
+                **_ba_control_refs("BA-011"),
                 title=f"Write access to '{ds_name}' lacks HITL/auth/guardrail control",
                 severity=Severity.HIGH,
                 description=(
@@ -779,6 +809,7 @@ def _ba_012_external_model_sensitive_data(
         findings.append(
             Finding(
                 finding_id=f"BA-012-{uuid.uuid4().hex[:8]}",
+                **_ba_control_refs("BA-012"),
                 title=f"Agent '{agent_name}' uses external model with access to sensitive data",
                 severity=Severity.MEDIUM,
                 description=(
@@ -829,6 +860,7 @@ def _ba_013_prompt_restricted_topic(
             findings.append(
                 Finding(
                     finding_id=f"BA-013-{uuid.uuid4().hex[:8]}",
+                    **_ba_control_refs("BA-013"),
                     title=(
                         f"Prompt '{prompt_name}' for agent '{agent_name}' "
                         f"references restricted topic(s)"
@@ -888,6 +920,7 @@ def _ba_014_unsafe_delegation(
             findings.append(
                 Finding(
                     finding_id=f"BA-014-{uuid.uuid4().hex[:8]}",
+                    **_ba_control_refs("BA-014"),
                     title=(
                         f"Unsafe delegation from '{src_name}' to '{tgt_name}' "
                         f"({', '.join(reason)})"
@@ -944,6 +977,7 @@ def _ba_015_deployment_security_posture(
         findings.append(
             Finding(
                 finding_id=f"BA-015-{uuid.uuid4().hex[:8]}",
+                **_ba_control_refs("BA-015"),
                 title=f"Deployment '{name}' has security posture issues",
                 severity=Severity.MEDIUM,
                 description=(
@@ -983,6 +1017,7 @@ def _ba_016_sensitive_endpoint_no_protection(
         findings.append(
             Finding(
                 finding_id=f"BA-016-{uuid.uuid4().hex[:8]}",
+                **_ba_control_refs("BA-016"),
                 title=f"Sensitive endpoint '{name}' lacks auth and guardrail protection",
                 severity=Severity.HIGH,
                 description=(

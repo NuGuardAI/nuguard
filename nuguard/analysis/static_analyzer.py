@@ -30,6 +30,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
+from nuguard.common.control_mappings.owasp import owasp_refs_for_rule
 from nuguard.common.logging import get_logger
 from nuguard.models.finding import Finding, Severity
 from nuguard.sbom.models import AiSbomDocument
@@ -81,6 +82,17 @@ def _raw_to_finding(raw: dict[str, Any], source: str) -> Finding:
     ]
     mitre_atlas = ", ".join(atlas_techniques) if atlas_techniques else None
 
+    # OWASP LLM Top 10 / Agentic Top 10 citations: prefer an explicit reference
+    # already carried on the raw finding (e.g. semgrep's YAML `owasp` metadata),
+    # falling back to the NGA_TO_OWASP rule_id lookup table.
+    owasp_refs = owasp_refs_for_rule(rule_id)
+    owasp_llm_ref = raw.get("owasp_llm_ref") or (
+        ", ".join(owasp_refs.owasp_llm) if owasp_refs.owasp_llm else None
+    )
+    owasp_asi_ref = raw.get("owasp_asi_ref") or (
+        ", ".join(owasp_refs.owasp_agentic) if owasp_refs.owasp_agentic else None
+    )
+
     return Finding(
         finding_id=f"{source}-{rule_id}-{uuid.uuid4().hex[:8]}",
         title=title,
@@ -89,6 +101,8 @@ def _raw_to_finding(raw: dict[str, Any], source: str) -> Finding:
         affected_component=", ".join(affected_parts) if affected_parts else None,
         remediation=raw.get("remediation"),
         references=references,
+        owasp_llm_ref=owasp_llm_ref,
+        owasp_asi_ref=owasp_asi_ref,
         mitre_atlas_technique=mitre_atlas,
         evidence=raw.get("evidence"),
     )
@@ -303,8 +317,8 @@ class StaticAnalyzer:
     ) -> list[Finding]:
         """Run NgaRulesPlugin (NGA-001…NGA-021) and annotate with ATLAS techniques."""
         try:
-            from nuguard.analysis._atlas_data import NGA_TO_ATLAS  # noqa: PLC0415
             from nuguard.analysis.plugins.nga_rules import NgaRulesPlugin  # noqa: PLC0415
+            from nuguard.common.control_mappings.atlas import NGA_TO_ATLAS  # noqa: PLC0415
 
             plugin = NgaRulesPlugin()
             # provider="nga-rules" skips the OSV/Grype phases inside the plugin;

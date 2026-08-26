@@ -15,6 +15,20 @@ from typing import Any
 from ...types import ComponentType
 from ..base import ComponentDetection, FrameworkAdapter
 
+# Matches `process.env.SOME_VAR || 'default-value'` — a common way TS/JS code
+# provides a fallback model name alongside an env-var override. Shared by any
+# adapter that needs to pull the literal default out of such an expression
+# (llm_clients.py, google_adk.py).
+_ENV_DEFAULT_RE = re.compile(r"process\.env\.\w+\s*\|\|\s*['\"`]([^'\"`\s,]+)")
+
+
+def normalize_model_default(raw: str) -> str:
+    """Extract the actual model name from env-var-with-default expressions."""
+    m = _ENV_DEFAULT_RE.search(raw)
+    if m:
+        return m.group(1)
+    return raw.strip("'\"` ")
+
 
 class TSFrameworkAdapter(FrameworkAdapter):
     """Base class for TypeScript/JavaScript FrameworkAdapters.

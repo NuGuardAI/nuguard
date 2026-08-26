@@ -38,6 +38,12 @@ _log = get_logger(__name__)
 # the regression suite stays small and deterministic.
 _MIN_SEVERITY_SIGNAL = 0.5
 
+# severity_signal is recorded on an integer 1–5 scale (CRITICAL=5 … INFO=1).
+# Map each level onto the documented 0.0–1.0 scale so the value agrees with
+# the severity-enum fallback in `_finding_sev_float` and every severity level,
+# including LOW, clears the qualification gate above.
+_SIGNAL_TO_FLOAT = {5: 1.0, 4: 0.92, 3: 0.75, 2: 0.58, 1: 0.42}
+
 _FILE_HEADER = '''\
 """Auto-generated regression tests for {goal_type_doc} findings.
 
@@ -210,8 +216,8 @@ def _finding_sev_float(finding: "Finding") -> float:
     raw = finding.scores.get("severity_signal")
     if raw is not None:
         try:
-            return float(raw) / 5.0  # normalise 1–5 scale to 0–1
-        except (TypeError, ValueError):
+            return _SIGNAL_TO_FLOAT[int(raw)]
+        except (KeyError, TypeError, ValueError):
             pass
     # Fall back to severity enum → float
     _sev_map = {"critical": 1.0, "high": 0.8, "medium": 0.5, "low": 0.2, "info": 0.0}
@@ -280,17 +286,22 @@ def _extract_payload(finding: "Finding") -> str:
 
 
 def _docstring_literal(text: str) -> str:
-    """Return *text* as a Python source literal safe to embed in a docstring.
+    """Return *text* as a string body safe to embed in a non-raw docstring.
 
-    The generated test/header docstrings are non-raw triple-quoted strings, so
-    hostile content (backslashes, control/NUL bytes, ``\\u``/``\\U``/``\\N`` escape
-    sequences, quotes, newlines) would otherwise crash compilation with
-    ``SyntaxError``.  ``repr()`` yields a valid literal; the only extra hazard in
-    a triple-double-quote context is a run of three double-quote characters in
-    the source value, which would close the docstring early — each such quote
-    char is escaped so the content is preserved verbatim instead.
+    The generated header/function docstrings are non-raw triple-double-quoted
+    strings, so hostile content — backslashes, control/NUL bytes, ``\\u``/
+    ``\\U``/``\\N`` escape sequences, quotes, newlines — would otherwise crash
+    compilation with ``SyntaxError``.  ``repr()`` yields a valid quoted
+    literal; only its escaped *body* is kept here (the surrounding quote
+    delimiters are dropped, since they would otherwise appear as visible
+    content inside the already-open docstring and break verbatim round-trip
+    of the metadata).  One extra hazard remains in a triple-double-quote
+    context: a run of three double-quote characters in the value would close
+    the docstring early, so each such character is escaped and the content is
+    preserved verbatim instead.
     """
-    return repr(text).replace('"""', '\\"\\"\\"')
+    literal = repr(text)
+    return literal[1:-1].replace('"""', '\\"\\"\\"')
 
 
 def _slugify(text: str) -> str:
