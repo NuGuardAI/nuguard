@@ -64,6 +64,15 @@ def test_finding_title_falls_back_to_package_name_when_no_summary() -> None:
     assert _finding_title("foo", "CVE-2099-1", "") == "Vulnerability in foo"
 
 
+def test_summarize_description_skips_leading_list_marker_as_sentence_end() -> None:
+    # A leading "1." must not be mistaken for a one-word "sentence" — observed
+    # as a real bug: CVE-2025-9086's description starts with a numbered list.
+    text = "1. libcurl leaks credentials to a second proxy when redirected. 2. more."
+    assert _summarize_description(text) == (
+        "1. libcurl leaks credentials to a second proxy when redirected."
+    )
+
+
 def test_summarize_description_strips_advisory_header_and_truncates() -> None:
     assert (
         _summarize_description("Issue summary: Buffer overflow in parser.")

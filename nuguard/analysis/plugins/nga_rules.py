@@ -2179,14 +2179,23 @@ def _extract_fixed_version(affected_versions: str) -> str | None:
     return m.group(1) if m else None
 
 
+_SENTENCE_END_RE = re.compile(r"[.!?](?=\s|$)")
+
+
 def _summarize_description(text: str, max_len: int = 140) -> str:
     """Condense a (possibly long, multi-paragraph) vulnerability description
     into a short, one-line summary suitable for a finding title."""
     text = _ADVISORY_HEADER_RE.sub("", _WS_RE.sub(" ", text or "").strip())
     if not text:
         return ""
-    m = re.match(r"(.{1,%d}?[.!?])(\s|$)" % max_len, text)
-    candidate = m.group(1) if m else text
+    # Prefer the first sentence, but skip degenerate "matches" like a leading
+    # list marker ("1.") whose period isn't actually a sentence boundary.
+    candidate = text
+    for m in _SENTENCE_END_RE.finditer(text):
+        chunk = text[:m.end()].strip()
+        if len(chunk) >= 10 or m.end() >= max_len:
+            candidate = chunk
+            break
     if len(candidate) > max_len:
         candidate = candidate[:max_len].rsplit(" ", 1)[0] + "…"
     return candidate.strip()
